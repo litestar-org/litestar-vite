@@ -2,17 +2,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from litestar.plugins import InitPluginProtocol, CLIPluginProtocol
-
 from app.contrib.vite.config import ViteTemplateConfig
 from app.contrib.vite.template_engine import ViteTemplateEngine
- 
-if TYPE_CHECKING:
-    from litestar.config.app import AppConfig
-    from click import Group
+from litestar.plugins import CLIPluginProtocol, InitPluginProtocol
 
+if TYPE_CHECKING:
     from app.contrib.vite.config import ViteConfig
- 
+    from click import Group
+    from litestar.config.app import AppConfig
+
 
 class VitePlugin(InitPluginProtocol, CLIPluginProtocol):
     """Vite plugin."""
@@ -39,7 +37,7 @@ class VitePlugin(InitPluginProtocol, CLIPluginProtocol):
         Args:
             app_config: The :class:`AppConfig <.config.app.AppConfig>` instance.
         """
-        app_config.template_config = ViteTemplateConfig(  # type: ignore[assignment]
+        app_config.template_config = ViteTemplateConfig(
             directory=self._config.templates_dir,
             engine=ViteTemplateEngine,
             config=self._config,

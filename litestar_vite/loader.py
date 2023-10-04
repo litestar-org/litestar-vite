@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 from urllib.parse import urljoin
 
 from litestar.template import TemplateEngineProtocol
- 
 
 if TYPE_CHECKING:
     from app.contrib.vite import ViteConfig

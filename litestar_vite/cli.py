@@ -14,7 +14,7 @@ def vite_group() -> None:
     """Manage Vite Tasks."""
 
 
-@vite_group.command(
+@vite_group.command(  # type: ignore # noqa: PGH003
     name="build",
     help="Building frontend assets with Vite.",
 )
