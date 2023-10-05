@@ -111,8 +111,8 @@ html_theme_options = {
     "announcement": "This documentation is currently under development.",
     "github_url": "https://github.com/cofin/litestar-vite",
     "nav_links": [
-        {"title": "Home", "url": "https://cofin.github.io/litesatr-vite/"},
-        {"title": "Docs", "url": "https://cofin.github.io/litesatr-vite/latest/"},
+        {"title": "Home", "url": "https://cofin.github.io/litestar-vite/"},
+        {"title": "Docs", "url": "https://cofin.github.io/litestar-vite/latest/"},
         {"title": "Code", "url": "https://github.com/cofin/litestar-vite"},
     ],
     "light_css_variables": {
