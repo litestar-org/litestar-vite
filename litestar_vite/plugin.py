@@ -7,8 +7,8 @@ from litesatr_vite.template_engine import ViteTemplateEngine
 from litestar.plugins import CLIPluginProtocol, InitPluginProtocol
 
 if TYPE_CHECKING:
-    from litesatr_vite.config import ViteConfig
     from click import Group
+    from litesatr_vite.config import ViteConfig
     from litestar.config.app import AppConfig
 
 

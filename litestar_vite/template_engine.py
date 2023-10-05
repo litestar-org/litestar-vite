@@ -16,8 +16,8 @@ from .loader import ViteAssetLoader
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from litesatr_vite.config import ViteConfig
     from jinja2 import Template as JinjaTemplate
+    from litesatr_vite.config import ViteConfig
     from pydantic import DirectoryPath
 
 T = TypeVar("T", bound=TemplateEngineProtocol)
