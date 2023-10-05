@@ -15,10 +15,11 @@ from .loader import ViteAssetLoader
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from jinja2 import Template as JinjaTemplate
-    from litesatr_vite.config import ViteConfig
-    from pydantic import DirectoryPath
+
+    from litestar_vite.config import ViteConfig
 
 T = TypeVar("T", bound=TemplateEngineProtocol)
 
@@ -26,7 +27,7 @@ T = TypeVar("T", bound=TemplateEngineProtocol)
 class ViteTemplateEngine(JinjaTemplateEngine):
     """Jinja Template Engine with Vite Integration."""
 
-    def __init__(self, directory: DirectoryPath | list[DirectoryPath], config: ViteConfig) -> None:
+    def __init__(self, directory: Path | list[Path], config: ViteConfig) -> None:
         """Jinja2 based TemplateEngine.
 
         Args:
