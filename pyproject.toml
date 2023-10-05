@@ -22,7 +22,7 @@ classifiers = [
   "Topic :: Database :: Database Engines/Servers",
 ]
 dependencies = [
-  "litestar[cli]>=2.0.1",
+  "litestar[cli,jinja]>=2.0.1",
 ]
 description = "Vite plugin for Litestar"
 keywords = [
@@ -33,7 +33,7 @@ license = {text = "MIT"}
 name = "litestar-vite"
 readme = "README.md"
 requires-python = ">=3.8"
-version = "0.1.0"
+version = "0.1.1"
 
 [project.urls]
 Changelog = "https://cofin.github.io/litesatr-vite/latest/changelog"

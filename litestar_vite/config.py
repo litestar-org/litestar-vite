@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     from litestar.types import PathType
 
-    from .template_engine import ViteTemplateEngine
+    from litestar_vite.template_engine import ViteTemplateEngine
 
 T = TypeVar("T", bound=TemplateEngineProtocol)
 
