@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from app.contrib.vite.config import ViteTemplateConfig
-from app.contrib.vite.template_engine import ViteTemplateEngine
+from litesatr_vite.config import ViteTemplateConfig
+from litesatr_vite.template_engine import ViteTemplateEngine
 from litestar.plugins import CLIPluginProtocol, InitPluginProtocol
 
 if TYPE_CHECKING:
-    from app.contrib.vite.config import ViteConfig
+    from litesatr_vite.config import ViteConfig
     from click import Group
     from litestar.config.app import AppConfig
 

@@ -16,7 +16,7 @@ from .loader import ViteAssetLoader
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from app.contrib.vite.config import ViteConfig
+    from litesatr_vite.config import ViteConfig
     from jinja2 import Template as JinjaTemplate
     from pydantic import DirectoryPath
 

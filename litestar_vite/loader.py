@@ -8,7 +8,7 @@ from urllib.parse import urljoin
 from litestar.template import TemplateEngineProtocol
 
 if TYPE_CHECKING:
-    from app.contrib.vite import ViteConfig
+    from litestar_vite.config import ViteConfig
 
 T = TypeVar("T", bound=TemplateEngineProtocol)
 
