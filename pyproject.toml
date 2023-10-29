@@ -43,6 +43,9 @@ Homepage = "https://cofin.github.io/litestar-vite/latest/"
 Issue = "https://github.com/cofin/litestar-vite/issues/"
 Source = "https://github.com/cofin/litestar-vite"
 
+[project.optional-dependencies]
+nodeenv = ["nodeenv"]
+
 [build-system]
 build-backend = "hatchling.build"
 requires = ["hatchling"]

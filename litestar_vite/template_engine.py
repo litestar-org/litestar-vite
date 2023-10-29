@@ -7,11 +7,9 @@ from jinja2 import TemplateNotFound as JinjaTemplateNotFound
 from jinja2 import pass_context
 from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.exceptions import TemplateNotFoundException
-from litestar.template.base import (
-    TemplateEngineProtocol,
-)
+from litestar.template.base import TemplateEngineProtocol
 
-from .loader import ViteAssetLoader
+from litestar_vite.loader import ViteAssetLoader
 
 if TYPE_CHECKING:
     from collections.abc import Callable

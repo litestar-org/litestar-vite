@@ -59,6 +59,11 @@ class ViteConfig:
     run_command: str = "npm run dev"
     """Default command to use for running Vite."""
     build_command: str = "npm run build"
+    """Default command to use for building with Vite."""
+    ssr_enabled: bool = False
+    """Enable SSR."""
+    ssr_output_dir: Path | None = None
+    """SSR Output path"""
 
 
 @dataclass
