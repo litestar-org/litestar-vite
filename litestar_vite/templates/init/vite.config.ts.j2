@@ -1,19 +1,19 @@
 import { defineConfig } from 'vite';
 import litestar from 'litestar-vite-plugin';
- 
+
 export default defineConfig({
     plugins: [
         litestar({
             // ...
-            detectTls: 'my-app.test', 
+            detectTls: 'my-app.test',
         }),
     ],
-    server: { 
-        host, 
-        hmr: { host }, 
-        https: { 
-            key: fs.readFileSync(`/path/to/${host}.key`), 
-            cert: fs.readFileSync(`/path/to/${host}.crt`), 
-        }, 
-    }, 
+    server: {
+        host,
+        hmr: { host },
+        https: {
+            key: fs.readFileSync(`/path/to/${host}.key`),
+            cert: fs.readFileSync(`/path/to/${host}.crt`),
+        },
+    },
 });
