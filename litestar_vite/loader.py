@@ -64,7 +64,7 @@ class ViteAssetLoader:
         """
 
         if not self._config.hot_reload:
-            with Path(self._config.static_dir / self._config.manifest_name).open() as manifest_file:
+            with Path(self._config.bundle_dir / self._config.manifest_name).open() as manifest_file:
                 manifest_content = manifest_file.read()
             try:
                 self._manifest = json.loads(manifest_content)
@@ -72,7 +72,7 @@ class ViteAssetLoader:
                 msg = "Cannot read Vite manifest file at %s"
                 raise RuntimeError(
                     msg,
-                    Path(self._config.static_dir / self._config.manifest_name),
+                    Path(self._config.bundle_dir / self._config.manifest_name),
                 ) from exc
 
     def generate_ws_client_tags(self) -> str:
@@ -128,7 +128,7 @@ class ViteAssetLoader:
             raise RuntimeError(
                 msg,
                 path,
-                Path(self._config.static_dir / self._config.manifest_name),
+                Path(self._config.bundle_dir / self._config.manifest_name),
             )
 
         tags: list[str] = []
@@ -139,8 +139,7 @@ class ViteAssetLoader:
         # Add dependent CSS
         if "css" in manifest_entry:
             tags.extend(
-                self._style_tag(urljoin(self._config.static_url, css_path))
-                for css_path in manifest_entry.get("css", {})
+                self._style_tag(urljoin(self._config.asset_url, css_path)) for css_path in manifest_entry.get("css", {})
             )
         # Add dependent "vendor"
         if "imports" in manifest_entry:
@@ -151,7 +150,7 @@ class ViteAssetLoader:
         # Add the script by itself
         tags.append(
             self._script_tag(
-                urljoin(self._config.static_url, manifest_entry["file"]),
+                urljoin(self._config.asset_url, manifest_entry["file"]),
                 attrs=scripts_attrs,
             ),
         )
@@ -170,7 +169,7 @@ class ViteAssetLoader:
         base_path = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
         return urljoin(
             base_path,
-            urljoin(self._config.static_url, path if path is not None else ""),
+            urljoin(self._config.asset_url, path if path is not None else ""),
         )
 
     def _script_tag(self, src: str, attrs: dict[str, str] | None = None) -> str:
