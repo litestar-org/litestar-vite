@@ -4,24 +4,24 @@ import path from "path";
 import litestar from "litestar-vite-plugin";
 
 function getBackendUrl(path: string) {
-  return `${process.env.LITESTAR_ASSET_URL || "http://localhost:8000"}${path}`;
+  return `${process.env.FRONTEND_URL || "http://localhost:8000"}${path}`;
 }
-const ASSET_URL = process.env.LITESTAR_ASSET_URL || "/static/";
+const STATIC_URL = process.env.STATIC_URL || "/static/";
 export default defineConfig({
-  base: `${LITESTAR_ASSET_URL}`,
+  base: `${STATIC_URL}`,
   plugins: [
     vue(),
     litestar({
       input: ["src/app/domain/web/resources/main.ts"],
-      assetUrl: "{{ asset_url }}",
-      assetDirectory: "{{ asset_path }}"
-      bundleDirectory: "{{ bundle_path }}",
-      resourceDirectory: "{{ resource_path }}"
+      assetUrl: "/static/",
+      assetDirectory: "False"
+      bundleDirectory: "False",
+      resourceDirectory: "False"
     }),
   ],
   resolve: {
     alias: {
-      "@": "{{ resource_path }}",
+      "@": "False",
     },
   },
   server: {

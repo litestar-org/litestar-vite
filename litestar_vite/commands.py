@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, MutableMapping
 
+from jinja2 import select_autoescape
+
 if TYPE_CHECKING:
     from jinja2 import Environment, Template
     from litestar import Litestar
@@ -14,15 +16,19 @@ VITE_INIT_TEMPLATES = ("package.json.j2", "tsconfig.json.j2", "vite.config.ts.j2
 def init_vite(
     app: Litestar,
     resource_path: Path,
+    asset_path: Path,
+    asset_url: str,
     bundle_path: Path,
+    include_tailwind: bool,
     include_vue: bool,
     include_react: bool,
     vite_port: int,
+    litestar_port: int,
 ) -> None:
     """Initialize a new vite project."""
     from jinja2 import Environment, FileSystemLoader
 
-    vite_template_env = Environment(loader=FileSystemLoader(VITE_INIT_TEMPLATES_PATH), autoescape=True)
+    vite_template_env = Environment(loader=FileSystemLoader(VITE_INIT_TEMPLATES_PATH), autoescape=select_autoescape())
     templates: dict[str, Template] = {
         template_name: get_template(environment=vite_template_env, name=template_name)
         for template_name in VITE_INIT_TEMPLATES
@@ -30,19 +36,21 @@ def init_vite(
     logger = app.get_logger()
 
     for template_name, template in templates.items():
-        with Path(template_name.removesuffix(".j2")).open(mode="w") as file:
-            logger.info("Writing %s", template_name)
+        target_file_name = template_name.removesuffix(".j2")
+        with Path(target_file_name).open(mode="w") as file:
+            logger.info("Writing %s", target_file_name)
 
             file.write(
                 template.render(
-                    {
-                        "include_vue": include_vue,
-                        "include_react": include_react,
-                        "resource_path": resource_path,
-                        "static_port": bundle_path,
-                        "vite_port": vite_port,
-                    },
-                )
+                    include_vue=include_vue,
+                    include_react=include_react,
+                    include_tailwind=include_tailwind,
+                    asset_url=asset_url,
+                    resource_path=str(resource_path),
+                    bundle_path=str(bundle_path),
+                    asset_path=str(asset_path),
+                    vite_port=str(vite_port),
+                ),
             )
 
 

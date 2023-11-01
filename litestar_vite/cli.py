@@ -6,8 +6,12 @@ from typing import TYPE_CHECKING, Literal
 import anyio
 from anyio import open_process
 from anyio.streams.text import TextReceiveStream
-from click import group, option
-from litestar.cli._utils import LitestarGroup, console
+from click import Context, group, option
+from litestar.cli._utils import (
+    LitestarEnv,
+    LitestarGroup,
+    console,
+)
 
 from litestar_vite.commands import init_vite
 from litestar_vite.plugin import VitePlugin
@@ -33,35 +37,64 @@ def vite_group() -> None:
     default=False,
     is_flag=True,
 )
+@option(
+    "--asset-path",
+    type=bool,
+    help="The path to your Javascript/Typescript source and associated assets.  If this were a standalone Vue or React app, this would point to your `src/` folder.",
+    default=False,
+    is_flag=True,
+)
+@option("--asset-url", type=str, help="Base url to serve assets from.", default="/static/")
 @option("--bundle-path", type=bool, help="Install and configure Vue automatically.", default=False, is_flag=True)
 @option("--vite-port", type=int, help="The port to run the vite server against.", default=False, is_flag=True)
 @option("--include-vue", type=bool, help="Install and configure Vue automatically.", default=False, is_flag=True)
 @option("--include-react", type=bool, help="Include and configure React automatically.", default=False, is_flag=True)
+@option(
+    "--include-tailwind",
+    type=bool,
+    help="Include and configure Tailwind CSS automatically.",
+    default=False,
+    is_flag=True,
+)
 @option("--overwrite", type=bool, help="Overwrite any files in place.", default=False, is_flag=True)
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def vite_init(
-    app: Litestar,
+    ctx: Context,
     vite_port: int,
     include_vue: bool,
     include_react: bool,
+    include_tailwind: bool,
+    asset_path: Path,
+    asset_url: str,
     bundle_path: Path,
     resource_path: Path,
     overwrite: bool,  # noqa: ARG001
-    verbose: bool,  # noqa: ARG001
+    verbose: bool,
 ) -> None:
     """Run vite build."""
+    if callable(ctx.obj):
+        ctx.obj = ctx.obj()
+    elif verbose:
+        ctx.obj.app.debug = True
+    env: LitestarEnv = ctx.obj
     console.rule("[yellow]Initializing Vite[/]", align="left")
     if include_vue:
         console.print("Including Vue")
     if include_react:
         console.print("Including React")
+    if include_tailwind:
+        console.print("Including tailwind")
     init_vite(
-        app=app,
+        app=env.app,
         include_vue=include_vue,
         include_react=include_react,
+        include_tailwind=include_tailwind,
         vite_port=vite_port,
+        asset_url=asset_url,
         resource_path=resource_path,
+        asset_path=asset_path,
         bundle_path=bundle_path,
+        litestar_port=env.port or 8000,
     )
 
 
