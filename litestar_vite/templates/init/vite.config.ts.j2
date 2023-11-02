@@ -1,20 +1,20 @@
 import { defineConfig } from "vite";
+{% if include_vue %}
 import vue from "@vitejs/plugin-vue";
-import path from "path";
+{% endif %}
 import litestar from "litestar-vite-plugin";
 
-function getBackendUrl(path: string) {
-  return `${process.env.LITESTAR_ASSET_URL || "http://localhost:8000"}${path}`;
-}
-const ASSET_URL = process.env.LITESTAR_ASSET_URL || "/static/";
 export default defineConfig({
-  base: `${LITESTAR_ASSET_URL}`,
   plugins: [
+    {% if include_vue %}
     vue(),
+    {% endif %}
     litestar({
-      input: ["src/app/domain/web/resources/main.ts"],
+      input: [  
+        "{{ entry_point | join(', \"') }}"
+      ],
       assetUrl: "{{ asset_url }}",
-      assetDirectory: "{{ asset_path }}"
+      assetDirectory: "{{ asset_path }}",
       bundleDirectory: "{{ bundle_path }}",
       resourceDirectory: "{{ resource_path }}"
     }),
@@ -23,14 +23,5 @@ export default defineConfig({
     alias: {
       "@": "{{ resource_path }}",
     },
-  },
-  server: {
-    host: "0.0.0.0",
-    port: 3006,
-    cors: true,
-    strictPort: true,
-    watch: {
-      ignored: ["node_modules", ".venv", "**/__pycache__/**"],
-    },
-  },
+  }, 
 });

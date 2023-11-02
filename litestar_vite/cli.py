@@ -12,6 +12,7 @@ from litestar.cli._utils import (
     LitestarGroup,
     console,
 )
+from click import Path as ClickPath
 
 from litestar_vite.commands import init_vite
 from litestar_vite.plugin import VitePlugin
@@ -29,26 +30,32 @@ def vite_group() -> None:
     name="init",
     help="Initialize vite for your project.",
 )
-@option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
+@option(
+    "--bundle-path",
+    type=ClickPath(dir_okay=True, file_okay=False, path_type=Path),
+    help="The path for the built Vite assets.  This is the where the output of `npm run build` will write files.",
+    default=Path(Path.cwd() / "public"),
+    required=True,
+)
 @option(
     "--resource-path",
-    type=bool,
+    type=ClickPath(dir_okay=True, file_okay=False, path_type=Path),
     help="The path to your Javascript/Typescript source and associated assets.  If this were a standalone Vue or React app, this would point to your `src/` folder.",
-    default=False,
-    is_flag=True,
+    default=Path(Path.cwd() / "resources/"),
+    required=True,
 )
 @option(
     "--asset-path",
-    type=bool,
+    type=ClickPath(dir_okay=True, file_okay=False, path_type=Path),
     help="The path to your Javascript/Typescript source and associated assets.  If this were a standalone Vue or React app, this would point to your `src/` folder.",
-    default=False,
-    is_flag=True,
+    default=Path(Path.cwd() / "resources" / "assets"),
+    required=True,
 )
 @option("--asset-url", type=str, help="Base url to serve assets from.", default="/static/")
-@option("--bundle-path", type=bool, help="Install and configure Vue automatically.", default=False, is_flag=True)
 @option("--vite-port", type=int, help="The port to run the vite server against.", default=False, is_flag=True)
 @option("--include-vue", type=bool, help="Install and configure Vue automatically.", default=False, is_flag=True)
 @option("--include-react", type=bool, help="Include and configure React automatically.", default=False, is_flag=True)
+@option("--include-htmx", type=bool, help="Install and configure HTMX automatically.", default=False, is_flag=True)
 @option(
     "--include-tailwind",
     type=bool,
@@ -64,8 +71,9 @@ def vite_init(
     include_vue: bool,
     include_react: bool,
     include_tailwind: bool,
-    asset_path: Path,
+    include_htmx: bool,
     asset_url: str,
+    asset_path: Path,
     bundle_path: Path,
     resource_path: Path,
     overwrite: bool,  # noqa: ARG001

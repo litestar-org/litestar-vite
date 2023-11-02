@@ -14,7 +14,7 @@
     "noEmit": true,
     "composite": true,
     "allowSyntheticDefaultImports": true,
-    "baseUrl": "False",
+    "baseUrl": "resources",
     "paths": {
       "@/*": ["./*"]
     },
@@ -23,8 +23,8 @@
   "include": [
     "vite.config.ts",
     "**/*.d.ts",
-    "False/**/*.ts" 
-    "False/**/*.tsx",
-    "False/**/*.vue"
+    "resources/**/*.ts" ,
+    "resources/**/*.tsx",
+    "resources/**/*.vue"
   ]
 }

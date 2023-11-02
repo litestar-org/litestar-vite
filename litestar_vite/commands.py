@@ -28,6 +28,7 @@ def init_vite(
     """Initialize a new vite project."""
     from jinja2 import Environment, FileSystemLoader
 
+    entry_point = ["resources/styles.css"]
     vite_template_env = Environment(loader=FileSystemLoader(VITE_INIT_TEMPLATES_PATH), autoescape=select_autoescape())
     templates: dict[str, Template] = {
         template_name: get_template(environment=vite_template_env, name=template_name)
@@ -42,14 +43,16 @@ def init_vite(
 
             file.write(
                 template.render(
+                    entry_point=entry_point,
                     include_vue=include_vue,
                     include_react=include_react,
                     include_tailwind=include_tailwind,
                     asset_url=asset_url,
-                    resource_path=str(resource_path),
-                    bundle_path=str(bundle_path),
-                    asset_path=str(asset_path),
+                    resource_path=str(resource_path.relative_to(Path.cwd())),
+                    bundle_path=str(bundle_path.relative_to(Path.cwd())),
+                    asset_path=str(asset_path.relative_to(Path.cwd())),
                     vite_port=str(vite_port),
+                    litestar_port=litestar_port,
                 ),
             )
 
