@@ -1,14 +1,12 @@
 import { defineConfig } from "vite";
-{% if include_vue %}
-import vue from "@vitejs/plugin-vue";
-{% endif %}
+{% if include_vue %}import vue from "@vitejs/plugin-vue";{% endif %}
+{% if include_react %}import vue from "@vitejs/plugin-react";{% endif %}
 import litestar from "litestar-vite-plugin";
 
 export default defineConfig({
   plugins: [
-    {% if include_vue %}
-    vue(),
-    {% endif %}
+    {% if include_vue %}vue(),{% endif %}
+    {% if include_react %}react(),{% endif %}
     litestar({
       input: [  
         "{{ entry_point | join(', \"') }}"
