@@ -86,6 +86,14 @@ def vite_group() -> None:
     show_default=False,
     is_flag=True,
 )
+@option(
+    "--enable-ssr",
+    type=bool,
+    help="Enable SSR Support.",
+    required=False,
+    show_default=False,
+    is_flag=True,
+)
 @option("--overwrite", type=bool, help="Overwrite any files in place.", default=False, is_flag=True)
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 @option(
@@ -104,6 +112,7 @@ def vite_init(
     include_react: bool | None,
     include_tailwind: bool | None,
     include_htmx: bool | None,
+    enable_ssr: bool | None,
     asset_url: str,
     asset_path: Path,
     bundle_path: Path,
@@ -153,12 +162,20 @@ def vite_init(
             "Do you want to install and configure HTMX?",
         )
     )
+    enable_ssr = (
+        True
+        if enable_ssr
+        else Confirm.ask(
+            "Do you intend to use Litestar with any SSR framework?",
+        )
+    )
     init_vite(
         app=env.app,
         include_vue=include_vue,
         include_react=include_react,
         include_tailwind=include_tailwind,
         include_htmx=include_htmx,
+        enable_ssr=enable_ssr,
         vite_port=vite_port,
         asset_url=asset_url,
         resource_path=resource_path,

@@ -3,7 +3,7 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build": "vite build{% if include_ssr %} && vite build --ssr{% endif %}"
+        "build": "vite build{% if enable_ssr %} && vite build --ssr{% endif %}"
     },
     "dependencies": {
         {% if include_vue %}"vue": "^3.3.7",{% endif %}
