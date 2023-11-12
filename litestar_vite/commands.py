@@ -99,4 +99,4 @@ async def _run_vite(app: Litestar, command: Literal["serve", "build"]) -> None:
     command_to_run = plugin._config.build_command if command == "build" else plugin._config.run_command  # noqa: SLF001
     async with await open_process(command_to_run) as vite_process:
         async for text in TextReceiveStream(vite_process.stdout):  # type: ignore[arg-type]
-            logger.info("Vite", message=text.replace("\n", ""))
+            logger.info("[Vite]: %s", text.replace("\n", ""))
