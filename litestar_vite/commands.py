@@ -22,6 +22,7 @@ def init_vite(
     include_tailwind: bool,
     include_vue: bool,
     include_react: bool,
+    include_htmx: bool,
     vite_port: int,
     litestar_port: int,
 ) -> None:
@@ -47,6 +48,7 @@ def init_vite(
                     include_vue=include_vue,
                     include_react=include_react,
                     include_tailwind=include_tailwind,
+                    include_htmx=include_htmx,
                     asset_url=asset_url,
                     resource_path=str(resource_path.relative_to(Path.cwd())),
                     bundle_path=str(bundle_path.relative_to(Path.cwd())),

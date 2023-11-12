@@ -7,12 +7,13 @@ import anyio
 from anyio import open_process
 from anyio.streams.text import TextReceiveStream
 from click import Context, group, option
+from click import Path as ClickPath
 from litestar.cli._utils import (
     LitestarEnv,
     LitestarGroup,
     console,
 )
-from click import Path as ClickPath
+from rich.prompt import Confirm
 
 from litestar_vite.commands import init_vite
 from litestar_vite.plugin import VitePlugin
@@ -53,30 +54,61 @@ def vite_group() -> None:
 )
 @option("--asset-url", type=str, help="Base url to serve assets from.", default="/static/")
 @option("--vite-port", type=int, help="The port to run the vite server against.", default=False, is_flag=True)
-@option("--include-vue", type=bool, help="Install and configure Vue automatically.", default=False, is_flag=True)
-@option("--include-react", type=bool, help="Include and configure React automatically.", default=False, is_flag=True)
-@option("--include-htmx", type=bool, help="Install and configure HTMX automatically.", default=False, is_flag=True)
+@option(
+    "--include-vue",
+    type=bool,
+    help="Install and configure Vue automatically.",
+    required=False,
+    show_default=False,
+    is_flag=True,
+)
+@option(
+    "--include-react",
+    type=bool,
+    help="Include and configure React automatically.",
+    required=False,
+    show_default=False,
+    is_flag=True,
+)
+@option(
+    "--include-htmx",
+    type=bool,
+    help="Install and configure HTMX automatically.",
+    required=False,
+    show_default=False,
+    is_flag=True,
+)
 @option(
     "--include-tailwind",
     type=bool,
     help="Include and configure Tailwind CSS automatically.",
-    default=False,
+    required=False,
+    show_default=False,
     is_flag=True,
 )
 @option("--overwrite", type=bool, help="Overwrite any files in place.", default=False, is_flag=True)
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
+@option(
+    "--no-prompt",
+    help="Do not prompt for confirmation before downgrading.",
+    type=bool,
+    default=False,
+    required=False,
+    show_default=True,
+    is_flag=True,
+)
 def vite_init(
     ctx: Context,
     vite_port: int,
-    include_vue: bool,
-    include_react: bool,
-    include_tailwind: bool,
-    include_htmx: bool,
+    include_vue: bool | None,
+    include_react: bool | None,
+    include_tailwind: bool | None,
+    include_htmx: bool | None,
     asset_url: str,
     asset_path: Path,
     bundle_path: Path,
     resource_path: Path,
-    overwrite: bool,  # noqa: ARG001
+    overwrite: bool,
     verbose: bool,
 ) -> None:
     """Run vite build."""
@@ -86,17 +118,47 @@ def vite_init(
         ctx.obj.app.debug = True
     env: LitestarEnv = ctx.obj
     console.rule("[yellow]Initializing Vite[/]", align="left")
-    if include_vue:
-        console.print("Including Vue")
-    if include_react:
-        console.print("Including React")
-    if include_tailwind:
-        console.print("Including tailwind")
+    _files_exist = (
+        True
+        if overwrite
+        else Confirm.ask(
+            "Files were found in the paths specified.  Are you sure you wish to overwrite the contents?",
+        )
+    )
+    include_vue = (
+        True
+        if include_vue
+        else Confirm.ask(
+            "Do you want to install and configure Vue?",
+        )
+    )
+    include_react = (
+        True
+        if include_react
+        else Confirm.ask(
+            "Do you want to install and configure React?",
+        )
+    )
+    include_tailwind = (
+        True
+        if include_tailwind
+        else Confirm.ask(
+            "Do you want to install and configure Tailwind?",
+        )
+    )
+    include_htmx = (
+        True
+        if include_htmx
+        else Confirm.ask(
+            "Do you want to install and configure HTMX?",
+        )
+    )
     init_vite(
         app=env.app,
         include_vue=include_vue,
         include_react=include_react,
         include_tailwind=include_tailwind,
+        include_htmx=include_htmx,
         vite_port=vite_port,
         asset_url=asset_url,
         resource_path=resource_path,
