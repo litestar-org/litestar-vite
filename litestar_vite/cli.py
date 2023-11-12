@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
-import anyio
-from anyio import open_process
-from anyio.streams.text import TextReceiveStream
 from click import Context, group, option
 from click import Path as ClickPath
 from litestar.cli._utils import (
@@ -15,8 +12,7 @@ from litestar.cli._utils import (
 )
 from rich.prompt import Confirm
 
-from litestar_vite.commands import init_vite
-from litestar_vite.plugin import VitePlugin
+from litestar_vite.commands import init_vite, run_vite
 
 if TYPE_CHECKING:
     from litestar import Litestar
@@ -218,24 +214,3 @@ def vite_serve(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
     """Run vite serve."""
     console.rule("[yellow]Starting Vite serve process[/]", align="left")
     run_vite(app, "serve")
-
-
-def run_vite(app: Litestar, command: Literal["serve", "build"]) -> None:
-    """Run Vite in a subprocess."""
-    logger = app.get_logger()
-    try:
-        anyio.run(_run_vite, app, command)
-    except KeyboardInterrupt:
-        logger.info("Stopping typescript development services.")
-    finally:
-        logger.info("Vite Service stopped.")
-
-
-async def _run_vite(app: Litestar, command: Literal["serve", "build"]) -> None:
-    """Run Vite in a subprocess."""
-    logger = app.get_logger()
-    plugin = app.plugins.get(VitePlugin)
-    command_to_run = plugin._config.build_command if command == "build" else plugin._config.run_command  # noqa: SLF001
-    async with await open_process(command_to_run) as vite_process:
-        async for text in TextReceiveStream(vite_process.stdout):  # type: ignore[arg-type]
-            logger.info("Vite", message=text.replace("\n", ""))
