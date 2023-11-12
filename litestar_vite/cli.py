@@ -98,7 +98,7 @@ def vite_group() -> None:
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 @option(
     "--no-prompt",
-    help="Do not prompt for confirmation before downgrading.",
+    help="Do not prompt for confirmation and use all defaults for initializing the project.",
     type=bool,
     default=False,
     required=False,
@@ -119,7 +119,8 @@ def vite_init(
     resource_path: Path,
     overwrite: bool,
     verbose: bool,
-) -> None:
+    no_prompt: bool,
+) -> None:  # sourcery skip: low-code-quality
     """Run vite build."""
     if callable(ctx.obj):
         ctx.obj = ctx.obj()
@@ -130,6 +131,8 @@ def vite_init(
     _files_exist = (
         True
         if overwrite
+        else False
+        if no_prompt
         else Confirm.ask(
             "Files were found in the paths specified.  Are you sure you wish to overwrite the contents?",
         )
@@ -137,6 +140,8 @@ def vite_init(
     include_vue = (
         True
         if include_vue
+        else False
+        if no_prompt
         else Confirm.ask(
             "Do you want to install and configure Vue?",
         )
@@ -144,6 +149,8 @@ def vite_init(
     include_react = (
         True
         if include_react
+        else False
+        if no_prompt
         else Confirm.ask(
             "Do you want to install and configure React?",
         )
@@ -151,6 +158,8 @@ def vite_init(
     include_tailwind = (
         True
         if include_tailwind
+        else False
+        if no_prompt
         else Confirm.ask(
             "Do you want to install and configure Tailwind?",
         )
@@ -158,6 +167,8 @@ def vite_init(
     include_htmx = (
         True
         if include_htmx
+        else False
+        if no_prompt
         else Confirm.ask(
             "Do you want to install and configure HTMX?",
         )
@@ -165,6 +176,8 @@ def vite_init(
     enable_ssr = (
         True
         if enable_ssr
+        else False
+        if no_prompt
         else Confirm.ask(
             "Do you intend to use Litestar with any SSR framework?",
         )

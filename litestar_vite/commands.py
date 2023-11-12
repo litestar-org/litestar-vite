@@ -11,6 +11,10 @@ if TYPE_CHECKING:
 
 VITE_INIT_TEMPLATES_PATH = f"{Path(__file__).parent}/templates/init"
 VITE_INIT_TEMPLATES = ("package.json.j2", "tsconfig.json.j2", "vite.config.ts.j2")
+REACT_INIT_TEMPLATES = ("react/App.tsx.j2", "react/main.tsx.j2")
+VUE_INIT_TEMPLATES = ("vue/App.vue.j2", "vue/main.ts")
+TAILWIND_INIT_TEMPLATES = ("vue/App.vue.j2", "vue/main.ts")
+HTMX_INIT_TEMPLATES = ("main.css", "main.js")
 
 
 def init_vite(

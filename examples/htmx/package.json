@@ -1,0 +1,20 @@
+{
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build"
+    },
+    "dependencies": {
+        "htmx.org": "^1.9.6"
+    },
+    "devDependencies": {
+        "axios": "^1.1.2",
+        "litestar-vite-plugin": "^0.1.0",
+        "typescript": "^4.9.5",
+        "autoprefixer": "^10.4.16",
+        "postcss": "^8.4.31",
+        "tailwindcss": "^3.3.5",
+        "vite": "^4.0.0"
+    }
+}
