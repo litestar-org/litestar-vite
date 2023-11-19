@@ -59,7 +59,7 @@ class ViteTemplateEngine(JinjaTemplateEngine):
         self,
         context: Mapping[str, Any],
         /,
-        path: str,
+        path: str | list[str],
         scripts_attrs: dict[str, str] | None = None,
     ) -> markupsafe.Markup:
         """Generate all assets include tags for the file in argument.
