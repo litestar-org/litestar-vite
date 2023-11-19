@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from litestar.plugins import CLIPluginProtocol, InitPluginProtocol
 
+from litestar_vite.cli import vite_group
 from litestar_vite.config import ViteTemplateConfig
 from litestar_vite.template_engine import ViteTemplateEngine
 
@@ -28,8 +29,6 @@ class VitePlugin(InitPluginProtocol, CLIPluginProtocol):
         self._config = config
 
     def on_cli_init(self, cli: Group) -> None:
-        from litestar_vite.cli import vite_group
-
         cli.add_command(vite_group)
         return super().on_cli_init(cli)
 
