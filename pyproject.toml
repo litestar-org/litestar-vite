@@ -167,6 +167,9 @@ convention = "google"
 max-complexity = 12
 
 [tool.ruff.per-file-ignores]
+"examples/**/*.*" = [
+  "INP001",
+]
 "tests/**/*.*" = [
   "A",
   "ARG",
