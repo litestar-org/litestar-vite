@@ -3,20 +3,20 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-pytestmark = pytest.mark.anyio
+from litestar_vite.config import ViteConfig
+
 here = Path(__file__).parent
 
 
+# Define a fixture for ViteConfig
 @pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
-
-
-@pytest.fixture
-def vite_template_env() -> Environment:
-    return Environment(
-        loader=FileSystemLoader([Path(here.parent / "litestar_vite" / "templates")]),
-        autoescape=select_autoescape(),
+def vite_config() -> ViteConfig:
+    # Mock the ViteConfig with necessary attributes for testing
+    return ViteConfig(
+        bundle_dir=Path(here / "test_app" / "web" / "public"),
+        resource_dir=Path(here / "test_app" / "web" / "resources"),
+        assets_dir=Path(here / "test_app" / "web" / "resources" / "assets"),
+        templates_dir=Path(here / "test_app" / "web" / "templates"),
+        hot_reload=True,
     )
