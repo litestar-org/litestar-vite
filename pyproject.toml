@@ -22,7 +22,7 @@ classifiers = [
   "Topic :: Database :: Database Engines/Servers",
 ]
 dependencies = [
-  "litestar[cli,jinja]>=2.0.1",
+  "litestar[cli,jinja]>=2.4.0",
 ]
 description = "Vite plugin for Litestar"
 keywords = [

@@ -21,9 +21,6 @@
     "types": ["vite/client", "node"]
   },
   "include": [
-    "**/*.d.ts",
-    "{{ resource_path }}/**/*.js" ,
-    "{{ resource_path }}/**/*.ts" ,
     {% if include_react %}
     "{{ resource_path }}/**/*.tsx",
     "{{ resource_path }}/**/*.jsx",
@@ -31,6 +28,9 @@
     {% if include_vue %}
     "{{ resource_path }}/**/*.vue",
     {% endif %}
+    "**/*.d.ts",
+    "{{ resource_path }}/**/*.js" ,
+    "{{ resource_path }}/**/*.ts" ,
     "vite.config.ts"
   ]
 }

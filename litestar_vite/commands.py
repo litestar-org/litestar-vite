@@ -17,6 +17,18 @@ TAILWIND_INIT_TEMPLATES = ("vue/App.vue.j2", "vue/main.ts")
 HTMX_INIT_TEMPLATES = ("main.css", "main.js")
 
 
+DEFAULT_DEV_DEPENDENCIES: dict[str, str] = {"axios": "^1.1.2", "typescript": "^4.9.5", "vite": "^4.0.0"}
+DEFAULT_DEPENDENCIES: dict[str, str] = {}
+VUE_DEV_DEPENDENCIES: dict[str, str] = {"@vitejs/plugin-vue": "^4.4.0", "vue-tsc": "^1.8.22"}
+VUE_DEPENDENCIES: dict[str, str] = {"vue": "^3.3.7"}
+REACT_DEV_DEPENDENCIES: dict[str, str] = {"@vitejs/plugin-react": "^4.1.1"}
+REACT_DEPENDENCIES: dict[str, str] = {"react": "^18.2.0"}
+TAILWIND_DEV_DEPENDENCIES: dict[str, str] = {"autoprefixer": "^10.4.16", "postcss": "^8.4.31", "tailwindcss": "^3.3.5"}
+TAILWIND_DEPENDENCIES: dict[str, str] = {}
+HTMX_DEV_DEPENDENCIES: dict[str, str] = {}
+HTMX_DEPENDENCIES: dict[str, str] = {"htmx.org": "^1.9.6"}
+
+
 def init_vite(
     app: Litestar,
     resource_path: Path,
@@ -41,7 +53,20 @@ def init_vite(
         for template_name in VITE_INIT_TEMPLATES
     }
     logger = app.get_logger()
-
+    dependencies: dict[str, str] = DEFAULT_DEPENDENCIES
+    dev_dependencies: dict[str, str] = DEFAULT_DEV_DEPENDENCIES
+    if include_vue:
+        dependencies.update(VUE_DEPENDENCIES)
+        dev_dependencies.update(VUE_DEV_DEPENDENCIES)
+    if include_react:
+        dependencies.update(REACT_DEPENDENCIES)
+        dev_dependencies.update(REACT_DEV_DEPENDENCIES)
+    if include_tailwind:
+        dependencies.update(TAILWIND_DEPENDENCIES)
+        dev_dependencies.update(TAILWIND_DEV_DEPENDENCIES)
+    if include_htmx:
+        dependencies.update(HTMX_DEPENDENCIES)
+        dev_dependencies.update(HTMX_DEV_DEPENDENCIES)
     for template_name, template in templates.items():
         target_file_name = template_name.removesuffix(".j2")
         with Path(target_file_name).open(mode="w") as file:
@@ -61,6 +86,8 @@ def init_vite(
                     asset_path=str(asset_path.relative_to(Path.cwd())),
                     vite_port=str(vite_port),
                     litestar_port=litestar_port,
+                    dependencies=dependencies,
+                    dev_dependencies=dev_dependencies,
                 ),
             )
 
