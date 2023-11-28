@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, MutableMapping
 
 from jinja2 import select_autoescape
+from litestar.serialization import encode_json
 
 if TYPE_CHECKING:
     from jinja2 import Environment, Template
@@ -27,6 +28,18 @@ TAILWIND_DEV_DEPENDENCIES: dict[str, str] = {"autoprefixer": "^10.4.16", "postcs
 TAILWIND_DEPENDENCIES: dict[str, str] = {}
 HTMX_DEV_DEPENDENCIES: dict[str, str] = {}
 HTMX_DEPENDENCIES: dict[str, str] = {"htmx.org": "^1.9.6"}
+
+
+def to_json(value: Any) -> str:
+    """Serialize JSON field values.
+
+    Args:
+        value: Any json serializable value.
+
+    Returns:
+        JSON string.
+    """
+    return encode_json(value).decode("utf-8")
 
 
 def init_vite(
@@ -86,8 +99,8 @@ def init_vite(
                     asset_path=str(asset_path.relative_to(Path.cwd())),
                     vite_port=str(vite_port),
                     litestar_port=litestar_port,
-                    dependencies=dependencies,
-                    dev_dependencies=dev_dependencies,
+                    dependencies=to_json(dependencies),
+                    dev_dependencies=to_json(dev_dependencies),
                 ),
             )
 

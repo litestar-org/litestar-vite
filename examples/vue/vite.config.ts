@@ -1,12 +1,14 @@
 import { defineConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
 
 import litestar from "litestar-vite-plugin";
 
 export default defineConfig({
   plugins: [
+    vue(),
     
     litestar({
-      input: [  
+      input: [
         "resources/styles.css"
       ],
       assetUrl: "/static/",
@@ -17,7 +19,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@": "resources",
+      "@": "resources"
     },
-  }, 
+  },
 });

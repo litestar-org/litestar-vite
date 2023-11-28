@@ -5,10 +5,6 @@
         "dev": "vite",
         "build": "vite build{% if enable_ssr %} && vite build --ssr{% endif %}"
     },
-    "dependencies": {
-         "{{ dependencies | join(', \"') }}"
-    },
-    "devDependencies": {
-         "{{ dev_dependencies | join(', \"') }}"
-    }
+    "dependencies": {{ dependencies }},
+    "devDependencies": {{ dev_dependencies }}
 }

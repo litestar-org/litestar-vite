@@ -3,7 +3,7 @@
     "target": "ESNext",
     "useDefineForClassFields": true,
     "module": "ESNext",
-    "moduleResolution": "Node",
+    "moduleResolution": "node",
     "strict": true,
     "jsx": "preserve",
     "resolveJsonModule": true,
@@ -21,10 +21,13 @@
     "types": ["vite/client", "node"]
   },
   "include": [
-    "vite.config.ts",
+    
+    
+    "resources/**/*.vue",
+    
     "**/*.d.ts",
+    "resources/**/*.js" ,
     "resources/**/*.ts" ,
-    "resources/**/*.tsx",
-    "resources/**/*.vue"
+    "vite.config.ts"
   ]
 }

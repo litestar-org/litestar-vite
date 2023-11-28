@@ -39,8 +39,8 @@ class VitePlugin(InitPluginProtocol, CLIPluginProtocol):
             app_config: The :class:`AppConfig <.config.app.AppConfig>` instance.
         """
         app_config.template_config = ViteTemplateConfig(  # type: ignore[assignment]
-            directory=self._config.templates_dir,
             engine=ViteTemplateEngine,
             config=self._config,
+            directory=self._config.templates_dir,
         )
         return app_config

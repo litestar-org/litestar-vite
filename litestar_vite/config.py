@@ -112,7 +112,10 @@ class ViteTemplateConfig(Generic[T]):
 
     def to_engine(self) -> T:
         """Instantiate the template engine."""
-        template_engine = cast("T", self.engine(self.directory, self.config) if isclass(self.engine) else self.engine)
+        template_engine = cast(
+            "T",
+            self.engine(directory=self.directory, config=self.config) if isclass(self.engine) else self.engine,
+        )
         if callable(self.engine_callback):
             self.engine_callback(template_engine)
         return template_engine

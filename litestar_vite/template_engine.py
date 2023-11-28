@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Mapping, TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 import markupsafe
 from litestar.contrib.jinja import JinjaTemplateEngine
@@ -23,9 +23,9 @@ class ViteTemplateEngine(JinjaTemplateEngine):
 
     def __init__(
         self,
-        config: ViteConfig,
         directory: Path | list[Path] | None = None,
         engine_instance: Environment | None = None,
+        config: ViteConfig | None = None,
     ) -> None:
         """Jinja2 based TemplateEngine.
 
@@ -35,12 +35,15 @@ class ViteTemplateEngine(JinjaTemplateEngine):
             config: Vite config
         """
         super().__init__(directory=directory)
+        if config is None:
+            msg = "Please configure the `ViteConfig` instance."
+            raise ValueError(msg)
         self.config = config
-        self.asset_loader = ViteAssetLoader.initialize_loader(config=self.config)
-        self.register_template_callable(key="vite_hmr", template_callable=self.get_hmr_client)
-        self.register_template_callable(key="vite", template_callable=self.get_asset_tag)
 
-    def get_hmr_client(self, context: Mapping[str, Any], /) -> markupsafe.Markup:
+        self.asset_loader = ViteAssetLoader.initialize_loader(config=self.config)
+        self.engine.globals.update({"vite_hmr_client": self.get_hmr_client, "vite_asset": self.get_asset_tag})
+
+    def get_hmr_client(self) -> markupsafe.Markup:
         """Generate the script tag for the Vite WS client for HMR.
 
         Only used when hot module reloading is enabled, in production this method returns an empty string.
@@ -57,8 +60,6 @@ class ViteTemplateEngine(JinjaTemplateEngine):
 
     def get_asset_tag(
         self,
-        context: Mapping[str, Any],
-        /,
         path: str | list[str],
         scripts_attrs: dict[str, str] | None = None,
     ) -> markupsafe.Markup:
