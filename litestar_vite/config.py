@@ -64,7 +64,12 @@ class ViteConfig:
     """Enable SSR."""
     ssr_output_dir: Path | None = None
     """SSR Output path"""
+    root_dir: Path | None = None
+    """The is the base path to your application.
 
+   In a standalone Vue or React application, this would be equivalent to the ``./src`` directory.
+
+    """
     is_react: bool = False
     """Enable React components."""
     asset_url: str = "/static/"

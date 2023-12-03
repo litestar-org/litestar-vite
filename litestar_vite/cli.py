@@ -124,15 +124,15 @@ def vite_init(
         ctx.obj.app.debug = True
     env: LitestarEnv = ctx.obj
     console.rule("[yellow]Initializing Vite[/]", align="left")
-    _files_exist = (
-        True
-        if overwrite
-        else False
-        if no_prompt
-        else Confirm.ask(
+    root_path = resource_path.parent
+    if any(output_path.exists() for output_path in (asset_path, bundle_path, resource_path)) and not any(
+        [overwrite, no_prompt],
+    ):
+        _ = Confirm.ask(
             "Files were found in the paths specified.  Are you sure you wish to overwrite the contents?",
         )
-    )
+    for output_path in (asset_path, bundle_path, resource_path):
+        output_path.mkdir(parents=True, exist_ok=True)
     include_vue = (
         True
         if include_vue
@@ -180,6 +180,7 @@ def vite_init(
     )
     init_vite(
         app=env.app,
+        root_path=root_path,
         include_vue=include_vue,
         include_react=include_react,
         include_tailwind=include_tailwind,

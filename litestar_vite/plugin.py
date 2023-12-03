@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import multiprocessing
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Iterator
 
-from litestar.plugins import CLIPluginProtocol, InitPluginProtocol
+from litestar import Litestar
+from litestar.plugins import CLIPlugin, InitPluginProtocol
 
 from litestar_vite.cli import vite_group
+from litestar_vite.commands import run_vite
 from litestar_vite.config import ViteTemplateConfig
 from litestar_vite.template_engine import ViteTemplateEngine
 
@@ -15,7 +19,7 @@ if TYPE_CHECKING:
     from litestar_vite.config import ViteConfig
 
 
-class VitePlugin(InitPluginProtocol, CLIPluginProtocol):
+class VitePlugin(InitPluginProtocol, CLIPlugin):
     """Vite plugin."""
 
     __slots__ = ("_config",)
@@ -44,3 +48,17 @@ class VitePlugin(InitPluginProtocol, CLIPluginProtocol):
             directory=self._config.templates_dir,
         )
         return app_config
+
+    @contextmanager
+    def server_lifespan(self, app: Litestar) -> Iterator[None]:
+        command_to_run = self._config.run_command
+
+        vite_process = multiprocessing.Process(
+            target=run_vite,
+            args=(command_to_run),
+        )
+        try:
+            vite_process.start()
+            yield
+        finally:
+            vite_process.terminate()

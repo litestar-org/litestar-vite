@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, MutableMapping
+from typing import TYPE_CHECKING, Any, MutableMapping
 
 from jinja2 import select_autoescape
 from litestar.serialization import encode_json
@@ -11,14 +11,21 @@ if TYPE_CHECKING:
     from litestar import Litestar
 
 VITE_INIT_TEMPLATES_PATH = f"{Path(__file__).parent}/templates/init"
-VITE_INIT_TEMPLATES = ("package.json.j2", "tsconfig.json.j2", "vite.config.ts.j2")
-REACT_INIT_TEMPLATES = ("react/App.tsx.j2", "react/main.tsx.j2")
-VUE_INIT_TEMPLATES = ("vue/App.vue.j2", "vue/main.ts")
-TAILWIND_INIT_TEMPLATES = ("vue/App.vue.j2", "vue/main.ts")
-HTMX_INIT_TEMPLATES = ("main.css", "main.js")
+VUE_TEMPLATES_PATH = f"{VITE_INIT_TEMPLATES_PATH}/vue"
+REACT_TEMPLATES_PATH = f"{VITE_INIT_TEMPLATES_PATH}/react"
+VITE_INIT_TEMPLATES: set[str] = {"package.json.j2", "tsconfig.json.j2", "vite.config.ts.j2"}
+REACT_INIT_TEMPLATES: set[str] = {"react/App.tsx.j2", "react/main.tsx.j2"}
+VUE_INIT_TEMPLATES: set[str] = {"vue/App.vue.j2", "vue/main.ts.j2"}
+TAILWIND_INIT_TEMPLATES: set[str] = {"vue/App.vue.j2", "vue/main.ts.j2"}
+HTMX_INIT_TEMPLATES: set[str] = {"main.css", "main.js.j2"}
 
 
-DEFAULT_DEV_DEPENDENCIES: dict[str, str] = {"axios": "^1.1.2", "typescript": "^4.9.5", "vite": "^4.0.0"}
+DEFAULT_DEV_DEPENDENCIES: dict[str, str] = {
+    "axios": "^1.1.2",
+    "typescript": "^4.9.5",
+    "vite": "^4.0.0",
+    "litestar-vite-plugin": "^0.1.0",
+}
 DEFAULT_DEPENDENCIES: dict[str, str] = {}
 VUE_DEV_DEPENDENCIES: dict[str, str] = {"@vitejs/plugin-vue": "^4.4.0", "vue-tsc": "^1.8.22"}
 VUE_DEPENDENCIES: dict[str, str] = {"vue": "^3.3.7"}
@@ -44,6 +51,7 @@ def to_json(value: Any) -> str:
 
 def init_vite(
     app: Litestar,
+    root_path: Path,
     resource_path: Path,
     asset_path: Path,
     asset_url: str,
@@ -60,26 +68,36 @@ def init_vite(
     from jinja2 import Environment, FileSystemLoader
 
     entry_point = ["resources/styles.css"]
-    vite_template_env = Environment(loader=FileSystemLoader(VITE_INIT_TEMPLATES_PATH), autoescape=select_autoescape())
-    templates: dict[str, Template] = {
-        template_name: get_template(environment=vite_template_env, name=template_name)
-        for template_name in VITE_INIT_TEMPLATES
-    }
+    vite_template_env = Environment(
+        loader=FileSystemLoader([VITE_INIT_TEMPLATES_PATH, VUE_TEMPLATES_PATH, REACT_TEMPLATES_PATH]),
+        autoescape=select_autoescape(),
+    )
+
     logger = app.get_logger()
+    enabled_templates: set[str] = VITE_INIT_TEMPLATES
     dependencies: dict[str, str] = DEFAULT_DEPENDENCIES
     dev_dependencies: dict[str, str] = DEFAULT_DEV_DEPENDENCIES
     if include_vue:
         dependencies.update(VUE_DEPENDENCIES)
         dev_dependencies.update(VUE_DEV_DEPENDENCIES)
+        enabled_templates = enabled_templates.union(VUE_INIT_TEMPLATES)
+        entry_point.append("resources/main.ts")
     if include_react:
         dependencies.update(REACT_DEPENDENCIES)
         dev_dependencies.update(REACT_DEV_DEPENDENCIES)
+        enabled_templates = enabled_templates.union(REACT_INIT_TEMPLATES)
     if include_tailwind:
         dependencies.update(TAILWIND_DEPENDENCIES)
         dev_dependencies.update(TAILWIND_DEV_DEPENDENCIES)
+        enabled_templates = enabled_templates.union(TAILWIND_INIT_TEMPLATES)
     if include_htmx:
         dependencies.update(HTMX_DEPENDENCIES)
         dev_dependencies.update(HTMX_DEV_DEPENDENCIES)
+        enabled_templates = enabled_templates.union(HTMX_INIT_TEMPLATES)
+    templates: dict[str, Template] = {
+        template_name: get_template(environment=vite_template_env, name=template_name)
+        for template_name in enabled_templates
+    }
     for template_name, template in templates.items():
         target_file_name = template_name.removesuffix(".j2")
         with Path(target_file_name).open(mode="w") as file:
@@ -94,9 +112,9 @@ def init_vite(
                     include_htmx=include_htmx,
                     enable_ssr=enable_ssr,
                     asset_url=asset_url,
-                    resource_path=str(resource_path.relative_to(Path.cwd())),
-                    bundle_path=str(bundle_path.relative_to(Path.cwd())),
-                    asset_path=str(asset_path.relative_to(Path.cwd())),
+                    resource_path=str(resource_path.relative_to(root_path)),
+                    bundle_path=str(bundle_path.relative_to(root_path)),
+                    asset_path=str(asset_path.relative_to(root_path)),
                     vite_port=str(vite_port),
                     litestar_port=litestar_port,
                     dependencies=to_json(dependencies),
@@ -114,29 +132,31 @@ def get_template(
     return environment.get_template(name=name, parent=parent, globals=globals)
 
 
-def run_vite(app: Litestar, command: Literal["serve", "build"]) -> None:
+def run_vite(command_to_run: str) -> None:
     """Run Vite in a subprocess."""
+    import logging
+
     import anyio
 
-    logger = app.get_logger()
+    logger = logging.getLogger("vite")
+
     try:
-        anyio.run(_run_vite, app, command)
+        logger.debug("Starting Vite services.")
+        anyio.run(_run_vite, command_to_run)
     except KeyboardInterrupt:
-        logger.info("Stopping typescript development services.")
+        logger.debug("Stopping Vite services.")
     finally:
-        logger.info("Vite Service stopped.")
+        logger.debug("Vite Service stopped.")
 
 
-async def _run_vite(app: Litestar, command: Literal["serve", "build"]) -> None:
+async def _run_vite(command_to_run: str) -> None:
     """Run Vite in a subprocess."""
+    import logging
+
     from anyio import open_process
     from anyio.streams.text import TextReceiveStream
 
-    from litestar_vite.plugin import VitePlugin
-
-    logger = app.get_logger()
-    plugin = app.plugins.get(VitePlugin)
-    command_to_run = plugin._config.build_command if command == "build" else plugin._config.run_command  # noqa: SLF001
+    logger = logging.getLogger("vite")
     async with await open_process(command_to_run) as vite_process:
         async for text in TextReceiveStream(vite_process.stdout):  # type: ignore[arg-type]
-            logger.info("[Vite]: %s", text.replace("\n", ""))
+            logger.info(text.replace("\n", ""))
