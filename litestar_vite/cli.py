@@ -12,8 +12,6 @@ from litestar.cli._utils import (
 )
 from rich.prompt import Confirm
 
-from litestar_vite.commands import init_vite, run_vite
-
 if TYPE_CHECKING:
     from litestar import Litestar
 
@@ -118,6 +116,8 @@ def vite_init(
     no_prompt: bool,
 ) -> None:  # sourcery skip: low-code-quality
     """Run vite build."""
+    from litestar_vite.commands import init_vite
+
     if callable(ctx.obj):
         ctx.obj = ctx.obj()
     elif verbose:
@@ -202,8 +202,12 @@ def vite_init(
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def vite_build(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
     """Run vite build."""
+    from litestar_vite.commands import run_vite
+    from litestar_vite.plugin import VitePlugin
+
     console.rule("[yellow]Starting Vite build process[/]", align="left")
-    run_vite(app, "build")
+    plugin = app.plugins.get(VitePlugin)
+    run_vite(plugin._config.build_command)  # noqa: SLF001
 
 
 @vite_group.command(  # type: ignore # noqa: PGH003
@@ -213,5 +217,9 @@ def vite_build(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def vite_serve(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
     """Run vite serve."""
+    from litestar_vite.commands import run_vite
+    from litestar_vite.plugin import VitePlugin
+
     console.rule("[yellow]Starting Vite serve process[/]", align="left")
-    run_vite(app, "serve")
+    plugin = app.plugins.get(VitePlugin)
+    run_vite(plugin._config.run_command)  # noqa: SLF001

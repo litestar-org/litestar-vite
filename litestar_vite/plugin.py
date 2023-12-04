@@ -4,7 +4,6 @@ import multiprocessing
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Iterator
 
-from litestar import Litestar
 from litestar.plugins import CLIPlugin, InitPluginProtocol
 
 from litestar_vite.cli import vite_group
@@ -14,6 +13,7 @@ from litestar_vite.template_engine import ViteTemplateEngine
 
 if TYPE_CHECKING:
     from click import Group
+    from litestar import Litestar
     from litestar.config.app import AppConfig
 
     from litestar_vite.config import ViteConfig
