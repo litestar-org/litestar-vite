@@ -51,14 +51,17 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
     @contextmanager
     def server_lifespan(self, app: Litestar) -> Iterator[None]:
-        command_to_run = self._config.run_command
+        if self._config.use_server_lifespan:
+            command_to_run = self._config.run_command
 
-        vite_process = multiprocessing.Process(
-            target=run_vite,
-            args=(command_to_run),
-        )
-        try:
-            vite_process.start()
-            yield
-        finally:
-            vite_process.terminate()
+            vite_process = multiprocessing.Process(
+                target=run_vite,
+                args=[command_to_run],
+            )
+            try:
+                vite_process.start()
+                yield
+            finally:
+                if vite_process.is_alive():
+                    vite_process.terminate()
+                    vite_process.join()

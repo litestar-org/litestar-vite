@@ -2,7 +2,7 @@ default_language_version:
   python: "3.11"
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
-    rev: v2.4.0
+    rev: v3.0.0
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]
@@ -17,7 +17,7 @@ repos:
       - id: mixed-line-ending
       - id: trailing-whitespace
   - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: "v0.1.5"
+    rev: "v0.1.7"
     hooks:
       - id: ruff
         args: ["--fix"]
@@ -32,7 +32,7 @@ repos:
       - id: black
         args: [--config=./pyproject.toml]
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: "v1.7.0"
+    rev: "v1.7.1"
     hooks:
       - id: mypy
         exclude: "docs"
@@ -52,6 +52,6 @@ repos:
             "litestar[cli]",
           ]
   - repo: https://github.com/sphinx-contrib/sphinx-lint
-    rev: "v0.8.1"
+    rev: "v0.9.0"
     hooks:
       - id: sphinx-lint

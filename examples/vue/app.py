@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from litestar import Litestar
+from web.controllers import WebController
 
 from litestar_vite import ViteConfig, VitePlugin
 
@@ -15,7 +16,6 @@ vite = VitePlugin(
         assets_dir=Path(here / "web" / "resources" / "assets"),
         templates_dir=Path(here / "web" / "templates"),
         hot_reload=True,
-        ssr_enabled=True,
     ),
 )
-app = Litestar(plugins=[vite])
+app = Litestar(plugins=[vite], route_handlers=[WebController])

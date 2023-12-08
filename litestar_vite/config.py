@@ -83,10 +83,14 @@ class ViteConfig:
     """Protocol to use for communication"""
     port: int = 5173
     """Default port to use for Vite server."""
-    run_command: str = "npm run dev"
+    run_command: list[str] = field(default_factory=lambda: ["npm", "run", "dev"])
     """Default command to use for running Vite."""
-    build_command: str = "npm run build"
+    build_command: list[str] = field(default_factory=lambda: ["npm", "run", "build"])
     """Default command to use for building with Vite."""
+    install_command: list[str] = field(default_factory=lambda: ["npm", "install"])
+    """Default command to use for installing Vite."""
+    use_server_lifespan: bool = True
+    """Utilize the server lifespan hook to run Vite."""
 
 
 @dataclass

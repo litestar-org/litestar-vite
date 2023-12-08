@@ -4,6 +4,7 @@ import { defineConfig } from "vite";
 import litestar from "litestar-vite-plugin";
 
 export default defineConfig({
+  root: "{{ root_path }}",
   plugins: [
     {% if include_vue %}vue(),{% endif %}
     {% if include_react %}react(),{% endif %}

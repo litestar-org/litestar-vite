@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -29,56 +30,31 @@ def vite_group() -> None:
     "--bundle-path",
     type=ClickPath(dir_okay=True, file_okay=False, path_type=Path),
     help="The path for the built Vite assets.  This is the where the output of `npm run build` will write files.",
-    default=Path(Path.cwd() / "public"),
-    required=True,
+    default=None,
+    required=False,
 )
 @option(
     "--resource-path",
     type=ClickPath(dir_okay=True, file_okay=False, path_type=Path),
     help="The path to your Javascript/Typescript source and associated assets.  If this were a standalone Vue or React app, this would point to your `src/` folder.",
-    default=Path(Path.cwd() / "resources/"),
-    required=True,
+    default=None,
+    required=False,
 )
 @option(
     "--asset-path",
     type=ClickPath(dir_okay=True, file_okay=False, path_type=Path),
     help="The path to your Javascript/Typescript source and associated assets.  If this were a standalone Vue or React app, this would point to your `src/` folder.",
-    default=Path(Path.cwd() / "resources" / "assets"),
-    required=True,
-)
-@option("--asset-url", type=str, help="Base url to serve assets from.", default="/static/")
-@option("--vite-port", type=int, help="The port to run the vite server against.", default=False, is_flag=True)
-@option(
-    "--include-vue",
-    type=bool,
-    help="Install and configure Vue automatically.",
+    default=None,
     required=False,
-    show_default=False,
-    is_flag=True,
 )
+@option("--asset-url", type=str, help="Base url to serve assets from.", default=None, required=False)
 @option(
-    "--include-react",
-    type=bool,
-    help="Include and configure React automatically.",
-    required=False,
-    show_default=False,
+    "--vite-port",
+    type=int,
+    help="The port to run the vite server against.",
+    default=None,
     is_flag=True,
-)
-@option(
-    "--include-htmx",
-    type=bool,
-    help="Install and configure HTMX automatically.",
     required=False,
-    show_default=False,
-    is_flag=True,
-)
-@option(
-    "--include-tailwind",
-    type=bool,
-    help="Include and configure Tailwind CSS automatically.",
-    required=False,
-    show_default=False,
-    is_flag=True,
 )
 @option(
     "--enable-ssr",
@@ -101,74 +77,48 @@ def vite_group() -> None:
 )
 def vite_init(
     ctx: Context,
-    vite_port: int,
-    include_vue: bool | None,
-    include_react: bool | None,
-    include_tailwind: bool | None,
-    include_htmx: bool | None,
+    vite_port: int | None,
     enable_ssr: bool | None,
-    asset_url: str,
-    asset_path: Path,
-    bundle_path: Path,
-    resource_path: Path,
+    asset_url: str | None,
+    asset_path: Path | None,
+    bundle_path: Path | None,
+    resource_path: Path | None,
     overwrite: bool,
     verbose: bool,
     no_prompt: bool,
 ) -> None:  # sourcery skip: low-code-quality
     """Run vite build."""
     from litestar_vite.commands import init_vite
+    from litestar_vite.plugin import VitePlugin
 
     if callable(ctx.obj):
         ctx.obj = ctx.obj()
     elif verbose:
         ctx.obj.app.debug = True
     env: LitestarEnv = ctx.obj
+    plugin = env.app.plugins.get(VitePlugin)
+    config = plugin._config  # noqa: SLF001
+
     console.rule("[yellow]Initializing Vite[/]", align="left")
+    resource_path = resource_path or config.resource_dir
+    asset_path = asset_path or config.assets_dir
+    bundle_path = bundle_path or config.bundle_dir
+    enable_ssr = enable_ssr or config.ssr_enabled
+    asset_url = asset_url or config.asset_url
+    vite_port = vite_port or config.port
+
     root_path = resource_path.parent
     if any(output_path.exists() for output_path in (asset_path, bundle_path, resource_path)) and not any(
         [overwrite, no_prompt],
     ):
-        _ = Confirm.ask(
+        confirm_overwrite = Confirm.ask(
             "Files were found in the paths specified.  Are you sure you wish to overwrite the contents?",
         )
+        if not confirm_overwrite:
+            console.print("Skipping Vite initialization")
+            sys.exit(2)
     for output_path in (asset_path, bundle_path, resource_path):
         output_path.mkdir(parents=True, exist_ok=True)
-    include_vue = (
-        True
-        if include_vue
-        else False
-        if no_prompt
-        else Confirm.ask(
-            "Do you want to install and configure Vue?",
-        )
-    )
-    include_react = (
-        True
-        if include_react
-        else False
-        if no_prompt
-        else Confirm.ask(
-            "Do you want to install and configure React?",
-        )
-    )
-    include_tailwind = (
-        True
-        if include_tailwind
-        else False
-        if no_prompt
-        else Confirm.ask(
-            "Do you want to install and configure Tailwind?",
-        )
-    )
-    include_htmx = (
-        True
-        if include_htmx
-        else False
-        if no_prompt
-        else Confirm.ask(
-            "Do you want to install and configure HTMX?",
-        )
-    )
     enable_ssr = (
         True
         if enable_ssr
@@ -181,10 +131,6 @@ def vite_init(
     init_vite(
         app=env.app,
         root_path=root_path,
-        include_vue=include_vue,
-        include_react=include_react,
-        include_tailwind=include_tailwind,
-        include_htmx=include_htmx,
         enable_ssr=enable_ssr,
         vite_port=vite_port,
         asset_url=asset_url,
@@ -193,6 +139,21 @@ def vite_init(
         bundle_path=bundle_path,
         litestar_port=env.port or 8000,
     )
+
+
+@vite_group.command(  # type: ignore # noqa: PGH003
+    name="install",
+    help="Install frontend packages.",
+)
+@option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
+def vite_install(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
+    """Run vite build."""
+    from litestar_vite.commands import run_vite
+    from litestar_vite.plugin import VitePlugin
+
+    console.rule("[yellow]Starting Vite build process[/]", align="left")
+    plugin = app.plugins.get(VitePlugin)
+    run_vite(" ".join(plugin._config.install_command))  # noqa: SLF001
 
 
 @vite_group.command(  # type: ignore # noqa: PGH003
@@ -207,7 +168,7 @@ def vite_build(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
 
     console.rule("[yellow]Starting Vite build process[/]", align="left")
     plugin = app.plugins.get(VitePlugin)
-    run_vite(plugin._config.build_command)  # noqa: SLF001
+    run_vite(" ".join(plugin._config.build_command))  # noqa: SLF001
 
 
 @vite_group.command(  # type: ignore # noqa: PGH003
@@ -220,6 +181,6 @@ def vite_serve(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
     from litestar_vite.commands import run_vite
     from litestar_vite.plugin import VitePlugin
 
-    console.rule("[yellow]Starting Vite serve process[/]", align="left")
+    console.rule("[yellow]Starting Vite process[/]", align="left")
     plugin = app.plugins.get(VitePlugin)
-    run_vite(plugin._config.run_command)  # noqa: SLF001
+    run_vite(" ".join(plugin._config.build_command))  # noqa: SLF001
