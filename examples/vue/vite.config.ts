@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [
     vue(),
     litestar({
-      input: ["web/resources/main.ts"],
+      input: ["resources/main.ts"],
       assetUrl: "/static/",
       assetDirectory: "resources/assets",
       bundleDirectory: "public",

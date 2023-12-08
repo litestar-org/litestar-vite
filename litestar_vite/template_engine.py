@@ -41,7 +41,7 @@ class ViteTemplateEngine(JinjaTemplateEngine):
         self.config = config
 
         self.asset_loader = ViteAssetLoader.initialize_loader(config=self.config)
-        self.engine.globals.update({"vite_hmr_client": self.get_hmr_client, "vite_asset": self.get_asset_tag})
+        self.engine.globals.update({"vite_hmr": self.get_hmr_client, "vite": self.get_asset_tag})
 
     def get_hmr_client(self) -> markupsafe.Markup:
         """Generate the script tag for the Vite WS client for HMR.

@@ -16,14 +16,15 @@
     "allowSyntheticDefaultImports": true,
     "baseUrl": "resources",
     "paths": {
-      "@/*": ["./resources/*"]
+      "@/*": ["./*"]
     },
     "types": ["vite/client", "node"]
   },
   "include": [
+    
     "**/*.d.ts",
-    "resources/**/*.js",
-    "resources/**/*.ts",
+    "resources/**/*.js" ,
+    "resources/**/*.ts" ,
     "vite.config.ts"
   ]
 }
