@@ -1,0 +1,10 @@
+{
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build{% if enable_ssr %} && vite build --ssr{% endif %}"
+    },
+    "dependencies": {{ dependencies }},
+    "devDependencies": {{ dev_dependencies }}
+}

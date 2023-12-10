@@ -1,23 +1,17 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 import markupsafe
-from jinja2 import TemplateNotFound as JinjaTemplateNotFound
-from jinja2 import pass_context
 from litestar.contrib.jinja import JinjaTemplateEngine
-from litestar.exceptions import TemplateNotFoundException
-from litestar.template.base import (
-    TemplateEngineProtocol,
-)
+from litestar.template.base import TemplateEngineProtocol
 
-from .loader import ViteAssetLoader
+from litestar_vite.loader import ViteAssetLoader
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
-    from jinja2 import Template as JinjaTemplate
+    from jinja2 import Environment
 
     from litestar_vite.config import ViteConfig
 
@@ -27,62 +21,48 @@ T = TypeVar("T", bound=TemplateEngineProtocol)
 class ViteTemplateEngine(JinjaTemplateEngine):
     """Jinja Template Engine with Vite Integration."""
 
-    def __init__(self, directory: Path | list[Path], config: ViteConfig) -> None:
+    def __init__(
+        self,
+        directory: Path | list[Path] | None = None,
+        engine_instance: Environment | None = None,
+        config: ViteConfig | None = None,
+    ) -> None:
         """Jinja2 based TemplateEngine.
 
         Args:
             directory: Direct path or list of directory paths from which to serve templates.
+            engine_instance: A jinja Environment instance.
             config: Vite config
         """
         super().__init__(directory=directory)
+        if config is None:
+            msg = "Please configure the `ViteConfig` instance."
+            raise ValueError(msg)
         self.config = config
+
         self.asset_loader = ViteAssetLoader.initialize_loader(config=self.config)
-        self.engine.globals["vite_hmr_client"] = self.hmr_client
-        self.engine.globals["vite_asset"] = self.resource
+        self.engine.globals.update({"vite_hmr": self.get_hmr_client, "vite": self.get_asset_tag})
 
-    def get_template(self, template_name: str) -> JinjaTemplate:
-        """Retrieve a template by matching its name (dotted path) with files in the directory or directories provided.
-
-        Args:
-            template_name: A dotted path
-
-        Returns:
-            JinjaTemplate instance
-
-        Raises:
-            TemplateNotFoundException: if no template is found.
-        """
-        try:
-            return self.engine.get_template(name=template_name)
-        except JinjaTemplateNotFound as exc:
-            raise TemplateNotFoundException(template_name=template_name) from exc
-
-    def register_template_callable(self, key: str, template_callable: Callable[[dict[str, Any]], Any]) -> None:
-        """Register a callable on the template engine.
-
-        Args:
-            key: The callable key, i.e. the value to use inside the template to call the callable.
-            template_callable: A callable to register.
-
-        Returns:
-            None
-        """
-        self.engine.globals[key] = pass_context(template_callable)
-
-    def hmr_client(self) -> markupsafe.Markup:
+    def get_hmr_client(self) -> markupsafe.Markup:
         """Generate the script tag for the Vite WS client for HMR.
 
         Only used when hot module reloading is enabled, in production this method returns an empty string.
 
+        Arguments:
+            context: The template context.
 
         Returns:
             str: The script tag or an empty string.
         """
-        tags = [self.asset_loader.generate_react_hmr_tags()]
-        tags.append(self.asset_loader.generate_ws_client_tags())
-        return markupsafe.Markup("".join(tags))
+        return markupsafe.Markup(
+            f"{self.asset_loader.generate_react_hmr_tags()}{self.asset_loader.generate_ws_client_tags()}",
+        )
 
-    def resource(self, path: str, scripts_attrs: dict[str, str] | None = None) -> markupsafe.Markup:
+    def get_asset_tag(
+        self,
+        path: str | list[str],
+        scripts_attrs: dict[str, str] | None = None,
+    ) -> markupsafe.Markup:
         """Generate all assets include tags for the file in argument.
 
         Generates all scripts tags for this file and all its dependencies
@@ -92,6 +72,7 @@ class ViteTemplateEngine(JinjaTemplateEngine):
         (this function marks automatically <script> as "async" and "defer").
 
         Arguments:
+            context: The template context.
             path: Path to a Vite asset to include.
             scripts_attrs: script attributes
 

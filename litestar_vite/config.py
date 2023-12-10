@@ -31,34 +31,66 @@ class ViteConfig:
     'plugins' key.
     """
 
-    static_dir: Path
-    """Location of the manifest file.
+    bundle_dir: Path
+    """Location of the compiled assets from  Vite.
 
-    The path relative to the `static_url` location
+    The manifest file will also be found here.
+    """
+    resource_dir: Path
+    """The directory where all typescript/javascript source are written.
+
+    In a standalone Vue or React application, this would be equivalent to the ``./src`` directory.
+    """
+    assets_dir: Path
+    """These are the assets that Vite will serve when developing.
+
+    This should include any images, CSS, or other media referenced.
+
+    These will be included in the bundle directory on build.
     """
     templates_dir: Path
     """Location of the Jinja2 template file.
     """
     manifest_name: str = "manifest.json"
     """Name of the manifest file."""
+    hot_file: str = "hot"
+    """Name of the hot file.
+
+    This file contains a single line containing the host, protocol, and port the Vite server is running.
+    """
     hot_reload: bool = False
     """Enable HMR for Vite development server."""
+    ssr_enabled: bool = False
+    """Enable SSR."""
+    ssr_output_dir: Path | None = None
+    """SSR Output path"""
+    root_dir: Path | None = None
+    """The is the base path to your application.
+
+   In a standalone Vue or React application, this would be equivalent to the ``./src`` directory.
+
+    """
     is_react: bool = False
     """Enable React components."""
-    static_url: str = "/static/"
+    asset_url: str = "/static/"
     """Base URL to generate for static asset references.
 
-    This should match what you have for the STATIC_URL
+    This URL will be prepended to anything generated from Vite.
     """
     host: str = "localhost"
     """Default host to use for Vite server."""
     protocol: str = "http"
     """Protocol to use for communication"""
-    port: int = 3000
+    port: int = 5173
     """Default port to use for Vite server."""
-    run_command: str = "npm run dev"
+    run_command: list[str] = field(default_factory=lambda: ["npm", "run", "dev"])
     """Default command to use for running Vite."""
-    build_command: str = "npm run build"
+    build_command: list[str] = field(default_factory=lambda: ["npm", "run", "build"])
+    """Default command to use for building with Vite."""
+    install_command: list[str] = field(default_factory=lambda: ["npm", "install"])
+    """Default command to use for installing Vite."""
+    use_server_lifespan: bool = False
+    """Utilize the server lifespan hook to run Vite."""
 
 
 @dataclass
@@ -89,7 +121,10 @@ class ViteTemplateConfig(Generic[T]):
 
     def to_engine(self) -> T:
         """Instantiate the template engine."""
-        template_engine = cast("T", self.engine(self.directory, self.config) if isclass(self.engine) else self.engine)
+        template_engine = cast(
+            "T",
+            self.engine(directory=self.directory, config=self.config) if isclass(self.engine) else self.engine,
+        )
         if callable(self.engine_callback):
             self.engine_callback(template_engine)
         return template_engine

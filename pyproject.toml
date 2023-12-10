@@ -22,7 +22,7 @@ classifiers = [
   "Topic :: Database :: Database Engines/Servers",
 ]
 dependencies = [
-  "litestar[cli,jinja]>=2.0.1",
+  "litestar[cli,jinja]>=2.4.0",
 ]
 description = "Vite plugin for Litestar"
 keywords = [
@@ -33,7 +33,7 @@ license = {text = "MIT"}
 name = "litestar-vite"
 readme = "README.md"
 requires-python = ">=3.8"
-version = "0.1.3"
+version = "0.1.4"
 
 [project.urls]
 Changelog = "https://cofin.github.io/litestar-vite/latest/changelog"
@@ -42,6 +42,9 @@ Documentation = "https://cofin.github.io/litestar-vite/latest/"
 Homepage = "https://cofin.github.io/litestar-vite/latest/"
 Issue = "https://github.com/cofin/litestar-vite/issues/"
 Source = "https://github.com/cofin/litestar-vite"
+
+[project.optional-dependencies]
+nodeenv = ["nodeenv"]
 
 [build-system]
 build-backend = "hatchling.build"
@@ -164,6 +167,9 @@ convention = "google"
 max-complexity = 12
 
 [tool.ruff.per-file-ignores]
+"examples/**/*.*" = [
+  "INP001",
+]
 "tests/**/*.*" = [
   "A",
   "ARG",

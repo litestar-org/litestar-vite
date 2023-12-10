@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "strict": true,
+    "jsx": "preserve",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "lib": ["ESNext", "DOM"],
+    "skipLibCheck": true,
+    "noEmit": true,
+    "composite": true,
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": "{{ resource_path }}",
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "types": ["vite/client", "node"]
+  },
+  "include": [
+    {% if include_react %}"{{ resource_path }}/**/*.tsx","{{ resource_path }}/**/*.jsx",{% endif %}{% if include_vue %} "{{ resource_path }}/**/*.vue",{% endif %}
+    "**/*.d.ts",
+    "{{ resource_path }}/**/*.js" ,
+    "{{ resource_path }}/**/*.ts" ,
+    "vite.config.ts"
+  ]
+}

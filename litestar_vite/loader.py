@@ -24,6 +24,7 @@ class ViteAssetLoader:
     def __init__(self, config: ViteConfig) -> None:
         self._config = config
         self._manifest: dict[str, Any] = {}
+        self._vite_base_path: str | None = None
 
     @classmethod
     def initialize_loader(cls, config: ViteConfig) -> ViteAssetLoader:
@@ -62,9 +63,15 @@ class ViteAssetLoader:
         Raises:
             RuntimeError: if cannot load the file or JSON in file is malformed.
         """
+        if self._config.hot_reload:
+            if _hot_file_found := Path(
+                self._config.bundle_dir / self._config.hot_file,
+            ).exists():
+                with Path(self._config.bundle_dir / self._config.hot_file).open() as hot_file:
+                    self._vite_base_path = hot_file.read()
 
-        if not self._config.hot_reload:
-            with Path(self._config.static_dir / self._config.manifest_name).open() as manifest_file:
+        else:
+            with Path(self._config.bundle_dir / self._config.manifest_name).open() as manifest_file:
                 manifest_content = manifest_file.read()
             try:
                 self._manifest = json.loads(manifest_content)
@@ -72,7 +79,7 @@ class ViteAssetLoader:
                 msg = "Cannot read Vite manifest file at %s"
                 raise RuntimeError(
                     msg,
-                    Path(self._config.static_dir / self._config.manifest_name),
+                    Path(self._config.bundle_dir / self._config.manifest_name),
                 ) from exc
 
     def generate_ws_client_tags(self) -> str:
@@ -111,36 +118,43 @@ class ViteAssetLoader:
                 """
         return ""
 
-    def generate_asset_tags(self, path: str, scripts_attrs: dict[str, str] | None = None) -> str:
+    def generate_asset_tags(self, path: str | list[str], scripts_attrs: dict[str, str] | None = None) -> str:
         """Generate all assets include tags for the file in argument.
 
         Returns:
             str: All tags to import this asset in your HTML page.
         """
+        if isinstance(path, str):
+            path = [path]
         if self._config.hot_reload:
-            return self._script_tag(
-                self._vite_server_url(path),
-                {"type": "module", "async": "", "defer": ""},
+            return "".join(
+                [
+                    self._script_tag(
+                        self._vite_server_url(p),
+                        {"type": "module", "async": "", "defer": ""},
+                    )
+                    for p in path
+                ],
             )
 
-        if path not in self._manifest:
+        if any(p for p in path if p not in self._manifest):
             msg = "Cannot find %s in Vite manifest at %s"
             raise RuntimeError(
                 msg,
                 path,
-                Path(self._config.static_dir / self._config.manifest_name),
+                Path(self._config.bundle_dir / self._config.manifest_name),
             )
 
         tags: list[str] = []
-        manifest_entry: dict = self._manifest[path]
+        for p in path:
+            manifest_entry: dict = self._manifest[p]
         if not scripts_attrs:
             scripts_attrs = {"type": "module", "async": "", "defer": ""}
 
         # Add dependent CSS
         if "css" in manifest_entry:
             tags.extend(
-                self._style_tag(urljoin(self._config.static_url, css_path))
-                for css_path in manifest_entry.get("css", {})
+                self._style_tag(urljoin(self._config.asset_url, css_path)) for css_path in manifest_entry.get("css", {})
             )
         # Add dependent "vendor"
         if "imports" in manifest_entry:
@@ -151,7 +165,7 @@ class ViteAssetLoader:
         # Add the script by itself
         tags.append(
             self._script_tag(
-                urljoin(self._config.static_url, manifest_entry["file"]),
+                urljoin(self._config.asset_url, manifest_entry["file"]),
                 attrs=scripts_attrs,
             ),
         )
@@ -167,18 +181,15 @@ class ViteAssetLoader:
         Returns:
             str: Full URL to the asset.
         """
-        base_path = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
+        base_path = self._vite_base_path or f"{self._config.protocol}://{self._config.host}:{self._config.port}"
         return urljoin(
             base_path,
-            urljoin(self._config.static_url, path if path is not None else ""),
+            urljoin(self._config.asset_url, path if path is not None else ""),
         )
 
     def _script_tag(self, src: str, attrs: dict[str, str] | None = None) -> str:
         """Generate an HTML script tag."""
-        attrs_str = ""
-        if attrs is not None:
-            attrs_str = " ".join([f'{key}="{value}"' for key, value in attrs.items()])
-
+        attrs_str = " ".join([f'{key}="{value}"' for key, value in attrs.items()]) if attrs is not None else ""
         return f'<script {attrs_str} src="{src}"></script>'
 
     def _style_tag(self, href: str) -> str:

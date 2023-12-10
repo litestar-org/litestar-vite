@@ -1,0 +1,27 @@
+import { defineConfig } from "vite";
+{% if include_vue %}import vue from "@vitejs/plugin-vue";{% endif %}
+{% if include_react %}import vue from "@vitejs/plugin-react";{% endif %}
+import litestar from "litestar-vite-plugin";
+
+export default defineConfig({
+  root: "{{ root_path }}",
+  plugins: [
+    {% if include_vue %}vue(),{% endif %}
+    {% if include_react %}react(),{% endif %}
+    litestar({
+      input: [
+        {% if entry_point %}"{{ entry_point | join(', \"') }}"{% endif %}
+      ],
+      assetUrl: "{{ asset_url }}",
+      assetDirectory: "{{ asset_path }}",
+      bundleDirectory: "{{ bundle_path }}",
+      resourceDirectory: "{{ resource_path }}",
+      hotFile: "{{ hot_file }}"
+    }),
+  ],
+  resolve: {
+    alias: {
+      "@": "{{ resource_path }}"
+    },
+  },
+});

@@ -1,20 +1,25 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import multiprocessing
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Iterator
 
-from litestar.plugins import CLIPluginProtocol, InitPluginProtocol
+from litestar.plugins import CLIPlugin, InitPluginProtocol
 
+from litestar_vite.cli import vite_group
+from litestar_vite.commands import run_vite
 from litestar_vite.config import ViteTemplateConfig
 from litestar_vite.template_engine import ViteTemplateEngine
 
 if TYPE_CHECKING:
     from click import Group
+    from litestar import Litestar
     from litestar.config.app import AppConfig
 
     from litestar_vite.config import ViteConfig
 
 
-class VitePlugin(InitPluginProtocol, CLIPluginProtocol):
+class VitePlugin(InitPluginProtocol, CLIPlugin):
     """Vite plugin."""
 
     __slots__ = ("_config",)
@@ -28,8 +33,6 @@ class VitePlugin(InitPluginProtocol, CLIPluginProtocol):
         self._config = config
 
     def on_cli_init(self, cli: Group) -> None:
-        from litestar_vite.cli import vite_group
-
         cli.add_command(vite_group)
         return super().on_cli_init(cli)
 
@@ -40,8 +43,25 @@ class VitePlugin(InitPluginProtocol, CLIPluginProtocol):
             app_config: The :class:`AppConfig <.config.app.AppConfig>` instance.
         """
         app_config.template_config = ViteTemplateConfig(  # type: ignore[assignment]
-            directory=self._config.templates_dir,
             engine=ViteTemplateEngine,
             config=self._config,
+            directory=self._config.templates_dir,
         )
         return app_config
+
+    @contextmanager
+    def server_lifespan(self, app: Litestar) -> Iterator[None]:
+        if self._config.use_server_lifespan:
+            command_to_run = self._config.run_command
+
+            vite_process = multiprocessing.Process(
+                target=run_vite,
+                args=[command_to_run],
+            )
+            try:
+                vite_process.start()
+                yield
+            finally:
+                if vite_process.is_alive():
+                    vite_process.terminate()
+                    vite_process.join()
