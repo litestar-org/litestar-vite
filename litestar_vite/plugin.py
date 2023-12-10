@@ -1,15 +1,9 @@
 from __future__ import annotations
 
-import multiprocessing
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Iterator
 
 from litestar.plugins import CLIPlugin, InitPluginProtocol
-
-from litestar_vite.cli import vite_group
-from litestar_vite.commands import run_vite
-from litestar_vite.config import ViteTemplateConfig
-from litestar_vite.template_engine import ViteTemplateEngine
 
 if TYPE_CHECKING:
     from click import Group
@@ -33,6 +27,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._config = config
 
     def on_cli_init(self, cli: Group) -> None:
+        from litestar_vite.cli import vite_group
+
         cli.add_command(vite_group)
         return super().on_cli_init(cli)
 
@@ -42,6 +38,10 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         Args:
             app_config: The :class:`AppConfig <.config.app.AppConfig>` instance.
         """
+
+        from litestar_vite.config import ViteTemplateConfig
+        from litestar_vite.template_engine import ViteTemplateEngine
+
         app_config.template_config = ViteTemplateConfig(  # type: ignore[assignment]
             engine=ViteTemplateEngine,
             config=self._config,
@@ -51,6 +51,10 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
     @contextmanager
     def server_lifespan(self, app: Litestar) -> Iterator[None]:
+        import multiprocessing
+
+        from litestar_vite.commands import run_vite
+
         if self._config.use_server_lifespan:
             command_to_run = self._config.run_command
 
