@@ -69,3 +69,5 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 if vite_process.is_alive():
                     vite_process.terminate()
                     vite_process.join()
+        else:
+            yield
