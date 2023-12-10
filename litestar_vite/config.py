@@ -51,7 +51,7 @@ class ViteConfig:
     templates_dir: Path
     """Location of the Jinja2 template file.
     """
-    manifest_name: str = "manifest.json"
+    manifest_name: str = ".vite/manifest.json"
     """Name of the manifest file."""
     hot_file: str = "hot"
     """Name of the hot file.
