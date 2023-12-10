@@ -9,9 +9,7 @@ from click import Path as ClickPath
 from litestar.cli._utils import (
     LitestarEnv,
     LitestarGroup,
-    console,
 )
-from rich.prompt import Confirm
 
 if TYPE_CHECKING:
     from litestar import Litestar
@@ -88,6 +86,11 @@ def vite_init(
     no_prompt: bool,
 ) -> None:  # sourcery skip: low-code-quality
     """Run vite build."""
+    from litestar.cli._utils import (
+        console,
+    )
+    from rich.prompt import Confirm
+
     from litestar_vite.commands import init_vite
     from litestar_vite.plugin import VitePlugin
 
@@ -149,6 +152,10 @@ def vite_init(
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def vite_install(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
     """Run vite build."""
+    from litestar.cli._utils import (
+        console,
+    )
+
     from litestar_vite.commands import run_vite
     from litestar_vite.plugin import VitePlugin
 
@@ -164,6 +171,10 @@ def vite_install(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def vite_build(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
     """Run vite build."""
+    from litestar.cli._utils import (
+        console,
+    )
+
     from litestar_vite.commands import run_vite
     from litestar_vite.plugin import VitePlugin
 
@@ -179,6 +190,10 @@ def vite_build(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def vite_serve(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
     """Run vite serve."""
+    from litestar.cli._utils import (
+        console,
+    )
+
     from litestar_vite.commands import run_vite
     from litestar_vite.plugin import VitePlugin
 
