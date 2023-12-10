@@ -10,12 +10,13 @@ export default defineConfig({
     {% if include_react %}react(),{% endif %}
     litestar({
       input: [
-        "{{ entry_point | join(', \"') }}"
+        {% if entry_point %}"{{ entry_point | join(', \"') }}"{% endif %}
       ],
       assetUrl: "{{ asset_url }}",
       assetDirectory: "{{ asset_path }}",
       bundleDirectory: "{{ bundle_path }}",
-      resourceDirectory: "{{ resource_path }}"
+      resourceDirectory: "{{ resource_path }}",
+      hotFile: "{{ hot_file }}"
     }),
   ],
   resolve: {

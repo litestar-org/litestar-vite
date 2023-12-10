@@ -106,7 +106,7 @@ def vite_init(
     enable_ssr = enable_ssr or config.ssr_enabled
     asset_url = asset_url or config.asset_url
     vite_port = vite_port or config.port
-
+    hot_file = Path(bundle_path / config.hot_file)
     root_path = resource_path.parent
     if any(output_path.exists() for output_path in (asset_path, bundle_path, resource_path)) and not any(
         [overwrite, no_prompt],
@@ -137,6 +137,7 @@ def vite_init(
         resource_path=resource_path,
         asset_path=asset_path,
         bundle_path=bundle_path,
+        hot_file=hot_file,
         litestar_port=env.port or 8000,
     )
 

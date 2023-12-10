@@ -45,6 +45,7 @@ def init_vite(
     bundle_path: Path,
     enable_ssr: bool,
     vite_port: int,
+    hot_file: Path,
     litestar_port: int,
 ) -> None:
     """Initialize a new vite project."""
@@ -78,6 +79,7 @@ def init_vite(
                     resource_path=str(resource_path.relative_to(root_path)),
                     bundle_path=str(bundle_path.relative_to(root_path)),
                     asset_path=str(asset_path.relative_to(root_path)),
+                    hot_file=str(hot_file.relative_to(root_path)),
                     vite_port=str(vite_port),
                     litestar_port=litestar_port,
                     dependencies=to_json(dependencies),
