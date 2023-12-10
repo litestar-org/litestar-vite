@@ -89,7 +89,7 @@ class ViteConfig:
     """Default command to use for building with Vite."""
     install_command: list[str] = field(default_factory=lambda: ["npm", "install"])
     """Default command to use for installing Vite."""
-    use_server_lifespan: bool = True
+    use_server_lifespan: bool = False
     """Utilize the server lifespan hook to run Vite."""
 
 
