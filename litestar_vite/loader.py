@@ -24,7 +24,7 @@ class ViteAssetLoader:
     def __init__(self, config: ViteConfig) -> None:
         self._config = config
         self._manifest: dict[str, Any] = {}
-        self._hot_file: str | None = None
+        self._vite_base_path: str | None = None
 
     @classmethod
     def initialize_loader(cls, config: ViteConfig) -> ViteAssetLoader:
@@ -68,7 +68,7 @@ class ViteAssetLoader:
                 self._config.bundle_dir / self._config.hot_file,
             ).exists():
                 with Path(self._config.bundle_dir / self._config.hot_file).open() as hot_file:
-                    self._hot_file = hot_file.read()
+                    self._vite_base_path = hot_file.read()
 
         else:
             with Path(self._config.bundle_dir / self._config.manifest_name).open() as manifest_file:
@@ -181,7 +181,7 @@ class ViteAssetLoader:
         Returns:
             str: Full URL to the asset.
         """
-        base_path = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
+        base_path = self._vite_base_path or f"{self._config.protocol}://{self._config.host}:{self._config.port}"
         return urljoin(
             base_path,
             urljoin(self._config.asset_url, path if path is not None else ""),
