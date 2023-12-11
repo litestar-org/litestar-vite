@@ -85,12 +85,16 @@ class ViteConfig:
     """Default port to use for Vite server."""
     run_command: list[str] = field(default_factory=lambda: ["npm", "run", "dev"])
     """Default command to use for running Vite."""
+    build_watch_command: list[str] = field(default_factory=lambda: ["npm", "run", "build", "--watch"])
+    """Default command to use for dev building with Vite."""
     build_command: list[str] = field(default_factory=lambda: ["npm", "run", "build"])
     """Default command to use for building with Vite."""
     install_command: list[str] = field(default_factory=lambda: ["npm", "install"])
     """Default command to use for installing Vite."""
     use_server_lifespan: bool = False
     """Utilize the server lifespan hook to run Vite."""
+    dev_mode: bool = False
+    """When True, Vite will run with HMR or watch build"""
 
 
 @dataclass

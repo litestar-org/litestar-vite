@@ -55,8 +55,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
         from litestar_vite.commands import run_vite
 
-        if self._config.use_server_lifespan:
-            command_to_run = self._config.run_command
+        if self._config.use_server_lifespan and self._config.dev_mode:
+            command_to_run = self._config.run_command if self._config.hot_reload else self._config.build_watch_command
 
             vite_process = multiprocessing.Process(
                 target=run_vite,
