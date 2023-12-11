@@ -150,7 +150,7 @@ def vite_init(
     help="Install frontend packages.",
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
-def vite_install(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
+def vite_install(app: Litestar, verbose: bool) -> None:
     """Run vite build."""
     from litestar.cli._utils import (
         console,
@@ -159,6 +159,8 @@ def vite_install(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
     from litestar_vite.commands import run_vite
     from litestar_vite.plugin import VitePlugin
 
+    if verbose:
+        app.debug = True
     console.rule("[yellow]Starting Vite build process[/]", align="left")
     plugin = app.plugins.get(VitePlugin)
     run_vite(" ".join(plugin._config.install_command))  # noqa: SLF001
@@ -169,7 +171,7 @@ def vite_install(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
     help="Building frontend assets with Vite.",
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
-def vite_build(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
+def vite_build(app: Litestar, verbose: bool) -> None:
     """Run vite build."""
     from litestar.cli._utils import (
         console,
@@ -178,6 +180,8 @@ def vite_build(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
     from litestar_vite.commands import run_vite
     from litestar_vite.plugin import VitePlugin
 
+    if verbose:
+        app.debug = True
     console.rule("[yellow]Starting Vite build process[/]", align="left")
     plugin = app.plugins.get(VitePlugin)
     run_vite(" ".join(plugin._config.build_command))  # noqa: SLF001
@@ -188,7 +192,7 @@ def vite_build(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
     help="Serving frontend assets with Vite.",
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
-def vite_serve(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
+def vite_serve(app: Litestar, verbose: bool) -> None:
     """Run vite serve."""
     from litestar.cli._utils import (
         console,
@@ -197,6 +201,8 @@ def vite_serve(app: Litestar, verbose: bool) -> None:  # noqa: ARG001
     from litestar_vite.commands import run_vite
     from litestar_vite.plugin import VitePlugin
 
+    if verbose:
+        app.debug = True
     console.rule("[yellow]Starting Vite process[/]", align="left")
     plugin = app.plugins.get(VitePlugin)
-    run_vite(" ".join(plugin._config.build_command))  # noqa: SLF001
+    run_vite(" ".join(plugin._config.run_command))  # noqa: SLF001
