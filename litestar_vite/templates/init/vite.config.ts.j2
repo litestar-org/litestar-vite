@@ -1,10 +1,21 @@
 import { defineConfig } from "vite";
+import path from "path";
 {% if include_vue %}import vue from "@vitejs/plugin-vue";{% endif %}
 {% if include_react %}import vue from "@vitejs/plugin-react";{% endif %}
 import litestar from "litestar-vite-plugin";
 
+const ASSET_URL =
+  process.env.LITESTAR_ASSET_URL || process.env.ASSET_URL || "{{ asset_url }}";
+const VITE_PORT = process.env.VITE_PORT || "5173";
+const VITE_HOST = process.env.VITE_HOST || "localhost";
 export default defineConfig({
-  root: "{{ root_path }}",
+  base: `${ASSET_URL}`,
+  root: path.resolve(__dirname, "{{ root_path }}"),
+  server: {
+    host: `${VITE_HOST}`,
+    port: +`${VITE_PORT}`,
+    cors: true,
+  }, 
   plugins: [
     {% if include_vue %}vue(),{% endif %}
     {% if include_react %}react(),{% endif %}
@@ -12,7 +23,7 @@ export default defineConfig({
       input: [
         {% if entry_point %}"{{ entry_point | join(', \"') }}"{% endif %}
       ],
-      assetUrl: "{{ asset_url }}",
+      assetUrl: `${ASSET_URL}`, 
       bundleDirectory: "{{ bundle_path }}",
       resourceDirectory: "{{ resource_path }}",
       hotFile: "{{ hot_file }}"
@@ -20,7 +31,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@": "{{ resource_path }}"
+      "@": path.resolve(__dirname, "{{ resource_path }}")
     },
   },
 });
