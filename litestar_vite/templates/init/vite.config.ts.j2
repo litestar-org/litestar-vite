@@ -15,7 +15,7 @@ export default defineConfig({
     host: `${VITE_HOST}`,
     port: +`${VITE_PORT}`,
     cors: true,
-  }, 
+  },
   plugins: [
     {% if include_vue %}vue(),{% endif %}
     {% if include_react %}react(),{% endif %}
@@ -23,7 +23,7 @@ export default defineConfig({
       input: [
         {% if entry_point %}"{{ entry_point | join(', \"') }}"{% endif %}
       ],
-      assetUrl: `${ASSET_URL}`, 
+      assetUrl: `${ASSET_URL}`,
       bundleDirectory: "{{ bundle_path }}",
       resourceDirectory: "{{ resource_path }}",
       hotFile: "{{ hot_file }}"
