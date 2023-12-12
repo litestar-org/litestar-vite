@@ -112,15 +112,15 @@ async def _run_vite(command_to_run: str, app: Litestar) -> None:
     from anyio import open_process
     from anyio.streams.text import TextReceiveStream
 
-    logger = app.get_logger()
+    logger = app.get_logger("vite")
 
     async def read_stdout(vite_process: Process) -> None:
         async for stdout in TextReceiveStream(vite_process.stdout):  # type: ignore[arg-type]
-            logger.info(stdout)
+            logger.info(stdout.replace("\n", ""))
 
     async def read_stderr(vite_process: Process) -> None:
         async for stdout in TextReceiveStream(vite_process.stderr):  # type: ignore[arg-type]
-            logger.warning(stdout)
+            logger.warning(stdout.replace("\n", ""))
 
     async with await open_process(command_to_run) as vite_process, create_task_group() as tg:
         tg.start_soon(read_stdout, vite_process)
