@@ -60,7 +60,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
             vite_process = multiprocessing.Process(
                 target=run_vite,
-                args=[command_to_run],
+                args=[command_to_run, app],
             )
             try:
                 vite_process.start()
