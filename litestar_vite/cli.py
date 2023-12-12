@@ -78,7 +78,6 @@ def vite_init(
     vite_port: int | None,
     enable_ssr: bool | None,
     asset_url: str | None,
-    asset_path: Path | None,
     bundle_path: Path | None,
     resource_path: Path | None,
     overwrite: bool,
@@ -103,15 +102,14 @@ def vite_init(
     config = plugin._config  # noqa: SLF001
 
     console.rule("[yellow]Initializing Vite[/]", align="left")
-    resource_path = resource_path or config.resource_dir
-    asset_path = asset_path or config.assets_dir
-    bundle_path = bundle_path or config.bundle_dir
+    resource_path = Path(resource_path or config.resource_dir)
+    bundle_path = Path(bundle_path or config.bundle_dir)
     enable_ssr = enable_ssr or config.ssr_enabled
     asset_url = asset_url or config.asset_url
     vite_port = vite_port or config.port
     hot_file = Path(bundle_path / config.hot_file)
     root_path = resource_path.parent
-    if any(output_path.exists() for output_path in (asset_path, bundle_path, resource_path)) and not any(
+    if any(output_path.exists() for output_path in (bundle_path, resource_path)) and not any(
         [overwrite, no_prompt],
     ):
         confirm_overwrite = Confirm.ask(
@@ -120,7 +118,7 @@ def vite_init(
         if not confirm_overwrite:
             console.print("Skipping Vite initialization")
             sys.exit(2)
-    for output_path in (asset_path, bundle_path, resource_path):
+    for output_path in (bundle_path, resource_path):
         output_path.mkdir(parents=True, exist_ok=True)
     enable_ssr = (
         True
@@ -138,7 +136,6 @@ def vite_init(
         vite_port=vite_port,
         asset_url=asset_url,
         resource_path=resource_path,
-        asset_path=asset_path,
         bundle_path=bundle_path,
         hot_file=hot_file,
         litestar_port=env.port or 8000,
@@ -163,7 +160,7 @@ def vite_install(app: Litestar, verbose: bool) -> None:
         app.debug = True
     console.rule("[yellow]Starting Vite package installation process[/]", align="left")
     plugin = app.plugins.get(VitePlugin)
-    run_vite(" ".join(plugin._config.install_command))  # noqa: SLF001
+    run_vite(" ".join(plugin._config.install_command), app)  # noqa: SLF001
 
 
 @vite_group.command(  # type: ignore # noqa: PGH003
@@ -184,7 +181,7 @@ def vite_build(app: Litestar, verbose: bool) -> None:
         app.debug = True
     console.rule("[yellow]Starting Vite build process[/]", align="left")
     plugin = app.plugins.get(VitePlugin)
-    run_vite(" ".join(plugin._config.build_command))  # noqa: SLF001
+    run_vite(" ".join(plugin._config.build_command), app)  # noqa: SLF001
 
 
 @vite_group.command(  # type: ignore # noqa: PGH003
@@ -212,4 +209,4 @@ def vite_serve(app: Litestar, verbose: bool) -> None:
     command_to_run = (
         plugin._config.run_command if plugin._config.hot_reload else plugin._config.build_watch_command  # noqa: SLF001
     )
-    run_vite(" ".join(command_to_run))
+    run_vite(" ".join(command_to_run), app)
