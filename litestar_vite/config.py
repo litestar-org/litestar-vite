@@ -92,10 +92,8 @@ class ViteConfig:
 
     def __post_init__(self) -> None:
         """Ensure that directory is set if engine is a class."""
-        if isinstance(self.root_dir, str):
+        if self.root_dir is not None and isinstance(self.root_dir, str):
             self.root_dir = Path(self.root_dir)
-        if self.root_dir is None:
-            self.root_dir = Path.cwd()
         if isinstance(self.resource_dir, str):
             self.resource_dir = Path(self.resource_dir)
         if isinstance(self.ssr_output_dir, str):
