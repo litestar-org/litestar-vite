@@ -38,13 +38,6 @@ def vite_group() -> None:
     default=None,
     required=False,
 )
-@option(
-    "--asset-path",
-    type=ClickPath(dir_okay=True, file_okay=False, path_type=Path),
-    help="The path to your Javascript/Typescript source and associated assets.  If this were a standalone Vue or React app, this would point to your `src/` folder.",
-    default=None,
-    required=False,
-)
 @option("--asset-url", type=str, help="Base url to serve assets from.", default=None, required=False)
 @option(
     "--vite-port",
