@@ -37,7 +37,7 @@ vite = VitePlugin(
     config=ViteConfig(
         bundle_dir=Path("./public"),
         resources_dir=Path("./resources"),
-        templates_dir=Path("./templates"),
+        template_dir=Path("./templates"),
         # Should be False when in production
         dev_mode=True,
         hot_reload=True, # Websocket HMR asset reloading is enabled when true.

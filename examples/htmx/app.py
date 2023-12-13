@@ -12,7 +12,7 @@ vite = VitePlugin(
     config=ViteConfig(
         bundle_dir=Path(here / "web" / "public"),
         resource_dir=Path(here / "web" / "resources"),
-        templates_dir=Path(here / "web" / "templates"),
+        template_dir=Path(here / "web" / "templates"),
         hot_reload=True,
     ),
 )

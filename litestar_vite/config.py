@@ -42,7 +42,7 @@ class ViteConfig:
 
     In a standalone Vue or React application, this would be equivalent to the ``./src`` directory.
     """
-    templates_dir: Path | str = field(default="templates")
+    template_dir: Path | str = field(default="templates")
     """Location of the Jinja2 template file.
     """
     manifest_name: str = ".vite/manifest.json"

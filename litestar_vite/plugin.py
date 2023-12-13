@@ -45,7 +45,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         app_config.template_config = ViteTemplateConfig(  # type: ignore[assignment]
             engine=ViteTemplateEngine,
             config=self._config,
-            directory=self._config.templates_dir,
+            directory=self._config.template_dir,
         )
         return app_config
 
