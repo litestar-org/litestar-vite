@@ -1,5 +1,4 @@
 import { defineConfig } from "vite";
-import path from "path";
 {% if include_vue %}import vue from "@vitejs/plugin-vue";{% endif %}
 {% if include_react %}import vue from "@vitejs/plugin-react";{% endif %}
 import litestar from "litestar-vite-plugin";
@@ -10,7 +9,7 @@ const VITE_PORT = process.env.VITE_PORT || "5173";
 const VITE_HOST = process.env.VITE_HOST || "localhost";
 export default defineConfig({
   base: `${ASSET_URL}`,
-  root: path.resolve(__dirname, "{{ root_path }}"),
+  root: "{{ root_path }}",
   server: {
     host: `${VITE_HOST}`,
     port: +`${VITE_PORT}`,
@@ -31,7 +30,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "{{ resource_path }}")
+      "@": "{{ resource_path }}"
     },
   },
 });
