@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from litestar import Controller, get
+from litestar import Controller, get, Litestar
 from litestar.response import Template
 from litestar.status_codes import HTTP_200_OK
 from litestar_vite import ViteConfig, VitePlugin
@@ -36,7 +36,7 @@ class WebController(Controller):
 vite = VitePlugin(
     config=ViteConfig(
         bundle_dir=Path("./public"),
-        resources_dir=Path("./resources"),
+        resource_dir=Path("./resources"),
         template_dir=Path("./templates"),
         # Should be False when in production
         dev_mode=True,
@@ -44,6 +44,7 @@ vite = VitePlugin(
     ),
 )
 app = Litestar(plugins=[vite], route_handlers=[WebController])
+
 
 ```
 

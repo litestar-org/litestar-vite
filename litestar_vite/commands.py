@@ -76,7 +76,7 @@ def init_vite(
                     entry_point=entry_point,
                     enable_ssr=enable_ssr,
                     asset_url=asset_url,
-                    root_path=str(root_path.relative_to(Path.cwd())),
+                    root_path=str(root_path),
                     resource_path=str(resource_path.relative_to(root_path)),
                     bundle_path=str(bundle_path.relative_to(root_path)),
                     hot_file=str(hot_file.relative_to(root_path)),
