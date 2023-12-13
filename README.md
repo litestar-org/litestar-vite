@@ -37,7 +37,6 @@ vite = VitePlugin(
     config=ViteConfig(
         bundle_dir=Path("./public"),
         resources_dir=Path("./resources"),
-        assets_dir=Path("./resources/assets"),
         templates_dir=Path("./templates"),
         # Should be False when in production
         dev_mode=True,
@@ -65,12 +64,16 @@ Create a template to serve the application in `./templates/index.html.h2`:
 
   <body class="font-sans leading-none text-gray-700 antialiased">
     <div id="app"></div>
-    {{ vite_hmr() }} {{ vite('main.ts') }}
+    {{ vite_hmr() }} {{ vite('resources/main.ts') }}
   </body>
 </html>
 ```
 
-Initialize the Vite configuration.
+### Template initialization (Optional)
+
+This is a command to help initialize Vite for your project. This is generally only needed a single time. You may also manually configure Vite and skip this step.
+
+to initialize a Vite configuration:
 
 ```shell
 ❯ litestar assets init
@@ -98,9 +101,11 @@ INFO - 2023-12-11 12:33:41,456 - root - commands - Writing tsconfig.json
         └── assets
 ```
 
-### Development
+### Install Javascript/Typescript Packages
 
 Install the packages required for development:
+
+**Note** This is equivalent to the the `npm install` by default. This command is configurable.
 
 ```shell
 ❯ litestar assets install
@@ -116,6 +121,8 @@ added 25 packages, and audited 26 packages in 1s
 
 found 0 vulnerabilities
 ```
+
+### Development
 
 To automatically start and stop the Vite instance with the Litestar application, you can enable the `use_server_lifespan` hooks in the `ViteConfig`.
 
@@ -136,7 +143,7 @@ vite v5.0.7 building for production...
 
 ```
 
-**Note** This is equivalent to the the `npm run dev` command by default.
+**Note** This is equivalent to the the `npm run dev` command when `hot_reload` is enabled. Otherwise it is equivalent to `npm run build --watch`. This command is configurable.
 
 ### Building for Production
 

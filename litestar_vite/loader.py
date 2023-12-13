@@ -64,22 +64,22 @@ class ViteAssetLoader:
             RuntimeError: if cannot load the file or JSON in file is malformed.
         """
         if self._config.hot_reload:
-            if _hot_file_found := Path(
-                self._config.bundle_dir / self._config.hot_file,
+            if Path(
+                f"{self._config.bundle_dir}/{self._config.hot_file}",
             ).exists():
-                with Path(self._config.bundle_dir / self._config.hot_file).open() as hot_file:
+                with Path(f"{self._config.bundle_dir}/{self._config.manifest_name}").open() as hot_file:
                     self._vite_base_path = hot_file.read()
 
         else:
-            with Path(self._config.bundle_dir / self._config.manifest_name).open() as manifest_file:
+            with Path(f"{self._config.bundle_dir}/{self._config.manifest_name}").open() as manifest_file:
                 manifest_content = manifest_file.read()
             try:
                 self._manifest = json.loads(manifest_content)
             except Exception as exc:  # noqa: BLE001
-                msg = "Cannot read Vite manifest file at %s"
+                msg = "Cannot read Vite manifest file at %s. Did you forget to build your assets?"
                 raise RuntimeError(
                     msg,
-                    Path(self._config.bundle_dir / self._config.manifest_name),
+                    Path(f"{self._config.bundle_dir}/{self._config.manifest_name}"),
                 ) from exc
 
     def generate_ws_client_tags(self) -> str:
@@ -138,11 +138,11 @@ class ViteAssetLoader:
             )
 
         if any(p for p in path if p not in self._manifest):
-            msg = "Cannot find %s in Vite manifest at %s"
+            msg = "Cannot find %s in Vite manifest at %s.  Did you forget to build your assets?"
             raise RuntimeError(
                 msg,
                 path,
-                Path(self._config.bundle_dir / self._config.manifest_name),
+                Path(f"{self._config.bundle_dir}/{self._config.manifest_name}"),
             )
 
         tags: list[str] = []

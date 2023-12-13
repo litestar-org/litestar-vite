@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from functools import cached_property
 from inspect import isclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Generic, TypeVar, cast
 
 from litestar.exceptions import ImproperlyConfiguredException
@@ -13,7 +15,6 @@ __all__ = ["ViteConfig", "ViteTemplateConfig"]
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
     from litestar.types import PathType
 
@@ -31,24 +32,17 @@ class ViteConfig:
     'plugins' key.
     """
 
-    bundle_dir: Path
+    bundle_dir: Path | str = field(default="public")
     """Location of the compiled assets from  Vite.
 
     The manifest file will also be found here.
     """
-    resource_dir: Path
+    resource_dir: Path | str = field(default="resources")
     """The directory where all typescript/javascript source are written.
 
     In a standalone Vue or React application, this would be equivalent to the ``./src`` directory.
     """
-    assets_dir: Path
-    """These are the assets that Vite will serve when developing.
-
-    This should include any images, CSS, or other media referenced.
-
-    These will be included in the bundle directory on build.
-    """
-    templates_dir: Path
+    templates_dir: Path | str = field(default="templates")
     """Location of the Jinja2 template file.
     """
     manifest_name: str = ".vite/manifest.json"
@@ -62,9 +56,9 @@ class ViteConfig:
     """Enable HMR for Vite development server."""
     ssr_enabled: bool = False
     """Enable SSR."""
-    ssr_output_dir: Path | None = None
+    ssr_output_dir: Path | str | None = None
     """SSR Output path"""
-    root_dir: Path | None = None
+    root_dir: Path | str | None = None
     """The is the base path to your application.
 
    In a standalone Vue or React application, this would be equivalent to the ``./src`` directory.
@@ -85,7 +79,7 @@ class ViteConfig:
     """Default port to use for Vite server."""
     run_command: list[str] = field(default_factory=lambda: ["npm", "run", "dev"])
     """Default command to use for running Vite."""
-    build_watch_command: list[str] = field(default_factory=lambda: ["npm", "run", "build", "--watch"])
+    build_watch_command: list[str] = field(default_factory=lambda: ["npm", "run", "watch"])
     """Default command to use for dev building with Vite."""
     build_command: list[str] = field(default_factory=lambda: ["npm", "run", "build"])
     """Default command to use for building with Vite."""
@@ -95,6 +89,24 @@ class ViteConfig:
     """Utilize the server lifespan hook to run Vite."""
     dev_mode: bool = False
     """When True, Vite will run with HMR or watch build"""
+
+    def __post_init__(self) -> None:
+        """Ensure that directory is set if engine is a class."""
+        if isinstance(self.root_dir, str):
+            self.root_dir = Path(self.root_dir)
+        if self.root_dir is None:
+            self.root_dir = Path.cwd()
+        if isinstance(self.resource_dir, str):
+            self.resource_dir = Path(self.resource_dir)
+        if isinstance(self.ssr_output_dir, str):
+            self.ssr_output_dir = Path(self.ssr_output_dir)
+        os.environ.setdefault("LITESTAR_ASSET_URL", self.asset_url)
+        os.environ.setdefault("LITESTAR_VITE_ALLOW_REMOTE", str(True))
+        os.environ.setdefault("VITE_PORT", str(self.port))
+        os.environ.setdefault("VITE_HOST", self.host)
+        os.environ.setdefault("VITE_PROTOCOL", self.protocol)
+        if self.dev_mode:
+            os.environ.setdefault("VITE_DEV_MODE", str(self.dev_mode))
 
 
 @dataclass

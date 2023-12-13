@@ -4,10 +4,12 @@ import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, MutableMapping
 
+from anyio import create_task_group
 from jinja2 import select_autoescape
 from litestar.serialization import encode_json
 
 if TYPE_CHECKING:
+    from anyio.abc import Process
     from jinja2 import Environment, Template
     from litestar import Litestar
 
@@ -40,7 +42,6 @@ def init_vite(
     app: Litestar,
     root_path: Path,
     resource_path: Path,
-    asset_path: Path,
     asset_url: str,
     bundle_path: Path,
     enable_ssr: bool,
@@ -78,7 +79,6 @@ def init_vite(
                     root_path=str(root_path.relative_to(Path.cwd())),
                     resource_path=str(resource_path.relative_to(root_path)),
                     bundle_path=str(bundle_path.relative_to(root_path)),
-                    asset_path=str(asset_path.relative_to(root_path)),
                     hot_file=str(hot_file.relative_to(root_path)),
                     vite_port=str(vite_port),
                     litestar_port=litestar_port,
@@ -97,22 +97,31 @@ def get_template(
     return environment.get_template(name=name, parent=parent, globals=globals)
 
 
-def run_vite(command_to_run: str) -> None:
+def run_vite(command_to_run: str, app: Litestar) -> None:
     """Run Vite in a subprocess."""
 
     import anyio
 
     with contextlib.suppress(KeyboardInterrupt):
-        anyio.run(_run_vite, command_to_run)
+        anyio.run(_run_vite, command_to_run, app)
 
 
-async def _run_vite(command_to_run: str) -> None:
+async def _run_vite(command_to_run: str, app: Litestar) -> None:
     """Run Vite in a subprocess."""
 
     from anyio import open_process
     from anyio.streams.text import TextReceiveStream
-    from litestar.cli._utils import console
 
-    async with await open_process(command_to_run) as vite_process:
-        async for text in TextReceiveStream(vite_process.stdout):  # type: ignore[arg-type]
-            console.print(text)
+    logger = app.get_logger("vite")
+
+    async def read_stdout(vite_process: Process) -> None:
+        async for stdout in TextReceiveStream(vite_process.stdout):  # type: ignore[arg-type]
+            logger.info(stdout)
+
+    async def read_stderr(vite_process: Process) -> None:
+        async for stdout in TextReceiveStream(vite_process.stderr):  # type: ignore[arg-type]
+            logger.warning(stdout)
+
+    async with await open_process(command_to_run) as vite_process, create_task_group() as tg:
+        tg.start_soon(read_stdout, vite_process)
+        tg.start_soon(read_stderr, vite_process)
