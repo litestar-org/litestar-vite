@@ -88,6 +88,8 @@ class ViteConfig:
     """Utilize the server lifespan hook to run Vite."""
     dev_mode: bool = False
     """When True, Vite will run with HMR or watch build"""
+    detect_nodeenv: bool = True
+    """When True, The initializer will install and configure nodeenv if present"""
 
     def __post_init__(self) -> None:
         """Ensure that directory is set if engine is a class."""

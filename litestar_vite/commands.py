@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import platform
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, MutableMapping
@@ -48,6 +49,7 @@ def init_vite(
 ) -> None:
     """Initialize a new vite project."""
     from jinja2 import Environment, FileSystemLoader
+    from litestar.cli._utils import console
 
     entry_point: list[str] = []
     vite_template_env = Environment(
@@ -91,7 +93,7 @@ def init_vite(
 
     for resource_name in enabled_resources:
         with Path(resource_path / resource_name).open(mode="w") as file:
-            logger.info("Writing %s", resource_name)
+            console.print("Writing %s", resource_name)
 
 
 def get_template(
@@ -105,4 +107,4 @@ def get_template(
 
 def execute_command(command_to_run: list[str]) -> subprocess.CompletedProcess[bytes]:
     """Run Vite in a subprocess."""
-    return subprocess.run(command_to_run, check=False)  # noqa: S603
+    return subprocess.run(command_to_run, check=False, shell=platform.system() == "Windows")  # noqa: S603
