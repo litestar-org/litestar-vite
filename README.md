@@ -52,7 +52,7 @@ Create a template to serve the application in `./templates/index.html.h2`:
 
 ```html
 <!DOCTYPE html>
-<html class="h-full">
+<html>
   <head>
     <meta charset="utf-8" />
     <!--IE compatibility-->
@@ -63,7 +63,7 @@ Create a template to serve the application in `./templates/index.html.h2`:
     />
   </head>
 
-  <body class="font-sans leading-none text-gray-700 antialiased">
+  <body>
     <div id="app"></div>
     {{ vite_hmr() }} {{ vite('resources/main.ts') }}
   </body>
