@@ -1,0 +1,12 @@
+{
+  "resources/main.ts": {
+    "file": "assets/main-w40geAFS.js",
+    "isEntry": true,
+    "src": "resources/main.ts"
+  },
+  "resources/styles.css": {
+    "file": "assets/styles-w40geAFS.js",
+    "isEntry": true,
+    "src": "resources/styles.css"
+  }
+}

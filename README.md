@@ -52,7 +52,7 @@ Create a template to serve the application in `./templates/index.html.h2`:
 
 ```html
 <!DOCTYPE html>
-<html class="h-full">
+<html>
   <head>
     <meta charset="utf-8" />
     <!--IE compatibility-->
@@ -63,7 +63,7 @@ Create a template to serve the application in `./templates/index.html.h2`:
     />
   </head>
 
-  <body class="font-sans leading-none text-gray-700 antialiased">
+  <body>
     <div id="app"></div>
     {{ vite_hmr() }} {{ vite('resources/main.ts') }}
   </body>
@@ -84,22 +84,6 @@ Do you intend to use Litestar with any SSR framework? [y/n]: n
 INFO - 2023-12-11 12:33:41,455 - root - commands - Writing vite.config.ts
 INFO - 2023-12-11 12:33:41,456 - root - commands - Writing package.json
 INFO - 2023-12-11 12:33:41,456 - root - commands - Writing tsconfig.json
-```
-
-```shell
-❯ tree
-.
-├── app.py
-├── __init__.py
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-└── web
-    ├── controllers.py
-    ├── __init__.py
-    ├── public
-    └── resources
-        └── assets
 ```
 
 ### Install Javascript/Typescript Packages
@@ -144,7 +128,7 @@ vite v5.0.7 building for production...
 
 ```
 
-**Note** This is equivalent to the the `npm run dev` command when `hot_reload` is enabled. Otherwise it is equivalent to `npm run build --watch`. This command is configurable.
+**Note** This is equivalent to the the `npm run dev` command when `hot_reload` is enabled. Otherwise it is equivalent to `npm run build -- --watch`. This command is configurable.
 
 ### Building for Production
 

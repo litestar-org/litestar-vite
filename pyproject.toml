@@ -33,7 +33,7 @@ license = {text = "MIT"}
 name = "litestar-vite"
 readme = "README.md"
 requires-python = ">=3.8"
-version = "0.1.9"
+version = "0.1.10"
 
 [project.urls]
 Changelog = "https://cofin.github.io/litestar-vite/latest/changelog"
@@ -64,7 +64,6 @@ docs = [
 ]
 linting = [
   "pre-commit>=3.4.0",
-  "black>=23.7.0",
   "mypy>=1.5.1",
   "ruff>=0.0.287",
   "types-docutils",
