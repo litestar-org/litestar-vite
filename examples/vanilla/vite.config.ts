@@ -16,8 +16,8 @@ export default defineConfig({
     cors: true,
   },
   plugins: [
-    
-    
+
+
     litestar({
       input: [
         "web/resources/styles.css", "web/resources/main.ts"
