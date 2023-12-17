@@ -37,7 +37,7 @@ def to_json(value: Any) -> str:
 
 
 def init_vite(
-    app: Litestar,
+    app: Litestar,  # noqa: ARG001
     root_path: Path,
     resource_path: Path,
     asset_url: str,
@@ -57,7 +57,6 @@ def init_vite(
         autoescape=select_autoescape(),
     )
 
-    logger = app.get_logger()
     enabled_templates: set[str] = VITE_INIT_TEMPLATES
     enabled_resources: set[str] = DEFAULT_RESOURCES
     dependencies: dict[str, str] = DEFAULT_DEPENDENCIES
@@ -73,7 +72,7 @@ def init_vite(
     for template_name, template in templates.items():
         target_file_name = template_name.removesuffix(".j2")
         with Path(target_file_name).open(mode="w") as file:
-            logger.info("Writing %s", target_file_name)
+            console.print(f" * Writing {target_file_name} to {Path(target_file_name).absolute()}")
 
             file.write(
                 template.render(
@@ -93,7 +92,7 @@ def init_vite(
 
     for resource_name in enabled_resources:
         with Path(resource_path / resource_name).open(mode="w") as file:
-            console.print("Writing %s", resource_name)
+            console.print(f" * Writing {resource_name} to {Path(resource_path / resource_name).absolute()}")
 
 
 def get_template(

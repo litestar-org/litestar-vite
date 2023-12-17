@@ -151,10 +151,14 @@ def vite_init(
     if not no_install:
         if find_spec("nodeenv") is not None and plugin.config.detect_nodeenv:
             """Detect nodeenv installed in the current python env before using a global version"""
-            nodeenv_command = str(Path(Path(sys.executable) / "nodeenv")) or "nodeenv"
+            nodeenv_command = (
+                str(Path(Path(sys.executable) / "nodeenv"))
+                if Path(Path(sys.executable) / "nodeenv").exists()
+                else "nodeenv"
+            )
             install_dir = os.environ.get("VIRTUAL_ENV", sys.prefix)
             console.rule("[yellow]Starting Nodeenv installation process[/]", align="left")
-            console.print("Installing Node environment to %s:", install_dir)
+            console.print(f"Installing Node environment into {install_dir}")
             execute_command([nodeenv_command, install_dir, "--force", "--quiet"])
 
         console.rule("[yellow]Starting package installation process[/]", align="left")
@@ -185,7 +189,11 @@ def vite_install(app: Litestar, verbose: bool) -> None:
 
     if find_spec("nodeenv") is not None and plugin.config.detect_nodeenv:
         """Detect nodeenv installed in the current python env before using a global version"""
-        nodeenv_command = str(Path(Path(sys.executable) / "nodeenv")) or "nodeenv"
+        nodeenv_command = (
+            str(Path(Path(sys.executable) / "nodeenv"))
+            if Path(Path(sys.executable) / "nodeenv").exists()
+            else "nodeenv"
+        )
         install_dir = os.environ.get("VIRTUAL_ENV", sys.prefix)
         console.rule("[yellow]Starting Nodeenv installation process[/]", align="left")
         console.print("Installing Node environment to %s:", install_dir)
