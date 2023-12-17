@@ -113,6 +113,7 @@ def vite_init(
             sys.exit(2)
     for output_path in (bundle_path, resource_path):
         output_path.mkdir(parents=True, exist_ok=True)
+
     enable_ssr = (
         True
         if enable_ssr
@@ -146,14 +147,14 @@ def vite_install(app: Litestar, verbose: bool) -> None:
         console,
     )
 
-    from litestar_vite.commands import run_vite
+    from litestar_vite.commands import execute_command
     from litestar_vite.plugin import VitePlugin
 
     if verbose:
         app.debug = True
     console.rule("[yellow]Starting Vite package installation process[/]", align="left")
     plugin = app.plugins.get(VitePlugin)
-    run_vite(" ".join(plugin._config.install_command), app)  # noqa: SLF001
+    execute_command(plugin.config.install_command)
 
 
 @vite_group.command(  # type: ignore # noqa: PGH003
@@ -167,14 +168,19 @@ def vite_build(app: Litestar, verbose: bool) -> None:
         console,
     )
 
-    from litestar_vite.commands import run_vite
-    from litestar_vite.plugin import VitePlugin
+    from litestar_vite.commands import execute_command
+    from litestar_vite.plugin import VitePlugin, set_environment
 
     if verbose:
         app.debug = True
     console.rule("[yellow]Starting Vite build process[/]", align="left")
     plugin = app.plugins.get(VitePlugin)
-    run_vite(" ".join(plugin._config.build_command), app)  # noqa: SLF001
+    set_environment(config=plugin.config)
+    p = execute_command(plugin.config.build_command)
+    if p.returncode == 0:
+        console.print("[bold green] Assets built.[/]")
+    else:
+        console.print("[bold red] There was an error building the assets.[/]")
 
 
 @vite_group.command(  # type: ignore # noqa: PGH003
@@ -188,18 +194,17 @@ def vite_serve(app: Litestar, verbose: bool) -> None:
         console,
     )
 
-    from litestar_vite.commands import run_vite
-    from litestar_vite.plugin import VitePlugin
+    from litestar_vite.commands import execute_command
+    from litestar_vite.plugin import VitePlugin, set_environment
 
     if verbose:
         app.debug = True
 
     plugin = app.plugins.get(VitePlugin)
-    if plugin._config.hot_reload:  # noqa: SLF001
+    set_environment(config=plugin.config)
+    if plugin.config.hot_reload:
         console.rule("[yellow]Starting Vite process with HMR Enabled[/]", align="left")
     else:
         console.rule("[yellow]Starting Vite watch and build process[/]", align="left")
-    command_to_run = (
-        plugin._config.run_command if plugin._config.hot_reload else plugin._config.build_watch_command  # noqa: SLF001
-    )
-    run_vite(" ".join(command_to_run), app)
+    command_to_run = plugin.config.run_command if plugin.config.hot_reload else plugin.config.build_watch_command
+    execute_command(command_to_run)

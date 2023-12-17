@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 {% if include_vue %}import vue from "@vitejs/plugin-vue";{% endif %}
-{% if include_react %}import vue from "@vitejs/plugin-react";{% endif %}
+{% if include_react %}import react from "@vitejs/plugin-react";{% endif %}
 import litestar from "litestar-vite-plugin";
 
 const ASSET_URL =
@@ -9,7 +9,7 @@ const VITE_PORT = process.env.VITE_PORT || "5173";
 const VITE_HOST = process.env.VITE_HOST || "localhost";
 export default defineConfig({
   base: `${ASSET_URL}`,
-  root: "{{ root_path }}",
+  {% if root_path and root_path != '.' %} root: "{{ root_path }}",{% endif %}
   server: {
     host: `${VITE_HOST}`,
     port: +`${VITE_PORT}`,
@@ -20,7 +20,7 @@ export default defineConfig({
     {% if include_react %}react(),{% endif %}
     litestar({
       input: [
-        {% if entry_point %}"{{ entry_point | join(', \"') }}"{% endif %}
+        {% if entry_point %}"{{ entry_point | join('\", \"') }}"{% endif %}
       ],
       assetUrl: `${ASSET_URL}`,
       bundleDirectory: "{{ bundle_path }}",

@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from litestar import Litestar
-from web.controllers import WebController
 
+from examples.vue.web.controllers import WebController
 from litestar_vite import ViteConfig, VitePlugin
 
 here = Path(__file__).parent

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Iterator
 
@@ -11,6 +12,17 @@ if TYPE_CHECKING:
     from litestar.config.app import AppConfig
 
     from litestar_vite.config import ViteConfig
+
+
+def set_environment(config: ViteConfig) -> None:
+    """Configure environment for easier integration"""
+    os.environ.setdefault("ASSET_URL", config.asset_url)
+    os.environ.setdefault("VITE_ALLOW_REMOTE", str(True))
+    os.environ.setdefault("VITE_PORT", str(config.port))
+    os.environ.setdefault("VITE_HOST", config.host)
+    os.environ.setdefault("VITE_PROTOCOL", config.protocol)
+    if config.dev_mode:
+        os.environ.setdefault("VITE_DEV_MODE", str(config.dev_mode))
 
 
 class VitePlugin(InitPluginProtocol, CLIPlugin):
@@ -25,6 +37,10 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             config: configure and start Vite.
         """
         self._config = config
+
+    @property
+    def config(self) -> ViteConfig:
+        return self._config
 
     def on_cli_init(self, cli: Group) -> None:
         from litestar_vite.cli import vite_group
@@ -47,27 +63,27 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             config=self._config,
             directory=self._config.template_dir,
         )
+        set_environment(config=self._config)
         return app_config
 
     @contextmanager
     def server_lifespan(self, app: Litestar) -> Iterator[None]:
-        import multiprocessing
+        import threading
 
-        from litestar_vite.commands import run_vite
+        from litestar_vite.commands import execute_command
 
-        if self._config.use_server_lifespan and self._config.dev_mode:
+        if self.config.use_server_lifespan and self._config.dev_mode:
             command_to_run = self._config.run_command if self._config.hot_reload else self._config.build_watch_command
 
-            vite_process = multiprocessing.Process(
-                target=run_vite,
-                args=[command_to_run, app],
+            vite_thread = threading.Thread(
+                target=execute_command,
+                args=[command_to_run],
             )
             try:
-                vite_process.start()
+                vite_thread.start()
                 yield
             finally:
-                if vite_process.is_alive():
-                    vite_process.terminate()
-                    vite_process.join()
+                if vite_thread.is_alive():
+                    vite_thread.join()
         else:
             yield
