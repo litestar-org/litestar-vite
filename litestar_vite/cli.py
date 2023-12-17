@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -66,6 +65,15 @@ def vite_group() -> None:
     show_default=True,
     is_flag=True,
 )
+@option(
+    "--no-install",
+    help="Do not execute the installation commands after generating templates.",
+    type=bool,
+    default=False,
+    required=False,
+    show_default=True,
+    is_flag=True,
+)
 def vite_init(
     ctx: Context,
     vite_port: int | None,
@@ -76,14 +84,20 @@ def vite_init(
     overwrite: bool,
     verbose: bool,
     no_prompt: bool,
+    no_install: bool,
 ) -> None:  # sourcery skip: low-code-quality
     """Run vite build."""
+    import os
+    import sys
+    from importlib.util import find_spec
+    from pathlib import Path
+
     from litestar.cli._utils import (
         console,
     )
     from rich.prompt import Confirm
 
-    from litestar_vite.commands import init_vite
+    from litestar_vite.commands import execute_command, init_vite
     from litestar_vite.plugin import VitePlugin
 
     if callable(ctx.obj):
@@ -134,6 +148,18 @@ def vite_init(
         hot_file=hot_file,
         litestar_port=env.port or 8000,
     )
+    if not no_install:
+        if find_spec("nodeenv") is not None and plugin.config.detect_nodeenv:
+            """Detect nodeenv installed in the current python env before using a global version"""
+            nodeenv_command = str(Path(Path(sys.executable) / "nodeenv")) or "nodeenv"
+            install_dir = os.environ.get("VIRTUAL_ENV", sys.prefix)
+            console.rule("[yellow]Starting Nodeenv installation process[/]", align="left")
+            console.print("Installing Node environment to %s:", install_dir)
+            execute_command([nodeenv_command, install_dir, "--force", "--quiet"])
+
+        console.rule("[yellow]Starting package installation process[/]", align="left")
+
+        execute_command(plugin.config.install_command)
 
 
 @vite_group.command(  # type: ignore # noqa: PGH003
@@ -143,17 +169,30 @@ def vite_init(
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def vite_install(app: Litestar, verbose: bool) -> None:
     """Run vite build."""
-    from litestar.cli._utils import (
-        console,
-    )
+    import os
+    import sys
+    from importlib.util import find_spec
+    from pathlib import Path
+
+    from litestar.cli._utils import console
 
     from litestar_vite.commands import execute_command
     from litestar_vite.plugin import VitePlugin
 
     if verbose:
         app.debug = True
-    console.rule("[yellow]Starting Vite package installation process[/]", align="left")
     plugin = app.plugins.get(VitePlugin)
+
+    if find_spec("nodeenv") is not None and plugin.config.detect_nodeenv:
+        """Detect nodeenv installed in the current python env before using a global version"""
+        nodeenv_command = str(Path(Path(sys.executable) / "nodeenv")) or "nodeenv"
+        install_dir = os.environ.get("VIRTUAL_ENV", sys.prefix)
+        console.rule("[yellow]Starting Nodeenv installation process[/]", align="left")
+        console.print("Installing Node environment to %s:", install_dir)
+        execute_command([nodeenv_command, install_dir, "--force", "--quiet"])
+
+    console.rule("[yellow]Starting package installation process[/]", align="left")
+
     execute_command(plugin.config.install_command)
 
 
