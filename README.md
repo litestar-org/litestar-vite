@@ -86,22 +86,6 @@ INFO - 2023-12-11 12:33:41,456 - root - commands - Writing package.json
 INFO - 2023-12-11 12:33:41,456 - root - commands - Writing tsconfig.json
 ```
 
-```shell
-❯ tree
-.
-├── app.py
-├── __init__.py
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-└── web
-    ├── controllers.py
-    ├── __init__.py
-    ├── public
-    └── resources
-        └── assets
-```
-
 ### Install Javascript/Typescript Packages
 
 Install the packages required for development:
@@ -144,7 +128,7 @@ vite v5.0.7 building for production...
 
 ```
 
-**Note** This is equivalent to the the `npm run dev` command when `hot_reload` is enabled. Otherwise it is equivalent to `npm run build --watch`. This command is configurable.
+**Note** This is equivalent to the the `npm run dev` command when `hot_reload` is enabled. Otherwise it is equivalent to `npm run build -- --watch`. This command is configurable.
 
 ### Building for Production
 
