@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 from urllib.parse import urljoin
 
+from litestar.cli._utils import console
 from litestar.template import TemplateEngineProtocol
 
 if TYPE_CHECKING:
@@ -71,12 +72,17 @@ class ViteAssetLoader:
                     self._vite_base_path = hot_file.read()
 
         else:
-            with Path(f"{self._config.bundle_dir}/{self._config.manifest_name}").open() as manifest_file:
-                manifest_content = manifest_file.read()
             try:
+                with Path(f"{self._config.bundle_dir}/{self._config.manifest_name}").open() as manifest_file:
+                    manifest_content = manifest_file.read()
                 self._manifest = json.loads(manifest_content)
+            except FileNotFoundError:
+                console.print(
+                    f"[bold red]Cannot read Vite manifest file at {self._config.bundle_dir}/{self._config.manifest_name}. Did you forget to build your assets?",
+                )
+                self._manifest = {}
             except Exception as exc:  # noqa: BLE001
-                msg = "Cannot read Vite manifest file at %s. Did you forget to build your assets?"
+                msg = "There was an issue reading the Vite manifest file at  %s. Did you forget to build your assets?"
                 raise RuntimeError(
                     msg,
                     Path(f"{self._config.bundle_dir}/{self._config.manifest_name}"),
