@@ -64,7 +64,7 @@ class ViteAssetLoader:
         Raises:
             RuntimeError: if cannot load the file or JSON in file is malformed.
         """
-        if self._config.hot_reload:
+        if self._config.hot_reload and self._config.dev_mode:
             if Path(
                 f"{self._config.bundle_dir}/{self._config.hot_file}",
             ).exists():
@@ -112,7 +112,7 @@ class ViteAssetLoader:
         Returns:
             str: The script tag or an empty string.
         """
-        if self._config.is_react and self._config.hot_reload:
+        if self._config.is_react and self._config.hot_reload and self._config.dev_mode:
             return f"""
                 <script type="module">
                 import RefreshRuntime from '{self._vite_server_url()}@react-refresh'
@@ -132,7 +132,7 @@ class ViteAssetLoader:
         """
         if isinstance(path, str):
             path = [path]
-        if self._config.hot_reload:
+        if self._config.hot_reload and self._config.dev_mode:
             return "".join(
                 [
                     self._script_tag(

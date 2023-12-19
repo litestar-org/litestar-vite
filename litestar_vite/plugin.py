@@ -63,19 +63,23 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             config=self._config,
             directory=self._config.template_dir,
         )
-        set_environment(config=self._config)
         return app_config
 
     @contextmanager
     def server_lifespan(self, app: Litestar) -> Iterator[None]:
         import threading
 
+        from litestar.cli._utils import console
+
         from litestar_vite.commands import execute_command
 
-        set_environment(config=self._config)
         if self.config.use_server_lifespan and self._config.dev_mode:
+            plugin = app.plugins.get(VitePlugin)
             command_to_run = self._config.run_command if self._config.hot_reload else self._config.build_watch_command
-
+            if plugin.config.hot_reload:
+                console.rule("[yellow]Starting Vite process with HMR Enabled[/]", align="left")
+            else:
+                console.rule("[yellow]Starting Vite watch and build process[/]", align="left")
             vite_thread = threading.Thread(
                 target=execute_command,
                 args=[command_to_run],
@@ -86,5 +90,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             finally:
                 if vite_thread.is_alive():
                     vite_thread.join()
+                console.rule("[yellow]Vite processed stopped.[/]", align="left")
+
         else:
             yield
