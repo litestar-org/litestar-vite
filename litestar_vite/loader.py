@@ -96,13 +96,12 @@ class ViteAssetLoader:
         Returns:
             str: The script tag or an empty string.
         """
-        if not self._config.hot_reload:
-            return ""
-
-        return self._script_tag(
-            self._vite_server_url("@vite/client"),
-            {"type": "module"},
-        )
+        if self._config.hot_reload and self._config.dev_mode:
+            return self._script_tag(
+                self._vite_server_url("@vite/client"),
+                {"type": "module"},
+            )
+        return ""
 
     def generate_react_hmr_tags(self) -> str:
         """Generate the script tag for the Vite WS client for HMR.
