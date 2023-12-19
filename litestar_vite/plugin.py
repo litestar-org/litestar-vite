@@ -72,6 +72,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
         from litestar_vite.commands import execute_command
 
+        set_environment(config=self._config)
         if self.config.use_server_lifespan and self._config.dev_mode:
             command_to_run = self._config.run_command if self._config.hot_reload else self._config.build_watch_command
 
