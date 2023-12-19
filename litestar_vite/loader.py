@@ -68,14 +68,14 @@ class ViteAssetLoader:
             if Path(
                 f"{self._config.bundle_dir}/{self._config.hot_file}",
             ).exists():
-                with Path(f"{self._config.bundle_dir}/{self._config.manifest_name}").open() as hot_file:
+                with Path(f"{self._config.bundle_dir}/{self._config.hot_file}").open() as hot_file:
                     self._vite_base_path = hot_file.read()
 
         else:
             try:
                 with Path(f"{self._config.bundle_dir}/{self._config.manifest_name}").open() as manifest_file:
                     manifest_content = manifest_file.read()
-                self._manifest = json.loads(manifest_content)
+                    self._manifest = json.loads(manifest_content)
             except FileNotFoundError:
                 console.print(
                     f"[bold red]Cannot read Vite manifest file at {self._config.bundle_dir}/{self._config.manifest_name}. Did you forget to build your assets?",
