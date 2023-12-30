@@ -93,6 +93,7 @@ def init_vite(
     for resource_name in enabled_resources:
         with Path(resource_path / resource_name).open(mode="w") as file:
             console.print(f" * Writing {resource_name} to {Path(resource_path / resource_name).absolute()}")
+    console.print("[yellow]Vite initialization completed.[/]")
 
 
 def get_template(

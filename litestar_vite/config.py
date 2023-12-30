@@ -90,6 +90,11 @@ class ViteConfig:
     """When True, Vite will run with HMR or watch build"""
     detect_nodeenv: bool = True
     """When True, The initializer will install and configure nodeenv if present"""
+    set_environment: bool = True
+    """When True, configuration in this class will be set into environment variables.
+
+    This can be useful to ensure Vite always uses the configuration supplied to the plugin
+    """
 
     def __post_init__(self) -> None:
         """Ensure that directory is set if engine is a class."""
