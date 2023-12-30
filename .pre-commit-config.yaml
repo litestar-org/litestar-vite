@@ -17,7 +17,7 @@ repos:
       - id: mixed-line-ending
       - id: trailing-whitespace
   - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: "v0.1.8"
+    rev: "v0.1.9"
     hooks:
       - id: ruff
         args: ["--fix"]
@@ -27,24 +27,18 @@ repos:
     hooks:
       - id: codespell
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: "v1.7.1"
+    rev: "v1.8.0"
     hooks:
       - id: mypy
         exclude: "docs"
         additional_dependencies:
           [
-            aiosql,
-            asyncpg,
-            asyncpg_stubs,
             pytest,
-            pytest-asyncio,
             pytest-lazy-fixture,
-            time-machine,
             httpx,
             pytest-mock,
             pytest-timeout,
-            msgspec,
-            "litestar[cli]",
+            "litestar[cli,jinja]",
           ]
   - repo: https://github.com/sphinx-contrib/sphinx-lint
     rev: "v0.9.1"

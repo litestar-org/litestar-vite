@@ -33,7 +33,7 @@ license = {text = "MIT"}
 name = "litestar-vite"
 readme = "README.md"
 requires-python = ">=3.8"
-version = "0.1.15"
+version = "0.1.16"
 
 [project.urls]
 Changelog = "https://cofin.github.io/litestar-vite/latest/changelog"
@@ -59,7 +59,6 @@ docs = [
   "shibuya>=2023.9.3",
   "sphinx-click>=5.0.1",
   "sphinx-toolbox>=3.5.0",
-  "blacken-docs>=1.16.0",
   "sphinx-design>=0.5.0",
 ]
 linting = [
@@ -70,13 +69,10 @@ linting = [
 ]
 test = [
   "pytest>=7.4.1",
-  "pytest-xdist>=3.3.1",
   "pytest-cov",
   "coverage",
-  "pytest-lazy-fixture>=0.6.3",
-  "pytest-asyncio>=0.21.1",
+  "anyio",
   "pytest-mock>=3.11.1",
-  "time-machine>=2.12.0",
   "httpx>=0.24.1",
 ]
 
