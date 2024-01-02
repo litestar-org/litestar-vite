@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Iterator
 
 from litestar.plugins import CLIPlugin, InitPluginProtocol
+from litestar.static_files.config import StaticFilesConfig
 
 if TYPE_CHECKING:
     from click import Group
@@ -63,6 +64,19 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             config=self._config,
             directory=self._config.template_dir,
         )
+
+        if self._config.set_static_folders:
+            app_config.static_files_config.append(
+                StaticFilesConfig(
+                    directories=[self._config.bundle_dir, self._config.resource_dir]
+                    if self._config.dev_mode
+                    else [self._config.bundle_dir],
+                    path=self._config.asset_url,
+                    name="vite",
+                    html_mode=False,
+                    opt={"exclude_from_auth": True},
+                ),
+            )
         return app_config
 
     @contextmanager

@@ -95,6 +95,9 @@ class ViteConfig:
 
     This can be useful to ensure Vite always uses the configuration supplied to the plugin
     """
+    set_static_folders: bool = True
+    """When True, Litestar will automatically serve assets at the `ASSET_URL` path.
+    """
 
     def __post_init__(self) -> None:
         """Ensure that directory is set if engine is a class."""
