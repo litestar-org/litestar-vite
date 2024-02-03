@@ -34,7 +34,7 @@ class ViteTemplateEngine(JinjaTemplateEngine):
             engine_instance: A jinja Environment instance.
             config: Vite config
         """
-        super().__init__(directory=directory)
+        super().__init__(directory=directory, engine_instance=engine_instance)
         if config is None:
             msg = "Please configure the `ViteConfig` instance."
             raise ValueError(msg)
