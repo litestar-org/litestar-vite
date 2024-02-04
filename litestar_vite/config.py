@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from functools import cached_property
 from inspect import isclass
@@ -44,14 +45,16 @@ class ViteConfig:
     template_dir: Path | str | None = field(default=None)
     """Location of the Jinja2 template file.
     """
-    manifest_name: str = ".vite/manifest.json"
+    manifest_name: str = "manifest.json"
     """Name of the manifest file."""
     hot_file: str = "hot"
     """Name of the hot file.
 
     This file contains a single line containing the host, protocol, and port the Vite server is running.
     """
-    hot_reload: bool = False
+    hot_reload: bool = field(
+        default_factory=lambda: os.getenv("VITE_HOT_RELOAD", "True") in {"True", "1", "yes", "Y", "T"},
+    )
     """Enable HMR for Vite development server."""
     ssr_enabled: bool = False
     """Enable SSR."""
@@ -65,16 +68,16 @@ class ViteConfig:
     """
     is_react: bool = False
     """Enable React components."""
-    asset_url: str = "/static/"
+    asset_url: str =field(default_factory=lambda: os.getenv("ASSET_URL", "/static/"))
     """Base URL to generate for static asset references.
 
     This URL will be prepended to anything generated from Vite.
     """
-    host: str = "localhost"
+    host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "localhost"))
     """Default host to use for Vite server."""
     protocol: str = "http"
     """Protocol to use for communication"""
-    port: int = 5173
+    port: int = field(default_factory=lambda: int(os.getenv("VITE_PORT", "5173")))
     """Default port to use for Vite server."""
     run_command: list[str] = field(default_factory=lambda: ["npm", "run", "dev"])
     """Default command to use for running Vite."""
@@ -84,9 +87,13 @@ class ViteConfig:
     """Default command to use for building with Vite."""
     install_command: list[str] = field(default_factory=lambda: ["npm", "install"])
     """Default command to use for installing Vite."""
-    use_server_lifespan: bool = False
+    use_server_lifespan: bool = field(
+        default_factory=lambda: os.getenv("VITE_USE_SERVER_LIFESPAN", "False") in {"True", "1", "yes", "Y", "T"},
+    )
     """Utilize the server lifespan hook to run Vite."""
-    dev_mode: bool = False
+    dev_mode: bool =  field(
+        default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in {"True", "1", "yes", "Y", "T"},
+    )
     """When True, Vite will run with HMR or watch build"""
     detect_nodeenv: bool = True
     """When True, The initializer will install and configure nodeenv if present"""
