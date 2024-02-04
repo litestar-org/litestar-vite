@@ -18,7 +18,7 @@ DEFAULT_RESOURCES: set[str] = {"styles.css", "main.ts"}
 DEFAULT_DEV_DEPENDENCIES: dict[str, str] = {
     "typescript": "^5.3.3",
     "vite": "^5.0.6",
-    "litestar-vite-plugin": "^0.4.1",
+    "litestar-vite-plugin": "^0.5.1",
     "@types/node": "^20.10.3",
 }
 DEFAULT_DEPENDENCIES: dict[str, str] = {"axios": "^1.6.2"}
