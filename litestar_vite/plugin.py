@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Iterator
 
 from litestar.plugins import CLIPlugin, InitPluginProtocol
-from litestar.static_files.config import StaticFilesConfig
+from litestar.static_files import create_static_files_router
 
 if TYPE_CHECKING:
     from click import Group
@@ -66,8 +66,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         )
 
         if self._config.set_static_folders:
-            app_config.static_files_config.append(
-                StaticFilesConfig(
+            app_config.route_handlers.append(
+                create_static_files_router(
                     directories=[self._config.bundle_dir, self._config.resource_dir]
                     if self._config.dev_mode
                     else [self._config.bundle_dir],
