@@ -67,7 +67,7 @@ class ViteConfig:
     root_dir: Path | str | None = None
     """The is the base path to your application.
 
-   In a standalone Vue or React application, this would be equivalent to the ``./src`` directory.
+   In a standalone Vue or React application, this would be equivalent to the top-level project folder containing the ``./src`` directory.
 
     """
     is_react: bool = False

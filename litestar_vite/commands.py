@@ -107,6 +107,9 @@ def get_template(
     return environment.get_template(name=name, parent=parent, globals=globals)
 
 
-def execute_command(command_to_run: list[str]) -> subprocess.CompletedProcess[bytes]:
+def execute_command(command_to_run: list[str], cwd: str | Path | None = None) -> subprocess.CompletedProcess[bytes]:
     """Run Vite in a subprocess."""
-    return subprocess.run(command_to_run, check=False, shell=platform.system() == "Windows")
+    kwargs = {}
+    if cwd is not None:
+        kwargs["cwd"] = Path(cwd)
+    return subprocess.run(command_to_run, check=False, shell=platform.system() == "Windows", **kwargs)  # type: ignore[call-overload]

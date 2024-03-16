@@ -102,8 +102,10 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             if self._config.set_environment:
                 set_environment(config=self._config)
             vite_thread = threading.Thread(
+                name="vite",
                 target=execute_command,
-                args=[command_to_run],
+                args=[],
+                kwargs={"command_to_run": command_to_run, "cwd": self._config.root_dir},
             )
             try:
                 vite_thread.start()
