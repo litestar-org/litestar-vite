@@ -77,8 +77,7 @@ test = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "--dist=loadgroup"
-asyncio_mode = "auto"
+addopts = ""
 filterwarnings = [
   "ignore::DeprecationWarning:pkg_resources.*",
 ]
