@@ -37,6 +37,13 @@ def vite_group() -> None:
     default=None,
     required=False,
 )
+@option(
+    "--public-path",
+    type=ClickPath(dir_okay=True, file_okay=False, path_type=Path),
+    help="The optional path to your public/static JS assets.  If this were a standalone Vue or React app, this would point to your `public/` folder.",
+    default=None,
+    required=False,
+)
 @option("--asset-url", type=str, help="Base url to serve assets from.", default=None, required=False)
 @option(
     "--vite-port",
@@ -81,6 +88,7 @@ def vite_init(
     asset_url: str | None,
     bundle_path: Path | None,
     resource_path: Path | None,
+    public_path: Path | None,
     overwrite: bool,
     verbose: bool,
     no_prompt: bool,
@@ -110,6 +118,7 @@ def vite_init(
 
     console.rule("[yellow]Initializing Vite[/]", align="left")
     resource_path = Path(resource_path or config.resource_dir)
+    public_path = Path(public_path or config.public_dir)
     bundle_path = Path(bundle_path or config.bundle_dir)
     enable_ssr = enable_ssr or config.ssr_enabled
     asset_url = asset_url or config.asset_url
@@ -144,6 +153,7 @@ def vite_init(
         vite_port=vite_port,
         asset_url=asset_url,
         resource_path=resource_path,
+        public_path=public_path,
         bundle_path=bundle_path,
         hot_file=hot_file,
         litestar_port=env.port or 8000,
