@@ -19,7 +19,7 @@ def vite_group() -> None:
     """Manage Vite Tasks."""
 
 
-@vite_group.command(  # type: ignore # noqa: PGH003
+@vite_group.command(
     name="init",
     help="Initialize vite for your project.",
 )
@@ -114,7 +114,7 @@ def vite_init(
         ctx.obj.app.debug = True
     env: LitestarEnv = ctx.obj
     plugin = env.app.plugins.get(VitePlugin)
-    config = plugin._config  # noqa: SLF001
+    config = plugin._config
 
     console.rule("[yellow]Initializing Vite[/]", align="left")
     resource_path = Path(resource_path or config.resource_dir)
@@ -176,7 +176,7 @@ def vite_init(
         execute_command(plugin.config.install_command)
 
 
-@vite_group.command(  # type: ignore # noqa: PGH003
+@vite_group.command(
     name="install",
     help="Install frontend packages.",
 )
@@ -214,7 +214,7 @@ def vite_install(app: Litestar, verbose: bool) -> None:
     execute_command(plugin.config.install_command)
 
 
-@vite_group.command(  # type: ignore # noqa: PGH003
+@vite_group.command(
     name="build",
     help="Building frontend assets with Vite.",
 )
@@ -241,7 +241,7 @@ def vite_build(app: Litestar, verbose: bool) -> None:
         console.print("[bold red] There was an error building the assets.[/]")
 
 
-@vite_group.command(  # type: ignore # noqa: PGH003
+@vite_group.command(
     name="serve",
     help="Serving frontend assets with Vite.",
 )

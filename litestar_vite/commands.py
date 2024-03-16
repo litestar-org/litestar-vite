@@ -37,7 +37,7 @@ def to_json(value: Any) -> str:
 
 
 def init_vite(
-    app: Litestar,  # noqa: ARG001
+    app: Litestar,
     root_path: Path,
     resource_path: Path,
     asset_url: str,
@@ -109,4 +109,4 @@ def get_template(
 
 def execute_command(command_to_run: list[str]) -> subprocess.CompletedProcess[bytes]:
     """Run Vite in a subprocess."""
-    return subprocess.run(command_to_run, check=False, shell=platform.system() == "Windows")  # noqa: S603
+    return subprocess.run(command_to_run, check=False, shell=platform.system() == "Windows")
