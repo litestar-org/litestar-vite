@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, Iterator
 
 from litestar.plugins import CLIPlugin, InitPluginProtocol
@@ -66,11 +67,14 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         )
 
         if self._config.set_static_folders:
+            static_dirs = [Path(self._config.bundle_dir), Path(self._config.resource_dir)]
+            if Path(self._config.public_dir).exists() and self._config.public_dir != self._config.bundle_dir:
+                static_dirs.append(Path(self._config.public_dir))
             app_config.route_handlers.append(
                 create_static_files_router(
-                    directories=[self._config.bundle_dir, self._config.resource_dir]
+                    directories=static_dirs
                     if self._config.dev_mode
-                    else [self._config.bundle_dir],
+                    else [Path(self._config.bundle_dir)],
                     path=self._config.asset_url,
                     name="vite",
                     html_mode=False,

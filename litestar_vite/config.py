@@ -43,7 +43,11 @@ class ViteConfig:
     In a standalone Vue or React application, this would be equivalent to the ``./src`` directory.
     """
     template_dir: Path | str | None = field(default=None)
-    """Location of the Jinja2 template file.
+    """Location of the Jinja2 template file."""
+    public_dir: Path | str = field(default="public")
+    """The optional public directory Vite serves assets from.
+
+    In a standalone Vue or React application, this would be equivalent to the ``./public`` directory.
     """
     manifest_name: str = "manifest.json"
     """Name of the manifest file."""
@@ -68,7 +72,7 @@ class ViteConfig:
     """
     is_react: bool = False
     """Enable React components."""
-    asset_url: str =field(default_factory=lambda: os.getenv("ASSET_URL", "/static/"))
+    asset_url: str = field(default_factory=lambda: os.getenv("ASSET_URL", "/static/"))
     """Base URL to generate for static asset references.
 
     This URL will be prepended to anything generated from Vite.
@@ -91,7 +95,7 @@ class ViteConfig:
         default_factory=lambda: os.getenv("VITE_USE_SERVER_LIFESPAN", "False") in {"True", "1", "yes", "Y", "T"},
     )
     """Utilize the server lifespan hook to run Vite."""
-    dev_mode: bool =  field(
+    dev_mode: bool = field(
         default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in {"True", "1", "yes", "Y", "T"},
     )
     """When True, Vite will run with HMR or watch build"""
@@ -112,6 +116,8 @@ class ViteConfig:
             self.root_dir = Path(self.root_dir)
         if self.template_dir is not None and isinstance(self.template_dir, str):
             self.template_dir = Path(self.template_dir)
+        if self.public_dir is not None and isinstance(self.public_dir, str):
+            self.public_dir = Path(self.public_dir)
         if isinstance(self.resource_dir, str):
             self.resource_dir = Path(self.resource_dir)
         if isinstance(self.bundle_dir, str):
