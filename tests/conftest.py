@@ -9,7 +9,6 @@ if TYPE_CHECKING:
 
 
 pytestmark = pytest.mark.anyio
-pytest_plugins = []
 
 
 @pytest.fixture
