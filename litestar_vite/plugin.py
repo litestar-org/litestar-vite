@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Iterator
+from pathlib import Path
+from typing import TYPE_CHECKING, Iterator, cast
 
 from litestar.plugins import CLIPlugin, InitPluginProtocol
 from litestar.static_files import create_static_files_router
@@ -66,14 +67,19 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         )
 
         if self._config.set_static_folders:
+            static_dirs = [Path(self._config.bundle_dir), Path(self._config.resource_dir)]
+            if Path(self._config.public_dir).exists() and self._config.public_dir != self._config.bundle_dir:
+                static_dirs.append(Path(self._config.public_dir))
             app_config.route_handlers.append(
                 create_static_files_router(
-                    directories=[self._config.bundle_dir, self._config.resource_dir]
-                    if self._config.dev_mode
-                    else [self._config.bundle_dir],
+                    directories=cast(  # type: ignore[arg-type]
+                        "list[Path]",
+                        static_dirs if self._config.dev_mode else [Path(self._config.bundle_dir)],
+                    ),
                     path=self._config.asset_url,
                     name="vite",
                     html_mode=False,
+                    include_in_schema=False,
                     opt={"exclude_from_auth": True},
                 ),
             )
@@ -96,8 +102,10 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             if self._config.set_environment:
                 set_environment(config=self._config)
             vite_thread = threading.Thread(
+                name="vite",
                 target=execute_command,
-                args=[command_to_run],
+                args=[],
+                kwargs={"command_to_run": command_to_run, "cwd": self._config.root_dir},
             )
             try:
                 vite_thread.start()

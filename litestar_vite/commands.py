@@ -37,10 +37,11 @@ def to_json(value: Any) -> str:
 
 
 def init_vite(
-    app: Litestar,  # noqa: ARG001
+    app: Litestar,
     root_path: Path,
     resource_path: Path,
     asset_url: str,
+    public_path: Path,
     bundle_path: Path,
     enable_ssr: bool,
     vite_port: int,
@@ -81,6 +82,7 @@ def init_vite(
                     asset_url=asset_url,
                     root_path=str(root_path.relative_to(Path.cwd().absolute())),
                     resource_path=str(resource_path.relative_to(root_path)),
+                    public_path=str(public_path.relative_to(root_path)),
                     bundle_path=str(bundle_path.relative_to(root_path)),
                     hot_file=str(hot_file.relative_to(Path.cwd().absolute())),
                     vite_port=str(vite_port),
@@ -105,6 +107,9 @@ def get_template(
     return environment.get_template(name=name, parent=parent, globals=globals)
 
 
-def execute_command(command_to_run: list[str]) -> subprocess.CompletedProcess[bytes]:
+def execute_command(command_to_run: list[str], cwd: str | Path | None = None) -> subprocess.CompletedProcess[bytes]:
     """Run Vite in a subprocess."""
-    return subprocess.run(command_to_run, check=False, shell=platform.system() == "Windows")  # noqa: S603
+    kwargs = {}
+    if cwd is not None:
+        kwargs["cwd"] = Path(cwd)
+    return subprocess.run(command_to_run, check=False, shell=platform.system() == "Windows", **kwargs)  # type: ignore[call-overload]
