@@ -5,9 +5,6 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, MutableMapping
 
-from jinja2 import select_autoescape
-from litestar.serialization import encode_json
-
 if TYPE_CHECKING:
     from jinja2 import Environment, Template
     from litestar import Litestar
@@ -33,6 +30,8 @@ def to_json(value: Any) -> str:
     Returns:
         JSON string.
     """
+    from litestar.serialization import encode_json
+
     return encode_json(value).decode("utf-8")
 
 
@@ -49,7 +48,7 @@ def init_vite(
     litestar_port: int,
 ) -> None:
     """Initialize a new vite project."""
-    from jinja2 import Environment, FileSystemLoader
+    from jinja2 import Environment, FileSystemLoader, select_autoescape
     from litestar.cli._utils import console
 
     entry_point: list[str] = []
