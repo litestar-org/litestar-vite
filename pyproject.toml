@@ -22,7 +22,7 @@ classifiers = [
   "Topic :: Database :: Database Engines/Servers",
 ]
 dependencies = [
-  "litestar[cli,jinja]>=2.4.0",
+  "litestar[jinja]>=2.4.0",
 ]
 description = "Vite plugin for Litestar"
 keywords = [
@@ -33,7 +33,7 @@ license = {text = "MIT"}
 name = "litestar-vite"
 readme = "README.md"
 requires-python = ">=3.8"
-version = "0.1.20"
+version = "0.1.21"
 
 [project.urls]
 Changelog = "https://cofin.github.io/litestar-vite/latest/changelog"
@@ -72,6 +72,7 @@ test = [
   "pytest-cov",
   "coverage",
   "anyio",
+  "pytest-sugar",
   "pytest-mock>=3.11.1",
   "httpx>=0.24.1",
 ]
@@ -247,14 +248,14 @@ max-complexity = 12
 known-first-party = ["litestar_vite", "tests"]
 
 [tool.mypy]
-disallow_untyped_defs = false
-files = ["litestar_vite", "tests"]
+disallow_untyped_defs = false 
+files = ["litestar_vite", "tests"] 
 follow_imports = "normal" # "silent" for not following
-ignore_missing_imports = true
-pretty = true
-show_column_numbers = true
-warn_no_return = false
-warn_unused_ignores = true
+ignore_missing_imports = true 
+pretty = true 
+show_column_numbers = true 
+warn_no_return = false 
+warn_unused_ignores = true 
 
 [[tool.mypy.overrides]]
 disable_error_code = "attr-defined"
