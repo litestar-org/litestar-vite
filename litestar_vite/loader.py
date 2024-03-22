@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 from urllib.parse import urljoin
 
-from litestar.cli._utils import console
 from litestar.template import TemplateEngineProtocol
 
 if TYPE_CHECKING:
@@ -65,27 +64,27 @@ class ViteAssetLoader:
             RuntimeError: if cannot load the file or JSON in file is malformed.
         """
         if self._config.hot_reload and self._config.dev_mode:
-            if Path(
+            hot_file_path = Path(
                 f"{self._config.bundle_dir}/{self._config.hot_file}",
-            ).exists():
-                with Path(f"{self._config.bundle_dir}/{self._config.hot_file}").open() as hot_file:
+            )
+            if hot_file_path.exists():
+                with hot_file_path.open() as hot_file:
                     self._vite_base_path = hot_file.read()
 
         else:
+            manifest_path = Path(f"{self._config.bundle_dir}/{self._config.manifest_name}")
             try:
-                with Path(f"{self._config.bundle_dir}/{self._config.manifest_name}").open() as manifest_file:
-                    manifest_content = manifest_file.read()
-                    self._manifest = json.loads(manifest_content)
-            except FileNotFoundError:
-                console.print(
-                    f"[bold red]Cannot read Vite manifest file at {self._config.bundle_dir}/{self._config.manifest_name}. Did you forget to build your assets?",
-                )
-                self._manifest = {}
+                if manifest_path.exists():
+                    with manifest_path.open() as manifest_file:
+                        manifest_content = manifest_file.read()
+                        self._manifest = json.loads(manifest_content)
+                else:
+                    self._manifest = {}
             except Exception as exc:  # noqa: BLE001
                 msg = "There was an issue reading the Vite manifest file at  %s. Did you forget to build your assets?"
                 raise RuntimeError(
                     msg,
-                    Path(f"{self._config.bundle_dir}/{self._config.manifest_name}"),
+                    manifest_path,
                 ) from exc
 
     def generate_ws_client_tags(self) -> str:

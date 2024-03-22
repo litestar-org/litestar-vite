@@ -18,9 +18,8 @@ if TYPE_CHECKING:
 
     from litestar.types import PathType
 
-    from litestar_vite.template_engine import ViteTemplateEngine
 
-T = TypeVar("T", bound=TemplateEngineProtocol)
+EngineType = TypeVar("EngineType", bound=TemplateEngineProtocol)
 
 
 @dataclass
@@ -127,7 +126,7 @@ class ViteConfig:
 
 
 @dataclass
-class ViteTemplateConfig(Generic[T]):
+class ViteTemplateConfig(Generic[EngineType]):
     """Configuration for Templating.
 
     To enable templating, pass an instance of this class to the
@@ -135,16 +134,19 @@ class ViteTemplateConfig(Generic[T]):
     'template_config' key.
     """
 
-    engine: type[ViteTemplateEngine]
-    """A template engine adhering to the :class:`TemplateEngineProtocol
-    <litestar.template.base.TemplateEngineProtocol>`."""
     config: ViteConfig
     """A a config for the vite engine`."""
-    directory: PathType | None = field(default=None)
+    engine: type[EngineType] | EngineType | None = field(default=None)
+    """A template engine adhering to the :class:`TemplateEngineProtocol
+    <litestar.template.base.TemplateEngineProtocol>`."""
+    directory: PathType | list[PathType] | None = field(default=None)
     """A directory or list of directories from which to serve templates."""
-    engine_callback: Callable[[T], None] | None = field(default=None)
+    engine_callback: Callable[[EngineType], None] | None = field(default=None)
     """A callback function that allows modifying the instantiated templating
     protocol."""
+
+    instance: EngineType | None = field(default=None)
+    """An instance of the templating protocol."""
 
     def __post_init__(self) -> None:
         """Ensure that directory is set if engine is a class."""
@@ -152,10 +154,10 @@ class ViteTemplateConfig(Generic[T]):
             msg = "directory is a required kwarg when passing a template engine class"
             raise ImproperlyConfiguredException(msg)
 
-    def to_engine(self) -> T:
+    def to_engine(self) -> EngineType:
         """Instantiate the template engine."""
         template_engine = cast(
-            "T",
+            "EngineType",
             self.engine(directory=self.directory, config=self.config) if isclass(self.engine) else self.engine,
         )
         if callable(self.engine_callback):
@@ -163,6 +165,6 @@ class ViteTemplateConfig(Generic[T]):
         return template_engine
 
     @cached_property
-    def engine_instance(self) -> T:
+    def engine_instance(self) -> EngineType:
         """Return the template engine instance."""
         return self.to_engine()

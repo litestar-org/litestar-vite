@@ -60,11 +60,12 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         from litestar_vite.config import ViteTemplateConfig
         from litestar_vite.template_engine import ViteTemplateEngine
 
-        app_config.template_config = ViteTemplateConfig(  # type: ignore[assignment]
-            engine=ViteTemplateEngine,
-            config=self._config,
-            directory=self._config.template_dir,
-        )
+        if self._config.template_dir is not None:
+            app_config.template_config = ViteTemplateConfig[ViteTemplateEngine](  # type: ignore[assignment]
+                engine=ViteTemplateEngine,
+                config=self._config,
+                directory=self._config.template_dir,
+            )
 
         if self._config.set_static_folders:
             static_dirs = [Path(self._config.bundle_dir), Path(self._config.resource_dir)]
@@ -116,4 +117,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 console.print("[yellow]Vite process stopped.[/]")
 
         else:
+            manifest_path = Path(f"{self._config.bundle_dir}/{self._config.manifest_name}")
+            if manifest_path.exists():
+                console.rule("[yellow]Serving assets using manifest at `{manifest_path!s}`.[/]", align="left")
+            else:
+                console.rule("[yellow]Serving assets without manifest at `{manifest_path!s}`.[/]", align="left")
             yield
