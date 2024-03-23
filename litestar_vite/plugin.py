@@ -32,12 +32,14 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
     __slots__ = ("_config",)
 
-    def __init__(self, config: ViteConfig) -> None:
+    def __init__(self, config: ViteConfig | None = None) -> None:
         """Initialize ``Vite``.
 
         Args:
-            config: configure and start Vite.
+            config: configuration to use for starting Vite.  The default configuration will be used if it is not provided.
         """
+        if config is None:
+            config = ViteConfig()
         self._config = config
 
     @property
