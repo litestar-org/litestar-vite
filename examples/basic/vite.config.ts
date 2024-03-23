@@ -18,8 +18,8 @@ export default defineConfig({
     },
   },
   plugins: [
-    
-    
+
+
     litestar({
       input: [
         "resources/main.ts", "resources/styles.css"
