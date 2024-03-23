@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 
 from litestar.plugins import InitPluginProtocol
 
-from litestar_vite.inertia import InertiaResponse
 from litestar_vite.inertia.request import InertiaRequest
 
 if TYPE_CHECKING:
@@ -33,5 +32,5 @@ class InertiaPlugin(InitPluginProtocol):
             app_config: The :class:`AppConfig <.config.app.AppConfig>` instance.
         """
         app_config.request_class = InertiaRequest
-        app_config.response_class = InertiaResponse
+        # app_config.response_class = InertiaResponse  # noqa: ERA001
         return app_config
