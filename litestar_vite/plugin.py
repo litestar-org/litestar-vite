@@ -8,12 +8,12 @@ from typing import TYPE_CHECKING, Iterator, cast
 from litestar.plugins import CLIPlugin, InitPluginProtocol
 from litestar.static_files import create_static_files_router
 
+from litestar_vite.config import ViteConfig
+
 if TYPE_CHECKING:
     from click import Group
     from litestar import Litestar
     from litestar.config.app import AppConfig
-
-    from litestar_vite.config import ViteConfig
 
 
 def set_environment(config: ViteConfig) -> None:
@@ -121,7 +121,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         else:
             manifest_path = Path(f"{self._config.bundle_dir}/{self._config.manifest_name}")
             if manifest_path.exists():
-                console.rule("[yellow]Serving assets using manifest at `{manifest_path!s}`.[/]", align="left")
+                console.rule(f"[yellow]Serving assets using manifest at `{manifest_path!s}`.[/]", align="left")
             else:
-                console.rule("[yellow]Serving assets without manifest at `{manifest_path!s}`.[/]", align="left")
+                console.rule(f"[yellow]Serving assets without manifest at `{manifest_path!s}`.[/]", align="left")
             yield

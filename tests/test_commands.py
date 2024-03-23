@@ -10,4 +10,4 @@ def test_get_template(vite_template_env: Environment) -> None:
         template_name: get_template(environment=vite_template_env, name=template_name)
         for template_name in VITE_INIT_TEMPLATES
     }
-    assert len(init_templates.keys()) > 0
+    assert len(init_templates.keys()) == len(VITE_INIT_TEMPLATES)
