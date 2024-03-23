@@ -97,7 +97,7 @@ from __future__ import annotations
 from litestar import Litestar
 
 from litestar_vite import VitePlugin
- 
+
 vite = VitePlugin()
 
 app = Litestar(plugins=[vite])
