@@ -35,6 +35,9 @@ class ViteTemplateEngine(JinjaTemplateEngine):
             config: Vite config
         """
         super().__init__(directory=directory, engine_instance=engine_instance)
+        if config is None:
+            msg = "Please configure the `ViteConfig` instance."
+            raise ValueError(msg)
         self.config = config
 
         self.asset_loader = ViteAssetLoader.initialize_loader(config=self.config)
