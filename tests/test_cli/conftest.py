@@ -49,7 +49,7 @@ def patch_autodiscovery_paths(request: FixtureRequest) -> Callable[[list[str]], 
     return patcher
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def tmp_project_dir(monkeypatch: MonkeyPatch, tmp_path: Path) -> Path:
     path = tmp_path / "project_dir"
     path.mkdir(exist_ok=True)
