@@ -24,9 +24,6 @@ class WebController(Controller):
 
 vite = VitePlugin(
     config=ViteConfig(
-        bundle_dir=Path(here / "public"),
-        resource_dir=Path(here / "resources"),
-        template_dir=Path(here / "templates"),
         hot_reload=True,
         port=3006,
         use_server_lifespan=True,

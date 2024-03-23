@@ -13,9 +13,7 @@ from click.testing import CliRunner
 from litestar.cli._utils import _path_to_dotted_path
 from pytest_mock import MockerFixture
 
-from . import (
-    APP_FILE_CONTENT,
-)
+from . import APP_BASIC_NO_ROUTES_FILE_CONTENT, APP_DEFAULT_CONFIG_FILE_CONTENT
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
@@ -51,7 +49,7 @@ def patch_autodiscovery_paths(request: FixtureRequest) -> Callable[[list[str]], 
     return patcher
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def tmp_project_dir(monkeypatch: MonkeyPatch, tmp_path: Path) -> Path:
     path = tmp_path / "project_dir"
     path.mkdir(exist_ok=True)
@@ -93,7 +91,7 @@ def create_app_file(tmp_project_dir: Path, request: FixtureRequest) -> CreateApp
             base.joinpath("__init__.py").write_text(init_content)
 
         tmp_app_file = base / file
-        tmp_app_file.write_text(content or APP_FILE_CONTENT)
+        tmp_app_file.write_text(content or APP_DEFAULT_CONFIG_FILE_CONTENT)
 
         if directory:
             request.addfinalizer(lambda: rmtree(directory))
@@ -138,7 +136,8 @@ def mock_confirm_ask(mocker: MockerFixture) -> Generator[MagicMock, None, None]:
 
 @pytest.fixture(
     params=[
-        pytest.param((APP_FILE_CONTENT, "app"), id="app_obj"),
+        pytest.param((APP_DEFAULT_CONFIG_FILE_CONTENT, "app"), id="app_obj"),
+        pytest.param((APP_BASIC_NO_ROUTES_FILE_CONTENT, "app"), id="app_obj"),
     ],
 )
 def _app_file_content(request: FixtureRequest) -> tuple[str, str]:
