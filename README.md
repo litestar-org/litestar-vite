@@ -33,18 +33,8 @@ class WebController(Controller):
         return Template(template_name="index.html.j2")
 
 
-vite = VitePlugin(
-    config=ViteConfig(
-        bundle_dir=Path("./public"),
-        resource_dir=Path("./resources"),
-        template_dir=Path("./templates"),
-        # Should be False when in production
-        dev_mode=True,
-        hot_reload=True, # Websocket HMR asset reloading is enabled when true.
-    ),
-)
+vite = VitePlugin(config=ViteConfig(template_dir='templates/'))
 app = Litestar(plugins=[vite], route_handlers=[WebController])
-
 
 ```
 
