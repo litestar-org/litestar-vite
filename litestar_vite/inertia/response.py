@@ -40,3 +40,15 @@ class InertiaTemplate(Template):
         self.headers.update(
             get_headers(InertiaHeaderType(enabled=True)),
         )
+
+
+class InertiaResponse(Response):
+    """Inertia Response"""
+
+    def __init__(self, props: MutableMapping[str, Any] | None = None, **kwargs: Any) -> None:
+        """Set Status code to 200 and set headers."""
+        super().__init__(**kwargs)
+        self._props = props
+        self.headers.update(
+            get_headers(InertiaHeaderType(enabled=True)),
+        )
