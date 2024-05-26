@@ -5,10 +5,10 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from inspect import isclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from litestar.exceptions import ImproperlyConfiguredException
-from litestar.template import TemplateEngineProtocol
+from litestar.template import TemplateConfig, TemplateEngineProtocol
 
 __all__ = ["ViteConfig", "ViteTemplateConfig"]
 
@@ -126,7 +126,7 @@ class ViteConfig:
 
 
 @dataclass
-class ViteTemplateConfig(Generic[EngineType]):
+class ViteTemplateConfig(TemplateConfig[EngineType]):
     """Configuration for Templating.
 
     To enable templating, pass an instance of this class to the
@@ -134,7 +134,7 @@ class ViteTemplateConfig(Generic[EngineType]):
     'template_config' key.
     """
 
-    config: ViteConfig
+    config: ViteConfig = field(default_factory=lambda: ViteConfig())
     """A a config for the vite engine`."""
     engine: type[EngineType] | EngineType | None = field(default=None)
     """A template engine adhering to the :class:`TemplateEngineProtocol

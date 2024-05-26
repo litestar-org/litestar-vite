@@ -74,7 +74,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
 
         if self._config.template_dir is not None:
-            app_config.template_config = self.template_config # type: ignore[assignment]
+            app_config.template_config = self.template_config
 
         if self._config.set_static_folders:
             static_dirs = [Path(self._config.bundle_dir), Path(self._config.resource_dir)]

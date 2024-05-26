@@ -80,7 +80,7 @@ class ViteAssetLoader:
                         self._manifest = json.loads(manifest_content)
                 else:
                     self._manifest = {}
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 msg = "There was an issue reading the Vite manifest file at  %s. Did you forget to build your assets?"
                 raise RuntimeError(
                     msg,

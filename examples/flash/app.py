@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from litestar import Controller, Litestar, get, Request
-from litestar.response import Template
+from litestar import Controller, Litestar, Request, get
 from litestar.plugins.flash import FlashConfig, FlashPlugin, flash
+from litestar.response import Template
 
 from litestar_vite import ViteConfig, VitePlugin
 
