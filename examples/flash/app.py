@@ -3,8 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from litestar import Controller, Litestar, Request, get
+from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.plugins.flash import FlashConfig, FlashPlugin, flash
 from litestar.response import Template
+from litestar.stores.memory import MemoryStore
 
 from litestar_vite import ViteConfig, VitePlugin
 
@@ -31,8 +33,14 @@ vite = VitePlugin(
         port=3006,
         use_server_lifespan=True,
         dev_mode=True,
+        template_dir="templates/",
     ),
 )
 flasher = FlashPlugin(config=FlashConfig(template_config=vite.template_config))
 
-app = Litestar(plugins=[vite,flasher], route_handlers=[WebController])
+app = Litestar(
+    plugins=[vite, flasher],
+    route_handlers=[WebController],
+    middleware=[ServerSideSessionConfig().middleware],
+    stores={"sessions": MemoryStore()},
+)

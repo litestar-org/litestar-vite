@@ -41,7 +41,7 @@ class ViteConfig:
 
     In a standalone Vue or React application, this would be equivalent to the ``./src`` directory.
     """
-    template_dir: Path | str | None = field(default=None)
+    template_dir: Path | str | None = field(default="templates")
     """Location of the Jinja2 template file."""
     public_dir: Path | str = field(default="public")
     """The optional public directory Vite serves assets from.

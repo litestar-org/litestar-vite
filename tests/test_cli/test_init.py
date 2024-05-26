@@ -37,7 +37,7 @@ app = Litestar(plugins=[vite])
     result = runner.invoke(root_command, ["--app", f"{app_file.stem}:app", "assets"])
 
     assert not result.exception
-    assert "Using Litestar app from env:" in result.output
+    assert "Manage Vite Tasks." in result.output
 
 
 def test_init_command_noprompt(
@@ -77,7 +77,7 @@ app = Litestar(plugins=[vite])
         ["--app-dir", f"{app_file.parent!s}", "--app", f"{app_file.stem}:app", "assets", "init", "--no-prompt"],
     )
 
-    assert "Using Litestar app from env:" in result.output
+    assert "Initializing Vite" in result.output
     assert Path(tmp_project_dir / "vite.config.ts").exists()
     assert Path(tmp_project_dir / "package.json").exists()
     assert Path(tmp_project_dir / "tsconfig.json").exists()
