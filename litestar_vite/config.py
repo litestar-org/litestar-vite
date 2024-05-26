@@ -5,21 +5,18 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from inspect import isclass
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.template import TemplateConfig, TemplateEngineProtocol
-
-__all__ = ["ViteConfig", "ViteTemplateConfig"]
-
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from litestar.types import PathType
 
-
-EngineType = TypeVar("EngineType", bound=TemplateEngineProtocol)
+__all__ = ("ViteConfig", "ViteTemplateConfig")
+EngineType = TypeVar("EngineType", bound=TemplateEngineProtocol[Any, Any])
 
 
 @dataclass
@@ -115,7 +112,7 @@ class ViteConfig:
             self.root_dir = Path(self.root_dir)
         if self.template_dir is not None and isinstance(self.template_dir, str):
             self.template_dir = Path(self.template_dir)
-        if self.public_dir is not None and isinstance(self.public_dir, str):
+        if self.public_dir and isinstance(self.public_dir, str):
             self.public_dir = Path(self.public_dir)
         if isinstance(self.resource_dir, str):
             self.resource_dir = Path(self.resource_dir)
@@ -150,7 +147,7 @@ class ViteTemplateConfig(TemplateConfig[EngineType]):
 
     def __post_init__(self) -> None:
         """Ensure that directory is set if engine is a class."""
-        if isclass(self.engine) and not self.directory:
+        if isclass(self.engine) and not self.directory:  # pyright: ignore[reportUnknownMemberType]
             msg = "directory is a required kwarg when passing a template engine class"
             raise ImproperlyConfiguredException(msg)
 
@@ -158,7 +155,7 @@ class ViteTemplateConfig(TemplateConfig[EngineType]):
         """Instantiate the template engine."""
         template_engine = cast(
             "EngineType",
-            self.engine(directory=self.directory, config=self.config) if isclass(self.engine) else self.engine,
+            self.engine(directory=self.directory, config=self.config) if isclass(self.engine) else self.engine,  # pyright: ignore[reportUnknownMemberType]
         )
         if callable(self.engine_callback):
             self.engine_callback(template_engine)

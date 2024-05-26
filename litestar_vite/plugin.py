@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, cast
 
 from litestar.plugins import CLIPlugin, InitPluginProtocol
-from litestar.static_files import create_static_files_router
+from litestar.static_files import (
+    create_static_files_router,  # pyright: ignore[reportUnknownVariableType]
+)
 
 from litestar_vite.config import ViteConfig
 
@@ -17,6 +19,7 @@ if TYPE_CHECKING:
 
     from litestar_vite.config import ViteTemplateConfig
     from litestar_vite.template_engine import ViteTemplateEngine
+
 
 def set_environment(config: ViteConfig) -> None:
     """Configure environment for easier integration"""
@@ -54,10 +57,10 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         from litestar_vite.template_engine import ViteTemplateEngine
 
         return ViteTemplateConfig[ViteTemplateEngine](
-                engine=ViteTemplateEngine,
-                config=self._config,
-                directory=self._config.template_dir,
-            )
+            engine=ViteTemplateEngine,
+            config=self._config,
+            directory=self._config.template_dir,
+        )
 
     def on_cli_init(self, cli: Group) -> None:
         from litestar_vite.cli import vite_group
@@ -71,7 +74,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         Args:
             app_config: The :class:`AppConfig <.config.app.AppConfig>` instance.
         """
-
 
         if self._config.template_dir is not None:
             app_config.template_config = self.template_config
