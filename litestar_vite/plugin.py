@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, cast
 
 from litestar.plugins import CLIPlugin, InitPluginProtocol
-from litestar.static_files import create_static_files_router
+from litestar.static_files import (
+    create_static_files_router,  # pyright: ignore[reportUnknownVariableType]
+)
 
 from litestar_vite.config import ViteConfig
 
@@ -14,6 +16,9 @@ if TYPE_CHECKING:
     from click import Group
     from litestar import Litestar
     from litestar.config.app import AppConfig
+
+    from litestar_vite.config import ViteTemplateConfig
+    from litestar_vite.template_engine import ViteTemplateEngine
 
 
 def set_environment(config: ViteConfig) -> None:
@@ -46,6 +51,17 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
     def config(self) -> ViteConfig:
         return self._config
 
+    @property
+    def template_config(self) -> ViteTemplateConfig[ViteTemplateEngine]:
+        from litestar_vite.config import ViteTemplateConfig
+        from litestar_vite.template_engine import ViteTemplateEngine
+
+        return ViteTemplateConfig[ViteTemplateEngine](
+            engine=ViteTemplateEngine,
+            config=self._config,
+            directory=self._config.template_dir,
+        )
+
     def on_cli_init(self, cli: Group) -> None:
         from litestar_vite.cli import vite_group
 
@@ -59,15 +75,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             app_config: The :class:`AppConfig <.config.app.AppConfig>` instance.
         """
 
-        from litestar_vite.config import ViteTemplateConfig
-        from litestar_vite.template_engine import ViteTemplateEngine
-
         if self._config.template_dir is not None:
-            app_config.template_config = ViteTemplateConfig[ViteTemplateEngine](  # type: ignore[assignment]
-                engine=ViteTemplateEngine,
-                config=self._config,
-                directory=self._config.template_dir,
-            )
+            app_config.template_config = self.template_config
 
         if self._config.set_static_folders:
             static_dirs = [Path(self._config.bundle_dir), Path(self._config.resource_dir)]
