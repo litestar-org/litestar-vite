@@ -1,0 +1,11 @@
+{
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "watch": "vite build --watch",
+        "build": "vite build"
+    },
+    "dependencies": {"axios":"^1.6.2"},
+    "devDependencies": {"typescript":"^5.3.3","vite":"^5.0.6","litestar-vite-plugin":"^0.5.1","@types/node":"^20.10.3"}
+}
