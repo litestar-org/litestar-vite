@@ -51,7 +51,7 @@ build-backend = "hatchling.build"
 requires = ["hatchling"]
 
 [tool.pdm.dev-dependencies]
-dev = ["nodeenv"]
+dev = ["nodeenv","litestar[standard]"]
 docs = [
   "sphinx>=7.1.2",
   "sphinx-autobuild>=2021.3.14",
@@ -75,6 +75,17 @@ test = [
   "pytest-sugar",
   "pytest-mock>=3.11.1",
   "httpx>=0.24.1",
+]
+
+[tool.pdm]
+ignore_package_warnings = [
+  "alabaster",
+  "sphinxcontrib-*",
+  "sphinx-*",
+  "sphinx",
+  "pre-commit",
+  "pydata-sphinx-*",
+  "slotscheck",
 ]
 
 [tool.pytest.ini_options]

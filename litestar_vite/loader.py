@@ -2,15 +2,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import urljoin
-
-from litestar.template import TemplateEngineProtocol
 
 if TYPE_CHECKING:
     from litestar_vite.config import ViteConfig
-
-T = TypeVar("T", bound=TemplateEngineProtocol)
 
 
 class ViteAssetLoader:
@@ -80,7 +76,7 @@ class ViteAssetLoader:
                         self._manifest = json.loads(manifest_content)
                 else:
                     self._manifest = {}
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 msg = "There was an issue reading the Vite manifest file at  %s. Did you forget to build your assets?"
                 raise RuntimeError(
                     msg,
@@ -150,8 +146,8 @@ class ViteAssetLoader:
             )
 
         tags: list[str] = []
-        for p in path:
-            manifest_entry: dict = self._manifest[p]
+        manifest_entry: dict[str, Any] = {}
+        manifest_entry.update({p: self._manifest[p] for p in path})
         if not scripts_attrs:
             scripts_attrs = {"type": "module", "async": "", "defer": ""}
 

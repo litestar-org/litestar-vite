@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, Mapping, TypeVar
 
 import markupsafe
 from litestar.contrib.jinja import JinjaTemplateEngine
@@ -12,10 +12,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from jinja2 import Environment
+    from jinja2 import Template as JinjaTemplate
 
     from litestar_vite.config import ViteConfig
 
-T = TypeVar("T", bound=TemplateEngineProtocol)
+T = TypeVar("T", bound=TemplateEngineProtocol["JinjaTemplate", Mapping[str, Any]])
 
 
 class ViteTemplateEngine(JinjaTemplateEngine):
@@ -41,7 +42,7 @@ class ViteTemplateEngine(JinjaTemplateEngine):
         self.config = config
 
         self.asset_loader = ViteAssetLoader.initialize_loader(config=self.config)
-        self.engine.globals.update({"vite_hmr": self.get_hmr_client, "vite": self.get_asset_tag})
+        self.engine.globals.update({"vite_hmr": self.get_hmr_client, "vite": self.get_asset_tag})  # pyright: ignore[reportCallIssue,reportArgumentType]
 
     def get_hmr_client(self) -> markupsafe.Markup:
         """Generate the script tag for the Vite WS client for HMR.
