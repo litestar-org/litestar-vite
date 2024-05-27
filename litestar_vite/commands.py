@@ -66,14 +66,15 @@ def init_vite(
         for template_name in enabled_templates
     }
     for template_name, template in templates.items():
-        target_file_name = template_name.removesuffix(".j2")
+        target_file_name = template_name[:-3] if template_name.endswith(".j2") else template_name
         with Path(target_file_name).open(mode="w") as file:
             console.print(f" * Writing {target_file_name} to {Path(target_file_name)!s}")
 
             file.write(
                 template.render(
                     entry_point=[
-                        f"{resource_path!s}/{resource_name.removesuffix('.j2')}" for resource_name in enabled_resources
+                        f"{resource_path!s}/{resource_name[:-3] if resource_name.endswith('.j2') else resource_name}"
+                        for resource_name in enabled_resources
                     ],
                     enable_ssr=enable_ssr,
                     asset_url=asset_url,
@@ -91,9 +92,11 @@ def init_vite(
 
     for resource_name in enabled_resources:
         template = get_template(environment=vite_template_env, name=resource_name)
-        target_file_name = f"{resource_path}/{resource_name.removesuffix('.j2')}"
+        target_file_name = f"{resource_path}/{resource_name[:-3] if resource_name.endswith('.j2') else resource_name}"
         with Path(target_file_name).open(mode="w") as file:
-            console.print(f" * Writing {resource_name.removesuffix('.j2')} to {Path(target_file_name)!s}")
+            console.print(
+                f" * Writing {resource_name[:-3] if resource_name.endswith('.j2') else resource_name} to {Path(target_file_name)!s}",
+            )
             file.write(template.render())
     console.print("[yellow]Vite initialization completed.[/]")
 

@@ -78,11 +78,11 @@ app = Litestar(plugins=[vite])
     )
 
     assert "Initializing Vite" in result.output
-    assert Path(tmp_project_dir / "vite.config.ts").exists()
-    assert Path(tmp_project_dir / "package.json").exists()
-    assert Path(tmp_project_dir / "tsconfig.json").exists()
-    assert Path(tmp_project_dir / "resources" / "main.ts").exists()
-    assert Path(tmp_project_dir / "resources" / "styles.css").exists()
+    assert Path(Path(tmp_project_dir) / "vite.config.ts").exists()
+    assert Path(Path(tmp_project_dir) / "package.json").exists()
+    assert Path(Path(tmp_project_dir) / "tsconfig.json").exists()
+    assert Path(Path(tmp_project_dir) / "resources" / "main.ts").exists()
+    assert Path(Path(tmp_project_dir) / "resources" / "styles.css").exists()
 
 
 def test_init_install_build(
