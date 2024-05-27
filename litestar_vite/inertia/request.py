@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 class InertiaDetails:
     """InertiaDetails holds all the values sent by Inertia client in headers and provide convenient properties."""
 
-    def __init__(self, request: Request) -> None:
+    def __init__(self, request: Request[UserT, AuthT, StateT]) -> None:
         """Initialize :class:`InertiaDetails`"""
         self.request = request
 

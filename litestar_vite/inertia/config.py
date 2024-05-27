@@ -1,18 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, MutableMapping, TypeVar
-
-from litestar.template import TemplateEngineProtocol
+from typing import TYPE_CHECKING, Any, MutableMapping
 
 __all__ = ("InertiaConfig",)
 
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-
-T = TypeVar("T", bound=TemplateEngineProtocol)
 
 
 @dataclass
