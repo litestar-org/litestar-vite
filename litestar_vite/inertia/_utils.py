@@ -43,7 +43,7 @@ def get_headers(inertia_headers: InertiaHeaderType) -> dict[str, Any]:
     if not inertia_headers:
         msg = "Value for inertia_headers cannot be None."
         raise ValueError(msg)
-    inertia_headers_dict: dict[str, Callable] = {
+    inertia_headers_dict: dict[str, Callable[..., dict[str, Any]]] = {
         "enabled": get_enabled_header,
         "partial_data": get_partial_data_header,
         "partial_component": get_partial_component_header,

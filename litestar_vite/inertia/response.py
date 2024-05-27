@@ -4,12 +4,13 @@ from typing import Any, MutableMapping
 
 from litestar import Response
 from litestar.response import Template
+from litestar.response.base import T
 
 from litestar_vite.inertia._utils import get_headers
 from litestar_vite.inertia.types import InertiaHeaderType
 
 
-class InertiaJSON(Response):
+class InertiaJSON(Response[T]):
     """Inertia JSON Response"""
 
     def __init__(self, props: MutableMapping[str, Any] | None = None, **kwargs: Any) -> None:
@@ -42,7 +43,7 @@ class InertiaTemplate(Template):
         )
 
 
-class InertiaResponse(Response):
+class InertiaResponse(Response[T]):
     """Inertia Response"""
 
     def __init__(self, props: MutableMapping[str, Any] | None = None, **kwargs: Any) -> None:
