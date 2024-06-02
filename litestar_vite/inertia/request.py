@@ -77,9 +77,5 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
 
     @property
     def is_inertia(self) -> bool:
-        """Return the request method.
-
-        Returns:
-            The request :class:`Method <litestar.types.Method>`
-        """
+        """True if the request contained inertia headers."""
         return bool(self._inertia)
