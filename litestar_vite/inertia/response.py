@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 from mimetypes import guess_type
 from pathlib import PurePath
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, MutableMapping
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, MutableMapping, cast
 
 from litestar import Litestar, MediaType, Request
 from litestar.exceptions import ImproperlyConfiguredException
@@ -16,6 +16,7 @@ from litestar.utils.helpers import get_enum_string_value
 
 from litestar_vite.inertia._utils import get_headers
 from litestar_vite.inertia.types import InertiaHeaderType
+from litestar_vite.plugin import VitePlugin
 
 if TYPE_CHECKING:
     from litestar.app import Litestar
@@ -105,7 +106,8 @@ class InertiaResponse(Template):
         type_encoders = (
             {**type_encoders, **(self.response_type_encoders or {})} if type_encoders else self.response_type_encoders
         )
-        template_engine = request.app.template_engine
+        plugin = request.app.plugins.get(VitePlugin)
+        template_engine = plugin.template_config.to_engine()
         if not template_engine:
             msg = "Template engine is not configured"
             raise ImproperlyConfiguredException(msg)
@@ -127,7 +129,7 @@ class InertiaResponse(Template):
                     media_type = MediaType.HTML
             context = self.create_template_context(request)
             if self.template_str is not None:
-                body = template_engine.render_string(self.template_str, context)
+                body = template_engine.render_string(self.template_str, context).encode(self.encoding)
             else:
                 # cast to str b/c we know that either template_name cannot be None if template_str is None
                 template = template_engine.get_template(cast("str", self.template_name))
