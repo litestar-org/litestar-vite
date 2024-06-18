@@ -66,7 +66,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         from litestar_vite.cli import vite_group
 
         cli.add_command(vite_group)
-        return super().on_cli_init(cli)
 
     def on_app_init(self, app_config: AppConfig) -> AppConfig:
         """Configure application for use with Vite.

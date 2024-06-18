@@ -40,7 +40,7 @@ app = Litestar(plugins=[vite])
     assert "Manage Vite Tasks." in result.output
 
 
-def test_init_command_noprompt(
+def test_init_command_no_prompt(
     runner: CliRunner,
     create_app_file: CreateAppFileFixture,
     root_command: LitestarGroup,
@@ -89,6 +89,7 @@ def test_init_install_build(
     runner: CliRunner,
     create_app_file: CreateAppFileFixture,
     root_command: LitestarGroup,
+    tmp_project_dir: Path,
 ) -> None:
     app_file_content = textwrap.dedent(
         """

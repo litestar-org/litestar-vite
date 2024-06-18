@@ -65,9 +65,9 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
         "_msgpack",
         "_content_type",
         "_accept",
-        "_inertia",
         "is_connected",
-        "is_inertia",
+        "supports_push_promise",
+        "_inertia",
     )
 
     def __init__(self, scope: Scope, receive: Receive = empty_receive, send: Send = empty_send) -> None:
