@@ -163,11 +163,14 @@ class ViteAssetLoader:
                 for vendor_path in manifest_entry.get("imports", {})
             )
         # Add the script by itself
-        tags.append(
-            self._script_tag(
-                urljoin(self._config.asset_url, manifest_entry["file"]),
-                attrs=scripts_attrs,
-            ),
+        tags.extend(
+            [
+                self._script_tag(
+                    urljoin(self._config.asset_url, manifest_entry[p]["file"]),
+                    attrs=scripts_attrs,
+                )
+                for p in path
+            ],
         )
 
         return "".join(tags)
