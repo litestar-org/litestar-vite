@@ -67,12 +67,12 @@ def test_get_hmr_client(
             "asset_attrs",
         ),
         # Test with realistic values for a list of asset paths
-        # (
-        #     ["resources/main.ts", "esources/styles.css"],
-        #     None,
-        #     '<script async="true" src="/static/assets/styles-l0sNRNKZ.js"></script><script type="module" async="" defer="" src="/static/assets/main-l0sNRNKZ.js"></script>',
-        #     "asset_multiple",
-        # ),
+        (
+            ["resources/main.ts", "resources/styles.css"],
+            None,
+            '<script type="module" async="" defer="" src="/static/assets/main-l0sNRNKZ.js"></script><script type="module" async="" defer="" src="/static/assets/styles-l0sNRNKZ.js"></script>',
+            "asset_multiple",
+        ),
     ],
 )
 def test_get_asset_tag(
@@ -83,10 +83,10 @@ def test_get_asset_tag(
     test_id: str,
 ) -> None:
     # Act
-    result = vite_template_engine.get_asset_tag(path=path, scripts_attrs=scripts_attrs)
+    result = str(vite_template_engine.get_asset_tag(path=path, scripts_attrs=scripts_attrs))
 
     # Assert
-    assert result == expected_output, f"Failed test ID: {test_id}"
+    assert result == expected_output
 
 
 # Edge case tests for get_asset_tag
