@@ -40,9 +40,22 @@ class InertiaDetails:
             return unquote(value) if is_uri_encoded else value
         return None
 
+    def _get_route_component(self) -> str | None:
+        """Get the route component.
+
+        Checks for the `component` key within the route  configuration.
+        """
+
+        return self.request.scope["route_handler"].opt.get("component")
+
     def __bool__(self) -> bool:
         """Check if request is sent by an Inertia client."""
         return self._get_header_value(InertiaHeaders.ENABLED) == "true"
+
+    @cached_property
+    def route_component(self) -> str | None:
+        """Partial Data Reload."""
+        return self._get_route_component()
 
     @cached_property
     def partial_component(self) -> str | None:
@@ -79,3 +92,8 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
     def is_inertia(self) -> bool:
         """True if the request contained inertia headers."""
         return bool(self._inertia)
+
+    @property
+    def inertia_enabled(self) -> bool:
+        """True if the route handler contains an inertia enabled configuration."""
+        return bool(self._inertia.route_component is not None)
