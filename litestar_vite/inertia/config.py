@@ -1,20 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, MutableMapping
+from typing import Any, MutableMapping
 
 __all__ = ("InertiaConfig",)
-
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 @dataclass
 class InertiaConfig:
     """Configuration for InertiaJS support."""
 
-    root_template: Path
+    root_template: str = "index.html"
     """Name of the root template to use.
 
     This must be a path that is found by the Vite Plugin template config
