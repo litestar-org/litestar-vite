@@ -88,7 +88,7 @@ class ViteTemplateEngine(JinjaTemplateEngine):
         if isinstance(path, str):
             path = [path]
         return markupsafe.Markup(
-            "".join([self.asset_loader.generate_asset_tags(p, scripts_attrs=scripts_attrs) for p in path])
+            "".join([self.asset_loader.generate_asset_tags(p, scripts_attrs=scripts_attrs) for p in path]),
         )
 
     @classmethod

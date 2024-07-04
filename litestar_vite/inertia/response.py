@@ -3,16 +3,18 @@ from __future__ import annotations
 import itertools
 from mimetypes import guess_type
 from pathlib import PurePath
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, MutableMapping, cast
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, MutableMapping, TypeVar, cast
 
-from litestar import Litestar, MediaType, Request
+from litestar import Litestar, MediaType, Request, Response
+from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
-from litestar.response import Template
 from litestar.response.base import ASGIResponse
 from litestar.serialization import get_serializer
 from litestar.status_codes import HTTP_200_OK
 from litestar.utils.deprecation import warn_deprecation
+from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
+from litestar.utils.scope.state import ScopeState
 
 from litestar_vite.inertia._utils import get_headers
 from litestar_vite.inertia.types import InertiaHeaderType
@@ -23,30 +25,36 @@ if TYPE_CHECKING:
     from litestar.background_tasks import BackgroundTask, BackgroundTasks
     from litestar.connection import Request
     from litestar.connection.base import AuthT, StateT, UserT
-    from litestar.datastructures.cookie import Cookie
-    from litestar.types import ResponseCookies
+    from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
+
+    from .plugin import InertiaPlugin
+
+T = TypeVar("T")
 
 
-class InertiaResponse(Template):
+class InertiaResponse(Response[T]):
     """Inertia Response"""
 
     def __init__(
         self,
-        props: MutableMapping[str, Any] | None = None,
-        template_name: str | None = None,
+        content: T,
         *,
+        template_name: str | None = None,
+        props: MutableMapping[str, Any] | None = None,
         template_str: str | None = None,
         background: BackgroundTask | BackgroundTasks | None = None,
         context: dict[str, Any] | None = None,
         cookies: ResponseCookies | None = None,
         encoding: str = "utf-8",
-        headers: dict[str, Any] | None = None,
+        headers: ResponseHeaders | None = None,
         media_type: MediaType | str | None = None,
         status_code: int = HTTP_200_OK,
+        type_encoders: TypeEncodersMap | None = None,
     ) -> None:
         """Handle the rendering of a given template into a bytes string.
 
         Args:
+            content: A value for the response body that will be rendered into bytes string.
             props: a set of data to render into a response
             template_name: Path-like name for the template to be rendered, e.g. ``index.html``.
             template_str: A string representing the template, e.g. ``tmpl = "Hello <strong>World</strong>"``.
@@ -61,22 +69,48 @@ class InertiaResponse(Template):
             media_type: A string or member of the :class:`MediaType <.enums.MediaType>` enum. If not set, try to infer
                 the media type based on the template name. If this fails, fall back to ``text/plain``.
             status_code: A value for the response HTTP status code.
+            type_encoders: A mapping of types to callables that transform them into types supported for serialization.
         """
-        super().__init__(
-            template_name=template_name,
-            template_str=template_str,
-            background=background,
-            context=context,
-            cookies=cookies,
-            encoding=encoding,
-            headers=headers,
-            media_type=media_type,
-            status_code=status_code,
+        if template_name and template_str:
+            msg = "Either template_name or template_str must be provided, not both."
+            raise ValueError(msg)
+        self.content = content
+        self.background = background
+        self.cookies: list[Cookie] = (
+            [Cookie(key=key, value=value) for key, value in cookies.items()]
+            if isinstance(cookies, Mapping)
+            else list(cookies or [])
         )
+        self.encoding = encoding
+        self.headers: dict[str, Any] = (
+            dict(headers) if isinstance(headers, Mapping) else {h.name: h.value for h in headers or {}}
+        )
+        self.media_type = media_type
+        self.status_code = status_code
+        self.response_type_encoders = {**(self.type_encoders or {}), **(type_encoders or {})}
+        self.context = context or {}
+        self.template_name = template_name
+        self.template_str = template_str
         self._props = props
         self.headers.update(
             get_headers(InertiaHeaderType(enabled=True)),
         )
+
+    def create_template_context(self, request: Request[UserT, AuthT, StateT]) -> dict[str, Any]:
+        """Create a context object for the template.
+
+        Args:
+            request: A :class:`Request <.connection.Request>` instance.
+
+        Returns:
+            A dictionary holding the template context
+        """
+        csrf_token = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
+        return {
+            **self.context,
+            "request": request,
+            "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
+        }
 
     def to_asgi_response(
         self,
@@ -90,7 +124,7 @@ class InertiaResponse(Template):
         is_head_response: bool = False,
         media_type: MediaType | str | None = None,
         status_code: int | None = None,
-        type_encoders: Mapping[Any, Callable[[Any], Any]] | None = None,
+        type_encoders: TypeEncodersMap | None = None,
     ) -> ASGIResponse:
         if app is not None:
             warn_deprecation(
@@ -107,8 +141,9 @@ class InertiaResponse(Template):
         type_encoders = (
             {**type_encoders, **(self.response_type_encoders or {})} if type_encoders else self.response_type_encoders
         )
-        plugin = request.app.plugins.get(VitePlugin)
-        template_engine = plugin.template_config.to_engine()
+
+        vite_plugin = request.app.plugins.get(VitePlugin)
+        template_engine = vite_plugin.template_config.to_engine()
         if not template_engine:
             msg = "Template engine is not configured"
             raise ImproperlyConfiguredException(msg)
@@ -132,8 +167,10 @@ class InertiaResponse(Template):
             if self.template_str is not None:
                 body = template_engine.render_string(self.template_str, context).encode(self.encoding)
             else:
+                inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
+                template_name = self.template_name or inertia_plugin.config.root_template
                 # cast to str b/c we know that either template_name cannot be None if template_str is None
-                template = template_engine.get_template(cast("str", self.template_name))
+                template = template_engine.get_template(template_name)
                 body = template.render(**context).encode(self.encoding)
 
         return ASGIResponse(

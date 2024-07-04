@@ -20,7 +20,7 @@ class InertiaHeaders(str, Enum):
 def get_enabled_header(enabled: bool = True) -> dict[str, Any]:
     """True if inertia is enabled."""
 
-    return {InertiaHeaders.ENABLED.value: enabled}
+    return {InertiaHeaders.ENABLED.value: "true" if enabled else "false"}
 
 
 def get_version_header(version: str) -> dict[str, Any]:

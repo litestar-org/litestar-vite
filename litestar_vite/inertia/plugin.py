@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from litestar.plugins import InitPluginProtocol
 
 from litestar_vite.inertia.request import InertiaRequest
+from litestar_vite.inertia.response import InertiaResponse
 
 if TYPE_CHECKING:
     from litestar.config.app import AppConfig
@@ -25,6 +26,10 @@ class InertiaPlugin(InitPluginProtocol):
         """
         self._config = config
 
+    @property
+    def config(self) -> InertiaConfig:
+        return self._config
+
     def on_app_init(self, app_config: AppConfig) -> AppConfig:
         """Configure application for use with Vite.
 
@@ -32,5 +37,6 @@ class InertiaPlugin(InitPluginProtocol):
             app_config: The :class:`AppConfig <.config.app.AppConfig>` instance.
         """
         app_config.request_class = InertiaRequest
+        app_config.response_class = InertiaResponse
         # app_config.response_class = InertiaResponse  # noqa: ERA001
         return app_config
