@@ -121,7 +121,7 @@ def test_get_asset_tag_edge_cases(
     else:
         with pytest.raises(KeyError) as exc_info:
             vite_template_engine.get_asset_tag(path, scripts_attrs)
-        assert exc_info.type is KeyError, f"Failed test ID: {test_id}"
+        assert exc_info.type is KeyError
 
 
 # Error case tests for get_asset_tag
@@ -145,4 +145,4 @@ def test_get_asset_tag_error_cases(
     # Act / Assert
     with pytest.raises(exception) as exc_info:
         vite_template_engine.get_asset_tag(path, scripts_attrs)
-    assert exc_info.type is exception, f"Failed test ID: {test_id}"
+    assert exc_info.type is exception
