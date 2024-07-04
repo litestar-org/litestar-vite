@@ -100,6 +100,7 @@ class InertiaResponse(Template):
                 removal_in="3.0.0",
                 alternative="request.app",
             )
+        inertia_enabled = getattr(request, "inertia_enabled", False)
         is_inertia = getattr(request, "is_inertia", False)
         headers = {**headers, **self.headers} if headers is not None else self.headers
         cookies = self.cookies if cookies is None else itertools.chain(self.cookies, cookies)
@@ -111,7 +112,7 @@ class InertiaResponse(Template):
         if not template_engine:
             msg = "Template engine is not configured"
             raise ImproperlyConfiguredException(msg)
-        if is_inertia:
+        if is_inertia or not inertia_enabled:
             media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
             body = self.render(self.content, media_type, get_serializer(type_encoders))
         else:
