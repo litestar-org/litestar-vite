@@ -127,7 +127,7 @@ class InertiaResponse(Template):
                         media_type = MediaType.TEXT
                 else:
                     media_type = MediaType.HTML
-            context = self.create_template_context(request)
+            context = self.create_template_context(request)  # pyright: ignore[reportUnknownMemberType]
             if self.template_str is not None:
                 body = template_engine.render_string(self.template_str, context).encode(self.encoding)
             else:
