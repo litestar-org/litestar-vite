@@ -85,7 +85,11 @@ class ViteTemplateEngine(JinjaTemplateEngine):
         Returns:
             str: All tags to import this asset in your HTML page.
         """
-        return markupsafe.Markup(self.asset_loader.generate_asset_tags(path, scripts_attrs=scripts_attrs))
+        if isinstance(path, str):
+            path = [path]
+        return markupsafe.Markup(
+            "".join([self.asset_loader.generate_asset_tags(p, scripts_attrs=scripts_attrs) for p in path])
+        )
 
     @classmethod
     def from_environment(cls, config: ViteConfig, jinja_environment: Environment) -> ViteTemplateEngine:  # type: ignore[override]

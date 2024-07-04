@@ -172,9 +172,6 @@ class ViteAssetLoader:
                 for p in path
             ],
         )
-        # ensure tags are unique
-        tags = sorted(set(tags))
-
         return "".join(tags)
 
     def _vite_server_url(self, path: str | None = None) -> str:
