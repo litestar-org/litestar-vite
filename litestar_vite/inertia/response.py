@@ -16,8 +16,7 @@ from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
 from litestar.utils.scope.state import ScopeState
 
-from litestar_vite.inertia._utils import get_headers
-from litestar_vite.inertia.types import InertiaHeaderType
+from litestar_vite.inertia.types import PageProps
 from litestar_vite.plugin import VitePlugin
 
 if TYPE_CHECKING:
@@ -92,9 +91,6 @@ class InertiaResponse(Response[T]):
         self.template_name = template_name
         self.template_str = template_str
         self._props = props
-        self.headers.update(
-            get_headers(InertiaHeaderType(enabled=True)),
-        )
 
     def create_template_context(self, request: Request[UserT, AuthT, StateT]) -> dict[str, Any]:
         """Create a context object for the template.
@@ -136,21 +132,40 @@ class InertiaResponse(Response[T]):
             )
         inertia_enabled = getattr(request, "inertia_enabled", False)
         is_inertia = getattr(request, "is_inertia", False)
+
         headers = {**headers, **self.headers} if headers is not None else self.headers
         cookies = self.cookies if cookies is None else itertools.chain(self.cookies, cookies)
         type_encoders = (
             {**type_encoders, **(self.response_type_encoders or {})} if type_encoders else self.response_type_encoders
         )
-
-        vite_plugin = request.app.plugins.get(VitePlugin)
-        template_engine = vite_plugin.template_config.to_engine()
-        if not template_engine:
-            msg = "Template engine is not configured"
-            raise ImproperlyConfiguredException(msg)
-        if is_inertia or not inertia_enabled:
+        if not inertia_enabled:
             media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
-            body = self.render(self.content, media_type, get_serializer(type_encoders))
+            return ASGIResponse(
+                background=self.background or background,
+                body=self.render(self.content, media_type, get_serializer(type_encoders)),
+                cookies=cookies,
+                encoded_headers=encoded_headers,
+                encoding=self.encoding,
+                headers=headers,
+                is_head_response=is_head_response,
+                media_type=media_type,
+                status_code=self.status_code or status_code,
+            )
+        page_props = PageProps[T](
+            component=request.inertia.route_component,  # type: ignore # pylance: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
+            props=self.content,
+            version="",
+            url="",
+        )
+        if is_inertia:
+            media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
+            body = self.render(page_props, media_type, get_serializer(type_encoders))
         else:
+            vite_plugin = request.app.plugins.get(VitePlugin)
+            template_engine = vite_plugin.template_config.to_engine()
+            if not template_engine:
+                msg = "Template engine is not configured"
+                raise ImproperlyConfiguredException(msg)
             media_type = self.media_type or media_type
             if not media_type:
                 if self.template_name:
