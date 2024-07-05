@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 class InertiaPlugin(InitPluginProtocol):
     """Inertia plugin."""
 
-    __slots__ = ("_config",)
+    __slots__ = ("config",)
 
     def __init__(self, config: InertiaConfig) -> None:
         """Initialize ``Inertia``.
@@ -24,11 +24,7 @@ class InertiaPlugin(InitPluginProtocol):
         Args:
             config: configure and start Vite.
         """
-        self._config = config
-
-    @property
-    def config(self) -> InertiaConfig:
-        return self._config
+        self.config = config
 
     def on_app_init(self, app_config: AppConfig) -> AppConfig:
         """Configure application for use with Vite.
