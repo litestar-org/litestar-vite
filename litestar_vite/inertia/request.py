@@ -80,20 +80,20 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
         "_accept",
         "is_connected",
         "supports_push_promise",
-        "_inertia",
+        "inertia",
     )
 
     def __init__(self, scope: Scope, receive: Receive = empty_receive, send: Send = empty_send) -> None:
         """Initialize :class:`InertiaRequest`"""
         super().__init__(scope=scope, receive=receive, send=send)
-        self._inertia = InertiaDetails(self)
+        self.inertia = InertiaDetails(self)
 
     @property
     def is_inertia(self) -> bool:
         """True if the request contained inertia headers."""
-        return bool(self._inertia)
+        return bool(self.inertia)
 
     @property
     def inertia_enabled(self) -> bool:
         """True if the route handler contains an inertia enabled configuration."""
-        return bool(self._inertia.route_component is not None)
+        return bool(self.inertia.route_component is not None)
