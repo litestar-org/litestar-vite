@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 from mimetypes import guess_type
 from pathlib import PurePath
-from typing import TYPE_CHECKING, Any, Iterable, Mapping, MutableMapping, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Mapping, MutableMapping, TypeVar, cast
 
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
@@ -22,13 +22,31 @@ from litestar_vite.plugin import VitePlugin
 if TYPE_CHECKING:
     from litestar.app import Litestar
     from litestar.background_tasks import BackgroundTask, BackgroundTasks
-    from litestar.connection import Request
     from litestar.connection.base import AuthT, StateT, UserT
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
 
     from .plugin import InertiaPlugin
 
 T = TypeVar("T")
+
+
+def share(
+    request: Request[UserT, AuthT, StateT],
+    key: str,
+    value: Any,
+) -> None:
+    request.session.setdefault("_inertia_shared", {}).update({key: value})
+
+
+def get_shared_props(request: Request[UserT, AuthT, StateT]) -> Dict[str, Any]:  # noqa: UP006
+    """Return shared session props for a request
+
+
+    Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
+    """
+    props = request.session.pop("_inertia_shared", {})
+    props["flash"] = request.session.setdefault("_messages", [])
+    return props
 
 
 class InertiaResponse(Response[T]):
@@ -159,9 +177,10 @@ class InertiaResponse(Response[T]):
                 media_type=media_type,
                 status_code=self.status_code or status_code,
             )
+        shared_props = get_shared_props(request)
         page_props = PageProps[T](
-            component=request.inertia.route_component,  # type: ignore # pylance: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
-            props={"content": self.content},
+            component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
+            props={"content": self.content, **shared_props},  # type: ignore[typeddict-item] # pyright: ignore[reportArgumentType]
             version="",
             url="",
         )

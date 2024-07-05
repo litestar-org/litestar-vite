@@ -2,7 +2,9 @@ from typing import Any
 
 import pytest
 from litestar import MediaType, Request, get
+from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.status_codes import HTTP_200_OK
+from litestar.stores.memory import MemoryStore
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
 
 from litestar_vite.inertia import InertiaHeaders, InertiaPlugin, InertiaRequest
@@ -16,7 +18,12 @@ def test_health_check(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin) ->
     async def health_check() -> str:
         return "healthy"
 
-    with create_test_client(route_handlers=health_check, plugins=[inertia_plugin, vite_plugin]) as client:
+    with create_test_client(
+        route_handlers=health_check,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
         response = client.get("/health-check")
         assert response.status_code == HTTP_200_OK
         assert response.text == "healthy"
@@ -30,6 +37,8 @@ async def test_is_inertia_default(inertia_plugin: InertiaPlugin, vite_plugin: Vi
     with create_test_client(
         route_handlers=[handler],
         plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get("/")
         assert response.text == "false"
@@ -43,6 +52,8 @@ async def test_is_inertia_false(inertia_plugin: InertiaPlugin, vite_plugin: Vite
     with create_test_client(
         route_handlers=[handler],
         plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "false"})
         assert response.text == "false"
@@ -56,6 +67,8 @@ async def test_is_inertia_true(inertia_plugin: InertiaPlugin, vite_plugin: ViteP
     with create_test_client(
         route_handlers=[handler],
         plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
         assert response.text == "true"
@@ -69,6 +82,8 @@ async def test_component_prop_default(inertia_plugin: InertiaPlugin, vite_plugin
     with create_test_client(
         route_handlers=[handler],
         plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get("/")
         assert response.text == "false"
@@ -82,6 +97,8 @@ async def test_component_enabled(inertia_plugin: InertiaPlugin, vite_plugin: Vit
     with create_test_client(
         route_handlers=[handler],
         plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get("/")
         assert response.text.startswith("<!DOCTYPE html>")
@@ -92,6 +109,11 @@ async def test_default_route_no_component(inertia_plugin: InertiaPlugin, vite_pl
     async def handler(request: Request[Any, Any, Any]) -> str:
         return request.inertia.route_component or ""  # pyright: ignore
 
-    with create_test_client(route_handlers=[handler], plugins=[inertia_plugin, vite_plugin]) as client:
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
         response = client.get("/")
         assert response.text == ""

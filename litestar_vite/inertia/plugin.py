@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import litestar.exceptions
+from litestar.middleware import DefineMiddleware
+from litestar.middleware.session import SessionMiddleware
 from litestar.plugins import InitPluginProtocol
+from litestar.security.session_auth.middleware import MiddlewareWrapper
+from litestar.utils.predicates import is_class_and_subclass
 
 from litestar_vite.inertia.request import InertiaRequest
 from litestar_vite.inertia.response import InertiaResponse
@@ -32,6 +37,15 @@ class InertiaPlugin(InitPluginProtocol):
         Args:
             app_config: The :class:`AppConfig <.config.app.AppConfig>` instance.
         """
+        for mw in app_config.middleware:
+            if isinstance(mw, DefineMiddleware) and is_class_and_subclass(
+                mw.middleware,
+                (MiddlewareWrapper, SessionMiddleware),
+            ):
+                break
+        else:
+            msg = "The Inertia plugin require a session middleware."
+            raise litestar.exceptions.ImproperlyConfiguredException(msg)
         app_config.request_class = InertiaRequest
         app_config.response_class = InertiaResponse
         # app_config.response_class = InertiaResponse  # noqa: ERA001
