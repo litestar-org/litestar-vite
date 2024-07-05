@@ -12,6 +12,10 @@ __all__ = (
 T = TypeVar("T")
 
 
+class PropContent(Generic[T], TypedDict, total=False):
+    content: T
+
+
 @dataclass
 class PageProps(Generic[T]):
     """Inertia Page Props Type."""
@@ -19,7 +23,7 @@ class PageProps(Generic[T]):
     component: str
     url: str
     version: str
-    props: T
+    props: PropContent[T]
 
 
 @dataclass
@@ -30,7 +34,7 @@ class InertiaProps(Generic[T]):
 
 
 class InertiaHeaderType(TypedDict, total=False):
-    """Type for hx_headers parameter in get_headers()."""
+    """Type for inertia_headers parameter in get_headers()."""
 
     enabled: bool | None
     version: str | None

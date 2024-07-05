@@ -92,11 +92,18 @@ class InertiaResponse(Response[T]):
         self.template_str = template_str
         self._props = props
 
-    def create_template_context(self, request: Request[UserT, AuthT, StateT]) -> dict[str, Any]:
+    def create_template_context(
+        self,
+        request: Request[UserT, AuthT, StateT],
+        page_props: PageProps[T],
+        type_encoders: TypeEncodersMap | None = None,
+    ) -> dict[str, Any]:
         """Create a context object for the template.
 
         Args:
             request: A :class:`Request <.connection.Request>` instance.
+            page_props: A formatted object to return the inertia configuration.
+            type_encoders: A mapping of types to callables that transform them into types supported for serialization.
 
         Returns:
             A dictionary holding the template context
@@ -104,6 +111,7 @@ class InertiaResponse(Response[T]):
         csrf_token = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
         return {
             **self.context,
+            "page": self.render(page_props, MediaType.JSON, get_serializer(type_encoders)).decode(),
             "request": request,
             "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
         }
@@ -153,40 +161,50 @@ class InertiaResponse(Response[T]):
             )
         page_props = PageProps[T](
             component=request.inertia.route_component,  # type: ignore # pylance: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
-            props=self.content,
+            props={"content": self.content},
             version="",
             url="",
         )
         if is_inertia:
             media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
             body = self.render(page_props, media_type, get_serializer(type_encoders))
-        else:
-            vite_plugin = request.app.plugins.get(VitePlugin)
-            template_engine = vite_plugin.template_config.to_engine()
-            if not template_engine:
-                msg = "Template engine is not configured"
-                raise ImproperlyConfiguredException(msg)
-            media_type = self.media_type or media_type
-            if not media_type:
-                if self.template_name:
-                    suffixes = PurePath(self.template_name).suffixes
-                    for suffix in suffixes:
-                        if _type := guess_type(f"name{suffix}")[0]:
-                            media_type = _type
-                            break
-                    else:
-                        media_type = MediaType.TEXT
+            return ASGIResponse(
+                background=self.background or background,
+                body=body,
+                cookies=cookies,
+                encoded_headers=encoded_headers,
+                encoding=self.encoding,
+                headers=headers,
+                is_head_response=is_head_response,
+                media_type=media_type,
+                status_code=self.status_code or status_code,
+            )
+        vite_plugin = request.app.plugins.get(VitePlugin)
+        template_engine = vite_plugin.template_config.to_engine()
+        if not template_engine:
+            msg = "Template engine is not configured"
+            raise ImproperlyConfiguredException(msg)
+        media_type = self.media_type or media_type
+        if not media_type:
+            if self.template_name:
+                suffixes = PurePath(self.template_name).suffixes
+                for suffix in suffixes:
+                    if _type := guess_type(f"name{suffix}")[0]:
+                        media_type = _type
+                        break
                 else:
-                    media_type = MediaType.HTML
-            context = self.create_template_context(request)  # pyright: ignore[reportUnknownMemberType]
-            if self.template_str is not None:
-                body = template_engine.render_string(self.template_str, context).encode(self.encoding)
+                    media_type = MediaType.TEXT
             else:
-                inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
-                template_name = self.template_name or inertia_plugin.config.root_template
-                # cast to str b/c we know that either template_name cannot be None if template_str is None
-                template = template_engine.get_template(template_name)
-                body = template.render(**context).encode(self.encoding)
+                media_type = MediaType.HTML
+        context = self.create_template_context(request, page_props, type_encoders)  # pyright: ignore[reportUnknownMemberType]
+        if self.template_str is not None:
+            body = template_engine.render_string(self.template_str, context).encode(self.encoding)
+        else:
+            inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
+            template_name = self.template_name or inertia_plugin.config.root_template
+            # cast to str b/c we know that either template_name cannot be None if template_str is None
+            template = template_engine.get_template(template_name)
+            body = template.render(**context).encode(self.encoding)
 
         return ASGIResponse(
             background=self.background or background,
