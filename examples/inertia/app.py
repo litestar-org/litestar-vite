@@ -23,13 +23,12 @@ class WebController(Controller):
     """Web Controller."""
 
     opt = {"exclude_from_auth": True}
-    include_in_schema = False
 
     @get("/", component="Home")
     async def index(self, request: Request[UserT, AuthT, StateT]) -> Message:
         """Serve site root."""
         flash(request, "Oh no! I've been flashed!", category="error")
-        return Message("welcome")
+        return Message(message="welcome")
 
 
 vite = VitePlugin(
