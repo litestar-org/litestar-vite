@@ -188,6 +188,8 @@ class InertiaResponse(Response[T]):
                 media_type=media_type,
                 status_code=self.status_code or status_code,
             )
+        vite_plugin = request.app.plugins.get(VitePlugin)
+        template_engine = vite_plugin.template_config.to_engine()
         headers.update(
             {"Vary": "X-Inertia", **get_headers(InertiaHeaderType(enabled=True))},
         )
@@ -195,7 +197,7 @@ class InertiaResponse(Response[T]):
         page_props = PageProps[T](
             component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
             props={"content": self.content, **shared_props},  # type: ignore[typeddict-item] # pyright: ignore[reportArgumentType]
-            version="1.0",
+            version=template_engine.asset_loader.version_id,
             url=request.url.path,
         )
         if is_inertia:
@@ -212,8 +214,7 @@ class InertiaResponse(Response[T]):
                 media_type=media_type,
                 status_code=self.status_code or status_code,
             )
-        vite_plugin = request.app.plugins.get(VitePlugin)
-        template_engine = vite_plugin.template_config.to_engine()
+
         if not template_engine:
             msg = "Template engine is not configured"
             raise ImproperlyConfiguredException(msg)
