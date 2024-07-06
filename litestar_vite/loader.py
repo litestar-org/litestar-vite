@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from functools import cached_property
 from pathlib import Path
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -30,6 +31,12 @@ class ViteAssetLoader:
             cls._instance = cls(config=config)
             cls._instance.parse_manifest()
         return cls._instance
+
+    @cached_property
+    def version_id(self) -> str:
+        if self._manifest:
+            return str(hash(self._manifest))
+        return "1.0"
 
     def parse_manifest(self) -> None:
         """Read and parse the Vite manifest file.
