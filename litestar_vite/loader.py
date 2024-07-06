@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from textwrap import dedent
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import urljoin
 
@@ -107,7 +108,7 @@ class ViteAssetLoader:
             str: The script tag or an empty string.
         """
         if self._config.is_react and self._config.hot_reload and self._config.dev_mode:
-            return f"""
+            return dedent(f"""
                 <script type="module">
                 import RefreshRuntime from '{self._vite_server_url()}@react-refresh'
                 RefreshRuntime.injectIntoGlobalHook(window)
@@ -115,7 +116,7 @@ class ViteAssetLoader:
                 window.$RefreshSig$ = () => (type) => type
                 window.__vite_plugin_react_preamble_installed__=true
                 </script>
-                """
+                """)
         return ""
 
     def generate_asset_tags(self, path: str | list[str], scripts_attrs: dict[str, str] | None = None) -> str:

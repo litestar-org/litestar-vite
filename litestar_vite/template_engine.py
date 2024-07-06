@@ -40,7 +40,6 @@ class ViteTemplateEngine(JinjaTemplateEngine):
             msg = "Please configure the `ViteConfig` instance."
             raise ValueError(msg)
         self.config = config
-
         self.asset_loader = ViteAssetLoader.initialize_loader(config=self.config)
         self.engine.globals.update({"vite_hmr": self.get_hmr_client, "vite": self.get_asset_tag})  # pyright: ignore[reportCallIssue,reportArgumentType]
 

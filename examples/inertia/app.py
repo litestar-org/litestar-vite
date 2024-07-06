@@ -30,6 +30,12 @@ class WebController(Controller):
         flash(request, "Oh no! I've been flashed!", category="error")
         return Message(message="welcome")
 
+    @get("/dashboard/", component="Dashboard")
+    async def dashboard(self, request: Request[UserT, AuthT, StateT]) -> Message:
+        """Serve site root."""
+        flash(request, "Oh no! I've been flashed!", category="error")
+        return Message(message="dashboard details")
+
 
 vite = VitePlugin(
     config=ViteConfig(
@@ -40,7 +46,7 @@ vite = VitePlugin(
         template_dir="templates/",
     ),
 )
-inertia = InertiaPlugin(config=InertiaConfig(root_template="index.html.j2"))
+inertia = InertiaPlugin(config=InertiaConfig(root_template="index.html"))
 flasher = FlashPlugin(config=FlashConfig(template_config=vite.template_config))
 
 app = Litestar(

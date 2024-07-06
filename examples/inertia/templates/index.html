@@ -11,7 +11,7 @@
 </head>
 
 <body>
-  {{ inertia }}
+  <div id="app" data-page="{{ inertia | escape }}"></div>
   {{ vite_hmr() }}
   {{ vite('resources/main.js') }}
 </body>

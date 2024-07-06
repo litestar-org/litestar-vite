@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
-
+import vue from "@vitejs/plugin-vue";
 import litestar from "litestar-vite-plugin";
 
 const ASSET_URL = process.env.ASSET_URL || "/static/";
@@ -17,8 +17,9 @@ export default defineConfig({
     },
   },
   plugins: [
+    vue(),
     litestar({
-      input: ["resources/main.ts", "resources/styles.css"],
+      input: ["resources/main.js", "resources/styles.css"],
       assetUrl: `${ASSET_URL}`,
       bundleDirectory: "public",
       resourceDirectory: "resources",
