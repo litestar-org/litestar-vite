@@ -31,7 +31,7 @@ def test_health_check(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin) ->
 
 async def test_is_inertia_default(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin) -> None:
     @get("/")
-    def handler(request: InertiaRequest[Any, Any, Any]) -> bool:
+    async def handler(request: InertiaRequest[Any, Any, Any]) -> bool:
         return bool(request.is_inertia)
 
     with create_test_client(
