@@ -17,7 +17,14 @@ export default defineConfig({
     },
   },
   plugins: [
-    vue(),
+    vue({
+      template: {
+        transformAssetUrls: {
+          base: null,
+          includeAbsolute: false,
+        },
+      },
+    }),
     litestar({
       input: ["resources/main.js", "resources/styles.css"],
       assetUrl: `${ASSET_URL}`,
