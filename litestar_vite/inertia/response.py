@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 from mimetypes import guess_type
 from pathlib import PurePath
-from typing import TYPE_CHECKING, Any, Dict, Iterable, Mapping, MutableMapping, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Mapping, TypeVar, cast
 
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
@@ -42,9 +42,11 @@ def share(
 def error(
     request: Request[UserT, AuthT, StateT],
     key: str,
-    value: Any,
+    message: str,
+    /,
+    error_bag: str = "page",
 ) -> None:
-    request.session.setdefault("_inertia_errors", []).append({key: value})
+    request.session.setdefault("_inertia_errors", {error_bag: {}})[error_bag].update({key: message})
 
 
 def get_shared_props(request: Request[UserT, AuthT, StateT]) -> Dict[str, Any]:  # noqa: UP006
@@ -55,7 +57,7 @@ def get_shared_props(request: Request[UserT, AuthT, StateT]) -> Dict[str, Any]: 
     """
     props = request.session.pop("_inertia_shared", {})
     props["flash"] = request.session.pop("_messages", [])
-    props["errors"] = request.session.pop("_inertia_errors", [])
+    props["errors"] = request.session.pop("_inertia_errors", {})
     return props
 
 
@@ -67,7 +69,6 @@ class InertiaResponse(Response[T]):
         content: T,
         *,
         template_name: str | None = None,
-        props: MutableMapping[str, Any] | None = None,
         template_str: str | None = None,
         background: BackgroundTask | BackgroundTasks | None = None,
         context: dict[str, Any] | None = None,
@@ -82,7 +83,6 @@ class InertiaResponse(Response[T]):
 
         Args:
             content: A value for the response body that will be rendered into bytes string.
-            props: a set of data to render into a response
             template_name: Path-like name for the template to be rendered, e.g. ``index.html``.
             template_str: A string representing the template, e.g. ``tmpl = "Hello <strong>World</strong>"``.
             background: A :class:`BackgroundTask <.background_tasks.BackgroundTask>` instance or
@@ -118,7 +118,6 @@ class InertiaResponse(Response[T]):
         self.context = context or {}
         self.template_name = template_name
         self.template_str = template_str
-        self._props = props
 
     def create_template_context(
         self,
