@@ -5,6 +5,7 @@ from mimetypes import guess_type
 from pathlib import PurePath
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Mapping, MutableMapping, TypeVar, cast
 
+import markupsafe
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
@@ -127,9 +128,12 @@ class InertiaResponse(Response[T]):
             A dictionary holding the template context
         """
         csrf_token = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
+        inertia_props = self.render(page_props, MediaType.JSON, get_serializer(type_encoders)).decode()
         return {
             **self.context,
-            "inertia_page": f'<div id="app" data-page="{self.render(page_props, MediaType.JSON, get_serializer(type_encoders))!s}"></div>',
+            "inertia": markupsafe.Markup(
+                f'<div id="app" data-page="{inertia_props}"></div>',
+            ),
             "request": request,
             "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
         }
