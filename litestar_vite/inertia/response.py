@@ -196,7 +196,7 @@ class InertiaResponse(Response[T]):
             component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
             props={"content": self.content, **shared_props},  # type: ignore[typeddict-item] # pyright: ignore[reportArgumentType]
             version="1.0",
-            url="",
+            url=request.url.path,
         )
         if is_inertia:
             media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
@@ -217,7 +217,7 @@ class InertiaResponse(Response[T]):
         if not template_engine:
             msg = "Template engine is not configured"
             raise ImproperlyConfiguredException(msg)
-        # it should default to HTML at this point unlesss the user specified something
+        # it should default to HTML at this point unless the user specified something
         media_type = media_type or MediaType.HTML
         if not media_type:
             if self.template_name:

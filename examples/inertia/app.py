@@ -43,7 +43,7 @@ vite = VitePlugin(
         port=3006,
         use_server_lifespan=True,
         dev_mode=True,
-        template_dir="templates/",
+        template_dir="resources/templates/",
     ),
 )
 inertia = InertiaPlugin(config=InertiaConfig(root_template="index.html"))
