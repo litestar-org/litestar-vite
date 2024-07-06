@@ -5,7 +5,6 @@ from mimetypes import guess_type
 from pathlib import PurePath
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Mapping, MutableMapping, TypeVar, cast
 
-import markupsafe
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
@@ -17,7 +16,8 @@ from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
 from litestar.utils.scope.state import ScopeState
 
-from litestar_vite.inertia.types import PageProps
+from litestar_vite.inertia._utils import get_headers
+from litestar_vite.inertia.types import InertiaHeaderType, PageProps
 from litestar_vite.plugin import VitePlugin
 
 if TYPE_CHECKING:
@@ -39,6 +39,14 @@ def share(
     request.session.setdefault("_inertia_shared", {}).update({key: value})
 
 
+def error(
+    request: Request[UserT, AuthT, StateT],
+    key: str,
+    value: Any,
+) -> None:
+    request.session.setdefault("_inertia_errors", []).append({key: value})
+
+
 def get_shared_props(request: Request[UserT, AuthT, StateT]) -> Dict[str, Any]:  # noqa: UP006
     """Return shared session props for a request
 
@@ -46,7 +54,8 @@ def get_shared_props(request: Request[UserT, AuthT, StateT]) -> Dict[str, Any]: 
     Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
     """
     props = request.session.pop("_inertia_shared", {})
-    props["flash"] = request.session.setdefault("_messages", [])
+    props["flash"] = request.session.pop("_messages", [])
+    props["errors"] = request.session.pop("_inertia_errors", [])
     return props
 
 
@@ -131,9 +140,7 @@ class InertiaResponse(Response[T]):
         inertia_props = self.render(page_props, MediaType.JSON, get_serializer(type_encoders)).decode()
         return {
             **self.context,
-            "inertia": markupsafe.Markup(
-                f'<div id="app" data-page="{inertia_props}"></div>',
-            ),
+            "inertia": inertia_props,
             "request": request,
             "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
         }
@@ -181,11 +188,14 @@ class InertiaResponse(Response[T]):
                 media_type=media_type,
                 status_code=self.status_code or status_code,
             )
+        headers.update(
+            {"Vary": "X-Inertia", **get_headers(InertiaHeaderType(enabled=True))},
+        )
         shared_props = get_shared_props(request)
         page_props = PageProps[T](
             component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
             props={"content": self.content, **shared_props},  # type: ignore[typeddict-item] # pyright: ignore[reportArgumentType]
-            version="",
+            version="1.0",
             url="",
         )
         if is_inertia:
@@ -207,7 +217,8 @@ class InertiaResponse(Response[T]):
         if not template_engine:
             msg = "Template engine is not configured"
             raise ImproperlyConfiguredException(msg)
-        media_type = self.media_type or media_type
+        # it should default to HTML at this point unlesss the user specified something
+        media_type = media_type or MediaType.HTML
         if not media_type:
             if self.template_name:
                 suffixes = PurePath(self.template_name).suffixes
