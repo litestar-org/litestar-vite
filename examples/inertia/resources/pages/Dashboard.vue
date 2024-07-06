@@ -8,7 +8,8 @@ defineProps({
 </script>
 
 <template>
-  <h1>Dashboard</h1>
-  <p>{{ content.message }}</p>
-  <Link href="/">Home</Link>
+  <Head title="Dashboard" />
+  <h1 class="text-xl">Dashboard</h1>
+  <p class="text-sm">{{ content.message }}</p>
+  <Link href="/schema">Visit Schema</Link>
 </template>
