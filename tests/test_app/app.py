@@ -10,9 +10,9 @@ here = Path(__file__).parent
 
 vite = VitePlugin(
     config=ViteConfig(
-        bundle_dir=Path(here / "public"),
-        resource_dir=Path(here / "resources"),
-        template_dir=Path(here / "templates"),
+        bundle_dir=Path(here / "web" / "public"),
+        resource_dir=Path(here / "web" / "resources"),
+        template_dir=Path(here / "web" / "templates"),
         hot_reload=True,
     ),
 )
