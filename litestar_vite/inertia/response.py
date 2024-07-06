@@ -129,7 +129,7 @@ class InertiaResponse(Response[T]):
         csrf_token = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
         return {
             **self.context,
-            "page": self.render(page_props, MediaType.JSON, get_serializer(type_encoders)).decode(),
+            "inertia_page": f'<div id="app" data-page="{self.render(page_props, MediaType.JSON, get_serializer(type_encoders))!s}"></div>',
             "request": request,
             "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
         }

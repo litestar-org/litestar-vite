@@ -1,21 +1,22 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from litestar import Controller, Litestar, Request, get
+from litestar.connection.base import AuthT, StateT, UserT  # noqa: TCH002
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.plugins.flash import FlashConfig, FlashPlugin, flash  # pyright: ignore[reportUnknownVariableType]
-from litestar.response import Template
 from litestar.stores.memory import MemoryStore
+from msgspec import Struct
 
 from litestar_vite import ViteConfig, VitePlugin
 from litestar_vite.inertia import InertiaConfig, InertiaPlugin
 
-if TYPE_CHECKING:
-    from litestar.connection.base import AuthT, StateT, UserT
-
 here = Path(__file__).parent
+
+
+class Message(Struct):
+    message: str
 
 
 class WebController(Controller):
@@ -24,12 +25,11 @@ class WebController(Controller):
     opt = {"exclude_from_auth": True}
     include_in_schema = False
 
-    @get("/")
-    async def index(self, request: Request[UserT, AuthT, StateT]) -> Template:
+    @get("/", component="Home")
+    async def index(self, request: Request[UserT, AuthT, StateT]) -> Message:
         """Serve site root."""
         flash(request, "Oh no! I've been flashed!", category="error")
-
-        return Template(template_name="index.html.j2")
+        return Message("welcome")
 
 
 vite = VitePlugin(
@@ -41,11 +41,11 @@ vite = VitePlugin(
         template_dir="templates/",
     ),
 )
-inertia = InertiaPlugin(config=InertiaConfig())
+inertia = InertiaPlugin(config=InertiaConfig(root_template="index.html.j2"))
 flasher = FlashPlugin(config=FlashConfig(template_config=vite.template_config))
 
 app = Litestar(
-    plugins=[vite, flasher],
+    plugins=[vite, flasher, inertia],
     route_handlers=[WebController],
     middleware=[ServerSideSessionConfig().middleware],
     stores={"sessions": MemoryStore()},

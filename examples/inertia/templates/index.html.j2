@@ -6,12 +6,14 @@
   <!--IE compatibility-->
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  {{ vite('resources/styles.css') }}
+
 </head>
 
 <body>
-  {{ inertia_page | safe}}
+  <div id="app" data-page="{{ page }}"></div>
   {{ vite_hmr() }}
-  {{ vite('resources/main.ts') }}
+  {{ vite('resources/main.js') }}
 </body>
 
 </html>
