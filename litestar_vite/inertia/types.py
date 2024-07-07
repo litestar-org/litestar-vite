@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Generic, TypedDict, TypeVar
+from typing import Any, Generic, TypedDict, TypeVar
 
 __all__ = (
     "InertiaHeaderType",
@@ -12,10 +12,6 @@ __all__ = (
 T = TypeVar("T")
 
 
-class PropContent(Generic[T], TypedDict, total=False):
-    content: T
-
-
 @dataclass
 class PageProps(Generic[T]):
     """Inertia Page Props Type."""
@@ -23,7 +19,7 @@ class PageProps(Generic[T]):
     component: str
     url: str
     version: str
-    props: PropContent[T]
+    props: dict[str, Any]
 
 
 @dataclass
