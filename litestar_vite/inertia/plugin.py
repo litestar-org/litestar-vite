@@ -51,5 +51,4 @@ class InertiaPlugin(InitPluginProtocol):
         app_config.exception_handlers = {HTTPException: default_httpexception_handler}
         app_config.request_class = InertiaRequest
         app_config.response_class = InertiaResponse
-        # app_config.response_class = InertiaResponse  # noqa: ERA001
         return app_config
