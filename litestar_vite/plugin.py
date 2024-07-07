@@ -28,6 +28,7 @@ def set_environment(config: ViteConfig) -> None:
     os.environ.setdefault("VITE_PORT", str(config.port))
     os.environ.setdefault("VITE_HOST", config.host)
     os.environ.setdefault("VITE_PROTOCOL", config.protocol)
+    os.environ.setdefault("APP_URL", "http://localhost:8000")
     if config.dev_mode:
         os.environ.setdefault("VITE_DEV_MODE", str(config.dev_mode))
 
@@ -66,7 +67,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         from litestar_vite.cli import vite_group
 
         cli.add_command(vite_group)
-        return super().on_cli_init(cli)
 
     def on_app_init(self, app_config: AppConfig) -> AppConfig:
         """Configure application for use with Vite.

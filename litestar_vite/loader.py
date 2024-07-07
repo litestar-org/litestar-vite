@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+from functools import cached_property
 from pathlib import Path
+from textwrap import dedent
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import urljoin
 
@@ -20,6 +22,7 @@ class ViteAssetLoader:
     def __init__(self, config: ViteConfig) -> None:
         self._config = config
         self._manifest: dict[str, Any] = {}
+        self._manifest_content: str = ""
         self._vite_base_path: str | None = None
 
     @classmethod
@@ -29,6 +32,12 @@ class ViteAssetLoader:
             cls._instance = cls(config=config)
             cls._instance.parse_manifest()
         return cls._instance
+
+    @cached_property
+    def version_id(self) -> str:
+        if self._manifest_content != "":
+            return str(hash(self.manifest_content))
+        return "1.0"
 
     def parse_manifest(self) -> None:
         """Read and parse the Vite manifest file.
@@ -72,8 +81,8 @@ class ViteAssetLoader:
             try:
                 if manifest_path.exists():
                     with manifest_path.open() as manifest_file:
-                        manifest_content = manifest_file.read()
-                        self._manifest = json.loads(manifest_content)
+                        self.manifest_content = manifest_file.read()
+                        self._manifest = json.loads(self.manifest_content)
                 else:
                     self._manifest = {}
             except Exception as exc:
@@ -107,7 +116,7 @@ class ViteAssetLoader:
             str: The script tag or an empty string.
         """
         if self._config.is_react and self._config.hot_reload and self._config.dev_mode:
-            return f"""
+            return dedent(f"""
                 <script type="module">
                 import RefreshRuntime from '{self._vite_server_url()}@react-refresh'
                 RefreshRuntime.injectIntoGlobalHook(window)
@@ -115,7 +124,7 @@ class ViteAssetLoader:
                 window.$RefreshSig$ = () => (type) => type
                 window.__vite_plugin_react_preamble_installed__=true
                 </script>
-                """
+                """)
         return ""
 
     def generate_asset_tags(self, path: str | list[str], scripts_attrs: dict[str, str] | None = None) -> str:
@@ -163,13 +172,15 @@ class ViteAssetLoader:
                 for vendor_path in manifest_entry.get("imports", {})
             )
         # Add the script by itself
-        tags.append(
-            self._script_tag(
-                urljoin(self._config.asset_url, manifest_entry["file"]),
-                attrs=scripts_attrs,
-            ),
+        tags.extend(
+            [
+                self._script_tag(
+                    urljoin(self._config.asset_url, manifest_entry[p]["file"]),
+                    attrs=scripts_attrs,
+                )
+                for p in path
+            ],
         )
-
         return "".join(tags)
 
     def _vite_server_url(self, path: str | None = None) -> str:
@@ -189,7 +200,9 @@ class ViteAssetLoader:
 
     def _script_tag(self, src: str, attrs: dict[str, str] | None = None) -> str:
         """Generate an HTML script tag."""
-        attrs_str = " ".join([f'{key}="{value}"' for key, value in attrs.items()]) if attrs is not None else ""
+        if attrs is None:
+            attrs = {}
+        attrs_str = " ".join([f'{key}="{value}"' for key, value in attrs.items()])
         return f'<script {attrs_str} src="{src}"></script>'
 
     def _style_tag(self, href: str) -> str:

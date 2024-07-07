@@ -1,35 +1,40 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from litestar import Controller, Litestar, Request, get
+from litestar.connection.base import AuthT, StateT, UserT  # noqa: TCH002
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.plugins.flash import FlashConfig, FlashPlugin, flash  # pyright: ignore[reportUnknownVariableType]
-from litestar.response import Template
 from litestar.stores.memory import MemoryStore
+from msgspec import Struct
 
 from litestar_vite import ViteConfig, VitePlugin
 from litestar_vite.inertia import InertiaConfig, InertiaPlugin
 
-if TYPE_CHECKING:
-    from litestar.connection.base import AuthT, StateT, UserT
-
 here = Path(__file__).parent
+
+
+class Message(Struct):
+    message: str
 
 
 class WebController(Controller):
     """Web Controller."""
 
     opt = {"exclude_from_auth": True}
-    include_in_schema = False
 
-    @get("/")
-    async def index(self, request: Request[UserT, AuthT, StateT]) -> Template:
+    @get("/", component="Home")
+    async def index(self, request: Request[UserT, AuthT, StateT]) -> Message:
         """Serve site root."""
         flash(request, "Oh no! I've been flashed!", category="error")
+        return Message(message="welcome")
 
-        return Template(template_name="index.html.j2")
+    @get("/dashboard/", component="Dashboard")
+    async def dashboard(self, request: Request[UserT, AuthT, StateT]) -> Message:
+        """Serve site root."""
+        flash(request, "Oh no! I've been flashed!", category="error")
+        return Message(message="dashboard details")
 
 
 vite = VitePlugin(
@@ -38,14 +43,14 @@ vite = VitePlugin(
         port=3006,
         use_server_lifespan=True,
         dev_mode=True,
-        template_dir="templates/",
+        template_dir="resources/templates/",
     ),
 )
-inertia = InertiaPlugin(config=InertiaConfig())
+inertia = InertiaPlugin(config=InertiaConfig(root_template="index.html"))
 flasher = FlashPlugin(config=FlashConfig(template_config=vite.template_config))
 
 app = Litestar(
-    plugins=[vite, flasher],
+    plugins=[vite, flasher, inertia],
     route_handlers=[WebController],
     middleware=[ServerSideSessionConfig().middleware],
     stores={"sessions": MemoryStore()},

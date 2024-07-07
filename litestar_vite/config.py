@@ -150,12 +150,18 @@ class ViteTemplateConfig(TemplateConfig[EngineType]):
         if isclass(self.engine) and not self.directory:  # pyright: ignore[reportUnknownMemberType]
             msg = "directory is a required kwarg when passing a template engine class"
             raise ImproperlyConfiguredException(msg)
+        """Ensure that directory is not set if instance is."""
+        if self.instance is not None and self.directory is not None:  # pyright: ignore[reportUnknownMemberType]
+            msg = "directory cannot be set if instance is"
+            raise ImproperlyConfiguredException(msg)
 
     def to_engine(self) -> EngineType:
         """Instantiate the template engine."""
         template_engine = cast(
             "EngineType",
-            self.engine(directory=self.directory, config=self.config) if isclass(self.engine) else self.engine,  # pyright: ignore[reportUnknownMemberType]
+            self.engine(directory=self.directory, config=self.config, engine_instance=None)  # pyright: ignore[reportUnknownMemberType,reportCallIssue]
+            if isclass(self.engine)
+            else self.engine,
         )
         if callable(self.engine_callback):
             self.engine_callback(template_engine)
@@ -164,4 +170,4 @@ class ViteTemplateConfig(TemplateConfig[EngineType]):
     @cached_property
     def engine_instance(self) -> EngineType:
         """Return the template engine instance."""
-        return self.to_engine()
+        return self.to_engine() if self.instance is None else self.instance
