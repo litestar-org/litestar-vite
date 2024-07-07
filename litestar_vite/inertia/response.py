@@ -4,13 +4,14 @@ import itertools
 from mimetypes import guess_type
 from pathlib import PurePath
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Mapping, TypeVar, cast
+from urllib.parse import quote
 
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.response.base import ASGIResponse
 from litestar.serialization import get_serializer
-from litestar.status_codes import HTTP_200_OK
+from litestar.status_codes import HTTP_200_OK, HTTP_409_CONFLICT
 from litestar.utils.deprecation import warn_deprecation
 from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
@@ -251,3 +252,23 @@ class InertiaResponse(Response[T]):
             media_type=media_type,
             status_code=self.status_code or status_code,
         )
+
+
+class ExternalRedirect(Response[None]):
+    """Client side redirect outside of the application."""
+
+    def __init__(
+        self,
+        redirect_to: str,
+        **kwargs: Any,
+    ) -> None:
+        """Initialize external redirect, Set status code to 409 (required by Inertia),
+        and pass redirect url.
+        """
+        super().__init__(
+            content=None,
+            status_code=HTTP_409_CONFLICT,
+            headers={"X-Inertia": "true", "X-Inertia-Location": quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")},
+            **kwargs,
+        )
+        del self.headers["Location"]

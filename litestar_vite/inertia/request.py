@@ -45,8 +45,10 @@ class InertiaDetails:
 
         Checks for the `component` key within the route  configuration.
         """
-
-        return self.request.scope["route_handler"].opt.get("component")
+        rh = self.request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
+        if rh:
+            return rh.opt.get("component")
+        return None
 
     def __bool__(self) -> bool:
         """Check if request is sent by an Inertia client."""
