@@ -35,7 +35,7 @@ class ViteAssetLoader:
 
     @cached_property
     def version_id(self) -> str:
-        if self._manifest:
+        if self._manifest_content != "":
             return str(hash(self.manifest_content))
         return "1.0"
 
