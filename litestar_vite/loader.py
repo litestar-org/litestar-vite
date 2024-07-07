@@ -22,6 +22,7 @@ class ViteAssetLoader:
     def __init__(self, config: ViteConfig) -> None:
         self._config = config
         self._manifest: dict[str, Any] = {}
+        self._manifest_content: str = ""
         self._vite_base_path: str | None = None
 
     @classmethod
@@ -35,7 +36,7 @@ class ViteAssetLoader:
     @cached_property
     def version_id(self) -> str:
         if self._manifest:
-            return str(hash(self._manifest))
+            return str(hash(self.manifest_content))
         return "1.0"
 
     def parse_manifest(self) -> None:
@@ -80,8 +81,8 @@ class ViteAssetLoader:
             try:
                 if manifest_path.exists():
                     with manifest_path.open() as manifest_file:
-                        manifest_content = manifest_file.read()
-                        self._manifest = json.loads(manifest_content)
+                        self.manifest_content = manifest_file.read()
+                        self._manifest = json.loads(self.manifest_content)
                 else:
                     self._manifest = {}
             except Exception as exc:
