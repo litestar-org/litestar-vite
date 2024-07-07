@@ -196,7 +196,7 @@ class InertiaResponse(Response[T]):
         shared_props = get_shared_props(request)
         page_props = PageProps[T](
             component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
-            props={"content": self.content, **shared_props},  # type: ignore[typeddict-item] # pyright: ignore[reportArgumentType]
+            props={"content": self.content, **shared_props},  # pyright: ignore[reportArgumentType]
             version=template_engine.asset_loader.version_id,
             url=request.url.path,
         )

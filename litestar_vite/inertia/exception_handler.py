@@ -6,6 +6,7 @@ from litestar.response import Redirect
 from litestar.status_codes import (
     HTTP_303_SEE_OTHER,
     HTTP_307_TEMPORARY_REDIRECT,
+    HTTP_400_BAD_REQUEST,
     HTTP_422_UNPROCESSABLE_ENTITY,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
@@ -37,7 +38,7 @@ def default_httpexception_handler(request: Request[UserT, AuthT, StateT], exc: E
                     message.get("message", detail),  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
                     **{"error_bag": _error_bag} if _error_bag else {},
                 )
-        if status_code == HTTP_422_UNPROCESSABLE_ENTITY:
+        if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST}:
             # redirect to the original page and flash the errors
             return Redirect(
                 path=request.headers["Referer"],
