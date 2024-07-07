@@ -55,7 +55,16 @@ docs = [
   "sphinx-design>=0.5.0",
 ]
 linting = ["pre-commit>=3.4.0", "mypy>=1.5.1", "ruff>=0.0.287", "types-docutils"]
-test = ["pytest>=7.4.1", "pytest-cov", "coverage", "anyio", "pytest-sugar", "pytest-mock>=3.11.1", "httpx>=0.24.1"]
+test = [
+  "pytest>=7.4.1",
+  "pytest-cov",
+  "coverage",
+  "anyio",
+  "pytest-sugar",
+  "pytest-mock>=3.11.1",
+  "pytest-xdist>=3.6.1",
+  "httpx>=0.24.1",
+]
 
 [tool.pdm]
 ignore_package_warnings = [
@@ -69,7 +78,7 @@ ignore_package_warnings = [
 ]
 
 [tool.pytest.ini_options]
-addopts = ""
+addopts = "--dist loadfile -n auto"
 filterwarnings = ["ignore::DeprecationWarning:pkg_resources.*"]
 testpaths = ["tests"]
 
