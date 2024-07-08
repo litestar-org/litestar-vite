@@ -147,7 +147,7 @@ class ViteAssetLoader:
             )
 
         if any(p for p in path if p not in self._manifest):
-            msg = "Cannot find %s in Vite manifest at %s.  Did you forget to build your assets?"
+            msg = "Cannot find %s in Vite manifest at %s.  Did you forget to build your assets after an update?"
             raise RuntimeError(
                 msg,
                 path,

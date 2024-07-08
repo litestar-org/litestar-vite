@@ -124,7 +124,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 yield
             finally:
                 if vite_thread.is_alive():
-                    vite_thread.join()
+                    vite_thread.join(timeout=5)
                 console.print("[yellow]Vite process stopped.[/]")
 
         else:
