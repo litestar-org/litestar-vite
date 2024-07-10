@@ -12,7 +12,7 @@ from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.response.base import ASGIResponse
-from litestar.serialization import encode_json, get_serializer
+from litestar.serialization import get_serializer
 from litestar.status_codes import HTTP_200_OK, HTTP_409_CONFLICT
 from litestar.utils.deprecation import warn_deprecation
 from litestar.utils.empty import value_or_default
@@ -67,23 +67,16 @@ def get_shared_props(request: Request[UserT, AuthT, StateT]) -> Dict[str, Any]: 
     return props
 
 
-@lru_cache
 def js_routes_script(js_routes: Routes) -> Markup:
-    def _markup_safe_json_dumps(js_routes: Routes) -> Markup:
-        js = (
-            encode_json(js_routes["routes"])
-            .decode()
-            .replace("<", "\\u003c")
-            .replace(">", "\\u003e")
-            .replace("&", "\\u0026")
-            .replace("'", "\\u0027")
-        )
+    @lru_cache
+    def _markup_safe_json_dumps(js_routes: str) -> Markup:
+        js = js_routes.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026").replace("'", "\\u0027")
         return Markup(js)
 
     return Markup(
         dedent(f"""
         <script type="module">
-        globalThis.routes = JSON.parse('{_markup_safe_json_dumps(js_routes)}')
+        globalThis.routes = JSON.parse('{_markup_safe_json_dumps(js_routes.formatted_routes)}')
         </script>
         """),
     )
@@ -219,7 +212,7 @@ class InertiaResponse(Response[T]):
         vite_plugin = request.app.plugins.get(VitePlugin)
         template_engine = vite_plugin.template_config.to_engine()
         headers.update(
-            {"Vary": "X-Inertia", **get_headers(InertiaHeaderType(enabled=True))},
+            {"Vary": "Accept", **get_headers(InertiaHeaderType(enabled=True))},
         )
         shared_props = get_shared_props(request)
         page_props = PageProps[T](
@@ -282,8 +275,8 @@ class InertiaResponse(Response[T]):
         )
 
 
-class ExternalRedirect(Response[None]):
-    """Client side redirect outside of the application."""
+class InertiaRedirect(Response[None]):
+    """Client side redirect."""
 
     def __init__(
         self,

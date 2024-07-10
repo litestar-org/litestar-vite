@@ -2,7 +2,7 @@ from .config import InertiaConfig
 from .middleware import InertiaMiddleware
 from .plugin import InertiaPlugin
 from .request import InertiaDetails, InertiaHeaders, InertiaRequest
-from .response import ExternalRedirect, InertiaResponse, error, get_shared_props, share
+from .response import InertiaRedirect, InertiaResponse, error, get_shared_props, share
 from .routes import generate_js_routes
 
 __all__ = (
@@ -15,7 +15,7 @@ __all__ = (
     "share",
     "error",
     "get_shared_props",
-    "ExternalRedirect",
+    "InertiaRedirect",
     "generate_js_routes",
     "InertiaMiddleware",
 )

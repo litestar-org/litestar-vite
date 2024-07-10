@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypedDict
+from dataclasses import dataclass
+from functools import cached_property
+from typing import TYPE_CHECKING
 
 from litestar.app import DEFAULT_OPENAPI_CONFIG
 from litestar.cli._utils import (
@@ -8,13 +10,19 @@ from litestar.cli._utils import (
     remove_routes_with_patterns,
 )
 from litestar.routes import ASGIRoute, WebSocketRoute
+from litestar.serialization import encode_json
 
 if TYPE_CHECKING:
     from litestar import Litestar
 
 
-class Routes(TypedDict):
+@dataclass(frozen=True)
+class Routes:
     routes: dict[str, str]
+
+    @cached_property
+    def formatted_routes(self) -> str:
+        return encode_json(self.routes).decode(encoding="utf-8")
 
 
 EXCLUDED_METHODS = {"HEAD", "OPTIONS", "TRACE"}
@@ -43,4 +51,4 @@ def generate_js_routes(
                 if handler.http_methods.isdisjoint(EXCLUDED_METHODS):
                     route_list[route_name] = route.path
 
-    return {"routes": route_list}
+    return Routes(routes=route_list)

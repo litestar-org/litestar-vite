@@ -6,7 +6,7 @@ from litestar import Request
 from litestar.middleware import AbstractMiddleware
 from litestar.types import Receive, Scope, Send
 
-from litestar_vite.inertia.response import ExternalRedirect
+from litestar_vite.inertia.response import InertiaRedirect
 from litestar_vite.plugin import VitePlugin
 
 if TYPE_CHECKING:
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from litestar.types import ASGIApp
 
 
-async def redirect_on_asset_version_mismatch(request: Request[UserT, AuthT, StateT]) -> ExternalRedirect | None:
+async def redirect_on_asset_version_mismatch(request: Request[UserT, AuthT, StateT]) -> InertiaRedirect | None:
     if getattr(request, "is_inertia", None) is None:
         return None
     inertia_version = request.headers.get("X-Inertia-Version")
@@ -29,7 +29,7 @@ async def redirect_on_asset_version_mismatch(request: Request[UserT, AuthT, Stat
     template_engine = vite_plugin.template_config.to_engine()
     if inertia_version == template_engine.asset_loader.version_id:
         return None
-    return ExternalRedirect(redirect_to=str(request.url))
+    return InertiaRedirect(redirect_to=str(request.url))
 
 
 if TYPE_CHECKING:

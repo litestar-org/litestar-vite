@@ -1,5 +1,3 @@
-import json
-
 from litestar_vite.inertia.routes import EXCLUDED_METHODS, generate_js_routes
 from tests.test_app.app import app
 
@@ -15,6 +13,6 @@ def test_route_export() -> None:
     assert len(test_3.difference(EXCLUDED_METHODS)) == 0
     assert test_4.isdisjoint(EXCLUDED_METHODS)
     routes = generate_js_routes(app=app)
-    json_response = json.dumps(routes)
+    json_response = routes.formatted_routes
     assert json_response
     assert routes is not None
