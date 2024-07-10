@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import itertools
+from functools import lru_cache
 from mimetypes import guess_type
 from pathlib import PurePath
+from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Mapping, TypeVar, cast
 from urllib.parse import quote
 
@@ -10,12 +12,13 @@ from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.response.base import ASGIResponse
-from litestar.serialization import get_serializer
+from litestar.serialization import encode_json, get_serializer
 from litestar.status_codes import HTTP_200_OK, HTTP_409_CONFLICT
 from litestar.utils.deprecation import warn_deprecation
 from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
 from litestar.utils.scope.state import ScopeState
+from markupsafe import Markup
 
 from litestar_vite.inertia._utils import get_headers
 from litestar_vite.inertia.types import InertiaHeaderType, PageProps
@@ -26,6 +29,8 @@ if TYPE_CHECKING:
     from litestar.background_tasks import BackgroundTask, BackgroundTasks
     from litestar.connection.base import AuthT, StateT, UserT
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
+
+    from litestar_vite.inertia.routes import Routes
 
     from .plugin import InertiaPlugin
 
@@ -60,6 +65,28 @@ def get_shared_props(request: Request[UserT, AuthT, StateT]) -> Dict[str, Any]: 
     props["flash"] = request.session.pop("_messages", [])
     props["errors"] = request.session.pop("_inertia_errors", {})
     return props
+
+
+@lru_cache
+def js_routes_script(js_routes: Routes) -> Markup:
+    def _markup_safe_json_dumps(js_routes: Routes) -> Markup:
+        js = (
+            encode_json(js_routes["routes"])
+            .decode()
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+            .replace("&", "\\u0026")
+            .replace("'", "\\u0027")
+        )
+        return Markup(js)
+
+    return Markup(
+        dedent(f"""
+        <script type="module">
+        globalThis.routes = JSON.parse('{_markup_safe_json_dumps(js_routes)}')
+        </script>
+        """),
+    )
 
 
 class InertiaResponse(Response[T]):
@@ -141,6 +168,7 @@ class InertiaResponse(Response[T]):
         return {
             **self.context,
             "inertia": inertia_props,
+            "js_routes": js_routes_script(request.app.state.js_routes),
             "request": request,
             "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
         }

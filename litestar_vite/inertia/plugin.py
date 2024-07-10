@@ -25,7 +25,8 @@ if TYPE_CHECKING:
 
 def set_js_routes(app: Litestar) -> None:
     """Generate the route structure of the application on startup."""
-    app.state.js_routes = generate_js_routes(app)
+    js_routes = generate_js_routes(app)
+    app.state.js_routes = js_routes
 
 
 class InertiaPlugin(InitPluginProtocol):
