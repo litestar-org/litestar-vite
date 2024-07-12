@@ -27,6 +27,7 @@ from litestar_vite.plugin import VitePlugin
 if TYPE_CHECKING:
     from litestar.app import Litestar
     from litestar.background_tasks import BackgroundTask, BackgroundTasks
+    from litestar.connection import ASGIConnection
     from litestar.connection.base import AuthT, StateT, UserT
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
 
@@ -38,32 +39,32 @@ T = TypeVar("T")
 
 
 def share(
-    request: Request[UserT, AuthT, StateT],
+    connection: ASGIConnection[Any, Any, Any, Any],
     key: str,
     value: Any,
 ) -> None:
-    request.session.setdefault("_inertia_shared", {}).update({key: value})
+    connection.session.setdefault("_inertia_shared", {}).update({key: value})
 
 
 def error(
-    request: Request[UserT, AuthT, StateT],
+    connection: ASGIConnection[Any, Any, Any, Any],
     key: str,
     message: str,
-    /,
-    error_bag: str = "page",
 ) -> None:
-    request.session.setdefault("_inertia_errors", {error_bag: {}})[error_bag].update({key: message})
+    connection.session.setdefault("_inertia_errors", {}).update({key: message})
 
 
-def get_shared_props(request: Request[UserT, AuthT, StateT]) -> Dict[str, Any]:  # noqa: UP006
+def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, Any]:  # noqa: UP006
     """Return shared session props for a request
 
 
     Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
     """
+    error_bag = request.headers.get("X-Inertia-Error-Bag", None)
+    errors = request.session.pop("_inertia_errors", {})
     props = request.session.pop("_inertia_shared", {})
     props["flash"] = request.session.pop("_messages", [])
-    props["errors"] = request.session.pop("_inertia_errors", {})
+    props["errors"] = {error_bag: errors} if error_bag is not None else errors
     return props
 
 

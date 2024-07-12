@@ -19,7 +19,6 @@ def default_httpexception_handler(request: Request[UserT, AuthT, StateT], exc: E
     status_code = getattr(exc, "status_code", HTTP_500_INTERNAL_SERVER_ERROR)
     inertia_enabled = getattr(request, "inertia_enabled", False)
     is_inertia = getattr(request, "is_inertia", False)
-    _error_bag = request.headers.get("X-Inertia-Error-Bag", None)
     preferred_type = MediaType.HTML if inertia_enabled and not is_inertia else MediaType.JSON
     content = {"status_code": status_code, "detail": getattr(exc, "detail", "")}
     extra = getattr(exc, "extra", "")
@@ -36,7 +35,6 @@ def default_httpexception_handler(request: Request[UserT, AuthT, StateT], exc: E
                     request,
                     message.get("key", ""),  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
                     message.get("message", detail),  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
-                    **{"error_bag": _error_bag} if _error_bag else {},
                 )
         if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST}:
             # redirect to the original page and flash the errors
