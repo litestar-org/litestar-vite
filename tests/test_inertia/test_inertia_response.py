@@ -116,3 +116,24 @@ async def test_default_route_response_no_component(inertia_plugin: InertiaPlugin
     ) as client:
         response = client.get("/")
         assert response.content == b'{"thing":"value"}'
+
+
+async def test_component_inertia_version_redirect(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin) -> None:
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
+        return {"thing": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/",
+            headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: "wrong"},
+        )
+        assert (
+            response.content
+            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"flash":[],"errors":{}}}'
+        )

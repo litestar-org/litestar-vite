@@ -1,4 +1,5 @@
-from typing import Any
+import re
+from typing import Any, cast
 
 from litestar import MediaType, Request, Response
 from litestar.connection.base import AuthT, StateT, UserT
@@ -12,6 +13,8 @@ from litestar.status_codes import (
 )
 
 from litestar_vite.inertia.response import InertiaResponse, error
+
+FIELD_ERR_RE = re.compile(r"field `(.+)`$")
 
 
 def default_httpexception_handler(request: Request[UserT, AuthT, StateT], exc: Exception) -> Response[Any]:
@@ -30,12 +33,11 @@ def default_httpexception_handler(request: Request[UserT, AuthT, StateT], exc: E
         extras = getattr(exc, "extra", "")  # msgspec exceptions
         if extras and len(extras) >= 1:
             message = extras[0]
+            error_detail = cast("str", message.get("message", detail))  # type: ignore[union-attr] # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+            match = FIELD_ERR_RE.search(error_detail)
+            field = match.group(1) if match else cast("str", message.get("key", ""))  # type: ignore[union-attr] # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
             if isinstance(message, dict):
-                error(
-                    request,
-                    message.get("key", ""),  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
-                    message.get("message", detail),  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
-                )
+                error(request, field, error_detail)
         if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST}:
             # redirect to the original page and flash the errors
             return Redirect(
