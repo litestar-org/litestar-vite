@@ -279,3 +279,46 @@ def vite_serve(app: Litestar, verbose: bool) -> None:
     command_to_run = plugin.config.run_command if plugin.config.hot_reload else plugin.config.build_watch_command
     execute_command(command_to_run=command_to_run, cwd=plugin.config.root_dir)
     console.print("[yellow]Vite process stopped.[/]")
+
+
+@vite_group.command(
+    name="generate-routes",
+    help="Generate a JSON file with the route configuration",
+)
+@option(
+    "--output",
+    help="output file path",
+    type=ClickPath(dir_okay=False, path_type=Path),
+    default=Path("routes.json"),
+    show_default=True,
+)
+@option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
+def generate_js_routes(app: Litestar, output: Path, verbose: bool) -> None:
+    """Run vite serve."""
+    import msgspec
+    from litestar.cli._utils import (
+        LitestarCLIException,
+        console,
+    )
+    from litestar.serialization import encode_json, get_serializer
+
+    from litestar_vite.plugin import VitePlugin, set_environment
+
+    if verbose:
+        app.debug = True
+    serializer = get_serializer(app.type_encoders)
+    plugin = app.plugins.get(VitePlugin)
+    if plugin.config.set_environment:
+        set_environment(config=plugin.config)
+    content = msgspec.json.format(
+        encode_json(app.openapi_schema.to_schema(), serializer=serializer),
+        indent=4,
+    )
+
+    try:
+        output.write_bytes(content)
+    except OSError as e:  # pragma: no cover
+        msg = f"failed to write schema to path {output}"
+        raise LitestarCLIException(msg) from e
+
+    console.print("[yellow]Vite process stopped.[/]")

@@ -11,9 +11,15 @@ from urllib.parse import quote
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
+from litestar.response import Redirect
 from litestar.response.base import ASGIResponse
 from litestar.serialization import get_serializer
-from litestar.status_codes import HTTP_200_OK, HTTP_409_CONFLICT
+from litestar.status_codes import (
+    HTTP_200_OK,
+    HTTP_303_SEE_OTHER,
+    HTTP_307_TEMPORARY_REDIRECT,
+    HTTP_409_CONFLICT,
+)
 from litestar.utils.deprecation import warn_deprecation
 from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
@@ -294,3 +300,22 @@ class InertiaRedirect(Response[None]):
             **kwargs,
         )
         del self.headers["Location"]
+
+
+class InertiaBack(Redirect):
+    """Client side redirect."""
+
+    def __init__(
+        self,
+        request: Request[Any, Any, Any],
+        **kwargs: Any,
+    ) -> None:
+        """Initialize external redirect, Set status code to 409 (required by Inertia),
+        and pass redirect url.
+        """
+        super().__init__(
+            path=request.headers["Referer"],
+            status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
+            cookies=request.cookies,
+            **kwargs,
+        )
