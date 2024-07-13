@@ -1,5 +1,5 @@
 import re
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from litestar import MediaType
 from litestar.connection import Request
@@ -22,12 +22,16 @@ from litestar.repository.exceptions import (
 from litestar.response import Response
 from litestar.status_codes import (
     HTTP_400_BAD_REQUEST,
+    HTTP_401_UNAUTHORIZED,
     HTTP_409_CONFLICT,
     HTTP_422_UNPROCESSABLE_ENTITY,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
-from litestar_vite.inertia.response import InertiaBack, InertiaResponse, error
+from litestar_vite.inertia.response import InertiaBack, InertiaRedirect, InertiaResponse, error
+
+if TYPE_CHECKING:
+    from litestar_vite.inertia.plugin import InertiaPlugin
 
 FIELD_ERR_RE = re.compile(r"field `(.+)`$")
 
@@ -57,6 +61,7 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
     detail = getattr(exc, "detail", "")  # litestar exceptions
     extras = getattr(exc, "extra", "")  # msgspec exceptions
     content = {"status_code": status_code, "detail": getattr(exc, "detail", "")}
+    inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
     if extras:
         content.update({"extra": extras})
     flash(request, detail, category="error")
@@ -69,6 +74,14 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
             error(request, field, error_detail)
     if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST}:
         return InertiaBack(request)
+    if (
+        status_code == HTTP_401_UNAUTHORIZED
+        and inertia_plugin.config.redirect_unauthorized_to is not None
+        and not request.url.path.startswith(inertia_plugin.config.redirect_unauthorized_to)
+    ):
+        return InertiaRedirect(
+            redirect_to=inertia_plugin.config.redirect_unauthorized_to,
+        )
     return InertiaResponse[Any](
         media_type=preferred_type,
         content=content,
