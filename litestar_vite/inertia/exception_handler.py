@@ -14,6 +14,7 @@ from litestar.exceptions.responses import (
     create_debug_response,  # pyright: ignore[reportUnknownVariableType]
     create_exception_response,  # pyright: ignore[reportUnknownVariableType]
 )
+from litestar.plugins.flash import flash
 from litestar.repository.exceptions import (
     NotFoundError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
     RepositoryError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
@@ -68,6 +69,8 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
         field = match.group(1) if match else cast("str", message.get("key", ""))  # type: ignore[union-attr] # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
         if isinstance(message, dict):
             error(request, field, error_detail)
+    else:
+        flash(request, detail, category="error")
     if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST}:
         # redirect to the original page and flash the errors
         return Redirect(
