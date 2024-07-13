@@ -20,7 +20,7 @@ FIELD_ERR_RE = re.compile(r"field `(.+)`$")
 def default_httpexception_handler(request: Request[UserT, AuthT, StateT], exc: Exception) -> Response[Any]:
     """Handler for all exceptions subclassed from HTTPException."""
     status_code = getattr(exc, "status_code", HTTP_500_INTERNAL_SERVER_ERROR)
-    inertia_enabled = getattr(request, "inertia_enabled", False)
+    inertia_enabled = getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False)
     is_inertia = getattr(request, "is_inertia", False)
     preferred_type = MediaType.HTML if inertia_enabled and not is_inertia else MediaType.JSON
     content = {"status_code": status_code, "detail": getattr(exc, "detail", "")}

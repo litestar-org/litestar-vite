@@ -195,7 +195,7 @@ class InertiaResponse(Response[T]):
                 removal_in="3.0.0",
                 alternative="request.app",
             )
-        inertia_enabled = getattr(request, "inertia_enabled", False)
+        inertia_enabled = getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False)
         is_inertia = getattr(request, "is_inertia", False)
 
         headers = {**headers, **self.headers} if headers is not None else self.headers
