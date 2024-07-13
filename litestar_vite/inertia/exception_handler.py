@@ -19,17 +19,15 @@ from litestar.repository.exceptions import (
     NotFoundError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
     RepositoryError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
 )
-from litestar.response import Redirect, Response
+from litestar.response import Response
 from litestar.status_codes import (
-    HTTP_303_SEE_OTHER,
-    HTTP_307_TEMPORARY_REDIRECT,
     HTTP_400_BAD_REQUEST,
     HTTP_409_CONFLICT,
     HTTP_422_UNPROCESSABLE_ENTITY,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
-from litestar_vite.inertia.response import InertiaResponse, error
+from litestar_vite.inertia.response import InertiaBack, InertiaResponse, error
 
 FIELD_ERR_RE = re.compile(r"field `(.+)`$")
 
@@ -61,7 +59,7 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
     content = {"status_code": status_code, "detail": getattr(exc, "detail", "")}
     if extras:
         content.update({"extra": extras})
-
+    flash(request, detail, category="error")
     if extras and len(extras) >= 1:
         message = extras[0]
         error_detail = cast("str", message.get("message", detail))  # type: ignore[union-attr] # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
@@ -69,16 +67,8 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
         field = match.group(1) if match else cast("str", message.get("key", ""))  # type: ignore[union-attr] # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
         if isinstance(message, dict):
             error(request, field, error_detail)
-    else:
-        flash(request, detail, category="error")
     if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST}:
-        # redirect to the original page and flash the errors
-        return Redirect(
-            path=request.headers["Referer"],
-            status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
-            cookies=request.cookies,
-        )
-
+        return InertiaBack(request)
     return InertiaResponse[Any](
         media_type=preferred_type,
         content=content,
