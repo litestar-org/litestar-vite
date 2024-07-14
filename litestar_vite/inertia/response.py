@@ -69,6 +69,7 @@ def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, A
     error_bag = request.headers.get("X-Inertia-Error-Bag", None)
     errors = request.session.pop("_inertia_errors", {})
     props = request.session.pop("_inertia_shared", {})
+    props["csrf_token"] = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
     props["flash"] = request.session.pop("_messages", [])
     props["errors"] = {error_bag: errors} if error_bag is not None else errors
     return props
