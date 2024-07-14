@@ -283,7 +283,7 @@ class InertiaResponse(Response[T]):
         )
 
 
-class InertiaRedirect(Response[None]):
+class InertiaRedirect(Response[Any]):
     """Client side redirect."""
 
     def __init__(
@@ -300,7 +300,6 @@ class InertiaRedirect(Response[None]):
             headers={"X-Inertia": "true", "X-Inertia-Location": quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")},
             **kwargs,
         )
-        self.headers.pop("Location", None)
 
 
 class InertiaBack(Redirect):
