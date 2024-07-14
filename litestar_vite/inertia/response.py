@@ -300,7 +300,7 @@ class InertiaRedirect(Response[None]):
             headers={"X-Inertia": "true", "X-Inertia-Location": quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")},
             **kwargs,
         )
-        self.headers.pop("Location")
+        self.headers.pop("Location", None)
 
 
 class InertiaBack(Redirect):
