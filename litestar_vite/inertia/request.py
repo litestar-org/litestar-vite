@@ -69,6 +69,16 @@ class InertiaDetails:
         """Partial Data Reload."""
         return self._get_header_value(InertiaHeaders.PARTIAL_DATA)
 
+    @cached_property
+    def is_partial_render(self) -> bool:
+        """Is Partial Data Reload."""
+        return bool(self.partial_component == self.route_component and self.partial_data)
+
+    @cached_property
+    def partial_keys(self) -> list[str]:
+        """Is Partial Data Reload."""
+        return self.partial_data.split(",") if self.partial_data is not None else []
+
 
 class InertiaRequest(Request[UserT, AuthT, StateT]):
     """Inertia Request class to work with Inertia client."""

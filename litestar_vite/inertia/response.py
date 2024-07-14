@@ -295,9 +295,9 @@ class InertiaRedirect(Response[None]):
         and pass redirect url.
         """
         super().__init__(
-            content=None,
+            content=kwargs.get("content", ""),
             status_code=HTTP_409_CONFLICT,
-            headers={"X-Inertia": "true", "X-Inertia-Location": quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")},
+            headers={"X-Inertia-Location": quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")},
             **kwargs,
         )
         self.headers.pop("Location", None)
