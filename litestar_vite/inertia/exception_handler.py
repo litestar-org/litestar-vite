@@ -80,6 +80,7 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
         and not request.url.path.startswith(inertia_plugin.config.redirect_unauthorized_to)
     ):
         return InertiaRedirect(
+            request,
             redirect_to=inertia_plugin.config.redirect_unauthorized_to,
         )
     return InertiaResponse[Any](

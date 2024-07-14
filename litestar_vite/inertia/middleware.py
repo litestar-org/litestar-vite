@@ -29,7 +29,7 @@ async def redirect_on_asset_version_mismatch(request: Request[UserT, AuthT, Stat
     template_engine = vite_plugin.template_config.to_engine()
     if inertia_version == template_engine.asset_loader.version_id:
         return None
-    return InertiaRedirect(redirect_to=str(request.url))
+    return InertiaRedirect(request, redirect_to=str(request.url))
 
 
 if TYPE_CHECKING:
