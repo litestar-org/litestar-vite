@@ -69,7 +69,7 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
         message = extras[0]
         error_detail = cast("str", message.get("message", detail))  # type: ignore[union-attr] # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
         match = FIELD_ERR_RE.search(error_detail)
-        field = match.group(1) if match else cast("str", message.get("key", ""))  # type: ignore[union-attr] # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+        field = match.group(1) if match else cast("str", message.get("key", "__form__"))  # type: ignore[union-attr] # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
         if isinstance(message, dict):
             error(request, field, error_detail)
     if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST}:
