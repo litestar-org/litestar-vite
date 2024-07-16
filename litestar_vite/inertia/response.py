@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+from collections import defaultdict
 from functools import lru_cache
 from mimetypes import guess_type
 from pathlib import PurePath
@@ -44,7 +45,7 @@ def share(
     key: str,
     value: Any,
 ) -> None:
-    connection.session.setdefault("_inertia_shared", {}).update({key: value})
+    connection.session.setdefault("_shared", {}).update({key: value})
 
 
 def error(
@@ -52,7 +53,7 @@ def error(
     key: str,
     message: str,
 ) -> None:
-    connection.session.setdefault("_inertia_errors", {}).update({key: message})
+    connection.session.setdefault("_errors", {}).update({key: message})
 
 
 def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, Any]:  # noqa: UP006
@@ -62,12 +63,16 @@ def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, A
     Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
     """
     error_bag = request.headers.get("X-Inertia-Error-Bag", None)
-    errors = request.session.pop("_inertia_errors", {})
-    props = request.session.pop("_inertia_shared", {})
+    errors = request.session.pop("_errors", {})
+    props = request.session.pop("_shared", {})
+    flash: dict[str, list[str]] = defaultdict(list)
+    for message in request.session.pop("_messages", []):
+        flash[message["category"]].append(message["message"])
+
     inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
     props.update(inertia_plugin.config.extra_page_props)
     props["csrf_token"] = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
-    props["flash"] = request.session.pop("_messages", [])
+    props["flash"] = flash
     props["errors"] = {error_bag: errors} if error_bag is not None else errors
     return props
 

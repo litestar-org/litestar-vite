@@ -60,16 +60,17 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
     preferred_type = MediaType.HTML if inertia_enabled and not is_inertia else MediaType.JSON
     detail = getattr(exc, "detail", "")  # litestar exceptions
     extras = getattr(exc, "extra", "")  # msgspec exceptions
-    content = {"status_code": status_code, "detail": getattr(exc, "detail", "")}
+    content = {"status_code": status_code, "status": getattr(exc, "detail", "")}
     inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
     if extras:
         content.update({"extra": extras})
     flash(request, detail, category="error")
     if extras and len(extras) >= 1:
         message = extras[0]
+        default_field = f"root.{message.get('key')}" if message.get("key", None) is not None else "root"  # type: ignore
         error_detail = cast("str", message.get("message", detail))  # type: ignore[union-attr] # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
         match = FIELD_ERR_RE.search(error_detail)
-        field = match.group(1) if match else cast("str", message.get("key", "__form__"))  # type: ignore[union-attr] # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+        field = match.group(1) if match else default_field
         if isinstance(message, dict):
             error(request, field, error_detail)
     if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST}:
