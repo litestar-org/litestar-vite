@@ -159,9 +159,8 @@ class ViteAssetLoader:
         manifest_entry.update({p: self._manifest[p] for p in path})
         if not scripts_attrs:
             scripts_attrs = {"type": "module", "async": "", "defer": ""}
-        for file_name, manifest in manifest_entry.items():
-            # Add dependent CSS
-            if "css" in manifest or file_name.endswith(".css"):
+        for manifest in manifest_entry.values():
+            if "css" in manifest:
                 tags.extend(
                     self._style_tag(urljoin(self._config.asset_url, css_path)) for css_path in manifest.get("css", {})
                 )
@@ -172,12 +171,17 @@ class ViteAssetLoader:
                     for vendor_path in manifest.get("imports", {})
                 )
             # Add the script by itself
-            tags.append(
-                self._script_tag(
-                    urljoin(self._config.asset_url, manifest["file"]),
-                    attrs=scripts_attrs,
-                ),
-            )
+            if manifest.get("file").endswith(".css"):
+                tags.append(
+                    self._style_tag(urljoin(self._config.asset_url, manifest["file"])),
+                )
+            else:
+                tags.append(
+                    self._script_tag(
+                        urljoin(self._config.asset_url, manifest["file"]),
+                        attrs=scripts_attrs,
+                    ),
+                )
         return "".join(tags)
 
     def _vite_server_url(self, path: str | None = None) -> str:

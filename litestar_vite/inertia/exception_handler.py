@@ -60,7 +60,7 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
     preferred_type = MediaType.HTML if inertia_enabled and not is_inertia else MediaType.JSON
     detail = getattr(exc, "detail", "")  # litestar exceptions
     extras = getattr(exc, "extra", "")  # msgspec exceptions
-    content = {"status_code": status_code, "status": getattr(exc, "detail", "")}
+    content = {"status_code": status_code, "message": getattr(exc, "detail", "")}
     inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
     if extras:
         content.update({"extra": extras})
