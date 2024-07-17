@@ -138,7 +138,9 @@ class ViteAssetLoader:
         if self._config.hot_reload and self._config.dev_mode:
             return "".join(
                 [
-                    self._script_tag(
+                    self._style_tag(self._vite_server_url(p))
+                    if p.endswith(".css")
+                    else self._script_tag(
                         self._vite_server_url(p),
                         {"type": "module", "async": "", "defer": ""},
                     )
