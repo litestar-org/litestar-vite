@@ -49,7 +49,7 @@ async def test_component_inertia_header_enabled(inertia_plugin: InertiaPlugin, v
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
         assert (
             response.content
-            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"flash":[],"errors":{}}}'
+            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"csrf_token":"","flash":{},"errors":{}}}'
         )
 
 
@@ -72,7 +72,7 @@ async def test_component_inertia_flash_header_enabled(inertia_plugin: InertiaPlu
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
         assert (
             response.content
-            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"flash":[{"message":"a flash message","category":"info"}],"errors":{}}}'
+            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"csrf_token":"","flash":{"info":["a flash message"]},"errors":{}}}'
         )
 
 
@@ -99,7 +99,7 @@ async def test_component_inertia_shared_flash_header_enabled(
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
         assert (
             response.content
-            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"auth":{"user":"nobody"},"flash":[{"message":"a flash message","category":"info"}],"errors":{}}}'
+            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"auth":{"user":"nobody"},"csrf_token":"","flash":{"info":["a flash message"]},"errors":{}}}'
         )
 
 
@@ -135,5 +135,5 @@ async def test_component_inertia_version_redirect(inertia_plugin: InertiaPlugin,
         )
         assert (
             response.content
-            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"flash":[],"errors":{}}}'
+            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"csrf_token":"","flash":{},"errors":{}}}'
         )
