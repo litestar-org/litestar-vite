@@ -71,6 +71,8 @@ def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, A
 
     inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
     props.update(inertia_plugin.config.extra_page_props)
+    if "auth" not in props:
+        props["auth"] = {"is_authenticated": getattr(request, "user", None) is not None}
     props["csrf_token"] = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
     props["flash"] = flash
     props["errors"] = {error_bag: errors} if error_bag is not None else errors
