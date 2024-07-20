@@ -1,21 +1,26 @@
 from __future__ import annotations
 
 import itertools
+from collections import defaultdict
+from functools import lru_cache
 from mimetypes import guess_type
 from pathlib import PurePath
+from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Mapping, TypeVar, cast
 from urllib.parse import quote
 
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
+from litestar.response import Redirect
 from litestar.response.base import ASGIResponse
 from litestar.serialization import get_serializer
-from litestar.status_codes import HTTP_200_OK, HTTP_409_CONFLICT
+from litestar.status_codes import HTTP_200_OK, HTTP_303_SEE_OTHER, HTTP_307_TEMPORARY_REDIRECT, HTTP_409_CONFLICT
 from litestar.utils.deprecation import warn_deprecation
 from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
 from litestar.utils.scope.state import ScopeState
+from markupsafe import Markup
 
 from litestar_vite.inertia._utils import get_headers
 from litestar_vite.inertia.types import InertiaHeaderType, PageProps
@@ -24,8 +29,11 @@ from litestar_vite.plugin import VitePlugin
 if TYPE_CHECKING:
     from litestar.app import Litestar
     from litestar.background_tasks import BackgroundTask, BackgroundTasks
+    from litestar.connection import ASGIConnection
     from litestar.connection.base import AuthT, StateT, UserT
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
+
+    from litestar_vite.inertia.routes import Routes
 
     from .plugin import InertiaPlugin
 
@@ -33,33 +41,55 @@ T = TypeVar("T")
 
 
 def share(
-    request: Request[UserT, AuthT, StateT],
+    connection: ASGIConnection[Any, Any, Any, Any],
     key: str,
     value: Any,
 ) -> None:
-    request.session.setdefault("_inertia_shared", {}).update({key: value})
+    connection.session.setdefault("_shared", {}).update({key: value})
 
 
 def error(
-    request: Request[UserT, AuthT, StateT],
+    connection: ASGIConnection[Any, Any, Any, Any],
     key: str,
     message: str,
-    /,
-    error_bag: str = "page",
 ) -> None:
-    request.session.setdefault("_inertia_errors", {error_bag: {}})[error_bag].update({key: message})
+    connection.session.setdefault("_errors", {}).update({key: message})
 
 
-def get_shared_props(request: Request[UserT, AuthT, StateT]) -> Dict[str, Any]:  # noqa: UP006
+def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, Any]:  # noqa: UP006
     """Return shared session props for a request
 
 
     Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
     """
-    props = request.session.pop("_inertia_shared", {})
-    props["flash"] = request.session.pop("_messages", [])
-    props["errors"] = request.session.pop("_inertia_errors", {})
+    error_bag = request.headers.get("X-Inertia-Error-Bag", None)
+    errors = request.session.pop("_errors", {})
+    props = request.session.pop("_shared", {})
+    flash: dict[str, list[str]] = defaultdict(list)
+    for message in request.session.pop("_messages", []):
+        flash[message["category"]].append(message["message"])
+
+    inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
+    props.update(inertia_plugin.config.extra_page_props)
+    props["csrf_token"] = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
+    props["flash"] = flash
+    props["errors"] = {error_bag: errors} if error_bag is not None else errors
     return props
+
+
+def js_routes_script(js_routes: Routes) -> Markup:
+    @lru_cache
+    def _markup_safe_json_dumps(js_routes: str) -> Markup:
+        js = js_routes.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026").replace("'", "\\u0027")
+        return Markup(js)
+
+    return Markup(
+        dedent(f"""
+        <script type="module">
+        globalThis.routes = JSON.parse('{_markup_safe_json_dumps(js_routes.formatted_routes)}')
+        </script>
+        """),
+    )
 
 
 class InertiaResponse(Response[T]):
@@ -141,6 +171,7 @@ class InertiaResponse(Response[T]):
         return {
             **self.context,
             "inertia": inertia_props,
+            "js_routes": js_routes_script(request.app.state.js_routes),
             "request": request,
             "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
         }
@@ -167,7 +198,7 @@ class InertiaResponse(Response[T]):
                 removal_in="3.0.0",
                 alternative="request.app",
             )
-        inertia_enabled = getattr(request, "inertia_enabled", False)
+        inertia_enabled = getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False)
         is_inertia = getattr(request, "is_inertia", False)
 
         headers = {**headers, **self.headers} if headers is not None else self.headers
@@ -191,7 +222,7 @@ class InertiaResponse(Response[T]):
         vite_plugin = request.app.plugins.get(VitePlugin)
         template_engine = vite_plugin.template_config.to_engine()
         headers.update(
-            {"Vary": "X-Inertia", **get_headers(InertiaHeaderType(enabled=True))},
+            {"Vary": "Accept", **get_headers(InertiaHeaderType(enabled=True))},
         )
         shared_props = get_shared_props(request)
         page_props = PageProps[T](
@@ -254,11 +285,12 @@ class InertiaResponse(Response[T]):
         )
 
 
-class ExternalRedirect(Response[None]):
-    """Client side redirect outside of the application."""
+class InertiaExternalRedirect(Response[Any]):
+    """Client side redirect."""
 
     def __init__(
         self,
+        request: Request[Any, Any, Any],
         redirect_to: str,
         **kwargs: Any,
     ) -> None:
@@ -266,9 +298,48 @@ class ExternalRedirect(Response[None]):
         and pass redirect url.
         """
         super().__init__(
-            content=None,
+            content=kwargs.get("content", ""),
             status_code=HTTP_409_CONFLICT,
             headers={"X-Inertia": "true", "X-Inertia-Location": quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")},
+            cookies=request.cookies,
             **kwargs,
         )
-        del self.headers["Location"]
+
+
+class InertiaRedirect(Redirect):
+    """Client side redirect."""
+
+    def __init__(
+        self,
+        request: Request[Any, Any, Any],
+        redirect_to: str,
+        **kwargs: Any,
+    ) -> None:
+        """Initialize external redirect, Set status code to 409 (required by Inertia),
+        and pass redirect url.
+        """
+        super().__init__(
+            path=redirect_to,
+            status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
+            cookies=request.cookies,
+            **kwargs,
+        )
+
+
+class InertiaBack(Redirect):
+    """Client side redirect."""
+
+    def __init__(
+        self,
+        request: Request[Any, Any, Any],
+        **kwargs: Any,
+    ) -> None:
+        """Initialize external redirect, Set status code to 409 (required by Inertia),
+        and pass redirect url.
+        """
+        super().__init__(
+            path=request.headers["Referer"],
+            status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
+            cookies=request.cookies,
+            **kwargs,
+        )

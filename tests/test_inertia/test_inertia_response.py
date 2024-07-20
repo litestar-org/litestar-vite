@@ -49,7 +49,7 @@ async def test_component_inertia_header_enabled(inertia_plugin: InertiaPlugin, v
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
         assert (
             response.content
-            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"flash":[],"errors":{}}}'
+            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"csrf_token":"","flash":{},"errors":{}}}'
         )
 
 
@@ -72,7 +72,7 @@ async def test_component_inertia_flash_header_enabled(inertia_plugin: InertiaPlu
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
         assert (
             response.content
-            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"flash":[{"message":"a flash message","category":"info"}],"errors":{}}}'
+            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"csrf_token":"","flash":{"info":["a flash message"]},"errors":{}}}'
         )
 
 
@@ -99,7 +99,7 @@ async def test_component_inertia_shared_flash_header_enabled(
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
         assert (
             response.content
-            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"auth":{"user":"nobody"},"flash":[{"message":"a flash message","category":"info"}],"errors":{}}}'
+            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"auth":{"user":"nobody"},"csrf_token":"","flash":{"info":["a flash message"]},"errors":{}}}'
         )
 
 
@@ -116,3 +116,24 @@ async def test_default_route_response_no_component(inertia_plugin: InertiaPlugin
     ) as client:
         response = client.get("/")
         assert response.content == b'{"thing":"value"}'
+
+
+async def test_component_inertia_version_redirect(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin) -> None:
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
+        return {"thing": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/",
+            headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: "wrong"},
+        )
+        assert (
+            response.content
+            == b'{"component":"Home","url":"/","version":"1.0","props":{"content":{"thing":"value"},"csrf_token":"","flash":{},"errors":{}}}'
+        )

@@ -138,7 +138,9 @@ class ViteAssetLoader:
         if self._config.hot_reload and self._config.dev_mode:
             return "".join(
                 [
-                    self._script_tag(
+                    self._style_tag(self._vite_server_url(p))
+                    if p.endswith(".css")
+                    else self._script_tag(
                         self._vite_server_url(p),
                         {"type": "module", "async": "", "defer": ""},
                     )
@@ -147,7 +149,7 @@ class ViteAssetLoader:
             )
 
         if any(p for p in path if p not in self._manifest):
-            msg = "Cannot find %s in Vite manifest at %s.  Did you forget to build your assets?"
+            msg = "Cannot find %s in Vite manifest at %s.  Did you forget to build your assets after an update?"
             raise RuntimeError(
                 msg,
                 path,
@@ -159,28 +161,29 @@ class ViteAssetLoader:
         manifest_entry.update({p: self._manifest[p] for p in path})
         if not scripts_attrs:
             scripts_attrs = {"type": "module", "async": "", "defer": ""}
-
-        # Add dependent CSS
-        if "css" in manifest_entry:
-            tags.extend(
-                self._style_tag(urljoin(self._config.asset_url, css_path)) for css_path in manifest_entry.get("css", {})
-            )
-        # Add dependent "vendor"
-        if "imports" in manifest_entry:
-            tags.extend(
-                self.generate_asset_tags(vendor_path, scripts_attrs=scripts_attrs)
-                for vendor_path in manifest_entry.get("imports", {})
-            )
-        # Add the script by itself
-        tags.extend(
-            [
-                self._script_tag(
-                    urljoin(self._config.asset_url, manifest_entry[p]["file"]),
-                    attrs=scripts_attrs,
+        for manifest in manifest_entry.values():
+            if "css" in manifest:
+                tags.extend(
+                    self._style_tag(urljoin(self._config.asset_url, css_path)) for css_path in manifest.get("css", {})
                 )
-                for p in path
-            ],
-        )
+            # Add dependent "vendor"
+            if "imports" in manifest:
+                tags.extend(
+                    self.generate_asset_tags(vendor_path, scripts_attrs=scripts_attrs)
+                    for vendor_path in manifest.get("imports", {})
+                )
+            # Add the script by itself
+            if manifest.get("file").endswith(".css"):
+                tags.append(
+                    self._style_tag(urljoin(self._config.asset_url, manifest["file"])),
+                )
+            else:
+                tags.append(
+                    self._script_tag(
+                        urljoin(self._config.asset_url, manifest["file"]),
+                        attrs=scripts_attrs,
+                    ),
+                )
         return "".join(tags)
 
     def _vite_server_url(self, path: str | None = None) -> str:

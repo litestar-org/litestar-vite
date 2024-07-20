@@ -71,7 +71,10 @@ async def test_is_inertia_true(inertia_plugin: InertiaPlugin, vite_plugin: ViteP
         stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
-        assert response.text == "true"
+        assert (
+            response.text
+            == '{"component":null,"url":"/","version":"1.0","props":{"content":true,"csrf_token":"","flash":{},"errors":{}}}'
+        )
 
 
 async def test_component_prop_default(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin) -> None:
