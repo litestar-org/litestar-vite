@@ -340,7 +340,7 @@ class InertiaBack(Redirect):
         and pass redirect url.
         """
         super().__init__(
-            path=str(request.url),
+            path=request.headers.get("referrer", str(request.base_url)),
             status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
             cookies=request.cookies,
             **kwargs,
