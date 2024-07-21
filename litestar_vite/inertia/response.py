@@ -6,7 +6,7 @@ from functools import lru_cache
 from mimetypes import guess_type
 from pathlib import PurePath
 from textwrap import dedent
-from typing import TYPE_CHECKING, Any, Dict, Iterable, Mapping, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Mapping, TypeVar, cast
 from urllib.parse import quote
 
 from litestar import Litestar, MediaType, Request, Response
@@ -16,6 +16,7 @@ from litestar.response import Redirect
 from litestar.response.base import ASGIResponse
 from litestar.serialization import get_serializer
 from litestar.status_codes import HTTP_200_OK, HTTP_303_SEE_OTHER, HTTP_307_TEMPORARY_REDIRECT, HTTP_409_CONFLICT
+from litestar.types import Empty
 from litestar.utils.deprecation import warn_deprecation
 from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
@@ -63,10 +64,11 @@ def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, A
     Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
     """
     error_bag = request.headers.get("X-Inertia-Error-Bag", None)
-    errors = request.session.pop("_errors", {})
-    props = request.session.pop("_shared", {})
+    has_active_session = not (not request.session or request.scope["session"] is Empty)
+    errors: dict[str, Any] = request.session.pop("_errors", {}) if has_active_session else {}
+    props: dict[str, Any] = request.session.pop("_shared", {}) if has_active_session else {}
     flash: dict[str, list[str]] = defaultdict(list)
-    for message in request.session.pop("_messages", []):
+    for message in cast("List[Dict[str,Any]]", request.session.pop("_messages", []) if has_active_session else []):
         flash[message["category"]].append(message["message"])
 
     inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
