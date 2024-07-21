@@ -81,7 +81,7 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
     if (
         status_code == HTTP_401_UNAUTHORIZED
         and inertia_plugin.config.redirect_unauthorized_to is not None
-        and not request.url.path.startswith(inertia_plugin.config.redirect_unauthorized_to)
+        and request.url.path != inertia_plugin.config.redirect_unauthorized_to
     ):
         return InertiaRedirect(
             request,
