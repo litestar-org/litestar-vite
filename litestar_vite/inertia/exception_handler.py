@@ -7,6 +7,7 @@ from litestar.connection.base import AuthT, StateT, UserT
 from litestar.exceptions import (
     HTTPException,
     InternalServerException,
+    NotAuthorizedException,
     NotFoundException,
     PermissionDeniedException,
 )
@@ -76,17 +77,21 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
         field = match.group(1) if match else default_field
         if isinstance(message, dict) and has_active_session:
             error(request, field, error_detail)
-    if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST}:
-        return InertiaBack(request)
-    if (
-        status_code == HTTP_401_UNAUTHORIZED
-        and inertia_plugin.config.redirect_unauthorized_to is not None
-        and request.url.path != inertia_plugin.config.redirect_unauthorized_to
+    if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST} or isinstance(
+        exc,
+        PermissionDeniedException,
     ):
-        return InertiaRedirect(
-            request,
-            redirect_to=inertia_plugin.config.redirect_unauthorized_to,
+        return InertiaBack(request)
+    if isinstance(exc, PermissionDeniedException):
+        return InertiaBack(request)
+    if status_code == HTTP_401_UNAUTHORIZED or isinstance(exc, NotAuthorizedException):
+        redirect_to = (
+            inertia_plugin.config.redirect_unauthorized_to is not None
+            and request.url.path != inertia_plugin.config.redirect_unauthorized_to
         )
+        if redirect_to:
+            return InertiaRedirect(request, redirect_to=cast("str", inertia_plugin.config.redirect_unauthorized_to))
+        return InertiaBack(request)
     return InertiaResponse[Any](
         media_type=preferred_type,
         content=content,
