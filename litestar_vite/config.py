@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 __all__ = ("ViteConfig", "ViteTemplateConfig")
 EngineType = TypeVar("EngineType", bound=TemplateEngineProtocol[Any, Any])
+TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
 
 
 @dataclass
@@ -53,7 +54,7 @@ class ViteConfig:
     This file contains a single line containing the host, protocol, and port the Vite server is running.
     """
     hot_reload: bool = field(
-        default_factory=lambda: os.getenv("VITE_HOT_RELOAD", "True") in {"True", "1", "yes", "Y", "T"},
+        default_factory=lambda: os.getenv("VITE_HOT_RELOAD", "True") in TRUE_VALUES,
     )
     """Enable HMR for Vite development server."""
     ssr_enabled: bool = False
@@ -88,11 +89,11 @@ class ViteConfig:
     install_command: list[str] = field(default_factory=lambda: ["npm", "install"])
     """Default command to use for installing Vite."""
     use_server_lifespan: bool = field(
-        default_factory=lambda: os.getenv("VITE_USE_SERVER_LIFESPAN", "False") in {"True", "1", "yes", "Y", "T"},
+        default_factory=lambda: os.getenv("VITE_USE_SERVER_LIFESPAN", "False") in TRUE_VALUES,
     )
     """Utilize the server lifespan hook to run Vite."""
     dev_mode: bool = field(
-        default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in {"True", "1", "yes", "Y", "T"},
+        default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES,
     )
     """When True, Vite will run with HMR or watch build"""
     detect_nodeenv: bool = True

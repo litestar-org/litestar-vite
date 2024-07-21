@@ -27,6 +27,7 @@ from litestar.status_codes import (
     HTTP_422_UNPROCESSABLE_ENTITY,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
+from litestar.types import Empty
 
 from litestar_vite.inertia.response import InertiaBack, InertiaRedirect, InertiaResponse, error
 
@@ -55,6 +56,7 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
         if request.app.debug and http_exc not in (PermissionDeniedException, NotFoundError):
             return cast("Response[Any]", create_debug_response(request, exc))
         return cast("Response[Any]", create_exception_response(request, http_exc(detail=str(exc.__cause__))))
+    has_active_session = not (not request.session or request.scope["session"] is Empty)
     is_inertia = getattr(request, "is_inertia", False)
     status_code = getattr(exc, "status_code", HTTP_500_INTERNAL_SERVER_ERROR)
     preferred_type = MediaType.HTML if inertia_enabled and not is_inertia else MediaType.JSON
@@ -64,14 +66,15 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
     inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
     if extras:
         content.update({"extra": extras})
-    flash(request, detail, category="error")
+    if has_active_session:
+        flash(request, detail, category="error")
     if extras and len(extras) >= 1:
         message = extras[0]
         default_field = f"root.{message.get('key')}" if message.get("key", None) is not None else "root"  # type: ignore
         error_detail = cast("str", message.get("message", detail))  # type: ignore[union-attr] # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
         match = FIELD_ERR_RE.search(error_detail)
         field = match.group(1) if match else default_field
-        if isinstance(message, dict):
+        if isinstance(message, dict) and has_active_session:
             error(request, field, error_detail)
     if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST}:
         return InertiaBack(request)
