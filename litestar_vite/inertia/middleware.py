@@ -15,7 +15,7 @@ if TYPE_CHECKING:
         StateT,
         UserT,
     )
-    from litestar.types import ASGIApp
+    from litestar.types import ASGIApp, Receive, Scope, Send
 
 
 async def redirect_on_asset_version_mismatch(request: Request[UserT, AuthT, StateT]) -> InertiaRedirect | None:
@@ -30,10 +30,6 @@ async def redirect_on_asset_version_mismatch(request: Request[UserT, AuthT, Stat
     if inertia_version == template_engine.asset_loader.version_id:
         return None
     return InertiaRedirect(request, redirect_to=str(request.url))
-
-
-if TYPE_CHECKING:
-    from litestar.types import Receive, Scope, Send
 
 
 class InertiaMiddleware(AbstractMiddleware):

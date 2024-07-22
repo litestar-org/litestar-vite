@@ -44,7 +44,7 @@ class _HTTPConflictException(HTTPException):
     status_code = HTTP_409_CONFLICT
 
 
-def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exception) -> Response[Any]:
+def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exception) -> Response[Any]:  # noqa: PLR0911, PLR0912, C901
     """Handler for all exceptions subclassed from HTTPException."""
     inertia_enabled = getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False)
     if isinstance(exc, NotFoundError):
