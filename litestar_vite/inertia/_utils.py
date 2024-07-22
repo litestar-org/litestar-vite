@@ -15,6 +15,7 @@ class InertiaHeaders(str, Enum):
     PARTIAL_DATA = "X-Inertia-Partial-Data"
     PARTIAL_COMPONENT = "X-Inertia-Partial-Component"
     LOCATION = "X-Inertia-Location"
+    REFERER = "Referer"
 
 
 def get_enabled_header(enabled: bool = True) -> dict[str, Any]:

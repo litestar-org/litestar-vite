@@ -70,6 +70,11 @@ class InertiaDetails:
         return self._get_header_value(InertiaHeaders.PARTIAL_DATA)
 
     @cached_property
+    def referer(self) -> str | None:
+        """Partial Data Reload."""
+        return self._get_header_value(InertiaHeaders.REFERER)
+
+    @cached_property
     def is_partial_render(self) -> bool:
         """Is Partial Data Reload."""
         return bool(self.partial_component == self.route_component and self.partial_data)

@@ -1,3 +1,4 @@
+import contextlib
 import re
 from typing import TYPE_CHECKING, Any, cast
 
@@ -28,7 +29,6 @@ from litestar.status_codes import (
     HTTP_422_UNPROCESSABLE_ENTITY,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
-from litestar.types import Empty
 
 from litestar_vite.inertia.response import InertiaBack, InertiaRedirect, InertiaResponse, error
 
@@ -44,7 +44,7 @@ class _HTTPConflictException(HTTPException):
     status_code = HTTP_409_CONFLICT
 
 
-def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exception) -> Response[Any]:
+def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exception) -> Response[Any]:  # noqa: PLR0911
     """Handler for all exceptions subclassed from HTTPException."""
     inertia_enabled = getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False)
     if isinstance(exc, NotFoundError):
@@ -57,7 +57,6 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
         if request.app.debug and http_exc not in (PermissionDeniedException, NotFoundError):
             return cast("Response[Any]", create_debug_response(request, exc))
         return cast("Response[Any]", create_exception_response(request, http_exc(detail=str(exc.__cause__))))
-    has_active_session = not (not request.session or request.scope["session"] is Empty)
     is_inertia = getattr(request, "is_inertia", False)
     status_code = getattr(exc, "status_code", HTTP_500_INTERNAL_SERVER_ERROR)
     preferred_type = MediaType.HTML if inertia_enabled and not is_inertia else MediaType.JSON
@@ -67,7 +66,7 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
     inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
     if extras:
         content.update({"extra": extras})
-    if has_active_session:
+    with contextlib.suppress(Exception):
         flash(request, detail, category="error")
     if extras and len(extras) >= 1:
         message = extras[0]
@@ -75,8 +74,9 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
         error_detail = cast("str", message.get("message", detail))  # type: ignore[union-attr] # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
         match = FIELD_ERR_RE.search(error_detail)
         field = match.group(1) if match else default_field
-        if isinstance(message, dict) and has_active_session:
-            error(request, field, error_detail)
+        if isinstance(message, dict):
+            with contextlib.suppress(Exception):
+                error(request, field, error_detail)
     if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST} or isinstance(
         exc,
         PermissionDeniedException,
