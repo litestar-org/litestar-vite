@@ -16,7 +16,6 @@ from litestar.response import Redirect
 from litestar.response.base import ASGIResponse
 from litestar.serialization import get_serializer
 from litestar.status_codes import HTTP_200_OK, HTTP_303_SEE_OTHER, HTTP_307_TEMPORARY_REDIRECT, HTTP_409_CONFLICT
-from litestar.types import Empty
 from litestar.utils.deprecation import warn_deprecation
 from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
@@ -65,19 +64,17 @@ def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, A
     Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
     """
     error_bag = request.headers.get("X-Inertia-Error-Bag", None)
-    has_active_session = not (not request.session or request.scope["session"] is Empty)
-    errors: dict[str, Any] = request.session.pop("_errors", {}) if has_active_session else {}
-    props: dict[str, Any] = request.session.pop("_shared", {}) if has_active_session else {}
+    errors: dict[str, Any] = request.session.pop("_errors", {})
+    props: dict[str, Any] = request.session.pop("_shared", {})
     flash: dict[str, list[str]] = defaultdict(list)
-    for message in cast("List[Dict[str,Any]]", request.session.pop("_messages", []) if has_active_session else []):
+    for message in cast("List[Dict[str,Any]]", request.session.pop("_messages", [])):
         flash[message["category"]].append(message["message"])
 
     inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
     props.update(inertia_plugin.config.extra_static_page_props)
-    if has_active_session:
-        for session_prop in inertia_plugin.config.extra_session_page_props:
-            if session_prop not in props and session_prop in request.session:
-                props[session_prop] = request.session.get(session_prop)
+    for session_prop in inertia_plugin.config.extra_session_page_props:
+        if session_prop not in props and session_prop in request.session:
+            props[session_prop] = request.session.get(session_prop)
     props["csrf_token"] = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
     props["flash"] = flash
     props["errors"] = {error_bag: errors} if error_bag is not None else errors
