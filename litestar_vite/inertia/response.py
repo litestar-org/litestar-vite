@@ -73,7 +73,11 @@ def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, A
         flash[message["category"]].append(message["message"])
 
     inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
-    props.update(inertia_plugin.config.extra_page_props)
+    props.update(inertia_plugin.config.extra_static_page_props)
+    if has_active_session:
+        for session_prop in inertia_plugin.config.extra_session_page_props:
+            if session_prop not in props and session_prop in request.session:
+                props[session_prop] = request.session.get(session_prop)
     props["csrf_token"] = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
     props["flash"] = flash
     props["errors"] = {error_bag: errors} if error_bag is not None else errors
