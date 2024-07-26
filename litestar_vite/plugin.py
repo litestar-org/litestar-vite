@@ -28,7 +28,7 @@ def set_environment(config: ViteConfig) -> None:
     os.environ.setdefault("VITE_PORT", str(config.port))
     os.environ.setdefault("VITE_HOST", config.host)
     os.environ.setdefault("VITE_PROTOCOL", config.protocol)
-    os.environ.setdefault("APP_URL", "http://localhost:8000")
+    os.environ.setdefault("APP_URL", f"http://localhost:{os.environ.get('LITESTAR_PORT',8000)}")
     if config.dev_mode:
         os.environ.setdefault("VITE_DEV_MODE", str(config.dev_mode))
 
