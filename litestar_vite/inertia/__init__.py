@@ -1,4 +1,5 @@
 from .config import InertiaConfig
+from .exception_handler import create_inertia_exception_response, exception_to_http_response
 from .middleware import InertiaMiddleware
 from .plugin import InertiaPlugin
 from .request import InertiaDetails, InertiaHeaders, InertiaRequest
@@ -28,4 +29,6 @@ __all__ = (
     "InertiaRedirect",
     "generate_js_routes",
     "InertiaMiddleware",
+    "exception_to_http_response",
+    "create_inertia_exception_response",
 )

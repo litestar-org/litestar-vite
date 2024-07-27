@@ -72,9 +72,9 @@ def create_inertia_exception_response(request: Request[UserT, AuthT, StateT], ex
         content.update({"extra": extras})
     try:
         flash(request, detail, category="error")
-    except Exception as flash_exc:
-        msg = f"Failed to set the `flash` session state.  Reason: {flash_exc.__cause__!s}"
-        request.logger.exception(msg)
+    except AttributeError:
+        msg = "Unable to set `flash` session state.  A valid session was not found for this request."
+        request.logger.warning(msg)
     if extras and len(extras) >= 1:
         message = extras[0]
         default_field = f"root.{message.get('key')}" if message.get("key", None) is not None else "root"  # type: ignore
