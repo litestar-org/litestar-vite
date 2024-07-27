@@ -48,9 +48,9 @@ def share(
 ) -> None:
     try:
         connection.session.setdefault("_shared", {}).update({key: value})
-    except Exception as exc:
-        msg = f"Failed to set the `share` session state.  Reason: {exc.__cause__!s}"
-        connection.logger.exception(msg)
+    except AttributeError:
+        msg = "Unable to set `share` session state.  A valid session was not found for this request."
+        connection.logger.warning(msg)
 
 
 def error(
@@ -60,9 +60,9 @@ def error(
 ) -> None:
     try:
         connection.session.setdefault("_errors", {}).update({key: message})
-    except Exception as exc:
-        msg = f"Failed to set the `error` session state.  Reason: {exc.__cause__!s}"
-        connection.logger.exception(msg)
+    except AttributeError:
+        msg = "Unable to set `error` session state.  A valid session was not found for this request."
+        connection.logger.warning(msg)
 
 
 def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, Any]:  # noqa: UP006
@@ -87,9 +87,9 @@ def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, A
                 props[session_prop] = request.session.get(session_prop)
         props["flash"] = flash
         props["errors"] = {error_bag: errors} if error_bag is not None else errors
-    except Exception as exc:
-        msg = f"Failed to set the `error` session state.  Reason: {exc.__cause__}"
-        request.logger.exception(msg)
+    except AttributeError:
+        msg = "Unable to generate all shared props.  A valid session was not found for this request."
+        request.logger.warning(msg)
     props["csrf_token"] = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
     return props
 
