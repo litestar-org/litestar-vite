@@ -46,7 +46,11 @@ def share(
     key: str,
     value: Any,
 ) -> None:
-    connection.session.setdefault("_shared", {}).update({key: value})
+    try:
+        connection.session.setdefault("_shared", {}).update({key: value})
+    except Exception as exc:
+        msg = f"Failed to set the `share` session state.  Reason: {exc.__cause__!s}"
+        connection.logger.exception(msg)
 
 
 def error(
@@ -54,7 +58,11 @@ def error(
     key: str,
     message: str,
 ) -> None:
-    connection.session.setdefault("_errors", {}).update({key: message})
+    try:
+        connection.session.setdefault("_errors", {}).update({key: message})
+    except Exception as exc:
+        msg = f"Failed to set the `error` session state.  Reason: {exc.__cause__!s}"
+        connection.logger.exception(msg)
 
 
 def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, Any]:  # noqa: UP006
@@ -63,21 +71,26 @@ def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, A
 
     Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
     """
-    error_bag = request.headers.get("X-Inertia-Error-Bag", None)
-    errors: dict[str, Any] = request.session.pop("_errors", {})
-    props: dict[str, Any] = request.session.pop("_shared", {})
-    flash: dict[str, list[str]] = defaultdict(list)
-    for message in cast("List[Dict[str,Any]]", request.session.pop("_messages", [])):
-        flash[message["category"]].append(message["message"])
+    props: dict[str, Any] = {}
+    try:
+        error_bag = request.headers.get("X-Inertia-Error-Bag", None)
+        errors: dict[str, Any] = request.session.pop("_errors", {})
+        props.update(cast("Dict[str,Any]", request.session.pop("_shared", {})))
+        flash: dict[str, list[str]] = defaultdict(list)
+        for message in cast("List[Dict[str,Any]]", request.session.pop("_messages", [])):
+            flash[message["category"]].append(message["message"])
 
-    inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
-    props.update(inertia_plugin.config.extra_static_page_props)
-    for session_prop in inertia_plugin.config.extra_session_page_props:
-        if session_prop not in props and session_prop in request.session:
-            props[session_prop] = request.session.get(session_prop)
+        inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
+        props.update(inertia_plugin.config.extra_static_page_props)
+        for session_prop in inertia_plugin.config.extra_session_page_props:
+            if session_prop not in props and session_prop in request.session:
+                props[session_prop] = request.session.get(session_prop)
+        props["flash"] = flash
+        props["errors"] = {error_bag: errors} if error_bag is not None else errors
+    except Exception as exc:
+        msg = f"Failed to set the `error` session state.  Reason: {exc.__cause__}"
+        request.logger.exception(msg)
     props["csrf_token"] = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
-    props["flash"] = flash
-    props["errors"] = {error_bag: errors} if error_bag is not None else errors
     return props
 
 
