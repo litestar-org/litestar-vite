@@ -43,7 +43,7 @@ class _HTTPConflictException(HTTPException):
     status_code = HTTP_409_CONFLICT
 
 
-def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exception) -> Response[Any]:  # noqa: PLR0911, PLR0912, C901
+def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exception) -> Response[Any]:
     """Handler for all exceptions subclassed from HTTPException."""
     inertia_enabled = getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False)
     if isinstance(exc, NotFoundError):
@@ -56,9 +56,14 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
         if request.app.debug and http_exc not in (PermissionDeniedException, NotFoundError):
             return cast("Response[Any]", create_debug_response(request, exc))
         return cast("Response[Any]", create_exception_response(request, http_exc(detail=str(exc.__cause__))))
+    return create_inertia_exception_response(request, exc)
+
+
+def create_inertia_exception_response(request: Request[UserT, AuthT, StateT], exc: Exception) -> Response[Any]:
+    """Create the inertia exception response"""
     is_inertia = getattr(request, "is_inertia", False)
     status_code = getattr(exc, "status_code", HTTP_500_INTERNAL_SERVER_ERROR)
-    preferred_type = MediaType.HTML if inertia_enabled and not is_inertia else MediaType.JSON
+    preferred_type = MediaType.HTML if not is_inertia else MediaType.JSON
     detail = getattr(exc, "detail", "")  # litestar exceptions
     extras = getattr(exc, "extra", "")  # msgspec exceptions
     content = {"status_code": status_code, "message": getattr(exc, "detail", "")}
