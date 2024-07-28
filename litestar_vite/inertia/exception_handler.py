@@ -6,6 +6,7 @@ from litestar.connection import Request
 from litestar.connection.base import AuthT, StateT, UserT
 from litestar.exceptions import (
     HTTPException,
+    ImproperlyConfiguredException,
     InternalServerException,
     NotAuthorizedException,
     NotFoundException,
@@ -72,7 +73,7 @@ def create_inertia_exception_response(request: Request[UserT, AuthT, StateT], ex
         content.update({"extra": extras})
     try:
         flash(request, detail, category="error")
-    except AttributeError:
+    except (AttributeError, ImproperlyConfiguredException):
         msg = "Unable to set `flash` session state.  A valid session was not found for this request."
         request.logger.warning(msg)
     if extras and len(extras) >= 1:
@@ -82,11 +83,8 @@ def create_inertia_exception_response(request: Request[UserT, AuthT, StateT], ex
         match = FIELD_ERR_RE.search(error_detail)
         field = match.group(1) if match else default_field
         if isinstance(message, dict):
-            error(request, field, error_detail)
-    if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST} or isinstance(
-        exc,
-        PermissionDeniedException,
-    ):
+            error(request, field, error_detail if error_detail else detail)
+    if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST}:
         return InertiaBack(request)
     if isinstance(exc, PermissionDeniedException):
         return InertiaBack(request)

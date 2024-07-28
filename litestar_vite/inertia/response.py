@@ -48,7 +48,7 @@ def share(
 ) -> None:
     try:
         connection.session.setdefault("_shared", {}).update({key: value})
-    except AttributeError:
+    except (AttributeError, ImproperlyConfiguredException):
         msg = "Unable to set `share` session state.  A valid session was not found for this request."
         connection.logger.warning(msg)
 
@@ -60,7 +60,7 @@ def error(
 ) -> None:
     try:
         connection.session.setdefault("_errors", {}).update({key: message})
-    except AttributeError:
+    except (AttributeError, ImproperlyConfiguredException):
         msg = "Unable to set `error` session state.  A valid session was not found for this request."
         connection.logger.warning(msg)
 
@@ -87,7 +87,7 @@ def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, A
             if session_prop not in props and session_prop in request.session:
                 props[session_prop] = request.session.get(session_prop)
 
-    except AttributeError:
+    except (AttributeError, ImproperlyConfiguredException):
         msg = "Unable to generate all shared props.  A valid session was not found for this request."
         request.logger.warning(msg)
     props["flash"] = flash

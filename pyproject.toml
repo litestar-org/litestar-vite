@@ -26,7 +26,7 @@ license = { text = "MIT" }
 name = "litestar-vite"
 readme = "README.md"
 requires-python = ">=3.8"
-version = "0.2.6"
+version = "0.2.7"
 
 [project.urls]
 Changelog = "https://cofin.github.io/litestar-vite/latest/changelog"
