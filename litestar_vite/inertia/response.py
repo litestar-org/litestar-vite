@@ -7,7 +7,7 @@ from mimetypes import guess_type
 from pathlib import PurePath
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Mapping, TypeVar, cast
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urlparse, urlunparse
 
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
@@ -72,11 +72,12 @@ def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, A
     Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
     """
     props: dict[str, Any] = {}
+    flash: dict[str, list[str]] = defaultdict(list)
+    errors: dict[str, Any] = {}
+    error_bag = request.headers.get("X-Inertia-Error-Bag", None)
     try:
-        error_bag = request.headers.get("X-Inertia-Error-Bag", None)
-        errors: dict[str, Any] = request.session.pop("_errors", {})
+        errors = request.session.pop("_errors", {})
         props.update(cast("Dict[str,Any]", request.session.pop("_shared", {})))
-        flash: dict[str, list[str]] = defaultdict(list)
         for message in cast("List[Dict[str,Any]]", request.session.pop("_messages", [])):
             flash[message["category"]].append(message["message"])
 
@@ -85,11 +86,12 @@ def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, A
         for session_prop in inertia_plugin.config.extra_session_page_props:
             if session_prop not in props and session_prop in request.session:
                 props[session_prop] = request.session.get(session_prop)
-        props["flash"] = flash
-        props["errors"] = {error_bag: errors} if error_bag is not None else errors
+
     except AttributeError:
         msg = "Unable to generate all shared props.  A valid session was not found for this request."
         request.logger.warning(msg)
+    props["flash"] = flash
+    props["errors"] = {error_bag: errors} if error_bag is not None else errors
     props["csrf_token"] = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
     return props
 
@@ -336,7 +338,7 @@ class InertiaRedirect(Redirect):
         and pass redirect url.
         """
         referer = urlparse(request.headers.get("referer", str(request.base_url)))
-        redirect_to = str(urlparse(redirect_to)._replace(scheme=referer.scheme))
+        redirect_to = urlunparse(urlparse(redirect_to)._replace(scheme=referer.scheme))
         super().__init__(
             path=redirect_to,
             status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
