@@ -7,7 +7,7 @@ from mimetypes import guess_type
 from pathlib import PurePath
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Mapping, TypeVar, cast
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
@@ -335,6 +335,8 @@ class InertiaRedirect(Redirect):
         """Initialize external redirect, Set status code to 409 (required by Inertia),
         and pass redirect url.
         """
+        referer = urlparse(request.headers.get("referer", str(request.base_url)))
+        redirect_to = str(urlparse(redirect_to)._replace(scheme=referer.scheme))
         super().__init__(
             path=redirect_to,
             status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
