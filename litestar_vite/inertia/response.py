@@ -317,9 +317,9 @@ class InertiaExternalRedirect(Response[Any]):
         and pass redirect url.
         """
         super().__init__(
-            content=kwargs.get("content", ""),
+            content=b"",
             status_code=HTTP_409_CONFLICT,
-            headers={"X-Inertia": "true", "X-Inertia-Location": quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")},
+            headers={"X-Inertia-Location": quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")},
             cookies=request.cookies,
             **kwargs,
         )
