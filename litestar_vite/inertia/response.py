@@ -65,7 +65,10 @@ def error(
         connection.logger.warning(msg)
 
 
-def get_shared_props(request: ASGIConnection[Any, Any, Any, Any]) -> Dict[str, Any]:  # noqa: UP006
+def get_shared_props(
+    request: ASGIConnection[Any, Any, Any, Any],
+    partial_data: set[str] | None = None,
+) -> Dict[str, Any]:  # noqa: UP006
     """Return shared session props for a request
 
 
@@ -217,9 +220,11 @@ class InertiaResponse(Response[T]):
                 removal_in="3.0.0",
                 alternative="request.app",
             )
-        inertia_enabled = getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False)
-        is_inertia = getattr(request, "is_inertia", False)
-
+        inertia_enabled = cast(
+            "bool",
+            getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False),
+        )
+        is_inertia = cast("bool", getattr(request, "is_inertia", False))
         headers = {**headers, **self.headers} if headers is not None else self.headers
         cookies = self.cookies if cookies is None else itertools.chain(self.cookies, cookies)
         type_encoders = (
@@ -238,15 +243,18 @@ class InertiaResponse(Response[T]):
                 media_type=media_type,
                 status_code=self.status_code or status_code,
             )
+        is_partial_render = cast("bool", getattr(request, "is_partial_render", False))
+        partial_keys = cast("set[str]", getattr(request, "partial_keys", {}))
         vite_plugin = request.app.plugins.get(VitePlugin)
         template_engine = vite_plugin.template_config.to_engine()
         headers.update(
             {"Vary": "Accept", **get_headers(InertiaHeaderType(enabled=True))},
         )
-        shared_props = get_shared_props(request)
+        shared_props = get_shared_props(request, partial_data=partial_keys if is_partial_render else None)
+        shared_props["content"] = self.content
         page_props = PageProps[T](
             component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
-            props={"content": self.content, **shared_props},  # pyright: ignore[reportArgumentType]
+            props=shared_props,  # pyright: ignore[reportArgumentType]
             version=template_engine.asset_loader.version_id,
             url=request.url.path,
         )
