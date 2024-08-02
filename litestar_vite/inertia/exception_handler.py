@@ -58,7 +58,7 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
         if request.app.debug and http_exc not in (PermissionDeniedException, NotFoundError):
             return cast("Response[Any]", create_debug_response(request, exc))
         return cast("Response[Any]", create_exception_response(request, http_exc(detail=str(exc.__cause__))))
-    return create_inertia_exception_response(request, http_exc(detail=str(exc.__cause__)))
+    return create_inertia_exception_response(request, exc)
 
 
 def create_inertia_exception_response(request: Request[UserT, AuthT, StateT], exc: Exception) -> Response[Any]:
