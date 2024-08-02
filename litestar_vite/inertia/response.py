@@ -33,7 +33,6 @@ if TYPE_CHECKING:
     from litestar.connection.base import AuthT, StateT, UserT
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
 
-    from litestar_vite.inertia.request import InertiaRequest
     from litestar_vite.inertia.routes import Routes
 
     from .plugin import InertiaPlugin
@@ -345,7 +344,7 @@ class InertiaRedirect(Redirect):
         """Initialize external redirect, Set status code to 409 (required by Inertia),
         and pass redirect url.
         """
-        referer = urlparse(request.headers.get("referer", str(request.base_url)))
+        referer = urlparse(request.headers.get("Referer", str(request.base_url)))
         redirect_to = urlunparse(urlparse(redirect_to)._replace(scheme=referer.scheme))
         super().__init__(
             path=redirect_to,
@@ -366,12 +365,8 @@ class InertiaBack(Redirect):
         """Initialize external redirect, Set status code to 409 (required by Inertia),
         and pass redirect url.
         """
-        referer = request.headers.get("referer", str(request.base_url))
-        inertia_enabled = getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False)
-        if inertia_enabled:
-            referer = cast("InertiaRequest[Any, Any, Any]", request).inertia.referer or referer
         super().__init__(
-            path=request.headers.get("referer", str(request.base_url)),
+            path=request.headers.get("Referer", str(request.base_url)),
             status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
             cookies=request.cookies,
             **kwargs,
