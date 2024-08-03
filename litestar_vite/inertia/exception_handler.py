@@ -90,16 +90,13 @@ def create_inertia_exception_response(request: Request[UserT, AuthT, StateT], ex
         return InertiaBack(request)
     if isinstance(exc, PermissionDeniedException):
         return InertiaBack(request)
-    if status_code == HTTP_401_UNAUTHORIZED or isinstance(exc, NotAuthorizedException):
-        if (
-            inertia_plugin.config.redirect_unauthorized_to is not None
-            and str(request.url) != inertia_plugin.config.redirect_unauthorized_to
-        ):
-            return InertiaRedirect(request, redirect_to=inertia_plugin.config.redirect_unauthorized_to)
-        if str(request.url) != inertia_plugin.config.redirect_unauthorized_to:
-            return InertiaResponse[Any](
-                media_type=preferred_type,
-                content=content,
-                status_code=status_code,
-            )
-    return InertiaBack(request)
+    if (status_code == HTTP_401_UNAUTHORIZED or isinstance(exc, NotAuthorizedException)) and (
+        inertia_plugin.config.redirect_unauthorized_to is not None
+        and str(request.url) != inertia_plugin.config.redirect_unauthorized_to
+    ):
+        return InertiaRedirect(request, redirect_to=inertia_plugin.config.redirect_unauthorized_to)
+    return InertiaResponse[Any](
+        media_type=preferred_type,
+        content=content,
+        status_code=status_code,
+    )
