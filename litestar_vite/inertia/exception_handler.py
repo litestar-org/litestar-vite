@@ -18,6 +18,7 @@ from litestar.exceptions.responses import (
 )
 from litestar.plugins.flash import flash
 from litestar.repository.exceptions import (
+    ConflictError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
     NotFoundError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
     RepositoryError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
 )
@@ -47,13 +48,14 @@ class _HTTPConflictException(HTTPException):
 def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exception) -> Response[Any]:
     """Handler for all exceptions subclassed from HTTPException."""
     inertia_enabled = getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False)
-    if isinstance(exc, NotFoundError):
-        http_exc = NotFoundException
-    elif isinstance(exc, RepositoryError):
-        http_exc = _HTTPConflictException  # type: ignore[assignment]
-    else:
-        http_exc = InternalServerException  # type: ignore[assignment]
+
     if not inertia_enabled:
+        if isinstance(exc, NotFoundError):
+            http_exc = NotFoundException
+        elif isinstance(exc, (RepositoryError, ConflictError)):
+            http_exc = _HTTPConflictException  # type: ignore[assignment]
+        else:
+            http_exc = InternalServerException  # type: ignore[assignment]
         if request.app.debug and http_exc not in (PermissionDeniedException, NotFoundError):
             return cast("Response[Any]", create_debug_response(request, exc))
         return cast("Response[Any]", create_exception_response(request, http_exc(detail=str(exc.__cause__))))
@@ -88,16 +90,13 @@ def create_inertia_exception_response(request: Request[UserT, AuthT, StateT], ex
         return InertiaBack(request)
     if isinstance(exc, PermissionDeniedException):
         return InertiaBack(request)
-    if status_code == HTTP_401_UNAUTHORIZED or isinstance(exc, NotAuthorizedException):
-        if (
-            inertia_plugin.config.redirect_unauthorized_to is not None
-            and str(request.url) != inertia_plugin.config.redirect_unauthorized_to
-        ):
-            return InertiaRedirect(request, redirect_to=inertia_plugin.config.redirect_unauthorized_to)
-        if str(request.url) != inertia_plugin.config.redirect_unauthorized_to:
-            return InertiaResponse[Any](
-                media_type=preferred_type,
-                content=content,
-                status_code=status_code,
-            )
-    return InertiaBack(request)
+    if (status_code == HTTP_401_UNAUTHORIZED or isinstance(exc, NotAuthorizedException)) and (
+        inertia_plugin.config.redirect_unauthorized_to is not None
+        and str(request.url) != inertia_plugin.config.redirect_unauthorized_to
+    ):
+        return InertiaRedirect(request, redirect_to=inertia_plugin.config.redirect_unauthorized_to)
+    return InertiaResponse[Any](
+        media_type=preferred_type,
+        content=content,
+        status_code=status_code,
+    )

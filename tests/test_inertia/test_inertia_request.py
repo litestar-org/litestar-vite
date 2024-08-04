@@ -73,7 +73,7 @@ async def test_is_inertia_true(inertia_plugin: InertiaPlugin, vite_plugin: ViteP
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
         assert (
             response.text
-            == '{"component":null,"url":"/","version":"1.0","props":{"content":true,"flash":{},"errors":{},"csrf_token":""}}'
+            == '{"component":null,"url":"/","version":"1.0","props":{"flash":{},"errors":{},"csrf_token":"","content":true}}'
         )
 
 

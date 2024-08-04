@@ -114,3 +114,13 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
     def inertia_enabled(self) -> bool:
         """True if the route handler contains an inertia enabled configuration."""
         return bool(self.inertia.route_component is not None)
+
+    @property
+    def is_partial_render(self) -> bool:
+        """True if the route handler contains an inertia enabled configuration."""
+        return self.inertia.is_partial_render
+
+    @property
+    def partial_keys(self) -> set[str]:
+        """True if the route handler contains an inertia enabled configuration."""
+        return set(self.inertia.partial_keys)
