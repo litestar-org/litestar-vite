@@ -1,9 +1,9 @@
+from __future__ import annotations
+
 import re
 from typing import TYPE_CHECKING, Any, cast
 
 from litestar import MediaType
-from litestar.connection import Request
-from litestar.connection.base import AuthT, StateT, UserT
 from litestar.exceptions import (
     HTTPException,
     ImproperlyConfiguredException,
@@ -22,10 +22,11 @@ from litestar.repository.exceptions import (
     NotFoundError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
     RepositoryError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
 )
-from litestar.response import Response
 from litestar.status_codes import (
     HTTP_400_BAD_REQUEST,
     HTTP_401_UNAUTHORIZED,
+    HTTP_404_NOT_FOUND,
+    HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_409_CONFLICT,
     HTTP_422_UNPROCESSABLE_ENTITY,
     HTTP_500_INTERNAL_SERVER_ERROR,
@@ -34,6 +35,10 @@ from litestar.status_codes import (
 from litestar_vite.inertia.response import InertiaBack, InertiaRedirect, InertiaResponse, error
 
 if TYPE_CHECKING:
+    from litestar.connection import Request
+    from litestar.connection.base import AuthT, StateT, UserT
+    from litestar.response import Response
+
     from litestar_vite.inertia.plugin import InertiaPlugin
 
 FIELD_ERR_RE = re.compile(r"field `(.+)`$")
@@ -69,7 +74,7 @@ def create_inertia_exception_response(request: Request[UserT, AuthT, StateT], ex
     preferred_type = MediaType.HTML if not is_inertia else MediaType.JSON
     detail = getattr(exc, "detail", "")  # litestar exceptions
     extras = getattr(exc, "extra", "")  # msgspec exceptions
-    content = {"status_code": status_code, "message": getattr(exc, "detail", "")}
+    content: dict[str, Any] = {"status_code": status_code, "message": getattr(exc, "detail", "")}
     inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
     if extras:
         content.update({"extra": extras})
@@ -95,6 +100,10 @@ def create_inertia_exception_response(request: Request[UserT, AuthT, StateT], ex
         and str(request.url) != inertia_plugin.config.redirect_unauthorized_to
     ):
         return InertiaRedirect(request, redirect_to=inertia_plugin.config.redirect_unauthorized_to)
+    if status_code in {HTTP_404_NOT_FOUND, HTTP_405_METHOD_NOT_ALLOWED} and (
+        inertia_plugin.config.redirect_404 is not None and str(request.url) != inertia_plugin.config.redirect_404
+    ):
+        return InertiaRedirect(request, redirect_to=inertia_plugin.config.redirect_404)
     return InertiaResponse[Any](
         media_type=preferred_type,
         content=content,
