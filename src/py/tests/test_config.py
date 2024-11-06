@@ -9,4 +9,5 @@ def test_default_vite_config() -> None:
     assert isinstance(config.public_dir, Path)
     assert config.ssr_output_dir is None
     assert isinstance(config.resource_dir, Path)
-    assert config.root_dir == ""
+    assert isinstance(config.root_dir, Path)
+    assert config.root_dir == Path(".")
