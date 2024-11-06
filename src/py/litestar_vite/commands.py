@@ -107,6 +107,8 @@ def init_vite(
                 ),
             )
 
+    (root_path / bundle_path).mkdir(parents=True, exist_ok=True)
+    (root_path / public_path).mkdir(parents=True, exist_ok=True)
     (root_path / resource_path).mkdir(parents=True, exist_ok=True)
     for resource_name in enabled_resources:
         template = get_template(environment=vite_template_env, name=resource_name)

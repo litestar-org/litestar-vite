@@ -143,10 +143,6 @@ def vite_init(
         if not confirm_overwrite:
             console.print("Skipping Vite initialization")
             sys.exit(2)
-    for output_path in (bundle_path, resource_path, root_path):
-        if output_path.exists():
-            console.print(f" * Creating {output_path!s}")
-        output_path.mkdir(parents=True, exist_ok=True)
 
     enable_ssr = (
         True
