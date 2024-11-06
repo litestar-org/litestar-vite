@@ -8,7 +8,6 @@ const VITE_PORT = process.env.VITE_PORT || "5173";
 const VITE_HOST = process.env.VITE_HOST || "localhost";
 export default defineConfig({
   base: `${ASSET_URL}`,
-  {% if root_path and root_path != '.' %} root: "{{ root_path }}",{% endif %}
   server: {
     host: "0.0.0.0",
     port: +`${VITE_PORT}`,
