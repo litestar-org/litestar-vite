@@ -14,7 +14,7 @@ project = project  # noqa: PLW0127
 author = "Cody Fincher"
 release = version
 release = os.getenv("_LITESTAR-AIOSQL_DOCS_BUILD_VERSION", version.rsplit(".")[0])
-copyright = "2023, Cody Fincher"  # noqa: A001
+copyright = "2023, Cody Fincher"
 
 # -- General configuration ---------------------------------------------------
 extensions = [
