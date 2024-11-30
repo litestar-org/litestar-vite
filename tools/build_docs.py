@@ -57,7 +57,7 @@ def load_version_spec() -> VersionSpec:
 
 def build(output_dir: str, version: str | None) -> None:
     if version is None:
-        version = importlib.metadata.version("advanced_alchemy").rsplit(".")[0]
+        version = importlib.metadata.version("litestar_vite").rsplit(".")[0]
     else:
         os.environ["LITESTAR_VITE_DOCS_BUILD_VERSION"] = version
 
