@@ -64,7 +64,7 @@ Then you can serve the documentation with ``make docs-serve``, or build them wit
 Creating a new release
 ----------------------
 
-1. Ensure that all local changes are commited and your commit tree is not dirty
+1. Ensure that all local changes are committed and your commit tree is not dirty
 2. Run ``make release bump=major|minor|patch`` to bump the version for the python and javascript packages.  This will automatically update the version and create a commit.
     .. note:: The version should follow `semantic versioning <https://semver.org/>`_ and `PEP 440 <https://www.python.org/dev/peps/pep-0440/>`_.
 3. Push the changes to the ``main`` branch
