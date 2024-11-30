@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from litestar import Controller, Litestar, Request, get
-from litestar.connection.base import AuthT, StateT, UserT  # noqa: TCH002
+from litestar.connection.base import AuthT, StateT, UserT  # noqa: TC002
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.plugins.flash import FlashConfig, FlashPlugin, flash  # pyright: ignore[reportUnknownVariableType]
 from litestar.stores.memory import MemoryStore

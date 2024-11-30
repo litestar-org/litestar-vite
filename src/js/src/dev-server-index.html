@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+        <title>Litestar Vite</title>
+
+        <!-- Fonts -->
+        <link
+            href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap"
+            rel="stylesheet"
+        />
+
+        <script src="https://cdn.tailwindcss.com"></script>
+    </head>
+    <body class="antialiased">
+        <div
+            class="relative flex min-h-screen flex-col justify-center overflow-hidden bg-gray-100 text-gray-600 dark:text-gray-400 dark:bg-gray-900 py-6 sm:py-12"
+        >
+            <div
+                class="relative bg-white dark:bg-gray-800 px-6 pt-10 pb-8 shadow-xl ring-1 ring-gray-900/5 sm:mx-auto sm:max-w-xl sm:rounded-lg sm:px-10"
+            >
+                <div class="mx-auto">
+                    <div class="flex items-center justify-center space-x-6">
+                        <a href="https://litestar.dev">
+                            <svg
+                                viewBox="0 52 410 250"
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="h-16 w-auto"
+                            >
+                                <defs>
+                                    <clipPath id="9eb7762d41">
+                                        <path
+                                            d="M 15.933594 105 L 328 105 L 328 259 L 15.933594 259 Z M 15.933594 105 "
+                                            clip-rule="nonzero"
+                                        />
+                                    </clipPath>
+                                    <clipPath id="183d3cc178">
+                                        <path
+                                            d="M 142 78.769531 L 359.433594 78.769531 L 359.433594 296.269531 L 142 296.269531 Z M 142 78.769531 "
+                                            clip-rule="nonzero"
+                                        />
+                                    </clipPath>
+                                </defs>
+                                <g clip-path="url(#9eb7762d41)">
+                                    <path
+                                        fill="#edb641"
+                                        d="M 147.625 240.3125 C 161.5 233.984375 173.554688 227.011719 183.425781 220.550781 C 202.304688 208.203125 226.4375 185.242188 227.761719 183.410156 L 218.917969 177.503906 L 211.257812 172.386719 L 235.503906 171.441406 L 243.296875 171.136719 L 245.414062 163.640625 L 252.007812 140.304688 L 260.402344 163.054688 L 263.097656 170.363281 L 270.890625 170.058594 L 295.136719 169.113281 L 276.078125 184.117188 L 269.953125 188.9375 L 272.652344 196.25 L 281.046875 218.996094 L 260.871094 205.523438 L 254.390625 201.195312 L 248.265625 206.015625 L 229.207031 221.023438 L 232.480469 209.425781 L 235.796875 197.691406 L 236.207031 196.234375 C 213.003906 213.585938 180.546875 230.304688 161.140625 236.488281 C 156.6875 237.90625 152.183594 239.179688 147.625 240.3125 Z M 101.992188 258.078125 C 136.382812 256.734375 177.355469 248 217.675781 222.363281 L 209.90625 249.867188 L 254.910156 214.4375 L 302.539062 246.246094 L 282.71875 192.539062 L 327.71875 157.109375 L 270.46875 159.34375 L 250.648438 105.636719 L 235.085938 160.726562 L 177.835938 162.964844 L 210.980469 185.097656 C 189.164062 204.921875 134.445312 247.195312 61.957031 250.03125 C 47.300781 250.601562 31.914062 249.558594 15.933594 246.394531 C 15.933594 246.394531 52.011719 260.035156 101.992188 258.078125 "
+                                        fill-opacity="1"
+                                        fill-rule="nonzero"
+                                    />
+                                </g>
+                                <g clip-path="url(#183d3cc178)">
+                                    <path
+                                        fill="#edb641"
+                                        d="M 250.789062 78.96875 C 190.78125 78.96875 142.140625 127.570312 142.140625 187.519531 C 142.140625 198.875 143.886719 209.816406 147.121094 220.101562 C 151.847656 217.75 156.363281 215.316406 160.660156 212.84375 C 158.394531 204.789062 157.183594 196.296875 157.183594 187.519531 C 157.183594 135.871094 199.089844 93.996094 250.789062 93.996094 C 302.484375 93.996094 344.390625 135.871094 344.390625 187.519531 C 344.390625 239.171875 302.484375 281.042969 250.789062 281.042969 C 222.75 281.042969 197.597656 268.722656 180.441406 249.210938 C 175.453125 251.152344 170.402344 252.917969 165.289062 254.511719 C 185.183594 279.816406 216.082031 296.070312 250.789062 296.070312 C 310.792969 296.070312 359.433594 247.472656 359.433594 187.519531 C 359.433594 127.570312 310.792969 78.96875 250.789062 78.96875 "
+                                        fill-opacity="1"
+                                        fill-rule="nonzero"
+                                    />
+                                </g>
+                                <path
+                                    fill="#edb641"
+                                    d="M 92.292969 173.023438 L 98.289062 191.460938 L 117.691406 191.460938 L 101.992188 202.855469 L 107.988281 221.292969 L 92.292969 209.898438 L 76.59375 221.292969 L 82.589844 202.855469 L 66.894531 191.460938 L 86.296875 191.460938 L 92.292969 173.023438 "
+                                    fill-opacity="1"
+                                    fill-rule="nonzero"
+                                />
+                                <path
+                                    fill="#edb641"
+                                    d="M 120.214844 112.25 L 125.390625 128.167969 L 142.140625 128.167969 L 128.589844 138 L 133.765625 153.917969 L 120.214844 144.082031 L 106.664062 153.917969 L 111.839844 138 L 98.289062 128.167969 L 115.039062 128.167969 L 120.214844 112.25 "
+                                    fill-opacity="1"
+                                    fill-rule="nonzero"
+                                />
+                                <path
+                                    fill="#edb641"
+                                    d="M 34.695312 209.136719 L 37.71875 218.421875 L 47.492188 218.421875 L 39.585938 224.160156 L 42.605469 233.449219 L 34.695312 227.707031 L 26.792969 233.449219 L 29.8125 224.160156 L 21.90625 218.421875 L 31.679688 218.421875 L 34.695312 209.136719 "
+                                    fill-opacity="1"
+                                    fill-rule="nonzero"
+                                />
+                            </svg>
+                        </a>
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-6 w-6 text-gray-500"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            stroke-width="2"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M12 4v16m8-8H4"
+                            />
+                        </svg>
+                        <a href="https://vitejs.dev">
+                            <svg
+                                viewBox="0 0 410 404"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="h-16 w-auto"
+                            >
+                                <path
+                                    d="M399.641 59.5246L215.643 388.545C211.844 395.338 202.084 395.378 198.228 388.618L10.5817 59.5563C6.38087 52.1896 12.6802 43.2665 21.0281 44.7586L205.223 77.6824C206.398 77.8924 207.601 77.8904 208.776 77.6763L389.119 44.8058C397.439 43.2894 403.768 52.1434 399.641 59.5246Z"
+                                    fill="url(#paint0_linear)"
+                                />
+                                <path
+                                    d="M292.965 1.5744L156.801 28.2552C154.563 28.6937 152.906 30.5903 152.771 32.8664L144.395 174.33C144.198 177.662 147.258 180.248 150.51 179.498L188.42 170.749C191.967 169.931 195.172 173.055 194.443 176.622L183.18 231.775C182.422 235.487 185.907 238.661 189.532 237.56L212.947 230.446C216.577 229.344 220.065 232.527 219.297 236.242L201.398 322.875C200.278 328.294 207.486 331.249 210.492 326.603L212.5 323.5L323.454 102.072C325.312 98.3645 322.108 94.137 318.036 94.9228L279.014 102.454C275.347 103.161 272.227 99.746 273.262 96.1583L298.731 7.86689C299.767 4.27314 296.636 0.855181 292.965 1.5744Z"
+                                    fill="url(#paint1_linear)"
+                                />
+                                <defs>
+                                    <linearGradient
+                                        id="paint0_linear"
+                                        x1="6.00017"
+                                        y1="32.9999"
+                                        x2="235"
+                                        y2="344"
+                                        gradientUnits="userSpaceOnUse"
+                                    >
+                                        <stop stop-color="#41D1FF" />
+                                        <stop offset="1" stop-color="#BD34FE" />
+                                    </linearGradient>
+                                    <linearGradient
+                                        id="paint1_linear"
+                                        x1="194.651"
+                                        y1="8.81818"
+                                        x2="236.076"
+                                        y2="292.989"
+                                        gradientUnits="userSpaceOnUse"
+                                    >
+                                        <stop stop-color="#FFEA83" />
+                                        <stop
+                                            offset="0.0833333"
+                                            stop-color="#FFDD35"
+                                        />
+                                        <stop offset="1" stop-color="#FFA800" />
+                                    </linearGradient>
+                                </defs>
+                            </svg>
+                        </a>
+                    </div>
+                    <div class="divide-y divide-gray-300 dark:divide-gray-700">
+                        <div class="py-8 text-base leading-7">
+                            <p>
+                                This is the Vite development server that
+                                provides Hot Module Replacement for your
+                                Litestar application.
+                            </p>
+                            <p class="mt-6">
+                                To access your Litestar application, you will
+                                need to run a local development server.
+                            </p>
+                        </div>
+                        <div class="pt-8 text-base leading-7">
+                            <p>
+                                Your Litestar application's configured
+                                <code
+                                    class="text-sm font-bold text-gray-900 dark:text-gray-100"
+                                    >APP_URL</code
+                                >
+                                is:<br />
+                                <a
+                                    href="{{ APP_URL }}"
+                                    class="font-semibold text-red-500 hover:text-red-600"
+                                    >{{ APP_URL }}</a
+                                >
+                            </p>
+                            <p class="mt-6">
+                                Want more information on Litestar's Vite
+                                integration?
+                            </p>
+                            <p>
+                                <a
+                                    href="https://litestar.dev/docs/vite"
+                                    class="font-semibold text-red-500 hover:text-red-600"
+                                    >Read the docs &rarr;</a
+                                >
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

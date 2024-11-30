@@ -6,4 +6,4 @@ from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.plugin import VitePlugin
 from litestar_vite.template_engine import ViteTemplateEngine
 
-__all__ = ("ViteConfig", "ViteTemplateConfig", "VitePlugin", "ViteAssetLoader", "ViteTemplateEngine", "inertia")
+__all__ = ("ViteAssetLoader", "ViteConfig", "VitePlugin", "ViteTemplateConfig", "ViteTemplateEngine", "inertia")
