@@ -123,7 +123,7 @@ lint: pre-commit type-check slotscheck				## Run all linting
 .PHONY: coverage
 coverage:  											## Run the tests and generate coverage report
 	@echo "=> Running tests with coverage"
-	@uv run pytest tests --cov -n auto
+	@uv run pytest --cov -n auto
 	@uv run coverage html
 	@uv run coverage xml
 	@echo "=> Coverage report generated"
@@ -132,7 +132,7 @@ coverage:  											## Run the tests and generate coverage report
 test:  												## Run the tests
 	@echo "=> Running test cases"
 	@npm run test
-	@uv run pytest tests -n 2
+	@uv run pytest -n 2
 	@echo "=> Tests complete"
 
 .PHONY: check-all

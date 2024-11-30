@@ -133,6 +133,7 @@ show_missing = true
 
 [tool.coverage.run]
 branch = true
+concurrency = ["multiprocessing"]
 omit = ["src/py/tests/*"]
 
 [tool.black]
