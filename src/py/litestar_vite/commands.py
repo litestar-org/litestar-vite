@@ -46,7 +46,20 @@ def init_vite(
     hot_file: Path,
     litestar_port: int,
 ) -> None:
-    """Initialize a new vite project."""
+    """Initialize a new Vite project.
+
+    Args:
+        app: The Litestar application instance.
+        root_path: Root directory for the Vite project.
+        resource_path: Directory containing source files.
+        asset_url: Base URL for serving assets.
+        public_path: Directory for static files.
+        bundle_path: Output directory for built files.
+        enable_ssr: Enable server-side rendering.
+        vite_port: Port for Vite dev server.
+        hot_file: Path to hot reload manifest.
+        litestar_port: Port for Litestar server.
+    """
     from jinja2 import Environment, FileSystemLoader, select_autoescape
     from litestar.cli._utils import console
     from litestar.utils import module_loader

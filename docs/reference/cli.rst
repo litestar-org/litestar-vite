@@ -1,8 +1,8 @@
-======
-Config
-======
+===
+CLI
+===
 
-.. automodule:: litestar_vite.config
+.. automodule:: litestar_vite.cli
     :members:
     :show-inheritance:
     :inherited-members:

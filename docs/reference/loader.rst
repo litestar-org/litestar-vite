@@ -1,8 +1,8 @@
 ======
-Config
+Loader
 ======
 
-.. automodule:: litestar_vite.config
+.. automodule:: litestar_vite.loader
     :members:
     :show-inheritance:
     :inherited-members:
