@@ -82,7 +82,7 @@ test = [
 ]
 
 [tool.bumpversion]
-allow_dirty = false
+allow_dirty = true
 commit = true
 commit_args = "--no-verify"
 current_version = "0.7.0"
@@ -108,6 +108,17 @@ search = 'version = "{current_version}"'
 filename = "package.json"
 replace = '"version": "{new_version}"'
 search = '"version": "{current_version}"'
+
+[[tool.bumpversion.files]]
+filename = "uv.lock"
+replace = """
+name = "litestar-vite"
+version = "{new_version}"
+"""
+search = """
+name = "litestar-vite"
+version = "{current_version}"
+"""
 
 [tool.pytest.ini_options]
 addopts = "--dist loadfile -n auto"
