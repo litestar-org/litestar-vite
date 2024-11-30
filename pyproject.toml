@@ -267,6 +267,7 @@ max-complexity = 12
   "SLF001",
   "ERA001",
 ]
+"tools/*.py" = [ "PLR0911"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["litestar_vite", "tests"]

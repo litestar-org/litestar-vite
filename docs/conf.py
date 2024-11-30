@@ -69,14 +69,15 @@ nitpick_ignore = [
     (PY_CLASS, "EmptyType"),
     (PY_CLASS, "ModelT"),
     (PY_CLASS, "T"),
-    (PY_CLASS, "litestar.contrib.jinja.T"), (PY_CLASS, "config.app.AppConfig"),
+    (PY_CLASS, "litestar.contrib.jinja.T"),
+    (PY_CLASS, "config.app.AppConfig"),
     (PY_OBJ, "litestar.template.config.EngineType"),
-    (PY_CLASS, "litestar.template.config.EngineType")
+    (PY_CLASS, "litestar.template.config.EngineType"),
 ]
 nitpick_ignore_regex = [
     (PY_RE, r"litestar_vite.*\.T"),
     (PY_RE, r"litestar\.template\.*\.T"),
-        (PY_RE, r"litestar\.contrib\.*\.T"),
+    (PY_RE, r"litestar\.contrib\.*\.T"),
     (PY_RE, r"config\.app\.AppConfig"),
 ]
 
@@ -92,9 +93,7 @@ autodoc_class_signature = "separated"
 autodoc_default_options = {"special-members": "__init__", "show-inheritance": True, "members": True}
 autodoc_member_order = "bysource"
 autodoc_typehints_format = "short"
-autodoc_type_aliases: dict[str, str] = {
-
-}
+autodoc_type_aliases: dict[str, str] = {}
 
 autosectionlabel_prefix_document = True
 
