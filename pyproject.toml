@@ -82,13 +82,13 @@ test = [
 ]
 
 [tool.bumpversion]
-allow_dirty = true
-commit = false
+allow_dirty = false
+commit = true
 commit_args = "--no-verify"
 current_version = "0.7.0"
 ignore_missing_files = false
-ignore_missing_version = true
-message = "chore(release): prepare for v{new_version}"
+ignore_missing_version = false
+message = "chore(release): bump to v{new_version}"
 parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)"
 regex = false
 replace = "{new_version}"
@@ -96,7 +96,7 @@ search = "{current_version}"
 serialize = ["{major}.{minor}.{patch}"]
 sign_tags = false
 tag = false
-tag_message = "chore(release): prepare for v{new_version}"
+tag_message = "chore(release): v{new_version}"
 tag_name = "v{new_version}"
 
 [[tool.bumpversion.files]]
