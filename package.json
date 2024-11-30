@@ -8,10 +8,10 @@
         "vite",
         "vite-plugin"
     ],
-    "homepage": "https://github.com/litestar-org/vite-plugin",
+    "homepage": "https://github.com/litestar-org/litestar-vite",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/litestar-org/vite-plugin.git"
+        "url": "git+https://github.com/litestar-org/litestar-vite.git"
     },
     "license": "MIT",
     "author": "Litestar",
