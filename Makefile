@@ -32,7 +32,9 @@ install: destroy clean								## Install the project, dependencies, and pre-comm
 	@uv python pin 3.12
 	@uv venv
 	@uv sync --all-extras --dev
-	@uvx nodeenv .venv --force --quiet
+	@if ! command -v npm >/dev/null 2>&1; then \
+		uvx nodeenv .venv --force --quiet; \
+	fi
 	@npm install
 	@echo "=> Install complete!"
 
