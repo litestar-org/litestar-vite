@@ -728,4 +728,3 @@ function resolveDevelopmentEnvironmentTld(configPath: string): string {
 function dirname(): string {
     return fileURLToPath(new URL(".", import.meta.url));
 }
-

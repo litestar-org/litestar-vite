@@ -20,7 +20,14 @@ T = TypeVar("T", bound=TemplateEngineProtocol["JinjaTemplate", Mapping[str, Any]
 
 
 class ViteTemplateEngine(JinjaTemplateEngine):
-    """Jinja Template Engine with Vite Integration."""
+    """Jinja Template Engine with Vite Integration.
+
+    This class extends :class:`litestar.contrib.jinja.JinjaTemplateEngine` to provide Vite asset integration
+    and hot module reloading support.
+
+    Raises:
+        TemplateNotFoundException: If template is not found.
+    """
 
     def __init__(
         self,
@@ -41,18 +48,15 @@ class ViteTemplateEngine(JinjaTemplateEngine):
             raise ValueError(msg)
         self.config = config
         self.asset_loader = ViteAssetLoader.initialize_loader(config=self.config)
-        self.engine.globals.update({"vite_hmr": self.get_hmr_client, "vite": self.get_asset_tag})  # pyright: ignore[reportCallIssue,reportArgumentType]
+        self.engine.globals.update({"vite_hmr": self.get_hmr_client, "vite": self.get_asset_tag})  # pyright: ignore[reportCallIssue,reportUnknownMemberType,reportArgumentType]
 
     def get_hmr_client(self) -> markupsafe.Markup:
         """Generate the script tag for the Vite WS client for HMR.
 
         Only used when hot module reloading is enabled, in production this method returns an empty string.
 
-        Arguments:
-            context: The template context.
-
         Returns:
-            str: The script tag or an empty string.
+            markupsafe.Markup: The script tag or an empty string.
         """
         return markupsafe.Markup(
             f"{self.asset_loader.generate_react_hmr_tags()}{self.asset_loader.generate_ws_client_tags()}",
@@ -69,20 +73,15 @@ class ViteTemplateEngine(JinjaTemplateEngine):
         Generates all scripts tags for this file and all its dependencies
         (JS and CSS) by reading the manifest file (for production only).
         In development Vite imports all dependencies by itself.
-        Place this tag in <head> section of your page
-        (this function marks automatically <script> as "async" and "defer").
+        Place this tag in <head> section of your page.
 
-        Arguments:
-            context: The template context.
+        Args:
             path: Path to a Vite asset to include.
-            scripts_attrs: script attributes
-            _: extra args to satisfy type checking
-
-        Keyword Arguments:
-            scripts_attrs {Optional[Dict[str, str]]}: Override attributes added to scripts tags. (default: {None})
+            scripts_attrs: Dictionary of attributes to add to script tags.
+            **_: Additional keyword arguments (ignored).
 
         Returns:
-            str: All tags to import this asset in your HTML page.
+            markupsafe.Markup: HTML markup containing all required asset tags.
         """
         if isinstance(path, str):
             path = [path]

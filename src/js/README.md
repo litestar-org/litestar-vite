@@ -4,7 +4,7 @@
 
 ## What is this?
 
-This is a library for Litestar and Vite that makes integration between the the two easier.  
+This is a library for Litestar and Vite that makes integration between the the two easier.
 
 For details on usage, use the `litestar-vite` [plugin](https://github.com/cofin/litestar-vite)
 

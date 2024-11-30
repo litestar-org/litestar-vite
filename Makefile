@@ -89,6 +89,12 @@ mypy-nocache:                                       ## Run Mypy without cache
 .PHONY: pyright
 pyright:                                            ## Run pyright
 	@echo "=> Running pyright"
+	@uv run pyright
+	@echo "=> pyright complete"
+
+.PHONY: basedpyright
+basedpyright:                                      ## Run basedpyright
+	@echo "=> Running basedpyright"
 	@uv run basedpyright
 	@echo "=> pyright complete"
 

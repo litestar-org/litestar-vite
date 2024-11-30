@@ -5,10 +5,11 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from inspect import isclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, cast
 
 from litestar.exceptions import ImproperlyConfiguredException
-from litestar.template import TemplateConfig, TemplateEngineProtocol
+from litestar.template import TemplateConfig
+from litestar.template.config import EngineType
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -16,7 +17,6 @@ if TYPE_CHECKING:
     from litestar.types import PathType
 
 __all__ = ("ViteConfig", "ViteTemplateConfig")
-EngineType = TypeVar("EngineType", bound=TemplateEngineProtocol[Any, Any])
 TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
 
 
@@ -135,8 +135,7 @@ class ViteTemplateConfig(TemplateConfig[EngineType]):
     config: ViteConfig = field(default_factory=lambda: ViteConfig())
     """A a config for the vite engine`."""
     engine: type[EngineType] | EngineType | None = field(default=None)
-    """A template engine adhering to the :class:`TemplateEngineProtocol
-    <litestar.template.base.TemplateEngineProtocol>`."""
+    """A template engine adhering to the :class:`TemplateEngineProtocol <litestar.template.TemplateEngineProtocol>`."""
     directory: PathType | list[PathType] | None = field(default=None)
     """A directory or list of directories from which to serve templates."""
     engine_callback: Callable[[EngineType], None] | None = field(default=None)
@@ -148,7 +147,7 @@ class ViteTemplateConfig(TemplateConfig[EngineType]):
 
     def __post_init__(self) -> None:
         """Ensure that directory is set if engine is a class."""
-        if isclass(self.engine) and not self.directory:  # pyright: ignore[reportUnknownMemberType]
+        if isclass(self.engine) and not self.directory:  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
             msg = "directory is a required kwarg when passing a template engine class"
             raise ImproperlyConfiguredException(msg)
         """Ensure that directory is not set if instance is."""
@@ -161,11 +160,11 @@ class ViteTemplateConfig(TemplateConfig[EngineType]):
         template_engine = cast(
             "EngineType",
             self.engine(directory=self.directory, config=self.config, engine_instance=None)  # pyright: ignore[reportUnknownMemberType,reportCallIssue]
-            if isclass(self.engine)
-            else self.engine,
+            if isclass(self.engine)  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+            else self.engine,  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
         )
         if callable(self.engine_callback):
-            self.engine_callback(template_engine)
+            self.engine_callback(template_engine)  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
         return template_engine
 
     @cached_property

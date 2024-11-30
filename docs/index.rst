@@ -49,7 +49,7 @@ Usage
 
 .. toctree::
     :titlesonly:
-    :caption: Litestar Aiosql Documentation
+    :caption: Litestar Vite Documentation
     :hidden:
 
     usage/index

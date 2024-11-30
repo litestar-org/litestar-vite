@@ -40,10 +40,13 @@ class ViteAssetLoader:
         return "1.0"
 
     def parse_manifest(self) -> None:
-        """Read and parse the Vite manifest file.
+        """Parse the Vite manifest file.
 
-        Example manifest:
-        ```json
+        The manifest file is a JSON file that maps source files to their corresponding output files.
+        Example manifest file structure:
+
+        .. code-block:: json
+
             {
                 "main.js": {
                     "file": "assets/main.4889e940.js",
@@ -62,11 +65,9 @@ class ViteAssetLoader:
                 "_shared.83069a53.js": {
                     "file": "assets/shared.83069a53.js"
                 }
-                }
-        ```
+            }
 
-        Raises:
-            RuntimeError: if cannot load the file or JSON in file is malformed.
+        The manifest is parsed and stored in memory for asset resolution during template rendering.
         """
         if self._config.hot_reload and self._config.dev_mode:
             hot_file_path = Path(

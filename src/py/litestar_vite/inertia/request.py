@@ -89,15 +89,15 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
     """Inertia Request class to work with Inertia client."""
 
     __slots__ = (
-        "_json",
-        "_form",
-        "_body",
-        "_msgpack",
-        "_content_type",
         "_accept",
+        "_body",
+        "_content_type",
+        "_form",
+        "_json",
+        "_msgpack",
+        "inertia",
         "is_connected",
         "supports_push_promise",
-        "inertia",
     )
 
     def __init__(self, scope: Scope, receive: Receive = empty_receive, send: Send = empty_send) -> None:

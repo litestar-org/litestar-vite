@@ -42,7 +42,7 @@ FIELD_ERR_RE = re.compile(r"field `(.+)`$")
 class _HTTPConflictException(HTTPException):
     """Request conflict with the current state of the target resource."""
 
-    status_code = HTTP_409_CONFLICT
+    status_code: int = HTTP_409_CONFLICT
 
 
 def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exception) -> Response[Any]:
@@ -58,7 +58,7 @@ def exception_to_http_response(request: Request[UserT, AuthT, StateT], exc: Exce
             http_exc = InternalServerException  # type: ignore[assignment]
         if request.app.debug and http_exc not in (PermissionDeniedException, NotFoundError):
             return cast("Response[Any]", create_debug_response(request, exc))
-        return cast("Response[Any]", create_exception_response(request, http_exc(detail=str(exc.__cause__))))
+        return cast("Response[Any]", create_exception_response(request, http_exc(detail=str(exc.__cause__))))  # pyright: ignore[reportUnknownArgumentType]
     return create_inertia_exception_response(request, exc)
 
 
@@ -81,7 +81,7 @@ def create_inertia_exception_response(request: Request[UserT, AuthT, StateT], ex
     if extras and len(extras) >= 1:
         message = extras[0]
         default_field = f"root.{message.get('key')}" if message.get("key", None) is not None else "root"  # type: ignore
-        error_detail = cast("str", message.get("message", detail))  # type: ignore[union-attr] # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+        error_detail = cast("str", message.get("message", detail))  # type: ignore[union-attr] # pyright: ignore[reportUnknownMemberType]
         match = FIELD_ERR_RE.search(error_detail)
         field = match.group(1) if match else default_field
         if isinstance(message, dict):
