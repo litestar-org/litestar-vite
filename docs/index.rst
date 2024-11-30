@@ -1,17 +1,18 @@
-================
-Litestar Aiosql
-================
+=============
+Litestar Vite
+=============
 
-Litestar Aiosql is a plugin to make managing and creating database sessions easier for Litestar applications.
+Supercharge your Litestar applications with Vite's modern frontend tooling. Litestar-Vite seamlessly integrates
+`Vite <https://vitejs.dev/>`_ - the next generation frontend build tool - with your Litestar web applications.
 
-If you are using SQLAlchemy, you most likely want to use the SQLAlchemy Plugin.  However, if you are not using an ORM or need a simple tool to manage `asyncpg` connections, this plugin is for you.
+Key Features
+------------
 
-.. seealso:: It is built on:
-
-    * `SQLAlchemy <https://www.sqlalchemy.org/>`_
-    * `msgspec <https://jcristharif.com/msgspec/>`_
-    * `Alembic <https://alembic.sqlalchemy.org/en/latest/>`_
-    * `Typing Extensions <https://typing-extensions.readthedocs.io/en/latest/>`_
+- 🚀 **Lightning-fast HMR**: Get instant feedback with Vite's blazing fast Hot Module Replacement
+- 🔧 **Zero Config**: Works out of the box with sensible defaults
+- 🎯 **Asset Management**: Automatically serves your static files and handles asset manifests
+- 🛠️ **Development Mode**: Integrated dev server with automatic proxy configuration
+- 📦 **Production Ready**: Optimized asset serving for production builds
 
 Installation
 ------------
@@ -27,6 +28,13 @@ Installing ``litestar-vite`` is as easy as calling your favorite Python package 
             :caption: Using pip
 
             python3 -m pip install litestar-vite
+
+    .. tab-item:: uv
+
+        .. code-block:: bash
+            :caption: Using `uv <https://astral.sh/uv/>`_
+
+            uv add litestar-vite
 
     .. tab-item:: pdm
 
