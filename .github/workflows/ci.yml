@@ -92,6 +92,8 @@ jobs:
   test_js:
     name: "test (js ${{ matrix.node-version }})"
     runs-on: ubuntu-latest
+    env:
+      LITESTAR_BYPASS_ENV_CHECK: 1
     strategy:
       matrix:
         node-version: [18,20]
