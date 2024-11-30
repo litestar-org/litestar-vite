@@ -110,7 +110,7 @@ pre-commit: 										## Runs pre-commit hooks; includes ruff formatting and lin
 .PHONY: slotscheck
 slotscheck: 										## Run slotscheck
 	@echo "=> Running slotscheck"
-	@uv run slotscheck
+	@uv run slotscheck -m litestar_vite
 	@echo "=> slotscheck complete"
 
 .PHONY: fix
