@@ -17,8 +17,8 @@ release:       ## bump the version and create the release tag
 	make docs
 	make clean
 	make build
-	uv run bump-my-version bump $(bump)
 	uv lock --upgrade-package litestar-vite
+	uv run bump-my-version bump $(bump)
 
 # =============================================================================
 # Developer Utils
