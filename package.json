@@ -1,65 +1,57 @@
 {
-    "name": "litestar-vite-plugin",
-    "version": "0.7.1",
-    "type": "module",
-    "description": "Litestar plugin for Vite.",
-    "keywords": [
-        "litestar",
-        "vite",
-        "vite-plugin"
-    ],
-    "homepage": "https://github.com/litestar-org/litestar-vite",
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/litestar-org/litestar-vite.git"
+  "name": "litestar-vite-plugin",
+  "version": "0.7.1",
+  "type": "module",
+  "description": "Litestar plugin for Vite.",
+  "keywords": ["litestar", "vite", "vite-plugin"],
+  "homepage": "https://github.com/litestar-org/litestar-vite",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/litestar-org/litestar-vite.git"
+  },
+  "license": "MIT",
+  "author": "Litestar",
+  "exports": {
+    ".": {
+      "types": "./dist/js/index.d.ts",
+      "default": "./dist/js/index.js"
     },
-    "license": "MIT",
-    "author": "Litestar",
-    "exports": {
-        ".": {
-            "types": "./dist/js/index.d.ts",
-            "default": "./dist/js/index.js"
-        },
-        "./inertia-helpers": {
-            "types": "./dist/js/inertia-helpers/index.d.ts",
-            "default": "./dist/js/inertia-helpers/index.js"
-        }
-    },
-    "types": "./dist/js/index.d.ts",
-    "files": [
-        "/dist/js/",
-        "/dist/js/inertia-helpers"
-    ],
-    "bin": {
-        "clean-orphaned-assets": "tools/clean.js"
-    },
-    "scripts": {
-        "build": "npm run build-plugin && npm run build-inertia-helpers",
-        "build-plugin": "rm -rf dist/js && npm run build-plugin-types && npm run build-plugin-esm && cp src/js/src/dev-server-index.html dist/js/",
-        "build-plugin-types": "tsc --project src/js/tsconfig.json --emitDeclarationOnly",
-        "build-plugin-esm": "esbuild src/js/src/index.ts --platform=node --format=esm --outfile=dist/js/index.js",
-        "build-inertia-helpers": "rm -rf dist/inertia-helpers && tsc --project src/js/tsconfig.inertia-helpers.json",
-        "lint": "eslint --ext .ts ./src/js/src ./src/js/tests",
-        "test": "vitest run"
-    },
-    "devDependencies": {
-        "@types/node": "^18.11.9",
-        "@typescript-eslint/eslint-plugin": "^5.21.0",
-        "@typescript-eslint/parser": "^5.21.0",
-        "esbuild": "0.16.10",
-        "eslint": "^8.14.0",
-        "typescript": "^4.6.4",
-        "vite": "^5.0.0",
-        "vitest": "^0.34.4"
-    },
-    "peerDependencies": {
-        "vite": "^5.0.0"
-    },
-    "engines": {
-        "node": "^18.0.0 || >=20.0.0"
-    },
-    "dependencies": {
-        "picocolors": "^1.0.0",
-        "vite-plugin-full-reload": "^1.1.0"
+    "./inertia-helpers": {
+      "types": "./dist/js/inertia-helpers/index.d.ts",
+      "default": "./dist/js/inertia-helpers/index.js"
     }
+  },
+  "types": "./dist/js/index.d.ts",
+  "files": ["/dist/js/", "/dist/js/inertia-helpers"],
+  "bin": {
+    "clean-orphaned-assets": "tools/clean.js"
+  },
+  "scripts": {
+    "build": "npm run build-plugin && npm run build-inertia-helpers",
+    "build-plugin": "rm -rf dist/js && npm run build-plugin-types && npm run build-plugin-esm && cp src/js/src/dev-server-index.html dist/js/",
+    "build-plugin-types": "tsc --project src/js/tsconfig.json --emitDeclarationOnly",
+    "build-plugin-esm": "esbuild src/js/src/index.ts --platform=node --format=esm --outfile=dist/js/index.js",
+    "build-inertia-helpers": "rm -rf dist/inertia-helpers && tsc --project src/js/tsconfig.inertia-helpers.json",
+    "lint": "eslint --ext .ts ./src/js/src ./src/js/tests",
+    "test": "vitest --config ./src/js/vitest.config.ts run"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@types/node": "^22.10.1",
+    "esbuild": "0.24.0",
+    "happy-dom": "^15.11.7",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.1",
+    "vitest": "^2.1.6"
+  },
+  "peerDependencies": {
+    "vite": ">=5.0.0"
+  },
+  "engines": {
+    "node": "^18.0.0 || >=20.0.0"
+  },
+  "dependencies": {
+    "picocolors": "^1.1.1",
+    "vite-plugin-full-reload": "^1.2.0"
+  }
 }

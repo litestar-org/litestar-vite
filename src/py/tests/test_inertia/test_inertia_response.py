@@ -4,6 +4,7 @@ from typing import Any, Dict
 
 import pytest
 from litestar import Request, get
+from litestar.exceptions import NotAuthorizedException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.plugins.flash import (  # pyright: ignore[reportUnknownVariableType]  # pyright: ignore[reportUnknownVariableType]
     FlashConfig,
@@ -137,3 +138,43 @@ async def test_component_inertia_version_redirect(inertia_plugin: InertiaPlugin,
             response.content
             == b'{"component":"Home","url":"/","version":"1.0","props":{"flash":{},"errors":{},"csrf_token":"","content":{"thing":"value"}}}'
         )
+
+
+async def test_unauthenticated_redirect(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin) -> None:
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
+        raise NotAuthorizedException(detail="User not authenticated")
+
+    @get("/login", component="Login")
+    async def login_handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
+        return {"thing": "value"}
+
+    inertia_plugin.config.redirect_unauthorized_to = "/login"
+
+    with create_test_client(
+        route_handlers=[handler, login_handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert response.status_code == 200
+        assert response.url.path == "/login"
+
+
+async def test_404_redirect(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin) -> None:
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
+        return {"thing": "value"}
+
+    inertia_plugin.config.redirect_404 = "/"
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/not-found", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert response.status_code == 200
+        assert response.url.path == "/"

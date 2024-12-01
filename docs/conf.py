@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from litestar_vite.__metadata__ import __project__, __version__
 
@@ -124,7 +125,7 @@ brand_colors = {
     "--brand-light": {"rgb": "235, 221, 221", "hex": "#ebdddd"},
 }
 
-html_theme_options = {
+html_theme_options: dict[str, Any] = {
     # "logo_target": "/",
     # "github_url": "https://github.com/litestar-org/litestar-vite",
     # "github_repo_name": "Litestar Vite",
