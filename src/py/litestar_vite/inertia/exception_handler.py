@@ -100,12 +100,12 @@ def create_inertia_exception_response(request: Request[UserT, AuthT, StateT], ex
         return InertiaBack(request)
     if (status_code == HTTP_401_UNAUTHORIZED or isinstance(exc, NotAuthorizedException)) and (
         inertia_plugin.config.redirect_unauthorized_to is not None
-        and str(request.url) != inertia_plugin.config.redirect_unauthorized_to
+        and request.url.path != inertia_plugin.config.redirect_unauthorized_to
     ):
         return InertiaRedirect(request, redirect_to=inertia_plugin.config.redirect_unauthorized_to)
 
     if status_code in {HTTP_404_NOT_FOUND, HTTP_405_METHOD_NOT_ALLOWED} and (
-        inertia_plugin.config.redirect_404 is not None and str(request.url) != inertia_plugin.config.redirect_404
+        inertia_plugin.config.redirect_404 is not None and request.url.path != inertia_plugin.config.redirect_404
     ):
         return InertiaRedirect(request, redirect_to=inertia_plugin.config.redirect_404)
 

@@ -37,7 +37,7 @@ class InertiaPlugin(InitPluginProtocol):
         """Initialize ``Inertia``.
 
         Args:
-            config: configure and start Vite.
+            config: Inertia configuration.
         """
         self.config = config
 
@@ -45,7 +45,7 @@ class InertiaPlugin(InitPluginProtocol):
         """Configure application for use with Vite.
 
         Args:
-            app_config: The :class:`AppConfig <.config.app.AppConfig>` instance.
+            app_config: The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
         """
         for mw in app_config.middleware:
             if isinstance(mw, DefineMiddleware) and is_class_and_subclass(

@@ -22,7 +22,7 @@ class InertiaConfig:
     redirect_unauthorized_to: str | None = None
     """Optionally supply a path where unauthorized requests should redirect."""
     redirect_404: str | None = None
-    """Optionally supply a path where unauthorized requests should redirect."""
+    """Optionally supply a path where 404 requests should redirect."""
     extra_static_page_props: dict[str, Any] = field(default_factory=dict)
     """A dictionary of values to automatically add in to page props on every response."""
     extra_session_page_props: set[str] = field(default_factory=set)

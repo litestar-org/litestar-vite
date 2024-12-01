@@ -1,1 +1,1 @@
-export default 'Dummy File'
+export default "Dummy File"
