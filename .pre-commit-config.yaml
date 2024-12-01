@@ -14,7 +14,7 @@ repos:
         language: system
         types: [text]
         files: "\\.(jsx?|tsx?|c(js|ts)|m(js|ts)|d\\.(ts|cts|mts)|jsonc?|css|svelte|vue|astro|graphql|gql)$"
-        exclude: templates|migrations|scripts|docs|dist|.venv|public|node_modules
+        exclude: templates|migrations|scripts|docs|dist|.venv|public|node_modules|package-lock.json
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
