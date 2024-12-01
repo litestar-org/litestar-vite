@@ -96,7 +96,7 @@ def on_warn_missing_reference(app: Sphinx, domain: str, node: Node) -> bool | No
             continue
         if isinstance(targets, set) and target in targets:
             return True
-        if targets.match(target):  # pyright: ignore[reportAttributeAccessIssue]
+        if isinstance(targets, re.Pattern) and targets.match(target):
             return True
 
     return None

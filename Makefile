@@ -50,7 +50,7 @@ upgrade:       										## Upgrade all dependencies to the latest stable versio
 .PHONY: clean
 clean: 												## Cleanup temporary build artifacts
 	@echo "=> Cleaning working directory"
-	@rm -rf .pytest_cache .ruff_cache .hypothesis build/ -rf dist/ .eggs/
+	@rm -rf  pytest_cache .ruff_cache .hypothesis build/ -rf dist/ .eggs/ .coverage coverage.xml coverage.json htmlcov/ .pytest_cache tests/.pytest_cache tests/**/.pytest_cache .mypy_cache .unasyncd_cache/ .auto_pytabs_cache node_modules
 	@find . -name '*.egg-info' -exec rm -rf {} +
 	@find . -type f -name '*.egg' -exec rm -f {} +
 	@find . -name '*.pyc' -exec rm -f {} +
@@ -58,8 +58,6 @@ clean: 												## Cleanup temporary build artifacts
 	@find . -name '*~' -exec rm -f {} +
 	@find . -name '__pycache__' -exec rm -rf {} +
 	@find . -name '.ipynb_checkpoints' -exec rm -rf {} +
-	@rm -rf .coverage coverage.xml coverage.json htmlcov/ .pytest_cache tests/.pytest_cache tests/**/.pytest_cache .mypy_cache .unasyncd_cache/
-	@rm -rf node_modules
 	$(MAKE) docs-clean
 
 .PHONY: destroy

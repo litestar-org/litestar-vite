@@ -17,7 +17,10 @@ export async function resolvePageComponent<T>(
 }
 
 
-export function route(routeName: string, ...args: any[]): string  {
+type RouteArg = string | number | boolean;
+type RouteArgs = Record<string, RouteArg> | RouteArg[];
+
+export function route(routeName: string, ...args: [RouteArgs?]): string  {
     let url = globalThis.routes[routeName];
     if (!url) {
         console.error(`URL '${routeName}' not found in routes.`);
@@ -34,25 +37,25 @@ export function route(routeName: string, ...args: any[]): string  {
     }
     try {
         if (typeof args[0] === "object" && !Array.isArray(args[0])) {
-            argTokens?.forEach((token) => {
+            for (const token of argTokens ?? []) {
                 let argName = token.slice(1, -1);
                 if (argName.includes(":")) {
-                    argName = argName.split(":")[1];
+                    argName = argName.split(":")[0];
                 }
 
-                const argValue = (args[0] as { [key: string]: any })[argName];
+                const argValue = (args[0] as Record<string, unknown>)[argName];
                 if (argValue === undefined) {
                     throw new Error(
                         `Invalid URL lookup: Argument '${argName}' was not provided.`
                     );
                 }
 
-                url = url.replace(token, argValue.toString());
-            });
+                url = url.replace(token, String(argValue));
+            }
         } else {
             const argsArray = Array.isArray(args[0])
                 ? args[0]
-                : Array.prototype.slice.call(args);
+                : Array.from(args);
 
             if (argTokens && argTokens.length !== argsArray.length) {
                 throw new Error(
@@ -61,11 +64,14 @@ export function route(routeName: string, ...args: any[]): string  {
             }
             argTokens?.forEach((token, i) => {
                 const argValue = argsArray[i];
+                if (argValue === undefined) {
+                    throw new Error(`Missing argument at position ${i}`);
+                }
                 url = url.replace(token, argValue.toString());
             });
         }
-    } catch (error: any) {
-        console.error(error.message);
+    } catch (error: unknown) {
+        console.error(error instanceof Error ? error.message : String(error));
         return "#";
     }
 
@@ -82,38 +88,36 @@ export function getRelativeUrlPath(url: string): string {
         return url;
     }
 }
+
 function routePatternToRegex(pattern: string): RegExp {
-    return new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+    return new RegExp(`^${pattern.replace(/\*/g, '.*')}$`);
 }
 
-
 export function toRoute(url: string): string | null  {
-    url = getRelativeUrlPath(url)
-    url = url === '/' ? url : url.replace(/\/$/, '');
+    const processedUrl = getRelativeUrlPath(url);
+    const normalizedUrl = processedUrl === '/' ? processedUrl : processedUrl.replace(/\/$/, '');
 
-    for (const routeName in routes) {
-        const routePattern = routes[routeName];
-        const regexPattern = routePattern.replace(/\//g, '\\/').replace(/\{([^}]+):([^}]+)\}/g, (match, paramName, paramType) => {
-            // Create a regex pattern based on the parameter type
-            switch (paramType) {
-              case 'str':
-              case 'path':
-                return '([^/]+)'; // Match any non-slash characters
-              case 'uuid':
-                return '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'; // Match a UUID pattern
-              default:
-                return '([^/]+)'; // Default to match any non-slash characters
-            }
-          })
-
+    for (const [routeName, routePattern] of Object.entries(routes)) {
+        const regexPattern = routePattern
+            .replace(/\//g, '\\/')
+            .replace(/\{([^}]+):([^}]+)\}/g, (_, __, paramType) => {
+                switch (paramType) {
+                    case 'uuid':
+                        return '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+                    case 'path':
+                        return '.*'; // Matches any characters including forward slashes
+                    default:
+                        return '[^/]+'; // Matches any characters except forward slashes
+                }
+            });
 
         const regex = new RegExp(`^${regexPattern}$`);
-        if (regex.test(url)) {
-          return routeName;
+        if (regex.test(normalizedUrl)) {
+            return routeName;
         }
-      }
+    }
 
-      return null; // No matching route found
+    return null;
 }
 
 
@@ -124,29 +128,33 @@ export function currentRoute(): string | null  {
 
 
 export function isRoute(url: string, routeName: string): boolean  {
-    url = getRelativeUrlPath(url)
-    url = url === '/' ? url : url.replace(/\/$/, '');
+    const processedUrl = getRelativeUrlPath(url);
+    const normalizedUrl = processedUrl === '/' ? processedUrl : processedUrl.replace(/\/$/, '');
     const routeNameRegex = routePatternToRegex(routeName);
 
-    for (const routeName in routes) {
-        if (routeNameRegex.test(routeName)) {
-            const routePattern = routes[routeName];
-            const regexPattern = routePattern.replace(/\//g, '\\/').replace(/\{([^}]+):([^}]+)\}/g, (match, paramName, paramType) => {
-                switch (paramType) {
-                    case 'str':
-                    case 'path':
-                        return '([^/]+)';
-                    case 'uuid':
-                        return '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
-                    default:
-                        return '([^/]+)';
-                }
-            });
+    // Find all matching route names based on the pattern
+    const matchingRouteNames = Object.keys(routes).filter(name =>
+        routeNameRegex.test(name)
+    );
 
-            const regex = new RegExp(`^${regexPattern}$`);
-            if (regex.test(url)) {
-                return true;
+    // For each matching route name, check if the URL matches its pattern
+    for (const name of matchingRouteNames) {
+        const routePattern = routes[name];
+        const regexPattern = routePattern.replace(/\//g, '\\/').replace(/\{([^}]+):([^}]+)\}/g, (match, paramName, paramType) => {
+            switch (paramType) {
+                case 'str':
+                case 'path':
+                    return '([^/]+)';
+                case 'uuid':
+                    return '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+                default:
+                    return '([^/]+)';
             }
+        });
+
+        const regex = new RegExp(`^${regexPattern}$`);
+        if (regex.test(normalizedUrl)) {
+            return true;
         }
     }
 
@@ -165,7 +173,7 @@ export function isCurrentRoute(routeName: string): boolean {
 declare global {
     // eslint-disable-next-line no-var
     var routes: { [key: string]: string };
-    function route(routeName: string, ...args: any[]): string
+    function route(routeName: string, ...args: [RouteArgs?]): string
     function toRoute(url: string): string | null
     function currentRoute(): string | null
     function isRoute(url: string, routeName: string): boolean

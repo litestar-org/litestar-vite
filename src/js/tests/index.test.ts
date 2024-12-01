@@ -1,9 +1,12 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resolvePageComponent, route, getRelativeUrlPath, toRoute, currentRoute, isRoute, isCurrentRoute } from "../src/inertia-helpers";
 import litestar from "../src"
-import { resolvePageComponent } from "../src/inertia-helpers";
 
 describe("litestar-vite-plugin", () => {
+    const originalEnv = { ...process.env };
+
     afterEach(() => {
+        process.env = { ...originalEnv };
         vi.clearAllMocks();
     });
 
@@ -172,18 +175,18 @@ describe("litestar-vite-plugin", () => {
             { command: "build", mode: "production" }
         );
         expect(config.base).toBe("/over/the/rainbow/");
-        expect(config.build.manifest).toBe('manifest.json');
-        expect(config.build.outDir).toBe("public/build");
-        expect(config.build.rollupOptions.input).toBe("resources/js/app.js");
+        expect(config.build?.manifest).toBe('manifest.json');
+        expect(config.build?.outDir).toBe("public/build");
+        expect(config.build?.rollupOptions?.input).toBe("resources/js/app.js");
 
         const ssrConfig = plugin.config(
             { build: { ssr: true } },
             { command: "build", mode: "production" }
         );
         expect(ssrConfig.base).toBe("/over/the/rainbow/");
-        expect(ssrConfig.build.manifest).toBe(false);
-        expect(ssrConfig.build.outDir).toBe("resources/bootstrap/ssr");
-        expect(ssrConfig.build.rollupOptions.input).toBe("resources/js/ssr.js");
+        expect(ssrConfig.build?.manifest).toBe(false);
+        expect(ssrConfig.build?.outDir).toBe("resources/bootstrap/ssr");
+        expect(ssrConfig.build?.rollupOptions?.input).toBe("resources/js/ssr.js");
     });
 
     it("uses the default entry point when ssr entry point is not provided", () => {
@@ -212,8 +215,6 @@ describe("litestar-vite-plugin", () => {
             { command: "build", mode: "production" }
         );
         expect(prodConfig.base).toBe("http://example.com/");
-
-        delete process.env.ASSET_URL;
     });
 
 
@@ -256,7 +257,7 @@ describe("litestar-vite-plugin", () => {
             { command: "build", mode: "development" }
         );
 
-        expect(config.resolve.alias["@"]).toBe("/resources/");
+        expect(config.resolve?.alias?.["@"]).toBe("/resources/");
     });
 
     it("respects a users existing @ alias", () => {
@@ -273,7 +274,7 @@ describe("litestar-vite-plugin", () => {
             { command: "build", mode: "development" }
         );
 
-        expect(config.resolve.alias["@"]).toBe("/somewhere/else");
+        expect(config.resolve?.alias?.["@"]).toBe("/somewhere/else");
     });
 
     it("appends an Alias object when using an alias array", () => {
@@ -288,7 +289,7 @@ describe("litestar-vite-plugin", () => {
             { command: "build", mode: "development" }
         );
 
-        expect(config.resolve.alias).toEqual([
+        expect(config.resolve?.alias).toEqual([
             { find: "@", replacement: "/something/else" },
             { find: "@", replacement: "/resources/" },
         ]);
@@ -305,8 +306,6 @@ describe("litestar-vite-plugin", () => {
         expect(config.server?.host).toBe("0.0.0.0");
         expect(config.server?.port).toBe(5173);
         expect(config.server?.strictPort).toBe(true);
-
-        delete process.env.VITE_ALLOW_REMOTE;
     });
 
     it("allows the Vite port to be configured when inside a container", () => {
@@ -321,9 +320,6 @@ describe("litestar-vite-plugin", () => {
         expect(config.server?.host).toBe("0.0.0.0");
         expect(config.server?.port).toBe(1234);
         expect(config.server?.strictPort).toBe(true);
-
-        delete process.env.VITE_ALLOW_REMOTE;
-        delete process.env.VITE_PORT;
     });
 
     it("allows the server configuration to be overridden inside a container", () => {
@@ -343,8 +339,6 @@ describe("litestar-vite-plugin", () => {
         expect(config.server?.host).toBe("example.com");
         expect(config.server?.port).toBe(1234);
         expect(config.server?.strictPort).toBe(false);
-
-        delete process.env.VITE_ALLOW_REMOTE;
     });
 
     it("prevents the Inertia helpers from being externalized", () => {
@@ -516,6 +510,7 @@ describe("inertia-helpers", () => {
     it("pass glob value to resolvePageComponent", async () => {
         const file = await resolvePageComponent<{ default: string }>(
             path,
+            /* @ts-ignore */
             import.meta.glob("./__data__/*.ts")
         );
         expect(file.default).toBe("Dummy File");
@@ -524,6 +519,7 @@ describe("inertia-helpers", () => {
     it("pass eagerly globed value to resolvePageComponent", async () => {
         const file = await resolvePageComponent<{ default: string }>(
             path,
+            /* @ts-ignore */
             import.meta.glob("./__data__/*.ts", { eager: true })
         );
         expect(file.default).toBe("Dummy File");
@@ -532,7 +528,9 @@ describe("inertia-helpers", () => {
     it("accepts array of paths", async () => {
         const file = await resolvePageComponent<{ default: string }>(
             ["missing-page", path],
+            /* @ts-ignore */
             import.meta.glob("./__data__/*.ts", { eager: true }),
+            /* @ts-ignore */
             path
         );
         expect(file.default).toBe("Dummy File");
@@ -542,6 +540,7 @@ describe("inertia-helpers", () => {
         const callback = () =>
             resolvePageComponent<{ default: string }>(
                 "missing-page",
+                /* @ts-ignore */
                 import.meta.glob("./__data__/*.ts")
             );
         await expect(callback).rejects.toThrowError(
@@ -553,10 +552,160 @@ describe("inertia-helpers", () => {
         const callback = () =>
             resolvePageComponent<{ default: string }>(
                 ["missing-page-1", "missing-page-2"],
+                /* @ts-ignore */
                 import.meta.glob("./__data__/*.ts")
             );
         await expect(callback).rejects.toThrowError(
             new Error("Page not found: missing-page-1,missing-page-2")
         );
+    });
+});
+
+describe("route helpers", () => {
+    beforeEach(() => {
+        // Setup mock routes based on the provided JSON
+        globalThis.routes = {
+            "home": "/",
+            "about": "/about",
+            "users:assign-role": "/api/roles/{role_slug:str}/assign",
+            "users:revoke-role": "/api/roles/{role_slug:str}/revoke",
+            "tags:create": "/api/tags",
+            "tags:list": "/api/tags",
+            "tags:get": "/api/tags/{tag_id:uuid}",
+            "tags:update": "/api/tags/{tag_id:uuid}",
+            "tags:delete": "/api/tags/{tag_id:uuid}",
+            "teams:add-member": "/api/teams/{team_id:uuid}/members/add",
+            "teams:remove-member": "/api/teams/{team_id:uuid}/members/remove",
+            "users:create": "/api/users/create",
+            "users:list": "/api/users/list",
+            "users:update": "/api/users/update/{user_id:uuid}",
+            "users:delete": "/api/users/delete/{user_id:uuid}",
+            "users:get": "/api/users/get/{user_id:uuid}",
+            "dashboard": "/dashboard",
+            "favicon": "/favicon.ico",
+            "landing": "/landing",
+            "login.check": "/login/check",
+            "login": "/login",
+            "logout": "/logout",
+            "github.complete": "/o/github/complete",
+            "google.complete": "/o/google/complete",
+            "privacy-policy": "/privacy-policy",
+            "account.remove": "/profile/remove",
+            "profile.show": "/profile",
+            "profile.update": "/profile/update",
+            "password.update": "/profile/password-update",
+            "register": "/register",
+            "register.add": "/register/add",
+            "github.register": "/register/github",
+            "google.register": "/register/google",
+            "worker:index": "/saq/queues/{queue_id:str}/jobs/{job_id:str}",
+            "worker:queue-list": "/saq/api/queues/list",
+            "worker:queue-detail": "/saq/api/queues/{queue_id:str}",
+            "worker:job-detail": "/saq/api/queues/{queue_id:str}/jobs/{job_id:str}",
+            "worker:job-abort": "/saq/api/queues/{queue_id:str}/jobs/{job_id:str}/abort",
+            "worker:job-retry": "/saq/api/queues/{queue_id:str}/jobs/{job_id:str}/retry",
+            "saq": "/saq/static/{file_path:path}",
+            "vite": "/static/{file_path:path}",
+            "teams.add": "/teams/add",
+            "teams.list": "/teams/list",
+            "teams.show": "/teams/show/{team_id:uuid}",
+            "teams.remove": "/teams/remove/{team_id:uuid}",
+            "teams.edit": "/teams/edit/{team_id:uuid}",
+            "terms-of-service": "/terms-of-service"
+        };
+    });
+
+    describe('route()', () => {
+        it('generates URLs from route names with named parameters', () => {
+            expect(route('users:get', { user_id: '123e4567-e89b-12d3-a456-426614174000' }))
+                .toContain('/api/users/get/123e4567-e89b-12d3-a456-426614174000');
+
+            expect(route('worker:queue-detail', { queue_id: 'default' }))
+                .toContain('/saq/api/queues/default');
+        });
+
+        it('returns "#" for invalid routes', () => {
+            expect(route('invalid.route')).toBe('#');
+        });
+
+        it('handles missing parameters', () => {
+            expect(route('users:get')).toBe('#');
+        });
+    });
+
+    describe('getRelativeUrlPath()', () => {
+        it('extracts relative path from full URL', () => {
+            expect(getRelativeUrlPath('http://example.com/api/users/get/123e4567-e89b-12d3-a456-426614174000?page=1#section'))
+                .toBe('/api/users/get/123e4567-e89b-12d3-a456-426614174000?page=1#section');
+        });
+
+        it('returns original string for relative paths', () => {
+            expect(getRelativeUrlPath('/api/users/get/123e4567-e89b-12d3-a456-426614174000')).toBe('/api/users/get/123e4567-e89b-12d3-a456-426614174000');
+        });
+    });
+
+    describe('toRoute()', () => {
+        it('matches URLs to route names', () => {
+            expect(toRoute('/api/users/list')).toBe('users:list');
+            expect(toRoute('/api/users/get/123e4567-e89b-12d3-a456-426614174000')).toBe('users:get');
+            expect(toRoute('/teams/list')).toBe('teams.list');
+            expect(toRoute('/teams/show/123e4567-e89b-12d3-a456-426614174000')).toBe('teams.show');
+            expect(toRoute('/saq/api/queues/list')).toBe('worker:queue-list');
+            expect(toRoute('/saq/api/queues/default/jobs/123')).toBe('worker:job-detail');
+            expect(toRoute('/saq/static/path/to/file.pdf')).toBe('saq');
+        });
+
+        it('returns null for unmatched routes', () => {
+            expect(toRoute('/not/a/real/route')).toBeNull();
+        });
+    });
+
+    describe('currentRoute()', () => {
+        it('returns current route name based on window location', () => {
+            // Mock window.location
+            Object.defineProperty(window, 'location', {
+                value: { pathname: '/api/users/get/123e4567-e89b-12d3-a456-426614174000' },
+                writable: true
+            });
+
+            expect(currentRoute()).toBe('users:get');
+        });
+
+        it('returns null when current location does not match any route', () => {
+            Object.defineProperty(window, 'location', {
+                value: { pathname: '/not/a/real/route' },
+                writable: true
+            });
+
+            expect(currentRoute()).toBeNull();
+        });
+    });
+
+    describe('isRoute()', () => {
+        it('checks if URL matches route pattern', () => {
+            expect(isRoute('/api/users/get/123e4567-e89b-12d3-a456-426614174000', 'users:get')).toBe(true);
+            expect(isRoute('/invalid/path', 'users:get')).toBe(false);
+        });
+    });
+
+    describe('isCurrentRoute()', () => {
+        it('checks if current location matches route pattern', () => {
+            Object.defineProperty(window, 'location', {
+                value: { pathname: '/api/users/get/123e4567-e89b-12d3-a456-426614174000' },
+                writable: true
+            });
+
+            expect(isCurrentRoute('users:get')).toBe(true);
+            expect(isCurrentRoute('users.*')).toBe(true);
+        });
+
+        it('returns false when current location does not match route pattern', () => {
+            Object.defineProperty(window, 'location', {
+                value: { pathname: '/not/a/real/route' },
+                writable: true
+            });
+
+            expect(isCurrentRoute('users:get')).toBe(false);
+        });
     });
 });
