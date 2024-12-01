@@ -51,7 +51,7 @@ include = ["src/py/*","src/js/*"]
 skip-excluded-dirs = false
 
 [tool.hatch.build.targets.wheel]
-packages = ["litestar_vite"]
+packages = ["src/py/litestar_vite"]
 sources = ["src/py"]
 
 [dependency-groups]

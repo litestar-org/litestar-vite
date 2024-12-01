@@ -72,6 +72,7 @@ lock:                                             ## Rebuild lockfiles from scra
 .PHONY: build
 build:
 	@echo "=> Building package..."
+	@npm install
 	@npm run build
 	@uv build -o dist/py
 	@echo "=> Package build complete..."
