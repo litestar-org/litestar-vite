@@ -74,7 +74,17 @@ app = Litestar(plugins=[vite])
     app_file = create_app_file("command_test_app.py", content=app_file_content)
     result = runner.invoke(
         root_command,
-        ["--app-dir", f"{app_file.parent!s}", "--app", f"{app_file.stem}:app", "assets", "init", "--no-prompt", "--root-path", "web"],
+        [
+            "--app-dir",
+            f"{app_file.parent!s}",
+            "--app",
+            f"{app_file.stem}:app",
+            "assets",
+            "init",
+            "--no-prompt",
+            "--root-path",
+            "web",
+        ],
     )
 
     assert "Initializing Vite" in result.output

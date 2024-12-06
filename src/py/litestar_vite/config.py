@@ -61,7 +61,7 @@ class ViteConfig:
     """Enable SSR."""
     ssr_output_dir: Path | str | None = None
     """SSR Output path"""
-    root_dir: Path | str = ""
+    root_dir: Path | str | None = None
     """The is the base path to your application.
 
    In a standalone Vue or React application, this would be equivalent to the top-level project folder containing the ``./src`` directory.
@@ -111,6 +111,8 @@ class ViteConfig:
         """Ensure that directory is set if engine is a class."""
         if self.root_dir is not None and isinstance(self.root_dir, str):
             self.root_dir = Path(self.root_dir)
+        elif self.root_dir is None:
+            self.root_dir = Path()
         if self.template_dir is not None and isinstance(self.template_dir, str):
             self.template_dir = Path(self.template_dir)
         if self.public_dir and isinstance(self.public_dir, str):

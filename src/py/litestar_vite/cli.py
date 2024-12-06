@@ -125,7 +125,7 @@ def vite_init(
     config = plugin._config  # pyright: ignore[reportPrivateUsage]
 
     console.rule("[yellow]Initializing Vite[/]", align="left")
-    root_path = Path(root_path or config.root_dir)
+    root_path = Path(root_path or config.root_dir or Path.cwd())
     resource_path = Path(resource_path or config.resource_dir)
     public_path = Path(public_path or config.public_dir)
     bundle_path = Path(bundle_path or config.bundle_dir)
