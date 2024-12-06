@@ -111,6 +111,8 @@ class ViteConfig:
         """Ensure that directory is set if engine is a class."""
         if self.root_dir is not None and isinstance(self.root_dir, str):
             self.root_dir = Path(self.root_dir)
+        elif self.root_dir is None:
+            self.root_dir = Path()
         if self.template_dir is not None and isinstance(self.template_dir, str):
             self.template_dir = Path(self.template_dir)
         if self.public_dir and isinstance(self.public_dir, str):

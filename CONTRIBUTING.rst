@@ -29,8 +29,6 @@ Workflow
 .. tip:: Pull requests and commits all need to follow the
     `Conventional Commit format <https://www.conventionalcommits.org>`_
 
-.. note:: To run the integration tests locally, you will need the `ODBC Driver for SQL Server <https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server?view=sql-server-ver16>`_, one option is using `unixODBC <https://www.unixodbc.org/>`_.
-
 Guidelines for writing code
 ----------------------------
 

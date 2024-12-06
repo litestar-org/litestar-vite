@@ -125,6 +125,7 @@ def vite_init(
     config = plugin._config  # pyright: ignore[reportPrivateUsage]
 
     console.rule("[yellow]Initializing Vite[/]", align="left")
+    root_path = Path(root_path or config.root_dir or Path.cwd())
     resource_path = Path(resource_path or config.resource_dir)
     public_path = Path(public_path or config.public_dir)
     bundle_path = Path(bundle_path or config.bundle_dir)
@@ -132,7 +133,6 @@ def vite_init(
     asset_url = asset_url or config.asset_url
     vite_port = vite_port or config.port
     hot_file = Path(bundle_path / config.hot_file)
-    root_path = Path(root_path or config.root_dir or resource_path.parent)
 
     if any(output_path.exists() for output_path in (bundle_path, resource_path)) and not any(
         [overwrite, no_prompt],
@@ -143,10 +143,6 @@ def vite_init(
         if not confirm_overwrite:
             console.print("Skipping Vite initialization")
             sys.exit(2)
-    for output_path in (bundle_path, resource_path, root_path):
-        if output_path.exists():
-            console.print(f" * Creating {output_path!s}")
-        output_path.mkdir(parents=True, exist_ok=True)
 
     enable_ssr = (
         True

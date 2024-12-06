@@ -35,7 +35,7 @@ install: destroy clean								## Install the project, dependencies, and pre-comm
 	@if ! command -v npm >/dev/null 2>&1; then \
 		uvx nodeenv .venv --force --quiet; \
 	fi
-	@npm install
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm install
 	@echo "=> Install complete!"
 
 .PHONY: upgrade
@@ -44,7 +44,7 @@ upgrade:       										## Upgrade all dependencies to the latest stable versio
 	@uv lock --upgrade
 	@echo "=> Dependencies Updated"
 	@uv run pre-commit autoupdate
-	@npm upgrade --latest
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm upgrade --latest
 	@echo "=> Updated Pre-commit"
 
 .PHONY: clean
@@ -72,8 +72,8 @@ lock:                                             ## Rebuild lockfiles from scra
 .PHONY: build
 build:
 	@echo "=> Building package..."
-	@npm install
-	@npm run build
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm install
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run build
 	@uv build -o dist/py
 	@echo "=> Package build complete..."
 

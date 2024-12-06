@@ -3,7 +3,11 @@
   "version": "0.8.1",
   "type": "module",
   "description": "Litestar plugin for Vite.",
-  "keywords": ["litestar", "vite", "vite-plugin"],
+  "keywords": [
+    "litestar",
+    "vite",
+    "vite-plugin"
+  ],
   "homepage": "https://github.com/litestar-org/litestar-vite",
   "repository": {
     "type": "git",
@@ -22,7 +26,10 @@
     }
   },
   "types": "./dist/js/index.d.ts",
-  "files": ["/dist/js/", "/dist/js/inertia-helpers"],
+  "files": [
+    "/dist/js/",
+    "/dist/js/inertia-helpers"
+  ],
   "bin": {
     "clean-orphaned-assets": "tools/clean.js"
   },

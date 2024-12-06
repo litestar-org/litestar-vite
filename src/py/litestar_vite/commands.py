@@ -12,10 +12,10 @@ if TYPE_CHECKING:
 VITE_INIT_TEMPLATES: set[str] = {"package.json.j2", "tsconfig.json.j2", "vite.config.ts.j2"}
 DEFAULT_RESOURCES: set[str] = {"styles.css.j2", "main.ts.j2"}
 DEFAULT_DEV_DEPENDENCIES: dict[str, str] = {
-    "typescript": "^5.3.3",
-    "vite": "^5.3.3",
-    "litestar-vite-plugin": "^0.6.2",
-    "@types/node": "^20.14.10",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "litestar-vite-plugin": "^0.8.1",
+    "@types/node": "^22.10.1",
 }
 DEFAULT_DEPENDENCIES: dict[str, str] = {"axios": "^1.7.2"}
 
@@ -78,10 +78,14 @@ def init_vite(
         template_name: get_template(environment=vite_template_env, name=template_name)
         for template_name in enabled_templates
     }
+
+    # Prepare root_path
+    root_path.mkdir(parents=True, exist_ok=True)
     for template_name, template in templates.items():
         target_file_name = template_name[:-3] if template_name.endswith(".j2") else template_name
-        with Path(target_file_name).open(mode="w") as file:
-            console.print(f" * Writing {target_file_name} to {Path(target_file_name)!s}")
+        target_file_path = root_path / target_file_name
+        with target_file_path.open(mode="w") as file:
+            console.print(f" * Writing {target_file_name} to {target_file_path!s}")
 
             file.write(
                 template.render(
@@ -92,10 +96,10 @@ def init_vite(
                     enable_ssr=enable_ssr,
                     asset_url=asset_url,
                     root_path=root_path,
-                    resource_path=str(resource_path.relative_to(root_path)),
-                    public_path=str(public_path.relative_to(root_path)),
-                    bundle_path=str(bundle_path.relative_to(root_path)),
-                    hot_file=str(hot_file.relative_to(root_path)),
+                    resource_path=str(resource_path),
+                    public_path=str(public_path),
+                    bundle_path=str(bundle_path),
+                    hot_file=str(hot_file),
                     vite_port=str(vite_port),
                     litestar_port=litestar_port,
                     dependencies=to_json(dependencies),
@@ -103,12 +107,16 @@ def init_vite(
                 ),
             )
 
+    (root_path / bundle_path).mkdir(parents=True, exist_ok=True)
+    (root_path / public_path).mkdir(parents=True, exist_ok=True)
+    (root_path / resource_path).mkdir(parents=True, exist_ok=True)
     for resource_name in enabled_resources:
         template = get_template(environment=vite_template_env, name=resource_name)
-        target_file_name = f"{resource_path}/{resource_name[:-3] if resource_name.endswith('.j2') else resource_name}"
-        with Path(target_file_name).open(mode="w") as file:
+        target_file_name = f"{resource_name[:-3] if resource_name.endswith('.j2') else resource_name}"
+        target_file_path = root_path / resource_path / target_file_name
+        with target_file_path.open(mode="w") as file:
             console.print(
-                f" * Writing {resource_name[:-3] if resource_name.endswith('.j2') else resource_name} to {Path(target_file_name)!s}",
+                f" * Writing {resource_name[:-3] if resource_name.endswith('.j2') else resource_name} to {target_file_path!s}",
             )
             file.write(template.render())
     console.print("[yellow]Vite initialization completed.[/]")

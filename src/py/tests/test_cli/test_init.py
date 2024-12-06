@@ -74,15 +74,25 @@ app = Litestar(plugins=[vite])
     app_file = create_app_file("command_test_app.py", content=app_file_content)
     result = runner.invoke(
         root_command,
-        ["--app-dir", f"{app_file.parent!s}", "--app", f"{app_file.stem}:app", "assets", "init", "--no-prompt"],
+        [
+            "--app-dir",
+            f"{app_file.parent!s}",
+            "--app",
+            f"{app_file.stem}:app",
+            "assets",
+            "init",
+            "--no-prompt",
+            "--root-path",
+            "web",
+        ],
     )
 
     assert "Initializing Vite" in result.output
-    assert Path(Path(tmp_project_dir) / "vite.config.ts").exists()
-    assert Path(Path(tmp_project_dir) / "package.json").exists()
-    assert Path(Path(tmp_project_dir) / "tsconfig.json").exists()
-    assert Path(Path(tmp_project_dir) / "resources" / "main.ts").exists()
-    assert Path(Path(tmp_project_dir) / "resources" / "styles.css").exists()
+    assert Path(Path(tmp_project_dir) / "web" / "vite.config.ts").exists()
+    assert Path(Path(tmp_project_dir) / "web" / "package.json").exists()
+    assert Path(Path(tmp_project_dir) / "web" / "tsconfig.json").exists()
+    assert Path(Path(tmp_project_dir) / "web" / "resources" / "main.ts").exists()
+    assert Path(Path(tmp_project_dir) / "web" / "resources" / "styles.css").exists()
 
 
 def test_init_install_build(
