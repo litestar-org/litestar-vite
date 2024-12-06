@@ -823,7 +823,7 @@ dependencies = [
 
 [[package]]
 name = "litestar-vite"
-version = "0.8.2"
+version = "0.8.3"
 source = { editable = "." }
 dependencies = [
     { name = "litestar", extra = ["jinja"] },
