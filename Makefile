@@ -127,7 +127,7 @@ clean:                                              ## Cleanup temporary build a
 .PHONY: test
 test:                                              ## Run the tests
 	@echo "${INFO} Running test cases... 🧪"
-	@npm run test >/dev/null 2>&1
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run test
 	@uv run pytest -n 2 --quiet
 	@echo "${OK} Tests passed ✨"
 
@@ -177,7 +177,7 @@ type-check: mypy pyright                           ## Run all type checking
 .PHONY: pre-commit
 pre-commit:                                        ## Run pre-commit hooks
 	@echo "${INFO} Running pre-commit checks... 🔎"
-	@uv run pre-commit run --color=always --all-files
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" uv run pre-commit run --color=always --all-files
 	@echo "${OK} Pre-commit checks passed ✨"
 
 .PHONY: slotscheck

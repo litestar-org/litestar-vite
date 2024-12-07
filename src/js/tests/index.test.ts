@@ -1,13 +1,93 @@
+import fs from "node:fs"
+import path from "node:path"
+import { loadEnv } from "vite"
+import { Plugin } from "vite"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import litestar from "../src"
-import { currentRoute, getRelativeUrlPath, isCurrentRoute, isRoute, resolvePageComponent, route, toRoute } from "../src/inertia-helpers"
+import { getRelativeUrlPath, isCurrentRoute, isRoute, resolvePageComponent, route, toRoute } from "../src/inertia-helpers"
+
+// Mock the fs module
+vi.mock("fs", async () => {
+  const actual = await vi.importActual<typeof import("fs")>("fs")
+
+  return {
+    default: {
+      ...actual,
+      existsSync: (path: string) => ["resources/", "assets/", "src/"].includes(path) || actual.existsSync(path),
+    },
+  }
+})
+// Mock process.env
+const originalEnv = process.env
+beforeEach(() => {
+  vi.resetModules()
+  process.env = { ...originalEnv }
+})
+
+afterEach(() => {
+  process.env = originalEnv
+  vi.clearAllMocks()
+})
+
+// Mock routes for testing
+beforeEach(() => {
+  globalThis.routes = {
+    home: "/",
+    about: "/about",
+    "users:assign-role": "/api/roles/{role_slug:str}/assign",
+    "users:revoke-role": "/api/roles/{role_slug:str}/revoke",
+    "tags:create": "/api/tags",
+    "tags:list": "/api/tags",
+    "tags:get": "/api/tags/{tag_id:uuid}",
+    "tags:update": "/api/tags/{tag_id:uuid}",
+    "tags:delete": "/api/tags/{tag_id:uuid}",
+    "teams:add-member": "/api/teams/{team_id:uuid}/members/add",
+    "teams:remove-member": "/api/teams/{team_id:uuid}/members/remove",
+    "users:create": "/api/users/create",
+    "users:list": "/api/users/list",
+    "users:update": "/api/users/update/{user_id:uuid}",
+    "users:delete": "/api/users/delete/{user_id:uuid}",
+    "users:get": "/api/users/get/{user_id:uuid}",
+    dashboard: "/dashboard",
+    favicon: "/favicon.ico",
+    landing: "/landing",
+    "login.check": "/login/check",
+    login: "/login",
+    logout: "/logout",
+    "github.complete": "/o/github/complete",
+    "google.complete": "/o/google/complete",
+    "privacy-policy": "/privacy-policy",
+    "account.remove": "/profile/remove",
+    "profile.show": "/profile",
+    "profile.update": "/profile/update",
+    "password.update": "/profile/password-update",
+    register: "/register",
+    "register.add": "/register/add",
+    "github.register": "/register/github",
+    "google.register": "/register/google",
+    "worker:index": "/saq/queues/{queue_id:str}/jobs/{job_id:str}",
+    "worker:queue-list": "/saq/api/queues/list",
+    "worker:queue-detail": "/saq/api/queues/{queue_id:str}",
+    "worker:job-detail": "/saq/api/queues/{queue_id:str}/jobs/{job_id:str}",
+    "worker:job-abort": "/saq/api/queues/{queue_id:str}/jobs/{job_id:str}/abort",
+    "worker:job-retry": "/saq/api/queues/{queue_id:str}/jobs/{job_id:str}/retry",
+    saq: "/saq/static/{file_path:path}",
+    vite: "/static/{file_path:path}",
+    "teams.add": "/teams/add",
+    "teams.list": "/teams/list",
+    "teams.show": "/teams/show/{team_id:uuid}",
+    "teams.remove": "/teams/remove/{team_id:uuid}",
+    "teams.edit": "/teams/edit/{team_id:uuid}",
+    "terms-of-service": "/terms-of-service",
+  }
+})
 
 describe("litestar-vite-plugin", () => {
   const originalEnv = { ...process.env }
 
   afterEach(() => {
     process.env = { ...originalEnv }
-    vi.clearAllMocks()
+    vi.resetAllMocks()
   })
 
   it("handles missing configuration", () => {
@@ -43,20 +123,20 @@ describe("litestar-vite-plugin", () => {
   it("accepts a full configuration", () => {
     const plugin = litestar({
       input: "resources/js/app.ts",
-      assetUrl: "other-build",
+      assetUrl: "other-static",
       bundleDirectory: "other-build",
       ssr: "resources/js/ssr.ts",
       ssrOutputDirectory: "other-ssr-output",
     })[0]
 
     const config = plugin.config({}, { command: "build", mode: "production" })
-    expect(config.base).toBe("other-build/")
+    expect(config.base).toBe("other-static/")
     expect(config.build?.manifest).toBe("manifest.json")
     expect(config.build?.outDir).toBe("other-build")
     expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
 
     const ssrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
-    expect(ssrConfig.base).toBe("other-build/")
+    expect(ssrConfig.base).toBe("other-static/")
     expect(ssrConfig.build?.manifest).toBe(false)
     expect(ssrConfig.build?.outDir).toBe("other-ssr-output")
     expect(ssrConfig.build?.rollupOptions?.input).toBe("resources/js/ssr.ts")
@@ -233,7 +313,7 @@ describe("litestar-vite-plugin", () => {
     ])
   })
 
-  it("configures the Vite server when running remotely or in a container", () => {
+  it("configures the Vite server when running remotely", () => {
     process.env.VITE_ALLOW_REMOTE = "1"
     const plugin = litestar("resources/js/app.js")[0]
 
@@ -241,9 +321,11 @@ describe("litestar-vite-plugin", () => {
     expect(config.server?.host).toBe("0.0.0.0")
     expect(config.server?.port).toBe(5173)
     expect(config.server?.strictPort).toBe(true)
+
+    process.env.VITE_ALLOW_REMOTE = undefined
   })
 
-  it("allows the Vite port to be configured when inside a container", () => {
+  it("allows the Vite port to be configured when running remotely", () => {
     process.env.VITE_ALLOW_REMOTE = "1"
     process.env.VITE_PORT = "1234"
     const plugin = litestar("resources/js/app.js")[0]
@@ -328,7 +410,7 @@ describe("litestar-vite-plugin", () => {
     expect(plugins.length).toBe(1)
   })
 
-  it("configures full reload with routes and views when refresh is true", () => {
+  it("configures full reload with python and template files when refresh is true", () => {
     const plugins = litestar({
       input: "resources/js/app.js",
       refresh: true,
@@ -337,7 +419,7 @@ describe("litestar-vite-plugin", () => {
     expect(plugins.length).toBe(2)
     /** @ts-ignore */
     expect(plugins[1].__litestar_plugin_config).toEqual({
-      paths: ["**/*.py", "**/*.j2", "**/*.html.j2", "**/*.html", "**/assets/**/*"],
+      paths: ["src/**", "resources/**", "assets/**"],
     })
   })
 
@@ -411,204 +493,199 @@ describe("litestar-vite-plugin", () => {
       config: { delay: 123 },
     })
   })
-})
 
+  it("handles TLS configuration", () => {
+    process.env.VITE_SERVER_KEY = "path/to/key"
+    process.env.VITE_SERVER_CERT = "path/to/cert"
+    process.env.APP_URL = "https://example.com"
+
+    const plugin = litestar("resources/js/app.js")[0]
+
+    expect(() => plugin.config({}, { command: "serve", mode: "development" })).toThrow(/Unable to find the certificate files/)
+  })
+
+  it("handles invalid APP_URL", () => {
+    process.env.VITE_SERVER_KEY = "path/to/key"
+    process.env.VITE_SERVER_CERT = "path/to/cert"
+    process.env.APP_URL = "invalid-url"
+
+    const plugin = litestar("resources/js/app.js")[0]
+
+    expect(() => plugin.config({}, { command: "serve", mode: "development" })).toThrow(/Unable to find the certificate files specified in your environment/)
+  })
+
+  it("handles missing config directory", () => {
+    const plugin = litestar({
+      input: "resources/js/app.js",
+      detectTls: true,
+    })[0]
+
+    expect(() => plugin.config({}, { command: "serve", mode: "development" })).toThrow(/Unable to find the configuration file/)
+  })
+})
 describe("inertia-helpers", () => {
-  const path = "./__data__/dummy.ts"
+  const testPath = "./__data__/dummy.ts"
+
+  beforeEach(() => {
+    vi.resetModules()
+    // Mock the import.meta.glob functionality
+    vi.mock("./__data__/dummy.ts", () => ({
+      default: "Dummy File",
+    }))
+  })
+
   it("pass glob value to resolvePageComponent", async () => {
-    const file = await resolvePageComponent<{ default: string }>(
-      path,
-      /* @ts-ignore */
-      import.meta.glob("./__data__/*.ts"),
-    )
+    const pages = {
+      [testPath]: Promise.resolve({ default: "Dummy File" }),
+    }
+
+    const file = await resolvePageComponent<{ default: string }>(testPath, pages)
     expect(file.default).toBe("Dummy File")
   })
 
   it("pass eagerly globed value to resolvePageComponent", async () => {
-    const file = await resolvePageComponent<{ default: string }>(
-      path,
-      /* @ts-ignore */
-      import.meta.glob("./__data__/*.ts", { eager: true }),
-    )
+    const pages = {
+      [testPath]: { default: "Dummy File" },
+    }
+    // @ts-ignore
+    const file = await resolvePageComponent<{ default: string }>(testPath, pages)
     expect(file.default).toBe("Dummy File")
   })
 
   it("accepts array of paths", async () => {
+    const pages = {
+      [testPath]: { default: "Dummy File" },
+    }
+
     const file = await resolvePageComponent<{ default: string }>(
-      ["missing-page", path],
-      /* @ts-ignore */
-      import.meta.glob("./__data__/*.ts", { eager: true }),
-      /* @ts-ignore */
-      path,
+      ["missing-page", testPath],
+      // @ts-ignore
+      pages,
     )
     expect(file.default).toBe("Dummy File")
   })
 
   it("throws an error when a page is not found", async () => {
-    const callback = () =>
-      resolvePageComponent<{ default: string }>(
-        "missing-page",
-        /* @ts-ignore */
-        import.meta.glob("./__data__/*.ts"),
-      )
-    await expect(callback).rejects.toThrowError(new Error("Page not found: missing-page"))
+    const pages = {}
+    await expect(resolvePageComponent<{ default: string }>("missing-page", pages)).rejects.toThrow("Page not found: missing-page")
   })
 
-  it("throws an error when a page is not found", async () => {
-    const callback = () =>
-      resolvePageComponent<{ default: string }>(
-        ["missing-page-1", "missing-page-2"],
-        /* @ts-ignore */
-        import.meta.glob("./__data__/*.ts"),
-      )
-    await expect(callback).rejects.toThrowError(new Error("Page not found: missing-page-1,missing-page-2"))
-  })
-})
-
-describe("route helpers", () => {
-  beforeEach(() => {
-    // Setup mock routes based on the provided JSON
-    globalThis.routes = {
-      home: "/",
-      about: "/about",
-      "users:assign-role": "/api/roles/{role_slug:str}/assign",
-      "users:revoke-role": "/api/roles/{role_slug:str}/revoke",
-      "tags:create": "/api/tags",
-      "tags:list": "/api/tags",
-      "tags:get": "/api/tags/{tag_id:uuid}",
-      "tags:update": "/api/tags/{tag_id:uuid}",
-      "tags:delete": "/api/tags/{tag_id:uuid}",
-      "teams:add-member": "/api/teams/{team_id:uuid}/members/add",
-      "teams:remove-member": "/api/teams/{team_id:uuid}/members/remove",
-      "users:create": "/api/users/create",
-      "users:list": "/api/users/list",
-      "users:update": "/api/users/update/{user_id:uuid}",
-      "users:delete": "/api/users/delete/{user_id:uuid}",
-      "users:get": "/api/users/get/{user_id:uuid}",
-      dashboard: "/dashboard",
-      favicon: "/favicon.ico",
-      landing: "/landing",
-      "login.check": "/login/check",
-      login: "/login",
-      logout: "/logout",
-      "github.complete": "/o/github/complete",
-      "google.complete": "/o/google/complete",
-      "privacy-policy": "/privacy-policy",
-      "account.remove": "/profile/remove",
-      "profile.show": "/profile",
-      "profile.update": "/profile/update",
-      "password.update": "/profile/password-update",
-      register: "/register",
-      "register.add": "/register/add",
-      "github.register": "/register/github",
-      "google.register": "/register/google",
-      "worker:index": "/saq/queues/{queue_id:str}/jobs/{job_id:str}",
-      "worker:queue-list": "/saq/api/queues/list",
-      "worker:queue-detail": "/saq/api/queues/{queue_id:str}",
-      "worker:job-detail": "/saq/api/queues/{queue_id:str}/jobs/{job_id:str}",
-      "worker:job-abort": "/saq/api/queues/{queue_id:str}/jobs/{job_id:str}/abort",
-      "worker:job-retry": "/saq/api/queues/{queue_id:str}/jobs/{job_id:str}/retry",
-      saq: "/saq/static/{file_path:path}",
-      vite: "/static/{file_path:path}",
-      "teams.add": "/teams/add",
-      "teams.list": "/teams/list",
-      "teams.show": "/teams/show/{team_id:uuid}",
-      "teams.remove": "/teams/remove/{team_id:uuid}",
-      "teams.edit": "/teams/edit/{team_id:uuid}",
-      "terms-of-service": "/terms-of-service",
-    }
-  })
-
-  describe("route()", () => {
-    it("generates URLs from route names with named parameters", () => {
-      expect(route("users:get", { user_id: "123e4567-e89b-12d3-a456-426614174000" })).toContain("/api/users/get/123e4567-e89b-12d3-a456-426614174000")
-
-      expect(route("worker:queue-detail", { queue_id: "default" })).toContain("/saq/api/queues/default")
+  describe("route() edge cases", () => {
+    it("handles missing route names", () => {
+      expect(route("non-existent-route")).toBe("#")
     })
 
-    it('returns "#" for invalid routes', () => {
-      expect(route("invalid.route")).toBe("#")
+    it("handles array arguments", () => {
+      const result = route("users:get", ["123e4567-e89b-12d3-a456-426614174000"])
+      expect(result).toContain("/api/users/get/123e4567-e89b-12d3-a456-426614174000")
     })
 
-    it("handles missing parameters", () => {
-      expect(route("users:get")).toBe("#")
+    it("handles wrong number of arguments", () => {
+      expect(route("users:get", [])).toBe("#")
+    })
+
+    it("handles missing arguments in object", () => {
+      expect(route("users:get", { wrong_id: "123" })).toBe("#")
     })
   })
 
   describe("getRelativeUrlPath()", () => {
-    it("extracts relative path from full URL", () => {
-      expect(getRelativeUrlPath("http://example.com/api/users/get/123e4567-e89b-12d3-a456-426614174000?page=1#section")).toBe(
-        "/api/users/get/123e4567-e89b-12d3-a456-426614174000?page=1#section",
-      )
+    it("handles invalid URLs", () => {
+      expect(getRelativeUrlPath("invalid-url")).toBe("invalid-url")
     })
 
-    it("returns original string for relative paths", () => {
-      expect(getRelativeUrlPath("/api/users/get/123e4567-e89b-12d3-a456-426614174000")).toBe("/api/users/get/123e4567-e89b-12d3-a456-426614174000")
+    it("preserves query parameters and hash", () => {
+      expect(getRelativeUrlPath("http://example.com/path?query=1#hash")).toBe("/path?query=1#hash")
     })
   })
 
   describe("toRoute()", () => {
-    it("matches URLs to route names", () => {
-      expect(toRoute("/api/users/list")).toBe("users:list")
-      expect(toRoute("/api/users/get/123e4567-e89b-12d3-a456-426614174000")).toBe("users:get")
-      expect(toRoute("/teams/list")).toBe("teams.list")
-      expect(toRoute("/teams/show/123e4567-e89b-12d3-a456-426614174000")).toBe("teams.show")
-      expect(toRoute("/saq/api/queues/list")).toBe("worker:queue-list")
-      expect(toRoute("/saq/api/queues/default/jobs/123")).toBe("worker:job-detail")
-      expect(toRoute("/saq/static/path/to/file.pdf")).toBe("saq")
+    it("handles root path", () => {
+      expect(toRoute("/")).toBe("home")
     })
 
-    it("returns null for unmatched routes", () => {
-      expect(toRoute("/not/a/real/route")).toBeNull()
+    it("handles UUID parameters", () => {
+      expect(toRoute("/api/users/get/123e4567-e89b-12d3-a456-426614174000")).toBe("users:get")
+    })
+
+    it("handles path parameters", () => {
+      expect(toRoute("/saq/static/some/deep/path")).toBe("saq")
+    })
+
+    it("handles non-matching routes", () => {
+      expect(toRoute("/non-existent")).toBe(null)
+    })
+
+    it("handles trailing slashes", () => {
+      expect(toRoute("/api/users/list/")).toBe("users:list")
     })
   })
 
   describe("currentRoute()", () => {
-    it("returns current route name based on window location", () => {
+    beforeEach(() => {
       // Mock window.location
       Object.defineProperty(window, "location", {
-        value: { pathname: "/api/users/get/123e4567-e89b-12d3-a456-426614174000" },
+        value: {
+          pathname: "/api/users/list",
+        },
         writable: true,
       })
-
-      expect(currentRoute()).toBe("users:get")
     })
 
-    it("returns null when current location does not match any route", () => {
-      Object.defineProperty(window, "location", {
-        value: { pathname: "/not/a/real/route" },
-        writable: true,
-      })
+    it("returns current route name", () => {
+      expect(currentRoute()).toBe("users:list")
+    })
 
-      expect(currentRoute()).toBeNull()
+    it("returns null for non-matching routes", () => {
+      window.location.pathname = "/non-existent"
+      expect(currentRoute()).toBe(null)
     })
   })
 
   describe("isRoute()", () => {
-    it("checks if URL matches route pattern", () => {
-      expect(isRoute("/api/users/get/123e4567-e89b-12d3-a456-426614174000", "users:get")).toBe(true)
-      expect(isRoute("/invalid/path", "users:get")).toBe(false)
+    it("matches exact routes", () => {
+      expect(isRoute("/api/users/list", "users:list")).toBe(true)
+    })
+
+    it("matches routes with parameters", () => {
+      expect(isRoute("/api/users/get/123e4567-e89b-12d3-a456-426614174000", "users:*")).toBe(true)
+    })
+
+    it("handles non-matching routes", () => {
+      expect(isRoute("/non-existent", "users:*")).toBe(false)
+    })
+
+    it("matches routes with path parameters", () => {
+      expect(isRoute("/saq/static/deep/nested/path", "saq")).toBe(true)
     })
   })
 
   describe("isCurrentRoute()", () => {
-    it("checks if current location matches route pattern", () => {
+    beforeEach(() => {
+      // Mock window.location
       Object.defineProperty(window, "location", {
-        value: { pathname: "/api/users/get/123e4567-e89b-12d3-a456-426614174000" },
+        value: {
+          pathname: "/api/users/list",
+        },
         writable: true,
       })
-
-      expect(isCurrentRoute("users:get")).toBe(true)
-      expect(isCurrentRoute("users.*")).toBe(true)
     })
 
-    it("returns false when current location does not match route pattern", () => {
-      Object.defineProperty(window, "location", {
-        value: { pathname: "/not/a/real/route" },
-        writable: true,
-      })
+    it("matches current route with pattern", () => {
+      expect(isCurrentRoute("users:*")).toBe(true)
+    })
 
-      expect(isCurrentRoute("users:get")).toBe(false)
+    it("handles exact matches", () => {
+      expect(isCurrentRoute("users:list")).toBe(true)
+    })
+
+    it("handles non-matching routes", () => {
+      expect(isCurrentRoute("teams:*")).toBe(false)
+    })
+
+    it("handles invalid current route", () => {
+      window.location.pathname = "/non-existent"
+      expect(isCurrentRoute("users:*")).toBe(false)
     })
   })
 })

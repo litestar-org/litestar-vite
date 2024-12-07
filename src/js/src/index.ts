@@ -64,6 +64,12 @@ interface PluginConfig {
    */
   detectTls?: string | boolean | null
   /**
+   * Automatically detect the index.html file.
+   *
+   * @default true
+   */
+  autoDetectIndex?: boolean
+  /**
    * Transform the code while serving.
    */
   transformOnServe?: (code: string, url: DevServerUrl) => string
@@ -82,7 +88,7 @@ type DevServerUrl = `${"http" | "https"}://${string}:${number}`
 
 let exitHandlersBound = false
 
-export const refreshPaths = ["**/*.py", "**/*.j2", "**/*.html.j2", "**/*.html", "**/assets/**/*"]
+export const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((path) => fs.existsSync(path.replace(/\*\*$/, "")))
 
 /**
  * Litestar plugin for Vite.
@@ -184,9 +190,29 @@ function resolveLitestarPlugin(pluginConfig: Required<PluginConfig>): LitestarPl
       }
       return undefined
     },
-    configureServer(server) {
+    async configureServer(server) {
       const envDir = resolvedConfig.envDir || process.cwd()
       const appUrl = loadEnv(resolvedConfig.mode, envDir, "APP_URL").APP_URL ?? "undefined"
+
+      // Check if we should serve SPA directly
+      const shouldServeIndex = () => {
+        if (!pluginConfig.autoDetectIndex) return false
+
+        // Check various common locations for index.html
+        const possiblePaths = [
+          path.join(server.config.root, "index.html"),
+          path.join(server.config.root, pluginConfig.resourceDirectory, "index.html"),
+          path.join(server.config.root, "public", "index.html"),
+        ]
+
+        for (const indexPath of possiblePaths) {
+          try {
+            fs.accessSync(indexPath)
+            return true
+          } catch {}
+        }
+        return false
+      }
 
       server.httpServer?.once("listening", () => {
         const address = server.httpServer?.address()
@@ -197,14 +223,23 @@ function resolveLitestarPlugin(pluginConfig: Required<PluginConfig>): LitestarPl
           fs.mkdirSync(path.dirname(pluginConfig.hotFile), { recursive: true })
           fs.writeFileSync(pluginConfig.hotFile, viteDevServerUrl)
 
+          const hasIndex = shouldServeIndex()
+
           setTimeout(() => {
             server.config.logger.info(`\n  ${colors.red(`${colors.bold("LITESTAR")} ${litestarVersion()}`)}  ${colors.dim("plugin")} ${colors.bold(`v${pluginVersion()}`)}`)
             server.config.logger.info("")
-            server.config.logger.info(`  ${colors.green("➜")}  ${colors.bold("APP_URL")}: ${colors.cyan(appUrl.replace(/:(\d+)/, (_, port) => `:${colors.bold(port)}`))}`)
+            if (hasIndex) {
+              server.config.logger.info(`  ${colors.green("➜")}  ${colors.bold("Serve Index")}: Serving application index with Vite`)
+              server.config.logger.info(`  ${colors.green("➜")}  ${colors.bold("DEV URL")}: ${colors.cyan(viteDevServerUrl)}`)
+              server.config.logger.info(`  ${colors.green("➜")}  ${colors.bold("APP_URL")}: ${colors.cyan(appUrl.replace(/:(\d+)/, (_, port) => `:${colors.bold(port)}`))}`)
+            } else {
+              server.config.logger.info(`  ${colors.green("➜")}  ${colors.bold("Serve Index")}: Serving Litestar index with Vite`)
+              server.config.logger.info(`  ${colors.green("➜")}  ${colors.bold("DEV URL")}: ${colors.cyan(viteDevServerUrl)}`)
+              server.config.logger.info(`  ${colors.green("➜")}  ${colors.bold("APP_URL")}: ${colors.cyan(appUrl.replace(/:(\d+)/, (_, port) => `:${colors.bold(port)}`))}`)
+            }
           }, 100)
         }
       })
-
       if (!exitHandlersBound) {
         const clean = () => {
           if (fs.existsSync(pluginConfig.hotFile)) {
@@ -222,7 +257,7 @@ function resolveLitestarPlugin(pluginConfig: Required<PluginConfig>): LitestarPl
 
       return () =>
         server.middlewares.use((req, res, next) => {
-          if (req.url === "/index.html") {
+          if (!shouldServeIndex() && req.url === "/index.html") {
             res.statusCode = 404
 
             res.end(
@@ -325,6 +360,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Required
     refresh: resolvedConfig.refresh ?? false,
     hotFile: resolvedConfig.hotFile ?? path.join(resolvedConfig.bundleDirectory ?? "public", "hot"),
     detectTls: resolvedConfig.detectTls ?? false,
+    autoDetectIndex: resolvedConfig.autoDetectIndex ?? true,
     transformOnServe: resolvedConfig.transformOnServe ?? ((code) => code),
   }
 }
