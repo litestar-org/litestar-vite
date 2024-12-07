@@ -17,6 +17,8 @@ from pathlib import Path
 
 from litestar import Controller, Litestar, get
 from litestar.response import Template
+from litestar.template.config import TemplateConfig
+from litestar.contrib.jinja import JinjaTemplateEngine
 
 from litestar_vite import ViteConfig, VitePlugin
 
@@ -28,9 +30,10 @@ class WebController(Controller):
     async def index(self) -> Template:
         return Template(template_name="index.html.j2")
 
-vite = VitePlugin(config=ViteConfig(template_dir='{template_dir!s}'))
+template_config = TemplateConfig(engine=JinjaTemplateEngine(directory='{template_dir!s}'))
+vite = VitePlugin(config=ViteConfig())
 
-app = Litestar(plugins=[vite])
+app = Litestar(plugins=[vite], template_config=template_config)
     """,
     )
     app_file = create_app_file("command_test_app.py", content=app_file_content)
@@ -55,6 +58,8 @@ from pathlib import Path
 
 from litestar import Controller, Litestar, get
 from litestar.response import Template
+from litestar.template.config import TemplateConfig
+from litestar.contrib.jinja import JinjaTemplateEngine
 
 from litestar_vite import ViteConfig, VitePlugin
 
@@ -66,9 +71,10 @@ class WebController(Controller):
     async def index(self) -> Template:
         return Template(template_name="index.html.j2")
 
-vite = VitePlugin(config=ViteConfig(template_dir='{template_dir!s}'))
+template_config = TemplateConfig(engine=JinjaTemplateEngine(directory='{template_dir!s}'))
+vite = VitePlugin(config=ViteConfig())
 
-app = Litestar(plugins=[vite])
+app = Litestar(plugins=[vite], template_config=template_config)
     """,
     )
     app_file = create_app_file("command_test_app.py", content=app_file_content)
@@ -106,12 +112,15 @@ def test_init_install_build(
 from __future__ import annotations
 
 from litestar import Litestar
+from litestar.template.config import TemplateConfig
+from litestar.contrib.jinja import JinjaTemplateEngine
 
-from litestar_vite import VitePlugin
+from litestar_vite import VitePlugin, ViteConfig
 
-vite = VitePlugin()
+template_config = TemplateConfig(engine=JinjaTemplateEngine(directory='{template_dir!s}'))
+vite = VitePlugin(config=ViteConfig())
 
-app = Litestar(plugins=[vite])
+app = Litestar(plugins=[vite], template_config=template_config)
     """,
     )
     app_file = create_app_file("command_test_app.py", content=app_file_content)

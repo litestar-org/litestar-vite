@@ -4,11 +4,61 @@ import json
 from functools import cached_property
 from pathlib import Path
 from textwrap import dedent
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Mapping, cast
 from urllib.parse import urljoin
 
+import markupsafe
+from litestar.exceptions import ImproperlyConfiguredException
+
 if TYPE_CHECKING:
+    from litestar.connection import Request
+
     from litestar_vite.config import ViteConfig
+    from litestar_vite.plugin import VitePlugin
+
+
+def _get_request_from_context(context: Mapping[str, Any]) -> Request[Any, Any, Any]:
+    """Get the request from the template context.
+
+    Args:
+        context: The template context.
+
+    Returns:
+        The request object.
+    """
+    return cast("Request[Any, Any, Any]", context["request"])
+
+
+def render_hmr_client(context: Mapping[str, Any], /) -> markupsafe.Markup:
+    """Render the HMR client.
+
+    Args:
+        context: The template context.
+
+    Returns:
+        The HMR client.
+    """
+    return cast(
+        "VitePlugin", _get_request_from_context(context).app.plugins.get("VitePlugin")
+    ).asset_loader.render_hmr_client()
+
+
+def render_asset_tag(
+    context: Mapping[str, Any], /, path: str | list[str], scripts_attrs: dict[str, str] | None = None
+) -> markupsafe.Markup:
+    """Render an asset tag.
+
+    Args:
+        context: The template context.
+        path: The path to the asset.
+        scripts_attrs: The attributes for the script tag.
+
+    Returns:
+        The asset tag.
+    """
+    return cast(
+        "VitePlugin", _get_request_from_context(context).app.plugins.get("VitePlugin")
+    ).asset_loader.render_asset_tag(path, scripts_attrs)
 
 
 class ViteAssetLoader:
@@ -38,6 +88,19 @@ class ViteAssetLoader:
         if self._manifest_content != "":
             return str(hash(self.manifest_content))
         return "1.0"
+
+    def render_hmr_client(self) -> markupsafe.Markup:
+        """Generate the script tag for the Vite WS client for HMR."""
+        return markupsafe.Markup(
+            f"{self.generate_react_hmr_tags()}{self.generate_ws_client_tags()}",
+        )
+
+    def render_asset_tag(self, path: str | list[str], scripts_attrs: dict[str, str] | None = None) -> markupsafe.Markup:
+        """Generate all assets include tags for the file in argument."""
+        path = [str(p) for p in path] if isinstance(path, list) else [str(path)]
+        return markupsafe.Markup(
+            "".join([self.generate_asset_tags(p, scripts_attrs=scripts_attrs) for p in path]),
+        )
 
     def parse_manifest(self) -> None:
         """Parse the Vite manifest file.
@@ -151,7 +214,7 @@ class ViteAssetLoader:
 
         if any(p for p in path if p not in self._manifest):
             msg = "Cannot find %s in Vite manifest at %s.  Did you forget to build your assets after an update?"
-            raise RuntimeError(
+            raise ImproperlyConfiguredException(
                 msg,
                 path,
                 Path(f"{self._config.bundle_dir}/{self._config.manifest_name}"),
@@ -159,7 +222,7 @@ class ViteAssetLoader:
 
         tags: list[str] = []
         manifest_entry: dict[str, Any] = {}
-        manifest_entry.update({p: self._manifest[p] for p in path})
+        manifest_entry.update({p: self._manifest[p] for p in path if p})
         if not scripts_attrs:
             scripts_attrs = {"type": "module", "async": "", "defer": ""}
         for manifest in manifest_entry.values():
