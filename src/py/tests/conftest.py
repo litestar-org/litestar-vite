@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Generator
-import pytest
 
-from litestar_vite.config import ViteConfig
+import pytest
 from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.template.config import TemplateConfig
+
+from litestar_vite.config import ViteConfig
 
 pytestmark = pytest.mark.anyio
 here = Path(__file__).parent

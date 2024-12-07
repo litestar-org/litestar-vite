@@ -4,9 +4,11 @@ from pathlib import Path
 
 from litestar import Controller, Litestar, Request, get
 from litestar.connection.base import AuthT, StateT, UserT  # noqa: TC002
+from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.middleware.session.server_side import ServerSideSessionConfig
-from litestar.plugins.flash import FlashConfig, FlashPlugin, flash  # pyright: ignore[reportUnknownVariableType]
+from litestar.plugins.flash import FlashConfig, FlashPlugin, flash
 from litestar.stores.memory import MemoryStore
+from litestar.template import TemplateConfig
 from msgspec import Struct
 
 from litestar_vite import ViteConfig, VitePlugin
@@ -43,15 +45,16 @@ vite = VitePlugin(
         port=3006,
         use_server_lifespan=True,
         dev_mode=True,
-        template_dir="resources/templates/",
     ),
 )
 inertia = InertiaPlugin(config=InertiaConfig(root_template="index.html"))
-flasher = FlashPlugin(config=FlashConfig(template_config=vite.template_config))
+template_config = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "templates"))
+flasher = FlashPlugin(config=FlashConfig(template_config=template_config))
 
 app = Litestar(
     plugins=[vite, flasher, inertia],
     route_handlers=[WebController],
+    template_config=template_config,
     middleware=[ServerSideSessionConfig().middleware],
     stores={"sessions": MemoryStore()},
 )

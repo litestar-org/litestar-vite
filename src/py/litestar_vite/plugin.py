@@ -68,7 +68,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """Configure application for use with Vite.
 
         Args:
-            app_config: The :class:`AppConfig <.config.app.AppConfig>` instance.
+            app_config: The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
         """
         if app_config.template_config is None:  # pyright: ignore[reportUnknownMemberType]
             msg = "A template configuration is required for Vite."
@@ -76,11 +76,11 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if not isinstance(app_config.template_config.engine_instance, JinjaTemplateEngine):  # pyright: ignore[reportUnknownMemberType]
             msg = "Jinja2 template engine is required for Vite."
             raise ImproperlyConfiguredException(msg)
-        app_config.template_config.engine_instance.register_template_callable(  # type: ignore[attr-defined] # pyright: ignore[reportUnknownMemberType]
+        app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
             key="vite_hmr",
             template_callable=render_hmr_client,
         )
-        app_config.template_config.engine_instance.register_template_callable(  # type: ignore[attr-defined] # pyright: ignore[reportUnknownMemberType]
+        app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
             key="vite",
             template_callable=render_asset_tag,
         )

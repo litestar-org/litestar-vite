@@ -4,10 +4,10 @@ from typing import Any, Generator
 
 import pytest
 from jinja2 import Environment, FileSystemLoader
+from litestar.exceptions import ImproperlyConfiguredException
 
 from litestar_vite.config import ViteConfig
 from litestar_vite.loader import ViteAssetLoader
-from litestar.exceptions import ImproperlyConfiguredException
 
 
 @pytest.fixture
@@ -135,9 +135,9 @@ def test_get_asset_tag_edge_cases(
     "path, scripts_attrs, exception, test_id",
     [
         # Test with invalid path type
-        (123, None, ImproperlyConfiguredException, "asset_invalid_path_type"),  # type: ignore
+        (123, None, ImproperlyConfiguredException, "asset_invalid_path_type"),
         # Test with invalid scripts_attrs type
-        ("resources/main.ts", "invalid", ImproperlyConfiguredException, "asset_invalid_attrs_type"),  # type: ignore
+        ("resources/main.ts", "invalid", ImproperlyConfiguredException, "asset_invalid_attrs_type"),
     ],
 )
 def test_get_asset_tag_error_cases(
