@@ -1,6 +1,6 @@
 {
   "name": "litestar-vite-plugin",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "type": "module",
   "description": "Litestar plugin for Vite.",
   "keywords": ["litestar", "vite", "vite-plugin"],
@@ -42,7 +42,7 @@
     "happy-dom": "^15.11.7",
     "typescript": "^5.7.2",
     "vite": "^6.0.1",
-    "vitest": "^2.1.6"
+    "vitest": "^2.1.8"
   },
   "peerDependencies": {
     "vite": "^5.0.0 || ^6.0.0"
