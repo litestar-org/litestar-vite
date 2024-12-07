@@ -1,25 +1,21 @@
+import fs from "node:fs"
+import path from "node:path"
+import { loadEnv } from "vite"
+import { Plugin } from "vite"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import litestar from "../src"
-import { resolvePageComponent, route, getRelativeUrlPath, isCurrentRoute, isRoute, toRoute } from "../src/inertia-helpers"
-import { loadEnv } from "vite"
-import { Plugin } from 'vite'
-import fs from 'node:fs'
-import path from 'node:path'
+import { getRelativeUrlPath, isCurrentRoute, isRoute, resolvePageComponent, route, toRoute } from "../src/inertia-helpers"
 
 // Mock the fs module
-vi.mock('fs', async () => {
-    const actual = await vi.importActual<typeof import('fs')>('fs')
+vi.mock("fs", async () => {
+  const actual = await vi.importActual<typeof import("fs")>("fs")
 
-    return {
-        default: {
-            ...actual,
-            existsSync: (path: string) => [
-                'resources/',
-                'assets/',
-                'src/'
-            ].includes(path) || actual.existsSync(path)
-        }
-    }
+  return {
+    default: {
+      ...actual,
+      existsSync: (path: string) => ["resources/", "assets/", "src/"].includes(path) || actual.existsSync(path),
+    },
+  }
 })
 // Mock process.env
 const originalEnv = process.env
@@ -32,7 +28,6 @@ afterEach(() => {
   process.env = originalEnv
   vi.clearAllMocks()
 })
-
 
 // Mock routes for testing
 beforeEach(() => {
@@ -127,11 +122,11 @@ describe("litestar-vite-plugin", () => {
 
   it("accepts a full configuration", () => {
     const plugin = litestar({
-        input: "resources/js/app.ts",
-        assetUrl: "other-static",
-        bundleDirectory: "other-build",
-        ssr: "resources/js/ssr.ts",
-        ssrOutputDirectory: "other-ssr-output",
+      input: "resources/js/app.ts",
+      assetUrl: "other-static",
+      bundleDirectory: "other-build",
+      ssr: "resources/js/ssr.ts",
+      ssrOutputDirectory: "other-ssr-output",
     })[0]
 
     const config = plugin.config({}, { command: "build", mode: "production" })
@@ -327,7 +322,7 @@ describe("litestar-vite-plugin", () => {
     expect(config.server?.port).toBe(5173)
     expect(config.server?.strictPort).toBe(true)
 
-    delete process.env.VITE_ALLOW_REMOTE
+    process.env.VITE_ALLOW_REMOTE = undefined
   })
 
   it("allows the Vite port to be configured when running remotely", () => {
@@ -417,18 +412,14 @@ describe("litestar-vite-plugin", () => {
 
   it("configures full reload with python and template files when refresh is true", () => {
     const plugins = litestar({
-        input: "resources/js/app.js",
-        refresh: true,
+      input: "resources/js/app.js",
+      refresh: true,
     })
 
     expect(plugins.length).toBe(2)
     /** @ts-ignore */
     expect(plugins[1].__litestar_plugin_config).toEqual({
-        paths: [
-            "src/**",
-            "resources/**",
-            "assets/**",
-        ],
+      paths: ["src/**", "resources/**", "assets/**"],
     })
   })
 
@@ -503,7 +494,34 @@ describe("litestar-vite-plugin", () => {
     })
   })
 
+  it("handles TLS configuration", () => {
+    process.env.VITE_SERVER_KEY = "path/to/key"
+    process.env.VITE_SERVER_CERT = "path/to/cert"
+    process.env.APP_URL = "https://example.com"
 
+    const plugin = litestar("resources/js/app.js")[0]
+
+    expect(() => plugin.config({}, { command: "serve", mode: "development" })).toThrow(/Unable to find the certificate files/)
+  })
+
+  it("handles invalid APP_URL", () => {
+    process.env.VITE_SERVER_KEY = "path/to/key"
+    process.env.VITE_SERVER_CERT = "path/to/cert"
+    process.env.APP_URL = "invalid-url"
+
+    const plugin = litestar("resources/js/app.js")[0]
+
+    expect(() => plugin.config({}, { command: "serve", mode: "development" })).toThrow(/Unable to find the certificate files specified in your environment/)
+  })
+
+  it("handles missing config directory", () => {
+    const plugin = litestar({
+      input: "resources/js/app.js",
+      detectTls: true,
+    })[0]
+
+    expect(() => plugin.config({}, { command: "serve", mode: "development" })).toThrow(/Unable to find the configuration file/)
+  })
 })
 describe("inertia-helpers", () => {
   const testPath = "./__data__/dummy.ts"
@@ -511,14 +529,14 @@ describe("inertia-helpers", () => {
   beforeEach(() => {
     vi.resetModules()
     // Mock the import.meta.glob functionality
-    vi.mock('./__data__/dummy.ts', () => ({
-      default: "Dummy File"
+    vi.mock("./__data__/dummy.ts", () => ({
+      default: "Dummy File",
     }))
   })
 
   it("pass glob value to resolvePageComponent", async () => {
     const pages = {
-      [testPath]: Promise.resolve({ default: "Dummy File" })
+      [testPath]: Promise.resolve({ default: "Dummy File" }),
     }
 
     const file = await resolvePageComponent<{ default: string }>(testPath, pages)
@@ -527,7 +545,7 @@ describe("inertia-helpers", () => {
 
   it("pass eagerly globed value to resolvePageComponent", async () => {
     const pages = {
-      [testPath]: { default: "Dummy File" }
+      [testPath]: { default: "Dummy File" },
     }
     // @ts-ignore
     const file = await resolvePageComponent<{ default: string }>(testPath, pages)
@@ -536,52 +554,138 @@ describe("inertia-helpers", () => {
 
   it("accepts array of paths", async () => {
     const pages = {
-      [testPath]: { default: "Dummy File" }
+      [testPath]: { default: "Dummy File" },
     }
 
     const file = await resolvePageComponent<{ default: string }>(
       ["missing-page", testPath],
       // @ts-ignore
-      pages
+      pages,
     )
     expect(file.default).toBe("Dummy File")
   })
 
   it("throws an error when a page is not found", async () => {
     const pages = {}
-    await expect(
-      resolvePageComponent<{ default: string }>("missing-page", pages)
-    ).rejects.toThrow("Page not found: missing-page")
-  })
-})
-
-describe("route helpers", () => {
-  beforeEach(() => {
-    globalThis.routes = {
-      home: "/",
-      "users:get": "/api/users/get/{user_id:uuid}",
-      "users:list": "/api/users/list",
-      // ... other routes ...
-    }
+    await expect(resolvePageComponent<{ default: string }>("missing-page", pages)).rejects.toThrow("Page not found: missing-page")
   })
 
-  describe("route()", () => {
-    it("generates URLs from route names with named parameters", () => {
-      const result = route("users:get", { user_id: "123e4567-e89b-12d3-a456-426614174000" })
+  describe("route() edge cases", () => {
+    it("handles missing route names", () => {
+      expect(route("non-existent-route")).toBe("#")
+    })
+
+    it("handles array arguments", () => {
+      const result = route("users:get", ["123e4567-e89b-12d3-a456-426614174000"])
       expect(result).toContain("/api/users/get/123e4567-e89b-12d3-a456-426614174000")
     })
 
-    it("handles missing parameters", () => {
-      expect(route("users:get")).toBe("#")
+    it("handles wrong number of arguments", () => {
+      expect(route("users:get", [])).toBe("#")
+    })
+
+    it("handles missing arguments in object", () => {
+      expect(route("users:get", { wrong_id: "123" })).toBe("#")
     })
   })
 
   describe("getRelativeUrlPath()", () => {
-    it("extracts relative path from full URL", () => {
-      const result = getRelativeUrlPath("http://example.com/api/users/get/123e4567-e89b-12d3-a456-426614174000?page=1#section")
-      expect(result).toBe("/api/users/get/123e4567-e89b-12d3-a456-426614174000?page=1#section")
+    it("handles invalid URLs", () => {
+      expect(getRelativeUrlPath("invalid-url")).toBe("invalid-url")
+    })
+
+    it("preserves query parameters and hash", () => {
+      expect(getRelativeUrlPath("http://example.com/path?query=1#hash")).toBe("/path?query=1#hash")
     })
   })
 
-  // ... other route helper tests ...
+  describe("toRoute()", () => {
+    it("handles root path", () => {
+      expect(toRoute("/")).toBe("home")
+    })
+
+    it("handles UUID parameters", () => {
+      expect(toRoute("/api/users/get/123e4567-e89b-12d3-a456-426614174000")).toBe("users:get")
+    })
+
+    it("handles path parameters", () => {
+      expect(toRoute("/saq/static/some/deep/path")).toBe("saq")
+    })
+
+    it("handles non-matching routes", () => {
+      expect(toRoute("/non-existent")).toBe(null)
+    })
+
+    it("handles trailing slashes", () => {
+      expect(toRoute("/api/users/list/")).toBe("users:list")
+    })
+  })
+
+  describe("currentRoute()", () => {
+    beforeEach(() => {
+      // Mock window.location
+      Object.defineProperty(window, "location", {
+        value: {
+          pathname: "/api/users/list",
+        },
+        writable: true,
+      })
+    })
+
+    it("returns current route name", () => {
+      expect(currentRoute()).toBe("users:list")
+    })
+
+    it("returns null for non-matching routes", () => {
+      window.location.pathname = "/non-existent"
+      expect(currentRoute()).toBe(null)
+    })
+  })
+
+  describe("isRoute()", () => {
+    it("matches exact routes", () => {
+      expect(isRoute("/api/users/list", "users:list")).toBe(true)
+    })
+
+    it("matches routes with parameters", () => {
+      expect(isRoute("/api/users/get/123e4567-e89b-12d3-a456-426614174000", "users:*")).toBe(true)
+    })
+
+    it("handles non-matching routes", () => {
+      expect(isRoute("/non-existent", "users:*")).toBe(false)
+    })
+
+    it("matches routes with path parameters", () => {
+      expect(isRoute("/saq/static/deep/nested/path", "saq")).toBe(true)
+    })
+  })
+
+  describe("isCurrentRoute()", () => {
+    beforeEach(() => {
+      // Mock window.location
+      Object.defineProperty(window, "location", {
+        value: {
+          pathname: "/api/users/list",
+        },
+        writable: true,
+      })
+    })
+
+    it("matches current route with pattern", () => {
+      expect(isCurrentRoute("users:*")).toBe(true)
+    })
+
+    it("handles exact matches", () => {
+      expect(isCurrentRoute("users:list")).toBe(true)
+    })
+
+    it("handles non-matching routes", () => {
+      expect(isCurrentRoute("teams:*")).toBe(false)
+    })
+
+    it("handles invalid current route", () => {
+      window.location.pathname = "/non-existent"
+      expect(isCurrentRoute("users:*")).toBe(false)
+    })
+  })
 })

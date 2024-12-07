@@ -125,8 +125,9 @@ export function isRoute(url: string, routeName: string): boolean {
     const regexPattern = routePattern.replace(/\//g, "\\/").replace(/\{([^}]+):([^}]+)\}/g, (match, paramName, paramType) => {
       switch (paramType) {
         case "str":
-        case "path":
           return "([^/]+)"
+        case "path":
+          return "(.*)"
         case "uuid":
           return "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
         default:
