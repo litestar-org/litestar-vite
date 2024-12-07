@@ -12,6 +12,7 @@ from litestar.plugins.flash import (  # pyright: ignore[reportUnknownVariableTyp
     flash,
 )
 from litestar.stores.memory import MemoryStore
+from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
 
 from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
@@ -21,7 +22,9 @@ from litestar_vite.plugin import VitePlugin
 pytestmark = pytest.mark.anyio
 
 
-async def test_component_enabled(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin) -> None:
+async def test_component_enabled(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+) -> None:
     @get("/", component="Home")
     async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
         return {"thing": "value"}
@@ -29,6 +32,7 @@ async def test_component_enabled(inertia_plugin: InertiaPlugin, vite_plugin: Vit
     with create_test_client(
         route_handlers=[handler],
         plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:
@@ -36,7 +40,9 @@ async def test_component_enabled(inertia_plugin: InertiaPlugin, vite_plugin: Vit
         assert response.text.startswith("<!DOCTYPE html>")
 
 
-async def test_component_inertia_header_enabled(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin) -> None:
+async def test_component_inertia_header_enabled(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+) -> None:
     @get("/", component="Home")
     async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
         return {"thing": "value"}
@@ -44,6 +50,7 @@ async def test_component_inertia_header_enabled(inertia_plugin: InertiaPlugin, v
     with create_test_client(
         route_handlers=[handler],
         plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:
@@ -54,7 +61,9 @@ async def test_component_inertia_header_enabled(inertia_plugin: InertiaPlugin, v
         )
 
 
-async def test_component_inertia_flash_header_enabled(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin) -> None:
+async def test_component_inertia_flash_header_enabled(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+) -> None:
     @get("/", component="Home")
     async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
         flash(request, "a flash message", "info")
@@ -62,10 +71,11 @@ async def test_component_inertia_flash_header_enabled(inertia_plugin: InertiaPlu
 
     with create_test_client(
         route_handlers=[handler],
+        template_config=template_config,
         plugins=[
             inertia_plugin,
             vite_plugin,
-            FlashPlugin(config=FlashConfig(template_config=vite_plugin.template_config)),
+            FlashPlugin(config=FlashConfig(template_config=template_config)),
         ],
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
@@ -80,6 +90,7 @@ async def test_component_inertia_flash_header_enabled(inertia_plugin: InertiaPlu
 async def test_component_inertia_shared_flash_header_enabled(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
+    template_config: TemplateConfig,
 ) -> None:
     @get("/", component="Home")
     async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
@@ -89,10 +100,11 @@ async def test_component_inertia_shared_flash_header_enabled(
 
     with create_test_client(
         route_handlers=[handler],
+        template_config=template_config,
         plugins=[
             inertia_plugin,
             vite_plugin,
-            FlashPlugin(config=FlashConfig(template_config=vite_plugin.template_config)),
+            FlashPlugin(config=FlashConfig(template_config=template_config)),
         ],
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
@@ -104,13 +116,16 @@ async def test_component_inertia_shared_flash_header_enabled(
         )
 
 
-async def test_default_route_response_no_component(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin) -> None:
+async def test_default_route_response_no_component(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+) -> None:
     @get("/")
     async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
         return {"thing": "value"}
 
     with create_test_client(
         route_handlers=[handler],
+        template_config=template_config,
         plugins=[inertia_plugin, vite_plugin],
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
@@ -119,13 +134,16 @@ async def test_default_route_response_no_component(inertia_plugin: InertiaPlugin
         assert response.content == b'{"thing":"value"}'
 
 
-async def test_component_inertia_version_redirect(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin) -> None:
+async def test_component_inertia_version_redirect(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+) -> None:
     @get("/", component="Home")
     async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
         return {"thing": "value"}
 
     with create_test_client(
         route_handlers=[handler],
+        template_config=template_config,
         plugins=[inertia_plugin, vite_plugin],
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
@@ -140,7 +158,9 @@ async def test_component_inertia_version_redirect(inertia_plugin: InertiaPlugin,
         )
 
 
-async def test_unauthenticated_redirect(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin) -> None:
+async def test_unauthenticated_redirect(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+) -> None:
     @get("/", component="Home")
     async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
         raise NotAuthorizedException(detail="User not authenticated")
@@ -153,6 +173,7 @@ async def test_unauthenticated_redirect(inertia_plugin: InertiaPlugin, vite_plug
 
     with create_test_client(
         route_handlers=[handler, login_handler],
+        template_config=template_config,
         plugins=[inertia_plugin, vite_plugin],
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
@@ -162,7 +183,9 @@ async def test_unauthenticated_redirect(inertia_plugin: InertiaPlugin, vite_plug
         assert response.url.path == "/login"
 
 
-async def test_404_redirect(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin) -> None:
+async def test_404_redirect(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+) -> None:
     @get("/", component="Home")
     async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
         return {"thing": "value"}
@@ -171,6 +194,7 @@ async def test_404_redirect(inertia_plugin: InertiaPlugin, vite_plugin: VitePlug
 
     with create_test_client(
         route_handlers=[handler],
+        template_config=template_config,
         plugins=[inertia_plugin, vite_plugin],
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},

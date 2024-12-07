@@ -26,8 +26,7 @@ async def redirect_on_asset_version_mismatch(request: Request[UserT, AuthT, Stat
         return None
 
     vite_plugin = request.app.plugins.get(VitePlugin)
-    template_engine = vite_plugin.template_config.to_engine()
-    if inertia_version == template_engine.asset_loader.version_id:
+    if inertia_version == vite_plugin.asset_loader.version_id:
         return None
     return InertiaRedirect(request, redirect_to=str(request.url))
 

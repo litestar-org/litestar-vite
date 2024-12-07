@@ -245,7 +245,7 @@ class InertiaResponse(Response[T]):
         is_partial_render = cast("bool", getattr(request, "is_partial_render", False))
         partial_keys = cast("set[str]", getattr(request, "partial_keys", {}))
         vite_plugin = request.app.plugins.get(VitePlugin)
-        template_engine = vite_plugin.template_config.to_engine()
+        template_engine = request.app.template_engine  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
         headers.update(
             {"Vary": "Accept", **get_headers(InertiaHeaderType(enabled=True))},
         )
@@ -254,13 +254,13 @@ class InertiaResponse(Response[T]):
         page_props = PageProps[T](
             component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
             props=shared_props,  # pyright: ignore[reportArgumentType]
-            version=template_engine.asset_loader.version_id,
+            version=vite_plugin.asset_loader.version_id,
             url=request.url.path,
         )
         if is_inertia:
             media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
             body = self.render(page_props, media_type, get_serializer(type_encoders))
-            return ASGIResponse(
+            return ASGIResponse(  # pyright: ignore[reportUnknownMemberType]
                 background=self.background or background,
                 body=body,
                 cookies=cookies,
@@ -290,17 +290,16 @@ class InertiaResponse(Response[T]):
                 media_type = MediaType.HTML
         context = self.create_template_context(request, page_props, type_encoders)  # pyright: ignore[reportUnknownMemberType]
         if self.template_str is not None:
-            body = template_engine.render_string(self.template_str, context).encode(self.encoding)
+            body = template_engine.render_string(self.template_str, context).encode(self.encoding)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
         else:
             inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
             template_name = self.template_name or inertia_plugin.config.root_template
-            # cast to str b/c we know that either template_name cannot be None if template_str is None
-            template = template_engine.get_template(template_name)
-            body = template.render(**context).encode(self.encoding)
+            template = template_engine.get_template(template_name)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+            body = template.render(**context).encode(self.encoding)  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
 
-        return ASGIResponse(
+        return ASGIResponse(  # pyright: ignore[reportUnknownMemberType]
             background=self.background or background,
-            body=body,
+            body=body,  # pyright: ignore[reportUnknownArgumentType]
             cookies=cookies,
             encoded_headers=encoded_headers,
             encoding=self.encoding,

@@ -267,6 +267,8 @@ lint.select = ["ALL"]
 lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 src = ["src/py/litestar_vite", "src/py/tests"]
 target-version = "py38"
+unsafe-fixes = true
+
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

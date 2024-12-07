@@ -5,20 +5,18 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, cast
 
+from litestar.contrib.jinja import JinjaTemplateEngine
+from litestar.exceptions import ImproperlyConfiguredException
 from litestar.plugins import CLIPlugin, InitPluginProtocol
-from litestar.static_files import (
-    create_static_files_router,  # pyright: ignore[reportUnknownVariableType]
-)
+from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
 
 from litestar_vite.config import ViteConfig
+from litestar_vite.loader import ViteAssetLoader, render_asset_tag, render_hmr_client
 
 if TYPE_CHECKING:
     from click import Group
     from litestar import Litestar
     from litestar.config.app import AppConfig
-
-    from litestar_vite.config import ViteTemplateConfig
-    from litestar_vite.template_engine import ViteTemplateEngine
 
 
 def set_environment(config: ViteConfig) -> None:
@@ -28,7 +26,7 @@ def set_environment(config: ViteConfig) -> None:
     os.environ.setdefault("VITE_PORT", str(config.port))
     os.environ.setdefault("VITE_HOST", config.host)
     os.environ.setdefault("VITE_PROTOCOL", config.protocol)
-    os.environ.setdefault("APP_URL", f"http://localhost:{os.environ.get('LITESTAR_PORT',8000)}")
+    os.environ.setdefault("APP_URL", f"http://localhost:{os.environ.get('LITESTAR_PORT', 8000)}")
     if config.dev_mode:
         os.environ.setdefault("VITE_DEV_MODE", str(config.dev_mode))
 
@@ -36,32 +34,30 @@ def set_environment(config: ViteConfig) -> None:
 class VitePlugin(InitPluginProtocol, CLIPlugin):
     """Vite plugin."""
 
-    __slots__ = ("_config",)
+    __slots__ = ("_asset_loader", "_config")
+    _asset_loader: ViteAssetLoader | None
 
-    def __init__(self, config: ViteConfig | None = None) -> None:
+    def __init__(self, config: ViteConfig | None = None, asset_loader: ViteAssetLoader | None = None) -> None:
         """Initialize ``Vite``.
 
         Args:
             config: configuration to use for starting Vite.  The default configuration will be used if it is not provided.
+            asset_loader: an initialized asset loader to use for rendering asset tags.
         """
         if config is None:
             config = ViteConfig()
         self._config = config
+        self._asset_loader = asset_loader
 
     @property
     def config(self) -> ViteConfig:
         return self._config
 
     @property
-    def template_config(self) -> ViteTemplateConfig[ViteTemplateEngine]:
-        from litestar_vite.config import ViteTemplateConfig
-        from litestar_vite.template_engine import ViteTemplateEngine
-
-        return ViteTemplateConfig[ViteTemplateEngine](
-            engine=ViteTemplateEngine,
-            config=self._config,
-            directory=self._config.template_dir,
-        )
+    def asset_loader(self) -> ViteAssetLoader:
+        if self._asset_loader is None:
+            self._asset_loader = ViteAssetLoader.initialize_loader(config=self._config)
+        return self._asset_loader
 
     def on_cli_init(self, cli: Group) -> None:
         from litestar_vite.cli import vite_group
@@ -72,12 +68,22 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """Configure application for use with Vite.
 
         Args:
-            app_config: The :class:`AppConfig <.config.app.AppConfig>` instance.
+            app_config: The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
         """
-
-        if self._config.template_dir is not None:
-            app_config.template_config = self.template_config
-
+        if app_config.template_config is None:  # pyright: ignore[reportUnknownMemberType]
+            msg = "A template configuration is required for Vite."
+            raise ImproperlyConfiguredException(msg)
+        if not isinstance(app_config.template_config.engine_instance, JinjaTemplateEngine):  # pyright: ignore[reportUnknownMemberType]
+            msg = "Jinja2 template engine is required for Vite."
+            raise ImproperlyConfiguredException(msg)
+        app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
+            key="vite_hmr",
+            template_callable=render_hmr_client,
+        )
+        app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
+            key="vite",
+            template_callable=render_asset_tag,
+        )
         if self._config.set_static_folders:
             static_dirs = [Path(self._config.bundle_dir), Path(self._config.resource_dir)]
             if Path(self._config.public_dir).exists() and self._config.public_dir != self._config.bundle_dir:

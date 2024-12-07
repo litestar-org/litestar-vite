@@ -18,6 +18,8 @@ from pathlib import Path
 from litestar import Controller, get, Litestar
 from litestar.response import Template
 from litestar.status_codes import HTTP_200_OK
+from litestar.template.config import TemplateConfig
+from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar_vite import ViteConfig, VitePlugin
 
 class WebController(Controller):
@@ -29,9 +31,9 @@ class WebController(Controller):
     async def index(self) -> Template:
         return Template(template_name="index.html.j2")
 
-
-vite = VitePlugin(config=ViteConfig(template_dir='templates/'))
-app = Litestar(plugins=[vite], route_handlers=[WebController])
+template_config = TemplateConfig(engine=JinjaTemplateEngine(directory='templates/'))
+vite = VitePlugin(config=ViteConfig())
+app = Litestar(plugins=[vite], template_config=template_config, route_handlers=[WebController])
 
 ```
 
