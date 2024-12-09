@@ -114,7 +114,7 @@ def vite_init(
     from rich.prompt import Confirm
 
     from litestar_vite.commands import execute_command, init_vite
-    from litestar_vite.plugin import VitePlugin
+    from litestar_vite import VitePlugin
 
     if callable(ctx.obj):
         ctx.obj = ctx.obj()

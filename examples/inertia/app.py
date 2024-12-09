@@ -48,13 +48,13 @@ vite = VitePlugin(
     ),
 )
 inertia = InertiaPlugin(config=InertiaConfig(root_template="index.html"))
-template_config = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "templates"))
-flasher = FlashPlugin(config=FlashConfig(template_config=template_config))
+templates = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "templates"))
+flasher = FlashPlugin(config=FlashConfig(template_config=templates))
 
 app = Litestar(
     plugins=[vite, flasher, inertia],
     route_handlers=[WebController],
-    template_config=template_config,
+    template_config=templates,
     middleware=[ServerSideSessionConfig().middleware],
     stores={"sessions": MemoryStore()},
 )

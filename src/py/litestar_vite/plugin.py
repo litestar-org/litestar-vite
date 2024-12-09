@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import signal
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, cast
@@ -10,13 +12,13 @@ from litestar.exceptions import ImproperlyConfiguredException
 from litestar.plugins import CLIPlugin, InitPluginProtocol
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
 
-from litestar_vite.config import ViteConfig
-from litestar_vite.loader import ViteAssetLoader, render_asset_tag, render_hmr_client
-
 if TYPE_CHECKING:
     from click import Group
     from litestar import Litestar
     from litestar.config.app import AppConfig
+
+    from litestar_vite.config import ViteConfig
+    from litestar_vite.loader import ViteAssetLoader
 
 
 def set_environment(config: ViteConfig) -> None:
@@ -31,11 +33,64 @@ def set_environment(config: ViteConfig) -> None:
         os.environ.setdefault("VITE_DEV_MODE", str(config.dev_mode))
 
 
+class ViteProcess:
+    """Manages the Vite process."""
+
+    def __init__(self) -> None:
+        self.process: threading.Thread | None = None
+        self._lock = threading.Lock()
+
+    def start(self, command: list[str], cwd: Path | str | None) -> None:
+        """Start the Vite process."""
+        from litestar.cli._utils import console
+
+        from litestar_vite.commands import execute_command
+
+        try:
+            with self._lock:
+                if self.process and self.process.is_alive():
+                    return
+
+                self.process = threading.Thread(
+                    name="vite",
+                    target=execute_command,
+                    args=[],
+                    kwargs={"command_to_run": command, "cwd": cwd},
+                    daemon=True,  # Make thread daemon so it exits when main thread exits
+                )
+                console.print(f"Starting Vite process with command: {command}")
+                self.process.start()
+        except Exception as e:
+            console.print(f"[red]Failed to start Vite process: {e!s}[/]")
+            raise
+
+    def stop(self, timeout: float = 5.0) -> None:
+        """Stop the Vite process."""
+        from litestar.cli._utils import console
+
+        try:
+            with self._lock:
+                if self.process and self.process.is_alive():
+                    # Send SIGTERM to child process
+                    if hasattr(signal, "SIGTERM") and self.process.ident is not None:
+                        os.kill(self.process.ident, signal.SIGTERM)
+                    self.process.join(timeout=timeout)
+
+                    # Force kill if still alive
+                    if self.process.is_alive():
+                        if hasattr(signal, "SIGKILL") and self.process.ident is not None:
+                            os.kill(self.process.ident, signal.SIGKILL)
+                        self.process.join(timeout=1.0)
+                console.print("Stopping Vite process")
+        except Exception as e:
+            console.print(f"[red]Failed to stop Vite process: {e!s}[/]")
+            raise
+
+
 class VitePlugin(InitPluginProtocol, CLIPlugin):
     """Vite plugin."""
 
-    __slots__ = ("_asset_loader", "_config")
-    _asset_loader: ViteAssetLoader | None
+    __slots__ = ("_asset_loader", "_config", "_vite_process")
 
     def __init__(self, config: ViteConfig | None = None, asset_loader: ViteAssetLoader | None = None) -> None:
         """Initialize ``Vite``.
@@ -44,10 +99,13 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             config: configuration to use for starting Vite.  The default configuration will be used if it is not provided.
             asset_loader: an initialized asset loader to use for rendering asset tags.
         """
+        from litestar_vite.config import ViteConfig
+
         if config is None:
             config = ViteConfig()
         self._config = config
         self._asset_loader = asset_loader
+        self._vite_process = ViteProcess()
 
     @property
     def config(self) -> ViteConfig:
@@ -55,6 +113,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
     @property
     def asset_loader(self) -> ViteAssetLoader:
+        from litestar_vite.loader import ViteAssetLoader
+
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader.initialize_loader(config=self._config)
         return self._asset_loader
@@ -70,6 +130,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         Args:
             app_config: The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
         """
+        from litestar_vite.loader import render_asset_tag, render_hmr_client
+
         if app_config.template_config is None:  # pyright: ignore[reportUnknownMemberType]
             msg = "A template configuration is required for Vite."
             raise ImproperlyConfiguredException(msg)
@@ -105,34 +167,26 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
     @contextmanager
     def server_lifespan(self, app: Litestar) -> Iterator[None]:
-        import threading
-
+        """Manage Vite server process lifecycle."""
         from litestar.cli._utils import console
-
-        from litestar_vite.commands import execute_command
 
         if self._config.use_server_lifespan and self._config.dev_mode:
             command_to_run = self._config.run_command if self._config.hot_reload else self._config.build_watch_command
+
             if self.config.hot_reload:
                 console.rule("[yellow]Starting Vite process with HMR Enabled[/]", align="left")
             else:
                 console.rule("[yellow]Starting Vite watch and build process[/]", align="left")
+
             if self._config.set_environment:
                 set_environment(config=self._config)
-            vite_thread = threading.Thread(
-                name="vite",
-                target=execute_command,
-                args=[],
-                kwargs={"command_to_run": command_to_run, "cwd": self._config.root_dir},
-            )
+
             try:
-                vite_thread.start()
+                self._vite_process.start(command_to_run, self._config.root_dir)
                 yield
             finally:
-                if vite_thread.is_alive():
-                    vite_thread.join(timeout=5)
+                self._vite_process.stop()
                 console.print("[yellow]Vite process stopped.[/]")
-
         else:
             manifest_path = Path(f"{self._config.bundle_dir}/{self._config.manifest_name}")
             if manifest_path.exists():
