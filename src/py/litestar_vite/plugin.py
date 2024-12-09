@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import os
+import platform
 import signal
+import subprocess
 import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, cast
 
+from litestar.cli._utils import console
 from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.plugins import CLIPlugin, InitPluginProtocol
@@ -37,50 +40,43 @@ class ViteProcess:
     """Manages the Vite process."""
 
     def __init__(self) -> None:
-        self.process: threading.Thread | None = None
+        self.process: subprocess.Popen | None = None  # pyright: ignore[reportUnknownMemberType,reportMissingTypeArgument]
         self._lock = threading.Lock()
 
     def start(self, command: list[str], cwd: Path | str | None) -> None:
         """Start the Vite process."""
-        from litestar.cli._utils import console
-
-        from litestar_vite.commands import execute_command
 
         try:
             with self._lock:
-                if self.process and self.process.is_alive():
+                if self.process and self.process.poll() is None:  # pyright: ignore[reportUnknownMemberType]
                     return
 
-                self.process = threading.Thread(
-                    name="vite",
-                    target=execute_command,
-                    args=[],
-                    kwargs={"command_to_run": command, "cwd": cwd},
-                    daemon=True,  # Make thread daemon so it exits when main thread exits
-                )
                 console.print(f"Starting Vite process with command: {command}")
-                self.process.start()
+                self.process = subprocess.Popen(
+                    command,
+                    cwd=cwd,
+                    shell=platform.system() == "Windows",
+                )
         except Exception as e:
             console.print(f"[red]Failed to start Vite process: {e!s}[/]")
             raise
 
     def stop(self, timeout: float = 5.0) -> None:
         """Stop the Vite process."""
-        from litestar.cli._utils import console
 
         try:
             with self._lock:
-                if self.process and self.process.is_alive():
+                if self.process and self.process.poll() is None:  # pyright: ignore[reportUnknownMemberType]
                     # Send SIGTERM to child process
-                    if hasattr(signal, "SIGTERM") and self.process.ident is not None:
-                        os.kill(self.process.ident, signal.SIGTERM)
-                    self.process.join(timeout=timeout)
-
-                    # Force kill if still alive
-                    if self.process.is_alive():
-                        if hasattr(signal, "SIGKILL") and self.process.ident is not None:
-                            os.kill(self.process.ident, signal.SIGKILL)
-                        self.process.join(timeout=1.0)
+                    if hasattr(signal, "SIGTERM"):
+                        self.process.terminate()  # pyright: ignore[reportUnknownMemberType]
+                    try:
+                        self.process.wait(timeout=timeout)  # pyright: ignore[reportUnknownMemberType]
+                    except subprocess.TimeoutExpired:
+                        # Force kill if still alive
+                        if hasattr(signal, "SIGKILL"):
+                            self.process.kill()  # pyright: ignore[reportUnknownMemberType]
+                        self.process.wait(timeout=1.0)  # pyright: ignore[reportUnknownMemberType]
                 console.print("Stopping Vite process")
         except Exception as e:
             console.print(f"[red]Failed to stop Vite process: {e!s}[/]")
@@ -168,7 +164,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
     @contextmanager
     def server_lifespan(self, app: Litestar) -> Iterator[None]:
         """Manage Vite server process lifecycle."""
-        from litestar.cli._utils import console
 
         if self._config.use_server_lifespan and self._config.dev_mode:
             command_to_run = self._config.run_command if self._config.hot_reload else self._config.build_watch_command
