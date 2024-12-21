@@ -1,14 +1,28 @@
 from __future__ import annotations
 
+import inspect
 import itertools
 from collections import defaultdict
-from functools import lru_cache
+from collections.abc import Coroutine, Mapping
+from functools import lru_cache, partial, wraps
 from mimetypes import guess_type
 from pathlib import PurePath
 from textwrap import dedent
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Mapping, TypeVar, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    Iterable,
+    List,
+    TypeVar,
+    cast,
+    overload,
+)
 from urllib.parse import quote, urlparse, urlunparse
 
+from anyio import from_thread, to_thread
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
@@ -21,6 +35,7 @@ from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
 from litestar.utils.scope.state import ScopeState
 from markupsafe import Markup
+from typing_extensions import ParamSpec, TypeGuard
 
 from litestar_vite.inertia._utils import get_headers
 from litestar_vite.inertia.types import InertiaHeaderType, PageProps
@@ -33,53 +48,210 @@ if TYPE_CHECKING:
     from litestar.connection.base import AuthT, StateT, UserT
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
 
+    from litestar_vite.inertia.plugin import InertiaPlugin
     from litestar_vite.inertia.routes import Routes
 
-    from .plugin import InertiaPlugin
-
 T = TypeVar("T")
+T_ParamSpec = ParamSpec("T_ParamSpec")
+T_Retval = TypeVar("T_Retval")
+PropKeyT = TypeVar("PropKeyT", bound=str)
 
 
-def share(
-    connection: ASGIConnection[Any, Any, Any, Any],
-    key: str,
-    value: Any,
-) -> None:
-    try:
-        connection.session.setdefault("_shared", {}).update({key: value})
-    except (AttributeError, ImproperlyConfiguredException):
-        msg = "Unable to set `share` session state.  A valid session was not found for this request."
-        connection.logger.warning(msg)
+@overload
+def lazy(
+    key: PropKeyT,
+    value_or_callable: None,
+    /,
+) -> StaticProp[PropKeyT, None]: ...
 
 
-def error(
-    connection: ASGIConnection[Any, Any, Any, Any],
-    key: str,
-    message: str,
-) -> None:
-    try:
-        connection.session.setdefault("_errors", {}).update({key: message})
-    except (AttributeError, ImproperlyConfiguredException):
-        msg = "Unable to set `error` session state.  A valid session was not found for this request."
-        connection.logger.warning(msg)
+@overload
+def lazy(
+    key: PropKeyT,
+    value_or_callable: T_Retval | Callable[T_ParamSpec, T_Retval | Coroutine[Any, Any, T_Retval]],
+    /,
+) -> StaticProp[PropKeyT, T_Retval] | DeferredProp[PropKeyT, T_ParamSpec, Coroutine[Any, Any, T_Retval]]: ...
+
+
+def lazy(
+    key: PropKeyT,
+    value_or_callable: T_Retval | Callable[T_ParamSpec, T_Retval | Coroutine[Any, Any, T_Retval]],
+    /,
+) -> (
+    StaticProp[PropKeyT, None]
+    | DeferredProp[PropKeyT, T_ParamSpec, Coroutine[Any, Any, T_Retval]]
+    | StaticProp[PropKeyT, T_Retval]
+):
+    """Wrap an async function to return a DeferredProp."""
+    if value_or_callable is None:
+        return StaticProp[PropKeyT, None](key=key, value=None)
+
+    if not callable(value_or_callable):
+        return StaticProp[PropKeyT, T_Retval](key=key, value=value_or_callable)
+
+    @wraps(value_or_callable)
+    def wrapper(*args: T_ParamSpec.args, **kwargs: T_ParamSpec.kwargs) -> Coroutine[Any, Any, T_Retval]:
+        if inspect.iscoroutinefunction(value_or_callable):
+            partial_f = partial(value_or_callable, *args, **kwargs)  # pyright: ignore[ignoreReturnType]
+        else:
+            partial_f = to_thread.run_sync(partial(value_or_callable, *args, **kwargs))  # pyright: ignore[ignoreReturnType]
+        return partial_f  # pyright: ignore[reportArgumentType,reportReturnType]
+
+    return DeferredProp[PropKeyT, T_ParamSpec, Coroutine[Any, Any, T_Retval]](key=key, value=wrapper)  # pyright: ignore[reportArgumentType]
+
+
+class StaticProp(Generic[PropKeyT, T_Retval]):
+    """A wrapper for static property evaluation."""
+
+    def __init__(self, key: PropKeyT, value: T_Retval | None) -> None:
+        self._key = key
+        self._value = value
+
+    @property
+    def key(self) -> PropKeyT:
+        return self._key
+
+    def render(self) -> T_Retval | None:
+        return self._value
+
+
+class DeferredProp(Generic[PropKeyT, T_ParamSpec, T_Retval]):
+    """A wrapper for deferred property evaluation."""
+
+    def __init__(self, key: PropKeyT, value: Callable[T_ParamSpec, Coroutine[Any, Any, T_Retval]]) -> None:
+        self._key = key
+        self._func = value
+        self._evaluated = False
+        self._result: T_Retval | None = None
+
+    @property
+    def key(self) -> PropKeyT:
+        return self._key
+
+    def render(self) -> T_Retval:
+        if self._evaluated:
+            return cast("T_Retval", self._result)
+        self._result = cast("T_Retval", from_thread.run(self._func)())  # pyright: ignore[reportCallIssue]
+        self._evaluated = True
+        return self._result
+
+
+def is_lazy_prop(value: Any) -> TypeGuard[DeferredProp[Any, Any, Any] | StaticProp[Any, Any]]:
+    """Check if value is a deferred property.
+
+    Args:
+        value: Any value to check
+
+    Returns:
+        bool: True if value is a deferred property
+    """
+    return isinstance(value, (DeferredProp, StaticProp))
+
+
+def should_render(value: Any, partial_data: set[str] | None = None) -> bool:
+    """Check if value should be rendered.
+
+    Args:
+        value: Any value to check
+        partial_data: Optional set of keys for partial rendering
+
+    Returns:
+        bool: True if value should be rendered
+    """
+    partial_data = partial_data or set()
+    if is_lazy_prop(value):
+        return value.key in partial_data
+    return True
+
+
+def is_or_contains_lazy_prop(value: Any) -> bool:
+    """Check if value is or contains a deferred property.
+
+    Args:
+        value: Any value to check
+
+    Returns:
+        bool: True if value is or contains a deferred property
+    """
+    if is_lazy_prop(value):
+        return True
+    if isinstance(value, str):
+        return False
+    if isinstance(value, Mapping):
+        return any(is_or_contains_lazy_prop(v) for v in cast("Mapping[str, Any]", value).values())
+    if isinstance(value, Iterable) and not isinstance(value, str):
+        return any(is_or_contains_lazy_prop(v) for v in cast("Iterable[Any]", value))
+    return False
+
+
+def lazy_render(value: T, partial_data: set[str] | None = None) -> T:
+    """Filter deferred properties from the value based on partial data.
+
+    Args:
+        value: The value to filter
+        partial_data: Keys for partial rendering
+
+    Returns:
+        The filtered value
+    """
+    partial_data = partial_data or set()
+    if isinstance(value, str):
+        return cast("T", value)
+    if isinstance(value, Mapping):
+        return cast(
+            "T",
+            {
+                k: lazy_render(v, partial_data)
+                for k, v in cast("Mapping[str, Any]", value).items()
+                if should_render(v, partial_data)
+            },
+        )
+
+    if isinstance(value, (list, tuple)):
+        filtered = [
+            lazy_render(v, partial_data) for v in cast("Iterable[Any]", value) if should_render(v, partial_data)
+        ]
+        return cast("T", type(value)(filtered))  # pyright: ignore[reportUnknownArgumentType]
+
+    if is_lazy_prop(value) and should_render(value, partial_data):
+        return cast("T", value.render())
+
+    return cast("T", value)
 
 
 def get_shared_props(
     request: ASGIConnection[Any, Any, Any, Any],
     partial_data: set[str] | None = None,
 ) -> Dict[str, Any]:  # noqa: UP006
-    """Return shared session props for a request
+    """Return shared session props for a request.
 
+    Args:
+        request: The ASGI connection.
+        partial_data: Optional set of keys for partial rendering.
 
-    Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
+    Returns:
+        Dict[str, Any]: The shared props.
+
+    Note:
+        Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
     """
     props: dict[str, Any] = {}
     flash: dict[str, list[str]] = defaultdict(list)
     errors: dict[str, Any] = {}
     error_bag = request.headers.get("X-Inertia-Error-Bag", None)
+
     try:
         errors = request.session.pop("_errors", {})
-        props.update(cast("Dict[str,Any]", request.session.pop("_shared", {})))
+        shared_props = cast("Dict[str,Any]", request.session.pop("_shared", {}))
+
+        # Handle deferred props
+        for key, value in shared_props.items():
+            if is_lazy_prop(value) and should_render(value, partial_data):
+                props[key] = value.render()
+                continue
+            if should_render(value, partial_data):
+                props[key] = value
+
         for message in cast("List[Dict[str,Any]]", request.session.pop("_messages", [])):
             flash[message["category"]].append(message["message"])
 
@@ -92,10 +264,49 @@ def get_shared_props(
     except (AttributeError, ImproperlyConfiguredException):
         msg = "Unable to generate all shared props.  A valid session was not found for this request."
         request.logger.warning(msg)
+
     props["flash"] = flash
     props["errors"] = {error_bag: errors} if error_bag is not None else errors
     props["csrf_token"] = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
     return props
+
+
+def share(
+    connection: ASGIConnection[Any, Any, Any, Any],
+    key: str,
+    value: Any,
+) -> None:
+    """Share a value in the session.
+
+    Args:
+        connection: The ASGI connection.
+        key: The key to store the value under.
+        value: The value to store.
+    """
+    try:
+        connection.session.setdefault("_shared", {}).update({key: value})
+    except (AttributeError, ImproperlyConfiguredException):
+        msg = "Unable to set `share` session state.  A valid session was not found for this request."
+        connection.logger.warning(msg)
+
+
+def error(
+    connection: ASGIConnection[Any, Any, Any, Any],
+    key: str,
+    message: str,
+) -> None:
+    """Set an error message in the session.
+
+    Args:
+        connection: The ASGI connection.
+        key: The key to store the error under.
+        message: The error message.
+    """
+    try:
+        connection.session.setdefault("_errors", {}).update({key: message})
+    except (AttributeError, ImproperlyConfiguredException):
+        msg = "Unable to set `error` session state.  A valid session was not found for this request."
+        connection.logger.warning(msg)
 
 
 def js_routes_script(js_routes: Routes) -> Markup:
@@ -197,7 +408,7 @@ class InertiaResponse(Response[T]):
             "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
         }
 
-    def to_asgi_response(
+    def to_asgi_response(  # noqa: C901, PLR0912
         self,
         app: Litestar | None,
         request: Request[UserT, AuthT, StateT],
@@ -250,7 +461,13 @@ class InertiaResponse(Response[T]):
             {"Vary": "Accept", **get_headers(InertiaHeaderType(enabled=True))},
         )
         shared_props = get_shared_props(request, partial_data=partial_keys if is_partial_render else None)
-        shared_props["content"] = self.content
+        if is_or_contains_lazy_prop(self.content):
+            filtered_content = lazy_render(self.content, partial_keys if is_partial_render else None)
+            if filtered_content is not None:
+                shared_props["content"] = filtered_content
+        elif should_render(self.content, partial_keys):
+            shared_props["content"] = self.content
+
         page_props = PageProps[T](
             component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
             props=shared_props,  # pyright: ignore[reportArgumentType]
