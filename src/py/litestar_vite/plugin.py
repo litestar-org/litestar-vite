@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Iterator, cast
 
 from litestar.cli._utils import console
 from litestar.contrib.jinja import JinjaTemplateEngine
-from litestar.exceptions import ImproperlyConfiguredException
 from litestar.plugins import CLIPlugin, InitPluginProtocol
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
 
