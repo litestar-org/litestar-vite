@@ -55,7 +55,8 @@ packages = ["src/py/litestar_vite"]
 sources = ["src/py"]
 
 [dependency-groups]
-dev = ["nodeenv", "litestar[standard]",  "bump-my-version", { include-group = "linting" }, { include-group = "test" }, { include-group = "docs" } ]
+dev = [ {include-group = "build"}, { include-group = "linting" }, { include-group = "test" }, { include-group = "docs" } ]
+build = ["bump-my-version"]
 docs = [
     "auto-pytabs[sphinx]>=0.4.0",
     "sphinx-autobuild>=2021.3.14",
@@ -71,6 +72,7 @@ docs = [
 ]
 linting = ["pre-commit>=3.4.0", "mypy>=1.5.1", "ruff>=0.0.287", "types-docutils", "slotscheck", "basedpyright", "pyright"]
 test = [
+  "litestar[standard]",
   "pytest>=7.4.1",
   "pytest-cov",
   "coverage",
@@ -148,7 +150,7 @@ replace = '    "litestar-vite-plugin": "^{new_version}",'
 search = '    "litestar-vite-plugin": "^{current_version}",'
 
 [tool.pytest.ini_options]
-addopts = "--dist loadfile -n auto"
+addopts = ["-q", "-ra"]
 filterwarnings = ["ignore::DeprecationWarning:pkg_resources.*"]
 testpaths = ["src/py/tests"]
 
@@ -337,6 +339,12 @@ pretty = true
 show_column_numbers = true
 warn_no_return = false
 warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+ignore_missing_imports = true
+module = [
+  "awaitlet",
+]
 
 [[tool.mypy.overrides]]
 disable_error_code = "attr-defined"

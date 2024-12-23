@@ -14,7 +14,7 @@ from litestar_vite.plugin import VitePlugin
 pytestmark = pytest.mark.anyio
 
 
-def test_health_check(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig) -> None:
+def test_health_check(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig) -> None:  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
     @get("/health-check", media_type=MediaType.TEXT)
     async def health_check() -> str:
         return "healthy"
@@ -32,7 +32,9 @@ def test_health_check(inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, te
 
 
 async def test_is_inertia_default(
-    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
 ) -> None:
     @get("/")
     async def handler(request: InertiaRequest[Any, Any, Any]) -> bool:
@@ -50,7 +52,9 @@ async def test_is_inertia_default(
 
 
 async def test_is_inertia_false(
-    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
 ) -> None:
     @get("/")
     async def handler(request: InertiaRequest[Any, Any, Any]) -> bool:
@@ -68,7 +72,9 @@ async def test_is_inertia_false(
 
 
 async def test_is_inertia_true(
-    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
 ) -> None:
     @get("/")
     async def handler(request: InertiaRequest[Any, Any, Any]) -> bool:
@@ -89,7 +95,9 @@ async def test_is_inertia_true(
 
 
 async def test_component_prop_default(
-    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
 ) -> None:
     @get("/")
     async def handler(request: InertiaRequest[Any, Any, Any]) -> bool:
@@ -107,7 +115,9 @@ async def test_component_prop_default(
 
 
 async def test_component_enabled(
-    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
 ) -> None:
     @get("/", component="Home")
     async def handler(request: InertiaRequest[Any, Any, Any]) -> bool:
@@ -125,7 +135,9 @@ async def test_component_enabled(
 
 
 async def test_default_route_no_component(
-    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
 ) -> None:
     @get("/")
     async def handler(request: Request[Any, Any, Any]) -> str:
