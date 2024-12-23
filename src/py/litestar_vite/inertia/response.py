@@ -3,8 +3,9 @@ from __future__ import annotations
 import inspect
 import itertools
 from collections import defaultdict
-from collections.abc import Coroutine, Mapping
-from functools import lru_cache, partial, wraps
+from collections.abc import Mapping
+from contextlib import contextmanager
+from functools import lru_cache
 from mimetypes import guess_type
 from pathlib import PurePath
 from textwrap import dedent
@@ -12,7 +13,9 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Coroutine,
     Dict,
+    Generator,
     Generic,
     Iterable,
     List,
@@ -22,7 +25,7 @@ from typing import (
 )
 from urllib.parse import quote, urlparse, urlunparse
 
-from anyio import from_thread, to_thread
+from anyio.from_thread import BlockingPortal, start_blocking_portal
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
@@ -53,90 +56,105 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 T_ParamSpec = ParamSpec("T_ParamSpec")
-T_Retval = TypeVar("T_Retval")
 PropKeyT = TypeVar("PropKeyT", bound=str)
+StaticT = TypeVar("StaticT", bound=object)
+
+
+@overload
+def lazy(key: str, value_or_callable: None) -> StaticProp[str, None]: ...
+
+
+@overload
+def lazy(key: str, value_or_callable: T) -> StaticProp[str, T]: ...
 
 
 @overload
 def lazy(
-    key: PropKeyT,
-    value_or_callable: None,
-    /,
-) -> StaticProp[PropKeyT, None]: ...
+    key: str,
+    value_or_callable: Callable[..., None] = ...,
+) -> DeferredProp[str, None]: ...
 
 
 @overload
 def lazy(
-    key: PropKeyT,
-    value_or_callable: T_Retval | Callable[T_ParamSpec, T_Retval | Coroutine[Any, Any, T_Retval]],
-    /,
-) -> StaticProp[PropKeyT, T_Retval] | DeferredProp[PropKeyT, T_ParamSpec, Coroutine[Any, Any, T_Retval]]: ...
+    key: str,
+    value_or_callable: Callable[T_ParamSpec, T | Coroutine[Any, Any, T]] = ...,  # pyright: ignore[reportInvalidTypeVarUse]
+) -> DeferredProp[str, T]: ...
 
 
-def lazy(
-    key: PropKeyT,
-    value_or_callable: T_Retval | Callable[T_ParamSpec, T_Retval | Coroutine[Any, Any, T_Retval]],
-    /,
-) -> (
-    StaticProp[PropKeyT, None]
-    | DeferredProp[PropKeyT, T_ParamSpec, Coroutine[Any, Any, T_Retval]]
-    | StaticProp[PropKeyT, T_Retval]
-):
+def lazy(  # type: ignore[misc]
+    key: str,
+    value_or_callable: T | Callable[T_ParamSpec, T | Coroutine[Any, Any, T]],  # pyright: ignore[reportInvalidTypeVarUse]
+) -> StaticProp[str, None] | StaticProp[str, T] | DeferredProp[str, T] | DeferredProp[str, None]:
     """Wrap an async function to return a DeferredProp."""
     if value_or_callable is None:
-        return StaticProp[PropKeyT, None](key=key, value=None)
+        return StaticProp[str, None](key=key, value=None)
 
     if not callable(value_or_callable):
-        return StaticProp[PropKeyT, T_Retval](key=key, value=value_or_callable)
+        return StaticProp[str, T](key=key, value=value_or_callable)
 
-    @wraps(value_or_callable)
-    def wrapper(*args: T_ParamSpec.args, **kwargs: T_ParamSpec.kwargs) -> Coroutine[Any, Any, T_Retval]:
-        if inspect.iscoroutinefunction(value_or_callable):
-            partial_f = partial(value_or_callable, *args, **kwargs)  # pyright: ignore[ignoreReturnType]
-        else:
-            partial_f = to_thread.run_sync(partial(value_or_callable, *args, **kwargs))  # pyright: ignore[ignoreReturnType]
-        return partial_f  # pyright: ignore[reportArgumentType,reportReturnType]
-
-    return DeferredProp[PropKeyT, T_ParamSpec, Coroutine[Any, Any, T_Retval]](key=key, value=wrapper)  # pyright: ignore[reportArgumentType]
+    return DeferredProp[str, T](key=key, value=value_or_callable)  # pyright: ignore[reportArgumentType]
 
 
-class StaticProp(Generic[PropKeyT, T_Retval]):
+class StaticProp(Generic[PropKeyT, StaticT]):
     """A wrapper for static property evaluation."""
 
-    def __init__(self, key: PropKeyT, value: T_Retval | None) -> None:
+    def __init__(self, key: PropKeyT, value: StaticT) -> None:
         self._key = key
-        self._value = value
+        self._result = value
 
     @property
     def key(self) -> PropKeyT:
         return self._key
 
-    def render(self) -> T_Retval | None:
-        return self._value
+    def render(self, portal: BlockingPortal | None = None) -> StaticT:
+        return self._result
 
 
-class DeferredProp(Generic[PropKeyT, T_ParamSpec, T_Retval]):
+class DeferredProp(Generic[PropKeyT, T]):
     """A wrapper for deferred property evaluation."""
 
-    def __init__(self, key: PropKeyT, value: Callable[T_ParamSpec, Coroutine[Any, Any, T_Retval]]) -> None:
+    _result: T
+
+    def __init__(self, key: PropKeyT, value: Callable[T_ParamSpec, T | Coroutine[Any, Any, T]]) -> None:
         self._key = key
-        self._func = value
+        self._value = value
         self._evaluated = False
-        self._result: T_Retval | None = None
 
     @property
     def key(self) -> PropKeyT:
         return self._key
 
-    def render(self) -> T_Retval:
+    @staticmethod
+    def _is_awaitable(
+        v: Callable[T_ParamSpec, T | Coroutine[Any, Any, T]],
+    ) -> TypeGuard[Coroutine[Any, Any, T]]:
+        return inspect.iscoroutinefunction(v)
+
+    @staticmethod
+    @contextmanager
+    def _with_portal(portal: BlockingPortal | None = None) -> Generator[BlockingPortal, None, None]:
+        if portal is None:
+            with start_blocking_portal() as new_portal:
+                yield new_portal
+        else:
+            yield portal
+
+    def render(self, portal: BlockingPortal | None = None) -> T | None:
         if self._evaluated:
-            return cast("T_Retval", self._result)
-        self._result = cast("T_Retval", from_thread.run(self._func)())  # pyright: ignore[reportCallIssue]
+            return self._result
+        if not callable(self._value):
+            self._result = cast("T", self._value)
+        elif not self._is_awaitable(self._value):
+            self._result = cast("T", self._value())  # type: ignore
+        else:
+            with self._with_portal(portal) as bp:
+                self._result = cast("T", bp.call(self._value))  # type: ignore[call-arg,arg-type,call-overload]
         self._evaluated = True
         return self._result
 
 
-def is_lazy_prop(value: Any) -> TypeGuard[DeferredProp[Any, Any, Any] | StaticProp[Any, Any]]:
+def is_lazy_prop(value: Any) -> TypeGuard[DeferredProp[Any, Any]]:
     """Check if value is a deferred property.
 
     Args:
@@ -179,18 +197,18 @@ def is_or_contains_lazy_prop(value: Any) -> bool:
         return False
     if isinstance(value, Mapping):
         return any(is_or_contains_lazy_prop(v) for v in cast("Mapping[str, Any]", value).values())
-    if isinstance(value, Iterable) and not isinstance(value, str):
+    if isinstance(value, Iterable):
         return any(is_or_contains_lazy_prop(v) for v in cast("Iterable[Any]", value))
     return False
 
 
-def lazy_render(value: T, partial_data: set[str] | None = None) -> T:
+def lazy_render(value: T, partial_data: set[str] | None = None, portal: BlockingPortal | None = None) -> T:
     """Filter deferred properties from the value based on partial data.
 
     Args:
         value: The value to filter
         partial_data: Keys for partial rendering
-
+        portal: Optional portal to use for async rendering
     Returns:
         The filtered value
     """
@@ -222,7 +240,7 @@ def lazy_render(value: T, partial_data: set[str] | None = None) -> T:
 def get_shared_props(
     request: ASGIConnection[Any, Any, Any, Any],
     partial_data: set[str] | None = None,
-) -> Dict[str, Any]:  # noqa: UP006
+) -> dict[str, Any]:
     """Return shared session props for a request.
 
     Args:

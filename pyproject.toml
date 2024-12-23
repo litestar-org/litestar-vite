@@ -341,6 +341,12 @@ warn_no_return = false
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
+ignore_missing_imports = true
+module = [
+  "awaitlet",
+]
+
+[[tool.mypy.overrides]]
 disable_error_code = "attr-defined"
 disallow_untyped_decorators = false
 module = "tests.*"

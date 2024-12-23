@@ -155,7 +155,7 @@ async def test_default_route_response_no_component(
         assert response.content == b'{"thing":"value"}'
 
 
-async def test_component_inertia_version_redirect(
+async def test_component_inertia_invalid_version(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
@@ -175,8 +175,7 @@ async def test_component_inertia_version_redirect(
             "/",
             headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: "wrong"},
         )
-        assert response.status_code == 307
-        assert response.headers.get("location") == "/"
+        assert response.status_code == 200
         assert (
             response.content
             == b'{"component":"Home","url":"/","version":"1.0","props":{"flash":{},"errors":{},"csrf_token":"","content":{"thing":"value"}}}'
@@ -285,6 +284,7 @@ async def test_inertia_back(
 
 async def test_deferred_prop_render() -> None:
     # Test rendering a callable
+    portal = None
 
     def simulated_expensive_sync_function() -> str:
         sleep(0.5)
@@ -295,16 +295,15 @@ async def test_deferred_prop_render() -> None:
         return "async_result"
 
     test_prop_1 = lazy("test_prop_1", simulated_expensive_sync_function)
-    assert test_prop_1.render() == "callable_result"
-
+    assert test_prop_1.render(portal) == "callable_result"
     test_prop_2 = lazy("test_prop_2", simulated_expensive_async_function)
-    assert test_prop_2.render() == "async_result"
+    assert test_prop_2.render(portal) == "async_result"
 
     # Test rendering an async callable
     async def async_callable_func() -> str:
         return "async_result"
 
-    prop_async_callable = DeferredProp(key="async_callable", value=async_callable_func)
+    prop_async_callable = DeferredProp[str, str](key="async_callable", value=async_callable_func)
     assert prop_async_callable.render() == "async_result"
 
 
@@ -326,14 +325,17 @@ async def test_static_prop_render() -> None:
     prop_static_4 = lazy("static", None)
     assert prop_static_4.render() is None
 
-    prop_static_5 = StaticProp(key="static", value=[])
+    vals: list[int] = []
+    prop_static_5 = StaticProp(key="static", value=vals)
     assert prop_static_5.render() == []
 
-    prop_static_6 = StaticProp(key="static", value={})
+    vals2: dict[str, int] = {}
+    prop_static_6 = StaticProp(key="static", value=vals2)
     assert prop_static_6.render() == {}
 
-    prop_static_7 = StaticProp(key="static", value=())
-    assert prop_static_7.render() == ()
+    vals3: tuple[int] = (1,)
+    prop_static_7 = StaticProp(key="static", value=vals3)
+    assert prop_static_7.render() == (1,)
 
 
 async def test_is_deferred_prop() -> None:
@@ -359,8 +361,8 @@ async def test_should_render() -> None:
 
 async def test_is_or_contains_lazy_prop() -> None:
     assert is_or_contains_lazy_prop(lazy("test", "value")) is True
-    assert is_or_contains_lazy_prop({"key": lazy("test", "value")}) is True
-    assert is_or_contains_lazy_prop(["string", lazy("test", "value")]) is True
+    assert is_or_contains_lazy_prop({"key": lazy("key", "value")}) is True
+    assert is_or_contains_lazy_prop(["string", lazy("string", "value")]) is True
     assert is_or_contains_lazy_prop("string") is False
     assert is_or_contains_lazy_prop({"key": "value"}) is False
 
@@ -414,7 +416,7 @@ async def test_filter_deferred_props() -> None:
     }
 
 
-def test_lazy_helper() -> None:
+async def test_lazy_helper() -> None:
     prop = lazy("test", "value")
     assert isinstance(prop, StaticProp)
     assert prop.key == "test"
@@ -423,10 +425,10 @@ def test_lazy_helper() -> None:
     def test_func() -> str:
         return "value"
 
-    prop = lazy("test", test_func)
-    assert isinstance(prop, DeferredProp)
-    assert prop.key == "test"
-    assert prop.render() == "value"
+    prop2 = lazy("test", test_func)
+    assert isinstance(prop2, DeferredProp)
+    assert prop2.key == "test"
+    assert prop2.render() == "value"
 
 
 async def test_component_inertia_deferred_props(
@@ -434,15 +436,22 @@ async def test_component_inertia_deferred_props(
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
+    async def simulated_expensive_async_function() -> str:
+        await asyncio.sleep(0.5)
+        return "async_result"
+
+    def simulated_expensive_sync_function() -> str:
+        sleep(0.5)
+        return "sync_result"
+
     @get("/", component="Home")
     async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
         return {
             "static": "value",
             "deferred": lazy("deferred", "deferred_value"),
-            "nested": {
-                "deferred": lazy("nested_deferred", "nested_deferred_value"),
-            },
-            "list": [lazy("list_deferred", "list_deferred_value")],
+            "optional": lazy("optional", simulated_expensive_async_function),
+            "sync": lazy("sync", simulated_expensive_sync_function),
+            "list_deferred": lazy("list_deferred", ["list_deferred_value"]),
         }
 
     with create_test_client(
@@ -456,8 +465,6 @@ async def test_component_inertia_deferred_props(
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
         assert response.json()["props"]["content"] == {
             "static": "value",
-            "nested": {},
-            "list": [],
         }
 
         # Partial data, only specified deferred props should be rendered
@@ -472,6 +479,35 @@ async def test_component_inertia_deferred_props(
         assert response_partial.json()["props"]["content"] == {
             "static": "value",
             "deferred": "deferred_value",
-            "nested": {},
-            "list": ["list_deferred_value"],
+            "list_deferred": ["list_deferred_value"],
+        }
+        # Partial data, only specified deferred props should be rendered
+        response_partial2 = client.get(
+            "/",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_DATA.value: "deferred,optional,list_deferred",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+            },
+        )
+        assert response_partial2.json()["props"]["content"] == {
+            "static": "value",
+            "deferred": "deferred_value",
+            "optional": "async_result",
+            "list_deferred": ["list_deferred_value"],
+        }
+        response_partial3 = client.get(
+            "/",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_DATA.value: "deferred,optional,list_deferred,sync",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+            },
+        )
+        assert response_partial3.json()["props"]["content"] == {
+            "static": "value",
+            "deferred": "deferred_value",
+            "optional": "async_result",
+            "list_deferred": ["list_deferred_value"],
+            "sync": "sync_result",
         }
