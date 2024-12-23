@@ -114,12 +114,11 @@ class StaticProp(Generic[PropKeyT, StaticT]):
 class DeferredProp(Generic[PropKeyT, T]):
     """A wrapper for deferred property evaluation."""
 
-    _result: T
-
-    def __init__(self, key: PropKeyT, value: Callable[T_ParamSpec, T | Coroutine[Any, Any, T]]) -> None:
+    def __init__(self, key: PropKeyT, value: Callable[T_ParamSpec, T | Coroutine[Any, Any, T]] | None = None) -> None:
         self._key = key
         self._value = value
         self._evaluated = False
+        self._result: T | None = None
 
     @property
     def key(self) -> PropKeyT:
@@ -142,16 +141,16 @@ class DeferredProp(Generic[PropKeyT, T]):
 
     def render(self, portal: BlockingPortal | None = None) -> T | None:
         if self._evaluated:
-            return self._result
-        if not callable(self._value):
-            self._result = cast("T", self._value)
+            return self._result  # type: ignore
+        if self._value is None or not callable(self._value):
+            self._result = self._value  # type: ignore
         elif not self._is_awaitable(self._value):
-            self._result = cast("T", self._value())  # type: ignore
+            self._result = self._value()  # type: ignore
         else:
             with self._with_portal(portal) as bp:
-                self._result = cast("T", bp.call(self._value))  # type: ignore[call-arg,arg-type,call-overload]
+                self._result = bp.call(self._value)  # type: ignore[call-overload]
         self._evaluated = True
-        return self._result
+        return self._result  # type: ignore
 
 
 def is_lazy_prop(value: Any) -> TypeGuard[DeferredProp[Any, Any]]:
