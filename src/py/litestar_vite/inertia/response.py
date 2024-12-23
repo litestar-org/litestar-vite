@@ -141,16 +141,16 @@ class DeferredProp(Generic[PropKeyT, T]):
 
     def render(self, portal: BlockingPortal | None = None) -> T | None:
         if self._evaluated:
-            return self._result  # type: ignore
+            return self._result
         if self._value is None or not callable(self._value):
-            self._result = self._value  # type: ignore
+            self._result = self._value
         elif not self._is_awaitable(self._value):
-            self._result = self._value()  # type: ignore
+            self._result = self._value()  # type: ignore[call-arg,assignment,unused-ignore]
         else:
             with self._with_portal(portal) as bp:
                 self._result = bp.call(self._value)  # type: ignore[call-overload]
         self._evaluated = True
-        return self._result  # type: ignore
+        return self._result  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
 
 
 def is_lazy_prop(value: Any) -> TypeGuard[DeferredProp[Any, Any]]:
