@@ -12,7 +12,7 @@ from sphinx.util.docutils import SphinxDirective
 if TYPE_CHECKING:
     from sphinx.application import Sphinx
 
-_GH_BASE_URL = "https://github.com/litestar-org/litestar-inertia"
+_GH_BASE_URL = "https://github.com/litestar-org/litestar-vite"
 
 
 def _parse_gh_reference(raw: str, type_: Literal["issues", "pull"]) -> list[str]:
@@ -43,7 +43,7 @@ class ChangeDirective(SphinxDirective):
         change_node = nodes.container("\n".join(self.content))
         change_node.attributes["classes"].append("changelog-change")
 
-        self.state.nested_parse(self.content, self.content_offset, change_node)
+        self.state.nested_parse(self.content, self.content_offset, change_node)  # pyright: ignore[reportUnknownMemberType]
 
         reference_links = [
             *_parse_gh_reference(self.options.get("issue", ""), "issues"),
@@ -91,7 +91,7 @@ class ChangelogDirective(SphinxDirective):
             changelog_node += nodes.strong("", "Released: ")
             changelog_node += nodes.Text(release_date)
 
-        self.state.nested_parse(self.content, self.content_offset, changelog_node)
+        self.state.nested_parse(self.content, self.content_offset, changelog_node)  # pyright: ignore[reportUnknownMemberType]
 
         change_group_lists = {
             "feature": nodes.definition_list(),
@@ -129,12 +129,12 @@ class ChangelogDirective(SphinxDirective):
 
             list_item += nodes.definition("", change_node.children[0])
 
-            nodes_to_remove.append(change_node)
+            nodes_to_remove.append(change_node)  # pyright: ignore[reportUnknownMemberType]
 
             change_group_lists[change_type] += list_item
 
-        for node in nodes_to_remove:
-            changelog_node.remove(node)
+        for node in nodes_to_remove:  # pyright: ignore[reportUnknownVariableType]
+            changelog_node.remove(node)  # pyright: ignore[reportUnknownArgumentType]
 
         for change_group_type, change_group_list in change_group_lists.items():
             if not change_group_list.children:
