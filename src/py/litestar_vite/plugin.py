@@ -128,20 +128,15 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """
         from litestar_vite.loader import render_asset_tag, render_hmr_client
 
-        if app_config.template_config is None:  # pyright: ignore[reportUnknownMemberType]
-            msg = "A template configuration is required for Vite."
-            raise ImproperlyConfiguredException(msg)
-        if not isinstance(app_config.template_config.engine_instance, JinjaTemplateEngine):  # pyright: ignore[reportUnknownMemberType]
-            msg = "Jinja2 template engine is required for Vite."
-            raise ImproperlyConfiguredException(msg)
-        app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
-            key="vite_hmr",
-            template_callable=render_hmr_client,
-        )
-        app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
-            key="vite",
-            template_callable=render_asset_tag,
-        )
+        if app_config.template_config and isinstance(app_config.template_config.engine_instance, JinjaTemplateEngine):  # pyright: ignore[reportUnknownMemberType]
+            app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
+                key="vite_hmr",
+                template_callable=render_hmr_client,
+            )
+            app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
+                key="vite",
+                template_callable=render_asset_tag,
+            )
         if self._config.set_static_folders:
             static_dirs = [Path(self._config.bundle_dir), Path(self._config.resource_dir)]
             if Path(self._config.public_dir).exists() and self._config.public_dir != self._config.bundle_dir:
