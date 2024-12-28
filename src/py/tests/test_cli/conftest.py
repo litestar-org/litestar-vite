@@ -13,7 +13,7 @@ from click.testing import CliRunner
 from litestar.cli._utils import _path_to_dotted_path  # pyright: ignore[reportPrivateUsage]
 from pytest_mock import MockerFixture
 
-from . import APP_BASIC_NO_ROUTES_FILE_CONTENT, APP_DEFAULT_CONFIG_FILE_CONTENT
+from tests.test_cli import APP_BASIC_NO_ROUTES_FILE_CONTENT, APP_DEFAULT_CONFIG_FILE_CONTENT
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
@@ -50,11 +50,11 @@ def patch_autodiscovery_paths(request: FixtureRequest) -> Callable[[list[str]], 
 
 
 @pytest.fixture(autouse=True)
-def tmp_project_dir(monkeypatch: MonkeyPatch, tmp_path: Path) -> Path:
+def tmp_project_dir(monkeypatch: MonkeyPatch, tmp_path: Path) -> Generator[Path, None, None]:
     path = tmp_path / "project_dir"
     path.mkdir(exist_ok=True)
     monkeypatch.chdir(path)
-    return path
+    yield path
 
 
 class CreateAppFileFixture(Protocol):

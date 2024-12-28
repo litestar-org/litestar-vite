@@ -42,11 +42,11 @@ nodeenv = ["nodeenv"]
 build-backend = "hatchling.build"
 requires = ["hatchling"]
 
-[tool.hatch.build]
-dev-mode-dirs = ["src/py", "."]
 
 [tool.hatch.build.targets.sdist]
+dev-mode-dirs = ["src/py", "."]
 exclude = [".github", "docs"]
+packages = ["src/py/litestar_vite", "src/py/tests"]
 include = ["src/py/*","src/js/*"]
 skip-excluded-dirs = false
 
@@ -76,7 +76,7 @@ test = [
   "pytest>=7.4.1",
   "pytest-cov",
   "coverage",
-  "anyio",
+  "pytest-asyncio",
   "pytest-sugar",
   "pytest-mock>=3.11.1",
   "pytest-xdist>=3.6.1",
@@ -151,8 +151,14 @@ search = '    "litestar-vite-plugin": "^{current_version}",'
 
 [tool.pytest.ini_options]
 addopts = ["-q", "-ra"]
-filterwarnings = ["ignore::DeprecationWarning:pkg_resources.*"]
-testpaths = ["src/py/tests"]
+filterwarnings = [
+  "ignore::DeprecationWarning:pkg_resources.*",
+]
+testpaths = ["tests", "src/py/tests"]
+tmp_path_retention_policy = "failed"
+tmp_path_retention_count = 3
+asyncio_default_fixture_loop_scope = "function"
+asyncio_mode = "auto"
 
 [tool.coverage.report]
 exclude_lines = [

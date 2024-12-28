@@ -10,8 +10,6 @@ from litestar_vite.inertia.config import InertiaConfig
 from litestar_vite.inertia.plugin import InertiaPlugin
 from litestar_vite.plugin import VitePlugin
 
-pytestmark = pytest.mark.anyio
-
 
 @pytest.fixture
 def inertia_config() -> Generator[InertiaConfig, None, None]:

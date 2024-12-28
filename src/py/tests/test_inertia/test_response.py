@@ -4,7 +4,6 @@ import asyncio
 from time import sleep
 from typing import Any, Dict
 
-import pytest
 from litestar import Request, get
 from litestar.exceptions import NotAuthorizedException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
@@ -18,10 +17,8 @@ from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
 
 from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
-from litestar_vite.inertia.response import (
+from litestar_vite.inertia.helpers import (
     DeferredProp,
-    InertiaBack,
-    InertiaExternalRedirect,
     StaticProp,
     is_lazy_prop,
     is_or_contains_lazy_prop,
@@ -30,9 +27,11 @@ from litestar_vite.inertia.response import (
     share,
     should_render,
 )
+from litestar_vite.inertia.response import (
+    InertiaBack,
+    InertiaExternalRedirect,
+)
 from litestar_vite.plugin import VitePlugin
-
-pytestmark = pytest.mark.anyio
 
 
 async def test_component_enabled(
@@ -282,9 +281,8 @@ async def test_inertia_back(
         assert response.headers.get("location") == "/previous"
 
 
-async def test_deferred_prop_render() -> None:
+def test_deferred_prop_render() -> None:
     # Test rendering a callable
-    portal = None
 
     def simulated_expensive_sync_function() -> str:
         sleep(0.5)
@@ -295,9 +293,9 @@ async def test_deferred_prop_render() -> None:
         return "async_result"
 
     test_prop_1 = lazy("test_prop_1", simulated_expensive_sync_function)
-    assert test_prop_1.render(portal) == "callable_result"
+    assert test_prop_1.render() == "callable_result"
     test_prop_2 = lazy("test_prop_2", simulated_expensive_async_function)
-    assert test_prop_2.render(portal) == "async_result"
+    assert test_prop_2.render() == "async_result"
 
     # Test rendering an async callable
     async def async_callable_func() -> str:
@@ -431,7 +429,7 @@ async def test_lazy_helper() -> None:
     assert prop2.render() == "value"
 
 
-async def test_component_inertia_deferred_props(
+def test_component_inertia_deferred_props(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
