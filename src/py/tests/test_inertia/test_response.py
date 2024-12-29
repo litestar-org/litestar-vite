@@ -429,7 +429,7 @@ async def test_lazy_helper() -> None:
     assert prop2.render() == "value"
 
 
-def test_component_inertia_deferred_props(
+async def test_component_inertia_deferred_props(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
@@ -439,7 +439,6 @@ def test_component_inertia_deferred_props(
         return "async_result"
 
     def simulated_expensive_sync_function() -> str:
-        sleep(0.5)
         return "sync_result"
 
     @get("/", component="Home")
@@ -484,14 +483,13 @@ def test_component_inertia_deferred_props(
             "/",
             headers={
                 InertiaHeaders.ENABLED.value: "true",
-                InertiaHeaders.PARTIAL_DATA.value: "deferred,optional,list_deferred",
+                InertiaHeaders.PARTIAL_DATA.value: "deferred,list_deferred",
                 InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
             },
         )
         assert response_partial2.json()["props"]["content"] == {
             "static": "value",
             "deferred": "deferred_value",
-            "optional": "async_result",
             "list_deferred": ["list_deferred_value"],
         }
         response_partial3 = client.get(

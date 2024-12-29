@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import asyncio
-import functools
 import inspect
-import threading
 from collections import defaultdict
 from collections.abc import Mapping
-from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from functools import lru_cache
 from textwrap import dedent
 from typing import (
@@ -15,6 +12,7 @@ from typing import (
     Callable,
     Coroutine,
     Dict,
+    Generator,
     Generic,
     Iterable,
     List,
@@ -23,6 +21,7 @@ from typing import (
     overload,
 )
 
+from anyio.from_thread import BlockingPortal, start_blocking_portal
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.utils.empty import value_or_default
 from litestar.utils.scope.state import ScopeState
@@ -39,34 +38,6 @@ T = TypeVar("T")
 T_ParamSpec = ParamSpec("T_ParamSpec")
 PropKeyT = TypeVar("PropKeyT", bound=str)
 StaticT = TypeVar("StaticT", bound=object)
-
-
-def await_(coroutine: Coroutine[Any, Any, T], timeout: float = 30) -> T:
-    def wrapped_in_new_loop() -> T:
-        new_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(new_loop)
-        try:
-            return new_loop.run_until_complete(coroutine)
-        finally:
-            new_loop.close()
-
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coroutine)
-
-    if threading.current_thread() is threading.main_thread():
-        if not loop.is_running():
-            return loop.run_until_complete(coroutine)
-
-        with ThreadPoolExecutor() as pool:
-            future = pool.submit(wrapped_in_new_loop)
-            return future.result(timeout=timeout)
-    future_coro = asyncio.run_coroutine_threadsafe(coroutine, loop)
-    future_coro.add_done_callback(
-        functools.partial(print, "Future:"),
-    )
-    return future_coro.result(timeout=timeout)
 
 
 @overload
@@ -120,7 +91,7 @@ class StaticProp(Generic[PropKeyT, StaticT]):
     def key(self) -> PropKeyT:
         return self._key
 
-    def render(self) -> StaticT:
+    def render(self, portal: BlockingPortal | None = None) -> StaticT:
         return self._result
 
 
@@ -139,13 +110,21 @@ class DeferredProp(Generic[PropKeyT, T]):
     def key(self) -> PropKeyT:
         return self._key
 
+    @contextmanager
+    def with_portal(self, portal: BlockingPortal | None = None) -> Generator[BlockingPortal, None, None]:
+        if portal is None:
+            with start_blocking_portal() as p:
+                yield p
+        else:
+            yield portal
+
     @staticmethod
     def _is_awaitable(
         v: Callable[..., T | Coroutine[Any, Any, T]],
     ) -> TypeGuard[Coroutine[Any, Any, T]]:
         return inspect.iscoroutinefunction(v)
 
-    def render(self) -> T | None:
+    def render(self, portal: BlockingPortal | None = None) -> T | None:
         if self._evaluated:
             return self._result
         if self._value is None or not callable(self._value):
@@ -156,9 +135,10 @@ class DeferredProp(Generic[PropKeyT, T]):
             self._result = cast("T", self._value())
             self._evaluated = True
             return self._result
-        self._result = await_(cast("Coroutine[Any, Any, T]", self._value()))
-        self._evaluated = True
-        return self._result
+        with self.with_portal(portal) as p:
+            self._result = p.call(cast("Callable[..., T]", self._value))
+            self._evaluated = True
+            return self._result
 
 
 def is_lazy_prop(value: Any) -> TypeGuard[DeferredProp[Any, Any]]:
@@ -209,12 +189,13 @@ def is_or_contains_lazy_prop(value: Any) -> bool:
     return False
 
 
-def lazy_render(value: T, partial_data: set[str] | None = None) -> T:
+def lazy_render(value: T, partial_data: set[str] | None = None, portal: BlockingPortal | None = None) -> T:
     """Filter deferred properties from the value based on partial data.
 
     Args:
         value: The value to filter
         partial_data: Keys for partial rendering
+        portal: Optional portal to use for async rendering
     Returns:
         The filtered value
     """
@@ -225,7 +206,7 @@ def lazy_render(value: T, partial_data: set[str] | None = None) -> T:
         return cast(
             "T",
             {
-                k: lazy_render(v, partial_data)
+                k: lazy_render(v, partial_data, portal)
                 for k, v in cast("Mapping[str, Any]", value).items()
                 if should_render(v, partial_data)
             },
@@ -233,12 +214,12 @@ def lazy_render(value: T, partial_data: set[str] | None = None) -> T:
 
     if isinstance(value, (list, tuple)):
         filtered = [
-            lazy_render(v, partial_data) for v in cast("Iterable[Any]", value) if should_render(v, partial_data)
+            lazy_render(v, partial_data, portal) for v in cast("Iterable[Any]", value) if should_render(v, partial_data)
         ]
         return cast("T", type(value)(filtered))  # pyright: ignore[reportUnknownArgumentType]
 
     if is_lazy_prop(value) and should_render(value, partial_data):
-        return cast("T", value.render())
+        return cast("T", value.render(portal))
 
     return cast("T", value)
 
@@ -267,11 +248,12 @@ def get_shared_props(
     try:
         errors = request.session.pop("_errors", {})
         shared_props = cast("Dict[str,Any]", request.session.pop("_shared", {}))
+        inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
 
         # Handle deferred props
         for key, value in shared_props.items():
             if is_lazy_prop(value) and should_render(value, partial_data):
-                props[key] = value.render()
+                props[key] = value.render(inertia_plugin.portal)
                 continue
             if should_render(value, partial_data):
                 props[key] = value
@@ -279,7 +261,6 @@ def get_shared_props(
         for message in cast("List[Dict[str,Any]]", request.session.pop("_messages", [])):
             flash[message["category"]].append(message["message"])
 
-        inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
         props.update(inertia_plugin.config.extra_static_page_props)
         for session_prop in inertia_plugin.config.extra_session_page_props:
             if session_prop not in props and session_prop in request.session:

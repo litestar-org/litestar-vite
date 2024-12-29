@@ -55,7 +55,7 @@ packages = ["src/py/litestar_vite"]
 sources = ["src/py"]
 
 [dependency-groups]
-dev = [ {include-group = "build"}, { include-group = "linting" }, { include-group = "test" }, { include-group = "docs" } ]
+dev = [ {include-group = "build"}, { include-group = "linting" }, { include-group = "test" }, { include-group = "docs" }  ]
 build = ["bump-my-version"]
 docs = [
     "auto-pytabs[sphinx]>=0.4.0",

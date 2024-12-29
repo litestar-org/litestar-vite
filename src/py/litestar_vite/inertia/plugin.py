@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, AsyncGenerator
 
+from anyio.from_thread import start_blocking_portal
 from litestar.plugins import InitPluginProtocol
 
 if TYPE_CHECKING:
+    from anyio.from_thread import BlockingPortal
     from litestar import Litestar
     from litestar.config.app import AppConfig
 
@@ -31,6 +34,19 @@ class InertiaPlugin(InitPluginProtocol):
             config: Inertia configuration.
         """
         self.config = config
+
+    @asynccontextmanager
+    async def lifespan(self, app: Litestar) -> AsyncGenerator[None, None]:
+        """Lifespan to ensure the event loop is available."""
+
+        with start_blocking_portal() as portal:
+            self._portal = portal
+            yield
+
+    @property
+    def portal(self) -> BlockingPortal:
+        """Get the portal."""
+        return self._portal
 
     def on_app_init(self, app_config: AppConfig) -> AppConfig:
         """Configure application for use with Vite.
@@ -76,4 +92,5 @@ class InertiaPlugin(InitPluginProtocol):
             (lambda x: x is DeferredProp, lambda t, v: t(v)),
             *(app_config.type_decoders or []),
         ]
+        app_config.lifespan.append(self.lifespan)  # pyright: ignore[reportUnknownMemberType]
         return app_config

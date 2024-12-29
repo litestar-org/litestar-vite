@@ -192,6 +192,7 @@ class InertiaResponse(Response[T]):
             filtered_content = lazy_render(
                 self.content,
                 partial_keys if is_partial_render else None,
+                inertia_plugin.portal,
             )
             if filtered_content is not None:
                 shared_props["content"] = filtered_content
