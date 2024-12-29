@@ -13,11 +13,11 @@ VITE_INIT_TEMPLATES: set[str] = {"package.json.j2", "tsconfig.json.j2", "vite.co
 DEFAULT_RESOURCES: set[str] = {"styles.css.j2", "main.ts.j2"}
 DEFAULT_DEV_DEPENDENCIES: dict[str, str] = {
     "typescript": "^5.7.2",
-    "vite": "^6.0.3",
+    "vite": "^6.0.6",
     "litestar-vite-plugin": "^0.12.0",
-    "@types/node": "^22.10.1",
+    "@types/node": "^22.10.2",
 }
-DEFAULT_DEPENDENCIES: dict[str, str] = {"axios": "^1.7.2"}
+DEFAULT_DEPENDENCIES: dict[str, str] = {"axios": "^1.7.9"}
 
 
 def to_json(value: Any) -> str:
