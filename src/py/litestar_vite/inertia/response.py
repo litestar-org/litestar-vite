@@ -1,31 +1,18 @@
 from __future__ import annotations
 
-import inspect
 import itertools
-from collections import defaultdict
 from collections.abc import Mapping
-from contextlib import contextmanager
-from functools import lru_cache
 from mimetypes import guess_type
 from pathlib import PurePath
-from textwrap import dedent
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Coroutine,
-    Dict,
-    Generator,
-    Generic,
     Iterable,
-    List,
     TypeVar,
     cast,
-    overload,
 )
 from urllib.parse import quote, urlparse, urlunparse
 
-from anyio.from_thread import BlockingPortal, start_blocking_portal
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
@@ -37,308 +24,27 @@ from litestar.utils.deprecation import warn_deprecation
 from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
 from litestar.utils.scope.state import ScopeState
-from markupsafe import Markup
-from typing_extensions import ParamSpec, TypeGuard
 
 from litestar_vite.inertia._utils import get_headers
+from litestar_vite.inertia.helpers import (
+    get_shared_props,
+    is_or_contains_lazy_prop,
+    js_routes_script,
+    lazy_render,
+    should_render,
+)
+from litestar_vite.inertia.plugin import InertiaPlugin
 from litestar_vite.inertia.types import InertiaHeaderType, PageProps
 from litestar_vite.plugin import VitePlugin
 
 if TYPE_CHECKING:
     from litestar.app import Litestar
     from litestar.background_tasks import BackgroundTask, BackgroundTasks
-    from litestar.connection import ASGIConnection
     from litestar.connection.base import AuthT, StateT, UserT
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
 
-    from litestar_vite.inertia.plugin import InertiaPlugin
-    from litestar_vite.inertia.routes import Routes
 
 T = TypeVar("T")
-T_ParamSpec = ParamSpec("T_ParamSpec")
-PropKeyT = TypeVar("PropKeyT", bound=str)
-StaticT = TypeVar("StaticT", bound=object)
-
-
-@overload
-def lazy(key: str, value_or_callable: None) -> StaticProp[str, None]: ...
-
-
-@overload
-def lazy(key: str, value_or_callable: T) -> StaticProp[str, T]: ...
-
-
-@overload
-def lazy(
-    key: str,
-    value_or_callable: Callable[..., None] = ...,
-) -> DeferredProp[str, None]: ...
-
-
-@overload
-def lazy(
-    key: str,
-    value_or_callable: Callable[T_ParamSpec, T | Coroutine[Any, Any, T]] = ...,  # pyright: ignore[reportInvalidTypeVarUse]
-) -> DeferredProp[str, T]: ...
-
-
-def lazy(  # type: ignore[misc]
-    key: str,
-    value_or_callable: T | Callable[T_ParamSpec, T | Coroutine[Any, Any, T]],  # pyright: ignore[reportInvalidTypeVarUse]
-) -> StaticProp[str, None] | StaticProp[str, T] | DeferredProp[str, T] | DeferredProp[str, None]:
-    """Wrap an async function to return a DeferredProp."""
-    if value_or_callable is None:
-        return StaticProp[str, None](key=key, value=None)
-
-    if not callable(value_or_callable):
-        return StaticProp[str, T](key=key, value=value_or_callable)
-
-    return DeferredProp[str, T](key=key, value=value_or_callable)  # pyright: ignore[reportArgumentType]
-
-
-class StaticProp(Generic[PropKeyT, StaticT]):
-    """A wrapper for static property evaluation."""
-
-    def __init__(self, key: PropKeyT, value: StaticT) -> None:
-        self._key = key
-        self._result = value
-
-    @property
-    def key(self) -> PropKeyT:
-        return self._key
-
-    def render(self, portal: BlockingPortal | None = None) -> StaticT:
-        return self._result
-
-
-class DeferredProp(Generic[PropKeyT, T]):
-    """A wrapper for deferred property evaluation."""
-
-    def __init__(self, key: PropKeyT, value: Callable[T_ParamSpec, T | Coroutine[Any, Any, T]] | None = None) -> None:
-        self._key = key
-        self._value = value
-        self._evaluated = False
-        self._result: T | None = None
-
-    @property
-    def key(self) -> PropKeyT:
-        return self._key
-
-    @staticmethod
-    def _is_awaitable(
-        v: Callable[T_ParamSpec, T | Coroutine[Any, Any, T]],
-    ) -> TypeGuard[Coroutine[Any, Any, T]]:
-        return inspect.iscoroutinefunction(v)
-
-    @staticmethod
-    @contextmanager
-    def _with_portal(portal: BlockingPortal | None = None) -> Generator[BlockingPortal, None, None]:
-        if portal is None:
-            with start_blocking_portal() as new_portal:
-                yield new_portal
-        else:
-            yield portal
-
-    def render(self, portal: BlockingPortal | None = None) -> T | None:
-        if self._evaluated:
-            return self._result
-        if self._value is None or not callable(self._value):
-            self._result = self._value
-        elif not self._is_awaitable(self._value):
-            self._result = self._value()  # type: ignore[call-arg,assignment,unused-ignore]
-        else:
-            with self._with_portal(portal) as bp:
-                self._result = bp.call(self._value)  # type: ignore[call-overload]
-        self._evaluated = True
-        return self._result  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
-
-
-def is_lazy_prop(value: Any) -> TypeGuard[DeferredProp[Any, Any]]:
-    """Check if value is a deferred property.
-
-    Args:
-        value: Any value to check
-
-    Returns:
-        bool: True if value is a deferred property
-    """
-    return isinstance(value, (DeferredProp, StaticProp))
-
-
-def should_render(value: Any, partial_data: set[str] | None = None) -> bool:
-    """Check if value should be rendered.
-
-    Args:
-        value: Any value to check
-        partial_data: Optional set of keys for partial rendering
-
-    Returns:
-        bool: True if value should be rendered
-    """
-    partial_data = partial_data or set()
-    if is_lazy_prop(value):
-        return value.key in partial_data
-    return True
-
-
-def is_or_contains_lazy_prop(value: Any) -> bool:
-    """Check if value is or contains a deferred property.
-
-    Args:
-        value: Any value to check
-
-    Returns:
-        bool: True if value is or contains a deferred property
-    """
-    if is_lazy_prop(value):
-        return True
-    if isinstance(value, str):
-        return False
-    if isinstance(value, Mapping):
-        return any(is_or_contains_lazy_prop(v) for v in cast("Mapping[str, Any]", value).values())
-    if isinstance(value, Iterable):
-        return any(is_or_contains_lazy_prop(v) for v in cast("Iterable[Any]", value))
-    return False
-
-
-def lazy_render(value: T, partial_data: set[str] | None = None, portal: BlockingPortal | None = None) -> T:
-    """Filter deferred properties from the value based on partial data.
-
-    Args:
-        value: The value to filter
-        partial_data: Keys for partial rendering
-        portal: Optional portal to use for async rendering
-    Returns:
-        The filtered value
-    """
-    partial_data = partial_data or set()
-    if isinstance(value, str):
-        return cast("T", value)
-    if isinstance(value, Mapping):
-        return cast(
-            "T",
-            {
-                k: lazy_render(v, partial_data)
-                for k, v in cast("Mapping[str, Any]", value).items()
-                if should_render(v, partial_data)
-            },
-        )
-
-    if isinstance(value, (list, tuple)):
-        filtered = [
-            lazy_render(v, partial_data) for v in cast("Iterable[Any]", value) if should_render(v, partial_data)
-        ]
-        return cast("T", type(value)(filtered))  # pyright: ignore[reportUnknownArgumentType]
-
-    if is_lazy_prop(value) and should_render(value, partial_data):
-        return cast("T", value.render())
-
-    return cast("T", value)
-
-
-def get_shared_props(
-    request: ASGIConnection[Any, Any, Any, Any],
-    partial_data: set[str] | None = None,
-) -> dict[str, Any]:
-    """Return shared session props for a request.
-
-    Args:
-        request: The ASGI connection.
-        partial_data: Optional set of keys for partial rendering.
-
-    Returns:
-        Dict[str, Any]: The shared props.
-
-    Note:
-        Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
-    """
-    props: dict[str, Any] = {}
-    flash: dict[str, list[str]] = defaultdict(list)
-    errors: dict[str, Any] = {}
-    error_bag = request.headers.get("X-Inertia-Error-Bag", None)
-
-    try:
-        errors = request.session.pop("_errors", {})
-        shared_props = cast("Dict[str,Any]", request.session.pop("_shared", {}))
-
-        # Handle deferred props
-        for key, value in shared_props.items():
-            if is_lazy_prop(value) and should_render(value, partial_data):
-                props[key] = value.render()
-                continue
-            if should_render(value, partial_data):
-                props[key] = value
-
-        for message in cast("List[Dict[str,Any]]", request.session.pop("_messages", [])):
-            flash[message["category"]].append(message["message"])
-
-        inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
-        props.update(inertia_plugin.config.extra_static_page_props)
-        for session_prop in inertia_plugin.config.extra_session_page_props:
-            if session_prop not in props and session_prop in request.session:
-                props[session_prop] = request.session.get(session_prop)
-
-    except (AttributeError, ImproperlyConfiguredException):
-        msg = "Unable to generate all shared props.  A valid session was not found for this request."
-        request.logger.warning(msg)
-
-    props["flash"] = flash
-    props["errors"] = {error_bag: errors} if error_bag is not None else errors
-    props["csrf_token"] = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
-    return props
-
-
-def share(
-    connection: ASGIConnection[Any, Any, Any, Any],
-    key: str,
-    value: Any,
-) -> None:
-    """Share a value in the session.
-
-    Args:
-        connection: The ASGI connection.
-        key: The key to store the value under.
-        value: The value to store.
-    """
-    try:
-        connection.session.setdefault("_shared", {}).update({key: value})
-    except (AttributeError, ImproperlyConfiguredException):
-        msg = "Unable to set `share` session state.  A valid session was not found for this request."
-        connection.logger.warning(msg)
-
-
-def error(
-    connection: ASGIConnection[Any, Any, Any, Any],
-    key: str,
-    message: str,
-) -> None:
-    """Set an error message in the session.
-
-    Args:
-        connection: The ASGI connection.
-        key: The key to store the error under.
-        message: The error message.
-    """
-    try:
-        connection.session.setdefault("_errors", {}).update({key: message})
-    except (AttributeError, ImproperlyConfiguredException):
-        msg = "Unable to set `error` session state.  A valid session was not found for this request."
-        connection.logger.warning(msg)
-
-
-def js_routes_script(js_routes: Routes) -> Markup:
-    @lru_cache
-    def _markup_safe_json_dumps(js_routes: str) -> Markup:
-        js = js_routes.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026").replace("'", "\\u0027")
-        return Markup(js)
-
-    return Markup(
-        dedent(f"""
-        <script type="module">
-        globalThis.routes = JSON.parse('{_markup_safe_json_dumps(js_routes.formatted_routes)}')
-        </script>
-        """),
-    )
 
 
 class InertiaResponse(Response[T]):
@@ -473,13 +179,21 @@ class InertiaResponse(Response[T]):
         is_partial_render = cast("bool", getattr(request, "is_partial_render", False))
         partial_keys = cast("set[str]", getattr(request, "partial_keys", {}))
         vite_plugin = request.app.plugins.get(VitePlugin)
+        inertia_plugin = request.app.plugins.get(InertiaPlugin)
         template_engine = request.app.template_engine  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
         headers.update(
             {"Vary": "Accept", **get_headers(InertiaHeaderType(enabled=True))},
         )
-        shared_props = get_shared_props(request, partial_data=partial_keys if is_partial_render else None)
+        shared_props = get_shared_props(
+            request,
+            partial_data=partial_keys if is_partial_render else None,
+        )
         if is_or_contains_lazy_prop(self.content):
-            filtered_content = lazy_render(self.content, partial_keys if is_partial_render else None)
+            filtered_content = lazy_render(
+                self.content,
+                partial_keys if is_partial_render else None,
+                inertia_plugin.portal,
+            )
             if filtered_content is not None:
                 shared_props["content"] = filtered_content
         elif should_render(self.content, partial_keys):
@@ -526,7 +240,6 @@ class InertiaResponse(Response[T]):
         if self.template_str is not None:
             body = template_engine.render_string(self.template_str, context).encode(self.encoding)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
         else:
-            inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
             template_name = self.template_name or inertia_plugin.config.root_template
             template = template_engine.get_template(template_name)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
             body = template.render(**context).encode(self.encoding)  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]

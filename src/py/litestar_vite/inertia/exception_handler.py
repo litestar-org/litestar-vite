@@ -35,7 +35,8 @@ from litestar.status_codes import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
-from litestar_vite.inertia.response import InertiaBack, InertiaRedirect, InertiaResponse, error
+from litestar_vite.inertia.helpers import error
+from litestar_vite.inertia.response import InertiaBack, InertiaRedirect, InertiaResponse
 
 if TYPE_CHECKING:
     from litestar.connection import Request

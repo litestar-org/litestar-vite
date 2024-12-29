@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, AsyncGenerator
 
-from anyio.from_thread import BlockingPortalProvider
+from anyio.from_thread import start_blocking_portal
 from litestar.plugins import InitPluginProtocol
 
 if TYPE_CHECKING:
+    from anyio.from_thread import BlockingPortal
     from litestar import Litestar
     from litestar.config.app import AppConfig
 
@@ -23,7 +25,7 @@ def set_js_routes(app: Litestar) -> None:
 class InertiaPlugin(InitPluginProtocol):
     """Inertia plugin."""
 
-    __slots__ = ("config", "portal")
+    __slots__ = ("_portal", "config")
 
     def __init__(self, config: InertiaConfig) -> None:
         """Initialize ``Inertia``.
@@ -33,10 +35,18 @@ class InertiaPlugin(InitPluginProtocol):
         """
         self.config = config
 
-        self.portal = BlockingPortalProvider()
+    @asynccontextmanager
+    async def lifespan(self, app: Litestar) -> AsyncGenerator[None, None]:
+        """Lifespan to ensure the event loop is available."""
 
-    def get_portal(self) -> BlockingPortalProvider:
-        return self.portal
+        with start_blocking_portal() as portal:
+            self._portal = portal
+            yield
+
+    @property
+    def portal(self) -> BlockingPortal:
+        """Get the portal."""
+        return self._portal
 
     def on_app_init(self, app_config: AppConfig) -> AppConfig:
         """Configure application for use with Vite.
@@ -52,9 +62,10 @@ class InertiaPlugin(InitPluginProtocol):
         from litestar.utils.predicates import is_class_and_subclass
 
         from litestar_vite.inertia.exception_handler import exception_to_http_response
+        from litestar_vite.inertia.helpers import DeferredProp, StaticProp
         from litestar_vite.inertia.middleware import InertiaMiddleware
         from litestar_vite.inertia.request import InertiaRequest
-        from litestar_vite.inertia.response import DeferredProp, InertiaBack, InertiaResponse, StaticProp
+        from litestar_vite.inertia.response import InertiaBack, InertiaResponse
 
         for mw in app_config.middleware:
             if isinstance(mw, DefineMiddleware) and is_class_and_subclass(
@@ -81,4 +92,5 @@ class InertiaPlugin(InitPluginProtocol):
             (lambda x: x is DeferredProp, lambda t, v: t(v)),
             *(app_config.type_decoders or []),
         ]
+        app_config.lifespan.append(self.lifespan)  # pyright: ignore[reportUnknownMemberType]
         return app_config

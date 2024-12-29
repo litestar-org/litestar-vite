@@ -1,28 +1,25 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Generator
 
 import pytest
 from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.template.config import TemplateConfig
+from pytest import TempPathFactory
 
 from litestar_vite.config import ViteConfig
 
-pytestmark = pytest.mark.anyio
 here = Path(__file__).parent
 
 
-@pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
-
-
-@pytest.fixture(autouse=True)
-def permissive_tmp_path(tmp_path: Path) -> Generator[Path, None, None]:
-    tmp_path.chmod(0o775)
-    tmp_path.parent.chmod(0o775)
+def tmp_path(tmp_path_factory: TempPathFactory) -> Generator[Path, None, None]:
+    base_dir = tmp_path_factory.getbasetemp()
+    tmp_path = tmp_path_factory.mktemp("pytest")
     yield tmp_path
+    if base_dir.exists():
+        shutil.rmtree(base_dir, ignore_errors=True)
 
 
 @pytest.fixture
