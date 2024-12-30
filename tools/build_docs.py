@@ -52,14 +52,14 @@ def load_version_spec() -> VersionSpec:
     versions_file = Path("docs/_static/versions.json")
     if versions_file.exists():
         return cast("VersionSpec", json.loads(versions_file.read_text()))
-    return {"versions": [], "latest": ""}
+    return {"versions": ["1", "latest"], "latest": "latest"}
 
 
 def build(output_dir: str, version: str | None) -> None:
     if version is None:
         version = importlib.metadata.version("litestar_vite").rsplit(".")[0]
     else:
-        os.environ["LITESTAR_VITE_DOCS_BUILD_VERSION"] = version
+        os.environ["_LITESTAR_VITE_DOCS_BUILD_VERSION"] = version
 
     subprocess.run(["make", "docs"], check=True)  # noqa: S607
 
@@ -70,6 +70,7 @@ def build(output_dir: str, version: str | None) -> None:
     is_latest = version == version_spec["latest"]
 
     docs_src_path = Path("docs/_build/html")
+    docs_src_path.mkdir(exist_ok=True, parents=True)
 
     Path(output_dir).joinpath("index.html").write_text(REDIRECT_TEMPLATE.format(target="latest"))
 

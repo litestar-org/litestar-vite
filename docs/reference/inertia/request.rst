@@ -1,8 +1,8 @@
 ===============
-Template Engine
+Inertia Request
 ===============
 
-.. automodule:: litestar_vite.template_engine
+.. automodule:: litestar_vite.inertia.request
     :members:
     :show-inheritance:
     :inherited-members:

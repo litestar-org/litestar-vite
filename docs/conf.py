@@ -14,7 +14,7 @@ project = __project__
 version = __version__
 copyright = "2023, Litestar-Org"
 author = "Litestar-Org"
-release = os.getenv("LITESTAR_VITE_DOCS_BUILD_VERSION", version.rsplit(".")[0])
+release = os.getenv("_LITESTAR_VITE_DOCS_BUILD_VERSION", version.rsplit(".")[0])
 
 # -- General configuration ---------------------------------------------------
 extensions = [
@@ -57,6 +57,7 @@ PY_RE = r"py:.*"
 PY_METH = "py:meth"
 PY_ATTR = "py:attr"
 PY_OBJ = "py:obj"
+PY_EXC = "py:exc"
 
 nitpicky = True
 nitpick_ignore = [
@@ -74,6 +75,38 @@ nitpick_ignore = [
     (PY_CLASS, "config.app.AppConfig"),
     (PY_OBJ, "litestar.template.config.EngineType"),
     (PY_CLASS, "litestar.template.config.EngineType"),
+    # Litestar base types
+    (PY_CLASS, "ASGIConnection"),
+    (PY_CLASS, "UserT"),
+    (PY_CLASS, "AuthT"),
+    (PY_CLASS, "StateT"),
+    (PY_CLASS, "HandlerT"),
+    (PY_CLASS, "HTTPScope"),
+    (PY_CLASS, "Method"),
+    (PY_CLASS, "Logger"),
+    (PY_CLASS, "DataContainerType"),
+    (PY_CLASS, "middleware.session.base.SessionMiddleware"),
+    (PY_CLASS, "background_tasks.BackgroundTask"),
+    (PY_CLASS, "background_tasks.BackgroundTasks"),
+    (PY_CLASS, "datastructures.Cookie"),
+    (PY_CLASS, "enums.MediaType"),
+    (PY_CLASS, "connection.Request"),
+    (PY_CLASS, "app.Litestar"),
+    # Internal types
+    (PY_OBJ, "litestar_vite.inertia.helpers.PropKeyT"),
+    (PY_OBJ, "litestar_vite.inertia.helpers.StaticT"),
+    (PY_CLASS, "litestar_vite.inertia.helpers.PropKeyT"),
+    (PY_CLASS, "litestar_vite.inertia.helpers.StaticT"),
+    (PY_CLASS, "litestar.connection.base.UserT"),
+    (PY_CLASS, "litestar.connection.base.AuthT"),
+    (PY_CLASS, "litestar.connection.base.StateT"),
+    (PY_CLASS, "litestar.connection.base.HandlerT"),
+    (PY_CLASS, "litestar.types.Method"),
+    (PY_OBJ, "litestar.connection.base.UserT"),
+    (PY_OBJ, "litestar.connection.base.AuthT"),
+    (PY_OBJ, "litestar.connection.base.StateT"),
+    (PY_EXC, "ImproperlyConfiguredException"),
+    (PY_EXC, "NoRouteMatchFoundException"),
 ]
 nitpick_ignore_regex = [
     (PY_RE, r"litestar_vite.*\.T"),

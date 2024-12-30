@@ -16,3 +16,4 @@ Available API References
     :glob:
 
     *
+    inertia/index
