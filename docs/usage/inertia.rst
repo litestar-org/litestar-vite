@@ -153,9 +153,9 @@ This data will automatically serialized to JSON and passed to the client side co
 Lazy Loading
 ~~~~~~~~~~~~
 
-If you would like to conditionally return data to the client based on the reuqest using Inertia deferred data, you can use the `lazy` function.
+If you would like to conditionally return data to the client based on the request using Inertia deferred data, you can use the `lazy` function.
 
-This mehtod allows for deferred execution of methods.  Under normal cases, the data or callable referened in the lazy function will not be executed.  However, if the client requests the partial data or component, the element will be executed and rendered in the response.
+This method allows for deferred execution of methods.  Under normal cases, the data or callable referenced in the lazy function will not be executed.  However, if the client requests the partial data or component, the element will be executed and rendered in the response.
 
 It works with sync and async callables as well as static values.
 
@@ -243,7 +243,7 @@ CSRF Protection
 
 If you would like to use drop-in CSRF protection with the Inertia plugin, you can use the built in Litestar CSRF protection with the cookie_name set to ``csrftoken`` or with a header name set to ``x-csrftoken``.
 
-If you use any other value, be sure to refernce the configuration details in the `Inertia documentation <https://inertiajs.com/csrf-protection>`_.
+If you use any other value, be sure to refer to the configuration details in the `Inertia documentation <https://inertiajs.com/csrf-protection>`_.
 
 
 For more examples and best practices, refer to the

@@ -184,4 +184,3 @@ The build process will:
 
 
 For more information about Inertia integration, refer to the :doc:`Inertia </usage/inertia>` documentation.
-
