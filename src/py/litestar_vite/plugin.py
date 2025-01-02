@@ -180,7 +180,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 "include_in_schema": False,
                 "opt": {"exclude_from_auth": True},
             }
-            static_files_config: dict[str, Any] = {**base_config, **self._static_files_config.__dict__}
+            static_files_config: dict[str, Any] = {**base_config, **self._static_files_config}
             app_config.route_handlers.append(create_static_files_router(**static_files_config))
         return app_config
 
