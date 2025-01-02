@@ -6,8 +6,9 @@ import signal
 import subprocess
 import threading
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, cast
+from typing import TYPE_CHECKING, Any, Iterator, Sequence
 
 from litestar.cli._utils import console
 from litestar.contrib.jinja import JinjaTemplateEngine
@@ -18,6 +19,16 @@ if TYPE_CHECKING:
     from click import Group
     from litestar import Litestar
     from litestar.config.app import AppConfig
+    from litestar.datastructures import CacheControlHeader
+    from litestar.openapi.spec import SecurityRequirement
+    from litestar.types import (
+        AfterRequestHookHandler,  # pyright: ignore[reportUnknownVariableType]
+        AfterResponseHookHandler,  # pyright: ignore[reportUnknownVariableType]
+        BeforeRequestHookHandler,  # pyright: ignore[reportUnknownVariableType]
+        ExceptionHandlersMap,
+        Guard,  # pyright: ignore[reportUnknownVariableType]
+        Middleware,
+    )
 
     from litestar_vite.config import ViteConfig
     from litestar_vite.loader import ViteAssetLoader
@@ -33,6 +44,20 @@ def set_environment(config: ViteConfig) -> None:
     os.environ.setdefault("APP_URL", f"http://localhost:{os.environ.get('LITESTAR_PORT', 8000)}")
     if config.dev_mode:
         os.environ.setdefault("VITE_DEV_MODE", str(config.dev_mode))
+
+
+@dataclass
+class StaticFilesConfig:
+    after_request: AfterRequestHookHandler | None = None
+    after_response: AfterResponseHookHandler | None = None
+    before_request: BeforeRequestHookHandler | None = None
+    cache_control: CacheControlHeader | None = None
+    exception_handlers: ExceptionHandlersMap | None = None
+    guards: list[Guard] | None = None
+    middleware: Sequence[Middleware] | None = None
+    opt: dict[str, Any] | None = None
+    security: Sequence[SecurityRequirement] | None = None
+    tags: Sequence[str] | None = None
 
 
 class ViteProcess:
@@ -85,14 +110,20 @@ class ViteProcess:
 class VitePlugin(InitPluginProtocol, CLIPlugin):
     """Vite plugin."""
 
-    __slots__ = ("_asset_loader", "_config", "_vite_process")
+    __slots__ = ("_asset_loader", "_config", "_static_files_config", "_vite_process")
 
-    def __init__(self, config: ViteConfig | None = None, asset_loader: ViteAssetLoader | None = None) -> None:
+    def __init__(
+        self,
+        config: ViteConfig | None = None,
+        asset_loader: ViteAssetLoader | None = None,
+        static_files_config: StaticFilesConfig | None = None,
+    ) -> None:
         """Initialize ``Vite``.
 
         Args:
             config: configuration to use for starting Vite.  The default configuration will be used if it is not provided.
             asset_loader: an initialized asset loader to use for rendering asset tags.
+            static_files_config: optional configuration dictionary for the static files router.
         """
         from litestar_vite.config import ViteConfig
 
@@ -101,6 +132,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._config = config
         self._asset_loader = asset_loader
         self._vite_process = ViteProcess()
+        self._static_files_config: dict[str, Any] = static_files_config.__dict__ if static_files_config else {}
 
     @property
     def config(self) -> ViteConfig:
@@ -140,19 +172,16 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             static_dirs = [Path(self._config.bundle_dir), Path(self._config.resource_dir)]
             if Path(self._config.public_dir).exists() and self._config.public_dir != self._config.bundle_dir:
                 static_dirs.append(Path(self._config.public_dir))
-            app_config.route_handlers.append(
-                create_static_files_router(
-                    directories=cast(  # type: ignore[arg-type]
-                        "list[Path]",
-                        static_dirs if self._config.dev_mode else [Path(self._config.bundle_dir)],
-                    ),
-                    path=self._config.asset_url,
-                    name="vite",
-                    html_mode=False,
-                    include_in_schema=False,
-                    opt={"exclude_from_auth": True},
-                ),
-            )
+            base_config = {
+                "directories": static_dirs if self._config.dev_mode else [Path(self._config.bundle_dir)],
+                "path": self._config.asset_url,
+                "name": "vite",
+                "html_mode": False,
+                "include_in_schema": False,
+                "opt": {"exclude_from_auth": True},
+            }
+            static_files_config: dict[str, Any] = {**base_config, **self._static_files_config.__dict__}
+            app_config.route_handlers.append(create_static_files_router(**static_files_config))
         return app_config
 
     @contextmanager
