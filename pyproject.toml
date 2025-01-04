@@ -42,19 +42,12 @@ nodeenv = ["nodeenv"]
 build-backend = "hatchling.build"
 requires = ["hatchling"]
 
-[tool.hatch.build]
-dev-mode-dirs = ["src/py", "."]
-
-
 [tool.hatch.build.targets.sdist]
-exclude = [".github", "docs"]
-packages = ["src/py/litestar_vite", "src/py/tests"]
+exclude = ["/.github", "/docs"]
 include = ["src/py/*","src/js/*"]
-skip-excluded-dirs = false
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/py/litestar_vite"]
-sources = ["src/py"]
 
 [dependency-groups]
 dev = [ {include-group = "build"}, { include-group = "linting" }, { include-group = "test" }, { include-group = "docs" }  ]
