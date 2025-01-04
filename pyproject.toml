@@ -44,7 +44,7 @@ requires = ["hatchling"]
 
 [tool.hatch.build.targets.sdist]
 exclude = ["/.github", "/docs"]
-include = ["src/py/*","src/js/*"]
+include = ["src/py/*","src/js/*","tools/*"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/py/litestar_vite"]
@@ -334,7 +334,7 @@ venv = ".venv"
 
 [tool.mypy]
 disallow_untyped_defs = false
-files = ["src/py/litestar_vite", "src/py/tests"]
+files = ["src/py/litestar_vite", "src/py/tests", "tools"]
 follow_imports = "normal"          # "silent" for not following
 ignore_missing_imports = true
 pretty = true
@@ -343,19 +343,13 @@ warn_no_return = false
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-ignore_missing_imports = true
-module = [
-  "awaitlet",
-]
-
-[[tool.mypy.overrides]]
 disable_error_code = "attr-defined"
 disallow_untyped_decorators = false
 module = "tests.*"
 
 [tool.codespell]
 ignore-words-list = "selectin"
-skip = 'pdm.lock,examples/inertia/package-lock.json,examples/inertia/public/assets/*.js'
+skip = 'uv.lock,examples/inertia/package-lock.json,examples/inertia/public/assets/*.js'
 
 [tool.git-cliff.changelog]
 body = """

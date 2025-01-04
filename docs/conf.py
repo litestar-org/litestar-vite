@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 from typing import Any
 
 from litestar_vite.__metadata__ import __project__, __version__
 
+current_path = Path(__file__).parent.parent.resolve()
+sys.path.append(str(current_path))
 # -- Environmental Data ------------------------------------------------------
 
 
