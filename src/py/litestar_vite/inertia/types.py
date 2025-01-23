@@ -1,4 +1,4 @@
-from __future__ import annotations
+from __future__ import annotations  # noqa: A005
 
 from dataclasses import dataclass
 from typing import Any, Generic, TypedDict, TypeVar

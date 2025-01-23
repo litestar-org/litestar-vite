@@ -5,11 +5,11 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Natural Language :: English",
   "Operating System :: OS Independent",
-  "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python",
   "Topic :: Software Development",
   "Typing :: Typed",
@@ -24,7 +24,7 @@ keywords = ["litestar", "vite"]
 license = { text = "MIT" }
 name = "litestar-vite"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 version = "0.13.0"
 
 [project.urls]
@@ -270,7 +270,7 @@ lint.select = ["ALL"]
 # Allow unused variables when underscore-prefixed.
 lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 src = ["src/py/litestar_vite", "src/py/tests"]
-target-version = "py38"
+target-version = "py39"
 unsafe-fixes = true
 
 
@@ -328,7 +328,7 @@ exclude = [
   "src/py/tests/docker_service_fixtures.py",
 ]
 include = ["src/py/litestar_vite"]
-pythonVersion = "3.8"
+pythonVersion = "3.9"
 strict = ["src/py/litestar_vite/**/*"]
 venv = ".venv"
 

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, AsyncGenerator
+from typing import TYPE_CHECKING
 
 from anyio.from_thread import start_blocking_portal
 from litestar.plugins import InitPluginProtocol
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     from anyio.from_thread import BlockingPortal
     from litestar import Litestar
     from litestar.config.app import AppConfig

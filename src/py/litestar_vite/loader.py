@@ -4,13 +4,15 @@ import json
 from functools import cached_property
 from pathlib import Path
 from textwrap import dedent
-from typing import TYPE_CHECKING, Any, ClassVar, Mapping, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 from urllib.parse import urljoin
 
 import markupsafe
 from litestar.exceptions import ImproperlyConfiguredException
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from litestar.connection import Request
 
     from litestar_vite.config import ViteConfig

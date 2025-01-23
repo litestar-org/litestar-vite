@@ -55,7 +55,7 @@ def on_warn_missing_reference(app: Sphinx, domain: str, node: Node) -> bool | No
     if not hasattr(node, "attributes"):
         return None
 
-    attributes = node.attributes  # type: ignore[attr-defined]
+    attributes = node.attributes  # pyright: ignore[reportAttributeAccessIssue]
     target = attributes["reftarget"]
 
     # Add common built-in types and classes that Sphinx sometimes fails to resolve
@@ -106,7 +106,7 @@ def on_missing_reference(app: Sphinx, env: BuildEnvironment, node: pending_xref,
     if not hasattr(node, "attributes"):
         return None
 
-    attributes = node.attributes  # type: ignore[attr-defined]
+    attributes = node.attributes
     target = attributes["reftarget"]
     py_domain = env.domains["py"]
 
@@ -130,6 +130,6 @@ def setup(app: Sphinx) -> dict[str, bool]:
     app.connect("env-before-read-docs", on_env_before_read_docs)
     app.connect("missing-reference", on_missing_reference)
     app.connect("warn-missing-reference", on_warn_missing_reference)
-    app.add_config_value("ignore_missing_refs", default={}, rebuild=False)
+    app.add_config_value("ignore_missing_refs", default={}, rebuild="env")
 
     return {"parallel_read_safe": True, "parallel_write_safe": True}

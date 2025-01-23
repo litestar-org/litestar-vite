@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from time import sleep
-from typing import Any, Dict
+from typing import Any
 
 from litestar import Request, get
 from litestar.exceptions import NotAuthorizedException
@@ -40,7 +40,7 @@ async def test_component_enabled(
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
     @get("/", component="Home")
-    async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
         return {"thing": "value"}
 
     with create_test_client(
@@ -60,7 +60,7 @@ async def test_component_inertia_header_enabled(
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
     @get("/", component="Home")
-    async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
         return {"thing": "value"}
 
     with create_test_client(
@@ -83,7 +83,7 @@ async def test_component_inertia_flash_header_enabled(
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
     @get("/", component="Home")
-    async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
         flash(request, "a flash message", "info")
         return {"thing": "value"}
 
@@ -111,7 +111,7 @@ async def test_component_inertia_shared_flash_header_enabled(
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
     @get("/", component="Home")
-    async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
         flash(request, "a flash message", "info")
         share(request, "auth", {"user": "nobody"})
         return {"thing": "value"}
@@ -140,7 +140,7 @@ async def test_default_route_response_no_component(
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
     @get("/")
-    async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
         return {"thing": "value"}
 
     with create_test_client(
@@ -160,7 +160,7 @@ async def test_component_inertia_invalid_version(
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
     @get("/", component="Home")
-    async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
         return {"thing": "value"}
 
     with create_test_client(
@@ -187,11 +187,11 @@ async def test_unauthenticated_redirect(
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
     @get("/", component="Home")
-    async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
         raise NotAuthorizedException(detail="User not authenticated")
 
     @get("/login", component="Login")
-    async def login_handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
+    async def login_handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
         return {"thing": "value"}
 
     inertia_plugin.config.redirect_unauthorized_to = "/login"
@@ -214,7 +214,7 @@ async def test_404_redirect(
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
     @get("/", component="Home")
-    async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
         return {"thing": "value"}
 
     inertia_plugin.config.redirect_404 = "/"
@@ -442,7 +442,7 @@ async def test_component_inertia_deferred_props(
         return "sync_result"
 
     @get("/", component="Home")
-    async def handler(request: Request[Any, Any, Any]) -> Dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
         return {
             "static": "value",
             "deferred": lazy("deferred", "deferred_value"),

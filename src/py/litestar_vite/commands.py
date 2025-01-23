@@ -3,9 +3,11 @@ from __future__ import annotations
 import platform
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, MutableMapping
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import MutableMapping
+
     from jinja2 import Environment, Template
     from litestar import Litestar
 
@@ -82,7 +84,7 @@ def init_vite(
     # Prepare root_path
     root_path.mkdir(parents=True, exist_ok=True)
     for template_name, template in templates.items():
-        target_file_name = template_name[:-3] if template_name.endswith(".j2") else template_name
+        target_file_name = template_name.removesuffix(".j2")
         target_file_path = root_path / target_file_name
         with target_file_path.open(mode="w") as file:
             console.print(f" * Writing {target_file_name} to {target_file_path!s}")
@@ -90,8 +92,7 @@ def init_vite(
             file.write(
                 template.render(
                     entry_point=[
-                        f"{resource_path!s}/{resource_name[:-3] if resource_name.endswith('.j2') else resource_name}"
-                        for resource_name in enabled_resources
+                        f"{resource_path!s}/{resource_name.removesuffix('.j2')}" for resource_name in enabled_resources
                     ],
                     enable_ssr=enable_ssr,
                     asset_url=asset_url,
@@ -112,11 +113,11 @@ def init_vite(
     (root_path / resource_path).mkdir(parents=True, exist_ok=True)
     for resource_name in enabled_resources:
         template = get_template(environment=vite_template_env, name=resource_name)
-        target_file_name = f"{resource_name[:-3] if resource_name.endswith('.j2') else resource_name}"
+        target_file_name = f"{resource_name.removesuffix('.j2')}"
         target_file_path = root_path / resource_path / target_file_name
         with target_file_path.open(mode="w") as file:
             console.print(
-                f" * Writing {resource_name[:-3] if resource_name.endswith('.j2') else resource_name} to {target_file_path!s}",
+                f" * Writing {resource_name.removesuffix('.j2')} to {target_file_path!s}",
             )
             file.write(template.render())
     console.print("[yellow]Vite initialization completed.[/]")

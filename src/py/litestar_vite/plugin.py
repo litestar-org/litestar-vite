@@ -8,7 +8,7 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator, Sequence
+from typing import TYPE_CHECKING, Any
 
 from litestar.cli._utils import console
 from litestar.contrib.jinja import JinjaTemplateEngine
@@ -16,6 +16,8 @@ from litestar.plugins import CLIPlugin, InitPluginProtocol
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator, Sequence
+
     from click import Group
     from litestar import Litestar
     from litestar.config.app import AppConfig
