@@ -44,14 +44,13 @@ install-uv:                                         ## Install latest version of
 .PHONY: install
 install: destroy clean                              ## Install the project, dependencies, and pre-commit
 	@echo "${INFO} Starting fresh installation..."
-	@uv python pin 3.12 >/dev/null 2>&1
 	@uv venv >/dev/null 2>&1
 	@uv sync --all-extras --dev
 	@if ! command -v npm >/dev/null 2>&1; then \
 		echo "${INFO} Installing Node environment... 📦"; \
 		uvx nodeenv .venv --force --quiet >/dev/null 2>&1; \
 	fi
-	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm install --no-fund >/dev/null 2>&1
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm install --no-fund
 	@echo "${OK} Installation complete! 🎉"
 
 .PHONY: destroy
@@ -69,7 +68,7 @@ destroy:                                            ## Destroy the virtual envir
 upgrade:                                            ## Upgrade all dependencies to latest stable versions
 	@echo "${INFO} Updating all dependencies... 🔄"
 	@uv lock --upgrade
-	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm upgrade --latest
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm upgrade --no-fund --latest
 	@echo "${OK} Dependencies updated 🔄"
 	@uv run pre-commit autoupdate
 	@echo "${OK} Updated Pre-commit hooks 🔄"
@@ -87,8 +86,8 @@ lock:                                              ## Rebuild lockfiles from scr
 .PHONY: build
 build:                                             ## Build the package
 	@echo "${INFO} Building package... 📦"
-	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm install >/dev/null 2>&1
-	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run build >/dev/null 2>&1
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm install --no-fund --quiet
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run build --quiet
 	@uv build -o dist/py >/dev/null 2>&1
 	@echo "${OK} Package build complete"
 

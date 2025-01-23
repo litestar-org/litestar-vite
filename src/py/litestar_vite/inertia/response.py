@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import itertools
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from mimetypes import guess_type
 from pathlib import PurePath
 from typing import (
     TYPE_CHECKING,
     Any,
-    Iterable,
     TypeVar,
     cast,
 )
@@ -292,7 +291,7 @@ class InertiaRedirect(Redirect):
         """
         referer = urlparse(request.headers.get("Referer", str(request.base_url)))
         redirect_to = urlunparse(urlparse(redirect_to)._replace(scheme=referer.scheme))
-        super().__init__(
+        super().__init__(  # pyright: ignore[reportUnknownMemberType]
             path=redirect_to,
             status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
             cookies=request.cookies,
@@ -311,7 +310,7 @@ class InertiaBack(Redirect):
         """Initialize external redirect, Set status code to 409 (required by Inertia),
         and pass redirect url.
         """
-        super().__init__(
+        super().__init__(  # pyright: ignore[reportUnknownMemberType]
             path=request.headers.get("Referer", str(request.base_url)),
             status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
             cookies=request.cookies,

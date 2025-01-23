@@ -16,7 +16,7 @@ sys.path.append(str(current_path))
 # -- Project information -----------------------------------------------------
 project = __project__
 version = __version__
-copyright = "2023, Litestar-Org"
+copyright = "2025, Litestar-Org"
 author = "Litestar-Org"
 release = os.getenv("_LITESTAR_VITE_DOCS_BUILD_VERSION", version.rsplit(".")[0])
 
@@ -131,7 +131,7 @@ autodoc_class_signature = "separated"
 autodoc_default_options = {"special-members": "__init__", "show-inheritance": True, "members": True}
 autodoc_member_order = "bysource"
 autodoc_typehints_format = "short"
-autodoc_type_aliases: dict[str, str] = {}
+autodoc_type_aliases: dict[str, str] = {"Path": "pathlib.Path"}
 
 autosectionlabel_prefix_document = True
 

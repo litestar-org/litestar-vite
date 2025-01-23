@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Coroutine, Generator, Iterable, Mapping
 from contextlib import contextmanager
 from functools import lru_cache
 from textwrap import dedent
@@ -10,12 +10,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Coroutine,
-    Dict,
-    Generator,
     Generic,
-    Iterable,
-    List,
     TypeVar,
     cast,
     overload,
@@ -247,7 +242,7 @@ def get_shared_props(
 
     try:
         errors = request.session.pop("_errors", {})
-        shared_props = cast("Dict[str,Any]", request.session.pop("_shared", {}))
+        shared_props = cast("dict[str,Any]", request.session.pop("_shared", {}))
         inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
 
         # Handle deferred props
@@ -258,7 +253,7 @@ def get_shared_props(
             if should_render(value, partial_data):
                 props[key] = value
 
-        for message in cast("List[Dict[str,Any]]", request.session.pop("_messages", [])):
+        for message in cast("list[dict[str,Any]]", request.session.pop("_messages", [])):
             flash[message["category"]].append(message["message"])
 
         props.update(inertia_plugin.config.extra_static_page_props)
