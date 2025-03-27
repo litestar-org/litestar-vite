@@ -106,6 +106,7 @@ nitpick_ignore = [
     (PY_CLASS, "litestar.connection.base.StateT"),
     (PY_CLASS, "litestar.connection.base.HandlerT"),
     (PY_CLASS, "litestar.types.Method"),
+    (PY_CLASS, "TypeAliasForwardRef"),
     (PY_OBJ, "litestar.connection.base.UserT"),
     (PY_OBJ, "litestar.connection.base.AuthT"),
     (PY_OBJ, "litestar.connection.base.StateT"),
