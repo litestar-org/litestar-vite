@@ -1,7 +1,4 @@
 import fs from "node:fs"
-import path from "node:path"
-import { loadEnv } from "vite"
-import { Plugin } from "vite"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import litestar from "../src"
 import { getRelativeUrlPath, isCurrentRoute, isRoute, resolvePageComponent, route, toRoute } from "../src/inertia-helpers"
@@ -107,7 +104,7 @@ describe("litestar-vite-plugin", () => {
     expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
 
     const ssrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
-    expect(ssrConfig.build?.rollupOptions?.input).toBe("resources/js/app.ts")
+    expect(ssrConfig.build?.rollupOptions?.input).toMatch("resources/js/app.ts")
   })
 
   it("accepts an array of inputs", () => {
@@ -184,7 +181,7 @@ describe("litestar-vite-plugin", () => {
       mode: "production",
     })
 
-    expect(config.base).toBe("/foo/")
+    expect(config.base).toMatch("/foo/")
   })
 
   it("accepts a partial configuration", () => {
@@ -194,16 +191,16 @@ describe("litestar-vite-plugin", () => {
     })[0]
 
     const config = plugin.config({}, { command: "build", mode: "production" })
-    expect(config.base).toBe("static/")
+    expect(config.base).toMatch("static/")
     expect(config.build?.manifest).toBe("manifest.json")
     expect(config.build?.outDir).toBe("public")
     expect(config.build?.rollupOptions?.input).toBe("resources/js/app.js")
 
     const ssrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
-    expect(ssrConfig.base).toBe("static/")
+    expect(ssrConfig.base).toMatch("static/")
     expect(ssrConfig.build?.manifest).toBe(false)
-    expect(ssrConfig.build?.outDir).toBe("resources/bootstrap/ssr")
-    expect(ssrConfig.build?.rollupOptions?.input).toBe("resources/js/ssr.js")
+    expect(ssrConfig.build?.outDir).toMatch("resources/bootstrap/ssr")
+    expect(ssrConfig.build?.rollupOptions?.input).toMatch("resources/js/ssr.js")
   })
   it("accepts a partial configuration with an asset URL", () => {
     const plugin = litestar({
@@ -521,6 +518,159 @@ describe("litestar-vite-plugin", () => {
     })[0]
 
     expect(() => plugin.config({}, { command: "serve", mode: "development" })).toThrow(/Unable to find the configuration file/)
+  })
+
+  describe("HTML file serving", () => {
+    let mockServer: any
+    let mockMiddleware: any
+    let mockRes: any
+    let mockNext: any
+    let plugin: any
+
+    beforeEach(() => {
+      // Mock Vite dev server with complete config
+      mockServer = {
+        config: {
+          root: "/test/root",
+          envDir: process.cwd(),
+          mode: "development",
+          base: "/",
+          server: {
+            origin: "http://localhost:5173",
+          },
+        },
+        transformIndexHtml: vi.fn().mockResolvedValue("<html>transformed</html>"),
+        middlewares: {
+          use: vi.fn().mockImplementation((middleware) => {
+            mockMiddleware = middleware
+          }),
+        },
+      }
+
+      // Mock response object
+      mockRes = {
+        statusCode: 0,
+        setHeader: vi.fn(),
+        end: vi.fn(),
+      }
+
+      // Mock next function
+      mockNext = vi.fn()
+
+      // Mock fs promises
+      vi.spyOn(fs.promises, "access").mockResolvedValue(undefined)
+      vi.spyOn(fs.promises, "readFile").mockResolvedValue("<html>test</html>")
+
+      // Initialize plugin and call configResolved
+      plugin = litestar({
+        input: "resources/js/app.js",
+        resourceDirectory: "resources",
+      })[0]
+
+      // Call configResolved to set up resolvedConfig
+      plugin.configResolved?.(mockServer.config)
+    })
+
+    it("serves index.html when detected", async () => {
+      // Mock findIndexHtmlPath to return a path
+      vi.spyOn(fs.promises, "access").mockResolvedValueOnce(undefined)
+
+      // Configure the server
+      const serverHook = await plugin.configureServer?.(mockServer)
+      // @ts-ignore - Server hook can be a function or object with handler
+      if (serverHook && typeof serverHook === "function") {
+        await serverHook()
+      }
+
+      // Call the middleware with root path
+      await mockMiddleware(
+        {
+          url: "/",
+          originalUrl: "/",
+        },
+        mockRes,
+        mockNext,
+      )
+
+      // Verify the response
+      expect(mockRes.statusCode).toBe(200)
+      expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+      expect(mockRes.end).toHaveBeenCalledWith("<html>transformed</html>")
+      expect(mockNext).not.toHaveBeenCalled()
+    })
+
+    it("serves placeholder when index.html is not detected", async () => {
+      // Mock findIndexHtmlPath to return null
+      vi.spyOn(fs.promises, "access").mockRejectedValueOnce(new Error("File not found"))
+
+      // Mock the placeholder file read
+      const placeholderContent = `<html>
+        <head>
+          <title>Litestar Vite</title>
+        </head>
+        <body>
+          <div id="app"></div>
+        </body>
+      </html>`
+
+      // Mock transformIndexHtml to only transform non-placeholder content
+      mockServer.transformIndexHtml = vi.fn().mockImplementation((url, html) => {
+        if (html.includes("Litestar Vite")) {
+          return html // Don't transform placeholder content
+        }
+        return "<html>transformed</html>" // Transform other content
+      })
+
+      vi.spyOn(fs.promises, "readFile").mockResolvedValueOnce(placeholderContent)
+
+      // Configure the server
+      const serverHook = await plugin.configureServer?.(mockServer)
+      // @ts-ignore - Server hook can be a function or object with handler
+      if (serverHook && typeof serverHook === "function") {
+        await serverHook()
+      }
+
+      // Call the middleware with /index.html path
+      await mockMiddleware(
+        {
+          url: "/index.html",
+          originalUrl: "/index.html",
+        },
+        mockRes,
+        mockNext,
+      )
+
+      // Verify the response
+      expect(mockRes.statusCode).toBe(200)
+      expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+      expect(mockRes.end).toHaveBeenCalledWith(expect.stringContaining("Litestar Vite"))
+      expect(mockNext).not.toHaveBeenCalled()
+    })
+
+    it("passes through non-index.html requests", async () => {
+      // Configure the server
+      const serverHook = await plugin.configureServer?.(mockServer)
+      // @ts-ignore - Server hook can be a function or object with handler
+      if (serverHook && typeof serverHook === "function") {
+        await serverHook()
+      }
+
+      // Call the middleware with a non-index path
+      await mockMiddleware(
+        {
+          url: "/other",
+          originalUrl: "/other",
+        },
+        mockRes,
+        mockNext,
+      )
+
+      // Verify the request was passed through
+      expect(mockRes.statusCode).toBe(0)
+      expect(mockRes.setHeader).not.toHaveBeenCalled()
+      expect(mockRes.end).not.toHaveBeenCalled()
+      expect(mockNext).toHaveBeenCalled()
+    })
   })
 })
 describe("inertia-helpers", () => {

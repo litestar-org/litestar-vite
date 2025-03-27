@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import colors from "picocolors"
-import { type ConfigEnv, type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, loadEnv } from "vite"
+import { type ConfigEnv, type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer, loadEnv } from "vite"
 import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-reload"
 
 interface PluginConfig {
@@ -102,15 +102,46 @@ export default function litestar(config: string | string[] | PluginConfig): [Lit
 }
 
 /**
+ * Resolve the index.html path to use for the Vite server.
+ */
+async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: Required<PluginConfig>): Promise<string | null> {
+  if (!pluginConfig.autoDetectIndex) {
+    console.log("Auto-detection disabled.") // Debug log
+    return null
+  }
+
+  // Use server.config.root which is the resolved root directory
+  const root = server.config.root
+  const possiblePaths = [
+    path.join(root, "index.html"),
+    path.join(root, pluginConfig.resourceDirectory.replace(/^\//, ""), "index.html"), // Ensure resourceDirectory path is relative to root
+    path.join(root, "public", "index.html"), // Check public even if publicDir is false, might exist
+  ]
+  // console.log("Checking paths:", possiblePaths); // Debug log
+
+  for (const indexPath of possiblePaths) {
+    try {
+      // Use async access check
+      await fs.promises.access(indexPath)
+      // console.log("Found index.html at:", indexPath); // Debug log
+      return indexPath
+    } catch {
+      // File doesn't exist at this path, continue checking
+    }
+  }
+  // console.log("index.html not found in checked paths."); // Debug log
+  return null
+}
+
+/**
  * Resolve the Litestar Plugin configuration.
  */
 function resolveLitestarPlugin(pluginConfig: Required<PluginConfig>): LitestarPlugin {
   let viteDevServerUrl: DevServerUrl
   let resolvedConfig: ResolvedConfig
   let userConfig: UserConfig
-
   const defaultAliases: Record<string, string> = {
-    "@": pluginConfig.resourceDirectory || "/resources/",
+    "@": `/${pluginConfig.resourceDirectory.replace(/^\/+/, "").replace(/\/+$/, "")}/`,
   }
 
   return {
@@ -178,14 +209,30 @@ function resolveLitestarPlugin(pluginConfig: Required<PluginConfig>): LitestarPl
         ssr: {
           noExternal: noExternalInertiaHelpers(userConfig),
         },
+        // Explicitly set appType if you know you're serving an SPA index.html
+        // appType: 'spa', // Try adding this - might simplify things if appropriate
       }
     },
     configResolved(config) {
       resolvedConfig = config
+      // Ensure base ends with / for dev server if not empty
+      if (resolvedConfig.command === "serve" && resolvedConfig.base && !resolvedConfig.base.endsWith("/")) {
+        resolvedConfig = {
+          ...resolvedConfig,
+          base: `${resolvedConfig.base}/`,
+        }
+      }
+      // Debug log resolved config
+      // console.log("Resolved Vite Config:", resolvedConfig);
     },
-    transform(code: string): string | undefined {
-      if (resolvedConfig.command === "serve") {
+    transform(code: string, id: string): string | undefined {
+      // Added 'id' for context
+      // Avoid transforming unrelated files during serve if placeholder isn't present
+      if (resolvedConfig.command === "serve" && code.includes("__litestar_vite_placeholder__")) {
+        // Debug log transformation
+        // console.log(`Transforming ${id} with dev server URL: ${viteDevServerUrl}`);
         const transformedCode = code.replace(/__litestar_vite_placeholder__/g, viteDevServerUrl)
+        // Apply user transform *only* if the placeholder was found and replaced
         return pluginConfig.transformOnServe(transformedCode, viteDevServerUrl)
       }
       return undefined
@@ -194,25 +241,8 @@ function resolveLitestarPlugin(pluginConfig: Required<PluginConfig>): LitestarPl
       const envDir = resolvedConfig.envDir || process.cwd()
       const appUrl = loadEnv(resolvedConfig.mode, envDir, "APP_URL").APP_URL ?? "undefined"
 
-      // Check if we should serve SPA directly
-      const shouldServeIndex = () => {
-        if (!pluginConfig.autoDetectIndex) return false
-
-        // Check various common locations for index.html
-        const possiblePaths = [
-          path.join(server.config.root, "index.html"),
-          path.join(server.config.root, pluginConfig.resourceDirectory, "index.html"),
-          path.join(server.config.root, "public", "index.html"),
-        ]
-
-        for (const indexPath of possiblePaths) {
-          try {
-            fs.accessSync(indexPath)
-            return true
-          } catch {}
-        }
-        return false
-      }
+      // Find index.html path *once* when server starts for logging purposes
+      const initialIndexPath = await findIndexHtmlPath(server, pluginConfig)
 
       server.httpServer?.once("listening", () => {
         const address = server.httpServer?.address()
@@ -223,53 +253,91 @@ function resolveLitestarPlugin(pluginConfig: Required<PluginConfig>): LitestarPl
           fs.mkdirSync(path.dirname(pluginConfig.hotFile), { recursive: true })
           fs.writeFileSync(pluginConfig.hotFile, viteDevServerUrl)
 
-          const hasIndex = shouldServeIndex()
-
           setTimeout(() => {
-            server.config.logger.info(`\n  ${colors.red(`${colors.bold("LITESTAR")} ${litestarVersion()}`)}  ${colors.dim("plugin")} ${colors.bold(`v${pluginVersion()}`)}`)
-            server.config.logger.info("")
-            if (hasIndex) {
-              server.config.logger.info(`  ${colors.green("➜")}  ${colors.bold("Serve Index")}: Serving application index with Vite`)
-              server.config.logger.info(`  ${colors.green("➜")}  ${colors.bold("DEV URL")}: ${colors.cyan(viteDevServerUrl)}`)
-              server.config.logger.info(`  ${colors.green("➜")}  ${colors.bold("APP_URL")}: ${colors.cyan(appUrl.replace(/:(\d+)/, (_, port) => `:${colors.bold(port)}`))}`)
+            // Use resolvedConfig.logger for consistency
+            resolvedConfig.logger.info(`\n  ${colors.red(`${colors.bold("LITESTAR")} ${litestarVersion()}`)}  ${colors.dim("plugin")} ${colors.bold(`v${pluginVersion()}`)}`)
+            resolvedConfig.logger.info("")
+            if (initialIndexPath) {
+              resolvedConfig.logger.info(
+                `  ${colors.green("➜")}  ${colors.bold("Index Mode")}: SPA (Serving ${colors.cyan(path.relative(server.config.root, initialIndexPath))} from root)`,
+              )
             } else {
-              server.config.logger.info(`  ${colors.green("➜")}  ${colors.bold("Serve Index")}: Serving Litestar index with Vite`)
-              server.config.logger.info(`  ${colors.green("➜")}  ${colors.bold("DEV URL")}: ${colors.cyan(viteDevServerUrl)}`)
-              server.config.logger.info(`  ${colors.green("➜")}  ${colors.bold("APP_URL")}: ${colors.cyan(appUrl.replace(/:(\d+)/, (_, port) => `:${colors.bold(port)}`))}`)
+              resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Index Mode")}: Litestar (Plugin will serve placeholder for /index.html)`)
             }
+            resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Dev Server")}: ${colors.cyan(viteDevServerUrl)}`)
+            resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("App URL")}:    ${colors.cyan(appUrl.replace(/:(\d+)/, (_, port) => `:${colors.bold(port)}`))}`)
+            resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Assets Base")}: ${colors.cyan(resolvedConfig.base)}`) // Log the base path being used
           }, 100)
         }
       })
+
+      // Clean up hot file
       if (!exitHandlersBound) {
         const clean = () => {
-          if (fs.existsSync(pluginConfig.hotFile)) {
+          if (pluginConfig.hotFile && fs.existsSync(pluginConfig.hotFile)) {
+            // Check hotFile exists
             fs.rmSync(pluginConfig.hotFile)
           }
         }
-
         process.on("exit", clean)
         process.on("SIGINT", () => process.exit())
         process.on("SIGTERM", () => process.exit())
         process.on("SIGHUP", () => process.exit())
-
         exitHandlersBound = true
       }
 
-      return () =>
-        server.middlewares.use((req, res, next) => {
-          if (!shouldServeIndex() && req.url === "/index.html") {
-            res.statusCode = 404
+      // *** MODIFIED MIDDLEWARE ***
+      return () => {
+        // Run middleware early to intercept before Vite's base/HTML handlers
+        server.middlewares.use(async (req, res, next) => {
+          const indexPath = await findIndexHtmlPath(server, pluginConfig)
 
-            res.end(
-              fs
-                .readFileSync(path.join(dirname(), "dev-server-index.html"))
-                .toString()
-                .replace(/{{ APP_URL }}/g, appUrl),
-            )
+          // Check if index.html exists AND the request is for the root or /index.html
+          if (indexPath && (req.url === "/" || req.url === "/index.html")) {
+            try {
+              const htmlContent = await fs.promises.readFile(indexPath, "utf-8")
+              // Transform the HTML using Vite's pipeline
+              const transformedHtml = await server.transformIndexHtml(
+                "/", // Use '/' as the URL for transformation context to ensure scripts are injected correctly relative to root
+                htmlContent,
+                req.originalUrl,
+              )
+              res.statusCode = 200
+              res.setHeader("Content-Type", "text/html")
+              res.end(transformedHtml)
+              // Request handled, stop further processing
+              return
+            } catch (e) {
+              // Log the error and pass it to Vite's error handler
+              resolvedConfig.logger.error(`Error serving index.html from ${indexPath}: ${e instanceof Error ? e.message : e}`)
+              next(e)
+              return
+            }
           }
 
+          // Original logic: If index.html should NOT be served automatically,
+          // AND the request is specifically for /index.html, serve the placeholder.
+          // Requests for '/' will likely be handled by Litestar in this case.
+          if (!indexPath && req.url === "/index.html") {
+            try {
+              const placeholderPath = path.join(dirname(), "dev-server-index.html")
+              const placeholderContent = await fs.promises.readFile(placeholderPath, "utf-8")
+              res.statusCode = 200 // Serve placeholder with 200 OK, or 404 if preferred
+              res.setHeader("Content-Type", "text/html")
+              res.end(placeholderContent.replace(/{{ APP_URL }}/g, appUrl))
+            } catch (e) {
+              resolvedConfig.logger.error(`Error serving placeholder index.html: ${e instanceof Error ? e.message : e}`)
+              res.statusCode = 404
+              res.end("Not Found (Error loading placeholder)")
+            }
+            // Request handled (or error), stop further processing
+            return
+          }
+
+          // If none of the above conditions matched, pass the request to the next middleware (Vite's default handlers)
           next()
         })
+      }
     },
   }
 }
@@ -327,7 +395,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Required
     throw new Error('litestar-vite-plugin: missing configuration for "input".')
   }
   if (typeof resolvedConfig.resourceDirectory === "string") {
-    resolvedConfig.resourceDirectory = resolvedConfig.resourceDirectory.trim().replace(/^\/+/, "")
+    resolvedConfig.resourceDirectory = resolvedConfig.resourceDirectory.trim().replace(/^\/+/, "").replace(/\/+$/, "")
 
     if (resolvedConfig.resourceDirectory === "") {
       throw new Error("litestar-vite-plugin: resourceDirectory must be a subdirectory. E.g. 'resources'.")
@@ -353,8 +421,8 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Required
   return {
     input: resolvedConfig.input,
     assetUrl: resolvedConfig.assetUrl ?? "static",
-    resourceDirectory: resolvedConfig.resourceDirectory ?? "/resources/",
-    bundleDirectory: resolvedConfig.bundleDirectory || (resolvedConfig.bundleDirectory ?? "public"),
+    resourceDirectory: resolvedConfig.resourceDirectory ?? "resources",
+    bundleDirectory: resolvedConfig.bundleDirectory ?? "public",
     ssr: resolvedConfig.ssr ?? resolvedConfig.input,
     ssrOutputDirectory: resolvedConfig.ssrOutputDirectory ?? path.join(resolvedConfig.resourceDirectory ?? "resources", "bootstrap/ssr"),
     refresh: resolvedConfig.refresh ?? false,
@@ -369,7 +437,12 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Required
  * Resolve the Vite base option from the configuration.
  */
 function resolveBase(config: Required<PluginConfig>, assetUrl: string): string {
-  return assetUrl + (assetUrl.endsWith("/") ? "" : "/")
+  // In development mode, use the assetUrl directly
+  if (process.env.NODE_ENV === "development") {
+    return assetUrl
+  }
+  // In production, use the full assetUrl
+  return assetUrl.endsWith("/") ? assetUrl : `${assetUrl}/`
 }
 
 /**
@@ -385,13 +458,15 @@ function resolveInput(config: Required<PluginConfig>, ssr: boolean): string | st
 
 /**
  * Resolve the Vite outDir path from the configuration.
+ * Should be relative to the project root for Vite config, Vite resolves it internally.
  */
-function resolveOutDir(config: Required<PluginConfig>, ssr: boolean): string | undefined {
+function resolveOutDir(config: Required<PluginConfig>, ssr: boolean): string {
   if (ssr) {
-    return config.ssrOutputDirectory
+    // Return path relative to root
+    return config.ssrOutputDirectory.replace(/^\/+/, "").replace(/\/+$/, "")
   }
-
-  return path.join(config.bundleDirectory)
+  // Return path relative to root
+  return config.bundleDirectory.replace(/^\/+/, "").replace(/\/+$/, "")
 }
 
 function resolveFullReloadConfig({ refresh: config }: Required<PluginConfig>): PluginOption[] {

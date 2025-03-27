@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import itertools
 from collections.abc import Iterable, Mapping
 from mimetypes import guess_type
@@ -7,7 +5,9 @@ from pathlib import PurePath
 from typing import (
     TYPE_CHECKING,
     Any,
+    Optional,
     TypeVar,
+    Union,
     cast,
 )
 from urllib.parse import quote, urlparse, urlunparse
@@ -53,16 +53,16 @@ class InertiaResponse(Response[T]):
         self,
         content: T,
         *,
-        template_name: str | None = None,
-        template_str: str | None = None,
-        background: BackgroundTask | BackgroundTasks | None = None,
-        context: dict[str, Any] | None = None,
-        cookies: ResponseCookies | None = None,
-        encoding: str = "utf-8",
-        headers: ResponseHeaders | None = None,
-        media_type: MediaType | str | None = None,
-        status_code: int = HTTP_200_OK,
-        type_encoders: TypeEncodersMap | None = None,
+        template_name: "Optional[str]" = None,
+        template_str: "Optional[str]" = None,
+        background: "Optional[BackgroundTask | BackgroundTasks]" = None,
+        context: "Optional[dict[str, Any]]" = None,
+        cookies: "Optional[ResponseCookies]" = None,
+        encoding: "str" = "utf-8",
+        headers: "Optional[ResponseHeaders]" = None,
+        media_type: "Optional[Union[MediaType, str]]" = None,
+        status_code: "int" = HTTP_200_OK,
+        type_encoders: "Optional[TypeEncodersMap]" = None,
     ) -> None:
         """Handle the rendering of a given template into a bytes string.
 
@@ -82,6 +82,9 @@ class InertiaResponse(Response[T]):
                 the media type based on the template name. If this fails, fall back to ``text/plain``.
             status_code: A value for the response HTTP status code.
             type_encoders: A mapping of types to callables that transform them into types supported for serialization.
+
+        Raises:
+            ValueError: If both template_name and template_str are provided.
         """
         if template_name and template_str:
             msg = "Either template_name or template_str must be provided, not both."
@@ -106,10 +109,10 @@ class InertiaResponse(Response[T]):
 
     def create_template_context(
         self,
-        request: Request[UserT, AuthT, StateT],
-        page_props: PageProps[T],
-        type_encoders: TypeEncodersMap | None = None,
-    ) -> dict[str, Any]:
+        request: "Request[UserT, AuthT, StateT]",
+        page_props: "PageProps[T]",
+        type_encoders: "Optional[TypeEncodersMap]" = None,
+    ) -> "dict[str, Any]":
         """Create a context object for the template.
 
         Args:
@@ -130,20 +133,20 @@ class InertiaResponse(Response[T]):
             "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
         }
 
-    def to_asgi_response(  # noqa: C901, PLR0912
+    def to_asgi_response(  # noqa: C901
         self,
-        app: Litestar | None,
-        request: Request[UserT, AuthT, StateT],
+        app: "Optional[Litestar]",
+        request: "Request[UserT, AuthT, StateT]",
         *,
-        background: BackgroundTask | BackgroundTasks | None = None,
-        cookies: Iterable[Cookie] | None = None,
-        encoded_headers: Iterable[tuple[bytes, bytes]] | None = None,
-        headers: dict[str, str] | None = None,
-        is_head_response: bool = False,
-        media_type: MediaType | str | None = None,
-        status_code: int | None = None,
-        type_encoders: TypeEncodersMap | None = None,
-    ) -> ASGIResponse:
+        background: "Optional[Union[BackgroundTask, BackgroundTasks]]" = None,
+        cookies: "Optional[Iterable[Cookie]]" = None,
+        encoded_headers: "Optional[Iterable[tuple[bytes, bytes]]]" = None,
+        headers: "Optional[dict[str, str]]" = None,
+        is_head_response: "bool" = False,
+        media_type: "Optional[Union[MediaType, str]]" = None,
+        status_code: "Optional[int]" = None,
+        type_encoders: "Optional[TypeEncodersMap]" = None,
+    ) -> "ASGIResponse":
         if app is not None:
             warn_deprecation(
                 version="2.1",
@@ -261,9 +264,9 @@ class InertiaExternalRedirect(Response[Any]):
 
     def __init__(
         self,
-        request: Request[Any, Any, Any],
-        redirect_to: str,
-        **kwargs: Any,
+        request: "Request[Any, Any, Any]",
+        redirect_to: "str",
+        **kwargs: "Any",
     ) -> None:
         """Initialize external redirect, Set status code to 409 (required by Inertia),
         and pass redirect url.
@@ -282,9 +285,9 @@ class InertiaRedirect(Redirect):
 
     def __init__(
         self,
-        request: Request[Any, Any, Any],
-        redirect_to: str,
-        **kwargs: Any,
+        request: "Request[Any, Any, Any]",
+        redirect_to: "str",
+        **kwargs: "Any",
     ) -> None:
         """Initialize external redirect, Set status code to 409 (required by Inertia),
         and pass redirect url.
@@ -304,8 +307,8 @@ class InertiaBack(Redirect):
 
     def __init__(
         self,
-        request: Request[Any, Any, Any],
-        **kwargs: Any,
+        request: "Request[Any, Any, Any]",
+        **kwargs: "Any",
     ) -> None:
         """Initialize external redirect, Set status code to 409 (required by Inertia),
         and pass redirect url.

@@ -262,17 +262,29 @@ lint.ignore = [
   "PLR0913", # too many arguments
   "PT",
   "TD",
+  "ARG002",  # ignore for now; investigate
+  "ARG003",  # ignore for now; investigate
   "PERF203", # ignore for now; investigate
+  "PD011",   # pandas
+  "PLR0912",
   "ISC001",
   "COM812",
+  "CPY001",
+  "PGH003",
+  "FA100",
+  "PLC0415", # import should be at the top of the file
+  "PLR0904", # too many public methods
+  "PLR0914",
+  "PLR0917",
+  "PLC2701", # private import
+  "S704",
+  "S404",
 ]
 lint.select = ["ALL"]
-# Allow unused variables when underscore-prefixed.
-lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 src = ["src/py/litestar_vite", "src/py/tests"]
 target-version = "py39"
 unsafe-fixes = true
-
+lint.extend-safe-fixes = ["TC"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -311,6 +323,7 @@ max-complexity = 12
   "UP006",
   "SLF001",
   "ERA001",
+
 ]
 "tools/*.py" = [ "PLR0911"]
 
@@ -318,8 +331,10 @@ max-complexity = 12
 known-first-party = ["litestar_vite", "tests"]
 
 [tool.pyright]
-venvPath = "."
 disableBytesTypePromotions = true
+reportPrivateImportUsage = "none"
+reportUnknownVariableType = "none"
+reportUnnecessaryContains = "none"
 exclude = [
   "docs",
   "src/py/tests/unit/test_extensions",
@@ -330,7 +345,6 @@ exclude = [
 include = ["src/py/litestar_vite"]
 pythonVersion = "3.9"
 strict = ["src/py/litestar_vite/**/*"]
-venv = ".venv"
 
 [tool.mypy]
 disallow_untyped_defs = false
@@ -350,66 +364,3 @@ module = "tests.*"
 [tool.codespell]
 ignore-words-list = "selectin"
 skip = 'uv.lock,examples/inertia/package-lock.json,examples/inertia/public/assets/*.js'
-
-[tool.git-cliff.changelog]
-body = """
-{% if version %}\
-    `Release [v{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }} <https://github.com/cofin/litestar-vite/releases/tag/v{{ version | trim_start_matches(pat="v") }}>`_
-    ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-    * `See All commits in v{{ version | trim_start_matches(pat="v") }} <https://github.com/cofin/litestar-vite/commits/v{{ version | trim_start_matches(pat="v") }}>`_
-{% else %}\
-    [unreleased]
-    ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-{% endif %}\
-{% if previous %}\
-    {% if previous.commit_id %}
-        `{{ previous.commit_id | truncate(length=7, end="") }} <https://github.com/cofin/litestar-vite/commit/{{ previous.commit_id }}>`_ ... \
-            `{{ commit_id | truncate(length=7, end="") }} <https://github.com/cofin/litestar-vite/commit/{{ commit_id }}>`_ \
-            | `See diff for {{ version | trim_start_matches(pat="v") }} <https://github.com/cofin/litestar-vite/compare/{{ previous.commit_id }}...{{ commit_id }}>`_
-    {% endif %}\
-{% endif %}\
-{% for group, commits in commits | group_by(attribute="group") %}
-    {{ group | upper_first }}
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    {% for commit in commits %}
-        * (`{{ commit.id | truncate(length=7, end="") }} <https://github.com/cofin/litestar-vite/commit/{{ commit.id }}>`_) {% if commit.breaking %}[**breaking**] {% endif %} - {{ commit.message | upper_first }} ({{ commit.author.name  }})\
-          {% for footer in commit.footers -%}
-            , {{ footer.token }}{{ footer.separator }}{{ footer.value }}\
-          {% endfor %}\
-    {% endfor %}
-{% endfor %}\n
-"""
-footer = """
-Litestar vite Changelog
-"""
-header = """
-=========
-Changelog
-=========\n
-All commits to this project will be documented in this file.\n
-"""
-trim = true
-
-[tool.git-cliff.git]
-commit_parsers = [
-  { message = "^feat", group = "Features" },
-  { message = "^fix", group = "Bug Fixes" },
-  { message = "^doc", group = "Documentation" },
-  { message = "^perf", group = "Performance" },
-  { message = "^refactor", group = "Refactor" },
-  { message = "^style", group = "Styling" },
-  { message = "^test", group = "Testing" },
-  { message = "^chore\\(release\\): prepare for", skip = true },
-  { message = "^chore", group = "Miscellaneous Tasks" },
-  { body = ".*security", group = "Security" },
-]
-conventional_commits = true
-filter_commits = false
-filter_unconventional = true
-ignore_tags = ""
-protect_breaking_commits = false
-skip_tags = "v0.1.0-beta.1"
-sort_commits = "oldest"
-split_commits = false
-tag_pattern = "v[0-9]*"
-topo_order = false

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -16,7 +14,7 @@ if TYPE_CHECKING:
     from litestar_vite.inertia.config import InertiaConfig
 
 
-def set_js_routes(app: Litestar) -> None:
+def set_js_routes(app: "Litestar") -> "None":
     """Generate the route structure of the application on startup."""
     from litestar_vite.inertia.routes import generate_js_routes
 
@@ -29,7 +27,7 @@ class InertiaPlugin(InitPluginProtocol):
 
     __slots__ = ("_portal", "config")
 
-    def __init__(self, config: InertiaConfig) -> None:
+    def __init__(self, config: "InertiaConfig") -> "None":
         """Initialize ``Inertia``.
 
         Args:
@@ -38,23 +36,36 @@ class InertiaPlugin(InitPluginProtocol):
         self.config = config
 
     @asynccontextmanager
-    async def lifespan(self, app: Litestar) -> AsyncGenerator[None, None]:
-        """Lifespan to ensure the event loop is available."""
+    async def lifespan(self, app: "Litestar") -> "AsyncGenerator[None, None]":
+        """Lifespan to ensure the event loop is available.
+
+        Args:
+            app: The :class:`Litestar <litestar.app.Litestar>` instance.
+
+        Yields:
+            An asynchronous context manager.
+        """
 
         with start_blocking_portal() as portal:
             self._portal = portal
             yield
 
     @property
-    def portal(self) -> BlockingPortal:
+    def portal(self) -> "BlockingPortal":
         """Get the portal."""
         return self._portal
 
-    def on_app_init(self, app_config: AppConfig) -> AppConfig:
+    def on_app_init(self, app_config: "AppConfig") -> "AppConfig":
         """Configure application for use with Vite.
 
         Args:
             app_config: The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
+
+        Raises:
+            ImproperlyConfiguredException: If the Inertia plugin is not properly configured.
+
+        Returns:
+            The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
         """
 
         from litestar.exceptions import ImproperlyConfiguredException
