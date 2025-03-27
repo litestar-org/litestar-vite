@@ -1,7 +1,5 @@
-from __future__ import annotations  # noqa: A005
-
 from dataclasses import dataclass
-from typing import Any, Generic, TypedDict, TypeVar
+from typing import Any, Generic, Optional, TypedDict, TypeVar
 
 __all__ = (
     "InertiaHeaderType",
@@ -32,8 +30,8 @@ class InertiaProps(Generic[T]):
 class InertiaHeaderType(TypedDict, total=False):
     """Type for inertia_headers parameter in get_headers()."""
 
-    enabled: bool | None
-    version: str | None
-    location: str | None
-    partial_data: str | None
-    partial_component: str | None
+    enabled: "Optional[bool]"
+    version: "Optional[str]"
+    location: "Optional[str]"
+    partial_data: "Optional[str]"
+    partial_component: "Optional[str]"

@@ -1,7 +1,5 @@
-from __future__ import annotations
-
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 from urllib.parse import unquote
 
 from litestar import Request
@@ -25,14 +23,20 @@ if TYPE_CHECKING:
 class InertiaDetails:
     """InertiaDetails holds all the values sent by Inertia client in headers and provide convenient properties."""
 
-    def __init__(self, request: Request[UserT, AuthT, StateT]) -> None:
+    def __init__(self, request: "Request[UserT, AuthT, StateT]") -> None:
         """Initialize :class:`InertiaDetails`"""
         self.request = request
 
-    def _get_header_value(self, name: InertiaHeaders) -> str | None:
+    def _get_header_value(self, name: "InertiaHeaders") -> "Optional[str]":
         """Parse request header
 
         Check for uri encoded header and unquotes it in readable format.
+
+        Args:
+            name: The header name.
+
+        Returns:
+            The header value.
         """
 
         if value := self.request.headers.get(name.value.lower()):
@@ -40,10 +44,16 @@ class InertiaDetails:
             return unquote(value) if is_uri_encoded else value
         return None
 
-    def _get_route_component(self) -> str | None:
+    def _get_route_component(self) -> "Optional[str]":
         """Get the route component.
 
-        Checks for the `component` key within the route  configuration.
+        Checks for the `component` key within the route handler configuration.
+
+        Args:
+            request: The request object.
+
+        Returns:
+            The route component.
         """
         rh = self.request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
         if rh:
@@ -51,37 +61,65 @@ class InertiaDetails:
         return None
 
     def __bool__(self) -> bool:
-        """Check if request is sent by an Inertia client."""
+        """Check if request is sent by an Inertia client.
+
+        Returns:
+            True if the request is sent by an Inertia client, False otherwise.
+        """
         return self._get_header_value(InertiaHeaders.ENABLED) == "true"
 
     @cached_property
-    def route_component(self) -> str | None:
-        """Partial Data Reload."""
+    def route_component(self) -> "Optional[str]":
+        """Get the route component.
+
+        Returns:
+            The route component.
+        """
         return self._get_route_component()
 
     @cached_property
-    def partial_component(self) -> str | None:
-        """Partial Data Reload."""
+    def partial_component(self) -> "Optional[str]":
+        """Get the partial component.
+
+        Returns:
+            The partial component.
+        """
         return self._get_header_value(InertiaHeaders.PARTIAL_COMPONENT)
 
     @cached_property
-    def partial_data(self) -> str | None:
-        """Partial Data Reload."""
+    def partial_data(self) -> "Optional[str]":
+        """Get the partial data.
+
+        Returns:
+            The partial data.
+        """
         return self._get_header_value(InertiaHeaders.PARTIAL_DATA)
 
     @cached_property
-    def referer(self) -> str | None:
-        """Partial Data Reload."""
+    def referer(self) -> "Optional[str]":
+        """Get the referer.
+
+        Returns:
+            The referer.
+        """
         return self._get_header_value(InertiaHeaders.REFERER)
 
     @cached_property
     def is_partial_render(self) -> bool:
-        """Is Partial Data Reload."""
+        """Check if the request is a partial render.
+
+        Returns:
+            True if the request is a partial render, False otherwise.
+        """
         return bool(self.partial_component == self.route_component and self.partial_data)
 
     @cached_property
     def partial_keys(self) -> list[str]:
-        """Is Partial Data Reload."""
+        """Get the partial keys.
+
+        Returns:
+            The partial keys.
+        """
         return self.partial_data.split(",") if self.partial_data is not None else []
 
 
@@ -90,7 +128,7 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
 
     __slots__ = ("inertia",)
 
-    def __init__(self, scope: Scope, receive: Receive = empty_receive, send: Send = empty_send) -> None:
+    def __init__(self, scope: "Scope", receive: "Receive" = empty_receive, send: "Send" = empty_send) -> None:
         """Initialize :class:`InertiaRequest`"""
         super().__init__(scope=scope, receive=receive, send=send)
         self.inertia = InertiaDetails(self)
@@ -111,6 +149,6 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
         return self.inertia.is_partial_render
 
     @property
-    def partial_keys(self) -> set[str]:
+    def partial_keys(self) -> "set[str]":
         """True if the route handler contains an inertia enabled configuration."""
         return set(self.inertia.partial_keys)

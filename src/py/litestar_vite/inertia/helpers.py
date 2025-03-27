@@ -1,20 +1,10 @@
-from __future__ import annotations
-
 import inspect
 from collections import defaultdict
 from collections.abc import Coroutine, Generator, Iterable, Mapping
 from contextlib import contextmanager
 from functools import lru_cache
 from textwrap import dedent
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Generic,
-    TypeVar,
-    cast,
-    overload,
-)
+from typing import TYPE_CHECKING, Any, Callable, Generic, Optional, TypeVar, Union, cast, overload
 
 from anyio.from_thread import BlockingPortal, start_blocking_portal
 from litestar.exceptions import ImproperlyConfiguredException
@@ -36,36 +26,43 @@ StaticT = TypeVar("StaticT", bound=object)
 
 
 @overload
-def lazy(key: str, value_or_callable: None) -> StaticProp[str, None]: ...
+def lazy(key: str, value_or_callable: "None") -> "StaticProp[str, None]": ...
 
 
 @overload
-def lazy(key: str, value_or_callable: T) -> StaticProp[str, T]: ...
+def lazy(key: str, value_or_callable: "T") -> "StaticProp[str, T]": ...
 
 
 @overload
-def lazy(key: str, value_or_callable: Callable[..., None] = ...) -> DeferredProp[str, None]: ...
+def lazy(key: str, value_or_callable: "Callable[..., None]" = ...) -> "DeferredProp[str, None]": ...
 
 
 @overload
-def lazy(key: str, value_or_callable: Callable[..., Coroutine[Any, Any, None]] = ...) -> DeferredProp[str, None]: ...
+def lazy(
+    key: str, value_or_callable: "Callable[..., Coroutine[Any, Any, None]]" = ...
+) -> "DeferredProp[str, None]": ...
 
 
 @overload
 def lazy(
     key: str,
-    value_or_callable: Callable[..., T | Coroutine[Any, Any, T]] = ...,  # pyright: ignore[reportInvalidTypeVarUse]
-) -> DeferredProp[str, T]: ...
+    value_or_callable: "Callable[..., Union[T, Coroutine[Any, Any, T]]]" = ...,  # pyright: ignore[reportInvalidTypeVarUse]
+) -> "DeferredProp[str, T]": ...
 
 
 def lazy(
     key: str,
-    value_or_callable: None
-    | Callable[T_ParamSpec, None | Coroutine[Any, Any, None]]
-    | T
-    | Callable[T_ParamSpec, T | Coroutine[Any, Any, T]] = None,
-) -> StaticProp[str, None] | StaticProp[str, T] | DeferredProp[str, T] | DeferredProp[str, None]:
-    """Wrap an async function to return a DeferredProp."""
+    value_or_callable: "Optional[Union[T, Callable[..., Coroutine[Any, Any, None]], Callable[..., T], Callable[..., Union[T, Coroutine[Any, Any, T]]]]]" = None,
+) -> "Union[StaticProp[str, None], StaticProp[str, T], DeferredProp[str, T], DeferredProp[str, None]]":
+    """Wrap an async function to return a DeferredProp.
+
+    Args:
+        key: The key to store the value under.
+        value_or_callable: The value or callable to store.
+
+    Returns:
+        The wrapped value or callable.
+    """
     if value_or_callable is None:
         return StaticProp[str, None](key=key, value=None)
 
@@ -78,15 +75,15 @@ def lazy(
 class StaticProp(Generic[PropKeyT, StaticT]):
     """A wrapper for static property evaluation."""
 
-    def __init__(self, key: PropKeyT, value: StaticT) -> None:
+    def __init__(self, key: "PropKeyT", value: "StaticT") -> None:
         self._key = key
         self._result = value
 
     @property
-    def key(self) -> PropKeyT:
+    def key(self) -> "PropKeyT":
         return self._key
 
-    def render(self, portal: BlockingPortal | None = None) -> StaticT:
+    def render(self, portal: "Optional[BlockingPortal]" = None) -> "StaticT":
         return self._result
 
 
@@ -94,19 +91,20 @@ class DeferredProp(Generic[PropKeyT, T]):
     """A wrapper for deferred property evaluation."""
 
     def __init__(
-        self, key: PropKeyT, value: Callable[..., None | T | Coroutine[Any, Any, T | None]] | None = None
+        self, key: "PropKeyT", value: "Optional[Callable[..., Optional[Union[T, Coroutine[Any, Any, T]]]]]" = None
     ) -> None:
         self._key = key
         self._value = value
         self._evaluated = False
-        self._result: T | None = None
+        self._result: "Optional[T]" = None
 
     @property
-    def key(self) -> PropKeyT:
+    def key(self) -> "PropKeyT":
         return self._key
 
+    @staticmethod
     @contextmanager
-    def with_portal(self, portal: BlockingPortal | None = None) -> Generator[BlockingPortal, None, None]:
+    def with_portal(portal: "Optional[BlockingPortal]" = None) -> "Generator[BlockingPortal, None, None]":
         if portal is None:
             with start_blocking_portal() as p:
                 yield p
@@ -115,11 +113,11 @@ class DeferredProp(Generic[PropKeyT, T]):
 
     @staticmethod
     def _is_awaitable(
-        v: Callable[..., T | Coroutine[Any, Any, T]],
-    ) -> TypeGuard[Coroutine[Any, Any, T]]:
+        v: "Callable[..., Union[T, Coroutine[Any, Any, T]]]",
+    ) -> "TypeGuard[Coroutine[Any, Any, T]]":
         return inspect.iscoroutinefunction(v)
 
-    def render(self, portal: BlockingPortal | None = None) -> T | None:
+    def render(self, portal: "Optional[BlockingPortal]" = None) -> "Union[T, None]":
         if self._evaluated:
             return self._result
         if self._value is None or not callable(self._value):
@@ -136,7 +134,7 @@ class DeferredProp(Generic[PropKeyT, T]):
             return self._result
 
 
-def is_lazy_prop(value: Any) -> TypeGuard[DeferredProp[Any, Any]]:
+def is_lazy_prop(value: "Any") -> "TypeGuard[Union[DeferredProp[Any, Any], StaticProp[Any, Any]]]":
     """Check if value is a deferred property.
 
     Args:
@@ -148,7 +146,7 @@ def is_lazy_prop(value: Any) -> TypeGuard[DeferredProp[Any, Any]]:
     return isinstance(value, (DeferredProp, StaticProp))
 
 
-def should_render(value: Any, partial_data: set[str] | None = None) -> bool:
+def should_render(value: "Any", partial_data: "Optional[set[str]]" = None) -> "bool":
     """Check if value should be rendered.
 
     Args:
@@ -164,7 +162,7 @@ def should_render(value: Any, partial_data: set[str] | None = None) -> bool:
     return True
 
 
-def is_or_contains_lazy_prop(value: Any) -> bool:
+def is_or_contains_lazy_prop(value: "Any") -> "bool":
     """Check if value is or contains a deferred property.
 
     Args:
@@ -184,13 +182,16 @@ def is_or_contains_lazy_prop(value: Any) -> bool:
     return False
 
 
-def lazy_render(value: T, partial_data: set[str] | None = None, portal: BlockingPortal | None = None) -> T:
+def lazy_render(
+    value: "T", partial_data: "Optional[set[str]]" = None, portal: "Optional[BlockingPortal]" = None
+) -> "T":
     """Filter deferred properties from the value based on partial data.
 
     Args:
         value: The value to filter
         partial_data: Keys for partial rendering
         portal: Optional portal to use for async rendering
+
     Returns:
         The filtered value
     """
@@ -220,9 +221,9 @@ def lazy_render(value: T, partial_data: set[str] | None = None, portal: Blocking
 
 
 def get_shared_props(
-    request: ASGIConnection[Any, Any, Any, Any],
-    partial_data: set[str] | None = None,
-) -> dict[str, Any]:
+    request: "ASGIConnection[Any, Any, Any, Any]",
+    partial_data: "Optional[set[str]]" = None,
+) -> "dict[str, Any]":
     """Return shared session props for a request.
 
     Args:
@@ -235,9 +236,9 @@ def get_shared_props(
     Note:
         Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
     """
-    props: dict[str, Any] = {}
-    flash: dict[str, list[str]] = defaultdict(list)
-    errors: dict[str, Any] = {}
+    props: "dict[str, Any]" = {}
+    flash: "dict[str, list[str]]" = defaultdict(list)
+    errors: "dict[str, Any]" = {}
     error_bag = request.headers.get("X-Inertia-Error-Bag", None)
 
     try:
@@ -272,10 +273,10 @@ def get_shared_props(
 
 
 def share(
-    connection: ASGIConnection[Any, Any, Any, Any],
-    key: str,
-    value: Any,
-) -> None:
+    connection: "ASGIConnection[Any, Any, Any, Any]",
+    key: "str",
+    value: "Any",
+) -> "None":
     """Share a value in the session.
 
     Args:
@@ -291,10 +292,10 @@ def share(
 
 
 def error(
-    connection: ASGIConnection[Any, Any, Any, Any],
-    key: str,
-    message: str,
-) -> None:
+    connection: "ASGIConnection[Any, Any, Any, Any]",
+    key: "str",
+    message: "str",
+) -> "None":
     """Set an error message in the session.
 
     Args:
@@ -309,9 +310,9 @@ def error(
         connection.logger.warning(msg)
 
 
-def js_routes_script(js_routes: Routes) -> Markup:
+def js_routes_script(js_routes: "Routes") -> "Markup":
     @lru_cache
-    def _markup_safe_json_dumps(js_routes: str) -> Markup:
+    def _markup_safe_json_dumps(js_routes: "str") -> "Markup":
         js = js_routes.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026").replace("'", "\\u0027")
         return Markup(js)
 

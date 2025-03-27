@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -18,43 +16,81 @@ class InertiaHeaders(str, Enum):
     REFERER = "Referer"
 
 
-def get_enabled_header(enabled: bool = True) -> dict[str, Any]:
-    """True if inertia is enabled."""
+def get_enabled_header(enabled: bool = True) -> "dict[str, Any]":
+    """True if inertia is enabled.
+
+    Args:
+        enabled: Whether inertia is enabled.
+
+    Returns:
+        The headers for inertia.
+    """
 
     return {InertiaHeaders.ENABLED.value: "true" if enabled else "false"}
 
 
-def get_version_header(version: str) -> dict[str, Any]:
-    """Return headers for change swap method response."""
+def get_version_header(version: str) -> "dict[str, Any]":
+    """Return headers for change swap method response.
+
+    Args:
+        version: The version of the inertia.
+
+    Returns:
+        The headers for inertia.
+    """
     return {InertiaHeaders.VERSION.value: version}
 
 
-def get_partial_data_header(partial: str) -> dict[str, Any]:
-    """Return headers for a partial data response."""
+def get_partial_data_header(partial: str) -> "dict[str, Any]":
+    """Return headers for a partial data response.
+
+    Args:
+        partial: The partial data.
+
+    Returns:
+        The headers for inertia.
+    """
     return {InertiaHeaders.PARTIAL_DATA.value: partial}
 
 
-def get_partial_component_header(partial: str) -> dict[str, Any]:
-    """Return headers for a partial data response."""
+def get_partial_component_header(partial: str) -> "dict[str, Any]":
+    """Return headers for a partial data response.
+
+    Args:
+        partial: The partial data.
+
+    Returns:
+        The headers for inertia.
+    """
     return {InertiaHeaders.PARTIAL_COMPONENT.value: partial}
 
 
-def get_headers(inertia_headers: InertiaHeaderType) -> dict[str, Any]:
-    """Return headers for Inertia responses."""
+def get_headers(inertia_headers: "InertiaHeaderType") -> "dict[str, Any]":
+    """Return headers for Inertia responses.
+
+    Args:
+        inertia_headers: The inertia headers.
+
+    Raises:
+        ValueError: If the inertia headers are None.
+
+    Returns:
+        The headers for inertia.
+    """
     if not inertia_headers:
         msg = "Value for inertia_headers cannot be None."
         raise ValueError(msg)
-    inertia_headers_dict: dict[str, Callable[..., dict[str, Any]]] = {
+    inertia_headers_dict: "dict[str, Callable[..., dict[str, Any]]]" = {
         "enabled": get_enabled_header,
         "partial_data": get_partial_data_header,
         "partial_component": get_partial_component_header,
         "version": get_version_header,
     }
 
-    header: dict[str, Any] = {}
-    response: dict[str, Any]
-    key: str
-    value: Any
+    header: "dict[str, Any]" = {}
+    response: "dict[str, Any]"
+    key: "str"
+    value: "Any"
 
     for key, value in inertia_headers.items():
         if value is not None:

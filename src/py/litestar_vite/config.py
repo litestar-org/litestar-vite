@@ -1,8 +1,7 @@
-from __future__ import annotations
-
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Union
 
 __all__ = ("ViteConfig",)
 TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
@@ -17,17 +16,17 @@ class ViteConfig:
     'plugins' key.
     """
 
-    bundle_dir: Path | str = field(default="public")
+    bundle_dir: "Union[Path, str]" = field(default="public")
     """Location of the compiled assets from  Vite.
 
     The manifest file will also be found here.
     """
-    resource_dir: Path | str = field(default="resources")
+    resource_dir: "Union[Path, str]" = field(default="resources")
     """The directory where all typescript/javascript source are written.
 
     In a standalone Vue or React application, this would be equivalent to the ``./src`` directory.
     """
-    public_dir: Path | str = field(default="public")
+    public_dir: "Union[Path, str]" = field(default="public")
     """The optional public directory Vite serves assets from.
 
     In a standalone Vue or React application, this would be equivalent to the ``./public`` directory.
@@ -45,9 +44,9 @@ class ViteConfig:
     """Enable HMR for Vite development server."""
     ssr_enabled: bool = False
     """Enable SSR."""
-    ssr_output_dir: Path | str | None = None
+    ssr_output_dir: "Union[Path, str, None]" = None
     """SSR Output path"""
-    root_dir: Path | str | None = None
+    root_dir: "Union[Path, str, None]" = None
     """The is the base path to your application.
 
    In a standalone Vue or React application, this would be equivalent to the top-level project folder containing the ``./src`` directory.

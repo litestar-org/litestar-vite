@@ -1,14 +1,9 @@
-from __future__ import annotations
-
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from click import Context, group, option
 from click import Path as ClickPath
-from litestar.cli._utils import (
-    LitestarEnv,
-    LitestarGroup,
-)
+from litestar.cli._utils import LitestarEnv, LitestarGroup  # pyright: ignore[reportPrivateImportUsage]
 
 if TYPE_CHECKING:
     from litestar import Litestar
@@ -89,18 +84,18 @@ def vite_group() -> None:
     is_flag=True,
 )
 def vite_init(
-    ctx: Context,
-    vite_port: int | None,
-    enable_ssr: bool | None,
-    asset_url: str | None,
-    root_path: Path | None,
-    bundle_path: Path | None,
-    resource_path: Path | None,
-    public_path: Path | None,
-    overwrite: bool,
-    verbose: bool,
-    no_prompt: bool,
-    no_install: bool,
+    ctx: "Context",
+    vite_port: "Optional[int]",
+    enable_ssr: "Optional[bool]",
+    asset_url: "Optional[str]",
+    root_path: "Optional[Path]",
+    bundle_path: "Optional[Path]",
+    resource_path: "Optional[Path]",
+    public_path: "Optional[Path]",
+    overwrite: "bool",
+    verbose: "bool",
+    no_prompt: "bool",
+    no_install: "bool",
 ) -> None:  # sourcery skip: low-code-quality
     """Run vite build."""
     import os
@@ -108,9 +103,7 @@ def vite_init(
     from importlib.util import find_spec
     from pathlib import Path
 
-    from litestar.cli._utils import (
-        console,
-    )
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
     from rich.prompt import Confirm
 
     from litestar_vite import VitePlugin
@@ -188,14 +181,14 @@ def vite_init(
     help="Install frontend packages.",
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
-def vite_install(app: Litestar, verbose: bool) -> None:
+def vite_install(app: "Litestar", verbose: "bool") -> None:
     """Run vite build."""
     import os
     import sys
     from importlib.util import find_spec
     from pathlib import Path
 
-    from litestar.cli._utils import console
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
     from litestar_vite.commands import execute_command
     from litestar_vite.plugin import VitePlugin
@@ -226,11 +219,9 @@ def vite_install(app: Litestar, verbose: bool) -> None:
     help="Building frontend assets with Vite.",
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
-def vite_build(app: Litestar, verbose: bool) -> None:
+def vite_build(app: "Litestar", verbose: "bool") -> None:
     """Run vite build."""
-    from litestar.cli._utils import (
-        console,
-    )
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
     from litestar_vite.commands import execute_command
     from litestar_vite.plugin import VitePlugin, set_environment
@@ -253,11 +244,9 @@ def vite_build(app: Litestar, verbose: bool) -> None:
     help="Serving frontend assets with Vite.",
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
-def vite_serve(app: Litestar, verbose: bool) -> None:
+def vite_serve(app: "Litestar", verbose: "bool") -> None:
     """Run vite serve."""
-    from litestar.cli._utils import (
-        console,
-    )
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
     from litestar_vite.commands import execute_command
     from litestar_vite.plugin import VitePlugin, set_environment
@@ -289,13 +278,19 @@ def vite_serve(app: Litestar, verbose: bool) -> None:
     show_default=True,
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
-def generate_js_routes(app: Litestar, output: Path, verbose: bool) -> None:
-    """Run vite serve."""
+def generate_js_routes(app: "Litestar", output: "Path", verbose: "bool") -> None:
+    """Run vite serve.
+
+    Args:
+        app: The Litestar application instance.
+        output: The path to the output file.
+        verbose: Whether to enable verbose output.
+
+    Raises:
+        LitestarCLIException: If the output file cannot be written.
+    """
     import msgspec
-    from litestar.cli._utils import (
-        LitestarCLIException,
-        console,
-    )
+    from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
     from litestar.serialization import encode_json, get_serializer
 
     from litestar_vite.plugin import VitePlugin, set_environment

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 import platform
 import signal
@@ -8,9 +6,9 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional, Union
 
-from litestar.cli._utils import console
+from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.plugins import CLIPlugin, InitPluginProtocol
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
@@ -36,40 +34,43 @@ if TYPE_CHECKING:
     from litestar_vite.loader import ViteAssetLoader
 
 
-def set_environment(config: ViteConfig) -> None:
+def set_environment(config: "ViteConfig") -> None:
     """Configure environment for easier integration"""
+    from litestar import __version__ as litestar_version
+
     os.environ.setdefault("ASSET_URL", config.asset_url)
     os.environ.setdefault("VITE_ALLOW_REMOTE", str(True))
     os.environ.setdefault("VITE_PORT", str(config.port))
     os.environ.setdefault("VITE_HOST", config.host)
     os.environ.setdefault("VITE_PROTOCOL", config.protocol)
-    os.environ.setdefault("APP_URL", f"http://localhost:{os.environ.get('LITESTAR_PORT', 8000)}")
+    os.environ.setdefault("LITESTAR_VERSION", litestar_version.formatted())
+    os.environ.setdefault("APP_URL", f"http://localhost:{os.environ.get('LITESTAR_PORT', '8000')}")
     if config.dev_mode:
         os.environ.setdefault("VITE_DEV_MODE", str(config.dev_mode))
 
 
 @dataclass
 class StaticFilesConfig:
-    after_request: AfterRequestHookHandler | None = None
-    after_response: AfterResponseHookHandler | None = None
-    before_request: BeforeRequestHookHandler | None = None
-    cache_control: CacheControlHeader | None = None
-    exception_handlers: ExceptionHandlersMap | None = None
-    guards: list[Guard] | None = None
-    middleware: Sequence[Middleware] | None = None
-    opt: dict[str, Any] | None = None
-    security: Sequence[SecurityRequirement] | None = None
-    tags: Sequence[str] | None = None
+    after_request: "Optional[AfterRequestHookHandler]" = None
+    after_response: "Optional[AfterResponseHookHandler]" = None
+    before_request: "Optional[BeforeRequestHookHandler]" = None
+    cache_control: "Optional[CacheControlHeader]" = None
+    exception_handlers: "Optional[ExceptionHandlersMap]" = None
+    guards: "Optional[list[Guard]]" = None
+    middleware: "Optional[Sequence[Middleware]]" = None
+    opt: "Optional[dict[str, Any]]" = None
+    security: "Optional[Sequence[SecurityRequirement]]" = None
+    tags: "Optional[Sequence[str]]" = None
 
 
 class ViteProcess:
     """Manages the Vite process."""
 
     def __init__(self) -> None:
-        self.process: subprocess.Popen | None = None  # pyright: ignore[reportUnknownMemberType,reportMissingTypeArgument]
+        self.process: "Optional[subprocess.Popen]" = None  # pyright: ignore[reportUnknownMemberType,reportMissingTypeArgument]
         self._lock = threading.Lock()
 
-    def start(self, command: list[str], cwd: Path | str | None) -> None:
+    def start(self, command: "list[str]", cwd: "Union[Path, str, None]") -> None:
         """Start the Vite process."""
 
         try:
@@ -116,9 +117,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
     def __init__(
         self,
-        config: ViteConfig | None = None,
-        asset_loader: ViteAssetLoader | None = None,
-        static_files_config: StaticFilesConfig | None = None,
+        config: "Optional[ViteConfig]" = None,
+        asset_loader: "Optional[ViteAssetLoader]" = None,
+        static_files_config: "Optional[StaticFilesConfig]" = None,
     ) -> None:
         """Initialize ``Vite``.
 
@@ -134,30 +135,33 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._config = config
         self._asset_loader = asset_loader
         self._vite_process = ViteProcess()
-        self._static_files_config: dict[str, Any] = static_files_config.__dict__ if static_files_config else {}
+        self._static_files_config: "dict[str, Any]" = static_files_config.__dict__ if static_files_config else {}
 
     @property
-    def config(self) -> ViteConfig:
+    def config(self) -> "ViteConfig":
         return self._config
 
     @property
-    def asset_loader(self) -> ViteAssetLoader:
+    def asset_loader(self) -> "ViteAssetLoader":
         from litestar_vite.loader import ViteAssetLoader
 
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader.initialize_loader(config=self._config)
         return self._asset_loader
 
-    def on_cli_init(self, cli: Group) -> None:
+    def on_cli_init(self, cli: "Group") -> None:
         from litestar_vite.cli import vite_group
 
         cli.add_command(vite_group)
 
-    def on_app_init(self, app_config: AppConfig) -> AppConfig:
+    def on_app_init(self, app_config: "AppConfig") -> "AppConfig":
         """Configure application for use with Vite.
 
         Args:
             app_config: The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
+
+        Returns:
+            The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
         """
         from litestar_vite.loader import render_asset_tag, render_hmr_client
 
@@ -187,8 +191,15 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         return app_config
 
     @contextmanager
-    def server_lifespan(self, app: Litestar) -> Iterator[None]:
-        """Manage Vite server process lifecycle."""
+    def server_lifespan(self, app: "Litestar") -> "Iterator[None]":
+        """Manage Vite server process lifecycle.
+
+        Args:
+            app: The :class:`Litestar <litestar.app.Litestar>` instance.
+
+        Yields:
+            An iterator of None.
+        """
 
         if self._config.use_server_lifespan and self._config.dev_mode:
             command_to_run = self._config.run_command if self._config.hot_reload else self._config.build_watch_command
@@ -208,9 +219,4 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 self._vite_process.stop()
                 console.print("[yellow]Vite process stopped.[/]")
         else:
-            manifest_path = Path(f"{self._config.bundle_dir}/{self._config.manifest_name}")
-            if manifest_path.exists():
-                console.rule(f"[yellow]Serving assets using manifest at `{manifest_path!s}`.[/]", align="left")
-            else:
-                console.rule(f"[yellow]Serving assets without manifest at `{manifest_path!s}`.[/]", align="left")
             yield

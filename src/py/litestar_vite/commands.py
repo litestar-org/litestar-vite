@@ -1,9 +1,8 @@
-from __future__ import annotations
-
 import platform
 import subprocess
+from collections.abc import MutableMapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 if TYPE_CHECKING:
     from collections.abc import MutableMapping
@@ -11,18 +10,18 @@ if TYPE_CHECKING:
     from jinja2 import Environment, Template
     from litestar import Litestar
 
-VITE_INIT_TEMPLATES: set[str] = {"package.json.j2", "tsconfig.json.j2", "vite.config.ts.j2"}
-DEFAULT_RESOURCES: set[str] = {"styles.css.j2", "main.ts.j2"}
-DEFAULT_DEV_DEPENDENCIES: dict[str, str] = {
+VITE_INIT_TEMPLATES: "set[str]" = {"package.json.j2", "tsconfig.json.j2", "vite.config.ts.j2"}
+DEFAULT_RESOURCES: "set[str]" = {"styles.css.j2", "main.ts.j2"}
+DEFAULT_DEV_DEPENDENCIES: "dict[str, str]" = {
     "typescript": "^5.7.2",
     "vite": "^6.0.6",
     "litestar-vite-plugin": "^0.13.0",
     "@types/node": "^22.10.2",
 }
-DEFAULT_DEPENDENCIES: dict[str, str] = {"axios": "^1.7.9"}
+DEFAULT_DEPENDENCIES: "dict[str, str]" = {"axios": "^1.7.9"}
 
 
-def to_json(value: Any) -> str:
+def to_json(value: "Any") -> str:
     """Serialize JSON field values.
 
     Args:
@@ -37,15 +36,15 @@ def to_json(value: Any) -> str:
 
 
 def init_vite(
-    app: Litestar,
-    root_path: Path,
-    resource_path: Path,
-    asset_url: str,
-    public_path: Path,
-    bundle_path: Path,
-    enable_ssr: bool,
+    app: "Litestar",
+    root_path: "Path",
+    resource_path: "Path",
+    asset_url: "str",
+    public_path: "Path",
+    bundle_path: "Path",
+    enable_ssr: "bool",
     vite_port: int,
-    hot_file: Path,
+    hot_file: "Path",
     litestar_port: int,
 ) -> None:
     """Initialize a new Vite project.
@@ -63,7 +62,7 @@ def init_vite(
         litestar_port: Port for Litestar server.
     """
     from jinja2 import Environment, FileSystemLoader, select_autoescape
-    from litestar.cli._utils import console
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
     from litestar.utils import module_loader
 
     template_path = module_loader.module_to_os_path("litestar_vite.templates")
@@ -72,11 +71,11 @@ def init_vite(
         autoescape=select_autoescape(),
     )
 
-    enabled_templates: set[str] = VITE_INIT_TEMPLATES
-    enabled_resources: set[str] = DEFAULT_RESOURCES
-    dependencies: dict[str, str] = DEFAULT_DEPENDENCIES
-    dev_dependencies: dict[str, str] = DEFAULT_DEV_DEPENDENCIES
-    templates: dict[str, Template] = {
+    enabled_templates: "set[str]" = VITE_INIT_TEMPLATES
+    enabled_resources: "set[str]" = DEFAULT_RESOURCES
+    dependencies: "dict[str, str]" = DEFAULT_DEPENDENCIES
+    dev_dependencies: "dict[str, str]" = DEFAULT_DEV_DEPENDENCIES
+    templates: "dict[str, Template]" = {
         template_name: get_template(environment=vite_template_env, name=template_name)
         for template_name in enabled_templates
     }
@@ -124,16 +123,26 @@ def init_vite(
 
 
 def get_template(
-    environment: Environment,
-    name: str | Template,
-    parent: str | None = None,
-    globals: MutableMapping[str, Any] | None = None,  # noqa: A002
-) -> Template:
+    environment: "Environment",
+    name: "Union[str, Template]",
+    parent: "Optional[str]" = None,
+    globals: "Optional[MutableMapping[str, Any]]" = None,  # noqa: A002
+) -> "Template":
     return environment.get_template(name=name, parent=parent, globals=globals)
 
 
-def execute_command(command_to_run: list[str], cwd: str | Path | None = None) -> subprocess.CompletedProcess[bytes]:
-    """Run Vite in a subprocess."""
+def execute_command(
+    command_to_run: "list[str]", cwd: "Optional[Union[str, Path]]" = None
+) -> "subprocess.CompletedProcess[bytes]":
+    """Run Vite in a subprocess.
+
+    Args:
+        command_to_run: The command to run.
+        cwd: The current working directory.
+
+    Returns:
+        The completed process.
+    """
     kwargs = {}
     if cwd is not None:
         kwargs["cwd"] = Path(cwd)

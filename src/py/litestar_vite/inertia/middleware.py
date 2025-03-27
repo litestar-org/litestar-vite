@@ -1,6 +1,4 @@
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from litestar import Request
 from litestar.middleware import AbstractMiddleware
@@ -18,7 +16,7 @@ if TYPE_CHECKING:
     from litestar.types import ASGIApp, Receive, Scope, Send
 
 
-async def redirect_on_asset_version_mismatch(request: Request[UserT, AuthT, StateT]) -> InertiaRedirect | None:
+def redirect_on_asset_version_mismatch(request: "Request[UserT, AuthT, StateT]") -> "Optional[InertiaRedirect]":
     if getattr(request, "is_inertia", None) is None:
         return None
     inertia_version = request.headers.get("X-Inertia-Version")
@@ -32,7 +30,7 @@ async def redirect_on_asset_version_mismatch(request: Request[UserT, AuthT, Stat
 
 
 class InertiaMiddleware(AbstractMiddleware):
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: "ASGIApp") -> None:
         super().__init__(app)
         self.app = app
 
@@ -43,7 +41,7 @@ class InertiaMiddleware(AbstractMiddleware):
         send: "Send",
     ) -> None:
         request = Request[Any, Any, Any](scope=scope)
-        redirect = await redirect_on_asset_version_mismatch(request)
+        redirect = redirect_on_asset_version_mismatch(request)
         if redirect is not None:
             response = redirect.to_asgi_response(app=None, request=request)  # pyright: ignore[reportUnknownMemberType]
             await response(scope, receive, send)

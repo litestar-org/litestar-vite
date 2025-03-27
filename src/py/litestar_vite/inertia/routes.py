@@ -1,13 +1,11 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from litestar.app import DEFAULT_OPENAPI_CONFIG
 from litestar.cli._utils import (
-    remove_default_schema_routes,
-    remove_routes_with_patterns,
+    remove_default_schema_routes,  # pyright: ignore[reportPrivateImportUsage]
+    remove_routes_with_patterns,  # pyright: ignore[reportPrivateImportUsage]
 )
 from litestar.routes import ASGIRoute, WebSocketRoute
 from litestar.serialization import encode_json
@@ -29,10 +27,10 @@ EXCLUDED_METHODS = {"HEAD", "OPTIONS", "TRACE"}
 
 
 def generate_js_routes(
-    app: Litestar,
-    exclude: tuple[str, ...] | None = None,
-    schema: bool = False,
-) -> Routes:
+    app: "Litestar",
+    exclude: "Optional[tuple[str, ...]]" = None,
+    schema: "bool" = False,
+) -> "Routes":
     sorted_routes = sorted(app.routes, key=lambda r: r.path)
     if not schema:
         openapi_config = app.openapi_config or DEFAULT_OPENAPI_CONFIG
