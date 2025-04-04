@@ -104,7 +104,9 @@ class ViteAssetLoader(metaclass=SingletonMeta):
         Returns:
             The manifest loader.
         """
-        return cls(config=config)
+        _cls = cls(config=config)
+        _cls.parse_manifest()
+        return _cls
 
     @cached_property
     def version_id(self) -> str:
