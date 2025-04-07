@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Litestar + Vite</title>
+    {% set title = title | default("Testing") -%}
+    <title>{{title}}</title>
+
+    {{ vite("src/main.ts") }}
+  </head>
+  <body>
+    <h1>Hello from Litestar + Vite!</h1>
+    <div id="app"></div>
+  </body>
+</html>
