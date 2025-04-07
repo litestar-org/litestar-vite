@@ -14,14 +14,13 @@ TEMPLATE_DIR = BASE_DIR / "templates"
 async def index() -> Template:
     return Template(template_name="index.html", context={"title": "Vite + Litestar App"})
 
-# Litestar app
 app = Litestar(
     route_handlers=[index],
     plugins=[VitePlugin()],
     static_files_config=[
         StaticFilesConfig(
-            path="/assets",  # URL path
-            directories=[STATIC_DIR / "assets"],  # Points to the Vite output folder
+            path="/assets",
+            directories=[STATIC_DIR / "assets"],
             name="static",
         )
     ],
