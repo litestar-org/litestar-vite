@@ -167,3 +167,8 @@ cython_debug/
 
 node_modules
 .aider*
+
+.DS_Store
+*.swo
+*.swp
+.venv

@@ -1,0 +1,11 @@
+{
+  "src/test.ts": {
+    "file": "assets/test.B202Aa5Y.js",
+    "name": "test",
+    "src": "src/test.ts",
+    "isEntry": true,
+    "css": [
+      "assets/test.css"
+    ]
+  }
+}
