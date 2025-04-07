@@ -1,0 +1,5 @@
+__pycache__
+*.swo
+*.swp
+.DS_Store
+frontend/node_modules
