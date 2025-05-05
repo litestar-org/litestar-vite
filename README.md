@@ -37,7 +37,7 @@ app = Litestar(plugins=[vite], template_config=template_config, route_handlers=[
 
 ```
 
-Create a template to serve the application in `./templates/index.html.h2`:
+Create a template to serve the application in `./templates/index.html.j2`:
 
 ```html
 <!DOCTYPE html>
