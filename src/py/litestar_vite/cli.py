@@ -168,7 +168,6 @@ def vite_init(
             )
             install_dir = os.environ.get("VIRTUAL_ENV", sys.prefix)
             console.rule("[yellow]Starting Nodeenv installation process[/]", align="left")
-            console.print(f"Installing Node environment into {install_dir}")
             execute_command(command_to_run=[nodeenv_command, install_dir, "--force", "--quiet"], cwd=root_path)
 
         console.rule("[yellow]Starting package installation process[/]", align="left")
@@ -206,7 +205,6 @@ def vite_install(app: "Litestar", verbose: "bool") -> None:
         )
         install_dir = os.environ.get("VIRTUAL_ENV", sys.prefix)
         console.rule("[yellow]Starting Nodeenv installation process[/]", align="left")
-        console.print("Installing Node environment to %s:", install_dir)
         execute_command(command_to_run=[nodeenv_command, install_dir, "--force", "--quiet"], cwd=plugin.config.root_dir)
 
     console.rule("[yellow]Starting package installation process[/]", align="left")

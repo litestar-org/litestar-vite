@@ -291,17 +291,12 @@ function resolveLitestarPlugin(pluginConfig: Required<PluginConfig>): LitestarPl
         // Run middleware early to intercept before Vite's base/HTML handlers
         server.middlewares.use(async (req, res, next) => {
           const indexPath = await findIndexHtmlPath(server, pluginConfig)
-
-          // Check if index.html exists AND the request is for the root or /index.html
           if (indexPath && (req.url === "/" || req.url === "/index.html")) {
+            const currentUrl = req.url
             try {
               const htmlContent = await fs.promises.readFile(indexPath, "utf-8")
               // Transform the HTML using Vite's pipeline
-              const transformedHtml = await server.transformIndexHtml(
-                "/", // Use '/' as the URL for transformation context to ensure scripts are injected correctly relative to root
-                htmlContent,
-                req.originalUrl,
-              )
+              const transformedHtml = await server.transformIndexHtml(req.originalUrl ?? currentUrl, htmlContent, req.originalUrl)
               res.statusCode = 200
               res.setHeader("Content-Type", "text/html")
               res.end(transformedHtml)
@@ -673,5 +668,14 @@ function resolveDevelopmentEnvironmentTld(configPath: string): string {
  * The directory of the current file.
  */
 function dirname(): string {
-  return fileURLToPath(new URL(".", import.meta.url))
+  // Use path.resolve relative to process.cwd() as a more robust alternative
+  // Assumes the script runs from the project root or similar predictable location.
+  // Adjust the relative path if necessary based on actual execution context.
+  try {
+    // Attempt original method first
+    return fileURLToPath(new URL(".", import.meta.url))
+  } catch {
+    // Fallback for environments where import.meta.url is problematic (like some test runners)
+    return path.resolve(process.cwd(), "src/js/src")
+  }
 }

@@ -21,7 +21,7 @@ class InertiaConfig:
     """Optionally supply a path where unauthorized requests should redirect."""
     redirect_404: "Optional[str]" = None
     """Optionally supply a path where 404 requests should redirect."""
-    extra_static_page_props: "dict[str, Any]" = field(default_factory=dict)
+    extra_static_page_props: "dict[str, Any]" = field(default_factory=dict)  # pyright: ignore
     """A dictionary of values to automatically add in to page props on every response."""
-    extra_session_page_props: "set[str]" = field(default_factory=set)
+    extra_session_page_props: "set[str]" = field(default_factory=set)  # pyright: ignore
     """A set of session keys for which the value automatically be added (if it exists) to the response."""

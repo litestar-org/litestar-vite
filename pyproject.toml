@@ -279,6 +279,7 @@ lint.ignore = [
   "PLC2701", # private import
   "S704",
   "S404",
+  "PLR6301"
 ]
 lint.select = ["ALL"]
 src = ["src/py/litestar_vite", "src/py/tests"]

@@ -1,4 +1,4 @@
-#### Example Litestar app 
+#### Example Litestar app
 
 - Example litestar app using vite with gunicorn in production mode, not hot reload
 
