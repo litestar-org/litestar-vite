@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import litestar from "../src"
 import { getRelativeUrlPath, isCurrentRoute, isRoute, resolvePageComponent, route, toRoute } from "../src/inertia-helpers"
@@ -8,22 +9,35 @@ vi.mock("fs", async () => {
   const actual = await vi.importActual<typeof import("fs")>("fs")
 
   return {
+    promises: actual.promises,
     default: {
       ...actual,
       existsSync: (path: string) => ["resources/", "assets/", "src/"].includes(path) || actual.existsSync(path),
+      readFileSync: actual.readFileSync,
+      mkdirSync: actual.mkdirSync,
+      writeFileSync: actual.writeFileSync,
+      rmSync: actual.rmSync,
     },
   }
 })
+
+// Read actual placeholder content for assertions
+const actualPlaceholderContent = fs.readFileSync(path.resolve(__dirname, "../src/dev-server-index.html"), "utf-8")
+
 // Mock process.env
 const originalEnv = process.env
 beforeEach(() => {
   vi.resetModules()
   process.env = { ...originalEnv }
+  vi.clearAllMocks()
+  vi.spyOn(fs.promises, "access").mockRestore()
+  vi.spyOn(fs.promises, "readFile").mockRestore()
 })
 
 afterEach(() => {
   process.env = originalEnv
   vi.clearAllMocks()
+  vi.restoreAllMocks()
 })
 
 // Mock routes for testing
@@ -526,159 +540,217 @@ describe("litestar-vite-plugin", () => {
     let mockRes: any
     let mockNext: any
     let plugin: any
+    let serverHook: any
+    const testRootDir = "/test/root"
+    const testResourceDir = "resources"
+    const testPublicDir = "public"
+
+    const rootIndexPath = path.join(testRootDir, "index.html")
+    const resourceIndexPath = path.join(testRootDir, testResourceDir, "index.html")
+    const publicIndexPath = path.join(testRootDir, testPublicDir, "index.html")
+    // Use original placeholder path logic
+    const placeholderPath = path.resolve(__dirname, "..", "src", "dev-server-index.html")
 
     beforeEach(() => {
-      // Mock Vite dev server with complete config
+      vi.clearAllMocks()
+    })
+
+    const setupServer = async (pluginOptions = {}, serverConfig = {}) => {
       mockServer = {
         config: {
-          root: "/test/root",
+          root: testRootDir,
           envDir: process.cwd(),
           mode: "development",
           base: "/",
           server: {
             origin: "http://localhost:5173",
           },
+          logger: { info: vi.fn(), error: vi.fn() },
+          ...serverConfig,
         },
-        transformIndexHtml: vi.fn().mockResolvedValue("<html>transformed</html>"),
+        transformIndexHtml: vi.fn().mockImplementation(async (_url, html) => `<html>transformed ${html}</html>`),
         middlewares: {
           use: vi.fn().mockImplementation((middleware) => {
             mockMiddleware = middleware
           }),
         },
       }
-
-      // Mock response object
       mockRes = {
         statusCode: 0,
         setHeader: vi.fn(),
         end: vi.fn(),
       }
-
-      // Mock next function
       mockNext = vi.fn()
 
-      // Mock fs promises
-      vi.spyOn(fs.promises, "access").mockResolvedValue(undefined)
-      vi.spyOn(fs.promises, "readFile").mockResolvedValue("<html>test</html>")
-
-      // Initialize plugin and call configResolved
       plugin = litestar({
         input: "resources/js/app.js",
-        resourceDirectory: "resources",
+        resourceDirectory: testResourceDir,
+        autoDetectIndex: true,
+        ...pluginOptions,
       })[0]
 
-      // Call configResolved to set up resolvedConfig
       plugin.configResolved?.(mockServer.config)
-    })
 
-    it("serves index.html when detected", async () => {
-      // Mock findIndexHtmlPath to return a path
-      vi.spyOn(fs.promises, "access").mockResolvedValueOnce(undefined)
+      const hookResult = await plugin.configureServer?.(mockServer)
+      serverHook = typeof hookResult === "function" ? hookResult : hookResult?.()
 
-      // Configure the server
-      const serverHook = await plugin.configureServer?.(mockServer)
-      // @ts-ignore - Server hook can be a function or object with handler
-      if (serverHook && typeof serverHook === "function") {
-        await serverHook()
+      if (typeof serverHook === "function") {
+        serverHook()
       }
+    }
 
-      // Call the middleware with root path
-      await mockMiddleware(
-        {
-          url: "/",
-          originalUrl: "/",
-        },
-        mockRes,
-        mockNext,
-      )
-
-      // Verify the response
-      expect(mockRes.statusCode).toBe(200)
-      expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
-      expect(mockRes.end).toHaveBeenCalledWith("<html>transformed</html>")
-      expect(mockNext).not.toHaveBeenCalled()
-    })
-
-    it("serves placeholder when index.html is not detected", async () => {
-      // Mock findIndexHtmlPath to return null
-      vi.spyOn(fs.promises, "access").mockRejectedValueOnce(new Error("File not found"))
-
-      // Mock the placeholder file read
-      const placeholderContent = `<html>
-        <head>
-          <title>Litestar Vite</title>
-        </head>
-        <body>
-          <div id="app"></div>
-        </body>
-      </html>`
-
-      // Mock transformIndexHtml to only transform non-placeholder content
-      mockServer.transformIndexHtml = vi.fn().mockImplementation((url, html) => {
-        if (html.includes("Litestar Vite")) {
-          return html // Don't transform placeholder content
-        }
-        return "<html>transformed</html>" // Transform other content
+    const mockFs = (foundPath: string | null) => {
+      // Only mock access here
+      vi.spyOn(fs.promises, "access").mockImplementation(async (p) => {
+        if (p === foundPath) return undefined
+        throw new Error("File not found")
       })
+    }
 
-      vi.spyOn(fs.promises, "readFile").mockResolvedValueOnce(placeholderContent)
+    it("serves index.html from root when detected", async () => {
+      await setupServer()
+      mockFs(rootIndexPath)
+      vi.spyOn(fs.promises, "readFile").mockResolvedValue("<html>root</html>")
+      await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
 
-      // Configure the server
-      const serverHook = await plugin.configureServer?.(mockServer)
-      // @ts-ignore - Server hook can be a function or object with handler
-      if (serverHook && typeof serverHook === "function") {
-        await serverHook()
-      }
-
-      // Call the middleware with /index.html path
-      await mockMiddleware(
-        {
-          url: "/index.html",
-          originalUrl: "/index.html",
-        },
-        mockRes,
-        mockNext,
-      )
-
-      // Verify the response
       expect(mockRes.statusCode).toBe(200)
       expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
-      expect(mockRes.end).toHaveBeenCalledWith(expect.stringContaining("Litestar Vite"))
+      expect(mockServer.transformIndexHtml).toHaveBeenCalledWith("/", "<html>root</html>", "/")
+      expect(mockRes.end).toHaveBeenCalledWith("<html>transformed <html>root</html></html>")
       expect(mockNext).not.toHaveBeenCalled()
     })
 
-    it("passes through non-index.html requests", async () => {
-      // Configure the server
-      const serverHook = await plugin.configureServer?.(mockServer)
-      // @ts-ignore - Server hook can be a function or object with handler
-      if (serverHook && typeof serverHook === "function") {
-        await serverHook()
-      }
+    it("serves index.html from resource directory when detected", async () => {
+      await setupServer()
+      mockFs(resourceIndexPath)
+      vi.spyOn(fs.promises, "readFile").mockResolvedValue("<html>resource</html>")
+      await mockMiddleware({ url: "/index.html", originalUrl: "/index.html" }, mockRes, mockNext)
 
-      // Call the middleware with a non-index path
-      await mockMiddleware(
-        {
-          url: "/other",
-          originalUrl: "/other",
-        },
-        mockRes,
-        mockNext,
-      )
+      expect(mockRes.statusCode).toBe(200)
+      expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+      expect(mockServer.transformIndexHtml).toHaveBeenCalledWith("/index.html", "<html>resource</html>", "/index.html")
+      expect(mockRes.end).toHaveBeenCalledWith("<html>transformed <html>resource</html></html>")
+      expect(mockNext).not.toHaveBeenCalled()
+    })
 
-      // Verify the request was passed through
+    it("serves index.html from public directory when detected", async () => {
+      await setupServer()
+      mockFs(publicIndexPath)
+      vi.spyOn(fs.promises, "readFile").mockResolvedValue("<html>public</html>")
+      await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
+
+      expect(mockRes.statusCode).toBe(200)
+      expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+      expect(mockServer.transformIndexHtml).toHaveBeenCalledWith("/", "<html>public</html>", "/")
+      expect(mockRes.end).toHaveBeenCalledWith("<html>transformed <html>public</html></html>")
+      expect(mockNext).not.toHaveBeenCalled()
+    })
+
+    it("serves placeholder when index.html is not detected and url is /index.html", async () => {
+      const appUrl = "http://test.app"
+      process.env.APP_URL = appUrl // Set env BEFORE setupServer
+      await setupServer()
+      mockFs(null)
+      // No specific readFile mock needed, relies on actual file read via robust dirname
+
+      await mockMiddleware({ url: "/index.html", originalUrl: "/index.html" }, mockRes, mockNext)
+
+      expect(mockRes.statusCode).toBe(200)
+      expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+      // Expect actual content with replaced URL
+      expect(mockRes.end).toHaveBeenCalledWith(actualPlaceholderContent.replace(/{{ APP_URL }}/g, appUrl))
+      expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+      expect(mockNext).not.toHaveBeenCalled()
+    })
+
+    it("calls next() when index.html is not detected and url is /", async () => {
+      await setupServer()
+      mockFs(null)
+
+      await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
+
       expect(mockRes.statusCode).toBe(0)
       expect(mockRes.setHeader).not.toHaveBeenCalled()
       expect(mockRes.end).not.toHaveBeenCalled()
-      expect(mockNext).toHaveBeenCalled()
+      expect(mockNext).toHaveBeenCalledTimes(1)
+    })
+
+    it("calls next() for non-root and non-/index.html requests", async () => {
+      await setupServer()
+      mockFs(rootIndexPath)
+
+      await mockMiddleware({ url: "/other/path", originalUrl: "/other/path" }, mockRes, mockNext)
+
+      expect(mockRes.statusCode).toBe(0)
+      expect(mockRes.setHeader).not.toHaveBeenCalled()
+      expect(mockRes.end).not.toHaveBeenCalled()
+      expect(mockNext).toHaveBeenCalledTimes(1)
+    })
+
+    it("calls next() for / when autoDetectIndex is false, even if index exists", async () => {
+      await setupServer({ autoDetectIndex: false })
+      mockFs(rootIndexPath)
+
+      await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
+
+      expect(mockRes.statusCode).toBe(0)
+      expect(mockRes.setHeader).not.toHaveBeenCalled()
+      expect(mockRes.end).not.toHaveBeenCalled()
+      expect(mockNext).toHaveBeenCalledTimes(1)
+    })
+
+    it("serves placeholder for /index.html when autoDetectIndex is false", async () => {
+      const appUrl = "http://test.app:8000"
+      process.env.APP_URL = appUrl // Set env BEFORE setupServer
+      await setupServer({ autoDetectIndex: false })
+      mockFs(null)
+      // No specific readFile mock needed, relies on actual file read via robust dirname
+
+      await mockMiddleware({ url: "/index.html", originalUrl: "/index.html" }, mockRes, mockNext)
+
+      expect(mockRes.statusCode).toBe(200)
+      expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+      // Expect actual content with replaced URL
+      expect(mockRes.end).toHaveBeenCalledWith(actualPlaceholderContent.replace(/{{ APP_URL }}/g, appUrl))
+      expect(mockNext).not.toHaveBeenCalled()
+    })
+
+    it("handles errors during index.html reading", async () => {
+      await setupServer()
+      mockFs(rootIndexPath) // Access mock allows finding the path
+      // No specific readFile mock needed, let actual read fail
+
+      await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
+
+      // Check for any error and specific code
+      expect(mockNext).toHaveBeenCalledWith(expect.any(Error))
+      expect(mockNext.mock.calls[0][0].code).toBe("ENOENT")
+      expect(mockRes.end).not.toHaveBeenCalled()
+      expect(mockServer.config.logger.error).toHaveBeenCalledWith(expect.stringContaining("Error serving index.html"))
+    })
+
+    it("handles errors during placeholder reading", async () => {
+      await setupServer()
+      mockFs(null) // Access mock prevents finding a path
+      const placeholderError = new Error("Cannot read placeholder")
+      // Specific mock to force placeholder read error
+      vi.spyOn(fs.promises, "readFile").mockRejectedValue(placeholderError)
+
+      await mockMiddleware({ url: "/index.html", originalUrl: "/index.html" }, mockRes, mockNext)
+
+      expect(mockRes.statusCode).toBe(404)
+      expect(mockRes.end).toHaveBeenCalledWith(expect.stringContaining("Error loading placeholder"))
+      expect(mockNext).not.toHaveBeenCalled()
+      expect(mockServer.config.logger.error).toHaveBeenCalledWith(expect.stringContaining("Error serving placeholder index.html"))
     })
   })
 })
+
 describe("inertia-helpers", () => {
   const testPath = "./__data__/dummy.ts"
 
   beforeEach(() => {
     vi.resetModules()
-    // Mock the import.meta.glob functionality
     vi.mock("./__data__/dummy.ts", () => ({
       default: "Dummy File",
     }))
@@ -697,8 +769,7 @@ describe("inertia-helpers", () => {
     const pages = {
       [testPath]: { default: "Dummy File" },
     }
-    // @ts-ignore
-    const file = await resolvePageComponent<{ default: string }>(testPath, pages)
+    const file = await resolvePageComponent<{ default: string }>(testPath, pages as any)
     expect(file.default).toBe("Dummy File")
   })
 
@@ -706,12 +777,7 @@ describe("inertia-helpers", () => {
     const pages = {
       [testPath]: { default: "Dummy File" },
     }
-
-    const file = await resolvePageComponent<{ default: string }>(
-      ["missing-page", testPath],
-      // @ts-ignore
-      pages,
-    )
+    const file = await resolvePageComponent<{ default: string }>(["missing-page", testPath], pages as any)
     expect(file.default).toBe("Dummy File")
   })
 
@@ -773,7 +839,6 @@ describe("inertia-helpers", () => {
 
   describe("currentRoute()", () => {
     beforeEach(() => {
-      // Mock window.location
       Object.defineProperty(window, "location", {
         value: {
           pathname: "/api/users/list",
@@ -812,7 +877,6 @@ describe("inertia-helpers", () => {
 
   describe("isCurrentRoute()", () => {
     beforeEach(() => {
-      // Mock window.location
       Object.defineProperty(window, "location", {
         value: {
           pathname: "/api/users/list",

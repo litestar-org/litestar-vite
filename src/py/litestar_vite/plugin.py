@@ -78,7 +78,6 @@ class ViteProcess:
                 if self.process and self.process.poll() is None:  # pyright: ignore[reportUnknownMemberType]
                     return
 
-                console.print(f"Starting Vite process with command: {command}")
                 self.process = subprocess.Popen(
                     command,
                     cwd=cwd,
@@ -104,7 +103,6 @@ class ViteProcess:
                         if hasattr(signal, "SIGKILL"):
                             self.process.kill()  # pyright: ignore[reportUnknownMemberType]
                         self.process.wait(timeout=1.0)  # pyright: ignore[reportUnknownMemberType]
-                console.print("Stopping Vite process")
         except Exception as e:
             console.print(f"[red]Failed to stop Vite process: {e!s}[/]")
             raise
@@ -200,7 +198,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         Yields:
             An iterator of None.
         """
-
+        if self._config.set_environment:
+            set_environment(config=self._config)
         if self._config.use_server_lifespan and self._config.dev_mode:
             command_to_run = self._config.run_command if self._config.hot_reload else self._config.build_watch_command
 
@@ -208,9 +207,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 console.rule("[yellow]Starting Vite process with HMR Enabled[/]", align="left")
             else:
                 console.rule("[yellow]Starting Vite watch and build process[/]", align="left")
-
-            if self._config.set_environment:
-                set_environment(config=self._config)
 
             try:
                 self._vite_process.start(command_to_run, self._config.root_dir)
