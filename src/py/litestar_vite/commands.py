@@ -4,18 +4,22 @@ from collections.abc import MutableMapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Union
 
+from litestar_vite.config import JINJA_INSTALLED
+from litestar_vite.exceptions import MissingDependencyError
+
 if TYPE_CHECKING:
     from collections.abc import MutableMapping
 
     from jinja2 import Environment, Template
     from litestar import Litestar
 
+
 VITE_INIT_TEMPLATES: "set[str]" = {"package.json.j2", "tsconfig.json.j2", "vite.config.ts.j2"}
 DEFAULT_RESOURCES: "set[str]" = {"styles.css.j2", "main.ts.j2"}
 DEFAULT_DEV_DEPENDENCIES: "dict[str, str]" = {
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
-    "litestar-vite-plugin": "^0.13.2",
+    "litestar-vite-plugin": "^0.14.0",
     "@types/node": "^22.15.3",
 }
 DEFAULT_DEPENDENCIES: "dict[str, str]" = {"axios": "^1.9.0"}
@@ -60,10 +64,16 @@ def init_vite(
         vite_port: Port for Vite dev server.
         hot_file: Path to hot reload manifest.
         litestar_port: Port for Litestar server.
+
+    Raises:
+        MissingDependencyError: If required dependencies are not installed.
     """
-    from jinja2 import Environment, FileSystemLoader, select_autoescape
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
     from litestar.utils import module_loader
+
+    if not JINJA_INSTALLED:
+        raise MissingDependencyError(package="jinja2", install_package="jinja")
+    from jinja2 import Environment, FileSystemLoader, select_autoescape
 
     template_path = module_loader.module_to_os_path("litestar_vite.templates")
     vite_template_env = Environment(
@@ -128,6 +138,23 @@ def get_template(
     parent: "Optional[str]" = None,
     globals: "Optional[MutableMapping[str, Any]]" = None,  # noqa: A002
 ) -> "Template":
+    """Get a template from the Jinja environment.
+
+    Args:
+        environment: The Jinja :class:`jinja2.Environment`.
+        name: Template name or :class:`jinja2.Template` object.
+        parent: Parent template name.
+        globals: Global variables for the template.
+
+    Returns:
+        The :class:`jinja2.Template` object.
+
+    Raises:
+        MissingDependencyError: If Jinja2 is not available.
+    """
+    if not JINJA_INSTALLED:
+        raise MissingDependencyError(package="jinja2", install_package="jinja")
+
     return environment.get_template(name=name, parent=parent, globals=globals)
 
 

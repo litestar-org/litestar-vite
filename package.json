@@ -1,6 +1,6 @@
 {
   "name": "litestar-vite-plugin",
-  "version": "0.13.2",
+  "version": "0.14.0",
   "type": "module",
   "description": "Litestar plugin for Vite.",
   "keywords": ["litestar", "vite", "vite-plugin"],
@@ -41,14 +41,14 @@
     "esbuild": "0.25.3",
     "happy-dom": "^17.4.6",
     "typescript": "^5.8.3",
-    "vite": "^6.3.5",
+    "vite": "^7.1.2",
     "vitest": "^3.1.2"
   },
   "peerDependencies": {
-    "vite": "^5.0.0 || ^6.0.0"
+    "vite": "^5.0.0 || ^6.0.0 || ^7.0.0"
   },
   "engines": {
-    "node": "^18.0.0 || ^20.0.0 || >=22.0.0"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "dependencies": {
     "picocolors": "^1.1.1",

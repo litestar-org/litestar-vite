@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Union
 
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.plugins import CLIPlugin, InitPluginProtocol
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
+
+from litestar_vite.config import JINJA_INSTALLED
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -163,15 +164,21 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """
         from litestar_vite.loader import render_asset_tag, render_hmr_client
 
-        if app_config.template_config and isinstance(app_config.template_config.engine_instance, JinjaTemplateEngine):  # pyright: ignore[reportUnknownMemberType]
-            app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
-                key="vite_hmr",
-                template_callable=render_hmr_client,
-            )
-            app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
-                key="vite",
-                template_callable=render_asset_tag,
-            )
+        if JINJA_INSTALLED:
+            from litestar.contrib.jinja import JinjaTemplateEngine
+
+            if (
+                app_config.template_config  # pyright: ignore[reportUnknownMemberType]
+                and isinstance(app_config.template_config.engine_instance, JinjaTemplateEngine)  # pyright: ignore[reportUnknownMemberType]
+            ):
+                app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
+                    key="vite_hmr",
+                    template_callable=render_hmr_client,
+                )
+                app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
+                    key="vite",
+                    template_callable=render_asset_tag,
+                )
         if self._config.set_static_folders:
             static_dirs = [Path(self._config.bundle_dir), Path(self._config.resource_dir)]
             if Path(self._config.public_dir).exists() and self._config.public_dir != self._config.bundle_dir:

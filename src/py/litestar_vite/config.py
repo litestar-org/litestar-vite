@@ -1,10 +1,13 @@
 import os
 from dataclasses import dataclass, field
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Union
 
-__all__ = ("ViteConfig",)
+__all__ = ("JINJA_INSTALLED", "ViteConfig")
+
 TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
+JINJA_INSTALLED = bool(find_spec("jinja2"))
 
 
 @dataclass

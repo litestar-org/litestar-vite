@@ -172,3 +172,10 @@ node_modules
 *.swo
 *.swp
 .venv
+CLAUDE.md
+GEMINI.md
+
+# Example build outputs and package-lock files
+examples/*/public/
+examples/*/package-lock.json
+examples/*/frontend/package-lock.json
