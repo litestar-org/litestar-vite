@@ -141,13 +141,13 @@ def get_template(
     """Get a template from the Jinja environment.
 
     Args:
-        environment: The Jinja environment.
-        name: Template name or template object.
+        environment: The Jinja :class:`jinja2.Environment`.
+        name: Template name or :class:`jinja2.Template` object.
         parent: Parent template name.
         globals: Global variables for the template.
 
     Returns:
-        The template object.
+        The :class:`jinja2.Template` object.
 
     Raises:
         MissingDependencyError: If Jinja2 is not available.

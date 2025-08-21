@@ -112,6 +112,9 @@ nitpick_ignore = [
     (PY_OBJ, "litestar.connection.base.StateT"),
     (PY_EXC, "ImproperlyConfiguredException"),
     (PY_EXC, "NoRouteMatchFoundException"),
+    (PY_EXC, "MissingDependencyError"),
+    (PY_CLASS, "Environment"),
+    (PY_CLASS, "Template"),
 ]
 nitpick_ignore_regex = [
     (PY_RE, r"litestar_vite.*\.T"),
