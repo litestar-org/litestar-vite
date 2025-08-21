@@ -45,8 +45,9 @@ else:
     app_file = create_app_file("command_test_app.py", content=app_file_content)
     result = runner.invoke(root_command, ["--app", f"{app_file.stem}:app", "assets"])
 
-    # CLI should show help when no subcommand is provided (exit code 2 is expected)
-    assert result.exit_code == 2
+    # CLI should show help when no subcommand is provided
+    # Python 3.9 may return exit code 0 while newer versions return 2
+    assert result.exit_code in (0, 2)
     assert "Manage Vite Tasks." in result.output
 
 
