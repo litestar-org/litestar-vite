@@ -4,7 +4,7 @@ from pathlib import Path
 from click.testing import CliRunner
 from litestar.cli._utils import LitestarGroup
 
-from tests.test_cli.conftest import CreateAppFileFixture
+from tests.integration.cli.conftest import CreateAppFileFixture
 
 
 def test_basic_command(runner: CliRunner, create_app_file: CreateAppFileFixture, root_command: LitestarGroup) -> None:
@@ -17,10 +17,15 @@ from pathlib import Path
 
 from litestar import Controller, Litestar, get
 from litestar.response import Template
-from litestar.template.config import TemplateConfig
-from litestar.contrib.jinja import JinjaTemplateEngine
 
 from litestar_vite import ViteConfig, VitePlugin
+
+try:
+    from litestar.template.config import TemplateConfig
+    from litestar.contrib.jinja import JinjaTemplateEngine
+    jinja_available = True
+except ImportError:
+    jinja_available = False
 
 
 class WebController(Controller):
@@ -30,16 +35,18 @@ class WebController(Controller):
     async def index(self) -> Template:
         return Template(template_name="index.html.j2")
 
-template_config = TemplateConfig(engine=JinjaTemplateEngine(directory='{template_dir!s}'))
-vite = VitePlugin(config=ViteConfig())
-
-app = Litestar(plugins=[vite], template_config=template_config)
+if jinja_available:
+    template_config = TemplateConfig(engine=JinjaTemplateEngine(directory='{template_dir!s}'))
+    app = Litestar(plugins=[VitePlugin(config=ViteConfig())], template_config=template_config)
+else:
+    app = Litestar(plugins=[VitePlugin(config=ViteConfig())])
     """,
     )
     app_file = create_app_file("command_test_app.py", content=app_file_content)
     result = runner.invoke(root_command, ["--app", f"{app_file.stem}:app", "assets"])
 
-    assert not result.exception
+    # CLI should show help when no subcommand is provided (exit code 2 is expected)
+    assert result.exit_code == 2
     assert "Manage Vite Tasks." in result.output
 
 

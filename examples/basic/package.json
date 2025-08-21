@@ -11,8 +11,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
-    "litestar-vite-plugin": "^0.13.1",
+    "litestar-vite-plugin": "file:../../",
     "typescript": "^5.8.3",
-    "vite": "^6.3.5"
+    "vite": "^7.1.2"
   }
 }

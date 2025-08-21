@@ -14,7 +14,7 @@ from click.testing import CliRunner
 from litestar.cli._utils import _path_to_dotted_path  # pyright: ignore[reportPrivateUsage]
 from pytest_mock import MockerFixture
 
-from tests.test_cli import APP_BASIC_NO_ROUTES_FILE_CONTENT, APP_DEFAULT_CONFIG_FILE_CONTENT
+from tests.integration.cli import APP_BASIC_NO_ROUTES_FILE_CONTENT, APP_DEFAULT_CONFIG_FILE_CONTENT
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
@@ -73,7 +73,7 @@ def _purge_module(module_names: list[str], path: str | Path) -> None:
     for name in module_names:
         if name in sys.modules:
             del sys.modules[name]
-    Path(importlib.util.cache_from_source(path)).unlink(missing_ok=True)  # type: ignore[arg-type]
+    Path(importlib.util.cache_from_source(path)).unlink(missing_ok=True)
 
 
 @pytest.fixture

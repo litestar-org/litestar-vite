@@ -18,7 +18,7 @@ classifiers = [
   "Topic :: Database",
   "Topic :: Database :: Database Engines/Servers",
 ]
-dependencies = ["litestar[jinja]>=2.7.0"]
+dependencies = ["litestar>=2.7.0"]
 description = "Vite plugin for Litestar"
 keywords = ["litestar", "vite"]
 license = { text = "MIT" }
@@ -36,6 +36,7 @@ Issue = "https://github.com/cofin/litestar-vite/issues/"
 Source = "https://github.com/cofin/litestar-vite"
 
 [project.optional-dependencies]
+jinja = [ "jinja2"]
 nodeenv = ["nodeenv"]
 
 [build-system]

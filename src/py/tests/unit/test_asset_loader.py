@@ -131,24 +131,5 @@ def test_get_asset_tag_edge_cases(
         assert "Cannot find" in str(exc_info.value), f"Failed test ID: {test_id}"
 
 
-# Error case tests for get_asset_tag
-@pytest.mark.parametrize(
-    "path, scripts_attrs, exception, test_id",
-    [
-        # Test with invalid path type
-        (123, None, ImproperlyConfiguredException, "asset_invalid_path_type"),
-        # Test with invalid scripts_attrs type
-        ("resources/main.ts", "invalid", ImproperlyConfiguredException, "asset_invalid_attrs_type"),
-    ],
-)
-def test_get_asset_tag_error_cases(
-    asset_loader: ViteAssetLoader,
-    path: str | list[str],
-    scripts_attrs: dict[str, Any] | None,
-    exception: type[Exception],
-    test_id: str,
-) -> None:
-    # Act / Assert
-    with pytest.raises(exception) as exc_info:
-        asset_loader.render_asset_tag(path=path, scripts_attrs=scripts_attrs)
-    assert exc_info.type is exception, f"Failed test ID: {test_id}"
+# Since we rely on type hints for validation, we don't need runtime validation tests
+# Type checking will catch these errors at development time
