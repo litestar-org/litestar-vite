@@ -39,7 +39,7 @@
     "@biomejs/biome": "1.9.4",
     "@types/node": "^22.15.3",
     "esbuild": "0.25.3",
-    "happy-dom": "^17.4.6",
+    "happy-dom": "^20.0.2",
     "typescript": "^5.8.3",
     "vite": "^7.1.2",
     "vitest": "^3.1.2"
