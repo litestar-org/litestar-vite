@@ -172,10 +172,22 @@ node_modules
 *.swo
 *.swp
 .venv
-CLAUDE.md
-GEMINI.md
 
 # Example build outputs and package-lock files
 examples/*/public/
 examples/*/package-lock.json
 examples/*/frontend/package-lock.json
+
+# Gemini Agent System
+specs/archive/
+.gemini/mcp-tools.txt
+!specs/active/.gitkeep
+!specs/archive/.gitkeep
+!specs/guides/
+!specs/guides/**/*.md
+!specs/guides/**/*.yaml
+!specs/template-spec/
+!specs/template-spec/**/*.md
+
+# Agent telemetry logs
+specs/guides/telemetry/*.jsonl
