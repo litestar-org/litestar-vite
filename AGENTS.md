@@ -1,7 +1,7 @@
 # AI Agent Guidelines for litestar-vite
 
-**Version**: 1.0
-**Last Updated**: 2025-11-01
+**Version**: 2.0
+**Last Updated**: 2025-11-26
 
 This document provides guidance for AI assistants when working with this repository. It serves as the primary entry point for understanding the project structure, development workflows, and coding standards.
 
@@ -17,6 +17,9 @@ This document provides guidance for AI assistants when working with this reposit
 6. [Testing Guidelines](#testing-guidelines)
 7. [Documentation System](#documentation-system)
 8. [Agent-Specific Workflows](#agent-specific-workflows)
+9. [Claude Agent System](#claude-agent-system)
+10. [MCP Tools Available](#mcp-tools-available)
+11. [Quality Gates](#quality-gates)
 
 ---
 
@@ -34,18 +37,24 @@ The project consists of:
 
 #### Backend (Python)
 
-- **Language**: Python 3.8+
-- **Framework**: Litestar
-- **Testing**: pytest
-- **Linting & Formatting**: Ruff
-- **Type Checking**: MyPy
+| Component | Technology |
+|-----------|------------|
+| **Language** | Python 3.9+ |
+| **Framework** | Litestar |
+| **Testing** | pytest, pytest-asyncio, pytest-xdist |
+| **Linting** | Ruff |
+| **Type Checking** | MyPy, Pyright, Basedpyright |
+| **Package Manager** | uv |
 
 #### Frontend (TypeScript)
 
-- **Language**: TypeScript
-- **Build Tool**: Vite
-- **Testing**: Vitest
-- **Linting & Formatting**: Biome
+| Component | Technology |
+|-----------|------------|
+| **Language** | TypeScript |
+| **Build Tool** | Vite (5.x, 6.x, 7.x) |
+| **Testing** | Vitest |
+| **Linting** | Biome |
+| **Package Manager** | npm |
 
 ---
 
@@ -83,6 +92,13 @@ This project uses `uv` for Python package management, but all common commands ar
 
 ```
 litestar-vite/
+├── .claude/                    # Claude agent system
+│   └── agents/                 # Specialized agent definitions
+│       ├── prd.md             # PRD creation agent
+│       ├── expert.md          # Implementation agent
+│       ├── testing.md         # Testing agent
+│       ├── docs-vision.md     # Documentation & quality gate agent
+│       └── sync-guides.md     # Documentation sync agent
 ├── .gemini/                    # Gemini agent workflow system
 │   ├── GEMINI.md              # Gemini-specific workflow documentation
 │   └── commands/              # Custom slash commands (prd, implement, etc.)
@@ -91,22 +107,37 @@ litestar-vite/
 │   │   ├── architecture.md
 │   │   ├── code-style.md
 │   │   ├── development-workflow.md
-│   │   └── testing.md
+│   │   ├── testing.md
+│   │   └── quality-gates.yaml
 │   ├── active/                # Active development workspaces (gitignored)
-│   └── archive/               # Archived completed work (gitignored)
+│   ├── archive/               # Archived completed work (gitignored)
+│   └── template-spec/         # Workspace templates
 ├── src/
 │   ├── py/litestar_vite/      # Core Python library source
 │   │   ├── inertia/           # Inertia.js integration
-│   │   └── templates/         # Jinja2 templates for scaffolding
+│   │   │   ├── config.py      # InertiaConfig
+│   │   │   ├── plugin.py      # InertiaPlugin
+│   │   │   ├── middleware.py  # InertiaMiddleware
+│   │   │   ├── response.py    # InertiaResponse
+│   │   │   ├── request.py     # InertiaRequest
+│   │   │   └── helpers.py     # Helper functions
+│   │   ├── templates/         # Jinja2 templates for scaffolding
+│   │   ├── config.py          # ViteConfig
+│   │   ├── plugin.py          # VitePlugin
+│   │   ├── loader.py          # ViteAssetLoader
+│   │   ├── commands.py        # CLI commands
+│   │   └── cli.py             # CLI entry points
 │   └── js/                    # Core TypeScript library source
 │       ├── src/
+│       │   ├── index.ts       # Vite plugin
+│       │   └── inertia-helpers/
 │       └── tests/
 ├── examples/                   # Example applications
 │   ├── basic/
-│   └── inertia/
-├── tests/                      # Python test suite (for src/py)
-│   ├── unit/
-│   └── integration/
+│   ├── inertia/
+│   ├── flash/
+│   └── jinja/
+├── tests/                      # Additional Python tests
 ├── Makefile                    # Development automation
 ├── pyproject.toml              # Python project configuration (PEP 621)
 └── package.json                # Node.js project configuration
@@ -147,7 +178,7 @@ make check-all
 ```bash
 # 1. Make changes to src/js/src/
 # 2. Run tests
-npm run test --workspace=src/js
+npm run test
 
 # 3. Run linting and formatting (handled by pre-commit or manually)
 npx biome check --apply src/js/
@@ -168,11 +199,18 @@ npx biome check --apply src/js/
 - **Async/Await**: Use `async def` for I/O-bound operations where appropriate.
 - **Docstrings**: Google Style for all public APIs.
 - **Formatting & Linting**: Enforced by Ruff.
+- **Line Length**: 120 characters.
 
 **Anti-Patterns to Avoid**:
 
-- ❌ NO class-based tests (use function-based pytest).
-- ❌ NO `Optional[T]` syntax.
+| Pattern | Why It's Bad | Use Instead |
+|---------|--------------|-------------|
+| `from __future__ import annotations` | Project standard | Explicit string annotations |
+| `Optional[T]` | Old syntax | `T \| None` (PEP 604) |
+| `class TestFoo:` in tests | Project standard | Function-based pytest |
+| `hasattr()`/`getattr()` | Type safety | Type guards, explicit checks |
+| Nested `try/except` blocks | Complexity | Flat error handling |
+| Mutable default arguments | Dangerous | `None` with conditional |
 
 ### Frontend Standards
 
@@ -206,8 +244,16 @@ pytest -n auto src/py/tests/
 - **Frameworks**: `pytest` for Python, `Vitest` for TypeScript.
 - **Coverage Target**: >90% for all new and modified code.
 - **Fixtures**: Use pytest fixtures for setup/teardown in Python tests.
-- **Async Tests**: Use `pytest-asyncio`.
+- **Async Tests**: Use `pytest-asyncio` (auto mode enabled).
 - **Parallel**: All tests must be parallelizable.
+
+### Required Test Types
+
+1. **Unit tests** - Test components in isolation
+2. **Integration tests** - Test with real dependencies
+3. **Edge cases** - NULL, empty, error conditions
+4. **Performance tests** - N+1 query detection (for database ops)
+5. **Concurrent tests** - Race conditions (for shared state)
 
 ---
 
@@ -221,12 +267,13 @@ The [`specs/guides/`](./specs/guides/) directory contains the **single source of
 - **Code Style**: [`code-style.md`](./specs/guides/code-style.md) - Python and TypeScript conventions.
 - **Development Workflow**: [`development-workflow.md`](./specs/guides/development-workflow.md) - Process and tools.
 - **Testing**: [`testing.md`](./specs/guides/testing.md) - Testing strategies and commands.
+- **Quality Gates**: [`quality-gates.yaml`](./specs/guides/quality-gates.yaml) - Automated checks.
 
 These guides must be kept in sync with the codebase.
 
 ### Workspace System (`specs/active/` and `specs/archive/`)
 
-For **Gemini agents** following the structured workflow:
+For agents following the structured workflow:
 
 - `specs/active/` - Active development workspaces for features in progress.
 - `specs/archive/` - Completed and archived workspaces.
@@ -256,7 +303,165 @@ Gemini agents follow a **comprehensive, checkpoint-based workflow** defined in [
 
 See [`.gemini/GEMINI.md`](./.gemini/GEMINI.md) for the complete workflow documentation.
 
-### Other AI Assistants
+---
+
+## Claude Agent System
+
+Claude Code uses a **multi-agent system** where specialized agents handle specific phases of development.
+
+### Agent Architecture
+
+| Agent | File | Mission |
+|-------|------|---------|
+| **PRD** | `.claude/agents/prd.md` | Requirements analysis, PRD creation, task breakdown |
+| **Expert** | `.claude/agents/expert.md` | Implementation with deep technical knowledge |
+| **Testing** | `.claude/agents/testing.md` | Comprehensive test creation (90%+ coverage) |
+| **Docs & Vision** | `.claude/agents/docs-vision.md` | Documentation, quality gate, knowledge capture |
+| **Sync Guides** | `.claude/agents/sync-guides.md` | Documentation synchronization |
+
+### Sequential Development Phases
+
+1. **Phase 1: PRD** - Agent creates workspace in `specs/active/{slug}/`
+2. **Phase 2: Expert Research** - Research patterns, libraries, best practices
+3. **Phase 3: Implementation** - Expert writes production code
+4. **Phase 4: Testing** - Testing agent creates comprehensive tests (auto-invoked by Expert)
+5. **Phase 5: Documentation** - Docs & Vision updates guides (auto-invoked after Testing)
+6. **Phase 6: Quality Gate** - Full validation and knowledge capture
+7. **Phase 7: Archive** - Workspace moved to `specs/archive/`
+
+### Invoking Claude Agents
+
+```python
+# Start a new feature with PRD
+Task(
+    description="Create PRD for new feature",
+    prompt="Create PRD for: [feature description]",
+    subagent_type="prd"
+)
+
+# Implement from PRD
+Task(
+    description="Implement feature",
+    prompt="Implement feature from specs/active/{slug}",
+    subagent_type="expert"
+)
+
+# Sync documentation
+Task(
+    description="Sync documentation",
+    prompt="Ensure specs/guides/ matches codebase",
+    subagent_type="sync-guides"
+)
+```
+
+### Workspace Structure
+
+```
+specs/active/{slug}/
+├── prd.md          # Product Requirements Document
+├── tasks.md        # Implementation checklist
+├── recovery.md     # Session resume instructions
+├── research/       # Research findings
+│   └── plan.md     # Research plan
+└── tmp/            # Temporary files (gitignored)
+```
+
+---
+
+## MCP Tools Available
+
+### Context7 (Library Documentation)
+
+```python
+# Resolve library ID
+mcp__context7__resolve-library-id(libraryName="litestar")
+
+# Fetch documentation
+mcp__context7__get-library-docs(
+    context7CompatibleLibraryID="/litestar-org/litestar",
+    topic="dependency injection",
+    tokens=5000
+)
+```
+
+### Zen MCP (Analysis & Planning)
+
+- **zen.planner**: Multi-step planning with revision capabilities
+- **zen.chat**: Collaborative thinking and brainstorming
+- **zen.thinkdeep**: Deep architectural analysis
+- **zen.analyze**: Code quality and performance analysis
+- **zen.debug**: Systematic debugging workflow
+- **zen.consensus**: Multi-model consensus for decisions
+
+### Sequential Thinking
+
+Use for deep analysis requiring 12+ steps:
+
+```python
+mcp__sequential-thinking__sequentialthinking(
+    thought="Step 1: Analyze feature scope",
+    thought_number=1,
+    total_thoughts=15,
+    next_thought_needed=True
+)
+```
+
+### WebSearch
+
+Use for researching best practices and modern patterns:
+
+```python
+WebSearch(query="litestar vite integration best practices 2025")
+```
+
+---
+
+## Quality Gates
+
+All code must pass these gates (defined in `specs/guides/quality-gates.yaml`):
+
+### Implementation Gates
+
+- [ ] `make test` passes
+- [ ] `make lint` passes (zero errors)
+- [ ] `make type-check` passes
+
+### Testing Gates
+
+- [ ] 90%+ coverage for modified modules
+- [ ] Tests run in parallel (`pytest -n auto`)
+- [ ] N+1 query detection (if database ops)
+- [ ] Concurrent access tests (if shared state)
+
+### Documentation Gates
+
+- [ ] No anti-patterns in code
+- [ ] `specs/guides/` updated if new patterns introduced
+- [ ] Knowledge captured before archival
+
+---
+
+## Knowledge Capture Protocol
+
+After every significant feature:
+
+1. **Update guides** - Add new patterns to `specs/guides/`
+2. **Document APIs** - Ensure all public APIs have docstrings
+3. **Add examples** - Include working code examples
+4. **Update AGENTS.md** - If workflow improves
+
+---
+
+## Version Control Guidelines
+
+- **Branch Strategy**: Feature branches from `main`
+- **Commit Style**: Conventional commits (`feat:`, `fix:`, `chore:`, etc.)
+- **PR Requirements**: All quality gates must pass
+- **No force push** to `main`
+
+---
+
+## Other AI Assistants
 
 1. Read this `AGENTS.md` document first.
 2. Consult the relevant guides in `specs/guides/` for detailed patterns.

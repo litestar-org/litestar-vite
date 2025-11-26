@@ -106,13 +106,13 @@ class ViteAssetLoader:
         if self._config.dev_mode:
             # In dev mode, return the path relative to the static dir
             return str(self._config.static_path / name)
-        
+
         # In prod mode, look it up in the manifest
         manifest = self._read_manifest()
         asset_entry = manifest.get(name)
         if not asset_entry or not asset_entry.get("file"):
             raise AssetNotFoundError(f"Static asset '{name}' not found in manifest.")
-        
+
         url = f"{self._config.hot_file.parent.as_posix()}/{asset_entry['file']}"
         if self._config.base_url:
             return f"{self._config.base_url}{url}"

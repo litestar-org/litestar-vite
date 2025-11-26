@@ -98,16 +98,14 @@ def vite_init(
     no_install: "bool",
 ) -> None:  # sourcery skip: low-code-quality
     """Run vite build."""
-    import os
     import sys
-    from importlib.util import find_spec
     from pathlib import Path
 
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
     from rich.prompt import Confirm
 
     from litestar_vite import VitePlugin
-    from litestar_vite.commands import execute_command, init_vite
+    from litestar_vite.commands import init_vite
 
     if callable(ctx.obj):
         ctx.obj = ctx.obj()
@@ -159,20 +157,12 @@ def vite_init(
         litestar_port=env.port or 8000,
     )
     if not no_install:
-        if find_spec("nodeenv") is not None and plugin.config.detect_nodeenv:
-            """Detect nodeenv installed in the current python env before using a global version"""
-            nodeenv_command = (
-                str(Path(Path(sys.executable) / "nodeenv"))
-                if Path(Path(sys.executable) / "nodeenv").exists()
-                else "nodeenv"
-            )
-            install_dir = os.environ.get("VIRTUAL_ENV", sys.prefix)
-            console.rule("[yellow]Starting Nodeenv installation process[/]", align="left")
-            execute_command(command_to_run=[nodeenv_command, install_dir, "--force", "--quiet"], cwd=root_path)
+        if config.executor is None:
+            console.print("[red]Executor not configured.[/]")
+            return
 
         console.rule("[yellow]Starting package installation process[/]", align="left")
-
-        execute_command(command_to_run=plugin.config.install_command, cwd=root_path)
+        config.executor.install(root_path)
 
 
 @vite_group.command(
@@ -182,34 +172,23 @@ def vite_init(
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def vite_install(app: "Litestar", verbose: "bool") -> None:
     """Run vite build."""
-    import os
-    import sys
-    from importlib.util import find_spec
     from pathlib import Path
 
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
-    from litestar_vite.commands import execute_command
     from litestar_vite.plugin import VitePlugin
 
     if verbose:
         app.debug = True
     plugin = app.plugins.get(VitePlugin)
 
-    if find_spec("nodeenv") is not None and plugin.config.detect_nodeenv:
-        """Detect nodeenv installed in the current python env before using a global version"""
-        nodeenv_command = (
-            str(Path(Path(sys.executable) / "nodeenv"))
-            if Path(Path(sys.executable) / "nodeenv").exists()
-            else "nodeenv"
-        )
-        install_dir = os.environ.get("VIRTUAL_ENV", sys.prefix)
-        console.rule("[yellow]Starting Nodeenv installation process[/]", align="left")
-        execute_command(command_to_run=[nodeenv_command, install_dir, "--force", "--quiet"], cwd=plugin.config.root_dir)
-
     console.rule("[yellow]Starting package installation process[/]", align="left")
 
-    execute_command(command_to_run=plugin.config.install_command, cwd=plugin.config.root_dir)
+    if plugin.config.executor:
+        root_dir = Path(plugin.config.root_dir or Path.cwd())
+        plugin.config.executor.install(root_dir)
+    else:
+        console.print("[red]Executor not configured.[/]")
 
 
 @vite_group.command(
@@ -219,9 +198,11 @@ def vite_install(app: "Litestar", verbose: "bool") -> None:
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def vite_build(app: "Litestar", verbose: "bool") -> None:
     """Run vite build."""
+    from pathlib import Path
+
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
-    from litestar_vite.commands import execute_command
+    from litestar_vite.exceptions import ViteExecutionError
     from litestar_vite.plugin import VitePlugin, set_environment
 
     if verbose:
@@ -230,11 +211,16 @@ def vite_build(app: "Litestar", verbose: "bool") -> None:
     plugin = app.plugins.get(VitePlugin)
     if plugin.config.set_environment:
         set_environment(config=plugin.config)
-    p = execute_command(command_to_run=plugin.config.build_command, cwd=plugin.config.root_dir)
-    if p.returncode == 0:
-        console.print("[bold green] Assets built.[/]")
+
+    if plugin.config.executor:
+        try:
+            root_dir = Path(plugin.config.root_dir or Path.cwd())
+            plugin.config.executor.execute(plugin.config.build_command, cwd=root_dir)
+            console.print("[bold green] Assets built.[/]")
+        except ViteExecutionError as e:
+            console.print(f"[bold red] There was an error building the assets: {e!s}[/]")
     else:
-        console.print("[bold red] There was an error building the assets.[/]")
+        console.print("[red]Executor not configured.[/]")
 
 
 @vite_group.command(
@@ -244,9 +230,11 @@ def vite_build(app: "Litestar", verbose: "bool") -> None:
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def vite_serve(app: "Litestar", verbose: "bool") -> None:
     """Run vite serve."""
+    from pathlib import Path
+
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
-    from litestar_vite.commands import execute_command
+    from litestar_vite.exceptions import ViteExecutionError
     from litestar_vite.plugin import VitePlugin, set_environment
 
     if verbose:
@@ -260,8 +248,16 @@ def vite_serve(app: "Litestar", verbose: "bool") -> None:
     else:
         console.rule("[yellow]Starting Vite watch and build process[/]", align="left")
     command_to_run = plugin.config.run_command if plugin.config.hot_reload else plugin.config.build_watch_command
-    execute_command(command_to_run=command_to_run, cwd=plugin.config.root_dir)
-    console.print("[yellow]Vite process stopped.[/]")
+
+    if plugin.config.executor:
+        try:
+            root_dir = Path(plugin.config.root_dir or Path.cwd())
+            plugin.config.executor.execute(command_to_run, cwd=root_dir)
+            console.print("[yellow]Vite process stopped.[/]")
+        except ViteExecutionError as e:
+            console.print(f"[bold red] Vite process failed: {e!s}[/]")
+    else:
+        console.print("[red]Executor not configured.[/]")
 
 
 @vite_group.command(

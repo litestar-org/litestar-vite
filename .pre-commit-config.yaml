@@ -26,7 +26,7 @@ repos:
       - id: mixed-line-ending
       - id: trailing-whitespace
   - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: "v0.14.3"
+    rev: "v0.14.6"
     hooks:
       # Run the linter.
     - id: ruff
@@ -43,6 +43,6 @@ repos:
         additional_dependencies:
           - tomli
   - repo: https://github.com/sphinx-contrib/sphinx-lint
-    rev: "v1.0.1"
+    rev: "v1.0.2"
     hooks:
       - id: sphinx-lint

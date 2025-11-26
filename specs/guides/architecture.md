@@ -20,13 +20,29 @@ The backend code is located in `src/py/litestar_vite/`.
 -   **Dependency Injection**: Litestar's dependency injection is used to manage resources like database sessions and services. Dependencies should be defined in a reusable way.
 -   **Configuration**: Configuration is managed through Pydantic models within the `config.py` files, allowing for type-safe and environment-aware settings.
 
+### Configuration (`ViteConfig`)
+
+The `ViteConfig` class in `config.py` controls the integration behavior. Key options include:
+
+-   **`bundle_dir`**: Location of compiled assets (default: `public`).
+-   **`resource_dir`**: Location of source assets (default: `resources`).
+-   **`public_dir`**: Optional public directory for Vite (default: `public`).
+-   **`hot_reload`**: Enable HMR (Hot Module Replacement) (default: derived from `ViteConfig` environment or `True`).
+-   **`ssr_enabled`**: Enable Server-Side Rendering (default: `False`).
+-   **`is_react`**: Enable React specific support (default: `False`).
+-   **`asset_url`**: Base URL for generating asset references (default: `/static/`).
+-   **`host`**, **`port`**, **`protocol`**: Connection details for the Vite development server.
+-   **`run_command`**, **`build_command`**, **`install_command`**: Commands to manage the Vite lifecycle.
+-   **`executor`**: The `JSExecutor` instance responsible for running the commands (e.g. `NodeExecutor`, `BunExecutor`).
+
 ### Component Layers
 
 While not strictly enforced, the backend aims to follow a layered approach:
 
 1.  **Controllers/Route Handlers**: Defined in modules like `plugin.py` or `cli.py`. These are the entry points for HTTP requests or CLI commands. They are responsible for parsing input, calling the relevant services, and returning a response.
 2.  **Services**: (Conceptual) Business logic should be encapsulated within service classes or functions. This project may not have explicit `Service` classes, but logic is often grouped by feature (e.g., `loader.py`, `config.py`).
-3.  **Data Models / Schemas**: Pydantic or standard dataclasses are used for data validation and serialization.
+3.  **Executors**: The `JSExecutor` abstraction in `executor.py` handles the execution of external JavaScript runtime commands, isolating the CLI logic from the specific runtime (Node, Bun, Deno, etc.).
+4.  **Data Models / Schemas**: Pydantic or standard dataclasses are used for data validation and serialization.
 
 ## Frontend Architecture (TypeScript/Vite)
 
@@ -38,13 +54,39 @@ The core frontend code is located in `src/js/`. The `examples/` directory contai
 -   **Type Safety**: TypeScript is used throughout to ensure type safety.
 -   **Build Optimization**: Vite handles the development server (with HMR) and production builds. The configuration is in `vite.config.ts`.
 
+### Vite Plugin Configuration
+
+The `litestar-vite-plugin` (default export in `src/js/src/index.ts`) configures Vite to work with Litestar. Key options:
+
+-   **`input`**: Entry points to compile (required).
+-   **`assetUrl`**: Base path for asset URLs (default: `/static/`).
+-   **`bundleDirectory`**: Output directory for assets (default: `public/dist`).
+-   **`resourceDirectory`**: Source directory (default: `resources`).
+-   **`hotFile`**: Path to the hot file for HMR (default: `public/hot`).
+-   **`ssr`**: SSR entry point.
+-   **`ssrOutputDirectory`**: Output directory for SSR bundle.
+-   **`refresh`**: Configuration for full page reload on file changes.
+-   **`detectTls`**: Utilize TLS certificates.
+-   **`autoDetectIndex`**: Automatically detect `index.html` (default: `true`).
+
 ### Inertia.js Integration
 
-For SPA-style applications, the project uses an Inertia.js integration.
+For SPA-style applications, the project uses an Inertia.js integration. The backend components are located in `src/py/litestar_vite/inertia/`.
 
--   The Litestar backend provides an `InertiaPlugin` and `InertiaResponse`.
--   The backend controller returns an `InertiaResponse` with the component name and props.
--   The frontend (e.g., in `examples/inertia/`) uses an Inertia adapter (e.g., for Vue.js) to receive the response and render the correct frontend component without a full page reload.
+#### Core Components
+
+-   **`InertiaPlugin`**: Registers the Inertia integration with Litestar.
+-   **`InertiaResponse`**: The response class used to render Inertia pages.
+-   **`InertiaRequest`**: Extends Litestar's request with Inertia-specific properties.
+-   **`InertiaMiddleware`**: Handles the Inertia protocol (headers, shared data).
+
+#### Helpers
+
+-   **`InertiaRedirect`**, **`InertiaExternalRedirect`**: For handling redirects within Inertia.
+-   **`InertiaBack`**: Redirect back to the previous page.
+-   **`share`**: Share data with all Inertia responses.
+-   **`lazy`**: Define lazy-loaded props.
+-   **`error`**: Flash error messages.
 
 ## Communication
 

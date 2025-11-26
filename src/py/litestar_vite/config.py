@@ -2,9 +2,31 @@ import os
 from dataclasses import dataclass, field
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Union
+from typing import TYPE_CHECKING, Union
 
-__all__ = ("JINJA_INSTALLED", "ViteConfig")
+from litestar_vite.executor import (
+    BunExecutor,
+    DenoExecutor,
+    JSExecutor,
+    NodeenvExecutor,
+    NodeExecutor,
+    PnpmExecutor,
+    YarnExecutor,
+)
+
+if TYPE_CHECKING:
+    from litestar_vite.executor import JSExecutor
+
+
+__all__ = (
+    "JINJA_INSTALLED",
+    "BunViteConfig",
+    "DenoViteConfig",
+    "NPMViteConfig",
+    "PnpmViteConfig",
+    "ViteConfig",
+    "YarnViteConfig",
+)
 
 TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
 JINJA_INSTALLED = bool(find_spec("jinja2"))
@@ -94,6 +116,8 @@ class ViteConfig:
     set_static_folders: bool = True
     """When True, Litestar will automatically serve assets at the `ASSET_URL` path.
     """
+    executor: "Union[JSExecutor, None]" = None
+    """The executor to use for running Vite commands."""
 
     def __post_init__(self) -> None:
         """Ensure that directory is set if engine is a class."""
@@ -109,3 +133,85 @@ class ViteConfig:
             self.bundle_dir = Path(self.bundle_dir)
         if isinstance(self.ssr_output_dir, str):
             self.ssr_output_dir = Path(self.ssr_output_dir)
+
+        if self.executor is None:
+            if self.detect_nodeenv:
+                self.executor = NodeenvExecutor(self)
+            else:
+                self.executor = NodeExecutor()
+
+
+@dataclass
+class BunViteConfig(ViteConfig):
+    """Configuration for using Vite with Bun."""
+
+    run_command: list[str] = field(default_factory=lambda: ["bun", "run", "dev"])
+    build_watch_command: list[str] = field(default_factory=lambda: ["bun", "run", "watch"])
+    build_command: list[str] = field(default_factory=lambda: ["bun", "run", "build"])
+    install_command: list[str] = field(default_factory=lambda: ["bun", "install"])
+    detect_nodeenv: bool = False
+
+    def __post_init__(self) -> None:
+        if self.executor is None:
+            self.executor = BunExecutor()
+        super().__post_init__()
+
+
+@dataclass
+class DenoViteConfig(ViteConfig):
+    """Configuration for using Vite with Deno."""
+
+    run_command: list[str] = field(default_factory=lambda: ["deno", "task", "dev"])
+    build_watch_command: list[str] = field(default_factory=lambda: ["deno", "task", "watch"])
+    build_command: list[str] = field(default_factory=lambda: ["deno", "task", "build"])
+    install_command: list[str] = field(default_factory=lambda: ["deno", "install"])
+    detect_nodeenv: bool = False
+
+    def __post_init__(self) -> None:
+        if self.executor is None:
+            self.executor = DenoExecutor()
+        super().__post_init__()
+
+
+@dataclass
+class NPMViteConfig(ViteConfig):
+    """Configuration for using Vite with NPM."""
+
+    detect_nodeenv: bool = False
+
+    def __post_init__(self) -> None:
+        if self.executor is None:
+            self.executor = NodeExecutor()
+        super().__post_init__()
+
+
+@dataclass
+class YarnViteConfig(ViteConfig):
+    """Configuration for using Vite with Yarn."""
+
+    run_command: list[str] = field(default_factory=lambda: ["yarn", "dev"])
+    build_watch_command: list[str] = field(default_factory=lambda: ["yarn", "watch"])
+    build_command: list[str] = field(default_factory=lambda: ["yarn", "build"])
+    install_command: list[str] = field(default_factory=lambda: ["yarn", "install"])
+    detect_nodeenv: bool = False
+
+    def __post_init__(self) -> None:
+        if self.executor is None:
+            self.executor = YarnExecutor()
+        super().__post_init__()
+
+
+@dataclass
+class PnpmViteConfig(ViteConfig):
+    """Configuration for using Vite with PNPM."""
+
+    run_command: list[str] = field(default_factory=lambda: ["pnpm", "dev"])
+    build_watch_command: list[str] = field(default_factory=lambda: ["pnpm", "watch"])
+    build_command: list[str] = field(default_factory=lambda: ["pnpm", "build"])
+    install_command: list[str] = field(default_factory=lambda: ["pnpm", "install"])
+    detect_nodeenv: bool = False
+
+    def __post_init__(self) -> None:
+        if self.executor is None:
+            self.executor = PnpmExecutor()
+        super().__post_init__()

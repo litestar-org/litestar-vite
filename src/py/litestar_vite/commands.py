@@ -1,7 +1,4 @@
-import platform
-import subprocess
 from collections.abc import MutableMapping
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Union
 
 from litestar_vite.config import JINJA_INSTALLED
@@ -9,6 +6,7 @@ from litestar_vite.exceptions import MissingDependencyError
 
 if TYPE_CHECKING:
     from collections.abc import MutableMapping
+    from pathlib import Path
 
     from jinja2 import Environment, Template
     from litestar import Litestar
@@ -156,21 +154,3 @@ def get_template(
         raise MissingDependencyError(package="jinja2", install_package="jinja")
 
     return environment.get_template(name=name, parent=parent, globals=globals)
-
-
-def execute_command(
-    command_to_run: "list[str]", cwd: "Optional[Union[str, Path]]" = None
-) -> "subprocess.CompletedProcess[bytes]":
-    """Run Vite in a subprocess.
-
-    Args:
-        command_to_run: The command to run.
-        cwd: The current working directory.
-
-    Returns:
-        The completed process.
-    """
-    kwargs = {}
-    if cwd is not None:
-        kwargs["cwd"] = Path(cwd)
-    return subprocess.run(command_to_run, check=False, shell=platform.system() == "Windows", **kwargs)  # type: ignore[call-overload]

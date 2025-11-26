@@ -27,6 +27,7 @@ class TestVitePlugin:
         assert isinstance(plugin._config, ViteConfig)
         assert plugin._asset_loader is None
         assert plugin._static_files_config == {}
+        assert plugin._config.executor is not None
 
     def test_plugin_initialization_custom_config(self) -> None:
         """Test plugin initialization with custom configuration."""
@@ -36,6 +37,7 @@ class TestVitePlugin:
         assert plugin._config == config
         assert str(plugin._config.bundle_dir) == "custom/bundle"
         assert plugin._config.hot_reload is False
+        assert plugin._config.executor is not None
 
     def test_plugin_initialization_with_static_files_config(self) -> None:
         """Test plugin initialization with static files configuration."""
@@ -293,55 +295,60 @@ class TestViteProcess:
 
     def test_vite_process_initialization(self) -> None:
         """Test ViteProcess initialization."""
-        process = ViteProcess()
+        executor = Mock()
+        process = ViteProcess(executor)
 
         assert process.process is None
         assert process._lock is not None
 
-    @patch("subprocess.Popen")
-    def test_vite_process_start_success(self, mock_popen: Mock) -> None:
+    def test_vite_process_start_success(self) -> None:
         """Test successful Vite process start."""
         mock_process = Mock()
         mock_process.poll.return_value = None  # Process is running
-        mock_popen.return_value = mock_process
 
-        process = ViteProcess()
+        executor = Mock()
+        executor.run.return_value = mock_process
+
+        process = ViteProcess(executor)
         command = ["npm", "run", "dev"]
         cwd = "/test/path"
 
         process.start(command, cwd)
 
         assert process.process == mock_process
-        mock_popen.assert_called_once()
+        executor.run.assert_called_once_with(command, Path(cwd))
 
-    @patch("subprocess.Popen")
-    def test_vite_process_start_already_running(self, mock_popen: Mock) -> None:
+    def test_vite_process_start_already_running(self) -> None:
         """Test starting Vite process when already running."""
         mock_process = Mock()
         mock_process.poll.return_value = None  # Process is running
 
-        process = ViteProcess()
+        executor = Mock()
+        process = ViteProcess(executor)
         process.process = mock_process
 
         command = ["npm", "run", "dev"]
         process.start(command, None)
 
         # Should not create a new process
-        mock_popen.assert_not_called()
+        executor.run.assert_not_called()
 
-    @patch("subprocess.Popen", side_effect=Exception("Failed to start"))
     @patch("litestar_vite.plugin.console")
-    def test_vite_process_start_failure(self, mock_console: Mock, mock_popen: Mock) -> None:
+    def test_vite_process_start_failure(self, mock_console: Mock) -> None:
         """Test Vite process start failure."""
-        process = ViteProcess()
+        executor = Mock()
+        executor.run.side_effect = Exception("Failed to start")
+
+        process = ViteProcess(executor)
         command = ["npm", "run", "dev"]
 
         with pytest.raises(Exception, match="Failed to start"):
-            process.start(command, None)
+            process.start(command, "path")
 
     def test_vite_process_stop_no_process(self) -> None:
         """Test stopping when no process is running."""
-        process = ViteProcess()
+        executor = Mock()
+        process = ViteProcess(executor)
 
         # Should not raise an exception
         process.stop()
@@ -353,7 +360,8 @@ class TestViteProcess:
         mock_process.poll.return_value = None  # Process is running
         mock_process.wait.return_value = 0  # Process exits cleanly
 
-        process = ViteProcess()
+        executor = Mock()
+        process = ViteProcess(executor)
         process.process = mock_process
 
         process.stop()
@@ -371,7 +379,8 @@ class TestViteProcess:
         mock_process.poll.return_value = None  # Process is running
         mock_process.wait.side_effect = [subprocess.TimeoutExpired("cmd", 5.0), 0]
 
-        process = ViteProcess()
+        executor = Mock()
+        process = ViteProcess(executor)
         process.process = mock_process
 
         process.stop()
@@ -387,7 +396,8 @@ class TestViteProcess:
         mock_process.poll.return_value = None
         mock_process.terminate.side_effect = Exception("Stop failed")
 
-        process = ViteProcess()
+        executor = Mock()
+        process = ViteProcess(executor)
         process.process = mock_process
 
         with pytest.raises(Exception, match="Stop failed"):

@@ -1,5 +1,4 @@
 import os
-import platform
 import signal
 import subprocess
 import threading
@@ -32,6 +31,7 @@ if TYPE_CHECKING:
     )
 
     from litestar_vite.config import ViteConfig
+    from litestar_vite.executor import JSExecutor
     from litestar_vite.loader import ViteAssetLoader
 
 
@@ -67,23 +67,23 @@ class StaticFilesConfig:
 class ViteProcess:
     """Manages the Vite process."""
 
-    def __init__(self) -> None:
+    def __init__(self, executor: "JSExecutor") -> None:
         self.process: "Optional[subprocess.Popen]" = None  # pyright: ignore[reportUnknownMemberType,reportMissingTypeArgument]
         self._lock = threading.Lock()
+        self._executor = executor
 
     def start(self, command: "list[str]", cwd: "Union[Path, str, None]") -> None:
         """Start the Vite process."""
+        if cwd is not None and isinstance(cwd, str):
+            cwd = Path(cwd)
 
         try:
             with self._lock:
                 if self.process and self.process.poll() is None:  # pyright: ignore[reportUnknownMemberType]
                     return
 
-                self.process = subprocess.Popen(
-                    command,
-                    cwd=cwd,
-                    shell=platform.system() == "Windows",
-                )
+                if cwd:
+                    self.process = self._executor.run(command, cwd)
         except Exception as e:
             console.print(f"[red]Failed to start Vite process: {e!s}[/]")
             raise
@@ -133,7 +133,16 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             config = ViteConfig()
         self._config = config
         self._asset_loader = asset_loader
-        self._vite_process = ViteProcess()
+        # The executor should be initialized by config.__post_init__
+        # But if config was created without post_init running (unlikely if using dataclass normally), we might be in trouble
+        # Dataclasses call post_init automatically.
+        if self._config.executor is None:
+            # This fallback shouldn't strictly be needed if config is valid, but for safety:
+            from litestar_vite.executor import NodeExecutor
+
+            self._config.executor = NodeExecutor()
+
+        self._vite_process = ViteProcess(executor=self._config.executor)
         self._static_files_config: "dict[str, Any]" = static_files_config.__dict__ if static_files_config else {}
 
     @property

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Auto-detect available MCP tools for Gemini agent system."""
 
-import os
+from pathlib import Path
 
 
-def detect_mcp_tools():
+def detect_mcp_tools() -> dict[str, bool]:
     """Detect which MCP tools are available."""
     # This is a placeholder detection. A real implementation would
     # check for credentials, API availability, or specific configurations.
@@ -25,9 +25,10 @@ if __name__ == "__main__":
     tools = detect_mcp_tools()
 
     # Generate .gemini/mcp-tools.txt
-    os.makedirs(".gemini", exist_ok=True)
-    with open(".gemini/mcp-tools.txt", "w") as f:
-        f.write("Available MCP Tools (Auto-Detected):\\n\\n")
+    gemini_dir = Path(".gemini")
+    gemini_dir.mkdir(exist_ok=True)
+    with (gemini_dir / "mcp-tools.txt").open("w") as f:
+        f.write("Available MCP Tools (Auto-Detected):\n\n")
         for tool, available in tools.items():
             status = "✓ Available" if available else "✗ Not available"
-            f.write(f"- {tool.replace('_', ' ').title()}: {status}\\n")
+            f.write(f"- {tool.replace('_', ' ').title()}: {status}\n")

@@ -24,3 +24,17 @@ class MissingDependencyError(LitestarViteError, ImportError):
             f"'pip install litestar-vite[{install_package or package}]' to install litestar-vite with the required extra "
             f"or 'pip install {install_package or package}' to install the package separately"
         )
+
+
+class ViteExecutableNotFoundError(LitestarViteError):
+    """Raised when the vite executable is not found."""
+
+    def __init__(self, executable: str) -> None:
+        super().__init__(f"Executable {executable!r} not found.")
+
+
+class ViteExecutionError(LitestarViteError):
+    """Raised when the vite execution fails."""
+
+    def __init__(self, command: list[str], return_code: int, stderr: str) -> None:
+        super().__init__(f"Command {command!r} failed with return code {return_code}.\nStderr: {stderr}")
