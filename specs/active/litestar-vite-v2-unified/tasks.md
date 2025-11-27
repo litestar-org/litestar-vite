@@ -245,9 +245,119 @@
 
 ---
 
-## Phase 4: Inertia Enhancement
+## Phase 4: Inertia.js v2 Protocol Compliance
 
-### 4.1 Inertia SPA Mode
+**Note**: This phase brings full Inertia.js v2 support to litestar-vite. The current implementation has partial support for lazy/deferred props. See [PRD Inertia.js v2 section](./prd.md#inertiajs-v2-protocol-compliance) for complete analysis.
+
+### Current Implementation Status
+
+| Feature | Status |
+|---------|--------|
+| `lazy()` helper | ✅ Implemented |
+| `DeferredProp` class | ✅ Implemented |
+| `StaticProp` class | ✅ Implemented |
+| Partial rendering (`X-Inertia-Partial-Data`) | ✅ Implemented |
+| `deferredProps` in response | ❌ Missing |
+| Deferred prop groups | ❌ Missing |
+| `clearHistory` / `encryptHistory` | ❌ Missing |
+| Merge / Deep Merge props | ❌ Missing |
+| `WhenVisible` server support | ⚠️ Partial |
+| Prefetch cache headers | ❌ Missing |
+
+### 4.1 Update PageProps Type (types.py)
+
+**Priority**: High | **Effort**: Small
+
+- [ ] Add `clearHistory: bool = False` field
+- [ ] Add `encryptHistory: bool = False` field
+- [ ] Add `deferredProps: dict[str, list[str]] | None = None` field
+- [ ] Add `mergeProps: list[str] | None = None` field
+- [ ] Add `deepMergeProps: list[str] | None = None` field
+- [ ] Update serialization to use camelCase for JSON output
+- [ ] Tests for PageProps serialization
+
+### 4.2 Implement `defer()` Helper (helpers.py)
+
+**Priority**: High | **Effort**: Medium
+
+- [ ] Create `DeferredPropV2` dataclass with `fn`, `group`, `_evaluated`, `_result` fields
+- [ ] Implement `async evaluate()` method (handles sync and async callables)
+- [ ] Create `defer(fn, group="default")` helper function
+- [ ] Export `defer` and `DeferredPropV2` from `__init__.py`
+- [ ] Type hints and docstrings
+- [ ] Tests for defer() with groups
+
+**Example API**:
+```python
+from litestar_vite.inertia import defer
+
+@get("/users", component="Users/Index")
+async def users_list() -> dict:
+    return {
+        "users": await get_users(),
+        "permissions": defer(get_permissions),  # Default group
+        "teams": defer(get_teams, group="sidebar"),  # Sidebar group
+    }
+```
+
+### 4.3 Implement Merge/Deep Merge Props (helpers.py)
+
+**Priority**: Medium | **Effort**: Small
+
+- [ ] Create `MergeableProp` dataclass with `value` and `deep` fields
+- [ ] Create `merge(value)` helper function
+- [ ] Create `deep_merge(value)` helper function
+- [ ] Export from `__init__.py`
+- [ ] Tests for merge props
+
+### 4.4 Update InertiaResponse for v2 Protocol (response.py)
+
+**Priority**: High | **Effort**: Large
+
+- [ ] Add `clear_history` and `encrypt_history` parameters to `__init__`
+- [ ] Create `_build_page_props()` method to separate immediate/deferred props
+- [ ] Build `deferredProps` metadata grouped by group name
+- [ ] Track `mergeProps` and `deepMergeProps` lists
+- [ ] Update `to_asgi_response()` to include new PageProps fields
+- [ ] Handle partial reload requests for deferred props (evaluate `DeferredPropV2`)
+- [ ] Tests for response building
+
+### 4.5 Add New Inertia Headers (_utils.py)
+
+**Priority**: Medium | **Effort**: Small
+
+- [ ] Add `PARTIAL_EXCEPT = "X-Inertia-Partial-Except"`
+- [ ] Add `RESET = "X-Inertia-Reset"`
+- [ ] Verify `ERROR_BAG = "X-Inertia-Error-Bag"` is present
+
+### 4.6 Handle Partial Except Header (request.py)
+
+**Priority**: Medium | **Effort**: Small
+
+- [ ] Add `partial_except` cached property to `InertiaDetails`
+- [ ] Add `partial_except_keys` property returning set of excluded keys
+- [ ] Update `partial_keys` logic to exclude `partial_except_keys`
+- [ ] Tests for partial except header
+
+### 4.7 Register New Prop Types (plugin.py)
+
+**Priority**: High | **Effort**: Small
+
+- [ ] Import `DeferredPropV2`, `MergeableProp` in `on_app_init`
+- [ ] Add to `app_config.signature_types`
+- [ ] Add type encoders for serialization
+
+### 4.8 Add Prefetch Cache Configuration (config.py)
+
+**Priority**: Low | **Effort**: Small
+
+- [ ] Add `prefetch_cache_ttl: int = 30` field
+- [ ] Add `prefetch_stale_while_revalidate: int = 60` field
+- [ ] Add response header generation for prefetch requests
+
+### 4.9 Inertia SPA Mode
+
+**Priority**: Medium | **Effort**: Medium
 
 - [ ] Auto-injection in SPA handler:
   - [ ] `window.__INERTIA_PAGE__` with page props
@@ -257,7 +367,9 @@
   - [ ] Return JSON for XHR, HTML for initial
 - [ ] Version mismatch handling
 
-### 4.2 Shared Props Typing
+### 4.10 Shared Props Typing
+
+**Priority**: Low | **Effort**: Medium
 
 - [ ] Extract shared props sources:
   - [ ] `InertiaConfig.extra_static_page_props`
@@ -266,25 +378,42 @@
 - [ ] Generate `SharedProps` interface
 - [ ] Include in page props type
 
-### 4.3 Component Props Extraction
+### 4.11 Component Props Extraction
+
+**Priority**: Low | **Effort**: Medium
 
 - [ ] Extract from `InertiaResponse[T]` type hints
 - [ ] Map route → component → props
 - [ ] Generate `InertiaPageProps` interface
 - [ ] Generate component registry type
 
-### 4.4 Frontend Helpers
+### 4.12 Frontend Helpers
+
+**Priority**: Low | **Effort**: Small
 
 - [ ] Generate `useTypedPage<T>()` hook type
 - [ ] Vue composable wrapper
 - [ ] React hook wrapper
 - [ ] Include in generated files
 
-### 4.5 Tests for Phase 4
+### 4.13 Comprehensive Tests for Inertia v2
 
-- [ ] Inertia injection tests
-- [ ] Page props typing tests
-- [ ] XHR vs HTML response tests
+**Priority**: High | **Effort**: Large
+
+Create new test file: `src/py/tests/unit/inertia/test_inertia_v2.py`
+
+- [ ] Test `defer()` creates `DeferredPropV2` with correct group
+- [ ] Test response excludes deferred props from `props`
+- [ ] Test response includes `deferredProps` metadata by group
+- [ ] Test partial reload returns evaluated deferred props
+- [ ] Test `merge()` creates `MergeableProp` with `deep=False`
+- [ ] Test `deep_merge()` creates `MergeableProp` with `deep=True`
+- [ ] Test response includes `mergeProps` / `deepMergeProps` lists
+- [ ] Test `clear_history=True` sets `clearHistory: true` in response
+- [ ] Test `encrypt_history=True` sets `encryptHistory: true` in response
+- [ ] Test full page response matches Inertia v2 protocol
+- [ ] Test `X-Inertia-Partial-Except` header is respected
+- [ ] Test backward compatibility with existing `lazy()` function
 
 ---
 
@@ -561,7 +690,21 @@ gh api repos/litestar-org/litestar-htmx/releases/latest --jq '.tag_name'
 | Phase 1: Core Architecture | ✅ Complete | 100% |
 | Phase 2: Dual Mode System | 🔲 Not Started | 0% |
 | Phase 3: Type Generation | 🔲 Not Started | 0% |
-| Phase 4: Inertia Enhancement | 🔲 Not Started | 0% |
+| Phase 4: Inertia.js v2 Protocol | 🔲 Not Started | 0% |
 | Phase 5: Polish & Documentation | 🔲 Not Started | 0% |
 
 **Overall Progress**: ~20% (Phase 1 of 5 complete)
+
+### Phase 4 Priority Order (Inertia.js v2)
+
+The following tasks should be completed in order due to dependencies:
+
+1. **4.1 PageProps Type** - Foundation for all other changes
+2. **4.2 defer() Helper** - Core v2 feature
+3. **4.3 Merge Props** - Can be done in parallel with 4.2
+4. **4.5 New Headers** - Small, independent task
+5. **4.4 InertiaResponse** - Depends on 4.1, 4.2, 4.3
+6. **4.6 Partial Except** - Depends on 4.5
+7. **4.7 Register Types** - Depends on 4.2, 4.3
+8. **4.8 Prefetch Config** - Low priority, independent
+9. **4.13 Tests** - Final validation, depends on all above
