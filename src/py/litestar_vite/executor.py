@@ -4,8 +4,6 @@ This module provides executor classes for different JavaScript runtimes
 (Node.js/npm, Bun, Deno, Yarn, pnpm) to run Vite commands.
 """
 
-from __future__ import annotations
-
 import os
 import platform
 import shutil
@@ -13,7 +11,7 @@ import subprocess
 import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Optional, Union
 
 from litestar.cli._utils import console
 
@@ -25,7 +23,7 @@ class JSExecutor(ABC):
 
     bin_name: ClassVar[str]
 
-    def __init__(self, executable_path: Path | str | None = None) -> None:
+    def __init__(self, executable_path: "Optional[Union[Path, str]]" = None) -> None:
         self.executable_path = executable_path
 
     @abstractmethod

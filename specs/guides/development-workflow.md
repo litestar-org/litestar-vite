@@ -85,3 +85,53 @@ For significant features, this project uses the Gemini Agent System.
 -   **Implement a feature**: `gemini /implement <feature-slug>`
 
 The agent system will guide the feature through a rigorous process of planning, implementation, testing, and review, ensuring all quality gates are met. Refer to `.gemini/GEMINI.md` for more details.
+
+## 5. Release Workflow
+
+### Standard Release
+
+For regular releases (patch, minor, major):
+
+```bash
+# Ensure clean working tree
+git status
+
+# Bump version (choose one)
+make release bump=patch   # 0.14.0 → 0.14.1
+make release bump=minor   # 0.14.0 → 0.15.0
+make release bump=major   # 0.14.0 → 1.0.0
+
+# Push to main
+git push origin main
+
+# Create GitHub release
+gh release create v0.15.0 --title "v0.15.0" --generate-notes
+```
+
+### Pre-releases (Alpha/Beta/RC)
+
+For testing breaking changes with a limited audience before stable release:
+
+```bash
+# Start alpha
+make pre-release version=0.15.0-alpha.1
+
+# Iterate on alpha
+make pre-release version=0.15.0-alpha.2
+
+# Progress to beta
+make pre-release version=0.15.0-beta.1
+
+# Release candidate
+make pre-release version=0.15.0-rc.1
+
+# Push and create pre-release
+git push origin HEAD
+gh release create v0.15.0-alpha.1 --prerelease --title "v0.15.0-alpha.1"
+```
+
+**Distribution:**
+- PyPI: Pre-release versions are automatically marked (users need `pip install --pre` or explicit version)
+- npm: Published with `next` tag (users install via `npm install litestar-vite-plugin@next`)
+
+**Finalizing:** When ready for stable, run `make release bump=minor` (or `patch` from RC).

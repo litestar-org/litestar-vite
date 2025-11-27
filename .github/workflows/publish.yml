@@ -1,4 +1,4 @@
-name: PublishLatest Release
+name: Publish Release
 
 on:
   release:
@@ -29,6 +29,8 @@ jobs:
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        # Pre-release versions (alpha, beta, rc) are automatically detected by PyPI
+        # based on PEP 440 version format (e.g., 0.15.0a1, 0.15.0b1, 0.15.0rc1)
 
   publish-js-release:
     runs-on: ubuntu-latest
@@ -44,6 +46,17 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
       - run: npm run build
-      - run: npm publish --provenance --access public
+      # For pre-releases (alpha, beta, rc), publish with appropriate npm tag
+      # This prevents pre-releases from becoming the "latest" tag
+      - name: Determine npm tag
+        id: npm-tag
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" == *"-alpha"* ]] || [[ "$VERSION" == *"-beta"* ]] || [[ "$VERSION" == *"-rc"* ]]; then
+            echo "tag=next" >> $GITHUB_OUTPUT
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          fi
+      - run: npm publish --provenance --access public --tag ${{ steps.npm-tag.outputs.tag }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

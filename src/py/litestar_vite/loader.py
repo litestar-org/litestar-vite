@@ -11,13 +11,12 @@ Key features:
 - React Fast Refresh support
 """
 
-from __future__ import annotations
-
+import hashlib
 import json
 from functools import cached_property
 from pathlib import Path
 from textwrap import dedent
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional, Union
 from urllib.parse import urljoin
 
 import anyio
@@ -70,7 +69,7 @@ def render_hmr_client(context: "Mapping[str, Any]", /) -> "markupsafe.Markup":
         HTML markup for the HMR client script.
     """
     request = _get_request_from_context(context)
-    vite_plugin: VitePlugin | None = request.app.plugins.get("VitePlugin")
+    vite_plugin: "Optional[VitePlugin]" = request.app.plugins.get("VitePlugin")
     if vite_plugin is None:  # pyright: ignore[reportUnnecessaryComparison]
         return markupsafe.Markup("")
     return vite_plugin.asset_loader.render_hmr_client()
@@ -79,8 +78,8 @@ def render_hmr_client(context: "Mapping[str, Any]", /) -> "markupsafe.Markup":
 def render_asset_tag(
     context: "Mapping[str, Any]",
     /,
-    path: str | list[str],
-    scripts_attrs: dict[str, str] | None = None,
+    path: "Union[str, list[str]]",
+    scripts_attrs: "Optional[dict[str, str]]" = None,
 ) -> "markupsafe.Markup":
     """Render asset tags for the specified path(s).
 
@@ -96,7 +95,7 @@ def render_asset_tag(
         HTML markup for the asset tags.
     """
     request = _get_request_from_context(context)
-    vite_plugin: VitePlugin | None = request.app.plugins.get("VitePlugin")
+    vite_plugin: "Optional[VitePlugin]" = request.app.plugins.get("VitePlugin")
     if vite_plugin is None:  # pyright: ignore[reportUnnecessaryComparison]
         return markupsafe.Markup("")
     return vite_plugin.asset_loader.render_asset_tag(path, scripts_attrs)
@@ -115,7 +114,7 @@ def render_static_asset(context: "Mapping[str, Any]", /, path: str) -> str:
         The full URL to the static asset.
     """
     request = _get_request_from_context(context)
-    vite_plugin: VitePlugin | None = request.app.plugins.get("VitePlugin")
+    vite_plugin: "Optional[VitePlugin]" = request.app.plugins.get("VitePlugin")
     if vite_plugin is None:  # pyright: ignore[reportUnnecessaryComparison]
         return ""
     return vite_plugin.asset_loader.get_static_asset(path)
@@ -125,7 +124,7 @@ def render_partial_asset_tag(
     context: "Mapping[str, Any]",
     /,
     path: str,
-    scripts_attrs: dict[str, str] | None = None,
+    scripts_attrs: "Optional[dict[str, str]]" = None,
 ) -> "markupsafe.Markup":
     """Render asset tags for HTMX partial responses.
 
@@ -146,7 +145,7 @@ def render_partial_asset_tag(
         {{ vite_partial("src/components/UserProfile.tsx") }}
     """
     request = _get_request_from_context(context)
-    vite_plugin: VitePlugin | None = request.app.plugins.get("VitePlugin")
+    vite_plugin: "Optional[VitePlugin]" = request.app.plugins.get("VitePlugin")
     if vite_plugin is None:  # pyright: ignore[reportUnnecessaryComparison]
         return markupsafe.Markup("")
     # Use the same rendering logic as regular assets
@@ -181,7 +180,7 @@ class ViteAssetLoader:
         self._config = config
         self._manifest: dict[str, Any] = {}
         self._manifest_content: str = ""
-        self._vite_base_path: str | None = None
+        self._vite_base_path: "Optional[str]" = None
         self._initialized: bool = False
 
     @classmethod
@@ -256,7 +255,7 @@ class ViteAssetLoader:
             A hash of the manifest content, or "1.0" if no manifest.
         """
         if self._manifest_content:
-            return str(hash(self._manifest_content))
+            return hashlib.sha256(self._manifest_content.encode("utf-8")).hexdigest()
         return "1.0"
 
     def parse_manifest(self) -> None:
@@ -294,8 +293,8 @@ class ViteAssetLoader:
 
     def render_asset_tag(
         self,
-        path: str | list[str],
-        scripts_attrs: dict[str, str] | None = None,
+        path: "Union[str, list[str]]",
+        scripts_attrs: "Optional[dict[str, str]]" = None,
     ) -> "markupsafe.Markup":
         """Render asset tags for the specified path(s).
 
@@ -372,8 +371,8 @@ class ViteAssetLoader:
 
     def generate_asset_tags(
         self,
-        path: str | list[str],
-        scripts_attrs: dict[str, str] | None = None,
+        path: "Union[str, list[str]]",
+        scripts_attrs: "Optional[dict[str, str]]" = None,
     ) -> str:
         """Generate all asset tags for the specified file(s).
 
@@ -448,7 +447,7 @@ class ViteAssetLoader:
 
         return "".join(tags)
 
-    def _vite_server_url(self, path: str | None = None) -> str:
+    def _vite_server_url(self, path: "Optional[str]" = None) -> str:
         """Generate a URL to an asset on the Vite development server.
 
         Args:
@@ -464,7 +463,7 @@ class ViteAssetLoader:
         )
 
     @staticmethod
-    def _script_tag(src: str, attrs: dict[str, str] | None = None) -> str:
+    def _script_tag(src: str, attrs: "Optional[dict[str, str]]" = None) -> str:
         """Generate an HTML script tag.
 
         Args:

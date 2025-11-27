@@ -18,18 +18,17 @@ Example usage:
     ```
 """
 
-from __future__ import annotations
-
 import inspect
 import re
 import types
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, Union, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Optional, Union, get_args, get_origin
+
+from litestar import Litestar
+from litestar.handlers import HTTPRouteHandler
 
 if TYPE_CHECKING:
-    from litestar import Litestar
-    from litestar.handlers import HTTPRouteHandler
     from litestar.routes import HTTPRoute
 
 
@@ -78,10 +77,10 @@ class RouteMetadata:
     methods: list[str]
     params: dict[str, str] = field(default_factory=_str_dict_factory)
     query_params: dict[str, str] = field(default_factory=_str_dict_factory)
-    component: str | None = None
+    component: "Optional[str]" = None
 
 
-def _python_type_to_typescript(python_type: str | type | Any) -> str:
+def _python_type_to_typescript(python_type: "Union[str, type, Any]") -> str:
     """Convert Python type annotation to TypeScript type.
 
     Args:
@@ -252,7 +251,7 @@ def _should_skip_param(
     return param_name in dependency_names
 
 
-def _process_field_definition(field_def: Any, param_name: str) -> tuple[str, str] | None:
+def _process_field_definition(field_def: Any, param_name: str) -> "Optional[tuple[str, str]]":
     """Process a field definition and return the query param name and type.
 
     Args:
@@ -348,8 +347,8 @@ def _extract_query_params(handler: HTTPRouteHandler, path_param_names: set[str])
 def extract_route_metadata(
     app: Litestar,
     *,
-    only: list[str] | None = None,
-    exclude: list[str] | None = None,
+    only: "Optional[list[str]]" = None,
+    exclude: "Optional[list[str]]" = None,
 ) -> list[RouteMetadata]:
     """Extract route metadata from a Litestar application.
 
@@ -418,8 +417,8 @@ def extract_route_metadata(
 def generate_routes_json(
     app: Litestar,
     *,
-    only: list[str] | None = None,
-    exclude: list[str] | None = None,
+    only: "Optional[list[str]]" = None,
+    exclude: "Optional[list[str]]" = None,
     include_components: bool = False,
 ) -> dict[str, Any]:
     """Generate Ziggy-compatible routes JSON.

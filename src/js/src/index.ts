@@ -53,6 +53,12 @@ export interface TypesConfig {
    */
   generateZod?: boolean
   /**
+   * Generate a typed SDK client (fetch) in addition to types.
+   *
+   * @default false
+   */
+  generateSdk?: boolean
+  /**
    * Debounce time in milliseconds for type regeneration.
    * Prevents regeneration from running too frequently when
    * multiple files are written in quick succession.
@@ -250,7 +256,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
       userConfig = config
       const ssr = !!userConfig.build?.ssr
       const env = loadEnv(mode, userConfig.envDir || process.cwd(), "")
-      const assetUrl = env.ASSET_URL || pluginConfig.assetUrl
+      const assetUrl = normaliseAssetUrl(env.ASSET_URL || pluginConfig.assetUrl)
       const serverConfig = command === "serve" ? (resolveDevelopmentEnvironmentServerConfig(pluginConfig.detectTls) ?? resolveEnvironmentServerConfig(env)) : undefined
 
       ensureCommandShouldRunInEnvironment(command, env)
@@ -440,15 +446,13 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
  * Validate the command can run in the given environment.
  */
 function ensureCommandShouldRunInEnvironment(command: "build" | "serve", env: Record<string, string>): void {
-  const validEnvironmentNames = ["dev", "development", "local", "docker"]
+  const allowedDevModes = ["dev", "development", "local", "docker"]
   if (command === "build" || env.LITESTAR_BYPASS_ENV_CHECK === "1") {
     return
   }
 
-  if (typeof env.LITESTAR_MODE !== "undefined" && validEnvironmentNames.some((e) => e === env.LITESTAR_MODE)) {
-    throw Error(
-      "You should only run Vite dev server when Litestar is development mode. You should build your assets for production instead. To disable this ENV check you may set LITESTAR_BYPASS_ENV_CHECK=1",
-    )
+  if (typeof env.LITESTAR_MODE !== "undefined" && !allowedDevModes.includes(env.LITESTAR_MODE)) {
+    throw Error("Run the Vite dev server only in development. Set LITESTAR_MODE=dev/development/local/docker or set LITESTAR_BYPASS_ENV_CHECK=1 to skip this check.")
   }
 
   if (typeof env.CI !== "undefined") {
@@ -517,26 +521,28 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   if (resolvedConfig.types === true) {
     typesConfig = {
       enabled: true,
-      output: "src/types/api",
-      openapiPath: "openapi.json",
-      routesPath: "routes.json",
+      output: "src/generated/types",
+      openapiPath: "src/generated/openapi.json",
+      routesPath: "src/generated/routes.json",
       generateZod: false,
+      generateSdk: false,
       debounce: 300,
     }
   } else if (typeof resolvedConfig.types === "object" && resolvedConfig.types !== null) {
     typesConfig = {
       enabled: resolvedConfig.types.enabled ?? true,
-      output: resolvedConfig.types.output ?? "src/types/api",
-      openapiPath: resolvedConfig.types.openapiPath ?? "openapi.json",
-      routesPath: resolvedConfig.types.routesPath ?? "routes.json",
+      output: resolvedConfig.types.output ?? "src/generated/types",
+      openapiPath: resolvedConfig.types.openapiPath ?? "src/generated/openapi.json",
+      routesPath: resolvedConfig.types.routesPath ?? "src/generated/routes.json",
       generateZod: resolvedConfig.types.generateZod ?? false,
+      generateSdk: resolvedConfig.types.generateSdk ?? false,
       debounce: resolvedConfig.types.debounce ?? 300,
     }
   }
 
   return {
     input: resolvedConfig.input,
-    assetUrl: resolvedConfig.assetUrl ?? "static",
+    assetUrl: normaliseAssetUrl(resolvedConfig.assetUrl ?? "/static/"),
     resourceDirectory: resolvedConfig.resourceDirectory ?? "resources",
     bundleDirectory: resolvedConfig.bundleDirectory ?? "public",
     ssr: resolvedConfig.ssr ?? resolvedConfig.input,
@@ -677,6 +683,9 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>): Plugin
 
       if (typesConfig.generateZod) {
         args.push("--plugins", "@hey-api/schemas", "@hey-api/types")
+      }
+      if (typesConfig.generateSdk) {
+        args.push("--client", "fetch")
       }
 
       await execAsync(`npx ${args.join(" ")}`, {
@@ -943,4 +952,9 @@ function dirname(): string {
     // Fallback for environments where import.meta.url is problematic (like some test runners)
     return path.resolve(process.cwd(), "src/js/src")
   }
+}
+
+function normaliseAssetUrl(url: string): string {
+  const normalised = url.startsWith("/") ? url : `/${url}`
+  return normalised.endsWith("/") ? normalised : `${normalised}/`
 }

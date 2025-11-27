@@ -7,9 +7,7 @@ In dev mode, it proxies requests to the Vite dev server for HMR support.
 In production, it serves the built index.html with async caching.
 """
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 import anyio
 import httpx
@@ -48,9 +46,9 @@ class ViteSPAHandler:
             config: The Vite configuration.
         """
         self._config = config
-        self._cached_html: str | None = None
+        self._cached_html: Optional[str] = None
         self._initialized = False
-        self._http_client: httpx.AsyncClient | None = None
+        self._http_client: Optional[httpx.AsyncClient] = None
 
     async def initialize(self) -> None:
         """Initialize the handler.

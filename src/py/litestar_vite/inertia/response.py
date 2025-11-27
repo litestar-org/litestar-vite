@@ -58,7 +58,7 @@ class InertiaResponse(Response[T]):
         *,
         template_name: "Optional[str]" = None,
         template_str: "Optional[str]" = None,
-        background: "Optional[BackgroundTask | BackgroundTasks]" = None,
+        background: "Optional[Union[BackgroundTask, BackgroundTasks]]" = None,
         context: "Optional[dict[str, Any]]" = None,
         cookies: "Optional[ResponseCookies]" = None,
         encoding: "str" = "utf-8",
@@ -140,8 +140,8 @@ class InertiaResponse(Response[T]):
     def _build_page_props(
         self,
         request: "Request[UserT, AuthT, StateT]",
-        partial_data: "set[str] | None",
-        partial_except: "set[str] | None",
+        partial_data: "Optional[set[str]]",
+        partial_except: "Optional[set[str]]",
         reset_keys: "set[str]",
         vite_plugin: "VitePlugin",
         inertia_plugin: "InertiaPlugin",
@@ -305,8 +305,10 @@ class InertiaResponse(Response[T]):
         headers.update({"Vary": "Accept", **get_headers(InertiaHeaderType(enabled=True))})
 
         # Determine partial filtering params for v2 protocol
-        partial_data: "set[str] | None" = partial_keys if is_partial_render and partial_keys else None
-        partial_except: "set[str] | None" = partial_except_keys if is_partial_render and partial_except_keys else None
+        partial_data: "Optional[set[str]]" = partial_keys if is_partial_render and partial_keys else None
+        partial_except: "Optional[set[str]]" = (
+            partial_except_keys if is_partial_render and partial_except_keys else None
+        )
 
         # Build page props using helper method
         page_props = self._build_page_props(

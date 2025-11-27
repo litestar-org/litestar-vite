@@ -2,12 +2,14 @@
 
 This module provides the VitePlugin class for integrating Vite with Litestar.
 The plugin handles:
+
 - Static file serving configuration
 - Jinja2 template callable registration
 - Vite dev server process management
 - Async asset loader initialization
 
-Example:
+Example::
+
     from litestar import Litestar
     from litestar_vite import VitePlugin, ViteConfig
 
@@ -16,8 +18,6 @@ Example:
     )
 """
 
-from __future__ import annotations
-
 import os
 import signal
 import subprocess
@@ -25,7 +25,7 @@ import threading
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 from litestar.plugins import CLIPlugin, InitPluginProtocol
@@ -85,16 +85,16 @@ class StaticFilesConfig:
     This configuration is passed to Litestar's static files router.
     """
 
-    after_request: "AfterRequestHookHandler | None" = None
-    after_response: "AfterResponseHookHandler | None" = None
-    before_request: "BeforeRequestHookHandler | None" = None
-    cache_control: "CacheControlHeader | None" = None
-    exception_handlers: "ExceptionHandlersMap | None" = None
-    guards: "list[Guard] | None" = None
-    middleware: "Sequence[Middleware] | None" = None
-    opt: "dict[str, Any] | None" = None
-    security: "Sequence[SecurityRequirement] | None" = None
-    tags: "Sequence[str] | None" = None
+    after_request: "Optional[AfterRequestHookHandler]" = None
+    after_response: "Optional[AfterResponseHookHandler]" = None
+    before_request: "Optional[BeforeRequestHookHandler]" = None
+    cache_control: "Optional[CacheControlHeader]" = None
+    exception_handlers: "Optional[ExceptionHandlersMap]" = None
+    guards: "Optional[list[Guard]]" = None
+    middleware: "Optional[Sequence[Middleware]]" = None
+    opt: "Optional[dict[str, Any]]" = None
+    security: "Optional[Sequence[SecurityRequirement]]" = None
+    tags: "Optional[Sequence[str]]" = None
 
 
 class ViteProcess:
@@ -110,11 +110,11 @@ class ViteProcess:
         Args:
             executor: The JavaScript executor to use for running Vite.
         """
-        self.process: subprocess.Popen[bytes] | None = None
+        self.process: "Optional[subprocess.Popen[bytes]]" = None
         self._lock = threading.Lock()
         self._executor = executor
 
-    def start(self, command: list[str], cwd: Path | str | None) -> None:
+    def start(self, command: list[str], cwd: "Optional[Union[Path, str]]") -> None:
         """Start the Vite process.
 
         Args:
@@ -171,12 +171,14 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
     """Vite plugin for Litestar.
 
     This plugin integrates Vite with Litestar, providing:
+
     - Static file serving configuration
     - Jinja2 template callables for asset tags
     - Vite dev server process management
     - Async asset loader initialization
 
-    Example:
+    Example::
+
         from litestar import Litestar
         from litestar_vite import VitePlugin, ViteConfig
 
@@ -197,9 +199,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
     def __init__(
         self,
-        config: "ViteConfig | None" = None,
-        asset_loader: "ViteAssetLoader | None" = None,
-        static_files_config: "StaticFilesConfig | None" = None,
+        config: "Optional[ViteConfig]" = None,
+        asset_loader: "Optional[ViteAssetLoader]" = None,
+        static_files_config: "Optional[StaticFilesConfig]" = None,
     ) -> None:
         """Initialize the Vite plugin.
 

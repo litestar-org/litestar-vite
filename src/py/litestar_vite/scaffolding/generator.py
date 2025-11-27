@@ -3,14 +3,11 @@
 This module handles the generation of project files from templates.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Any, Callable
 
-if TYPE_CHECKING:
-    from litestar_vite.scaffolding.templates import FrameworkTemplate
+from litestar_vite.scaffolding.templates import FrameworkTemplate
 
 
 def _dict_factory() -> dict[str, Any]:

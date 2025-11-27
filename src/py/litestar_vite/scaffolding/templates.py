@@ -3,11 +3,9 @@
 This module defines the available framework templates and their configurations.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable
+from typing import Callable, Optional, Union
 
 
 def _str_list_factory() -> list[str]:
@@ -54,7 +52,7 @@ class FrameworkTemplate:
     name: str
     type: FrameworkType
     description: str
-    vite_plugin: str | None = None
+    vite_plugin: Optional[str] = None
     dependencies: list[str] = field(default_factory=_ListStrFactory)
     dev_dependencies: list[str] = field(default_factory=_ListStrFactory)
     files: list[str] = field(default_factory=_ListStrFactory)
@@ -313,7 +311,7 @@ def get_available_templates() -> list[FrameworkTemplate]:
     return list(FRAMEWORK_TEMPLATES.values())
 
 
-def get_template(framework_type: FrameworkType | str) -> FrameworkTemplate | None:
+def get_template(framework_type: "Union[FrameworkType, str]") -> "Optional[FrameworkTemplate]":
     """Get a specific framework template.
 
     Args:

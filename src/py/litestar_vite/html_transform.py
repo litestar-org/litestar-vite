@@ -10,12 +10,10 @@ The implementation uses regex-based transformations with fallback to
 html.parser for edge cases.
 """
 
-from __future__ import annotations
-
 import json
 import re
 from html.parser import HTMLParser
-from typing import Any
+from typing import Any, Optional
 
 # Compiled regex patterns for HTML transformations (case-insensitive)
 # These are compiled once at module load for better performance
@@ -245,7 +243,7 @@ class SafeHTMLParser(HTMLParser):
         super().__init__()
         self.tag_positions: list[tuple[str, int, int]] = []
 
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
         """Record start tag position."""
         self.tag_positions.append((tag, self.getpos()[0], self.getpos()[1]))
 

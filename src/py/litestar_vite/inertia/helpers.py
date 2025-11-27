@@ -72,7 +72,10 @@ def lazy(
     if not callable(value_or_callable):
         return StaticProp[str, T](key=key, value=value_or_callable)
 
-    return DeferredProp[str, T](key=key, value=cast("Callable[..., T | Coroutine[Any, Any, T]]", value_or_callable))
+    return DeferredProp[str, T](
+        key=key,
+        value=cast("Callable[..., Union[T, Coroutine[Any, Any, T]]]", value_or_callable),
+    )
 
 
 def defer(
@@ -93,15 +96,14 @@ def defer(
     Returns:
         A DeferredProp instance.
 
-    Example:
-        ```python
+    Example::
+
         # Basic deferred prop
         defer("permissions", lambda: Permission.all())
 
         # Grouped deferred props (fetched together)
         defer("teams", lambda: Team.all(), group="attributes")
         defer("projects", lambda: Project.all(), group="attributes")
-        ```
     """
     return DeferredProp[str, T](
         key=key,
@@ -122,7 +124,7 @@ class MergeProp(Generic[PropKeyT, T]):
         key: "PropKeyT",
         value: "T",
         strategy: "Literal['append', 'prepend', 'deep']" = "append",
-        match_on: "Optional[str | list[str]]" = None,
+        match_on: "Optional[Union[str, list[str]]]" = None,
     ) -> None:
         """Initialize a MergeProp.
 
@@ -162,7 +164,7 @@ def merge(
     key: str,
     value: "T",
     strategy: "Literal['append', 'prepend', 'deep']" = "append",
-    match_on: "Optional[str | list[str]]" = None,
+    match_on: "Optional[Union[str, list[str]]]" = None,
 ) -> "MergeProp[str, T]":
     """Create a merge prop for combining data during partial reloads (v2 feature).
 
@@ -186,8 +188,8 @@ def merge(
     Returns:
         A MergeProp instance.
 
-    Example:
-        ```python
+    Example::
+
         # Append new items to existing list
         merge("posts", new_posts)
 
@@ -199,7 +201,6 @@ def merge(
 
         # Match on ID to update existing items
         merge("posts", updated_posts, match_on="id")
-        ```
     """
     return MergeProp[str, T](key=key, value=value, strategy=strategy, match_on=match_on)
 
@@ -230,8 +231,8 @@ def extract_merge_props(props: "dict[str, Any]") -> "tuple[list[str], list[str],
         where each list contains the prop keys for that strategy, and match_props_on
         is a dict mapping prop keys to the keys to match on.
 
-    Example:
-        ```python
+    Example::
+
         props = {
             "users": [...],  # regular prop
             "posts": merge("posts", new_posts),  # append
@@ -244,7 +245,6 @@ def extract_merge_props(props: "dict[str, Any]") -> "tuple[list[str], list[str],
         # prepend_props = ["messages"]
         # deep_merge_props = ["data"]
         # match_props_on = {"items": ["id"]}
-        ```
     """
     merge_list: "list[str]" = []
     prepend_list: "list[str]" = []
@@ -374,8 +374,8 @@ def extract_deferred_props(props: "dict[str, Any]") -> "dict[str, list[str]]":
         A dict mapping group names to lists of prop keys in that group.
         Empty dict if no deferred props found.
 
-    Example:
-        ```python
+    Example::
+
         props = {
             "users": [...],  # regular prop
             "teams": defer("teams", get_teams, group="attributes"),
@@ -384,7 +384,6 @@ def extract_deferred_props(props: "dict[str, Any]") -> "dict[str, list[str]]":
         }
         result = extract_deferred_props(props)
         # {"default": ["permissions"], "attributes": ["teams", "projects"]}
-        ```
     """
     groups: "dict[str, list[str]]" = {}
 

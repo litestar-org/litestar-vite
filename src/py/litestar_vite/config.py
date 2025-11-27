@@ -2,12 +2,14 @@
 
 This module provides the configuration dataclasses for the Vite integration.
 The configuration is split into logical groups:
+
 - PathConfig: File system paths
 - RuntimeConfig: Execution settings
 - TypeGenConfig: Type generation settings
 - ViteConfig: Root configuration combining all sub-configs
 
-Example usage:
+Example usage::
+
     # Minimal - SPA mode with defaults
     VitePlugin(config=ViteConfig())
 
@@ -21,13 +23,11 @@ Example usage:
     VitePlugin(config=ViteConfig(mode="template", dev_mode=True))
 """
 
-from __future__ import annotations
-
 import os
 from dataclasses import dataclass, field
 from importlib.util import find_spec
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Optional, Union
 
 if TYPE_CHECKING:
     from litestar_vite.executor import JSExecutor
@@ -60,14 +60,14 @@ class PathConfig:
         ssr_output_dir: SSR output directory (optional).
     """
 
-    root: str | Path = field(default_factory=Path.cwd)
-    bundle_dir: str | Path = field(default_factory=lambda: Path("public"))
-    resource_dir: str | Path = field(default_factory=lambda: Path("resources"))
-    public_dir: str | Path = field(default_factory=lambda: Path("public"))
+    root: "Union[str, Path]" = field(default_factory=Path.cwd)
+    bundle_dir: "Union[str, Path]" = field(default_factory=lambda: Path("public"))
+    resource_dir: "Union[str, Path]" = field(default_factory=lambda: Path("resources"))
+    public_dir: "Union[str, Path]" = field(default_factory=lambda: Path("public"))
     manifest_name: str = "manifest.json"
     hot_file: str = "hot"
     asset_url: str = field(default_factory=lambda: os.getenv("ASSET_URL", "/static/"))
-    ssr_output_dir: str | Path | None = None
+    ssr_output_dir: "Optional[Union[str, Path]]" = None
 
     def __post_init__(self) -> None:
         """Normalize path types to Path objects."""
@@ -112,18 +112,18 @@ class RuntimeConfig:
     host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "localhost"))
     port: int = field(default_factory=lambda: int(os.getenv("VITE_PORT", "5173")))
     protocol: Literal["http", "https"] = "http"
-    executor: Literal["node", "bun", "deno", "yarn", "pnpm"] | None = None
-    run_command: list[str] | None = None
-    build_command: list[str] | None = None
-    build_watch_command: list[str] | None = None
-    install_command: list[str] | None = None
+    executor: "Optional[Literal['node', 'bun', 'deno', 'yarn', 'pnpm']]" = None
+    run_command: "Optional[list[str]]" = None
+    build_command: "Optional[list[str]]" = None
+    build_watch_command: "Optional[list[str]]" = None
+    install_command: "Optional[list[str]]" = None
     is_react: bool = False
     ssr_enabled: bool = False
     health_check: bool = field(default_factory=lambda: os.getenv("VITE_HEALTH_CHECK", "False") in TRUE_VALUES)
     detect_nodeenv: bool = True
     set_environment: bool = True
     set_static_folders: bool = True
-    csp_nonce: str | None = None
+    csp_nonce: "Optional[str]" = None
 
     def __post_init__(self) -> None:
         """Set default commands based on executor."""
@@ -249,15 +249,19 @@ class ViteConfig:
 
     This is the main configuration class that combines all sub-configurations.
     Supports shortcuts for common configurations:
+
     - dev_mode: Shortcut for runtime.dev_mode
     - types=True: Enable type generation with defaults
     - inertia=True: Enable Inertia.js with defaults
 
     Mode auto-detection:
+
     - If mode is not explicitly set:
-      - Checks for index.html in resource_dir → SPA mode
-      - Checks if Jinja2 template engine is configured → Template mode
+
+      - Checks for index.html in resource_dir -> SPA mode
+      - Checks if Jinja2 template engine is configured -> Template mode
       - Otherwise defaults to SPA mode
+
     - Explicit mode parameter overrides auto-detection
 
     Attributes:
@@ -270,16 +274,16 @@ class ViteConfig:
         base_url: Base URL for production assets (CDN support).
     """
 
-    mode: Literal["spa", "template", "htmx"] | None = None
+    mode: "Optional[Literal['spa', 'template', 'htmx']]" = None
     paths: PathConfig = field(default_factory=PathConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
-    types: TypeGenConfig | bool = False
-    inertia: InertiaConfig | bool = False
+    types: "Union[TypeGenConfig, bool]" = False
+    inertia: "Union[InertiaConfig, bool]" = False
     dev_mode: bool = False
-    base_url: str | None = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
+    base_url: "Optional[str]" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
 
     # Internal: resolved executor instance
-    _executor_instance: "JSExecutor | None" = field(default=None, repr=False)
+    _executor_instance: "Optional[JSExecutor]" = field(default=None, repr=False)
     _mode_auto_detected: bool = field(default=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -508,7 +512,7 @@ class ViteConfig:
         return self.runtime.detect_nodeenv
 
     @property
-    def ssr_output_dir(self) -> Path | None:
+    def ssr_output_dir(self) -> "Optional[Path]":
         """Get SSR output directory."""
         # __post_init__ normalizes strings to Path
         if self.paths.ssr_output_dir is None:

@@ -62,9 +62,14 @@ Then you can serve the documentation with ``make docs-serve``, or build them wit
 Creating a new release
 ----------------------
 
+Standard Release
+++++++++++++++++
+
 1. Ensure that all local changes are committed and your commit tree is not dirty
 2. Run ``make release bump=major|minor|patch`` to bump the version for the python and javascript packages.  This will automatically update the version and create a commit.
-    .. note:: The version should follow `semantic versioning <https://semver.org/>`_ and `PEP 440 <https://www.python.org/dev/peps/pep-0440/>`_.
+
+   .. note:: The version should follow `semantic versioning <https://semver.org/>`_ and `PEP 440 <https://www.python.org/dev/peps/pep-0440/>`_.
+
 3. Push the changes to the ``main`` branch
 4. `Draft a new release <https://github.com/litestar-org/litestar-vite/releases/new>`_ on GitHub
 
@@ -74,3 +79,53 @@ Creating a new release
 5. Publish the release
 6. Go to `Actions <https://github.com/litestar-org/litestar-vite/actions>`_ and approve the release workflow
 7. Check that the workflow runs successfully
+
+Pre-releases (Alpha/Beta/RC)
+++++++++++++++++++++++++++++
+
+For testing breaking changes or major features with a limited audience before a stable release:
+
+1. Create the pre-release version:
+
+   .. code-block:: bash
+
+       # Start an alpha release
+       make pre-release version=0.15.0-alpha.1
+
+       # Subsequent alphas
+       make pre-release version=0.15.0-alpha.2
+
+       # Progress to beta
+       make pre-release version=0.15.0-beta.1
+
+       # Release candidate
+       make pre-release version=0.15.0-rc.1
+
+2. Push the changes: ``git push origin HEAD``
+
+3. Create a GitHub pre-release:
+
+   .. code-block:: bash
+
+       gh release create v0.15.0-alpha.1 --prerelease --title "v0.15.0-alpha.1"
+
+4. The publish workflow will:
+
+   * Publish to PyPI (pre-release versions are automatically marked as such)
+   * Publish to npm with the ``next`` tag (so it doesn't become ``latest``)
+
+5. Users can install pre-releases with:
+
+   .. code-block:: bash
+
+       # Python
+       pip install litestar-vite==0.15.0a1
+       # or allow any pre-release
+       pip install --pre litestar-vite
+
+       # npm
+       npm install litestar-vite-plugin@next
+       # or specific version
+       npm install litestar-vite-plugin@0.15.0-alpha.1
+
+6. When ready for stable release, use the standard release workflow with ``make release bump=minor`` (or ``patch`` if coming from an RC of the same version)

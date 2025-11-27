@@ -1,6 +1,6 @@
-==============
+===============
 Operation Modes
-==============
+===============
 
 Litestar Vite v2 supports multiple operation modes to suit different architectural needs.
 

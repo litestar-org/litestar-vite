@@ -1,6 +1,6 @@
 """Litestar-Vite exception classes."""
 
-from __future__ import annotations
+from typing import Optional
 
 __all__ = [
     "AssetNotFoundError",
@@ -20,7 +20,7 @@ class LitestarViteError(Exception):
 class MissingDependencyError(LitestarViteError, ImportError):
     """Raised when a package is not installed but required."""
 
-    def __init__(self, package: str, install_package: str | None = None) -> None:
+    def __init__(self, package: str, install_package: Optional[str] = None) -> None:
         """Initialize the exception.
 
         Args:

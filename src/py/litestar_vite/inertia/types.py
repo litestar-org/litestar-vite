@@ -1,8 +1,6 @@
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass, field
-from typing import Any, Generic, Literal, TypedDict, TypeVar
+from typing import Any, Generic, Literal, Optional, TypedDict, TypeVar
 
 __all__ = (
     "DeferredPropsConfig",
@@ -61,7 +59,7 @@ def _convert_value(value: Any) -> Any:
     return value
 
 
-def to_inertia_dict(obj: Any, required_fields: set[str] | None = None) -> dict[str, Any]:
+def to_inertia_dict(obj: Any, required_fields: "Optional[set[str]]" = None) -> dict[str, Any]:
     """Convert a dataclass to a dict with camelCase keys for Inertia.js protocol.
 
     Args:
@@ -125,8 +123,8 @@ class ScrollPropsConfig:
     """Configuration for infinite scroll (v2 feature)."""
 
     page_name: str = "page"
-    previous_page: int | None = None
-    next_page: int | None = None
+    previous_page: "Optional[int]" = None
+    next_page: "Optional[int]" = None
     current_page: int = 1
 
 
@@ -165,16 +163,16 @@ class PageProps(Generic[T]):
     clear_history: bool = False
 
     # v2 features - merge props
-    merge_props: list[str] | None = None
-    prepend_props: list[str] | None = None
-    deep_merge_props: list[str] | None = None
-    match_props_on: dict[str, list[str]] | None = None
+    merge_props: "Optional[list[str]]" = None
+    prepend_props: "Optional[list[str]]" = None
+    deep_merge_props: "Optional[list[str]]" = None
+    match_props_on: "Optional[dict[str, list[str]]]" = None
 
     # v2 features - deferred/lazy loading
-    deferred_props: dict[str, list[str]] | None = None
+    deferred_props: "Optional[dict[str, list[str]]]" = None
 
     # v2 features - infinite scroll
-    scroll_props: ScrollPropsConfig | None = None
+    scroll_props: "Optional[ScrollPropsConfig]" = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to Inertia.js protocol format with camelCase keys."""
@@ -192,11 +190,11 @@ class InertiaProps(Generic[T]):
 class InertiaHeaderType(TypedDict, total=False):
     """Type for inertia_headers parameter in get_headers()."""
 
-    enabled: bool | None
-    version: str | None
-    location: str | None
-    partial_data: str | None
-    partial_component: str | None
-    partial_except: str | None  # v2
-    reset: str | None  # v2
-    error_bag: str | None  # v2
+    enabled: "Optional[bool]"
+    version: "Optional[str]"
+    location: "Optional[str]"
+    partial_data: "Optional[str]"
+    partial_component: "Optional[str]"
+    partial_except: "Optional[str]"  # v2
+    reset: "Optional[str]"  # v2
+    error_bag: "Optional[str]"  # v2
