@@ -20,7 +20,7 @@ class TestInitVite:
         init_vite(
             app=app,
             root_path=tmp_path,
-            resource_path=Path("resources"),
+            resource_path=Path("src"),
             asset_url="/static/",
             public_path=Path("public"),
             bundle_path=Path("dist"),
@@ -34,7 +34,7 @@ class TestInitVite:
         assert (tmp_path / "vite.config.ts").exists()
         assert (tmp_path / "package.json").exists()
         # React template creates main.tsx
-        assert (tmp_path / "resources" / "main.tsx").exists()
+        assert (tmp_path / "src" / "main.tsx").exists()
 
     def test_init_vite_with_framework(self, tmp_path: Path) -> None:
         """Test init_vite with different framework templates."""
@@ -45,7 +45,7 @@ class TestInitVite:
         init_vite(
             app=app,
             root_path=tmp_path,
-            resource_path=Path("resources"),
+            resource_path=Path("src"),
             asset_url="/static/",
             public_path=Path("public"),
             bundle_path=Path("dist"),
@@ -58,8 +58,8 @@ class TestInitVite:
 
         # Check that Vue-specific files were created
         assert (tmp_path / "vite.config.ts").exists()
-        assert (tmp_path / "resources" / "main.ts").exists()
-        assert (tmp_path / "resources" / "App.vue").exists()
+        assert (tmp_path / "src" / "main.ts").exists()
+        assert (tmp_path / "src" / "App.vue").exists()
 
     @patch("litestar_vite.commands.JINJA_INSTALLED", False)
     def test_init_vite_error_when_jinja_missing(self, tmp_path: Path) -> None:
@@ -102,6 +102,8 @@ class TestScaffoldingModule:
         assert "react" in template_names
         assert "vue" in template_names
         assert "svelte" in template_names
+        assert "angular" in template_names
+        assert "angular-cli" in template_names
 
     def test_get_template_by_string(self) -> None:
         """Test getting a template by string name."""
@@ -183,3 +185,68 @@ class TestScaffoldingModule:
         svelte_inertia = get_template(FrameworkType.SVELTE_INERTIA)
         assert svelte_inertia is not None
         assert svelte_inertia.inertia_compatible is True
+
+    def test_angular_templates_registered(self) -> None:
+        from litestar_vite.scaffolding.templates import FrameworkType, get_template
+
+        angular = get_template(FrameworkType.ANGULAR)
+        cli = get_template(FrameworkType.ANGULAR_CLI)
+
+        assert angular is not None
+        assert angular.uses_vite is True
+        assert angular.resource_dir == "src"
+
+        assert cli is not None
+        assert cli.uses_vite is False
+        assert cli.resource_dir == "src"
+
+    def test_generate_project_angular_overrides_base_files(self, tmp_path: Path) -> None:
+        from litestar_vite.scaffolding import TemplateContext, generate_project
+        from litestar_vite.scaffolding.templates import FrameworkType, get_template
+
+        framework = get_template(FrameworkType.ANGULAR)
+        assert framework is not None
+
+        context = TemplateContext(
+            project_name="ng-lite",
+            framework=framework,
+            use_typescript=True,
+            vite_port=5173,
+            litestar_port=8000,
+            resource_dir=framework.resource_dir,
+        )
+
+        generated = generate_project(tmp_path, context)
+
+        assert (tmp_path / "vite.config.ts").exists()
+        assert (tmp_path / "tsconfig.json").exists()
+        assert (tmp_path / "src" / "app" / "app.component.ts").exists()
+        # Ensure Angular-specific tsconfig (Bundler resolution) was written, not base
+        tsconfig = (tmp_path / "tsconfig.json").read_text()
+        assert "moduleResolution" in tsconfig
+        assert any(p.name == "tsconfig.json" for p in generated)
+
+    def test_generate_project_angular_cli_skips_vite_base(self, tmp_path: Path) -> None:
+        import json
+
+        from litestar_vite.scaffolding import TemplateContext, generate_project
+        from litestar_vite.scaffolding.templates import FrameworkType, get_template
+
+        framework = get_template(FrameworkType.ANGULAR_CLI)
+        assert framework is not None
+
+        context = TemplateContext(
+            project_name="ng-cli-lite",
+            framework=framework,
+            use_typescript=True,
+            resource_dir=framework.resource_dir,
+            bundle_dir="dist",
+        )
+
+        generate_project(tmp_path, context)
+
+        package_json = json.loads((tmp_path / "package.json").read_text())
+        dev_deps = package_json.get("devDependencies", {})
+
+        assert "litestar-vite-plugin" not in dev_deps
+        assert (tmp_path / "angular.json").exists()

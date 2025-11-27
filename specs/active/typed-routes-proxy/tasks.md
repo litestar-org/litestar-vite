@@ -13,10 +13,10 @@
 ## Phase 3: Core Implementation
 - [x] Export routes/openapi to `src/generated` on startup (sync/async lifespan)
 - [x] Add proxy mode in VitePlugin (HTTP + WS) with auto/internal port and hotfile discovery
-- [ ] Keep direct/two-port mode as opt-in
-- [ ] Align defaults (assetUrl `/static/`, generated paths, envs)
-- [ ] Remove duplicate route/type inference in JS; trim `_python_type_to_typescript` if unused
-- [ ] Ensure Angular Vite scaffold uses proxy defaults (hotfile path, asset base) and is covered by single-port mode
+- [x] Keep direct/two-port mode as opt-in
+- [x] Align defaults (assetUrl `/static/`, generated paths, envs)
+- [x] Remove duplicate route/type inference in JS; trim `_python_type_to_typescript` if unused
+- [x] Ensure Angular Vite scaffold uses proxy defaults (hotfile path, asset base) and is covered by single-port mode
 
 ## Phase 4: Integration
 - [x] JS plugin: watch generated artifacts; emit `routes.ts`; run openapi-ts with debounce

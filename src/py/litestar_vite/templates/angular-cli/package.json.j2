@@ -1,0 +1,22 @@
+{
+  "name": "{{ project_name }}",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve --proxy-config proxy.conf.json",
+    "build": "ng build"
+  },
+  "dependencies": {
+{% for dep in dependencies %}
+    "{{ dep }}": "latest"{% if not loop.last %},{% endif %}
+
+{% endfor %}
+  },
+  "devDependencies": {
+{% for dep in dev_dependencies %}
+    "{{ dep }}": "latest",
+{% endfor %}
+    "@types/jasmine": "latest"
+  }
+}

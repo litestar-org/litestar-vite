@@ -54,8 +54,8 @@ For developers who prefer the official Angular CLI toolchain:
 
 ### 1.3 Goals
 
-1. Enable `litestar vite init --framework angular` scaffolding (Vite-based)
-2. Enable `litestar vite init --framework angular-cli` scaffolding (Angular CLI-based)
+1. Enable `litestar assets init --template angular` scaffolding (Vite-based)
+2. Enable `litestar assets init --template angular-cli` scaffolding (Angular CLI-based)
 3. Generate **vanilla Angular 18+ SPAs** (not AnalogJS meta-framework)
 4. Provide working Angular + Litestar development environment
 5. Support HMR via Vite dev server (angular) or Angular CLI (angular-cli)
@@ -603,7 +603,7 @@ body {
 1. Add `FrameworkType.ANGULAR` and `FrameworkType.ANGULAR_CLI` to enum
 2. Create `FrameworkTemplate` configuration
 3. Create template files in `src/py/litestar_vite/templates/angular/`
-4. Test scaffolding with `litestar vite init --framework angular`
+4. Test scaffolding with `litestar assets init --template angular`
 
 ### Phase 2: Build Integration
 
@@ -665,7 +665,7 @@ def test_angular_scaffolding_generates_files(tmp_path):
 
 ### 5.3 Manual Testing Checklist
 
-- [ ] `litestar vite init --framework angular` works
+- [ ] `litestar assets init --template angular` works
 - [ ] Vite dev server starts with HMR
 - [ ] Angular component changes trigger hot reload
 - [ ] Production build generates correct assets
@@ -712,7 +712,7 @@ def test_angular_scaffolding_generates_files(tmp_path):
 
 ## 8. Success Metrics
 
-1. **Scaffolding works:** `litestar vite init --framework angular` creates runnable project
+1. **Scaffolding works:** `litestar assets init --template angular` creates runnable project
 2. **Dev workflow works:** HMR functional, API proxy working
 3. **Production build works:** Assets correctly bundled and served
 4. **Documentation complete:** Users can follow guide start-to-finish

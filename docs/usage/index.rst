@@ -16,7 +16,7 @@ Core Features
     modes
     types
     inertia
-    migration-v2
+    migration-0-14
 
 Getting Started
 ---------------
@@ -61,6 +61,10 @@ If you do not have an existing vite application, you can create a new one for yo
 .. code-block:: bash
 
     litestar assets init
+    # Inertia (resources/) example
+    litestar assets init --template react-inertia
+    # Non-Inertia (src/) example under custom frontend dir
+    litestar assets init --template react --frontend-dir web
     litestar assets install
 
 For more detailed information about specific features, refer to the sections in the sidebar.

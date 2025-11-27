@@ -2,7 +2,7 @@
 Operation Modes
 ===============
 
-Litestar Vite v2 supports multiple operation modes to suit different architectural needs.
+Litestar Vite supports multiple operation modes to suit different architectural needs.
 
 SPA Mode (Default)
 ------------------

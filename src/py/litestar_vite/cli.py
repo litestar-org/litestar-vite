@@ -21,6 +21,8 @@ FRAMEWORK_CHOICES = [
     "nuxt",
     "astro",
     "htmx",
+    "angular",
+    "angular-cli",
 ]
 
 
@@ -129,6 +131,13 @@ def _prompt_for_options(
     required=False,
 )
 @option(
+    "--frontend-dir",
+    type=str,
+    help="Optional subdirectory under root to place the generated frontend (e.g., 'web').",
+    default=".",
+    required=False,
+)
+@option(
     "--bundle-path",
     type=ClickPath(dir_okay=True, file_okay=False, path_type=Path),
     help="The path for the built Vite assets.  This is the where the output of `npm run build` will write files.",
@@ -208,6 +217,7 @@ def vite_init(
     enable_ssr: "Optional[bool]",
     asset_url: "Optional[str]",
     root_path: "Optional[Path]",
+    frontend_dir: str,
     bundle_path: "Optional[Path]",
     resource_path: "Optional[Path]",
     public_path: "Optional[Path]",
@@ -239,13 +249,20 @@ def vite_init(
 
     console.rule("[yellow]Initializing Vite[/]", align="left")
 
-    # Resolve paths
+    # Resolve root and base values
     root_path = Path(root_path or config.root_dir or Path.cwd())
-    resource_path_str = str(resource_path or config.resource_dir)
-    bundle_path_str = str(bundle_path or config.bundle_dir)
+    frontend_dir = frontend_dir or "."
     asset_url = asset_url or config.asset_url
     vite_port = vite_port or config.port
     litestar_port = env.port or 8000
+
+    # Select framework template
+    template, framework = _select_framework_template(template, no_prompt)
+    console.print(f"\n[green]Using {framework.name} template[/]")
+
+    # Resolve paths now that framework defaults are known
+    resource_path_str = str(resource_path or framework.resource_dir or config.resource_dir)
+    bundle_path_str = str(bundle_path or config.bundle_dir)
 
     # Check for existing files
     if (
@@ -257,10 +274,6 @@ def vite_init(
     ):
         console.print("Skipping Vite initialization")
         sys.exit(2)
-
-    # Select framework template
-    template, framework = _select_framework_template(template, no_prompt)
-    console.print(f"\n[green]Using {framework.name} template[/]")
 
     # Prompt for optional features
     enable_ssr, tailwind, enable_types = _prompt_for_options(framework, enable_ssr, tailwind, enable_types, no_prompt)
@@ -282,6 +295,7 @@ def vite_init(
         asset_url=asset_url,
         resource_dir=resource_path_str,
         bundle_dir=bundle_path_str,
+        base_dir=frontend_dir,
         enable_ssr=enable_ssr,
         enable_inertia=is_inertia,
         enable_types=enable_types,

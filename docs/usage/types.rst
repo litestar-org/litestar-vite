@@ -2,7 +2,7 @@
 Type Generation
 ===============
 
-Litestar Vite v2 includes a powerful type generation system that keeps your frontend in sync with your Python backend.
+Litestar Vite includes a type generation system that keeps your frontend in sync with your Python backend.
 
 Overview
 --------

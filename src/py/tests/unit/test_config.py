@@ -93,6 +93,22 @@ def test_mode_auto_detection_spa_with_index_html(tmp_path: Path) -> None:
     assert config._mode_auto_detected is True
 
 
+def test_proxy_mode_defaults_to_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+
+    config = RuntimeConfig()
+
+    assert config.proxy_mode == "proxy"
+
+
+def test_proxy_mode_respects_direct_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VITE_PROXY_MODE", "direct")
+
+    config = RuntimeConfig()
+
+    assert config.proxy_mode == "direct"
+
+
 def test_mode_auto_detection_template_with_jinja(tmp_path: Path) -> None:
     """Test mode auto-detection defaults to template when Jinja2 installed."""
     resource_dir = tmp_path / "resources"

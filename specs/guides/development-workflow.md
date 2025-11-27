@@ -30,6 +30,13 @@ All project tasks are managed through a `Makefile` and the `uv` Python package m
 
 ## 2. Daily Development
 
+### Frontend directory conventions
+
+- Inertia variants follow Laravel conventions and use `resources/` (e.g., `resources/main.tsx`, `resources/pages/*`).
+- All other templates (React, Vue, Svelte, HTMX, Angular Vite, etc.) use `src/` for source files and keep `index.html` at the frontend root.
+- You can relocate the entire frontend under a subfolder (e.g., `web/`) via `litestar assets init --frontend-dir web`; generated files (package.json, vite.config.ts, src/…) will be placed there.
+- When configuring `VitePlugin` manually for non-Inertia templates, set `paths.resource_dir="src"` (default for scaffolds). For Inertia templates, keep `resources/`.
+
 ### Running the Development Server
 
 To work on an example application (like the `basic` one), you would typically run the Litestar backend and the Vite frontend dev server.

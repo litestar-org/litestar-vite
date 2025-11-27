@@ -1,29 +1,15 @@
-"""Code generation utilities for type-safe route definitions.
+"""Code generation utilities for route metadata export.
 
-This module provides utilities for extracting route metadata from a Litestar application
-and generating TypeScript type definitions and route helpers.
-
-Example usage:
-    ```python
-    from litestar import Litestar
-    from litestar_vite.codegen import extract_route_metadata, generate_routes_json
-
-    app = Litestar([...])
-
-    # Extract metadata
-    routes = extract_route_metadata(app)
-
-    # Generate JSON
-    json_output = generate_routes_json(app, include_components=True)
-    ```
+This module extracts route metadata from a Litestar application and emits a
+`routes.json` file consumed by the Vite plugin. Detailed type generation is
+delegated to @hey-api/openapi-ts; we keep only lightweight metadata here.
 """
 
 import inspect
 import re
-import types
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, Optional, Union, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Optional
 
 from litestar import Litestar
 from litestar.handlers import HTTPRouteHandler
@@ -78,47 +64,6 @@ class RouteMetadata:
     params: dict[str, str] = field(default_factory=_str_dict_factory)
     query_params: dict[str, str] = field(default_factory=_str_dict_factory)
     component: "Optional[str]" = None
-
-
-def _python_type_to_typescript(python_type: "Union[str, type, Any]") -> str:
-    """Minimal Python→TS mapper for route metadata (path/query only)."""
-
-    string_type_map = {
-        "int": "number",
-        "float": "number",
-        "str": "string",
-        "bool": "boolean",
-        "uuid.UUID": "string",
-        "UUID": "string",
-        "datetime.datetime": "string",
-        "datetime.date": "string",
-        "datetime.time": "string",
-        "pathlib.Path": "string",
-        "Path": "string",
-    }
-
-    if isinstance(python_type, str):
-        return string_type_map.get(python_type, "string")
-
-    if python_type is type(None):
-        return "null"
-
-    origin = get_origin(python_type)
-    union_type = getattr(types, "UnionType", None)
-    if origin is Union or (union_type is not None and origin is union_type):
-        args = get_args(python_type)
-        non_none_types = [_python_type_to_typescript(arg) for arg in args if arg is not type(None)]
-        return " | ".join(non_none_types) if non_none_types else "any"
-
-    if origin is list:
-        args = get_args(python_type)
-        inner_type = _python_type_to_typescript(args[0]) if args else "any"
-        return f"{inner_type}[]"
-
-    if isinstance(python_type, type):
-        return string_type_map.get(python_type.__name__.lower(), "any")
-
-    return "any"
 
 
 def _is_system_type(annotation: Any) -> bool:
@@ -184,11 +129,8 @@ def _extract_path_params(path: str) -> dict[str, str]:
     # Extract parameter names from path using compiled pattern
     for match in _PATH_PARAM_EXTRACT_PATTERN.finditer(path):
         param_name = match.group(1)
-        param_type = match.group(2) or "str"
-
-        # Convert to TypeScript type
-        ts_type = _python_type_to_typescript(param_type)
-        params[param_name] = ts_type
+        # Keep type hinting minimal; detailed typing is handled by OpenAPI exports.
+        params[param_name] = "string"
 
     return params
 
@@ -236,8 +178,8 @@ def _process_field_definition(field_def: Any, param_name: str) -> "Optional[tupl
     if annotation is None or _is_system_type(annotation):
         return None
 
-    # Convert to TypeScript type
-    ts_type = _python_type_to_typescript(annotation)
+    # Keep type inference minimal; OpenAPI handles detailed typing
+    ts_type = "unknown"
 
     # Check if optional (has default value)
     default = getattr(field_def, "default", None)

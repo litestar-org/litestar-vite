@@ -45,6 +45,7 @@ class TemplateContext:
     asset_url: str = "/static/"
     resource_dir: str = "resources"
     bundle_dir: str = "public"
+    base_dir: str = "."
     enable_ssr: bool = False
     enable_inertia: bool = False
     enable_types: bool = True
@@ -67,12 +68,14 @@ class TemplateContext:
             "asset_url": self.asset_url,
             "resource_dir": self.resource_dir,
             "bundle_dir": self.bundle_dir,
+            "base_dir": self.base_dir,
             "enable_ssr": self.enable_ssr,
             "enable_inertia": self.enable_inertia,
             "enable_types": self.enable_types,
             "dependencies": self.framework.dependencies,
             "dev_dependencies": self.framework.dev_dependencies,
             "vite_plugin": self.framework.vite_plugin,
+            "uses_vite": self.framework.uses_vite,
             **self.extra,
         }
 
@@ -132,15 +135,23 @@ def generate_project(
     base_dir = template_dir / "base"
     context_dict = context.to_dict()
     generated_files: list[Path] = []
+    framework_overrides: set[Path] = set()
+
+    if framework_dir.exists():
+        framework_overrides = {template_file.relative_to(framework_dir) for template_file in framework_dir.glob("**/*.j2")}
+
+    actual_output_dir = output_dir / context.base_dir if context.base_dir not in {"", "."} else output_dir
 
     # Ensure output directory exists
-    output_dir.mkdir(parents=True, exist_ok=True)
+    actual_output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Process base templates first (shared across frameworks)
-    if base_dir.exists():
+    # Process base templates first (shared across frameworks) when Vite-based
+    if context.framework.uses_vite and base_dir.exists():
         for template_file in base_dir.glob("**/*.j2"):
             relative_path = template_file.relative_to(base_dir)
-            output_path = output_dir / str(relative_path).replace(".j2", "")
+            if relative_path in framework_overrides:
+                continue
+            output_path = actual_output_dir / str(relative_path).replace(".j2", "")
 
             if output_path.exists() and not overwrite:
                 console.print(f"[yellow]Skipping {output_path} (exists)[/]")
@@ -153,7 +164,11 @@ def generate_project(
     if framework_dir.exists():
         for template_file in framework_dir.glob("**/*.j2"):
             relative_path = template_file.relative_to(framework_dir)
-            output_path = output_dir / str(relative_path).replace(".j2", "")
+
+            if relative_path.parts and relative_path.parts[0] == "resources":
+                relative_path = Path(context.resource_dir, *relative_path.parts[1:])
+
+            output_path = actual_output_dir / str(relative_path).replace(".j2", "")
 
             if output_path.exists() and not overwrite:
                 console.print(f"[yellow]Skipping {output_path} (exists)[/]")
@@ -171,7 +186,9 @@ def generate_project(
         if tailwind_dir.exists():
             for template_file in tailwind_dir.glob("**/*.j2"):
                 relative_path = template_file.relative_to(tailwind_dir)
-                output_path = output_dir / str(relative_path).replace(".j2", "")
+                if relative_path.parts and relative_path.parts[0] == "resources":
+                    relative_path = Path(context.resource_dir, *relative_path.parts[1:])
+                output_path = actual_output_dir / str(relative_path).replace(".j2", "")
 
                 if output_path.exists() and not overwrite:
                     console.print(f"[yellow]Skipping {output_path} (exists)[/]")

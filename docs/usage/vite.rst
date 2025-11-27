@@ -28,8 +28,14 @@ The CLI provides a streamlined setup process:
 
 .. code-block:: bash
 
-    # Initialize a new Vite project
+    # Initialize a new Vite project (React default)
     litestar assets init
+
+    # Inertia templates keep Laravel-style paths under resources/
+    litestar assets init --template vue-inertia
+
+    # Non-Inertia templates default to src/; place everything under web/
+    litestar assets init --template react --frontend-dir web
 
 This command will:
 
@@ -44,14 +50,11 @@ The generated project structure will look like this:
 
     my_project/
     ├── public/           # Compiled assets
-    ├── resources/        # Source assets
-    │   ├── js/
-    │   ├── css/
-    │   └── templates/
-    ├── src/             # Python source code
-    ├── package.json     # Node.js dependencies
-    ├── vite.config.js   # Vite configuration
-    └── pyproject.toml   # Python dependencies
+    ├── src/              # Frontend source (default for non-Inertia)
+    ├── resources/        # Frontend source (Inertia templates only)
+    ├── package.json      # Node.js dependencies
+    ├── vite.config.js    # Vite configuration
+    └── pyproject.toml    # Python dependencies
 
 2. Manual Setup
 ~~~~~~~~~~~~~~~
@@ -76,10 +79,11 @@ If you prefer more control, you can set up Vite manually:
     export default defineConfig({
         plugins: [
             litestar({
-                input: ['resources/main.ts'],
+                input: ['src/main.ts'],
             })
         ]
     })
+    // For Inertia templates, use resources/main.ts instead
 
 Configuration
 -------------
@@ -103,7 +107,7 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
                 config=ViteConfig(
                     paths=PathConfig(
                         bundle_dir="public",
-                        resource_dir="resources",
+                        resource_dir="src",  # use "resources" for Inertia templates
                     ),
                     runtime=RuntimeConfig(
                         port=5173,
@@ -157,7 +161,7 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - Location of compiled assets. Defaults to `"public"`.
    * - `resource_dir`
      - `Path | str`
-     - Directory for source files. Defaults to `"resources"`.
+     - Directory for source files. Defaults to `"src"` (use `"resources"` for Inertia templates).
    * - `public_dir`
      - `Path | str`
      - The public directory Vite serves assets from. Defaults to `"public"`.
@@ -210,7 +214,7 @@ You configure the Vite frontend build process in your `vite.config.ts` (or `.js`
         plugins: [
             litestar({
                 // Add your configuration options here
-                input: ['resources/main.ts'],
+                input: ['src/main.ts'], // use resources/main.ts for Inertia templates
             })
         ]
     })
@@ -253,12 +257,12 @@ Use the `vite()` and `vite_hmr()` callables in your Jinja2 templates to include 
     <!DOCTYPE html>
     <html>
     <head>
-        {{ vite('resources/css/styles.css') }}
+        {{ vite('src/css/styles.css') }}
     </head>
     <body>
         <div id="app"></div>
         {{ vite_hmr() }}
-        {{ vite('resources/js/main.js') }}
+        {{ vite('src/js/main.js') }}
     </body>
     </html>
 
@@ -269,7 +273,7 @@ For assets that are not entry points but still need to be referenced (e.g., imag
 
 .. code-block:: html
 
-    <img src="{{ vite_static('resources/images/logo.png') }}" alt="Logo" />
+    <img src="{{ vite_static('src/images/logo.png') }}" alt="Logo" />
 
 This resolves the correct URL whether you are in development mode (served by Vite) or production mode (hashed URL from manifest).
 
@@ -279,7 +283,7 @@ Development Workflow
 Development Server
 ~~~~~~~~~~~~~~~~~~
 
-When `use_server_lifespan` is set to `True` (default in v2 when `dev_mode=True`), the Litestar CLI will automatically manage the Vite development server.
+When `use_server_lifespan` is set to `True` (default when `dev_mode=True`), the Litestar CLI will automatically manage the Vite development server.
 
 .. code-block:: bash
 

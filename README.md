@@ -29,6 +29,9 @@ litestar assets init --template react
 
 # Or Vue + Inertia
 litestar assets init --template vue-inertia
+
+# Put the frontend under a custom folder (e.g., web/)
+litestar assets init --template react --frontend-dir web
 ```
 
 ### 2. Configure Application

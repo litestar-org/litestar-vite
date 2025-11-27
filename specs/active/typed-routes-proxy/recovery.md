@@ -8,8 +8,10 @@
 ## Resume Checklist
 1. Re-read `specs/active/typed-routes-proxy/prd.md` and `tasks.md`.
 2. Confirm latest code state: `git status -sb`.
-3. If proxy work in progress, note internal port/env assumptions.
-4. Ensure defaults remain aligned: asset base `/static/`, generated paths `src/generated/*`.
+3. Proxy is default: internal loopback Vite with hotfile `public/hot`, `_PROXY_PATH_PREFIXES` set; direct/two-port remains opt-in.
+4. Defaults aligned: asset base `/static/`, generated outputs `src/generated/openapi.json`, `src/generated/routes.json`, `src/generated/routes.ts`.
+5. Types default ON; JS plugin debounces openapi-ts and emits routes.ts when routes.json exists. Route/type inference trimmed on Python side; rely on OpenAPI for detailed types.
+6. Tests currently green (`npm test`, `uv run pytest -q`); warning filters centralized in `pyproject.toml`.
 
 ## Quick Pointers
 - Proxy mode is default; direct mode still supported.

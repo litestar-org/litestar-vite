@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from litestar_vite.config import ViteConfig
+from litestar_vite.config import RuntimeConfig, ViteConfig
 from litestar_vite.plugin import VitePlugin
 
 
@@ -33,3 +33,13 @@ def test_auto_port_when_not_set(tmp_path: Path, monkeypatch) -> None:
     target = hotfile.read_text().strip()
     # ensure port is not default 5173 when auto-picked (likely different)
     assert target != f"{cfg.protocol}://{cfg.host}:5173"
+
+
+def test_direct_mode_does_not_write_hotfile(tmp_path: Path) -> None:
+    cfg = ViteConfig(dev_mode=True, runtime=RuntimeConfig(proxy_mode="direct"))
+    cfg.paths.bundle_dir = tmp_path
+    plugin = VitePlugin(config=cfg)
+
+    plugin._ensure_proxy_target()
+
+    assert not (tmp_path / cfg.hot_file).exists()

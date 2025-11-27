@@ -411,7 +411,7 @@ mcp__sequential-thinking__sequentialthinking(
 Use for researching best practices and modern patterns:
 
 ```python
-WebSearch(query="litestar vite integration best practices 2025")
+WebSearch(query="litestar assets integration best practices 2025")
 ```
 
 ---

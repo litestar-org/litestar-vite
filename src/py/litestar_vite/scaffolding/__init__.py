@@ -1,6 +1,6 @@
 """Project scaffolding module for litestar-vite.
 
-This module provides the `litestar vite init` command with framework-specific
+This module provides the `litestar assets init` command with framework-specific
 template generation. It supports multiple frontend frameworks and build tools.
 
 Supported frameworks:

@@ -59,4 +59,6 @@ async def test_proxy_should_proxy_matches_vite_paths() -> None:
     assert middleware._should_proxy("/@vite/client")
     assert middleware._should_proxy("/node_modules/.vite/chunk.js")
     assert middleware._should_proxy("/src/main.ts")
+    assert middleware._should_proxy("/vite-hmr")
+    assert middleware._should_proxy("/@analogjs/vite-plugin-angular")
     assert not middleware._should_proxy("/api/users")

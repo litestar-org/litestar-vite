@@ -102,8 +102,10 @@ _PROXY_PATH_PREFIXES: tuple[str, ...] = (
     "/@react-refresh",
     "/@vite/client",
     "/@vite/env",
+    "/vite-hmr",
     "/__vite_ping",
     "/node_modules/.vite/",
+    "/@analogjs/",
     "/src/",
 )
 

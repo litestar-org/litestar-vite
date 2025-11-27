@@ -26,6 +26,8 @@ class FrameworkType(str, Enum):
     NUXT = "nuxt"
     ASTRO = "astro"
     HTMX = "htmx"
+    ANGULAR = "angular"
+    ANGULAR_CLI = "angular-cli"
 
 
 # Type alias for the factory function to satisfy pyright
@@ -47,6 +49,8 @@ class FrameworkTemplate:
         uses_typescript: Whether TypeScript is used by default
         has_ssr: Whether SSR is supported
         inertia_compatible: Whether it works with Inertia.js
+        uses_vite: Whether the template is Vite-based (skip base files when False)
+        resource_dir: Preferred source directory name for the framework
     """
 
     name: str
@@ -59,6 +63,8 @@ class FrameworkTemplate:
     uses_typescript: bool = True
     has_ssr: bool = False
     inertia_compatible: bool = False
+    uses_vite: bool = True
+    resource_dir: str = "resources"
 
 
 # Template registry
@@ -80,13 +86,14 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
             "tsconfig.json",
             "package.json",
             "index.html",
-            "resources/main.tsx",
-            "resources/App.tsx",
-            "resources/App.css",
+            "src/main.tsx",
+            "src/App.tsx",
+            "src/App.css",
         ],
         uses_typescript=True,
         has_ssr=False,
         inertia_compatible=True,
+        resource_dir="src",
     ),
     FrameworkType.REACT_INERTIA: FrameworkTemplate(
         name="React + Inertia.js",
@@ -112,6 +119,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         uses_typescript=True,
         has_ssr=True,
         inertia_compatible=True,
+        resource_dir="resources",
     ),
     FrameworkType.VUE: FrameworkTemplate(
         name="Vue 3",
@@ -130,13 +138,14 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
             "package.json",
             "index.html",
             "env.d.ts",
-            "resources/main.ts",
-            "resources/App.vue",
-            "resources/style.css",
+            "src/main.ts",
+            "src/App.vue",
+            "src/style.css",
         ],
         uses_typescript=True,
         has_ssr=False,
         inertia_compatible=True,
+        resource_dir="src",
     ),
     FrameworkType.VUE_INERTIA: FrameworkTemplate(
         name="Vue + Inertia.js",
@@ -162,6 +171,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         uses_typescript=True,
         has_ssr=True,
         inertia_compatible=True,
+        resource_dir="resources",
     ),
     FrameworkType.SVELTE: FrameworkTemplate(
         name="Svelte 5",
@@ -181,13 +191,14 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
             "tsconfig.json",
             "package.json",
             "index.html",
-            "resources/main.ts",
-            "resources/App.svelte",
-            "resources/app.css",
+            "src/main.ts",
+            "src/App.svelte",
+            "src/app.css",
         ],
         uses_typescript=True,
         has_ssr=False,
         inertia_compatible=True,
+        resource_dir="src",
     ),
     FrameworkType.SVELTE_INERTIA: FrameworkTemplate(
         name="Svelte + Inertia.js",
@@ -214,6 +225,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         uses_typescript=True,
         has_ssr=True,
         inertia_compatible=True,
+        resource_dir="resources",
     ),
     FrameworkType.SVELTEKIT: FrameworkTemplate(
         name="SvelteKit",
@@ -291,13 +303,103 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         dev_dependencies=["typescript"],
         files=[
             "vite.config.ts",
-            "resources/main.js",
+            "src/main.js",
             "templates/base.html.j2",
             "templates/index.html.j2",
         ],
         uses_typescript=False,
         has_ssr=False,  # Server-rendered
         inertia_compatible=False,
+        resource_dir="src",
+    ),
+    FrameworkType.ANGULAR: FrameworkTemplate(
+        name="Angular (Vite)",
+        type=FrameworkType.ANGULAR,
+        description="Angular 18+ with Vite (Analog plugin) and Litestar proxy defaults",
+        vite_plugin="@analogjs/vite-plugin-angular",
+        dependencies=[
+            "@angular/animations",
+            "@angular/common",
+            "@angular/compiler",
+            "@angular/core",
+            "@angular/forms",
+            "@angular/platform-browser",
+            "@angular/router",
+            "rxjs",
+            "zone.js",
+        ],
+        dev_dependencies=[
+            "@analogjs/vite-plugin-angular",
+            "typescript",
+            "@types/node",
+        ],
+        files=[
+            "vite.config.ts",
+            "tsconfig.json",
+            "tsconfig.app.json",
+            "package.json",
+            "index.html",
+            "src/main.ts",
+            "src/styles.css",
+            "src/app/app.component.ts",
+            "src/app/app.component.html",
+            "src/app/app.component.css",
+            "src/app/app.config.ts",
+            "src/app/app.routes.ts",
+            "src/app/home.component.ts",
+        ],
+        uses_typescript=True,
+        has_ssr=False,
+        inertia_compatible=False,
+        uses_vite=True,
+        resource_dir="src",
+    ),
+    FrameworkType.ANGULAR_CLI: FrameworkTemplate(
+        name="Angular CLI",
+        type=FrameworkType.ANGULAR_CLI,
+        description="Angular CLI (non-Vite) with dev-server proxy",
+        vite_plugin=None,
+        dependencies=[
+            "@angular/animations",
+            "@angular/common",
+            "@angular/compiler",
+            "@angular/core",
+            "@angular/forms",
+            "@angular/platform-browser",
+            "@angular/platform-browser-dynamic",
+            "@angular/router",
+            "rxjs",
+            "zone.js",
+        ],
+        dev_dependencies=[
+            "@angular-devkit/build-angular",
+            "@angular/cli",
+            "@angular/compiler-cli",
+            "@types/node",
+            "typescript",
+        ],
+        files=[
+            "angular.json",
+            "tsconfig.json",
+            "tsconfig.app.json",
+            "tsconfig.spec.json",
+            "package.json",
+            "proxy.conf.json",
+            "src/index.html",
+            "src/main.ts",
+            "src/styles.css",
+            "src/app/app.component.ts",
+            "src/app/app.component.html",
+            "src/app/app.component.css",
+            "src/app/app.config.ts",
+            "src/app/app.routes.ts",
+            "src/app/home.component.ts",
+        ],
+        uses_typescript=True,
+        has_ssr=False,
+        inertia_compatible=False,
+        uses_vite=False,
+        resource_dir="src",
     ),
 }
 

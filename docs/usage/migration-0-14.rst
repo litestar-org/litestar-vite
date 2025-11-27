@@ -1,15 +1,15 @@
-====================
-Migrating to v2.0
-====================
+========================
+Migration Guide (0.14.x)
+========================
 
-Litestar Vite v2.0 introduces significant architectural changes.
+Litestar Vite 0.14 introduces the nested configuration structure and the `assets` CLI group. Use this guide when upgrading from earlier 0.x versions.
 
 Configuration Changes
 ---------------------
 
 The configuration structure has been nested for better organization.
 
-**v1.x:**
+**Before 0.14:**
 
 .. code-block:: python
 
@@ -20,7 +20,7 @@ The configuration structure has been nested for better organization.
         port=5173,
     )
 
-**v2.0:**
+**0.14+:**
 
 .. code-block:: python
 
@@ -44,7 +44,7 @@ The `ViteTemplateEngine` has been removed. Use the standard Litestar `JinjaTempl
 
 .. code-block:: python
 
-    # v2.0
+    # 0.14+
     from litestar.contrib.jinja import JinjaTemplateEngine
     from litestar.template.config import TemplateConfig
 

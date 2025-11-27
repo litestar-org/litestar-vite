@@ -195,6 +195,18 @@ class TestVitePluginAppIntegration:
         # Should configure multiple static directories in dev mode
         assert len(app_config.route_handlers) > 0
 
+    def test_on_app_init_direct_mode_skips_proxy(self) -> None:
+        """Proxy middleware should only attach in proxy mode."""
+
+        config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode="direct"))
+        plugin = VitePlugin(config=config)
+        app_config = AppConfig()
+
+        plugin.on_app_init(app_config)
+
+        assert app_config.middleware == []
+        assert plugin._proxy_target is None
+
     def test_on_app_init_production_mode_static_config(self, tmp_path: Path) -> None:
         """Test static configuration in production mode."""
         bundle_dir = tmp_path / "dist"

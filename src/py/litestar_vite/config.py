@@ -1,4 +1,4 @@
-"""Litestar-Vite v2.0 Configuration.
+"""Litestar-Vite Configuration.
 
 This module provides the configuration dataclasses for the Vite integration.
 The configuration is split into logical groups:
@@ -62,7 +62,7 @@ class PathConfig:
 
     root: "Union[str, Path]" = field(default_factory=Path.cwd)
     bundle_dir: "Union[str, Path]" = field(default_factory=lambda: Path("public"))
-    resource_dir: "Union[str, Path]" = field(default_factory=lambda: Path("resources"))
+    resource_dir: "Union[str, Path]" = field(default_factory=lambda: Path("src"))
     public_dir: "Union[str, Path]" = field(default_factory=lambda: Path("public"))
     manifest_name: str = "manifest.json"
     hot_file: str = "hot"
