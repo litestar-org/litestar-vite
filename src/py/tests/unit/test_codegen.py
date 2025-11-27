@@ -230,7 +230,7 @@ def test_generate_routes_json_basic() -> None:
 def test_generate_routes_json_with_components() -> None:
     """Test routes JSON generation with Inertia components."""
 
-    @get("/dashboard", name="dashboard", opt={"component": "Dashboard/Index"})
+    @get("/dashboard", name="dashboard", opt={"component": "Dashboard/Index"}, sync_to_thread=False)
     def dashboard_handler() -> dict[str, str]:
         return {}
 
@@ -273,7 +273,7 @@ def test_generate_routes_json_with_mount_path() -> None:
     """Test routes JSON generation with mounted routes."""
     from litestar import Router
 
-    @get("/users", name="api_users")
+    @get("/users", name="api_users", sync_to_thread=False)
     def users_handler() -> list[str]:
         return []
 
@@ -293,7 +293,7 @@ def test_generate_routes_json_with_mount_path() -> None:
 def test_generate_routes_json_with_query_params() -> None:
     """Test routes JSON generation includes query parameters."""
 
-    @get("/search", name="search")
+    @get("/search", name="search", sync_to_thread=False)
     def search_handler(
         query: str,
         page: int = 1,
@@ -324,7 +324,7 @@ def test_generate_routes_json_with_query_params() -> None:
 def test_extract_query_params_with_optional_types() -> None:
     """Test query parameter extraction with Optional types."""
 
-    @get("/users", name="list_users")
+    @get("/users", name="list_users", sync_to_thread=False)
     def list_users_handler(
         search: str | None = None,
         limit: int = 10,
@@ -353,7 +353,7 @@ def test_extract_query_params_with_optional_types() -> None:
 def test_extract_query_params_excludes_path_params() -> None:
     """Test that path parameters are excluded from query params."""
 
-    @get("/users/{user_id:int}", name="get_user")
+    @get("/users/{user_id:int}", name="get_user", sync_to_thread=False)
     def get_user_handler(
         user_id: int,
         include_details: bool = False,
@@ -378,7 +378,7 @@ def test_extract_query_params_excludes_system_types() -> None:
     """Test that system types (State, Request) are excluded from query params."""
     from litestar.connection import Request
 
-    @get("/health", name="health")
+    @get("/health", name="health", sync_to_thread=False)
     def health_handler(
         state: State,
         request: Request,
@@ -404,7 +404,7 @@ def test_extract_query_params_excludes_system_types() -> None:
 def test_extract_query_params_with_parameter_alias() -> None:
     """Test query parameter extraction with Parameter() alias."""
 
-    @get("/search", name="search")
+    @get("/search", name="search", sync_to_thread=False)
     def search_handler(
         q: str = Parameter(query="search_query"),
     ) -> dict[str, str]:
@@ -443,7 +443,7 @@ def test_path_normalization_edge_cases() -> None:
 def test_extract_route_metadata_empty_app() -> None:
     """Test extracting metadata from an app with no routes."""
 
-    @get("/health")
+    @get("/health", sync_to_thread=False)
     def health_check(state: State) -> dict[str, str]:
         return {"status": "ok"}
 

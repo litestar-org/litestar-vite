@@ -16,7 +16,7 @@ from litestar_vite.plugin import VitePlugin
 def test_export_routes_integration(tmp_path: Path) -> None:
     """Test routes export integration."""
 
-    @get("/users", name="list_users")
+    @get("/users", name="list_users", sync_to_thread=False)
     def list_users_handler() -> list[str]:
         return ["user1", "user2"]
 
@@ -64,7 +64,7 @@ def test_export_routes_integration(tmp_path: Path) -> None:
 def test_export_schema_integration(tmp_path: Path) -> None:
     """Test schema export integration."""
 
-    @get("/test")
+    @get("/test", sync_to_thread=False)
     def test_handler() -> dict[str, str]:
         return {}
 

@@ -104,10 +104,10 @@ Create the Inertia root template (e.g., `templates/index.html`). The `js_routes`
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         {{ vite('resources/main.ts') }}
-        {{ js_routes() }}
+        {{ js_routes }}
     </head>
     <body>
-        <div id="app" data-page="{{ inertia | tojson }}"></div>
+        <div id="app" data-page="{{ inertia }}"></div>
         {{ vite_hmr() }}
     </body>
     </html>
@@ -162,7 +162,7 @@ The return value of the route handler will be passed as props to the component.
 Shared Data
 ~~~~~~~~~~~
 
-Use the `share()` function to provide data that should be available on every page. This is useful for common data like user information or flash messages.
+Use the `share()` function to provide data that should be available on every page request. This is useful for request-specific shared data like user information or flash messages.
 
 .. code-block:: python
 
@@ -176,15 +176,17 @@ Use the `share()` function to provide data that should be available on every pag
         share(request, "user", {"name": "John Doe"})
         return {"message": "Hello"}
 
-Lazy Loading / Partial Reloads
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+For application-wide shared data (static) or session-based shared keys, you can also use the `extra_static_page_props` and `extra_session_page_props` options in `InertiaConfig`.
 
-Use the `lazy()` function to defer loading of expensive data. This data will only be fetched from the server when a component explicitly requests it via a partial reload.
+Deferred Props
+~~~~~~~~~~~~~~
+
+Use the `defer()` function to defer loading of expensive data. This data will not be included in the initial page load. Instead, it will be fetched automatically by the client (if configured) or when explicitly requested via a partial reload.
 
 .. code-block:: python
 
     from litestar.handlers import get
-    from litestar_vite.inertia import lazy
+    from litestar_vite.inertia import defer
 
     async def get_posts():
         # Expensive database query
@@ -194,8 +196,33 @@ Use the `lazy()` function to defer loading of expensive data. This data will onl
     async def dashboard() -> dict[str, Any]:
         return {
             "stats": {"visits": 100},           # Loaded immediately
-            "posts": lazy(get_posts),           # Loaded on demand
+            "posts": defer(get_posts),          # Loaded on demand
         }
+
+Merge Props
+~~~~~~~~~~~
+
+Use the `merge()` function to combine new data with existing props on the client side. This is particularly useful for infinite scrolling or pagination where you want to append new results to an existing list.
+
+.. code-block:: python
+
+    from litestar.handlers import get
+    from litestar_vite.inertia import merge
+
+    @get("/users", component="Users")
+    async def users(page: int = 1) -> dict[str, Any]:
+        new_users = await get_users(page)
+        return {
+            # Append new users to the existing list
+            "users": merge(new_users, strategy="append"),
+        }
+
+Supported strategies are `"append"` (default), `"prepend"`, and `"deep"` (for recursive merging). You can also use `match_on` to update existing items instead of duplicating them:
+
+.. code-block:: python
+
+    # Update existing items if IDs match, otherwise append
+    "users": merge(new_users, match_on="id")
 
 Navigation
 ----------
@@ -294,6 +321,22 @@ Convert a full URL to its matching route name or get the route name for the curr
     const routeName = toRoute('https://myapp.com/users/123'); // -> 'user-profile'
 
     const current = currentRoute(); // -> e.g., 'dashboard'
+
+Protocol v2 Support
+-------------------
+
+Litestar Vite fully supports the Inertia.js v2 protocol:
+
+*   **Deferred Props**: Using ``defer()`` and automatic partial reload handling.
+*   **Infinite Scrolling**: Using ``merge()`` with 'append'/'prepend' strategies.
+*   **History Encryption**: Support for ``encryptHistory`` and ``clearHistory``.
+*   **Asset Versioning**: Automatic version checking using the Vite manifest hash.
+
+The plugin automatically handles:
+
+*   ``409 Conflict`` responses for asset version mismatches.
+*   ``303 See Other`` for redirects.
+*   ``Vary: Accept`` headers for proper caching.
 
 Security
 --------
