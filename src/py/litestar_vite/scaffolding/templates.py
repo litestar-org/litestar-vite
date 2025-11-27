@@ -1,0 +1,320 @@
+"""Framework template definitions for scaffolding.
+
+This module defines the available framework templates and their configurations.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
+
+
+class FrameworkType(str, Enum):
+    """Supported frontend framework types."""
+
+    REACT = "react"
+    REACT_INERTIA = "react-inertia"
+    VUE = "vue"
+    VUE_INERTIA = "vue-inertia"
+    SVELTE = "svelte"
+    SVELTE_INERTIA = "svelte-inertia"
+    SVELTEKIT = "sveltekit"
+    NUXT = "nuxt"
+    ASTRO = "astro"
+    HTMX = "htmx"
+
+
+@dataclass
+class FrameworkTemplate:
+    """Configuration for a frontend framework template.
+
+    Attributes:
+        name: Display name for the template
+        type: Framework type enum
+        description: Brief description shown in selection UI
+        vite_plugin: Name of the Vite plugin import (if any)
+        dependencies: NPM dependencies to install
+        dev_dependencies: NPM dev dependencies to install
+        files: List of template files to generate
+        uses_typescript: Whether TypeScript is used by default
+        has_ssr: Whether SSR is supported
+        inertia_compatible: Whether it works with Inertia.js
+    """
+
+    name: str
+    type: FrameworkType
+    description: str
+    vite_plugin: str | None = None
+    dependencies: list[str] = field(default_factory=list)
+    dev_dependencies: list[str] = field(default_factory=list)
+    files: list[str] = field(default_factory=list)
+    uses_typescript: bool = True
+    has_ssr: bool = False
+    inertia_compatible: bool = False
+
+
+# Template registry
+FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
+    FrameworkType.REACT: FrameworkTemplate(
+        name="React",
+        type=FrameworkType.REACT,
+        description="React 18+ with TypeScript and Vite",
+        vite_plugin="@vitejs/plugin-react",
+        dependencies=["react", "react-dom"],
+        dev_dependencies=[
+            "@vitejs/plugin-react",
+            "@types/react",
+            "@types/react-dom",
+            "typescript",
+        ],
+        files=[
+            "vite.config.ts",
+            "tsconfig.json",
+            "package.json",
+            "index.html",
+            "resources/main.tsx",
+            "resources/App.tsx",
+            "resources/App.css",
+        ],
+        uses_typescript=True,
+        has_ssr=False,
+        inertia_compatible=True,
+    ),
+    FrameworkType.REACT_INERTIA: FrameworkTemplate(
+        name="React + Inertia.js",
+        type=FrameworkType.REACT_INERTIA,
+        description="React 18+ with Inertia.js for server-side routing",
+        vite_plugin="@vitejs/plugin-react",
+        dependencies=["react", "react-dom", "@inertiajs/react"],
+        dev_dependencies=[
+            "@vitejs/plugin-react",
+            "@types/react",
+            "@types/react-dom",
+            "typescript",
+        ],
+        files=[
+            "vite.config.ts",
+            "tsconfig.json",
+            "package.json",
+            "index.html",
+            "resources/main.tsx",
+            "resources/pages/Home.tsx",
+            "resources/App.css",
+        ],
+        uses_typescript=True,
+        has_ssr=True,
+        inertia_compatible=True,
+    ),
+    FrameworkType.VUE: FrameworkTemplate(
+        name="Vue 3",
+        type=FrameworkType.VUE,
+        description="Vue 3 with Composition API and TypeScript",
+        vite_plugin="@vitejs/plugin-vue",
+        dependencies=["vue"],
+        dev_dependencies=[
+            "@vitejs/plugin-vue",
+            "vue-tsc",
+            "typescript",
+        ],
+        files=[
+            "vite.config.ts",
+            "tsconfig.json",
+            "package.json",
+            "index.html",
+            "env.d.ts",
+            "resources/main.ts",
+            "resources/App.vue",
+            "resources/style.css",
+        ],
+        uses_typescript=True,
+        has_ssr=False,
+        inertia_compatible=True,
+    ),
+    FrameworkType.VUE_INERTIA: FrameworkTemplate(
+        name="Vue + Inertia.js",
+        type=FrameworkType.VUE_INERTIA,
+        description="Vue 3 with Inertia.js for server-side routing",
+        vite_plugin="@vitejs/plugin-vue",
+        dependencies=["vue", "@inertiajs/vue3"],
+        dev_dependencies=[
+            "@vitejs/plugin-vue",
+            "vue-tsc",
+            "typescript",
+        ],
+        files=[
+            "vite.config.ts",
+            "tsconfig.json",
+            "package.json",
+            "index.html",
+            "env.d.ts",
+            "resources/main.ts",
+            "resources/pages/Home.vue",
+            "resources/style.css",
+        ],
+        uses_typescript=True,
+        has_ssr=True,
+        inertia_compatible=True,
+    ),
+    FrameworkType.SVELTE: FrameworkTemplate(
+        name="Svelte 5",
+        type=FrameworkType.SVELTE,
+        description="Svelte 5 with runes and TypeScript",
+        vite_plugin="@sveltejs/vite-plugin-svelte",
+        dependencies=["svelte"],
+        dev_dependencies=[
+            "@sveltejs/vite-plugin-svelte",
+            "svelte-check",
+            "typescript",
+            "tslib",
+        ],
+        files=[
+            "vite.config.ts",
+            "svelte.config.js",
+            "tsconfig.json",
+            "package.json",
+            "index.html",
+            "resources/main.ts",
+            "resources/App.svelte",
+            "resources/app.css",
+        ],
+        uses_typescript=True,
+        has_ssr=False,
+        inertia_compatible=True,
+    ),
+    FrameworkType.SVELTE_INERTIA: FrameworkTemplate(
+        name="Svelte + Inertia.js",
+        type=FrameworkType.SVELTE_INERTIA,
+        description="Svelte 5 with Inertia.js for server-side routing",
+        vite_plugin="@sveltejs/vite-plugin-svelte",
+        dependencies=["svelte", "@inertiajs/svelte"],
+        dev_dependencies=[
+            "@sveltejs/vite-plugin-svelte",
+            "svelte-check",
+            "typescript",
+            "tslib",
+        ],
+        files=[
+            "vite.config.ts",
+            "svelte.config.js",
+            "tsconfig.json",
+            "package.json",
+            "index.html",
+            "resources/main.ts",
+            "resources/pages/Home.svelte",
+            "resources/app.css",
+        ],
+        uses_typescript=True,
+        has_ssr=True,
+        inertia_compatible=True,
+    ),
+    FrameworkType.SVELTEKIT: FrameworkTemplate(
+        name="SvelteKit",
+        type=FrameworkType.SVELTEKIT,
+        description="SvelteKit with Litestar API backend",
+        vite_plugin="litestar-vite-plugin/sveltekit",
+        dependencies=["svelte", "@sveltejs/kit"],
+        dev_dependencies=[
+            "@sveltejs/vite-plugin-svelte",
+            "@sveltejs/adapter-auto",
+            "svelte-check",
+            "typescript",
+            "tslib",
+            "litestar-vite-plugin",
+        ],
+        files=[
+            "vite.config.ts",
+            "svelte.config.js",
+            "src/app.html",
+            "src/app.css",
+            "src/routes/+page.svelte",
+            "src/routes/+layout.svelte",
+        ],
+        uses_typescript=True,
+        has_ssr=True,
+        inertia_compatible=False,
+    ),
+    FrameworkType.NUXT: FrameworkTemplate(
+        name="Nuxt 3",
+        type=FrameworkType.NUXT,
+        description="Nuxt 3 with Litestar API backend",
+        vite_plugin=None,  # Nuxt has its own module system
+        dependencies=["nuxt", "vue"],
+        dev_dependencies=[
+            "typescript",
+            "vue-tsc",
+            "litestar-vite-plugin",
+        ],
+        files=[
+            "nuxt.config.ts",
+            "app.vue",
+            "pages/index.vue",
+            "composables/useApi.ts",
+        ],
+        uses_typescript=True,
+        has_ssr=True,
+        inertia_compatible=False,
+    ),
+    FrameworkType.ASTRO: FrameworkTemplate(
+        name="Astro",
+        type=FrameworkType.ASTRO,
+        description="Astro with Litestar API backend",
+        vite_plugin="litestar-vite-plugin/astro",
+        dependencies=["astro"],
+        dev_dependencies=[
+            "typescript",
+            "litestar-vite-plugin",
+        ],
+        files=[
+            "astro.config.mjs",
+            "src/pages/index.astro",
+            "src/layouts/Layout.astro",
+            "src/styles/global.css",
+        ],
+        uses_typescript=True,
+        has_ssr=True,
+        inertia_compatible=False,
+    ),
+    FrameworkType.HTMX: FrameworkTemplate(
+        name="HTMX + Alpine.js",
+        type=FrameworkType.HTMX,
+        description="Server-rendered HTML with HTMX and Alpine.js",
+        vite_plugin=None,
+        dependencies=["htmx.org", "alpinejs"],
+        dev_dependencies=["typescript"],
+        files=[
+            "vite.config.ts",
+            "resources/main.js",
+            "templates/base.html.j2",
+            "templates/index.html.j2",
+        ],
+        uses_typescript=False,
+        has_ssr=False,  # Server-rendered
+        inertia_compatible=False,
+    ),
+}
+
+
+def get_available_templates() -> list[FrameworkTemplate]:
+    """Get all available framework templates.
+
+    Returns:
+        List of available FrameworkTemplate instances.
+    """
+    return list(FRAMEWORK_TEMPLATES.values())
+
+
+def get_template(framework_type: FrameworkType | str) -> FrameworkTemplate | None:
+    """Get a specific framework template.
+
+    Args:
+        framework_type: The framework type (enum or string).
+
+    Returns:
+        The FrameworkTemplate if found, None otherwise.
+    """
+    if isinstance(framework_type, str):
+        try:
+            framework_type = FrameworkType(framework_type)
+        except ValueError:
+            return None
+    return FRAMEWORK_TEMPLATES.get(framework_type)

@@ -177,11 +177,13 @@ Litestar (Python)
 ```
 
 **Key Components:**
+
 - `ViteExecutor` - Manages Node.js subprocess lifecycle
 - `sidecar.ts` - Bootstrap script running Vite in `middlewareMode`
 - WebSocket proxy - Forwards HMR messages bidirectionally
 
 **Critical Vite Config:**
+
 ```typescript
 server: {
   middlewareMode: true,
@@ -193,6 +195,7 @@ server: {
 ```
 
 **Auto-Detection:**
+
 1. Production manifest exists → production mode
 2. Vite running on 5173 → use external Vite
 3. `vite.config.ts` exists → start sidecar
@@ -247,42 +250,154 @@ PR #32 had useful template patterns. Key files:
 ## Current Implementation Status (2025-11-27)
 
 ### Phase 1: Core Architecture ✅ COMPLETE
+
 - Config refactor with nested dataclasses
 - Async loader with DI
 - Executor classes (Node, Bun, Deno, etc.)
 - Plugin overhaul
 
 ### Phase 2: Dual Mode System ✅ COMPLETE
+
 - `spa.py` - ViteSPAHandler with dev proxy and production serving
 - `html_transform.py` - HtmlTransformer with compiled regex patterns
 - Mode auto-detection in ViteConfig
 - Template mode with optional Jinja
 
 ### Phase 3: Type Generation ✅ COMPLETE
+
 - `codegen.py` - Full RouteMetadata extraction with:
-  - Path parameters with types
-  - Query parameters using subtraction approach
-  - Type conversion (Python → TypeScript) including PEP 604 unions
-  - System type filtering (Request, State, etc.)
-  - `ParameterKwarg` aliasing support
+    - Path parameters with types
+    - Query parameters using subtraction approach
+    - Type conversion (Python → TypeScript) including PEP 604 unions
+    - System type filtering (Request, State, etc.)
+    - `ParameterKwarg` aliasing support
 - CLI commands:
-  - `export-routes` - Export route metadata as JSON
-  - `generate-types` - Full type generation pipeline
-  - Removed duplicate `export-schema` (uses Litestar built-in)
-- TypeScript plugin updates:
-  - Added `TypesConfig` interface for type generation config
-  - Added `types` option to `PluginConfig`
-  - Exported interfaces for user imports
+    - `export-routes` - Export route metadata as JSON
+    - `generate-types` - Full type generation pipeline
+    - Removed duplicate `export-schema` (uses Litestar built-in)
+- **Python server_lifespan integration** (`src/py/litestar_vite/plugin.py`):
+    - `_export_types_sync()` - Exports openapi.json and routes.json on app startup
+    - Triggered in both `server_lifespan` and `async_server_lifespan` hooks
+    - Works with `--reload` mode: types re-exported when Python code changes
+- **TypeScript plugin** (`src/js/src/index.ts`):
+    - `TypesConfig` interface for type generation configuration
+    - `ResolvedPluginConfig` type for proper type narrowing
+    - `resolveTypeGenerationPlugin()` - Vite plugin that:
+        - Watches openapi.json and routes.json for changes
+        - Runs `npx @hey-api/openapi-ts` when schema files change
+        - Sends HMR event `litestar:types-updated` to notify client
+        - Debounced to prevent excessive rebuilds (300ms default)
+    - `debounce()` utility function
+- **Type generation flow**:
+  1. Python app starts → exports openapi.json + routes.json
+  2. Vite plugin detects file change → runs @hey-api/openapi-ts
+  3. TypeScript types generated → HMR event sent
+  4. Python code changes → app reloads → types re-exported → cycle repeats
 
-### Phase 4: Inertia.js v2 Protocol 📋 PENDING
-- Defer/merge props
-- New headers support
-- Enhanced page object
+### Phase 4: Inertia.js v2 Protocol ✅ COMPLETE
 
-### Phase 5: Polish & Documentation 📋 PENDING
-- Templates
-- Examples
-- Documentation
+- New v2 headers support:
+    - `X-Inertia-Partial-Except` - Props to exclude from partial render
+    - `X-Inertia-Reset` - Props to reset on navigation
+    - `X-Inertia-Error-Bag` - Validation error bag name
+    - `X-Inertia-Infinite-Scroll-Merge-Intent` - Merge direction for infinite scroll
+- Enhanced `PageProps` with v2 fields:
+    - `encrypt_history`, `clear_history` - History encryption
+    - `merge_props`, `prepend_props`, `deep_merge_props` - Merge strategies
+    - `match_props_on` - Keys for matching items during merge
+    - `deferred_props` - Lazy-loaded props configuration
+- snake_case to camelCase conversion:
+    - `to_camel_case()` function with compiled regex
+    - `to_inertia_dict()` for dataclass serialization
+    - `PageProps.to_dict()` for protocol-compliant output
+- Deferred props (v2 feature):
+    - `defer()` helper with group support
+    - `extract_deferred_props()` for metadata extraction
+    - Group-based fetching for batched loading
+- Merge props (v2 feature):
+    - `MergeProp` class with strategy and match_on support
+    - `merge()` helper for append/prepend/deep strategies
+    - `extract_merge_props()` for metadata extraction
+- Updated InertiaRequest/InertiaDetails with v2 properties
+- Updated response.py with partial_except and reset handling
+
+### Phase 5: Polish & Documentation ✅ MOSTLY COMPLETE
+
+- **DONE**: Comprehensive tests for all v2 features:
+    - `test_defer_helper_with_groups()` - Group-based deferred props
+    - `test_extract_deferred_props()` - Metadata extraction
+    - `test_merge_helper()` - All merge strategies
+    - `test_is_merge_prop()` - Type guard
+    - `test_extract_merge_props()` - Strategy categorization
+    - `test_should_render_with_partial_except()` - v2 partial filtering
+    - `test_lazy_render_with_partial_except()` - v2 lazy rendering
+    - `test_to_camel_case()` - snake_case to camelCase
+    - `test_to_inertia_dict()` - Dataclass conversion
+    - `test_page_props_to_dict()` - Full PageProps serialization
+- **DONE**: Framework-specific integrations:
+    - `src/js/src/astro.ts` - Astro integration with API proxy and type generation
+    - `src/js/src/sveltekit.ts` - SvelteKit integration with API proxy and type generation
+    - `src/js/src/nuxt.ts` - Nuxt 3+ module with API proxy and type generation
+    - Updated `package.json` exports for `./astro`, `./sveltekit`, `./nuxt`
+- **FUTURE**: Framework-specific scaffolding templates (React, Vue, Svelte)
+- **FUTURE**: Example updates to demonstrate v2 features
+- **FUTURE**: Extended documentation
+
+### Framework Integrations
+
+Each framework integration provides:
+
+1. **API Proxy** - Forwards `/api/*` requests to Litestar during development
+2. **Type Generation** - Watches schema files and runs @hey-api/openapi-ts
+3. **HMR Notification** - Sends `litestar:types-updated` event when types change
+
+Usage examples:
+
+**Astro** (`astro.config.mjs`):
+
+```typescript
+import { defineConfig } from 'astro/config';
+import litestar from 'litestar-vite-plugin/astro';
+
+export default defineConfig({
+  integrations: [
+    litestar({
+      apiProxy: 'http://localhost:8000',
+      typesPath: './src/generated/api',
+    }),
+  ],
+});
+```
+
+**SvelteKit** (`vite.config.ts`):
+
+```typescript
+import { sveltekit } from '@sveltejs/kit/vite';
+import { litestarSvelteKit } from 'litestar-vite-plugin/sveltekit';
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  plugins: [
+    litestarSvelteKit({
+      apiProxy: 'http://localhost:8000',
+      types: { enabled: true, output: 'src/lib/api' },
+    }),
+    sveltekit(),
+  ],
+});
+```
+
+**Nuxt** (`nuxt.config.ts`):
+
+```typescript
+export default defineNuxtConfig({
+  modules: ['litestar-vite-plugin/nuxt'],
+  litestar: {
+    apiProxy: 'http://localhost:8000',
+    types: { enabled: true, output: 'types/api' },
+  },
+});
+```
 
 ---
 
@@ -297,11 +412,11 @@ PR #32 had useful template patterns. Key files:
 
 | Resource | URL | What We Use |
 |----------|-----|-------------|
-| Vite Backend Integration | https://vite.dev/guide/backend-integration | Manifest format, dev injection |
-| Litestar Plugins | https://docs.litestar.dev/latest/usage/plugins/ | InitPlugin API |
-| Litestar HTMX | https://docs.litestar.dev/latest/usage/htmx | **Don't duplicate this!** |
-| @hey-api/openapi-ts | https://heyapi.dev/ | Type generation |
-| Inertia Protocol | https://inertiajs.com/the-protocol | Headers, response format |
+| Vite Backend Integration | <https://vite.dev/guide/backend-integration> | Manifest format, dev injection |
+| Litestar Plugins | <https://docs.litestar.dev/latest/usage/plugins/> | InitPlugin API |
+| Litestar HTMX | <https://docs.litestar.dev/latest/usage/htmx> | **Don't duplicate this!** |
+| @hey-api/openapi-ts | <https://heyapi.dev/> | Type generation |
+| Inertia Protocol | <https://inertiajs.com/the-protocol> | Headers, response format |
 
 ### GitHub Resources
 

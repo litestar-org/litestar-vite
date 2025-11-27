@@ -1,0 +1,18 @@
+import { Head } from "@inertiajs/react";
+
+interface Props {
+  message?: string;
+}
+
+export default function Home({ message }: Props) {
+  return (
+    <>
+      <Head title="Home" />
+      <div className="app">
+        <h1>{{ project_name }}</h1>
+        <p>React + Inertia.js + Litestar</p>
+        {message && <p className="message">{message}</p>}
+      </div>
+    </>
+  );
+}

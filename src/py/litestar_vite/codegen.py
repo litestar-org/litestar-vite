@@ -41,16 +41,18 @@ _PATH_PARAM_EXTRACT_PATTERN = re.compile(r"\{([^:}]+)(?::([^}]+))?\}")
 
 # System types that should be excluded from query parameters
 # These are injected by Litestar, not from the request query string
-_SYSTEM_TYPE_NAMES = frozenset({
-    "Request",
-    "WebSocket",
-    "State",
-    "ASGIConnection",
-    "HTTPConnection",
-    "Scope",
-    "Receive",
-    "Send",
-})
+_SYSTEM_TYPE_NAMES = frozenset(
+    {
+        "Request",
+        "WebSocket",
+        "State",
+        "ASGIConnection",
+        "HTTPConnection",
+        "Scope",
+        "Receive",
+        "Send",
+    }
+)
 
 
 @dataclass
@@ -161,17 +163,12 @@ def _is_system_type(annotation: Any) -> bool:
         return False
 
     # Check by class name (handles imports from different locations)
-    if inspect.isclass(annotation):
-        if annotation.__name__ in _SYSTEM_TYPE_NAMES:
-            return True
+    if inspect.isclass(annotation) and annotation.__name__ in _SYSTEM_TYPE_NAMES:
+        return True
 
     # Check string representation for generic types
     type_str = str(annotation)
-    for system_type in _SYSTEM_TYPE_NAMES:
-        if system_type in type_str:
-            return True
-
-    return False
+    return any(system_type in type_str for system_type in _SYSTEM_TYPE_NAMES)
 
 
 def _normalize_path(path: str) -> str:
@@ -297,7 +294,11 @@ def _extract_query_params(handler: HTTPRouteHandler, path_param_names: set[str])
         # Litestar uses _EmptyEnum.EMPTY as sentinel for no default
         default = getattr(field_def, "default", None)
         # Check if it's the EMPTY sentinel by checking its type/name
-        is_empty = default is None or (hasattr(default, "name") and default.name == "EMPTY") or str(default) == "<_EmptyEnum.EMPTY: 0>"
+        is_empty = (
+            default is None
+            or (hasattr(default, "name") and default.name == "EMPTY")
+            or str(default) == "<_EmptyEnum.EMPTY: 0>"
+        )
         is_optional = not is_empty
 
         # Handle ParameterKwarg metadata for aliasing (from Parameter() calls)

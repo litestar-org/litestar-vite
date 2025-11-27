@@ -1,13 +1,23 @@
+import { exec } from "node:child_process"
 import fs from "node:fs"
 import type { AddressInfo } from "node:net"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { promisify } from "node:util"
 import colors from "picocolors"
 import { type ConfigEnv, type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer, loadEnv } from "vite"
 import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-reload"
 
+const execAsync = promisify(exec)
+
 /**
  * Configuration for TypeScript type generation.
+ *
+ * Type generation works as follows:
+ * 1. Python's Litestar exports openapi.json and routes.json on startup (and reload)
+ * 2. The Vite plugin watches these files for changes
+ * 3. When they change, it runs @hey-api/openapi-ts to generate TypeScript types
+ * 4. HMR event is sent to notify the client
  */
 export interface TypesConfig {
   /**
@@ -23,13 +33,15 @@ export interface TypesConfig {
    */
   output?: string
   /**
-   * Path where the OpenAPI schema will be exported.
+   * Path where the OpenAPI schema is exported by Litestar.
+   * The Vite plugin watches this file and runs @hey-api/openapi-ts when it changes.
    *
    * @default 'openapi.json'
    */
   openapiPath?: string
   /**
-   * Path where route metadata will be exported.
+   * Path where route metadata is exported by Litestar.
+   * The Vite plugin watches this file for route helper generation.
    *
    * @default 'routes.json'
    */
@@ -40,6 +52,14 @@ export interface TypesConfig {
    * @default false
    */
   generateZod?: boolean
+  /**
+   * Debounce time in milliseconds for type regeneration.
+   * Prevents regeneration from running too frequently when
+   * multiple files are written in quick succession.
+   *
+   * @default 300
+   */
+  debounce?: number
 }
 
 export interface PluginConfig {
@@ -144,6 +164,14 @@ interface RefreshConfig {
   config?: FullReloadConfig
 }
 
+/**
+ * Resolved plugin configuration with all defaults applied.
+ * Note: `types` is resolved to `Required<TypesConfig> | false` instead of `boolean | TypesConfig`
+ */
+interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types"> {
+  types: Required<TypesConfig> | false
+}
+
 interface LitestarPlugin extends Plugin {
   config: (config: UserConfig, env: ConfigEnv) => UserConfig
 }
@@ -162,13 +190,23 @@ export const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((path
 export default function litestar(config: string | string[] | PluginConfig): [LitestarPlugin, ...Plugin[]] {
   const pluginConfig = resolvePluginConfig(config)
 
-  return [resolveLitestarPlugin(pluginConfig), ...(resolveFullReloadConfig(pluginConfig) as Plugin[])]
+  const plugins: Plugin[] = [
+    resolveLitestarPlugin(pluginConfig),
+    ...(resolveFullReloadConfig(pluginConfig) as Plugin[]),
+  ]
+
+  // Add type generation plugin if enabled
+  if (pluginConfig.types !== false && pluginConfig.types.enabled) {
+    plugins.push(resolveTypeGenerationPlugin(pluginConfig.types))
+  }
+
+  return plugins as [LitestarPlugin, ...Plugin[]]
 }
 
 /**
  * Resolve the index.html path to use for the Vite server.
  */
-async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: Required<PluginConfig>): Promise<string | null> {
+async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: ResolvedPluginConfig): Promise<string | null> {
   if (!pluginConfig.autoDetectIndex) {
     console.log("Auto-detection disabled.") // Debug log
     return null
@@ -200,7 +238,7 @@ async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: Required<P
 /**
  * Resolve the Litestar Plugin configuration.
  */
-function resolveLitestarPlugin(pluginConfig: Required<PluginConfig>): LitestarPlugin {
+function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlugin {
   let viteDevServerUrl: DevServerUrl
   let resolvedConfig: ResolvedConfig
   let userConfig: UserConfig
@@ -444,7 +482,7 @@ function pluginVersion(): string {
 /**
  * Convert the users configuration into a standard structure with defaults.
  */
-function resolvePluginConfig(config: string | string[] | PluginConfig): Required<PluginConfig> {
+function resolvePluginConfig(config: string | string[] | PluginConfig): ResolvedPluginConfig {
   if (typeof config === "undefined") {
     throw new Error("litestar-vite-plugin: missing configuration.")
   }
@@ -486,6 +524,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Required
       openapiPath: "openapi.json",
       routesPath: "routes.json",
       generateZod: false,
+      debounce: 300,
     }
   } else if (typeof resolvedConfig.types === "object" && resolvedConfig.types !== null) {
     typesConfig = {
@@ -494,6 +533,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Required
       openapiPath: resolvedConfig.types.openapiPath ?? "openapi.json",
       routesPath: resolvedConfig.types.routesPath ?? "routes.json",
       generateZod: resolvedConfig.types.generateZod ?? false,
+      debounce: resolvedConfig.types.debounce ?? 300,
     }
   }
 
@@ -516,7 +556,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Required
 /**
  * Resolve the Vite base option from the configuration.
  */
-function resolveBase(config: Required<PluginConfig>, assetUrl: string): string {
+function resolveBase(config: ResolvedPluginConfig, assetUrl: string): string {
   // In development mode, use the assetUrl directly
   if (process.env.NODE_ENV === "development") {
     return assetUrl
@@ -528,7 +568,7 @@ function resolveBase(config: Required<PluginConfig>, assetUrl: string): string {
 /**
  * Resolve the Vite input path from the configuration.
  */
-function resolveInput(config: Required<PluginConfig>, ssr: boolean): string | string[] | undefined {
+function resolveInput(config: ResolvedPluginConfig, ssr: boolean): string | string[] | undefined {
   if (ssr) {
     return config.ssr
   }
@@ -540,7 +580,7 @@ function resolveInput(config: Required<PluginConfig>, ssr: boolean): string | st
  * Resolve the Vite outDir path from the configuration.
  * Should be relative to the project root for Vite config, Vite resolves it internally.
  */
-function resolveOutDir(config: Required<PluginConfig>, ssr: boolean): string {
+function resolveOutDir(config: ResolvedPluginConfig, ssr: boolean): string {
   if (ssr) {
     // Return path relative to root
     return config.ssrOutputDirectory.replace(/^\/+/, "").replace(/\/+$/, "")
@@ -549,7 +589,7 @@ function resolveOutDir(config: Required<PluginConfig>, ssr: boolean): string {
   return config.bundleDirectory.replace(/^\/+/, "").replace(/\/+$/, "")
 }
 
-function resolveFullReloadConfig({ refresh: config }: Required<PluginConfig>): PluginOption[] {
+function resolveFullReloadConfig({ refresh: config }: ResolvedPluginConfig): PluginOption[] {
   if (typeof config === "boolean") {
     return []
   }
@@ -575,6 +615,165 @@ function resolveFullReloadConfig({ refresh: config }: Required<PluginConfig>): P
 
     return plugin
   })
+}
+
+/**
+ * Create a debounced function that delays invoking func until after
+ * wait milliseconds have elapsed since the last time the debounced
+ * function was invoked.
+ */
+function debounce<T extends (...args: unknown[]) => void>(func: T, wait: number): T {
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  return ((...args: unknown[]) => {
+    if (timeout) {
+      clearTimeout(timeout)
+    }
+    timeout = setTimeout(() => func(...args), wait)
+  }) as T
+}
+
+/**
+ * Type generation plugin for Litestar.
+ *
+ * This plugin watches the OpenAPI schema and routes JSON files exported by Litestar.
+ * When these files change (e.g., after Python server reload), it runs @hey-api/openapi-ts
+ * to generate TypeScript types and notifies HMR clients.
+ *
+ * Flow:
+ * 1. Litestar exports openapi.json and routes.json on startup (via server_lifespan hook)
+ * 2. This plugin detects file changes via Vite's handleHotUpdate
+ * 3. Runs npx @hey-api/openapi-ts to generate TypeScript types
+ * 4. Sends HMR event to notify client
+ */
+function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>): Plugin {
+  let server: ViteDevServer | null = null
+  let isGenerating = false
+  let resolvedConfig: ResolvedConfig | null = null
+
+  /**
+   * Run @hey-api/openapi-ts to generate TypeScript types from the OpenAPI schema.
+   */
+  async function runTypeGeneration(): Promise<boolean> {
+    if (isGenerating) {
+      return false
+    }
+
+    isGenerating = true
+    const startTime = Date.now()
+
+    try {
+      // Check if openapi.json exists
+      const openapiPath = path.resolve(process.cwd(), typesConfig.openapiPath)
+      if (!fs.existsSync(openapiPath)) {
+        if (resolvedConfig) {
+          resolvedConfig.logger.warn(
+            `${colors.cyan("litestar-vite")} ${colors.yellow("OpenAPI schema not found:")} ${typesConfig.openapiPath}`,
+          )
+        }
+        return false
+      }
+
+      if (resolvedConfig) {
+        resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("generating TypeScript types...")}`)
+      }
+
+      // Build @hey-api/openapi-ts command
+      const args = [
+        "@hey-api/openapi-ts",
+        "-i",
+        typesConfig.openapiPath,
+        "-o",
+        typesConfig.output,
+      ]
+
+      if (typesConfig.generateZod) {
+        args.push("--plugins", "@hey-api/schemas", "@hey-api/types")
+      }
+
+      await execAsync(`npx ${args.join(" ")}`, {
+        cwd: process.cwd(),
+      })
+
+      const duration = Date.now() - startTime
+      if (resolvedConfig) {
+        resolvedConfig.logger.info(
+          `${colors.cyan("litestar-vite")} ${colors.green("TypeScript types generated")} ${colors.dim(`in ${duration}ms`)}`,
+        )
+      }
+
+      // Notify HMR clients that types have been updated
+      if (server) {
+        server.ws.send({
+          type: "custom",
+          event: "litestar:types-updated",
+          data: {
+            output: typesConfig.output,
+            timestamp: Date.now(),
+          },
+        })
+      }
+
+      return true
+    } catch (error) {
+      if (resolvedConfig) {
+        const message = error instanceof Error ? error.message : String(error)
+        // Don't show error if @hey-api/openapi-ts is not installed - just warn once
+        if (message.includes("not found") || message.includes("ENOENT")) {
+          resolvedConfig.logger.warn(
+            `${colors.cyan("litestar-vite")} ${colors.yellow("@hey-api/openapi-ts not installed")} - run: npm install -D @hey-api/openapi-ts`,
+          )
+        } else {
+          resolvedConfig.logger.error(`${colors.cyan("litestar-vite")} ${colors.red("type generation failed:")} ${message}`)
+        }
+      }
+      return false
+    } finally {
+      isGenerating = false
+    }
+  }
+
+  // Create debounced version
+  const debouncedRunTypeGeneration = debounce(runTypeGeneration, typesConfig.debounce)
+
+  return {
+    name: "litestar-vite-types",
+    enforce: "pre",
+
+    configResolved(config) {
+      resolvedConfig = config
+    },
+
+    configureServer(devServer) {
+      server = devServer
+
+      // Log that we're watching for schema changes
+      if (typesConfig.enabled) {
+        resolvedConfig?.logger.info(
+          `${colors.cyan("litestar-vite")} ${colors.dim("watching for schema changes:")} ${colors.yellow(typesConfig.openapiPath)}`,
+        )
+      }
+    },
+
+    handleHotUpdate({ file }) {
+      if (!typesConfig.enabled) {
+        return
+      }
+
+      const relativePath = path.relative(process.cwd(), file)
+      const openapiPath = typesConfig.openapiPath.replace(/^\.\//, "")
+      const routesPath = typesConfig.routesPath.replace(/^\.\//, "")
+
+      // Check if the changed file is our OpenAPI schema or routes metadata
+      if (relativePath === openapiPath || relativePath === routesPath || file.endsWith(openapiPath) || file.endsWith(routesPath)) {
+        if (resolvedConfig) {
+          resolvedConfig.logger.info(
+            `${colors.cyan("litestar-vite")} ${colors.dim("schema changed:")} ${colors.yellow(relativePath)}`,
+          )
+        }
+        debouncedRunTypeGeneration()
+      }
+    },
+  }
 }
 
 /**

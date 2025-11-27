@@ -26,7 +26,10 @@ from litestar.utils.scope.state import ScopeState
 
 from litestar_vite.inertia._utils import get_headers
 from litestar_vite.inertia.helpers import (
+    extract_deferred_props,
+    extract_merge_props,
     get_shared_props,
+    is_merge_prop,
     is_or_contains_lazy_prop,
     js_routes_script,
     lazy_render,
@@ -124,7 +127,8 @@ class InertiaResponse(Response[T]):
             A dictionary holding the template context
         """
         csrf_token = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
-        inertia_props = self.render(page_props, MediaType.JSON, get_serializer(type_encoders)).decode()
+        # Use to_dict() to convert snake_case to camelCase for Inertia.js protocol
+        inertia_props = self.render(page_props.to_dict(), MediaType.JSON, get_serializer(type_encoders)).decode()
         return {
             **self.context,
             "inertia": inertia_props,
@@ -133,7 +137,7 @@ class InertiaResponse(Response[T]):
             "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
         }
 
-    def to_asgi_response(  # noqa: C901
+    def to_asgi_response(  # noqa: C901, PLR0915
         self,
         app: "Optional[Litestar]",
         request: "Request[UserT, AuthT, StateT]",
@@ -179,37 +183,70 @@ class InertiaResponse(Response[T]):
                 status_code=self.status_code or status_code,
             )
         is_partial_render = cast("bool", getattr(request, "is_partial_render", False))
-        partial_keys = cast("set[str]", getattr(request, "partial_keys", {}))
+        partial_keys = cast("set[str]", getattr(request, "partial_keys", set()))
+        # v2: partial_except takes precedence over partial_keys
+        partial_except_keys = cast("set[str]", getattr(request, "partial_except_keys", set()))
+        # v2: reset props should be cleared from merged state
+        reset_keys = cast("set[str]", getattr(request, "reset_keys", set()))
         vite_plugin = request.app.plugins.get(VitePlugin)
         inertia_plugin = request.app.plugins.get(InertiaPlugin)
         template_engine = request.app.template_engine  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
         headers.update(
             {"Vary": "Accept", **get_headers(InertiaHeaderType(enabled=True))},
         )
+
+        # Determine partial filtering params for v2 protocol
+        partial_data: "set[str] | None" = partial_keys if is_partial_render and partial_keys else None
+        partial_except: "set[str] | None" = partial_except_keys if is_partial_render and partial_except_keys else None
+
         shared_props = get_shared_props(
             request,
-            partial_data=partial_keys if is_partial_render else None,
+            partial_data=partial_data,
+            partial_except=partial_except,
         )
+
+        # Handle reset props (v2) - remove specified props from shared state
+        for key in reset_keys:
+            shared_props.pop(key, None)
+
         if is_or_contains_lazy_prop(self.content):
             filtered_content = lazy_render(
                 self.content,
-                partial_keys if is_partial_render else None,
+                partial_data,
                 inertia_plugin.portal,
+                partial_except,
             )
             if filtered_content is not None:
                 shared_props["content"] = filtered_content
-        elif should_render(self.content, partial_keys):
+        elif should_render(self.content, partial_data, partial_except):
             shared_props["content"] = self.content
+
+        # Extract deferred props metadata for v2 protocol
+        deferred_props = extract_deferred_props(shared_props) or None
+
+        # Extract merge props metadata for v2 protocol
+        merge_props_list, prepend_props_list, deep_merge_props_list, match_props_on = extract_merge_props(shared_props)
+
+        # Unwrap MergeProp values before putting them in shared_props
+        for key, value in list(shared_props.items()):
+            if is_merge_prop(value):
+                shared_props[key] = value.value
 
         page_props = PageProps[T](
             component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
             props=shared_props,  # pyright: ignore[reportArgumentType]
             version=vite_plugin.asset_loader.version_id,
             url=request.url.path,
+            deferred_props=deferred_props,
+            merge_props=merge_props_list or None,
+            prepend_props=prepend_props_list or None,
+            deep_merge_props=deep_merge_props_list or None,
+            match_props_on=match_props_on or None,
         )
         if is_inertia:
             media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
-            body = self.render(page_props, media_type, get_serializer(type_encoders))
+            # Use to_dict() to convert snake_case to camelCase for Inertia.js protocol
+            body = self.render(page_props.to_dict(), media_type, get_serializer(type_encoders))
             return ASGIResponse(  # pyright: ignore[reportUnknownMemberType]
                 background=self.background or background,
                 body=body,

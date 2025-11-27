@@ -1,0 +1,24 @@
+import { defineConfig } from "astro/config";
+import litestar from "litestar-vite-plugin/astro";
+{% if use_tailwind %}
+import tailwindcss from "@tailwindcss/vite";
+{% endif %}
+
+const LITESTAR_PORT = process.env.LITESTAR_PORT || "{{ litestar_port }}";
+
+export default defineConfig({
+  integrations: [
+    litestar({
+      apiProxy: `http://localhost:${LITESTAR_PORT}`,
+      apiPrefix: "/api",
+{% if enable_types %}
+      typesPath: "./src/generated/api",
+{% endif %}
+    }),
+  ],
+{% if use_tailwind %}
+  vite: {
+    plugins: [tailwindcss()],
+  },
+{% endif %}
+});

@@ -102,11 +102,13 @@ app = Litestar(plugins=[vite], template_config=template_config)
     )
 
     assert "Initializing Vite" in result.output
+    # Check for core files that exist with any framework template
     assert Path(Path(tmp_project_dir) / "web" / "vite.config.ts").exists()
     assert Path(Path(tmp_project_dir) / "web" / "package.json").exists()
-    assert Path(Path(tmp_project_dir) / "web" / "tsconfig.json").exists()
-    assert Path(Path(tmp_project_dir) / "web" / "resources" / "main.ts").exists()
-    assert Path(Path(tmp_project_dir) / "web" / "resources" / "styles.css").exists()
+    # React template (default) creates main.tsx, App.tsx, App.css in resources/
+    assert Path(Path(tmp_project_dir) / "web" / "resources" / "main.tsx").exists()
+    assert Path(Path(tmp_project_dir) / "web" / "resources" / "App.tsx").exists()
+    assert Path(Path(tmp_project_dir) / "web" / "resources" / "App.css").exists()
 
 
 def test_init_install_build(
@@ -135,8 +137,9 @@ app = Litestar(plugins=[vite], template_config=template_config)
     _ = runner.invoke(root_command, ["--app", f"{app_file.stem}:app", "assets", "init", "--no-prompt"])
     _ = runner.invoke(root_command, ["--app", f"{app_file.stem}:app", "assets", "install"])
     _ = runner.invoke(root_command, ["--app", f"{app_file.stem}:app", "assets", "build"])
+    # Check for core files with new scaffolding (React is default)
     assert Path(app_file.parent / "vite.config.ts").exists()
     assert Path(app_file.parent / "package.json").exists()
-    assert Path(app_file.parent / "tsconfig.json").exists()
-    assert Path(app_file.parent / "resources" / "main.ts").exists()
-    assert Path(app_file.parent / "resources" / "styles.css").exists()
+    # React template creates main.tsx, App.tsx, App.css in resources/
+    assert Path(app_file.parent / "resources" / "main.tsx").exists()
+    assert Path(app_file.parent / "resources" / "App.tsx").exists()

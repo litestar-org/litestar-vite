@@ -4,7 +4,7 @@ from collections.abc import Coroutine, Generator, Iterable, Mapping
 from contextlib import contextmanager
 from functools import lru_cache
 from textwrap import dedent
-from typing import TYPE_CHECKING, Any, Callable, Generic, Optional, TypeVar, Union, cast, overload
+from typing import TYPE_CHECKING, Any, Callable, Generic, Literal, Optional, TypeVar, Union, cast, overload
 
 from anyio.from_thread import BlockingPortal, start_blocking_portal
 from litestar.exceptions import ImproperlyConfiguredException
@@ -23,6 +23,9 @@ T = TypeVar("T")
 T_ParamSpec = ParamSpec("T_ParamSpec")
 PropKeyT = TypeVar("PropKeyT", bound=str)
 StaticT = TypeVar("StaticT", bound=object)
+
+# Default group for deferred props
+DEFAULT_DEFERRED_GROUP = "default"
 
 
 @overload
@@ -72,6 +75,197 @@ def lazy(
     return DeferredProp[str, T](key=key, value=cast("Callable[..., T | Coroutine[Any, Any, T]]", value_or_callable))
 
 
+def defer(
+    key: str,
+    callback: "Callable[..., Union[T, Coroutine[Any, Any, T]]]",
+    group: str = DEFAULT_DEFERRED_GROUP,
+) -> "DeferredProp[str, T]":
+    """Create a deferred prop with optional grouping (v2 feature).
+
+    Deferred props are loaded lazily after the initial page render.
+    Props in the same group are fetched together in a single request.
+
+    Args:
+        key: The key to store the value under.
+        callback: A callable (sync or async) that returns the value.
+        group: The group name for batched loading. Defaults to "default".
+
+    Returns:
+        A DeferredProp instance.
+
+    Example:
+        ```python
+        # Basic deferred prop
+        defer("permissions", lambda: Permission.all())
+
+        # Grouped deferred props (fetched together)
+        defer("teams", lambda: Team.all(), group="attributes")
+        defer("projects", lambda: Project.all(), group="attributes")
+        ```
+    """
+    return DeferredProp[str, T](
+        key=key,
+        value=cast("Callable[..., T | Coroutine[Any, Any, T]]", callback),
+        group=group,
+    )
+
+
+class MergeProp(Generic[PropKeyT, T]):
+    """A wrapper for merge prop configuration (v2 feature).
+
+    Merge props allow data to be combined with existing props during
+    partial reloads instead of replacing them entirely.
+    """
+
+    def __init__(
+        self,
+        key: "PropKeyT",
+        value: "T",
+        strategy: "Literal['append', 'prepend', 'deep']" = "append",
+        match_on: "Optional[str | list[str]]" = None,
+    ) -> None:
+        """Initialize a MergeProp.
+
+        Args:
+            key: The prop key.
+            value: The value to merge.
+            strategy: The merge strategy - 'append', 'prepend', or 'deep'.
+            match_on: Optional key(s) to match items on during merge.
+        """
+        self._key = key
+        self._value = value
+        self._strategy = strategy
+        self._match_on = [match_on] if isinstance(match_on, str) else match_on
+
+    @property
+    def key(self) -> "PropKeyT":
+        """The prop key."""
+        return self._key
+
+    @property
+    def value(self) -> "T":
+        """The value to merge."""
+        return self._value
+
+    @property
+    def strategy(self) -> "Literal['append', 'prepend', 'deep']":
+        """The merge strategy."""
+        return self._strategy
+
+    @property
+    def match_on(self) -> "Optional[list[str]]":
+        """Keys to match items on during merge."""
+        return self._match_on
+
+
+def merge(
+    key: str,
+    value: "T",
+    strategy: "Literal['append', 'prepend', 'deep']" = "append",
+    match_on: "Optional[str | list[str]]" = None,
+) -> "MergeProp[str, T]":
+    """Create a merge prop for combining data during partial reloads (v2 feature).
+
+    Merge props allow new data to be combined with existing props rather than
+    replacing them entirely. This is useful for infinite scroll, load more buttons,
+    and similar patterns.
+
+    Note: Prop merging only works during partial reloads. Full page visits
+    will always replace props entirely.
+
+    Args:
+        key: The prop key.
+        value: The value to merge.
+        strategy: How to merge the data:
+            - 'append': Add new items to the end (default)
+            - 'prepend': Add new items to the beginning
+            - 'deep': Recursively merge nested objects
+        match_on: Optional key(s) to match items on during merge,
+            useful for updating existing items instead of duplicating.
+
+    Returns:
+        A MergeProp instance.
+
+    Example:
+        ```python
+        # Append new items to existing list
+        merge("posts", new_posts)
+
+        # Prepend new messages
+        merge("messages", new_messages, strategy="prepend")
+
+        # Deep merge nested data
+        merge("user_data", updates, strategy="deep")
+
+        # Match on ID to update existing items
+        merge("posts", updated_posts, match_on="id")
+        ```
+    """
+    return MergeProp[str, T](key=key, value=value, strategy=strategy, match_on=match_on)
+
+
+def is_merge_prop(value: "Any") -> "TypeGuard[MergeProp[Any, Any]]":
+    """Check if value is a MergeProp.
+
+    Args:
+        value: Any value to check
+
+    Returns:
+        bool: True if value is a MergeProp
+    """
+    return isinstance(value, MergeProp)
+
+
+def extract_merge_props(props: "dict[str, Any]") -> "tuple[list[str], list[str], list[str], dict[str, list[str]]]":
+    """Extract merge props metadata for the Inertia v2 protocol.
+
+    This extracts all MergeProp instances from the props dict and categorizes them
+    by their merge strategy, returning the appropriate lists for the page response.
+
+    Args:
+        props: The props dictionary to scan.
+
+    Returns:
+        A tuple of (merge_props, prepend_props, deep_merge_props, match_props_on)
+        where each list contains the prop keys for that strategy, and match_props_on
+        is a dict mapping prop keys to the keys to match on.
+
+    Example:
+        ```python
+        props = {
+            "users": [...],  # regular prop
+            "posts": merge("posts", new_posts),  # append
+            "messages": merge("messages", new_msgs, strategy="prepend"),
+            "data": merge("data", updates, strategy="deep"),
+            "items": merge("items", items, match_on="id"),
+        }
+        merge_props, prepend_props, deep_merge_props, match_props_on = extract_merge_props(props)
+        # merge_props = ["posts", "items"]
+        # prepend_props = ["messages"]
+        # deep_merge_props = ["data"]
+        # match_props_on = {"items": ["id"]}
+        ```
+    """
+    merge_list: "list[str]" = []
+    prepend_list: "list[str]" = []
+    deep_merge_list: "list[str]" = []
+    match_on_dict: "dict[str, list[str]]" = {}
+
+    for key, value in props.items():
+        if is_merge_prop(value):
+            if value.strategy == "append":
+                merge_list.append(key)
+            elif value.strategy == "prepend":
+                prepend_list.append(key)
+            elif value.strategy == "deep":
+                deep_merge_list.append(key)
+
+            if value.match_on:
+                match_on_dict[key] = value.match_on
+
+    return merge_list, prepend_list, deep_merge_list, match_on_dict
+
+
 class StaticProp(Generic[PropKeyT, StaticT]):
     """A wrapper for static property evaluation."""
 
@@ -91,12 +285,21 @@ class DeferredProp(Generic[PropKeyT, T]):
     """A wrapper for deferred property evaluation."""
 
     def __init__(
-        self, key: "PropKeyT", value: "Optional[Callable[..., Optional[Union[T, Coroutine[Any, Any, T]]]]]" = None
+        self,
+        key: "PropKeyT",
+        value: "Optional[Callable[..., Optional[Union[T, Coroutine[Any, Any, T]]]]]" = None,
+        group: str = DEFAULT_DEFERRED_GROUP,
     ) -> None:
         self._key = key
         self._value = value
+        self._group = group
         self._evaluated = False
         self._result: "Optional[T]" = None
+
+    @property
+    def group(self) -> str:
+        """The deferred group this prop belongs to."""
+        return self._group
 
     @property
     def key(self) -> "PropKeyT":
@@ -146,19 +349,81 @@ def is_lazy_prop(value: "Any") -> "TypeGuard[Union[DeferredProp[Any, Any], Stati
     return isinstance(value, (DeferredProp, StaticProp))
 
 
-def should_render(value: "Any", partial_data: "Optional[set[str]]" = None) -> "bool":
-    """Check if value should be rendered.
+def is_deferred_prop(value: "Any") -> "TypeGuard[DeferredProp[Any, Any]]":
+    """Check if value is specifically a DeferredProp (not StaticProp).
 
     Args:
         value: Any value to check
-        partial_data: Optional set of keys for partial rendering
+
+    Returns:
+        bool: True if value is a DeferredProp
+    """
+    return isinstance(value, DeferredProp)
+
+
+def extract_deferred_props(props: "dict[str, Any]") -> "dict[str, list[str]]":
+    """Extract deferred props metadata for the Inertia v2 protocol.
+
+    This extracts all DeferredProp instances from the props dict and groups them
+    by their group name, returning a dict mapping group -> list of prop keys.
+
+    Args:
+        props: The props dictionary to scan.
+
+    Returns:
+        A dict mapping group names to lists of prop keys in that group.
+        Empty dict if no deferred props found.
+
+    Example:
+        ```python
+        props = {
+            "users": [...],  # regular prop
+            "teams": defer("teams", get_teams, group="attributes"),
+            "projects": defer("projects", get_projects, group="attributes"),
+            "permissions": defer("permissions", get_permissions),  # default group
+        }
+        result = extract_deferred_props(props)
+        # {"default": ["permissions"], "attributes": ["teams", "projects"]}
+        ```
+    """
+    groups: "dict[str, list[str]]" = {}
+
+    for key, value in props.items():
+        if is_deferred_prop(value):
+            group = value.group
+            if group not in groups:
+                groups[group] = []
+            groups[group].append(key)
+
+    return groups
+
+
+def should_render(
+    value: "Any",
+    partial_data: "Optional[set[str]]" = None,
+    partial_except: "Optional[set[str]]" = None,
+) -> "bool":
+    """Check if value should be rendered.
+
+    For v2 protocol, partial_except takes precedence over partial_data.
+
+    Args:
+        value: Any value to check
+        partial_data: Optional set of keys to include (X-Inertia-Partial-Data)
+        partial_except: Optional set of keys to exclude (X-Inertia-Partial-Except, v2)
 
     Returns:
         bool: True if value should be rendered
     """
-    partial_data = partial_data or set()
     if is_lazy_prop(value):
-        return value.key in partial_data
+        # v2: partial_except takes precedence - exclude these props
+        if partial_except:
+            return value.key not in partial_except
+        # Original behavior: only include if in partial_data
+        if partial_data:
+            return value.key in partial_data
+        # No filtering specified, don't render lazy props on initial load
+        return False
     return True
 
 
@@ -183,38 +448,45 @@ def is_or_contains_lazy_prop(value: "Any") -> "bool":
 
 
 def lazy_render(
-    value: "T", partial_data: "Optional[set[str]]" = None, portal: "Optional[BlockingPortal]" = None
+    value: "T",
+    partial_data: "Optional[set[str]]" = None,
+    portal: "Optional[BlockingPortal]" = None,
+    partial_except: "Optional[set[str]]" = None,
 ) -> "T":
     """Filter deferred properties from the value based on partial data.
 
+    For v2 protocol, partial_except takes precedence over partial_data.
+
     Args:
         value: The value to filter
-        partial_data: Keys for partial rendering
+        partial_data: Keys to include (X-Inertia-Partial-Data)
         portal: Optional portal to use for async rendering
+        partial_except: Keys to exclude (X-Inertia-Partial-Except, v2)
 
     Returns:
         The filtered value
     """
-    partial_data = partial_data or set()
     if isinstance(value, str):
         return cast("T", value)
     if isinstance(value, Mapping):
         return cast(
             "T",
             {
-                k: lazy_render(v, partial_data, portal)
+                k: lazy_render(v, partial_data, portal, partial_except)
                 for k, v in cast("Mapping[str, Any]", value).items()
-                if should_render(v, partial_data)
+                if should_render(v, partial_data, partial_except)
             },
         )
 
     if isinstance(value, (list, tuple)):
         filtered = [
-            lazy_render(v, partial_data, portal) for v in cast("Iterable[Any]", value) if should_render(v, partial_data)
+            lazy_render(v, partial_data, portal, partial_except)
+            for v in cast("Iterable[Any]", value)
+            if should_render(v, partial_data, partial_except)
         ]
         return cast("T", type(value)(filtered))  # pyright: ignore[reportUnknownArgumentType]
 
-    if is_lazy_prop(value) and should_render(value, partial_data):
+    if is_lazy_prop(value) and should_render(value, partial_data, partial_except):
         return cast("T", value.render(portal))
 
     return cast("T", value)
@@ -223,13 +495,17 @@ def lazy_render(
 def get_shared_props(
     request: "ASGIConnection[Any, Any, Any, Any]",
     partial_data: "Optional[set[str]]" = None,
+    partial_except: "Optional[set[str]]" = None,
 ) -> "dict[str, Any]":
     """Return shared session props for a request.
 
+    For v2 protocol, partial_except takes precedence over partial_data.
+
     Args:
         request: The ASGI connection.
-        partial_data: Optional set of keys for partial rendering.
-        portal: Optional portal to use for async rendering
+        partial_data: Optional set of keys to include (X-Inertia-Partial-Data).
+        partial_except: Optional set of keys to exclude (X-Inertia-Partial-Except, v2).
+
     Returns:
         Dict[str, Any]: The shared props.
 
@@ -248,10 +524,10 @@ def get_shared_props(
 
         # Handle deferred props
         for key, value in shared_props.items():
-            if is_lazy_prop(value) and should_render(value, partial_data):
+            if is_lazy_prop(value) and should_render(value, partial_data, partial_except):
                 props[key] = value.render(inertia_plugin.portal)
                 continue
-            if should_render(value, partial_data):
+            if should_render(value, partial_data, partial_except):
                 props[key] = value
 
         for message in cast("list[dict[str,Any]]", request.session.pop("_messages", [])):

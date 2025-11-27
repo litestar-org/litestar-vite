@@ -19,11 +19,17 @@ from litestar.testing import create_test_client  # pyright: ignore[reportUnknown
 from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
 from litestar_vite.inertia.helpers import (
     DeferredProp,
+    MergeProp,
     StaticProp,
+    defer,
+    extract_deferred_props,
+    extract_merge_props,
     is_lazy_prop,
+    is_merge_prop,
     is_or_contains_lazy_prop,
     lazy,
     lazy_render,
+    merge,
     share,
     should_render,
 )
@@ -524,3 +530,150 @@ async def test_component_inertia_deferred_props(
             "list_deferred": ["list_deferred_value"],
             "sync": "sync_result",
         }
+
+
+# =====================================================
+# Inertia.js v2 Protocol Tests
+# =====================================================
+
+
+async def test_defer_helper_with_groups() -> None:
+    """Test defer() helper creates DeferredProp with group support."""
+
+    def get_teams() -> list[str]:
+        return ["team1", "team2"]
+
+    def get_projects() -> list[str]:
+        return ["project1", "project2"]
+
+    # Default group
+    prop1 = defer("permissions", lambda: ["read", "write"])
+    assert isinstance(prop1, DeferredProp)
+    assert prop1.key == "permissions"
+    assert prop1.group == "default"
+    assert prop1.render() == ["read", "write"]
+
+    # Custom group
+    prop2 = defer("teams", get_teams, group="attributes")
+    assert prop2.key == "teams"
+    assert prop2.group == "attributes"
+    assert prop2.render() == ["team1", "team2"]
+
+    prop3 = defer("projects", get_projects, group="attributes")
+    assert prop3.key == "projects"
+    assert prop3.group == "attributes"
+    assert prop3.render() == ["project1", "project2"]
+
+
+async def test_extract_deferred_props() -> None:
+    """Test extract_deferred_props extracts group metadata."""
+    props = {
+        "users": ["user1", "user2"],  # regular prop
+        "teams": defer("teams", lambda: [], group="attributes"),
+        "projects": defer("projects", lambda: [], group="attributes"),
+        "permissions": defer("permissions", lambda: []),  # default group
+    }
+
+    groups = extract_deferred_props(props)
+    assert "default" in groups
+    assert "attributes" in groups
+    assert groups["default"] == ["permissions"]
+    assert sorted(groups["attributes"]) == ["projects", "teams"]
+
+
+async def test_merge_helper() -> None:
+    """Test merge() helper creates MergeProp with strategies."""
+    # Default append strategy
+    prop1 = merge("posts", [{"id": 1}])
+    assert isinstance(prop1, MergeProp)
+    assert prop1.key == "posts"
+    assert prop1.value == [{"id": 1}]
+    assert prop1.strategy == "append"
+    assert prop1.match_on is None
+
+    # Prepend strategy
+    prop2 = merge("messages", ["msg1"], strategy="prepend")
+    assert prop2.strategy == "prepend"
+
+    # Deep merge strategy
+    prop3 = merge("user_data", {"name": "test"}, strategy="deep")
+    assert prop3.strategy == "deep"
+
+    # With match_on (string)
+    prop4 = merge("items", [{"id": 1}], match_on="id")
+    assert prop4.match_on == ["id"]
+
+    # With match_on (list)
+    prop5 = merge("items", [{"id": 1, "type": "x"}], match_on=["id", "type"])
+    assert prop5.match_on == ["id", "type"]
+
+
+async def test_is_merge_prop() -> None:
+    """Test is_merge_prop type guard."""
+    assert is_merge_prop(merge("test", [])) is True
+    assert is_merge_prop(MergeProp("test", [])) is True
+    assert is_merge_prop("string") is False
+    assert is_merge_prop([]) is False
+    assert is_merge_prop(lazy("test", "value")) is False
+
+
+async def test_extract_merge_props() -> None:
+    """Test extract_merge_props extracts strategy metadata."""
+    props = {
+        "users": ["user1"],  # regular prop
+        "posts": merge("posts", [{"id": 1}]),  # append
+        "messages": merge("messages", [], strategy="prepend"),
+        "config": merge("config", {}, strategy="deep"),
+        "items": merge("items", [], match_on="id"),
+    }
+
+    merge_list, prepend_list, deep_list, match_on = extract_merge_props(props)
+
+    assert sorted(merge_list) == ["items", "posts"]
+    assert prepend_list == ["messages"]
+    assert deep_list == ["config"]
+    assert match_on == {"items": ["id"]}
+
+
+async def test_should_render_with_partial_except() -> None:
+    """Test should_render with v2 partial_except parameter."""
+    prop = lazy("test", "value")
+
+    # No filtering - lazy props not rendered
+    assert should_render(prop) is False
+
+    # partial_data - include if in set
+    assert should_render(prop, partial_data={"test"}) is True
+    assert should_render(prop, partial_data={"other"}) is False
+
+    # partial_except - exclude if in set (v2)
+    assert should_render(prop, partial_except={"test"}) is False
+    assert should_render(prop, partial_except={"other"}) is True
+
+    # partial_except takes precedence
+    assert should_render(prop, partial_data={"test"}, partial_except={"test"}) is False
+
+    # Regular values always render
+    assert should_render("regular") is True
+
+
+async def test_lazy_render_with_partial_except() -> None:
+    """Test lazy_render with v2 partial_except parameter."""
+    data = {
+        "static": "value",
+        "deferred1": lazy("deferred1", "val1"),
+        "deferred2": lazy("deferred2", "val2"),
+    }
+
+    # partial_except - render all except specified
+    result = lazy_render(data, partial_except={"deferred1"})
+    assert result == {
+        "static": "value",
+        "deferred2": "val2",
+    }
+
+    # Multiple exclusions
+    result2 = lazy_render(data, partial_except={"deferred1", "deferred2"})
+    assert result2 == {
+        "static": "value",
+    }

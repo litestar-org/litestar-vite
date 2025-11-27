@@ -1,12 +1,27 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from click import Context, group, option
+from click import Choice, Context, group, option
 from click import Path as ClickPath
 from litestar.cli._utils import LitestarEnv, LitestarGroup  # pyright: ignore[reportPrivateImportUsage]
 
 if TYPE_CHECKING:
     from litestar import Litestar
+
+
+# Available framework templates for --template option
+FRAMEWORK_CHOICES = [
+    "react",
+    "react-inertia",
+    "vue",
+    "vue-inertia",
+    "svelte",
+    "svelte-inertia",
+    "sveltekit",
+    "nuxt",
+    "astro",
+    "htmx",
+]
 
 
 @group(cls=LitestarGroup, name="assets")
@@ -17,6 +32,13 @@ def vite_group() -> None:
 @vite_group.command(
     name="init",
     help="Initialize vite for your project.",
+)
+@option(
+    "--template",
+    type=Choice(FRAMEWORK_CHOICES, case_sensitive=False),
+    help="Frontend framework template to use. Inertia variants available: react-inertia, vue-inertia, svelte-inertia.",
+    default=None,
+    required=False,
 )
 @option(
     "--root-path",
@@ -52,13 +74,28 @@ def vite_group() -> None:
     type=int,
     help="The port to run the vite server against.",
     default=None,
-    is_flag=True,
     required=False,
 )
 @option(
     "--enable-ssr",
     type=bool,
     help="Enable SSR Support.",
+    required=False,
+    show_default=False,
+    is_flag=True,
+)
+@option(
+    "--tailwind",
+    type=bool,
+    help="Add TailwindCSS to the project.",
+    required=False,
+    show_default=False,
+    is_flag=True,
+)
+@option(
+    "--enable-types",
+    type=bool,
+    help="Enable TypeScript type generation from routes.",
     required=False,
     show_default=False,
     is_flag=True,
@@ -85,6 +122,7 @@ def vite_group() -> None:
 )
 def vite_init(
     ctx: "Context",
+    template: "Optional[str]",
     vite_port: "Optional[int]",
     enable_ssr: "Optional[bool]",
     asset_url: "Optional[str]",
@@ -92,20 +130,23 @@ def vite_init(
     bundle_path: "Optional[Path]",
     resource_path: "Optional[Path]",
     public_path: "Optional[Path]",
+    tailwind: "bool",
+    enable_types: "bool",
     overwrite: "bool",
     verbose: "bool",
     no_prompt: "bool",
     no_install: "bool",
 ) -> None:  # sourcery skip: low-code-quality
-    """Run vite build."""
+    """Initialize a new Vite project with framework templates."""
     import sys
     from pathlib import Path
 
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-    from rich.prompt import Confirm
+    from rich.prompt import Confirm, Prompt
 
     from litestar_vite import VitePlugin
-    from litestar_vite.commands import init_vite
+    from litestar_vite.scaffolding import TemplateContext, generate_project, get_available_templates
+    from litestar_vite.scaffolding.templates import FrameworkType, get_template
 
     if callable(ctx.obj):
         ctx.obj = ctx.obj()
@@ -116,46 +157,93 @@ def vite_init(
     config = plugin._config  # pyright: ignore[reportPrivateUsage]
 
     console.rule("[yellow]Initializing Vite[/]", align="left")
+
+    # Resolve paths
     root_path = Path(root_path or config.root_dir or Path.cwd())
-    resource_path = Path(resource_path or config.resource_dir)
-    public_path = Path(public_path or config.public_dir)
-    bundle_path = Path(bundle_path or config.bundle_dir)
-    enable_ssr = enable_ssr or config.ssr_enabled
+    resource_path_str = str(resource_path or config.resource_dir)
+    bundle_path_str = str(bundle_path or config.bundle_dir)
     asset_url = asset_url or config.asset_url
     vite_port = vite_port or config.port
-    hot_file = Path(bundle_path / config.hot_file)
+    litestar_port = env.port or 8000
 
-    if any(output_path.exists() for output_path in (bundle_path, resource_path)) and not any(
+    # Check for existing files
+    if any((root_path / p).exists() for p in [resource_path_str, bundle_path_str]) and not any(
         [overwrite, no_prompt],
     ):
         confirm_overwrite = Confirm.ask(
-            "Files were found in the paths specified.  Are you sure you wish to overwrite the contents?",
+            "Files were found in the paths specified. Are you sure you wish to overwrite the contents?",
         )
         if not confirm_overwrite:
             console.print("Skipping Vite initialization")
             sys.exit(2)
 
-    enable_ssr = (
-        True
-        if enable_ssr
-        else False
-        if no_prompt
-        else Confirm.ask(
-            "Do you intend to use Litestar with any SSR framework?",
+    # Select framework template
+    if template is None and not no_prompt:
+        available = get_available_templates()
+        console.print("\n[bold]Available framework templates:[/]")
+        for i, tmpl in enumerate(available, 1):
+            console.print(f"  {i}. [cyan]{tmpl.type.value}[/] - {tmpl.description}")
+
+        template_choice = Prompt.ask(
+            "\nSelect a framework template",
+            choices=[t.type.value for t in available],
+            default="react",
         )
+        template = template_choice
+    elif template is None:
+        template = "react"  # Default when --no-prompt
+
+    # Get the framework template
+    framework = get_template(template)
+    if framework is None:
+        console.print(f"[red]Unknown template: {template}[/]")
+        sys.exit(1)
+
+    console.print(f"\n[green]Using {framework.name} template[/]")
+
+    # Ask for SSR if not specified
+    if enable_ssr is None:
+        enable_ssr = (
+            framework.has_ssr if no_prompt else Confirm.ask("Enable server-side rendering?", default=framework.has_ssr)
+        )
+
+    # Ask for TailwindCSS if not specified
+    if not tailwind and not no_prompt:
+        tailwind = Confirm.ask("Add TailwindCSS?", default=False)
+
+    # Ask for type generation if not specified
+    if not enable_types and not no_prompt:
+        enable_types = Confirm.ask("Enable TypeScript type generation?", default=True)
+
+    # Create template context
+    project_name = root_path.name or "my-project"
+    is_inertia_framework = framework.type in (
+        FrameworkType.REACT_INERTIA,
+        FrameworkType.VUE_INERTIA,
+        FrameworkType.SVELTE_INERTIA,
     )
-    init_vite(
-        app=env.app,
-        root_path=root_path,
-        enable_ssr=enable_ssr,
+    context = TemplateContext(
+        project_name=project_name,
+        framework=framework,
+        use_typescript=framework.uses_typescript,
+        use_tailwind=tailwind,
         vite_port=vite_port,
+        litestar_port=litestar_port,
         asset_url=asset_url,
-        resource_path=resource_path,
-        public_path=public_path,
-        bundle_path=bundle_path,
-        hot_file=hot_file,
-        litestar_port=env.port or 8000,
+        resource_dir=resource_path_str,
+        bundle_dir=bundle_path_str,
+        enable_ssr=enable_ssr or False,
+        enable_inertia=is_inertia_framework,
+        enable_types=enable_types,
     )
+
+    # Generate project files
+    console.print("\n[yellow]Generating project files...[/]")
+    generated = generate_project(root_path, context, overwrite=overwrite)
+
+    console.print(f"\n[green]Generated {len(generated)} files[/]")
+
+    # Install dependencies
     if not no_install:
         if config.executor is None:
             console.print("[red]Executor not configured.[/]")
@@ -163,6 +251,12 @@ def vite_init(
 
         console.rule("[yellow]Starting package installation process[/]", align="left")
         config.executor.install(root_path)
+
+    console.print("\n[bold green]Vite initialization complete![/]")
+    console.print("\n[dim]Next steps:")
+    console.print(f"  cd {root_path}")
+    console.print("  npm run dev")
+    console.print("[/]")
 
 
 @vite_group.command(

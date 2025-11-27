@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-import pytest
 from litestar import Litestar, get, post
 from litestar.datastructures import State
 from litestar.params import Parameter
@@ -36,7 +35,9 @@ def test_normalize_path() -> None:
     assert _normalize_path("/users/{user_id:int}") == "/users/{user_id}"
     assert _normalize_path("/items/{uuid:uuid}") == "/items/{uuid}"
     assert _normalize_path("/posts/{slug:str}") == "/posts/{slug}"
-    assert _normalize_path("/api/v1/users/{user_id:int}/posts/{post_id:int}") == "/api/v1/users/{user_id}/posts/{post_id}"
+    assert (
+        _normalize_path("/api/v1/users/{user_id:int}/posts/{post_id:int}") == "/api/v1/users/{user_id}/posts/{post_id}"
+    )
 
 
 def test_normalize_path_cross_platform() -> None:

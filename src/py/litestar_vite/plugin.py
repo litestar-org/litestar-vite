@@ -271,7 +271,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         )
 
         # Register Jinja2 template callables if Jinja2 is installed and in template mode
-        if JINJA_INSTALLED and self._config.mode in ("template", "htmx"):
+        if JINJA_INSTALLED and self._config.mode in {"template", "htmx"}:
             from litestar.contrib.jinja import JinjaTemplateEngine
 
             if app_config.template_config and isinstance(
@@ -337,6 +337,54 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 return
         console.print("[red]Vite server health check failed[/]")
 
+    def _export_types_sync(self, app: "Litestar") -> None:
+        """Export type metadata synchronously on startup.
+
+        This exports OpenAPI schema and route metadata when type generation
+        is enabled. The Vite plugin watches these files and triggers
+        @hey-api/openapi-ts when they change.
+
+        Args:
+            app: The Litestar application instance.
+        """
+        from litestar_vite.config import TypeGenConfig
+
+        if not isinstance(self._config.types, TypeGenConfig) or not self._config.types.enabled:
+            return
+
+        try:
+            import msgspec
+            from litestar.serialization import encode_json, get_serializer
+
+            from litestar_vite.codegen import generate_routes_json
+
+            console.print("[dim]Exporting type metadata for Vite...[/]")
+
+            # Export OpenAPI schema
+            serializer = get_serializer(app.type_encoders)
+            schema_dict = app.openapi_schema.to_schema()
+            schema_content = msgspec.json.format(
+                encode_json(schema_dict, serializer=serializer),
+                indent=2,
+            )
+            self._config.types.openapi_path.parent.mkdir(parents=True, exist_ok=True)
+            self._config.types.openapi_path.write_bytes(schema_content)
+
+            # Export routes
+            routes_data = generate_routes_json(app, include_components=True)
+            routes_content = msgspec.json.format(
+                msgspec.json.encode(routes_data),
+                indent=2,
+            )
+            self._config.types.routes_path.parent.mkdir(parents=True, exist_ok=True)
+            self._config.types.routes_path.write_bytes(routes_content)
+
+            console.print(
+                f"[green]✓ Types exported to {self._config.types.openapi_path} and {self._config.types.routes_path}[/]",
+            )
+        except Exception as e:  # pragma: no cover
+            console.print(f"[yellow]! Type export failed: {e}[/]")
+
     @contextmanager
     def server_lifespan(self, app: "Litestar") -> "Iterator[None]":
         """Synchronous context manager for Vite server lifecycle.
@@ -351,6 +399,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """
         if self._config.set_environment:
             set_environment(config=self._config)
+
+        # Export types on startup (when enabled)
+        self._export_types_sync(app)
 
         if self._use_server_lifespan and self._config.is_dev_mode:
             if not app.debug:
@@ -396,6 +447,10 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader(config=self._config)
         await self._asset_loader.initialize()
+
+        # Export types on startup (when enabled)
+        # Note: This is sync but fast enough to not block meaningfully
+        self._export_types_sync(app)
 
         if self._use_server_lifespan and self._config.is_dev_mode:
             if not app.debug:

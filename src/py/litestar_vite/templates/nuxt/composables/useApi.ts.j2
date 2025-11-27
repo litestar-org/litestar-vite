@@ -1,0 +1,33 @@
+/**
+ * Composable for making API requests to the Litestar backend.
+ * In development, requests are proxied through the Nuxt dev server.
+ * In production, requests go directly to the API server.
+ */
+export function useApi() {
+  const config = useRuntimeConfig();
+
+  const apiBase = process.client
+    ? "/api" // In browser, use proxy
+    : (config.public.apiBase as string) || "http://localhost:{{ litestar_port }}/api";
+
+  return {
+    /**
+     * Make a GET request to the API.
+     */
+    async get<T>(path: string): Promise<T> {
+      const { data } = await useFetch<T>(`${apiBase}${path}`);
+      return data.value as T;
+    },
+
+    /**
+     * Make a POST request to the API.
+     */
+    async post<T>(path: string, body: unknown): Promise<T> {
+      const { data } = await useFetch<T>(`${apiBase}${path}`, {
+        method: "POST",
+        body,
+      });
+      return data.value as T;
+    },
+  };
+}

@@ -19,6 +19,18 @@
     "./inertia-helpers": {
       "types": "./dist/js/inertia-helpers/index.d.ts",
       "default": "./dist/js/inertia-helpers/index.js"
+    },
+    "./astro": {
+      "types": "./dist/js/astro.d.ts",
+      "default": "./dist/js/astro.js"
+    },
+    "./sveltekit": {
+      "types": "./dist/js/sveltekit.d.ts",
+      "default": "./dist/js/sveltekit.js"
+    },
+    "./nuxt": {
+      "types": "./dist/js/nuxt.d.ts",
+      "default": "./dist/js/nuxt.js"
     }
   },
   "types": "./dist/js/index.d.ts",
@@ -27,11 +39,12 @@
     "clean-orphaned-assets": "tools/clean.js"
   },
   "scripts": {
-    "build": "npm run build-plugin && npm run build-inertia-helpers",
+    "build": "npm run build-plugin && npm run build-inertia-helpers && npm run build-integrations",
     "build-plugin": "rm -rf dist/js && npm run build-plugin-types && npm run build-plugin-esm && cp src/js/src/dev-server-index.html dist/js/",
     "build-plugin-types": "tsc --project src/js/tsconfig.json --emitDeclarationOnly",
     "build-plugin-esm": "esbuild src/js/src/index.ts --platform=node --format=esm --outfile=dist/js/index.js",
     "build-inertia-helpers": "rm -rf dist/js/inertia-helpers && tsc --project src/js/tsconfig.inertia-helpers.json",
+    "build-integrations": "esbuild src/js/src/astro.ts src/js/src/sveltekit.ts src/js/src/nuxt.ts --platform=node --format=esm --outdir=dist/js",
     "lint": "eslint --ext .ts ./src/js/src ./src/js/tests",
     "test": "vitest --config ./src/js/vitest.config.ts run"
   },
