@@ -124,6 +124,9 @@ class RuntimeConfig:
     set_environment: bool = True
     set_static_folders: bool = True
     csp_nonce: "Optional[str]" = None
+    proxy_mode: Literal["proxy", "direct"] = field(
+        default_factory=lambda: "direct" if os.getenv("VITE_PROXY_MODE", "proxy").lower() == "direct" else "proxy"
+    )
 
     def __post_init__(self) -> None:
         """Set default commands based on executor."""
@@ -277,7 +280,7 @@ class ViteConfig:
     mode: "Optional[Literal['spa', 'template', 'htmx']]" = None
     paths: PathConfig = field(default_factory=PathConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
-    types: "Union[TypeGenConfig, bool]" = False
+    types: "Union[TypeGenConfig, bool]" = field(default_factory=lambda: TypeGenConfig(enabled=True))
     inertia: "Union[InertiaConfig, bool]" = False
     dev_mode: bool = False
     base_url: "Optional[str]" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
@@ -510,6 +513,11 @@ class ViteConfig:
     def detect_nodeenv(self) -> bool:
         """Check if nodeenv detection is enabled."""
         return self.runtime.detect_nodeenv
+
+    @property
+    def proxy_mode(self) -> Literal["proxy", "direct"]:
+        """Get proxy mode (proxy=single-port via ASGI, direct=expose Vite port)."""
+        return self.runtime.proxy_mode
 
     @property
     def ssr_output_dir(self) -> "Optional[Path]":

@@ -243,7 +243,7 @@ class SafeHTMLParser(HTMLParser):
         super().__init__()
         self.tag_positions: list[tuple[str, int, int]] = []
 
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, "Optional[str]"]]) -> None:
         """Record start tag position."""
         self.tag_positions.append((tag, self.getpos()[0], self.getpos()[1]))
 

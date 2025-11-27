@@ -222,6 +222,7 @@ class TestVitePluginLifespan:
         config = ViteConfig()
         plugin = VitePlugin(config=config)
         plugin._use_server_lifespan = False
+        plugin._config.types = False
         app = Mock(spec=Litestar)
 
         # Should yield without starting any processes
@@ -234,6 +235,7 @@ class TestVitePluginLifespan:
             runtime=RuntimeConfig(dev_mode=False),  # Production mode
         )
         plugin = VitePlugin(config=config)
+        plugin._config.types = False
         app = Mock(spec=Litestar)
 
         # Should yield without starting Vite process in production
@@ -246,6 +248,7 @@ class TestVitePluginLifespan:
         config = ViteConfig(runtime=RuntimeConfig(set_environment=True))
         plugin = VitePlugin(config=config)
         plugin._use_server_lifespan = False
+        plugin._config.types = False
         app = Mock(spec=Litestar)
 
         with plugin.server_lifespan(app):
@@ -259,6 +262,7 @@ class TestVitePluginLifespan:
         """Test server lifespan with Vite process management."""
         config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, hot_reload=True))
         plugin = VitePlugin(config=config)
+        plugin._config.types = False
         app = Mock(spec=Litestar)
 
         # Mock the Vite process
@@ -278,6 +282,7 @@ class TestVitePluginLifespan:
             runtime=RuntimeConfig(dev_mode=True, hot_reload=False),  # Watch mode without HMR
         )
         plugin = VitePlugin(config=config)
+        plugin._config.types = False
         app = Mock(spec=Litestar)
 
         with patch.object(plugin._vite_process, "start") as mock_start:

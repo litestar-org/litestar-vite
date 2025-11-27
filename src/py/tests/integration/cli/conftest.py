@@ -117,7 +117,7 @@ def app_file(create_app_file: CreateAppFileFixture) -> Path:
 
 @pytest.fixture
 def runner() -> CliRunner:
-    return CliRunner()
+    return CliRunner(env={"PYTHONWARNINGS": "ignore::PendingDeprecationWarning"})
 
 
 @pytest.fixture

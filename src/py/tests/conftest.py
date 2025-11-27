@@ -14,6 +14,11 @@ from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
 here = Path(__file__).parent
 
 
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
 def tmp_path(tmp_path_factory: TempPathFactory) -> Generator[Path, None, None]:
     base_dir = tmp_path_factory.getbasetemp()
     tmp_path = tmp_path_factory.mktemp("pytest")

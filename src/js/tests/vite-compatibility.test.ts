@@ -72,7 +72,7 @@ describe("Vite 7.0 Compatibility", () => {
       const config = plugin.config({}, { command: "build", mode: "production" })
 
       expect(config.build?.outDir).toBe("dist")
-      expect(config.base).toBe("static/")
+      expect(config.base).toBe("/static/")
     })
   })
 
@@ -170,6 +170,7 @@ describe("Vite 7.0 Compatibility", () => {
       const plugin = litestar({
         input: "resources/js/app.ts",
         refresh: true,
+        types: false,
       })
 
       expect(plugin.length).toBe(2) // Main plugin + HMR plugin
@@ -196,7 +197,7 @@ describe("Vite 7.0 Compatibility", () => {
 
       // Plugin only sets server config when specific conditions are met
       expect(config.server?.origin).toBe("__litestar_vite_placeholder__")
-      expect(config.base).toBe("static")
+      expect(config.base).toBe("/static/")
     })
 
     it("supports Vite 7.0 middleware configuration", () => {
@@ -214,7 +215,7 @@ describe("Vite 7.0 Compatibility", () => {
 
       // Plugin only sets server config when specific conditions are met
       expect(config.server?.origin).toBe("__litestar_vite_placeholder__")
-      expect(config.base).toBe("static")
+      expect(config.base).toBe("/static/")
     })
   })
 
@@ -278,6 +279,7 @@ describe("Vite 7.0 Compatibility", () => {
       const plugins = litestar({
         input: "resources/js/app.ts",
         refresh: ["resources/**", "templates/**"],
+        types: false,
       })
 
       expect(plugins.length).toBe(2)
@@ -288,11 +290,13 @@ describe("Vite 7.0 Compatibility", () => {
       const devPlugins = litestar({
         input: "resources/js/app.ts",
         refresh: true,
+        types: false,
       })
 
       const prodPlugins = litestar({
         input: "resources/js/app.ts",
         refresh: false,
+        types: false,
       })
 
       expect(devPlugins.length).toBe(2) // With HMR
@@ -315,7 +319,7 @@ describe("Vite 7.0 Compatibility", () => {
       )
 
       // Plugin doesn't override optimizeDeps, test what it actually sets
-      expect(config.base).toBe("static")
+      expect(config.base).toBe("/static/")
       expect(config.server?.origin).toBe("__litestar_vite_placeholder__")
     })
 
@@ -356,7 +360,7 @@ describe("Vite 7.0 Compatibility", () => {
       // Plugin sets its own build configuration
       expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
       expect(config.build?.manifest).toBe("manifest.json")
-      expect(config.base).toBe("static/")
+      expect(config.base).toBe("/static/")
     })
   })
 
@@ -377,7 +381,7 @@ describe("Vite 7.0 Compatibility", () => {
 
       // Plugin only sets server config when specific conditions are met
       expect(config.server?.origin).toBe("__litestar_vite_placeholder__")
-      expect(config.base).toBe("static")
+      expect(config.base).toBe("/static/")
     })
 
     it("supports Vite 7.0 build error handling", () => {
@@ -421,7 +425,7 @@ describe("Vite 7.0 Compatibility", () => {
 
       // Plugin sets its own configuration, doesn't preserve user define config
       expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
-      expect(config.base).toBe("static/")
+      expect(config.base).toBe("/static/")
     })
 
     it("supports Vite 7.0 mode-specific configuration", () => {
@@ -430,8 +434,8 @@ describe("Vite 7.0 Compatibility", () => {
       const devConfig = plugin.config({}, { command: "serve", mode: "development" })
       const prodConfig = plugin.config({}, { command: "build", mode: "production" })
 
-      expect(devConfig.base).toBe("static")
-      expect(prodConfig.base).toBe("static/")
+      expect(devConfig.base).toBe("/static/")
+      expect(prodConfig.base).toBe("/static/")
     })
   })
 
@@ -498,7 +502,7 @@ describe("Vite 7.0 Compatibility", () => {
       // Plugin sets its own configuration without preserving experimental features
       expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
       expect(config.build?.manifest).toBe("manifest.json")
-      expect(config.base).toBe("static/")
+      expect(config.base).toBe("/static/")
     })
 
     it("maintains plugin API stability for future versions", () => {

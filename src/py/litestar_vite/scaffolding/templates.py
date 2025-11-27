@@ -52,7 +52,7 @@ class FrameworkTemplate:
     name: str
     type: FrameworkType
     description: str
-    vite_plugin: Optional[str] = None
+    vite_plugin: "Optional[str]" = None
     dependencies: list[str] = field(default_factory=_ListStrFactory)
     dev_dependencies: list[str] = field(default_factory=_ListStrFactory)
     files: list[str] = field(default_factory=_ListStrFactory)

@@ -25,13 +25,17 @@ import threading
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union, cast
 
+import anyio
+import httpx  # used in proxy middleware health and HTTP forwarding
+import websockets  # used in proxy middleware WS forwarding
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+from litestar.middleware import DefineMiddleware
 from litestar.plugins import CLIPlugin, InitPluginProtocol
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
 
-from litestar_vite.config import JINJA_INSTALLED
+from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES
 from litestar_vite.exceptions import ViteProcessError
 
 if TYPE_CHECKING:
@@ -45,10 +49,14 @@ if TYPE_CHECKING:
     from litestar.types import (
         AfterRequestHookHandler,  # pyright: ignore[reportUnknownVariableType]
         AfterResponseHookHandler,  # pyright: ignore[reportUnknownVariableType]
+        ASGIApp,
         BeforeRequestHookHandler,  # pyright: ignore[reportUnknownVariableType]
         ExceptionHandlersMap,
         Guard,  # pyright: ignore[reportUnknownVariableType]
         Middleware,
+        Receive,
+        Scope,
+        Send,
     )
 
     from litestar_vite.config import ViteConfig
@@ -72,10 +80,133 @@ def set_environment(config: "ViteConfig") -> None:
     os.environ.setdefault("VITE_PORT", str(config.port))
     os.environ.setdefault("VITE_HOST", config.host)
     os.environ.setdefault("VITE_PROTOCOL", config.protocol)
+    os.environ.setdefault("VITE_PROXY_MODE", config.proxy_mode)
     os.environ.setdefault("LITESTAR_VERSION", litestar_version.formatted())
     os.environ.setdefault("APP_URL", f"http://localhost:{os.environ.get('LITESTAR_PORT', '8000')}")
     if config.is_dev_mode:
         os.environ.setdefault("VITE_DEV_MODE", str(config.is_dev_mode))
+
+
+def _pick_free_port() -> int:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+_PROXY_PATH_PREFIXES: tuple[str, ...] = (
+    "/@vite",
+    "/@id/",
+    "/@fs/",
+    "/@react-refresh",
+    "/@vite/client",
+    "/@vite/env",
+    "/__vite_ping",
+    "/node_modules/.vite/",
+    "/src/",
+)
+
+
+class ViteProxyMiddleware:
+    """ASGI middleware to proxy Vite dev traffic (HTTP + WS) to internal Vite server."""
+
+    def __init__(self, app: "ASGIApp", target_base_url: str) -> None:
+        self.app = app
+        self.target_base_url = target_base_url.rstrip("/")
+
+    async def __call__(self, scope: "Scope", receive: "Receive", send: "Send") -> None:
+        scope_dict = cast("dict[str, Any]", scope)
+        path = scope_dict.get("path", "")
+        if scope["type"] == "http" and self._should_proxy(path):
+            await self._proxy_http(scope_dict, receive, send)
+            return
+        if scope["type"] == "websocket" and self._should_proxy(path):
+            await self._proxy_ws(scope_dict, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+    @staticmethod
+    def _should_proxy(path: str) -> bool:
+        return path.startswith(_PROXY_PATH_PREFIXES)
+
+    async def _proxy_http(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        method = scope.get("method", "GET")
+        raw_path = scope.get("raw_path", b"").decode()
+        query_string = scope.get("query_string", b"").decode()
+        url = f"{self.target_base_url}{raw_path}"
+        if query_string:
+            url = f"{url}?{query_string}"
+
+        headers = [(k.decode(), v.decode()) for k, v in scope.get("headers", [])]
+        body = b""
+        more_body = True
+        while more_body:
+            event = await receive()
+            if event["type"] != "http.request":
+                continue
+            body += event.get("body", b"")
+            more_body = event.get("more_body", False)
+
+        async with httpx.AsyncClient() as client:
+            try:
+                upstream_resp = await client.request(method, url, headers=headers, content=body, timeout=10.0)
+            except httpx.HTTPError as exc:  # pragma: no cover - network failure path
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 502,
+                        "headers": [(b"content-type", b"text/plain")],
+                    }
+                )
+                await send({"type": "http.response.body", "body": str(exc).encode()})
+                return
+
+        response_headers = [(k.encode(), v.encode()) for k, v in upstream_resp.headers.items()]
+        await send(
+            {
+                "type": "http.response.start",
+                "status": upstream_resp.status_code,
+                "headers": response_headers,
+            }
+        )
+        await send({"type": "http.response.body", "body": upstream_resp.content})
+
+    async def _proxy_ws(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        raw_path = scope.get("raw_path", b"").decode()
+        query_string = scope.get("query_string", b"").decode()
+        target = f"{self.target_base_url.replace('http', 'ws')}{raw_path}"
+        if query_string:
+            target = f"{target}?{query_string}"
+
+        headers = [(k.decode(), v.decode()) for k, v in scope.get("headers", [])]
+        await send({"type": "websocket.accept"})
+
+        async with websockets.connect(target, extra_headers=headers) as upstream:
+
+            async def client_to_upstream() -> None:
+                while True:
+                    message = await receive()
+                    if message["type"] == "websocket.receive":
+                        if "text" in message and message["text"] is not None:
+                            await upstream.send(message["text"])
+                        if "bytes" in message and message["bytes"] is not None:
+                            await upstream.send(message["bytes"])
+                    elif message["type"] == "websocket.disconnect":
+                        await upstream.close()
+                        break
+
+            async def upstream_to_client() -> None:
+                async for msg in upstream:
+                    if isinstance(msg, str):
+                        await send({"type": "websocket.send", "text": msg})
+                    else:
+                        await send({"type": "websocket.send", "bytes": msg})
+                await send({"type": "websocket.close", "code": 1000})
+
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(client_to_upstream)
+                tg.start_soon(upstream_to_client)
 
 
 @dataclass
@@ -192,6 +323,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
     __slots__ = (
         "_asset_loader",
         "_config",
+        "_proxy_target",
         "_static_files_config",
         "_use_server_lifespan",
         "_vite_process",
@@ -219,6 +351,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._vite_process = ViteProcess(executor=config.executor)
         self._static_files_config: dict[str, Any] = static_files_config.__dict__ if static_files_config else {}
         self._use_server_lifespan = True
+        self._proxy_target: "Optional[str]" = None
 
     @property
     def config(self) -> "ViteConfig":
@@ -236,6 +369,26 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader.initialize_loader(config=self._config)
         return self._asset_loader
+
+    def _ensure_proxy_target(self) -> None:
+        """Prepare proxy target URL and hotfile for proxy mode."""
+        if self._proxy_target is not None or self._config.proxy_mode != "proxy" or not self._config.is_dev_mode:
+            return
+
+        # Force loopback for internal dev server unless explicitly overridden
+        if os.getenv("VITE_ALLOW_REMOTE", "False") not in TRUE_VALUES:
+            self._config.runtime.host = "127.0.0.1"
+
+        # If VITE_PORT not explicitly set, pick a free one for the internal server
+        if os.getenv("VITE_PORT") is None:
+            self._config.runtime.port = _pick_free_port()
+
+        self._proxy_target = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
+
+        # Write hotfile for JS plugin consumption
+        hotfile_path = self._config.bundle_dir / self._config.hot_file
+        hotfile_path.parent.mkdir(parents=True, exist_ok=True)
+        hotfile_path.write_text(self._proxy_target)
 
     def on_cli_init(self, cli: "Group") -> None:
         """Register CLI commands.
@@ -316,6 +469,13 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             static_files_config: dict[str, Any] = {**base_config, **self._static_files_config}
             app_config.route_handlers.append(create_static_files_router(**static_files_config))
 
+        # Add dev proxy middleware for single-port mode
+        if self._config.is_dev_mode and self._config.proxy_mode == "proxy":
+            self._ensure_proxy_target()
+            app_config.middleware.append(
+                DefineMiddleware(ViteProxyMiddleware, target_base_url=self._proxy_target or "")
+            )
+
         return app_config
 
     def _check_health(self) -> None:
@@ -325,9 +485,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """
         import time
 
-        import httpx
-
-        url = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
+        url = f"{self._config.protocol}://{self._config.host}:{self._config.port}/__vite_ping"
         for _ in range(50):
             try:
                 httpx.get(url, timeout=0.1)
@@ -360,15 +518,23 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
             console.print("[dim]Exporting type metadata for Vite...[/]")
 
-            # Export OpenAPI schema
-            serializer = get_serializer(app.type_encoders)
-            schema_dict = app.openapi_schema.to_schema()
-            schema_content = msgspec.json.format(
-                encode_json(schema_dict, serializer=serializer),
-                indent=2,
-            )
-            self._config.types.openapi_path.parent.mkdir(parents=True, exist_ok=True)
-            self._config.types.openapi_path.write_bytes(schema_content)
+            # Export OpenAPI schema when available and usable
+            if getattr(app, "openapi_schema", None) is not None:
+                try:
+                    serializer = get_serializer(
+                        app.type_encoders if isinstance(getattr(app, "type_encoders", None), dict) else None
+                    )
+                    schema_dict = app.openapi_schema.to_schema()  # type: ignore[union-attr]
+                    schema_content = msgspec.json.format(
+                        encode_json(schema_dict, serializer=serializer),
+                        indent=2,
+                    )
+                    self._config.types.openapi_path.parent.mkdir(parents=True, exist_ok=True)
+                    self._config.types.openapi_path.write_bytes(schema_content)
+                except (TypeError, ValueError, OSError, AttributeError) as exc:  # pragma: no cover
+                    console.print(f"[yellow]! OpenAPI export skipped: {exc}[/]")
+            else:
+                console.print("[yellow]! OpenAPI schema not available; skipping openapi.json export[/]")
 
             # Export routes
             routes_data = generate_routes_json(app, include_components=True)
@@ -380,7 +546,12 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._config.types.routes_path.write_bytes(routes_content)
 
             console.print(
-                f"[green]✓ Types exported to {self._config.types.openapi_path} and {self._config.types.routes_path}[/]",
+                f"[green]✓ Types exported to {self._config.types.routes_path}[/]"
+                + (
+                    f" (openapi: {self._config.types.openapi_path})"
+                    if getattr(app, "openapi_schema", None) is not None
+                    else " (openapi skipped)"
+                )
             )
         except (OSError, TypeError, ValueError, ImportError) as e:  # pragma: no cover
             console.print(f"[yellow]! Type export failed: {e}[/]")
@@ -404,6 +575,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._export_types_sync(app)
 
         if self._use_server_lifespan and self._config.is_dev_mode:
+            self._ensure_proxy_target()
             if not app.debug:
                 console.print("[yellow]WARNING: Vite dev mode is enabled in production![/]")
 
@@ -413,6 +585,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 console.rule("[yellow]Starting Vite process with HMR Enabled[/]", align="left")
             else:
                 console.rule("[yellow]Starting Vite watch and build process[/]", align="left")
+
+            if self._proxy_target:
+                console.print(f"[dim]Vite proxy target: {self._proxy_target}[/]")
 
             try:
                 self._vite_process.start(command_to_run, self._config.root_dir)
@@ -449,10 +624,12 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         await self._asset_loader.initialize()
 
         # Export types on startup (when enabled)
-        # Note: This is sync but fast enough to not block meaningfully
         self._export_types_sync(app)
 
         if self._use_server_lifespan and self._config.is_dev_mode:
+            self._ensure_proxy_target()
+            if self._config.set_environment:
+                set_environment(config=self._config)
             if not app.debug:
                 console.print("[yellow]WARNING: Vite dev mode is enabled in production![/]")
 

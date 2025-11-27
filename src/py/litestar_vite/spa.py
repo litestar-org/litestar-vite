@@ -46,9 +46,9 @@ class ViteSPAHandler:
             config: The Vite configuration.
         """
         self._config = config
-        self._cached_html: Optional[str] = None
+        self._cached_html: "Optional[str]" = None
         self._initialized = False
-        self._http_client: Optional[httpx.AsyncClient] = None
+        self._http_client: "Optional[httpx.AsyncClient]" = None
 
     async def initialize(self) -> None:
         """Initialize the handler.

@@ -18,7 +18,11 @@ classifiers = [
   "Topic :: Database",
   "Topic :: Database :: Database Engines/Servers",
 ]
-dependencies = ["litestar>=2.7.0"]
+dependencies = [
+  "litestar>=2.7.0",
+  "httpx>=0.24.1",
+  "websockets>=12.0",
+]
 description = "Vite plugin for Litestar"
 keywords = ["litestar", "vite"]
 license = { text = "MIT" }
@@ -163,6 +167,11 @@ search = """
 addopts = ["-q", "-ra"]
 filterwarnings = [
   "ignore::DeprecationWarning:pkg_resources.*",
+  "ignore::PendingDeprecationWarning:rich_click.*",
+  "ignore:`use_markdown=`:PendingDeprecationWarning",
+  "ignore:`use_rich_markup=`:PendingDeprecationWarning",
+  "ignore:`show_metavars_column=`:PendingDeprecationWarning",
+  "ignore:`append_metavars_help=`:PendingDeprecationWarning",
 ]
 testpaths = ["tests", "src/py/tests"]
 tmp_path_retention_policy = "failed"

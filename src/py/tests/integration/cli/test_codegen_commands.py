@@ -20,11 +20,11 @@ def test_export_routes_integration(tmp_path: Path) -> None:
     def list_users_handler() -> list[str]:
         return ["user1", "user2"]
 
-    @get("/users/{user_id:int}", name="get_user")
+    @get("/users/{user_id:int}", name="get_user", sync_to_thread=False)
     def get_user_handler(user_id: int) -> dict[str, int]:
         return {"id": user_id}
 
-    @get("/dashboard", name="dashboard", opt={"component": "Dashboard/Index"})
+    @get("/dashboard", name="dashboard", opt={"component": "Dashboard/Index"}, sync_to_thread=False)
     def dashboard_handler() -> dict[str, str]:
         return {}
 
@@ -97,15 +97,15 @@ def test_export_schema_integration(tmp_path: Path) -> None:
 def test_routes_with_filters(tmp_path: Path) -> None:
     """Test route generation with filters."""
 
-    @get("/users", name="list_users")
+    @get("/users", name="list_users", sync_to_thread=False)
     def list_users_handler() -> list[str]:
         return []
 
-    @get("/posts", name="list_posts")
+    @get("/posts", name="list_posts", sync_to_thread=False)
     def list_posts_handler() -> list[str]:
         return []
 
-    @get("/admin/settings", name="admin_settings")
+    @get("/admin/settings", name="admin_settings", sync_to_thread=False)
     def admin_settings_handler() -> dict[str, str]:
         return {}
 

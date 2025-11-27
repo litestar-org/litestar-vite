@@ -22,7 +22,7 @@ Developers need Litestar and Vite to work together with zero manual setup: typed
 ## Acceptance Criteria
 - [ ] On app startup, `src/generated/routes.json` is written (and `src/generated/openapi.json` when OpenAPI enabled) without user intervention.
 - [ ] Vite plugin auto-generates `src/generated/routes.ts` and API types/client using `@hey-api/openapi-ts` from the exported artifacts on change; no manual CLI needed. If `@hey-api/openapi-ts` is missing, it should warn but not fail startup.
-- [ ] Proxy mode (default) serves HMR via the ASGI port only; direct two-port mode remains opt-in.
+- [x] Proxy mode (default) serves HMR via the ASGI port only; direct two-port mode remains opt-in.
 - [ ] Asset base defaults match (`/static/` with trailing slash) across Python and JS.
 - [ ] Duplicate route/type inference code removed or minimized; docs updated to new defaults.
 
@@ -53,8 +53,9 @@ Developers need Litestar and Vite to work together with zero manual setup: typed
 - `src/py/litestar_vite/loader.py` (if needed for proxy/static alignment).
 - `src/py/litestar_vite/codegen.py` - routes export cleanup.
 - `src/js/src/index.ts` - watch paths, type generation, routes.ts emitter, proxy config defaults.
-- `docs/usage/*`, `README.md` - new defaults, proxy/direct guidance.
-- Tests: `src/py/tests/...`, `src/js/tests/...` for new behaviors.
+- `src/py/litestar_vite/templates/*` - ensure new Angular Vite template (Analog) uses `/static/` base, hotfile, and aligns with single-port proxy defaults.
+- `docs/usage/*`, `README.md` - new defaults, proxy/direct guidance; note Angular Vite compatibility and Angular-CLI exception (uses its own dev server/proxy).
+- Tests: `src/py/tests/...`, `src/js/tests/...`, plus scaffolding tests for Angular Vite template to verify hotfile/proxy paths.
 
 ### API Changes
 - New/updated config flags:

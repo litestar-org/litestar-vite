@@ -76,6 +76,15 @@ app = Litestar(
 litestar run
 ```
 
+#### Single-port proxy (default)
+
+In dev, Litestar can proxy Vite traffic (HTTP + WS/HMR) through the ASGI port so you only expose one port.
+
+- Default: `VITE_PROXY_MODE=proxy` (or leave unset). Vite binds to loopback with an auto-picked port if `VITE_PORT` is unset.
+- The hotfile at `public/hot` records the chosen dev URL; the JS plugin/HMR client reads this.
+- Proxied paths include `@vite` assets, `@fs`, `node_modules/.vite`, `src/`, and HMR WebSockets.
+- To use the classic two-port mode, set `VITE_PROXY_MODE=direct` and run Vite separately.
+
 ## Type Generation
 
 Keep your frontend in sync with your backend automatically.

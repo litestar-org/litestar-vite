@@ -250,7 +250,7 @@ describe("litestar-vite-plugin", () => {
     const plugin = litestar("resources/js/app.js")[0]
 
     const devConfig = plugin.config({}, { command: "serve", mode: "development" })
-    expect(devConfig.base).toBe("static")
+    expect(devConfig.base).toBe("/static/")
 
     const prodConfig = plugin.config({}, { command: "build", mode: "production" })
     expect(prodConfig.base).toBe("http://example.com/")
@@ -274,7 +274,7 @@ describe("litestar-vite-plugin", () => {
     })[0]
 
     const config = plugin.config({}, { command: "build", mode: "production" })
-    expect(config.base).toBe("static/")
+    expect(config.base).toBe("/static/")
     expect(config.build?.outDir).toBe("build/test")
 
     const ssrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
@@ -393,12 +393,13 @@ describe("litestar-vite-plugin", () => {
   it("does not configure full reload when configuration it not an object", () => {
     const plugins = litestar("resources/js/app.js")
 
-    expect(plugins.length).toBe(1)
+    expect(plugins.length).toBe(2) // main + types plugin when types enabled by default
   })
 
   it("does not configure full reload when refresh is not present", () => {
     const plugins = litestar({
       input: "resources/js/app.js",
+      types: false,
     })
 
     expect(plugins.length).toBe(1)
@@ -408,6 +409,7 @@ describe("litestar-vite-plugin", () => {
     const plugins = litestar({
       input: "resources/js/app.js",
       refresh: undefined,
+      types: false,
     })
     expect(plugins.length).toBe(1)
   })
@@ -416,6 +418,7 @@ describe("litestar-vite-plugin", () => {
     const plugins = litestar({
       input: "resources/js/app.js",
       refresh: false,
+      types: false,
     })
 
     expect(plugins.length).toBe(1)
@@ -425,6 +428,7 @@ describe("litestar-vite-plugin", () => {
     const plugins = litestar({
       input: "resources/js/app.js",
       refresh: true,
+      types: false,
     })
 
     expect(plugins.length).toBe(2)
@@ -438,6 +442,7 @@ describe("litestar-vite-plugin", () => {
     const plugins = litestar({
       input: "resources/js/app.js",
       refresh: "path/to/watch/**",
+      types: false,
     })
 
     expect(plugins.length).toBe(2)
@@ -451,6 +456,7 @@ describe("litestar-vite-plugin", () => {
     const plugins = litestar({
       input: "resources/js/app.js",
       refresh: ["path/to/watch/**", "another/to/watch/**"],
+      types: false,
     })
 
     expect(plugins.length).toBe(2)
@@ -467,6 +473,7 @@ describe("litestar-vite-plugin", () => {
         paths: ["path/to/watch/**", "another/to/watch/**"],
         config: { delay: 987 },
       },
+      types: false,
     })
 
     expect(plugins.length).toBe(2)
@@ -490,6 +497,7 @@ describe("litestar-vite-plugin", () => {
           config: { delay: 123 },
         },
       ],
+      types: false,
     })
 
     expect(plugins.length).toBe(3)

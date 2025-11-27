@@ -81,19 +81,8 @@ class RouteMetadata:
 
 
 def _python_type_to_typescript(python_type: "Union[str, type, Any]") -> str:
-    """Convert Python type annotation to TypeScript type.
+    """Minimal Python→TS mapper for route metadata (path/query only)."""
 
-    Args:
-        python_type: Python type as a string or actual type object.
-
-    Returns:
-        TypeScript type equivalent.
-
-    Note:
-        This function has multiple return statements by design for readability
-        and to handle distinct type categories (string types, None, Union, list, type objects).
-    """
-    # String-based type mapping (for path parameter types from URL)
     string_type_map = {
         "int": "number",
         "float": "number",
@@ -108,48 +97,27 @@ def _python_type_to_typescript(python_type: "Union[str, type, Any]") -> str:
         "Path": "string",
     }
 
-    # Handle string types (from path parameters)
     if isinstance(python_type, str):
         return string_type_map.get(python_type, "string")
 
-    # Handle None type
     if python_type is type(None):
         return "null"
 
-    # Handle Union types (Optional[T] is Union[T, None], and PEP 604 X | Y)
     origin = get_origin(python_type)
-    # types.UnionType is available in Python 3.10+ for PEP 604 unions (X | Y)
     union_type = getattr(types, "UnionType", None)
     if origin is Union or (union_type is not None and origin is union_type):
         args = get_args(python_type)
-        # Filter out NoneType and convert remaining types
         non_none_types = [_python_type_to_typescript(arg) for arg in args if arg is not type(None)]
         return " | ".join(non_none_types) if non_none_types else "any"
 
-    # Handle list/List types
     if origin is list:
         args = get_args(python_type)
         inner_type = _python_type_to_typescript(args[0]) if args else "any"
         return f"{inner_type}[]"
 
-    # Handle actual type objects
     if isinstance(python_type, type):
-        type_name = python_type.__name__
-        type_obj_map = {
-            "int": "number",
-            "float": "number",
-            "str": "string",
-            "bool": "boolean",
-            "UUID": "string",
-            "datetime": "string",
-            "date": "string",
-            "time": "string",
-            "Path": "string",
-            "Decimal": "number",
-        }
-        return type_obj_map.get(type_name, "any")
+        return string_type_map.get(python_type.__name__.lower(), "any")
 
-    # Fallback for unknown types
     return "any"
 
 

@@ -285,6 +285,13 @@ When `use_server_lifespan` is set to `True` (default in v2 when `dev_mode=True`)
 
     litestar run
 
+Proxy vs direct modes:
+
+- **Proxy (default):** Litestar proxies Vite HTTP + WS/HMR through the ASGI port. Vite binds to loopback with an auto-picked port if `VITE_PORT` is unset, writes `public/hot` with its URL, and the JS plugin reads it. Paths like `/@vite/client`, `/@fs/`, `/node_modules/.vite/`, `/src/`, `/__vite_ping` are forwarded, including WebSockets.
+- **Direct:** classic two-port setup; Vite is exposed on `VITE_HOST:VITE_PORT` and Litestar does not proxy it.
+
+Switch with `VITE_PROXY_MODE=proxy|direct` (or `ViteConfig.runtime.proxy_mode`).
+
 If you prefer to manage the Vite server manually, set `dev_mode=False` in config but run vite manually:
 
 .. code-block:: bash
