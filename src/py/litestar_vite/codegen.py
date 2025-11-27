@@ -55,6 +55,11 @@ _SYSTEM_TYPE_NAMES = frozenset(
 )
 
 
+def _str_dict_factory() -> dict[str, str]:
+    """Factory function for empty string dict (typed for pyright)."""
+    return {}
+
+
 @dataclass
 class RouteMetadata:
     """Metadata for a single route.
@@ -71,8 +76,8 @@ class RouteMetadata:
     name: str
     path: str
     methods: list[str]
-    params: dict[str, str] = field(default_factory=dict)
-    query_params: dict[str, str] = field(default_factory=dict)
+    params: dict[str, str] = field(default_factory=_str_dict_factory)
+    query_params: dict[str, str] = field(default_factory=_str_dict_factory)
     component: str | None = None
 
 
@@ -84,6 +89,10 @@ def _python_type_to_typescript(python_type: str | type | Any) -> str:
 
     Returns:
         TypeScript type equivalent.
+
+    Note:
+        This function has multiple return statements by design for readability
+        and to handle distinct type categories (string types, None, Union, list, type objects).
     """
     # String-based type mapping (for path parameter types from URL)
     string_type_map = {
@@ -110,21 +119,19 @@ def _python_type_to_typescript(python_type: str | type | Any) -> str:
 
     # Handle Union types (Optional[T] is Union[T, None], and PEP 604 X | Y)
     origin = get_origin(python_type)
-    if origin is Union or origin is types.UnionType:
+    # types.UnionType is available in Python 3.10+ for PEP 604 unions (X | Y)
+    union_type = getattr(types, "UnionType", None)
+    if origin is Union or (union_type is not None and origin is union_type):
         args = get_args(python_type)
         # Filter out NoneType and convert remaining types
         non_none_types = [_python_type_to_typescript(arg) for arg in args if arg is not type(None)]
-        if non_none_types:
-            return " | ".join(non_none_types)
-        return "any"
+        return " | ".join(non_none_types) if non_none_types else "any"
 
     # Handle list/List types
     if origin is list:
         args = get_args(python_type)
-        if args:
-            inner_type = _python_type_to_typescript(args[0])
-            return f"{inner_type}[]"
-        return "any[]"
+        inner_type = _python_type_to_typescript(args[0]) if args else "any"
+        return f"{inner_type}[]"
 
     # Handle actual type objects
     if isinstance(python_type, type):
@@ -219,6 +226,76 @@ def _extract_path_params(path: str) -> dict[str, str]:
     return params
 
 
+def _should_skip_param(
+    param_name: str,
+    path_param_names: set[str],
+    body_param_name: Any,
+    dependency_names: set[str],
+) -> bool:
+    """Check if a parameter should be skipped when extracting query params.
+
+    Args:
+        param_name: The name of the parameter.
+        path_param_names: Set of path parameter names.
+        body_param_name: The name of the body parameter (if any).
+        dependency_names: Set of dependency parameter names.
+
+    Returns:
+        True if the parameter should be skipped.
+    """
+    if param_name in {"self", "cls", "return"}:
+        return True
+    if param_name in path_param_names:
+        return True
+    if param_name == body_param_name:
+        return True
+    return param_name in dependency_names
+
+
+def _process_field_definition(field_def: Any, param_name: str) -> tuple[str, str] | None:
+    """Process a field definition and return the query param name and type.
+
+    Args:
+        field_def: The FieldDefinition object.
+        param_name: The parameter name.
+
+    Returns:
+        Tuple of (final_name, ts_type) or None if field should be skipped.
+    """
+    from litestar.params import ParameterKwarg
+
+    # Get the annotation from FieldDefinition
+    annotation = getattr(field_def, "annotation", None)
+    if annotation is None or _is_system_type(annotation):
+        return None
+
+    # Convert to TypeScript type
+    ts_type = _python_type_to_typescript(annotation)
+
+    # Check if optional (has default value)
+    default = getattr(field_def, "default", None)
+    is_empty = (
+        default is None
+        or (hasattr(default, "name") and default.name == "EMPTY")
+        or str(default) == "<_EmptyEnum.EMPTY: 0>"
+    )
+    is_optional = not is_empty
+
+    # Handle ParameterKwarg metadata for aliasing
+    final_name = param_name
+    kwarg_def = getattr(field_def, "kwarg_definition", None)
+    if isinstance(kwarg_def, ParameterKwarg):
+        query_alias = getattr(kwarg_def, "query", None)
+        if query_alias:
+            final_name = query_alias
+
+    # Add undefined to type if optional
+    if is_optional and "undefined" not in ts_type:
+        ts_type = f"{ts_type} | undefined"
+
+    return final_name, ts_type
+
+
 def _extract_query_params(handler: HTTPRouteHandler, path_param_names: set[str]) -> dict[str, str]:
     """Extract query parameters and their types from a route handler.
 
@@ -232,8 +309,6 @@ def _extract_query_params(handler: HTTPRouteHandler, path_param_names: set[str])
     Returns:
         Dictionary mapping query parameter names to TypeScript types.
     """
-    from litestar.params import ParameterKwarg
-
     query_params: dict[str, str] = {}
 
     # Get parsed signature - contains all handler parameters
@@ -241,81 +316,31 @@ def _extract_query_params(handler: HTTPRouteHandler, path_param_names: set[str])
     if parsed_sig is None:
         return query_params
 
-    # Get the body parameter name (if any) - this is the "data" parameter
+    # Get the body parameter name (if any)
     body_param_name = getattr(parsed_sig, "data", None)
-    if hasattr(body_param_name, "name"):
-        body_param_name = body_param_name.name
+    body_name_attr = getattr(body_param_name, "name", None) if body_param_name is not None else None
+    if body_name_attr is not None:
+        body_param_name = body_name_attr
 
     # Get dependency names to exclude
     dependency_names: set[str] = set()
     try:
         resolved_deps = handler.resolve_dependencies()
         dependency_names = set(resolved_deps.keys())
-    except Exception:  # noqa: BLE001
+    except (AttributeError, KeyError, TypeError, ValueError):
         # Dependencies may not be resolvable in all contexts
         pass
 
-    # Iterate through all parameters (FieldDefinition objects)
+    # Iterate through all parameters
     parameters = getattr(parsed_sig, "parameters", {})
     for param_name, field_def in parameters.items():
-        # Skip 'self' and 'cls'
-        if param_name in ("self", "cls"):
+        if _should_skip_param(param_name, path_param_names, body_param_name, dependency_names):
             continue
 
-        # Skip path parameters
-        if param_name in path_param_names:
-            continue
-
-        # Skip body parameter
-        if param_name == body_param_name:
-            continue
-
-        # Skip dependencies
-        if param_name in dependency_names:
-            continue
-
-        # Skip return annotation
-        if param_name == "return":
-            continue
-
-        # Get the annotation from FieldDefinition
-        annotation = getattr(field_def, "annotation", None)
-        if annotation is None:
-            continue
-
-        # Skip system types (Request, State, Scope, etc.)
-        if _is_system_type(annotation):
-            continue
-
-        # Convert to TypeScript type
-        ts_type = _python_type_to_typescript(annotation)
-
-        # Check if optional (has default value)
-        # Litestar uses _EmptyEnum.EMPTY as sentinel for no default
-        default = getattr(field_def, "default", None)
-        # Check if it's the EMPTY sentinel by checking its type/name
-        is_empty = (
-            default is None
-            or (hasattr(default, "name") and default.name == "EMPTY")
-            or str(default) == "<_EmptyEnum.EMPTY: 0>"
-        )
-        is_optional = not is_empty
-
-        # Handle ParameterKwarg metadata for aliasing (from Parameter() calls)
-        # In Litestar, Parameter() metadata is stored in kwarg_definition, not default
-        final_name = param_name
-        kwarg_def = getattr(field_def, "kwarg_definition", None)
-        if isinstance(kwarg_def, ParameterKwarg):
-            # Check for query name alias
-            query_alias = getattr(kwarg_def, "query", None)
-            if query_alias:
-                final_name = query_alias
-
-        # Add undefined to type if optional
-        if is_optional and "undefined" not in ts_type:
-            ts_type = f"{ts_type} | undefined"
-
-        query_params[final_name] = ts_type
+        result = _process_field_definition(field_def, param_name)
+        if result is not None:
+            final_name, ts_type = result
+            query_params[final_name] = ts_type
 
     return query_params
 

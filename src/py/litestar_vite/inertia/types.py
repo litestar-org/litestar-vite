@@ -75,6 +75,11 @@ def to_inertia_dict(obj: Any, required_fields: set[str] | None = None) -> dict[s
     return result
 
 
+def _str_list_factory() -> list[str]:
+    """Factory function for empty string list (typed for pyright)."""
+    return []
+
+
 @dataclass
 class DeferredPropsConfig:
     """Configuration for deferred props (v2 feature).
@@ -86,7 +91,7 @@ class DeferredPropsConfig:
     # Group name for the deferred props
     group: str = "default"
     # Props to load in this deferred group
-    props: list[str] = field(default_factory=list)
+    props: list[str] = field(default_factory=_str_list_factory)
 
 
 @dataclass

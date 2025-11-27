@@ -36,7 +36,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { promisify } from "node:util"
 import colors from "picocolors"
-import type { Plugin, ResolvedConfig as ViteResolvedConfig, ViteDevServer } from "vite"
+import type { Plugin, ViteDevServer, ResolvedConfig as ViteResolvedConfig } from "vite"
 
 const execAsync = promisify(exec)
 
@@ -307,11 +307,7 @@ function createTypeGenerationPlugin(typesConfig: Required<SvelteKitTypesConfig>)
     try {
       const openapiPath = path.resolve(process.cwd(), typesConfig.openapiPath)
       if (!fs.existsSync(openapiPath)) {
-        console.log(
-          colors.cyan("[litestar-sveltekit]"),
-          colors.yellow("OpenAPI schema not found:"),
-          typesConfig.openapiPath,
-        )
+        console.log(colors.cyan("[litestar-sveltekit]"), colors.yellow("OpenAPI schema not found:"), typesConfig.openapiPath)
         return false
       }
 
@@ -328,11 +324,7 @@ function createTypeGenerationPlugin(typesConfig: Required<SvelteKitTypesConfig>)
       })
 
       const duration = Date.now() - startTime
-      console.log(
-        colors.cyan("[litestar-sveltekit]"),
-        colors.green("Types generated"),
-        colors.dim(`in ${duration}ms`),
-      )
+      console.log(colors.cyan("[litestar-sveltekit]"), colors.green("Types generated"), colors.dim(`in ${duration}ms`))
 
       // Notify HMR clients
       if (server) {
@@ -350,11 +342,7 @@ function createTypeGenerationPlugin(typesConfig: Required<SvelteKitTypesConfig>)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (message.includes("not found") || message.includes("ENOENT")) {
-        console.log(
-          colors.cyan("[litestar-sveltekit]"),
-          colors.yellow("@hey-api/openapi-ts not installed"),
-          "- run: npm install -D @hey-api/openapi-ts",
-        )
+        console.log(colors.cyan("[litestar-sveltekit]"), colors.yellow("@hey-api/openapi-ts not installed"), "- run: npm install -D @hey-api/openapi-ts")
       } else {
         console.error(colors.cyan("[litestar-sveltekit]"), colors.red("Type generation failed:"), message)
       }
@@ -372,11 +360,7 @@ function createTypeGenerationPlugin(typesConfig: Required<SvelteKitTypesConfig>)
 
     configureServer(devServer) {
       server = devServer
-      console.log(
-        colors.cyan("[litestar-sveltekit]"),
-        colors.dim("Watching for schema changes:"),
-        colors.yellow(typesConfig.openapiPath),
-      )
+      console.log(colors.cyan("[litestar-sveltekit]"), colors.dim("Watching for schema changes:"), colors.yellow(typesConfig.openapiPath))
     },
 
     handleHotUpdate({ file }) {
@@ -388,12 +372,7 @@ function createTypeGenerationPlugin(typesConfig: Required<SvelteKitTypesConfig>)
       const openapiPath = typesConfig.openapiPath.replace(/^\.\//, "")
       const routesPath = typesConfig.routesPath.replace(/^\.\//, "")
 
-      if (
-        relativePath === openapiPath ||
-        relativePath === routesPath ||
-        file.endsWith(openapiPath) ||
-        file.endsWith(routesPath)
-      ) {
+      if (relativePath === openapiPath || relativePath === routesPath || file.endsWith(openapiPath) || file.endsWith(routesPath)) {
         console.log(colors.cyan("[litestar-sveltekit]"), colors.dim("Schema changed:"), colors.yellow(relativePath))
         debouncedRunTypeGeneration()
       }

@@ -216,6 +216,16 @@ class TypeGenConfig:
             self.routes_path = Path(self.routes_path)
 
 
+def _str_object_dict_factory() -> dict[str, object]:
+    """Factory function for empty dict (typed for pyright)."""
+    return {}
+
+
+def _str_list_factory() -> list[str]:
+    """Factory function for empty string list (typed for pyright)."""
+    return []
+
+
 @dataclass
 class InertiaConfig:
     """Inertia.js specific settings.
@@ -235,8 +245,8 @@ class InertiaConfig:
     include_routes: bool = True
     include_flash: bool = True
     include_errors: bool = True
-    extra_static_page_props: dict[str, object] = field(default_factory=dict)
-    extra_session_page_props: list[str] = field(default_factory=list)
+    extra_static_page_props: dict[str, object] = field(default_factory=_str_object_dict_factory)
+    extra_session_page_props: list[str] = field(default_factory=_str_list_factory)
 
 
 @dataclass

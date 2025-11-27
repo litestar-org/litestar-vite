@@ -3,12 +3,21 @@
 This module handles the generation of project files from templates.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from litestar_vite.scaffolding.templates import FrameworkTemplate
+
+
+def _dict_factory() -> dict[str, Any]:
+    return {}
+
+
+_DictStrAnyFactory: Callable[[], dict[str, Any]] = _dict_factory
 
 
 @dataclass
@@ -31,7 +40,7 @@ class TemplateContext:
     """
 
     project_name: str
-    framework: "FrameworkTemplate"
+    framework: FrameworkTemplate
     use_typescript: bool = True
     use_tailwind: bool = False
     vite_port: int = 5173
@@ -42,7 +51,7 @@ class TemplateContext:
     enable_ssr: bool = False
     enable_inertia: bool = False
     enable_types: bool = True
-    extra: dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=_DictStrAnyFactory)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert context to dictionary for Jinja2 rendering.
@@ -93,10 +102,11 @@ def render_template(template_path: Path, context: dict[str, Any]) -> str:
     from jinja2 import Environment, FileSystemLoader
 
     template_dir = template_path.parent
+    # autoescape=False is intentional - we're generating code files, not HTML
     env = Environment(
         loader=FileSystemLoader(str(template_dir)),
         keep_trailing_newline=True,
-        autoescape=False,
+        autoescape=False,  # noqa: S701
     )
     template = env.get_template(template_path.name)
     return template.render(**context)
@@ -117,9 +127,6 @@ def generate_project(
 
     Returns:
         List of generated file paths.
-
-    Raises:
-        FileExistsError: If a file exists and overwrite is False.
     """
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
@@ -198,5 +205,5 @@ def _render_and_write(
 
     # Render and write
     content = render_template(template_path, context)
-    output_path.write_text(content)
+    output_path.write_text(content, encoding="utf-8")
     console.print(f"[green]Created {output_path}[/]")

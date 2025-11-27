@@ -67,7 +67,7 @@ docs = [
     "Pygments","vue-lexer",
     "litestar-sphinx-theme @ git+https://github.com/litestar-org/litestar-sphinx-theme.git@v3",
 ]
-linting = ["pre-commit>=3.4.0", "mypy>=1.5.1", "ruff>=0.0.287", "types-docutils", "slotscheck", "basedpyright", "pyright"]
+linting = ["pre-commit>=3.4.0", "mypy>=1.5.1", "ruff>=0.0.287", "types-docutils", "slotscheck",  "pyright"]
 test = [
   "litestar[standard]",
   "pytest>=7.4.1",

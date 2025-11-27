@@ -339,7 +339,12 @@ PR #32 had useful template patterns. Key files:
     - `src/js/src/sveltekit.ts` - SvelteKit integration with API proxy and type generation
     - `src/js/src/nuxt.ts` - Nuxt 3+ module with API proxy and type generation
     - Updated `package.json` exports for `./astro`, `./sveltekit`, `./nuxt`
-- **FUTURE**: Framework-specific scaffolding templates (React, Vue, Svelte)
+- **DONE**: Project scaffolding system:
+    - `src/py/litestar_vite/scaffolding/` module with templates.py, generator.py
+    - 10 framework templates: react, react-inertia, vue, vue-inertia, svelte, svelte-inertia, sveltekit, nuxt, astro, htmx
+    - TailwindCSS v4 addon with `@tailwindcss/vite` plugin support
+    - CLI `litestar vite init` command with `--template` option
+    - All 204 unit tests passing
 - **FUTURE**: Example updates to demonstrate v2 features
 - **FUTURE**: Extended documentation
 

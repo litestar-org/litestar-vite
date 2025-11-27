@@ -105,7 +105,7 @@ def defer(
     """
     return DeferredProp[str, T](
         key=key,
-        value=cast("Callable[..., T | Coroutine[Any, Any, T]]", callback),
+        value=callback,
         group=group,
     )
 
@@ -150,7 +150,7 @@ class MergeProp(Generic[PropKeyT, T]):
     @property
     def strategy(self) -> "Literal['append', 'prepend', 'deep']":
         """The merge strategy."""
-        return self._strategy
+        return self._strategy  # pyright: ignore[reportReturnType]
 
     @property
     def match_on(self) -> "Optional[list[str]]":

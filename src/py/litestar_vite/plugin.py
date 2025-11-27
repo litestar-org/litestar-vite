@@ -274,11 +274,12 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if JINJA_INSTALLED and self._config.mode in {"template", "htmx"}:
             from litestar.contrib.jinja import JinjaTemplateEngine
 
-            if app_config.template_config and isinstance(
-                app_config.template_config.engine_instance,  # pyright: ignore[reportUnknownMemberType]
+            template_config = app_config.template_config  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+            if template_config and isinstance(
+                template_config.engine_instance,  # pyright: ignore[reportUnknownMemberType]
                 JinjaTemplateEngine,
             ):
-                engine = app_config.template_config.engine_instance  # pyright: ignore[reportUnknownMemberType]
+                engine = template_config.engine_instance  # pyright: ignore[reportUnknownMemberType]
                 engine.register_template_callable(
                     key="vite_hmr",
                     template_callable=render_hmr_client,
@@ -382,7 +383,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             console.print(
                 f"[green]✓ Types exported to {self._config.types.openapi_path} and {self._config.types.routes_path}[/]",
             )
-        except Exception as e:  # pragma: no cover
+        except (OSError, TypeError, ValueError, ImportError) as e:  # pragma: no cover
             console.print(f"[yellow]! Type export failed: {e}[/]")
 
     @contextmanager

@@ -279,11 +279,7 @@ function createTypeGenerationPlugin(typesConfig: Required<NuxtTypesConfig>): Plu
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (message.includes("not found") || message.includes("ENOENT")) {
-        console.log(
-          colors.cyan("[litestar-nuxt]"),
-          colors.yellow("@hey-api/openapi-ts not installed"),
-          "- run: npm install -D @hey-api/openapi-ts",
-        )
+        console.log(colors.cyan("[litestar-nuxt]"), colors.yellow("@hey-api/openapi-ts not installed"), "- run: npm install -D @hey-api/openapi-ts")
       } else {
         console.error(colors.cyan("[litestar-nuxt]"), colors.red("Type generation failed:"), message)
       }
@@ -301,11 +297,7 @@ function createTypeGenerationPlugin(typesConfig: Required<NuxtTypesConfig>): Plu
 
     configureServer(devServer) {
       server = devServer
-      console.log(
-        colors.cyan("[litestar-nuxt]"),
-        colors.dim("Watching for schema changes:"),
-        colors.yellow(typesConfig.openapiPath),
-      )
+      console.log(colors.cyan("[litestar-nuxt]"), colors.dim("Watching for schema changes:"), colors.yellow(typesConfig.openapiPath))
     },
 
     handleHotUpdate({ file }) {
@@ -317,12 +309,7 @@ function createTypeGenerationPlugin(typesConfig: Required<NuxtTypesConfig>): Plu
       const openapiPath = typesConfig.openapiPath.replace(/^\.\//, "")
       const routesPath = typesConfig.routesPath.replace(/^\.\//, "")
 
-      if (
-        relativePath === openapiPath ||
-        relativePath === routesPath ||
-        file.endsWith(openapiPath) ||
-        file.endsWith(routesPath)
-      ) {
+      if (relativePath === openapiPath || relativePath === routesPath || file.endsWith(openapiPath) || file.endsWith(routesPath)) {
         console.log(colors.cyan("[litestar-nuxt]"), colors.dim("Schema changed:"), colors.yellow(relativePath))
         debouncedRunTypeGeneration()
       }

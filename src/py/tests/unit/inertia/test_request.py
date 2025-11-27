@@ -218,7 +218,7 @@ def test_page_props_to_dict() -> None:
     """Test PageProps.to_dict() produces correct camelCase output."""
     from litestar_vite.inertia.types import PageProps
 
-    page = PageProps(
+    page: PageProps[dict[str, str]] = PageProps(
         component="Home",
         url="/dashboard",
         version="abc123",

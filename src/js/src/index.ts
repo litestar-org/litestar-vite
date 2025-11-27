@@ -190,10 +190,7 @@ export const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((path
 export default function litestar(config: string | string[] | PluginConfig): [LitestarPlugin, ...Plugin[]] {
   const pluginConfig = resolvePluginConfig(config)
 
-  const plugins: Plugin[] = [
-    resolveLitestarPlugin(pluginConfig),
-    ...(resolveFullReloadConfig(pluginConfig) as Plugin[]),
-  ]
+  const plugins: Plugin[] = [resolveLitestarPlugin(pluginConfig), ...(resolveFullReloadConfig(pluginConfig) as Plugin[])]
 
   // Add type generation plugin if enabled
   if (pluginConfig.types !== false && pluginConfig.types.enabled) {
@@ -666,9 +663,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>): Plugin
       const openapiPath = path.resolve(process.cwd(), typesConfig.openapiPath)
       if (!fs.existsSync(openapiPath)) {
         if (resolvedConfig) {
-          resolvedConfig.logger.warn(
-            `${colors.cyan("litestar-vite")} ${colors.yellow("OpenAPI schema not found:")} ${typesConfig.openapiPath}`,
-          )
+          resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("OpenAPI schema not found:")} ${typesConfig.openapiPath}`)
         }
         return false
       }
@@ -678,13 +673,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>): Plugin
       }
 
       // Build @hey-api/openapi-ts command
-      const args = [
-        "@hey-api/openapi-ts",
-        "-i",
-        typesConfig.openapiPath,
-        "-o",
-        typesConfig.output,
-      ]
+      const args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
 
       if (typesConfig.generateZod) {
         args.push("--plugins", "@hey-api/schemas", "@hey-api/types")
@@ -696,9 +685,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>): Plugin
 
       const duration = Date.now() - startTime
       if (resolvedConfig) {
-        resolvedConfig.logger.info(
-          `${colors.cyan("litestar-vite")} ${colors.green("TypeScript types generated")} ${colors.dim(`in ${duration}ms`)}`,
-        )
+        resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.green("TypeScript types generated")} ${colors.dim(`in ${duration}ms`)}`)
       }
 
       // Notify HMR clients that types have been updated
@@ -719,9 +706,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>): Plugin
         const message = error instanceof Error ? error.message : String(error)
         // Don't show error if @hey-api/openapi-ts is not installed - just warn once
         if (message.includes("not found") || message.includes("ENOENT")) {
-          resolvedConfig.logger.warn(
-            `${colors.cyan("litestar-vite")} ${colors.yellow("@hey-api/openapi-ts not installed")} - run: npm install -D @hey-api/openapi-ts`,
-          )
+          resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("@hey-api/openapi-ts not installed")} - run: npm install -D @hey-api/openapi-ts`)
         } else {
           resolvedConfig.logger.error(`${colors.cyan("litestar-vite")} ${colors.red("type generation failed:")} ${message}`)
         }
@@ -748,9 +733,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>): Plugin
 
       // Log that we're watching for schema changes
       if (typesConfig.enabled) {
-        resolvedConfig?.logger.info(
-          `${colors.cyan("litestar-vite")} ${colors.dim("watching for schema changes:")} ${colors.yellow(typesConfig.openapiPath)}`,
-        )
+        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("watching for schema changes:")} ${colors.yellow(typesConfig.openapiPath)}`)
       }
     },
 
@@ -766,9 +749,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>): Plugin
       // Check if the changed file is our OpenAPI schema or routes metadata
       if (relativePath === openapiPath || relativePath === routesPath || file.endsWith(openapiPath) || file.endsWith(routesPath)) {
         if (resolvedConfig) {
-          resolvedConfig.logger.info(
-            `${colors.cyan("litestar-vite")} ${colors.dim("schema changed:")} ${colors.yellow(relativePath)}`,
-          )
+          resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("schema changed:")} ${colors.yellow(relativePath)}`)
         }
         debouncedRunTypeGeneration()
       }

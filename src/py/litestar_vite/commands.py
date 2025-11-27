@@ -56,7 +56,9 @@ def init_vite(
     template = get_template(framework)
     if template is None:
         template = get_template(FrameworkType.REACT)
-    assert template is not None
+    if template is None:  # pragma: no cover
+        msg = f"Could not find template for framework: {framework}"
+        raise ValueError(msg)
 
     # Create template context
     context = TemplateContext(

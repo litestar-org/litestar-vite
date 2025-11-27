@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from click import Choice, Context, group, option
 from click import Path as ClickPath
@@ -27,6 +27,87 @@ FRAMEWORK_CHOICES = [
 @group(cls=LitestarGroup, name="assets")
 def vite_group() -> None:
     """Manage Vite Tasks."""
+
+
+def _select_framework_template(
+    template: "Optional[str]",
+    no_prompt: bool,
+) -> "tuple[str, Any]":
+    """Select and validate the framework template.
+
+    Args:
+        template: User-provided template name or None.
+        no_prompt: Whether to skip interactive prompts.
+
+    Returns:
+        Tuple of (template_name, framework_template).
+
+    Raises:
+        SystemExit: If template is invalid.
+    """
+    import sys
+
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+    from rich.prompt import Prompt
+
+    from litestar_vite.scaffolding import get_available_templates
+    from litestar_vite.scaffolding.templates import get_template
+
+    if template is None and not no_prompt:
+        available = get_available_templates()
+        console.print("\n[bold]Available framework templates:[/]")
+        for i, tmpl in enumerate(available, 1):
+            console.print(f"  {i}. [cyan]{tmpl.type.value}[/] - {tmpl.description}")
+
+        template = Prompt.ask(
+            "\nSelect a framework template",
+            choices=[t.type.value for t in available],
+            default="react",
+        )
+    elif template is None:
+        template = "react"  # Default when --no-prompt
+
+    framework = get_template(template)
+    if framework is None:
+        console.print(f"[red]Unknown template: {template}[/]")
+        sys.exit(1)
+
+    return template, framework
+
+
+def _prompt_for_options(
+    framework: "Any",
+    enable_ssr: "Optional[bool]",
+    tailwind: bool,
+    enable_types: bool,
+    no_prompt: bool,
+) -> "tuple[bool, bool, bool]":
+    """Prompt user for optional features if not specified.
+
+    Args:
+        framework: The framework template.
+        enable_ssr: SSR flag or None.
+        tailwind: TailwindCSS flag.
+        enable_types: Type generation flag.
+        no_prompt: Whether to skip prompts.
+
+    Returns:
+        Tuple of (enable_ssr, tailwind, enable_types).
+    """
+    from rich.prompt import Confirm
+
+    if enable_ssr is None:
+        enable_ssr = (
+            framework.has_ssr if no_prompt else Confirm.ask("Enable server-side rendering?", default=framework.has_ssr)
+        )
+
+    if not tailwind and not no_prompt:
+        tailwind = Confirm.ask("Add TailwindCSS?", default=False)
+
+    if not enable_types and not no_prompt:
+        enable_types = Confirm.ask("Enable TypeScript type generation?", default=True)
+
+    return enable_ssr or False, tailwind, enable_types
 
 
 @vite_group.command(
@@ -136,17 +217,17 @@ def vite_init(
     verbose: "bool",
     no_prompt: "bool",
     no_install: "bool",
-) -> None:  # sourcery skip: low-code-quality
+) -> None:
     """Initialize a new Vite project with framework templates."""
     import sys
     from pathlib import Path
 
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-    from rich.prompt import Confirm, Prompt
+    from rich.prompt import Confirm
 
     from litestar_vite import VitePlugin
-    from litestar_vite.scaffolding import TemplateContext, generate_project, get_available_templates
-    from litestar_vite.scaffolding.templates import FrameworkType, get_template
+    from litestar_vite.scaffolding import TemplateContext, generate_project
+    from litestar_vite.scaffolding.templates import FrameworkType
 
     if callable(ctx.obj):
         ctx.obj = ctx.obj()
@@ -167,57 +248,26 @@ def vite_init(
     litestar_port = env.port or 8000
 
     # Check for existing files
-    if any((root_path / p).exists() for p in [resource_path_str, bundle_path_str]) and not any(
-        [overwrite, no_prompt],
-    ):
-        confirm_overwrite = Confirm.ask(
-            "Files were found in the paths specified. Are you sure you wish to overwrite the contents?",
+    if (
+        any((root_path / p).exists() for p in [resource_path_str, bundle_path_str])
+        and not any(
+            [overwrite, no_prompt],
         )
-        if not confirm_overwrite:
-            console.print("Skipping Vite initialization")
-            sys.exit(2)
+        and not Confirm.ask("Files were found in the paths specified. Are you sure you wish to overwrite the contents?")
+    ):
+        console.print("Skipping Vite initialization")
+        sys.exit(2)
 
     # Select framework template
-    if template is None and not no_prompt:
-        available = get_available_templates()
-        console.print("\n[bold]Available framework templates:[/]")
-        for i, tmpl in enumerate(available, 1):
-            console.print(f"  {i}. [cyan]{tmpl.type.value}[/] - {tmpl.description}")
-
-        template_choice = Prompt.ask(
-            "\nSelect a framework template",
-            choices=[t.type.value for t in available],
-            default="react",
-        )
-        template = template_choice
-    elif template is None:
-        template = "react"  # Default when --no-prompt
-
-    # Get the framework template
-    framework = get_template(template)
-    if framework is None:
-        console.print(f"[red]Unknown template: {template}[/]")
-        sys.exit(1)
-
+    template, framework = _select_framework_template(template, no_prompt)
     console.print(f"\n[green]Using {framework.name} template[/]")
 
-    # Ask for SSR if not specified
-    if enable_ssr is None:
-        enable_ssr = (
-            framework.has_ssr if no_prompt else Confirm.ask("Enable server-side rendering?", default=framework.has_ssr)
-        )
-
-    # Ask for TailwindCSS if not specified
-    if not tailwind and not no_prompt:
-        tailwind = Confirm.ask("Add TailwindCSS?", default=False)
-
-    # Ask for type generation if not specified
-    if not enable_types and not no_prompt:
-        enable_types = Confirm.ask("Enable TypeScript type generation?", default=True)
+    # Prompt for optional features
+    enable_ssr, tailwind, enable_types = _prompt_for_options(framework, enable_ssr, tailwind, enable_types, no_prompt)
 
     # Create template context
     project_name = root_path.name or "my-project"
-    is_inertia_framework = framework.type in (
+    is_inertia = framework.type in (
         FrameworkType.REACT_INERTIA,
         FrameworkType.VUE_INERTIA,
         FrameworkType.SVELTE_INERTIA,
@@ -232,31 +282,23 @@ def vite_init(
         asset_url=asset_url,
         resource_dir=resource_path_str,
         bundle_dir=bundle_path_str,
-        enable_ssr=enable_ssr or False,
-        enable_inertia=is_inertia_framework,
+        enable_ssr=enable_ssr,
+        enable_inertia=is_inertia,
         enable_types=enable_types,
     )
 
     # Generate project files
     console.print("\n[yellow]Generating project files...[/]")
     generated = generate_project(root_path, context, overwrite=overwrite)
-
     console.print(f"\n[green]Generated {len(generated)} files[/]")
 
     # Install dependencies
     if not no_install:
-        if config.executor is None:
-            console.print("[red]Executor not configured.[/]")
-            return
-
         console.rule("[yellow]Starting package installation process[/]", align="left")
         config.executor.install(root_path)
 
     console.print("\n[bold green]Vite initialization complete![/]")
-    console.print("\n[dim]Next steps:")
-    console.print(f"  cd {root_path}")
-    console.print("  npm run dev")
-    console.print("[/]")
+    console.print(f"\n[dim]Next steps:\n  cd {root_path}\n  npm run dev[/]")
 
 
 @vite_group.command(
@@ -455,6 +497,108 @@ def export_routes(
         raise LitestarCLIException(msg) from e
 
 
+def _export_openapi_schema(app: "Litestar", types_config: Any) -> None:
+    """Export OpenAPI schema to file.
+
+    Args:
+        app: The Litestar application instance.
+        types_config: The TypeGenConfig instance.
+
+    Raises:
+        LitestarCLIException: If export fails.
+    """
+    import msgspec
+    from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
+    from litestar.serialization import encode_json, get_serializer
+
+    console.print("[dim]1. Exporting OpenAPI schema...[/]")
+    try:
+        serializer = get_serializer(app.type_encoders)
+        schema_dict = app.openapi_schema.to_schema()
+        schema_content = msgspec.json.format(
+            encode_json(schema_dict, serializer=serializer),
+            indent=2,
+        )
+        types_config.openapi_path.parent.mkdir(parents=True, exist_ok=True)
+        types_config.openapi_path.write_bytes(schema_content)
+        console.print(f"[green]✓ Schema exported to {types_config.openapi_path}[/]")
+    except OSError as e:
+        msg = f"Failed to export OpenAPI schema: {e}"
+        raise LitestarCLIException(msg) from e
+
+
+def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
+    """Export routes metadata to file.
+
+    Args:
+        app: The Litestar application instance.
+        types_config: The TypeGenConfig instance.
+
+    Raises:
+        LitestarCLIException: If export fails.
+    """
+    import msgspec
+    from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
+
+    from litestar_vite.codegen import generate_routes_json
+
+    console.print("[dim]2. Exporting route metadata...[/]")
+    try:
+        routes_data = generate_routes_json(app, include_components=True)
+        routes_content = msgspec.json.format(
+            msgspec.json.encode(routes_data),
+            indent=2,
+        )
+        types_config.routes_path.parent.mkdir(parents=True, exist_ok=True)
+        types_config.routes_path.write_bytes(routes_content)
+        console.print(f"[green]✓ Routes exported to {types_config.routes_path}[/]")
+    except OSError as e:
+        msg = f"Failed to export routes: {e}"
+        raise LitestarCLIException(msg) from e
+
+
+def _run_openapi_ts(types_config: Any, root_dir: Any, verbose: bool) -> None:
+    """Run @hey-api/openapi-ts to generate TypeScript types.
+
+    Args:
+        types_config: The TypeGenConfig instance.
+        root_dir: The root directory for the project.
+        verbose: Whether to show verbose output.
+    """
+    import subprocess
+
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+
+    console.print("[dim]3. Running @hey-api/openapi-ts...[/]")
+
+    try:
+        # Check if @hey-api/openapi-ts is installed
+        check_cmd = ["npx", "@hey-api/openapi-ts", "--version"]
+        subprocess.run(check_cmd, check=True, capture_output=True, cwd=root_dir)
+
+        # Run the type generation
+        openapi_cmd = [
+            "npx",
+            "@hey-api/openapi-ts",
+            "-i",
+            str(types_config.openapi_path),
+            "-o",
+            str(types_config.output),
+        ]
+        if types_config.generate_zod:
+            openapi_cmd.extend(["--plugins", "@hey-api/schemas", "@hey-api/types"])
+
+        subprocess.run(openapi_cmd, check=True, cwd=root_dir)
+        console.print(f"[green]✓ Types generated in {types_config.output}[/]")
+    except subprocess.CalledProcessError as e:
+        console.print("[yellow]! @hey-api/openapi-ts failed - install it with:[/]")
+        console.print("[dim]  npm install -D @hey-api/openapi-ts[/]")
+        if verbose:
+            console.print(f"[dim]Error: {e!s}[/]")
+    except FileNotFoundError:
+        console.print("[yellow]! npx not found - ensure Node.js is installed[/]")
+
+
 @vite_group.command(
     name="generate-types",
     help="Generate TypeScript types from OpenAPI schema and routes.",
@@ -467,7 +611,6 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     1. Exports the OpenAPI schema (uses litestar's built-in schema generation)
     2. Exports route metadata
     3. Runs @hey-api/openapi-ts to generate TypeScript types
-    4. Generates route helper functions
 
     Args:
         app: The Litestar application instance.
@@ -476,13 +619,8 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     Raises:
         LitestarCLIException: If type generation fails.
     """
-    import subprocess
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
-    import msgspec
-    from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
-    from litestar.serialization import encode_json, get_serializer
-
-    from litestar_vite.codegen import generate_routes_json
     from litestar_vite.config import TypeGenConfig
     from litestar_vite.plugin import VitePlugin
 
@@ -500,66 +638,9 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
 
     console.rule("[yellow]Generating TypeScript types[/]", align="left")
 
-    # Step 1: Export OpenAPI schema directly
-    console.print("[dim]1. Exporting OpenAPI schema...[/]")
-    try:
-        serializer = get_serializer(app.type_encoders)
-        schema_dict = app.openapi_schema.to_schema()
-        schema_content = msgspec.json.format(
-            encode_json(schema_dict, serializer=serializer),
-            indent=2,
-        )
-        config.types.openapi_path.parent.mkdir(parents=True, exist_ok=True)
-        config.types.openapi_path.write_bytes(schema_content)
-        console.print(f"[green]✓ Schema exported to {config.types.openapi_path}[/]")
-    except OSError as e:
-        msg = f"Failed to export OpenAPI schema: {e}"
-        raise LitestarCLIException(msg) from e
-
-    # Step 2: Export routes
-    console.print("[dim]2. Exporting route metadata...[/]")
-    try:
-        routes_data = generate_routes_json(app, include_components=True)
-        routes_content = msgspec.json.format(
-            msgspec.json.encode(routes_data),
-            indent=2,
-        )
-        config.types.routes_path.parent.mkdir(parents=True, exist_ok=True)
-        config.types.routes_path.write_bytes(routes_content)
-        console.print(f"[green]✓ Routes exported to {config.types.routes_path}[/]")
-    except OSError as e:
-        msg = f"Failed to export routes: {e}"
-        raise LitestarCLIException(msg) from e
-
-    # Step 3: Run @hey-api/openapi-ts
-    console.print("[dim]3. Running @hey-api/openapi-ts...[/]")
-
-    try:
-        # Check if @hey-api/openapi-ts is installed
-        check_cmd = ["npx", "@hey-api/openapi-ts", "--version"]
-        subprocess.run(check_cmd, check=True, capture_output=True, cwd=config.root_dir)
-
-        # Run the type generation
-        openapi_cmd = [
-            "npx",
-            "@hey-api/openapi-ts",
-            "-i",
-            str(config.types.openapi_path),
-            "-o",
-            str(config.types.output),
-        ]
-        if config.types.generate_zod:
-            openapi_cmd.extend(["--plugins", "@hey-api/schemas", "@hey-api/types"])
-
-        subprocess.run(openapi_cmd, check=True, cwd=config.root_dir)
-        console.print(f"[green]✓ Types generated in {config.types.output}[/]")
-    except subprocess.CalledProcessError as e:
-        console.print("[yellow]! @hey-api/openapi-ts failed - install it with:[/]")
-        console.print("[dim]  npm install -D @hey-api/openapi-ts[/]")
-        if verbose:
-            console.print(f"[dim]Error: {e!s}[/]")
-    except FileNotFoundError:
-        console.print("[yellow]! npx not found - ensure Node.js is installed[/]")
+    _export_openapi_schema(app, config.types)
+    _export_routes_metadata(app, config.types)
+    _run_openapi_ts(config.types, config.root_dir, verbose)
 
 
 @vite_group.command(

@@ -7,6 +7,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Callable
+
+
+def _str_list_factory() -> list[str]:
+    """Factory function for empty string list (typed for pyright)."""
+    return []
 
 
 class FrameworkType(str, Enum):
@@ -22,6 +28,10 @@ class FrameworkType(str, Enum):
     NUXT = "nuxt"
     ASTRO = "astro"
     HTMX = "htmx"
+
+
+# Type alias for the factory function to satisfy pyright
+_ListStrFactory: Callable[[], list[str]] = _str_list_factory
 
 
 @dataclass
@@ -45,9 +55,9 @@ class FrameworkTemplate:
     type: FrameworkType
     description: str
     vite_plugin: str | None = None
-    dependencies: list[str] = field(default_factory=list)
-    dev_dependencies: list[str] = field(default_factory=list)
-    files: list[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=_ListStrFactory)
+    dev_dependencies: list[str] = field(default_factory=_ListStrFactory)
+    files: list[str] = field(default_factory=_ListStrFactory)
     uses_typescript: bool = True
     has_ssr: bool = False
     inertia_compatible: bool = False
@@ -312,9 +322,11 @@ def get_template(framework_type: FrameworkType | str) -> FrameworkTemplate | Non
     Returns:
         The FrameworkTemplate if found, None otherwise.
     """
-    if isinstance(framework_type, str):
-        try:
-            framework_type = FrameworkType(framework_type)
-        except ValueError:
-            return None
-    return FRAMEWORK_TEMPLATES.get(framework_type)
+    # If already a FrameworkType enum, use it directly
+    if isinstance(framework_type, FrameworkType):
+        return FRAMEWORK_TEMPLATES.get(framework_type)
+    # Otherwise, try to convert the string to FrameworkType
+    try:
+        return FRAMEWORK_TEMPLATES.get(FrameworkType(framework_type))
+    except ValueError:
+        return None

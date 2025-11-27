@@ -34,7 +34,9 @@ if TYPE_CHECKING:
     from litestar_vite.plugin import VitePlugin
 
 
-def _get_request_from_context(context: "Mapping[str, Any]") -> "Request[Any, Any, Any]":
+def _get_request_from_context(
+    context: "Mapping[str, Any]",
+) -> "Request[Any, Any, Any]":
     """Get the request from the template context.
 
     Args:
@@ -49,10 +51,10 @@ def _get_request_from_context(context: "Mapping[str, Any]") -> "Request[Any, Any
     if request is None:
         msg = "Request not found in template context. Ensure 'request' is passed to the template."
         raise ValueError(msg)
-    if not isinstance(request, Request):
+    if not isinstance(request, Request):  # pyright: ignore[reportUnknownVariableType]
         msg = f"Expected Request object, got {type(request)}"
         raise TypeError(msg)
-    return request
+    return request  # pyright: ignore[reportReturnType,reportUnknownVariableType]
 
 
 def render_hmr_client(context: "Mapping[str, Any]", /) -> "markupsafe.Markup":
@@ -69,7 +71,7 @@ def render_hmr_client(context: "Mapping[str, Any]", /) -> "markupsafe.Markup":
     """
     request = _get_request_from_context(context)
     vite_plugin: VitePlugin | None = request.app.plugins.get("VitePlugin")
-    if vite_plugin is None:
+    if vite_plugin is None:  # pyright: ignore[reportUnnecessaryComparison]
         return markupsafe.Markup("")
     return vite_plugin.asset_loader.render_hmr_client()
 
@@ -95,7 +97,7 @@ def render_asset_tag(
     """
     request = _get_request_from_context(context)
     vite_plugin: VitePlugin | None = request.app.plugins.get("VitePlugin")
-    if vite_plugin is None:
+    if vite_plugin is None:  # pyright: ignore[reportUnnecessaryComparison]
         return markupsafe.Markup("")
     return vite_plugin.asset_loader.render_asset_tag(path, scripts_attrs)
 
@@ -114,7 +116,7 @@ def render_static_asset(context: "Mapping[str, Any]", /, path: str) -> str:
     """
     request = _get_request_from_context(context)
     vite_plugin: VitePlugin | None = request.app.plugins.get("VitePlugin")
-    if vite_plugin is None:
+    if vite_plugin is None:  # pyright: ignore[reportUnnecessaryComparison]
         return ""
     return vite_plugin.asset_loader.get_static_asset(path)
 
@@ -145,7 +147,7 @@ def render_partial_asset_tag(
     """
     request = _get_request_from_context(context)
     vite_plugin: VitePlugin | None = request.app.plugins.get("VitePlugin")
-    if vite_plugin is None:
+    if vite_plugin is None:  # pyright: ignore[reportUnnecessaryComparison]
         return markupsafe.Markup("")
     # Use the same rendering logic as regular assets
     return vite_plugin.asset_loader.render_asset_tag(path, scripts_attrs)
