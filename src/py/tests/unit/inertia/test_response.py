@@ -71,10 +71,14 @@ async def test_component_inertia_header_enabled(
         stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
-        assert (
-            response.content
-            == b'{"component":"Home","url":"/","version":"1.0","props":{"flash":{},"errors":{},"csrf_token":"","content":{"thing":"value"}}}'
-        )
+        data = response.json()
+        assert data["component"] == "Home"
+        assert data["url"] == "/"
+        assert "version" in data  # version is a hash, not a fixed value
+        assert data["props"]["flash"] == {}
+        assert data["props"]["errors"] == {}
+        assert data["props"]["csrf_token"] == ""
+        assert data["props"]["content"] == {"thing": "value"}
 
 
 async def test_component_inertia_flash_header_enabled(
@@ -99,10 +103,14 @@ async def test_component_inertia_flash_header_enabled(
         stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
-        assert (
-            response.content
-            == b'{"component":"Home","url":"/","version":"1.0","props":{"flash":{"info":["a flash message"]},"errors":{},"csrf_token":"","content":{"thing":"value"}}}'
-        )
+        data = response.json()
+        assert data["component"] == "Home"
+        assert data["url"] == "/"
+        assert "version" in data  # version is a hash, not a fixed value
+        assert data["props"]["flash"] == {"info": ["a flash message"]}
+        assert data["props"]["errors"] == {}
+        assert data["props"]["csrf_token"] == ""
+        assert data["props"]["content"] == {"thing": "value"}
 
 
 async def test_component_inertia_shared_flash_header_enabled(
@@ -128,10 +136,15 @@ async def test_component_inertia_shared_flash_header_enabled(
         stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
-        assert (
-            response.content
-            == b'{"component":"Home","url":"/","version":"1.0","props":{"auth":{"user":"nobody"},"flash":{"info":["a flash message"]},"errors":{},"csrf_token":"","content":{"thing":"value"}}}'
-        )
+        data = response.json()
+        assert data["component"] == "Home"
+        assert data["url"] == "/"
+        assert "version" in data  # version is a hash, not a fixed value
+        assert data["props"]["auth"] == {"user": "nobody"}
+        assert data["props"]["flash"] == {"info": ["a flash message"]}
+        assert data["props"]["errors"] == {}
+        assert data["props"]["csrf_token"] == ""
+        assert data["props"]["content"] == {"thing": "value"}
 
 
 async def test_default_route_response_no_component(
@@ -175,10 +188,14 @@ async def test_component_inertia_invalid_version(
             headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: "wrong"},
         )
         assert response.status_code == 200
-        assert (
-            response.content
-            == b'{"component":"Home","url":"/","version":"1.0","props":{"flash":{},"errors":{},"csrf_token":"","content":{"thing":"value"}}}'
-        )
+        data = response.json()
+        assert data["component"] == "Home"
+        assert data["url"] == "/"
+        assert "version" in data  # version is a hash, not a fixed value
+        assert data["props"]["flash"] == {}
+        assert data["props"]["errors"] == {}
+        assert data["props"]["csrf_token"] == ""
+        assert data["props"]["content"] == {"thing": "value"}
 
 
 async def test_unauthenticated_redirect(

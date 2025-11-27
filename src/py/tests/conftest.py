@@ -9,7 +9,7 @@ from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.template.config import TemplateConfig
 from pytest import TempPathFactory
 
-from litestar_vite.config import ViteConfig
+from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
 
 here = Path(__file__).parent
 
@@ -37,7 +37,9 @@ def template_config(test_app_path: Path) -> Generator[TemplateConfig[JinjaTempla
 def vite_config(test_app_path: Path) -> Generator[ViteConfig, None, None]:
     # Mock the ViteConfig with necessary attributes for testing
     yield ViteConfig(
-        bundle_dir=test_app_path / "public",
-        resource_dir=test_app_path / "resources",
-        hot_reload=True,
+        paths=PathConfig(
+            bundle_dir=test_app_path / "public",
+            resource_dir=test_app_path / "resources",
+        ),
+        runtime=RuntimeConfig(hot_reload=True),
     )

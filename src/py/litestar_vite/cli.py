@@ -343,5 +343,5 @@ def vite_status(app: "Litestar") -> None:
                 console.print(f"[green]✓ Vite server running at {url}[/]")
             else:
                 console.print(f"[yellow]! Vite server reachable at {url} but returned {response.status_code}[/]")
-        except Exception as e:
+        except httpx.HTTPError as e:
             console.print(f"[red]✗ Vite server not reachable at {url}: {e!s}[/]")

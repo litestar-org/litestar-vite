@@ -10,7 +10,7 @@ import pytest
 from litestar import Litestar
 from litestar.template.config import TemplateConfig
 
-from litestar_vite.config import ViteConfig
+from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
 from litestar_vite.exceptions import MissingDependencyError
 
 pytestmark = pytest.mark.anyio
@@ -336,7 +336,7 @@ class TestJinjaOptionalEdgeCases:
         from litestar_vite.config import ViteConfig
 
         # ViteConfig should work with basic configuration even if Jinja is not available
-        config = ViteConfig(bundle_dir=Path("/tmp/public"))
+        config = ViteConfig(paths=PathConfig(bundle_dir=Path("/tmp/public")))
         assert config.bundle_dir == Path("/tmp/public")
 
     def test_multiple_template_engine_scenarios(self) -> None:
@@ -462,7 +462,7 @@ class TestJinjaOptionalEdgeCases:
         from litestar_vite.config import ViteConfig
         from litestar_vite.loader import ViteAssetLoader
 
-        config = ViteConfig(bundle_dir=Path("/tmp/public"), resource_dir=Path("/tmp/resources"))
+        config = ViteConfig(paths=PathConfig(bundle_dir=Path("/tmp/public"), resource_dir=Path("/tmp/resources")))
 
         # Asset loader should work regardless of Jinja
         loader = ViteAssetLoader.initialize_loader(config=config)
@@ -488,11 +488,11 @@ class TestJinjaOptionalEdgeCases:
         from litestar_vite.config import ViteConfig
 
         # Development scenario
-        dev_config = ViteConfig(hot_reload=True)
+        dev_config = ViteConfig(runtime=RuntimeConfig(hot_reload=True))
         assert dev_config.hot_reload is True
 
         # Production scenario
-        prod_config = ViteConfig(hot_reload=False)
+        prod_config = ViteConfig(runtime=RuntimeConfig(hot_reload=False))
         assert prod_config.hot_reload is False
 
         # Both should work regardless of Jinja availability
@@ -562,9 +562,11 @@ class TestJinjaOptionalProductionReadiness:
 
         # Typical production configuration
         config = ViteConfig(
-            bundle_dir=Path("/app/public"),
-            resource_dir=Path("/app/resources"),
-            hot_reload=False,  # Production setting
+            paths=PathConfig(
+                bundle_dir=Path("/app/public"),
+                resource_dir=Path("/app/resources"),
+            ),
+            runtime=RuntimeConfig(hot_reload=False),  # Production setting
         )
 
         plugin = VitePlugin(config=config)
@@ -583,9 +585,11 @@ class TestJinjaOptionalProductionReadiness:
 
         # Kubernetes-style configuration with read-only filesystem considerations
         config = ViteConfig(
-            bundle_dir=Path("/app/static"),
-            resource_dir=Path("/app/src"),
-            hot_reload=False,
+            paths=PathConfig(
+                bundle_dir=Path("/app/static"),
+                resource_dir=Path("/app/src"),
+            ),
+            runtime=RuntimeConfig(hot_reload=False),
         )
 
         loader = ViteAssetLoader.initialize_loader(config=config)

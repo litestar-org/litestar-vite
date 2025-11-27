@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from litestar_vite.config import ViteConfig
+from litestar_vite.config import RuntimeConfig, ViteConfig
 from litestar_vite.exceptions import ViteExecutableNotFoundError, ViteExecutionError
 from litestar_vite.executor import (
     BunExecutor,
@@ -106,7 +106,7 @@ class TestNodeenvExecutor:
     @patch("litestar_vite.executor.NodeenvExecutor._find_npm_in_venv")
     @patch("subprocess.run")
     def test_install_without_nodeenv_detection(self, mock_run: Mock, mock_find: Mock) -> None:
-        config = ViteConfig(detect_nodeenv=False)
+        config = ViteConfig(runtime=RuntimeConfig(detect_nodeenv=False))
         executor = NodeenvExecutor(config)
         mock_find.return_value = "/venv/bin/npm"
         mock_run.return_value = Mock(returncode=0)
@@ -125,7 +125,7 @@ class TestNodeenvExecutor:
     def test_install_with_nodeenv_detection(
         self, mock_find_spec: Mock, mock_run: Mock, mock_find_npm: Mock, mock_get_cmd: Mock
     ) -> None:
-        config = ViteConfig(detect_nodeenv=True)
+        config = ViteConfig(runtime=RuntimeConfig(detect_nodeenv=True))
         executor = NodeenvExecutor(config)
         mock_find_spec.return_value = True
         mock_get_cmd.return_value = "nodeenv"

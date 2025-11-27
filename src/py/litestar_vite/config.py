@@ -1,29 +1,48 @@
+"""Litestar-Vite v2.0 Configuration.
+
+This module provides the configuration dataclasses for the Vite integration.
+The configuration is split into logical groups:
+- PathConfig: File system paths
+- RuntimeConfig: Execution settings
+- TypeGenConfig: Type generation settings
+- ViteConfig: Root configuration combining all sub-configs
+
+Example usage:
+    # Minimal - SPA mode with defaults
+    VitePlugin(config=ViteConfig())
+
+    # Development mode
+    VitePlugin(config=ViteConfig(dev_mode=True))
+
+    # With type generation
+    VitePlugin(config=ViteConfig(dev_mode=True, types=True))
+
+    # Template mode for HTMX
+    VitePlugin(config=ViteConfig(mode="template", dev_mode=True))
+"""
+
+from __future__ import annotations
+
 import os
 from dataclasses import dataclass, field
 from importlib.util import find_spec
 from pathlib import Path
-from typing import TYPE_CHECKING, Union
-
-from litestar_vite.executor import (
-    BunExecutor,
-    DenoExecutor,
-    JSExecutor,
-    NodeenvExecutor,
-    NodeExecutor,
-    PnpmExecutor,
-    YarnExecutor,
-)
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from litestar_vite.executor import JSExecutor
 
-
 __all__ = (
     "JINJA_INSTALLED",
+    # Legacy exports for backward compatibility during transition
     "BunViteConfig",
     "DenoViteConfig",
+    "InertiaConfig",
     "NPMViteConfig",
+    "PathConfig",
     "PnpmViteConfig",
+    "RuntimeConfig",
+    "TypeGenConfig",
     "ViteConfig",
     "YarnViteConfig",
 )
@@ -33,191 +52,513 @@ JINJA_INSTALLED = bool(find_spec("jinja2"))
 
 
 @dataclass
-class ViteConfig:
-    """Configuration for ViteJS support.
+class PathConfig:
+    """File system paths configuration.
 
-    To enable Vite integration, pass an instance of this class to the
-    :class:`Litestar <litestar.app.Litestar>` constructor using the
-    'plugins' key.
+    Attributes:
+        root: The root directory of the project. Defaults to current working directory.
+        bundle_dir: Location of compiled assets and manifest.json.
+        resource_dir: TypeScript/JavaScript source directory (equivalent to ./src in Vue/React).
+        public_dir: Static public assets directory (served as-is by Vite).
+        manifest_name: Name of the Vite manifest file.
+        hot_file: Name of the hot file indicating dev server URL.
+        asset_url: Base URL for static asset references (prepended to Vite output).
+        ssr_output_dir: SSR output directory (optional).
     """
 
-    bundle_dir: "Union[Path, str]" = field(default="public")
-    """Location of the compiled assets from  Vite.
-
-    The manifest file will also be found here.
-    """
-    resource_dir: "Union[Path, str]" = field(default="resources")
-    """The directory where all typescript/javascript source are written.
-
-    In a standalone Vue or React application, this would be equivalent to the ``./src`` directory.
-    """
-    public_dir: "Union[Path, str]" = field(default="public")
-    """The optional public directory Vite serves assets from.
-
-    In a standalone Vue or React application, this would be equivalent to the ``./public`` directory.
-    """
+    root: str | Path = field(default_factory=Path.cwd)
+    bundle_dir: str | Path = field(default_factory=lambda: Path("public"))
+    resource_dir: str | Path = field(default_factory=lambda: Path("resources"))
+    public_dir: str | Path = field(default_factory=lambda: Path("public"))
     manifest_name: str = "manifest.json"
-    """Name of the manifest file."""
     hot_file: str = "hot"
-    """Name of the hot file.
-
-    This file contains a single line containing the host, protocol, and port the Vite server is running.
-    """
-    hot_reload: bool = field(
-        default_factory=lambda: os.getenv("VITE_HOT_RELOAD", "True") in TRUE_VALUES,
-    )
-    """Enable HMR for Vite development server."""
-    ssr_enabled: bool = False
-    """Enable SSR."""
-    ssr_output_dir: "Union[Path, str, None]" = None
-    """SSR Output path"""
-    root_dir: "Union[Path, str, None]" = None
-    """The is the base path to your application.
-
-   In a standalone Vue or React application, this would be equivalent to the top-level project folder containing the ``./src`` directory.
-
-    """
-    is_react: bool = False
-    """Enable React components."""
     asset_url: str = field(default_factory=lambda: os.getenv("ASSET_URL", "/static/"))
-    """Base URL to generate for static asset references.
-
-    This URL will be prepended to anything generated from Vite.
-    """
-    host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "localhost"))
-    """Default host to use for Vite server."""
-    protocol: str = "http"
-    """Protocol to use for communication"""
-    port: int = field(default_factory=lambda: int(os.getenv("VITE_PORT", "5173")))
-    """Default port to use for Vite server."""
-    run_command: list[str] = field(default_factory=lambda: ["npm", "run", "dev"])
-    """Default command to use for running Vite."""
-    build_watch_command: list[str] = field(default_factory=lambda: ["npm", "run", "watch"])
-    """Default command to use for dev building with Vite."""
-    build_command: list[str] = field(default_factory=lambda: ["npm", "run", "build"])
-    """Default command to use for building with Vite."""
-    install_command: list[str] = field(default_factory=lambda: ["npm", "install"])
-    """Default command to use for installing Vite."""
-    use_server_lifespan: bool = field(
-        default_factory=lambda: os.getenv("VITE_USE_SERVER_LIFESPAN", "False") in TRUE_VALUES,
-    )
-    """Utilize the server lifespan hook to run Vite."""
-    dev_mode: bool = field(
-        default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES,
-    )
-    """When True, Vite will run with HMR or watch build"""
-    detect_nodeenv: bool = True
-    """When True, The initializer will install and configure nodeenv if present"""
-    set_environment: bool = True
-    """When True, configuration in this class will be set into environment variables.
-
-    This can be useful to ensure Vite always uses the configuration supplied to the plugin
-    """
-    set_static_folders: bool = True
-    """When True, Litestar will automatically serve assets at the `ASSET_URL` path.
-    """
-    health_check: bool = field(
-        default_factory=lambda: os.getenv("VITE_HEALTH_CHECK", "False") in TRUE_VALUES,
-    )
-    """Enable health check for Vite development server."""
-    base_url: "Union[str, None]" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
-    """Base URL for production assets."""
-    executor: "Union[JSExecutor, None]" = None
-    """The executor to use for running Vite commands."""
+    ssr_output_dir: str | Path | None = None
 
     def __post_init__(self) -> None:
-        """Ensure that directory is set if engine is a class."""
-        if self.root_dir is not None and isinstance(self.root_dir, str):
-            self.root_dir = Path(self.root_dir)
-        elif self.root_dir is None:
-            self.root_dir = Path()
-        if self.public_dir and isinstance(self.public_dir, str):
-            self.public_dir = Path(self.public_dir)
-        if isinstance(self.resource_dir, str):
-            self.resource_dir = Path(self.resource_dir)
+        """Normalize path types to Path objects."""
+        if isinstance(self.root, str):
+            object.__setattr__(self, "root", Path(self.root))
         if isinstance(self.bundle_dir, str):
-            self.bundle_dir = Path(self.bundle_dir)
+            object.__setattr__(self, "bundle_dir", Path(self.bundle_dir))
+        if isinstance(self.resource_dir, str):
+            object.__setattr__(self, "resource_dir", Path(self.resource_dir))
+        if isinstance(self.public_dir, str):
+            object.__setattr__(self, "public_dir", Path(self.public_dir))
         if isinstance(self.ssr_output_dir, str):
-            self.ssr_output_dir = Path(self.ssr_output_dir)
+            object.__setattr__(self, "ssr_output_dir", Path(self.ssr_output_dir))
 
+
+@dataclass
+class RuntimeConfig:
+    """Runtime execution settings.
+
+    Attributes:
+        dev_mode: Enable development mode with HMR/watch.
+        hot_reload: Enable Hot Module Replacement (HMR).
+        host: Vite dev server host.
+        port: Vite dev server port.
+        protocol: Protocol for dev server (http/https).
+        executor: JavaScript runtime executor (node, bun, deno).
+        run_command: Custom command to run Vite dev server (auto-detect if None).
+        build_command: Custom command to build with Vite (auto-detect if None).
+        build_watch_command: Custom command for watch mode build.
+        install_command: Custom command to install dependencies.
+        is_react: Enable React Fast Refresh support.
+        ssr_enabled: Enable Server-Side Rendering.
+        health_check: Enable health check for dev server startup.
+        detect_nodeenv: Detect and use nodeenv in virtualenv.
+        set_environment: Set Vite environment variables from config.
+        set_static_folders: Automatically configure static file serving.
+        csp_nonce: Content Security Policy nonce for inline scripts.
+    """
+
+    dev_mode: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)
+    hot_reload: bool = field(default_factory=lambda: os.getenv("VITE_HOT_RELOAD", "True") in TRUE_VALUES)
+    host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "localhost"))
+    port: int = field(default_factory=lambda: int(os.getenv("VITE_PORT", "5173")))
+    protocol: Literal["http", "https"] = "http"
+    executor: Literal["node", "bun", "deno", "yarn", "pnpm"] | None = None
+    run_command: list[str] | None = None
+    build_command: list[str] | None = None
+    build_watch_command: list[str] | None = None
+    install_command: list[str] | None = None
+    is_react: bool = False
+    ssr_enabled: bool = False
+    health_check: bool = field(default_factory=lambda: os.getenv("VITE_HEALTH_CHECK", "False") in TRUE_VALUES)
+    detect_nodeenv: bool = True
+    set_environment: bool = True
+    set_static_folders: bool = True
+    csp_nonce: str | None = None
+
+    def __post_init__(self) -> None:
+        """Set default commands based on executor."""
         if self.executor is None:
-            if self.detect_nodeenv:
-                self.executor = NodeenvExecutor(self)
-            else:
-                self.executor = NodeExecutor()
+            self.executor = "node"
+
+        # Set default commands based on executor if not explicitly provided
+        executor_commands = {
+            "node": {
+                "run": ["npm", "run", "dev"],
+                "build": ["npm", "run", "build"],
+                "build_watch": ["npm", "run", "watch"],
+                "install": ["npm", "install"],
+            },
+            "bun": {
+                "run": ["bun", "run", "dev"],
+                "build": ["bun", "run", "build"],
+                "build_watch": ["bun", "run", "watch"],
+                "install": ["bun", "install"],
+            },
+            "deno": {
+                "run": ["deno", "task", "dev"],
+                "build": ["deno", "task", "build"],
+                "build_watch": ["deno", "task", "watch"],
+                "install": ["deno", "install"],
+            },
+            "yarn": {
+                "run": ["yarn", "dev"],
+                "build": ["yarn", "build"],
+                "build_watch": ["yarn", "watch"],
+                "install": ["yarn", "install"],
+            },
+            "pnpm": {
+                "run": ["pnpm", "dev"],
+                "build": ["pnpm", "build"],
+                "build_watch": ["pnpm", "watch"],
+                "install": ["pnpm", "install"],
+            },
+        }
+
+        if self.executor in executor_commands:
+            cmds = executor_commands[self.executor]
+            if self.run_command is None:
+                self.run_command = cmds["run"]
+            if self.build_command is None:
+                self.build_command = cmds["build"]
+            if self.build_watch_command is None:
+                self.build_watch_command = cmds["build_watch"]
+            if self.install_command is None:
+                self.install_command = cmds["install"]
+
+
+@dataclass
+class TypeGenConfig:
+    """Type generation settings.
+
+    Attributes:
+        enabled: Enable type generation pipeline.
+        output: Output directory for generated types.
+        openapi_path: Path to export OpenAPI schema.
+        routes_path: Path to export routes metadata.
+        generate_zod: Generate Zod schemas from OpenAPI.
+        generate_sdk: Generate SDK client from OpenAPI.
+        watch_patterns: File patterns to watch for type regeneration.
+    """
+
+    enabled: bool = False
+    output: Path = field(default_factory=lambda: Path("src/generated"))
+    openapi_path: Path = field(default_factory=lambda: Path("src/generated/openapi.json"))
+    routes_path: Path = field(default_factory=lambda: Path("src/generated/routes.json"))
+    generate_zod: bool = True
+    generate_sdk: bool = False
+    watch_patterns: list[str] = field(
+        default_factory=lambda: ["**/routes.py", "**/handlers.py", "**/controllers/**/*.py"]
+    )
+
+    def __post_init__(self) -> None:
+        """Normalize path types."""
+        if isinstance(self.output, str):
+            self.output = Path(self.output)
+        if isinstance(self.openapi_path, str):
+            self.openapi_path = Path(self.openapi_path)
+        if isinstance(self.routes_path, str):
+            self.routes_path = Path(self.routes_path)
+
+
+@dataclass
+class InertiaConfig:
+    """Inertia.js specific settings.
+
+    Attributes:
+        enabled: Enable Inertia.js integration.
+        root_template: Root HTML template for Inertia.
+        include_routes: Include routes metadata in page props.
+        include_flash: Include flash messages in page props.
+        include_errors: Include validation errors in page props.
+        extra_static_page_props: Additional static props to include on every page.
+        extra_session_page_props: Session keys to include as page props.
+    """
+
+    enabled: bool = False
+    root_template: str = "index.html"
+    include_routes: bool = True
+    include_flash: bool = True
+    include_errors: bool = True
+    extra_static_page_props: dict[str, object] = field(default_factory=dict)
+    extra_session_page_props: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ViteConfig:
+    """Root Vite configuration.
+
+    This is the main configuration class that combines all sub-configurations.
+    Supports shortcuts for common configurations:
+    - dev_mode: Shortcut for runtime.dev_mode
+    - types=True: Enable type generation with defaults
+    - inertia=True: Enable Inertia.js with defaults
+
+    Attributes:
+        mode: Serving mode - "spa", "template", or "htmx".
+        paths: File system paths configuration.
+        runtime: Runtime execution settings.
+        types: Type generation settings (True enables with defaults).
+        inertia: Inertia.js settings (True enables with defaults).
+        dev_mode: Convenience shortcut for runtime.dev_mode.
+        base_url: Base URL for production assets (CDN support).
+    """
+
+    mode: Literal["spa", "template", "htmx"] = "spa"
+    paths: PathConfig = field(default_factory=PathConfig)
+    runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
+    types: TypeGenConfig | bool = False
+    inertia: InertiaConfig | bool = False
+    dev_mode: bool = False
+    base_url: str | None = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
+
+    # Internal: resolved executor instance
+    _executor_instance: "JSExecutor | None" = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        """Normalize configurations and apply shortcuts."""
+        # Normalize bool shortcuts to full config objects
+        if self.types is True:
+            self.types = TypeGenConfig(enabled=True)
+        elif self.types is False:
+            self.types = TypeGenConfig(enabled=False)
+
+        if self.inertia is True:
+            self.inertia = InertiaConfig(enabled=True)
+        elif self.inertia is False:
+            self.inertia = InertiaConfig(enabled=False)
+
+        # Apply dev_mode shortcut
+        if self.dev_mode:
+            self.runtime.dev_mode = True
+
+    @property
+    def executor(self) -> "JSExecutor":
+        """Get the JavaScript executor instance."""
+        if self._executor_instance is None:
+            self._executor_instance = self._create_executor()
+        return self._executor_instance
+
+    def _create_executor(self) -> "JSExecutor":
+        """Create the appropriate executor based on runtime config."""
+        from litestar_vite.executor import (
+            BunExecutor,
+            DenoExecutor,
+            NodeenvExecutor,
+            NodeExecutor,
+            PnpmExecutor,
+            YarnExecutor,
+        )
+
+        executor_type = self.runtime.executor or "node"
+
+        if executor_type == "bun":
+            return BunExecutor()
+        if executor_type == "deno":
+            return DenoExecutor()
+        if executor_type == "yarn":
+            return YarnExecutor()
+        if executor_type == "pnpm":
+            return PnpmExecutor()
+        # Default to node
+        if self.runtime.detect_nodeenv:
+            return NodeenvExecutor(self)
+        return NodeExecutor()
+
+    # Convenience properties for backward compatibility and ease of use
+    @property
+    def bundle_dir(self) -> Path:
+        """Get bundle directory path."""
+        # __post_init__ normalizes strings to Path
+        return self.paths.bundle_dir if isinstance(self.paths.bundle_dir, Path) else Path(self.paths.bundle_dir)
+
+    @property
+    def resource_dir(self) -> Path:
+        """Get resource directory path."""
+        # __post_init__ normalizes strings to Path
+        return self.paths.resource_dir if isinstance(self.paths.resource_dir, Path) else Path(self.paths.resource_dir)
+
+    @property
+    def public_dir(self) -> Path:
+        """Get public directory path."""
+        # __post_init__ normalizes strings to Path
+        return self.paths.public_dir if isinstance(self.paths.public_dir, Path) else Path(self.paths.public_dir)
+
+    @property
+    def root_dir(self) -> Path:
+        """Get root directory path."""
+        # __post_init__ normalizes strings to Path
+        return self.paths.root if isinstance(self.paths.root, Path) else Path(self.paths.root)
+
+    @property
+    def manifest_name(self) -> str:
+        """Get manifest file name."""
+        return self.paths.manifest_name
+
+    @property
+    def hot_file(self) -> str:
+        """Get hot file name."""
+        return self.paths.hot_file
+
+    @property
+    def asset_url(self) -> str:
+        """Get asset URL."""
+        return self.paths.asset_url
+
+    @property
+    def host(self) -> str:
+        """Get dev server host."""
+        return self.runtime.host
+
+    @property
+    def port(self) -> int:
+        """Get dev server port."""
+        return self.runtime.port
+
+    @property
+    def protocol(self) -> str:
+        """Get dev server protocol."""
+        return self.runtime.protocol
+
+    @property
+    def hot_reload(self) -> bool:
+        """Check if hot reload is enabled."""
+        return self.runtime.hot_reload
+
+    @property
+    def is_dev_mode(self) -> bool:
+        """Check if dev mode is enabled."""
+        return self.runtime.dev_mode
+
+    @property
+    def is_react(self) -> bool:
+        """Check if React mode is enabled."""
+        return self.runtime.is_react
+
+    @property
+    def ssr_enabled(self) -> bool:
+        """Check if SSR is enabled."""
+        return self.runtime.ssr_enabled
+
+    @property
+    def run_command(self) -> list[str]:
+        """Get the run command."""
+        return self.runtime.run_command or ["npm", "run", "dev"]
+
+    @property
+    def build_command(self) -> list[str]:
+        """Get the build command."""
+        return self.runtime.build_command or ["npm", "run", "build"]
+
+    @property
+    def build_watch_command(self) -> list[str]:
+        """Get the build watch command."""
+        return self.runtime.build_watch_command or ["npm", "run", "watch"]
+
+    @property
+    def install_command(self) -> list[str]:
+        """Get the install command."""
+        return self.runtime.install_command or ["npm", "install"]
+
+    @property
+    def health_check(self) -> bool:
+        """Check if health check is enabled."""
+        return self.runtime.health_check
+
+    @property
+    def set_environment(self) -> bool:
+        """Check if environment should be set."""
+        return self.runtime.set_environment
+
+    @property
+    def set_static_folders(self) -> bool:
+        """Check if static folders should be configured."""
+        return self.runtime.set_static_folders
+
+    @property
+    def detect_nodeenv(self) -> bool:
+        """Check if nodeenv detection is enabled."""
+        return self.runtime.detect_nodeenv
+
+    @property
+    def ssr_output_dir(self) -> Path | None:
+        """Get SSR output directory."""
+        # __post_init__ normalizes strings to Path
+        if self.paths.ssr_output_dir is None:
+            return None
+        return (
+            self.paths.ssr_output_dir
+            if isinstance(self.paths.ssr_output_dir, Path)
+            else Path(self.paths.ssr_output_dir)
+        )
+
+
+# Legacy config classes for backward compatibility
+# These are deprecated and will be removed in a future version
+
+
+def _reset_runtime_commands(runtime: "RuntimeConfig", executor: str) -> None:
+    """Reset runtime commands based on executor type."""
+    executor_commands = {
+        "node": {
+            "run": ["npm", "run", "dev"],
+            "build": ["npm", "run", "build"],
+            "build_watch": ["npm", "run", "watch"],
+            "install": ["npm", "install"],
+        },
+        "bun": {
+            "run": ["bun", "run", "dev"],
+            "build": ["bun", "run", "build"],
+            "build_watch": ["bun", "run", "watch"],
+            "install": ["bun", "install"],
+        },
+        "deno": {
+            "run": ["deno", "task", "dev"],
+            "build": ["deno", "task", "build"],
+            "build_watch": ["deno", "task", "watch"],
+            "install": ["deno", "install"],
+        },
+        "yarn": {
+            "run": ["yarn", "dev"],
+            "build": ["yarn", "build"],
+            "build_watch": ["yarn", "watch"],
+            "install": ["yarn", "install"],
+        },
+        "pnpm": {
+            "run": ["pnpm", "dev"],
+            "build": ["pnpm", "build"],
+            "build_watch": ["pnpm", "watch"],
+            "install": ["pnpm", "install"],
+        },
+    }
+    if executor in executor_commands:
+        cmds = executor_commands[executor]
+        runtime.run_command = cmds["run"]
+        runtime.build_command = cmds["build"]
+        runtime.build_watch_command = cmds["build_watch"]
+        runtime.install_command = cmds["install"]
 
 
 @dataclass
 class BunViteConfig(ViteConfig):
-    """Configuration for using Vite with Bun."""
+    """Configuration for using Vite with Bun.
 
-    run_command: list[str] = field(default_factory=lambda: ["bun", "run", "dev"])
-    build_watch_command: list[str] = field(default_factory=lambda: ["bun", "run", "watch"])
-    build_command: list[str] = field(default_factory=lambda: ["bun", "run", "build"])
-    install_command: list[str] = field(default_factory=lambda: ["bun", "install"])
-    detect_nodeenv: bool = False
+    Deprecated: Use ViteConfig(runtime=RuntimeConfig(executor="bun")) instead.
+    """
 
     def __post_init__(self) -> None:
-        if self.executor is None:
-            self.executor = BunExecutor()
         super().__post_init__()
+        self.runtime.executor = "bun"
+        self.runtime.detect_nodeenv = False
+        _reset_runtime_commands(self.runtime, "bun")
 
 
 @dataclass
 class DenoViteConfig(ViteConfig):
-    """Configuration for using Vite with Deno."""
+    """Configuration for using Vite with Deno.
 
-    run_command: list[str] = field(default_factory=lambda: ["deno", "task", "dev"])
-    build_watch_command: list[str] = field(default_factory=lambda: ["deno", "task", "watch"])
-    build_command: list[str] = field(default_factory=lambda: ["deno", "task", "build"])
-    install_command: list[str] = field(default_factory=lambda: ["deno", "install"])
-    detect_nodeenv: bool = False
+    Deprecated: Use ViteConfig(runtime=RuntimeConfig(executor="deno")) instead.
+    """
 
     def __post_init__(self) -> None:
-        if self.executor is None:
-            self.executor = DenoExecutor()
         super().__post_init__()
+        self.runtime.executor = "deno"
+        self.runtime.detect_nodeenv = False
+        _reset_runtime_commands(self.runtime, "deno")
 
 
 @dataclass
 class NPMViteConfig(ViteConfig):
-    """Configuration for using Vite with NPM."""
+    """Configuration for using Vite with NPM.
 
-    detect_nodeenv: bool = False
+    Deprecated: Use ViteConfig(runtime=RuntimeConfig(executor="node")) instead.
+    """
 
     def __post_init__(self) -> None:
-        if self.executor is None:
-            self.executor = NodeExecutor()
         super().__post_init__()
+        self.runtime.executor = "node"
+        self.runtime.detect_nodeenv = False
+        _reset_runtime_commands(self.runtime, "node")
 
 
 @dataclass
 class YarnViteConfig(ViteConfig):
-    """Configuration for using Vite with Yarn."""
+    """Configuration for using Vite with Yarn.
 
-    run_command: list[str] = field(default_factory=lambda: ["yarn", "dev"])
-    build_watch_command: list[str] = field(default_factory=lambda: ["yarn", "watch"])
-    build_command: list[str] = field(default_factory=lambda: ["yarn", "build"])
-    install_command: list[str] = field(default_factory=lambda: ["yarn", "install"])
-    detect_nodeenv: bool = False
+    Deprecated: Use ViteConfig(runtime=RuntimeConfig(executor="yarn")) instead.
+    """
 
     def __post_init__(self) -> None:
-        if self.executor is None:
-            self.executor = YarnExecutor()
         super().__post_init__()
+        self.runtime.executor = "yarn"
+        self.runtime.detect_nodeenv = False
+        _reset_runtime_commands(self.runtime, "yarn")
 
 
 @dataclass
 class PnpmViteConfig(ViteConfig):
-    """Configuration for using Vite with PNPM."""
+    """Configuration for using Vite with PNPM.
 
-    run_command: list[str] = field(default_factory=lambda: ["pnpm", "dev"])
-    build_watch_command: list[str] = field(default_factory=lambda: ["pnpm", "watch"])
-    build_command: list[str] = field(default_factory=lambda: ["pnpm", "build"])
-    install_command: list[str] = field(default_factory=lambda: ["pnpm", "install"])
-    detect_nodeenv: bool = False
+    Deprecated: Use ViteConfig(runtime=RuntimeConfig(executor="pnpm")) instead.
+    """
 
     def __post_init__(self) -> None:
-        if self.executor is None:
-            self.executor = PnpmExecutor()
         super().__post_init__()
+        self.runtime.executor = "pnpm"
+        self.runtime.detect_nodeenv = False
+        _reset_runtime_commands(self.runtime, "pnpm")

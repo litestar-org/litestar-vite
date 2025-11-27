@@ -10,7 +10,7 @@ from litestar import Litestar
 from litestar.config.app import AppConfig
 from litestar.template.config import TemplateConfig
 
-from litestar_vite.config import ViteConfig
+from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
 from litestar_vite.plugin import StaticFilesConfig, VitePlugin, ViteProcess
 
 pytestmark = pytest.mark.anyio
@@ -31,7 +31,10 @@ class TestVitePlugin:
 
     def test_plugin_initialization_custom_config(self) -> None:
         """Test plugin initialization with custom configuration."""
-        config = ViteConfig(bundle_dir="custom/bundle", resource_dir="custom/resources", hot_reload=False)
+        config = ViteConfig(
+            paths=PathConfig(bundle_dir="custom/bundle", resource_dir="custom/resources"),
+            runtime=RuntimeConfig(hot_reload=False),
+        )
         plugin = VitePlugin(config=config)
 
         assert plugin._config == config
@@ -49,7 +52,7 @@ class TestVitePlugin:
 
     def test_config_property(self) -> None:
         """Test config property accessor."""
-        config = ViteConfig(port=3000)
+        config = ViteConfig(runtime=RuntimeConfig(port=3000))
         plugin = VitePlugin(config=config)
 
         assert plugin.config == config
@@ -142,7 +145,7 @@ class TestVitePluginAppIntegration:
 
     def test_on_app_init_with_static_folders_enabled(self) -> None:
         """Test app initialization with static folder configuration enabled."""
-        config = ViteConfig(set_static_folders=True)
+        config = ViteConfig(runtime=RuntimeConfig(set_static_folders=True))
         plugin = VitePlugin(config=config)
         app_config = AppConfig()
 
@@ -154,7 +157,7 @@ class TestVitePluginAppIntegration:
 
     def test_on_app_init_with_static_folders_disabled(self) -> None:
         """Test app initialization with static folder configuration disabled."""
-        config = ViteConfig(set_static_folders=False)
+        config = ViteConfig(runtime=RuntimeConfig(set_static_folders=False))
         plugin = VitePlugin(config=config)
         app_config = AppConfig()
 
@@ -176,11 +179,12 @@ class TestVitePluginAppIntegration:
         public_dir.mkdir()
 
         config = ViteConfig(
-            bundle_dir=str(bundle_dir),
-            resource_dir=str(resource_dir),
-            public_dir=str(public_dir),
-            set_static_folders=True,
-            dev_mode=True,
+            paths=PathConfig(
+                bundle_dir=bundle_dir,
+                resource_dir=resource_dir,
+                public_dir=public_dir,
+            ),
+            runtime=RuntimeConfig(set_static_folders=True, dev_mode=True),
         )
         plugin = VitePlugin(config=config)
         app_config = AppConfig()
@@ -197,9 +201,8 @@ class TestVitePluginAppIntegration:
         bundle_dir.mkdir()
 
         config = ViteConfig(
-            bundle_dir=str(bundle_dir),
-            set_static_folders=True,
-            dev_mode=False,  # Production mode
+            paths=PathConfig(bundle_dir=bundle_dir),
+            runtime=RuntimeConfig(set_static_folders=True, dev_mode=False),
         )
         plugin = VitePlugin(config=config)
         app_config = AppConfig()
@@ -216,8 +219,8 @@ class TestVitePluginLifespan:
 
     def test_server_lifespan_without_lifespan_management(self) -> None:
         """Test server lifespan when lifespan management is disabled."""
-        config = ViteConfig(use_server_lifespan=False)
-        plugin = VitePlugin(config=config)
+        config = ViteConfig()
+        plugin = VitePlugin(config=config, use_server_lifespan=False)
         app = Mock(spec=Litestar)
 
         # Should yield without starting any processes
@@ -227,10 +230,9 @@ class TestVitePluginLifespan:
     def test_server_lifespan_in_production_mode(self) -> None:
         """Test server lifespan in production mode."""
         config = ViteConfig(
-            use_server_lifespan=True,
-            dev_mode=False,  # Production mode
+            runtime=RuntimeConfig(dev_mode=False),  # Production mode
         )
-        plugin = VitePlugin(config=config)
+        plugin = VitePlugin(config=config, use_server_lifespan=True)
         app = Mock(spec=Litestar)
 
         # Should yield without starting Vite process in production
@@ -240,8 +242,8 @@ class TestVitePluginLifespan:
     @patch("litestar_vite.plugin.set_environment")
     def test_server_lifespan_with_environment_setup(self, mock_set_env: Mock) -> None:
         """Test server lifespan with environment variable setup."""
-        config = ViteConfig(set_environment=True, use_server_lifespan=False)
-        plugin = VitePlugin(config=config)
+        config = ViteConfig(runtime=RuntimeConfig(set_environment=True))
+        plugin = VitePlugin(config=config, use_server_lifespan=False)
         app = Mock(spec=Litestar)
 
         with plugin.server_lifespan(app):
@@ -253,8 +255,8 @@ class TestVitePluginLifespan:
     @patch("litestar_vite.plugin.console")
     def test_server_lifespan_with_vite_process_management(self, mock_console: Mock) -> None:
         """Test server lifespan with Vite process management."""
-        config = ViteConfig(use_server_lifespan=True, dev_mode=True, hot_reload=True)
-        plugin = VitePlugin(config=config)
+        config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, hot_reload=True))
+        plugin = VitePlugin(config=config, use_server_lifespan=True)
         app = Mock(spec=Litestar)
 
         # Mock the Vite process
@@ -271,11 +273,9 @@ class TestVitePluginLifespan:
     def test_server_lifespan_with_watch_mode(self, mock_console: Mock) -> None:
         """Test server lifespan with watch mode (no HMR)."""
         config = ViteConfig(
-            use_server_lifespan=True,
-            dev_mode=True,
-            hot_reload=False,  # Watch mode without HMR
+            runtime=RuntimeConfig(dev_mode=True, hot_reload=False),  # Watch mode without HMR
         )
-        plugin = VitePlugin(config=config)
+        plugin = VitePlugin(config=config, use_server_lifespan=True)
         app = Mock(spec=Litestar)
 
         with patch.object(plugin._vite_process, "start") as mock_start:
@@ -601,7 +601,7 @@ class TestVitePluginJinjaOptionalDependency:
 
     def test_plugin_asset_url_generation_without_jinja(self) -> None:
         """Test asset URL generation works without Jinja template functions."""
-        config = ViteConfig(bundle_dir="dist", asset_url="/static/")
+        config = ViteConfig(paths=PathConfig(bundle_dir=Path("dist"), asset_url="/static/"))
         plugin = VitePlugin(config=config)
 
         # Asset loader should work independently of Jinja
@@ -610,19 +610,19 @@ class TestVitePluginJinjaOptionalDependency:
 
     def test_plugin_development_server_without_jinja(self) -> None:
         """Test development server functionality without Jinja."""
-        config = ViteConfig(hot_reload=True, dev_mode=True)
+        config = ViteConfig(runtime=RuntimeConfig(hot_reload=True, dev_mode=True))
         plugin = VitePlugin(config=config)
 
         # Development features should work without Jinja
         assert config.hot_reload is True
-        assert config.dev_mode is True
+        assert config.is_dev_mode is True
 
         # Plugin should initialize correctly
         assert plugin._config is not None
 
     def test_plugin_production_mode_without_jinja(self) -> None:
         """Test production mode functionality without Jinja."""
-        config = ViteConfig(hot_reload=False, dev_mode=False)
+        config = ViteConfig(runtime=RuntimeConfig(hot_reload=False, dev_mode=False))
         plugin = VitePlugin(config=config)
 
         # Production features should work without Jinja
@@ -646,8 +646,8 @@ class TestVitePluginJinjaOptionalDependency:
 
     def test_plugin_server_lifespan_without_jinja(self) -> None:
         """Test server lifespan functionality without Jinja."""
-        config = ViteConfig(use_server_lifespan=True)
-        plugin = VitePlugin(config=config)
+        config = ViteConfig()
+        plugin = VitePlugin(config=config, use_server_lifespan=True)
 
         # Server lifespan should work without Jinja
         lifespans = plugin.server_lifespan

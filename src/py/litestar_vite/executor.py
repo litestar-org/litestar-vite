@@ -1,3 +1,9 @@
+"""JavaScript runtime executors for Vite commands.
+
+This module provides executor classes for different JavaScript runtimes
+(Node.js/npm, Bun, Deno, Yarn, pnpm) to run Vite commands.
+"""
+
 from __future__ import annotations
 
 import os
@@ -7,14 +13,11 @@ import subprocess
 import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import Any, ClassVar
 
 from litestar.cli._utils import console
 
 from litestar_vite.exceptions import ViteExecutableNotFoundError, ViteExecutionError
-
-if TYPE_CHECKING:
-    from litestar_vite.config import ViteConfig
 
 
 class JSExecutor(ABC):
@@ -113,13 +116,25 @@ class PnpmExecutor(CommandExecutor):
 
 
 class NodeenvExecutor(JSExecutor):
-    """Nodeenv executor."""
+    """Nodeenv executor.
+
+    This executor detects and uses nodeenv in a Python virtual environment.
+    It installs nodeenv if not present and uses the npm from within the virtualenv.
+    """
 
     bin_name = "nodeenv"
 
-    def __init__(self, config: ViteConfig) -> None:
+    def __init__(self, config: Any = None) -> None:
+        """Initialize NodeenvExecutor.
+
+        Args:
+            config: Optional ViteConfig for detecting nodeenv. Can be the new
+                    ViteConfig or legacy config. Only used to check detect_nodeenv.
+        """
         super().__init__(None)
         self.config = config
+        # Extract detect_nodeenv flag - works with both old and new config
+        self._detect_nodeenv = getattr(config, "detect_nodeenv", True) if config else True
 
     def _get_nodeenv_command(self) -> str:
         """Get the nodeenv command."""
@@ -142,7 +157,7 @@ class NodeenvExecutor(JSExecutor):
         subprocess.run(command, cwd=cwd, check=False)
 
     def install(self, cwd: Path) -> None:
-        if self.config.detect_nodeenv:
+        if self._detect_nodeenv:
             self.install_nodeenv(cwd)
 
         # After nodeenv install, we use the npm in the virtualenv

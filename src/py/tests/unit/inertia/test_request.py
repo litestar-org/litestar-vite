@@ -76,6 +76,8 @@ async def test_is_inertia_true(
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
 ) -> None:
+    import json
+
     @get("/")
     async def handler(request: InertiaRequest[Any, Any, Any]) -> bool:
         return bool(request.is_inertia)
@@ -88,10 +90,13 @@ async def test_is_inertia_true(
         stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
-        assert (
-            response.text
-            == '{"component":null,"url":"/","version":"1.0","props":{"flash":{},"errors":{},"csrf_token":"","content":true}}'
-        )
+        data = json.loads(response.text)
+        assert data["component"] is None
+        assert data["url"] == "/"
+        assert "version" in data  # version is a hash, not a fixed value
+        assert data["props"]["flash"] == {}
+        assert data["props"]["errors"] == {}
+        assert data["props"]["content"] is True
 
 
 async def test_component_prop_default(

@@ -4,7 +4,9 @@ from litestar_vite.config import (
     BunViteConfig,
     DenoViteConfig,
     NPMViteConfig,
+    PathConfig,
     PnpmViteConfig,
+    RuntimeConfig,
     ViteConfig,
     YarnViteConfig,
 )
@@ -25,7 +27,8 @@ def test_default_vite_config() -> None:
     assert config.ssr_output_dir is None
     assert isinstance(config.resource_dir, Path)
     assert isinstance(config.root_dir, (Path, PosixPath))
-    assert config.root_dir == PosixPath(".")
+    # Default root is current working directory
+    assert config.root_dir == Path.cwd()
 
 
 def test_bun_vite_config() -> None:
@@ -63,12 +66,12 @@ def test_pnpm_vite_config() -> None:
 
 
 def test_default_executor_nodeenv() -> None:
-    config = ViteConfig(detect_nodeenv=True)
+    config = ViteConfig(runtime=RuntimeConfig(detect_nodeenv=True))
     assert isinstance(config.executor, NodeenvExecutor)
 
 
 def test_default_executor_node() -> None:
-    config = ViteConfig(detect_nodeenv=False)
+    config = ViteConfig(runtime=RuntimeConfig(detect_nodeenv=False))
     assert isinstance(config.executor, NodeExecutor)
 
 
@@ -79,6 +82,40 @@ def test_config_health_check_defaults() -> None:
 
 
 def test_config_custom_health_check() -> None:
-    config = ViteConfig(health_check=True, base_url="https://cdn.example.com/")
+    config = ViteConfig(
+        runtime=RuntimeConfig(health_check=True),
+        base_url="https://cdn.example.com/",
+    )
     assert config.health_check is True
     assert config.base_url == "https://cdn.example.com/"
+
+
+def test_new_config_structure() -> None:
+    """Test the new nested config structure."""
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(
+            bundle_dir=Path("/app/dist"),
+            resource_dir=Path("/app/src"),
+        ),
+        runtime=RuntimeConfig(
+            dev_mode=True,
+            hot_reload=True,
+            executor="bun",
+        ),
+        types=True,  # Shorthand for TypeGenConfig(enabled=True)
+    )
+    assert config.mode == "spa"
+    assert config.bundle_dir == Path("/app/dist")
+    assert config.resource_dir == Path("/app/src")
+    assert config.is_dev_mode is True
+    assert config.hot_reload is True
+    assert config.types.enabled is True  # type: ignore
+    assert isinstance(config.executor, BunExecutor)
+
+
+def test_dev_mode_shortcut() -> None:
+    """Test the dev_mode shortcut on root config."""
+    config = ViteConfig(dev_mode=True)
+    assert config.runtime.dev_mode is True
+    assert config.is_dev_mode is True

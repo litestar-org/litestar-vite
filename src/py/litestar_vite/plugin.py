@@ -1,11 +1,31 @@
+"""Vite Plugin for Litestar.
+
+This module provides the VitePlugin class for integrating Vite with Litestar.
+The plugin handles:
+- Static file serving configuration
+- Jinja2 template callable registration
+- Vite dev server process management
+- Async asset loader initialization
+
+Example:
+    from litestar import Litestar
+    from litestar_vite import VitePlugin, ViteConfig
+
+    app = Litestar(
+        plugins=[VitePlugin(config=ViteConfig(dev_mode=True))],
+    )
+"""
+
+from __future__ import annotations
+
 import os
 import signal
 import subprocess
 import threading
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 from litestar.plugins import CLIPlugin, InitPluginProtocol
@@ -15,7 +35,7 @@ from litestar_vite.config import JINJA_INSTALLED
 from litestar_vite.exceptions import ViteProcessError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import AsyncIterator, Iterator, Sequence
 
     from click import Group
     from litestar import Litestar
@@ -37,7 +57,14 @@ if TYPE_CHECKING:
 
 
 def set_environment(config: "ViteConfig") -> None:
-    """Configure environment for easier integration"""
+    """Configure environment variables for Vite integration.
+
+    Sets environment variables that can be used by both the Python backend
+    and the Vite frontend during development.
+
+    Args:
+        config: The Vite configuration.
+    """
     from litestar import __version__ as litestar_version
 
     os.environ.setdefault("ASSET_URL", config.asset_url)
@@ -47,40 +74,62 @@ def set_environment(config: "ViteConfig") -> None:
     os.environ.setdefault("VITE_PROTOCOL", config.protocol)
     os.environ.setdefault("LITESTAR_VERSION", litestar_version.formatted())
     os.environ.setdefault("APP_URL", f"http://localhost:{os.environ.get('LITESTAR_PORT', '8000')}")
-    if config.dev_mode:
-        os.environ.setdefault("VITE_DEV_MODE", str(config.dev_mode))
+    if config.is_dev_mode:
+        os.environ.setdefault("VITE_DEV_MODE", str(config.is_dev_mode))
 
 
 @dataclass
 class StaticFilesConfig:
-    after_request: "Optional[AfterRequestHookHandler]" = None
-    after_response: "Optional[AfterResponseHookHandler]" = None
-    before_request: "Optional[BeforeRequestHookHandler]" = None
-    cache_control: "Optional[CacheControlHeader]" = None
-    exception_handlers: "Optional[ExceptionHandlersMap]" = None
-    guards: "Optional[list[Guard]]" = None
-    middleware: "Optional[Sequence[Middleware]]" = None
-    opt: "Optional[dict[str, Any]]" = None
-    security: "Optional[Sequence[SecurityRequirement]]" = None
-    tags: "Optional[Sequence[str]]" = None
+    """Configuration for static file serving.
+
+    This configuration is passed to Litestar's static files router.
+    """
+
+    after_request: "AfterRequestHookHandler | None" = None
+    after_response: "AfterResponseHookHandler | None" = None
+    before_request: "BeforeRequestHookHandler | None" = None
+    cache_control: "CacheControlHeader | None" = None
+    exception_handlers: "ExceptionHandlersMap | None" = None
+    guards: "list[Guard] | None" = None
+    middleware: "Sequence[Middleware] | None" = None
+    opt: "dict[str, Any] | None" = None
+    security: "Sequence[SecurityRequirement] | None" = None
+    tags: "Sequence[str] | None" = None
 
 
 class ViteProcess:
-    """Manages the Vite process."""
+    """Manages the Vite development server process.
+
+    This class handles starting and stopping the Vite dev server process,
+    with proper thread safety and graceful shutdown.
+    """
 
     def __init__(self, executor: "JSExecutor") -> None:
-        self.process: "Optional[subprocess.Popen]" = None  # pyright: ignore[reportUnknownMemberType,reportMissingTypeArgument]
+        """Initialize the Vite process manager.
+
+        Args:
+            executor: The JavaScript executor to use for running Vite.
+        """
+        self.process: subprocess.Popen[bytes] | None = None
         self._lock = threading.Lock()
         self._executor = executor
 
-    def start(self, command: "list[str]", cwd: "Union[Path, str, None]") -> None:
-        """Start the Vite process."""
+    def start(self, command: list[str], cwd: Path | str | None) -> None:
+        """Start the Vite process.
+
+        Args:
+            command: The command to run (e.g., ["npm", "run", "dev"]).
+            cwd: The working directory for the process.
+
+        Raises:
+            ViteProcessError: If the process fails to start.
+        """
         if cwd is not None and isinstance(cwd, str):
             cwd = Path(cwd)
 
         try:
             with self._lock:
-                if self.process and self.process.poll() is None:  # pyright: ignore[reportUnknownMemberType]
+                if self.process and self.process.poll() is None:
                     return
 
                 if cwd:
@@ -91,21 +140,27 @@ class ViteProcess:
             raise ViteProcessError(msg) from e
 
     def stop(self, timeout: float = 5.0) -> None:
-        """Stop the Vite process."""
+        """Stop the Vite process.
 
+        Args:
+            timeout: Seconds to wait for graceful shutdown before killing.
+
+        Raises:
+            ViteProcessError: If the process fails to stop.
+        """
         try:
             with self._lock:
-                if self.process and self.process.poll() is None:  # pyright: ignore[reportUnknownMemberType]
-                    # Send SIGTERM to child process
+                if self.process and self.process.poll() is None:
+                    # Send SIGTERM for graceful shutdown
                     if hasattr(signal, "SIGTERM"):
-                        self.process.terminate()  # pyright: ignore[reportUnknownMemberType]
+                        self.process.terminate()
                     try:
-                        self.process.wait(timeout=timeout)  # pyright: ignore[reportUnknownMemberType]
+                        self.process.wait(timeout=timeout)
                     except subprocess.TimeoutExpired:
                         # Force kill if still alive
                         if hasattr(signal, "SIGKILL"):
-                            self.process.kill()  # pyright: ignore[reportUnknownMemberType]
-                        self.process.wait(timeout=1.0)  # pyright: ignore[reportUnknownMemberType]
+                            self.process.kill()
+                        self.process.wait(timeout=1.0)
         except Exception as e:
             console.print(f"[red]Failed to stop Vite process: {e!s}[/]")
             msg = f"Failed to stop Vite process: {e!s}"
@@ -113,22 +168,48 @@ class ViteProcess:
 
 
 class VitePlugin(InitPluginProtocol, CLIPlugin):
-    """Vite plugin."""
+    """Vite plugin for Litestar.
 
-    __slots__ = ("_asset_loader", "_config", "_static_files_config", "_vite_process")
+    This plugin integrates Vite with Litestar, providing:
+    - Static file serving configuration
+    - Jinja2 template callables for asset tags
+    - Vite dev server process management
+    - Async asset loader initialization
+
+    Example:
+        from litestar import Litestar
+        from litestar_vite import VitePlugin, ViteConfig
+
+        app = Litestar(
+            plugins=[
+                VitePlugin(config=ViteConfig(dev_mode=True))
+            ],
+        )
+    """
+
+    __slots__ = (
+        "_asset_loader",
+        "_config",
+        "_static_files_config",
+        "_use_server_lifespan",
+        "_vite_process",
+    )
 
     def __init__(
         self,
-        config: "Optional[ViteConfig]" = None,
-        asset_loader: "Optional[ViteAssetLoader]" = None,
-        static_files_config: "Optional[StaticFilesConfig]" = None,
+        config: "ViteConfig | None" = None,
+        asset_loader: "ViteAssetLoader | None" = None,
+        static_files_config: "StaticFilesConfig | None" = None,
+        *,
+        use_server_lifespan: bool = False,
     ) -> None:
-        """Initialize ``Vite``.
+        """Initialize the Vite plugin.
 
         Args:
-            config: configuration to use for starting Vite.  The default configuration will be used if it is not provided.
-            asset_loader: an initialized asset loader to use for rendering asset tags.
-            static_files_config: optional configuration dictionary for the static files router.
+            config: Vite configuration. Defaults to ViteConfig() if not provided.
+            asset_loader: Optional pre-initialized asset loader.
+            static_files_config: Optional configuration for static file serving.
+            use_server_lifespan: Whether to manage Vite process via server lifespan.
         """
         from litestar_vite.config import ViteConfig
 
@@ -136,21 +217,21 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             config = ViteConfig()
         self._config = config
         self._asset_loader = asset_loader
-        # The executor should be initialized by config.__post_init__
-        if self._config.executor is None:
-            from litestar_vite.executor import NodeExecutor
-
-            self._config.executor = NodeExecutor()
-
-        self._vite_process = ViteProcess(executor=self._config.executor)
-        self._static_files_config: "dict[str, Any]" = static_files_config.__dict__ if static_files_config else {}
+        self._vite_process = ViteProcess(executor=config.executor)
+        self._static_files_config: dict[str, Any] = static_files_config.__dict__ if static_files_config else {}
+        self._use_server_lifespan = use_server_lifespan
 
     @property
     def config(self) -> "ViteConfig":
+        """Get the Vite configuration."""
         return self._config
 
     @property
     def asset_loader(self) -> "ViteAssetLoader":
+        """Get the asset loader instance.
+
+        Lazily initializes the loader if not already set.
+        """
         from litestar_vite.loader import ViteAssetLoader
 
         if self._asset_loader is None:
@@ -158,46 +239,64 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         return self._asset_loader
 
     def on_cli_init(self, cli: "Group") -> None:
+        """Register CLI commands.
+
+        Args:
+            cli: The Click command group to add commands to.
+        """
         from litestar_vite.cli import vite_group
 
         cli.add_command(vite_group)
 
     def on_app_init(self, app_config: "AppConfig") -> "AppConfig":
-        """Configure application for use with Vite.
+        """Configure the Litestar application for Vite.
+
+        This method:
+        - Registers Jinja2 template callables (if Jinja2 is installed)
+        - Configures static file serving
+        - Sets up the server lifespan hook if enabled
 
         Args:
-            app_config: The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
+            app_config: The Litestar application configuration.
 
         Returns:
-            The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
+            The modified application configuration.
         """
         from litestar_vite.loader import render_asset_tag, render_hmr_client, render_static_asset
 
+        # Register Jinja2 template callables if Jinja2 is installed
         if JINJA_INSTALLED:
             from litestar.contrib.jinja import JinjaTemplateEngine
 
-            if (
-                app_config.template_config  # pyright: ignore[reportUnknownMemberType]
-                and isinstance(app_config.template_config.engine_instance, JinjaTemplateEngine)  # pyright: ignore[reportUnknownMemberType]
+            if app_config.template_config and isinstance(
+                app_config.template_config.engine_instance,  # pyright: ignore[reportUnknownMemberType]
+                JinjaTemplateEngine,
             ):
-                app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
+                engine = app_config.template_config.engine_instance  # pyright: ignore[reportUnknownMemberType]
+                engine.register_template_callable(
                     key="vite_hmr",
                     template_callable=render_hmr_client,
                 )
-                app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
+                engine.register_template_callable(
                     key="vite",
                     template_callable=render_asset_tag,
                 )
-                app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
+                engine.register_template_callable(
                     key="vite_static",
                     template_callable=render_static_asset,
                 )
+
+        # Configure static file serving
         if self._config.set_static_folders:
-            static_dirs = [Path(self._config.bundle_dir), Path(self._config.resource_dir)]
+            static_dirs = [
+                Path(self._config.bundle_dir),
+                Path(self._config.resource_dir),
+            ]
             if Path(self._config.public_dir).exists() and self._config.public_dir != self._config.bundle_dir:
                 static_dirs.append(Path(self._config.public_dir))
+
             base_config = {
-                "directories": static_dirs if self._config.dev_mode else [Path(self._config.bundle_dir)],
+                "directories": (static_dirs if self._config.is_dev_mode else [Path(self._config.bundle_dir)]),
                 "path": self._config.asset_url,
                 "name": "vite",
                 "html_mode": False,
@@ -206,43 +305,95 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             }
             static_files_config: dict[str, Any] = {**base_config, **self._static_files_config}
             app_config.route_handlers.append(create_static_files_router(**static_files_config))
+
         return app_config
 
     def _check_health(self) -> None:
-        """Check if the Vite server is running."""
+        """Check if the Vite dev server is running and ready.
+
+        Polls the dev server URL for up to 5 seconds.
+        """
         import time
 
         import httpx
 
         url = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
-        # Try for 5 seconds
         for _ in range(50):
             try:
                 httpx.get(url, timeout=0.1)
-                return
-            except Exception:
+            except httpx.HTTPError:
                 time.sleep(0.1)
+            else:
+                return
         console.print("[red]Vite server health check failed[/]")
 
     @contextmanager
     def server_lifespan(self, app: "Litestar") -> "Iterator[None]":
-        """Manage Vite server process lifecycle.
+        """Synchronous context manager for Vite server lifecycle.
+
+        Manages the Vite dev server process during the application lifespan.
 
         Args:
-            app: The :class:`Litestar <litestar.app.Litestar>` instance.
+            app: The Litestar application instance.
 
         Yields:
-            An iterator of None.
+            None
         """
         if self._config.set_environment:
             set_environment(config=self._config)
-        if self._config.use_server_lifespan and self._config.dev_mode:
+
+        if self._use_server_lifespan and self._config.is_dev_mode:
             if not app.debug:
                 console.print("[yellow]WARNING: Vite dev mode is enabled in production![/]")
 
             command_to_run = self._config.run_command if self._config.hot_reload else self._config.build_watch_command
 
-            if self.config.hot_reload:
+            if self._config.hot_reload:
+                console.rule("[yellow]Starting Vite process with HMR Enabled[/]", align="left")
+            else:
+                console.rule("[yellow]Starting Vite watch and build process[/]", align="left")
+
+            try:
+                self._vite_process.start(command_to_run, self._config.root_dir)
+                if self._config.health_check:
+                    self._check_health()
+                yield
+            finally:
+                self._vite_process.stop()
+                console.print("[yellow]Vite process stopped.[/]")
+        else:
+            yield
+
+    @asynccontextmanager
+    async def async_server_lifespan(self, app: "Litestar") -> "AsyncIterator[None]":
+        """Async context manager for Vite server lifecycle.
+
+        This is the preferred lifespan manager for async applications.
+        It initializes the asset loader asynchronously for non-blocking I/O.
+
+        Args:
+            app: The Litestar application instance.
+
+        Yields:
+            None
+        """
+        from litestar_vite.loader import ViteAssetLoader
+
+        if self._config.set_environment:
+            set_environment(config=self._config)
+
+        # Initialize asset loader asynchronously
+        if self._asset_loader is None:
+            self._asset_loader = ViteAssetLoader(config=self._config)
+        await self._asset_loader.initialize()
+
+        if self._use_server_lifespan and self._config.is_dev_mode:
+            if not app.debug:
+                console.print("[yellow]WARNING: Vite dev mode is enabled in production![/]")
+
+            command_to_run = self._config.run_command if self._config.hot_reload else self._config.build_watch_command
+
+            if self._config.hot_reload:
                 console.rule("[yellow]Starting Vite process with HMR Enabled[/]", align="left")
             else:
                 console.rule("[yellow]Starting Vite watch and build process[/]", align="left")

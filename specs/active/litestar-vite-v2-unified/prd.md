@@ -2536,6 +2536,355 @@ diff -r test-app/src src/py/litestar_vite/templates/react/
 
 ---
 
+## Inertia.js v2 Protocol Compliance
+
+This section documents the enhancements needed to fully support Inertia.js v2 features. Based on analysis of the current implementation and the latest Inertia.js v2 protocol.
+
+### Current Implementation Status
+
+The current codebase has **partial support** for lazy/deferred props:
+
+| Feature | Status | Location |
+|---------|--------|----------|
+| `lazy()` helper | ✅ Implemented | `helpers.py:53-72` |
+| `DeferredProp` class | ✅ Implemented | `helpers.py:90-134` |
+| `StaticProp` class | ✅ Implemented | `helpers.py:75-87` |
+| Partial rendering (`X-Inertia-Partial-Data`) | ✅ Implemented | `request.py`, `response.py` |
+| `deferredProps` in response | ❌ Missing | `types.py:PageProps` |
+| Deferred prop groups | ❌ Missing | - |
+| `clearHistory` / `encryptHistory` | ❌ Missing | `types.py:PageProps` |
+| Merge / Deep Merge props | ❌ Missing | - |
+| `WhenVisible` server support | ⚠️ Partial | Works with manual `only[]` requests |
+| Prefetch cache headers | ❌ Missing | - |
+
+### Inertia.js v2 Protocol Changes
+
+#### 1. Updated Page Object Structure
+
+The Inertia.js v2 protocol requires additional fields in the page object:
+
+```json
+{
+    "component": "Posts/Index",
+    "props": {
+        "errors": {},
+        "user": { "name": "Jonathan" }
+    },
+    "url": "/posts",
+    "version": "6b16b94d7c51cbe5b1fa42aac98241d5",
+    "clearHistory": false,
+    "encryptHistory": false,
+    "deferredProps": {
+        "default": ["comments", "analytics"],
+        "sidebar": ["relatedPosts"]
+    }
+}
+```
+
+**Required Changes to `PageProps`:**
+
+```python
+# types.py - Updated PageProps
+@dataclass
+class PageProps(Generic[T]):
+    """Inertia Page Props Type."""
+
+    component: str
+    url: str
+    version: str
+    props: dict[str, Any]
+    clearHistory: bool = False
+    encryptHistory: bool = False
+    deferredProps: dict[str, list[str]] | None = None
+    mergeProps: list[str] | None = None  # Props that should be merged
+    deepMergeProps: list[str] | None = None  # Props that should be deep merged
+```
+
+#### 2. Deferred Props with Groups
+
+Inertia.js v2 allows grouping deferred props for parallel fetching:
+
+```php
+// Laravel example
+'permissions' => Inertia::defer(fn () => Permission::all()),  // default group
+'teams' => Inertia::defer(fn () => Team::all(), 'sidebar'),   // sidebar group
+'projects' => Inertia::defer(fn () => Project::all(), 'sidebar'),
+```
+
+**Proposed Python API:**
+
+```python
+from litestar_vite.inertia import defer, lazy
+
+@get("/users", component="Users/Index")
+async def users_list() -> InertiaResponse:
+    return InertiaResponse({
+        "users": await get_users(),  # Immediate
+        "roles": await get_roles(),  # Immediate
+
+        # Deferred props - fetched after initial render
+        "permissions": defer(get_permissions),  # Default group
+        "teams": defer(get_teams, group="sidebar"),  # Sidebar group
+        "projects": defer(get_projects, group="sidebar"),
+
+        # Legacy lazy() still works for partial reloads
+        "optional": lazy("optional", get_optional_data),
+    })
+```
+
+**Implementation:**
+
+```python
+# helpers.py - New defer() function
+@dataclass
+class DeferredPropV2(Generic[T]):
+    """Inertia v2 deferred prop with group support."""
+
+    fn: Callable[[], T | Awaitable[T]]
+    group: str = "default"
+    _evaluated: bool = field(default=False, init=False)
+    _result: T | None = field(default=None, init=False)
+
+    async def evaluate(self) -> T:
+        """Evaluate the deferred prop."""
+        if self._evaluated:
+            return self._result
+
+        result = self.fn()
+        if inspect.isawaitable(result):
+            self._result = await result
+        else:
+            self._result = result
+        self._evaluated = True
+        return self._result
+
+
+def defer(
+    fn: Callable[[], T | Awaitable[T]],
+    group: str = "default",
+) -> DeferredPropV2[T]:
+    """Create a deferred prop that loads after initial page render.
+
+    Args:
+        fn: A callable that returns the prop value (sync or async).
+        group: The group name for parallel fetching. Props in the same
+               group are fetched together in a single request.
+
+    Returns:
+        A DeferredPropV2 instance.
+
+    Example:
+        @get("/users", component="Users/Index")
+        async def handler() -> dict:
+            return {
+                "users": await get_users(),
+                "permissions": defer(get_permissions),
+                "teams": defer(get_teams, group="sidebar"),
+            }
+    """
+    return DeferredPropV2(fn=fn, group=group)
+```
+
+#### 3. Merge and Deep Merge Props
+
+For infinite scroll and pagination patterns:
+
+```python
+# helpers.py - Merge prop wrappers
+@dataclass
+class MergeableProp(Generic[T]):
+    """A prop that should be merged with existing client state."""
+
+    value: T
+    deep: bool = False
+
+
+def merge(value: T) -> MergeableProp[T]:
+    """Mark a prop for shallow merging with existing client state.
+
+    Useful for pagination where you want to append new items.
+
+    Example:
+        @get("/users", component="Users/Index")
+        async def handler(page: int = 1) -> dict:
+            users = await get_users_page(page)
+            return {
+                "users": merge(users),  # Appends to existing users
+            }
+    """
+    return MergeableProp(value=value, deep=False)
+
+
+def deep_merge(value: T) -> MergeableProp[T]:
+    """Mark a prop for deep merging with existing client state.
+
+    Useful for nested data structures like paginated results.
+
+    Example:
+        @get("/users", component="Users/Index")
+        async def handler(page: int = 1) -> dict:
+            return {
+                "results": deep_merge({
+                    "data": await get_users_page(page),
+                    "meta": {"page": page},
+                }),
+            }
+    """
+    return MergeableProp(value=value, deep=True)
+```
+
+#### 4. History Control
+
+```python
+# response.py - Updated InertiaResponse
+class InertiaResponse(Response[T]):
+    def __init__(
+        self,
+        content: T,
+        *,
+        clear_history: bool = False,
+        encrypt_history: bool = False,
+        # ... existing params
+    ) -> None:
+        self.clear_history = clear_history
+        self.encrypt_history = encrypt_history
+```
+
+#### 5. Response Building with Deferred Props
+
+The response builder needs to:
+1. Separate immediate props from deferred props
+2. Build the `deferredProps` metadata grouped by group name
+3. Exclude deferred props from initial `props` payload
+
+```python
+# response.py - Updated to_asgi_response
+def _build_page_props(self, content: dict[str, Any]) -> tuple[dict[str, Any], dict[str, list[str]]]:
+    """Separate immediate and deferred props.
+
+    Returns:
+        Tuple of (immediate_props, deferred_props_metadata)
+    """
+    immediate_props: dict[str, Any] = {}
+    deferred_metadata: dict[str, list[str]] = {}
+
+    for key, value in content.items():
+        if isinstance(value, DeferredPropV2):
+            # Add to deferred metadata by group
+            group = value.group
+            if group not in deferred_metadata:
+                deferred_metadata[group] = []
+            deferred_metadata[group].append(key)
+        elif isinstance(value, MergeableProp):
+            immediate_props[key] = value.value
+            # Track merge props separately
+        else:
+            immediate_props[key] = value
+
+    return immediate_props, deferred_metadata or None
+```
+
+#### 6. Deferred Props Endpoint
+
+When the Inertia client requests deferred props, it sends:
+- `X-Inertia-Partial-Data`: Comma-separated prop names
+- `X-Inertia-Partial-Component`: The component name
+
+The current implementation already handles this via `partial_keys`, but needs enhancement to:
+1. Evaluate only the requested `DeferredPropV2` instances
+2. Return proper response format
+
+### New Inertia Headers
+
+| Header | Purpose | Current Support |
+|--------|---------|-----------------|
+| `X-Inertia-Partial-Data` | Specify props to reload | ✅ Supported |
+| `X-Inertia-Partial-Component` | Specify component for partial | ✅ Supported |
+| `X-Inertia-Partial-Except` | Props to exclude | ❌ Missing |
+| `X-Inertia-Reset` | Reset props (clear merge state) | ❌ Missing |
+
+**Add to `_utils.py`:**
+
+```python
+class InertiaHeaders(str, Enum):
+    """Enum for Inertia Headers"""
+
+    ENABLED = "X-Inertia"
+    VERSION = "X-Inertia-Version"
+    PARTIAL_DATA = "X-Inertia-Partial-Data"
+    PARTIAL_COMPONENT = "X-Inertia-Partial-Component"
+    PARTIAL_EXCEPT = "X-Inertia-Partial-Except"  # NEW
+    RESET = "X-Inertia-Reset"  # NEW
+    LOCATION = "X-Inertia-Location"
+    REFERER = "Referer"
+    ERROR_BAG = "X-Inertia-Error-Bag"
+```
+
+### Migration from Current `lazy()` to `defer()`
+
+The current `lazy()` function serves a different purpose than Inertia v2's `defer()`:
+
+| Feature | `lazy()` (Current) | `defer()` (Inertia v2) |
+|---------|-------------------|----------------------|
+| **Purpose** | Only load when explicitly requested via partial reload | Load automatically after initial render |
+| **Initial Response** | Excluded from response | Excluded, but metadata sent |
+| **Client Behavior** | User must trigger reload | Automatic fetch after mount |
+| **Groups** | No | Yes |
+
+**Recommendation:** Keep both:
+- `lazy(key, value)` - For optional props loaded on demand
+- `defer(fn, group)` - For Inertia v2 deferred props
+
+### Prefetch Support
+
+Inertia v2 supports link prefetching. Server-side support includes:
+
+```python
+# config.py - Add prefetch configuration
+@dataclass
+class InertiaConfig:
+    # ... existing fields ...
+
+    # Prefetch settings
+    prefetch_cache_ttl: int = 30  # seconds
+    prefetch_stale_while_revalidate: int = 60  # seconds
+```
+
+**Response headers for prefetched requests:**
+
+```python
+# When responding to a prefetch request
+headers = {
+    "Cache-Control": f"private, max-age={config.prefetch_cache_ttl}, stale-while-revalidate={config.prefetch_stale_while_revalidate}",
+    "Vary": "X-Inertia, X-Inertia-Version, X-Inertia-Partial-Data",
+}
+```
+
+### Testing Requirements
+
+Add tests for:
+
+1. **Deferred Props:**
+   - `defer()` creates `DeferredPropV2` with correct group
+   - Response excludes deferred props from `props`
+   - Response includes `deferredProps` metadata
+   - Partial reload returns evaluated deferred props
+
+2. **Merge Props:**
+   - `merge()` creates `MergeableProp` with `deep=False`
+   - `deep_merge()` creates `MergeableProp` with `deep=True`
+   - Response includes `mergeProps` / `deepMergeProps` lists
+
+3. **History Control:**
+   - `clear_history=True` sets `clearHistory: true` in response
+   - `encrypt_history=True` sets `encryptHistory: true` in response
+
+4. **Protocol Compliance:**
+   - Full page response matches Inertia v2 protocol
+   - Partial response matches Inertia v2 protocol
+
+---
+
 ## References
 
 - [Litestar Documentation](https://docs.litestar.dev/)
@@ -2545,8 +2894,13 @@ diff -r test-app/src src/py/litestar_vite/templates/react/
 - [Vite create-vite Templates](https://github.com/vitejs/vite/tree/main/packages/create-vite) - **Template scaffolding reference**
 - [@hey-api/openapi-ts](https://heyapi.dev/)
 - [Ziggy (Laravel)](https://github.com/tighten/ziggy) - Route helper inspiration
-- [Inertia.js Protocol](https://inertiajs.com/the-protocol)
+- [Inertia.js Protocol](https://inertiajs.com/the-protocol) - **v2 protocol reference**
 - [Inertia.js Client Setup](https://inertiajs.com/client-side-setup) - **Template patterns**
+- [Inertia.js Deferred Props](https://inertiajs.com/deferred-props) - **v2 deferred props**
+- [Inertia.js Prefetching](https://inertiajs.com/prefetching) - **v2 prefetching**
+- [Inertia.js Polling](https://inertiajs.com/polling) - **v2 polling**
+- [Inertia.js Merging Props](https://inertiajs.com/merging-props) - **v2 merge/deep merge**
+- [Inertia.js WhenVisible](https://inertiajs.com/load-when-visible) - **v2 lazy loading**
 - [Vite Plugin API](https://vitejs.dev/guide/api-plugin.html)
 - [Svelte/SvelteKit](https://svelte.dev/docs/kit) - **Svelte 5 patterns**
 - [Astro Docs](https://docs.astro.build/) - **Astro integration**
