@@ -38,3 +38,24 @@ class ViteExecutionError(LitestarViteError):
 
     def __init__(self, command: list[str], return_code: int, stderr: str) -> None:
         super().__init__(f"Command {command!r} failed with return code {return_code}.\nStderr: {stderr}")
+
+
+class ManifestNotFoundError(LitestarViteError):
+    """Raised when the manifest file is not found."""
+
+    def __init__(self, manifest_path: str) -> None:
+        super().__init__(f"Vite manifest file not found at {manifest_path!r}. Did you forget to build your assets?")
+
+
+class ViteProcessError(LitestarViteError):
+    """Raised when the Vite process fails to start or stop."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
+class AssetNotFoundError(LitestarViteError):
+    """Raised when an asset is not found in the manifest."""
+
+    def __init__(self, file_path: str, manifest_path: str) -> None:
+        super().__init__(f"Asset {file_path!r} not found in manifest at {manifest_path!r}.")

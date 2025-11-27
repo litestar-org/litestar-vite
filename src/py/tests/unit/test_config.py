@@ -70,3 +70,15 @@ def test_default_executor_nodeenv() -> None:
 def test_default_executor_node() -> None:
     config = ViteConfig(detect_nodeenv=False)
     assert isinstance(config.executor, NodeExecutor)
+
+
+def test_config_health_check_defaults() -> None:
+    config = ViteConfig()
+    assert config.health_check is False
+    assert config.base_url is None
+
+
+def test_config_custom_health_check() -> None:
+    config = ViteConfig(health_check=True, base_url="https://cdn.example.com/")
+    assert config.health_check is True
+    assert config.base_url == "https://cdn.example.com/"

@@ -178,7 +178,7 @@ examples/*/public/
 examples/*/package-lock.json
 examples/*/frontend/package-lock.json
 
-# Gemini Agent System
+# Agent Systems (Gemini & Claude)
 specs/archive/
 .gemini/mcp-tools.txt
 !specs/active/.gitkeep
@@ -188,6 +188,9 @@ specs/archive/
 !specs/guides/**/*.yaml
 !specs/template-spec/
 !specs/template-spec/**/*.md
+
+# Claude Agent System
+.claude/settings.local.json
 
 # Agent telemetry logs
 specs/guides/telemetry/*.jsonl

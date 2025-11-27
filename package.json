@@ -31,7 +31,7 @@
     "build-plugin": "rm -rf dist/js && npm run build-plugin-types && npm run build-plugin-esm && cp src/js/src/dev-server-index.html dist/js/",
     "build-plugin-types": "tsc --project src/js/tsconfig.json --emitDeclarationOnly",
     "build-plugin-esm": "esbuild src/js/src/index.ts --platform=node --format=esm --outfile=dist/js/index.js",
-    "build-inertia-helpers": "rm -rf dist/inertia-helpers && tsc --project src/js/tsconfig.inertia-helpers.json",
+    "build-inertia-helpers": "rm -rf dist/js/inertia-helpers && tsc --project src/js/tsconfig.inertia-helpers.json",
     "lint": "eslint --ext .ts ./src/js/src ./src/js/tests",
     "test": "vitest --config ./src/js/vitest.config.ts run"
   },

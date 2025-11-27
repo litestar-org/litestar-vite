@@ -8,6 +8,8 @@ from urllib.parse import urljoin
 import markupsafe
 from litestar.exceptions import ImproperlyConfiguredException
 
+from litestar_vite.exceptions import AssetNotFoundError, ManifestNotFoundError
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -59,6 +61,21 @@ def render_asset_tag(
     return cast(
         "VitePlugin", _get_request_from_context(context).app.plugins.get("VitePlugin")
     ).asset_loader.render_asset_tag(path, scripts_attrs)
+
+
+def render_static_asset(context: "Mapping[str, Any]", /, path: "str") -> "str":
+    """Render a static asset URL.
+
+    Args:
+        context: The template context.
+        path: The path to the asset.
+
+    Returns:
+        The asset URL.
+    """
+    return cast(
+        "VitePlugin", _get_request_from_context(context).app.plugins.get("VitePlugin")
+    ).asset_loader.get_static_asset(path)
 
 
 class SingletonMeta(type):
@@ -197,11 +214,29 @@ class ViteAssetLoader(metaclass=SingletonMeta):
                 else:
                     self._manifest = {}
             except Exception as exc:
-                msg = "There was an issue reading the Vite manifest file at  %s. Did you forget to build your assets?"
-                raise RuntimeError(
-                    msg,
-                    manifest_path,
+                raise ManifestNotFoundError(
+                    str(manifest_path),
                 ) from exc
+
+    def get_static_asset(self, path: str) -> str:
+        """Get the URL for a static asset.
+
+        Args:
+            path: The path to the asset.
+
+        Returns:
+            str: The URL to the asset.
+        """
+        if self._config.hot_reload and self._config.dev_mode:
+            return self._vite_server_url(path)
+
+        if path not in self._manifest:
+            raise AssetNotFoundError(
+                path,
+                str(Path(f"{self._config.bundle_dir}/{self._config.manifest_name}")),
+            )
+
+        return urljoin(self._config.base_url or self._config.asset_url, self._manifest[path]["file"])
 
     def generate_ws_client_tags(self) -> str:
         """Generate the script tag for the Vite WS client for HMR.
@@ -281,11 +316,12 @@ class ViteAssetLoader(metaclass=SingletonMeta):
         manifest_entry.update({p: self._manifest[p] for p in path if p})
         if not scripts_attrs:
             scripts_attrs = {"type": "module", "async": "", "defer": ""}
+
+        asset_url_base = self._config.base_url or self._config.asset_url
+
         for manifest in manifest_entry.values():
             if "css" in manifest:
-                tags.extend(
-                    self._style_tag(urljoin(self._config.asset_url, css_path)) for css_path in manifest.get("css", {})
-                )
+                tags.extend(self._style_tag(urljoin(asset_url_base, css_path)) for css_path in manifest.get("css", {}))
             # Add dependent "vendor"
             if "imports" in manifest:
                 tags.extend(
@@ -295,12 +331,12 @@ class ViteAssetLoader(metaclass=SingletonMeta):
             # Add the script by itself
             if manifest.get("file").endswith(".css"):
                 tags.append(
-                    self._style_tag(urljoin(self._config.asset_url, manifest["file"])),
+                    self._style_tag(urljoin(asset_url_base, manifest["file"])),
                 )
             else:
                 tags.append(
                     self._script_tag(
-                        urljoin(self._config.asset_url, manifest["file"]),
+                        urljoin(asset_url_base, manifest["file"]),
                         attrs=scripts_attrs,
                     ),
                 )

@@ -12,6 +12,7 @@ from litestar.plugins import CLIPlugin, InitPluginProtocol
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
 
 from litestar_vite.config import JINJA_INSTALLED
+from litestar_vite.exceptions import ViteProcessError
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -86,7 +87,8 @@ class ViteProcess:
                     self.process = self._executor.run(command, cwd)
         except Exception as e:
             console.print(f"[red]Failed to start Vite process: {e!s}[/]")
-            raise
+            msg = f"Failed to start Vite process: {e!s}"
+            raise ViteProcessError(msg) from e
 
     def stop(self, timeout: float = 5.0) -> None:
         """Stop the Vite process."""
@@ -106,7 +108,8 @@ class ViteProcess:
                         self.process.wait(timeout=1.0)  # pyright: ignore[reportUnknownMemberType]
         except Exception as e:
             console.print(f"[red]Failed to stop Vite process: {e!s}[/]")
-            raise
+            msg = f"Failed to stop Vite process: {e!s}"
+            raise ViteProcessError(msg) from e
 
 
 class VitePlugin(InitPluginProtocol, CLIPlugin):
@@ -134,10 +137,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._config = config
         self._asset_loader = asset_loader
         # The executor should be initialized by config.__post_init__
-        # But if config was created without post_init running (unlikely if using dataclass normally), we might be in trouble
-        # Dataclasses call post_init automatically.
         if self._config.executor is None:
-            # This fallback shouldn't strictly be needed if config is valid, but for safety:
             from litestar_vite.executor import NodeExecutor
 
             self._config.executor = NodeExecutor()
@@ -171,7 +171,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         Returns:
             The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
         """
-        from litestar_vite.loader import render_asset_tag, render_hmr_client
+        from litestar_vite.loader import render_asset_tag, render_hmr_client, render_static_asset
 
         if JINJA_INSTALLED:
             from litestar.contrib.jinja import JinjaTemplateEngine
@@ -187,6 +187,10 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
                     key="vite",
                     template_callable=render_asset_tag,
+                )
+                app_config.template_config.engine_instance.register_template_callable(  # pyright: ignore[reportUnknownMemberType]
+                    key="vite_static",
+                    template_callable=render_static_asset,
                 )
         if self._config.set_static_folders:
             static_dirs = [Path(self._config.bundle_dir), Path(self._config.resource_dir)]
@@ -204,6 +208,22 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             app_config.route_handlers.append(create_static_files_router(**static_files_config))
         return app_config
 
+    def _check_health(self) -> None:
+        """Check if the Vite server is running."""
+        import time
+
+        import httpx
+
+        url = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
+        # Try for 5 seconds
+        for _ in range(50):
+            try:
+                httpx.get(url, timeout=0.1)
+                return
+            except Exception:
+                time.sleep(0.1)
+        console.print("[red]Vite server health check failed[/]")
+
     @contextmanager
     def server_lifespan(self, app: "Litestar") -> "Iterator[None]":
         """Manage Vite server process lifecycle.
@@ -217,6 +237,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._config.set_environment:
             set_environment(config=self._config)
         if self._config.use_server_lifespan and self._config.dev_mode:
+            if not app.debug:
+                console.print("[yellow]WARNING: Vite dev mode is enabled in production![/]")
+
             command_to_run = self._config.run_command if self._config.hot_reload else self._config.build_watch_command
 
             if self.config.hot_reload:
@@ -226,6 +249,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
             try:
                 self._vite_process.start(command_to_run, self._config.root_dir)
+                if self._config.health_check:
+                    self._check_health()
                 yield
             finally:
                 self._vite_process.stop()

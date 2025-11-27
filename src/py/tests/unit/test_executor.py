@@ -12,8 +12,6 @@ from litestar_vite.executor import (
     DenoExecutor,
     NodeenvExecutor,
     NodeExecutor,
-    PnpmExecutor,
-    YarnExecutor,
 )
 
 
@@ -42,9 +40,9 @@ class TestExecutors:
         executor = NodeExecutor()
         mock_process = Mock()
         mock_popen.return_value = mock_process
-        
+
         process = executor.run(["install"], Path("/tmp"))
-        
+
         assert process == mock_process
         mock_popen.assert_called_once()
         args, kwargs = mock_popen.call_args
@@ -57,9 +55,9 @@ class TestExecutors:
         mock_which.return_value = "/usr/bin/npm"
         mock_run.return_value = Mock(returncode=0)
         executor = NodeExecutor()
-        
+
         executor.execute(["install"], Path("/tmp"))
-        
+
         mock_run.assert_called_once()
 
     @patch("subprocess.run")
@@ -68,7 +66,7 @@ class TestExecutors:
         mock_which.return_value = "/usr/bin/npm"
         mock_run.return_value = Mock(returncode=1, stderr=b"error")
         executor = NodeExecutor()
-        
+
         with pytest.raises(ViteExecutionError):
             executor.execute(["install"], Path("/tmp"))
 
@@ -78,9 +76,9 @@ class TestExecutors:
         mock_which.return_value = "/usr/bin/npm"
         mock_run.return_value = Mock(returncode=0)
         executor = NodeExecutor()
-        
+
         executor.install(Path("/tmp"))
-        
+
         mock_run.assert_called_once()
         args, _ = mock_run.call_args
         assert args[0] == ["/usr/bin/npm", "install"]
@@ -91,9 +89,9 @@ class TestExecutors:
         mock_which.return_value = "/usr/bin/bun"
         mock_run.return_value = Mock(returncode=0)
         executor = BunExecutor()
-        
+
         executor.install(Path("/tmp"))
-        
+
         mock_run.assert_called_once()
         args, _ = mock_run.call_args
         assert args[0] == ["/usr/bin/bun", "install"]
@@ -112,9 +110,9 @@ class TestNodeenvExecutor:
         executor = NodeenvExecutor(config)
         mock_find.return_value = "/venv/bin/npm"
         mock_run.return_value = Mock(returncode=0)
-        
+
         executor.install(Path("/tmp"))
-        
+
         # Should only run npm install
         assert mock_run.call_count == 1
         args, _ = mock_run.call_args
@@ -124,16 +122,18 @@ class TestNodeenvExecutor:
     @patch("litestar_vite.executor.NodeenvExecutor._find_npm_in_venv")
     @patch("subprocess.run")
     @patch("importlib.util.find_spec")
-    def test_install_with_nodeenv_detection(self, mock_find_spec: Mock, mock_run: Mock, mock_find_npm: Mock, mock_get_cmd: Mock) -> None:
+    def test_install_with_nodeenv_detection(
+        self, mock_find_spec: Mock, mock_run: Mock, mock_find_npm: Mock, mock_get_cmd: Mock
+    ) -> None:
         config = ViteConfig(detect_nodeenv=True)
         executor = NodeenvExecutor(config)
         mock_find_spec.return_value = True
         mock_get_cmd.return_value = "nodeenv"
         mock_find_npm.return_value = "/venv/bin/npm"
         mock_run.return_value = Mock(returncode=0)
-        
+
         executor.install(Path("/tmp"))
-        
+
         # Should run nodeenv install then npm install
         assert mock_run.call_count == 2
         args1, _ = mock_run.call_args_list[0]
@@ -149,12 +149,12 @@ class TestNodeenvExecutor:
         mock_find.return_value = "/venv/bin/npm"
         mock_process = Mock()
         mock_popen.return_value = mock_process
-        
+
         process = executor.run(["dev"], Path("/tmp"))
-        
+
         assert process == mock_process
         mock_popen.assert_called_once()
-        args, kwargs = mock_popen.call_args
+        args, _kwargs = mock_popen.call_args
         assert args[0] == ["/venv/bin/npm", "dev"]
 
     @patch("litestar_vite.executor.NodeenvExecutor._find_npm_in_venv")
@@ -164,11 +164,11 @@ class TestNodeenvExecutor:
         executor = NodeenvExecutor(config)
         mock_find.return_value = "/venv/bin/npm"
         mock_run.return_value = Mock(returncode=0)
-        
+
         executor.execute(["build"], Path("/tmp"))
-        
+
         mock_run.assert_called_once()
-        args, kwargs = mock_run.call_args
+        args, _kwargs = mock_run.call_args
         assert args[0] == ["/venv/bin/npm", "build"]
 
     @patch("litestar_vite.executor.NodeenvExecutor._find_npm_in_venv")
@@ -178,6 +178,6 @@ class TestNodeenvExecutor:
         executor = NodeenvExecutor(config)
         mock_find.return_value = "/venv/bin/npm"
         mock_run.return_value = Mock(returncode=1, stderr=b"error")
-        
+
         with pytest.raises(ViteExecutionError):
             executor.execute(["build"], Path("/tmp"))

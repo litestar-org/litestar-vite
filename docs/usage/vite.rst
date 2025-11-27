@@ -184,6 +184,12 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
    * - `set_static_folders`
      - `bool`
      - If `True`, automatically configures Litestar to serve static assets. Defaults to `True`.
+   * - `health_check`
+     - `bool`
+     - Enable health check for Vite development server. Defaults to `False`.
+   * - `base_url`
+     - `str | None`
+     - Base URL for production assets. Overrides `asset_url` prefix if set. Defaults to `None`.
 
 Vite Plugin Configuration (`litestar-vite-plugin`)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -265,6 +271,17 @@ Use the `vite()` and `vite_hmr()` callables in your Jinja2 templates to include 
         {{ vite('resources/js/main.js') }}
     </body>
     </html>
+
+Advanced Asset Handling
+~~~~~~~~~~~~~~~~~~~~~~~
+
+For assets that are not entry points but still need to be referenced (e.g., images processed by Vite), you can use the `vite_static` template callable:
+
+.. code-block:: html
+
+    <img src="{{ vite_static('resources/images/logo.png') }}" alt="Logo" />
+
+This resolves the correct URL whether you are in development mode (served by Vite) or production mode (hashed URL from manifest).
 
 Development Workflow
 --------------------

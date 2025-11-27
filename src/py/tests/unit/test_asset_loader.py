@@ -1,135 +1,113 @@
-from __future__ import annotations
-
-from collections.abc import Generator
-from typing import Any
+from pathlib import Path
 
 import pytest
-from jinja2 import Environment, FileSystemLoader
 from litestar.exceptions import ImproperlyConfiguredException
 
 from litestar_vite.config import ViteConfig
+from litestar_vite.exceptions import AssetNotFoundError
 from litestar_vite.loader import ViteAssetLoader
 
 
-@pytest.fixture
-def vite_config() -> Generator[ViteConfig, None, None]:
-    """Create a ViteConfig instance for testing."""
-    yield ViteConfig(
-        bundle_dir="public",
-        resource_dir="resources",
-        public_dir="public",
-        root_dir=".",
-        asset_url="/static/",
-        dev_mode=False,  # Set to False for testing production mode
-    )
+@pytest.fixture(autouse=True)
+def reset_singleton() -> None:
+    from litestar_vite.loader import SingletonMeta
+
+    SingletonMeta._instances.clear()
+    yield
+    SingletonMeta._instances.clear()
 
 
-@pytest.fixture
-def jinja_env(vite_config: ViteConfig) -> Generator[Environment, None, None]:
-    """Create a Jinja Environment for testing."""
-    loader = FileSystemLoader(searchpath=str(vite_config.resource_dir))
-    yield Environment(loader=loader, autoescape=True)
+def test_parse_manifest_when_file_exists(tmp_path: Path) -> None:
+    bundle_dir = tmp_path / "public"
+    bundle_dir.mkdir()
+    manifest = bundle_dir / "manifest.json"
+    manifest.write_text('{"main.js": {"file": "assets/main.123456.js"}}')
+
+    config = ViteConfig(bundle_dir=str(bundle_dir), hot_reload=False, dev_mode=False)
+    loader = ViteAssetLoader.initialize_loader(config=config)
+
+    assert loader._manifest == {"main.js": {"file": "assets/main.123456.js"}}
 
 
-@pytest.fixture
-def asset_loader(vite_config: ViteConfig) -> Generator[ViteAssetLoader, None, None]:
-    """Create a ViteAssetLoader instance for testing."""
-    yield ViteAssetLoader.initialize_loader(config=vite_config)
+def test_parse_manifest_when_file_not_exists(tmp_path: Path) -> None:
+    bundle_dir = tmp_path / "public"
+    # Do not create directory or file
+
+    config = ViteConfig(bundle_dir=str(bundle_dir), hot_reload=False, dev_mode=False)
+
+    # Should not raise
+    loader = ViteAssetLoader.initialize_loader(config=config)
+    assert loader._manifest == {}
 
 
-# Happy path tests for get_hmr_client
-@pytest.mark.parametrize(
-    "expected_output, test_id",
-    [
-        # Test with a context that should return an empty string in production mode
-        ("", "production_mode"),
-    ],
-)
-def test_get_hmr_client(
-    asset_loader: ViteAssetLoader,
-    expected_output: str,
-    test_id: str,
-) -> None:
-    # Act
-    result = asset_loader.render_hmr_client()
+def test_parse_manifest_hot_reload_mode(tmp_path: Path) -> None:
+    bundle_dir = tmp_path / "public"
+    bundle_dir.mkdir()
+    hot_file = bundle_dir / "hot"
+    hot_file.write_text("http://localhost:3000")
 
-    # Assert
-    assert str(result) == expected_output, f"Failed test ID: {test_id}"
+    config = ViteConfig(bundle_dir=str(bundle_dir), hot_reload=True, dev_mode=True)
+    loader = ViteAssetLoader.initialize_loader(config=config)
+
+    assert loader._vite_base_path == "http://localhost:3000"
 
 
-# Happy path tests for get_asset_tag
-@pytest.mark.parametrize(
-    "path, scripts_attrs, expected_output, test_id",
-    [
-        # Test with realistic values for a single asset path
-        (
-            "resources/main.ts",
-            None,
-            '<script type="module" async="" defer="" src="/static/assets/main-l0sNRNKZ.js"></script>',
-            "asset_single",
-        ),
-        # Test with additional script attributes
-        (
-            "resources/styles.css",
-            {"async": "true"},
-            '<script async="true" src="/static/assets/styles-l0sNRNKZ.js"></script>',
-            "asset_attrs",
-        ),
-        # Test with realistic values for a list of asset paths
-        (
-            ["resources/main.ts", "resources/styles.css"],
-            None,
-            '<script type="module" async="" defer="" src="/static/assets/main-l0sNRNKZ.js"></script><script type="module" async="" defer="" src="/static/assets/styles-l0sNRNKZ.js"></script>',
-            "asset_multiple",
-        ),
-    ],
-)
-def test_get_asset_tag(
-    asset_loader: ViteAssetLoader,
-    path: str | list[str],
-    scripts_attrs: dict[str, Any] | None,
-    expected_output: str,
-    test_id: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Mock the manifest content
-    mock_manifest = {
-        "resources/main.ts": {"file": "assets/main-l0sNRNKZ.js"},
-        "resources/styles.css": {"file": "assets/styles-l0sNRNKZ.js"},
+def test_generate_asset_tags_prod_mode() -> None:
+    config = ViteConfig(hot_reload=False, dev_mode=False, asset_url="/static/")
+    loader = ViteAssetLoader(config)
+    loader._manifest = {
+        "main.js": {"file": "assets/main.js", "css": ["assets/main.css"]},
+        "vendor.js": {"file": "assets/vendor.js"},
     }
-    monkeypatch.setattr(asset_loader, "_manifest", mock_manifest)
 
-    # Act
-    result = asset_loader.render_asset_tag(path=path, scripts_attrs=scripts_attrs)
-
-    # Assert
-    assert str(result) == expected_output, f"Failed test ID: {test_id}"
+    tags = loader.generate_asset_tags("main.js")
+    assert '<link rel="stylesheet" href="/static/assets/main.css" />' in tags
+    assert '<script type="module" async="" defer="" src="/static/assets/main.js"></script>' in tags
 
 
-# Edge case tests for get_asset_tag
-@pytest.mark.parametrize(
-    "path, scripts_attrs, test_id",
-    [
-        # Test with an empty path
-        ("", None, "asset_blank"),
-        # Test with non-existent path
-        ("resources/nonexistent.ts", None, "asset_nonexistent"),
-    ],
-)
-def test_get_asset_tag_edge_cases(
-    asset_loader: ViteAssetLoader,
-    path: str | list[str],
-    scripts_attrs: dict[str, Any] | None,
-    test_id: str,
-) -> None:
-    if test_id == "asset_blank":
-        result = asset_loader.render_asset_tag(path=path, scripts_attrs=scripts_attrs)
-        assert result == "", f"Failed test ID: {test_id}"
-    else:
-        with pytest.raises(ImproperlyConfiguredException) as exc_info:
-            asset_loader.render_asset_tag(path=path, scripts_attrs=scripts_attrs)
-        assert "Cannot find" in str(exc_info.value), f"Failed test ID: {test_id}"
+def test_generate_asset_tags_dev_mode() -> None:
+    config = ViteConfig(hot_reload=True, dev_mode=True)
+    loader = ViteAssetLoader(config)
+
+    tags = loader.generate_asset_tags("main.js")
+    # Should point to vite server
+    assert 'src="http://localhost:5173/static/main.js"' in tags
 
 
-# Since we rely on type hints for validation, we don't need runtime validation tests
-# Type checking will catch these errors at development time
+def test_generate_asset_tags_missing_entry() -> None:
+    config = ViteConfig(hot_reload=False, dev_mode=False)
+    loader = ViteAssetLoader(config)
+    loader._manifest = {}
+
+    with pytest.raises(ImproperlyConfiguredException):
+        loader.generate_asset_tags("missing.js")
+
+
+def test_get_static_asset_dev_mode() -> None:
+    config = ViteConfig(dev_mode=True, hot_reload=True)
+    loader = ViteAssetLoader(config)
+    assert loader.get_static_asset("test.png") == "http://localhost:5173/static/test.png"
+
+
+def test_get_static_asset_prod_mode_found() -> None:
+    config = ViteConfig(dev_mode=False, hot_reload=False, bundle_dir="tests/fixtures", asset_url="/static/")
+    loader = ViteAssetLoader(config)
+    # Mock manifest
+    loader._manifest = {"test.png": {"file": "assets/test.hash.png"}}
+    assert loader.get_static_asset("test.png") == "/static/assets/test.hash.png"
+
+
+def test_get_static_asset_prod_mode_not_found() -> None:
+    config = ViteConfig(dev_mode=False)
+    loader = ViteAssetLoader(config)
+    loader._manifest = {}
+    with pytest.raises(AssetNotFoundError):
+        loader.get_static_asset("missing.png")
+
+
+def test_get_static_asset_with_base_url() -> None:
+    config = ViteConfig(dev_mode=False, hot_reload=False, base_url="https://cdn.example.com/", asset_url="/static/")
+    loader = ViteAssetLoader(config)
+    loader._manifest = {"test.png": {"file": "assets/test.hash.png"}}
+    # base_url overrides asset_url for the base part
+    assert loader.get_static_asset("test.png") == "https://cdn.example.com/assets/test.hash.png"

@@ -307,3 +307,41 @@ def generate_js_routes(app: "Litestar", output: "Path", verbose: "bool") -> None
         raise LitestarCLIException(msg) from e
 
     console.print("[yellow]Vite process stopped.[/]")
+
+
+@vite_group.command(
+    name="status",
+    help="Check the status of the Vite integration.",
+)
+def vite_status(app: "Litestar") -> None:
+    """Check the status of the Vite integration."""
+    import httpx
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+
+    from litestar_vite.plugin import VitePlugin
+
+    plugin = app.plugins.get(VitePlugin)
+    config = plugin.config
+
+    console.rule("[yellow]Vite Integration Status[/]", align="left")
+    console.print(f"Dev Mode: {config.dev_mode}")
+    console.print(f"Hot Reload: {config.hot_reload}")
+    console.print(f"Assets URL: {config.asset_url}")
+    console.print(f"Base URL: {config.base_url}")
+
+    manifest_path = Path(f"{config.bundle_dir}/{config.manifest_name}")
+    if manifest_path.exists():
+        console.print(f"[green]✓ Manifest found at {manifest_path}[/]")
+    else:
+        console.print(f"[red]✗ Manifest not found at {manifest_path}[/]")
+
+    if config.dev_mode:
+        url = f"{config.protocol}://{config.host}:{config.port}"
+        try:
+            response = httpx.get(url, timeout=0.5)
+            if response.status_code == 200:
+                console.print(f"[green]✓ Vite server running at {url}[/]")
+            else:
+                console.print(f"[yellow]! Vite server reachable at {url} but returned {response.status_code}[/]")
+        except Exception as e:
+            console.print(f"[red]✗ Vite server not reachable at {url}: {e!s}[/]")

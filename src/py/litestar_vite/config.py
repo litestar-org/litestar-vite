@@ -116,6 +116,12 @@ class ViteConfig:
     set_static_folders: bool = True
     """When True, Litestar will automatically serve assets at the `ASSET_URL` path.
     """
+    health_check: bool = field(
+        default_factory=lambda: os.getenv("VITE_HEALTH_CHECK", "False") in TRUE_VALUES,
+    )
+    """Enable health check for Vite development server."""
+    base_url: "Union[str, None]" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
+    """Base URL for production assets."""
     executor: "Union[JSExecutor, None]" = None
     """The executor to use for running Vite commands."""
 

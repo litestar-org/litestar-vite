@@ -132,27 +132,27 @@ class NodeenvExecutor(JSExecutor):
         from importlib.util import find_spec
 
         if find_spec("nodeenv") is None:
-             console.print("[yellow]Nodeenv not found. Skipping installation.[/]")
-             return
+            console.print("[yellow]Nodeenv not found. Skipping installation.[/]")
+            return
 
         install_dir = os.environ.get("VIRTUAL_ENV", sys.prefix)
         console.rule("[yellow]Starting Nodeenv installation process[/]", align="left")
-        
+
         command = [self._get_nodeenv_command(), install_dir, "--force", "--quiet"]
         subprocess.run(command, cwd=cwd, check=False)
 
     def install(self, cwd: Path) -> None:
         if self.config.detect_nodeenv:
             self.install_nodeenv(cwd)
-        
+
         # After nodeenv install, we use the npm in the virtualenv
         # This logic mirrors the existing logic where it just runs the install command
         # But we need to make sure we use the *correct* npm
         # The current logic in cli.py just runs `config.install_command` which defaults to `npm install`
         # Assuming `npm` is now in the path because nodeenv was installed into VIRTUAL_ENV
-        
+
         # For robustness, we should try to find npm in the VIRTUAL_ENV/bin or Scripts
-        
+
         npm_path = self._find_npm_in_venv()
         command = [npm_path, "install"]
         subprocess.run(command, cwd=cwd, check=True)
@@ -187,7 +187,7 @@ class NodeenvExecutor(JSExecutor):
         npm_path = Path(venv_path) / bin_dir / "npm"
         if platform.system() == "Windows":
             npm_path = npm_path.with_suffix(".cmd")
-        
+
         if npm_path.exists():
             return str(npm_path)
-        return "npm" # Fallback to system npm
+        return "npm"  # Fallback to system npm
