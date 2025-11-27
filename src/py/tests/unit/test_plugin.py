@@ -220,7 +220,8 @@ class TestVitePluginLifespan:
     def test_server_lifespan_without_lifespan_management(self) -> None:
         """Test server lifespan when lifespan management is disabled."""
         config = ViteConfig()
-        plugin = VitePlugin(config=config, use_server_lifespan=False)
+        plugin = VitePlugin(config=config)
+        plugin._use_server_lifespan = False
         app = Mock(spec=Litestar)
 
         # Should yield without starting any processes
@@ -232,7 +233,7 @@ class TestVitePluginLifespan:
         config = ViteConfig(
             runtime=RuntimeConfig(dev_mode=False),  # Production mode
         )
-        plugin = VitePlugin(config=config, use_server_lifespan=True)
+        plugin = VitePlugin(config=config)
         app = Mock(spec=Litestar)
 
         # Should yield without starting Vite process in production
@@ -243,7 +244,8 @@ class TestVitePluginLifespan:
     def test_server_lifespan_with_environment_setup(self, mock_set_env: Mock) -> None:
         """Test server lifespan with environment variable setup."""
         config = ViteConfig(runtime=RuntimeConfig(set_environment=True))
-        plugin = VitePlugin(config=config, use_server_lifespan=False)
+        plugin = VitePlugin(config=config)
+        plugin._use_server_lifespan = False
         app = Mock(spec=Litestar)
 
         with plugin.server_lifespan(app):
@@ -256,7 +258,7 @@ class TestVitePluginLifespan:
     def test_server_lifespan_with_vite_process_management(self, mock_console: Mock) -> None:
         """Test server lifespan with Vite process management."""
         config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, hot_reload=True))
-        plugin = VitePlugin(config=config, use_server_lifespan=True)
+        plugin = VitePlugin(config=config)
         app = Mock(spec=Litestar)
 
         # Mock the Vite process
@@ -275,7 +277,7 @@ class TestVitePluginLifespan:
         config = ViteConfig(
             runtime=RuntimeConfig(dev_mode=True, hot_reload=False),  # Watch mode without HMR
         )
-        plugin = VitePlugin(config=config, use_server_lifespan=True)
+        plugin = VitePlugin(config=config)
         app = Mock(spec=Litestar)
 
         with patch.object(plugin._vite_process, "start") as mock_start:
@@ -647,7 +649,7 @@ class TestVitePluginJinjaOptionalDependency:
     def test_plugin_server_lifespan_without_jinja(self) -> None:
         """Test server lifespan functionality without Jinja."""
         config = ViteConfig()
-        plugin = VitePlugin(config=config, use_server_lifespan=True)
+        plugin = VitePlugin(config=config)
 
         # Server lifespan should work without Jinja
         lifespans = plugin.server_lifespan

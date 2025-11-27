@@ -1,0 +1,23 @@
+{
+  "name": "spa-vue-inertia",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "generate-types": "openapi-ts"
+  },
+  "dependencies": {
+    "vue": "latest",
+    "@inertiajs/vue3": "latest"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "latest",
+    "vue-tsc": "latest",
+    "typescript": "latest",
+    "@hey-api/openapi-ts": "latest",
+    "litestar-vite-plugin": "latest",
+    "vite": "^6.0.0"
+  }
+}

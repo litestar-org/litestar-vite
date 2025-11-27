@@ -200,8 +200,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         config: "ViteConfig | None" = None,
         asset_loader: "ViteAssetLoader | None" = None,
         static_files_config: "StaticFilesConfig | None" = None,
-        *,
-        use_server_lifespan: bool = False,
     ) -> None:
         """Initialize the Vite plugin.
 
@@ -209,7 +207,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             config: Vite configuration. Defaults to ViteConfig() if not provided.
             asset_loader: Optional pre-initialized asset loader.
             static_files_config: Optional configuration for static file serving.
-            use_server_lifespan: Whether to manage Vite process via server lifespan.
         """
         from litestar_vite.config import ViteConfig
 
@@ -219,7 +216,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._asset_loader = asset_loader
         self._vite_process = ViteProcess(executor=config.executor)
         self._static_files_config: dict[str, Any] = static_files_config.__dict__ if static_files_config else {}
-        self._use_server_lifespan = use_server_lifespan
+        self._use_server_lifespan = True
 
     @property
     def config(self) -> "ViteConfig":

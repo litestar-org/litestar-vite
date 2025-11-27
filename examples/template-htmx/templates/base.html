@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% raw %}{% block title %}{% endraw %}{{ "{{ project_name }}" }}{% raw %}{% endblock %}{% endraw %}</title>
-  {{ "{{ vite_hmr() }}" }}
-  {{ "{{ vite('resources/main.js') }}" }}
+  <title>{% block title %}{{ project_name }}{% endblock %}</title>
+  {{ vite_hmr() }}
+  {{ vite('resources/main.js') }}
   <style>
     :root {
       font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
@@ -51,6 +51,6 @@
   </style>
 </head>
 <body>
-  {% raw %}{% block content %}{% endraw %}{% raw %}{% endblock %}{% endraw %}
+  {% block content %}{% endblock %}
 </body>
 </html>

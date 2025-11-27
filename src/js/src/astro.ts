@@ -213,7 +213,7 @@ export default function litestarAstro(userConfig: LitestarAstroConfig = {}): Ast
     hooks: {
       "astro:config:setup": ({ updateConfig, logger }) => {
         if (config.verbose) {
-          logger.info(`Configuring Litestar integration`)
+          logger.info("Configuring Litestar integration")
           logger.info(`  API Proxy: ${config.apiProxy}`)
           logger.info(`  API Prefix: ${config.apiPrefix}`)
           logger.info(`  Types Path: ${config.typesPath}`)

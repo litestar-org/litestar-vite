@@ -34,17 +34,11 @@ if TYPE_CHECKING:
 
 __all__ = (
     "JINJA_INSTALLED",
-    # Legacy exports for backward compatibility during transition
-    "BunViteConfig",
-    "DenoViteConfig",
     "InertiaConfig",
-    "NPMViteConfig",
     "PathConfig",
-    "PnpmViteConfig",
     "RuntimeConfig",
     "TypeGenConfig",
     "ViteConfig",
-    "YarnViteConfig",
 )
 
 TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
@@ -524,119 +518,3 @@ class ViteConfig:
             if isinstance(self.paths.ssr_output_dir, Path)
             else Path(self.paths.ssr_output_dir)
         )
-
-
-# Legacy config classes for backward compatibility
-# These are deprecated and will be removed in a future version
-
-
-def _reset_runtime_commands(runtime: "RuntimeConfig", executor: str) -> None:
-    """Reset runtime commands based on executor type."""
-    executor_commands = {
-        "node": {
-            "run": ["npm", "run", "dev"],
-            "build": ["npm", "run", "build"],
-            "build_watch": ["npm", "run", "watch"],
-            "install": ["npm", "install"],
-        },
-        "bun": {
-            "run": ["bun", "run", "dev"],
-            "build": ["bun", "run", "build"],
-            "build_watch": ["bun", "run", "watch"],
-            "install": ["bun", "install"],
-        },
-        "deno": {
-            "run": ["deno", "task", "dev"],
-            "build": ["deno", "task", "build"],
-            "build_watch": ["deno", "task", "watch"],
-            "install": ["deno", "install"],
-        },
-        "yarn": {
-            "run": ["yarn", "dev"],
-            "build": ["yarn", "build"],
-            "build_watch": ["yarn", "watch"],
-            "install": ["yarn", "install"],
-        },
-        "pnpm": {
-            "run": ["pnpm", "dev"],
-            "build": ["pnpm", "build"],
-            "build_watch": ["pnpm", "watch"],
-            "install": ["pnpm", "install"],
-        },
-    }
-    if executor in executor_commands:
-        cmds = executor_commands[executor]
-        runtime.run_command = cmds["run"]
-        runtime.build_command = cmds["build"]
-        runtime.build_watch_command = cmds["build_watch"]
-        runtime.install_command = cmds["install"]
-
-
-@dataclass
-class BunViteConfig(ViteConfig):
-    """Configuration for using Vite with Bun.
-
-    Deprecated: Use ViteConfig(runtime=RuntimeConfig(executor="bun")) instead.
-    """
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        self.runtime.executor = "bun"
-        self.runtime.detect_nodeenv = False
-        _reset_runtime_commands(self.runtime, "bun")
-
-
-@dataclass
-class DenoViteConfig(ViteConfig):
-    """Configuration for using Vite with Deno.
-
-    Deprecated: Use ViteConfig(runtime=RuntimeConfig(executor="deno")) instead.
-    """
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        self.runtime.executor = "deno"
-        self.runtime.detect_nodeenv = False
-        _reset_runtime_commands(self.runtime, "deno")
-
-
-@dataclass
-class NPMViteConfig(ViteConfig):
-    """Configuration for using Vite with NPM.
-
-    Deprecated: Use ViteConfig(runtime=RuntimeConfig(executor="node")) instead.
-    """
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        self.runtime.executor = "node"
-        self.runtime.detect_nodeenv = False
-        _reset_runtime_commands(self.runtime, "node")
-
-
-@dataclass
-class YarnViteConfig(ViteConfig):
-    """Configuration for using Vite with Yarn.
-
-    Deprecated: Use ViteConfig(runtime=RuntimeConfig(executor="yarn")) instead.
-    """
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        self.runtime.executor = "yarn"
-        self.runtime.detect_nodeenv = False
-        _reset_runtime_commands(self.runtime, "yarn")
-
-
-@dataclass
-class PnpmViteConfig(ViteConfig):
-    """Configuration for using Vite with PNPM.
-
-    Deprecated: Use ViteConfig(runtime=RuntimeConfig(executor="pnpm")) instead.
-    """
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        self.runtime.executor = "pnpm"
-        self.runtime.detect_nodeenv = False
-        _reset_runtime_commands(self.runtime, "pnpm")

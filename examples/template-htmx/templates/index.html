@@ -1,8 +1,8 @@
-{% raw %}{% extends "base.html.j2" %}{% endraw %}
+{% extends "base.html.j2" %}
 
-{% raw %}{% block content %}{% endraw %}
+{% block content %}
 <main class="app" x-data="{ count: 0 }">
-  <h1>{{ "{{ project_name }}" }}</h1>
+  <h1>{{ project_name }}</h1>
   <p>HTMX + Alpine.js + Litestar</p>
   <div class="card">
     <button @click="count++">
@@ -16,4 +16,4 @@
     <p id="greeting"></p>
   </div>
 </main>
-{% raw %}{% endblock %}{% endraw %}
+{% endblock %}

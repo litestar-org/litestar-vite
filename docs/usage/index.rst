@@ -12,8 +12,11 @@ Core Features
     :titlesonly:
     :maxdepth: 2
 
-    inertia
     vite
+    modes
+    types
+    inertia
+    migration-v2
 
 Getting Started
 ---------------
@@ -46,21 +49,14 @@ Configure your Litestar application with the Vite plugin:
 
     app = Litestar(
         plugins=[
-            VitePlugin(
-                config=ViteConfig(
-                    bundle_dir="public",
-                    resource_dir="resources",
-                    use_server_lifespan=True,
-                    hot_reload=True
-                )
-            )
+            VitePlugin(config=ViteConfig(dev_mode=True))
         ]
     )
 
 3. Bootstrap the Typescript Environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you do have an existing vite application, you can create a new one for your Litestar application with the following command:
+If you do not have an existing vite application, you can create a new one for your Litestar application with the following command:
 
 .. code-block:: bash
 
@@ -68,11 +64,3 @@ If you do have an existing vite application, you can create a new one for your L
     litestar assets install
 
 For more detailed information about specific features, refer to the sections in the sidebar.
-
-
-
-.. toctree::
-    :titlesonly:
-    :glob:
-
-    *

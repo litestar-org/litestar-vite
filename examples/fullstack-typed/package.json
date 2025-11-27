@@ -1,0 +1,25 @@
+{
+  "name": "fullstack-typed",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "generate-types": "openapi-ts"
+  },
+  "dependencies": {
+    "react": "latest",
+    "react-dom": "latest",
+    "@inertiajs/react": "latest"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "latest",
+    "@hey-api/openapi-ts": "latest",
+    "litestar-vite-plugin": "latest",
+    "vite": "^6.0.0"
+  }
+}

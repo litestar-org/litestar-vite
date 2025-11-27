@@ -1,137 +1,107 @@
 # Litestar Vite
 
+Seamless integration between [Litestar](https://litestar.dev/) and [Vite](https://vitejs.dev/).
+
+## Features
+
+- ⚡ **Dual Mode Serving**: Supports both SPA (no Jinja required) and Template modes.
+- 🛠️ **Type-Safe Routing**: Auto-generate TypeScript types and route helpers from your Python code.
+- 🚀 **Zero-Config**: Works out of the box with sensible defaults.
+- 📦 **Framework Agnostic**: First-class support for React, Vue, Svelte, HTMX, and more.
+- 🔄 **Inertia.js**: Built-in support for the Inertia.js protocol (v2).
+- 🔌 **Extensible**: Easy to customize configuration and behavior.
+
 ## Installation
 
-```shell
+```bash
 pip install litestar-vite
 ```
 
-## Usage
+## Quick Start
 
-Here is a basic application that demonstrates how to use the plugin.
+### 1. Initialize Project
+
+Use the CLI to scaffold a new project with your preferred framework:
+
+```bash
+# Create a new React project
+litestar assets init --template react
+
+# Or Vue + Inertia
+litestar assets init --template vue-inertia
+```
+
+### 2. Configure Application
+
+**SPA Mode (React/Vue/Svelte):**
 
 ```python
-from __future__ import annotations
+from litestar import Litestar
+from litestar_vite import VitePlugin, ViteConfig
 
-from pathlib import Path
+app = Litestar(
+    plugins=[
+        VitePlugin(config=ViteConfig(dev_mode=True))
+    ]
+)
+```
 
-from litestar import Controller, get, Litestar
-from litestar.response import Template
-from litestar.status_codes import HTTP_200_OK
-from litestar.template.config import TemplateConfig
+**Template Mode (Jinja2/HTMX):**
+
+```python
+from litestar import Litestar
 from litestar.contrib.jinja import JinjaTemplateEngine
-from litestar_vite import ViteConfig, VitePlugin
+from litestar.template.config import TemplateConfig
+from litestar_vite import VitePlugin, ViteConfig
 
-class WebController(Controller):
-
-    opt = {"exclude_from_auth": True}
-    include_in_schema = False
-
-    @get(["/", "/{path:str}"],status_code=HTTP_200_OK)
-    async def index(self) -> Template:
-        return Template(template_name="index.html.j2")
-
-template_config = TemplateConfig(engine=JinjaTemplateEngine(directory='templates/'))
-vite = VitePlugin(config=ViteConfig())
-app = Litestar(plugins=[vite], template_config=template_config, route_handlers=[WebController])
-
+app = Litestar(
+    template_config=TemplateConfig(
+        engine=JinjaTemplateEngine(directory="templates")
+    ),
+    plugins=[
+        VitePlugin(
+            config=ViteConfig(
+                mode="template",
+                dev_mode=True,
+            )
+        )
+    ]
+)
 ```
 
-Create a template to serve the application in `./templates/index.html.j2`:
+### 3. Run Development Server
 
-```html
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <!--IE compatibility-->
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
-    />
-  </head>
-
-  <body>
-    <div id="app"></div>
-    {{ vite_hmr() }} {{ vite('resources/main.ts') }}
-  </body>
-</html>
+```bash
+# Starts both Litestar and Vite
+litestar run
 ```
 
-### Template initialization (Optional)
+## Type Generation
 
-This is a command to help initialize Vite for your project. This is generally only needed a single time. You may also manually configure Vite and skip this step.
+Keep your frontend in sync with your backend automatically.
 
-to initialize a Vite configuration:
+**Enable in Config:**
 
-```shell
-❯ litestar assets init
-Using Litestar app from app:app
-Initializing Vite ──────────────────────────────────────────────────────────────────────────────────────────
-Do you intend to use Litestar with any SSR framework? [y/n]: n
-INFO - 2023-12-11 12:33:41,455 - root - commands - Writing vite.config.ts
-INFO - 2023-12-11 12:33:41,456 - root - commands - Writing package.json
-INFO - 2023-12-11 12:33:41,456 - root - commands - Writing tsconfig.json
+```python
+VitePlugin(config=ViteConfig(types=True))
 ```
 
-### Install Javascript/Typescript Packages
+**Generate Types:**
 
-Install the packages required for development:
-
-**Note** This is equivalent to the the `npm install` by default. This command is configurable.
-
-```shell
-❯ litestar assets install
-Using Litestar app from app:app
-Starting Vite package installation process ──────────────────────────────────────────────────────────────────────────────────────────
-
-added 25 packages, and audited 26 packages in 1s
-
-
-5 packages are looking for funding
-  run `npm fund` for details
-
-
-found 0 vulnerabilities
+```bash
+litestar assets generate-types
 ```
 
-### Development
+**Use in Frontend:**
 
-To automatically start and stop the Vite instance with the Litestar application, you can enable the `use_server_lifespan` hooks in the `ViteConfig`.
+```typescript
+import { route } from './lib/api/routes';
+import type { User } from './lib/api/types.gen';
 
-Alternately, to start the development server manually, you can run the following
-
-```shell
-❯ litestar assets serve
-Using Litestar app from app:app
-Starting Vite build process ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-> build
-> vite build
-
-
-vite v5.0.7 building for production...
-
-✓ 0 modules transformed.
-
+// Type-safe URL generation
+const url = route('users.show', { id: 123 });
 ```
 
-**Note** This is equivalent to the the `npm run dev` command when `hot_reload` is enabled. Otherwise it is equivalent to `npm run build -- --watch`. This command is configurable.
+## Documentation
 
-### Building for Production
-
-```shell
-❯ litestar assets build
-Using Litestar app from app:app
-Starting Vite build process ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-> build
-> vite build
-
-
-vite v5.0.7 building for production...
-
-✓ 0 modules transformed.
-
-```
+For full documentation, visit [https://cofin.github.io/litestar-vite/](https://cofin.github.io/litestar-vite/).

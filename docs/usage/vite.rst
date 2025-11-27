@@ -89,24 +89,61 @@ The integration is configured in two places: the Python backend via the `VitePlu
 Python Configuration (`ViteConfig`)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You configure the Litestar backend using the `ViteConfig` object passed to the `VitePlugin`.
+You configure the Litestar backend using the `ViteConfig` object passed to the `VitePlugin`. The configuration is now organized into nested objects.
 
 .. code-block:: python
 
     from litestar import Litestar
     from litestar_vite import ViteConfig, VitePlugin
+    from litestar_vite.config import PathConfig, RuntimeConfig
 
     app = Litestar(
         plugins=[
             VitePlugin(
                 config=ViteConfig(
-                    # Add your configuration options here
+                    paths=PathConfig(
+                        bundle_dir="public",
+                        resource_dir="resources",
+                    ),
+                    runtime=RuntimeConfig(
+                        port=5173,
+                        hot_reload=True,
+                    ),
+                    mode="spa", # or "template", "htmx"
                 )
             )
         ]
     )
 
-**Available `ViteConfig` Parameters**:
+**Root `ViteConfig` Parameters**:
+
+.. list-table::
+   :widths: 25 15 60
+   :header-rows: 1
+
+   * - Parameter
+     - Type
+     - Description
+   * - `mode`
+     - `str`
+     - Operation mode: `"spa"`, `"template"`, or `"htmx"`. Defaults to `"spa"`.
+   * - `paths`
+     - `PathConfig`
+     - File system paths configuration.
+   * - `runtime`
+     - `RuntimeConfig`
+     - Runtime execution settings.
+   * - `types`
+     - `TypeGenConfig | bool`
+     - Type generation settings.
+   * - `inertia`
+     - `InertiaConfig | bool`
+     - Inertia.js settings.
+   * - `dev_mode`
+     - `bool`
+     - Shortcut to enable development mode.
+
+**`PathConfig` Parameters**:
 
 .. list-table::
    :widths: 25 15 60
@@ -117,10 +154,10 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - Description
    * - `bundle_dir`
      - `Path | str`
-     - Location of compiled assets from Vite. Defaults to `"public"`.
+     - Location of compiled assets. Defaults to `"public"`.
    * - `resource_dir`
      - `Path | str`
-     - Directory for TypeScript/JavaScript source files. Defaults to `"resources"`.
+     - Directory for source files. Defaults to `"resources"`.
    * - `public_dir`
      - `Path | str`
      - The public directory Vite serves assets from. Defaults to `"public"`.
@@ -129,67 +166,35 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - Name of the Vite manifest file. Defaults to `"manifest.json"`.
    * - `hot_file`
      - `str`
-     - Name of the file that contains the Vite server URL for HMR. Defaults to `"hot"`.
-   * - `hot_reload`
-     - `bool`
-     - Enable or disable Hot Module Replacement (HMR). Defaults to `True` in dev mode.
-   * - `ssr_enabled`
-     - `bool`
-     - Enable Server-Side Rendering (SSR). Defaults to `False`.
-   * - `ssr_output_dir`
-     - `Path | str | None`
-     - Directory for SSR output. Required if `ssr_enabled` is `True`.
-   * - `root_dir`
-     - `Path | str | None`
-     - Base path of your application. Defaults to the current working directory.
-   * - `is_react`
-     - `bool`
-     - Enable React-specific features. Defaults to `False`.
+     - Name of the hot file. Defaults to `"hot"`.
    * - `asset_url`
      - `str`
      - Base URL for static assets. Defaults to `"/static/"`.
-   * - `host`
-     - `str`
-     - Host for the Vite dev server. Defaults to `"localhost"`.
-   * - `protocol`
-     - `str`
-     - Protocol for the Vite dev server (`http` or `https`). Defaults to `"http"`.
-   * - `port`
-     - `int`
-     - Port for the Vite dev server. Defaults to `5173`.
-   * - `run_command`
-     - `list[str]`
-     - Command to run the Vite dev server. Defaults to `["npm", "run", "dev"]`.
-   * - `build_watch_command`
-     - `list[str]`
-     - Command for development builds. Defaults to `["npm", "run", "watch"]`.
-   * - `build_command`
-     - `list[str]`
-     - Command for production builds. Defaults to `["npm", "run", "build"]`.
-   * - `install_command`
-     - `list[str]`
-     - Command to install frontend dependencies. Defaults to `["npm", "install"]`.
-   * - `use_server_lifespan`
-     - `bool`
-     - Manage the Vite dev server lifecycle with the Litestar app. Defaults to `False`.
+
+**`RuntimeConfig` Parameters**:
+
+.. list-table::
+   :widths: 25 15 60
+   :header-rows: 1
+
+   * - Parameter
+     - Type
+     - Description
    * - `dev_mode`
      - `bool`
-     - Enables development mode, which runs Vite with HMR or watch build. Defaults to `False`.
-   * - `detect_nodeenv`
+     - Enable development mode.
+   * - `hot_reload`
      - `bool`
-     - If `True`, the plugin will install and configure `nodeenv` if available. Defaults to `True`.
-   * - `set_environment`
-     - `bool`
-     - If `True`, sets the plugin configuration as environment variables. Defaults to `True`.
-   * - `set_static_folders`
-     - `bool`
-     - If `True`, automatically configures Litestar to serve static assets. Defaults to `True`.
-   * - `health_check`
-     - `bool`
-     - Enable health check for Vite development server. Defaults to `False`.
-   * - `base_url`
-     - `str | None`
-     - Base URL for production assets. Overrides `asset_url` prefix if set. Defaults to `None`.
+     - Enable Hot Module Replacement.
+   * - `host`
+     - `str`
+     - Host for Vite dev server. Defaults to `"localhost"`.
+   * - `port`
+     - `int`
+     - Port for Vite dev server. Defaults to `5173`.
+   * - `executor`
+     - `str`
+     - JS executor (`"node"`, `"bun"`, `"deno"`). Defaults to `"node"`.
 
 Vite Plugin Configuration (`litestar-vite-plugin`)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -234,29 +239,14 @@ You configure the Vite frontend build process in your `vite.config.ts` (or `.js`
    * - `hotFile`
      - `string`
      - The path to the "hot" file. Defaults to `${bundleDirectory}/hot`.
-   * - `ssr`
-     - `string | string[]`
-     - The path of the SSR entry point.
-   * - `ssrOutputDirectory`
-     - `string`
-     - The directory where the SSR bundle is written. Defaults to `'${bundleDirectory}/bootstrap/ssr'`.
-   * - `refresh`
-     - `boolean | string | string[] | RefreshConfig | RefreshConfig[]`
-     - Configuration for performing a full page refresh on file changes. Defaults to `false`.
-   * - `detectTls`
-     - `string | boolean | null`
-     - Automatically detect and use TLS certificates. Defaults to `null`.
-   * - `autoDetectIndex`
-     - `boolean`
-     - Automatically detect `index.html` as the entry point. Defaults to `True`.
-   * - `transformOnServe`
-     - `(code: string, url: DevServerUrl) => string`
-     - A function to transform code while serving.
+   * - `types`
+     - `object | boolean`
+     - Type generation configuration.
 
 Template Integration
 ~~~~~~~~~~~~~~~~~~~~
 
-Use the `vite()` and `vite_hmr()` callables in your Jinja2 templates to include the assets.
+Use the `vite()` and `vite_hmr()` callables in your Jinja2 templates to include the assets (in Template Mode).
 
 .. code-block:: html
 
@@ -289,18 +279,18 @@ Development Workflow
 Development Server
 ~~~~~~~~~~~~~~~~~~
 
-When `use_server_lifespan` is set to `True` in `ViteConfig`, the Litestar CLI will automatically manage the Vite development server alongside your Litestar application.
+When `use_server_lifespan` is set to `True` (default in v2 when `dev_mode=True`), the Litestar CLI will automatically manage the Vite development server.
 
 .. code-block:: bash
 
     litestar run
 
-If you prefer to manage the Vite server manually, set `use_server_lifespan` to `False` and run the servers in separate terminals:
+If you prefer to manage the Vite server manually, set `dev_mode=False` in config but run vite manually:
 
 .. code-block:: bash
     :caption: Terminal 1: Start Vite Dev Server
 
-    litestar assets serve
+    npm run dev
 
 .. code-block:: bash
     :caption: Terminal 2: Run Litestar App
