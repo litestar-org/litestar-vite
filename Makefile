@@ -254,3 +254,14 @@ docs-linkcheck-full:                               ## Run full documentation lin
 	@echo "${INFO} Running full link check... 🔗"
 	@uv run sphinx-build -b linkcheck ./docs ./docs/_build -D linkcheck_anchors=0
 	@echo "${OK} Full link check complete"
+
+.PHONY: docs-demos
+docs-demos:                                        ## Generate demo GIFs locally (requires vhs)
+	@echo "${INFO} Generating demo GIFs... 🎬"
+	@command -v vhs >/dev/null 2>&1 || { echo "${ERROR} VHS required. Install with: brew install vhs (macOS) or see https://github.com/charmbracelet/vhs"; exit 1; }
+	@mkdir -p docs/_static/demos
+	@for tape in docs/_tapes/*.tape; do \
+		echo "${INFO} Processing $$tape..."; \
+		vhs "$$tape"; \
+	done
+	@echo "${OK} Demo GIFs generated successfully"

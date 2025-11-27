@@ -239,7 +239,7 @@ You configure the Vite frontend build process in your `vite.config.ts` (or `.js`
      - The directory where compiled assets are written. Defaults to `'public/dist'`.
    * - `resourceDirectory`
      - `string`
-     - The directory for source assets. Defaults to `'resources'`.
+     - The directory for source assets. Defaults to `'src'` (use `'resources'` for Inertia templates).
    * - `hotFile`
      - `string`
      - The path to the "hot" file. Defaults to `${bundleDirectory}/hot`.
@@ -265,6 +265,43 @@ Use the `vite()` and `vite_hmr()` callables in your Jinja2 templates to include 
         {{ vite('src/js/main.js') }}
     </body>
     </html>
+
+Angular options
+---------------
+
+Litestar Vite supports Angular in two ways:
+
+- **Angular (Vite / Analog)** – `litestar assets init --template angular`
+
+  - Uses `@analogjs/vite-plugin-angular` together with `litestar-vite-plugin`.
+  - Source dir: `src/`; hotfile at `public/hot`; single-port proxy/HMR enabled by default.
+  - Typed routes/OpenAPI generation on by default (writes to `src/generated`).
+
+- **Angular CLI (non-Vite)** – `litestar assets init --template angular-cli`
+
+  - Runs via Angular CLI `ng serve` with `proxy.conf.json` targeting Litestar.
+  - Source dir: `src/`; does **not** use `litestar-vite-plugin` or the typed-routes pipeline.
+  - Use `npm start` / `npm run build` and serve `dist/browser/` via Litestar static files.
+
+Troubleshooting (Angular)
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- HMR not connecting (Analog): ensure `/vite-hmr` and `/@analogjs/` are proxied; stay in single-port mode or expose Vite directly.
+- Types not generating (Analog): install `@hey-api/openapi-ts` or set `types.enabled=false` in `vite.config.ts`.
+- Angular CLI path: confirm backend runs on port 8000 (or update `proxy.conf.json` targets).
+
+Framework comparison (scaffolds)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+===================== =================== =============================== ===========================
+Framework             Source dir          Dev server / proxy              Type generation
+===================== =================== =============================== ===========================
+React/Vue/Svelte      src/                Vite + litestar-vite proxy      Enabled by default
+Inertia variants      resources/          Vite + litestar-vite proxy      Enabled by default
+Angular (Analog)      src/                Vite (Analog) + proxy           Enabled by default
+Angular CLI           src/                Angular CLI + proxy.conf.json   Disabled (CLI handles dev)
+HTMX                  src/                Vite + litestar-vite proxy      Disabled (JS optional)
+===================== =================== =============================== ===========================
 
 Advanced Asset Handling
 ~~~~~~~~~~~~~~~~~~~~~~~

@@ -10,7 +10,11 @@ You are the Guides Agent for litestar-vite. Your mission is to ensure `specs/gui
 
 **Your Core Workflow (Sequential & Uncompromising)**:
 
-1.  **Deep Code Analysis**: Analyze entire `src/py/litestar_vite` and `src/js` codebases. This is your source of truth.
+1.  **Deep Code Analysis**: Analyze entire `src/py/litestar_vite` and `src/js` codebases. This is your source of truth. Remember the template inventory and defaults:
+    - Templates root: `src/py/litestar_vite/templates/`
+    - Non-Inertia templates use `src/`; Inertia variants use `resources/`.
+    - Angular: `angular/` (Vite/Analog, single-port proxy) and `angular-cli/` (non-Vite, proxy.conf.json).
+    - Other frameworks: react, vue, svelte, sveltekit, nuxt, astro, htmx (+ inertia variants).
 
 2.  **Deep Guide Analysis**: Analyze all documentation in `specs/guides/`.
 

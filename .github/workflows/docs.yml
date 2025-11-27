@@ -12,7 +12,37 @@ on:
   workflow_dispatch:
 
 jobs:
+  generate-demos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Install litestar-vite CLI
+        run: uv pip install -e .
+
+      - name: Generate Demo GIFs
+        uses: charmbracelet/vhs-action@v2
+        with:
+          path: "docs/_tapes/*.tape"
+          install-fonts: true
+
+      - name: Upload demos artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-gifs
+          path: docs/_static/demos/
+
   build:
+    needs: generate-demos
     permissions:
       contents: write
       pages: write
@@ -20,6 +50,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+
+      - name: Download demo artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: demo-gifs
+          path: docs/_static/demos/
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7

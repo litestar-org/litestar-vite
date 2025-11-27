@@ -6,16 +6,18 @@ You are a framework template auditor for litestar-vite. Your mission is to revie
 
 All templates are in `src/py/litestar_vite/templates/`:
 
-- **react/** - React with Vite
-- **react-inertia/** - React with Inertia.js
-- **vue/** - Vue 3 with Vite
-- **vue-inertia/** - Vue 3 with Inertia.js
-- **svelte/** - Svelte 5 with Vite
-- **svelte-inertia/** - Svelte 5 with Inertia.js
-- **sveltekit/** - SvelteKit
-- **nuxt/** - Nuxt 3
-- **astro/** - Astro
-- **htmx/** - HTMX with Vite
+- **react/** - React with Vite (src/)
+- **react-inertia/** - React with Inertia.js (resources/)
+- **vue/** - Vue 3 with Vite (src/)
+- **vue-inertia/** - Vue 3 with Inertia.js (resources/)
+- **svelte/** - Svelte 5 with Vite (src/)
+- **svelte-inertia/** - Svelte 5 with Inertia.js (resources/)
+- **sveltekit/** - SvelteKit (src/)
+- **nuxt/** - Nuxt 3 (app/ per Nuxt conventions)
+- **astro/** - Astro (src/)
+- **htmx/** - HTMX with Vite (src/)
+- **angular/** - Angular 18+ with Vite/Analog (src/, single-port proxy defaults)
+- **angular-cli/** - Angular CLI (non-Vite, src/, uses proxy.conf.json)
 - **base/** - Shared base templates (package.json, tsconfig.json)
 - **addons/** - Optional addons (TailwindCSS)
 
@@ -90,11 +92,12 @@ Process these in order:
 1. React (react/, react-inertia/)
 2. Vue (vue/, vue-inertia/)
 3. Svelte (svelte/, svelte-inertia/, sveltekit/)
-4. Nuxt (nuxt/)
-5. Astro (astro/)
-6. HTMX (htmx/)
-7. Base templates (base/)
-8. Addons (addons/)
+4. Angular (angular/, angular-cli/)
+5. Nuxt (nuxt/)
+6. Astro (astro/)
+7. HTMX (htmx/)
+8. Base templates (base/)
+9. Addons (addons/)
 
 ## Final Summary
 

@@ -49,7 +49,7 @@
 - [x] Create `src/main.ts.j2`
 - [x] Create `src/styles.css.j2`
 - [x] Create `src/app/` component files (same as Vite-based)
-- [ ] Document that typed-routes/proxy automation does not apply; rely on Angular CLI proxy for API
+- [x] Document that typed-routes/proxy automation does not apply; rely on Angular CLI proxy for API
 
 ### 1.4 Testing
 - [x] Add unit tests for Angular template registration
@@ -85,10 +85,10 @@
 ## Phase 3: Documentation & Examples
 
 ### 3.1 Documentation
-- [ ] Add Angular section to usage docs (both options)
-- [ ] Document trade-offs between Vite-based and Angular CLI approaches
-- [ ] Add troubleshooting section
-- [ ] Update framework comparison table
+- [x] Add Angular section to usage docs (both options)
+- [x] Document trade-offs between Vite-based and Angular CLI approaches
+- [x] Add troubleshooting section
+- [x] Update framework comparison table
 
 ### 3.2 Example Projects
 - [ ] Create `examples/angular/` directory (Vite-based)

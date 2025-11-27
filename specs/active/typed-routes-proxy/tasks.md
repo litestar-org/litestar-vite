@@ -33,8 +33,8 @@
 
 ## Phase 6: Documentation (auto-invoked)
 - [x] Update README and docs/usage for proxy vs direct and new defaults
-- [ ] Note migration (old paths removed; no backward compat)
-- [ ] Document Angular Vite compatibility and Angular-CLI exception (no litestar-vite plugin)
+ - [x] Note migration (old paths removed; no backward compat)
+ - [x] Document Angular Vite compatibility and Angular-CLI exception (no litestar-vite plugin)
 
 ## Phase 7: Quality Gate & Archive
 - [ ] All quality gates pass
