@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Any, Generic, Literal, TypedDict, TypeVar
 
 __all__ = (
@@ -42,6 +42,25 @@ def to_camel_case(snake_str: str) -> str:
     return _SNAKE_CASE_PATTERN.sub(lambda m: m.group(1).upper(), snake_str)
 
 
+def _convert_value(value: Any) -> Any:
+    """Recursively convert a value for Inertia.js protocol.
+
+    Handles nested dataclasses, dicts, and lists without using asdict()
+    to avoid Python 3.10/3.11 bugs with dict[str, list[str]] types.
+
+    Returns:
+        The converted value.
+    """
+    if hasattr(value, "__dataclass_fields__"):
+        # Recursively convert nested dataclasses
+        return to_inertia_dict(value)
+    if isinstance(value, dict):
+        return {k: _convert_value(v) for k, v in value.items()}  # pyright: ignore[reportUnknownVariableType]
+    if isinstance(value, (list, tuple)):
+        return type(value)(_convert_value(v) for v in value)  # pyright: ignore[reportUnknownArgumentType,reportUnknownVariableType]
+    return value
+
+
 def to_inertia_dict(obj: Any, required_fields: set[str] | None = None) -> dict[str, Any]:
     """Convert a dataclass to a dict with camelCase keys for Inertia.js protocol.
 
@@ -51,6 +70,11 @@ def to_inertia_dict(obj: Any, required_fields: set[str] | None = None) -> dict[s
 
     Returns:
         A dictionary with camelCase keys, excluding None values for optional fields.
+
+    Note:
+        This function avoids using dataclasses.asdict() directly because of a bug
+        in Python 3.10/3.11 that fails when processing dict[str, list[str]] types.
+        See: https://github.com/python/cpython/issues/103000
     """
     if not hasattr(obj, "__dataclass_fields__"):
         return obj
@@ -58,18 +82,20 @@ def to_inertia_dict(obj: Any, required_fields: set[str] | None = None) -> dict[s
     required_fields = required_fields or set()
     result: dict[str, Any] = {}
 
-    for key, value in asdict(obj).items():
+    # Iterate through dataclass fields directly instead of using asdict()
+    for field_name in obj.__dataclass_fields__:
+        value = getattr(obj, field_name)
+
         # Skip None values for optional fields (Inertia doesn't need them)
         # But keep required fields even if None
-        if value is None and key not in required_fields:
+        if value is None and field_name not in required_fields:
             continue
 
-        # Convert nested dataclasses
-        if hasattr(value, "__dataclass_fields__"):
-            value = to_inertia_dict(value)
+        # Convert the value (handles nested dataclasses, dicts, lists)
+        value = _convert_value(value)
 
         # Convert key to camelCase
-        camel_key = to_camel_case(key)
+        camel_key = to_camel_case(field_name)
         result[camel_key] = value
 
     return result
