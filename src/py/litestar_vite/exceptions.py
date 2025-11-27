@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-__all__ = ["LitestarViteError", "MissingDependencyError"]
+__all__ = [
+    "AssetNotFoundError",
+    "LitestarViteError",
+    "ManifestNotFoundError",
+    "MissingDependencyError",
+    "ViteExecutableNotFoundError",
+    "ViteExecutionError",
+    "ViteProcessError",
+]
 
 
 class LitestarViteError(Exception):

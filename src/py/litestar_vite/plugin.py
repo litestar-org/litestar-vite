@@ -252,8 +252,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """Configure the Litestar application for Vite.
 
         This method:
-        - Registers Jinja2 template callables (if Jinja2 is installed)
+        - Registers Jinja2 template callables (if Jinja2 is installed and template mode)
         - Configures static file serving
+        - Sets up SPA handler if in SPA mode
         - Sets up the server lifespan hook if enabled
 
         Args:
@@ -262,10 +263,15 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         Returns:
             The modified application configuration.
         """
-        from litestar_vite.loader import render_asset_tag, render_hmr_client, render_static_asset
+        from litestar_vite.loader import (
+            render_asset_tag,
+            render_hmr_client,
+            render_partial_asset_tag,
+            render_static_asset,
+        )
 
-        # Register Jinja2 template callables if Jinja2 is installed
-        if JINJA_INSTALLED:
+        # Register Jinja2 template callables if Jinja2 is installed and in template mode
+        if JINJA_INSTALLED and self._config.mode in ("template", "htmx"):
             from litestar.contrib.jinja import JinjaTemplateEngine
 
             if app_config.template_config and isinstance(
@@ -284,6 +290,10 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 engine.register_template_callable(
                     key="vite_static",
                     template_callable=render_static_asset,
+                )
+                engine.register_template_callable(
+                    key="vite_partial",
+                    template_callable=render_partial_asset_tag,
                 )
 
         # Configure static file serving

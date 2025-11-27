@@ -244,6 +244,48 @@ PR #32 had useful template patterns. Key files:
 
 ---
 
+## Current Implementation Status (2025-11-27)
+
+### Phase 1: Core Architecture ✅ COMPLETE
+- Config refactor with nested dataclasses
+- Async loader with DI
+- Executor classes (Node, Bun, Deno, etc.)
+- Plugin overhaul
+
+### Phase 2: Dual Mode System ✅ COMPLETE
+- `spa.py` - ViteSPAHandler with dev proxy and production serving
+- `html_transform.py` - HtmlTransformer with compiled regex patterns
+- Mode auto-detection in ViteConfig
+- Template mode with optional Jinja
+
+### Phase 3: Type Generation ✅ COMPLETE
+- `codegen.py` - Full RouteMetadata extraction with:
+  - Path parameters with types
+  - Query parameters using subtraction approach
+  - Type conversion (Python → TypeScript) including PEP 604 unions
+  - System type filtering (Request, State, etc.)
+  - `ParameterKwarg` aliasing support
+- CLI commands:
+  - `export-routes` - Export route metadata as JSON
+  - `generate-types` - Full type generation pipeline
+  - Removed duplicate `export-schema` (uses Litestar built-in)
+- TypeScript plugin updates:
+  - Added `TypesConfig` interface for type generation config
+  - Added `types` option to `PluginConfig`
+  - Exported interfaces for user imports
+
+### Phase 4: Inertia.js v2 Protocol 📋 PENDING
+- Defer/merge props
+- New headers support
+- Enhanced page object
+
+### Phase 5: Polish & Documentation 📋 PENDING
+- Templates
+- Examples
+- Documentation
+
+---
+
 ## Reference Materials
 
 ### Branches

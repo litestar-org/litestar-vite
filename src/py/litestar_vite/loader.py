@@ -119,6 +119,38 @@ def render_static_asset(context: "Mapping[str, Any]", /, path: str) -> str:
     return vite_plugin.asset_loader.get_static_asset(path)
 
 
+def render_partial_asset_tag(
+    context: "Mapping[str, Any]",
+    /,
+    path: str,
+    scripts_attrs: dict[str, str] | None = None,
+) -> "markupsafe.Markup":
+    """Render asset tags for HTMX partial responses.
+
+    This is a Jinja2 template callable specifically for HTMX partials.
+    It renders only the necessary script/link tags for the specified entry point,
+    useful for loading component-specific assets in partial page updates.
+
+    Args:
+        context: The template context containing the request.
+        path: Path to the asset entry point.
+        scripts_attrs: Optional attributes for script tags.
+
+    Returns:
+        HTML markup for the asset tags.
+
+    Example:
+        In a Jinja2 template for an HTMX partial:
+        {{ vite_partial("src/components/UserProfile.tsx") }}
+    """
+    request = _get_request_from_context(context)
+    vite_plugin: VitePlugin | None = request.app.plugins.get("VitePlugin")
+    if vite_plugin is None:
+        return markupsafe.Markup("")
+    # Use the same rendering logic as regular assets
+    return vite_plugin.asset_loader.render_asset_tag(path, scripts_attrs)
+
+
 class ViteAssetLoader:
     """Vite asset loader for managing frontend assets.
 

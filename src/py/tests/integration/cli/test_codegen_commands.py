@@ -1,0 +1,122 @@
+"""Tests for type generation CLI commands."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import msgspec
+from litestar import Litestar, get
+from litestar.serialization import encode_json, get_serializer
+
+from litestar_vite.codegen import generate_routes_json
+from litestar_vite.config import TypeGenConfig, ViteConfig
+from litestar_vite.plugin import VitePlugin
+
+
+def test_export_routes_integration(tmp_path: Path) -> None:
+    """Test routes export integration."""
+
+    @get("/users", name="list_users")
+    def list_users_handler() -> list[str]:
+        return ["user1", "user2"]
+
+    @get("/users/{user_id:int}", name="get_user")
+    def get_user_handler(user_id: int) -> dict[str, int]:
+        return {"id": user_id}
+
+    @get("/dashboard", name="dashboard", opt={"component": "Dashboard/Index"})
+    def dashboard_handler() -> dict[str, str]:
+        return {}
+
+    config = ViteConfig(
+        types=TypeGenConfig(
+            enabled=True,
+            openapi_path=tmp_path / "openapi.json",
+            routes_path=tmp_path / "routes.json",
+        ),
+    )
+    plugin = VitePlugin(config=config)
+
+    app = Litestar(
+        route_handlers=[list_users_handler, get_user_handler, dashboard_handler],
+        plugins=[plugin],
+    )
+
+    # Generate routes
+    routes_data = generate_routes_json(app, include_components=True)
+
+    # Write to file
+    output_path = tmp_path / "routes.json"
+    content = msgspec.json.format(msgspec.json.encode(routes_data), indent=2)
+    output_path.write_bytes(content)
+
+    assert output_path.exists()
+
+    # Verify content
+    loaded = msgspec.json.decode(output_path.read_bytes())
+    assert "routes" in loaded
+    routes = loaded["routes"]
+
+    # Should have our routes
+    assert any("list_users" in name or "users" in name.lower() for name in routes)
+
+
+def test_export_schema_integration(tmp_path: Path) -> None:
+    """Test schema export integration."""
+
+    @get("/test")
+    def test_handler() -> dict[str, str]:
+        return {}
+
+    config = ViteConfig(
+        types=TypeGenConfig(
+            enabled=True,
+            openapi_path=tmp_path / "openapi.json",
+        ),
+    )
+    plugin = VitePlugin(config=config)
+
+    app = Litestar(route_handlers=[test_handler], plugins=[plugin])
+
+    # Get the schema
+    schema = app.openapi_schema.to_schema()
+
+    # Write to file
+    output_path = tmp_path / "schema.json"
+    serializer = get_serializer(app.type_encoders)
+    content = msgspec.json.format(encode_json(schema, serializer=serializer), indent=2)
+    output_path.write_bytes(content)
+
+    assert output_path.exists()
+
+    # Verify it's valid JSON
+    loaded = msgspec.json.decode(output_path.read_bytes())
+    assert "openapi" in loaded or "info" in loaded
+
+
+def test_routes_with_filters(tmp_path: Path) -> None:
+    """Test route generation with filters."""
+
+    @get("/users", name="list_users")
+    def list_users_handler() -> list[str]:
+        return []
+
+    @get("/posts", name="list_posts")
+    def list_posts_handler() -> list[str]:
+        return []
+
+    @get("/admin/settings", name="admin_settings")
+    def admin_settings_handler() -> dict[str, str]:
+        return {}
+
+    app = Litestar([list_users_handler, list_posts_handler, admin_settings_handler])
+
+    # Test with 'only' filter
+    routes_data = generate_routes_json(app, only=["users"])
+    routes = routes_data["routes"]
+    assert any("user" in name.lower() for name in routes)
+
+    # Test with 'exclude' filter
+    routes_data = generate_routes_json(app, exclude=["admin"])
+    routes = routes_data["routes"]
+    assert not any("admin" in name.lower() for name in routes)

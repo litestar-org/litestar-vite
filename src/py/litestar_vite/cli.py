@@ -261,23 +261,53 @@ def vite_serve(app: "Litestar", verbose: "bool") -> None:
 
 
 @vite_group.command(
-    name="generate-routes",
-    help="Generate a JSON file with the route configuration",
+    name="export-routes",
+    help="Export route metadata for type-safe routing.",
 )
 @option(
     "--output",
-    help="output file path",
+    help="Output file path",
     type=ClickPath(dir_okay=False, path_type=Path),
-    default=Path("routes.json"),
-    show_default=True,
+    default=None,
+    show_default=False,
+)
+@option(
+    "--only",
+    help="Only include routes matching these patterns (comma-separated)",
+    type=str,
+    default=None,
+)
+@option(
+    "--except",
+    "exclude",
+    help="Exclude routes matching these patterns (comma-separated)",
+    type=str,
+    default=None,
+)
+@option(
+    "--include-components",
+    help="Include Inertia component names",
+    type=bool,
+    default=True,
+    is_flag=True,
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
-def generate_js_routes(app: "Litestar", output: "Path", verbose: "bool") -> None:
-    """Run vite serve.
+def export_routes(
+    app: "Litestar",
+    output: "Optional[Path]",
+    only: "Optional[str]",
+    exclude: "Optional[str]",
+    include_components: "bool",
+    verbose: "bool",
+) -> None:
+    """Export route metadata for type-safe routing.
 
     Args:
         app: The Litestar application instance.
-        output: The path to the output file.
+        output: The path to the output file. Uses TypeGenConfig if not provided.
+        only: Comma-separated list of route patterns to include.
+        exclude: Comma-separated list of route patterns to exclude.
+        include_components: Include Inertia component names in output.
         verbose: Whether to enable verbose output.
 
     Raises:
@@ -285,28 +315,157 @@ def generate_js_routes(app: "Litestar", output: "Path", verbose: "bool") -> None
     """
     import msgspec
     from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
-    from litestar.serialization import encode_json, get_serializer
 
-    from litestar_vite.plugin import VitePlugin, set_environment
+    from litestar_vite.codegen import generate_routes_json
+    from litestar_vite.config import TypeGenConfig
+    from litestar_vite.plugin import VitePlugin
 
     if verbose:
         app.debug = True
-    serializer = get_serializer(app.type_encoders)
+
     plugin = app.plugins.get(VitePlugin)
-    if plugin.config.set_environment:
-        set_environment(config=plugin.config)
-    content = msgspec.json.format(
-        encode_json(app.openapi_schema.to_schema(), serializer=serializer),
-        indent=4,
+    config = plugin.config
+
+    # Determine output path
+    if output is None:
+        if isinstance(config.types, TypeGenConfig) and config.types.enabled:
+            output = config.types.routes_path
+        else:
+            output = Path("routes.json")
+
+    console.rule(f"[yellow]Exporting routes to {output}[/]", align="left")
+
+    # Parse filter lists
+    only_list = [p.strip() for p in only.split(",")] if only else None
+    exclude_list = [p.strip() for p in exclude.split(",")] if exclude else None
+
+    # Generate routes JSON
+    routes_data = generate_routes_json(
+        app,
+        only=only_list,
+        exclude=exclude_list,
+        include_components=include_components,
     )
 
     try:
+        content = msgspec.json.format(
+            msgspec.json.encode(routes_data),
+            indent=2,
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(content)
+        console.print(f"[green]✓ Routes exported to {output}[/]")
+        console.print(f"[dim]  {len(routes_data.get('routes', {}))} routes exported[/]")
     except OSError as e:  # pragma: no cover
-        msg = f"failed to write schema to path {output}"
+        msg = f"Failed to write routes to path {output}"
         raise LitestarCLIException(msg) from e
 
-    console.print("[yellow]Vite process stopped.[/]")
+
+@vite_group.command(
+    name="generate-types",
+    help="Generate TypeScript types from OpenAPI schema and routes.",
+)
+@option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
+def generate_types(app: "Litestar", verbose: "bool") -> None:
+    """Generate TypeScript types from OpenAPI schema and routes.
+
+    This command:
+    1. Exports the OpenAPI schema (uses litestar's built-in schema generation)
+    2. Exports route metadata
+    3. Runs @hey-api/openapi-ts to generate TypeScript types
+    4. Generates route helper functions
+
+    Args:
+        app: The Litestar application instance.
+        verbose: Whether to enable verbose output.
+
+    Raises:
+        LitestarCLIException: If type generation fails.
+    """
+    import subprocess
+
+    import msgspec
+    from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
+    from litestar.serialization import encode_json, get_serializer
+
+    from litestar_vite.codegen import generate_routes_json
+    from litestar_vite.config import TypeGenConfig
+    from litestar_vite.plugin import VitePlugin
+
+    if verbose:
+        app.debug = True
+
+    plugin = app.plugins.get(VitePlugin)
+    config = plugin.config
+
+    # Check if types are enabled
+    if not isinstance(config.types, TypeGenConfig) or not config.types.enabled:
+        console.print("[yellow]Type generation is not enabled in ViteConfig[/]")
+        console.print("[dim]Set types=True or types=TypeGenConfig(enabled=True) in ViteConfig[/]")
+        return
+
+    console.rule("[yellow]Generating TypeScript types[/]", align="left")
+
+    # Step 1: Export OpenAPI schema directly
+    console.print("[dim]1. Exporting OpenAPI schema...[/]")
+    try:
+        serializer = get_serializer(app.type_encoders)
+        schema_dict = app.openapi_schema.to_schema()
+        schema_content = msgspec.json.format(
+            encode_json(schema_dict, serializer=serializer),
+            indent=2,
+        )
+        config.types.openapi_path.parent.mkdir(parents=True, exist_ok=True)
+        config.types.openapi_path.write_bytes(schema_content)
+        console.print(f"[green]✓ Schema exported to {config.types.openapi_path}[/]")
+    except OSError as e:
+        msg = f"Failed to export OpenAPI schema: {e}"
+        raise LitestarCLIException(msg) from e
+
+    # Step 2: Export routes
+    console.print("[dim]2. Exporting route metadata...[/]")
+    try:
+        routes_data = generate_routes_json(app, include_components=True)
+        routes_content = msgspec.json.format(
+            msgspec.json.encode(routes_data),
+            indent=2,
+        )
+        config.types.routes_path.parent.mkdir(parents=True, exist_ok=True)
+        config.types.routes_path.write_bytes(routes_content)
+        console.print(f"[green]✓ Routes exported to {config.types.routes_path}[/]")
+    except OSError as e:
+        msg = f"Failed to export routes: {e}"
+        raise LitestarCLIException(msg) from e
+
+    # Step 3: Run @hey-api/openapi-ts
+    console.print("[dim]3. Running @hey-api/openapi-ts...[/]")
+
+    try:
+        # Check if @hey-api/openapi-ts is installed
+        check_cmd = ["npx", "@hey-api/openapi-ts", "--version"]
+        subprocess.run(check_cmd, check=True, capture_output=True, cwd=config.root_dir)
+
+        # Run the type generation
+        openapi_cmd = [
+            "npx",
+            "@hey-api/openapi-ts",
+            "-i",
+            str(config.types.openapi_path),
+            "-o",
+            str(config.types.output),
+        ]
+        if config.types.generate_zod:
+            openapi_cmd.extend(["--plugins", "@hey-api/schemas", "@hey-api/types"])
+
+        subprocess.run(openapi_cmd, check=True, cwd=config.root_dir)
+        console.print(f"[green]✓ Types generated in {config.types.output}[/]")
+    except subprocess.CalledProcessError as e:
+        console.print("[yellow]! @hey-api/openapi-ts failed - install it with:[/]")
+        console.print("[dim]  npm install -D @hey-api/openapi-ts[/]")
+        if verbose:
+            console.print(f"[dim]Error: {e!s}[/]")
+    except FileNotFoundError:
+        console.print("[yellow]! npx not found - ensure Node.js is installed[/]")
 
 
 @vite_group.command(

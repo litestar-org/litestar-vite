@@ -249,8 +249,15 @@ class ViteConfig:
     - types=True: Enable type generation with defaults
     - inertia=True: Enable Inertia.js with defaults
 
+    Mode auto-detection:
+    - If mode is not explicitly set:
+      - Checks for index.html in resource_dir → SPA mode
+      - Checks if Jinja2 template engine is configured → Template mode
+      - Otherwise defaults to SPA mode
+    - Explicit mode parameter overrides auto-detection
+
     Attributes:
-        mode: Serving mode - "spa", "template", or "htmx".
+        mode: Serving mode - "spa", "template", or "htmx". Auto-detected if not set.
         paths: File system paths configuration.
         runtime: Runtime execution settings.
         types: Type generation settings (True enables with defaults).
@@ -259,7 +266,7 @@ class ViteConfig:
         base_url: Base URL for production assets (CDN support).
     """
 
-    mode: Literal["spa", "template", "htmx"] = "spa"
+    mode: Literal["spa", "template", "htmx"] | None = None
     paths: PathConfig = field(default_factory=PathConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     types: TypeGenConfig | bool = False
@@ -269,6 +276,7 @@ class ViteConfig:
 
     # Internal: resolved executor instance
     _executor_instance: "JSExecutor | None" = field(default=None, repr=False)
+    _mode_auto_detected: bool = field(default=False, repr=False)
 
     def __post_init__(self) -> None:
         """Normalize configurations and apply shortcuts."""
@@ -286,6 +294,66 @@ class ViteConfig:
         # Apply dev_mode shortcut
         if self.dev_mode:
             self.runtime.dev_mode = True
+
+        # Auto-detect mode if not explicitly set
+        if self.mode is None:
+            self.mode = self._detect_mode()
+            self._mode_auto_detected = True
+
+    def _detect_mode(self) -> Literal["spa", "template", "htmx"]:
+        """Auto-detect the serving mode based on project structure.
+
+        Detection order:
+        1. Check for index.html in resource_dir → SPA
+        2. Check if Jinja2 is installed and likely to be used → Template
+        3. Default to SPA
+
+        Returns:
+            The detected mode.
+        """
+        # Check for index.html in resource directory (SPA indicator)
+        resource_dir = (
+            self.paths.resource_dir if isinstance(self.paths.resource_dir, Path) else Path(self.paths.resource_dir)
+        )
+        index_html_path = resource_dir / "index.html"
+        if index_html_path.exists():
+            return "spa"
+
+        # If Jinja2 is installed, default to template mode
+        # (User may be using Jinja templates for server-rendered pages)
+        if JINJA_INSTALLED:
+            return "template"
+
+        # Default to SPA
+        return "spa"
+
+    def validate_mode(self) -> None:
+        """Validate the mode configuration against the project structure.
+
+        Raises:
+            ValueError: If the configuration is invalid for the selected mode.
+        """
+        if self.mode == "spa":
+            # SPA mode validation
+            resource_dir = (
+                self.paths.resource_dir if isinstance(self.paths.resource_dir, Path) else Path(self.paths.resource_dir)
+            )
+            index_html_path = resource_dir / "index.html"
+            if not self.runtime.dev_mode and not index_html_path.exists():
+                msg = (
+                    f"SPA mode requires index.html at {index_html_path}. "
+                    "Either create the file, run in dev mode, or switch to template mode."
+                )
+                raise ValueError(msg)
+
+        elif self.mode in ("template", "htmx"):
+            # Template mode should have Jinja2 available
+            if not JINJA_INSTALLED:
+                msg = (
+                    f"{self.mode} mode requires Jinja2 to be installed. "
+                    "Install it with: pip install litestar-vite[jinja]"
+                )
+                raise ValueError(msg)
 
     @property
     def executor(self) -> "JSExecutor":

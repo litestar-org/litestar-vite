@@ -30,6 +30,7 @@ For more advanced configuration:
 """
 
 from litestar_vite import inertia
+from litestar_vite.codegen import RouteMetadata, extract_route_metadata, generate_routes_json
 from litestar_vite.config import (
     InertiaConfig,
     PathConfig,
@@ -37,19 +38,27 @@ from litestar_vite.config import (
     TypeGenConfig,
     ViteConfig,
 )
+from litestar_vite.html_transform import HtmlTransformer
 from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.plugin import VitePlugin
+from litestar_vite.spa import ViteSPAHandler
 
 __all__ = (
+    "HtmlTransformer",
     "InertiaConfig",
     # Config components
     "PathConfig",
+    "RouteMetadata",
     "RuntimeConfig",
     "TypeGenConfig",
     "ViteAssetLoader",
     "ViteConfig",
     # Main exports
     "VitePlugin",
+    "ViteSPAHandler",
+    # Codegen utilities
+    "extract_route_metadata",
+    "generate_routes_json",
     # Submodule
     "inertia",
 )

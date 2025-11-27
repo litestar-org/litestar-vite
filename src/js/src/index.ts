@@ -6,7 +6,43 @@ import colors from "picocolors"
 import { type ConfigEnv, type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer, loadEnv } from "vite"
 import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-reload"
 
-interface PluginConfig {
+/**
+ * Configuration for TypeScript type generation.
+ */
+export interface TypesConfig {
+  /**
+   * Enable type generation.
+   *
+   * @default false
+   */
+  enabled?: boolean
+  /**
+   * Path to output generated TypeScript types.
+   *
+   * @default 'src/types/api'
+   */
+  output?: string
+  /**
+   * Path where the OpenAPI schema will be exported.
+   *
+   * @default 'openapi.json'
+   */
+  openapiPath?: string
+  /**
+   * Path where route metadata will be exported.
+   *
+   * @default 'routes.json'
+   */
+  routesPath?: string
+  /**
+   * Generate Zod schemas in addition to TypeScript types.
+   *
+   * @default false
+   */
+  generateZod?: boolean
+}
+
+export interface PluginConfig {
   /**
    * The path or paths of the entry points to compile.
    */
@@ -73,6 +109,34 @@ interface PluginConfig {
    * Transform the code while serving.
    */
   transformOnServe?: (code: string, url: DevServerUrl) => string
+  /**
+   * Enable and configure TypeScript type generation.
+   *
+   * When set to `true`, enables type generation with default settings.
+   * When set to a TypesConfig object, enables type generation with custom settings.
+   *
+   * Type generation creates TypeScript types from your Litestar OpenAPI schema
+   * and route metadata using @hey-api/openapi-ts.
+   *
+   * @example
+   * ```ts
+   * // Simple enable
+   * litestar({ input: 'src/main.ts', types: true })
+   *
+   * // With custom config
+   * litestar({
+   *   input: 'src/main.ts',
+   *   types: {
+   *     enabled: true,
+   *     output: 'src/api/types',
+   *     generateZod: true
+   *   }
+   * })
+   * ```
+   *
+   * @default false
+   */
+  types?: boolean | TypesConfig
 }
 
 interface RefreshConfig {
@@ -413,6 +477,26 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Required
     resolvedConfig.refresh = [{ paths: refreshPaths }]
   }
 
+  // Resolve types configuration
+  let typesConfig: Required<TypesConfig> | false = false
+  if (resolvedConfig.types === true) {
+    typesConfig = {
+      enabled: true,
+      output: "src/types/api",
+      openapiPath: "openapi.json",
+      routesPath: "routes.json",
+      generateZod: false,
+    }
+  } else if (typeof resolvedConfig.types === "object" && resolvedConfig.types !== null) {
+    typesConfig = {
+      enabled: resolvedConfig.types.enabled ?? true,
+      output: resolvedConfig.types.output ?? "src/types/api",
+      openapiPath: resolvedConfig.types.openapiPath ?? "openapi.json",
+      routesPath: resolvedConfig.types.routesPath ?? "routes.json",
+      generateZod: resolvedConfig.types.generateZod ?? false,
+    }
+  }
+
   return {
     input: resolvedConfig.input,
     assetUrl: resolvedConfig.assetUrl ?? "static",
@@ -425,6 +509,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Required
     detectTls: resolvedConfig.detectTls ?? false,
     autoDetectIndex: resolvedConfig.autoDetectIndex ?? true,
     transformOnServe: resolvedConfig.transformOnServe ?? ((code) => code),
+    types: typesConfig,
   }
 }
 

@@ -1,5 +1,7 @@
 from pathlib import Path, PosixPath
 
+import pytest
+
 from litestar_vite.config import (
     BunViteConfig,
     DenoViteConfig,
@@ -119,3 +121,101 @@ def test_dev_mode_shortcut() -> None:
     config = ViteConfig(dev_mode=True)
     assert config.runtime.dev_mode is True
     assert config.is_dev_mode is True
+
+
+def test_mode_auto_detection_spa_with_index_html(tmp_path: Path) -> None:
+    """Test mode auto-detection when index.html exists."""
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<html></html>")
+
+    config = ViteConfig(paths=PathConfig(resource_dir=resource_dir))
+
+    assert config.mode == "spa"
+    assert config._mode_auto_detected is True
+
+
+def test_mode_auto_detection_template_with_jinja(tmp_path: Path) -> None:
+    """Test mode auto-detection defaults to template when Jinja2 installed."""
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    # No index.html
+
+    config = ViteConfig(paths=PathConfig(resource_dir=resource_dir))
+
+    # Should default to template if Jinja2 is available, otherwise spa
+    from litestar_vite.config import JINJA_INSTALLED
+
+    if JINJA_INSTALLED:
+        assert config.mode == "template"
+    else:
+        assert config.mode == "spa"
+    assert config._mode_auto_detected is True
+
+
+def test_mode_explicit_overrides_detection(tmp_path: Path) -> None:
+    """Test explicit mode overrides auto-detection."""
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<html></html>")
+
+    # Explicitly set to template even though index.html exists
+    config = ViteConfig(mode="template", paths=PathConfig(resource_dir=resource_dir))
+
+    assert config.mode == "template"
+    assert config._mode_auto_detected is False
+
+
+def test_validate_mode_spa_missing_index_html(tmp_path: Path) -> None:
+    """Test validation fails for SPA mode without index.html in production."""
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=resource_dir),
+        dev_mode=False,
+    )
+
+    with pytest.raises(ValueError, match=r"SPA mode requires index\.html"):
+        config.validate_mode()
+
+
+def test_validate_mode_spa_dev_mode_allows_missing_index(tmp_path: Path) -> None:
+    """Test validation passes for SPA mode in dev mode even without index.html."""
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=resource_dir),
+        dev_mode=True,
+    )
+
+    # Should not raise
+    config.validate_mode()
+
+
+def test_validate_mode_template_requires_jinja(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test validation fails for template mode without Jinja2."""
+    # Temporarily disable Jinja2
+    import litestar_vite.config
+
+    monkeypatch.setattr(litestar_vite.config, "JINJA_INSTALLED", False)
+
+    config = ViteConfig(mode="template")
+
+    with pytest.raises(ValueError, match="requires Jinja2"):
+        config.validate_mode()
+
+
+def test_mode_detection_prefers_index_html_over_jinja(tmp_path: Path) -> None:
+    """Test that index.html presence takes priority in mode detection."""
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<html></html>")
+
+    config = ViteConfig(paths=PathConfig(resource_dir=resource_dir))
+
+    # Even if Jinja2 is installed, should prefer SPA mode due to index.html
+    assert config.mode == "spa"
