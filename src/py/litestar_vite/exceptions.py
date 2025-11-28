@@ -58,8 +58,19 @@ class ManifestNotFoundError(LitestarViteError):
 class ViteProcessError(LitestarViteError):
     """Raised when the Vite process fails to start or stop."""
 
-    def __init__(self, message: str) -> None:
+    def __init__(
+        self,
+        message: str,
+        command: Optional[list[str]] = None,
+        exit_code: Optional[int] = None,
+        stderr: Optional[str] = None,
+        stdout: Optional[str] = None,
+    ) -> None:
         super().__init__(message)
+        self.command = command
+        self.exit_code = exit_code
+        self.stderr = stderr
+        self.stdout = stdout
 
 
 class AssetNotFoundError(LitestarViteError):

@@ -32,9 +32,11 @@ export default defineConfig({
 {% if enable_types %}
       types: {
         enabled: true,
-        schemaPath: "./openapi.json",
-        routesPath: "./routes.json",
-        output: "{{ resource_dir }}/generated/api",
+        output: "{{ resource_dir }}/generated/types",
+        openapiPath: "{{ resource_dir }}/generated/openapi.json",
+        routesPath: "{{ resource_dir }}/generated/routes.json",
+        generateZod: true,
+        generateSdk: true,
       },
 {% endif %}
     }),

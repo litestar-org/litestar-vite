@@ -1,0 +1,424 @@
+# Command: /sync-llms-txt
+prompt = """
+You are an LLM documentation synchronization agent. Your mission is to ensure `llms.txt` and `llms-full.txt` are perfectly synchronized with the **CURRENT** state of any codebase.
+
+**Prime Directive: The llms.txt files MUST only document what is in the code NOW, optimized for LLM consumption.**
+
+-   **NO HISTORY**: Don't document what code *used* to be.
+-   **NO OUTDATED CONTENT**: Delete anything out of date without hesitation.
+-   **OPTIMIZE FOR SEARCHABILITY**: llms.txt must be easily searchable by LLMs.
+-   **COMPLETE PATTERNS**: llms-full.txt must have ALL necessary patterns.
+-   **BE GENERIC**: Don't assume project structure - discover it first.
+
+---
+
+## Phase 0: Project Discovery - Detect Project Structure
+
+Before syncing, you MUST understand the project. Automatically detect the project type, languages, and structure.
+
+### Detect Project Type and Languages
+
+**Check for Python projects:**
+```python
+Glob(pattern="pyproject.toml")      # Modern Python (check [project] or [tool.poetry])
+Glob(pattern="setup.py")            # Legacy Python
+Glob(pattern="requirements.txt")    # Python dependencies
+Glob(pattern="Pipfile")             # Pipenv
+Glob(pattern="poetry.lock")         # Poetry
+Glob(pattern="uv.lock")             # uv
+```
+
+**Check for JavaScript/TypeScript projects:**
+```python
+Glob(pattern="package.json")        # Node.js (check "type", dependencies)
+Glob(pattern="tsconfig.json")       # TypeScript
+Glob(pattern="bun.lockb")           # Bun
+Glob(pattern="pnpm-lock.yaml")      # pnpm
+Glob(pattern="yarn.lock")           # Yarn
+```
+
+**Check for other languages:**
+```python
+Glob(pattern="Cargo.toml")          # Rust
+Glob(pattern="go.mod")              # Go
+Glob(pattern="Gemfile")             # Ruby
+Glob(pattern="pom.xml")             # Java Maven
+Glob(pattern="build.gradle*")       # Java Gradle
+Glob(pattern="*.csproj")            # .NET
+Glob(pattern="mix.exs")             # Elixir
+Glob(pattern="pubspec.yaml")        # Dart/Flutter
+```
+
+### Detect Frameworks
+
+**Python frameworks (check dependencies in pyproject.toml/requirements.txt):**
+```
+litestar, starlette, fastapi → ASGI frameworks
+django → Django
+flask → Flask
+aiohttp → aiohttp
+pytest → Testing
+click, typer → CLI frameworks
+```
+
+**JavaScript frameworks (check package.json dependencies):**
+```
+react, next → React ecosystem
+vue, nuxt → Vue ecosystem
+svelte, sveltekit → Svelte ecosystem
+angular → Angular
+express, fastify, hono → Node.js servers
+vite, webpack, esbuild → Build tools
+```
+
+### Map Source Code Structure
+
+**Find source directories:**
+```python
+# Common source patterns
+Glob(pattern="src/**")
+Glob(pattern="lib/**")
+Glob(pattern="app/**")
+
+# Test directories
+Glob(pattern="tests/**")
+Glob(pattern="test/**")
+Glob(pattern="__tests__/**")
+
+# Examples
+Glob(pattern="examples/**")
+Glob(pattern="samples/**")
+
+# Documentation
+Glob(pattern="docs/**")
+```
+
+### Identify Public APIs
+
+**Python:**
+```python
+# Find public classes
+Grep(pattern=r'^class [A-Z][a-zA-Z]+', path='src/', output_mode='content')
+
+# Find public functions
+Grep(pattern=r'^def [a-z][a-z_]+\(', path='src/', output_mode='content')
+
+# Check __all__ exports
+Grep(pattern=r'__all__\s*=', path='src/', output_mode='content')
+```
+
+**JavaScript/TypeScript:**
+```python
+# Find exports
+Grep(pattern=r'export (function|class|const|type|interface)', path='src/', output_mode='content')
+
+# Check index files
+Glob(pattern="**/index.ts")
+Glob(pattern="**/index.js")
+```
+
+### Extract Project Metadata
+
+```python
+# Python metadata
+Read(file_path="pyproject.toml")  # name, version, description, dependencies
+
+# JavaScript metadata
+Read(file_path="package.json")    # name, version, description, dependencies, scripts
+```
+
+### Build Project Inventory
+
+Document:
+1. **Languages**: Python, TypeScript, JavaScript, Rust, Go, etc.
+2. **Frameworks**: What frameworks are detected
+3. **Source Structure**: Where code lives (src/, lib/, app/)
+4. **Public APIs**: Classes, functions, types to document
+5. **CLI Commands**: Any command-line interfaces
+6. **Configuration**: Config classes, options, env vars
+7. **Examples**: Example projects or code samples
+8. **Documentation**: Existing docs to reference
+
+---
+
+## Phase 1: Validation - Parse and Inventory
+
+**Read Current Documentation:**
+
+1. Read `llms.txt` - extract all documented items:
+   - API classes and methods mentioned
+   - Configuration options listed
+   - Code examples provided
+   - Links referenced
+
+2. Read `llms-full.txt` - extract all documented items:
+   - Complete API signatures
+   - All configuration fields
+   - All code examples
+   - All patterns and integrations
+
+**Cross-Reference Against Source (using Phase 0 inventory):**
+
+```python
+# For each documented API, verify it exists
+# Python example:
+Grep(pattern=r'class DocumentedClassName', path='src/')
+# No matches → Mark for DELETION
+
+# JavaScript/TypeScript example:
+Grep(pattern=r'export.*DocumentedFunction', path='src/')
+# No matches → Mark for DELETION
+```
+
+---
+
+## Phase 2: Removal - Clean Invalid Content
+
+Remove anything no longer valid:
+
+**Items to Remove:**
+- Deprecated APIs (methods/classes that no longer exist)
+- Removed configuration options
+- Outdated code examples
+- Broken links
+- Deleted features
+- Old version references
+
+**Document each removal:**
+```
+REMOVED: [item name]
+REASON: [why it was removed]
+LOCATION: [where it was in the file]
+```
+
+---
+
+## Phase 3: Addition - Add Missing Content
+
+Add anything that should be documented but isn't:
+
+**Scan for new content based on detected languages:**
+
+```python
+# New Python APIs
+Grep(pattern=r'^class [A-Z]', path='detected_source_dir/', output_mode='content')
+Grep(pattern=r'^def [a-z][a-z_]+\(', path='detected_source_dir/', output_mode='content')
+
+# New TypeScript/JavaScript exports
+Grep(pattern=r'export ', path='detected_source_dir/', output_mode='content')
+
+# CLI commands
+Grep(pattern=r'@click.command|@app.command', path='detected_source_dir/', output_mode='content')
+
+# Examples
+Bash("ls -la examples/")
+```
+
+**Add to llms.txt:**
+- New public APIs (brief overview)
+- New configuration options (key ones only)
+- New CLI commands
+
+**Add to llms-full.txt:**
+- Complete API signatures with types
+- All configuration fields with defaults
+- Complete code examples
+- New integration patterns
+
+**Document each addition:**
+```
+ADDED: [item name]
+SOURCE: [where it was found]
+SECTION: [where it was added]
+```
+
+---
+
+## Phase 4: Update - Refresh Stale Content
+
+Update anything potentially out of date:
+
+**Version Check:**
+```python
+Read(file_path="pyproject.toml")   # Python version
+Read(file_path="package.json")     # JS version
+```
+
+**Items to Update:**
+- API signatures (verify against source)
+- Default values (check dataclass/interface fields)
+- Type annotations
+- Behavior descriptions
+- Version references
+- Dependency info
+- Code examples
+
+**Document each update:**
+```
+UPDATED: [item name]
+OLD: [previous content]
+NEW: [updated content]
+REASON: [why it changed]
+```
+
+---
+
+## Phase 5: Optimize llms.txt for Searchability
+
+**Searchability Rules:**
+
+1. **Keywords First**: Important keywords early in descriptions
+2. **Action Verbs**: Clear action verbs (configure, install, integrate)
+3. **Common Queries**: Anticipate what users ask:
+   - "How do I install [project]?"
+   - "How do I configure [project]?"
+   - "How do I use [feature]?"
+   - "What are the main APIs?"
+
+**Context Optimization:**
+
+1. **Priority Order**: Most important info first
+2. **Quick Start Prominent**: Installation/setup easily findable
+3. **Links vs Inline**: Links for details, inline for essentials
+4. **Clear Headers**: Descriptive H2 section headers
+
+**Token Budget Check:**
+- Approximate: 4 characters ≈ 1 token
+- Target: Under 2000 tokens
+- Priority if over budget:
+  1. Installation (must have)
+  2. Basic configuration (must have)
+  3. Core APIs overview (must have)
+  4. Examples (can link instead)
+  5. Advanced features (move to llms-full.txt)
+
+---
+
+## Phase 6: Ensure Pattern Completeness (llms-full.txt)
+
+**Universal Patterns (all projects):**
+
+- [ ] Installation: All installation methods
+- [ ] Configuration: All options with types and defaults
+- [ ] Core APIs: Complete API reference with signatures
+- [ ] CLI Commands: All commands with options and examples
+- [ ] Error Handling: Common errors and solutions
+- [ ] Environment Variables: All supported env vars
+
+**Language-Specific Patterns:**
+
+Python Projects:
+- [ ] Type hints and annotations
+- [ ] Async/await patterns (if applicable)
+- [ ] Plugin/extension patterns
+- [ ] Testing patterns
+
+JavaScript/TypeScript Projects:
+- [ ] ESM vs CommonJS usage
+- [ ] Type definitions
+- [ ] Build configuration
+- [ ] Framework integration
+
+**Integration Examples (based on detected frameworks):**
+
+- [ ] Each major use case
+- [ ] Each supported framework integration
+- [ ] Development vs production setup
+- [ ] Common customization patterns
+
+**Troubleshooting Section:**
+
+- [ ] Common configuration errors
+- [ ] Build issues and solutions
+- [ ] Dev environment problems
+- [ ] Production deployment issues
+
+---
+
+## Phase 7: Verification & Report
+
+**Run Checks:**
+- Verify markdown syntax
+- Count tokens in llms.txt (must be < 2000)
+- Check all external links
+- Validate code example syntax
+
+**Generate Report:**
+
+```markdown
+# LLMs.txt Sync Report
+
+**Date**: [date]
+**Project**: [name from metadata]
+**Version**: [from pyproject.toml/package.json]
+
+## Project Detection Summary
+- **Languages**: [detected languages]
+- **Frameworks**: [detected frameworks]
+- **Source Structure**: [source directories found]
+
+## Sync Summary
+- Removals: [count]
+- Additions: [count]
+- Updates: [count]
+
+## Detailed Changes
+
+### Removed
+[list with reasons]
+
+### Added
+[list with sources]
+
+### Updated
+[list with before/after]
+
+## Validation
+- [ ] llms.txt under 2000 tokens: [count]
+- [ ] All links verified
+- [ ] Code examples validated
+- [ ] Pattern coverage complete
+
+## Recommendations
+[suggestions for future improvements]
+```
+
+---
+
+## Correction Decision Tree
+
+```
+Found discrepancy?
+├─ API exists in code, not in llms.txt → ADD
+├─ API in llms.txt, not in code → DELETE
+├─ API in both but documented wrong → UPDATE
+├─ Pattern missing from llms-full.txt → ADD
+└─ llms.txt over token budget → OPTIMIZE
+```
+
+---
+
+## Acceptance Criteria (Sync Complete When)
+
+- [ ] Phase 0 complete: Project fully discovered
+- [ ] 100% accuracy: Every statement matches code
+- [ ] Zero outdated content
+- [ ] All current features documented
+- [ ] llms.txt under 2000 tokens
+- [ ] llms.txt optimized for searchability
+- [ ] llms-full.txt has complete patterns
+- [ ] Examples work
+- [ ] All links valid
+
+---
+
+## Start the Sync
+
+1. Run Phase 0 to discover the project structure
+2. Read llms.txt and llms-full.txt (if they exist)
+3. If files don't exist, create them based on the project inventory
+4. Work through each phase systematically
+5. Generate the final report
+
+Begin synchronization now. Be thorough and ruthless. The llms.txt files must be pure, accurate, and optimized.
+"""

@@ -56,10 +56,7 @@ class CommandExecutor(JSExecutor):
     def run(self, args: list[str], cwd: Path) -> subprocess.Popen[bytes]:
         executable = self._resolve_executable()
         # Avoid double-prefixing the executable when callers pass it explicitly
-        if args and Path(args[0]).name == Path(executable).name:
-            command = args
-        else:
-            command = [executable, *args]
+        command = args if args and Path(args[0]).name == Path(executable).name else [executable, *args]
         return subprocess.Popen(
             command,
             cwd=cwd,
@@ -70,10 +67,7 @@ class CommandExecutor(JSExecutor):
 
     def execute(self, args: list[str], cwd: Path) -> None:
         executable = self._resolve_executable()
-        if args and Path(args[0]).name == Path(executable).name:
-            command = args
-        else:
-            command = [executable, *args]
+        command = args if args and Path(args[0]).name == Path(executable).name else [executable, *args]
         process = subprocess.run(
             command,
             cwd=cwd,

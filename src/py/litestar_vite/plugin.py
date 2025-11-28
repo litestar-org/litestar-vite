@@ -31,11 +31,11 @@ from typing import TYPE_CHECKING, Any, Optional, Union, cast
 import anyio
 import httpx  # used in proxy middleware health and HTTP forwarding
 import websockets  # used in proxy middleware WS forwarding
-from rich import print as rich_print
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 from litestar.middleware import DefineMiddleware
 from litestar.plugins import CLIPlugin, InitPluginProtocol
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
+from rich import print as rich_print
 
 from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES
 from litestar_vite.exceptions import ViteProcessError
@@ -175,7 +175,8 @@ class ViteProxyMiddleware:
         scope_dict = cast("dict[str, Any]", scope)
         path = scope_dict.get("path", "")
         should = self._should_proxy(path)
-        rich_print(f"[vite-proxy] path={path!s} should_proxy={should}")
+        if os.environ.get("VITE_PROXY_DEBUG"):
+            rich_print(f"[vite-proxy] path={path!s} should_proxy={should}")
         if scope["type"] == "http" and should:
             await self._proxy_http(scope_dict, receive, send)
             return
@@ -188,7 +189,7 @@ class ViteProxyMiddleware:
         # Litestar may hand us percent-encoded paths (e.g. /%40vite/client).
         try:
             from urllib.parse import unquote
-        except Exception:  # pragma: no cover - extremely small surface
+        except ImportError:  # pragma: no cover - extremely small surface
             return path.startswith(self._proxy_path_prefixes)
 
         decoded = unquote(path)
@@ -220,20 +221,24 @@ class ViteProxyMiddleware:
             try:
                 upstream_resp = await client.request(method, url, headers=headers, content=body, timeout=10.0)
             except httpx.HTTPError as exc:  # pragma: no cover - network failure path
-                await send({
-                    "type": "http.response.start",
-                    "status": 502,
-                    "headers": [(b"content-type", b"text/plain")],
-                })
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 502,
+                        "headers": [(b"content-type", b"text/plain")],
+                    }
+                )
                 await send({"type": "http.response.body", "body": str(exc).encode()})
                 return
 
         response_headers = [(k.encode(), v.encode()) for k, v in upstream_resp.headers.items()]
-        await send({
-            "type": "http.response.start",
-            "status": upstream_resp.status_code,
-            "headers": response_headers,
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": upstream_resp.status_code,
+                "headers": response_headers,
+            }
+        )
         await send({"type": "http.response.body", "body": upstream_resp.content})
 
     async def _proxy_ws(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
@@ -350,11 +355,20 @@ class ViteProcess:
                             f"[red]Command:[/] {' '.join(command)}\n"
                             f"[red]Exit code:[/] {self.process.returncode}\n"
                             f"[red]Stdout:[/]\n{out_str or '<empty>'}\n"
-                            f"[red]Stderr:[/]\n{err_str or '<empty>'}"
+                            f"[red]Stderr:[/]\n{err_str or '<empty>'}\n"
+                            "[yellow]Hint: Run `litestar assets doctor` to diagnose configuration issues.[/]"
                         )
                         msg = f"Vite process failed to start (exit {self.process.returncode})"
-                        raise ViteProcessError(msg)
+                        raise ViteProcessError(  # noqa: TRY301
+                            msg,
+                            command=command,
+                            exit_code=self.process.returncode,
+                            stderr=err_str,
+                            stdout=out_str,
+                        )
         except Exception as e:
+            if isinstance(e, ViteProcessError):
+                raise
             console.print(f"[red]Failed to start Vite process: {e!s}[/]")
             msg = f"Failed to start Vite process: {e!s}"
             raise ViteProcessError(msg) from e
@@ -762,7 +776,6 @@ def _normalize_proxy_prefixes(
     bundle_dir: "Optional[Path]" = None,
     root_dir: "Optional[Path]" = None,
 ) -> tuple[str, ...]:
-
     def _normalize_prefix(prefix: str) -> str:
         if not prefix.startswith("/"):
             prefix = f"/{prefix}"
@@ -789,7 +802,7 @@ def _normalize_proxy_prefixes(
 
     # Remove duplicates while preserving order
     seen: set[str] = set()
-    unique = []
+    unique: list[str] = []
     for p in prefixes:
         if p not in seen:
             unique.append(p)

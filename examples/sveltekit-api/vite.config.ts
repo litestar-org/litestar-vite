@@ -1,5 +1,5 @@
-import tailwindcss from "@tailwindcss/vite"
 import { sveltekit } from "@sveltejs/kit/vite"
+import tailwindcss from "@tailwindcss/vite"
 import { litestarSvelteKit } from "litestar-vite-plugin/sveltekit"
 import { defineConfig } from "vite"
 

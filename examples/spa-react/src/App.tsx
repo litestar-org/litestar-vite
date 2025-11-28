@@ -22,10 +22,7 @@ function App() {
 
   useEffect(() => {
     async function loadData() {
-      const [summaryRes, booksRes] = await Promise.all([
-        fetch("/api/summary"),
-        fetch("/api/books"),
-      ])
+      const [summaryRes, booksRes] = await Promise.all([fetch("/api/summary"), fetch("/api/books")])
       setSummary(await summaryRes.json())
       setBooks(await booksRes.json())
     }
@@ -63,7 +60,9 @@ function App() {
           <p className="text-slate-600">Featured book</p>
           <article className="border border-slate-200 rounded-xl p-4 bg-gradient-to-b from-white to-slate-50">
             <h3 className="text-lg font-semibold text-[#202235]">{featured.title}</h3>
-            <p className="text-slate-600 mt-1">{featured.author} • {featured.year}</p>
+            <p className="text-slate-600 mt-1">
+              {featured.author} • {featured.year}
+            </p>
             <p className="text-[#202235] text-sm mt-1">{featured.tags.join(" · ")}</p>
           </article>
         </section>
@@ -72,12 +71,11 @@ function App() {
       {view === "books" && (
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {books.map((book) => (
-            <article
-              key={book.id}
-              className="border border-slate-200 rounded-xl p-4 bg-gradient-to-b from-white to-slate-50 shadow-sm"
-            >
+            <article key={book.id} className="border border-slate-200 rounded-xl p-4 bg-gradient-to-b from-white to-slate-50 shadow-sm">
               <h3 className="text-lg font-semibold text-[#202235]">{book.title}</h3>
-              <p className="text-slate-600 mt-1">{book.author} • {book.year}</p>
+              <p className="text-slate-600 mt-1">
+                {book.author} • {book.year}
+              </p>
               <p className="text-[#202235] text-sm mt-1">{book.tags.join(" · ")}</p>
             </article>
           ))}

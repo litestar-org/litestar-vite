@@ -18,13 +18,10 @@ type Summary = {
 
 let summary: Summary | null = null
 let books: Book[] = []
-let view: "overview" | "books" = "overview"
+const view: "overview" | "books" = "overview"
 
 onMount(async () => {
-  const [summaryRes, booksRes] = await Promise.all([
-    fetch("/api/summary"),
-    fetch("/api/books"),
-  ])
+  const [summaryRes, booksRes] = await Promise.all([fetch("/api/summary"), fetch("/api/books")])
   summary = await summaryRes.json()
   books = await booksRes.json()
 })

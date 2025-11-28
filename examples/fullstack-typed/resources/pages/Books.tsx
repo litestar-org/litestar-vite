@@ -36,7 +36,9 @@ export default function Books({ summary, books }: Props) {
           <p className="muted">Total books: {summary.total_books}</p>
           <article className="card">
             <h3>{summary.featured.title}</h3>
-            <p className="muted">{summary.featured.author} • {summary.featured.year}</p>
+            <p className="muted">
+              {summary.featured.author} • {summary.featured.year}
+            </p>
             <p className="chips">{summary.featured.tags.join(" · ")}</p>
           </article>
         </section>
@@ -45,7 +47,9 @@ export default function Books({ summary, books }: Props) {
           {books.map((book) => (
             <article key={book.id} className="card">
               <h3>{book.title}</h3>
-              <p className="muted">{book.author} • {book.year}</p>
+              <p className="muted">
+                {book.author} • {book.year}
+              </p>
               <p className="chips">{book.tags.join(" · ")}</p>
             </article>
           ))}

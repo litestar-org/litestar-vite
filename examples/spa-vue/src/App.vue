@@ -23,10 +23,7 @@ const view = ref<"overview" | "books">("overview")
 const featured = computed(() => summary.value?.featured)
 
 onMounted(async () => {
-  const [summaryRes, booksRes] = await Promise.all([
-    fetch("/api/summary"),
-    fetch("/api/books"),
-  ])
+  const [summaryRes, booksRes] = await Promise.all([fetch("/api/summary"), fetch("/api/books")])
   summary.value = await summaryRes.json()
   books.value = await booksRes.json()
 })

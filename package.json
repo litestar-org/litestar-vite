@@ -16,6 +16,8 @@
       "types": "./dist/js/index.d.ts",
       "default": "./dist/js/index.js"
     },
+    "./install-hint": "./dist/js/install-hint.js",
+    "./litestar-meta": "./dist/js/litestar-meta.js",
     "./inertia-helpers": {
       "types": "./dist/js/inertia-helpers/index.d.ts",
       "default": "./dist/js/inertia-helpers/index.js"

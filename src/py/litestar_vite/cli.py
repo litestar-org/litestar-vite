@@ -121,6 +121,55 @@ def _prompt_for_options(
 
 
 @vite_group.command(
+    name="doctor",
+    help="Diagnose and fix Vite configuration issues.",
+)
+@option(
+    "--check",
+    is_flag=True,
+    help="Exit with non-zero status if issues found (for CI).",
+)
+@option(
+    "--fix",
+    is_flag=True,
+    help="Auto-fix detected issues (with confirmation).",
+)
+@option(
+    "--no-prompt",
+    is_flag=True,
+    help="Apply fixes without confirmation.",
+)
+@option(
+    "--verbose",
+    is_flag=True,
+    help="Enable verbose output.",
+)
+def vite_doctor(
+    app: "Litestar",
+    check: bool,
+    fix: bool,
+    no_prompt: bool,
+    verbose: bool,
+) -> None:
+    """Diagnose and fix Vite configuration issues."""
+    import sys
+
+    from litestar_vite.doctor import ViteDoctor
+    from litestar_vite.plugin import VitePlugin
+
+    if verbose:
+        app.debug = True
+
+    plugin = app.plugins.get(VitePlugin)
+    doctor = ViteDoctor(plugin.config, verbose=verbose)
+
+    success = doctor.run(fix=fix, no_prompt=no_prompt)
+
+    if check and not success:
+        sys.exit(1)
+
+
+@vite_group.command(
     name="init",
     help="Initialize vite for your project.",
 )

@@ -9,8 +9,8 @@ Demonstrates:
 from pathlib import Path
 
 from litestar import Litestar, get
-from litestar.exceptions import NotFoundException
 from litestar.contrib.jinja import JinjaTemplateEngine
+from litestar.exceptions import NotFoundException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.stores.memory import MemoryStore
 from litestar.template import TemplateConfig

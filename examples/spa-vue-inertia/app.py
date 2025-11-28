@@ -4,10 +4,10 @@ from pathlib import Path
 
 from litestar import Litestar, get
 from litestar.contrib.jinja import JinjaTemplateEngine
+from litestar.exceptions import NotFoundException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.stores.memory import MemoryStore
 from litestar.template import TemplateConfig
-from litestar.exceptions import NotFoundException
 from msgspec import Struct
 
 from litestar_vite import ViteConfig, VitePlugin
