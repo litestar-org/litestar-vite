@@ -26,16 +26,16 @@ Supercharge your Litestar applications with Vite's modern frontend tooling. Lite
     :gutter: 2
 
     .. grid-item-card:: :octicon:`rocket` Getting Started
-        :link: usage/index
+        :link: tutorials/getting-started
         :link-type: doc
 
-        Quick start guide for integrating Vite with Litestar
+        Build your first Litestar + Vite app
 
-    .. grid-item-card:: :octicon:`book` Usage
-        :link: usage/index
+    .. grid-item-card:: :octicon:`mortar-board` Tutorials
+        :link: tutorials/index
         :link-type: doc
 
-        Learn how to use Litestar Vite in your projects
+        Step-by-step guides for common use cases
 
     .. grid-item-card:: :octicon:`code` API Reference
         :link: reference/index
@@ -267,12 +267,12 @@ Explore the Documentation
 .. grid:: 1 1 2 3
     :gutter: 3
 
-    .. grid-item-card:: :octicon:`book` Tutorials
-        :link: tutorials/index
+    .. grid-item-card:: :octicon:`book` Usage Guide
+        :link: usage/index
         :link-type: doc
         :class-card: sd-text-center
 
-        Step-by-step guides to learn Litestar Vite
+        Learn how to use Litestar Vite
 
     .. grid-item-card:: :octicon:`comment-discussion` Discussions
         :link: https://github.com/litestar-org/litestar-vite/discussions
@@ -314,8 +314,8 @@ Explore the Documentation
     :caption: Litestar Vite Documentation
     :hidden:
 
-    usage/index
     tutorials/index
+    usage/index
     reference/index
 
 .. toctree::

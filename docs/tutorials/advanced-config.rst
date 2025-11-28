@@ -1,346 +1,369 @@
-=======================
+======================
 Advanced Configuration
-=======================
+======================
 
-This tutorial covers advanced configuration options for optimizing and customizing your Litestar Vite setup.
-
-Prerequisites
--------------
-
-- Completed :doc:`getting-started` tutorial
-- Familiarity with Vite configuration
-- Understanding of build optimization concepts
+This tutorial covers advanced configuration options for litestar-vite, including
+custom Vite settings, environment-specific configurations, and optimization strategies.
 
 ViteConfig Options
 ------------------
 
-The ``ViteConfig`` class provides extensive configuration options:
+The ``ViteConfig`` class accepts several configuration options:
 
 .. code-block:: python
-    :caption: app.py
 
-    from pathlib import Path
     from litestar_vite import ViteConfig, VitePlugin
+    from litestar_vite.config import PathConfig, RuntimeConfig
 
     vite = VitePlugin(
         config=ViteConfig(
-            # Asset directories
-            bundle_dir=Path("public"),
-            resource_dir=Path("resources"),
-
-            # Development settings
-            hot_reload=True,
             dev_mode=True,
-            port=5173,
-            host="localhost",
-
-            # Production settings
-            use_server_lifespan=True,
-            is_react_enabled=False,
-
-            # Asset loading
-            manifest_name="manifest.json",
+            paths=PathConfig(
+                bundle_dir=Path("public"),
+                resource_dir=Path("resources"),
+                asset_url="/static/",
+                hot_file=Path("public/hot"),
+            ),
+            runtime=RuntimeConfig(
+                host="localhost",
+                port=5173,
+            ),
         )
     )
 
-Configuration Reference
-~~~~~~~~~~~~~~~~~~~~~~~
+PathConfig
+~~~~~~~~~~
 
-.. list-table::
-   :widths: 25 20 55
-   :header-rows: 1
+Controls file and URL paths:
 
-   * - Option
-     - Type
-     - Description
-   * - ``bundle_dir``
-     - ``Path``
-     - Directory for built assets (default: ``public``)
-   * - ``resource_dir``
-     - ``Path``
-     - Source files directory (default: ``resources``)
-   * - ``hot_reload``
-     - ``bool``
-     - Enable HMR in development (default: ``True``)
-   * - ``dev_mode``
-     - ``bool``
-     - Use Vite dev server (default: auto-detected)
-   * - ``port``
-     - ``int``
-     - Vite dev server port (default: ``5173``)
-   * - ``host``
-     - ``str``
-     - Vite dev server host (default: ``localhost``)
-   * - ``manifest_name``
-     - ``str``
-     - Asset manifest filename (default: ``manifest.json``)
+- ``bundle_dir``: Directory for production builds (default: ``public``)
+- ``resource_dir``: Directory containing source files (default: ``resources``)
+- ``asset_url``: URL prefix for assets (default: ``/static/``)
+- ``hot_file``: Path to the hot file for dev server detection (default: ``public/hot``)
+- ``manifest_path``: Path to manifest.json (default: ``bundle_dir/.vite/manifest.json``)
 
-Custom Vite Configuration
---------------------------
+RuntimeConfig
+~~~~~~~~~~~~~
 
-Environment-Specific Settings
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Controls development server settings:
 
-Create separate configs for development and production:
+- ``host``: Dev server host (default: ``localhost``)
+- ``port``: Dev server port (default: ``5173``)
+- ``dev_mode``: Enable development mode (default: from environment)
 
-.. code-block:: typescript
-    :caption: vite.config.ts
+Environment-Based Configuration
+-------------------------------
 
-    import { defineConfig, loadEnv } from 'vite';
-    import litestar from '@litestar/vite-plugin';
-
-    export default defineConfig(({ mode }) => {
-      const env = loadEnv(mode, process.cwd(), '');
-
-      return {
-        plugins: [
-          litestar({
-            input: 'resources/main.ts',
-            bundleDirectory: 'public',
-          }),
-        ],
-        server: {
-          port: parseInt(env.VITE_PORT || '5173'),
-          host: env.VITE_HOST || 'localhost',
-        },
-        build: {
-          // Production optimizations
-          minify: 'terser',
-          sourcemap: mode === 'development',
-          rollupOptions: {
-            output: {
-              manualChunks: {
-                'vendor': ['react', 'react-dom'],
-              },
-            },
-          },
-        },
-      };
-    });
-
-Create ``.env.development`` and ``.env.production``:
-
-.. code-block:: bash
-    :caption: .env.development
-
-    VITE_PORT=5173
-    VITE_HOST=localhost
-
-.. code-block:: bash
-    :caption: .env.production
-
-    VITE_PORT=5174
-    VITE_HOST=0.0.0.0
-
-Code Splitting Strategies
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Optimize bundle size with manual code splitting:
-
-.. code-block:: typescript
-    :caption: vite.config.ts
-
-    export default defineConfig({
-      build: {
-        rollupOptions: {
-          output: {
-            manualChunks(id) {
-              // Vendor chunk for node_modules
-              if (id.includes('node_modules')) {
-                return 'vendor';
-              }
-
-              // Separate chunk for large libraries
-              if (id.includes('react')) {
-                return 'react-vendor';
-              }
-
-              // Components chunk
-              if (id.includes('/components/')) {
-                return 'components';
-              }
-            },
-          },
-        },
-      },
-    });
-
-Asset Optimization
-~~~~~~~~~~~~~~~~~~
-
-Configure asset handling:
-
-.. code-block:: typescript
-    :caption: vite.config.ts
-
-    export default defineConfig({
-      build: {
-        assetsInlineLimit: 4096,  // Inline assets < 4KB
-        chunkSizeWarningLimit: 500,  // Warning at 500KB
-        cssCodeSplit: true,  // Split CSS per chunk
-      },
-
-      // Image optimization
-      optimizeDeps: {
-        include: ['@imagemin/jpegtran', '@imagemin/optipng'],
-      },
-    });
-
-Production Optimization
------------------------
-
-Asset Versioning
-~~~~~~~~~~~~~~~~
-
-Vite automatically versions assets in production. Access them in templates:
-
-.. code-block:: jinja
-    :caption: templates/index.html
-
-    <!-- Development: resources/main.ts -->
-    <!-- Production: public/main.abc123.js -->
-    {{ vite('resources/main.ts') }}
-
-Caching Strategy
-~~~~~~~~~~~~~~~~
-
-Configure caching headers in Litestar:
+Use environment variables for different deployment contexts:
 
 .. code-block:: python
     :caption: app.py
 
-    from litestar import Litestar, get
-    from litestar.config.response_cache import ResponseCacheConfig
-    from litestar.middleware.response_cache import ResponseCacheBackend
+    import os
+    from pathlib import Path
+    from litestar_vite import ViteConfig, VitePlugin
+    from litestar_vite.config import PathConfig
 
-    cache_config = ResponseCacheConfig(
-        default_expiration=3600,  # 1 hour
+    IS_DEV = os.getenv("LITESTAR_DEBUG", "false").lower() == "true"
+
+    vite = VitePlugin(
+        config=ViteConfig(
+            dev_mode=IS_DEV,
+            paths=PathConfig(
+                bundle_dir=Path("public"),
+                resource_dir=Path("resources"),
+                asset_url=os.getenv("ASSET_URL", "/static/"),
+            ),
+        )
     )
 
-    app = Litestar(
-        route_handlers=[...],
-        response_cache_config=cache_config,
-    )
+Or use a configuration factory:
 
-Static Asset Compression
-~~~~~~~~~~~~~~~~~~~~~~~~
+.. code-block:: python
 
-Enable compression in production:
+    def create_vite_config() -> ViteConfig:
+        env = os.getenv("ENVIRONMENT", "development")
 
-.. code-block:: typescript
-    :caption: vite.config.ts
+        if env == "production":
+            return ViteConfig(
+                dev_mode=False,
+                paths=PathConfig(
+                    bundle_dir=Path("dist"),
+                    asset_url="https://cdn.example.com/",
+                ),
+            )
+        else:
+            return ViteConfig(
+                dev_mode=True,
+                paths=PathConfig(
+                    bundle_dir=Path("public"),
+                    resource_dir=Path("resources"),
+                ),
+            )
 
-    import viteCompression from 'vite-plugin-compression';
-
-    export default defineConfig({
-      plugins: [
-        litestar({ /* ... */ }),
-        viteCompression({
-          algorithm: 'gzip',
-          ext: '.gz',
-        }),
-        viteCompression({
-          algorithm: 'brotliCompress',
-          ext: '.br',
-        }),
-      ],
-    });
-
-Install the plugin:
-
-.. code-block:: bash
-
-    npm install -D vite-plugin-compression
+Custom Vite Configuration
+-------------------------
 
 Multiple Entry Points
----------------------
+~~~~~~~~~~~~~~~~~~~~~
 
-For complex applications with multiple pages:
+For applications with multiple entry points:
 
 .. code-block:: typescript
     :caption: vite.config.ts
 
-    import litestar from '@litestar/vite-plugin';
+    import { defineConfig } from "vite";
+    import litestar from "@litestar/vite-plugin";
 
     export default defineConfig({
       plugins: [
         litestar({
           input: [
-            'resources/main.ts',
-            'resources/admin.ts',
-            'resources/dashboard.ts',
+            "resources/main.ts",
+            "resources/admin.ts",
+            "resources/dashboard.ts",
           ],
-          bundleDirectory: 'public',
+          assetUrl: "/static/",
+          bundleDir: "public",
+          resourceDir: "resources",
         }),
       ],
     });
 
-Load specific bundles in templates:
+Use them in templates:
 
 .. code-block:: jinja
-    :caption: templates/admin.html
 
+    {# Main site #}
+    {{ vite('resources/main.ts') }}
+
+    {# Admin panel #}
     {{ vite('resources/admin.ts') }}
 
-.. code-block:: jinja
-    :caption: templates/dashboard.html
+CSS Code Splitting
+~~~~~~~~~~~~~~~~~~
 
-    {{ vite('resources/dashboard.ts') }}
+Vite automatically code-splits CSS. You can customize this:
 
-CSS Preprocessing
------------------
+.. code-block:: typescript
+    :caption: vite.config.ts
 
-Sass/SCSS Support
-~~~~~~~~~~~~~~~~~
+    import { defineConfig } from "vite";
+    import litestar from "@litestar/vite-plugin";
 
-Install Sass:
+    export default defineConfig({
+      plugins: [
+        litestar({
+          input: ["resources/main.ts"],
+          assetUrl: "/static/",
+          bundleDir: "public",
+          resourceDir: "resources",
+        }),
+      ],
+      build: {
+        cssCodeSplit: true,  // Default: true
+        cssMinify: "lightningcss",  // Use Lightning CSS for faster minification
+      },
+      css: {
+        devSourcemap: true,
+      },
+    });
+
+Custom Build Output
+~~~~~~~~~~~~~~~~~~~
+
+Control chunk naming and structure:
+
+.. code-block:: typescript
+    :caption: vite.config.ts
+
+    import { defineConfig } from "vite";
+    import litestar from "@litestar/vite-plugin";
+
+    export default defineConfig({
+      plugins: [
+        litestar({
+          input: ["resources/main.ts"],
+          assetUrl: "/static/",
+          bundleDir: "public",
+          resourceDir: "resources",
+        }),
+      ],
+      build: {
+        rollupOptions: {
+          output: {
+            // Custom chunk file names
+            chunkFileNames: "js/[name]-[hash].js",
+            entryFileNames: "js/[name]-[hash].js",
+            assetFileNames: (assetInfo) => {
+              const info = assetInfo.name?.split(".") ?? [];
+              const ext = info[info.length - 1];
+              if (/png|jpe?g|svg|gif|tiff|bmp|ico/i.test(ext)) {
+                return "images/[name]-[hash][extname]";
+              }
+              if (/css/i.test(ext)) {
+                return "css/[name]-[hash][extname]";
+              }
+              return "assets/[name]-[hash][extname]";
+            },
+            // Manual chunk splitting
+            manualChunks: {
+              vendor: ["vue", "react", "react-dom"],
+            },
+          },
+        },
+      },
+    });
+
+Proxy Configuration
+-------------------
+
+Single-Port Mode
+~~~~~~~~~~~~~~~~
+
+Run everything through Litestar (recommended for production-like development):
+
+.. code-block:: python
+
+    vite = VitePlugin(
+        config=ViteConfig(
+            dev_mode=True,
+            paths=PathConfig(
+                bundle_dir=Path("public"),
+                resource_dir=Path("resources"),
+                asset_url="/static/",
+            ),
+        )
+    )
+
+In this mode, Litestar proxies requests to the Vite dev server.
+
+Multi-Port Mode
+~~~~~~~~~~~~~~~
+
+Run Vite and Litestar on separate ports:
+
+.. code-block:: typescript
+    :caption: vite.config.ts
+
+    export default defineConfig({
+      server: {
+        port: 5173,
+        proxy: {
+          "/api": {
+            target: "http://localhost:8000",
+            changeOrigin: true,
+          },
+        },
+      },
+      plugins: [
+        litestar({
+          input: ["resources/main.ts"],
+          assetUrl: "/static/",
+          bundleDir: "public",
+          resourceDir: "resources",
+        }),
+      ],
+    });
+
+Asset Optimization
+------------------
+
+Image Optimization
+~~~~~~~~~~~~~~~~~~
+
+Use Vite plugins for image optimization:
 
 .. code-block:: bash
 
-    npm install -D sass
+    npm install -D vite-imagetools
 
-Use in components:
+.. code-block:: typescript
+    :caption: vite.config.ts
 
-.. code-block:: text
-    :caption: Component.vue
+    import { defineConfig } from "vite";
+    import { imagetools } from "vite-imagetools";
+    import litestar from "@litestar/vite-plugin";
 
-    <style lang="scss">
-    $primary-color: #f50057;
+    export default defineConfig({
+      plugins: [
+        imagetools(),
+        litestar({
+          input: ["resources/main.ts"],
+          assetUrl: "/static/",
+          bundleDir: "public",
+          resourceDir: "resources",
+        }),
+      ],
+    });
 
-    .button {
-      background: $primary-color;
+Import optimized images:
 
-      &:hover {
-        background: darken($primary-color, 10%);
-      }
-    }
-    </style>
+.. code-block:: typescript
 
-PostCSS Configuration
-~~~~~~~~~~~~~~~~~~~~~
+    import heroImage from "./images/hero.jpg?w=800&format=webp";
 
-Create ``postcss.config.js``:
+Compression
+~~~~~~~~~~~
 
-.. code-block:: javascript
-    :caption: postcss.config.js
+Enable gzip/brotli compression for production:
 
-    export default {
-      plugins: {
-        'tailwindcss': {},
-        'autoprefixer': {},
-        'cssnano': {
-          preset: 'default',
-        },
-      },
-    };
+.. code-block:: bash
 
-TypeScript Configuration
-------------------------
+    npm install -D vite-plugin-compression
 
-Path Aliases
-~~~~~~~~~~~~
+.. code-block:: typescript
+    :caption: vite.config.ts
+
+    import { defineConfig } from "vite";
+    import compression from "vite-plugin-compression";
+    import litestar from "@litestar/vite-plugin";
+
+    export default defineConfig({
+      plugins: [
+        litestar({
+          input: ["resources/main.ts"],
+          assetUrl: "/static/",
+          bundleDir: "public",
+          resourceDir: "resources",
+        }),
+        compression({
+          algorithm: "brotli",
+        }),
+      ],
+    });
+
+TypeScript Path Aliases
+-----------------------
 
 Configure path aliases for cleaner imports:
+
+.. code-block:: typescript
+    :caption: vite.config.ts
+
+    import { defineConfig } from "vite";
+    import path from "path";
+    import litestar from "@litestar/vite-plugin";
+
+    export default defineConfig({
+      plugins: [
+        litestar({
+          input: ["resources/main.ts"],
+          assetUrl: "/static/",
+          bundleDir: "public",
+          resourceDir: "resources",
+        }),
+      ],
+      resolve: {
+        alias: {
+          "@": path.resolve(__dirname, "resources"),
+          "@components": path.resolve(__dirname, "resources/components"),
+          "@utils": path.resolve(__dirname, "resources/utils"),
+        },
+      },
+    });
+
+Update ``tsconfig.json`` to match:
 
 .. code-block:: json
     :caption: tsconfig.json
@@ -349,170 +372,117 @@ Configure path aliases for cleaner imports:
       "compilerOptions": {
         "baseUrl": ".",
         "paths": {
-          "@/*": ["./resources/*"],
-          "@components/*": ["./resources/components/*"],
-          "@utils/*": ["./resources/utils/*"]
+          "@/*": ["resources/*"],
+          "@components/*": ["resources/components/*"],
+          "@utils/*": ["resources/utils/*"]
         }
       }
     }
 
-.. code-block:: typescript
-    :caption: vite.config.ts
-
-    import path from 'path';
-
-    export default defineConfig({
-      resolve: {
-        alias: {
-          '@': path.resolve(__dirname, './resources'),
-          '@components': path.resolve(__dirname, './resources/components'),
-          '@utils': path.resolve(__dirname, './resources/utils'),
-        },
-      },
-    });
-
-Use in code:
+Now import with aliases:
 
 .. code-block:: typescript
 
-    import Button from '@components/Button.vue';
-    import { formatDate } from '@utils/date';
+    import Button from "@components/Button";
+    import { formatDate } from "@utils/helpers";
 
-Strict Type Checking
-~~~~~~~~~~~~~~~~~~~~
+Environment Variables
+---------------------
 
-Enable strict mode for better type safety:
+Vite exposes environment variables prefixed with ``VITE_``:
 
-.. code-block:: json
-    :caption: tsconfig.json
+.. code-block:: text
+    :caption: .env
 
-    {
-      "compilerOptions": {
-        "strict": true,
-        "noUncheckedIndexedAccess": true,
-        "noUnusedLocals": true,
-        "noUnusedParameters": true,
-        "noImplicitReturns": true
-      }
+    VITE_API_URL=http://localhost:8000
+    VITE_APP_TITLE=My App
+
+Access in code:
+
+.. code-block:: typescript
+
+    const apiUrl = import.meta.env.VITE_API_URL;
+    const title = import.meta.env.VITE_APP_TITLE;
+
+Type definitions for custom env variables:
+
+.. code-block:: typescript
+    :caption: resources/env.d.ts
+
+    /// <reference types="vite/client" />
+
+    interface ImportMetaEnv {
+      readonly VITE_API_URL: string;
+      readonly VITE_APP_TITLE: string;
     }
 
-Development Tools
------------------
-
-Debugging
-~~~~~~~~~
-
-Enable source maps for debugging:
-
-.. code-block:: typescript
-    :caption: vite.config.ts
-
-    export default defineConfig({
-      build: {
-        sourcemap: true,
-      },
-    });
-
-Vue DevTools Integration
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-For Vue applications, DevTools are automatically supported in development mode.
-
-React DevTools Integration
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-React DevTools work automatically with the React plugin.
-
-Performance Monitoring
-~~~~~~~~~~~~~~~~~~~~~~
-
-Add performance monitoring:
-
-.. code-block:: typescript
-    :caption: resources/main.ts
-
-    if (import.meta.env.DEV) {
-      // Development performance monitoring
-      const { startMeasure, endMeasure } = performance;
-
-      startMeasure?.('app-init');
-      // ... app initialization
-      endMeasure?.('app-init');
+    interface ImportMeta {
+      readonly env: ImportMetaEnv;
     }
 
 Troubleshooting
 ---------------
 
-Port Conflicts
-~~~~~~~~~~~~~~
+Common Issues
+~~~~~~~~~~~~~
 
-If port 5173 is in use:
+**Assets not loading in production**
+
+Ensure ``dev_mode=False`` and the manifest.json exists:
+
+.. code-block:: bash
+
+    ls public/.vite/manifest.json
+
+**HMR not working**
+
+Check that:
+
+1. The hot file path matches in both Vite and Litestar configs
+2. WebSocket connections aren't blocked by proxies
+3. Both servers are running
+
+**CORS errors in development**
+
+Configure CORS in both Vite and Litestar:
 
 .. code-block:: typescript
     :caption: vite.config.ts
 
     export default defineConfig({
       server: {
-        port: 5174,  // Use different port
-        strictPort: true,  // Fail if port is in use
+        cors: true,
       },
     });
-
-CORS Issues
-~~~~~~~~~~~
-
-Configure CORS for API requests:
 
 .. code-block:: python
-    :caption: app.py
 
-    from litestar import Litestar
     from litestar.config.cors import CORSConfig
 
-    cors_config = CORSConfig(
-        allow_origins=["http://localhost:5173"],
-        allow_methods=["GET", "POST", "PUT", "DELETE"],
-    )
-
     app = Litestar(
-        route_handlers=[...],
-        cors_config=cors_config,
+        cors_config=CORSConfig(
+            allow_origins=["http://localhost:5173"],
+        ),
     )
 
-Build Failures
-~~~~~~~~~~~~~~
+**Manifest file not found**
 
-Clear cache and rebuild:
+Ensure you've run ``npm run build`` and the output directory matches your config.
 
-.. code-block:: bash
+Debug Mode
+~~~~~~~~~~
 
-    # Clear Vite cache
-    rm -rf node_modules/.vite
+Enable verbose logging:
 
-    # Clear build output
-    rm -rf public
+.. code-block:: python
 
-    # Rebuild
-    npm run build
+    import logging
 
-Slow Dev Server
-~~~~~~~~~~~~~~~
-
-Optimize dependencies pre-bundling:
-
-.. code-block:: typescript
-    :caption: vite.config.ts
-
-    export default defineConfig({
-      optimizeDeps: {
-        include: ['react', 'react-dom'],  // Pre-bundle heavy dependencies
-        exclude: ['your-local-package'],  // Don't pre-bundle local packages
-      },
-    });
+    logging.getLogger("litestar_vite").setLevel(logging.DEBUG)
 
 Next Steps
 ----------
 
-- Review :doc:`../reference/config` for complete API reference
-- Check :doc:`../usage/modes` for deployment strategies
-- Explore the `Vite documentation <https://vitejs.dev/>`_ for more advanced topics
+- :doc:`/usage/index` - Complete usage reference
+- :doc:`/reference/config` - Full configuration API
+- `Vite Documentation <https://vitejs.dev/>`_ - Official Vite docs

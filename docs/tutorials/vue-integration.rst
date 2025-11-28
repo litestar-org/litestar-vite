@@ -1,55 +1,66 @@
-==================
+=================
 Vue.js Integration
-==================
+=================
 
-Learn how to integrate Vue 3 with Litestar using the Vite plugin for a modern development experience.
+This tutorial covers integrating Vue 3 with Litestar using the litestar-vite plugin.
+Vue's Composition API and Single File Components (SFCs) work seamlessly with Vite.
 
 Prerequisites
 -------------
 
-- Completed :doc:`getting-started` tutorial
-- Basic knowledge of Vue 3 and Composition API
-- Understanding of Single File Components (SFCs)
-
-Installation
-------------
-
-Install Vue and related dependencies:
-
-.. code-block:: bash
-
-    # Python
-    uv add litestar-vite "litestar[jinja]"
-
-    # Node.js
-    npm install vue
-    npm install -D @vitejs/plugin-vue @vue/tsconfig typescript
+- Completed the :doc:`getting-started` tutorial or have a basic Litestar app
+- Basic familiarity with Vue.js
 
 Project Setup
 -------------
 
-Create the following structure:
+1. Scaffold the Project
+~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: text
+Use the CLI for a quick start:
 
-    my-vue-app/
-    ├── app.py
-    ├── templates/
-    │   └── index.html
-    ├── resources/
-    │   ├── main.ts
-    │   ├── App.vue
-    │   ├── components/
-    │   │   ├── Counter.vue
-    │   │   └── UserCard.vue
-    │   └── composables/
-    │       └── useCounter.ts
-    ├── vite.config.ts
-    ├── tsconfig.json
-    └── package.json
+.. code-block:: bash
 
-Step 1: Configure Litestar
----------------------------
+    litestar assets init --template vue
+
+Or install dependencies manually:
+
+.. code-block:: bash
+
+    npm install vue
+    npm install -D @vitejs/plugin-vue
+
+2. Configure Vite
+~~~~~~~~~~~~~~~~~
+
+Create or update ``vite.config.ts``:
+
+.. code-block:: typescript
+    :caption: vite.config.ts
+
+    import { defineConfig } from "vite";
+    import vue from "@vitejs/plugin-vue";
+    import litestar from "@litestar/vite-plugin";
+
+    export default defineConfig({
+      plugins: [
+        vue(),
+        litestar({
+          input: ["resources/main.ts"],
+          assetUrl: "/static/",
+          bundleDir: "public",
+          resourceDir: "resources",
+        }),
+      ],
+      resolve: {
+        alias: {
+          "@": "/resources",
+        },
+      },
+    });
+
+3. Configure Litestar
+~~~~~~~~~~~~~~~~~~~~~
 
 Create ``app.py``:
 
@@ -57,38 +68,56 @@ Create ``app.py``:
     :caption: app.py
 
     from pathlib import Path
+
     from litestar import Litestar, get
     from litestar.contrib.jinja import JinjaTemplateEngine
     from litestar.response import Template
     from litestar.template.config import TemplateConfig
-    from litestar_vite import ViteConfig, VitePlugin
 
-    @get("/", sync_to_thread=False)
-    def index() -> Template:
-        return Template(
-            template_name="index.html",
-            context={"page_title": "Vue + Litestar"},
-        )
+    from litestar_vite import ViteConfig, VitePlugin
+    from litestar_vite.config import PathConfig
+
+    HERE = Path(__file__).parent
+
+
+    @get("/")
+    async def index() -> Template:
+        """Render the main page."""
+        return Template(template_name="index.html")
+
+
+    @get("/api/users")
+    async def get_users() -> list[dict]:
+        """API endpoint for user data."""
+        return [
+            {"id": 1, "name": "Alice", "role": "Admin"},
+            {"id": 2, "name": "Bob", "role": "User"},
+            {"id": 3, "name": "Charlie", "role": "User"},
+        ]
+
 
     vite = VitePlugin(
         config=ViteConfig(
-            bundle_dir=Path("public"),
-            resource_dir=Path("resources"),
-            hot_reload=True,
+            dev_mode=True,
+            paths=PathConfig(
+                bundle_dir=HERE / "public",
+                resource_dir=HERE / "resources",
+                asset_url="/static/",
+            ),
         )
     )
 
     app = Litestar(
-        route_handlers=[index],
+        route_handlers=[index, get_users],
         plugins=[vite],
         template_config=TemplateConfig(
-            directory=Path("templates"),
+            directory=HERE / "templates",
             engine=JinjaTemplateEngine,
         ),
     )
 
-Step 2: Create the Template
-----------------------------
+4. Create the HTML Template
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Create ``templates/index.html``:
 
@@ -100,7 +129,7 @@ Create ``templates/index.html``:
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{{ page_title }}</title>
+        <title>Vue + Litestar</title>
         {{ vite_hmr() }}
         {{ vite('resources/main.ts') }}
     </head>
@@ -109,68 +138,22 @@ Create ``templates/index.html``:
     </body>
     </html>
 
-Step 3: Configure Vite for Vue
--------------------------------
-
-Create ``vite.config.ts``:
-
-.. code-block:: typescript
-    :caption: vite.config.ts
-
-    import { defineConfig } from 'vite';
-    import vue from '@vitejs/plugin-vue';
-    import litestar from '@litestar/vite-plugin';
-
-    export default defineConfig({
-      plugins: [
-        litestar({
-          input: 'resources/main.ts',
-          bundleDirectory: 'public',
-          resourceDirectory: 'resources',
-        }),
-        vue(),
-      ],
-      resolve: {
-        alias: {
-          '@': '/resources',
-        },
-      },
-    });
-
-Create ``tsconfig.json``:
-
-.. code-block:: json
-    :caption: tsconfig.json
-
-    {
-      "extends": "@vue/tsconfig/tsconfig.dom.json",
-      "compilerOptions": {
-        "baseUrl": ".",
-        "paths": {
-          "@/*": ["./resources/*"]
-        },
-        "types": ["vite/client"]
-      },
-      "include": ["resources/**/*.ts", "resources/**/*.vue"],
-      "exclude": ["node_modules"]
-    }
-
-Step 4: Initialize Vue Application
------------------------------------
+5. Create Vue Entry Point
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Create ``resources/main.ts``:
 
 .. code-block:: typescript
     :caption: resources/main.ts
 
-    import { createApp } from 'vue';
-    import App from './App.vue';
+    import { createApp } from "vue";
+    import App from "./App.vue";
+    import "./styles.css";
 
-    const app = createApp(App);
-    app.mount('#app');
+    createApp(App).mount("#app");
 
-Step 5: Create Root Component
-------------------------------
+6. Create the Root Component
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Create ``resources/App.vue``:
 
@@ -178,41 +161,60 @@ Create ``resources/App.vue``:
     :caption: resources/App.vue
 
     <script setup lang="ts">
-    import { ref } from 'vue';
-    import Counter from './components/Counter.vue';
-    import UserCard from './components/UserCard.vue';
+    import { ref, onMounted } from "vue";
+    import UserList from "./components/UserList.vue";
+    import Counter from "./components/Counter.vue";
 
-    const user = ref({
-      name: 'John Doe',
-      email: 'john@example.com',
-      avatar: 'https://i.pravatar.cc/150?img=1',
+    interface User {
+      id: number;
+      name: string;
+      role: string;
+    }
+
+    const users = ref<User[]>([]);
+    const loading = ref(true);
+    const error = ref<string | null>(null);
+
+    onMounted(async () => {
+      try {
+        const response = await fetch("/api/users");
+        users.value = await response.json();
+      } catch (e) {
+        error.value = "Failed to load users";
+      } finally {
+        loading.value = false;
+      }
     });
     </script>
 
     <template>
       <div class="app">
         <header>
-          <h1>Vue + Litestar</h1>
-          <p>Modern frontend development with Vite</p>
+          <h1>Vue + Litestar Vite</h1>
         </header>
 
         <main>
-          <section class="demo-section">
-            <h2>Counter Demo</h2>
-            <Counter :initial-value="0" />
+          <section class="card">
+            <h2>Interactive Counter</h2>
+            <Counter />
           </section>
 
-          <section class="demo-section">
-            <h2>User Profile</h2>
-            <UserCard :user="user" />
+          <section class="card">
+            <h2>Users from API</h2>
+            <p v-if="loading">Loading...</p>
+            <p v-else-if="error" class="error">{{ error }}</p>
+            <UserList v-else :users="users" />
           </section>
         </main>
+
+        <footer>
+          <p>Built with Vue 3 + Litestar</p>
+        </footer>
       </div>
     </template>
 
     <style scoped>
     .app {
-      font-family: system-ui, -apple-system, sans-serif;
       max-width: 800px;
       margin: 0 auto;
       padding: 2rem;
@@ -220,30 +222,39 @@ Create ``resources/App.vue``:
 
     header {
       text-align: center;
-      margin-bottom: 3rem;
+      margin-bottom: 2rem;
     }
 
     h1 {
-      color: #f50057;
-      font-size: 2.5rem;
-      margin: 0;
+      color: #42b883;
     }
 
-    .demo-section {
-      margin-bottom: 2rem;
-      padding: 1.5rem;
-      border: 1px solid #e0e0e0;
+    .card {
+      background: white;
       border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
 
     h2 {
-      margin-top: 0;
       color: #333;
+      margin-top: 0;
+    }
+
+    footer {
+      text-align: center;
+      color: #666;
+      margin-top: 2rem;
+    }
+
+    .error {
+      color: #e74c3c;
     }
     </style>
 
-Step 6: Create Vue Components
-------------------------------
+7. Create Vue Components
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 Create ``resources/components/Counter.vue``:
 
@@ -251,17 +262,9 @@ Create ``resources/components/Counter.vue``:
     :caption: resources/components/Counter.vue
 
     <script setup lang="ts">
-    import { ref } from 'vue';
+    import { ref } from "vue";
 
-    interface Props {
-      initialValue?: number;
-    }
-
-    const props = withDefaults(defineProps<Props>(), {
-      initialValue: 0,
-    });
-
-    const count = ref(props.initialValue);
+    const count = ref(0);
 
     function increment() {
       count.value++;
@@ -270,192 +273,228 @@ Create ``resources/components/Counter.vue``:
     function decrement() {
       count.value--;
     }
-
-    function reset() {
-      count.value = props.initialValue;
-    }
     </script>
 
     <template>
       <div class="counter">
-        <div class="count-display">{{ count }}</div>
-        <div class="controls">
-          <button @click="decrement">-</button>
-          <button @click="reset">Reset</button>
-          <button @click="increment">+</button>
-        </div>
+        <button @click="decrement" :disabled="count <= 0">-</button>
+        <span class="count">{{ count }}</span>
+        <button @click="increment">+</button>
       </div>
     </template>
 
     <style scoped>
     .counter {
       display: flex;
-      flex-direction: column;
       align-items: center;
       gap: 1rem;
-    }
-
-    .count-display {
-      font-size: 3rem;
-      font-weight: bold;
-      color: #f50057;
-    }
-
-    .controls {
-      display: flex;
-      gap: 0.5rem;
+      justify-content: center;
     }
 
     button {
       padding: 0.5rem 1rem;
-      font-size: 1rem;
+      font-size: 1.25rem;
       border: none;
-      background: #f50057;
+      border-radius: 4px;
+      background: #42b883;
       color: white;
       cursor: pointer;
-      border-radius: 4px;
       transition: background 0.2s;
     }
 
-    button:hover {
-      background: #c51162;
+    button:hover:not(:disabled) {
+      background: #3aa876;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .count {
+      font-size: 2rem;
+      font-weight: bold;
+      min-width: 3rem;
+      text-align: center;
     }
     </style>
 
-Create ``resources/components/UserCard.vue``:
+Create ``resources/components/UserList.vue``:
 
 .. code-block:: vue
-    :caption: resources/components/UserCard.vue
+    :caption: resources/components/UserList.vue
 
     <script setup lang="ts">
     interface User {
+      id: number;
       name: string;
-      email: string;
-      avatar: string;
+      role: string;
     }
 
-    interface Props {
-      user: User;
-    }
-
-    defineProps<Props>();
+    defineProps<{
+      users: User[];
+    }>();
     </script>
 
     <template>
-      <div class="user-card">
-        <img :src="user.avatar" :alt="user.name" class="avatar" />
-        <div class="info">
-          <h3>{{ user.name }}</h3>
-          <p>{{ user.email }}</p>
-        </div>
-      </div>
+      <ul class="user-list">
+        <li v-for="user in users" :key="user.id" class="user-item">
+          <span class="user-name">{{ user.name }}</span>
+          <span class="user-role" :class="user.role.toLowerCase()">
+            {{ user.role }}
+          </span>
+        </li>
+      </ul>
     </template>
 
     <style scoped>
-    .user-card {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      padding: 1rem;
-      background: #f5f5f5;
-      border-radius: 8px;
-    }
-
-    .avatar {
-      width: 64px;
-      height: 64px;
-      border-radius: 50%;
-    }
-
-    .info h3 {
+    .user-list {
+      list-style: none;
+      padding: 0;
       margin: 0;
-      color: #333;
     }
 
-    .info p {
-      margin: 0.25rem 0 0;
-      color: #666;
+    .user-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem;
+      background: #f9f9f9;
+      border-radius: 4px;
+      margin-bottom: 0.5rem;
+    }
+
+    .user-name {
+      font-weight: 500;
+    }
+
+    .user-role {
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.875rem;
+    }
+
+    .user-role.admin {
+      background: #e74c3c;
+      color: white;
+    }
+
+    .user-role.user {
+      background: #3498db;
+      color: white;
     }
     </style>
 
-Step 7: Create a Composable
-----------------------------
+8. Add Global Styles
+~~~~~~~~~~~~~~~~~~~~
 
-Vue composables are reusable stateful logic. Create ``resources/composables/useCounter.ts``:
+Create ``resources/styles.css``:
 
-.. code-block:: typescript
-    :caption: resources/composables/useCounter.ts
+.. code-block:: css
+    :caption: resources/styles.css
 
-    import { ref, computed } from 'vue';
-
-    export function useCounter(initialValue = 0) {
-      const count = ref(initialValue);
-
-      const doubled = computed(() => count.value * 2);
-
-      function increment() {
-        count.value++;
-      }
-
-      function decrement() {
-        count.value--;
-      }
-
-      function reset() {
-        count.value = initialValue;
-      }
-
-      return {
-        count,
-        doubled,
-        increment,
-        decrement,
-        reset,
-      };
+    * {
+      box-sizing: border-box;
     }
 
-Use it in a component:
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      background: #f0f2f5;
+      color: #333;
+    }
 
-.. code-block:: vue
+TypeScript Configuration
+------------------------
 
-    <script setup lang="ts">
-    import { useCounter } from '@/composables/useCounter';
+For proper Vue + TypeScript support, create ``tsconfig.json``:
 
-    const { count, doubled, increment, decrement, reset } = useCounter(10);
-    </script>
+.. code-block:: json
+    :caption: tsconfig.json
 
-    <template>
-      <div>
-        <p>Count: {{ count }}</p>
-        <p>Doubled: {{ doubled }}</p>
-        <button @click="increment">+</button>
-      </div>
-    </template>
+    {
+      "compilerOptions": {
+        "target": "ES2020",
+        "useDefineForClassFields": true,
+        "module": "ESNext",
+        "lib": ["ES2020", "DOM", "DOM.Iterable"],
+        "skipLibCheck": true,
+        "moduleResolution": "bundler",
+        "allowImportingTsExtensions": true,
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "noEmit": true,
+        "jsx": "preserve",
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noFallthroughCasesInSwitch": true,
+        "paths": {
+          "@/*": ["./resources/*"]
+        }
+      },
+      "include": ["resources/**/*.ts", "resources/**/*.vue"],
+      "references": [{ "path": "./tsconfig.node.json" }]
+    }
 
-Step 8: Run Your Application
------------------------------
+And ``tsconfig.node.json``:
+
+.. code-block:: json
+    :caption: tsconfig.node.json
+
+    {
+      "compilerOptions": {
+        "composite": true,
+        "skipLibCheck": true,
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "allowSyntheticDefaultImports": true
+      },
+      "include": ["vite.config.ts"]
+    }
+
+Running the Application
+-----------------------
+
+Start both servers:
 
 .. code-block:: bash
 
-    # Terminal 1: Vite dev server
+    # Terminal 1
     npm run dev
 
-    # Terminal 2: Litestar server
+    # Terminal 2
     litestar run --reload
 
-Visit http://localhost:8000 and test the application:
+Visit http://localhost:8000 to see your Vue application!
 
-1. Click the counter buttons
-2. Edit ``App.vue`` and watch it hot-reload instantly
-3. Try changing styles in any component
+Vue with Inertia.js
+-------------------
 
-Advanced Patterns
------------------
+For server-side routing with Vue, use the Vue + Inertia template:
 
-State Management with Pinia
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. code-block:: bash
 
-For complex state, use Pinia:
+    litestar assets init --template vue-inertia
+
+This provides:
+
+- Server-side routing (no Vue Router needed)
+- Seamless data passing from Litestar to Vue
+- Full SPA experience with SEO-friendly URLs
+
+Key differences from the basic Vue setup:
+
+1. Uses ``InertiaResponse`` instead of ``Template``
+2. Inertia handles component loading and transitions
+3. Data is passed as props from the server
+
+See :doc:`inertia-react` for Inertia concepts (they apply to Vue as well).
+
+State Management
+----------------
+
+For larger applications, consider adding Pinia for state management:
 
 .. code-block:: bash
 
@@ -464,103 +503,18 @@ For complex state, use Pinia:
 .. code-block:: typescript
     :caption: resources/main.ts
 
-    import { createApp } from 'vue';
-    import { createPinia } from 'pinia';
-    import App from './App.vue';
+    import { createApp } from "vue";
+    import { createPinia } from "pinia";
+    import App from "./App.vue";
 
     const app = createApp(App);
     app.use(createPinia());
-    app.mount('#app');
-
-.. code-block:: typescript
-    :caption: resources/stores/user.ts
-
-    import { defineStore } from 'pinia';
-
-    export const useUserStore = defineStore('user', {
-      state: () => ({
-        name: 'John Doe',
-        email: 'john@example.com',
-      }),
-      actions: {
-        updateName(name: string) {
-          this.name = name;
-        },
-      },
-    });
-
-Fetching Data from Litestar
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Create an API endpoint:
-
-.. code-block:: python
-    :caption: app.py
-
-    from litestar import get
-
-    @get("/api/users")
-    async def get_users() -> list[dict]:
-        return [
-            {"id": 1, "name": "Alice"},
-            {"id": 2, "name": "Bob"},
-        ]
-
-Fetch from Vue:
-
-.. code-block:: vue
-
-    <script setup lang="ts">
-    import { ref, onMounted } from 'vue';
-
-    interface User {
-      id: number;
-      name: string;
-    }
-
-    const users = ref<User[]>([]);
-
-    onMounted(async () => {
-      const response = await fetch('/api/users');
-      users.value = await response.json();
-    });
-    </script>
-
-    <template>
-      <ul>
-        <li v-for="user in users" :key="user.id">
-          {{ user.name }}
-        </li>
-      </ul>
-    </template>
-
-Vue Router Integration
-~~~~~~~~~~~~~~~~~~~~~~
-
-For client-side routing:
-
-.. code-block:: bash
-
-    npm install vue-router
-
-.. code-block:: typescript
-    :caption: resources/router.ts
-
-    import { createRouter, createWebHistory } from 'vue-router';
-    import Home from './pages/Home.vue';
-    import About from './pages/About.vue';
-
-    export const router = createRouter({
-      history: createWebHistory(),
-      routes: [
-        { path: '/', component: Home },
-        { path: '/about', component: About },
-      ],
-    });
+    app.mount("#app");
 
 Next Steps
 ----------
 
-- Learn :doc:`advanced-config` for optimization
-- Check out `Vue.js documentation <https://vuejs.org/>`_
-- Explore :doc:`inertia-react` for an alternative SPA approach
+- :doc:`inertia-react` - Learn Inertia.js patterns (applicable to Vue)
+- :doc:`advanced-config` - Advanced Vite configuration
+- :doc:`/usage/index` - Complete usage guide
+- `Vue 3 Documentation <https://vuejs.org/>`_ - Official Vue docs

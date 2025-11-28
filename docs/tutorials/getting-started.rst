@@ -1,8 +1,9 @@
-====================================
-Getting Started with Vite + Litestar
-====================================
+===============
+Getting Started
+===============
 
-This tutorial will guide you through creating your first Litestar application with Vite integration from scratch.
+This tutorial walks you through creating a basic Litestar application with Vite integration
+from scratch. By the end, you'll have a working development setup with Hot Module Replacement (HMR).
 
 Prerequisites
 -------------
@@ -11,29 +12,14 @@ Before starting, ensure you have:
 
 - Python 3.9 or higher
 - Node.js 18 or higher
-- A text editor or IDE
+- A package manager (``pip``, ``uv``, ``pdm``, or ``poetry``)
+- ``npm`` for frontend dependencies
 
-Installation
-------------
+Project Setup
+-------------
 
-First, install Litestar Vite:
-
-.. tab-set::
-
-    .. tab-item:: pip
-
-        .. code-block:: bash
-
-            pip install litestar-vite litestar[jinja]
-
-    .. tab-item:: uv
-
-        .. code-block:: bash
-
-            uv add litestar-vite "litestar[jinja]"
-
-Step 1: Project Setup
----------------------
+1. Create Project Directory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Create a new directory for your project:
 
@@ -42,20 +28,30 @@ Create a new directory for your project:
     mkdir my-litestar-app
     cd my-litestar-app
 
-Create the following directory structure:
+2. Initialize Python Project
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: text
+Create a virtual environment and install dependencies:
 
-    my-litestar-app/
-    ├── app.py
-    ├── templates/
-    │   └── index.html
-    ├── resources/
-    │   └── main.ts
-    └── public/
+.. tab-set::
 
-Step 2: Create Your Litestar Application
------------------------------------------
+    .. tab-item:: uv
+
+        .. code-block:: bash
+
+            uv init
+            uv add litestar litestar-vite jinja2
+
+    .. tab-item:: pip
+
+        .. code-block:: bash
+
+            python -m venv .venv
+            source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+            pip install litestar litestar-vite jinja2
+
+3. Create the Application
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Create ``app.py`` with the following content:
 
@@ -63,21 +59,32 @@ Create ``app.py`` with the following content:
     :caption: app.py
 
     from pathlib import Path
+
     from litestar import Litestar, get
     from litestar.contrib.jinja import JinjaTemplateEngine
     from litestar.response import Template
     from litestar.template.config import TemplateConfig
-    from litestar_vite import ViteConfig, VitePlugin
 
-    @get("/", sync_to_thread=False)
-    def index() -> Template:
+    from litestar_vite import ViteConfig, VitePlugin
+    from litestar_vite.config import PathConfig
+
+    HERE = Path(__file__).parent
+
+
+    @get("/")
+    async def index() -> Template:
+        """Render the home page."""
         return Template(template_name="index.html")
+
 
     vite = VitePlugin(
         config=ViteConfig(
-            bundle_dir=Path("public"),
-            resource_dir=Path("resources"),
-            hot_reload=True,
+            dev_mode=True,
+            paths=PathConfig(
+                bundle_dir=HERE / "public",
+                resource_dir=HERE / "resources",
+                asset_url="/static/",
+            ),
         )
     )
 
@@ -85,13 +92,22 @@ Create ``app.py`` with the following content:
         route_handlers=[index],
         plugins=[vite],
         template_config=TemplateConfig(
-            directory=Path("templates"),
+            directory=HERE / "templates",
             engine=JinjaTemplateEngine,
         ),
     )
 
-Step 3: Create Your Template
------------------------------
+4. Create Directory Structure
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Create the required directories:
+
+.. code-block:: bash
+
+    mkdir -p templates resources public
+
+5. Create the HTML Template
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Create ``templates/index.html``:
 
@@ -103,71 +119,25 @@ Create ``templates/index.html``:
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>My Litestar Vite App</title>
+        <title>My Litestar App</title>
         {{ vite_hmr() }}
         {{ vite('resources/main.ts') }}
     </head>
     <body>
-        <div id="app"></div>
+        <div id="app">
+            <h1>Welcome to Litestar Vite!</h1>
+            <p>Edit <code>resources/main.ts</code> to see HMR in action.</p>
+        </div>
     </body>
     </html>
 
-**Template Tags Explained:**
+The template uses two Jinja2 functions provided by litestar-vite:
 
-- ``{{ vite_hmr() }}`` - Injects the HMR client in development mode
-- ``{{ vite('resources/main.ts') }}`` - Loads your TypeScript entry point
+- ``vite_hmr()``: Injects the HMR client script during development
+- ``vite('resources/main.ts')``: Includes your entry point with proper handling for dev/production
 
-Step 4: Create Your Frontend Code
-----------------------------------
-
-Create ``resources/main.ts``:
-
-.. code-block:: typescript
-    :caption: resources/main.ts
-
-    // Create a simple counter app
-    const app = document.getElementById('app');
-
-    if (app) {
-      let count = 0;
-
-      app.innerHTML = `
-        <div style="text-align: center; padding: 2rem; font-family: sans-serif;">
-          <h1>Welcome to Litestar + Vite!</h1>
-          <p>Count: <strong id="count">${count}</strong></p>
-          <button id="increment">Increment</button>
-        </div>
-      `;
-
-      const button = document.getElementById('increment');
-      const countEl = document.getElementById('count');
-
-      button?.addEventListener('click', () => {
-        count++;
-        if (countEl) countEl.textContent = String(count);
-      });
-    }
-
-Step 5: Configure Vite
------------------------
-
-Create ``vite.config.ts`` in your project root:
-
-.. code-block:: typescript
-    :caption: vite.config.ts
-
-    import { defineConfig } from 'vite';
-    import litestar from '@litestar/vite-plugin';
-
-    export default defineConfig({
-      plugins: [
-        litestar({
-          input: 'resources/main.ts',
-          bundleDirectory: 'public',
-          resourceDirectory: 'resources',
-        }),
-      ],
-    });
+6. Initialize Frontend
+~~~~~~~~~~~~~~~~~~~~~~
 
 Create ``package.json``:
 
@@ -176,6 +146,7 @@ Create ``package.json``:
 
     {
       "name": "my-litestar-app",
+      "version": "1.0.0",
       "private": true,
       "type": "module",
       "scripts": {
@@ -189,80 +160,174 @@ Create ``package.json``:
       }
     }
 
-Install Node.js dependencies:
+Install dependencies:
 
 .. code-block:: bash
 
     npm install
 
-Step 6: Run Your Application
------------------------------
+7. Configure Vite
+~~~~~~~~~~~~~~~~~
 
-**Development Mode:**
+Create ``vite.config.ts``:
 
-Start both the Litestar server and Vite dev server:
+.. code-block:: typescript
+    :caption: vite.config.ts
+
+    import { defineConfig } from "vite";
+    import litestar from "@litestar/vite-plugin";
+
+    export default defineConfig({
+      plugins: [
+        litestar({
+          input: ["resources/main.ts"],
+          assetUrl: "/static/",
+          bundleDir: "public",
+          resourceDir: "resources",
+        }),
+      ],
+    });
+
+8. Create Entry Point
+~~~~~~~~~~~~~~~~~~~~~
+
+Create ``resources/main.ts``:
+
+.. code-block:: typescript
+    :caption: resources/main.ts
+
+    import "./styles.css";
+
+    console.log("Hello from Litestar Vite!");
+
+    // This demonstrates HMR - change this message and see it update instantly!
+    const app = document.getElementById("app");
+    if (app) {
+      const p = document.createElement("p");
+      p.textContent = "JavaScript is working!";
+      app.appendChild(p);
+    }
+
+Create ``resources/styles.css``:
+
+.. code-block:: css
+    :caption: resources/styles.css
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem;
+      background: #f5f5f5;
+    }
+
+    h1 {
+      color: #1976d2;
+    }
+
+    code {
+      background: #e3e3e3;
+      padding: 0.2em 0.4em;
+      border-radius: 4px;
+    }
+
+Running the Application
+-----------------------
+
+You need to run both the Litestar backend and Vite dev server:
+
+1. Start Vite Dev Server
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+In one terminal:
 
 .. code-block:: bash
 
-    # Terminal 1: Start Vite dev server
     npm run dev
 
-    # Terminal 2: Start Litestar server
+This starts Vite on port 5173 (default).
+
+2. Start Litestar
+~~~~~~~~~~~~~~~~~
+
+In another terminal:
+
+.. code-block:: bash
+
     litestar run --reload
 
-Visit http://localhost:8000 and you should see your application running!
+Visit http://localhost:8000 to see your application!
 
-**Try Hot Module Replacement:**
+Testing HMR
+-----------
 
-1. Keep the browser open at http://localhost:8000
-2. Edit ``resources/main.ts`` and change the heading text
-3. Save the file
-4. Watch the browser update instantly without a full reload!
+With both servers running:
 
-Step 7: Build for Production
------------------------------
+1. Open http://localhost:8000 in your browser
+2. Open ``resources/main.ts`` in your editor
+3. Change the message text
+4. Save the file
+5. Watch the browser update instantly without a full page reload!
+
+Production Build
+----------------
 
 When you're ready to deploy:
 
-.. code-block:: bash
+1. Build the frontend assets:
 
-    # Build your frontend assets
-    npm run build
+   .. code-block:: bash
 
-    # Run Litestar in production mode
-    litestar run --host 0.0.0.0 --port 8000
+       npm run build
 
-Vite will create optimized, versioned assets in the ``public/`` directory, and Litestar Vite will automatically serve them.
+2. Update ``app.py`` to disable dev mode:
 
-What's Next?
-------------
+   .. code-block:: python
 
-Now that you have a basic Litestar + Vite application running:
+       vite = VitePlugin(
+           config=ViteConfig(
+               dev_mode=False,  # Changed from True
+               paths=PathConfig(
+                   bundle_dir=HERE / "public",
+                   resource_dir=HERE / "resources",
+                   asset_url="/static/",
+               ),
+           )
+       )
 
-- Try the :doc:`scaffolding` tutorial to quickly generate projects
-- Learn about :doc:`inertia-react` for building SPAs
-- Explore :doc:`advanced-config` for production optimization
+3. Run Litestar (Vite dev server not needed):
 
-Troubleshooting
----------------
+   .. code-block:: bash
 
-**Port already in use:**
+       litestar run
 
-Change the Vite dev server port in ``vite.config.ts``:
+The built assets will be served from ``public/`` with proper cache headers.
 
-.. code-block:: typescript
+Project Structure
+-----------------
 
-    export default defineConfig({
-      server: {
-        port: 5174,  // Change to any available port
-      },
-      // ... rest of config
-    });
+Your final project structure should look like:
 
-**Assets not loading:**
+.. code-block:: text
 
-Ensure both Vite dev server and Litestar are running simultaneously in development mode.
+    my-litestar-app/
+    ├── app.py                 # Litestar application
+    ├── package.json           # Node.js dependencies
+    ├── vite.config.ts         # Vite configuration
+    ├── public/                # Built assets (production)
+    │   └── manifest.json      # Asset manifest
+    ├── resources/             # Source files
+    │   ├── main.ts
+    │   └── styles.css
+    └── templates/             # Jinja2 templates
+        └── index.html
 
-**HMR not working:**
+Next Steps
+----------
 
-Check that ``hot_reload=True`` is set in your ``ViteConfig``.
+Now that you have a basic setup working, explore these topics:
+
+- :doc:`scaffolding` - Use the CLI to scaffold more complex projects
+- :doc:`inertia-react` - Build a full SPA with Inertia.js
+- :doc:`advanced-config` - Customize your Vite configuration
+- :doc:`/usage/index` - Learn about all available features

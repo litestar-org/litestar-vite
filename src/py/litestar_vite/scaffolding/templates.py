@@ -330,6 +330,9 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         ],
         dev_dependencies=[
             "@analogjs/vite-plugin-angular",
+            "@angular/build",
+            "@angular/compiler-cli",
+            "@angular/platform-browser-dynamic",
             "typescript",
             "@types/node",
         ],

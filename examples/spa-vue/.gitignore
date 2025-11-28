@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Build output
+public/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# Misc
+*.log
+.DS_Store

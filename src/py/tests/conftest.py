@@ -14,6 +14,30 @@ from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
 here = Path(__file__).parent
 
 
+# Environment variables that may affect test behavior - clear before each test
+_VITE_ENV_VARS = [
+    "VITE_PORT",
+    "VITE_HOST",
+    "VITE_PROTOCOL",
+    "VITE_DEV_MODE",
+    "VITE_HOT_RELOAD",
+    "VITE_PROXY_MODE",
+    "VITE_ALLOW_REMOTE",
+    "VITE_HEALTH_CHECK",
+    "LITESTAR_PORT",
+    "LITESTAR_DEBUG",
+    "ASSET_URL",
+]
+
+
+@pytest.fixture(autouse=True)
+def clean_vite_env(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+    """Clear Vite-related environment variables before each test for isolation."""
+    for var in _VITE_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    yield
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

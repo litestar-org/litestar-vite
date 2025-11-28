@@ -520,13 +520,18 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
             console.print("[dim]Exporting type metadata for Vite...[/]")
 
-            # Export OpenAPI schema when available and usable
-            if getattr(app, "openapi_schema", None) is not None:
+            # Check if OpenAPI is configured by looking at the plugins registry
+            # (accessing openapi_schema property directly raises when not configured)
+            from litestar._openapi.plugin import OpenAPIPlugin
+
+            openapi_plugin = next((p for p in app.plugins._plugins if isinstance(p, OpenAPIPlugin)), None)  # pyright: ignore[reportPrivateUsage]
+            has_openapi = openapi_plugin is not None and openapi_plugin._openapi_config is not None  # pyright: ignore[reportPrivateUsage]
+            if has_openapi:
                 try:
                     serializer = get_serializer(
                         app.type_encoders if isinstance(getattr(app, "type_encoders", None), dict) else None
                     )
-                    schema_dict = app.openapi_schema.to_schema()  # type: ignore[union-attr]
+                    schema_dict = app.openapi_schema.to_schema()
                     schema_content = msgspec.json.format(
                         encode_json(schema_dict, serializer=serializer),
                         indent=2,
@@ -549,11 +554,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
             console.print(
                 f"[green]✓ Types exported to {self._config.types.routes_path}[/]"
-                + (
-                    f" (openapi: {self._config.types.openapi_path})"
-                    if getattr(app, "openapi_schema", None) is not None
-                    else " (openapi skipped)"
-                )
+                + (f" (openapi: {self._config.types.openapi_path})" if has_openapi else " (openapi skipped)")
             )
         except (OSError, TypeError, ValueError, ImportError) as e:  # pragma: no cover
             console.print(f"[yellow]! Type export failed: {e}[/]")

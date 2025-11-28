@@ -1,322 +1,302 @@
-======================
+===================
 Project Scaffolding
-======================
+===================
 
-The Litestar Vite CLI provides a powerful scaffolding command to quickly generate new projects with your preferred frontend framework.
+Litestar Vite includes a powerful CLI for scaffolding new projects with your preferred
+frontend framework. This tutorial covers the ``litestar assets init`` command and all available options.
 
 Overview
 --------
 
-The ``litestar assets init`` command creates a complete project structure including:
+The scaffolding command creates a complete project structure with:
 
-- Pre-configured Litestar application
-- Vite configuration
-- Frontend framework setup (React, Vue, Svelte, or HTMX)
-- Example components and routes
+- Vite configuration optimized for your chosen framework
+- Package.json with all required dependencies
 - TypeScript configuration
-- Ready-to-use development environment
-
-Available Templates
--------------------
-
-.. list-table::
-   :widths: 20 30 50
-   :header-rows: 1
-
-   * - Template
-     - Framework
-     - Best For
-   * - ``react``
-     - React 18 + TypeScript
-     - SPAs, complex UIs, large applications
-   * - ``vue``
-     - Vue 3 + TypeScript
-     - Progressive enhancement, flexible apps
-   * - ``svelte``
-     - Svelte 5 + TypeScript
-     - Performance-critical apps, small bundles
-   * - ``htmx``
-     - HTMX + Vanilla JS
-     - Server-rendered apps with dynamic updates
-   * - ``angular``
-     - Angular 19 + Analog
-     - Enterprise applications, full-featured framework
+- Sample components to get you started
+- Integration with the litestar-vite plugin
 
 Quick Start
 -----------
 
-Run the scaffolding command:
+The simplest way to scaffold a new project:
 
 .. code-block:: bash
 
     litestar assets init
 
-You'll be prompted for:
+This starts an interactive wizard that guides you through the setup.
 
-1. **Project name**: The directory name for your new project
-2. **Template choice**: Select from React, Vue, Svelte, HTMX, or Angular
-3. **Confirmation**: Review and confirm your choices
+Available Frameworks
+--------------------
 
-Example Session
----------------
+The following frameworks are supported:
 
-.. code-block:: text
+React
+~~~~~
 
-    $ litestar assets init
-
-    Welcome to Litestar Vite Project Generator!
-
-    Project name: my-awesome-app
-
-    Select a template:
-    1. React
-    2. Vue
-    3. Svelte
-    4. HTMX
-    5. Angular
-
-    Choice [1]: 1
-
-    Creating project 'my-awesome-app' with React template...
-    ✓ Project structure created
-    ✓ Dependencies configured
-    ✓ Git repository initialized
-
-    Next steps:
-      cd my-awesome-app
-      npm install
-      npm run dev        # Start Vite dev server
-      litestar run       # In another terminal
-
-Template-Specific Features
----------------------------
-
-React Template
-~~~~~~~~~~~~~~
-
-**Includes:**
-
-- React 18 with TypeScript
-- React Router (optional with Inertia)
-- Example components and pages
-- CSS modules setup
-- Development and production configurations
-
-**Project Structure:**
-
-.. code-block:: text
-
-    my-app/
-    ├── app.py                 # Litestar application
-    ├── templates/
-    │   └── index.html
-    ├── resources/             # Frontend source
-    │   ├── App.tsx
-    │   ├── main.tsx
-    │   └── components/
-    ├── public/                # Built assets
-    ├── vite.config.ts
-    ├── tsconfig.json
-    └── package.json
-
-**Running the React Template:**
+Modern React with Vite:
 
 .. code-block:: bash
 
-    cd my-app
-    npm install
+    litestar assets init --template react
 
-    # Terminal 1
-    npm run dev
+Creates a React 18+ project with:
 
-    # Terminal 2
-    litestar run --reload
+- JSX/TSX support
+- React Router ready structure
+- CSS modules support
 
-Vue Template
-~~~~~~~~~~~~
+React with Inertia.js
+~~~~~~~~~~~~~~~~~~~~~
 
-**Includes:**
+Server-side routing with React:
 
-- Vue 3 with Composition API
-- TypeScript support
-- Single File Components (SFCs)
-- Vue Router (optional with Inertia)
+.. code-block:: bash
 
-**Key Files:**
+    litestar assets init --template react-inertia
+
+Creates a React project with Inertia.js integration for building SPAs with server-side routing.
+
+Vue 3
+~~~~~
+
+Vue 3 with Composition API:
+
+.. code-block:: bash
+
+    litestar assets init --template vue
+
+Creates a Vue 3 project with:
+
+- Single File Components (SFC)
+- Composition API ready
+- Vue Router ready structure
+
+Vue with Inertia.js
+~~~~~~~~~~~~~~~~~~~
+
+Server-side routing with Vue:
+
+.. code-block:: bash
+
+    litestar assets init --template vue-inertia
+
+Creates a Vue 3 project with Inertia.js integration.
+
+Svelte
+~~~~~~
+
+Svelte 5 with Vite:
+
+.. code-block:: bash
+
+    litestar assets init --template svelte
+
+Creates a Svelte project with:
+
+- Svelte 5 runes support
+- SvelteKit-compatible structure
+
+Svelte with Inertia.js
+~~~~~~~~~~~~~~~~~~~~~~
+
+Server-side routing with Svelte:
+
+.. code-block:: bash
+
+    litestar assets init --template svelte-inertia
+
+HTMX
+~~~~
+
+Hypermedia-driven applications:
+
+.. code-block:: bash
+
+    litestar assets init --template htmx
+
+Creates an HTMX project with:
+
+- HTMX and hyperscript
+- Minimal JavaScript
+- Server-rendered approach
+
+Angular (Vite-based)
+~~~~~~~~~~~~~~~~~~~~
+
+Angular with Vite and AnalogJS:
+
+.. code-block:: bash
+
+    litestar assets init --template angular
+
+Creates an Angular 18+ project using Vite for building:
+
+- Standalone components
+- Fast HMR via Vite
+- Integration with litestar-vite-plugin
+
+Angular CLI
+~~~~~~~~~~~
+
+Standard Angular CLI setup:
+
+.. code-block:: bash
+
+    litestar assets init --template angular-cli
+
+Creates an Angular project using the standard Angular CLI:
+
+- Uses webpack under the hood
+- Proxy configuration for development
+- Independent of litestar-vite-plugin
+
+Command Options
+---------------
+
+The ``litestar assets init`` command accepts several options:
 
 .. code-block:: text
 
-    my-app/
-    ├── resources/
-    │   ├── App.vue            # Root component
-    │   ├── main.ts            # Vue app initialization
-    │   └── components/
-    │       └── HelloWorld.vue
+    Usage: litestar assets init [OPTIONS]
 
-Svelte Template
-~~~~~~~~~~~~~~~
+    Options:
+      --template TEXT     Framework template (react, vue, svelte, htmx, angular, etc.)
+      --name TEXT         Project name
+      --dest TEXT         Destination directory
+      --no-install        Skip npm install
+      --help              Show this message and exit
 
-**Includes:**
+Examples
+~~~~~~~~
 
-- Svelte 5 with runes
-- TypeScript support
-- SvelteKit-compatible structure
-- Minimal bundle size
+Scaffold React project in a specific directory:
 
-**Key Features:**
+.. code-block:: bash
 
-- Fast HMR
-- Component-scoped styles
-- Reactive statements
-- Small production bundles
+    litestar assets init --template react --dest ./frontend
 
-HTMX Template
-~~~~~~~~~~~~~
+Scaffold with custom project name:
 
-**Includes:**
+.. code-block:: bash
 
-- HTMX for dynamic updates
-- Minimal JavaScript
-- Server-rendered templates
-- Progressive enhancement
+    litestar assets init --template vue --name my-vue-app
 
-**Ideal For:**
+Skip npm install (useful in CI):
 
-- Traditional server-rendered apps
-- Projects prioritizing simplicity
-- Progressive enhancement approach
+.. code-block:: bash
 
-Angular Template
-~~~~~~~~~~~~~~~~
+    litestar assets init --template svelte --no-install
 
-**Includes:**
+Generated Structure
+-------------------
 
-- Angular 19 with Analog
-- TypeScript and SSR support
-- Vite-powered development
-- Full Angular CLI features
+Each template generates a similar structure:
 
-**Note:** Uses Angular CLI for development server by default.
+.. code-block:: text
 
-Customizing Generated Projects
--------------------------------
+    your-project/
+    ├── package.json           # Dependencies and scripts
+    ├── tsconfig.json          # TypeScript configuration
+    ├── vite.config.ts         # Vite configuration
+    ├── index.html             # Entry HTML (Vite-based)
+    └── src/                   # Source files
+        ├── main.ts            # Entry point
+        ├── styles.css         # Global styles
+        └── app/               # Framework-specific components
+            └── ...
 
-After scaffolding, you can customize your project:
+The exact structure varies by framework to follow each framework's conventions.
 
-Modify Vite Configuration
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Customizing Templates
+---------------------
 
-Edit ``vite.config.ts`` to add plugins or change settings:
+After scaffolding, you can customize the generated files:
 
-.. code-block:: typescript
-    :caption: vite.config.ts
+1. **Dependencies**: Edit ``package.json`` to add or remove packages
+2. **Vite Config**: Modify ``vite.config.ts`` for custom plugins or settings
+3. **TypeScript**: Adjust ``tsconfig.json`` for your needs
+4. **Components**: Modify or replace the sample components
 
-    import { defineConfig } from 'vite';
-    import litestar from '@litestar/vite-plugin';
-    import react from '@vitejs/plugin-react';  // For React template
+Adding TailwindCSS
+~~~~~~~~~~~~~~~~~~
 
-    export default defineConfig({
-      plugins: [
-        litestar({
-          input: 'resources/main.tsx',
-          bundleDirectory: 'public',
-        }),
-        react(),
-      ],
-      server: {
-        port: 5173,
-        open: false,  // Don't auto-open browser
-      },
-    });
+Most templates work well with TailwindCSS. After scaffolding:
 
-Update Litestar Configuration
+.. code-block:: bash
+
+    npm install -D tailwindcss postcss autoprefixer
+    npx tailwindcss init -p
+
+Then update your CSS entry point to include Tailwind directives.
+
+Post-Scaffolding Steps
+----------------------
+
+After running the scaffold command:
+
+1. **Install Dependencies** (if ``--no-install`` wasn't used):
+
+   .. code-block:: bash
+
+       npm install
+
+2. **Start Development**:
+
+   .. code-block:: bash
+
+       npm run dev
+
+3. **Configure Litestar**: Ensure your Litestar app is configured to use the VitePlugin
+   with matching paths.
+
+Example Litestar Configuration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Modify ``app.py`` to add routes, middleware, or plugins:
-
 .. code-block:: python
-    :caption: app.py
 
     from pathlib import Path
-    from litestar import Litestar, get
-    from litestar.response import Template
     from litestar_vite import ViteConfig, VitePlugin
+    from litestar_vite.config import PathConfig
 
-    @get("/")
-    def index() -> Template:
-        return Template(template_name="index.html")
-
-    @get("/about")
-    def about() -> Template:
-        return Template(template_name="about.html")
+    HERE = Path(__file__).parent
 
     vite = VitePlugin(
         config=ViteConfig(
-            bundle_dir=Path("public"),
-            resource_dir=Path("resources"),
-            hot_reload=True,
+            dev_mode=True,
+            paths=PathConfig(
+                bundle_dir=HERE / "public",
+                resource_dir=HERE / "src",  # Or "resources" depending on template
+                asset_url="/static/",
+            ),
         )
     )
 
-    app = Litestar(
-        route_handlers=[index, about],
-        plugins=[vite],
-    )
+Troubleshooting
+---------------
 
-Add Dependencies
-~~~~~~~~~~~~~~~~
+Common issues and solutions:
 
-Install additional packages as needed:
+**"Template not found"**
+    Ensure you're using a valid template name. Run ``litestar assets init --help`` to see available options.
 
-.. code-block:: bash
+**"Permission denied"**
+    Ensure you have write access to the destination directory.
 
-    # Python dependencies
-    uv add sqlalchemy alembic
+**"npm install failed"**
+    Check your Node.js version (18+ recommended) and network connectivity.
+    Try running ``npm install`` manually with ``--verbose`` for more details.
 
-    # Node.js dependencies
-    npm install axios react-query
-
-Managing Multiple Projects
----------------------------
-
-You can scaffold multiple projects with different templates:
-
-.. code-block:: bash
-
-    litestar assets init  # Create first project
-    cd ..
-    litestar assets init  # Create another project
-
-Each project is independent with its own dependencies and configuration.
-
-Best Practices
---------------
-
-1. **Keep templates directory clean**: Only Jinja templates in ``templates/``
-2. **Organize resources**: Use subdirectories in ``resources/`` for components, styles, etc.
-3. **Version control**: The generated ``.gitignore`` is pre-configured for Python and Node.js
-4. **Development workflow**: Always run both Vite dev server and Litestar during development
-
-Common Issues
--------------
-
-**Scaffolding fails:**
-
-Ensure you have write permissions in the current directory.
-
-**Dependencies not installing:**
-
-Run ``npm install`` manually after scaffolding.
-
-**Port conflicts:**
-
-Change the Vite port in ``vite.config.ts`` if port 5173 is in use.
+**"Vite dev server not connecting"**
+    Ensure the ``assetUrl`` and ``bundleDir`` in your Vite config match your Litestar ViteConfig.
 
 Next Steps
 ----------
 
 After scaffolding your project:
 
-- Explore :doc:`getting-started` for a detailed walkthrough
-- Learn :doc:`inertia-react` for SPA development
-- Check :doc:`advanced-config` for optimization tips
+- :doc:`getting-started` - Learn the basics if you're new
+- :doc:`inertia-react` - Deep dive into Inertia.js with React
+- :doc:`vue-integration` - Vue.js specific patterns
+- :doc:`advanced-config` - Advanced Vite configuration

@@ -1,0 +1,29 @@
+{
+  "name": "litestar-angular-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@angular/animations": "^18.0.0",
+    "@angular/common": "^18.0.0",
+    "@angular/compiler": "^18.0.0",
+    "@angular/core": "^18.0.0",
+    "@angular/forms": "^18.0.0",
+    "@angular/platform-browser": "^18.0.0",
+    "@angular/router": "^18.0.0",
+    "rxjs": "^7.8.1",
+    "zone.js": "^0.14.0"
+  },
+  "devDependencies": {
+    "@analogjs/vite-plugin-angular": "^1.10.0",
+    "@angular/build": "^18.0.0",
+    "@angular/compiler-cli": "^18.0.0",
+    "litestar-vite-plugin": "latest",
+    "typescript": "^5.4.0",
+    "vite": "^6.0.0"
+  }
+}

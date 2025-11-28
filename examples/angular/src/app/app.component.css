@@ -1,0 +1,15 @@
+:host {
+  display: block;
+  min-height: 100vh;
+}
+
+header {
+  background: linear-gradient(135deg, #1976d2, #42a5f5);
+  color: white;
+  padding: 2rem;
+  margin: -2rem -2rem 2rem;
+}
+
+header h1 {
+  color: white;
+}

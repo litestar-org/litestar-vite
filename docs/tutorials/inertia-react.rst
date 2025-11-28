@@ -1,447 +1,513 @@
-====================================
-Building a React SPA with Inertia.js
-====================================
+======================
+Inertia.js with React
+======================
 
-This tutorial guides you through building a modern single-page application using React and Inertia.js with Litestar.
+This tutorial shows how to build a modern single-page application using Inertia.js with React
+and Litestar. Inertia.js lets you build SPAs with server-side routing, eliminating the need
+for a separate API layer.
 
 What is Inertia.js?
 -------------------
 
-Inertia.js allows you to build modern SPAs using classic server-side routing and controllers. You get the benefits of:
+Inertia.js is the glue between your server-side framework and client-side framework. It allows you to:
 
-- Server-side routing (no separate API)
-- React components for the frontend
-- Automatic data hydration
-- Shared state between pages
-- No client-side routing complexity
+- Build fully client-rendered SPAs
+- Use server-side routing (no client-side router needed)
+- Share data between server and client seamlessly
+- Maintain SEO-friendly URLs
 
 Prerequisites
 -------------
 
-- Completed the :doc:`getting-started` tutorial
-- Basic knowledge of React
-- Understanding of Litestar route handlers
-
-Installation
-------------
-
-Install Inertia dependencies:
-
-.. code-block:: bash
-
-    # Python
-    uv add litestar-vite "litestar[jinja]"
-
-    # Node.js
-    npm install @inertiajs/react react react-dom
-    npm install -D @types/react @types/react-dom @vitejs/plugin-react
+- Completed the :doc:`getting-started` tutorial or have a basic Litestar app
+- Familiarity with React
 
 Project Setup
 -------------
 
-Create the following structure:
+1. Scaffold the Project
+~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: text
+Use the CLI to create a React + Inertia project:
 
-    my-inertia-app/
-    ├── app.py
-    ├── templates/
-    │   └── app.html
-    ├── resources/
-    │   ├── main.tsx
-    │   ├── Pages/
-    │   │   ├── Home.tsx
-    │   │   ├── About.tsx
-    │   │   └── Dashboard.tsx
-    │   └── Layouts/
-    │       └── MainLayout.tsx
-    └── vite.config.ts
+.. code-block:: bash
 
-Step 1: Configure Litestar with Inertia
-----------------------------------------
+    litestar assets init --template react-inertia
 
-Create ``app.py``:
+Or manually install the dependencies:
+
+.. code-block:: bash
+
+    npm install @inertiajs/react react react-dom
+    npm install -D @types/react @types/react-dom @vitejs/plugin-react
+
+2. Configure Litestar
+~~~~~~~~~~~~~~~~~~~~~
+
+Create or update your ``app.py``:
 
 .. code-block:: python
     :caption: app.py
 
     from pathlib import Path
+    from typing import Any
+
     from litestar import Litestar, get
     from litestar.contrib.jinja import JinjaTemplateEngine
     from litestar.template.config import TemplateConfig
+
     from litestar_vite import ViteConfig, VitePlugin
-    from litestar_vite.inertia import (
-        InertiaConfig,
-        InertiaPlugin,
-        InertiaResponse,
-    )
+    from litestar_vite.config import PathConfig
+    from litestar_vite.inertia import InertiaConfig, InertiaPlugin, InertiaResponse
+
+    HERE = Path(__file__).parent
+
 
     @get("/")
     async def home() -> InertiaResponse:
+        """Home page."""
         return InertiaResponse(
-            component="Pages/Home",
-            props={
-                "title": "Welcome to Inertia!",
-                "message": "Build amazing SPAs with server-side routing",
-            },
+            component="Home",
+            props={"message": "Welcome to Inertia.js!"},
         )
+
 
     @get("/about")
     async def about() -> InertiaResponse:
+        """About page."""
         return InertiaResponse(
-            component="Pages/About",
-            props={"company": "Litestar Org"},
+            component="About",
+            props={
+                "title": "About Us",
+                "description": "Learn more about our application.",
+            },
         )
 
-    @get("/dashboard")
-    async def dashboard() -> InertiaResponse:
-        # Simulate fetching user data
-        user = {"name": "John Doe", "email": "john@example.com"}
+
+    @get("/users")
+    async def users() -> InertiaResponse:
+        """Users list page."""
+        # In a real app, this would come from a database
+        users_data = [
+            {"id": 1, "name": "Alice", "email": "alice@example.com"},
+            {"id": 2, "name": "Bob", "email": "bob@example.com"},
+            {"id": 3, "name": "Charlie", "email": "charlie@example.com"},
+        ]
         return InertiaResponse(
-            component="Pages/Dashboard",
-            props={"user": user},
+            component="Users",
+            props={"users": users_data},
         )
+
 
     vite = VitePlugin(
         config=ViteConfig(
-            bundle_dir=Path("public"),
-            resource_dir=Path("resources"),
+            dev_mode=True,
+            paths=PathConfig(
+                bundle_dir=HERE / "public",
+                resource_dir=HERE / "resources",
+                asset_url="/static/",
+            ),
         )
     )
 
     inertia = InertiaPlugin(
         config=InertiaConfig(
-            root_template="app.html",
+            root_template="index.html",
         )
     )
 
     app = Litestar(
-        route_handlers=[home, about, dashboard],
+        route_handlers=[home, about, users],
         plugins=[vite, inertia],
         template_config=TemplateConfig(
-            directory=Path("templates"),
+            directory=HERE / "templates",
             engine=JinjaTemplateEngine,
         ),
     )
 
-Step 2: Create the Root Template
----------------------------------
+3. Create the Root Template
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Create ``templates/app.html``:
+Create ``templates/index.html``:
 
 .. code-block:: jinja
-    :caption: templates/app.html
+    :caption: templates/index.html
 
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{{ page_title | default("My Inertia App") }}</title>
+        <title>{{ page.props.title if page.props.title else "My App" }}</title>
         {{ vite_hmr() }}
         {{ vite('resources/main.tsx') }}
-        {{ inertia_head() }}
     </head>
     <body>
-        {{ inertia_div() }}
+        {{ inertia_body() }}
     </body>
     </html>
 
-**Template Tags:**
+The ``inertia_body()`` function renders the Inertia.js root element with initial page data.
 
-- ``{{ vite_hmr() }}`` - HMR client (dev mode only)
-- ``{{ vite('resources/main.tsx') }}`` - Main entry point
-- ``{{ inertia_head() }}`` - Inertia metadata
-- ``{{ inertia_div() }}`` - React app mount point with initial page data
+4. Configure Vite
+~~~~~~~~~~~~~~~~~
 
-Step 3: Configure Vite for React
----------------------------------
+Update ``vite.config.ts``:
 
-Create ``vite.config.ts``:
-
-.. code-block:: tsx
+.. code-block:: typescript
     :caption: vite.config.ts
 
-    import { defineConfig } from 'vite';
-    import react from '@vitejs/plugin-react';
-    import litestar from '@litestar/vite-plugin';
+    import { defineConfig } from "vite";
+    import react from "@vitejs/plugin-react";
+    import litestar from "@litestar/vite-plugin";
 
     export default defineConfig({
       plugins: [
-        litestar({
-          input: 'resources/main.tsx',
-          bundleDirectory: 'public',
-          resourceDirectory: 'resources',
-        }),
         react(),
+        litestar({
+          input: ["resources/main.tsx"],
+          assetUrl: "/static/",
+          bundleDir: "public",
+          resourceDir: "resources",
+        }),
       ],
       resolve: {
         alias: {
-          '@': '/resources',
+          "@": "/resources",
         },
       },
     });
 
-Step 4: Initialize Inertia React App
--------------------------------------
+5. Create the React Entry Point
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Create ``resources/main.tsx``:
 
 .. code-block:: tsx
     :caption: resources/main.tsx
 
-    import { createRoot } from 'react-dom/client';
-    import { createInertiaApp } from '@inertiajs/react';
+    import { createInertiaApp } from "@inertiajs/react";
+    import { createRoot } from "react-dom/client";
+    import "./styles.css";
+
+    // Import all page components
+    const pages = import.meta.glob("./pages/**/*.tsx", { eager: true });
 
     createInertiaApp({
       resolve: (name) => {
-        const pages = import.meta.glob('./Pages/**/*.tsx', { eager: true });
-        return pages[`./Pages/${name}.tsx`];
+        const page = pages[`./pages/${name}.tsx`];
+        if (!page) {
+          throw new Error(`Page not found: ${name}`);
+        }
+        return page;
       },
       setup({ el, App, props }) {
         createRoot(el).render(<App {...props} />);
       },
     });
 
-Step 5: Create React Pages
----------------------------
+6. Create Page Components
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Create ``resources/Pages/Home.tsx``:
+Create the page components in ``resources/pages/``:
+
+**Home.tsx**:
 
 .. code-block:: tsx
-    :caption: resources/Pages/Home.tsx
+    :caption: resources/pages/Home.tsx
 
-    import { Link } from '@inertiajs/react';
+    import { Link } from "@inertiajs/react";
+    import Layout from "../components/Layout";
 
     interface HomeProps {
-      title: string;
       message: string;
     }
 
-    export default function Home({ title, message }: HomeProps) {
+    export default function Home({ message }: HomeProps) {
       return (
-        <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
-          <h1>{title}</h1>
+        <Layout title="Home">
+          <h1>Home</h1>
           <p>{message}</p>
-
-          <nav style={{ marginTop: '2rem' }}>
-            <Link href="/" style={{ marginRight: '1rem' }}>
-              Home
-            </Link>
-            <Link href="/about" style={{ marginRight: '1rem' }}>
-              About
-            </Link>
-            <Link href="/dashboard">Dashboard</Link>
+          <nav>
+            <Link href="/about">About</Link> |{" "}
+            <Link href="/users">Users</Link>
           </nav>
-        </div>
+        </Layout>
       );
     }
 
-Create ``resources/Pages/About.tsx``:
+**About.tsx**:
 
 .. code-block:: tsx
-    :caption: resources/Pages/About.tsx
+    :caption: resources/pages/About.tsx
 
-    import { Link } from '@inertiajs/react';
+    import { Link } from "@inertiajs/react";
+    import Layout from "../components/Layout";
 
     interface AboutProps {
-      company: string;
+      title: string;
+      description: string;
     }
 
-    export default function About({ company }: AboutProps) {
+    export default function About({ title, description }: AboutProps) {
       return (
-        <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
-          <h1>About Us</h1>
-          <p>This application is built by {company}</p>
-
-          <nav style={{ marginTop: '2rem' }}>
-            <Link href="/" style={{ marginRight: '1rem' }}>
-              Home
-            </Link>
-            <Link href="/about" style={{ marginRight: '1rem' }}>
-              About
-            </Link>
-            <Link href="/dashboard">Dashboard</Link>
-          </nav>
-        </div>
+        <Layout title={title}>
+          <h1>{title}</h1>
+          <p>{description}</p>
+          <Link href="/">Back to Home</Link>
+        </Layout>
       );
     }
 
-Create ``resources/Pages/Dashboard.tsx``:
+**Users.tsx**:
 
 .. code-block:: tsx
-    :caption: resources/Pages/Dashboard.tsx
+    :caption: resources/pages/Users.tsx
 
-    import { Link } from '@inertiajs/react';
+    import { Link } from "@inertiajs/react";
+    import Layout from "../components/Layout";
 
     interface User {
+      id: number;
       name: string;
       email: string;
     }
 
-    interface DashboardProps {
-      user: User;
+    interface UsersProps {
+      users: User[];
     }
 
-    export default function Dashboard({ user }: DashboardProps) {
+    export default function Users({ users }: UsersProps) {
       return (
-        <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
-          <h1>Dashboard</h1>
-          <p>Welcome back, {user.name}!</p>
-          <p>Email: {user.email}</p>
-
-          <nav style={{ marginTop: '2rem' }}>
-            <Link href="/" style={{ marginRight: '1rem' }}>
-              Home
-            </Link>
-            <Link href="/about" style={{ marginRight: '1rem' }}>
-              About
-            </Link>
-            <Link href="/dashboard">Dashboard</Link>
-          </nav>
-        </div>
+        <Layout title="Users">
+          <h1>Users</h1>
+          <ul>
+            {users.map((user) => (
+              <li key={user.id}>
+                <strong>{user.name}</strong> - {user.email}
+              </li>
+            ))}
+          </ul>
+          <Link href="/">Back to Home</Link>
+        </Layout>
       );
     }
 
-Step 6: Create a Shared Layout
--------------------------------
+7. Create a Layout Component
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For consistent navigation across pages, create a layout:
-
-Create ``resources/Layouts/MainLayout.tsx``:
+Create ``resources/components/Layout.tsx``:
 
 .. code-block:: tsx
-    :caption: resources/Layouts/MainLayout.tsx
+    :caption: resources/components/Layout.tsx
 
-    import { Link } from '@inertiajs/react';
-    import { PropsWithChildren } from 'react';
+    import { Head } from "@inertiajs/react";
+    import { ReactNode } from "react";
 
-    export default function MainLayout({ children }: PropsWithChildren) {
-      return (
-        <div style={{ fontFamily: 'sans-serif' }}>
-          <nav style={{
-            padding: '1rem',
-            backgroundColor: '#f50057',
-            color: 'white',
-          }}>
-            <Link href="/" style={{ color: 'white', marginRight: '1rem' }}>
-              Home
-            </Link>
-            <Link href="/about" style={{ color: 'white', marginRight: '1rem' }}>
-              About
-            </Link>
-            <Link href="/dashboard" style={{ color: 'white' }}>
-              Dashboard
-            </Link>
-          </nav>
-          <main style={{ padding: '2rem' }}>
-            {children}
-          </main>
-        </div>
-      );
-    }
-
-Update your pages to use the layout:
-
-.. code-block:: tsx
-    :caption: resources/Pages/Home.tsx (updated)
-
-    import MainLayout from '../Layouts/MainLayout';
-
-    interface HomeProps {
+    interface LayoutProps {
       title: string;
-      message: string;
+      children: ReactNode;
     }
 
-    export default function Home({ title, message }: HomeProps) {
+    export default function Layout({ title, children }: LayoutProps) {
       return (
-        <MainLayout>
-          <h1>{title}</h1>
-          <p>{message}</p>
-        </MainLayout>
+        <>
+          <Head title={title} />
+          <div className="container">
+            <header>
+              <h2>My Inertia App</h2>
+            </header>
+            <main>{children}</main>
+            <footer>
+              <p>Built with Litestar + Inertia.js</p>
+            </footer>
+          </div>
+        </>
       );
     }
 
-Step 7: Run Your Application
------------------------------
+8. Add Styles
+~~~~~~~~~~~~~
+
+Create ``resources/styles.css``:
+
+.. code-block:: css
+    :caption: resources/styles.css
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      background: #f5f5f5;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    header {
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid #ddd;
+    }
+
+    main {
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    footer {
+      margin-top: 2rem;
+      text-align: center;
+      color: #666;
+    }
+
+    a {
+      color: #1976d2;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    li {
+      padding: 0.5rem;
+      background: #f9f9f9;
+      margin-bottom: 0.5rem;
+      border-radius: 4px;
+    }
+
+Running the Application
+-----------------------
+
+Start both servers:
 
 .. code-block:: bash
 
     # Terminal 1: Vite dev server
     npm run dev
 
-    # Terminal 2: Litestar server
+    # Terminal 2: Litestar
     litestar run --reload
 
 Visit http://localhost:8000 and navigate between pages. Notice how:
 
 - Page transitions are instant (no full page reload)
 - The URL updates correctly
-- Browser back/forward buttons work
-- Data is passed from server to client automatically
+- Browser back/forward works as expected
+- Data is passed from server to client seamlessly
 
-Advanced Features
------------------
+Key Concepts
+------------
 
-Sharing Data Globally
-~~~~~~~~~~~~~~~~~~~~~
+InertiaResponse
+~~~~~~~~~~~~~~~
 
-Share data across all pages using ``shared_props``:
+Every Inertia page returns an ``InertiaResponse`` with:
+
+- ``component``: The React component name to render
+- ``props``: Data to pass to the component
 
 .. code-block:: python
 
-    from litestar_vite.inertia import share_inertia_props
+    @get("/dashboard")
+    async def dashboard() -> InertiaResponse:
+        return InertiaResponse(
+            component="Dashboard",
+            props={"user": {"name": "John"}, "stats": {"visits": 100}},
+        )
 
-    @share_inertia_props
-    async def shared_data() -> dict:
-        return {
-            "auth": {"user": {"name": "John Doe"}},
-            "flash": {"message": "Welcome back!"},
-        }
+Shared Data
+~~~~~~~~~~~
 
-    app = Litestar(
-        route_handlers=[home, about, dashboard],
-        plugins=[vite, inertia],
-        on_startup=[shared_data],
+Share data across all pages using the InertiaPlugin:
+
+.. code-block:: python
+
+    inertia = InertiaPlugin(
+        config=InertiaConfig(
+            root_template="index.html",
+        )
     )
 
-Form Handling
-~~~~~~~~~~~~~
+    # In a middleware or before request handler:
+    @get("/")
+    async def home(request: Request) -> InertiaResponse:
+        # Access shared data from request state
+        return InertiaResponse(
+            component="Home",
+            props={"user": request.user},  # From auth middleware
+        )
 
-Handle forms with Inertia:
+Forms and Validation
+~~~~~~~~~~~~~~~~~~~~
+
+Handle forms with Inertia's form helper:
 
 .. code-block:: tsx
 
-    import { useForm } from '@inertiajs/react';
+    import { useForm } from "@inertiajs/react";
 
-    export default function ContactForm() {
-      const { data, setData, post, processing } = useForm({
-        name: '',
-        email: '',
-        message: '',
+    function CreateUser() {
+      const { data, setData, post, processing, errors } = useForm({
+        name: "",
+        email: "",
       });
 
-      const submit = (e: React.FormEvent) => {
+      function submit(e: React.FormEvent) {
         e.preventDefault();
-        post('/contact');
-      };
+        post("/users");
+      }
 
       return (
         <form onSubmit={submit}>
           <input
             value={data.name}
-            onChange={e => setData('name', e.target.value)}
+            onChange={(e) => setData("name", e.target.value)}
           />
-          <button type="submit" disabled={processing}>
-            Send
-          </button>
+          {errors.name && <span>{errors.name}</span>}
+          <button disabled={processing}>Create</button>
         </form>
       );
     }
 
+Server-side handler:
+
+.. code-block:: python
+
+    from litestar import post
+    from litestar.params import Body
+    from pydantic import BaseModel
+
+    class CreateUserDTO(BaseModel):
+        name: str
+        email: str
+
+    @post("/users")
+    async def create_user(data: CreateUserDTO = Body()) -> InertiaResponse:
+        # Create user in database...
+        return InertiaResponse(
+            component="Users",
+            props={"message": "User created successfully!"},
+        )
+
 Next Steps
 ----------
 
-- Explore :doc:`advanced-config` for optimization
-- Check the `Inertia.js documentation <https://inertiajs.com/>`_
-- See the :doc:`../reference/inertia/index` for API details
+- :doc:`/usage/inertia` - Complete Inertia.js reference
+- :doc:`vue-integration` - Try Inertia with Vue instead
+- :doc:`advanced-config` - Advanced configuration options
+- `Inertia.js Documentation <https://inertiajs.com/>`_ - Official Inertia.js docs

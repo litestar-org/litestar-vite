@@ -8,15 +8,14 @@
     "build": "ng build"
   },
   "dependencies": {
-{% for dep in dependencies %}
+{%- for dep in dependencies %}
     "{{ dep }}": "latest"{% if not loop.last %},{% endif %}
-
-{% endfor %}
+{%- endfor %}
   },
   "devDependencies": {
-{% for dep in dev_dependencies %}
+{%- for dep in dev_dependencies %}
     "{{ dep }}": "latest",
-{% endfor %}
+{%- endfor %}
     "@types/jasmine": "latest"
   }
 }
