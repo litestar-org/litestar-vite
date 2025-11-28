@@ -1,6 +1,6 @@
 # Angular Integration - Implementation Tasks
 
-**PRD:** [prd.md](./prd.md)  
+**PRD:** [prd.md](./prd.md)
 **Status:** In Progress (defaults aligned to `/static/`, proxy single-port baseline ready)
 
 ---

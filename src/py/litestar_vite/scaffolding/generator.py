@@ -3,11 +3,14 @@
 This module handles the generation of project files from templates.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
-from litestar_vite.scaffolding.templates import FrameworkTemplate
+if TYPE_CHECKING:
+    from litestar_vite.scaffolding.templates import FrameworkTemplate
 
 
 def _dict_factory() -> dict[str, Any]:
@@ -112,6 +115,55 @@ def render_template(template_path: Path, context: dict[str, Any]) -> str:
     return template.render(**context)
 
 
+def _process_templates(
+    template_dir: Path,
+    output_dir: Path,
+    context_dict: dict[str, Any],
+    resource_dir: str,
+    *,
+    overwrite: bool,
+    skip_paths: set[Path] | None = None,
+) -> list[Path]:
+    """Process templates from a directory and generate output files.
+
+    Args:
+        template_dir: Directory containing template files.
+        output_dir: Directory to write generated files.
+        context_dict: Template context dictionary.
+        resource_dir: Resource directory name for path rewriting.
+        overwrite: Whether to overwrite existing files.
+        skip_paths: Set of relative paths to skip.
+
+    Returns:
+        List of generated file paths.
+    """
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+
+    generated_files: list[Path] = []
+    skip_paths = skip_paths or set()
+
+    for template_file in template_dir.glob("**/*.j2"):
+        relative_path = template_file.relative_to(template_dir)
+
+        if relative_path in skip_paths:
+            continue
+
+        # Rewrite resources/ paths to use configured resource_dir
+        if relative_path.parts and relative_path.parts[0] == "resources":
+            relative_path = Path(resource_dir, *relative_path.parts[1:])
+
+        output_path = output_dir / str(relative_path).replace(".j2", "")
+
+        if output_path.exists() and not overwrite:
+            console.print(f"[yellow]Skipping {output_path} (exists)[/]")
+            continue
+
+        _render_and_write(template_file, output_path, context_dict)
+        generated_files.append(output_path)
+
+    return generated_files
+
+
 def generate_project(
     output_dir: Path,
     context: TemplateContext,
@@ -135,67 +187,49 @@ def generate_project(
     base_dir = template_dir / "base"
     context_dict = context.to_dict()
     generated_files: list[Path] = []
-    framework_overrides: set[Path] = set()
 
+    # Collect framework overrides to skip in base templates
+    framework_overrides: set[Path] = set()
     if framework_dir.exists():
-        framework_overrides = {template_file.relative_to(framework_dir) for template_file in framework_dir.glob("**/*.j2")}
+        framework_overrides = {
+            template_file.relative_to(framework_dir) for template_file in framework_dir.glob("**/*.j2")
+        }
 
     actual_output_dir = output_dir / context.base_dir if context.base_dir not in {"", "."} else output_dir
-
-    # Ensure output directory exists
     actual_output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Process base templates first (shared across frameworks) when Vite-based
+    # Process base templates (shared across frameworks) when Vite-based
     if context.framework.uses_vite and base_dir.exists():
-        for template_file in base_dir.glob("**/*.j2"):
-            relative_path = template_file.relative_to(base_dir)
-            if relative_path in framework_overrides:
-                continue
-            output_path = actual_output_dir / str(relative_path).replace(".j2", "")
-
-            if output_path.exists() and not overwrite:
-                console.print(f"[yellow]Skipping {output_path} (exists)[/]")
-                continue
-
-            _render_and_write(template_file, output_path, context_dict)
-            generated_files.append(output_path)
+        generated_files.extend(
+            _process_templates(
+                base_dir,
+                actual_output_dir,
+                context_dict,
+                context.resource_dir,
+                overwrite=overwrite,
+                skip_paths=framework_overrides,
+            )
+        )
 
     # Process framework-specific templates
     if framework_dir.exists():
-        for template_file in framework_dir.glob("**/*.j2"):
-            relative_path = template_file.relative_to(framework_dir)
-
-            if relative_path.parts and relative_path.parts[0] == "resources":
-                relative_path = Path(context.resource_dir, *relative_path.parts[1:])
-
-            output_path = actual_output_dir / str(relative_path).replace(".j2", "")
-
-            if output_path.exists() and not overwrite:
-                console.print(f"[yellow]Skipping {output_path} (exists)[/]")
-                continue
-
-            _render_and_write(template_file, output_path, context_dict)
-            generated_files.append(output_path)
+        generated_files.extend(
+            _process_templates(
+                framework_dir, actual_output_dir, context_dict, context.resource_dir, overwrite=overwrite
+            )
+        )
     else:
-        # Fallback to generic templates if framework-specific don't exist
         console.print(f"[dim]No framework templates for {context.framework.type.value}, using base templates[/]")
 
     # Add TailwindCSS addon if requested
     if context.use_tailwind:
         tailwind_dir = template_dir / "addons" / "tailwindcss"
         if tailwind_dir.exists():
-            for template_file in tailwind_dir.glob("**/*.j2"):
-                relative_path = template_file.relative_to(tailwind_dir)
-                if relative_path.parts and relative_path.parts[0] == "resources":
-                    relative_path = Path(context.resource_dir, *relative_path.parts[1:])
-                output_path = actual_output_dir / str(relative_path).replace(".j2", "")
-
-                if output_path.exists() and not overwrite:
-                    console.print(f"[yellow]Skipping {output_path} (exists)[/]")
-                    continue
-
-                _render_and_write(template_file, output_path, context_dict)
-                generated_files.append(output_path)
+            generated_files.extend(
+                _process_templates(
+                    tailwind_dir, actual_output_dir, context_dict, context.resource_dir, overwrite=overwrite
+                )
+            )
 
     return generated_files
 

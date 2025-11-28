@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from litestar_vite.config import RuntimeConfig, ViteConfig
 from litestar_vite.plugin import VitePlugin
 
@@ -21,7 +23,7 @@ def test_hotfile_written_with_proxy_target(tmp_path: Path) -> None:
     assert target.count(":") >= 2  # host:port present
 
 
-def test_auto_port_when_not_set(tmp_path: Path, monkeypatch) -> None:
+def test_auto_port_when_not_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("VITE_PORT", raising=False)
     cfg = ViteConfig(dev_mode=True)
     cfg.paths.bundle_dir = tmp_path

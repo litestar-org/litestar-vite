@@ -11,13 +11,11 @@
   "dependencies": {
 {% for dep in dependencies %}
     "{{ dep }}": "latest"{% if not loop.last %},{% endif %}
-
 {% endfor %}
   },
   "devDependencies": {
 {% for dep in dev_dependencies %}
-    "{{ dep }}": "latest"{% if not loop.last %},{% endif %}
-
+    "{{ dep }}": "latest",
 {% endfor %}
 {% if enable_types %}
     "@hey-api/openapi-ts": "latest",

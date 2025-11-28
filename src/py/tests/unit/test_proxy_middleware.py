@@ -27,7 +27,7 @@ async def test_proxy_http_short_circuits_non_vite_paths() -> None:
 
     async def downstream(scope: Scope, receive: Receive, send: Send) -> None:
         await send({"type": "http.response.start", "status": 200, "headers": []})
-        await send({"type": "http.response.body", "body": b"ok"})
+        await send({"type": "http.response.body", "body": b"ok"})  # type: ignore[arg-type]
 
     middleware = ViteProxyMiddleware(downstream, "http://127.0.0.1:9999")
 
@@ -43,7 +43,7 @@ async def test_proxy_http_short_circuits_non_vite_paths() -> None:
     async def receive() -> HTTPRequestEvent:
         return {"type": "http.request", "body": b"", "more_body": False}
 
-    await middleware(scope, receive, sent.__call__)
+    await middleware(scope, receive, sent.__call__)  # type: ignore[arg-type]
 
     assert any(ev.get("status") == 200 for ev in sent.events)
 

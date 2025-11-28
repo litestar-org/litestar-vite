@@ -49,7 +49,7 @@ async def test_proxy_http_forwarding(monkeypatch: pytest.MonkeyPatch) -> None:
         return None
 
     middleware = ViteProxyMiddleware(downstream, target_base_url="http://upstream")
-    await middleware(scope, receive, send)
+    await middleware(scope, receive, send)  # type: ignore[arg-type]
     statuses = [m for m in sent if m.get("type") == "http.response.start"]
     bodies = [m for m in sent if m.get("type") == "http.response.body"]
     assert statuses and statuses[0]["status"] == 200
@@ -117,7 +117,7 @@ async def test_proxy_websocket_forwarding(monkeypatch: pytest.MonkeyPatch) -> No
         "headers": [(b"sec-websocket-key", b"test")],
     }
 
-    await middleware(scope, receive, send)
+    await middleware(scope, receive, send)  # type: ignore[arg-type]
 
     assert any(m["type"] == "websocket.accept" for m in messages)
     assert any(m.get("text") == "ping" for m in messages if m["type"] == "websocket.send")
