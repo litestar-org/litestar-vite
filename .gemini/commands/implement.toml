@@ -1,4 +1,5 @@
 # Command: /implement {{slug}}
+description = "Implement a feature from an approved PRD"
 prompt = """
 You are the Expert Agent for the litestar-vite project. Your mission is to implement features from approved PRDs with perfect precision, then orchestrate testing and documentation phases.
 
@@ -10,6 +11,7 @@ You are the Expert Agent for the litestar-vite project. Your mission is to imple
 4. **LOCAL TESTS REQUIRED** - You MUST run local tests and linting BEFORE invoking sub-agents
 5. **SUB-AGENTS MANDATORY** - You MUST invoke testing agent, then docs-vision agent (in that order)
 6. **NO SKIPPING** - You CANNOT skip checkpoints, shortcuts, or "come back later"
+7. **VERIFY BEFORE CODING** - You MUST confirm implementation approach before writing code
 
 **VERIFICATION**: After EACH checkpoint, explicitly state "✓ Checkpoint N complete" before proceeding.
 
@@ -22,10 +24,15 @@ You are the Expert Agent for the litestar-vite project. Your mission is to imple
 **Load in this exact order**:
 
 1. Read `AGENTS.md` - Project context, tech stack, standards
-2. Read `.gemini/GEMINI.md` - Gemini workflow instructions
-3. Read `.gemini/mcp-tools.txt` - Available MCP tools
-4. Read `specs/guides/architecture.md` - System architecture
-5. Read `specs/guides/code-style.md` - Python and TypeScript code standards
+2. Read `.gemini/GEMINI.md` - Gemini workflow instructions (CRITICAL: behavioral requirements)
+3. Read `specs/guides/architecture.md` - System architecture
+4. Read `specs/guides/code-style.md` - Python and TypeScript code standards
+
+**Load relevant context files from `.gemini/context/`**:
+- Always read: `.gemini/context/code-style.md` (quick reference)
+- If backend work: `.gemini/context/litestar.md`
+- If frontend work: `.gemini/context/vite.md`, `.gemini/context/{framework}.md`
+- If Inertia: `.gemini/context/inertia.md`
 
 **Output**: "✓ Checkpoint 0 complete - Context loaded"
 
@@ -68,6 +75,42 @@ git status --porcelain src/ | grep -v "^??" && echo "ERROR: Uncommitted changes 
 
 ---
 
+### Checkpoint 1.5: Confidence Assessment (MANDATORY - NEW)
+
+**Before researching, assess your readiness:**
+
+```markdown
+## Implementation Readiness
+
+**PRD Summary**: {one-sentence summary of what to implement}
+
+**Acceptance Criteria Count**: {N criteria to implement}
+
+**Files to Create/Modify** (from PRD):
+- {file 1} - {what changes}
+- {file 2} - {what changes}
+
+**Confidence Assessment**:
+- [ ] I understand all acceptance criteria
+- [ ] I know which existing patterns to follow
+- [ ] I can identify the files to modify
+- [ ] I understand the testing requirements
+
+**Confidence Level**: HIGH / MEDIUM / LOW
+
+**Unknowns** (if any):
+- {thing I need to research}
+```
+
+**⚠️ STOP IF**:
+- Confidence is LOW → Use Sequential Thinking or Context7 before proceeding
+- Cannot identify existing patterns → Search codebase first
+- Acceptance criteria unclear → Ask user for clarification
+
+**Output**: "✓ Checkpoint 1.5 complete - Ready to implement, Confidence: {level}"
+
+---
+
 ### Checkpoint 2: Research Implementation Patterns (REQUIRED)
 
 **Find similar patterns in codebase**:
@@ -81,19 +124,20 @@ git status --porcelain src/ | grep -v "^??" && echo "ERROR: Uncommitted changes 
 - `specs/guides/architecture.md` - For architectural patterns
 - `specs/guides/code-style.md` - For coding standards
 - `specs/guides/testing.md` - For testing patterns
+- `.gemini/context/code-style.md` - Quick reference for anti-patterns
 
 **Use Context7 for library docs** (if needed):
 
 ```python
-mcp__context7__resolve_library_id(libraryName="litestar")
-mcp__context7__get_library_docs(
+mcp__context7__resolve-library-id(libraryName="litestar")
+mcp__context7__get-library-docs(
     context7CompatibleLibraryID="/litestar-org/litestar",
     topic="dependency injection",
     tokens=5000
 )
 ```
 
-**Use Sequential Thinking for complex decisions** (available in `.gemini/mcp-tools.txt`):
+**Use Sequential Thinking for complex decisions**:
 
 - Use it for architectural decisions
 - Use it for error handling strategies

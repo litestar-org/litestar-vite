@@ -1,9 +1,6 @@
----
-name: inertia
-description: Expert knowledge for Inertia.js with Litestar. Use when building SPAs with server-side routing, handling Inertia responses, or managing page components.
----
+# Inertia.js Context
 
-# Inertia.js Skill
+Expert knowledge for Inertia.js with Litestar. Reference when building SPAs with server-side routing, handling Inertia responses, or managing page components.
 
 ## Quick Reference
 
@@ -189,6 +186,7 @@ Inertia requests include:
 ## Context7 Lookup
 
 ```python
+mcp__context7__resolve-library-id(libraryName="inertiajs")
 mcp__context7__get-library-docs(
     context7CompatibleLibraryID="/inertiajs/inertia",
     topic="protocol responses links",

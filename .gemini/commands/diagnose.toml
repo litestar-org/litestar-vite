@@ -1,0 +1,146 @@
+# Command: /diagnose "topic or problem"
+description = "Diagnose and gather information before taking action - forces research mode"
+prompt = """
+You are in DIAGNOSTIC MODE. Your goal is to UNDERSTAND and RESEARCH, not to ACT.
+
+## ⛔ CRITICAL RULES
+
+1. **NO CODE MODIFICATION** - Do not modify any source files
+2. **NO FILE CREATION** - Do not create implementation files
+3. **RESEARCH ONLY** - Read, search, analyze, document
+4. **ASK QUESTIONS** - Present findings and ask for confirmation
+
+---
+
+## Diagnosing: {{args}}
+
+### Step 1: Clarify the Request
+
+**Restate the request in your own words:**
+```
+My understanding: {your interpretation of what's being asked}
+```
+
+**Identify the type of request:**
+- [ ] Bug investigation
+- [ ] Feature planning
+- [ ] Architecture question
+- [ ] Performance concern
+- [ ] Code understanding
+- [ ] Other: {specify}
+
+### Step 2: Search the Codebase
+
+**Find related code:**
+```bash
+# Search for relevant patterns
+grep -r "{{args}}" src/py/litestar_vite/ -l
+grep -r "{{args}}" src/js/src/ -l
+
+# Find related files
+find src/ -name "*relevant*" -type f
+```
+
+**Search for existing tests:**
+```bash
+grep -r "{{args}}" src/py/tests/ -l
+```
+
+**Check documentation:**
+```bash
+grep -r "{{args}}" specs/guides/ -l
+grep -r "{{args}}" docs/ -l
+```
+
+### Step 3: Use Context7 (if library-related)
+
+If this involves external libraries:
+
+```python
+mcp__context7__resolve-library-id(libraryName="relevant_library")
+mcp__context7__get-library-docs(
+    context7CompatibleLibraryID="/org/library",
+    topic="relevant_topic",
+    tokens=5000
+)
+```
+
+### Step 4: Use Sequential Thinking (if complex)
+
+For complex analysis, use step-by-step thinking:
+
+```python
+mcp__sequential-thinking__sequentialthinking(
+    thought="Step 1: Understanding the current state...",
+    thought_number=1,
+    total_thoughts=10,
+    next_thought_needed=True
+)
+```
+
+### Step 5: Document Findings
+
+**Present your findings:**
+
+```markdown
+## Diagnostic Report: {{args}}
+
+### Summary
+{One paragraph summary of findings}
+
+### Current State
+{What exists in the codebase now}
+
+### Related Components
+| Component | File | Relevance |
+|-----------|------|-----------|
+| {name} | {path} | {why relevant} |
+
+### Key Observations
+1. {observation 1}
+2. {observation 2}
+3. {observation 3}
+
+### Unknowns / Uncertainties
+- [ ] {thing I'm not sure about}
+- [ ] {needs clarification}
+
+### Questions for User
+1. {question that would help clarify}
+2. {question about requirements}
+
+### Possible Approaches
+If action is needed, here are options:
+
+**Option A**: {approach 1}
+- Pros: {benefits}
+- Cons: {drawbacks}
+- Effort: {low/medium/high}
+
+**Option B**: {approach 2}
+- Pros: {benefits}
+- Cons: {drawbacks}
+- Effort: {low/medium/high}
+
+### Recommendation
+{Your recommendation based on findings, or request for more information}
+```
+
+---
+
+## Confidence Assessment
+
+Before concluding, assess:
+
+- **HIGH**: Clear understanding, found all relevant code, can recommend action
+- **MEDIUM**: General understanding but some gaps, need confirmation
+- **LOW**: Significant unknowns, need more information before proceeding
+
+**Current Confidence**: {HIGH / MEDIUM / LOW}
+
+If LOW or MEDIUM, list what would increase confidence.
+
+---
+
+**Output**: Present your findings and wait for user direction before taking any action.
+"""
