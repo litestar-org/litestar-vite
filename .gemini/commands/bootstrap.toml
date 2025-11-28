@@ -1,0 +1,911 @@
+# Command: /bootstrap
+description = "Bootstrap AI development infrastructure for any project"
+prompt = """
+You are bootstrapping AI development infrastructure for this project. This command will analyze the codebase, detect frameworks and patterns, and generate comprehensive Gemini CLI configuration including commands, contexts, and the PRD-driven development workflow.
+
+**Version**: 1.0 | **Bootstrap Framework**: litestar-vite
+
+---
+
+## Table of Contents
+
+1. [Preflight Checks](#part-1-preflight-checks)
+2. [Detection Phase](#part-2-detection-phase)
+3. [Generation Phase](#part-3-generation-phase)
+4. [Alignment Mode](#part-4-alignment-mode)
+5. [Verification](#part-5-verification)
+6. [Embedded Templates](#part-6-embedded-templates)
+7. [Framework Knowledge Base](#part-7-framework-knowledge-base)
+
+---
+
+## Part 1: Preflight Checks
+
+### Step 1.1: Environment Validation
+
+Before proceeding, verify we're in a valid project:
+
+```bash
+# Check for git repository
+test -d .git && echo "GIT_REPO=true" || echo "GIT_REPO=false"
+
+# Check for common project markers
+test -f package.json && echo "HAS_PACKAGE_JSON=true"
+test -f pyproject.toml && echo "HAS_PYPROJECT=true"
+test -f Cargo.toml && echo "HAS_CARGO=true"
+test -f go.mod && echo "HAS_GO_MOD=true"
+test -f pom.xml && echo "HAS_POM=true"
+```
+
+**If no project markers found**: Ask user to confirm this is the correct directory.
+
+### Step 1.2: Detect Existing Bootstrap
+
+Check if this project has already been bootstrapped:
+
+```bash
+# Check for existing Gemini configuration
+test -d .gemini && echo "GEMINI_EXISTS=true"
+test -f .gemini/GEMINI.md && echo "GEMINI_MD_EXISTS=true"
+test -d .gemini/commands && echo "GEMINI_COMMANDS_EXISTS=true"
+test -d .gemini/context && echo "GEMINI_CONTEXT_EXISTS=true"
+
+# Check for specs structure
+test -d specs/guides && echo "SPECS_EXISTS=true"
+test -d specs/active && echo "SPECS_ACTIVE_EXISTS=true"
+```
+
+**If existing bootstrap detected**:
+- Enter ALIGNMENT MODE (Part 4)
+- Preserve custom additions
+- Update to latest patterns
+
+**If fresh project**:
+- Continue with full bootstrap
+
+### Step 1.3: Get User Confirmation
+
+Before proceeding, confirm with user:
+
+```
+This bootstrap will create/update:
+- .gemini/GEMINI.md (main AI instructions)
+- .gemini/commands/ (TOML command files)
+- .gemini/context/ (framework context files)
+- .gemini/settings.json (MCP servers config)
+- specs/ directory structure (guides, active, archive)
+
+Detected mode: [FRESH | ALIGNMENT]
+
+Proceed? [Y/n]
+```
+
+---
+
+## Part 2: Detection Phase
+
+### Step 2.1: Language Detection
+
+Scan for primary language indicators:
+
+```bash
+# Python indicators
+test -f pyproject.toml && echo "LANG_PYTHON=true"
+test -f setup.py && echo "LANG_PYTHON=true"
+test -f requirements.txt && echo "LANG_PYTHON=true"
+test -f poetry.lock && echo "LANG_PYTHON=true"
+test -f uv.lock && echo "LANG_PYTHON=true"
+
+# JavaScript/TypeScript indicators
+test -f package.json && echo "LANG_JS=true"
+test -f tsconfig.json && echo "LANG_TS=true"
+
+# Other languages
+test -f Cargo.toml && echo "LANG_RUST=true"
+test -f go.mod && echo "LANG_GO=true"
+test -f pom.xml && echo "LANG_JAVA=true"
+test -f build.gradle && echo "LANG_KOTLIN=true"
+```
+
+### Step 2.2: Framework Detection - Python
+
+Parse pyproject.toml or requirements.txt for frameworks:
+
+```bash
+# Web frameworks
+grep -i "litestar" pyproject.toml 2>/dev/null && echo "PY_LITESTAR=true"
+grep -i "fastapi" pyproject.toml 2>/dev/null && echo "PY_FASTAPI=true"
+grep -i "flask" pyproject.toml 2>/dev/null && echo "PY_FLASK=true"
+grep -i "django" pyproject.toml 2>/dev/null && echo "PY_DJANGO=true"
+grep -i "starlette" pyproject.toml 2>/dev/null && echo "PY_STARLETTE=true"
+
+# Database/ORM
+grep -i "sqlalchemy" pyproject.toml 2>/dev/null && echo "PY_SQLALCHEMY=true"
+grep -i "advanced-alchemy" pyproject.toml 2>/dev/null && echo "PY_ADVANCED_ALCHEMY=true"
+
+# Testing
+grep -i "pytest" pyproject.toml 2>/dev/null && echo "PY_PYTEST=true"
+grep -i "pytest-asyncio" pyproject.toml 2>/dev/null && echo "PY_PYTEST_ASYNCIO=true"
+
+# Linting
+grep -i "ruff" pyproject.toml 2>/dev/null && echo "PY_RUFF=true"
+grep -i "mypy" pyproject.toml 2>/dev/null && echo "PY_MYPY=true"
+```
+
+### Step 2.3: Framework Detection - JavaScript/TypeScript
+
+Parse package.json for frameworks:
+
+```bash
+# UI Frameworks
+grep '"react"' package.json 2>/dev/null && echo "JS_REACT=true"
+grep '"vue"' package.json 2>/dev/null && echo "JS_VUE=true"
+grep '"svelte"' package.json 2>/dev/null && echo "JS_SVELTE=true"
+grep '"@angular/core"' package.json 2>/dev/null && echo "JS_ANGULAR=true"
+
+# Meta-frameworks
+grep '"next"' package.json 2>/dev/null && echo "JS_NEXT=true"
+grep '"nuxt"' package.json 2>/dev/null && echo "JS_NUXT=true"
+
+# Build tools
+grep '"vite"' package.json 2>/dev/null && echo "JS_VITE=true"
+
+# Integration
+grep '"@inertiajs"' package.json 2>/dev/null && echo "JS_INERTIA=true"
+grep '"htmx.org"' package.json 2>/dev/null && echo "JS_HTMX=true"
+
+# Testing
+grep '"vitest"' package.json 2>/dev/null && echo "JS_VITEST=true"
+grep '"jest"' package.json 2>/dev/null && echo "JS_JEST=true"
+
+# Linting
+grep '"biome"' package.json 2>/dev/null && echo "JS_BIOME=true"
+grep '"eslint"' package.json 2>/dev/null && echo "JS_ESLINT=true"
+```
+
+### Step 2.4: Build System Detection
+
+```bash
+# Makefile
+test -f Makefile && echo "BUILD_MAKE=true"
+grep "test:" Makefile 2>/dev/null && echo "TEST_CMD_MAKE=true"
+grep "lint:" Makefile 2>/dev/null && echo "LINT_CMD_MAKE=true"
+
+# npm scripts
+grep '"test"' package.json 2>/dev/null && echo "TEST_CMD_NPM=true"
+grep '"lint"' package.json 2>/dev/null && echo "LINT_CMD_NPM=true"
+
+# Python package managers
+test -f uv.lock && echo "PKG_UV=true"
+test -f poetry.lock && echo "PKG_POETRY=true"
+```
+
+### Step 2.5: Code Style Detection
+
+```bash
+# Python type hint style
+grep -r "Optional\\[" src/ 2>/dev/null | head -5 && echo "STYLE_OPTIONAL=true"
+grep -r "| None" src/ 2>/dev/null | head -5 && echo "STYLE_PEP604=true"
+
+# Future annotations
+grep -r "from __future__ import annotations" src/ 2>/dev/null && echo "STYLE_FUTURE_ANNOTATIONS=true"
+
+# Test style
+grep -r "class Test" tests/ 2>/dev/null | head -3 && echo "STYLE_CLASS_TESTS=true"
+grep -r "^def test_" tests/ 2>/dev/null | head -3 && echo "STYLE_FUNC_TESTS=true"
+```
+
+### Step 2.6: Build Detection Profile
+
+Compile all detections into a profile:
+
+```markdown
+## Detection Profile
+
+### Languages
+- Primary: {python|typescript|rust|go|java}
+- Secondary: {list}
+
+### Python Frameworks
+- Web: {litestar|fastapi|flask|django}
+- ORM: {sqlalchemy|advanced-alchemy}
+- Testing: {pytest|pytest-asyncio}
+- Linting: {ruff|mypy}
+
+### JavaScript Frameworks
+- UI: {react|vue|svelte|angular}
+- Build: {vite|webpack}
+- Integration: {inertia|htmx}
+- Testing: {vitest|jest}
+- Linting: {biome|eslint}
+
+### Build System
+- Type: {make|npm|uv|poetry}
+- Test command: {make test|npm test|uv run pytest}
+- Lint command: {make lint|npm run lint|uv run ruff}
+
+### Code Style
+- Type hints: {pep604|optional|none}
+- Docstrings: {google|numpy|sphinx}
+- Test style: {function|class}
+
+### Anti-Patterns to Enforce
+- {based on opposite of detected style}
+```
+
+---
+
+## Part 3: Generation Phase
+
+### Step 3.1: Create Directory Structure
+
+```bash
+# Create Gemini directories
+mkdir -p .gemini/commands
+mkdir -p .gemini/context
+
+# Create specs directories
+mkdir -p specs/guides
+mkdir -p specs/guides/workflows
+mkdir -p specs/active
+mkdir -p specs/archive
+
+# Create .gitkeep files
+touch specs/active/.gitkeep
+touch specs/archive/.gitkeep
+```
+
+### Step 3.2: Generate GEMINI.md
+
+Create the main Gemini instructions file using the template from Part 6, substituting detected values for placeholders.
+
+### Step 3.3: Generate TOML Commands
+
+Generate 6 core slash commands as TOML files:
+
+1. **prd.toml** - PRD creation workflow
+2. **implement.toml** - Implementation workflow
+3. **test.toml** - Testing workflow
+4. **review.toml** - Quality gate and archive
+5. **explore.toml** - Codebase exploration
+6. **fix-issue.toml** - GitHub issue fixing
+
+### Step 3.4: Generate Context Files
+
+For each detected framework, generate a context file in `.gemini/context/`.
+
+### Step 3.5: Generate Settings
+
+Create `.gemini/settings.json`:
+
+```json
+{
+  "context": {
+    "fileName": ["GEMINI.md"],
+    "includeDirectories": [".gemini/context", "specs/guides"],
+    "loadFromIncludeDirectories": true
+  },
+  "model": {
+    "name": "gemini-2.5-pro"
+  },
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"],
+      "trust": true
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "trust": true
+    }
+  }
+}
+```
+
+### Step 3.6: Generate Specs Guides
+
+Create initial guide files based on detection.
+
+---
+
+## Part 4: Alignment Mode
+
+When existing bootstrap is detected:
+
+### Step 4.1: Inventory Existing Configuration
+
+```bash
+ls .gemini/commands/*.toml 2>/dev/null
+ls .gemini/context/*.md 2>/dev/null
+head -5 .gemini/GEMINI.md 2>/dev/null | grep "Version"
+```
+
+### Step 4.2: Identify Missing Components
+
+Compare existing vs expected core commands and context files.
+
+### Step 4.3: Preserve Custom Content
+
+Before updating any file, identify and preserve custom sections.
+
+### Step 4.4: Update Outdated Patterns
+
+Check for outdated patterns and offer to update with user confirmation.
+
+### Step 4.5: Merge and Update
+
+Generate new content, insert preserved custom content, write merged files.
+
+---
+
+## Part 5: Verification
+
+### Step 5.1: Validate Generated Files
+
+```bash
+test -f .gemini/GEMINI.md && echo "✓ GEMINI.md"
+test -d .gemini/commands && echo "✓ .gemini/commands/"
+test -d .gemini/context && echo "✓ .gemini/context/"
+test -f .gemini/settings.json && echo "✓ settings.json"
+test -d specs/guides && echo "✓ specs/guides/"
+
+echo "Commands: $(ls .gemini/commands/*.toml 2>/dev/null | wc -l)"
+echo "Contexts: $(ls .gemini/context/*.md 2>/dev/null | wc -l)"
+```
+
+### Step 5.2: Summary Report
+
+Report all generated files and next steps.
+
+---
+
+## Part 6: Embedded Templates
+
+### Template: GEMINI.md
+
+```markdown
+# Gemini Agent System for {PROJECT_NAME}
+
+This document provides behavioral instructions and project context for Gemini CLI agents.
+
+---
+
+## ⚠️ BEHAVIORAL REQUIREMENTS (READ FIRST)
+
+### Core Principles
+
+1. **Verify Before Acting** - Never assume; always confirm understanding
+2. **Research Before Implementing** - Search codebase and docs first
+3. **Follow Existing Patterns** - Match the style of surrounding code
+4. **Ask When Uncertain** - Questions are better than wrong assumptions
+
+### Before ANY Code Changes
+
+You MUST complete these steps before modifying source code:
+
+1. **Verify Understanding**
+   - Restate the task in your own words
+   - Identify what success looks like
+   - List the components that will be affected
+
+2. **Search First**
+   - Use `grep`/`find` to locate relevant existing code
+   - Read similar implementations in the codebase
+   - Check `specs/guides/` for documented patterns
+
+3. **Check Patterns**
+   - Read existing code that does similar things
+   - Match the naming conventions used
+   - Follow the error handling patterns
+
+### STOP Conditions
+
+**Stop and ask the user if**:
+
+- More than 3 files need modification without explicit approval
+- You cannot find similar patterns in the codebase
+- The technical approach is unclear
+- Requirements seem contradictory or ambiguous
+
+---
+
+## Project Overview
+
+- **Name**: {PROJECT_NAME}
+- **Description**: {PROJECT_DESCRIPTION}
+- **Languages**: {LANGUAGES}
+- **Frameworks**: {FRAMEWORKS}
+- **Testing**: {TEST_FRAMEWORKS}
+- **Linting**: {LINT_TOOLS}
+
+## Code Style Requirements (CRITICAL)
+
+### {PRIMARY_LANGUAGE}
+
+{CODE_STYLE_RULES}
+
+## Checkpoint-Based Workflow
+
+### Feature Lifecycle
+
+1. **Planning (`/prd`)**: Create Product Requirements Document
+2. **Implementation (`/implement`)**: Write code based on PRD
+3. **Testing (`/test`)**: Create comprehensive test suite
+4. **Review (`/review`)**: Verify quality gates and archive
+
+### Quality Gates
+
+All code must pass:
+
+- **Tests**: `{TEST_CMD}` - All tests passing
+- **Linting**: `{LINT_CMD}` - Zero errors
+- **Coverage**: 90%+ for modified modules
+- **Anti-patterns**: {ANTI_PATTERNS}
+
+## Key Commands
+
+```bash
+{INSTALL_CMD}          # Install dependencies
+{TEST_CMD}            # Run all tests
+{LINT_CMD}            # Check for errors
+{FIX_CMD}             # Auto-fix formatting
+```
+
+## Available Context
+
+Context files are loaded from `.gemini/context/`:
+
+{CONTEXT_FILE_LIST}
+
+## MCP Tools Available
+
+### Context7 (Library Documentation)
+
+```python
+mcp__context7__resolve-library-id(libraryName="{PRIMARY_FRAMEWORK}")
+mcp__context7__get-library-docs(
+    context7CompatibleLibraryID="{CONTEXT7_ID}",
+    topic="...",
+    tokens=5000
+)
+```
+
+### Sequential Thinking (Complex Analysis)
+
+```python
+mcp__sequential-thinking__sequentialthinking(
+    thought="Step 1: Analyze the requirement",
+    thought_number=1,
+    total_thoughts=10,
+    next_thought_needed=True
+)
+```
+
+## Project Structure
+
+```
+{PROJECT_STRUCTURE}
+```
+
+## Remember
+
+1. **Read before writing** - Always read existing code first
+2. **Match existing patterns** - Don't invent new conventions
+3. **Test everything** - 90%+ coverage required
+4. **Document decisions** - Explain non-obvious choices
+5. **Ask when uncertain** - Questions prevent mistakes
+```
+
+### Template: prd.toml
+
+```toml
+# Command: /prd "create a PRD for..."
+description = "Create a comprehensive Product Requirements Document for a new feature"
+prompt = \"\"\"
+You are the PRD Agent. Your mission is to create comprehensive, research-grounded Product Requirements Documents.
+
+## Checkpoint-Based Workflow
+
+### Checkpoint 1: Context Loading
+
+Read project context:
+- `GEMINI.md` or `CLAUDE.md`
+- `specs/guides/architecture.md`
+- `specs/guides/code-style.md`
+
+### Checkpoint 2: Verify Understanding
+
+Document your understanding of the request before proceeding.
+
+### Checkpoint 3: Requirement Analysis
+
+Search for related code and identify affected components.
+
+### Checkpoint 4: Create Workspace
+
+```bash
+mkdir -p specs/active/{{slug}}/research
+mkdir -p specs/active/{{slug}}/tmp
+```
+
+### Checkpoint 5: Deep Analysis
+
+Use Sequential Thinking for comprehensive analysis (minimum 15 thoughts).
+
+### Checkpoint 6: Research
+
+Use Context7 for library documentation.
+
+### Checkpoint 7: Write PRD
+
+Create comprehensive PRD with:
+- Problem statement
+- Acceptance criteria (specific, measurable)
+- Technical approach
+- Testing strategy
+
+### Checkpoint 8: Task Breakdown
+
+Create actionable task list.
+
+### Checkpoint 9: Recovery Guide
+
+Create resumption instructions.
+
+### Checkpoint 10: Verification
+
+Verify no source code was modified during PRD phase.
+
+**Feature to plan**: {{args}}
+\"\"\"
+```
+
+### Template: implement.toml
+
+```toml
+# Command: /implement <slug>
+description = "Implement a feature from an existing PRD"
+prompt = \"\"\"
+You are the Implementation Agent. Implement the feature from: specs/active/{{args}}
+
+## Workflow
+
+1. Load PRD and tasks from workspace
+2. Read project standards
+3. Complete any needed research
+4. Implement following code standards
+5. Run tests and linting
+6. Update task progress
+7. Invoke testing agent when complete
+
+## Code Standards
+
+{CODE_STANDARDS}
+
+## Commands
+
+- Test: `{TEST_CMD}`
+- Lint: `{LINT_CMD}`
+\"\"\"
+```
+
+### Template: test.toml
+
+```toml
+# Command: /test <slug>
+description = "Run comprehensive tests for a feature"
+prompt = \"\"\"
+Testing feature: specs/active/{{args}}
+
+## Workflow
+
+1. Read PRD and acceptance criteria
+2. Find existing tests
+3. Run coverage check
+4. Create missing tests
+5. Achieve 90%+ coverage
+6. Update tasks
+
+## Test Standards
+
+{TEST_STANDARDS}
+
+## Commands
+
+- Test: `{TEST_CMD}`
+- Coverage: `{COVERAGE_CMD}`
+\"\"\"
+```
+
+### Template: review.toml
+
+```toml
+# Command: /review <slug>
+description = "Run quality gates and archive workspace"
+prompt = \"\"\"
+Reviewing: specs/active/{{args}}
+
+## Quality Gates
+
+1. Run tests: `{TEST_CMD}`
+2. Run linting: `{LINT_CMD}`
+3. Check coverage: `{COVERAGE_CMD}`
+4. Scan for anti-patterns
+
+## Archive
+
+If all gates pass:
+```bash
+mv specs/active/{{args}} specs/archive/
+```
+
+Create ARCHIVED.md summary.
+\"\"\"
+```
+
+### Template: explore.toml
+
+```toml
+# Command: /explore <topic>
+description = "Explore and understand the codebase structure"
+prompt = \"\"\"
+Exploring: {{args}}
+
+## Search Commands
+
+```bash
+# Find files
+find . -name "*{{args}}*" -type f
+
+# Search content
+grep -r "{{args}}" src/
+
+# Find classes
+grep -r "class.*{{args}}" src/
+
+# Find functions
+grep -r "def.*{{args}}" src/
+```
+
+Explore the relevant files and explain the architecture.
+\"\"\"
+```
+
+### Template: fix-issue.toml
+
+```toml
+# Command: /fix-issue <number>
+description = "Fix a GitHub issue"
+prompt = \"\"\"
+Fixing issue: #{{args}}
+
+## Workflow
+
+1. Fetch issue: `gh issue view {{args}}`
+2. Search for affected code
+3. Implement fix following code standards
+4. Test the fix
+5. Create PR with issue reference
+
+## Code Standards
+
+{CODE_STANDARDS}
+\"\"\"
+```
+
+---
+
+## Part 7: Framework Knowledge Base
+
+### Context: litestar.md
+
+```markdown
+# Litestar Framework Context
+
+Expert knowledge for Litestar Python web framework.
+
+## Plugin Development
+
+```python
+from litestar.plugins import InitPluginProtocol
+
+class MyPlugin(InitPluginProtocol):
+    def on_app_init(self, app_config: AppConfig) -> AppConfig:
+        return app_config
+```
+
+## Route Handlers
+
+```python
+from litestar import get, post
+
+@get("/items/{item_id:int}")
+async def get_item(item_id: int) -> Item:
+    return await fetch_item(item_id)
+```
+
+## Context7 Lookup
+
+```python
+mcp__context7__get-library-docs(
+    context7CompatibleLibraryID="/litestar-org/litestar",
+    topic="plugins middleware",
+    mode="code"
+)
+```
+```
+
+### Context: react.md
+
+```markdown
+# React Framework Context
+
+Expert knowledge for React 18+ with TypeScript.
+
+## Component Patterns
+
+```tsx
+export function ItemList({ items }: Props) {
+  const [selected, setSelected] = useState<Item | null>(null);
+  return (
+    <ul>
+      {items.map(item => (
+        <li key={item.id}>{item.name}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## Context7 Lookup
+
+```python
+mcp__context7__get-library-docs(
+    context7CompatibleLibraryID="/facebook/react",
+    topic="hooks components",
+    mode="code"
+)
+```
+```
+
+### Context: vue.md
+
+```markdown
+# Vue 3 Framework Context
+
+Expert knowledge for Vue 3 Composition API.
+
+## Component Pattern
+
+```vue
+<script setup lang="ts">
+import { ref, computed } from 'vue';
+
+const items = ref<Item[]>([]);
+const filtered = computed(() => items.value.filter(i => i.active));
+</script>
+
+<template>
+  <ul>
+    <li v-for="item in filtered" :key="item.id">{{ item.name }}</li>
+  </ul>
+</template>
+```
+
+## Context7 Lookup
+
+```python
+mcp__context7__get-library-docs(
+    context7CompatibleLibraryID="/vuejs/core",
+    topic="composition-api",
+    mode="code"
+)
+```
+```
+
+### Context: pytest.md
+
+```markdown
+# pytest Testing Context
+
+## Basic Tests
+
+```python
+def test_addition():
+    assert 1 + 1 == 2
+
+@pytest.fixture
+def sample_data():
+    return {"key": "value"}
+
+@pytest.mark.asyncio
+async def test_async():
+    result = await async_op()
+    assert result is not None
+```
+
+## Context7 Lookup
+
+```python
+mcp__context7__get-library-docs(
+    context7CompatibleLibraryID="/pytest-dev/pytest",
+    topic="fixtures async",
+    mode="code"
+)
+```
+```
+
+### Context: vite.md
+
+```markdown
+# Vite Build Tool Context
+
+## Configuration
+
+```typescript
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  plugins: [],
+  server: {
+    proxy: { '/api': 'http://localhost:8000' }
+  }
+});
+```
+
+## Context7 Lookup
+
+```python
+mcp__context7__get-library-docs(
+    context7CompatibleLibraryID="/vitejs/vite",
+    topic="configuration plugins",
+    mode="code"
+)
+```
+```
+
+### Context: vitest.md
+
+```markdown
+# Vitest Testing Context
+
+## Basic Tests
+
+```typescript
+import { describe, it, expect, vi } from 'vitest';
+
+describe('Feature', () => {
+  it('works', () => {
+    expect(1 + 1).toBe(2);
+  });
+});
+```
+
+## Context7 Lookup
+
+```python
+mcp__context7__get-library-docs(
+    context7CompatibleLibraryID="/vitest-dev/vitest",
+    topic="mocking",
+    mode="code"
+)
+```
+```
+
+---
+
+## Execution Instructions
+
+Now execute this bootstrap:
+
+1. **Run Preflight Checks** (Part 1)
+2. **If fresh**: Run Detection (Part 2), then Generation (Part 3)
+3. **If existing**: Run Alignment (Part 4)
+4. **Run Verification** (Part 5)
+5. **Report Results**
+
+Use the embedded templates (Part 6) and framework knowledge (Part 7) to generate all files.
+
+**Begin bootstrap now.**
+"""

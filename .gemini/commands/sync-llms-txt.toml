@@ -101,10 +101,10 @@ Glob(pattern="docs/**")
 Grep(pattern=r'^class [A-Z][a-zA-Z]+', path='src/', output_mode='content')
 
 # Find public functions
-Grep(pattern=r'^def [a-z][a-z_]+\(', path='src/', output_mode='content')
+Grep(pattern=r'^def [a-z][a-z_]+(', path='src/', output_mode='content')
 
 # Check __all__ exports
-Grep(pattern=r'__all__\s*=', path='src/', output_mode='content')
+Grep(pattern=r'__all__s*=', path='src/', output_mode='content')
 ```
 
 **JavaScript/TypeScript:**
@@ -202,7 +202,7 @@ Add anything that should be documented but isn't:
 ```python
 # New Python APIs
 Grep(pattern=r'^class [A-Z]', path='detected_source_dir/', output_mode='content')
-Grep(pattern=r'^def [a-z][a-z_]+\(', path='detected_source_dir/', output_mode='content')
+Grep(pattern=r'^def [a-z][a-z_]+(', path='detected_source_dir/', output_mode='content')
 
 # New TypeScript/JavaScript exports
 Grep(pattern=r'export ', path='detected_source_dir/', output_mode='content')
