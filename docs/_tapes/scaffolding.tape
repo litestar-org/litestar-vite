@@ -6,40 +6,36 @@ Set Width 1000
 Set Height 600
 Set Theme "Catppuccin Mocha"
 Set Padding 20
+Set TypingSpeed 50ms
 
-Type "# Litestar Vite Project Scaffolding Demo"
+Type "# Litestar Vite - Scaffold a new frontend"
 Enter
 Sleep 1s
 
-Type "litestar assets init"
+Hide
+Type "cd examples/basic"
+Enter
+Sleep 500ms
+Show
+
+Type "# From an existing Litestar project with VitePlugin configured"
+Enter
+Sleep 500ms
+
+Type "cat app.py"
 Enter
 Sleep 2s
 
-# Enter project name
-Type "my-awesome-app"
+Type "# Scaffold a React frontend with Inertia.js"
 Enter
 Sleep 500ms
 
-# Select template (React is usually option 2)
-Type "2"
-Enter
-Sleep 500ms
-
-# Confirm
-Type "y"
+Type "litestar --app app:app assets init --template react-inertia --no-prompt --no-install"
 Enter
 Sleep 3s
 
-Type "# Project created! Let's see what was generated:"
+Type "# Files generated! Check the structure:"
 Enter
-Sleep 1s
-
-Type "ls -la my-awesome-app/"
-Enter
-Sleep 2s
-
-Type "# Navigate into the project"
-Enter
-Type "cd my-awesome-app && tree -L 2"
+Type "tree -L 2 --dirsfirst -I 'node_modules|__pycache__'"
 Enter
 Sleep 3s

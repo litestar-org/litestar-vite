@@ -21,6 +21,9 @@ INFO := $(shell printf "$(BLUE)ℹ$(NC)")
 OK := $(shell printf "$(GREEN)✓$(NC)")
 WARN := $(shell printf "$(YELLOW)⚠$(NC)")
 ERROR := $(shell printf "$(RED)✖$(NC)")
+NODEENV ?= 0
+EXTRAS ?=
+UV_SYNC_EXTRAS := $(foreach extra,$(EXTRAS),--extra $(extra))
 
 # =============================================================================
 # Help and Documentation
@@ -38,17 +41,19 @@ help:                                               ## Display this help text fo
 install-uv:                                         ## Install latest version of uv
 	@echo "${INFO} Installing uv..."
 	@curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1
-	@uv tool install nodeenv >/dev/null 2>&1
 	@echo "${OK} UV installed successfully"
 
 .PHONY: install
 install: destroy clean                              ## Install the project, dependencies, and pre-commit
 	@echo "${INFO} Starting fresh installation..."
 	@uv venv >/dev/null 2>&1
-	@uv sync --all-extras --dev
-	@if ! command -v npm >/dev/null 2>&1; then \
-		echo "${INFO} Installing Node environment... 📦"; \
+	@uv sync --dev $(UV_SYNC_EXTRAS)
+	@if [ "$(NODEENV)" = "1" ]; then \
+		echo "${INFO} Installing Node environment via nodeenv... 📦"; \
 		uvx nodeenv .venv --force --quiet >/dev/null 2>&1; \
+	elif ! command -v npm >/dev/null 2>&1; then \
+		echo "${WARN} npm not found. Re-run with NODEENV=1 to provision nodeenv or install Node.js manually."; \
+		exit 1; \
 	fi
 	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm install --no-fund
 	@echo "${OK} Installation complete! 🎉"
@@ -262,6 +267,6 @@ docs-demos:                                        ## Generate demo GIFs locally
 	@mkdir -p docs/_static/demos
 	@for tape in docs/_tapes/*.tape; do \
 		echo "${INFO} Processing $$tape..."; \
-		vhs "$$tape"; \
+		VHS_NO_SANDBOX=true vhs "$$tape"; \
 	done
 	@echo "${OK} Demo GIFs generated successfully"

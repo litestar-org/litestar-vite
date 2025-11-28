@@ -1,5 +1,5 @@
 {
-  "name": "litestar-angular-example",
+  "name": "angular",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,22 +8,24 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@angular/animations": "^18.0.0",
-    "@angular/common": "^18.0.0",
-    "@angular/compiler": "^18.0.0",
-    "@angular/core": "^18.0.0",
-    "@angular/forms": "^18.0.0",
-    "@angular/platform-browser": "^18.0.0",
-    "@angular/router": "^18.0.0",
-    "rxjs": "^7.8.1",
-    "zone.js": "^0.14.0"
+    "@angular/animations": "latest",
+    "@angular/common": "latest",
+    "@angular/compiler": "latest",
+    "@angular/core": "latest",
+    "@angular/forms": "latest",
+    "@angular/platform-browser": "latest",
+    "@angular/router": "latest",
+    "rxjs": "latest",
+    "zone.js": "latest"
   },
   "devDependencies": {
-    "@analogjs/vite-plugin-angular": "^1.10.0",
-    "@angular/build": "^18.0.0",
-    "@angular/compiler-cli": "^18.0.0",
+    "@analogjs/vite-plugin-angular": "latest",
+    "@angular/build": "latest",
+    "@angular/compiler-cli": "latest",
+    "@angular/platform-browser-dynamic": "latest",
+    "typescript": "latest",
+    "@types/node": "latest",
     "litestar-vite-plugin": "latest",
-    "typescript": "^5.4.0",
     "vite": "^6.0.0"
   }
 }

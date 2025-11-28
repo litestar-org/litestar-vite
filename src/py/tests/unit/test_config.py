@@ -25,14 +25,14 @@ def test_default_vite_config() -> None:
     assert config.root_dir == Path.cwd()
 
 
-def test_default_executor_nodeenv() -> None:
+def test_default_executor_node() -> None:
+    config = ViteConfig()
+    assert isinstance(config.executor, NodeExecutor)
+
+
+def test_opt_in_nodeenv_executor() -> None:
     config = ViteConfig(runtime=RuntimeConfig(detect_nodeenv=True))
     assert isinstance(config.executor, NodeenvExecutor)
-
-
-def test_default_executor_node() -> None:
-    config = ViteConfig(runtime=RuntimeConfig(detect_nodeenv=False))
-    assert isinstance(config.executor, NodeExecutor)
 
 
 def test_config_health_check_defaults() -> None:

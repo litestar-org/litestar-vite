@@ -72,6 +72,9 @@ instance/
 # Sphinx documentation
 docs/_build/
 
+# Generated demo GIFs (created by VHS during CI)
+docs/_static/demos/*.gif
+
 # PyBuilder
 .pybuilder/
 target/

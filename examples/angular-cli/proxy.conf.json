@@ -4,5 +4,20 @@
     "secure": false,
     "changeOrigin": true,
     "ws": true
+  },
+  "/openapi.json": {
+    "target": "http://localhost:8000",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/routes.json": {
+    "target": "http://localhost:8000",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/static": {
+    "target": "http://localhost:8000",
+    "secure": false,
+    "changeOrigin": true
   }
 }

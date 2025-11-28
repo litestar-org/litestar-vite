@@ -5,6 +5,8 @@ from click import Choice, Context, group, option
 from click import Path as ClickPath
 from litestar.cli._utils import LitestarEnv, LitestarGroup  # pyright: ignore[reportPrivateImportUsage]
 
+from litestar_vite.plugin import _resolve_litestar_version  # pyright: ignore[reportPrivateUsage]
+
 if TYPE_CHECKING:
     from litestar import Litestar
 
@@ -24,6 +26,12 @@ FRAMEWORK_CHOICES = [
     "angular",
     "angular-cli",
 ]
+
+
+def _format_command(command: "Optional[list[str]]") -> str:
+    """Join a command list for display."""
+
+    return " ".join(command or [])
 
 
 @group(cls=LitestarGroup, name="assets")
@@ -312,7 +320,8 @@ def vite_init(
         config.executor.install(root_path)
 
     console.print("\n[bold green]Vite initialization complete![/]")
-    console.print(f"\n[dim]Next steps:\n  cd {root_path}\n  npm run dev[/]")
+    next_steps_cmd = _format_command(config.run_command)
+    console.print(f"\n[dim]Next steps:\n  cd {root_path}\n  {next_steps_cmd}[/]")
 
 
 @vite_group.command(
@@ -559,6 +568,7 @@ def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
     console.print("[dim]2. Exporting route metadata...[/]")
     try:
         routes_data = generate_routes_json(app, include_components=True)
+        routes_data["litestar_version"] = _resolve_litestar_version()
         routes_content = msgspec.json.format(
             msgspec.json.encode(routes_data),
             indent=2,
@@ -571,19 +581,24 @@ def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
         raise LitestarCLIException(msg) from e
 
 
-def _run_openapi_ts(types_config: Any, root_dir: Any, verbose: bool) -> None:
+def _run_openapi_ts(
+    types_config: Any, root_dir: Any, verbose: bool, install_command: "Optional[list[str]]" = None
+) -> None:
     """Run @hey-api/openapi-ts to generate TypeScript types.
 
     Args:
         types_config: The TypeGenConfig instance.
         root_dir: The root directory for the project.
         verbose: Whether to show verbose output.
+        install_command: Command used to install JS dependencies.
     """
     import subprocess
 
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
     console.print("[dim]3. Running @hey-api/openapi-ts...[/]")
+
+    install_cmd = install_command or ["npm", "install"]
 
     try:
         # Check if @hey-api/openapi-ts is installed
@@ -606,7 +621,7 @@ def _run_openapi_ts(types_config: Any, root_dir: Any, verbose: bool) -> None:
         console.print(f"[green]✓ Types generated in {types_config.output}[/]")
     except subprocess.CalledProcessError as e:
         console.print("[yellow]! @hey-api/openapi-ts failed - install it with:[/]")
-        console.print("[dim]  npm install -D @hey-api/openapi-ts[/]")
+        console.print(f"[dim]  {' '.join([*install_cmd, '-D', '@hey-api/openapi-ts'])}[/]")
         if verbose:
             console.print(f"[dim]Error: {e!s}[/]")
     except FileNotFoundError:
@@ -654,7 +669,7 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
 
     _export_openapi_schema(app, config.types)
     _export_routes_metadata(app, config.types)
-    _run_openapi_ts(config.types, config.root_dir, verbose)
+    _run_openapi_ts(config.types, config.root_dir, verbose, config.install_command)
 
 
 @vite_group.command(

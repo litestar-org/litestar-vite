@@ -5,15 +5,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview",
-    "generate-types": "openapi-ts"
+    "preview": "vite preview"
   },
   "dependencies": {
     "astro": "latest"
   },
   "devDependencies": {
     "typescript": "latest",
-    "@hey-api/openapi-ts": "latest",
     "litestar-vite-plugin": "latest",
     "vite": "^6.0.0"
   }

@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview",
-    "generate-types": "openapi-ts"
+    "preview": "vite preview"
   },
   "dependencies": {
     "svelte": "latest",

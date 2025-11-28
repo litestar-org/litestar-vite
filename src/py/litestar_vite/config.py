@@ -101,7 +101,7 @@ class RuntimeConfig:
         is_react: Enable React Fast Refresh support.
         ssr_enabled: Enable Server-Side Rendering.
         health_check: Enable health check for dev server startup.
-        detect_nodeenv: Detect and use nodeenv in virtualenv.
+        detect_nodeenv: Detect and use nodeenv in virtualenv (opt-in).
         set_environment: Set Vite environment variables from config.
         set_static_folders: Automatically configure static file serving.
         csp_nonce: Content Security Policy nonce for inline scripts.
@@ -120,7 +120,7 @@ class RuntimeConfig:
     is_react: bool = False
     ssr_enabled: bool = False
     health_check: bool = field(default_factory=lambda: os.getenv("VITE_HEALTH_CHECK", "False") in TRUE_VALUES)
-    detect_nodeenv: bool = True
+    detect_nodeenv: bool = False
     set_environment: bool = True
     set_static_folders: bool = True
     csp_nonce: "Optional[str]" = None

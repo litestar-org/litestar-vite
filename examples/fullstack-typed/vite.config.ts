@@ -2,10 +2,8 @@ import react from "@vitejs/plugin-react"
 import litestar from "litestar-vite-plugin"
 import { defineConfig } from "vite"
 
-import tailwindcss from "@tailwindcss/vite"
-
 const ASSET_URL = process.env.ASSET_URL || "/static/"
-const VITE_PORT = process.env.VITE_PORT || "5173"
+const VITE_PORT = process.env.VITE_PORT || "52283"
 const LITESTAR_PORT = process.env.LITESTAR_PORT || "8000"
 
 export default defineConfig({
@@ -19,21 +17,12 @@ export default defineConfig({
     },
   },
   plugins: [
-    tailwindcss(),
-
     react(),
     litestar({
       input: ["resources/main.tsx"],
       assetUrl: ASSET_URL,
       bundleDirectory: "public",
       resourceDirectory: "resources",
-
-      types: {
-        enabled: true,
-        schemaPath: "./openapi.json",
-        routesPath: "./routes.json",
-        output: "resources/generated/api",
-      },
     }),
   ],
   resolve: {

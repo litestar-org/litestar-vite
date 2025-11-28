@@ -1,10 +1,11 @@
-import { defineConfig } from "vite";
-import angular from "@analogjs/vite-plugin-angular";
-import litestar from "litestar-vite-plugin";
+import angular from "@analogjs/vite-plugin-angular"
+import litestar from "litestar-vite-plugin"
+import { defineConfig } from "vite"
 
-const ASSET_URL = process.env.ASSET_URL || "/static/";
-const VITE_PORT = Number(process.env.VITE_PORT || "5173");
-const VITE_HOST = process.env.VITE_HOST || "127.0.0.1";
+const ASSET_URL = process.env.ASSET_URL || "/static/"
+const VITE_PORT = Number(process.env.VITE_PORT || "46053")
+const VITE_HOST = process.env.VITE_HOST || "127.0.0.1"
+const LITESTAR_PORT = Number(process.env.LITESTAR_PORT || "8000")
 
 export default defineConfig({
   base: ASSET_URL,
@@ -31,4 +32,4 @@ export default defineConfig({
       "@": "/src",
     },
   },
-});
+})

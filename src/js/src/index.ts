@@ -8,6 +8,9 @@ import colors from "picocolors"
 import { type ConfigEnv, type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer, loadEnv } from "vite"
 import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-reload"
 
+import { resolveInstallHint } from "./install-hint"
+import { type LitestarMeta, loadLitestarMeta } from "./litestar-meta"
+
 const execAsync = promisify(exec)
 
 /**
@@ -245,6 +248,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
   let viteDevServerUrl: DevServerUrl
   let resolvedConfig: ResolvedConfig
   let userConfig: UserConfig
+  let litestarMeta: LitestarMeta = {}
   const defaultAliases: Record<string, string> = {
     "@": `/${pluginConfig.resourceDirectory.replace(/^\/+/, "").replace(/\/+$/, "")}/`,
   }
@@ -319,7 +323,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
         // appType: 'spa', // Try adding this - might simplify things if appropriate
       }
     },
-    configResolved(config) {
+    async configResolved(config) {
       resolvedConfig = config
       // Ensure base ends with / for dev server if not empty
       if (resolvedConfig.command === "serve" && resolvedConfig.base && !resolvedConfig.base.endsWith("/")) {
@@ -330,6 +334,9 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
       }
       // Debug log resolved config
       // console.log("Resolved Vite Config:", resolvedConfig);
+
+      const hint = pluginConfig.types && pluginConfig.types !== false ? pluginConfig.types.routesPath : undefined
+      litestarMeta = await loadLitestarMeta(resolvedConfig, hint)
     },
     transform(code: string, id: string): string | undefined {
       // Added 'id' for context
@@ -360,8 +367,9 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
           fs.writeFileSync(pluginConfig.hotFile, viteDevServerUrl)
 
           setTimeout(() => {
+            const version = litestarMeta.litestarVersion ?? process.env.LITESTAR_VERSION ?? "unknown"
             // Use resolvedConfig.logger for consistency
-            resolvedConfig.logger.info(`\n  ${colors.red(`${colors.bold("LITESTAR")} ${litestarVersion()}`)}  ${colors.dim("plugin")} ${colors.bold(`v${pluginVersion()}`)}`)
+            resolvedConfig.logger.info(`\n  ${colors.red(`${colors.bold("LITESTAR")} ${version}`)}  ${colors.dim("plugin")} ${colors.bold(`v${pluginVersion()}`)}`)
             resolvedConfig.logger.info("")
             if (initialIndexPath) {
               resolvedConfig.logger.info(
@@ -461,13 +469,6 @@ function ensureCommandShouldRunInEnvironment(command: "build" | "serve", env: Re
       "You should not run the Vite HMR server in CI environments. You should build your assets for production instead. To disable this ENV check you may set LITESTAR_BYPASS_ENV_CHECK=1",
     )
   }
-}
-
-/**
- * The version of Litestar being run.
- */
-function litestarVersion(): string {
-  return ""
 }
 
 /**
@@ -740,7 +741,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>): Plugin
         const message = error instanceof Error ? error.message : String(error)
         // Don't show error if @hey-api/openapi-ts is not installed - just warn once
         if (message.includes("not found") || message.includes("ENOENT")) {
-          resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("@hey-api/openapi-ts not installed")} - run: npm install -D @hey-api/openapi-ts`)
+          resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("@hey-api/openapi-ts not installed")} - run: ${resolveInstallHint()}`)
         } else {
           resolvedConfig.logger.error(`${colors.cyan("litestar-vite")} ${colors.red("type generation failed:")} ${message}`)
         }

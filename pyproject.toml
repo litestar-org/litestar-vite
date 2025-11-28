@@ -320,7 +320,7 @@ max-complexity = 12
 "__init__.py" = ['F401', 'D104']
 "docs/**/*.*" = ["S", "B", "DTZ", "A", "TC", "ERA", "D", "RET", "E731", "RUF012", "FA100", "ARG001"]
 "docs/conf.py" = ["FIX002", "ARG001", "INP001"]
-"examples/**/*.*" = ["INP001"]
+"examples/**/*.*" = ["INP001","RUF029","DOC201"]
 "src/py/tests/**/*.*" = [
   "A",
   "ARG",

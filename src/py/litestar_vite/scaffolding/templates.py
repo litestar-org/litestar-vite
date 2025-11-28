@@ -9,7 +9,6 @@ from typing import Callable, Optional, Union
 
 
 def _str_list_factory() -> list[str]:
-    """Factory function for empty string list (typed for pyright)."""
     return []
 
 
@@ -303,14 +302,14 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         dev_dependencies=["typescript"],
         files=[
             "vite.config.ts",
-            "src/main.js",
+            "resources/main.js",
             "templates/base.html.j2",
             "templates/index.html.j2",
         ],
         uses_typescript=False,
         has_ssr=False,  # Server-rendered
         inertia_compatible=False,
-        resource_dir="src",
+        resource_dir="resources",
     ),
     FrameworkType.ANGULAR: FrameworkTemplate(
         name="Angular (Vite)",

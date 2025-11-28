@@ -33,6 +33,8 @@ import { promisify } from "node:util"
 import colors from "picocolors"
 import type { Plugin, ViteDevServer } from "vite"
 
+import { resolveInstallHint } from "./install-hint"
+
 const execAsync = promisify(exec)
 
 /**
@@ -279,7 +281,7 @@ function createTypeGenerationPlugin(typesConfig: Required<NuxtTypesConfig>): Plu
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (message.includes("not found") || message.includes("ENOENT")) {
-        console.log(colors.cyan("[litestar-nuxt]"), colors.yellow("@hey-api/openapi-ts not installed"), "- run: npm install -D @hey-api/openapi-ts")
+        console.log(colors.cyan("[litestar-nuxt]"), colors.yellow("@hey-api/openapi-ts not installed"), "- run:", resolveInstallHint())
       } else {
         console.error(colors.cyan("[litestar-nuxt]"), colors.red("Type generation failed:"), message)
       }

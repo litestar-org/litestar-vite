@@ -1,0 +1,20 @@
+{
+  "name": "nuxt-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "nuxt": "latest",
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "typescript": "latest",
+    "vue-tsc": "latest",
+    "litestar-vite-plugin": "latest",
+    "vite": "^6.0.0"
+  }
+}

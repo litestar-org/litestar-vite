@@ -30,7 +30,7 @@ Install litestar-vite using your preferred package manager:
 
     pip install litestar-vite
 
-**Note:** If you do not have an existing node environment, you can use `nodeenv` to automatically configure one for you by using the ``litestar-vite[nodeenv]`` extras option.
+**Note:** Nodeenv support is optional and off by default. To have litestar-vite provision Node inside your virtualenv, install with ``litestar-vite[nodeenv]`` and enable nodeenv detection (for example ``runtime.detect_nodeenv=True`` or ``make install NODEENV=1``). Otherwise, ensure you already have Node/npm installed.
 
 2. Basic Configuration
 ~~~~~~~~~~~~~~~~~~~~~~~

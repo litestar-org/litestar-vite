@@ -1,18 +1,19 @@
 {
+  "name": "basic",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "watch": "vite build --watch",
-    "build": "vite build"
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "axios": "^1.9.0"
+    "htmx.org": "latest",
+    "alpinejs": "latest"
   },
   "devDependencies": {
-    "@types/node": "^22.15.3",
-    "litestar-vite-plugin": "file:../../",
-    "typescript": "^5.8.3",
-    "vite": "^7.1.2"
+    "typescript": "latest",
+    "litestar-vite-plugin": "latest",
+    "vite": "^6.0.0"
   }
 }

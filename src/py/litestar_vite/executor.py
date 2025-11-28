@@ -54,7 +54,12 @@ class CommandExecutor(JSExecutor):
         self.execute(["install"], cwd)
 
     def run(self, args: list[str], cwd: Path) -> subprocess.Popen[bytes]:
-        command = [self._resolve_executable(), *args]
+        executable = self._resolve_executable()
+        # Avoid double-prefixing the executable when callers pass it explicitly
+        if args and Path(args[0]).name == Path(executable).name:
+            command = args
+        else:
+            command = [executable, *args]
         return subprocess.Popen(
             command,
             cwd=cwd,
@@ -64,7 +69,11 @@ class CommandExecutor(JSExecutor):
         )
 
     def execute(self, args: list[str], cwd: Path) -> None:
-        command = [self._resolve_executable(), *args]
+        executable = self._resolve_executable()
+        if args and Path(args[0]).name == Path(executable).name:
+            command = args
+        else:
+            command = [executable, *args]
         process = subprocess.run(
             command,
             cwd=cwd,
@@ -131,8 +140,8 @@ class NodeenvExecutor(JSExecutor):
         """
         super().__init__(None)
         self.config = config
-        # Extract detect_nodeenv flag - works with both old and new config
-        self._detect_nodeenv = getattr(config, "detect_nodeenv", True) if config else True
+        # Extract detect_nodeenv flag - works with both old and new config (opt-in default)
+        self._detect_nodeenv = getattr(config, "detect_nodeenv", False) if config else False
 
     def _get_nodeenv_command(self) -> str:
         """Get the nodeenv command."""

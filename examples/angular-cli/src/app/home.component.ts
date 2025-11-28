@@ -1,91 +1,43 @@
-import { Component, OnInit, inject } from "@angular/core";
-import { HttpClient } from "@angular/common/http";
-import { CommonModule } from "@angular/common";
-
-interface ApiResponse {
-  message: string;
-}
-
-interface DataResponse {
-  items: { id: number; name: string }[];
-  total: number;
-}
+import { Component } from "@angular/core"
 
 @Component({
   selector: "app-home",
   standalone: true,
-  imports: [CommonModule],
   template: `
-    <div class="card">
-      <h2>Welcome to Angular CLI + Litestar</h2>
-      <p>
-        This example demonstrates Angular 18+ with Angular CLI and a Litestar
-        backend.
-      </p>
-    </div>
-
-    <div class="card">
-      <h3>API Response</h3>
-      <p *ngIf="message">{{ message }}</p>
-      <p *ngIf="!message">Loading...</p>
-    </div>
-
-    <div class="card">
-      <h3>Data from API</h3>
-      <ul *ngIf="items.length > 0">
-        <li *ngFor="let item of items">{{ item.name }} (ID: {{ item.id }})</li>
-      </ul>
-      <p *ngIf="items.length === 0">Loading data...</p>
-    </div>
+    <main>
+      <section class="card">
+        <h1>angular-cli</h1>
+        <p>Angular CLI scaffold wired for Litestar APIs via <code>proxy.conf.json</code>.</p>
+        <p>Run <code>npm start</code> and the backend on port 8000 to develop.</p>
+      </section>
+    </main>
   `,
   styles: [
     `
-      h2 {
-        color: #d32f2f;
-        margin-bottom: 0.5rem;
+      main {
+        max-width: 960px;
+        margin: 4rem auto;
+        padding: 0 1.5rem;
       }
-      h3 {
-        color: #666;
-        margin-bottom: 0.5rem;
+      .card {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+        border: 1px solid #e2e8f0;
       }
-      ul {
-        list-style: none;
-        padding: 0;
+      h1 {
+        font-size: 2rem;
+        margin-bottom: 0.75rem;
       }
-      li {
-        padding: 0.5rem;
-        background: #f5f5f5;
-        margin-bottom: 0.25rem;
-        border-radius: 4px;
+      code {
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 2px 6px;
+        border-radius: 6px;
+        font-size: 0.9em;
       }
     `,
   ],
 })
-export class HomeComponent implements OnInit {
-  private http = inject(HttpClient);
-
-  message = "";
-  items: { id: number; name: string }[] = [];
-
-  ngOnInit() {
-    // Fetch greeting from API
-    this.http.get<ApiResponse>("/api/hello").subscribe({
-      next: (response) => {
-        this.message = response.message;
-      },
-      error: (error) => {
-        this.message = "Error fetching message: " + error.message;
-      },
-    });
-
-    // Fetch data from API
-    this.http.get<DataResponse>("/api/data").subscribe({
-      next: (response) => {
-        this.items = response.items;
-      },
-      error: (error) => {
-        console.error("Error fetching data:", error);
-      },
-    });
-  }
-}
+export class HomeComponent {}

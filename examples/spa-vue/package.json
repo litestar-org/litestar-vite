@@ -1,22 +1,20 @@
 {
-  "name": "spa-vue-example",
-  "version": "0.0.0",
+  "name": "spa-vue",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc && vite build",
+    "build": "tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.5.0"
+    "vue": "latest"
   },
   "devDependencies": {
-    "@litestar/vite-plugin": "latest",
-    "@vitejs/plugin-vue": "^5.0.0",
-    "@types/node": "^20.0.0",
-    "typescript": "~5.4.0",
-    "vite": "^6.0.0",
-    "vue-tsc": "^2.0.0"
+    "@vitejs/plugin-vue": "latest",
+    "vue-tsc": "latest",
+    "typescript": "latest",
+    "litestar-vite-plugin": "latest",
+    "vite": "^6.0.0"
   }
 }

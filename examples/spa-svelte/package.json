@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview",
-    "generate-types": "openapi-ts"
+    "preview": "vite preview"
   },
   "dependencies": {
     "svelte": "latest"
@@ -16,7 +15,6 @@
     "svelte-check": "latest",
     "typescript": "latest",
     "tslib": "latest",
-    "@hey-api/openapi-ts": "latest",
     "litestar-vite-plugin": "latest",
     "vite": "^6.0.0"
   }

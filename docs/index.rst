@@ -26,16 +26,16 @@ Supercharge your Litestar applications with Vite's modern frontend tooling. Lite
     :gutter: 2
 
     .. grid-item-card:: :octicon:`rocket` Getting Started
-        :link: tutorials/getting-started
+        :link: usage/index
         :link-type: doc
 
-        Build your first Litestar + Vite app
+        Quick start guide for integrating Vite with Litestar
 
-    .. grid-item-card:: :octicon:`mortar-board` Tutorials
-        :link: tutorials/index
+    .. grid-item-card:: :octicon:`stack` Frameworks
+        :link: frameworks/index
         :link-type: doc
 
-        Step-by-step guides for common use cases
+        React, Vue, Svelte, Angular, Inertia.js, and HTMX
 
     .. grid-item-card:: :octicon:`code` API Reference
         :link: reference/index
@@ -104,7 +104,7 @@ See it in Action
 
         Quickly scaffold a new project with your preferred frontend framework:
 
-        .. image:: _static/demos/scaffolding.gif
+        .. image:: /_static/demos/scaffolding.gif
            :alt: Project scaffolding demo
            :align: center
            :width: 100%
@@ -115,7 +115,7 @@ See it in Action
 
         Experience instant feedback during development with HMR:
 
-        .. image:: _static/demos/hmr.gif
+        .. image:: /_static/demos/hmr.gif
            :alt: HMR demo
            :align: center
            :width: 100%
@@ -274,12 +274,12 @@ Explore the Documentation
 
         Learn how to use Litestar Vite
 
-    .. grid-item-card:: :octicon:`comment-discussion` Discussions
-        :link: https://github.com/litestar-org/litestar-vite/discussions
-        :link-type: url
+    .. grid-item-card:: :octicon:`stack` Framework Examples
+        :link: frameworks/index
+        :link-type: doc
         :class-card: sd-text-center
 
-        Join the community discussion
+        React, Vue, Svelte, Angular & more
 
     .. grid-item-card:: :octicon:`log` Changelog
         :link: changelog
@@ -314,8 +314,8 @@ Explore the Documentation
     :caption: Litestar Vite Documentation
     :hidden:
 
-    tutorials/index
     usage/index
+    frameworks/index
     reference/index
 
 .. toctree::

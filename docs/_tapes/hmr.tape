@@ -6,37 +6,38 @@ Set Width 1000
 Set Height 600
 Set Theme "Catppuccin Mocha"
 Set Padding 20
+Set TypingSpeed 50ms
 
-Type "# Litestar Vite Hot Module Replacement Demo"
+Type "# Litestar Vite - Development with HMR"
 Enter
 Sleep 1s
 
-Type "# Start the development server"
+Hide
+Type "cd examples/basic"
 Enter
-Type "litestar run --reload"
-Enter
-Sleep 3s
+Sleep 500ms
+Show
 
-Type "# Server is running with HMR enabled!"
+Type "# With use_server_lifespan=True, one command starts everything"
+Enter
+Sleep 500ms
+
+Type "# Litestar manages the Vite dev server automatically!"
+Enter
+Sleep 500ms
+
+Type "litestar --app app:app run --reload"
+Enter
+Sleep 4s
+
+Type ""
 Enter
 Sleep 1s
 
-Type "# Edit your frontend code and watch it update instantly"
-Enter
-Sleep 1s
-
-Type "# Changes are reflected in the browser without refresh"
-Enter
-Sleep 2s
-
-Type "# Press Ctrl+C to stop"
-Enter
-Sleep 1s
-
-# Simulate Ctrl+C
+# Simulate Ctrl+C to stop
 Ctrl+C
 Sleep 500ms
 
-Type "# HMR provides instant feedback during development!"
+Type "# That's it! Litestar + Vite HMR in one command."
 Enter
 Sleep 2s

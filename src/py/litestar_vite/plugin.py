@@ -18,6 +18,7 @@ Example::
     )
 """
 
+import importlib.metadata
 import os
 import signal
 import subprocess
@@ -73,18 +74,34 @@ def set_environment(config: "ViteConfig") -> None:
     Args:
         config: The Vite configuration.
     """
-    from litestar import __version__ as litestar_version
-
+    litestar_version = _resolve_litestar_version()
     os.environ.setdefault("ASSET_URL", config.asset_url)
     os.environ.setdefault("VITE_ALLOW_REMOTE", str(True))
     os.environ.setdefault("VITE_PORT", str(config.port))
     os.environ.setdefault("VITE_HOST", config.host)
     os.environ.setdefault("VITE_PROTOCOL", config.protocol)
     os.environ.setdefault("VITE_PROXY_MODE", config.proxy_mode)
-    os.environ.setdefault("LITESTAR_VERSION", litestar_version.formatted())
+    os.environ.setdefault("LITESTAR_VERSION", litestar_version)
+    os.environ.setdefault("LITESTAR_VITE_RUNTIME", config.runtime.executor or "node")
+    os.environ.setdefault("LITESTAR_VITE_INSTALL_CMD", " ".join(config.install_command))
     os.environ.setdefault("APP_URL", f"http://localhost:{os.environ.get('LITESTAR_PORT', '8000')}")
     if config.is_dev_mode:
         os.environ.setdefault("VITE_DEV_MODE", str(config.is_dev_mode))
+
+
+def _resolve_litestar_version() -> str:
+    """Safely resolve the installed Litestar version as a string."""
+
+    try:
+        return importlib.metadata.version("litestar")
+    except importlib.metadata.PackageNotFoundError:
+        # Fallback to runtime constant if available
+        try:
+            from litestar import __version__
+
+            return getattr(__version__, "formatted", lambda: str(__version__))()
+        except (AttributeError, TypeError):  # pragma: no cover - extremely rare fallback
+            return "unknown"
 
 
 def _pick_free_port() -> int:
@@ -545,6 +562,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
             # Export routes
             routes_data = generate_routes_json(app, include_components=True)
+            routes_data["litestar_version"] = _resolve_litestar_version()
             routes_content = msgspec.json.format(
                 msgspec.json.encode(routes_data),
                 indent=2,

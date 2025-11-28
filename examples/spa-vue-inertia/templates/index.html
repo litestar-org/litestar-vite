@@ -1,13 +1,13 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{{ page.props.title if page.props.title else "Vue + Inertia" }}</title>
-    {{ vite_hmr() }}
-    {{ vite('resources/main.ts') }}
+    <title inertia>spa-vue-inertia</title>
   </head>
   <body>
-    {{ inertia_body() }}
+    <div id="app" data-page="{{ page | tojson | e }}"></div>
+    <script type="module" src="/resources/main.ts"></script>
   </body>
 </html>

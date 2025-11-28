@@ -23,8 +23,8 @@
     /* Paths */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./resources/*"]
+      "@/*": ["./src/*"]
     }
   },
-  "include": ["resources/**/*", "vite.config.ts"]
+  "include": ["src/**/*", "vite.config.ts"]
 }

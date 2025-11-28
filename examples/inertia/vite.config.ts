@@ -3,39 +3,31 @@ import litestar from "litestar-vite-plugin"
 import { defineConfig } from "vite"
 
 const ASSET_URL = process.env.ASSET_URL || "/static/"
-const VITE_PORT = process.env.VITE_PORT || "5173"
-const VITE_HOST = process.env.VITE_HOST || "localhost"
+const VITE_PORT = process.env.VITE_PORT || "47979"
+const LITESTAR_PORT = process.env.LITESTAR_PORT || "8000"
+
 export default defineConfig({
-  base: `${ASSET_URL}`,
-  root: ".",
+  base: ASSET_URL,
   server: {
     host: "0.0.0.0",
-    port: +`${VITE_PORT}`,
+    port: Number(VITE_PORT),
     cors: true,
     hmr: {
-      host: `${VITE_HOST}`,
+      host: "localhost",
     },
   },
   plugins: [
-    vue({
-      template: {
-        transformAssetUrls: {
-          base: null,
-          includeAbsolute: false,
-        },
-      },
-    }),
+    vue(),
     litestar({
-      input: ["resources/main.js", "resources/styles.css"],
-      assetUrl: `${ASSET_URL}`,
+      input: ["resources/main.ts"],
+      assetUrl: ASSET_URL,
       bundleDirectory: "public",
       resourceDirectory: "resources",
-      hotFile: "public/hot",
     }),
   ],
   resolve: {
     alias: {
-      "@": "resources",
+      "@": "/resources",
     },
   },
 })
