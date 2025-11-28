@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue"
+import { Head } from "@inertiajs/vue3"
 
 type Book = {
   id: number
@@ -16,47 +16,32 @@ type Summary = {
   featured: Book
 }
 
-const summary = ref<Summary | null>(null)
-const books = ref<Book[]>([])
-const view = ref<"overview" | "books">("overview")
-
-const featured = computed(() => summary.value?.featured)
-
-onMounted(async () => {
-  const [summaryRes, booksRes] = await Promise.all([
-    fetch("/api/summary"),
-    fetch("/api/books"),
-  ])
-  summary.value = await summaryRes.json()
-  books.value = await booksRes.json()
-})
+defineProps<{
+  summary: Summary
+  books: Book[]
+}>()
 </script>
 
 <template>
+  <Head title="Books" />
   <div class="app">
     <header class="hero">
       <p class="eyebrow">Litestar + Vite</p>
-      <h1>Library (Vue)</h1>
-      <p class="lede">Shared backend, different frontend stacks.</p>
-      <div class="tabs" role="tablist">
-        <button :class="{ active: view === 'overview' }" @click="view = 'overview'">Overview</button>
-        <button :class="{ active: view === 'books' }" @click="view = 'books'">
-          Books {{ summary?.total_books ? `(${summary.total_books})` : "" }}
-        </button>
-      </div>
+      <h1>Books (Vue + Inertia)</h1>
+      <p class="lede">Server-driven props, same backend.</p>
     </header>
 
-    <section v-if="view === 'overview' && featured" class="panel">
-      <h2>{{ summary?.headline }}</h2>
-      <p>Featured book</p>
+    <section class="panel">
+      <h2>{{ summary.headline }}</h2>
+      <p class="muted">Total books: {{ summary.total_books }}</p>
       <article class="card">
-        <h3>{{ featured.title }}</h3>
-        <p class="muted">{{ featured.author }} • {{ featured.year }}</p>
-        <p class="chips">{{ featured.tags.join(" · ") }}</p>
+        <h3>{{ summary.featured.title }}</h3>
+        <p class="muted">{{ summary.featured.author }} • {{ summary.featured.year }}</p>
+        <p class="chips">{{ summary.featured.tags.join(" · ") }}</p>
       </article>
     </section>
 
-    <section v-else class="grid" aria-label="Books">
+    <section class="grid" aria-label="Books">
       <article v-for="book in books" :key="book.id" class="card">
         <h3>{{ book.title }}</h3>
         <p class="muted">{{ book.author }} • {{ book.year }}</p>
@@ -104,36 +89,13 @@ onMounted(async () => {
   color: #475569;
 }
 
-.tabs {
-  display: inline-flex;
-  gap: 0.5rem;
-  background: #e2e8f0;
-  border-radius: 999px;
-  padding: 0.25rem;
-}
-
-.tabs button {
-  border: none;
-  background: transparent;
-  padding: 0.5rem 1.05rem;
-  border-radius: 999px;
-  font-weight: 600;
-  color: #0f172a;
-  cursor: pointer;
-  transition: background 120ms ease, box-shadow 120ms ease;
-}
-
-.tabs button.active {
-  background: #fff;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
-}
-
 .panel {
   background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 18px;
   padding: 1.5rem;
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+  margin-bottom: 1rem;
 }
 
 .grid {

@@ -1,1 +1,9 @@
-/* Global styles are included in Layout.astro */
+@import "https://cdn.jsdelivr.net/npm/tailwindcss@3.4.13/dist/tailwind.min.css";
+
+:root {
+  font-family: "Inter", "SF Pro Text", system-ui, -apple-system, sans-serif;
+  color: #202235;
+  background-color: #f8fafc;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}

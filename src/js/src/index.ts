@@ -1,4 +1,5 @@
 import { exec } from "node:child_process"
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import type { AddressInfo } from "node:net"
 import path from "node:path"
@@ -8,8 +9,8 @@ import colors from "picocolors"
 import { type ConfigEnv, type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer, loadEnv } from "vite"
 import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-reload"
 
-import { resolveInstallHint } from "./install-hint"
-import { type LitestarMeta, loadLitestarMeta } from "./litestar-meta"
+import { resolveInstallHint } from "./install-hint.js"
+import { type LitestarMeta, loadLitestarMeta } from "./litestar-meta.js"
 
 const execAsync = promisify(exec)
 
@@ -335,7 +336,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
       // Debug log resolved config
       // console.log("Resolved Vite Config:", resolvedConfig);
 
-      const hint = pluginConfig.types && pluginConfig.types !== false ? pluginConfig.types.routesPath : undefined
+      const hint = pluginConfig.types !== false ? pluginConfig.types.routesPath : undefined
       litestarMeta = await loadLitestarMeta(resolvedConfig, hint)
     },
     transform(code: string, id: string): string | undefined {

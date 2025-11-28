@@ -12,6 +12,8 @@
     "vue": "latest"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "tailwindcss": "^4.0.0",
     "typescript": "latest",
     "vue-tsc": "latest",
     "litestar-vite-plugin": "latest",

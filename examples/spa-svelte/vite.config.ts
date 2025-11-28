@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite"
 import { svelte } from "@sveltejs/vite-plugin-svelte"
 import litestar from "litestar-vite-plugin"
 import { defineConfig } from "vite"
@@ -17,6 +18,7 @@ export default defineConfig({
     },
   },
   plugins: [
+    tailwindcss(),
     svelte(),
     litestar({
       input: ["src/main.ts"],

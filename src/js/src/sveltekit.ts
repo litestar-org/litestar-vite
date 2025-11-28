@@ -38,7 +38,7 @@ import { promisify } from "node:util"
 import colors from "picocolors"
 import type { Plugin, ViteDevServer, ResolvedConfig as ViteResolvedConfig } from "vite"
 
-import { resolveInstallHint } from "./install-hint"
+import { resolveInstallHint } from "./install-hint.js"
 
 const execAsync = promisify(exec)
 

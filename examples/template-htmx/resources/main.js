@@ -1,5 +1,6 @@
 import "htmx.org"
 import Alpine from "alpinejs"
+import "./styles.css"
 
 // Initialize Alpine.js
 window.Alpine = Alpine

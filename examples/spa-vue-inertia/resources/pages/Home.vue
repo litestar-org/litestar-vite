@@ -8,23 +8,10 @@ defineProps<{
 
 <template>
   <Head title="Home" />
-  <div class="app">
-    <h1>{{ project_name }}</h1>
-    <p>Vue 3 + Inertia.js + Litestar</p>
-    <p v-if="message" class="message">{{ message }}</p>
+  <div class="max-w-5xl mx-auto px-4 py-10 space-y-3">
+    <p class="uppercase tracking-[0.14em] text-sm font-semibold text-[#edb641]">Litestar · Vite</p>
+    <h1 class="text-3xl font-semibold text-[#202235]">Library (Vue + Inertia SPA)</h1>
+    <p class="text-slate-600">Server-driven SPA example sharing the same backend.</p>
+    <p v-if="message" class="text-[#202235] font-medium">{{ message }}</p>
   </div>
 </template>
-
-<style scoped>
-.app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-}
-
-.message {
-  color: #646cff;
-  font-weight: 500;
-}
-</style>

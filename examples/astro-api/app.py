@@ -9,7 +9,7 @@ Astro dev server proxies to http://localhost:8000
 from litestar import Litestar, get
 from msgspec import Struct
 
-from litestar_vite import ViteConfig, VitePlugin
+from litestar_vite import TypeGenConfig, ViteConfig, VitePlugin
 
 
 class Message(Struct):
@@ -32,7 +32,19 @@ async def hello() -> Message:
     return Message(message="Hello from Litestar API!")
 
 
-vite = VitePlugin(config=ViteConfig(dev_mode=True))
+vite = VitePlugin(
+    config=ViteConfig(
+        dev_mode=True,
+        types=TypeGenConfig(
+            enabled=True,
+            output="src/generated",
+            openapi_path="src/generated/openapi.json",
+            routes_path="src/generated/routes.json",
+            generate_zod=True,
+            generate_sdk=True,
+        ),
+    )
+)
 
 app = Litestar(
     route_handlers=[health, hello],

@@ -39,10 +39,12 @@ export async function loadLitestarMeta(resolvedConfig: ResolvedConfig, routesPat
   const data = readJson(match)
   if (!data) return {}
 
-  const litestarVersion =
-    (typeof data.litestar_version === "string" && data.litestar_version) ||
-    (typeof data.litestarVersion === "string" && data.litestarVersion) ||
-    (typeof (data as Record<string, unknown>).version === "string" && (data as Record<string, unknown>).version)
+  const fromData = (key: string): string | null => {
+    const value = (data as Record<string, unknown>)[key]
+    return typeof value === "string" ? value : null
+  }
+
+  const litestarVersion: string | null = fromData("litestar_version") ?? fromData("litestarVersion") ?? fromData("version")
 
   return litestarVersion ? { litestarVersion } : {}
 }

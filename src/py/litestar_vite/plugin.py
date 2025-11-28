@@ -23,7 +23,7 @@ import os
 import signal
 import subprocess
 import threading
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Union, cast
@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any, Optional, Union, cast
 import anyio
 import httpx  # used in proxy middleware health and HTTP forwarding
 import websockets  # used in proxy middleware WS forwarding
+from rich import print as rich_print
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 from litestar.middleware import DefineMiddleware
 from litestar.plugins import CLIPlugin, InitPluginProtocol
@@ -120,40 +121,88 @@ _PROXY_PATH_PREFIXES: tuple[str, ...] = (
     "/@vite/client",
     "/@vite/env",
     "/vite-hmr",
-    "/__vite_ping",
+    "/node_modules/.vite/",
+    "/@analogjs/",
+    "/src/",
+)
+
+_PATHS_REQUIRE_BASE_PREFIX: tuple[str, ...] = (
+    "/@vite",
+    "/@id/",
+    "/@fs/",
+    "/@react-refresh",
+    "/@vite/client",
+    "/@vite/env",
+    "/vite-hmr",
     "/node_modules/.vite/",
     "/@analogjs/",
     "/src/",
 )
 
 
+def _normalize_prefix(prefix: str) -> str:
+    if not prefix.startswith("/"):
+        prefix = f"/{prefix}"
+    if not prefix.endswith("/"):
+        prefix = f"{prefix}/"
+    return prefix
+
+
 class ViteProxyMiddleware:
     """ASGI middleware to proxy Vite dev traffic (HTTP + WS) to internal Vite server."""
 
-    def __init__(self, app: "ASGIApp", target_base_url: str) -> None:
+    def __init__(
+        self,
+        app: "ASGIApp",
+        target_base_url: str,
+        asset_url: Optional[str] = None,
+        resource_dir: Optional[Path] = None,
+        bundle_dir: Optional[Path] = None,
+        root_dir: Optional[Path] = None,
+    ) -> None:
         self.app = app
         self.target_base_url = target_base_url.rstrip("/")
+        self.asset_prefix = _normalize_prefix(asset_url) if asset_url else "/"
+        self._proxy_path_prefixes = _normalize_proxy_prefixes(
+            base_prefixes=_PROXY_PATH_PREFIXES,
+            asset_url=asset_url,
+            resource_dir=resource_dir,
+            bundle_dir=bundle_dir,
+            root_dir=root_dir,
+        )
 
     async def __call__(self, scope: "Scope", receive: "Receive", send: "Send") -> None:
         scope_dict = cast("dict[str, Any]", scope)
         path = scope_dict.get("path", "")
-        if scope["type"] == "http" and self._should_proxy(path):
+        should = self._should_proxy(path)
+        rich_print(f"[vite-proxy] path={path!s} should_proxy={should}")
+        if scope["type"] == "http" and should:
             await self._proxy_http(scope_dict, receive, send)
             return
-        if scope["type"] == "websocket" and self._should_proxy(path):
+        if scope["type"] == "websocket" and should:
             await self._proxy_ws(scope_dict, receive, send)
             return
         await self.app(scope, receive, send)
 
-    @staticmethod
-    def _should_proxy(path: str) -> bool:
-        return path.startswith(_PROXY_PATH_PREFIXES)
+    def _should_proxy(self, path: str) -> bool:
+        # Litestar may hand us percent-encoded paths (e.g. /%40vite/client).
+        try:
+            from urllib.parse import unquote
+        except Exception:  # pragma: no cover - extremely small surface
+            return path.startswith(self._proxy_path_prefixes)
+
+        decoded = unquote(path)
+        return decoded.startswith(self._proxy_path_prefixes) or path.startswith(self._proxy_path_prefixes)
 
     async def _proxy_http(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         method = scope.get("method", "GET")
         raw_path = scope.get("raw_path", b"").decode()
         query_string = scope.get("query_string", b"").decode()
-        url = f"{self.target_base_url}{raw_path}"
+        proxied_path = raw_path
+        if self.asset_prefix != "/" and not raw_path.startswith(self.asset_prefix):
+            proxied_path = f"{self.asset_prefix.rstrip('/')}{raw_path}"
+
+        url = f"{self.target_base_url}{proxied_path}"
         if query_string:
             url = f"{url}?{query_string}"
 
@@ -171,30 +220,30 @@ class ViteProxyMiddleware:
             try:
                 upstream_resp = await client.request(method, url, headers=headers, content=body, timeout=10.0)
             except httpx.HTTPError as exc:  # pragma: no cover - network failure path
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 502,
-                        "headers": [(b"content-type", b"text/plain")],
-                    }
-                )
+                await send({
+                    "type": "http.response.start",
+                    "status": 502,
+                    "headers": [(b"content-type", b"text/plain")],
+                })
                 await send({"type": "http.response.body", "body": str(exc).encode()})
                 return
 
         response_headers = [(k.encode(), v.encode()) for k, v in upstream_resp.headers.items()]
-        await send(
-            {
-                "type": "http.response.start",
-                "status": upstream_resp.status_code,
-                "headers": response_headers,
-            }
-        )
+        await send({
+            "type": "http.response.start",
+            "status": upstream_resp.status_code,
+            "headers": response_headers,
+        })
         await send({"type": "http.response.body", "body": upstream_resp.content})
 
     async def _proxy_ws(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         raw_path = scope.get("raw_path", b"").decode()
         query_string = scope.get("query_string", b"").decode()
-        target = f"{self.target_base_url.replace('http', 'ws')}{raw_path}"
+        proxied_path = raw_path
+        if self.asset_prefix != "/" and not raw_path.startswith(self.asset_prefix):
+            proxied_path = f"{self.asset_prefix.rstrip('/')}{raw_path}"
+
+        target = f"{self.target_base_url.replace('http', 'ws')}{proxied_path}"
         if query_string:
             target = f"{target}?{query_string}"
 
@@ -254,6 +303,8 @@ class ViteProcess:
     with proper thread safety and graceful shutdown.
     """
 
+    _atexit_registered: bool = False
+
     def __init__(self, executor: "JSExecutor") -> None:
         """Initialize the Vite process manager.
 
@@ -263,6 +314,11 @@ class ViteProcess:
         self.process: "Optional[subprocess.Popen[bytes]]" = None
         self._lock = threading.Lock()
         self._executor = executor
+        if not ViteProcess._atexit_registered:
+            import atexit
+
+            atexit.register(self._atexit_stop)
+            ViteProcess._atexit_registered = True
 
     def start(self, command: list[str], cwd: "Optional[Union[Path, str]]") -> None:
         """Start the Vite process.
@@ -284,6 +340,20 @@ class ViteProcess:
 
                 if cwd:
                     self.process = self._executor.run(command, cwd)
+                    # If the process exited immediately, surface stdout/stderr for debugging
+                    if self.process and self.process.poll() is not None:
+                        stdout, stderr = self.process.communicate()
+                        out_str = stdout.decode(errors="ignore") if stdout else ""
+                        err_str = stderr.decode(errors="ignore") if stderr else ""
+                        console.print(
+                            "[red]Vite process exited immediately.[/]\n"
+                            f"[red]Command:[/] {' '.join(command)}\n"
+                            f"[red]Exit code:[/] {self.process.returncode}\n"
+                            f"[red]Stdout:[/]\n{out_str or '<empty>'}\n"
+                            f"[red]Stderr:[/]\n{err_str or '<empty>'}"
+                        )
+                        msg = f"Vite process failed to start (exit {self.process.returncode})"
+                        raise ViteProcessError(msg)
         except Exception as e:
             console.print(f"[red]Failed to start Vite process: {e!s}[/]")
             msg = f"Failed to start Vite process: {e!s}"
@@ -315,6 +385,11 @@ class ViteProcess:
             console.print(f"[red]Failed to stop Vite process: {e!s}[/]")
             msg = f"Failed to stop Vite process: {e!s}"
             raise ViteProcessError(msg) from e
+
+    def _atexit_stop(self) -> None:
+        """Best-effort stop on interpreter exit."""
+        with suppress(Exception):
+            self.stop()
 
 
 class VitePlugin(InitPluginProtocol, CLIPlugin):
@@ -492,7 +567,14 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._config.is_dev_mode and self._config.proxy_mode == "proxy":
             self._ensure_proxy_target()
             app_config.middleware.append(
-                DefineMiddleware(ViteProxyMiddleware, target_base_url=self._proxy_target or "")
+                DefineMiddleware(
+                    ViteProxyMiddleware,
+                    target_base_url=self._proxy_target or "",
+                    asset_url=self._config.asset_url,
+                    resource_dir=self._config.resource_dir,
+                    bundle_dir=self._config.bundle_dir,
+                    root_dir=self._config.root_dir,
+                )
             )
 
         return app_config
@@ -671,3 +753,45 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 console.print("[yellow]Vite process stopped.[/]")
         else:
             yield
+
+
+def _normalize_proxy_prefixes(
+    base_prefixes: tuple[str, ...],
+    asset_url: "Optional[str]" = None,
+    resource_dir: "Optional[Path]" = None,
+    bundle_dir: "Optional[Path]" = None,
+    root_dir: "Optional[Path]" = None,
+) -> tuple[str, ...]:
+
+    def _normalize_prefix(prefix: str) -> str:
+        if not prefix.startswith("/"):
+            prefix = f"/{prefix}"
+        if not prefix.endswith("/"):
+            prefix = f"{prefix}/"
+        return prefix
+
+    prefixes: list[str] = list(base_prefixes)
+
+    if asset_url:
+        prefixes.append(_normalize_prefix(asset_url))
+
+    def _add_path(path: Union[Path, str, None]) -> None:
+        if path is None:
+            return
+        p = Path(path)
+        if root_dir and p.is_absolute():
+            with suppress(ValueError):
+                p = p.relative_to(root_dir)
+        prefixes.append(_normalize_prefix(str(p).replace("\\", "/")))
+
+    _add_path(resource_dir)
+    _add_path(bundle_dir)
+
+    # Remove duplicates while preserving order
+    seen: set[str] = set()
+    unique = []
+    for p in prefixes:
+        if p not in seen:
+            unique.append(p)
+            seen.add(p)
+    return tuple(unique)

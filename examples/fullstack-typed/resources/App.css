@@ -1,68 +1,81 @@
+@import "https://cdn.jsdelivr.net/npm/tailwindcss@3.4.13/dist/tailwind.min.css";
+
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
+  font-family: "Inter", "SF Pro Text", system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
   font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
+  color: #0f172a;
+  background-color: #f8fafc;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
 }
 
 .app {
-  max-width: 1280px;
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  padding: 2.5rem 1.5rem 3rem;
 }
 
-.message {
-  color: #646cff;
-  font-weight: 500;
+.hero {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
 }
 
-.back-link {
-  color: #646cff;
-  text-decoration: none;
+.eyebrow {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: #0ea5e9;
+  font-size: 0.85rem;
 }
 
-.back-link:hover {
-  text-decoration: underline;
+.hero h1 {
+  font-size: 2.2rem;
+  margin: 0;
 }
 
-.user-list {
-  list-style: none;
-  padding: 0;
-  margin-top: 2rem;
+.lede {
+  margin: 0;
+  color: #475569;
 }
 
-.user-item {
-  padding: 1rem;
-  margin: 0.5rem 0;
-  background: #1a1a1a;
-  border-radius: 8px;
-  display: flex;
-  justify-content: space-between;
+.panel {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  padding: 1.5rem;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+  margin-bottom: 1rem;
 }
 
-.user-item strong {
-  color: #fff;
+.card {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(180deg, #fff, #f8fafc);
 }
 
-.user-item span {
-  color: #888;
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  .user-item {
-    background-color: #f9f9f9;
-  }
+.muted {
+  color: #64748b;
+  margin: 0.15rem 0 0.35rem;
+}
+
+.chips {
+  font-size: 0.95rem;
+  color: #0f172a;
 }

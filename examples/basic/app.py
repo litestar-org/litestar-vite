@@ -1,19 +1,56 @@
-"""Basic template example - Jinja2 templates with Vite assets.
+"""Basic template example - shared "Library" demo with Jinja2 + Vite.
 
-This example demonstrates using Jinja2 templates with Vite for
-asset bundling and HMR.
+All examples in this repository now expose the same tiny backend:
+
+- `/api/summary` – overview + featured book
+- `/api/books` – list of books
+- `/api/books/{book_id}` – single book
+
+The frontend (here: Jinja2 templates) consumes the same data as the SPA
+examples so you can compare frameworks side-by-side.
 """
 
 from pathlib import Path
 
 from litestar import Controller, Litestar, get
 from litestar.contrib.jinja import JinjaTemplateEngine
+from litestar.exceptions import NotFoundException
 from litestar.response import Template
 from litestar.template import TemplateConfig
+from msgspec import Struct
 
 from litestar_vite import ViteConfig, VitePlugin
 
 here = Path(__file__).parent
+
+
+class Book(Struct):
+    id: int
+    title: str
+    author: str
+    year: int
+    tags: list[str]
+
+
+class Summary(Struct):
+    app: str
+    headline: str
+    total_books: int
+    featured: Book
+
+
+BOOKS: list[Book] = [
+    Book(id=1, title="Async Python", author="C. Developer", year=2024, tags=["python", "async"]),
+    Book(id=2, title="Type-Safe Web", author="J. Dev", year=2025, tags=["typescript", "api"]),
+    Book(id=3, title="Frontend Patterns", author="A. Designer", year=2023, tags=["frontend", "ux"]),
+]
+
+
+def _get_book(book_id: int) -> Book:
+    for book in BOOKS:
+        if book.id == book_id:
+            return book
+    raise NotFoundException(detail=f"Book {book_id} not found")
 
 
 class WebController(Controller):
@@ -25,10 +62,39 @@ class WebController(Controller):
     @get("/")
     async def index(self) -> Template:
         """Serve site root."""
-        return Template(template_name="index.html.j2")
+        return Template(
+            template_name="index.html.j2",
+            context={"summary": await summary(), "books": await books()},
+        )
 
 
-vite = VitePlugin(config=ViteConfig(dev_mode=True, types=False))
+@get("/api/summary")
+async def summary() -> Summary:
+    """Overview endpoint used across all examples."""
+
+    return Summary(
+        app="litestar-vite library",
+        headline="One backend, many frontends",
+        total_books=len(BOOKS),
+        featured=BOOKS[0],
+    )
+
+
+@get("/api/books")
+async def books() -> list[Book]:
+    """Return all books."""
+
+    return BOOKS
+
+
+@get("/api/books/{book_id:int}")
+async def book_detail(book_id: int) -> Book:
+    """Return a single book by id."""
+
+    return _get_book(book_id)
+
+
+vite = VitePlugin(config=ViteConfig(dev_mode=True, types=True))
 templates = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "templates"))
 
 app = Litestar(
