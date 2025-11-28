@@ -1,10 +1,7 @@
 {
   "context": {
     "fileName": ["AGENTS.md"],
-    "includeDirectories": [
-      ".gemini",
-      "specs/guides"
-    ],
+    "includeDirectories": [".gemini", "specs/guides"],
     "loadFromIncludeDirectories": true
   },
   "model": {

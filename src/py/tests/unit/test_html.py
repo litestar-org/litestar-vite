@@ -1,7 +1,5 @@
 """Tests for HTML transformation utilities."""
 
-from __future__ import annotations
-
 from litestar_vite.html_transform import HtmlTransformer
 
 

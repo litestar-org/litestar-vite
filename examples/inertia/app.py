@@ -93,7 +93,7 @@ templates = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "template
 flasher = FlashPlugin(config=FlashConfig(template_config=templates))
 
 app = Litestar(
-    route_handlers=[index, dashboard],
+    route_handlers=[index, dashboard, books_page, summary, books, book_detail],
     plugins=[vite, flasher, inertia],
     template_config=templates,
     middleware=[ServerSideSessionConfig().middleware],

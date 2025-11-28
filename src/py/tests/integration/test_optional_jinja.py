@@ -1,7 +1,5 @@
 """Tests for optional Jinja dependency support."""
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 from unittest.mock import Mock, patch

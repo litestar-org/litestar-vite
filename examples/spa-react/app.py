@@ -8,8 +8,6 @@ frameworks side-by-side:
 - `/api/books/{book_id}` – single book
 """
 
-# Ensure we use the local, in-repo litestar_vite during development.
-import sys
 from pathlib import Path
 
 from anyio import Path as AsyncPath
@@ -17,8 +15,6 @@ from litestar import Litestar, get
 from litestar.exceptions import NotFoundException
 from litestar.response import Response
 from msgspec import Struct
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "py"))
 
 from litestar_vite import PathConfig, ViteConfig, VitePlugin
 
@@ -97,7 +93,7 @@ vite = VitePlugin(
 )
 
 app = Litestar(
-    route_handlers=[index],
+    route_handlers=[index, summary, books, book_detail],
     plugins=[vite],
     debug=True,
 )

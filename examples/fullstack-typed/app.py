@@ -87,7 +87,7 @@ inertia = InertiaPlugin(config=InertiaConfig(root_template="index.html"))
 templates = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "templates"))
 
 app = Litestar(
-    route_handlers=[index],
+    route_handlers=[index, books_page, summary, books, book_detail],
     plugins=[vite, inertia],
     template_config=templates,
     middleware=[ServerSideSessionConfig().middleware],

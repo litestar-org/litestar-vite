@@ -78,11 +78,11 @@
 - [x] Write summary output format
 - [x] Write next steps guidance
 
-## Phase 3: Gemini Bootstrap Implementation ✓
+## Phase 3: Gemini Bootstrap Implementation ✓ (Enhanced v2.0)
 
 ### 3.1: Core Structure ✓
 
-- [x] Create `.gemini/commands/bootstrap.toml` file (911 lines)
+- [x] Create `.gemini/commands/bootstrap.toml` file (1506 lines - Enhanced)
 - [x] Write Header section (Gemini-specific)
 - [x] Write Preflight section
 - [x] Write Detection section (shared logic with Claude)
@@ -106,6 +106,17 @@
 
 - [x] Write Gemini-specific alignment logic
 - [x] Write TOML merge strategies
+
+### 3.5: Intelligence Enhancements ✓ (NEW)
+
+- [x] Add Bootstrap Philosophy section (Intelligence Principles)
+- [x] Add Intelligent Project Analysis phase (Deep codebase understanding)
+- [x] Add MCP Tool Detection with Python script
+- [x] Add Adaptive Quality Gates (quality-gates.yaml)
+- [x] Add Intelligent Workflow Templates (workflows/intelligent-development.yaml)
+- [x] Add Pattern Library initialization (specs/guides/patterns/)
+- [x] Add Knowledge Base with pattern extraction
+- [x] Add Adaptive Checkpoints (6/8/10+ based on complexity)
 
 ## Phase 4: Testing (Auto via /test command)
 

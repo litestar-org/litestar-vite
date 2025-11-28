@@ -25,7 +25,7 @@
     "@angular/platform-browser-dynamic": "latest",
     "typescript": "latest",
     "@types/node": "latest",
-    "litestar-vite-plugin": "latest",
+    "litestar-vite-plugin": "file:../../dist/js/",
     "vite": "^6.0.0"
   }
 }

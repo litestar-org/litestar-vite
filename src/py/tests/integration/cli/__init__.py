@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 APP_DEFAULT_CONFIG_FILE_CONTENT = """
 from litestar import Litestar
 

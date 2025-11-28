@@ -126,19 +126,6 @@ _PROXY_PATH_PREFIXES: tuple[str, ...] = (
     "/src/",
 )
 
-_PATHS_REQUIRE_BASE_PREFIX: tuple[str, ...] = (
-    "/@vite",
-    "/@id/",
-    "/@fs/",
-    "/@react-refresh",
-    "/@vite/client",
-    "/@vite/env",
-    "/vite-hmr",
-    "/node_modules/.vite/",
-    "/@analogjs/",
-    "/src/",
-)
-
 
 def _normalize_prefix(prefix: str) -> str:
     if not prefix.startswith("/"):

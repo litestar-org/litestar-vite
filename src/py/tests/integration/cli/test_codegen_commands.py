@@ -1,7 +1,5 @@
 """Tests for type generation CLI commands."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import msgspec

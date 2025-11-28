@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import socket
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -74,6 +75,10 @@ class ViteDoctor:
         self._check_typegen_flags()
         self._check_plugin_spread()
         self._check_dist_files()
+
+        # Runtime checks
+        self._check_node_modules()
+        self._check_vite_server_reachable()
 
         self._print_report()
 
@@ -356,6 +361,64 @@ class ViteDoctor:
                     severity="error",
                     message=f"Missing required plugin files: {', '.join(missing)}",
                     fix_hint="Reinstall the plugin: npm install litestar-vite-plugin --force",
+                    auto_fixable=False,
+                )
+            )
+
+    def _check_node_modules(self) -> None:
+        """Check if node_modules directory exists."""
+        root = self.config.root_dir or Path.cwd()
+        node_modules = root / "node_modules"
+
+        if not node_modules.exists():
+            self.issues.append(
+                DoctorIssue(
+                    check="Node Modules Missing",
+                    severity="error",
+                    message="node_modules directory not found",
+                    fix_hint="Run npm install or pnpm install to install dependencies",
+                    auto_fixable=False,
+                )
+            )
+        elif self.verbose:
+            console.print("[dim]✓ node_modules directory exists[/]")
+
+    def _check_vite_server_reachable(self) -> None:
+        """Check if Vite dev server is reachable (only in dev mode)."""
+        if not self.config.dev_mode:
+            return
+
+        host = self.config.host
+        port = self.config.port
+
+        if self.verbose:
+            console.print(f"[dim]Checking Vite server at {host}:{port}...[/]")
+
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            result = sock.connect_ex((host, port))
+            sock.close()
+
+            if result != 0:
+                self.issues.append(
+                    DoctorIssue(
+                        check="Vite Server Not Running",
+                        severity="warning",
+                        message=f"Cannot connect to Vite dev server at {host}:{port}",
+                        fix_hint="Start Vite with: npm run dev (or run litestar with: litestar run)",
+                        auto_fixable=False,
+                    )
+                )
+            elif self.verbose:
+                console.print(f"[dim]✓ Vite server reachable at {host}:{port}[/]")
+        except OSError as e:
+            self.issues.append(
+                DoctorIssue(
+                    check="Vite Server Check Failed",
+                    severity="warning",
+                    message=f"Could not check Vite server: {e}",
+                    fix_hint="Ensure Vite dev server is running",
                     auto_fixable=False,
                 )
             )

@@ -1,90 +1,557 @@
 # Command: /bootstrap
-description = "Bootstrap AI development infrastructure for any project"
+description = "Bootstrap AI development infrastructure for any project (Intelligent Edition)"
 prompt = """
-You are bootstrapping AI development infrastructure for this project. This command will analyze the codebase, detect frameworks and patterns, and generate comprehensive Gemini CLI configuration including commands, contexts, and the PRD-driven development workflow.
+# Gemini Agent System Bootstrap - Intelligent Workflow Edition
 
-**Version**: 1.0 | **Bootstrap Framework**: litestar-vite
+**Version**: 2.0 (Intelligent Edition)
+**Purpose**: Create a self-aware, adaptive agent system with contextual intelligence
+
+This bootstrap creates an intelligent Gemini agent system with:
+
+- **Context-Aware Analysis** - Agents understand project patterns before acting
+- **Adaptive Checkpoints** - Workflow depth adjusts to task complexity
+- **Knowledge Synthesis** - Automatic pattern extraction and documentation
+- **Intelligent Tool Selection** - MCP tool usage based on task requirements
+- **Quality Enforcement** - Multi-tier validation with graceful degradation
+- **Self-Documenting** - Captures learnings for future agent sessions
+- **Cross-Agent Memory** - Shared knowledge base evolves over time
+
+**Execution**: Run this entire prompt with Gemini in your project root.
+**Philosophy**: Agents should learn from the codebase, not just execute commands.
 
 ---
 
-## Table of Contents
+## BOOTSTRAP PHILOSOPHY
 
-1. [Preflight Checks](#part-1-preflight-checks)
-2. [Detection Phase](#part-2-detection-phase)
-3. [Generation Phase](#part-3-generation-phase)
-4. [Alignment Mode](#part-4-alignment-mode)
-5. [Verification](#part-5-verification)
-6. [Embedded Templates](#part-6-embedded-templates)
-7. [Framework Knowledge Base](#part-7-framework-knowledge-base)
+### Intelligence Principles
+
+1. **Context First, Code Second**
+   - Read existing patterns before creating new ones
+   - Understand project conventions from actual code
+   - Adapt to project's unique architectural style
+
+2. **Adaptive Complexity**
+   - Simple tasks get streamlined workflows
+   - Complex features trigger deep analysis
+   - Checkpoint count scales with complexity:
+     - **Simple**: 6 checkpoints
+     - **Medium**: 8 checkpoints
+     - **Complex**: 10+ checkpoints
+
+3. **Knowledge Accumulation**
+   - Every feature adds to project guides
+   - Patterns become reusable templates
+   - Future agents inherit all learnings
+
+4. **Graceful Degradation**
+   - Missing tools trigger fallback strategies
+   - Optional features don't block progress
+   - Clear communication when capabilities limited
 
 ---
 
-## Part 1: Preflight Checks
+## PHASE 1: INTELLIGENT PROJECT ANALYSIS
 
-### Step 1.1: Environment Validation
+### Step 1.1: Deep Codebase Understanding
 
-Before proceeding, verify we're in a valid project:
+**Don't just detect - understand WHY patterns exist:**
 
 ```bash
-# Check for git repository
-test -d .git && echo "GIT_REPO=true" || echo "GIT_REPO=false"
+# Detect project structure
+ls -la
+find . -type f -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.vue" | head -20
 
-# Check for common project markers
-test -f package.json && echo "HAS_PACKAGE_JSON=true"
-test -f pyproject.toml && echo "HAS_PYPROJECT=true"
-test -f Cargo.toml && echo "HAS_CARGO=true"
-test -f go.mod && echo "HAS_GO_MOD=true"
-test -f pom.xml && echo "HAS_POM=true"
+# Read configuration to understand philosophy
+cat pyproject.toml package.json 2>/dev/null
 ```
 
-**If no project markers found**: Ask user to confirm this is the correct directory.
+**Key questions to answer:**
 
-### Step 1.2: Detect Existing Bootstrap
+1. **Architecture Philosophy**:
+   - Is this a monolith or microservices?
+   - Does it use domain-driven design?
+   - What's the layering strategy (plugin -> middleware -> route)?
 
-Check if this project has already been bootstrapped:
+2. **Type System Approach**:
+   - Strict typing or dynamic?
+   - Type hints usage patterns?
+   - Validation strategy (runtime vs compile-time)?
+
+3. **Testing Philosophy**:
+   - TDD or test-after?
+   - Unit vs integration test ratio?
+   - Coverage expectations?
+
+4. **Code Organization**:
+   - Feature-based or layer-based folders?
+   - Naming conventions (verb_noun vs noun_verb)?
+   - File size preferences?
+
+**Document findings in workspace for future reference.**
+
+### Step 1.2: Extract Existing Patterns
+
+**Read actual code to discover patterns:**
 
 ```bash
-# Check for existing Gemini configuration
-test -d .gemini && echo "GEMINI_EXISTS=true"
-test -f .gemini/GEMINI.md && echo "GEMINI_MD_EXISTS=true"
-test -d .gemini/commands && echo "GEMINI_COMMANDS_EXISTS=true"
-test -d .gemini/context && echo "GEMINI_CONTEXT_EXISTS=true"
+# Find plugin patterns
+find src/ -type f -name "*plugin*" -o -name "*middleware*" -o -name "*extension*"
 
-# Check for specs structure
-test -d specs/guides && echo "SPECS_EXISTS=true"
-test -d specs/active && echo "SPECS_ACTIVE_EXISTS=true"
+# Find service patterns
+find src/ -type f -name "*service*" -o -name "*manager*" -o -name "*handler*"
+
+# Find configuration patterns
+find src/ -type f -name "*config*" -o -name "*settings*"
+
+# Find error handling patterns
+grep -r "class.*Error" src/ | head -10
+grep -r "raise.*from" src/ | head -10
+
+# Find async patterns
+grep -r "async def" src/ | wc -l
+grep -r "await" src/ | wc -l
 ```
 
-**If existing bootstrap detected**:
-- Enter ALIGNMENT MODE (Part 4)
-- Preserve custom additions
-- Update to latest patterns
+**Pattern Analysis**:
 
-**If fresh project**:
-- Continue with full bootstrap
+1. **Read 3-5 example files** for each pattern type
+2. **Identify common structure** (class hierarchy, decorators, mixins)
+3. **Note naming conventions** (verbs, prefixes, suffixes)
+4. **Extract docstring style** (Google, NumPy, reStructuredText)
+5. **Understand error handling** (custom exceptions, context managers)
 
-### Step 1.3: Get User Confirmation
+### Step 1.3: Analyze Testing Patterns
 
-Before proceeding, confirm with user:
+**Learn from existing tests:**
 
+```bash
+# Find test organization
+find tests/ -type f -name "test_*.py" -o -name "*_test.py" | head -20
+
+# Read a sample test file
+cat tests/unit/test_*.py 2>/dev/null | head -100
+cat tests/integration/test_*.py 2>/dev/null | head -100
+
+# Analyze test structure
+grep -r "def test_" tests/ | wc -l
+grep -r "class Test" tests/ | wc -l
+grep -r "@pytest.fixture" tests/ | wc -l
 ```
-This bootstrap will create/update:
-- .gemini/GEMINI.md (main AI instructions)
-- .gemini/commands/ (TOML command files)
-- .gemini/context/ (framework context files)
-- .gemini/settings.json (MCP servers config)
-- specs/ directory structure (guides, active, archive)
 
-Detected mode: [FRESH | ALIGNMENT]
+**Test Pattern Questions**:
 
-Proceed? [Y/n]
+1. Function-based or class-based tests?
+2. Fixture organization (conftest.py or inline)?
+3. Mocking strategy (unittest.mock, pytest-mock)?
+4. Async test patterns?
+5. Integration test setup (databases, external services)?
+
+### Step 1.4: Discover Documentation Style
+
+```bash
+# Find existing documentation
+find docs/ -name "*.md" -o -name "*.rst" 2>/dev/null | head -20
+
+# Read doc examples
+cat docs/*.md 2>/dev/null | head -200
+
+# Check for README patterns
+cat README.md | head -100
+```
+
+**Documentation Intelligence**:
+
+1. **Tone**: Formal vs conversational?
+2. **Examples**: Code-heavy or conceptual?
+3. **Organization**: Task-based or reference-based?
+4. **Depth**: High-level overview or detailed tutorials?
+
+---
+
+## PHASE 2: INTELLIGENT MCP TOOL DETECTION
+
+Create **adaptive** MCP tool detection with fallback strategies:
+
+```bash
+mkdir -p .gemini/tools
+cat > .gemini/tools/detect_mcp.py << 'EOF'
+#!/usr/bin/env python3
+\"\"\"Intelligent MCP tool detection with capability mapping.\"\"\"
+
+from dataclasses import dataclass
+from enum import Enum
+
+
+class ToolCapability(Enum):
+    \"\"\"MCP tool capability categories.\"\"\"
+    REASONING = "reasoning"  # Deep thinking tools
+    RESEARCH = "research"    # Documentation lookup
+    PLANNING = "planning"    # Workflow organization
+    ANALYSIS = "analysis"    # Code analysis
+    DEBUG = "debug"          # Problem investigation
+
+
+@dataclass
+class MCPTool:
+    \"\"\"MCP tool with capability metadata.\"\"\"
+    name: str
+    available: bool
+    capability: ToolCapability
+    fallback: str | None = None
+    use_cases: list[str] | None = None
+
+
+def detect_mcp_tools() -> dict[str, MCPTool]:
+    \"\"\"Detect available MCP tools with intelligent fallback mapping.\"\"\"
+
+    tools = {
+        # Reasoning tools
+        'sequential_thinking': MCPTool(
+            name='sequential_thinking',
+            available=True,
+            capability=ToolCapability.REASONING,
+            fallback=None,
+            use_cases=[
+                'Complex architectural decisions',
+                'Multi-step problem analysis',
+                'Iterative problem refinement',
+            ]
+        ),
+
+        # Research tools
+        'context7': MCPTool(
+            name='context7',
+            available=True,
+            capability=ToolCapability.RESEARCH,
+            fallback='web_search',
+            use_cases=[
+                'Library documentation lookup',
+                'API reference retrieval',
+                'Best practices research',
+            ]
+        ),
+        'web_search': MCPTool(
+            name='web_search',
+            available=True,
+            capability=ToolCapability.RESEARCH,
+            fallback=None,
+            use_cases=[
+                'Latest framework updates',
+                'Community best practices',
+                'Fallback documentation lookup',
+            ]
+        ),
+
+        # Planning tools
+        'zen_planner': MCPTool(
+            name='zen_planner',
+            available=True,
+            capability=ToolCapability.PLANNING,
+            use_cases=[
+                'Multi-phase project planning',
+                'Migration strategy design',
+                'Complex feature breakdown',
+            ]
+        ),
+
+        # Analysis tools
+        'zen_thinkdeep': MCPTool(
+            name='zen_thinkdeep',
+            available=True,
+            capability=ToolCapability.ANALYSIS,
+            use_cases=[
+                'Architecture review',
+                'Performance analysis',
+                'Security assessment',
+            ]
+        ),
+        'zen_analyze': MCPTool(
+            name='zen_analyze',
+            available=True,
+            capability=ToolCapability.ANALYSIS,
+            use_cases=[
+                'Code quality analysis',
+                'Pattern detection',
+                'Tech debt assessment',
+            ]
+        ),
+
+        # Debug tools
+        'zen_debug': MCPTool(
+            name='zen_debug',
+            available=True,
+            capability=ToolCapability.DEBUG,
+            use_cases=[
+                'Root cause investigation',
+                'Bug reproduction',
+                'Performance debugging',
+            ]
+        ),
+        'zen_consensus': MCPTool(
+            name='zen_consensus',
+            available=True,
+            capability=ToolCapability.PLANNING,
+            use_cases=[
+                'Architecture decision making',
+                'Technology selection',
+                'Multi-model validation',
+            ]
+        ),
+    }
+
+    return tools
+
+
+def generate_tool_strategy(tools: dict[str, MCPTool]) -> str:
+    \"\"\"Generate intelligent tool usage strategy.\"\"\"
+
+    strategy = ["# MCP Tool Strategy\\n\\n"]
+
+    by_capability = {}
+    for tool in tools.values():
+        if tool.capability not in by_capability:
+            by_capability[tool.capability] = []
+        by_capability[tool.capability].append(tool)
+
+    for capability, tool_list in by_capability.items():
+        strategy.append(f"## {capability.value.title()} Tools\\n\\n")
+
+        available = [t for t in tool_list if t.available]
+        unavailable = [t for t in tool_list if not t.available]
+
+        if available:
+            primary = available[0]
+            strategy.append(f"**Primary**: `{primary.name}`\\n\\n")
+
+            if primary.use_cases:
+                strategy.append("Use when:\\n\\n")
+                for use_case in primary.use_cases:
+                    strategy.append(f"- {use_case}\\n")
+                strategy.append("\\n")
+
+            if primary.fallback:
+                fallback_tool = tools.get(primary.fallback)
+                if fallback_tool and not fallback_tool.available:
+                    strategy.append(f"**Fallback**: Manual {capability.value} (no tools available)\\n\\n")
+                elif fallback_tool:
+                    strategy.append(f"**Fallback**: `{primary.fallback}`\\n\\n")
+        else:
+            strategy.append(f"No tools available - manual {capability.value} required\\n\\n")
+
+    return "".join(strategy)
+
+
+if __name__ == "__main__":
+    tools = detect_mcp_tools()
+
+    # Generate strategy document
+    strategy = generate_tool_strategy(tools)
+
+    with open('.gemini/mcp-strategy.md', 'w') as f:
+        f.write(strategy)
+
+    # Generate availability list
+    with open('.gemini/mcp-tools.txt', 'w') as f:
+        f.write("Available MCP Tools (Auto-Detected):\\n\\n")
+        for tool in tools.values():
+            status = "Available" if tool.available else "Not available"
+            f.write(f"- {tool.name}: {status}\\n")
+            if tool.fallback:
+                f.write(f"  Fallback: {tool.fallback}\\n")
+
+    print("MCP tool detection complete")
+    print("Generated .gemini/mcp-tools.txt")
+    print("Generated .gemini/mcp-strategy.md")
+EOF
+
+chmod +x .gemini/tools/detect_mcp.py
+python .gemini/tools/detect_mcp.py 2>/dev/null || echo "Python detection script created"
 ```
 
 ---
 
-## Part 2: Detection Phase
+## PHASE 3: ADAPTIVE INFRASTRUCTURE
 
-### Step 2.1: Language Detection
+### Step 3.1: Create Intelligent Directory Structure
+
+```bash
+mkdir -p .gemini/commands
+mkdir -p .gemini/tools
+mkdir -p .gemini/context
+mkdir -p specs/active specs/archive
+mkdir -p specs/guides/patterns specs/guides/workflows specs/guides/examples
+mkdir -p specs/template-spec/research specs/template-spec/tmp
+touch specs/active/.gitkeep specs/archive/.gitkeep
+```
+
+**Structure Intelligence**:
+
+- `.gemini/tools/` - Reusable scripts for agents
+- `.gemini/context/` - Framework context files
+- `specs/guides/patterns/` - Extracted code patterns
+- `specs/guides/examples/` - Real implementation examples
+
+### Step 3.2: Create Adaptive Quality Gates
+
+```bash
+cat > specs/guides/quality-gates.yaml << 'EOF'
+metadata:
+  version: "2.0"
+  adaptive: true
+  description: "Quality gates that adapt to project conventions"
+
+implementation_gates:
+  - name: local_tests_pass
+    command: "make test"
+    fallback: "uv run pytest tests/"
+    required: true
+    adaptive: true
+    description: "All tests must pass before proceeding"
+
+  - name: linting_clean
+    command: "make lint"
+    fallback: "uv run ruff check ."
+    required: true
+    description: "Zero linting errors allowed"
+
+  - name: type_checking_pass
+    command: "mypy src/"
+    required: false
+    adaptive: true
+    description: "Type checking must pass"
+
+testing_gates:
+  - name: coverage_threshold
+    threshold: 90
+    scope: "modified_modules"
+    adaptive: true
+    description: "Modified modules must achieve configured coverage"
+
+  - name: test_isolation
+    command: "pytest -n auto tests/"
+    required: true
+    description: "Tests must work in parallel execution"
+
+documentation_gates:
+  - name: anti_pattern_scan
+    adaptive: true
+    rules:
+      - pattern: "from __future__ import annotations"
+        severity: "error"
+        message: "Use explicit stringification instead"
+        context: "Project convention - avoid future annotations"
+
+      - pattern: "Optional\\["
+        severity: "error"
+        message: "Use T | None (PEP 604) instead"
+        context: "Modern Python 3.10+ style"
+
+      - pattern: "class Test"
+        severity: "warning"
+        message: "Use function-based pytest tests"
+        context: "Project uses function-based tests"
+
+  - name: pattern_documentation
+    description: "New patterns must be captured in specs/guides/patterns/"
+    required: true
+EOF
+```
+
+### Step 3.3: Create Intelligent Workflow Templates
+
+```bash
+cat > specs/guides/workflows/intelligent-development.yaml << 'EOF'
+workflow_name: "Intelligent Feature Development"
+version: "2.0"
+adaptive: true
+
+phases:
+  - name: "context_analysis"
+    duration: "auto"
+    agent: "prd"
+    steps:
+      - name: "load_project_context"
+        description: "Read GEMINI.md, existing guides, codebase patterns"
+        outputs:
+          - "Context understanding document"
+
+      - name: "identify_similar_features"
+        description: "Find similar implementations to learn from"
+        tools: ["grep", "find", "read"]
+        outputs:
+          - "Pattern analysis"
+
+      - name: "assess_complexity"
+        description: "Determine feature complexity level"
+        criteria:
+          - "Lines of code impacted"
+          - "Number of components affected"
+          - "Integration points"
+          - "Database schema changes"
+        outputs:
+          - "Complexity: simple|medium|complex"
+
+      - name: "adapt_workflow"
+        description: "Adjust checkpoint count based on complexity"
+        adaptive_rules:
+          simple: "6 checkpoints"
+          medium: "8 checkpoints"
+          complex: "10+ checkpoints"
+
+  - name: "planning"
+    agent: "prd"
+    gemini_command: "/prd {feature-description}"
+    adaptive_checkpoints: true
+    quality_gates:
+      - "context_loaded"
+      - "research_complete"
+      - "patterns_identified"
+
+  - name: "implementation"
+    agent: "expert"
+    auto_trigger: false
+    adaptive: true
+    quality_gates:
+      - "local_tests_pass"
+      - "linting_clean"
+      - "follows_project_patterns"
+
+  - name: "knowledge_capture"
+    agent: "docs-vision"
+    auto_trigger: true
+    description: "Extract and document new patterns"
+    outputs:
+      - "specs/guides/patterns/{pattern-name}.md"
+      - "specs/guides/examples/{example-name}.py"
+      - "Updated GEMINI.md"
+EOF
+```
+
+### Step 3.4: Update .gitignore
+
+```bash
+cat >> .gitignore << 'EOF'
+
+# Gemini Agent System
+specs/active/
+specs/archive/
+.gemini/mcp-tools.txt
+.gemini/mcp-strategy.md
+!specs/active/.gitkeep
+!specs/archive/.gitkeep
+!specs/guides/
+!specs/guides/**/*.md
+!specs/guides/**/*.yaml
+!specs/template-spec/
+!specs/template-spec/**/*.md
+EOF
+```
+
+---
+
+## PHASE 4: DETECTION AND GENERATION
+
+### Step 4.1: Language Detection
 
 Scan for primary language indicators:
 
@@ -93,7 +560,6 @@ Scan for primary language indicators:
 test -f pyproject.toml && echo "LANG_PYTHON=true"
 test -f setup.py && echo "LANG_PYTHON=true"
 test -f requirements.txt && echo "LANG_PYTHON=true"
-test -f poetry.lock && echo "LANG_PYTHON=true"
 test -f uv.lock && echo "LANG_PYTHON=true"
 
 # JavaScript/TypeScript indicators
@@ -103,13 +569,11 @@ test -f tsconfig.json && echo "LANG_TS=true"
 # Other languages
 test -f Cargo.toml && echo "LANG_RUST=true"
 test -f go.mod && echo "LANG_GO=true"
-test -f pom.xml && echo "LANG_JAVA=true"
-test -f build.gradle && echo "LANG_KOTLIN=true"
 ```
 
-### Step 2.2: Framework Detection - Python
+### Step 4.2: Framework Detection - Python
 
-Parse pyproject.toml or requirements.txt for frameworks:
+Parse pyproject.toml for frameworks:
 
 ```bash
 # Web frameworks
@@ -117,7 +581,6 @@ grep -i "litestar" pyproject.toml 2>/dev/null && echo "PY_LITESTAR=true"
 grep -i "fastapi" pyproject.toml 2>/dev/null && echo "PY_FASTAPI=true"
 grep -i "flask" pyproject.toml 2>/dev/null && echo "PY_FLASK=true"
 grep -i "django" pyproject.toml 2>/dev/null && echo "PY_DJANGO=true"
-grep -i "starlette" pyproject.toml 2>/dev/null && echo "PY_STARLETTE=true"
 
 # Database/ORM
 grep -i "sqlalchemy" pyproject.toml 2>/dev/null && echo "PY_SQLALCHEMY=true"
@@ -132,7 +595,7 @@ grep -i "ruff" pyproject.toml 2>/dev/null && echo "PY_RUFF=true"
 grep -i "mypy" pyproject.toml 2>/dev/null && echo "PY_MYPY=true"
 ```
 
-### Step 2.3: Framework Detection - JavaScript/TypeScript
+### Step 4.3: Framework Detection - JavaScript/TypeScript
 
 Parse package.json for frameworks:
 
@@ -159,11 +622,11 @@ grep '"vitest"' package.json 2>/dev/null && echo "JS_VITEST=true"
 grep '"jest"' package.json 2>/dev/null && echo "JS_JEST=true"
 
 # Linting
-grep '"biome"' package.json 2>/dev/null && echo "JS_BIOME=true"
+grep '"@biomejs"' package.json 2>/dev/null && echo "JS_BIOME=true"
 grep '"eslint"' package.json 2>/dev/null && echo "JS_ESLINT=true"
 ```
 
-### Step 2.4: Build System Detection
+### Step 4.4: Build System Detection
 
 ```bash
 # Makefile
@@ -180,7 +643,7 @@ test -f uv.lock && echo "PKG_UV=true"
 test -f poetry.lock && echo "PKG_POETRY=true"
 ```
 
-### Step 2.5: Code Style Detection
+### Step 4.5: Code Style Detection
 
 ```bash
 # Python type hint style
@@ -195,183 +658,21 @@ grep -r "class Test" tests/ 2>/dev/null | head -3 && echo "STYLE_CLASS_TESTS=tru
 grep -r "^def test_" tests/ 2>/dev/null | head -3 && echo "STYLE_FUNC_TESTS=true"
 ```
 
-### Step 2.6: Build Detection Profile
-
-Compile all detections into a profile:
-
-```markdown
-## Detection Profile
-
-### Languages
-- Primary: {python|typescript|rust|go|java}
-- Secondary: {list}
-
-### Python Frameworks
-- Web: {litestar|fastapi|flask|django}
-- ORM: {sqlalchemy|advanced-alchemy}
-- Testing: {pytest|pytest-asyncio}
-- Linting: {ruff|mypy}
-
-### JavaScript Frameworks
-- UI: {react|vue|svelte|angular}
-- Build: {vite|webpack}
-- Integration: {inertia|htmx}
-- Testing: {vitest|jest}
-- Linting: {biome|eslint}
-
-### Build System
-- Type: {make|npm|uv|poetry}
-- Test command: {make test|npm test|uv run pytest}
-- Lint command: {make lint|npm run lint|uv run ruff}
-
-### Code Style
-- Type hints: {pep604|optional|none}
-- Docstrings: {google|numpy|sphinx}
-- Test style: {function|class}
-
-### Anti-Patterns to Enforce
-- {based on opposite of detected style}
-```
-
 ---
 
-## Part 3: Generation Phase
+## PHASE 5: GENERATE GEMINI.md
 
-### Step 3.1: Create Directory Structure
+Create the main Gemini instructions file:
 
 ```bash
-# Create Gemini directories
-mkdir -p .gemini/commands
-mkdir -p .gemini/context
-
-# Create specs directories
-mkdir -p specs/guides
-mkdir -p specs/guides/workflows
-mkdir -p specs/active
-mkdir -p specs/archive
-
-# Create .gitkeep files
-touch specs/active/.gitkeep
-touch specs/archive/.gitkeep
-```
-
-### Step 3.2: Generate GEMINI.md
-
-Create the main Gemini instructions file using the template from Part 6, substituting detected values for placeholders.
-
-### Step 3.3: Generate TOML Commands
-
-Generate 6 core slash commands as TOML files:
-
-1. **prd.toml** - PRD creation workflow
-2. **implement.toml** - Implementation workflow
-3. **test.toml** - Testing workflow
-4. **review.toml** - Quality gate and archive
-5. **explore.toml** - Codebase exploration
-6. **fix-issue.toml** - GitHub issue fixing
-
-### Step 3.4: Generate Context Files
-
-For each detected framework, generate a context file in `.gemini/context/`.
-
-### Step 3.5: Generate Settings
-
-Create `.gemini/settings.json`:
-
-```json
-{
-  "context": {
-    "fileName": ["GEMINI.md"],
-    "includeDirectories": [".gemini/context", "specs/guides"],
-    "loadFromIncludeDirectories": true
-  },
-  "model": {
-    "name": "gemini-2.5-pro"
-  },
-  "mcpServers": {
-    "context7": {
-      "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"],
-      "trust": true
-    },
-    "sequential-thinking": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
-      "trust": true
-    }
-  }
-}
-```
-
-### Step 3.6: Generate Specs Guides
-
-Create initial guide files based on detection.
-
----
-
-## Part 4: Alignment Mode
-
-When existing bootstrap is detected:
-
-### Step 4.1: Inventory Existing Configuration
-
-```bash
-ls .gemini/commands/*.toml 2>/dev/null
-ls .gemini/context/*.md 2>/dev/null
-head -5 .gemini/GEMINI.md 2>/dev/null | grep "Version"
-```
-
-### Step 4.2: Identify Missing Components
-
-Compare existing vs expected core commands and context files.
-
-### Step 4.3: Preserve Custom Content
-
-Before updating any file, identify and preserve custom sections.
-
-### Step 4.4: Update Outdated Patterns
-
-Check for outdated patterns and offer to update with user confirmation.
-
-### Step 4.5: Merge and Update
-
-Generate new content, insert preserved custom content, write merged files.
-
----
-
-## Part 5: Verification
-
-### Step 5.1: Validate Generated Files
-
-```bash
-test -f .gemini/GEMINI.md && echo "✓ GEMINI.md"
-test -d .gemini/commands && echo "✓ .gemini/commands/"
-test -d .gemini/context && echo "✓ .gemini/context/"
-test -f .gemini/settings.json && echo "✓ settings.json"
-test -d specs/guides && echo "✓ specs/guides/"
-
-echo "Commands: $(ls .gemini/commands/*.toml 2>/dev/null | wc -l)"
-echo "Contexts: $(ls .gemini/context/*.md 2>/dev/null | wc -l)"
-```
-
-### Step 5.2: Summary Report
-
-Report all generated files and next steps.
-
----
-
-## Part 6: Embedded Templates
-
-### Template: GEMINI.md
-
-```markdown
+cat > .gemini/GEMINI.md << 'EOF'
 # Gemini Agent System for {PROJECT_NAME}
 
 This document provides behavioral instructions and project context for Gemini CLI agents.
 
 ---
 
-## ⚠️ BEHAVIORAL REQUIREMENTS (READ FIRST)
+## BEHAVIORAL REQUIREMENTS (READ FIRST)
 
 ### Core Principles
 
@@ -421,9 +722,22 @@ You MUST complete these steps before modifying source code:
 
 ## Code Style Requirements (CRITICAL)
 
-### {PRIMARY_LANGUAGE}
+### Python
 
-{CODE_STYLE_RULES}
+| Rule | Standard |
+|------|----------|
+| Type hints | PEP 604: `T | None` |
+| `Optional[T]` | **NEVER** - use `T | None` |
+| Future annotations | **NEVER** - no `from __future__ import annotations` |
+| Docstrings | Google style |
+| Line length | 120 characters |
+| Tests | Function-based only (no `class Test...`) |
+
+### TypeScript
+
+- Biome for formatting/linting
+- Strict mode enabled
+- Vitest for testing
 
 ## Checkpoint-Based Workflow
 
@@ -438,36 +752,21 @@ You MUST complete these steps before modifying source code:
 
 All code must pass:
 
-- **Tests**: `{TEST_CMD}` - All tests passing
-- **Linting**: `{LINT_CMD}` - Zero errors
+- **Tests**: `make test` - All tests passing
+- **Linting**: `make lint` - Zero errors
 - **Coverage**: 90%+ for modified modules
-- **Anti-patterns**: {ANTI_PATTERNS}
-
-## Key Commands
-
-```bash
-{INSTALL_CMD}          # Install dependencies
-{TEST_CMD}            # Run all tests
-{LINT_CMD}            # Check for errors
-{FIX_CMD}             # Auto-fix formatting
-```
-
-## Available Context
-
-Context files are loaded from `.gemini/context/`:
-
-{CONTEXT_FILE_LIST}
+- **Anti-patterns**: No violations
 
 ## MCP Tools Available
 
 ### Context7 (Library Documentation)
 
 ```python
-mcp__context7__resolve-library-id(libraryName="{PRIMARY_FRAMEWORK}")
+mcp__context7__resolve-library-id(libraryName="litestar")
 mcp__context7__get-library-docs(
-    context7CompatibleLibraryID="{CONTEXT7_ID}",
-    topic="...",
-    tokens=5000
+    context7CompatibleLibraryID="/litestar-org/litestar",
+    topic="plugins middleware",
+    mode="code"
 )
 ```
 
@@ -482,11 +781,13 @@ mcp__sequential-thinking__sequentialthinking(
 )
 ```
 
-## Project Structure
+### Zen Tools
 
-```
-{PROJECT_STRUCTURE}
-```
+- `mcp__zen__planner` - Multi-step planning
+- `mcp__zen__thinkdeep` - Architectural analysis
+- `mcp__zen__debug` - Systematic debugging
+- `mcp__zen__analyze` - Code analysis
+- `mcp__zen__consensus` - Multi-model decisions
 
 ## Remember
 
@@ -495,212 +796,344 @@ mcp__sequential-thinking__sequentialthinking(
 3. **Test everything** - 90%+ coverage required
 4. **Document decisions** - Explain non-obvious choices
 5. **Ask when uncertain** - Questions prevent mistakes
+EOF
 ```
 
-### Template: prd.toml
+---
 
-```toml
-# Command: /prd "create a PRD for..."
-description = "Create a comprehensive Product Requirements Document for a new feature"
-prompt = \"\"\"
-You are the PRD Agent. Your mission is to create comprehensive, research-grounded Product Requirements Documents.
+## PHASE 6: GENERATE INTELLIGENT COMMANDS
 
-## Checkpoint-Based Workflow
+### Generate prd.toml
 
-### Checkpoint 1: Context Loading
-
-Read project context:
-- `GEMINI.md` or `CLAUDE.md`
-- `specs/guides/architecture.md`
-- `specs/guides/code-style.md`
-
-### Checkpoint 2: Verify Understanding
-
-Document your understanding of the request before proceeding.
-
-### Checkpoint 3: Requirement Analysis
-
-Search for related code and identify affected components.
-
-### Checkpoint 4: Create Workspace
+Create the PRD command with intelligence enhancements:
 
 ```bash
-mkdir -p specs/active/{{slug}}/research
-mkdir -p specs/active/{{slug}}/tmp
-```
-
-### Checkpoint 5: Deep Analysis
-
-Use Sequential Thinking for comprehensive analysis (minimum 15 thoughts).
-
-### Checkpoint 6: Research
-
-Use Context7 for library documentation.
-
-### Checkpoint 7: Write PRD
-
-Create comprehensive PRD with:
-- Problem statement
-- Acceptance criteria (specific, measurable)
-- Technical approach
-- Testing strategy
-
-### Checkpoint 8: Task Breakdown
-
-Create actionable task list.
-
-### Checkpoint 9: Recovery Guide
-
-Create resumption instructions.
-
-### Checkpoint 10: Verification
-
-Verify no source code was modified during PRD phase.
-
-**Feature to plan**: {{args}}
-\"\"\"
-```
-
-### Template: implement.toml
-
-```toml
-# Command: /implement <slug>
-description = "Implement a feature from an existing PRD"
+cat > .gemini/commands/prd.toml << 'TOML_CONTENT'
+description = "Create a comprehensive Product Requirements Document (Intelligent Edition)"
 prompt = \"\"\"
-You are the Implementation Agent. Implement the feature from: specs/active/{{args}}
+You are the PRD Agent with INTELLIGENCE ENHANCEMENTS.
 
-## Workflow
+## INTELLIGENCE LAYER
 
-1. Load PRD and tasks from workspace
-2. Read project standards
-3. Complete any needed research
-4. Implement following code standards
-5. Run tests and linting
-6. Update task progress
-7. Invoke testing agent when complete
+Before starting checkpoints, activate intelligence mode:
 
-## Code Standards
+1. **Read MCP Strategy**: Load `.gemini/mcp-strategy.md` for tool selection guidance
+2. **Learn from Codebase**: Read 3-5 similar implementations before planning
+3. **Assess Complexity**: Determine if this is simple/medium/complex feature
+4. **Adapt Workflow**: Adjust checkpoint depth based on complexity assessment
 
-{CODE_STANDARDS}
+## CRITICAL RULES
 
-## Commands
+1. **CONTEXT FIRST** - You MUST read existing patterns before planning new ones
+2. **NO CODE MODIFICATION** - You MUST NOT modify any source code during PRD phase
+3. **WORKSPACE FIRST** - You MUST create workspace BEFORE starting research
+4. **INTELLIGENT TOOL USE** - Check `.gemini/mcp-strategy.md` for tool selection
+5. **PATTERN LEARNING** - Identify 3-5 similar features and learn from them
+6. **ADAPTIVE DEPTH** - Simple features: 6 checkpoints, Medium: 8, Complex: 10+
+7. **RESEARCH GROUNDED** - Minimum 2000+ words of research
+8. **COMPREHENSIVE PRD** - Minimum 3200+ words PRD with specific acceptance criteria
+9. **GIT VERIFICATION** - Verify git status shows no src/ changes at end
 
-- Test: `{TEST_CMD}`
-- Lint: `{LINT_CMD}`
-\"\"\"
-```
+---
 
-### Template: test.toml
+## Adaptive Checkpoints
 
-```toml
-# Command: /test <slug>
-description = "Run comprehensive tests for a feature"
-prompt = \"\"\"
-Testing feature: specs/active/{{args}}
+### Checkpoint 0: Intelligence Bootstrap
 
-## Workflow
+**Load project intelligence:**
 
-1. Read PRD and acceptance criteria
-2. Find existing tests
-3. Run coverage check
-4. Create missing tests
-5. Achieve 90%+ coverage
-6. Update tasks
+1. Read `GEMINI.md` - Project overview, tech stack, standards
+2. Read `.gemini/mcp-strategy.md` - Tool selection guide
+3. Read `specs/guides/architecture.md` - System patterns
+4. Read `specs/guides/code-style.md` - Code standards
+5. Read `specs/guides/patterns/README.md` - Pattern library
 
-## Test Standards
+**Learn from existing implementations:**
 
-{TEST_STANDARDS}
-
-## Commands
-
-- Test: `{TEST_CMD}`
-- Coverage: `{COVERAGE_CMD}`
-\"\"\"
-```
-
-### Template: review.toml
-
-```toml
-# Command: /review <slug>
-description = "Run quality gates and archive workspace"
-prompt = \"\"\"
-Reviewing: specs/active/{{args}}
-
-## Quality Gates
-
-1. Run tests: `{TEST_CMD}`
-2. Run linting: `{LINT_CMD}`
-3. Check coverage: `{COVERAGE_CMD}`
-4. Scan for anti-patterns
-
-## Archive
-
-If all gates pass:
 ```bash
-mv specs/active/{{args}} specs/archive/
+# Find similar features
+grep -r "class.*Plugin" src/ | head -5
+grep -r "class.*Config" src/ | head -5
+
+# Read 3 example files to understand patterns
 ```
 
-Create ARCHIVED.md summary.
+**Assess feature complexity:**
+
+- **Simple**: Single file, config change -> 6 checkpoints
+- **Medium**: New service/adapter, 2-3 files -> 8 checkpoints
+- **Complex**: Architecture change, 5+ files -> 10+ checkpoints
+
+### Checkpoint 1: Requirement Analysis
+
+Understand the user's request and identify similar implementations.
+
+### Checkpoint 2: Workspace Creation
+
+```bash
+mkdir -p specs/active/{slug}/research
+mkdir -p specs/active/{slug}/tmp
+mkdir -p specs/active/{slug}/patterns
+touch specs/active/{slug}/prd.md
+touch specs/active/{slug}/tasks.md
+touch specs/active/{slug}/recovery.md
+```
+
+### Checkpoint 3: Deep Analysis
+
+Use Sequential Thinking (15+ thoughts) for comprehensive analysis.
+
+### Checkpoint 4: Research Best Practices
+
+Use Context7 for library documentation. Minimum 2000+ words documented.
+
+### Checkpoint 5: Write Comprehensive PRD
+
+Minimum 3200+ words with specific acceptance criteria.
+
+### Checkpoint 6: Task Breakdown
+
+Create actionable task list adapted to complexity.
+
+### Checkpoint 7: Recovery Guide
+
+Create resumption instructions with intelligence context.
+
+### Checkpoint 8: Git Verification
+
+Verify no source code was modified.
+
+**Feature to plan**: {user_request}
 \"\"\"
+TOML_CONTENT
 ```
 
-### Template: explore.toml
+### Generate implement.toml
 
-```toml
-# Command: /explore <topic>
+```bash
+cat > .gemini/commands/implement.toml << 'TOML_CONTENT'
+description = "Implement a feature from an existing PRD (Intelligent Edition)"
+prompt = \"\"\"
+You are the Expert Agent with INTELLIGENCE ENHANCEMENTS.
+
+## INTELLIGENCE LAYER
+
+1. **Read Intelligence Context**: Load pattern analysis from `specs/active/{slug}/patterns/`
+2. **Review Similar Features**: Read the 3-5 similar implementations identified in PRD
+3. **Load Pattern Library**: Read relevant patterns from `specs/guides/patterns/`
+4. **Check Tool Strategy**: Consult `.gemini/mcp-strategy.md` for decisions
+
+## CRITICAL RULES
+
+1. **PATTERN COMPLIANCE** - Follow patterns from similar features
+2. **PRD MUST EXIST** - Verify PRD workspace exists and is complete
+3. **NO NEW FEATURES** - ONLY implement what's specified in the PRD
+4. **LOCAL TESTS REQUIRED** - Run local tests before proceeding
+5. **PATTERN EXTRACTION** - Document any new patterns discovered
+
+## Checkpoints
+
+### Checkpoint 0: Intelligence Bootstrap
+Load project context and feature-specific patterns.
+
+### Checkpoint 1: PRD Verification
+Verify workspace exists, read PRD and patterns.
+
+### Checkpoint 2: Pattern Deep Dive
+Read and analyze similar implementations.
+
+### Checkpoint 3: Implementation Planning
+Create detailed plan following patterns (NO CODE YET).
+
+### Checkpoint 4: Code Implementation
+Write code following project patterns and standards.
+
+### Checkpoint 5: Local Testing
+Run tests and linting. Fix all errors.
+
+### Checkpoint 6: Pattern Extraction
+Document any new patterns discovered.
+
+### Checkpoint 7: Progress Update
+Update tasks.md and recovery.md.
+
+### Checkpoint 8: Final Verification
+Run full test suite. Ready for review.
+
+**Implementing**: specs/active/{slug}
+\"\"\"
+TOML_CONTENT
+```
+
+### Generate test.toml
+
+```bash
+cat > .gemini/commands/test.toml << 'TOML_CONTENT'
+description = "Run comprehensive tests for a feature (Intelligent Edition)"
+prompt = \"\"\"
+You are the Testing Agent with INTELLIGENCE ENHANCEMENTS.
+
+## INTELLIGENCE LAYER
+
+1. **Read Pattern Library**: Load test patterns from `specs/guides/patterns/test-*.md`
+2. **Learn from Similar Tests**: Read test files for similar features
+3. **Load MCP Strategy**: Use `.gemini/mcp-strategy.md` for tool selection
+4. **Assess Test Complexity**: Determine coverage needs based on feature complexity
+
+## CHECKPOINT EXECUTION
+
+### Checkpoint 0: Intelligence Bootstrap
+Assess test complexity. Simple: 6 checkpoints, Medium: 8, Complex: 9+.
+
+### Checkpoint 1: Unit Test Creation
+Create unit tests following existing patterns.
+
+### Checkpoint 2: Integration Test Setup
+Determine coverage scope and create test structure.
+
+### Checkpoint 3: Integration Tests
+Create tests for each affected component.
+
+### Checkpoint 4: Edge Case Testing
+Create tests for boundary conditions and error cases.
+
+### Checkpoint 5: Coverage Verification
+Run coverage report. Unit >= 90%, Integration >= 80%.
+
+### Checkpoint 6: Final Test Suite Execution
+Run complete test suite. No regressions.
+
+**Testing**: specs/active/{slug}
+\"\"\"
+TOML_CONTENT
+```
+
+### Generate review.toml
+
+```bash
+cat > .gemini/commands/review.toml << 'TOML_CONTENT'
+description = "Run quality gates, pattern extraction, and workspace archival"
+prompt = \"\"\"
+You are the Docs & Vision Agent with INTELLIGENCE ENHANCEMENTS.
+
+## INTELLIGENCE LAYER
+
+1. **Read Pattern Library**: Load existing patterns from `specs/guides/patterns/`
+2. **Load MCP Strategy**: Use `.gemini/mcp-strategy.md` for tool selection
+3. **Prepare Pattern Extraction**: Identify new reusable patterns
+4. **Load Quality Gates**: Read `specs/guides/quality-gates.yaml`
+
+## SUB-PHASES
+
+1. **Documentation Update** (Checkpoints 1-2)
+2. **Quality Gate Validation** (Checkpoint 3)
+3. **Knowledge Capture** (Checkpoint 4)
+4. **Re-validation** (Checkpoint 5)
+5. **Workspace Archive** (Checkpoint 6)
+
+## CHECKPOINTS
+
+### Checkpoint 0: Intelligence Bootstrap
+Review implementation artifacts and plan pattern extraction.
+
+### Checkpoint 1: Documentation Update
+Update feature documentation and guides.
+
+### Checkpoint 2: Update GEMINI.md
+Add new patterns if discovered.
+
+### Checkpoint 3: Quality Gate Validation
+Run linting, type checking, tests, and docs build.
+
+### Checkpoint 4: Pattern Extraction
+Extract new patterns to specs/guides/patterns/.
+
+### Checkpoint 5: Re-validation
+Re-run tests after documentation updates.
+
+### Checkpoint 6: Archive Workspace
+Clean tmp/, create COMPLETION-SUMMARY.md, move to specs/archive/.
+
+**Reviewing**: specs/active/{slug}
+\"\"\"
+TOML_CONTENT
+```
+
+### Generate explore.toml
+
+```bash
+cat > .gemini/commands/explore.toml << 'TOML_CONTENT'
 description = "Explore and understand the codebase structure"
 prompt = \"\"\"
-Exploring: {{args}}
+Exploring: {topic}
 
 ## Search Commands
 
 ```bash
 # Find files
-find . -name "*{{args}}*" -type f
+find . -name "*{topic}*" -type f
 
 # Search content
-grep -r "{{args}}" src/
+grep -r "{topic}" src/
 
 # Find classes
-grep -r "class.*{{args}}" src/
+grep -r "class.*{topic}" src/
 
 # Find functions
-grep -r "def.*{{args}}" src/
+grep -r "def.*{topic}" src/
 ```
+
+## Exploration Guidelines
+
+1. Start with directory structure overview
+2. Identify entry points and main components
+3. Trace data flow through the system
+4. Document dependencies and relationships
+5. Note patterns and conventions used
 
 Explore the relevant files and explain the architecture.
 \"\"\"
+TOML_CONTENT
 ```
 
-### Template: fix-issue.toml
+### Generate fix-issue.toml
 
-```toml
-# Command: /fix-issue <number>
+```bash
+cat > .gemini/commands/fix-issue.toml << 'TOML_CONTENT'
 description = "Fix a GitHub issue"
 prompt = \"\"\"
-Fixing issue: #{{args}}
+Fixing issue: #{issue_number}
 
 ## Workflow
 
-1. Fetch issue: `gh issue view {{args}}`
+1. Fetch issue details: `gh issue view {issue_number}`
 2. Search for affected code
-3. Implement fix following code standards
-4. Test the fix
-5. Create PR with issue reference
+3. Read related files and understand context
+4. Implement fix following code standards
+5. Run tests: `make test`
+6. Run linting: `make lint`
+7. Create commit with issue reference
 
 ## Code Standards
 
-{CODE_STANDARDS}
+- Type hints: `T | None` (PEP 604)
+- NO `Optional[T]` or future annotations
+- Google-style docstrings
+- Function-based tests only
 \"\"\"
+TOML_CONTENT
 ```
 
 ---
 
-## Part 7: Framework Knowledge Base
+## PHASE 7: GENERATE CONTEXT FILES
 
-### Context: litestar.md
+Generate framework context files for detected frameworks:
 
-```markdown
+### Litestar Context
+
+```bash
+cat > .gemini/context/litestar.md << 'EOF'
 # Litestar Framework Context
 
 Expert knowledge for Litestar Python web framework.
@@ -734,11 +1167,13 @@ mcp__context7__get-library-docs(
     mode="code"
 )
 ```
+EOF
 ```
 
-### Context: react.md
+### React Context
 
-```markdown
+```bash
+cat > .gemini/context/react.md << 'EOF'
 # React Framework Context
 
 Expert knowledge for React 18+ with TypeScript.
@@ -767,11 +1202,13 @@ mcp__context7__get-library-docs(
     mode="code"
 )
 ```
+EOF
 ```
 
-### Context: vue.md
+### Vue Context
 
-```markdown
+```bash
+cat > .gemini/context/vue.md << 'EOF'
 # Vue 3 Framework Context
 
 Expert knowledge for Vue 3 Composition API.
@@ -802,14 +1239,16 @@ mcp__context7__get-library-docs(
     mode="code"
 )
 ```
+EOF
 ```
 
-### Context: pytest.md
+### pytest Context
 
-```markdown
+```bash
+cat > .gemini/context/pytest.md << 'EOF'
 # pytest Testing Context
 
-## Basic Tests
+## Basic Tests (Function-Based Only)
 
 ```python
 def test_addition():
@@ -834,11 +1273,13 @@ mcp__context7__get-library-docs(
     mode="code"
 )
 ```
+EOF
 ```
 
-### Context: vite.md
+### Vite Context
 
-```markdown
+```bash
+cat > .gemini/context/vite.md << 'EOF'
 # Vite Build Tool Context
 
 ## Configuration
@@ -863,11 +1304,13 @@ mcp__context7__get-library-docs(
     mode="code"
 )
 ```
+EOF
 ```
 
-### Context: vitest.md
+### Vitest Context
 
-```markdown
+```bash
+cat > .gemini/context/vitest.md << 'EOF'
 # Vitest Testing Context
 
 ## Basic Tests
@@ -891,21 +1334,173 @@ mcp__context7__get-library-docs(
     mode="code"
 )
 ```
+EOF
 ```
 
 ---
 
-## Execution Instructions
+## PHASE 8: GENERATE SETTINGS
+
+Create the Gemini settings file:
+
+```bash
+cat > .gemini/settings.json << 'EOF'
+{
+  "context": {
+    "fileName": ["GEMINI.md"],
+    "includeDirectories": [".gemini/context", "specs/guides"],
+    "loadFromIncludeDirectories": true
+  },
+  "model": {
+    "name": "gemini-2.5-pro"
+  },
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"],
+      "trust": true
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "trust": true
+    }
+  }
+}
+EOF
+```
+
+---
+
+## PHASE 9: KNOWLEDGE BASE INITIALIZATION
+
+### Create Pattern Library Index
+
+```bash
+cat > specs/guides/patterns/README.md << 'EOF'
+# Project Patterns
+
+Auto-extracted patterns from codebase for agent guidance.
+
+## Architectural Patterns
+
+- Plugin Pattern - Litestar plugin development
+- Config Pattern - Configuration management
+- Middleware Pattern - Request/response processing
+
+## Code Patterns
+
+- Error Handling - Exception types and handling
+- Async/Await - Async operation patterns
+- Type Annotations - PEP 604 type hints
+
+## Testing Patterns
+
+- Unit Test Structure - Function-based tests
+- Integration Test Setup - Multi-component tests
+- Test Fixtures - Data preparation
+
+---
+
+*This index is maintained automatically by agents during feature development.*
+EOF
+```
+
+---
+
+## PHASE 10: ALIGNMENT MODE
+
+When existing bootstrap is detected:
+
+### Step 10.1: Inventory Existing Configuration
+
+```bash
+ls .gemini/commands/*.toml 2>/dev/null
+ls .gemini/context/*.md 2>/dev/null
+head -5 .gemini/GEMINI.md 2>/dev/null | grep "Version"
+```
+
+### Step 10.2: Identify Missing Components
+
+Compare existing vs expected core commands and context files.
+
+### Step 10.3: Preserve Custom Content
+
+Before updating any file, identify and preserve custom sections.
+
+### Step 10.4: Update Outdated Patterns
+
+Check for outdated patterns and offer to update with user confirmation.
+
+### Step 10.5: Merge and Update
+
+Generate new content, insert preserved custom content, write merged files.
+
+---
+
+## PHASE 11: VERIFICATION
+
+### Validate Generated Files
+
+```bash
+test -f .gemini/GEMINI.md && echo "GEMINI.md created"
+test -d .gemini/commands && echo ".gemini/commands/ created"
+test -d .gemini/context && echo ".gemini/context/ created"
+test -f .gemini/settings.json && echo "settings.json created"
+test -d specs/guides && echo "specs/guides/ created"
+
+echo "Commands: $(ls .gemini/commands/*.toml 2>/dev/null | wc -l)"
+echo "Contexts: $(ls .gemini/context/*.md 2>/dev/null | wc -l)"
+```
+
+### Summary Report
+
+```
+Intelligent Bootstrap Complete
+
+Intelligence Layer:
+- MCP tool detection with fallback strategies
+- Pattern extraction from existing codebase
+- Adaptive quality gates
+- Context-aware workflows
+- Knowledge base initialized
+
+Adaptive Features:
+- Checkpoint counts scale with complexity
+- Tool selection based on availability
+- Quality gates adapt to project norms
+- Workflows adjust to feature scope
+
+Knowledge Capture:
+- Pattern extraction automated
+- Example code documented
+- Guides continuously updated
+- Agent memory persists across sessions
+
+Next Steps:
+  1. Run `/prd "feature description"` - System adapts to complexity
+  2. Agents learn from existing code before creating new patterns
+  3. Knowledge base grows with each completed feature
+  4. Future agents inherit all learnings automatically
+```
+
+---
+
+## EXECUTION INSTRUCTIONS
 
 Now execute this bootstrap:
 
-1. **Run Preflight Checks** (Part 1)
-2. **If fresh**: Run Detection (Part 2), then Generation (Part 3)
-3. **If existing**: Run Alignment (Part 4)
-4. **Run Verification** (Part 5)
-5. **Report Results**
+1. **Run Intelligent Analysis** (Phase 1-2)
+2. **Create Adaptive Infrastructure** (Phase 3)
+3. **Detect Languages and Frameworks** (Phase 4)
+4. **Generate GEMINI.md** (Phase 5)
+5. **Generate Intelligent Commands** (Phase 6)
+6. **Generate Context Files** (Phase 7)
+7. **Generate Settings** (Phase 8)
+8. **Initialize Knowledge Base** (Phase 9)
+9. **If existing bootstrap**: Run Alignment (Phase 10)
+10. **Run Verification** (Phase 11)
+11. **Report Results**
 
-Use the embedded templates (Part 6) and framework knowledge (Part 7) to generate all files.
-
-**Begin bootstrap now.**
+**Begin intelligent bootstrap now.**
 """

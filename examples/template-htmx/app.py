@@ -76,7 +76,7 @@ vite = VitePlugin(config=ViteConfig(dev_mode=True))
 templates = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "templates"))
 
 app = Litestar(
-    route_handlers=[index, hello],
+    route_handlers=[index, summary, books, book_detail],
     plugins=[vite],
     template_config=templates,
     debug=True,

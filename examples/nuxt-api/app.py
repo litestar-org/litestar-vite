@@ -71,7 +71,7 @@ vite = VitePlugin(
 )
 
 app = Litestar(
-    route_handlers=[health, hello],
+    route_handlers=[summary, books, book_detail],
     plugins=[vite],
     debug=True,
 )

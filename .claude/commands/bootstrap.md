@@ -1,121 +1,137 @@
 ---
-description: Bootstrap AI development infrastructure for any project
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, mcp__sequential-thinking__sequentialthinking
+description: Bootstrap AI development infrastructure for any project (Intelligent Edition)
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, mcp__sequential-thinking__sequentialthinking, mcp__zen__planner, mcp__zen__thinkdeep
 ---
 
-# Project Bootstrap Command
+# Project Bootstrap Command - Intelligent Edition
 
-**Version**: 1.0 | **Bootstrap Framework**: litestar-vite
+**Version**: 2.0 | **Bootstrap Framework**: litestar-vite
 
-You are bootstrapping AI development infrastructure for this project. This command will analyze the codebase, detect frameworks and patterns, and generate comprehensive Claude Code configuration including commands, agents, skills, and the PRD-driven development workflow.
+You are bootstrapping AI development infrastructure for this project. This command creates an **intelligent, adaptive agent system** that:
+
+- **Context-Aware Analysis** - Agents understand project patterns before acting
+- **Adaptive Checkpoints** - Workflow depth adjusts to task complexity
+- **Knowledge Synthesis** - Automatic pattern extraction and documentation
+- **Intelligent Tool Selection** - MCP tool usage based on task requirements
+- **Quality Enforcement** - Multi-tier validation with graceful degradation
+- **Self-Documenting** - Captures learnings for future agent sessions
+- **Cross-Agent Memory** - Shared knowledge base evolves over time
+
+**Philosophy**: Agents should learn from the codebase, not just execute commands.
 
 ---
 
 ## Table of Contents
 
-1. [Preflight Checks](#part-1-preflight-checks)
-2. [Detection Phase](#part-2-detection-phase)
-3. [Generation Phase](#part-3-generation-phase)
-4. [Alignment Mode](#part-4-alignment-mode)
-5. [Verification](#part-5-verification)
-6. [Embedded Templates](#part-6-embedded-templates)
-7. [Framework Knowledge Base](#part-7-framework-knowledge-base)
+1. [Bootstrap Philosophy](#part-1-bootstrap-philosophy)
+2. [Intelligent Project Analysis](#part-2-intelligent-project-analysis)
+3. [MCP Tool Detection](#part-3-mcp-tool-detection)
+4. [Adaptive Infrastructure](#part-4-adaptive-infrastructure)
+5. [Generation Phase](#part-5-generation-phase)
+6. [Alignment Mode](#part-6-alignment-mode)
+7. [Verification](#part-7-verification)
+8. [Embedded Templates](#part-8-embedded-templates)
+9. [Framework Knowledge Base](#part-9-framework-knowledge-base)
 
 ---
 
-## Part 1: Preflight Checks
+## Part 1: Bootstrap Philosophy
 
-### Step 1.1: Environment Validation
+### Intelligence Principles
 
-Before proceeding, verify we're in a valid project:
+1. **Context First, Code Second**
+   - Read existing patterns before creating new ones
+   - Understand project conventions from actual code
+   - Adapt to project's unique architectural style
 
-```bash
-# Check for git repository
-test -d .git && echo "GIT_REPO=true" || echo "GIT_REPO=false"
+2. **Adaptive Complexity**
+   - Simple tasks get streamlined workflows
+   - Complex features trigger deep analysis
+   - Checkpoint count scales with complexity
 
-# Check for common project markers
-test -f package.json && echo "HAS_PACKAGE_JSON=true"
-test -f pyproject.toml && echo "HAS_PYPROJECT=true"
-test -f Cargo.toml && echo "HAS_CARGO=true"
-test -f go.mod && echo "HAS_GO_MOD=true"
-test -f pom.xml && echo "HAS_POM=true"
-```
+3. **Knowledge Accumulation**
+   - Every feature adds to project guides
+   - Patterns become reusable templates
+   - Future agents inherit all learnings
 
-**If no project markers found**: Ask user to confirm this is the correct directory.
-
-### Step 1.2: Detect Existing Bootstrap
-
-Check if this project has already been bootstrapped:
-
-```bash
-# Check for existing Claude configuration
-test -d .claude && echo "CLAUDE_EXISTS=true"
-test -f CLAUDE.md && echo "CLAUDE_MD_EXISTS=true"
-test -d .claude/commands && echo "CLAUDE_COMMANDS_EXISTS=true"
-test -d .claude/skills && echo "CLAUDE_SKILLS_EXISTS=true"
-test -d .claude/agents && echo "CLAUDE_AGENTS_EXISTS=true"
-
-# Check for specs structure
-test -d specs/guides && echo "SPECS_EXISTS=true"
-test -d specs/active && echo "SPECS_ACTIVE_EXISTS=true"
-```
-
-**If existing bootstrap detected**:
-- Enter ALIGNMENT MODE (Part 4)
-- Preserve custom additions
-- Update to latest patterns
-
-**If fresh project**:
-- Continue with full bootstrap
-
-### Step 1.3: Get User Confirmation
-
-Before proceeding, confirm with user:
-
-```
-This bootstrap will create/update:
-- CLAUDE.md (main AI instructions)
-- .claude/commands/ (6 slash commands)
-- .claude/agents/ (4 subagents)
-- .claude/skills/ (per-detected-framework)
-- .claude/settings.local.json (permissions)
-- specs/ directory structure (guides, active, archive)
-
-Detected mode: [FRESH | ALIGNMENT]
-
-Proceed? [Y/n]
-```
+4. **Graceful Degradation**
+   - Missing tools trigger fallback strategies
+   - Optional features don't block progress
+   - Clear communication when capabilities limited
 
 ---
 
-## Part 2: Detection Phase
+## Part 2: Intelligent Project Analysis
 
-### Step 2.1: Language Detection
+### Step 2.1: Deep Codebase Understanding
 
-Scan for primary language indicators:
+**Don't just detect - understand WHY patterns exist:**
 
 ```bash
-# Python indicators
-test -f pyproject.toml && echo "LANG_PYTHON=true"
-test -f setup.py && echo "LANG_PYTHON=true"
-test -f requirements.txt && echo "LANG_PYTHON=true"
-test -f poetry.lock && echo "LANG_PYTHON=true"
-test -f uv.lock && echo "LANG_PYTHON=true"
+# Detect project structure
+ls -la
+find . -type f \( -name "*.py" -o -name "*.ts" -o -name "*.go" -o -name "*.rs" \) | head -30
 
-# JavaScript/TypeScript indicators
-test -f package.json && echo "LANG_JS=true"
-test -f tsconfig.json && echo "LANG_TS=true"
-
-# Other languages
-test -f Cargo.toml && echo "LANG_RUST=true"
-test -f go.mod && echo "LANG_GO=true"
-test -f pom.xml && echo "LANG_JAVA=true"
-test -f build.gradle && echo "LANG_KOTLIN=true"
+# Read configuration to understand philosophy
+cat pyproject.toml package.json Cargo.toml go.mod 2>/dev/null | head -100
 ```
 
-### Step 2.2: Framework Detection - Python
+**Key questions to answer:**
 
-Parse pyproject.toml or requirements.txt for frameworks:
+1. **Architecture Philosophy**:
+   - Is this a monolith or microservices?
+   - Does it use domain-driven design?
+   - What's the layering strategy (controller → service → repository)?
+
+2. **Type System Approach**:
+   - Strict typing or dynamic?
+   - Type hints usage patterns?
+   - Validation strategy (runtime vs compile-time)?
+
+3. **Testing Philosophy**:
+   - TDD or test-after?
+   - Unit vs integration test ratio?
+   - Coverage expectations?
+
+4. **Code Organization**:
+   - Feature-based or layer-based folders?
+   - Naming conventions (verb_noun vs noun_verb)?
+   - File size preferences?
+
+### Step 2.2: Extract Existing Patterns
+
+**Read actual code to discover patterns:**
+
+```bash
+# Find adapter/plugin patterns
+find src/ -type f \( -name "*adapter*" -o -name "*plugin*" -o -name "*extension*" \) 2>/dev/null
+
+# Find service patterns
+find src/ -type f \( -name "*service*" -o -name "*manager*" -o -name "*handler*" \) 2>/dev/null
+
+# Find configuration patterns
+find src/ -type f \( -name "*config*" -o -name "*settings*" \) 2>/dev/null
+
+# Find error handling patterns
+grep -r "class.*Error" src/ 2>/dev/null | head -10
+grep -r "raise.*from" src/ 2>/dev/null | head -10
+
+# Find async patterns
+grep -r "async def" src/ 2>/dev/null | wc -l
+grep -r "await" src/ 2>/dev/null | wc -l
+```
+
+**Pattern Analysis**:
+
+1. **Read 3-5 example files** for each pattern type
+2. **Identify common structure** (class hierarchy, decorators, mixins)
+3. **Note naming conventions** (verbs, prefixes, suffixes)
+4. **Extract docstring style** (Google, NumPy, reStructuredText)
+5. **Understand error handling** (custom exceptions, context managers)
+
+### Step 2.3: Language & Framework Detection
+
+**Python Detection:**
 
 ```bash
 # Web frameworks
@@ -123,12 +139,10 @@ grep -i "litestar" pyproject.toml 2>/dev/null && echo "PY_LITESTAR=true"
 grep -i "fastapi" pyproject.toml 2>/dev/null && echo "PY_FASTAPI=true"
 grep -i "flask" pyproject.toml 2>/dev/null && echo "PY_FLASK=true"
 grep -i "django" pyproject.toml 2>/dev/null && echo "PY_DJANGO=true"
-grep -i "starlette" pyproject.toml 2>/dev/null && echo "PY_STARLETTE=true"
 
 # Database/ORM
 grep -i "sqlalchemy" pyproject.toml 2>/dev/null && echo "PY_SQLALCHEMY=true"
 grep -i "advanced-alchemy" pyproject.toml 2>/dev/null && echo "PY_ADVANCED_ALCHEMY=true"
-grep -i "tortoise" pyproject.toml 2>/dev/null && echo "PY_TORTOISE=true"
 
 # Testing
 grep -i "pytest" pyproject.toml 2>/dev/null && echo "PY_PYTEST=true"
@@ -137,12 +151,9 @@ grep -i "pytest-asyncio" pyproject.toml 2>/dev/null && echo "PY_PYTEST_ASYNCIO=t
 # Linting
 grep -i "ruff" pyproject.toml 2>/dev/null && echo "PY_RUFF=true"
 grep -i "mypy" pyproject.toml 2>/dev/null && echo "PY_MYPY=true"
-grep -i "black" pyproject.toml 2>/dev/null && echo "PY_BLACK=true"
 ```
 
-### Step 2.3: Framework Detection - JavaScript/TypeScript
-
-Parse package.json for frameworks:
+**JavaScript/TypeScript Detection:**
 
 ```bash
 # UI Frameworks
@@ -150,18 +161,9 @@ grep '"react"' package.json 2>/dev/null && echo "JS_REACT=true"
 grep '"vue"' package.json 2>/dev/null && echo "JS_VUE=true"
 grep '"svelte"' package.json 2>/dev/null && echo "JS_SVELTE=true"
 grep '"@angular/core"' package.json 2>/dev/null && echo "JS_ANGULAR=true"
-grep '"solid-js"' package.json 2>/dev/null && echo "JS_SOLID=true"
-
-# Meta-frameworks
-grep '"next"' package.json 2>/dev/null && echo "JS_NEXT=true"
-grep '"nuxt"' package.json 2>/dev/null && echo "JS_NUXT=true"
-grep '"@sveltejs/kit"' package.json 2>/dev/null && echo "JS_SVELTEKIT=true"
-grep '"astro"' package.json 2>/dev/null && echo "JS_ASTRO=true"
 
 # Build tools
 grep '"vite"' package.json 2>/dev/null && echo "JS_VITE=true"
-grep '"webpack"' package.json 2>/dev/null && echo "JS_WEBPACK=true"
-grep '"esbuild"' package.json 2>/dev/null && echo "JS_ESBUILD=true"
 
 # Integration
 grep '"@inertiajs"' package.json 2>/dev/null && echo "JS_INERTIA=true"
@@ -170,38 +172,35 @@ grep '"htmx.org"' package.json 2>/dev/null && echo "JS_HTMX=true"
 # Testing
 grep '"vitest"' package.json 2>/dev/null && echo "JS_VITEST=true"
 grep '"jest"' package.json 2>/dev/null && echo "JS_JEST=true"
-grep '"@testing-library"' package.json 2>/dev/null && echo "JS_TESTING_LIBRARY=true"
 
 # Linting
 grep '"biome"' package.json 2>/dev/null && echo "JS_BIOME=true"
 grep '"eslint"' package.json 2>/dev/null && echo "JS_ESLINT=true"
-grep '"prettier"' package.json 2>/dev/null && echo "JS_PRETTIER=true"
 ```
 
-### Step 2.4: Build System Detection
+### Step 2.4: Domain-Specific Pattern Detection
 
-Identify how the project builds and tests:
+**Multi-Adapter/Driver Pattern Detection:**
 
 ```bash
-# Makefile
-test -f Makefile && echo "BUILD_MAKE=true"
-grep "test:" Makefile 2>/dev/null && echo "TEST_CMD_MAKE=true"
-grep "lint:" Makefile 2>/dev/null && echo "LINT_CMD_MAKE=true"
+# Look for adapter or driver patterns
+adapters_found=$(grep -r "class.*Adapter" src/ 2>/dev/null | wc -l)
+drivers_found=$(grep -r "class.*Driver" src/ 2>/dev/null | wc -l)
 
-# npm scripts
-grep '"test"' package.json 2>/dev/null && echo "TEST_CMD_NPM=true"
-grep '"lint"' package.json 2>/dev/null && echo "LINT_CMD_NPM=true"
-grep '"build"' package.json 2>/dev/null && echo "BUILD_CMD_NPM=true"
+# Common adapter directory patterns
+test -d src/adapters && echo "HAS_ADAPTERS_DIR=true"
+test -d src/drivers && echo "HAS_DRIVERS_DIR=true"
+test -d src/backends && echo "HAS_BACKENDS_DIR=true"
+```
 
-# Python package managers
-test -f uv.lock && echo "PKG_UV=true"
-test -f poetry.lock && echo "PKG_POETRY=true"
-test -f Pipfile.lock && echo "PKG_PIPENV=true"
+**Service Layer Pattern Detection:**
+
+```bash
+services_found=$(grep -r "class.*Service" src/ 2>/dev/null | wc -l)
+repositories_found=$(grep -r "class.*Repository" src/ 2>/dev/null | wc -l)
 ```
 
 ### Step 2.5: Code Style Detection
-
-Sample code files to detect patterns:
 
 ```bash
 # Python type hint style
@@ -219,179 +218,412 @@ grep -r "^def test_" tests/ 2>/dev/null | head -3 && echo "STYLE_FUNC_TESTS=true
 grep -A2 '"""' src/*.py 2>/dev/null | head -10
 ```
 
-**Determine code style from samples**:
-- If `STYLE_PEP604=true`: Use `T | None` pattern
-- If `STYLE_OPTIONAL=true` and not `STYLE_PEP604`: Use `Optional[T]` pattern
-- If `STYLE_FUNC_TESTS=true`: Use function-based tests
-- If `STYLE_CLASS_TESTS=true`: Use class-based tests
+### Step 2.6: CI/CD Detection
 
-### Step 2.6: Build Detection Profile
+```bash
+# Detect CI/CD systems
+test -d .github/workflows && echo "CI_GITHUB_ACTIONS=true"
+test -f .gitlab-ci.yml && echo "CI_GITLAB=true"
+test -f .circleci/config.yml && echo "CI_CIRCLECI=true"
+test -f Jenkinsfile && echo "CI_JENKINS=true"
+```
 
-Compile all detections into a profile:
+### Step 2.7: Build Detection Profile
 
-```markdown
-## Detection Profile
+Compile all detections into a profile document.
 
-### Languages
-- Primary: {python|typescript|rust|go|java}
-- Secondary: {list}
+---
 
-### Python Frameworks
-- Web: {litestar|fastapi|flask|django}
-- ORM: {sqlalchemy|advanced-alchemy|tortoise}
-- Testing: {pytest|pytest-asyncio}
-- Linting: {ruff|mypy|black}
+## Part 3: MCP Tool Detection
 
-### JavaScript Frameworks
-- UI: {react|vue|svelte|angular}
-- Meta: {next|nuxt|sveltekit|astro}
-- Build: {vite|webpack|esbuild}
-- Integration: {inertia|htmx}
-- Testing: {vitest|jest}
-- Linting: {biome|eslint|prettier}
+### Step 3.1: Create MCP Tool Detection Script
 
-### Build System
-- Type: {make|npm|uv|poetry}
-- Test command: {make test|npm test|uv run pytest}
-- Lint command: {make lint|npm run lint|uv run ruff}
+```bash
+mkdir -p .claude/tools
+cat > .claude/tools/detect_mcp.py << 'EOF'
+#!/usr/bin/env python3
+"""Intelligent MCP tool detection with capability mapping."""
 
-### Code Style
-- Type hints: {pep604|optional|none}
-- Docstrings: {google|numpy|sphinx}
-- Test style: {function|class}
-- Line length: {80|120|default}
+from dataclasses import dataclass
+from enum import Enum
 
-### Anti-Patterns to Enforce
-- {based on opposite of detected style}
+
+class ToolCapability(Enum):
+    """MCP tool capability categories."""
+    REASONING = "reasoning"
+    RESEARCH = "research"
+    PLANNING = "planning"
+    ANALYSIS = "analysis"
+    DEBUG = "debug"
+
+
+@dataclass
+class MCPTool:
+    """MCP tool with capability metadata."""
+    name: str
+    available: bool
+    capability: ToolCapability
+    fallback: str | None = None
+    use_cases: list[str] | None = None
+
+
+def detect_mcp_tools() -> dict[str, MCPTool]:
+    """Detect available MCP tools with intelligent fallback mapping."""
+
+    tools = {
+        'sequential_thinking': MCPTool(
+            name='sequential_thinking',
+            available=True,  # Usually available
+            capability=ToolCapability.REASONING,
+            fallback=None,
+            use_cases=[
+                'Linear problem breakdown',
+                'Step-by-step analysis',
+                'Complex feature planning',
+            ]
+        ),
+        'context7': MCPTool(
+            name='context7',
+            available=True,
+            capability=ToolCapability.RESEARCH,
+            fallback='web_search',
+            use_cases=[
+                'Library documentation lookup',
+                'API reference retrieval',
+                'Best practices research',
+            ]
+        ),
+        'web_search': MCPTool(
+            name='web_search',
+            available=True,
+            capability=ToolCapability.RESEARCH,
+            fallback=None,
+            use_cases=[
+                'Latest framework updates',
+                'Community best practices',
+                'Fallback documentation lookup',
+            ]
+        ),
+        'zen_planner': MCPTool(
+            name='zen_planner',
+            available=True,
+            capability=ToolCapability.PLANNING,
+            use_cases=[
+                'Multi-phase project planning',
+                'Migration strategy design',
+                'Complex feature breakdown',
+            ]
+        ),
+        'zen_thinkdeep': MCPTool(
+            name='zen_thinkdeep',
+            available=True,
+            capability=ToolCapability.ANALYSIS,
+            use_cases=[
+                'Architecture review',
+                'Performance analysis',
+                'Security assessment',
+            ]
+        ),
+        'zen_analyze': MCPTool(
+            name='zen_analyze',
+            available=True,
+            capability=ToolCapability.ANALYSIS,
+            use_cases=[
+                'Code quality analysis',
+                'Pattern detection',
+                'Tech debt assessment',
+            ]
+        ),
+        'zen_debug': MCPTool(
+            name='zen_debug',
+            available=True,
+            capability=ToolCapability.DEBUG,
+            use_cases=[
+                'Root cause investigation',
+                'Bug reproduction',
+                'Performance debugging',
+            ]
+        ),
+    }
+
+    return tools
+
+
+def generate_tool_strategy(tools: dict[str, MCPTool]) -> str:
+    """Generate intelligent tool usage strategy."""
+
+    strategy = ["# MCP Tool Strategy\\n\\n"]
+    strategy.append("## Tool Selection Guide\\n\\n")
+
+    strategy.append("### Reasoning Tools\\n")
+    strategy.append("- **Primary**: sequential_thinking\\n")
+    strategy.append("- **Use for**: Complex analysis, step-by-step planning\\n\\n")
+
+    strategy.append("### Research Tools\\n")
+    strategy.append("- **Primary**: context7\\n")
+    strategy.append("- **Fallback**: web_search\\n")
+    strategy.append("- **Use for**: Library docs, best practices\\n\\n")
+
+    strategy.append("### Planning Tools\\n")
+    strategy.append("- **Primary**: zen_planner\\n")
+    strategy.append("- **Use for**: Multi-phase projects, migrations\\n\\n")
+
+    strategy.append("### Analysis Tools\\n")
+    strategy.append("- **Primary**: zen_thinkdeep, zen_analyze\\n")
+    strategy.append("- **Use for**: Architecture review, code quality\\n\\n")
+
+    return "".join(strategy)
+
+
+if __name__ == "__main__":
+    tools = detect_mcp_tools()
+    strategy = generate_tool_strategy(tools)
+
+    print("MCP Tool Detection Complete")
+    print(strategy)
+EOF
+
+chmod +x .claude/tools/detect_mcp.py
+```
+
+### Step 3.2: Create MCP Strategy Document
+
+```bash
+cat > .claude/mcp-strategy.md << 'EOF'
+# MCP Tool Strategy
+
+## Tool Selection by Task Type
+
+### Complex Architectural Decisions
+1. **Primary**: mcp__zen__thinkdeep
+2. **Fallback**: mcp__sequential-thinking__sequentialthinking
+
+### Library Documentation Lookup
+1. **Primary**: mcp__context7__get-library-docs
+2. **Fallback**: WebSearch
+
+### Multi-Phase Planning
+1. **Primary**: mcp__zen__planner
+2. **Fallback**: Manual structured thinking
+
+### Code Analysis
+1. **Primary**: mcp__zen__analyze
+2. **Fallback**: Manual code review
+
+### Debugging
+1. **Primary**: mcp__zen__debug
+2. **Fallback**: Manual investigation
+
+## Complexity-Based Selection
+
+### Simple Features (6 checkpoints)
+- Use basic tools
+- Manual analysis acceptable
+- Focus on speed
+
+### Medium Features (8 checkpoints)
+- Use sequential_thinking (12 steps)
+- Include pattern analysis
+- Moderate depth
+
+### Complex Features (10+ checkpoints)
+- Use zen_thinkdeep or zen_planner
+- Deep pattern analysis
+- Comprehensive research
+EOF
 ```
 
 ---
 
-## Part 3: Generation Phase
+## Part 4: Adaptive Infrastructure
 
-### Step 3.1: Create Directory Structure
+### Step 4.1: Create Intelligent Directory Structure
 
 ```bash
 # Create Claude directories
 mkdir -p .claude/commands
 mkdir -p .claude/agents
 mkdir -p .claude/skills
+mkdir -p .claude/tools
 
-# Create specs directories
-mkdir -p specs/guides
+# Create specs directories with pattern library
+mkdir -p specs/guides/patterns
 mkdir -p specs/guides/workflows
+mkdir -p specs/guides/examples
 mkdir -p specs/active
 mkdir -p specs/archive
+mkdir -p specs/template-spec/research
+mkdir -p specs/template-spec/tmp
+mkdir -p specs/template-spec/patterns
 
 # Create .gitkeep files
 touch specs/active/.gitkeep
 touch specs/archive/.gitkeep
+touch specs/guides/patterns/.gitkeep
+touch specs/guides/examples/.gitkeep
 ```
 
-### Step 3.2: Generate CLAUDE.md
-
-Create the main Claude instructions file using the CLAUDE.md template from Part 6, substituting:
-- `{PROJECT_NAME}`: From package.json name or pyproject.toml name
-- `{PROJECT_DESCRIPTION}`: From package.json description or pyproject.toml description
-- `{DATE}`: Current date
-- `{BACKEND_STACK}`: Detected Python frameworks
-- `{FRONTEND_STACK}`: Detected JS frameworks
-- `{TEST_FRAMEWORK}`: pytest, vitest, jest, etc.
-- `{LINT_TOOLS}`: ruff, biome, eslint, etc.
-- `{PACKAGE_MANAGER}`: uv, npm, poetry, etc.
-- `{ESSENTIAL_COMMANDS}`: Based on build system detection
-- `{CODE_STANDARDS}`: Based on code style detection
-- `{SKILLS_LIST}`: Based on detected frameworks
-- `{ANTI_PATTERNS}`: Based on code style detection
-
-### Step 3.3: Generate Commands
-
-Generate 6 core slash commands:
-
-1. **prd.md** - PRD creation workflow
-2. **implement.md** - Implementation workflow
-3. **test.md** - Testing workflow
-4. **review.md** - Quality gate and archive
-5. **explore.md** - Codebase exploration
-6. **fix-issue.md** - GitHub issue fixing
-
-Use templates from Part 6, customizing:
-- Test commands based on detected test framework
-- Lint commands based on detected linting tools
-- Project structure based on detected layout
-
-### Step 3.4: Generate Agents
-
-Generate 4 subagent definitions:
-
-1. **prd.md** - PRD specialist agent
-2. **expert.md** - Implementation specialist
-3. **testing.md** - Test creation specialist
-4. **docs-vision.md** - Documentation and quality agent
-
-Use templates from Part 6, customizing:
-- Code standards based on detected style
-- Anti-patterns based on detected patterns
-
-### Step 3.5: Generate Skills
-
-For each detected framework, generate a skill file:
+### Step 4.2: Create Adaptive Quality Gates
 
 ```bash
-# For each detected framework
-mkdir -p .claude/skills/{framework}
-# Write SKILL.md using framework template from Part 7
+cat > specs/guides/quality-gates.yaml << 'EOF'
+metadata:
+  version: "2.0"
+  adaptive: true
+  description: "Quality gates that adapt to project conventions"
+
+implementation_gates:
+  - name: local_tests_pass
+    command: "make test"
+    fallback: "pytest tests/"
+    required: true
+    adaptive: true
+    description: "All tests must pass before proceeding"
+
+  - name: linting_clean
+    command: "make lint"
+    fallback: "ruff check ."
+    required: true
+    description: "Zero linting errors allowed"
+
+  - name: type_checking_pass
+    command: "mypy src/"
+    required: true
+    adaptive: true
+    description: "Type checking must pass"
+
+testing_gates:
+  - name: coverage_threshold
+    threshold: 90
+    scope: "modified_modules"
+    adaptive: true
+    description: "Modified modules must achieve configured coverage"
+
+  - name: test_isolation
+    required: true
+    description: "Tests must work in parallel execution"
+
+  - name: n_plus_one_detection
+    type: "custom"
+    applicable_when: "database_operations"
+    description: "Database operations must include N+1 query detection tests"
+
+documentation_gates:
+  - name: anti_pattern_scan
+    adaptive: true
+    rules:
+      - pattern: "from __future__ import annotations"
+        severity: "error"
+        message: "Use explicit stringification instead"
+
+      - pattern: "Optional\\["
+        severity: "error"
+        message: "Use T | None (PEP 604) instead"
+
+      - pattern: "class Test"
+        severity: "warning"
+        message: "Prefer function-based tests"
+
+  - name: pattern_documentation
+    description: "New patterns must be captured in specs/guides/patterns/"
+    required: true
+EOF
 ```
 
-Frameworks to check:
-- Python: litestar, fastapi, flask, django, pytest
-- JS: react, vue, svelte, angular, vite, inertia, vitest
+### Step 4.3: Create Pattern Library README
 
-### Step 3.6: Generate Settings
+```bash
+cat > specs/guides/patterns/README.md << 'EOF'
+# Pattern Library
 
-Create `.claude/settings.local.json`:
+This directory contains reusable patterns extracted from completed features.
 
-```json
-{
-  "permissions": {
-    "allow": [
-      "mcp__context7__resolve-library-id",
-      "mcp__context7__get-library-docs",
-      "mcp__sequential-thinking__sequentialthinking",
-      "mcp__zen__planner",
-      "mcp__zen__thinkdeep",
-      "mcp__zen__debug",
-      "mcp__zen__analyze",
-      "WebSearch",
-      "{BUILD_COMMANDS}",
-      "{TEST_COMMANDS}",
-      "{LINT_COMMANDS}",
-      "Bash(git:*)",
-      "Bash(gh:*)"
-    ]
-  }
-}
+## How Patterns Are Captured
+
+1. During implementation, new patterns are documented in `tmp/new-patterns.md`
+2. During review, patterns are extracted to this directory
+3. Future PRD phases consult this library first
+
+## Pattern Categories
+
+### Architectural Patterns
+- Plugin patterns
+- Service patterns
+- Adapter patterns
+
+### Type Handling Patterns
+- Type converters
+- Schema mappings
+- Validation patterns
+
+### Testing Patterns
+- Fixture patterns
+- Mock strategies
+- Integration test setups
+
+### Error Handling Patterns
+- Exception hierarchies
+- Recovery strategies
+- Logging patterns
+
+## Using Patterns
+
+When starting a new feature:
+
+1. Search this directory for similar patterns
+2. Read pattern documentation before implementation
+3. Follow established conventions
+4. Add new patterns during review phase
+EOF
 ```
-
-Customize `{BUILD_COMMANDS}`, `{TEST_COMMANDS}`, `{LINT_COMMANDS}` based on detection.
-
-### Step 3.7: Generate Specs Guides
-
-Create initial guide files:
-
-1. **architecture.md** - Project structure documentation
-2. **code-style.md** - Code conventions based on detection
-3. **testing.md** - Testing patterns
-4. **quality-gates.yaml** - Quality checks
-5. **development-workflow.md** - How to work on this project
 
 ---
 
-## Part 4: Alignment Mode
+## Part 5: Generation Phase
 
-When existing bootstrap is detected, use this mode instead of fresh generation.
+### Step 5.1: Generate CLAUDE.md
 
-### Step 4.1: Inventory Existing Configuration
+Create the main Claude instructions file using detected project information.
+
+### Step 5.2: Generate Intelligent Commands
+
+Generate 6 core slash commands with intelligence enhancements:
+
+1. **prd.md** - PRD creation with pattern learning
+2. **implement.md** - Pattern-guided implementation
+3. **test.md** - Testing with pattern compliance
+4. **review.md** - Quality gate and pattern extraction
+5. **explore.md** - Codebase exploration
+6. **fix-issue.md** - GitHub issue fixing
+
+### Step 5.3: Generate Agents
+
+Generate 4 subagent definitions with intelligence layers:
+
+1. **prd.md** - PRD specialist with pattern recognition
+2. **expert.md** - Implementation with pattern compliance
+3. **testing.md** - Test creation with coverage targets
+4. **docs-vision.md** - Documentation and pattern extraction
+
+### Step 5.4: Generate Skills
+
+For each detected framework, generate a skill file with:
+- Quick reference code examples
+- Project-specific patterns (from detection)
+- Context7 lookup references
+- Related files in project
+
+### Step 5.5: Generate Settings
+
+Create `.claude/settings.local.json` with permissions based on detected build system.
+
+---
+
+## Part 6: Alignment Mode
+
+When existing bootstrap is detected, use alignment mode.
+
+### Step 6.1: Inventory Existing Configuration
 
 ```bash
 # List existing commands
@@ -405,47 +637,34 @@ ls .claude/agents/*.md 2>/dev/null
 
 # Check CLAUDE.md version
 head -5 CLAUDE.md 2>/dev/null | grep "Version"
+
+# Check pattern library
+ls specs/guides/patterns/*.md 2>/dev/null
 ```
 
-### Step 4.2: Identify Missing Components
+### Step 6.2: Identify Missing Components
 
 Compare existing vs expected:
 
 **Core commands (must exist)**:
-- prd.md
-- implement.md
-- test.md
-- review.md
-- explore.md
-- fix-issue.md
+- prd.md, implement.md, test.md, review.md, explore.md, fix-issue.md
 
 **Core agents (must exist)**:
-- prd.md
-- expert.md
-- testing.md
-- docs-vision.md
+- prd.md, expert.md, testing.md, docs-vision.md
 
-**Framework skills (based on detection)**:
-- Check if skill exists for each detected framework
-- Flag missing skills for generation
+**Pattern library (should exist)**:
+- specs/guides/patterns/README.md
+- Quality gates: specs/guides/quality-gates.yaml
 
-### Step 4.3: Preserve Custom Content
+### Step 6.3: Preserve Custom Content
 
-Before updating any file:
-
+Before updating:
 1. Read existing content
-2. Identify custom sections (not matching template markers)
-3. Store custom content for preservation
-4. Merge custom content into updated file
+2. Identify custom sections
+3. Store for preservation
+4. Merge into updated file
 
-**Custom content markers**:
-- Commands not in core list are custom
-- Skills not in framework list are custom
-- Sections marked `## Custom` are preserved
-
-### Step 4.4: Update Outdated Patterns
-
-Check for outdated patterns and offer to update:
+### Step 6.4: Update Report
 
 ```markdown
 ## Alignment Report
@@ -453,10 +672,12 @@ Check for outdated patterns and offer to update:
 ### New Components to Add
 - [ ] Skill: {new detected framework}
 - [ ] Command: {missing core command}
+- [ ] Pattern library structure
 
 ### Updates Available
 - [ ] CLAUDE.md version {old} → {new}
-- [ ] Command {name}: {change description}
+- [ ] Intelligence enhancements
+- [ ] Pattern library setup
 
 ### Custom Content Preserved
 - Command: {custom command name}
@@ -465,20 +686,11 @@ Check for outdated patterns and offer to update:
 Proceed with updates? [Y/n]
 ```
 
-### Step 4.5: Merge and Update
-
-For each file to update:
-
-1. Generate new content from template
-2. Insert preserved custom content
-3. Write merged file
-4. Update version number
-
 ---
 
-## Part 5: Verification
+## Part 7: Verification
 
-### Step 5.1: Validate Generated Files
+### Step 7.1: Validate Generated Files
 
 ```bash
 # Check all expected files exist
@@ -488,6 +700,8 @@ test -d .claude/agents && echo "✓ .claude/agents/"
 test -d .claude/skills && echo "✓ .claude/skills/"
 test -f .claude/settings.local.json && echo "✓ settings.local.json"
 test -d specs/guides && echo "✓ specs/guides/"
+test -d specs/guides/patterns && echo "✓ specs/guides/patterns/"
+test -f specs/guides/quality-gates.yaml && echo "✓ quality-gates.yaml"
 test -d specs/active && echo "✓ specs/active/"
 
 # Count generated files
@@ -496,10 +710,10 @@ echo "Agents: $(ls .claude/agents/*.md 2>/dev/null | wc -l)"
 echo "Skills: $(ls -d .claude/skills/*/ 2>/dev/null | wc -l)"
 ```
 
-### Step 5.2: Summary Report
+### Step 7.2: Summary Report
 
 ```markdown
-## Bootstrap Complete ✓
+## Bootstrap Complete ✓ (Intelligent Edition)
 
 ### Generated Configuration
 
@@ -507,49 +721,85 @@ echo "Skills: $(ls -d .claude/skills/*/ 2>/dev/null | wc -l)"
 - Tech Stack: {detected stack}
 - Commands: {count}
 - Skills: {count}
+- Intelligence Layer: Enabled
 
 **Commands Created**:
-- /prd - Create PRD for new feature
-- /implement - Implement from PRD
-- /test - Run comprehensive tests
-- /review - Quality gate and archive
+- /prd - Create PRD with pattern learning (adaptive checkpoints)
+- /implement - Pattern-guided implementation
+- /test - Testing with coverage targets (90%+)
+- /review - Quality gate and pattern extraction
 - /explore - Explore codebase
 - /fix-issue - Fix GitHub issue
+- /bootstrap - Re-bootstrap (alignment mode)
 
 **Agents Created**:
-- prd - PRD creation specialist
-- expert - Implementation specialist
+- prd - PRD creation with pattern recognition
+- expert - Implementation with pattern compliance
 - testing - Test creation specialist
-- docs-vision - Documentation agent
+- docs-vision - Documentation and pattern extraction
 
 **Skills Created**:
 {list of framework skills}
 
-**Specs Structure**:
-- specs/guides/ - Project documentation
-- specs/active/ - Active workspaces
-- specs/archive/ - Completed work
+**Intelligence Infrastructure**:
+- specs/guides/patterns/ - Pattern library
+- specs/guides/quality-gates.yaml - Adaptive quality gates
+- .claude/mcp-strategy.md - Tool selection guide
+- .claude/tools/detect_mcp.py - MCP detection script
+
+### Intelligence Features
+
+✓ **Pattern-First Implementation**: Agents identify similar implementations before coding
+✓ **Adaptive Checkpoints**: Simple=6, Medium=8, Complex=10+ checkpoints
+✓ **Knowledge Accumulation**: Patterns extracted to library after each feature
+✓ **Quality Gate Adaptation**: Standards adjust to project norms
+✓ **Tool Strategy**: MCP tools selected based on task requirements
 
 ### Next Steps
 
 1. Review generated CLAUDE.md
-2. Customize settings.local.json permissions as needed
-3. Run `/explore` to test configuration
-4. Start development with `/prd [feature]`
+2. Run `/explore` to test configuration
+3. Start development with `/prd [feature]`
+4. Patterns accumulate in specs/guides/patterns/
 ```
 
 ---
 
-## Part 6: Embedded Templates
+## Part 8: Embedded Templates
 
-### Template: CLAUDE.md
+### Template: CLAUDE.md (Intelligent Edition)
 
 ```markdown
 # AI Agent Guidelines for {PROJECT_NAME}
 
-**Version**: 1.0 | **Updated**: {DATE}
+**Version**: 2.0 (Intelligent Edition) | **Updated**: {DATE}
 
 {PROJECT_DESCRIPTION}
+
+---
+
+## Intelligence Layer
+
+This project uses an **intelligent agent system** that:
+
+1. **Learns from codebase** before making changes
+2. **Adapts workflow depth** based on feature complexity
+3. **Accumulates knowledge** in pattern library
+4. **Selects tools** based on task requirements
+
+### Pattern Library
+
+Reusable patterns in `specs/guides/patterns/`:
+- Consult before implementing similar features
+- Add new patterns during review phase
+
+### Complexity-Based Checkpoints
+
+| Complexity | Checkpoints | Triggers |
+|------------|-------------|----------|
+| Simple | 6 | CRUD, config change, single file |
+| Medium | 8 | New service, API endpoint, 2-3 files |
+| Complex | 10+ | Architecture change, multi-component |
 
 ---
 
@@ -573,12 +823,6 @@ echo "Skills: $(ls -d .claude/skills/*/ 2>/dev/null | wc -l)"
 {FIX_CMD}        # Auto-format code
 ```
 
-### Project Structure
-
-```
-{PROJECT_STRUCTURE}
-```
-
 ---
 
 ## Code Standards (Critical)
@@ -592,26 +836,16 @@ echo "Skills: $(ls -d .claude/skills/*/ 2>/dev/null | wc -l)"
 | Tests | {TEST_STYLE} |
 | Line length | {LINE_LENGTH} characters |
 
-{SECONDARY_LANGUAGE_SECTION}
-
----
-
-## Available Skills
-
-Framework-specific expertise in `.claude/skills/`:
-
-{SKILLS_TABLE}
-
 ---
 
 ## Slash Commands
 
 | Command | Description |
 |---------|-------------|
-| `/prd [feature]` | Create PRD for new feature |
-| `/implement [slug]` | Implement from PRD |
-| `/test [slug]` | Run comprehensive tests |
-| `/review [slug]` | Quality gate and archive |
+| `/prd [feature]` | Create PRD with pattern learning |
+| `/implement [slug]` | Pattern-guided implementation |
+| `/test [slug]` | Testing with 90%+ coverage |
+| `/review [slug]` | Quality gate and pattern extraction |
 | `/explore [topic]` | Explore codebase |
 | `/fix-issue [#]` | Fix GitHub issue |
 | `/bootstrap` | Re-bootstrap (alignment mode) |
@@ -620,41 +854,23 @@ Framework-specific expertise in `.claude/skills/`:
 
 ## Subagents
 
-Invoke via Task tool with `subagent_type`:
-
 | Agent | Mission |
 |-------|---------|
-| `prd` | Create PRDs and task breakdowns |
-| `expert` | Implement production code |
-| `testing` | Create 90%+ coverage test suites |
-| `docs-vision` | Quality gates and archival |
-
-### Example Invocation
-
-```python
-Task(
-    description="Create PRD",
-    prompt="Create PRD for: [feature]",
-    subagent_type="prd",
-    model="sonnet"
-)
-```
+| `prd` | PRD creation with pattern recognition |
+| `expert` | Implementation with pattern compliance |
+| `testing` | Test creation (90%+ coverage) |
+| `docs-vision` | Quality gates and pattern extraction |
 
 ---
 
 ## Development Workflow
 
-### For New Features
+### For New Features (Pattern-First)
 
-1. **PRD**: `/prd [feature]` or `subagent_type="prd"`
-2. **Implement**: `/implement [slug]` or `subagent_type="expert"`
-3. **Test**: Auto-invoked or `/test [slug]`
-4. **Review**: Auto-invoked or `/review [slug]`
-
-### For Bug Fixes
-
-1. `/fix-issue [number]`
-2. Or manual: Search → Fix → Test → Commit
+1. **PRD**: `/prd [feature]` - Analyzes 3-5 similar features first
+2. **Implement**: `/implement [slug]` - Follows identified patterns
+3. **Test**: Auto-invoked - Tests pattern compliance
+4. **Review**: Auto-invoked - Extracts new patterns to library
 
 ### Quality Gates
 
@@ -662,11 +878,16 @@ All code must pass:
 - [ ] `{TEST_CMD}` passes
 - [ ] `{LINT_CMD}` passes
 - [ ] 90%+ coverage for modified modules
+- [ ] Pattern compliance verified
 - [ ] No anti-patterns
 
 ---
 
 ## MCP Tools
+
+### Tool Selection
+
+Consult `.claude/mcp-strategy.md` for task-based tool selection.
 
 ### Context7 (Library Docs)
 
@@ -679,1716 +900,327 @@ mcp__context7__get-library-docs(
 )
 ```
 
-### Sequential Thinking
+### Sequential Thinking (Analysis)
 
 ```python
 mcp__sequential-thinking__sequentialthinking(
     thought="Step 1: ...",
     thought_number=1,
-    total_thoughts=10,
+    total_thoughts=15,  # Adapt to complexity
     next_thought_needed=True
 )
 ```
+
+### Zen Tools
+
+- `mcp__zen__planner` - Multi-phase planning
+- `mcp__zen__thinkdeep` - Deep analysis
+- `mcp__zen__analyze` - Code analysis
+- `mcp__zen__debug` - Debugging
 
 ---
 
 ## Anti-Patterns (Must Avoid)
 
 {ANTI_PATTERNS_TABLE}
+
+---
+
+## Pattern Library
+
+Location: `specs/guides/patterns/`
+
+### Using Patterns
+
+1. Search pattern library before implementation
+2. Follow established conventions
+3. Document deviations with rationale
+
+### Adding Patterns
+
+1. Document in `tmp/new-patterns.md` during implementation
+2. Extract to pattern library during review
+3. Update this guide if architectural patterns
 ```
 
-### Template: prd.md Command
+### Template: Intelligent prd.md Command
 
 ```markdown
 ---
-description: Create a Product Requirements Document for a new feature
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs, mcp__sequential-thinking__sequentialthinking
+description: Create a PRD with pattern learning and adaptive complexity
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs, mcp__sequential-thinking__sequentialthinking, mcp__zen__planner
 ---
 
-# PRD Creation Workflow
+# Intelligent PRD Creation Workflow
 
 You are creating a Product Requirements Document for: **$ARGUMENTS**
 
-## Phase 1: Understand the Request
+## Intelligence Layer (ACTIVATE FIRST)
 
-First, gather context about the project and feature:
+Before starting checkpoints:
 
-1. Read project documentation:
-   - `CLAUDE.md` for project overview and standards
-   - `specs/guides/architecture.md` for system design
-   - `specs/guides/code-style.md` for coding standards
+1. **Read MCP Strategy**: Load `.claude/mcp-strategy.md` for tool selection
+2. **Learn from Codebase**: Read 3-5 similar implementations
+3. **Assess Complexity**: Determine simple/medium/complex
+4. **Adapt Workflow**: Adjust checkpoint depth
 
-2. Search for related code:
-   - Find similar existing implementations
-   - Identify affected modules
-   - Check existing patterns
+## Critical Rules
 
-## Phase 2: Deep Analysis
+1. **CONTEXT FIRST** - Read existing patterns before planning
+2. **NO CODE MODIFICATION** - Planning only
+3. **PATTERN LEARNING** - Identify 3-5 similar features
+4. **ADAPTIVE DEPTH** - Simple=6, Medium=8, Complex=10+ checkpoints
+5. **RESEARCH GROUNDED** - Minimum 2000+ words research
+6. **COMPREHENSIVE PRD** - Minimum 3200+ words
 
-Use sequential thinking to thoroughly analyze:
+---
 
-1. What problem does this solve?
-2. Who are the users/consumers?
-3. What are the acceptance criteria?
-4. What are the technical constraints?
-5. What existing code will be affected?
-6. What new code needs to be written?
-7. What tests are needed?
+## Checkpoint 0: Intelligence Bootstrap
 
-## Phase 3: Research (if needed)
+**Load project intelligence:**
 
-If the feature involves external libraries:
+1. Read `CLAUDE.md`
+2. Read `specs/guides/architecture.md`
+3. Read `specs/guides/patterns/README.md`
+4. Read `.claude/mcp-strategy.md`
 
-```python
-mcp__context7__resolve-library-id(libraryName="...")
-mcp__context7__get-library-docs(...)
+**Learn from existing implementations:**
+
+```bash
+# Find similar features
+grep -r "class.*{keyword}" src/ | head -5
+
+# Read 3 example files
 ```
 
-For best practices:
-```python
-WebSearch(query="... best practices 2025")
+**Assess complexity:**
+
+- **Simple**: Single file, CRUD → 6 checkpoints
+- **Medium**: New service, 2-3 files → 8 checkpoints
+- **Complex**: Architecture change, 5+ files → 10+ checkpoints
+
+**Output**: "✓ Checkpoint 0 complete - Complexity: [level], Checkpoints: [count]"
+
+---
+
+## Checkpoint 1: Pattern Recognition
+
+**Identify similar implementations:**
+
+1. Search for related patterns
+2. Read at least 3 similar files
+3. Extract naming patterns
+4. Note testing patterns
+
+**Document:**
+
+```markdown
+## Similar Implementations
+
+1. `src/path/to/similar1.py` - Description
+2. `src/path/to/similar2.py` - Description
+3. `src/path/to/similar3.py` - Description
+
+## Patterns Observed
+
+- Class structure: ...
+- Naming conventions: ...
+- Error handling: ...
 ```
 
-## Phase 4: Create Workspace
+**Output**: "✓ Checkpoint 1 complete - Patterns identified"
 
-Create the workspace directory structure:
+---
+
+## Checkpoint 2: Workspace Creation
 
 ```bash
 mkdir -p specs/active/{slug}/research
 mkdir -p specs/active/{slug}/tmp
+mkdir -p specs/active/{slug}/patterns
 ```
 
-## Phase 5: Write PRD
+**Output**: "✓ Checkpoint 2 complete - Workspace at specs/active/{slug}/"
 
-Create `specs/active/{slug}/prd.md` with this structure:
-
-```markdown
-# PRD: {Feature Name}
-
-## Overview
-- **Slug**: {slug}
-- **Created**: {date}
-- **Status**: Draft
-
-## Problem Statement
-{What problem does this solve? Who has this problem?}
-
-## Goals
-1. {Primary goal}
-2. {Secondary goal}
-
-## Non-Goals
-- {What this feature will NOT do}
-
-## Acceptance Criteria
-- [ ] {Specific, testable criterion}
-- [ ] {Specific, testable criterion}
-
-## Technical Approach
-
-### Architecture
-{How it fits into existing codebase}
-
-### Affected Files
-- `{path}` - {what changes}
-
-### API Changes
-{New or modified APIs}
-
-## Testing Strategy
-- Unit tests: {what to test}
-- Integration tests: {scenarios}
-- Edge cases: {list}
-
-## Research Questions
-- [ ] {Question that needs research}
-
-## Risks & Mitigations
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| {risk} | H/M/L | {mitigation} |
-```
-
-## Phase 6: Create Task Breakdown
-
-Create `specs/active/{slug}/tasks.md`:
-
-```markdown
-# Tasks: {Feature Name}
-
-## Phase 1: Planning ✓
-- [x] Create PRD
-- [x] Identify affected components
-
-## Phase 2: Research
-- [ ] Research {topic}
-
-## Phase 3: Implementation
-- [ ] Implement {component}
-
-## Phase 4: Testing
-- [ ] Write unit tests (90%+ coverage)
-- [ ] Write integration tests
-
-## Phase 5: Documentation
-- [ ] Update docstrings
-- [ ] Update guides if needed
-
-## Phase 6: Quality Gate
-- [ ] All tests pass
-- [ ] Linting clean
-- [ ] Archive workspace
-```
-
-## Phase 7: Create Recovery Guide
-
-Create `specs/active/{slug}/recovery.md`:
-
-```markdown
-# Recovery Guide: {Feature Name}
-
-## Current State
-{Description of where development stands}
-
-## Files Modified
-- `{file}` - {status}
-
-## Next Steps
-1. {Next action to take}
-
-## Context for Resumption
-{Any important context for continuing this work}
-```
-
-## Completion Checklist
-
-Before finishing:
-- [ ] PRD is comprehensive with clear acceptance criteria
-- [ ] Tasks are specific and measurable
-- [ ] Recovery guide enables session resumption
-- [ ] Research questions are identified
-```
-
-### Template: implement.md Command
-
-```markdown
----
-description: Implement a feature from an existing PRD
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, WebSearch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs
 ---
 
-# Implementation Workflow
+## Checkpoint 3: Intelligent Analysis
 
-You are implementing the feature from: **specs/active/$ARGUMENTS**
+**Use appropriate tool based on complexity:**
 
-## Phase 1: Load Context
+- Simple: 10 structured thoughts
+- Medium: Sequential thinking (15 thoughts)
+- Complex: zen_planner or thinkdeep
 
-1. Read the PRD and tasks:
-   - `specs/active/$ARGUMENTS/prd.md`
-   - `specs/active/$ARGUMENTS/tasks.md`
-   - `specs/active/$ARGUMENTS/recovery.md`
+**Document in workspace.**
 
-2. Read project standards:
-   - `CLAUDE.md`
-   - `specs/guides/code-style.md`
-   - `specs/guides/architecture.md`
+**Output**: "✓ Checkpoint 3 complete - Analysis using [tool]"
 
-## Phase 2: Research (if needed)
-
-Complete any research tasks from the PRD:
-
-- Use Context7 for library documentation
-- Use WebSearch for best practices
-
-## Phase 3: Implementation
-
-Follow the task breakdown and implement each component:
-
-### Code Standards
-{CODE_STANDARDS_SECTION}
-
-### As You Work
-- Update `tasks.md` progress
-- Update `recovery.md` with current state
-- Run tests frequently: `{TEST_CMD}`
-- Run linting: `{LINT_CMD}`
-
-## Phase 4: Local Testing
-
-Before completing implementation:
-
-```bash
-# Run tests
-{TEST_CMD}
-
-# Run linting
-{LINT_CMD}
-```
-
-## Phase 5: Invoke Testing Agent
-
-After all acceptance criteria met, auto-invoke testing:
-
-```
-Use the Task tool with subagent_type="testing" to run comprehensive tests.
-```
-
-## Phase 6: Invoke Docs & Vision Agent
-
-After testing passes:
-
-```
-Use the Task tool with subagent_type="docs-vision" to run quality gates and documentation.
-```
-
-## Code Quality Checklist
-
-Before invoking testing:
-- [ ] All acceptance criteria from PRD met
-- [ ] All functions have type hints
-- [ ] All public APIs have docstrings
-- [ ] No anti-patterns
-- [ ] Local tests pass
-- [ ] Linting clean
-```
-
-### Template: test.md Command
-
-```markdown
----
-description: Run comprehensive tests for a feature
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
-# Testing Workflow
+## Checkpoint 4: Research (2000+ words)
 
-Testing feature: **specs/active/$ARGUMENTS**
+**Priority order:**
 
-## Phase 1: Load Context
+1. Pattern Library: `specs/guides/patterns/`
+2. Internal Guides: `specs/guides/`
+3. Context7: Library documentation
+4. WebSearch: Best practices
 
-1. Read the PRD:
-   - `specs/active/$ARGUMENTS/prd.md`
-   - Identify acceptance criteria
-   - Note testing requirements
+**Verify:** `wc -w specs/active/{slug}/research/plan.md`
 
-2. Read existing tests:
-   - Find related test files
-   - Understand existing patterns
+**Output**: "✓ Checkpoint 4 complete - Research (2000+ words)"
 
-## Phase 2: Test Coverage Check
-
-```bash
-# Run tests with coverage
-{TEST_COVERAGE_CMD}
-
-# Check coverage for modified modules
-{COVERAGE_CHECK_CMD}
-```
-
-## Phase 3: Create Missing Tests
-
-For each acceptance criterion without tests:
-
-1. Create unit tests
-2. Create integration tests
-3. Test edge cases
-
-### Test Patterns
-{TEST_PATTERNS_SECTION}
-
-## Phase 4: Run Full Test Suite
-
-```bash
-# Run all tests
-{TEST_CMD}
-
-# Run linting
-{LINT_CMD}
-```
-
-## Phase 5: Update Tasks
-
-Update `specs/active/$ARGUMENTS/tasks.md`:
-- Mark testing tasks complete
-- Note coverage percentage
-- Document any issues
-
-## Testing Checklist
-
-- [ ] All acceptance criteria have tests
-- [ ] 90%+ coverage for modified modules
-- [ ] Edge cases tested
-- [ ] Integration tests pass
-- [ ] No flaky tests
-```
-
-### Template: review.md Command
-
-```markdown
----
-description: Run quality gates and documentation review
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
-# Review Workflow
+## Checkpoint 5: Write PRD (3200+ words)
 
-Reviewing feature: **specs/active/$ARGUMENTS**
+Include:
+- Intelligence context (complexity, similar features, patterns)
+- Problem statement
+- Acceptance criteria (specific, measurable)
+- Technical approach with pattern references
+- Testing strategy
 
-## Phase 1: Quality Gates
+**Verify:** `wc -w specs/active/{slug}/prd.md`
 
-### Tests
-```bash
-{TEST_CMD}
-```
+**Output**: "✓ Checkpoint 5 complete - PRD (3200+ words)"
 
-### Linting
-```bash
-{LINT_CMD}
-```
-
-### Coverage
-```bash
-{COVERAGE_CMD}
-```
-
-## Phase 2: Anti-Pattern Scan
-
-Check for anti-patterns:
-
-```bash
-{ANTI_PATTERN_CHECKS}
-```
-
-## Phase 3: Documentation Check
-
-- [ ] All public APIs have docstrings
-- [ ] Complex logic has comments
-- [ ] README updated if needed
-- [ ] specs/guides/ updated if new patterns
-
-## Phase 4: Archive Workspace
-
-If all gates pass:
-
-```bash
-# Move to archive
-mv specs/active/$ARGUMENTS specs/archive/
-
-# Create archive summary
-```
-
-Create `specs/archive/$ARGUMENTS/ARCHIVED.md`:
-
-```markdown
-# Archived: {Feature Name}
-
-**Completed**: {date}
-**Duration**: {start to end}
-
-## Summary
-{What was implemented}
-
-## Files Changed
-{List of modified files}
-
-## Tests Added
-{List of new tests}
-
-## Lessons Learned
-{Any insights for future work}
-```
-
-## Review Checklist
-
-- [ ] All tests pass
-- [ ] All linting clean
-- [ ] 90%+ coverage
-- [ ] No anti-patterns
-- [ ] Documentation complete
-- [ ] Workspace archived
-```
-
-### Template: explore.md Command
-
-```markdown
----
-description: Explore and understand the codebase structure
-allowed-tools: Glob, Grep, Read, Bash
 ---
 
-# Codebase Exploration
+## Checkpoint 6: Task Breakdown
 
-Exploring: **$ARGUMENTS**
+Adapt to complexity level.
 
-## Project Structure
+**Output**: "✓ Checkpoint 6 complete - Tasks adapted to complexity"
 
-Use Glob and Grep to explore:
-
-```
-# Find files matching topic
-Glob(pattern="**/*{topic}*")
-
-# Search for patterns
-Grep(pattern="{topic}", path="src/")
-
-# Find classes
-Grep(pattern="class.*{topic}", path="src/")
-
-# Find functions
-Grep(pattern="def.*{topic}", path="src/")
-```
-
-## Common Patterns
-
-After finding relevant code, explain:
-
-1. How it's structured
-2. How components interact
-3. Key design patterns used
-4. Entry points and data flow
-```
-
-### Template: fix-issue.md Command
-
-```markdown
----
-description: Fix a GitHub issue
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch
 ---
 
-# Fix GitHub Issue
+## Checkpoint 7: Recovery Guide
 
-Fixing issue: **#$ARGUMENTS**
+Include intelligence context for session resumption.
 
-## Phase 1: Understand the Issue
+**Output**: "✓ Checkpoint 7 complete - Recovery guide with intelligence context"
 
-```bash
-# Fetch issue details
-gh issue view $ARGUMENTS
-```
+---
 
-## Phase 2: Find Related Code
-
-Search for affected code:
-
-```
-Grep(pattern="{keywords from issue}")
-Glob(pattern="**/*{affected area}*")
-```
-
-## Phase 3: Implement Fix
-
-1. Read the affected files
-2. Understand the problem
-3. Implement the fix
-4. Follow project code standards
-
-## Phase 4: Test the Fix
+## Checkpoint 8: Git Verification
 
 ```bash
-# Run related tests
-{TEST_CMD}
-
-# Run linting
-{LINT_CMD}
+git status --porcelain src/ | grep -v "^??"
 ```
 
-## Phase 5: Create PR
+**Output**: "✓ Checkpoint 8 complete - No source code modified"
 
-```bash
-# Commit with issue reference
-git add .
-git commit -m "fix: {description}
+---
 
-Fixes #$ARGUMENTS"
+## Final Summary
 
-# Create PR
-gh pr create --title "Fix #{issue}: {title}" --body "Fixes #$ARGUMENTS
+```
+PRD Phase Complete ✓
 
-## Changes
-- {change 1}
-- {change 2}
+Workspace: specs/active/{slug}/
+Complexity: [simple|medium|complex]
+Checkpoints: [6|8|10+] completed
 
-## Testing
-- {how tested}"
+Intelligence:
+- ✓ Pattern library consulted
+- ✓ Similar features analyzed
+- ✓ Tool selection optimized
+
+Next: Run `/implement {slug}`
 ```
 ```
 
-### Template: Expert Agent
+### Template: Intelligent Expert Agent
 
 ```markdown
 ---
 name: expert
-description: Implementation specialist. Writes production-quality code following project standards. Use for implementing features from PRDs.
-tools: Read, Write, Edit, Glob, Grep, Bash, Task, WebSearch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs
+description: Implementation specialist with pattern compliance. Use for implementing features from PRDs.
+tools: Read, Write, Edit, Glob, Grep, Bash, Task, WebSearch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs, mcp__zen__thinkdeep, mcp__zen__debug
 model: sonnet
 ---
 
-# Expert Agent
+# Expert Agent (Intelligent Edition)
 
-**Mission**: Write production-quality code that meets acceptance criteria and project standards.
+**Mission**: Write production-quality code following identified patterns.
 
-## Project Standards
+## Intelligence Layer
 
-{CODE_STANDARDS_TABLE}
+Before implementation:
+
+1. Load pattern analysis from PRD workspace
+2. Read similar implementations identified in PRD
+3. Consult pattern library
+4. Check tool strategy
 
 ## Workflow
 
-### 1. Load PRD and Tasks
+### 1. Load Intelligence Context
 
 ```
-Read("specs/active/{slug}/prd.md")
-Read("specs/active/{slug}/tasks.md")
+Read("specs/active/{slug}/patterns/analysis.md")
+Read("specs/active/{slug}/research/plan.md")
 ```
 
-### 2. Research Codebase
+### 2. Pattern Deep Dive
 
-```
-Read("CLAUDE.md")
-Grep(pattern="...", path="src/")
-Glob(pattern="src/**/*")
-```
+Read 3-5 similar implementations before coding:
+- Extract class structure
+- Note naming conventions
+- Understand error handling
 
-### 3. Research Libraries (if needed)
+### 3. Implement with Pattern Compliance
 
-```python
-mcp__context7__get-library-docs(
-    context7CompatibleLibraryID="...",
-    topic="...",
-    mode="code"
-)
-```
+Follow patterns from similar features.
+Document deviations with rationale.
 
-### 4. Implement
+### 4. Document New Patterns
 
-Follow code standards from CLAUDE.md.
+Add to `tmp/new-patterns.md` if discovering new patterns.
 
-### 5. Test Locally
+### 5. Test and Update Progress
 
 ```bash
 {TEST_CMD} && {LINT_CMD}
 ```
 
-### 6. Update Progress
+### 6. Auto-Invoke Testing Agent
 
-Edit `tasks.md` and `recovery.md` with current state.
-
-### 7. Auto-Invoke Testing Agent
-
-After implementation complete:
+After implementation:
 
 ```
-Task(
-    description="Run comprehensive tests",
-    prompt="Test specs/active/{slug}",
-    subagent_type="testing",
-    model="sonnet"
-)
+Task(subagent_type="testing", ...)
 ```
 
-## Anti-Patterns to Avoid
-
-{ANTI_PATTERNS_LIST}
-```
-
-### Template: PRD Agent
-
-```markdown
----
-name: prd
-description: Strategic planning specialist. Creates comprehensive PRDs, task breakdowns, and requirement structures. Use for new features requiring planning.
-tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs, mcp__sequential-thinking__sequentialthinking
-model: sonnet
----
-
-# PRD Agent
-
-**Mission**: Create comprehensive, research-grounded Product Requirements Documents.
-
-## Workflow
-
-### 1. Understand Request
-
-Read project context and search for related code.
-
-### 2. Deep Analysis
-
-Use Sequential Thinking for comprehensive analysis:
-
-```python
-mcp__sequential-thinking__sequentialthinking(
-    thought="Step 1: Analyze requirements",
-    thought_number=1,
-    total_thoughts=15,
-    next_thought_needed=True
-)
-```
-
-### 3. Research
-
-Use Context7 for library documentation.
-Use WebSearch for best practices.
-
-### 4. Create Workspace
-
-```bash
-mkdir -p specs/active/{slug}/research
-mkdir -p specs/active/{slug}/tmp
-```
-
-### 5. Write PRD
-
-Create comprehensive PRD with:
-- Problem statement
-- Acceptance criteria
-- Technical approach
-- Testing strategy
-
-### 6. Create Tasks
-
-Break down into actionable tasks.
-
-### 7. Create Recovery Guide
-
-Enable session resumption.
-
-## Quality Checks
-
-- [ ] PRD is 800+ words
-- [ ] Research is 500+ words
-- [ ] Acceptance criteria are specific
-- [ ] Tasks are measurable
-- [ ] Recovery guide is complete
-```
-
-### Template: Testing Agent
-
-```markdown
----
-name: testing
-description: Test creation specialist. Creates comprehensive test suites with 90%+ coverage. Use after implementation is complete.
-tools: Read, Write, Edit, Glob, Grep, Bash, mcp__context7__get-library-docs
-model: sonnet
----
-
-# Testing Agent
-
-**Mission**: Create comprehensive tests achieving 90%+ coverage.
-
-## Workflow
-
-### 1. Load Context
-
-Read PRD and identify acceptance criteria.
-
-### 2. Find Existing Tests
-
-```
-Glob(pattern="tests/**/*test*.py")
-```
-
-### 3. Check Coverage
-
-```bash
-{COVERAGE_CMD}
-```
-
-### 4. Create Tests
-
-For each acceptance criterion:
-- Unit tests
-- Integration tests
-- Edge case tests
-
-### 5. Run Tests
-
-```bash
-{TEST_CMD}
-```
-
-### 6. Verify Coverage
-
-```bash
-{COVERAGE_CHECK_CMD}
-```
-
-## Test Standards
-
-{TEST_STANDARDS}
-
-## Coverage Target
-
-- 90%+ for modified modules
-- All acceptance criteria tested
-- Edge cases covered
-```
-
-### Template: Docs-Vision Agent
-
-```markdown
----
-name: docs-vision
-description: Documentation and quality gate specialist. Runs quality checks, captures knowledge, and archives completed work. Use after testing passes.
-tools: Read, Write, Edit, Glob, Grep, Bash
-model: haiku
----
-
-# Docs-Vision Agent
-
-**Mission**: Ensure quality gates pass and archive completed work.
-
-## Workflow
-
-### 1. Run Quality Gates
-
-```bash
-{TEST_CMD}
-{LINT_CMD}
-{TYPE_CHECK_CMD}
-```
-
-### 2. Check Anti-Patterns
-
-```bash
-{ANTI_PATTERN_CHECKS}
-```
-
-### 3. Verify Documentation
-
-- All public APIs documented
-- Complex logic commented
-- Guides updated if needed
-
-### 4. Archive Workspace
-
-```bash
-mv specs/active/{slug} specs/archive/
-```
-
-### 5. Create Archive Summary
-
-Write ARCHIVED.md with completion summary.
-
-## Quality Gates
-
-- [ ] Tests pass
-- [ ] Linting clean
-- [ ] Coverage 90%+
-- [ ] No anti-patterns
-- [ ] Docs complete
-```
-
-### Template: settings.local.json
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "mcp__context7__resolve-library-id",
-      "mcp__context7__get-library-docs",
-      "mcp__sequential-thinking__sequentialthinking",
-      "mcp__zen__planner",
-      "mcp__zen__thinkdeep",
-      "mcp__zen__debug",
-      "mcp__zen__analyze",
-      "mcp__zen__chat",
-      "WebSearch",
-      "Bash(git:*)",
-      "Bash(gh:*)",
-      "Bash(mkdir:*)",
-      "Bash(mv:*)",
-      "Bash(rm:*)",
-      "Bash(test:*)",
-      "Bash(ls:*)",
-      "{CUSTOM_BUILD_PERMISSIONS}"
-    ]
-  }
-}
-```
-
-### Template: architecture.md Guide
-
-```markdown
-# Architecture Guide
-
-## Overview
-
-{PROJECT_DESCRIPTION}
-
-## Project Structure
-
-```
-{PROJECT_STRUCTURE}
-```
-
-## Key Components
-
-{COMPONENT_DESCRIPTIONS}
-
-## Design Patterns
-
-{DETECTED_PATTERNS}
-
-## Data Flow
-
-{DATA_FLOW_DESCRIPTION}
-```
-
-### Template: code-style.md Guide
-
-```markdown
-# Code Style Guide
-
-## {PRIMARY_LANGUAGE}
-
-### Type Hints
-{TYPE_HINT_RULES}
-
-### Docstrings
-{DOCSTRING_RULES}
-
-### Testing
-{TEST_RULES}
-
-### Formatting
-{FORMAT_RULES}
-
-## {SECONDARY_LANGUAGE}
-
-{SECONDARY_RULES}
-
-## Anti-Patterns
-
-{ANTI_PATTERN_RULES}
-```
-
-### Template: quality-gates.yaml
-
-```yaml
-gates:
-  tests:
-    command: "{TEST_CMD}"
-    required: true
-  lint:
-    command: "{LINT_CMD}"
-    required: true
-  coverage:
-    minimum: 90
-    required: true
-  anti_patterns:
-    - "{ANTI_PATTERN_1}"
-    - "{ANTI_PATTERN_2}"
+## Pattern Compliance Checklist
+
+- [ ] Follows structure from similar features
+- [ ] Uses identified naming conventions
+- [ ] Reuses base classes and mixins
+- [ ] Consistent error handling
+- [ ] Docstrings match project style
 ```
 
 ---
 
-## Part 7: Framework Knowledge Base
+## Part 9: Framework Knowledge Base
 
-### Python: Litestar
-
-```markdown
----
-name: litestar
-description: Expert knowledge for Litestar Python web framework. Use when working with Litestar routes, plugins, middleware, dependency injection, or configuration.
----
-
-# Litestar Framework Skill
-
-## Quick Reference
-
-### Plugin Development
-
-```python
-from litestar.plugins import InitPluginProtocol
-from litestar import Litestar
-
-class MyPlugin(InitPluginProtocol):
-    def __init__(self, config: MyConfig) -> None:
-        self.config = config
-
-    def on_app_init(self, app_config: AppConfig) -> AppConfig:
-        """Modify app config during initialization."""
-        app_config.state["my_plugin"] = self
-        return app_config
-```
-
-### Route Handlers
-
-```python
-from litestar import get, post, Controller
-from litestar.di import Provide
-
-@get("/items/{item_id:int}")
-async def get_item(item_id: int) -> Item:
-    return await fetch_item(item_id)
-
-class ItemController(Controller):
-    path = "/items"
-    dependencies = {"service": Provide(get_service)}
-
-    @get("/")
-    async def list_items(self, service: ItemService) -> list[Item]:
-        return await service.list_all()
-```
-
-### Dependency Injection
-
-```python
-from litestar.di import Provide
-
-def get_db_session(state: State) -> AsyncSession:
-    return state.db_session
-
-@get("/", dependencies={"session": Provide(get_db_session)})
-async def handler(session: AsyncSession) -> Response:
-    ...
-```
-
-### Middleware
-
-```python
-from litestar.middleware import AbstractMiddleware
-from litestar.types import ASGIApp, Receive, Scope, Send
-
-class MyMiddleware(AbstractMiddleware):
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        # Pre-processing
-        await self.app(scope, receive, send)
-        # Post-processing
-```
-
-## Context7 Lookup
-
-```python
-mcp__context7__get-library-docs(
-    context7CompatibleLibraryID="/litestar-org/litestar",
-    topic="plugins middleware dependency-injection",
-    mode="code"
-)
-```
-```
-
-### Python: FastAPI
-
-```markdown
----
-name: fastapi
-description: Expert knowledge for FastAPI web framework. Use when building FastAPI routes, dependencies, or middleware.
----
-
-# FastAPI Framework Skill
-
-## Quick Reference
-
-### Route Handlers
-
-```python
-from fastapi import FastAPI, Depends, HTTPException
-
-app = FastAPI()
-
-@app.get("/items/{item_id}")
-async def get_item(item_id: int) -> Item:
-    return await fetch_item(item_id)
-
-@app.post("/items")
-async def create_item(item: ItemCreate) -> Item:
-    return await save_item(item)
-```
-
-### Dependencies
-
-```python
-from fastapi import Depends
-
-async def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-@app.get("/items")
-async def list_items(db: Session = Depends(get_db)):
-    return db.query(Item).all()
-```
-
-### Middleware
-
-```python
-from fastapi.middleware.cors import CORSMiddleware
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-```
-
-## Context7 Lookup
-
-```python
-mcp__context7__get-library-docs(
-    context7CompatibleLibraryID="/tiangolo/fastapi",
-    topic="dependencies middleware",
-    mode="code"
-)
-```
-```
-
-### Python: pytest
-
-```markdown
----
-name: pytest
-description: Expert knowledge for pytest testing framework. Use when writing tests, fixtures, or test configuration.
----
-
-# pytest Testing Skill
-
-## Quick Reference
-
-### Basic Tests
-
-```python
-import pytest
-
-def test_addition():
-    assert 1 + 1 == 2
-
-def test_exception():
-    with pytest.raises(ValueError):
-        raise ValueError("test")
-```
-
-### Fixtures
-
-```python
-import pytest
-
-@pytest.fixture
-def sample_data():
-    return {"key": "value"}
-
-@pytest.fixture
-async def async_client():
-    async with AsyncClient(app=app) as client:
-        yield client
-
-def test_with_fixture(sample_data):
-    assert sample_data["key"] == "value"
-```
-
-### Async Tests
-
-```python
-import pytest
-
-@pytest.mark.asyncio
-async def test_async_function():
-    result = await async_operation()
-    assert result is not None
-```
-
-### Parametrize
-
-```python
-@pytest.mark.parametrize("input,expected", [
-    (1, 2),
-    (2, 4),
-    (3, 6),
-])
-def test_double(input, expected):
-    assert input * 2 == expected
-```
-
-## Context7 Lookup
-
-```python
-mcp__context7__get-library-docs(
-    context7CompatibleLibraryID="/pytest-dev/pytest",
-    topic="fixtures parametrize async",
-    mode="code"
-)
-```
-```
-
-### JavaScript: React
-
-```markdown
----
-name: react
-description: Expert knowledge for React 18+ development with TypeScript. Use when building React components, managing state, or integrating with APIs.
----
-
-# React Framework Skill
-
-## Quick Reference
-
-### Component Patterns
-
-```tsx
-import { useState, useEffect } from 'react';
-
-interface Props {
-  title: string;
-  items: Item[];
-  onSelect?: (item: Item) => void;
-}
-
-export function ItemList({ title, items, onSelect }: Props) {
-  const [selected, setSelected] = useState<Item | null>(null);
-
-  const handleSelect = (item: Item) => {
-    setSelected(item);
-    onSelect?.(item);
-  };
-
-  return (
-    <div>
-      <h2>{title}</h2>
-      <ul>
-        {items.map(item => (
-          <li key={item.id} onClick={() => handleSelect(item)}>
-            {item.name}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-```
-
-### Custom Hooks
-
-```tsx
-export function useItems() {
-  const [items, setItems] = useState<Item[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch('/api/items')
-      .then(res => res.json())
-      .then(setItems)
-      .finally(() => setLoading(false));
-  }, []);
-
-  return { items, loading };
-}
-```
-
-### Vite + React Setup
-
-```tsx
-// main.tsx
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-```
-
-## Context7 Lookup
-
-```python
-mcp__context7__get-library-docs(
-    context7CompatibleLibraryID="/facebook/react",
-    topic="hooks components typescript",
-    mode="code"
-)
-```
-```
-
-### JavaScript: Vue
-
-```markdown
----
-name: vue
-description: Expert knowledge for Vue 3 development with Composition API and TypeScript. Use when building Vue components or composables.
----
-
-# Vue 3 Framework Skill
-
-## Quick Reference
-
-### Component with Composition API
-
-```vue
-<script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-
-interface Props {
-  title: string;
-}
-
-const props = defineProps<Props>();
-const emit = defineEmits<{
-  select: [item: Item];
-}>();
-
-const items = ref<Item[]>([]);
-const loading = ref(true);
-
-const filteredItems = computed(() =>
-  items.value.filter(i => i.active)
-);
-
-onMounted(async () => {
-  items.value = await fetchItems();
-  loading.value = false;
-});
-
-function handleSelect(item: Item) {
-  emit('select', item);
-}
-</script>
-
-<template>
-  <div>
-    <h2>{{ title }}</h2>
-    <ul v-if="!loading">
-      <li
-        v-for="item in filteredItems"
-        :key="item.id"
-        @click="handleSelect(item)"
-      >
-        {{ item.name }}
-      </li>
-    </ul>
-  </div>
-</template>
-```
-
-### Composables
-
-```ts
-// composables/useItems.ts
-import { ref, onMounted } from 'vue';
-
-export function useItems() {
-  const items = ref<Item[]>([]);
-  const loading = ref(true);
-
-  onMounted(async () => {
-    items.value = await fetch('/api/items').then(r => r.json());
-    loading.value = false;
-  });
-
-  return { items, loading };
-}
-```
-
-## Context7 Lookup
-
-```python
-mcp__context7__get-library-docs(
-    context7CompatibleLibraryID="/vuejs/core",
-    topic="composition-api composables typescript",
-    mode="code"
-)
-```
-```
-
-### JavaScript: Svelte
-
-```markdown
----
-name: svelte
-description: Expert knowledge for Svelte 5 development with runes. Use when building Svelte components or stores.
----
-
-# Svelte 5 Framework Skill
-
-## Quick Reference
-
-### Component with Runes
-
-```svelte
-<script lang="ts">
-  interface Props {
-    title: string;
-    items: Item[];
-    onselect?: (item: Item) => void;
-  }
-
-  let { title, items, onselect }: Props = $props();
-
-  let selected = $state<Item | null>(null);
-
-  let filteredItems = $derived(items.filter(i => i.active));
-
-  function handleSelect(item: Item) {
-    selected = item;
-    onselect?.(item);
-  }
-</script>
-
-<div>
-  <h2>{title}</h2>
-  <ul>
-    {#each filteredItems as item (item.id)}
-      <li onclick={() => handleSelect(item)}>
-        {item.name}
-      </li>
-    {/each}
-  </ul>
-</div>
-```
-
-### Stores
-
-```ts
-// stores.svelte.ts
-class ItemStore {
-  items = $state<Item[]>([]);
-  loading = $state(true);
-
-  async load() {
-    this.items = await fetch('/api/items').then(r => r.json());
-    this.loading = false;
-  }
-}
-
-export const itemStore = new ItemStore();
-```
-
-## Context7 Lookup
-
-```python
-mcp__context7__get-library-docs(
-    context7CompatibleLibraryID="/sveltejs/svelte",
-    topic="runes state effects",
-    mode="code"
-)
-```
-```
-
-### JavaScript: Angular
-
-```markdown
----
-name: angular
-description: Expert knowledge for Angular 18+ with signals. Use when building Angular components, services, or modules.
----
-
-# Angular Framework Skill
-
-## Quick Reference
-
-### Component with Signals
-
-```typescript
-import { Component, signal, computed, input, output } from '@angular/core';
-
-@Component({
-  selector: 'app-item-list',
-  standalone: true,
-  template: `
-    <h2>{{ title() }}</h2>
-    <ul>
-      @for (item of filteredItems(); track item.id) {
-        <li (click)="handleSelect(item)">{{ item.name }}</li>
-      }
-    </ul>
-  `
-})
-export class ItemListComponent {
-  title = input.required<string>();
-  items = input<Item[]>([]);
-  itemSelected = output<Item>();
-
-  selected = signal<Item | null>(null);
-
-  filteredItems = computed(() =>
-    this.items().filter(i => i.active)
-  );
-
-  handleSelect(item: Item) {
-    this.selected.set(item);
-    this.itemSelected.emit(item);
-  }
-}
-```
-
-### Services
-
-```typescript
-import { Injectable, signal, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-
-@Injectable({ providedIn: 'root' })
-export class ItemService {
-  private http = inject(HttpClient);
-
-  items = signal<Item[]>([]);
-  loading = signal(true);
-
-  async loadItems() {
-    this.items.set(await this.http.get<Item[]>('/api/items').toPromise());
-    this.loading.set(false);
-  }
-}
-```
-
-## Context7 Lookup
-
-```python
-mcp__context7__get-library-docs(
-    context7CompatibleLibraryID="/angular/angular",
-    topic="signals components services",
-    mode="code"
-)
-```
-```
-
-### JavaScript: Vite
-
-```markdown
----
-name: vite
-description: Expert knowledge for Vite build tool. Use when configuring Vite, creating plugins, or managing HMR.
----
-
-# Vite Build Tool Skill
-
-## Quick Reference
-
-### Configuration
-
-```typescript
-// vite.config.ts
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    proxy: {
-      '/api': 'http://localhost:8000'
-    }
-  },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom']
-        }
-      }
-    }
-  }
-});
-```
-
-### Custom Plugin
-
-```typescript
-import type { Plugin } from 'vite';
-
-export function myPlugin(): Plugin {
-  return {
-    name: 'my-plugin',
-    configResolved(config) {
-      console.log('Config resolved:', config);
-    },
-    transform(code, id) {
-      if (id.endsWith('.special')) {
-        return transformCode(code);
-      }
-    }
-  };
-}
-```
-
-## Context7 Lookup
-
-```python
-mcp__context7__get-library-docs(
-    context7CompatibleLibraryID="/vitejs/vite",
-    topic="configuration plugins",
-    mode="code"
-)
-```
-```
-
-### JavaScript: Inertia.js
-
-```markdown
----
-name: inertia
-description: Expert knowledge for Inertia.js with various frontend frameworks. Use when building SPAs with server-side routing.
----
-
-# Inertia.js Integration Skill
-
-## Quick Reference
-
-### React Setup
-
-```tsx
-import { createInertiaApp } from '@inertiajs/react';
-import { createRoot } from 'react-dom/client';
-
-createInertiaApp({
-  resolve: (name) => {
-    const pages = import.meta.glob('./pages/**/*.tsx', { eager: true });
-    return pages[`./pages/${name}.tsx`];
-  },
-  setup({ el, App, props }) {
-    createRoot(el).render(<App {...props} />);
-  },
-});
-```
-
-### Vue Setup
-
-```typescript
-import { createApp, h } from 'vue';
-import { createInertiaApp } from '@inertiajs/vue3';
-
-createInertiaApp({
-  resolve: (name) => {
-    const pages = import.meta.glob('./pages/**/*.vue', { eager: true });
-    return pages[`./pages/${name}.vue`];
-  },
-  setup({ el, App, props, plugin }) {
-    createApp({ render: () => h(App, props) })
-      .use(plugin)
-      .mount(el);
-  },
-});
-```
-
-### Page Component
-
-```tsx
-import { Head, Link, usePage } from '@inertiajs/react';
-
-interface PageProps {
-  items: Item[];
-}
-
-export default function ItemsPage({ items }: PageProps) {
-  const { flash } = usePage().props;
-
-  return (
-    <>
-      <Head title="Items" />
-      {flash.success && <div>{flash.success}</div>}
-      <ul>
-        {items.map(item => (
-          <li key={item.id}>
-            <Link href={`/items/${item.id}`}>{item.name}</Link>
-          </li>
-        ))}
-      </ul>
-    </>
-  );
-}
-```
-
-## Context7 Lookup
-
-```python
-mcp__context7__get-library-docs(
-    context7CompatibleLibraryID="/inertiajs/inertia",
-    topic="pages links forms",
-    mode="code"
-)
-```
-```
-
-### JavaScript: Vitest
-
-```markdown
----
-name: vitest
-description: Expert knowledge for Vitest testing framework. Use when writing tests for Vite-based projects.
----
-
-# Vitest Testing Skill
-
-## Quick Reference
-
-### Basic Tests
-
-```typescript
-import { describe, it, expect, vi } from 'vitest';
-
-describe('Calculator', () => {
-  it('adds numbers', () => {
-    expect(1 + 1).toBe(2);
-  });
-
-  it('throws on invalid input', () => {
-    expect(() => divide(1, 0)).toThrow('Division by zero');
-  });
-});
-```
-
-### Mocking
-
-```typescript
-import { vi, describe, it, expect } from 'vitest';
-
-vi.mock('./api', () => ({
-  fetchItems: vi.fn(() => Promise.resolve([{ id: 1 }]))
-}));
-
-describe('ItemService', () => {
-  it('fetches items', async () => {
-    const items = await service.getItems();
-    expect(items).toHaveLength(1);
-  });
-});
-```
-
-### Component Testing
-
-```typescript
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { describe, it, expect } from 'vitest';
-
-describe('Button', () => {
-  it('calls onClick when clicked', async () => {
-    const onClick = vi.fn();
-    render(<Button onClick={onClick}>Click me</Button>);
-
-    await userEvent.click(screen.getByRole('button'));
-
-    expect(onClick).toHaveBeenCalled();
-  });
-});
-```
-
-## Context7 Lookup
-
-```python
-mcp__context7__get-library-docs(
-    context7CompatibleLibraryID="/vitest-dev/vitest",
-    topic="mocking testing-library",
-    mode="code"
-)
-```
-```
+(Same as before - Litestar, FastAPI, React, Vue, Svelte, Angular, Vite, Inertia, pytest, vitest skill templates)
 
 ---
 
 ## Execution Instructions
 
-Now execute this bootstrap:
+Now execute this intelligent bootstrap:
 
-1. **Run Preflight Checks** (Part 1)
-2. **If fresh**: Run Detection (Part 2), then Generation (Part 3)
-3. **If existing**: Run Alignment (Part 4)
-4. **Run Verification** (Part 5)
-5. **Report Results**
+1. **Run Intelligent Project Analysis** (Part 2)
+2. **Detect MCP Tools** (Part 3)
+3. **Create Adaptive Infrastructure** (Part 4)
+4. **If fresh**: Run Generation (Part 5)
+5. **If existing**: Run Alignment (Part 6)
+6. **Run Verification** (Part 7)
+7. **Report Results** with intelligence summary
 
-Use the embedded templates (Part 6) and framework knowledge (Part 7) to generate all files.
-
-**Begin bootstrap now.**
+**Begin intelligent bootstrap now.**
