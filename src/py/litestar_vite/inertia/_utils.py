@@ -1,7 +1,9 @@
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from litestar_vite.inertia.types import InertiaHeaderType
 
 

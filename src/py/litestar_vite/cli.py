@@ -1,10 +1,13 @@
+import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from click import Choice, Context, group, option
 from click import Path as ClickPath
 from litestar.cli._utils import LitestarEnv, LitestarGroup  # pyright: ignore[reportPrivateImportUsage]
 
+from litestar_vite.config import DeployConfig, ViteConfig
+from litestar_vite.deploy import ViteDeployer, format_bytes
 from litestar_vite.plugin import _resolve_litestar_version  # pyright: ignore[reportPrivateUsage]
 
 if TYPE_CHECKING:
@@ -30,7 +33,7 @@ FRAMEWORK_CHOICES = [
 ]
 
 
-def _format_command(command: "Optional[list[str]]") -> str:
+def _format_command(command: "list[str] | None") -> str:
     """Join a command list for display."""
 
     return " ".join(command or [])
@@ -69,13 +72,89 @@ vite_config = ViteConfig(
     console.print(Panel(config_snippet, title="app.py", border_style="dim"))
 
 
+def _coerce_option_value(value: str) -> object:
+    """Convert CLI key/value strings into basic Python types."""
+
+    lowered = value.lower()
+    if lowered in {"true", "false"}:
+        return lowered == "true"
+    if value.isdigit():
+        return int(value)
+    try:
+        return float(value)
+    except ValueError:
+        return value
+
+
+def _parse_storage_options(values: tuple[str, ...]) -> dict[str, object]:
+    """Parse repeated --storage-option entries into a dictionary."""
+
+    options: dict[str, object] = {}
+    for item in values:
+        if "=" not in item:
+            msg = f"Invalid storage option '{item}'. Expected key=value."
+            raise ValueError(msg)
+        key, raw = item.split("=", 1)
+        options[key] = _coerce_option_value(raw)
+    return options
+
+
+def _build_deploy_config(
+    base_config: ViteConfig,
+    storage: str | None,
+    storage_options: dict[str, object],
+    no_delete: bool,
+) -> DeployConfig:
+    """Resolve deploy configuration from CLI overrides."""
+
+    deploy_config = base_config.deploy_config
+    if deploy_config is None:
+        msg = "Deployment is not configured. Set ViteConfig.deploy to enable."
+        raise SystemExit(msg)
+
+    merged_options = {**deploy_config.storage_options, **storage_options}
+    deploy_config = deploy_config.with_overrides(
+        storage_backend=storage,
+        storage_options=merged_options,
+        delete_orphaned=False if no_delete else None,
+    )
+
+    if not deploy_config.storage_backend:
+        msg = "Storage backend is required (e.g., gcs://bucket/assets)."
+        raise SystemExit(msg)
+
+    return deploy_config
+
+
+def _run_vite_build(config: ViteConfig, root_dir: Path, console: Any, no_build: bool) -> None:
+    """Run Vite build unless skipped."""
+
+    if no_build:
+        console.print("[dim]Skipping Vite build (--no-build).[/]")
+        return
+
+    from litestar_vite.exceptions import ViteExecutionError
+    from litestar_vite.plugin import set_environment
+
+    console.rule("[yellow]Starting Vite build process[/]", align="left")
+    if config.set_environment:
+        set_environment(config=config, asset_url_override=config.base_url or config.asset_url)
+    os.environ["VITE_BASE_URL"] = config.base_url or config.asset_url or "/"
+    try:
+        config.executor.execute(config.build_command, cwd=root_dir)
+        console.print("[bold green]✓ Build complete[/]")
+    except ViteExecutionError as exc:
+        msg = f"Build failed: {exc!s}"
+        raise SystemExit(msg) from exc
+
+
 @group(cls=LitestarGroup, name="assets")
 def vite_group() -> None:
     """Manage Vite Tasks."""
 
 
 def _select_framework_template(
-    template: "Optional[str]",
+    template: "str | None",
     no_prompt: bool,
 ) -> "tuple[str, Any]":
     """Select and validate the framework template.
@@ -122,7 +201,7 @@ def _select_framework_template(
 
 def _prompt_for_options(
     framework: "Any",
-    enable_ssr: "Optional[bool]",
+    enable_ssr: "bool | None",
     tailwind: bool,
     enable_types: bool,
     no_prompt: bool,
@@ -304,15 +383,15 @@ def vite_doctor(
 )
 def vite_init(
     ctx: "Context",
-    template: "Optional[str]",
-    vite_port: "Optional[int]",
-    enable_ssr: "Optional[bool]",
-    asset_url: "Optional[str]",
-    root_path: "Optional[Path]",
+    template: "str | None",
+    vite_port: "int | None",
+    enable_ssr: "bool | None",
+    asset_url: "str | None",
+    root_path: "Path | None",
     frontend_dir: str,
-    bundle_path: "Optional[Path]",
-    resource_path: "Optional[Path]",
-    public_path: "Optional[Path]",
+    bundle_path: "Path | None",
+    resource_path: "Path | None",
+    public_path: "Path | None",
     tailwind: "bool",
     enable_types: "bool",
     overwrite: "bool",
@@ -372,11 +451,11 @@ def vite_init(
 
     # Create template context
     project_name = root_path.name or "my-project"
-    is_inertia = framework.type in (
+    is_inertia = framework.type in {
         FrameworkType.REACT_INERTIA,
         FrameworkType.VUE_INERTIA,
         FrameworkType.SVELTE_INERTIA,
-    )
+    }
     context = TemplateContext(
         project_name=project_name,
         framework=framework,
@@ -459,15 +538,109 @@ def vite_build(app: "Litestar", verbose: "bool") -> None:
     if plugin.config.set_environment:
         set_environment(config=plugin.config)
 
-    if plugin.config.executor:
-        try:
-            root_dir = Path(plugin.config.root_dir or Path.cwd())
-            plugin.config.executor.execute(plugin.config.build_command, cwd=root_dir)
-            console.print("[bold green] Assets built.[/]")
-        except ViteExecutionError as e:
-            console.print(f"[bold red] There was an error building the assets: {e!s}[/]")
+    executor = plugin.config.executor
+    try:
+        root_dir = Path(plugin.config.root_dir or Path.cwd())
+        executor.execute(plugin.config.build_command, cwd=root_dir)
+        console.print("[bold green] Assets built.[/]")
+    except ViteExecutionError as e:
+        console.print(f"[bold red] There was an error building the assets: {e!s}[/]")
+
+
+@vite_group.command(
+    name="deploy",
+    help="Build and deploy Vite assets to remote storage via fsspec.",
+)
+@option("--storage", type=str, help="Override storage backend URL (e.g., gcs://bucket/assets).")
+@option(
+    "--storage-option",
+    type=str,
+    multiple=True,
+    help="Storage option key=value forwarded to fsspec (repeat for multiple).",
+)
+@option("--no-build", is_flag=True, help="Deploy existing build without running Vite build.")
+@option("--dry-run", is_flag=True, help="Preview upload/delete plan without making changes.")
+@option("--no-delete", is_flag=True, help="Do not delete orphaned remote files.")
+@option(
+    "--verbose",
+    is_flag=True,
+    help="Enable verbose output. Install providers separately: gcsfs for gcs://, s3fs for s3://, adlfs for abfs://.",
+)
+def vite_deploy(  # noqa: PLR0915
+    app: "Litestar",
+    storage: "str | None",
+    storage_option: "tuple[str, ...]",
+    no_build: bool,
+    dry_run: bool,
+    no_delete: bool,
+    verbose: bool,
+) -> None:
+    """Build and deploy assets to CDN-backed storage."""
+    import sys
+    from pathlib import Path
+
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+
+    from litestar_vite.plugin import VitePlugin
+
+    if verbose:
+        app.debug = True
+
+    plugin = app.plugins.get(VitePlugin)
+    config = plugin.config
+
+    try:
+        storage_options = _parse_storage_options(storage_option)
+        deploy_config = _build_deploy_config(config, storage, storage_options, no_delete)
+    except ValueError as exc:  # pragma: no cover - CLI validation path
+        console.print(f"[red]{exc}[/]")
+        sys.exit(1)
+    except SystemExit as exc:
+        console.print(f"[red]{exc}[/]")
+        sys.exit(1)
+
+    root_dir = Path(config.root_dir or Path.cwd())
+    bundle_dir = config.bundle_dir
+    try:
+        _run_vite_build(config, root_dir, console, no_build)
+    except SystemExit as exc:
+        console.print(f"[red]{exc}[/]")
+        sys.exit(1)
+
+    console.rule("[yellow]Deploying assets[/]", align="left")
+    console.print(f"Storage: {deploy_config.storage_backend}")
+    console.print(f"Delete orphaned: {deploy_config.delete_orphaned}")
+    if dry_run:
+        console.print("[dim]Dry-run enabled. No changes will be made.[/]")
+
+    try:
+        deployer = ViteDeployer(
+            bundle_dir=bundle_dir,
+            manifest_name=config.manifest_name,
+            deploy_config=deploy_config,
+        )
+    except ImportError as exc:  # pragma: no cover - backend import errors
+        console.print(f"[red]Missing backend dependency: {exc}[/]")
+        console.print("Install provider package, e.g., `pip install gcsfs` for gcs:// URLs.")
+        sys.exit(1)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        sys.exit(1)
+
+    def _on_progress(action: str, path: str) -> None:
+        symbol = "+" if action == "upload" else "-"
+        console.print(f"  {symbol} {path}")
+
+    result = deployer.sync(dry_run=dry_run, on_progress=_on_progress)
+
+    console.rule("[yellow]Deploy summary[/]", align="left")
+    console.print(f"Uploaded: {len(result.uploaded)} files ({format_bytes(result.uploaded_bytes)})")
+    console.print(f"Deleted:  {len(result.deleted)} files ({format_bytes(result.deleted_bytes)})")
+    console.print(f"Remote:   {deployer.remote_path}")
+    if result.dry_run:
+        console.print("[dim]No changes applied (dry-run).[/]")
     else:
-        console.print("[red]Executor not configured.[/]")
+        console.print("[bold green]✓ Deploy complete[/]")
 
 
 @vite_group.command(
@@ -541,9 +714,9 @@ def vite_serve(app: "Litestar", verbose: "bool") -> None:
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def export_routes(
     app: "Litestar",
-    output: "Optional[Path]",
-    only: "Optional[str]",
-    exclude: "Optional[str]",
+    output: "Path | None",
+    only: "str | None",
+    exclude: "str | None",
     include_components: "bool",
     verbose: "bool",
 ) -> None:
@@ -670,7 +843,7 @@ def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
 
 
 def _run_openapi_ts(
-    types_config: Any, root_dir: Any, verbose: bool, install_command: "Optional[list[str]]" = None
+    types_config: Any, root_dir: Any, verbose: bool, install_command: "list[str] | None" = None
 ) -> None:
     """Run @hey-api/openapi-ts to generate TypeScript types.
 

@@ -2,16 +2,10 @@ import { defineConfig } from "vite";
 import angular from "@analogjs/vite-plugin-angular";
 import litestar from "litestar-vite-plugin";
 
-const ASSET_URL = process.env.ASSET_URL || "{{ asset_url }}";
-const VITE_PORT = Number(process.env.VITE_PORT || "{{ vite_port }}");
-const VITE_HOST = process.env.VITE_HOST || "127.0.0.1";
-const LITESTAR_PORT = Number(process.env.LITESTAR_PORT || "{{ litestar_port }}");
-
 export default defineConfig({
-  base: ASSET_URL,
   server: {
-    host: VITE_HOST,
-    port: VITE_PORT,
+    host: process.env.VITE_HOST || "127.0.0.1",
+    port: Number(process.env.VITE_PORT || "{{ vite_port }}"),
     cors: true,
     hmr: {
       host: "localhost",
@@ -22,9 +16,6 @@ export default defineConfig({
     angular(),
     litestar({
       input: ["{{ resource_dir }}/main.ts"],
-      assetUrl: ASSET_URL,
-      bundleDirectory: "{{ bundle_dir }}",
-      resourceDirectory: "{{ resource_dir }}",
 {% if enable_types %}
       types: {
         enabled: true,

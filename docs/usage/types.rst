@@ -45,11 +45,17 @@ Import the generated types and route helper:
 
 .. code-block:: typescript
 
-    import { route } from './lib/api/routes';
+    import { route, serverRoutes } from './lib/api/routes';
     import type { User } from './lib/api/types.gen';
 
     // Type-safe URL generation
     const url = route('users.show', { id: 123 });
+
+    // Access the typed route map (alias of routes)
+    const apiBase = serverRoutes['users.show'];
+
+    // window.serverRoutes is also typed when route metadata is injected
+    window.serverRoutes?.['users.show'];
 
     // Type-safe API calls
     const response = await fetch(url);

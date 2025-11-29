@@ -18,7 +18,10 @@ Example::
     )
 """
 
+from __future__ import annotations
+
 import importlib.metadata
+import json
 import os
 import signal
 import subprocess
@@ -37,20 +40,24 @@ from litestar.exceptions import WebSocketDisconnect
 from litestar.middleware import AbstractMiddleware, DefineMiddleware
 from litestar.plugins import CLIPlugin, InitPluginProtocol
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
+from websockets.typing import Subprotocol
 
-from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES
+from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, TypeGenConfig, ViteConfig
 from litestar_vite.exceptions import ViteProcessError
 
+# Disconnect exceptions that should be silently ignored during WebSocket shutdown
+_DISCONNECT_EXCEPTIONS = (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed)
+
 # Cache debug flag check to avoid repeated os.environ lookups
-_VITE_PROXY_DEBUG: bool | None = None
+_vite_proxy_debug: bool | None = None
 
 
 def _is_proxy_debug() -> bool:
     """Check if VITE_PROXY_DEBUG is enabled (cached)."""
-    global _VITE_PROXY_DEBUG  # noqa: PLW0603
-    if _VITE_PROXY_DEBUG is None:
-        _VITE_PROXY_DEBUG = os.environ.get("VITE_PROXY_DEBUG", "").lower() in ("1", "true", "yes")
-    return _VITE_PROXY_DEBUG
+    global _vite_proxy_debug  # noqa: PLW0603
+    if _vite_proxy_debug is None:
+        _vite_proxy_debug = os.environ.get("VITE_PROXY_DEBUG", "").lower() in ("1", "true", "yes")
+    return _vite_proxy_debug
 
 
 def _configure_proxy_logging() -> None:
@@ -94,14 +101,60 @@ if TYPE_CHECKING:
         Scope,
         Send,
     )
+    from websockets.typing import Subprotocol
 
-    from litestar_vite.config import ViteConfig
     from litestar_vite.executor import JSExecutor
     from litestar_vite.loader import ViteAssetLoader
     from litestar_vite.spa import ViteSPAHandler
 
 
-def set_environment(config: "ViteConfig") -> None:
+def _write_runtime_config_file(config: ViteConfig) -> str:
+    """Write a JSON handoff file for the Vite plugin and return its path."""
+
+    root = config.root_dir or Path.cwd()
+    path = Path(root) / ".litestar-vite.json"
+    types = config.types if isinstance(config.types, TypeGenConfig) else None
+    deploy = config.deploy_config
+    resource_dir = config.resource_dir
+    resource_dir_value = str(resource_dir) if resource_dir != Path("src") else None
+    bundle_dir_value = str(config.bundle_dir)
+    ssr_out_dir_value = str(config.ssr_output_dir) if config.ssr_output_dir else None
+    if resource_dir_value is None:
+        # Keep JS defaults (resources/bootstrap/ssr)
+        ssr_out_dir_value = None
+
+    payload = {
+        "assetUrl": config.asset_url,
+        "baseUrl": config.base_url,
+        "bundleDir": bundle_dir_value,
+        "resourceDir": resource_dir_value,
+        "publicDir": str(config.public_dir),
+        "manifest": config.manifest_name,
+        "mode": config.mode,
+        "ssrOutDir": ssr_out_dir_value,
+        "types": {
+            "enabled": types.enabled,
+            "output": str(types.output),
+            "openapiPath": str(types.openapi_path),
+            "routesPath": str(types.routes_path),
+            "generateZod": types.generate_zod,
+            "generateSdk": types.generate_sdk,
+        }
+        if types
+        else None,
+        "deploy": {
+            "storageBackend": deploy.storage_backend if deploy else None,
+            "deleteOrphaned": deploy.delete_orphaned if deploy else None,
+            "includeManifest": deploy.include_manifest if deploy else None,
+            "contentTypes": deploy.content_types if deploy else None,
+        },
+    }
+
+    path.write_text(json.dumps(payload, indent=2))
+    return str(path)
+
+
+def set_environment(config: ViteConfig, asset_url_override: str | None = None) -> None:
     """Configure environment variables for Vite integration.
 
     Sets environment variables that can be used by both the Python backend
@@ -109,9 +162,15 @@ def set_environment(config: "ViteConfig") -> None:
 
     Args:
         config: The Vite configuration.
+        asset_url_override: Optional asset URL to force (e.g., CDN base during build).
     """
     litestar_version = _resolve_litestar_version()
-    os.environ.setdefault("ASSET_URL", config.asset_url)
+    asset_url = asset_url_override or config.asset_url
+    base_url = config.base_url or asset_url
+    if asset_url:
+        os.environ.setdefault("ASSET_URL", asset_url)
+    if base_url:
+        os.environ.setdefault("VITE_BASE_URL", base_url)
     os.environ.setdefault("VITE_ALLOW_REMOTE", str(True))
     # VITE_PORT must be force-set because _ensure_proxy_target() may have picked a new port
     os.environ["VITE_PORT"] = str(config.port)
@@ -125,6 +184,9 @@ def set_environment(config: "ViteConfig") -> None:
     if config.is_dev_mode:
         os.environ.setdefault("VITE_DEV_MODE", str(config.is_dev_mode))
 
+    config_path = _write_runtime_config_file(config)
+    os.environ["LITESTAR_VITE_CONFIG_PATH"] = config_path
+
 
 def set_app_environment(app: "Litestar") -> None:
     """Set environment variables derived from the Litestar app instance.
@@ -137,9 +199,11 @@ def set_app_environment(app: "Litestar") -> None:
     """
     # Export OpenAPI schema path for Vite plugin health checks
     openapi_config = app.openapi_config
-    if openapi_config is not None and openapi_config.path is not None and isinstance(openapi_config.path, str):
-        # The path attribute contains the schema endpoint path (default: "/schema")
-        os.environ.setdefault("LITESTAR_OPENAPI_PATH", openapi_config.path)
+    if openapi_config is not None:
+        path = getattr(openapi_config, "path", None)
+        if isinstance(path, str) and path:
+            # The path attribute contains the schema endpoint path (default: "/schema")
+            os.environ.setdefault("LITESTAR_OPENAPI_PATH", path)
 
 
 def _resolve_litestar_version() -> str:
@@ -391,7 +455,49 @@ def _extract_subprotocols(scope: dict[str, Any]) -> list[str]:
     return []
 
 
-def create_vite_hmr_handler(
+async def _run_websocket_proxy(
+    socket: Any,
+    upstream: Any,
+) -> None:
+    """Run bidirectional WebSocket proxy between client and upstream.
+
+    Args:
+        socket: The client WebSocket connection (Litestar WebSocket).
+        upstream: The upstream WebSocket connection (websockets client).
+    """
+
+    async def client_to_upstream() -> None:
+        """Forward messages from browser to Vite."""
+        try:
+            while True:
+                data = await socket.receive_text()
+                await upstream.send(data)
+        except (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed):
+            pass
+        finally:
+            with suppress(websockets.ConnectionClosed):
+                await upstream.close()
+
+    async def upstream_to_client() -> None:
+        """Forward messages from Vite to browser."""
+        try:
+            async for msg in upstream:
+                if isinstance(msg, str):
+                    await socket.send_text(msg)
+                else:
+                    await socket.send_bytes(msg)
+        except (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed):
+            pass
+        finally:
+            with suppress(anyio.ClosedResourceError, WebSocketDisconnect):
+                await socket.close()
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(client_to_upstream)
+        tg.start_soon(upstream_to_client)
+
+
+def create_vite_hmr_handler(  # noqa: C901
     hotfile_path: Path,
     hmr_path: str = "/static/vite-hmr",
     asset_url: str = "/static/",
@@ -401,13 +507,10 @@ def create_vite_hmr_handler(
     This handler proxies WebSocket connections from the browser to the Vite
     dev server for Hot Module Replacement (HMR) functionality.
 
-    The handler reads the Vite server URL from the hotfile on each connection,
-    ensuring it always connects to the correct Vite server even if the port changes.
-
     Args:
         hotfile_path: Path to the hotfile written by the Vite plugin.
-        hmr_path: The path to register the WebSocket handler at (e.g., "/static/vite-hmr").
-        asset_url: The asset URL prefix to strip when connecting to Vite (e.g., "/static/").
+        hmr_path: The path to register the WebSocket handler at.
+        asset_url: The asset URL prefix to strip when connecting to Vite.
 
     Returns:
         A WebsocketRouteHandler that proxies HMR connections.
@@ -426,54 +529,22 @@ def create_vite_hmr_handler(
 
         headers = _extract_forward_headers(scope_dict)
         subprotocols = _extract_subprotocols(scope_dict)
-        await socket.accept(subprotocols=subprotocols[0] if subprotocols else None)
+        typed_subprotocols: list[Subprotocol] = [cast("Subprotocol", p) for p in subprotocols]
+        await socket.accept(subprotocols=typed_subprotocols[0] if typed_subprotocols else None)
 
         try:
-            # Pass subprotocols to Vite - it may require "vite-hmr" protocol
             async with websockets.connect(
                 target,
                 additional_headers=headers,
                 open_timeout=10,
-                subprotocols=subprotocols if subprotocols else None,
+                subprotocols=typed_subprotocols if typed_subprotocols else None,
             ) as upstream:
                 if _is_proxy_debug():
                     console.print("[dim][vite-hmr] ✓ Connected[/]")
-
-                async def client_to_upstream() -> None:
-                    """Forward messages from browser to Vite."""
-                    try:
-                        while True:
-                            # Vite HMR uses text messages (JSON)
-                            data = await socket.receive_text()
-                            await upstream.send(data)
-                    except (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed):
-                        # Client disconnected - normal shutdown
-                        pass
-                    finally:
-                        with suppress(websockets.ConnectionClosed):
-                            await upstream.close()
-
-                async def upstream_to_client() -> None:
-                    """Forward messages from Vite to browser."""
-                    try:
-                        async for msg in upstream:
-                            if isinstance(msg, str):
-                                await socket.send_text(msg)
-                            else:
-                                await socket.send_bytes(msg)
-                    except (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed):
-                        # Connection closed - normal shutdown
-                        pass
-                    finally:
-                        with suppress(anyio.ClosedResourceError, WebSocketDisconnect):
-                            await socket.close()
-
-                async with anyio.create_task_group() as tg:
-                    tg.start_soon(client_to_upstream)
-                    tg.start_soon(upstream_to_client)
+                await _run_websocket_proxy(socket, upstream)
         except TimeoutError:
             if _is_proxy_debug():
-                console.print("[yellow][vite-hmr] Connection timeout - Vite may still be starting[/]")
+                console.print("[yellow][vite-hmr] Connection timeout[/]")
             with suppress(anyio.ClosedResourceError, WebSocketDisconnect):
                 await socket.close(code=1011, reason="Vite HMR connection timeout")
         except OSError as exc:
@@ -482,17 +553,16 @@ def create_vite_hmr_handler(
             with suppress(anyio.ClosedResourceError, WebSocketDisconnect):
                 await socket.close(code=1011, reason="Vite HMR connection failed")
         except WebSocketDisconnect:
-            # Client disconnected - normal shutdown, no error logging needed
-            pass
-        except ExceptionGroup as eg:
-            # Filter out WebSocketDisconnect from the group - they're normal disconnects
-            non_disconnect_errors = [
-                e for e in eg.exceptions if not isinstance(e, (WebSocketDisconnect, websockets.ConnectionClosed, anyio.ClosedResourceError))
-            ]
-            if non_disconnect_errors:
-                # Re-raise only the unexpected errors
-                raise ExceptionGroup("HMR proxy errors", non_disconnect_errors) from eg
-            # All exceptions were normal disconnects - suppress silently
+            pass  # Normal client disconnect
+        except BaseException as exc:
+            if hasattr(exc, "exceptions"):
+                non_disconnect = [
+                    err for err in getattr(exc, "exceptions", []) if not isinstance(err, _DISCONNECT_EXCEPTIONS)
+                ]
+                if non_disconnect:
+                    raise
+            elif not isinstance(exc, _DISCONNECT_EXCEPTIONS):
+                raise
 
     return vite_hmr_proxy
 

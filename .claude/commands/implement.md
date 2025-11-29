@@ -34,7 +34,7 @@ Follow the task breakdown and implement each component:
 ### Python Code Standards
 - Type hints: PEP 604 (`T | None`)
 - Docstrings: Google style
-- No `Optional[T]` or `from __future__ import annotations`
+- No `from __future__ import annotations`
 - Async for I/O operations
 - Line length: 120 chars
 
@@ -86,7 +86,6 @@ Before invoking testing:
 - [ ] All acceptance criteria from PRD met
 - [ ] All functions have type hints (PEP 604)
 - [ ] All public APIs have Google-style docstrings
-- [ ] No `Optional[T]` usage
 - [ ] No `from __future__ import annotations`
 - [ ] Local tests pass
 - [ ] Linting clean

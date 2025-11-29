@@ -30,10 +30,13 @@ The `ViteConfig` class in `config.py` controls the integration behavior. Key opt
 -   **`hot_reload`**: Enable HMR (Hot Module Replacement) (default: derived from `ViteConfig` environment or `True`).
 -   **`ssr_enabled`**: Enable Server-Side Rendering (default: `False`).
 -   **`is_react`**: Enable React specific support (default: `False`).
--   **`asset_url`**: Base URL for generating asset references (default: `/static/`).
+-   **`asset_url` / `base_url`**: Base URLs for generating asset references and CDN builds.
+-   **`deploy`**: CDN deploy settings (fsspec backend, delete-orphan toggle, manifest inclusion).
 -   **`host`**, **`port`**, **`protocol`**: Connection details for the Vite development server.
 -   **`run_command`**, **`build_command`**, **`install_command`**: Commands to manage the Vite lifecycle.
 -   **`executor`**: The `JSExecutor` instance responsible for running the commands (e.g. `NodeExecutor`, `BunExecutor`).
+
+Python is the source of truth: `set_environment()` now writes `.litestar-vite.json` (path exported via `LITESTAR_VITE_CONFIG_PATH`) containing `assetUrl`, `bundleDirectory`, `resourceDirectory`, `publicDir`, `manifest`, `ssrOutDir`, typegen paths, and deploy defaults. The JS plugin consumes this file to set defaults; only override in `vite.config.ts` when you intentionally diverge.
 
 ### Component Layers
 

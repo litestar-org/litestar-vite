@@ -727,7 +727,6 @@ You MUST complete these steps before modifying source code:
 | Rule | Standard |
 |------|----------|
 | Type hints | PEP 604: `T | None` |
-| `Optional[T]` | **NEVER** - use `T | None` |
 | Future annotations | **NEVER** - no `from __future__ import annotations` |
 | Docstrings | Google style |
 | Line length | 120 characters |
@@ -1117,7 +1116,7 @@ Fixing issue: #{issue_number}
 ## Code Standards
 
 - Type hints: `T | None` (PEP 604)
-- NO `Optional[T]` or future annotations
+- NO future annotations
 - Google-style docstrings
 - Function-based tests only
 \"\"\"

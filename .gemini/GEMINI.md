@@ -89,7 +89,7 @@ Before major actions, assess your confidence:
 
 ### Python
 
-- **Type hints**: Use `T | None` (PEP 604), **NOT** `Optional[T]`
+- **Type hints**: Use `T | None` (PEP 604)
 - **No future annotations**: Never use `from __future__ import annotations`
 - **Async/await**: All I/O operations must be async
 - **Docstrings**: Google style for all public APIs
@@ -120,7 +120,7 @@ All code must pass:
 - **Linting**: `make lint` - Zero errors
 - **Type Checking**: `make type-check` - Zero errors
 - **Coverage**: 90%+ for modified modules
-- **Anti-patterns**: No `Optional[T]`, no `__future__`, no class-based tests
+- **Anti-patterns**: No `__future__`, no class-based tests
 
 ## Key Commands
 

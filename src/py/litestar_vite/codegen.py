@@ -9,7 +9,7 @@ import inspect
 import re
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from litestar import Litestar
 from litestar.handlers import HTTPRouteHandler
@@ -63,7 +63,7 @@ class RouteMetadata:
     methods: list[str]
     params: dict[str, str] = field(default_factory=_str_dict_factory)
     query_params: dict[str, str] = field(default_factory=_str_dict_factory)
-    component: "Optional[str]" = None
+    component: "str | None" = None
 
 
 def _is_system_type(annotation: Any) -> bool:
@@ -161,7 +161,7 @@ def _should_skip_param(
     return param_name in dependency_names
 
 
-def _process_field_definition(field_def: Any, param_name: str) -> "Optional[tuple[str, str]]":
+def _process_field_definition(field_def: Any, param_name: str) -> "tuple[str, str] | None":
     """Process a field definition and return the query param name and type.
 
     Args:
@@ -257,8 +257,8 @@ def _extract_query_params(handler: HTTPRouteHandler, path_param_names: set[str])
 def extract_route_metadata(
     app: Litestar,
     *,
-    only: "Optional[list[str]]" = None,
-    exclude: "Optional[list[str]]" = None,
+    only: "list[str] | None" = None,
+    exclude: "list[str] | None" = None,
 ) -> list[RouteMetadata]:
     """Extract route metadata from a Litestar application.
 
@@ -327,8 +327,8 @@ def extract_route_metadata(
 def generate_routes_json(
     app: Litestar,
     *,
-    only: "Optional[list[str]]" = None,
-    exclude: "Optional[list[str]]" = None,
+    only: "list[str] | None" = None,
+    exclude: "list[str] | None" = None,
     include_components: bool = False,
 ) -> dict[str, Any]:
     """Generate Ziggy-compatible routes JSON.

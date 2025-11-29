@@ -5,11 +5,11 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Natural Language :: English",
   "Operating System :: OS Independent",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Programming Language :: Python",
   "Topic :: Software Development",
   "Typing :: Typed",
@@ -22,13 +22,14 @@ dependencies = [
   "litestar>=2.7.0",
   "httpx>=0.24.1",
   "websockets>=12.0",
+  "typing_extensions"
 ]
 description = "Vite plugin for Litestar"
 keywords = ["litestar", "vite"]
 license = { text = "MIT" }
 name = "litestar-vite"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 version = "0.14.0"
 
 [project.urls]
@@ -74,6 +75,7 @@ docs = [
 ]
 linting = ["pre-commit>=3.4.0", "mypy>=1.5.1", "ruff>=0.0.287", "types-docutils", "slotscheck",  "pyright"]
 test = [
+  "fsspec",
   "litestar[standard]",
   "pytest>=7.4.1",
   "pytest-cov",
@@ -307,7 +309,7 @@ lint.ignore = [
 ]
 lint.select = ["ALL"]
 src = ["src/py/litestar_vite", "src/py/tests"]
-target-version = "py39"
+target-version = "py310"
 unsafe-fixes = true
 lint.extend-safe-fixes = ["TC"]
 
@@ -368,7 +370,7 @@ exclude = [
   "src/py/tests/docker_service_fixtures.py",
 ]
 include = ["src/py/litestar_vite"]
-pythonVersion = "3.9"
+pythonVersion = "3.10"
 strict = ["src/py/litestar_vite/**/*"]
 
 [tool.mypy]

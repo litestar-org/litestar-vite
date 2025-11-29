@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 from urllib.parse import unquote
 
 from litestar import Request
@@ -27,7 +27,7 @@ class InertiaDetails:
         """Initialize :class:`InertiaDetails`"""
         self.request = request
 
-    def _get_header_value(self, name: "InertiaHeaders") -> "Optional[str]":
+    def _get_header_value(self, name: "InertiaHeaders") -> "str | None":
         """Parse request header
 
         Check for uri encoded header and unquotes it in readable format.
@@ -44,7 +44,7 @@ class InertiaDetails:
             return unquote(value) if is_uri_encoded else value
         return None
 
-    def _get_route_component(self) -> "Optional[str]":
+    def _get_route_component(self) -> "str | None":
         """Get the route component.
 
         Checks for the `component` key within the route handler configuration.
@@ -69,7 +69,7 @@ class InertiaDetails:
         return self._get_header_value(InertiaHeaders.ENABLED) == "true"
 
     @cached_property
-    def route_component(self) -> "Optional[str]":
+    def route_component(self) -> "str | None":
         """Get the route component.
 
         Returns:
@@ -78,7 +78,7 @@ class InertiaDetails:
         return self._get_route_component()
 
     @cached_property
-    def partial_component(self) -> "Optional[str]":
+    def partial_component(self) -> "str | None":
         """Get the partial component.
 
         Returns:
@@ -87,7 +87,7 @@ class InertiaDetails:
         return self._get_header_value(InertiaHeaders.PARTIAL_COMPONENT)
 
     @cached_property
-    def partial_data(self) -> "Optional[str]":
+    def partial_data(self) -> "str | None":
         """Get the partial data (props to include).
 
         Returns:
@@ -96,7 +96,7 @@ class InertiaDetails:
         return self._get_header_value(InertiaHeaders.PARTIAL_DATA)
 
     @cached_property
-    def partial_except(self) -> "Optional[str]":
+    def partial_except(self) -> "str | None":
         """Get the partial except data (props to exclude).
 
         v2 feature: X-Inertia-Partial-Except header.
@@ -108,7 +108,7 @@ class InertiaDetails:
         return self._get_header_value(InertiaHeaders.PARTIAL_EXCEPT)
 
     @cached_property
-    def reset_props(self) -> "Optional[str]":
+    def reset_props(self) -> "str | None":
         """Get props to reset on navigation.
 
         v2 feature: X-Inertia-Reset header.
@@ -119,7 +119,7 @@ class InertiaDetails:
         return self._get_header_value(InertiaHeaders.RESET)
 
     @cached_property
-    def error_bag(self) -> "Optional[str]":
+    def error_bag(self) -> "str | None":
         """Get the error bag name.
 
         v2 feature: X-Inertia-Error-Bag header.
@@ -131,7 +131,7 @@ class InertiaDetails:
         return self._get_header_value(InertiaHeaders.ERROR_BAG)
 
     @cached_property
-    def merge_intent(self) -> "Optional[str]":
+    def merge_intent(self) -> "str | None":
         """Get the infinite scroll merge intent.
 
         v2 feature: X-Inertia-Infinite-Scroll-Merge-Intent header.
@@ -142,7 +142,7 @@ class InertiaDetails:
         return self._get_header_value(InertiaHeaders.INFINITE_SCROLL_MERGE_INTENT)
 
     @cached_property
-    def referer(self) -> "Optional[str]":
+    def referer(self) -> "str | None":
         """Get the referer.
 
         Returns:
@@ -235,12 +235,12 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
         return set(self.inertia.reset_keys)
 
     @property
-    def error_bag(self) -> "Optional[str]":
+    def error_bag(self) -> "str | None":
         """Get the error bag name for scoped validation errors (v2)."""
         return self.inertia.error_bag
 
     @property
-    def merge_intent(self) -> "Optional[str]":
+    def merge_intent(self) -> "str | None":
         """Get the infinite scroll merge intent (v2).
 
         Returns 'append' or 'prepend' for infinite scroll merging.

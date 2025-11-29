@@ -1,7 +1,5 @@
 """Litestar-Vite exception classes."""
 
-from typing import Optional
-
 __all__ = [
     "AssetNotFoundError",
     "LitestarViteError",
@@ -20,7 +18,7 @@ class LitestarViteError(Exception):
 class MissingDependencyError(LitestarViteError, ImportError):
     """Raised when a package is not installed but required."""
 
-    def __init__(self, package: str, install_package: "Optional[str]" = None) -> None:
+    def __init__(self, package: str, install_package: "str | None" = None) -> None:
         """Initialize the exception.
 
         Args:
@@ -61,10 +59,10 @@ class ViteProcessError(LitestarViteError):
     def __init__(
         self,
         message: str,
-        command: Optional[list[str]] = None,
-        exit_code: Optional[int] = None,
-        stderr: Optional[str] = None,
-        stdout: Optional[str] = None,
+        command: list[str] | None = None,
+        exit_code: int | None = None,
+        stderr: str | None = None,
+        stdout: str | None = None,
     ) -> None:
         super().__init__(message)
         self.command = command

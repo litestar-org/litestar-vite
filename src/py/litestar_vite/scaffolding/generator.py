@@ -3,9 +3,10 @@
 This module handles the generation of project files from templates.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from litestar_vite.scaffolding.templates import FrameworkTemplate
@@ -120,7 +121,7 @@ def _process_templates(
     resource_dir: str,
     *,
     overwrite: bool,
-    skip_paths: "Optional[set[Path]]" = None,
+    skip_paths: "set[Path] | None" = None,
 ) -> list[Path]:
     """Process templates from a directory and generate output files.
 

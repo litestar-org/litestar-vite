@@ -16,7 +16,7 @@ import json
 from functools import cached_property
 from pathlib import Path
 from textwrap import dedent
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin
 
 import anyio
@@ -56,7 +56,7 @@ def _get_request_from_context(
     return request  # pyright: ignore[reportReturnType,reportUnknownVariableType]
 
 
-def _get_vite_plugin(context: "Mapping[str, Any]") -> "Optional[VitePlugin]":
+def _get_vite_plugin(context: "Mapping[str, Any]") -> "VitePlugin | None":
     """Get the VitePlugin from the template context.
 
     Args:
@@ -90,8 +90,8 @@ def render_hmr_client(context: "Mapping[str, Any]", /) -> "markupsafe.Markup":
 def render_asset_tag(
     context: "Mapping[str, Any]",
     /,
-    path: "Union[str, list[str]]",
-    scripts_attrs: "Optional[dict[str, str]]" = None,
+    path: "str | list[str]",
+    scripts_attrs: "dict[str, str] | None" = None,
 ) -> "markupsafe.Markup":
     """Render asset tags for the specified path(s).
 
@@ -168,7 +168,7 @@ class ViteAssetLoader:
         self._config = config
         self._manifest: dict[str, Any] = {}
         self._manifest_content: str = ""
-        self._vite_base_path: "Optional[str]" = None
+        self._vite_base_path: "str | None" = None
         self._initialized: bool = False
 
     @classmethod
@@ -317,8 +317,8 @@ class ViteAssetLoader:
 
     def render_asset_tag(
         self,
-        path: "Union[str, list[str]]",
-        scripts_attrs: "Optional[dict[str, str]]" = None,
+        path: "str | list[str]",
+        scripts_attrs: "dict[str, str] | None" = None,
     ) -> "markupsafe.Markup":
         """Render asset tags for the specified path(s).
 
@@ -392,8 +392,8 @@ class ViteAssetLoader:
 
     def generate_asset_tags(
         self,
-        path: "Union[str, list[str]]",
-        scripts_attrs: "Optional[dict[str, str]]" = None,
+        path: "str | list[str]",
+        scripts_attrs: "dict[str, str] | None" = None,
     ) -> str:
         """Generate all asset tags for the specified file(s).
 
@@ -464,7 +464,7 @@ class ViteAssetLoader:
 
         return "".join(tags)
 
-    def _vite_server_url(self, path: "Optional[str]" = None) -> str:
+    def _vite_server_url(self, path: "str | None" = None) -> str:
         """Generate a URL to an asset on the Vite development server.
 
         Args:
@@ -480,7 +480,7 @@ class ViteAssetLoader:
         )
 
     @staticmethod
-    def _script_tag(src: str, attrs: "Optional[dict[str, str]]" = None) -> str:
+    def _script_tag(src: str, attrs: "dict[str, str] | None" = None) -> str:
         """Generate an HTML script tag.
 
         Args:

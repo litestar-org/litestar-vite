@@ -12,7 +12,7 @@ Seamless integration between [Litestar](https://litestar.dev/) Python framework 
 
 | Backend | Frontend |
 |---------|----------|
-| Python 3.9+ | TypeScript |
+| Python 3.10+ | TypeScript |
 | Litestar | Vite 5.x/6.x/7.x |
 | pytest, pytest-asyncio | Vitest |
 | Ruff | Biome |
@@ -50,7 +50,6 @@ specs/guides/             # Project standards
 | Rule | Standard |
 |------|----------|
 | Type hints | PEP 604: `T \| None` |
-| `Optional[T]` | **NEVER** - use `T \| None` |
 | Future annotations | **NEVER** - no `from __future__ import annotations` |
 | Docstrings | Google style |
 | Line length | 120 characters |
@@ -196,7 +195,6 @@ For comprehensive documentation, see:
 
 | Pattern | Use Instead |
 |---------|-------------|
-| `Optional[T]` | `T \| None` |
 | `from __future__ import annotations` | Explicit string annotations |
 | `class TestFoo:` | Function-based pytest |
 | `hasattr()`/`getattr()` | Type guards |

@@ -5,15 +5,10 @@ import litestar from "litestar-vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 {% endif %}
 
-const ASSET_URL = process.env.ASSET_URL || "{{ asset_url }}";
-const VITE_PORT = process.env.VITE_PORT || "{{ vite_port }}";
-const LITESTAR_PORT = process.env.LITESTAR_PORT || "{{ litestar_port }}";
-
 export default defineConfig({
-  base: ASSET_URL,
   server: {
     host: "0.0.0.0",
-    port: Number(VITE_PORT),
+    port: Number(process.env.VITE_PORT || "{{ vite_port }}"),
     cors: true,
     hmr: {
       host: "localhost",
@@ -26,9 +21,6 @@ export default defineConfig({
     react(),
     litestar({
       input: ["{{ resource_dir }}/main.tsx"],
-      assetUrl: ASSET_URL,
-      bundleDirectory: "{{ bundle_dir }}",
-      resourceDirectory: "{{ resource_dir }}",
 {% if enable_types %}
       types: {
         enabled: true,

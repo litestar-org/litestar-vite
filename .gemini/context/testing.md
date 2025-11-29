@@ -177,7 +177,6 @@ npm run test:coverage       # With coverage
 | Hard-coded paths | `tmp_path` fixture |
 | Sync tests for async | `async def test_` |
 | Missing error tests | Test all error paths |
-| `Optional[T]` | `T \| None` |
 
 ## Related Files
 

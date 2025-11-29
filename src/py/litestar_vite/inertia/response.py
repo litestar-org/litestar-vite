@@ -5,9 +5,7 @@ from pathlib import PurePath
 from typing import (
     TYPE_CHECKING,
     Any,
-    Optional,
     TypeVar,
-    Union,
     cast,
 )
 from urllib.parse import quote, urlparse, urlunparse
@@ -56,16 +54,16 @@ class InertiaResponse(Response[T]):
         self,
         content: T,
         *,
-        template_name: "Optional[str]" = None,
-        template_str: "Optional[str]" = None,
-        background: "Optional[Union[BackgroundTask, BackgroundTasks]]" = None,
-        context: "Optional[dict[str, Any]]" = None,
-        cookies: "Optional[ResponseCookies]" = None,
+        template_name: "str | None" = None,
+        template_str: "str | None" = None,
+        background: "BackgroundTask | BackgroundTasks | None" = None,
+        context: "dict[str, Any] | None" = None,
+        cookies: "ResponseCookies | None" = None,
         encoding: "str" = "utf-8",
-        headers: "Optional[ResponseHeaders]" = None,
-        media_type: "Optional[Union[MediaType, str]]" = None,
+        headers: "ResponseHeaders | None" = None,
+        media_type: "MediaType | str | None" = None,
         status_code: "int" = HTTP_200_OK,
-        type_encoders: "Optional[TypeEncodersMap]" = None,
+        type_encoders: "TypeEncodersMap | None" = None,
     ) -> None:
         """Handle the rendering of a given template into a bytes string.
 
@@ -114,7 +112,7 @@ class InertiaResponse(Response[T]):
         self,
         request: "Request[UserT, AuthT, StateT]",
         page_props: "PageProps[T]",
-        type_encoders: "Optional[TypeEncodersMap]" = None,
+        type_encoders: "TypeEncodersMap | None" = None,
     ) -> "dict[str, Any]":
         """Create a context object for the template.
 
@@ -140,8 +138,8 @@ class InertiaResponse(Response[T]):
     def _build_page_props(
         self,
         request: "Request[UserT, AuthT, StateT]",
-        partial_data: "Optional[set[str]]",
-        partial_except: "Optional[set[str]]",
+        partial_data: "set[str] | None",
+        partial_except: "set[str] | None",
         reset_keys: "set[str]",
         vite_plugin: "VitePlugin",
         inertia_plugin: "InertiaPlugin",
@@ -199,7 +197,7 @@ class InertiaResponse(Response[T]):
         self,
         request: "Request[UserT, AuthT, StateT]",
         page_props: "PageProps[T]",
-        type_encoders: "Optional[TypeEncodersMap]",
+        type_encoders: "TypeEncodersMap | None",
         inertia_plugin: "InertiaPlugin",
     ) -> bytes:
         """Render the template to bytes.
@@ -271,7 +269,7 @@ class InertiaResponse(Response[T]):
 
         return html.encode(self.encoding)
 
-    def _determine_media_type(self, media_type: "Optional[Union[MediaType, str]]") -> "Union[MediaType, str]":
+    def _determine_media_type(self, media_type: "MediaType | str | None") -> "MediaType | str":
         """Determine the media type for the response.
 
         Args:
@@ -292,17 +290,17 @@ class InertiaResponse(Response[T]):
 
     def to_asgi_response(
         self,
-        app: "Optional[Litestar]",
+        app: "Litestar | None",
         request: "Request[UserT, AuthT, StateT]",
         *,
-        background: "Optional[Union[BackgroundTask, BackgroundTasks]]" = None,
-        cookies: "Optional[Iterable[Cookie]]" = None,
-        encoded_headers: "Optional[Iterable[tuple[bytes, bytes]]]" = None,
-        headers: "Optional[dict[str, str]]" = None,
+        background: "BackgroundTask | BackgroundTasks | None" = None,
+        cookies: "Iterable[Cookie] | None" = None,
+        encoded_headers: "Iterable[tuple[bytes, bytes]] | None" = None,
+        headers: "dict[str, str] | None" = None,
         is_head_response: "bool" = False,
-        media_type: "Optional[Union[MediaType, str]]" = None,
-        status_code: "Optional[int]" = None,
-        type_encoders: "Optional[TypeEncodersMap]" = None,
+        media_type: "MediaType | str | None" = None,
+        status_code: "int | None" = None,
+        type_encoders: "TypeEncodersMap | None" = None,
     ) -> "ASGIResponse":
         if app is not None:
             warn_deprecation(
@@ -350,10 +348,8 @@ class InertiaResponse(Response[T]):
         headers.update({"Vary": "Accept", **get_headers(InertiaHeaderType(enabled=True))})
 
         # Determine partial filtering params for v2 protocol
-        partial_data: "Optional[set[str]]" = partial_keys if is_partial_render and partial_keys else None
-        partial_except: "Optional[set[str]]" = (
-            partial_except_keys if is_partial_render and partial_except_keys else None
-        )
+        partial_data: "set[str] | None" = partial_keys if is_partial_render and partial_keys else None
+        partial_except: "set[str] | None" = partial_except_keys if is_partial_render and partial_except_keys else None
 
         # Build page props using helper method
         page_props = self._build_page_props(

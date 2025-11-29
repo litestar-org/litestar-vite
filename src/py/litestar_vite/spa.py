@@ -12,7 +12,7 @@ HTML transformations are applied based on SPAConfig settings:
 """
 
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import anyio
 import httpx
@@ -81,13 +81,13 @@ class ViteSPAHandler:
             config: The Vite configuration.
         """
         self._config = config
-        self._spa_config: "Optional[SPAConfig]" = config.spa_config
-        self._cached_html: "Optional[str]" = None
-        self._cached_bytes: "Optional[bytes]" = None
-        self._cached_transformed_html: "Optional[str]" = None
-        self._routes_metadata: "Optional[dict[str, Any]]" = None
+        self._spa_config: "SPAConfig | None" = config.spa_config
+        self._cached_html: "str | None" = None
+        self._cached_bytes: "bytes | None" = None
+        self._cached_transformed_html: "str | None" = None
+        self._routes_metadata: "dict[str, Any] | None" = None
         self._initialized = False
-        self._http_client: "Optional[httpx.AsyncClient]" = None
+        self._http_client: "httpx.AsyncClient | None" = None
 
     async def initialize(self) -> None:
         """Initialize the handler.
@@ -154,8 +154,8 @@ class ViteSPAHandler:
     def _transform_html(
         self,
         html: str,
-        page_data: "Optional[dict[str, Any]]" = None,
-        csrf_token: "Optional[str]" = None,
+        page_data: "dict[str, Any] | None" = None,
+        csrf_token: "str | None" = None,
     ) -> str:
         """Transform HTML by injecting route metadata, CSRF token, and/or page data.
 
@@ -230,7 +230,7 @@ class ViteSPAHandler:
         self._cached_bytes = await index_path.read_bytes()
         self._cached_html = self._cached_bytes.decode("utf-8")
 
-    def _get_csrf_token(self, request: "Request[Any, Any, Any]") -> "Optional[str]":
+    def _get_csrf_token(self, request: "Request[Any, Any, Any]") -> "str | None":
         """Extract CSRF token from the request scope.
 
         Args:
@@ -248,7 +248,7 @@ class ViteSPAHandler:
         self,
         request: "Request[Any, Any, Any]",
         *,
-        page_data: "Optional[dict[str, Any]]" = None,
+        page_data: "dict[str, Any] | None" = None,
     ) -> str:
         """Get the HTML for the SPA with optional transformations.
 
@@ -318,8 +318,8 @@ class ViteSPAHandler:
     def get_html_sync(
         self,
         *,
-        page_data: "Optional[dict[str, Any]]" = None,
-        csrf_token: "Optional[str]" = None,
+        page_data: "dict[str, Any] | None" = None,
+        csrf_token: "str | None" = None,
     ) -> str:
         """Get the HTML for the SPA synchronously (production only).
 

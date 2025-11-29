@@ -71,7 +71,7 @@ class MyMiddleware(AbstractMiddleware):
 ## Project-Specific Patterns
 
 This project uses:
-- **Type hints**: PEP 604 (`T | None`), no `Optional[T]`
+- **Type hints**: PEP 604 (`T | None`)
 - **Async/await**: For all I/O operations
 - **Google-style docstrings**: For all public APIs
 - **No `from __future__ import annotations`**

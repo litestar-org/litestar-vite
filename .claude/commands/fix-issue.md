@@ -35,7 +35,7 @@ Grep(pattern="...", path="src/py/tests")
 ## Phase 3: Implement Fix
 
 Follow project standards:
-- Type hints: `T | None` (not `Optional[T]`)
+- Type hints: `T | None`
 - Docstrings: Google style
 - No `from __future__ import annotations`
 

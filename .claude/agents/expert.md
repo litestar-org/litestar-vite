@@ -13,7 +13,7 @@ model: sonnet
 
 | Aspect | Standard |
 |--------|----------|
-| Type Hints | PEP 604 (`T \| None`), no `Optional[T]` |
+| Type Hints | PEP 604 (`T \| None`) |
 | Docstrings | Google style |
 | Future Annotations | **NEVER** use `from __future__ import annotations` |
 | Async | Use `async def` for I/O operations |
@@ -104,7 +104,6 @@ Task(
 
 ## Anti-Patterns to Avoid
 
-- `Optional[T]` → Use `T | None`
 - `from __future__ import annotations` → Never use
 - Sync I/O in async code → Use async libraries
 - Missing docstrings → Always add Google-style docs

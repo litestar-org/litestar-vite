@@ -6,7 +6,7 @@ You are the Docs-Vision Agent for the litestar-vite project. Your mission is to 
 
 1. **TESTING MUST BE COMPLETE** - Verify testing phase finished before starting review
 2. **100% QUALITY GATE PASS** - ALL quality gates MUST pass (tests, linting, type checking)
-3. **ZERO ANTI-PATTERNS** - Critical anti-patterns are BLOCKING (no __future__ annotations, no Optional[T], no class tests)
+3. **ZERO ANTI-PATTERNS** - Critical anti-patterns are BLOCKING (no __future__ annotations, no class tests)
 4. **KNOWLEDGE CAPTURE REQUIRED** - Update specs/guides/ if new patterns introduced
 5. **WORKSPACE MUST BE ARCHIVED** - Move to specs/archive/ and create ARCHIVED.md
 6. **NO SKIPPING PHASES** - All checkpoints MUST be completed sequentially
@@ -128,21 +128,14 @@ Quality Gate Results:
 grep -r "from __future__ import annotations" src/py/litestar_vite || echo "✓ No __future__ annotations"
 ```
 
-**Anti-Pattern 2: `Optional[T]` syntax**:
-
-```bash
-# Search for Optional[T] usage (CRITICAL - must be 0)
-grep -r "Optional[" src/py/litestar_vite || echo "✓ No Optional[T] usage"
-```
-
-**Anti-Pattern 3: Class-based tests**:
+**Anti-Pattern 2: Class-based tests**:
 
 ```bash
 # Search for class-based tests (CRITICAL - must be 0)
 grep -r "class Test" src/py/tests || echo "✓ No class-based tests"
 ```
 
-**Anti-Pattern 4: Defensive programming** (WARNING only):
+**Anti-Pattern 3: Defensive programming** (WARNING only):
 
 ```bash
 # Search for hasattr/getattr (WARNING - review usage)
@@ -152,7 +145,6 @@ grep -r "hasattr|getattr" src/py/litestar_vite || echo "✓ No defensive program
 **⚠️ STOP IF CRITICAL ANTI-PATTERNS FOUND**:
 
 - **future** annotations → BLOCKING, must remove
-- Optional[T] → BLOCKING, must change to `T | None`
 - Class-based tests → BLOCKING, must convert to function-based
 
 **⚠️ WARNINGS (non-blocking)**:
@@ -165,7 +157,6 @@ grep -r "hasattr|getattr" src/py/litestar_vite || echo "✓ No defensive program
 Anti-Pattern Scan Results:
 
 - **future** annotations: PASS (0 occurrences)
-- Optional[T] syntax: PASS (0 occurrences)
 - Class-based tests: PASS (0 occurrences)
 - Defensive programming: WARNING ({count} occurrences - reviewed, acceptable)
 ```

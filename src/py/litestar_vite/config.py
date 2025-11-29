@@ -27,13 +27,17 @@ import os
 from dataclasses import dataclass, field
 from importlib.util import find_spec
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional, Union
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from litestar_vite.executor import JSExecutor
 
+from litestar_vite.deploy import DeployConfig
+
 __all__ = (
+    "FSSPEC_INSTALLED",
     "JINJA_INSTALLED",
+    "DeployConfig",
     "InertiaConfig",
     "PathConfig",
     "RuntimeConfig",
@@ -44,6 +48,7 @@ __all__ = (
 
 TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
 JINJA_INSTALLED = bool(find_spec("jinja2"))
+FSSPEC_INSTALLED = bool(find_spec("fsspec"))
 
 
 @dataclass
@@ -61,14 +66,14 @@ class PathConfig:
         ssr_output_dir: SSR output directory (optional).
     """
 
-    root: "Union[str, Path]" = field(default_factory=Path.cwd)
-    bundle_dir: "Union[str, Path]" = field(default_factory=lambda: Path("public"))
-    resource_dir: "Union[str, Path]" = field(default_factory=lambda: Path("src"))
-    public_dir: "Union[str, Path]" = field(default_factory=lambda: Path("public"))
+    root: "str | Path" = field(default_factory=Path.cwd)
+    bundle_dir: "str | Path" = field(default_factory=lambda: Path("public"))
+    resource_dir: "str | Path" = field(default_factory=lambda: Path("src"))
+    public_dir: "str | Path" = field(default_factory=lambda: Path("public"))
     manifest_name: str = "manifest.json"
     hot_file: str = "hot"
     asset_url: str = field(default_factory=lambda: os.getenv("ASSET_URL", "/static/"))
-    ssr_output_dir: "Optional[Union[str, Path]]" = None
+    ssr_output_dir: "str | Path | None" = None
 
     def __post_init__(self) -> None:
         """Normalize path types to Path objects."""
@@ -117,18 +122,18 @@ class RuntimeConfig:
     host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "localhost"))
     port: int = field(default_factory=lambda: int(os.getenv("VITE_PORT", "5173")))
     protocol: Literal["http", "https"] = "http"
-    executor: "Optional[Literal['node', 'bun', 'deno', 'yarn', 'pnpm']]" = None
-    run_command: "Optional[list[str]]" = None
-    build_command: "Optional[list[str]]" = None
-    build_watch_command: "Optional[list[str]]" = None
-    install_command: "Optional[list[str]]" = None
+    executor: "Literal['node', 'bun', 'deno', 'yarn', 'pnpm'] | None" = None
+    run_command: "list[str] | None" = None
+    build_command: "list[str] | None" = None
+    build_watch_command: "list[str] | None" = None
+    install_command: "list[str] | None" = None
     is_react: bool = False
     ssr_enabled: bool = False
     health_check: bool = field(default_factory=lambda: os.getenv("VITE_HEALTH_CHECK", "False") in TRUE_VALUES)
     detect_nodeenv: bool = False
     set_environment: bool = True
     set_static_folders: bool = True
-    csp_nonce: "Optional[str]" = None
+    csp_nonce: "str | None" = None
     proxy_mode: Literal["proxy", "direct"] = field(
         default_factory=lambda: "direct" if os.getenv("VITE_PROXY_MODE", "proxy").lower() == "direct" else "proxy"
     )
@@ -220,7 +225,7 @@ class TypeGenConfig:
             self.routes_path = Path(self.routes_path)
 
 
-def _optional_str_list_factory() -> "Optional[list[str]]":
+def _optional_str_list_factory() -> "list[str] | None":
     """Factory function returning None for optional list fields."""
     return None
 
@@ -246,23 +251,15 @@ class SPAConfig:
         routes_include: Whitelist patterns for route filtering (None = include all).
         routes_exclude: Blacklist patterns for route filtering (None = exclude none).
         app_selector: CSS selector for the app root element (used for data attributes).
-        cache_transformed_html: Cache transformed HTML in production for performance.
-            Note: When inject_csrf=True, caching is disabled since CSRF tokens are per-request.
-
-    Example:
-        config = SPAConfig(
-            inject_routes=True,
-            inject_csrf=True,
-            routes_exclude=["_internal_*"],
-        )
+        cache_transformed_html: Cache transformed HTML in production; disabled when inject_csrf=True because CSRF tokens are per-request.
     """
 
     inject_routes: bool = True
     inject_csrf: bool = True
     routes_var_name: str = "__LITESTAR_ROUTES__"
     csrf_var_name: str = "__LITESTAR_CSRF__"
-    routes_include: "Optional[list[str]]" = field(default_factory=_optional_str_list_factory)
-    routes_exclude: "Optional[list[str]]" = field(default_factory=_default_routes_exclude_factory)
+    routes_include: "list[str] | None" = field(default_factory=_optional_str_list_factory)
+    routes_exclude: "list[str] | None" = field(default_factory=_default_routes_exclude_factory)
     app_selector: str = "#app"
     cache_transformed_html: bool = True
 
@@ -330,19 +327,21 @@ class ViteConfig:
         spa: SPA transformation settings (True enables with defaults, False disables).
         dev_mode: Convenience shortcut for runtime.dev_mode.
         base_url: Base URL for production assets (CDN support).
+        deploy: Deployment configuration for CDN publishing.
     """
 
-    mode: "Optional[Literal['spa', 'template', 'htmx']]" = None
+    mode: "Literal['spa', 'template', 'htmx'] | None" = None
     paths: PathConfig = field(default_factory=PathConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
-    types: "Union[TypeGenConfig, bool]" = field(default_factory=lambda: TypeGenConfig(enabled=True))
-    inertia: "Union[InertiaConfig, bool]" = False
-    spa: "Union[SPAConfig, bool, None]" = None
+    types: "TypeGenConfig | bool" = field(default_factory=lambda: TypeGenConfig(enabled=True))
+    inertia: "InertiaConfig | bool" = False
+    spa: "SPAConfig | bool | None" = None
     dev_mode: bool = False
-    base_url: "Optional[str]" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
+    base_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
+    deploy: "DeployConfig | bool" = False
 
     # Internal: resolved executor instance
-    _executor_instance: "Optional[JSExecutor]" = field(default=None, repr=False)
+    _executor_instance: "JSExecutor | None" = field(default=None, repr=False)
     _mode_auto_detected: bool = field(default=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -370,6 +369,11 @@ class ViteConfig:
         if self.mode is None:
             self.mode = self._detect_mode()
             self._mode_auto_detected = True
+
+        if self.deploy is True:
+            self.deploy = DeployConfig(enabled=True)
+        elif self.deploy is False:
+            self.deploy = DeployConfig(enabled=False)
 
         # Auto-enable SPA config when mode="spa" and spa not explicitly disabled
         # spa=None means "auto" (enabled for SPA mode), spa=False means "disabled"
@@ -598,7 +602,7 @@ class ViteConfig:
         return self.runtime.http2
 
     @property
-    def ssr_output_dir(self) -> "Optional[Path]":
+    def ssr_output_dir(self) -> "Path | None":
         """Get SSR output directory."""
         # __post_init__ normalizes strings to Path
         if self.paths.ssr_output_dir is None:
@@ -610,7 +614,7 @@ class ViteConfig:
         )
 
     @property
-    def spa_config(self) -> "Optional[SPAConfig]":
+    def spa_config(self) -> "SPAConfig | None":
         """Get SPA configuration if enabled, or None if disabled.
 
         Returns:
@@ -618,4 +622,15 @@ class ViteConfig:
         """
         if isinstance(self.spa, SPAConfig):
             return self.spa
+        return None
+
+    @property
+    def deploy_config(self) -> "DeployConfig | None":
+        """Get deploy configuration if enabled.
+
+        Returns:
+            DeployConfig instance when deployment is configured, None otherwise.
+        """
+        if isinstance(self.deploy, DeployConfig) and self.deploy.enabled:
+            return self.deploy
         return None

@@ -11,7 +11,7 @@ import subprocess
 import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, ClassVar, Optional, Union
+from typing import Any, ClassVar
 
 from litestar.cli._utils import console
 
@@ -23,7 +23,7 @@ class JSExecutor(ABC):
 
     bin_name: ClassVar[str]
 
-    def __init__(self, executable_path: "Optional[Union[Path, str]]" = None) -> None:
+    def __init__(self, executable_path: "Path | str | None" = None) -> None:
         self.executable_path = executable_path
 
     @abstractmethod

@@ -176,7 +176,6 @@ mcp__context7__get-library-docs(
 **Type Annotations**:
 
 - ✅ Use `T | None` (PEP 604)
-- ❌ NO `Optional[T]`
 - ❌ NO `from __future__ import annotations`
 
 **Async/Await**:
@@ -211,10 +210,8 @@ def process_data(data: str | None) -> dict[str, Any]:
 **❌ WRONG - Type Hints**:
 
 ```python
-from typing import Optional
-
-def process_data(data: Optional[str]) -> dict[str, Any]:
-    ...
+# ❌ WRONG - Never use future annotations
+from __future__ import annotations
 ```
 
 **✅ CORRECT - Async Service**:
@@ -369,7 +366,7 @@ Context:
 - Modified files: {list_of_modified_files}
 
 Requirements:
-- Run anti-pattern scan (check for __future__ imports, Optional[T], class-based tests)
+- Run anti-pattern scan (check for __future__ imports, class-based tests)
 - Update specs/guides/ if new patterns introduced
 - Verify all quality gates pass (from specs/guides/quality-gates.yaml)
 - Archive workspace to specs/archive/{{slug}}/

@@ -117,7 +117,7 @@ Template
 Vue Component
 -------------
 
-.. code-block:: vue
+.. code-block:: html
 
     <script setup lang="ts">
     import { ref, onMounted } from "vue";

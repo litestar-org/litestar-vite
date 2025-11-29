@@ -95,7 +95,7 @@ grep -r "error_message_from_issue" src/
 
 **Follow project standards:**
 
-✅ Type hints: `T | None` (NOT `Optional[T]`)
+✅ Type hints: `T | None` (PEP 604)
 ✅ Docstrings: Google style
 ✅ Async: All I/O must be async
 ✅ No `from __future__ import annotations`

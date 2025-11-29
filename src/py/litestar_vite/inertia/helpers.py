@@ -1,17 +1,17 @@
 import inspect
 from collections import defaultdict
-from collections.abc import Coroutine, Generator, Iterable, Mapping
+from collections.abc import Callable, Coroutine, Generator, Iterable, Mapping
 from contextlib import contextmanager
 from functools import lru_cache
 from textwrap import dedent
-from typing import TYPE_CHECKING, Any, Callable, Generic, Literal, Optional, TypeVar, Union, cast, overload
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeGuard, TypeVar, cast, overload
 
 from anyio.from_thread import BlockingPortal, start_blocking_portal
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.utils.empty import value_or_default
 from litestar.utils.scope.state import ScopeState
 from markupsafe import Markup
-from typing_extensions import ParamSpec, TypeGuard
+from typing_extensions import ParamSpec
 
 if TYPE_CHECKING:
     from litestar.connection import ASGIConnection
@@ -49,14 +49,14 @@ def lazy(
 @overload
 def lazy(
     key: str,
-    value_or_callable: "Callable[..., Union[T, Coroutine[Any, Any, T]]]" = ...,  # pyright: ignore[reportInvalidTypeVarUse]
+    value_or_callable: "Callable[..., T | Coroutine[Any, Any, T]]" = ...,  # pyright: ignore[reportInvalidTypeVarUse]
 ) -> "DeferredProp[str, T]": ...
 
 
 def lazy(
     key: str,
-    value_or_callable: "Optional[Union[T, Callable[..., Coroutine[Any, Any, None]], Callable[..., T], Callable[..., Union[T, Coroutine[Any, Any, T]]]]]" = None,
-) -> "Union[StaticProp[str, None], StaticProp[str, T], DeferredProp[str, T], DeferredProp[str, None]]":
+    value_or_callable: "T | Callable[..., Coroutine[Any, Any, None]] | Callable[..., T] | Callable[..., T | Coroutine[Any, Any, T]] | None" = None,
+) -> "StaticProp[str, None] | StaticProp[str, T] | DeferredProp[str, T] | DeferredProp[str, None]":
     """Wrap an async function to return a DeferredProp.
 
     Args:
@@ -74,13 +74,13 @@ def lazy(
 
     return DeferredProp[str, T](
         key=key,
-        value=cast("Callable[..., Union[T, Coroutine[Any, Any, T]]]", value_or_callable),
+        value=cast("Callable[..., T | Coroutine[Any, Any, T]]", value_or_callable),
     )
 
 
 def defer(
     key: str,
-    callback: "Callable[..., Union[T, Coroutine[Any, Any, T]]]",
+    callback: "Callable[..., T | Coroutine[Any, Any, T]]",
     group: str = DEFAULT_DEFERRED_GROUP,
 ) -> "DeferredProp[str, T]":
     """Create a deferred prop with optional grouping (v2 feature).
@@ -124,7 +124,7 @@ class MergeProp(Generic[PropKeyT, T]):
         key: "PropKeyT",
         value: "T",
         strategy: "Literal['append', 'prepend', 'deep']" = "append",
-        match_on: "Optional[Union[str, list[str]]]" = None,
+        match_on: "str | list[str] | None" = None,
     ) -> None:
         """Initialize a MergeProp.
 
@@ -155,7 +155,7 @@ class MergeProp(Generic[PropKeyT, T]):
         return self._strategy  # pyright: ignore[reportReturnType]
 
     @property
-    def match_on(self) -> "Optional[list[str]]":
+    def match_on(self) -> "list[str] | None":
         """Keys to match items on during merge."""
         return self._match_on
 
@@ -164,7 +164,7 @@ def merge(
     key: str,
     value: "T",
     strategy: "Literal['append', 'prepend', 'deep']" = "append",
-    match_on: "Optional[Union[str, list[str]]]" = None,
+    match_on: "str | list[str] | None" = None,
 ) -> "MergeProp[str, T]":
     """Create a merge prop for combining data during partial reloads (v2 feature).
 
@@ -277,7 +277,7 @@ class StaticProp(Generic[PropKeyT, StaticT]):
     def key(self) -> "PropKeyT":
         return self._key
 
-    def render(self, portal: "Optional[BlockingPortal]" = None) -> "StaticT":
+    def render(self, portal: "BlockingPortal | None" = None) -> "StaticT":
         return self._result
 
 
@@ -287,14 +287,14 @@ class DeferredProp(Generic[PropKeyT, T]):
     def __init__(
         self,
         key: "PropKeyT",
-        value: "Optional[Callable[..., Optional[Union[T, Coroutine[Any, Any, T]]]]]" = None,
+        value: "Callable[..., T | Coroutine[Any, Any, T] | None] | None" = None,
         group: str = DEFAULT_DEFERRED_GROUP,
     ) -> None:
         self._key = key
         self._value = value
         self._group = group
         self._evaluated = False
-        self._result: "Optional[T]" = None
+        self._result: "T | None" = None
 
     @property
     def group(self) -> str:
@@ -307,7 +307,7 @@ class DeferredProp(Generic[PropKeyT, T]):
 
     @staticmethod
     @contextmanager
-    def with_portal(portal: "Optional[BlockingPortal]" = None) -> "Generator[BlockingPortal, None, None]":
+    def with_portal(portal: "BlockingPortal | None" = None) -> "Generator[BlockingPortal, None, None]":
         if portal is None:
             with start_blocking_portal() as p:
                 yield p
@@ -316,11 +316,11 @@ class DeferredProp(Generic[PropKeyT, T]):
 
     @staticmethod
     def _is_awaitable(
-        v: "Callable[..., Union[T, Coroutine[Any, Any, T]]]",
+        v: "Callable[..., T | Coroutine[Any, Any, T]]",
     ) -> "TypeGuard[Coroutine[Any, Any, T]]":
         return inspect.iscoroutinefunction(v)
 
-    def render(self, portal: "Optional[BlockingPortal]" = None) -> "Union[T, None]":
+    def render(self, portal: "BlockingPortal | None" = None) -> "T | None":
         if self._evaluated:
             return self._result
         if self._value is None or not callable(self._value):
@@ -337,7 +337,7 @@ class DeferredProp(Generic[PropKeyT, T]):
             return self._result
 
 
-def is_lazy_prop(value: "Any") -> "TypeGuard[Union[DeferredProp[Any, Any], StaticProp[Any, Any]]]":
+def is_lazy_prop(value: "Any") -> "TypeGuard[DeferredProp[Any, Any] | StaticProp[Any, Any]]":
     """Check if value is a deferred property.
 
     Args:
@@ -399,8 +399,8 @@ def extract_deferred_props(props: "dict[str, Any]") -> "dict[str, list[str]]":
 
 def should_render(
     value: "Any",
-    partial_data: "Optional[set[str]]" = None,
-    partial_except: "Optional[set[str]]" = None,
+    partial_data: "set[str] | None" = None,
+    partial_except: "set[str] | None" = None,
 ) -> "bool":
     """Check if value should be rendered.
 
@@ -448,9 +448,9 @@ def is_or_contains_lazy_prop(value: "Any") -> "bool":
 
 def lazy_render(
     value: "T",
-    partial_data: "Optional[set[str]]" = None,
-    portal: "Optional[BlockingPortal]" = None,
-    partial_except: "Optional[set[str]]" = None,
+    partial_data: "set[str] | None" = None,
+    portal: "BlockingPortal | None" = None,
+    partial_except: "set[str] | None" = None,
 ) -> "T":
     """Filter deferred properties from the value based on partial data.
 
@@ -493,8 +493,8 @@ def lazy_render(
 
 def get_shared_props(
     request: "ASGIConnection[Any, Any, Any, Any]",
-    partial_data: "Optional[set[str]]" = None,
-    partial_except: "Optional[set[str]]" = None,
+    partial_data: "set[str] | None" = None,
+    partial_except: "set[str] | None" = None,
 ) -> "dict[str, Any]":
     """Return shared session props for a request.
 

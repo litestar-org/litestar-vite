@@ -112,6 +112,8 @@ Create the Inertia root template (e.g., `templates/index.html`). The `js_routes`
     </body>
     </html>
 
+The injected script exports your routes as both ``window.serverRoutes`` (preferred, name → URI map) and ``window.routes``. Both are typed when you import the generated helpers.
+
 3. Initialize Frontend
 ~~~~~~~~~~~~~~~~~~~~~~
 

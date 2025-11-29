@@ -33,13 +33,30 @@ export interface RoutesMap {
   routes: Record<string, RouteDefinition>
 }
 
+/**
+ * Convenience alias for route names when using injected metadata.
+ */
+export type RouteName = keyof RoutesMap["routes"]
+
 declare global {
   interface Window {
     __LITESTAR_ROUTES__?: RoutesMap
     routes?: Record<string, string>
+    serverRoutes?: Record<string, string>
   }
   // eslint-disable-next-line no-var
   var routes: Record<string, string>
+  // eslint-disable-next-line no-var
+  var serverRoutes: Record<string, string>
+}
+
+declare global {
+  interface ImportMeta {
+    hot?: {
+      on: (event: string, callback: (...args: unknown[]) => void) => void
+      accept?: (cb?: () => void) => void
+    }
+  }
 }
 
 type RouteArg = string | number | boolean
@@ -65,6 +82,8 @@ export function getRoutes(): Record<string, string> | null {
     for (const [name, def] of Object.entries(window.__LITESTAR_ROUTES__.routes)) {
       routes[name] = def.uri
     }
+    // Expose a descriptive alias for consumers
+    window.serverRoutes = routes
     return routes
   }
 
@@ -319,9 +338,24 @@ export function isCurrentRoute(routeName: string): boolean {
 // Set up global functions for backward compatibility
 if (typeof globalThis !== "undefined") {
   globalThis.routes = globalThis.routes || {}
+  globalThis.serverRoutes = globalThis.serverRoutes || globalThis.routes
   ;(globalThis as Record<string, unknown>).route = route
   ;(globalThis as Record<string, unknown>).toRoute = toRoute
   ;(globalThis as Record<string, unknown>).currentRoute = currentRoute
   ;(globalThis as Record<string, unknown>).isRoute = isRoute
   ;(globalThis as Record<string, unknown>).isCurrentRoute = isCurrentRoute
+}
+
+// Keep serverRoutes fresh during Vite HMR when the plugin regenerates metadata/types
+if (import.meta.hot) {
+  import.meta.hot.on("litestar:types-updated", () => {
+    if (typeof window === "undefined") {
+      return
+    }
+    const updated = getRoutes()
+    if (updated) {
+      window.serverRoutes = updated
+      window.routes = updated
+    }
+  })
 }

@@ -110,7 +110,7 @@ Template
 Svelte Component
 ----------------
 
-.. code-block:: svelte
+.. code-block:: html
 
     <script lang="ts">
       import { onMount } from "svelte";

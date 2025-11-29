@@ -10,5 +10,5 @@
     "esModuleInterop": true,
     "skipLibCheck": true
   },
-  "include": ["./src/index.ts", "./src/astro.ts", "./src/sveltekit.ts", "./src/nuxt.ts"]
+  "include": ["./src/index.ts", "./src/astro.ts", "./src/sveltekit.ts", "./src/nuxt.ts", "./src/globals.d.ts"]
 }

@@ -26,7 +26,6 @@ All must pass.
 
 ```bash
 # Must all return 0 matches
-rg "Optional\[" src/py/litestar_vite/ --count
 rg "from __future__ import annotations" src/py/litestar_vite/ --count
 rg "class Test" src/py/tests/ --count
 ```
@@ -83,7 +82,6 @@ Add to archived PRD:
 ## Quality Gate Checklist
 
 ### Code Quality
-- [ ] No `Optional[T]`
 - [ ] No `from __future__ import annotations`
 - [ ] No class-based tests
 - [ ] All public APIs documented

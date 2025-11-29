@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from litestar.app import DEFAULT_OPENAPI_CONFIG
 from litestar.cli._utils import (
@@ -28,7 +28,7 @@ EXCLUDED_METHODS = {"HEAD", "OPTIONS", "TRACE"}
 
 def generate_js_routes(
     app: "Litestar",
-    exclude: "Optional[tuple[str, ...]]" = None,
+    exclude: "tuple[str, ...] | None" = None,
     schema: "bool" = False,
 ) -> "Routes":
     sorted_routes = sorted(app.routes, key=lambda r: r.path)

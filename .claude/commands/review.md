@@ -32,9 +32,6 @@ All must pass before proceeding.
 Check for prohibited patterns:
 
 ```bash
-# Check for Optional[T] usage (should be 0)
-rg "Optional\[" src/py/litestar_vite/ --count
-
 # Check for future annotations (should be 0)
 rg "from __future__ import annotations" src/py/litestar_vite/ --count
 

@@ -22,13 +22,9 @@ export const Route = createRootRoute({
 
       <footer>
         <details>
-          <summary>Server Routes (injected via window.__LITESTAR_ROUTES__)</summary>
+          <summary>Server Routes (injected via window.serverRoutes / window.__LITESTAR_ROUTES__)</summary>
           <pre>
-            {JSON.stringify(
-              (window as Record<string, unknown>).__LITESTAR_ROUTES__ ?? "Not available",
-              null,
-              2
-            )}
+            {JSON.stringify(window.serverRoutes ?? window.__LITESTAR_ROUTES__ ?? "Not available", null, 2)}
           </pre>
         </details>
       </footer>

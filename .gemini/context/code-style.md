@@ -17,10 +17,8 @@ def get_items() -> list[Item]:
 async def fetch(id: int) -> Item | None:
     ...
 
-# ❌ WRONG - Never use these
-from typing import Optional, List, Dict
-def process(data: Optional[str]) -> Dict[str, Any]:  # NO!
-    ...
+# ❌ WRONG - Never use future annotations
+from __future__ import annotations  # NO!
 ```
 
 ### No Future Annotations (CRITICAL)
@@ -169,7 +167,6 @@ All modified modules must achieve 90%+ test coverage.
 
 | Anti-Pattern | Correct Pattern |
 |--------------|-----------------|
-| `Optional[T]` | `T \| None` |
 | `from __future__ import annotations` | Explicit string quotes |
 | `class TestFoo:` | Function-based tests |
 | `hasattr()` / `getattr()` | Type guards |
