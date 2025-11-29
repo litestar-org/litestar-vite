@@ -1,0 +1,39 @@
+import { defineConfig } from "vite";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
+import litestar from "litestar-vite-plugin";
+{% if use_tailwind %}
+import tailwindcss from "@tailwindcss/vite";
+{% endif %}
+
+export default defineConfig({
+  server: {
+    host: "0.0.0.0",
+    port: Number(process.env.VITE_PORT || "{{ vite_port }}"),
+    cors: true,
+    hmr: {
+      host: "localhost",
+    },
+  },
+  plugins: [
+{% if use_tailwind %}
+    tailwindcss(),
+{% endif %}
+    svelte(),
+    litestar({
+      input: ["{{ resource_dir }}/main.ts"],
+{% if enable_types %}
+      types: {
+        enabled: true,
+        schemaPath: "./openapi.json",
+        routesPath: "./routes.json",
+        output: "{{ resource_dir }}/generated/api",
+      },
+{% endif %}
+    }),
+  ],
+  resolve: {
+    alias: {
+      "@": "/{{ resource_dir }}",
+    },
+  },
+});

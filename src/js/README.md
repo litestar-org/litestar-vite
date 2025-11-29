@@ -1,15 +1,45 @@
-# Litestar Vite Plugin
+# Litestar Vite Plugin (JS)
 
-**Notice** This is experimental software
+Vite plugin that pairs with the Litestar Python backend. It writes the hotfile Vite URL, respects `assetUrl`, and can trigger type generation when the backend exports OpenAPI/routes.
 
-## What is this?
+## Install
+```bash
+npm install @litestar/vite-plugin
+```
 
-This is a library for Litestar and Vite that makes integration between the the two easier.
+## Vite config (vite.config.ts)
+```ts
+import { defineConfig } from "vite"
+import litestar from "@litestar/vite-plugin"
 
-For details on usage, use the `litestar-vite` [plugin](https://github.com/cofin/litestar-vite)
+export default defineConfig({
+  plugins: [
+    litestar({
+      input: ["src/main.ts"],
+      assetUrl: "/static/",
+      bundleDirectory: "public/dist",
+      types: { enabled: true, output: "src/types/api", generateZod: true },
+    }),
+  ],
+})
+```
 
-## Credit
+## Options (essentials)
+- `input`: entry file(s) for Vite.
+- `assetUrl`: must match Python `ViteConfig.asset_url` (default `/static/`).
+- `bundleDirectory`: where build output and manifest live (default `public/dist`).
+- `resourceDirectory`: source dir for full-reload watching (default `resources`).
+- `hotFile`: path to write dev URL (default `${bundleDirectory}/hot`).
+- `refresh`: paths or config for vite-plugin-full-reload.
+- `types`: `false` or { `enabled`, `output`, `openapiPath`, `routesPath`, `generateZod`, `generateSdk`, `debounce` }.
 
-The team at Laravel have done an incredible job at making it easier to use common JS/TS frameworks with the framework.
+## Dev / prod notes
+- Dev: writes `hot` file; Litestar proxy reads it to forward HTTP + HMR.
+- Prod: serve assets via manifest in `bundleDirectory`; keep `assetUrl` in sync with backend.
 
-This plugin is more than a little inspired by the worker here [Laravel's Vite Integration](https://github.com/laravel/vite-plugin)
+## Attribution
+This plugin’s design is heavily inspired by the Laravel Vite plugin: https://github.com/laravel/vite-plugin.
+
+## Links
+- Docs: https://litestar-org.github.io/litestar-vite/
+- Repo: https://github.com/litestar-org/litestar-vite

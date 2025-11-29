@@ -1,0 +1,33 @@
+import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
+
+export const Route = createRootRoute({
+  component: () => (
+    <div className="app">
+      <header>
+        <p className="brand">Litestar + Vite</p>
+        <h1>{{ project_name }}</h1>
+        <nav className="nav">
+          <Link to="/" activeProps={% raw %}{{ className: "active" }}{% endraw %} activeOptions={% raw %}{{ exact: true }}{% endraw %}>
+            Home
+          </Link>
+          <Link to="/books" activeProps={% raw %}{{ className: "active" }}{% endraw %}>
+            Books
+          </Link>
+        </nav>
+      </header>
+
+      <main>
+        <Outlet />
+      </main>
+
+      <footer>
+        <details>
+          <summary>Server Routes (injected via window.serverRoutes / window.__LITESTAR_ROUTES__)</summary>
+          <pre>
+            {JSON.stringify(window.serverRoutes ?? window.__LITESTAR_ROUTES__ ?? "Not available", null, 2)}
+          </pre>
+        </details>
+      </footer>
+    </div>
+  ),
+});

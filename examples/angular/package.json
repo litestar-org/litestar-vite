@@ -1,0 +1,31 @@
+{
+  "name": "angular",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@angular/animations": "latest",
+    "@angular/common": "latest",
+    "@angular/compiler": "latest",
+    "@angular/core": "latest",
+    "@angular/forms": "latest",
+    "@angular/platform-browser": "latest",
+    "@angular/router": "latest",
+    "rxjs": "latest",
+    "zone.js": "latest"
+  },
+  "devDependencies": {
+    "@analogjs/vite-plugin-angular": "latest",
+    "@angular/build": "latest",
+    "@angular/compiler-cli": "latest",
+    "@angular/platform-browser-dynamic": "latest",
+    "typescript": "latest",
+    "@types/node": "latest",
+    "litestar-vite-plugin": "file:../../dist/js/",
+    "vite": "^6.0.0"
+  }
+}

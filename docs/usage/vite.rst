@@ -13,7 +13,8 @@ Install the package:
 
     pip install litestar-vite
 
-**Note:** If you do not have an existing node environment, you can use `nodeenv` to automatically configure one for you by using the ``litestar-vite[nodeenv]`` extras option.
+.. note::
+    Nodeenv integration is opt-in. To let litestar-vite provision Node inside your virtualenv, install with ``litestar-vite[nodeenv]`` and enable nodeenv detection (for example ``runtime.detect_nodeenv=True`` or ``make install NODEENV=1``). Otherwise, ensure Node/npm is available on your system.
 
 Setup Options
 -------------
@@ -27,8 +28,14 @@ The CLI provides a streamlined setup process:
 
 .. code-block:: bash
 
-    # Initialize a new Vite project
+    # Initialize a new Vite project (React default)
     litestar assets init
+
+    # Inertia templates keep Laravel-style paths under resources/
+    litestar assets init --template vue-inertia
+
+    # Non-Inertia templates default to src/; place everything under web/
+    litestar assets init --template react --frontend-dir web
 
 This command will:
 
@@ -43,14 +50,11 @@ The generated project structure will look like this:
 
     my_project/
     ├── public/           # Compiled assets
-    ├── resources/        # Source assets
-    │   ├── js/
-    │   ├── css/
-    │   └── templates/
-    ├── src/             # Python source code
-    ├── package.json     # Node.js dependencies
-    ├── vite.config.js   # Vite configuration
-    └── pyproject.toml   # Python dependencies
+    ├── src/              # Frontend source (default for non-Inertia)
+    ├── resources/        # Frontend source (Inertia templates only)
+    ├── package.json      # Node.js dependencies
+    ├── vite.config.js    # Vite configuration
+    └── pyproject.toml    # Python dependencies
 
 2. Manual Setup
 ~~~~~~~~~~~~~~~
@@ -75,58 +79,240 @@ If you prefer more control, you can set up Vite manually:
     export default defineConfig({
         plugins: [
             litestar({
-                input: {
-                    main: 'resources/js/main.js',
-                    styles: 'resources/css/styles.css'
-                },
-                reload: true
+                input: ['src/main.ts'],
             })
         ]
     })
+    // For Inertia templates, use resources/main.ts instead
 
 Configuration
 -------------
 
-Litestar Configuration
-~~~~~~~~~~~~~~~~~~~~~~
+The integration is configured in two places: the Python backend via the `VitePlugin` and the frontend via the `litestar-vite-plugin` in your `vite.config.ts`.
 
-Configure your Litestar application:
+Python Configuration (`ViteConfig`)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You configure the Litestar backend using the `ViteConfig` object passed to the `VitePlugin`. The configuration is now organized into nested objects.
 
 .. code-block:: python
 
     from litestar import Litestar
     from litestar_vite import ViteConfig, VitePlugin
+    from litestar_vite.config import PathConfig, RuntimeConfig
 
     app = Litestar(
         plugins=[
             VitePlugin(
                 config=ViteConfig(
-                    use_server_lifespan=True,    # Manage Vite server lifecycle
-                    dev_mode=True,               # Enable vite dev mode
-                    hot_reload=True,             # Enable HMR in development
+                    paths=PathConfig(
+                        bundle_dir="public",
+                        resource_dir="src",  # use "resources" for Inertia templates
+                    ),
+                    runtime=RuntimeConfig(
+                        port=5173,
+                        hot_reload=True,
+                    ),
+                    mode="spa", # or "template", "htmx"
                 )
             )
         ]
     )
 
+**Root `ViteConfig` Parameters**:
+
+.. list-table::
+   :widths: 25 15 60
+   :header-rows: 1
+
+   * - Parameter
+     - Type
+     - Description
+   * - `mode`
+     - `str`
+     - Operation mode: `"spa"`, `"template"`, or `"htmx"`. Defaults to `"spa"`.
+   * - `paths`
+     - `PathConfig`
+     - File system paths configuration.
+   * - `runtime`
+     - `RuntimeConfig`
+     - Runtime execution settings.
+   * - `types`
+     - `TypeGenConfig | bool`
+     - Type generation settings.
+   * - `inertia`
+     - `InertiaConfig | bool`
+     - Inertia.js settings.
+   * - `dev_mode`
+     - `bool`
+     - Shortcut to enable development mode.
+
+**`PathConfig` Parameters**:
+
+.. list-table::
+   :widths: 25 15 60
+   :header-rows: 1
+
+   * - Parameter
+     - Type
+     - Description
+   * - `bundle_dir`
+     - `Path | str`
+     - Location of compiled assets. Defaults to `"public"`.
+   * - `resource_dir`
+     - `Path | str`
+     - Directory for source files. Defaults to `"src"` (use `"resources"` for Inertia templates).
+   * - `public_dir`
+     - `Path | str`
+     - The public directory Vite serves assets from. Defaults to `"public"`.
+   * - `manifest_name`
+     - `str`
+     - Name of the Vite manifest file. Defaults to `"manifest.json"`.
+   * - `hot_file`
+     - `str`
+     - Name of the hot file. Defaults to `"hot"`.
+   * - `asset_url`
+     - `str`
+     - Base URL for static assets. Defaults to `"/static/"`.
+
+**`RuntimeConfig` Parameters**:
+
+.. list-table::
+   :widths: 25 15 60
+   :header-rows: 1
+
+   * - Parameter
+     - Type
+     - Description
+   * - `dev_mode`
+     - `bool`
+     - Enable development mode.
+   * - `hot_reload`
+     - `bool`
+     - Enable Hot Module Replacement.
+   * - `host`
+     - `str`
+     - Host for Vite dev server. Defaults to `"localhost"`.
+   * - `port`
+     - `int`
+     - Port for Vite dev server. Defaults to `5173`.
+   * - `executor`
+     - `str`
+     - JS executor (`"node"`, `"bun"`, `"deno"`). Defaults to `"node"`.
+
+Vite Plugin Configuration (`litestar-vite-plugin`)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You configure the Vite frontend build process in your `vite.config.ts` (or `.js`).
+
+.. code-block:: javascript
+
+    import { defineConfig } from 'vite'
+    import litestar from 'litestar-vite-plugin'
+
+    export default defineConfig({
+        plugins: [
+            litestar({
+                // Add your configuration options here
+                input: ['src/main.ts'], // use resources/main.ts for Inertia templates
+            })
+        ]
+    })
+
+**Available Plugin Parameters**:
+
+.. list-table::
+   :widths: 25 15 60
+   :header-rows: 1
+
+   * - Parameter
+     - Type
+     - Description
+   * - `input`
+     - `string | string[]`
+     - **Required**. The path or paths of the entry points to compile.
+   * - `assetUrl`
+     - `string`
+     - The base path for asset URLs. Defaults to `'/static/'`.
+   * - `bundleDirectory`
+     - `string`
+     - The directory where compiled assets are written. Defaults to `'public/dist'`.
+   * - `resourceDirectory`
+     - `string`
+     - The directory for source assets. Defaults to `'src'` (use `'resources'` for Inertia templates).
+   * - `hotFile`
+     - `string`
+     - The path to the "hot" file. Defaults to `${bundleDirectory}/hot`.
+   * - `types`
+     - `object | boolean`
+     - Type generation configuration.
+
 Template Integration
 ~~~~~~~~~~~~~~~~~~~~
 
-Create templates that use Vite assets:
+Use the `vite()` and `vite_hmr()` callables in your Jinja2 templates to include the assets (in Template Mode).
 
 .. code-block:: html
 
     <!DOCTYPE html>
     <html>
     <head>
-        {{ vite('resources/css/styles.css') }}
+        {{ vite('src/css/styles.css') }}
     </head>
     <body>
         <div id="app"></div>
-        {{ vite('resources/js/main.js') }}
         {{ vite_hmr() }}
+        {{ vite('src/js/main.js') }}
     </body>
     </html>
+
+Angular options
+---------------
+
+Litestar Vite supports Angular in two ways:
+
+- **Angular (Vite / Analog)** – `litestar assets init --template angular`
+
+  - Uses `@analogjs/vite-plugin-angular` together with `litestar-vite-plugin`.
+  - Source dir: `src/`; hotfile at `public/hot`; single-port proxy/HMR enabled by default.
+  - Typed routes/OpenAPI generation on by default (writes to `src/generated`).
+
+- **Angular CLI (non-Vite)** – `litestar assets init --template angular-cli`
+
+  - Runs via Angular CLI `ng serve` with `proxy.conf.json` targeting Litestar.
+  - Source dir: `src/`; does **not** use `litestar-vite-plugin` or the typed-routes pipeline.
+  - Use `npm start` / `npm run build` and serve `dist/browser/` via Litestar static files.
+
+Troubleshooting (Angular)
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- HMR not connecting (Analog): ensure `/vite-hmr` and `/@analogjs/` are proxied; stay in single-port mode or expose Vite directly.
+- Types not generating (Analog): install `@hey-api/openapi-ts` or set `types.enabled=false` in `vite.config.ts`.
+- Angular CLI path: confirm backend runs on port 8000 (or update `proxy.conf.json` targets).
+
+Framework comparison (scaffolds)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+===================== =================== =============================== ===========================
+Framework             Source dir          Dev server / proxy              Type generation
+===================== =================== =============================== ===========================
+React/Vue/Svelte      src/                Vite + litestar-vite proxy      Enabled by default
+Inertia variants      resources/          Vite + litestar-vite proxy      Enabled by default
+Angular (Analog)      src/                Vite (Analog) + proxy           Enabled by default
+Angular CLI           src/                Angular CLI + proxy.conf.json   Disabled (CLI handles dev)
+HTMX                  src/                Vite + litestar-vite proxy      Disabled (JS optional)
+===================== =================== =============================== ===========================
+
+Advanced Asset Handling
+~~~~~~~~~~~~~~~~~~~~~~~
+
+For assets that are not entry points but still need to be referenced (e.g., images processed by Vite), you can use the `vite_static` template callable:
+
+.. code-block:: html
+
+    <img src="{{ vite_static('src/images/logo.png') }}" alt="Logo" />
+
+This resolves the correct URL whether you are in development mode (served by Vite) or production mode (hashed URL from manifest).
 
 Development Workflow
 --------------------
@@ -134,31 +320,30 @@ Development Workflow
 Development Server
 ~~~~~~~~~~~~~~~~~~
 
-The litestar CLI is able to manage the Vite development process when using the `use_server_lifespan` option.  When this is enabled,
-the CLI will automatically manage the Vite server lifecycle with the Litestar application.  This command will automatically serve the the application in dev and production mode.
+When `use_server_lifespan` is set to `True` (default when `dev_mode=True`), the Litestar CLI will automatically manage the Vite development server.
 
 .. code-block:: bash
 
     litestar run
 
-However, if you would like to manage the Vite server lifecycle manually, you can use the following commands:
+Proxy vs direct modes:
 
-**Note:** You will likely need to disable the ``use_server_lifespan`` option in your ``ViteConfig`` if you are managing the Vite server lifecycle manually.
+- **Proxy (default):** Litestar proxies Vite HTTP + WS/HMR through the ASGI port. Vite binds to loopback with an auto-picked port if `VITE_PORT` is unset, writes `public/hot` with its URL, and the JS plugin reads it. Paths like `/@vite/client`, `/@fs/`, `/node_modules/.vite/`, `/src/`, `/__vite_ping` are forwarded, including WebSockets.
+- **Direct:** classic two-port setup; Vite is exposed on `VITE_HOST:VITE_PORT` and Litestar does not proxy it.
 
-1. Start the Vite development server using the CLI:
+Switch with `VITE_PROXY_MODE=proxy|direct` (or `ViteConfig.runtime.proxy_mode`).
 
-.. code-block:: bash
-
-    # Using the CLI
-    litestar assets serve
-
-
-2. Run your Litestar application:
+If you prefer to manage the Vite server manually, set `dev_mode=False` in config but run vite manually:
 
 .. code-block:: bash
+    :caption: Terminal 1: Start Vite Dev Server
+
+    npm run dev
+
+.. code-block:: bash
+    :caption: Terminal 2: Run Litestar App
 
     litestar run
-
 
 Production
 ----------
@@ -166,21 +351,12 @@ Production
 Building Assets
 ~~~~~~~~~~~~~~~
 
-Build your assets for production:
+Build your assets for production using the CLI:
 
 .. code-block:: bash
 
-    # Using the CLI
     litestar assets build
 
-    # Or manually
-    npm run build
-
-The build process will:
-
-1. Bundle and optimize all assets
-2. Generate a manifest file
-3. Output files to the ``bundle_dir``
-
+This command bundles and optimizes all assets, generates a manifest file, and outputs the files to the configured `bundle_dir`.
 
 For more information about Inertia integration, refer to the :doc:`Inertia </usage/inertia>` documentation.

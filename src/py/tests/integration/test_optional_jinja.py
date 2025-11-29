@@ -1,7 +1,5 @@
 """Tests for optional Jinja dependency support."""
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -10,7 +8,7 @@ import pytest
 from litestar import Litestar
 from litestar.template.config import TemplateConfig
 
-from litestar_vite.config import ViteConfig
+from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
 from litestar_vite.exceptions import MissingDependencyError
 
 pytestmark = pytest.mark.anyio
@@ -26,38 +24,6 @@ class TestOptionalJinjaSupport:
         assert "jinja2" in error_msg
         assert "litestar-vite[jinja]" in error_msg
         assert "pip install" in error_msg
-
-    def test_commands_with_jinja_available(self, tmp_path: Path) -> None:
-        """Test commands.py functions work when Jinja is available."""
-        # Test that imports work when Jinja is available
-        from jinja2 import Environment, FileSystemLoader
-
-        from litestar_vite.commands import get_template
-
-        template_env = Environment(loader=FileSystemLoader([tmp_path]))
-
-        # Create a simple template for testing
-        template_path = tmp_path / "test.j2"
-        template_path.write_text("Hello {{ name }}!")
-
-        template = get_template(environment=template_env, name="test.j2")
-        assert template is not None
-        assert "Hello" in template.render(name="World")
-
-    @patch.dict(sys.modules, {"jinja2": None})
-    def test_commands_without_jinja_in_type_checking(self) -> None:
-        """Test that TYPE_CHECKING imports handle missing Jinja gracefully."""
-        # Reload the module to test the TYPE_CHECKING imports
-        import importlib
-
-        import litestar_vite.commands
-
-        # The module should still be importable even if jinja2 is missing
-        # during TYPE_CHECKING (the imports are in a try/except block)
-        importlib.reload(litestar_vite.commands)
-
-        # Should not raise an exception
-        assert litestar_vite.commands.VITE_INIT_TEMPLATES is not None
 
     @patch("litestar_vite.commands.JINJA_INSTALLED", False)
     def test_init_vite_without_jinja_raises_clear_error(self, tmp_path: Path) -> None:
@@ -239,9 +205,6 @@ class TestJinjaOptionalInstallationScenarios:
         updated_config = plugin.on_app_init(app_config)
         assert updated_config is not None
 
-        # Template callables should be registered
-        # We can't directly test the callables without more setup, but the registration should complete
-
 
 class TestErrorMessages:
     """Test error message quality and helpfulness."""
@@ -309,10 +272,6 @@ class TestConditionalImports:
         # Module should be importable regardless of Jinja availability
         assert litestar_vite.commands is not None
 
-        # Constants should still be defined
-        assert hasattr(litestar_vite.commands, "VITE_INIT_TEMPLATES")
-        assert hasattr(litestar_vite.commands, "DEFAULT_RESOURCES")
-
     def test_runtime_imports_fail_gracefully(self) -> None:
         """Test that runtime imports fail with helpful messages."""
         from unittest.mock import patch
@@ -336,7 +295,7 @@ class TestJinjaOptionalEdgeCases:
         from litestar_vite.config import ViteConfig
 
         # ViteConfig should work with basic configuration even if Jinja is not available
-        config = ViteConfig(bundle_dir=Path("/tmp/public"))
+        config = ViteConfig(paths=PathConfig(bundle_dir=Path("/tmp/public")))
         assert config.bundle_dir == Path("/tmp/public")
 
     def test_multiple_template_engine_scenarios(self) -> None:
@@ -363,52 +322,6 @@ class TestJinjaOptionalEdgeCases:
         # Should handle non-Jinja engines gracefully
         updated_config = plugin.on_app_init(app_config)
         assert updated_config is not None
-
-    @patch.dict(sys.modules, {"jinja2": None, "litestar.contrib.jinja": None})
-    def test_complete_jinja_absence_scenario(self) -> None:
-        """Test complete absence of both jinja2 and litestar.contrib.jinja."""
-        import importlib
-
-        # Force reload modules to test import behavior
-        if "litestar_vite.plugin" in sys.modules:
-            importlib.reload(sys.modules["litestar_vite.plugin"])
-        if "litestar_vite.commands" in sys.modules:
-            importlib.reload(sys.modules["litestar_vite.commands"])
-
-        # Basic imports should still work
-        from litestar_vite.config import ViteConfig
-        from litestar_vite.loader import ViteAssetLoader
-
-        config = ViteConfig()
-        loader = ViteAssetLoader.initialize_loader(config=config)
-
-        assert config is not None
-        assert loader is not None
-
-    def test_jinja_available_but_litestar_contrib_missing(self) -> None:
-        """Test scenario where jinja2 is available but litestar[jinja] is not installed."""
-        # This test is actually testing an impossible scenario since litestar.contrib.jinja
-        # is always available when jinja2 is installed. Keeping for edge case coverage.
-        from litestar.config.app import AppConfig
-
-        from litestar_vite.config import ViteConfig
-        from litestar_vite.plugin import VitePlugin
-
-        config = ViteConfig()
-        plugin = VitePlugin(config=config)
-
-        # Should work normally
-        app_config = AppConfig()
-        updated_config = plugin.on_app_init(app_config)
-        assert updated_config is not None
-
-    def test_partial_import_failure_scenarios(self) -> None:
-        """Test various partial import failure scenarios."""
-        from litestar_vite.commands import VITE_INIT_TEMPLATES
-
-        # Constants should still be accessible even with import issues
-        assert VITE_INIT_TEMPLATES is not None
-        assert isinstance(VITE_INIT_TEMPLATES, (list, tuple, set))
 
     def test_error_message_consistency(self) -> None:
         """Test that error messages are consistent across different entry points."""
@@ -462,7 +375,7 @@ class TestJinjaOptionalEdgeCases:
         from litestar_vite.config import ViteConfig
         from litestar_vite.loader import ViteAssetLoader
 
-        config = ViteConfig(bundle_dir=Path("/tmp/public"), resource_dir=Path("/tmp/resources"))
+        config = ViteConfig(paths=PathConfig(bundle_dir=Path("/tmp/public"), resource_dir=Path("/tmp/resources")))
 
         # Asset loader should work regardless of Jinja
         loader = ViteAssetLoader.initialize_loader(config=config)
@@ -488,14 +401,12 @@ class TestJinjaOptionalEdgeCases:
         from litestar_vite.config import ViteConfig
 
         # Development scenario
-        dev_config = ViteConfig(hot_reload=True)
+        dev_config = ViteConfig(runtime=RuntimeConfig(hot_reload=True))
         assert dev_config.hot_reload is True
 
         # Production scenario
-        prod_config = ViteConfig(hot_reload=False)
+        prod_config = ViteConfig(runtime=RuntimeConfig(hot_reload=False))
         assert prod_config.hot_reload is False
-
-        # Both should work regardless of Jinja availability
 
 
 class TestJinjaOptionalPerformanceImpact:
@@ -562,9 +473,11 @@ class TestJinjaOptionalProductionReadiness:
 
         # Typical production configuration
         config = ViteConfig(
-            bundle_dir=Path("/app/public"),
-            resource_dir=Path("/app/resources"),
-            hot_reload=False,  # Production setting
+            paths=PathConfig(
+                bundle_dir=Path("/app/public"),
+                resource_dir=Path("/app/resources"),
+            ),
+            runtime=RuntimeConfig(hot_reload=False),  # Production setting
         )
 
         plugin = VitePlugin(config=config)
@@ -583,9 +496,11 @@ class TestJinjaOptionalProductionReadiness:
 
         # Kubernetes-style configuration with read-only filesystem considerations
         config = ViteConfig(
-            bundle_dir=Path("/app/static"),
-            resource_dir=Path("/app/src"),
-            hot_reload=False,
+            paths=PathConfig(
+                bundle_dir=Path("/app/static"),
+                resource_dir=Path("/app/src"),
+            ),
+            runtime=RuntimeConfig(hot_reload=False),
         )
 
         loader = ViteAssetLoader.initialize_loader(config=config)

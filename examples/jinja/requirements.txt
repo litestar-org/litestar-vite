@@ -1,4 +1,0 @@
-litestar[standard]==2.15.1
-litestar[jinja]==2.15.1
-gunicorn==23.0.0
-litestar-vite==0.13.0

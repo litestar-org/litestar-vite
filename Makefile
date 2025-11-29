@@ -21,6 +21,9 @@ INFO := $(shell printf "$(BLUE)ℹ$(NC)")
 OK := $(shell printf "$(GREEN)✓$(NC)")
 WARN := $(shell printf "$(YELLOW)⚠$(NC)")
 ERROR := $(shell printf "$(RED)✖$(NC)")
+NODEENV ?= 0
+EXTRAS ?=
+UV_SYNC_EXTRAS := $(foreach extra,$(EXTRAS),--extra $(extra))
 
 # =============================================================================
 # Help and Documentation
@@ -38,17 +41,19 @@ help:                                               ## Display this help text fo
 install-uv:                                         ## Install latest version of uv
 	@echo "${INFO} Installing uv..."
 	@curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1
-	@uv tool install nodeenv >/dev/null 2>&1
 	@echo "${OK} UV installed successfully"
 
 .PHONY: install
 install: destroy clean                              ## Install the project, dependencies, and pre-commit
 	@echo "${INFO} Starting fresh installation..."
 	@uv venv >/dev/null 2>&1
-	@uv sync --all-extras --dev
-	@if ! command -v npm >/dev/null 2>&1; then \
-		echo "${INFO} Installing Node environment... 📦"; \
+	@uv sync --dev $(UV_SYNC_EXTRAS)
+	@if [ "$(NODEENV)" = "1" ]; then \
+		echo "${INFO} Installing Node environment via nodeenv... 📦"; \
 		uvx nodeenv .venv --force --quiet >/dev/null 2>&1; \
+	elif ! command -v npm >/dev/null 2>&1; then \
+		echo "${WARN} npm not found. Re-run with NODEENV=1 to provision nodeenv or install Node.js manually."; \
+		exit 1; \
 	fi
 	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm install --no-fund
 	@echo "${OK} Installation complete! 🎉"
@@ -92,7 +97,7 @@ build:                                             ## Build the package
 	@echo "${OK} Package build complete"
 
 .PHONY: release
-release:                                           ## Bump version and create release tag
+release:                                           ## Bump version and create release tag (bump=major|minor|patch)
 	@echo "${INFO} Preparing for release... 📦"
 	@make docs
 	@make clean
@@ -100,6 +105,31 @@ release:                                           ## Bump version and create re
 	@uv lock --upgrade-package litestar-vite >/dev/null 2>&1
 	@uv run bump-my-version bump $(bump)
 	@echo "${OK} Release complete 🎉"
+
+.PHONY: pre-release
+pre-release:                                       ## Start a pre-release: make pre-release version=0.15.0-alpha.1
+	@if [ -z "$(version)" ]; then \
+		echo "${ERROR} Usage: make pre-release version=X.Y.Z-alpha.N"; \
+		echo ""; \
+		echo "Pre-release workflow:"; \
+		echo "  1. Start alpha:     make pre-release version=0.15.0-alpha.1"; \
+		echo "  2. Next alpha:      make pre-release version=0.15.0-alpha.2"; \
+		echo "  3. Move to beta:    make pre-release version=0.15.0-beta.1"; \
+		echo "  4. Move to rc:      make pre-release version=0.15.0-rc.1"; \
+		echo "  5. Final release:   make release bump=patch (from rc) OR bump=minor (from stable)"; \
+		exit 1; \
+	fi
+	@echo "${INFO} Preparing pre-release $(version)... 🧪"
+	@make clean
+	@make build
+	@uv lock --upgrade-package litestar-vite >/dev/null 2>&1
+	@uv run bump-my-version bump --new-version $(version) pre
+	@echo "${OK} Pre-release $(version) complete 🧪"
+	@echo ""
+	@echo "${INFO} Next steps:"
+	@echo "  1. Push: git push origin HEAD"
+	@echo "  2. Create a GitHub pre-release: gh release create v$(version) --prerelease --title 'v$(version)'"
+	@echo "  3. This will publish to PyPI/npm with pre-release tags"
 
 # =============================================================================
 # Cleaning and Maintenance
@@ -210,7 +240,7 @@ docs-clean:                                        ## Clean documentation build
 .PHONY: docs-serve
 docs-serve: docs-clean                             ## Serve documentation locally
 	@echo "${INFO} Starting documentation server... 📚"
-	@uv run sphinx-autobuild docs docs/_build/ -j auto --watch src/py/litestar_vite --watch docs --watch tests --watch CONTRIBUTING.rst --port 8002
+	@uv run sphinx-autobuild docs docs/_build/ -j auto --watch src/py/litestar_vite --watch docs --watch CONTRIBUTING.rst --port 8002
 
 .PHONY: docs
 docs: docs-clean                                   ## Build documentation
@@ -229,3 +259,14 @@ docs-linkcheck-full:                               ## Run full documentation lin
 	@echo "${INFO} Running full link check... 🔗"
 	@uv run sphinx-build -b linkcheck ./docs ./docs/_build -D linkcheck_anchors=0
 	@echo "${OK} Full link check complete"
+
+.PHONY: docs-demos
+docs-demos:                                        ## Generate demo GIFs locally (requires vhs)
+	@echo "${INFO} Generating demo GIFs... 🎬"
+	@command -v vhs >/dev/null 2>&1 || { echo "${ERROR} VHS required. Install with: brew install vhs (macOS) or see https://github.com/charmbracelet/vhs"; exit 1; }
+	@mkdir -p docs/_static/demos
+	@for tape in docs/_tapes/*.tape; do \
+		echo "${INFO} Processing $$tape..."; \
+		VHS_NO_SANDBOX=true vhs "$$tape"; \
+	done
+	@echo "${OK} Demo GIFs generated successfully"

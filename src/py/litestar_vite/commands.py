@@ -1,42 +1,18 @@
-import platform
-import subprocess
-from collections.abc import MutableMapping
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Union
+"""Vite commands module.
+
+This module provides utility functions for Vite project initialization.
+The main scaffolding functionality has moved to litestar_vite.scaffolding.
+"""
+
+from typing import TYPE_CHECKING
 
 from litestar_vite.config import JINJA_INSTALLED
 from litestar_vite.exceptions import MissingDependencyError
 
 if TYPE_CHECKING:
-    from collections.abc import MutableMapping
+    from pathlib import Path
 
-    from jinja2 import Environment, Template
     from litestar import Litestar
-
-
-VITE_INIT_TEMPLATES: "set[str]" = {"package.json.j2", "tsconfig.json.j2", "vite.config.ts.j2"}
-DEFAULT_RESOURCES: "set[str]" = {"styles.css.j2", "main.ts.j2"}
-DEFAULT_DEV_DEPENDENCIES: "dict[str, str]" = {
-    "typescript": "^5.8.3",
-    "vite": "^6.3.5",
-    "litestar-vite-plugin": "^0.14.0",
-    "@types/node": "^22.15.3",
-}
-DEFAULT_DEPENDENCIES: "dict[str, str]" = {"axios": "^1.9.0"}
-
-
-def to_json(value: "Any") -> str:
-    """Serialize JSON field values.
-
-    Args:
-        value: Any json serializable value.
-
-    Returns:
-        JSON string.
-    """
-    from litestar.serialization import encode_json
-
-    return encode_json(value).decode("utf-8")
 
 
 def init_vite(
@@ -50,8 +26,9 @@ def init_vite(
     vite_port: int,
     hot_file: "Path",
     litestar_port: int,
+    framework: str = "react",
 ) -> None:
-    """Initialize a new Vite project.
+    """Initialize a new Vite project using the scaffolding system.
 
     Args:
         app: The Litestar application instance.
@@ -64,113 +41,40 @@ def init_vite(
         vite_port: Port for Vite dev server.
         hot_file: Path to hot reload manifest.
         litestar_port: Port for Litestar server.
+        framework: Framework template to use (default: react).
 
     Raises:
-        MissingDependencyError: If required dependencies are not installed.
+        MissingDependencyError: If Jinja2 is not installed.
     """
-    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-    from litestar.utils import module_loader
-
     if not JINJA_INSTALLED:
         raise MissingDependencyError(package="jinja2", install_package="jinja")
-    from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-    template_path = module_loader.module_to_os_path("litestar_vite.templates")
-    vite_template_env = Environment(
-        loader=FileSystemLoader([template_path]),
-        autoescape=select_autoescape(),
+    from litestar_vite.scaffolding import TemplateContext, generate_project
+    from litestar_vite.scaffolding.templates import FrameworkType, get_template
+
+    # Get the framework template
+    template = get_template(framework)
+    if template is None:
+        template = get_template(FrameworkType.REACT)
+    if template is None:  # pragma: no cover
+        msg = f"Could not find template for framework: {framework}"
+        raise ValueError(msg)
+
+    # Create template context
+    context = TemplateContext(
+        project_name=root_path.name or "my-project",
+        framework=template,
+        use_typescript=template.uses_typescript,
+        use_tailwind=False,
+        vite_port=vite_port,
+        litestar_port=litestar_port,
+        asset_url=asset_url,
+        resource_dir=str(resource_path),
+        bundle_dir=str(bundle_path),
+        enable_ssr=enable_ssr,
+        enable_inertia=template.inertia_compatible and "inertia" in framework,
+        enable_types=True,
     )
 
-    enabled_templates: "set[str]" = VITE_INIT_TEMPLATES
-    enabled_resources: "set[str]" = DEFAULT_RESOURCES
-    dependencies: "dict[str, str]" = DEFAULT_DEPENDENCIES
-    dev_dependencies: "dict[str, str]" = DEFAULT_DEV_DEPENDENCIES
-    templates: "dict[str, Template]" = {
-        template_name: get_template(environment=vite_template_env, name=template_name)
-        for template_name in enabled_templates
-    }
-
-    # Prepare root_path
-    root_path.mkdir(parents=True, exist_ok=True)
-    for template_name, template in templates.items():
-        target_file_name = template_name.removesuffix(".j2")
-        target_file_path = root_path / target_file_name
-        with target_file_path.open(mode="w") as file:
-            console.print(f" * Writing {target_file_name} to {target_file_path!s}")
-
-            file.write(
-                template.render(
-                    entry_point=[
-                        f"{resource_path!s}/{resource_name.removesuffix('.j2')}" for resource_name in enabled_resources
-                    ],
-                    enable_ssr=enable_ssr,
-                    asset_url=asset_url,
-                    root_path=root_path,
-                    resource_path=str(resource_path),
-                    public_path=str(public_path),
-                    bundle_path=str(bundle_path),
-                    hot_file=str(hot_file),
-                    vite_port=str(vite_port),
-                    litestar_port=litestar_port,
-                    dependencies=to_json(dependencies),
-                    dev_dependencies=to_json(dev_dependencies),
-                ),
-            )
-
-    (root_path / bundle_path).mkdir(parents=True, exist_ok=True)
-    (root_path / public_path).mkdir(parents=True, exist_ok=True)
-    (root_path / resource_path).mkdir(parents=True, exist_ok=True)
-    for resource_name in enabled_resources:
-        template = get_template(environment=vite_template_env, name=resource_name)
-        target_file_name = f"{resource_name.removesuffix('.j2')}"
-        target_file_path = root_path / resource_path / target_file_name
-        with target_file_path.open(mode="w") as file:
-            console.print(
-                f" * Writing {resource_name.removesuffix('.j2')} to {target_file_path!s}",
-            )
-            file.write(template.render())
-    console.print("[yellow]Vite initialization completed.[/]")
-
-
-def get_template(
-    environment: "Environment",
-    name: "Union[str, Template]",
-    parent: "Optional[str]" = None,
-    globals: "Optional[MutableMapping[str, Any]]" = None,  # noqa: A002
-) -> "Template":
-    """Get a template from the Jinja environment.
-
-    Args:
-        environment: The Jinja :class:`jinja2.Environment`.
-        name: Template name or :class:`jinja2.Template` object.
-        parent: Parent template name.
-        globals: Global variables for the template.
-
-    Returns:
-        The :class:`jinja2.Template` object.
-
-    Raises:
-        MissingDependencyError: If Jinja2 is not available.
-    """
-    if not JINJA_INSTALLED:
-        raise MissingDependencyError(package="jinja2", install_package="jinja")
-
-    return environment.get_template(name=name, parent=parent, globals=globals)
-
-
-def execute_command(
-    command_to_run: "list[str]", cwd: "Optional[Union[str, Path]]" = None
-) -> "subprocess.CompletedProcess[bytes]":
-    """Run Vite in a subprocess.
-
-    Args:
-        command_to_run: The command to run.
-        cwd: The current working directory.
-
-    Returns:
-        The completed process.
-    """
-    kwargs = {}
-    if cwd is not None:
-        kwargs["cwd"] = Path(cwd)
-    return subprocess.run(command_to_run, check=False, shell=platform.system() == "Windows", **kwargs)  # type: ignore[call-overload]
+    # Generate project files
+    generate_project(root_path, context, overwrite=True)

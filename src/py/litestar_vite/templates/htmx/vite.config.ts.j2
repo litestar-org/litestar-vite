@@ -1,0 +1,29 @@
+import { defineConfig } from "vite";
+import litestar from "litestar-vite-plugin";
+{% if use_tailwind %}
+import tailwindcss from "@tailwindcss/vite";
+{% endif %}
+
+export default defineConfig({
+  server: {
+    host: "0.0.0.0",
+    port: Number(process.env.VITE_PORT || "{{ vite_port }}"),
+    cors: true,
+    hmr: {
+      host: "localhost",
+    },
+  },
+  plugins: [
+{% if use_tailwind %}
+    tailwindcss(),
+{% endif %}
+    litestar({
+      input: ["{{ resource_dir }}/main.js"],
+    }),
+  ],
+  resolve: {
+    alias: {
+      "@": "/{{ resource_dir }}",
+    },
+  },
+});

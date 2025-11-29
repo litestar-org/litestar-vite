@@ -1,11 +1,19 @@
 {
+  "name": "flash",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "watch": "vite build --watch",
-    "build": "vite build"
+    "build": "vite build",
+    "preview": "vite preview"
   },
-  "dependencies": { "axios": "^1.7.4" },
-  "devDependencies": { "typescript": "^5.3.3", "vite": "^7.1.2", "litestar-vite-plugin": "^0.13.2", "@types/node": "^20.10.3" }
+  "dependencies": {
+    "htmx.org": "latest",
+    "alpinejs": "latest"
+  },
+  "devDependencies": {
+    "typescript": "latest",
+    "litestar-vite-plugin": "file:../../dist/js/",
+    "vite": "^6.0.0"
+  }
 }

@@ -1,0 +1,36 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout title="{{ project_name }}">
+  <main class="app">
+    <h1>{{ project_name }}</h1>
+    <p>Astro + Litestar</p>
+    <div class="card">
+      <button id="counter">count is 0</button>
+    </div>
+  </main>
+</Layout>
+
+<script>
+  const button = document.getElementById("counter");
+  let count = 0;
+
+  button?.addEventListener("click", () => {
+    count += 1;
+    button.textContent = `count is ${count}`;
+  });
+</script>
+
+<style>
+  .app {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 2rem;
+    text-align: center;
+  }
+
+  .card {
+    padding: 2em;
+  }
+</style>

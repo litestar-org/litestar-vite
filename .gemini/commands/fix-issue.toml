@@ -1,0 +1,223 @@
+# Command: /fix-issue <issue-number>
+description = "Fix a GitHub issue with proper investigation and testing"
+prompt = """
+You are fixing GitHub issue: {{args}}
+
+## ⛔ CRITICAL RULES
+
+1. **UNDERSTAND FIRST** - Read the issue completely before any code changes
+2. **INVESTIGATE THOROUGHLY** - Search codebase for related code
+3. **FOLLOW PATTERNS** - Match existing code style exactly
+4. **TEST EVERYTHING** - Write tests for the fix
+5. **VERIFY FIX** - Ensure the fix actually resolves the issue
+
+---
+
+## Phase 1: Understand the Issue
+
+**Fetch issue details:**
+```bash
+gh issue view {{args}}
+```
+
+**Document your understanding:**
+```markdown
+## Issue Analysis
+
+**Issue**: #{{args}}
+**Type**: [bug / feature / enhancement]
+**Summary**: {one-sentence description}
+
+**Expected Behavior**:
+{what should happen}
+
+**Actual Behavior**:
+{what currently happens}
+
+**Reproduction Steps**:
+1. {step 1}
+2. {step 2}
+
+**Affected Components**:
+- {component 1}
+- {component 2}
+```
+
+### Confidence Check
+
+Before proceeding, assess:
+- [ ] I understand what the issue is asking for
+- [ ] I know what "fixed" looks like
+- [ ] I can identify where in the code to look
+
+**If any are unchecked** → Ask clarifying questions first.
+
+---
+
+## Phase 2: Investigate the Codebase
+
+**Search for related code:**
+```bash
+# Find files related to the issue
+grep -r "relevant_pattern" src/py/litestar_vite/
+grep -r "relevant_pattern" src/js/src/
+
+# Find similar issues or patterns
+grep -r "error_message_from_issue" src/
+```
+
+**Read related files:**
+- Identify the file(s) that need changes
+- Read existing tests for those files
+- Understand the current behavior
+
+**Document findings:**
+```markdown
+## Investigation Results
+
+**Files to Modify**:
+- `src/py/litestar_vite/file.py` - {what to change}
+
+**Root Cause**:
+{explanation of why the bug exists / what's missing}
+
+**Proposed Solution**:
+{high-level approach}
+
+**Risk Assessment**:
+- Impact: [low / medium / high]
+- Affected areas: {list}
+```
+
+---
+
+## Phase 3: Implement the Fix
+
+**Follow project standards:**
+
+✅ Type hints: `T | None` (PEP 604)
+✅ Docstrings: Google style
+✅ Async: All I/O must be async
+✅ No `from __future__ import annotations`
+
+**Implementation checklist:**
+- [ ] Fix follows existing code patterns
+- [ ] No new anti-patterns introduced
+- [ ] Error handling is appropriate
+- [ ] Code is documented
+
+---
+
+## Phase 4: Write Tests
+
+**Create tests for the fix:**
+
+```python
+# src/py/tests/unit/test_<module>.py
+
+async def test_fix_for_issue_{{args}}() -> None:
+    \"\"\"Test fix for GitHub issue #{{args}}.
+
+    Verifies that {expected behavior}.
+    \"\"\"
+    # Arrange
+    ...
+
+    # Act
+    ...
+
+    # Assert
+    ...
+
+
+async def test_fix_for_issue_{{args}}_edge_case() -> None:
+    \"\"\"Test edge case for issue #{{args}} fix.\"\"\"
+    ...
+```
+
+**Test requirements:**
+- [ ] Test the specific fix
+- [ ] Test edge cases
+- [ ] Test error conditions
+- [ ] Tests are function-based (NOT class-based)
+
+---
+
+## Phase 5: Verify the Fix
+
+**Run quality checks:**
+```bash
+# Run tests
+make test
+
+# Check linting
+make lint
+
+# Check types
+make type-check
+```
+
+**All checks must pass before proceeding.**
+
+---
+
+## Phase 6: Create Commit
+
+**Only after all checks pass:**
+
+```bash
+git add -A
+git commit -m "fix: {description} (closes #{{args}})"
+```
+
+**Commit message format:**
+- Start with `fix:` for bug fixes
+- Start with `feat:` for new features
+- Include `(closes #{{args}})` to auto-close the issue
+
+---
+
+## Phase 7: Create PR (if requested)
+
+```bash
+gh pr create --title "fix: {description}" --body "## Summary
+Closes #{{args}}
+
+{brief description of the fix}
+
+## Changes
+- {change 1}
+- {change 2}
+
+## Test Plan
+- {how to verify the fix}
+"
+```
+
+---
+
+## Output Summary
+
+At the end, provide:
+
+```markdown
+## Fix Summary
+
+**Issue**: #{{args}}
+**Status**: [Fixed / Needs Discussion / Cannot Fix]
+
+**Files Modified**:
+- `file1.py` - {what changed}
+- `file2.ts` - {what changed}
+
+**Tests Added**:
+- `test_fix_for_issue_{{args}}` - {what it tests}
+
+**Quality Checks**:
+- [ ] Tests pass
+- [ ] Linting clean
+- [ ] Type checking pass
+
+**Commit**: {commit message}
+```
+"""

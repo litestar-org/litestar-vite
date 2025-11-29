@@ -5,9 +5,7 @@ from pathlib import PurePath
 from typing import (
     TYPE_CHECKING,
     Any,
-    Optional,
     TypeVar,
-    Union,
     cast,
 )
 from urllib.parse import quote, urlparse, urlunparse
@@ -26,7 +24,10 @@ from litestar.utils.scope.state import ScopeState
 
 from litestar_vite.inertia._utils import get_headers
 from litestar_vite.inertia.helpers import (
+    extract_deferred_props,
+    extract_merge_props,
     get_shared_props,
+    is_merge_prop,
     is_or_contains_lazy_prop,
     js_routes_script,
     lazy_render,
@@ -53,16 +54,16 @@ class InertiaResponse(Response[T]):
         self,
         content: T,
         *,
-        template_name: "Optional[str]" = None,
-        template_str: "Optional[str]" = None,
-        background: "Optional[BackgroundTask | BackgroundTasks]" = None,
-        context: "Optional[dict[str, Any]]" = None,
-        cookies: "Optional[ResponseCookies]" = None,
+        template_name: "str | None" = None,
+        template_str: "str | None" = None,
+        background: "BackgroundTask | BackgroundTasks | None" = None,
+        context: "dict[str, Any] | None" = None,
+        cookies: "ResponseCookies | None" = None,
         encoding: "str" = "utf-8",
-        headers: "Optional[ResponseHeaders]" = None,
-        media_type: "Optional[Union[MediaType, str]]" = None,
+        headers: "ResponseHeaders | None" = None,
+        media_type: "MediaType | str | None" = None,
         status_code: "int" = HTTP_200_OK,
-        type_encoders: "Optional[TypeEncodersMap]" = None,
+        type_encoders: "TypeEncodersMap | None" = None,
     ) -> None:
         """Handle the rendering of a given template into a bytes string.
 
@@ -111,7 +112,7 @@ class InertiaResponse(Response[T]):
         self,
         request: "Request[UserT, AuthT, StateT]",
         page_props: "PageProps[T]",
-        type_encoders: "Optional[TypeEncodersMap]" = None,
+        type_encoders: "TypeEncodersMap | None" = None,
     ) -> "dict[str, Any]":
         """Create a context object for the template.
 
@@ -124,7 +125,8 @@ class InertiaResponse(Response[T]):
             A dictionary holding the template context
         """
         csrf_token = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
-        inertia_props = self.render(page_props, MediaType.JSON, get_serializer(type_encoders)).decode()
+        # Use to_dict() to convert snake_case to camelCase for Inertia.js protocol
+        inertia_props = self.render(page_props.to_dict(), MediaType.JSON, get_serializer(type_encoders)).decode()
         return {
             **self.context,
             "inertia": inertia_props,
@@ -133,19 +135,172 @@ class InertiaResponse(Response[T]):
             "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
         }
 
-    def to_asgi_response(  # noqa: C901
+    def _build_page_props(
         self,
-        app: "Optional[Litestar]",
+        request: "Request[UserT, AuthT, StateT]",
+        partial_data: "set[str] | None",
+        partial_except: "set[str] | None",
+        reset_keys: "set[str]",
+        vite_plugin: "VitePlugin",
+        inertia_plugin: "InertiaPlugin",
+    ) -> "PageProps[T]":
+        """Build the PageProps object for the response.
+
+        Args:
+            request: The request object.
+            partial_data: Set of partial data keys.
+            partial_except: Set of partial except keys.
+            reset_keys: Set of keys to reset.
+            vite_plugin: The Vite plugin instance.
+            inertia_plugin: The Inertia plugin instance.
+
+        Returns:
+            The PageProps object.
+        """
+        shared_props = get_shared_props(request, partial_data=partial_data, partial_except=partial_except)
+
+        # Handle reset props (v2) - remove specified props from shared state
+        for key in reset_keys:
+            shared_props.pop(key, None)
+
+        if is_or_contains_lazy_prop(self.content):
+            filtered_content = lazy_render(self.content, partial_data, inertia_plugin.portal, partial_except)
+            if filtered_content is not None:
+                shared_props["content"] = filtered_content
+        elif should_render(self.content, partial_data, partial_except):
+            shared_props["content"] = self.content
+
+        # Extract deferred props metadata for v2 protocol
+        deferred_props = extract_deferred_props(shared_props) or None
+
+        # Extract merge props metadata for v2 protocol
+        merge_props_list, prepend_props_list, deep_merge_props_list, match_props_on = extract_merge_props(shared_props)
+
+        # Unwrap MergeProp values before putting them in shared_props
+        for key, value in list(shared_props.items()):
+            if is_merge_prop(value):
+                shared_props[key] = value.value
+
+        return PageProps[T](
+            component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
+            props=shared_props,  # pyright: ignore[reportArgumentType]
+            version=vite_plugin.asset_loader.version_id,
+            url=request.url.path,
+            deferred_props=deferred_props,
+            merge_props=merge_props_list or None,
+            prepend_props=prepend_props_list or None,
+            deep_merge_props=deep_merge_props_list or None,
+            match_props_on=match_props_on or None,
+        )
+
+    def _render_template(
+        self,
+        request: "Request[UserT, AuthT, StateT]",
+        page_props: "PageProps[T]",
+        type_encoders: "TypeEncodersMap | None",
+        inertia_plugin: "InertiaPlugin",
+    ) -> bytes:
+        """Render the template to bytes.
+
+        Args:
+            request: The request object.
+            page_props: The page props to render.
+            type_encoders: Type encoders for serialization.
+            inertia_plugin: The Inertia plugin instance.
+
+        Returns:
+            The rendered template as bytes.
+        """
+        template_engine = request.app.template_engine  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
+        if not template_engine:
+            msg = "Template engine is not configured"
+            raise ImproperlyConfiguredException(msg)
+
+        context = self.create_template_context(request, page_props, type_encoders)  # pyright: ignore[reportUnknownMemberType]
+        if self.template_str is not None:
+            return template_engine.render_string(self.template_str, context).encode(self.encoding)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType,reportReturnType]
+
+        template_name = self.template_name or inertia_plugin.config.root_template
+        template = template_engine.get_template(template_name)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+        return template.render(**context).encode(self.encoding)  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType,reportReturnType]
+
+    def _render_spa(
+        self,
+        request: "Request[UserT, AuthT, StateT]",
+        page_props: "PageProps[T]",
+        vite_plugin: "VitePlugin",
+        inertia_plugin: "InertiaPlugin",
+    ) -> bytes:
+        """Render the page using SPA mode (HtmlTransformer instead of templates).
+
+        This method uses ViteSPAHandler to get the base HTML and injects
+        the page props as a data-page attribute on the app element.
+
+        Note: This is a synchronous method that requires production mode
+        (cached HTML). In dev mode with HMR, use async get_html() instead.
+
+        Args:
+            request: The request object.
+            page_props: The page props to render.
+            vite_plugin: The Vite plugin instance (for SPA handler access).
+            inertia_plugin: The Inertia plugin instance (for config access).
+
+        Returns:
+            The rendered HTML as bytes.
+
+        Raises:
+            ImproperlyConfiguredException: If ViteSPAHandler is not available.
+        """
+        spa_handler = getattr(vite_plugin, "_spa_handler", None)
+        if spa_handler is None:
+            msg = (
+                "SPA mode requires VitePlugin with mode='spa'. "
+                "Set mode='spa' in ViteConfig or remove spa_mode=True from InertiaConfig."
+            )
+            raise ImproperlyConfiguredException(msg)
+
+        # Convert page props to dict using to_dict() for Inertia.js protocol
+        # (converts snake_case to camelCase)
+        page_dict = page_props.to_dict()
+
+        # Get HTML with page data injected synchronously
+        # This works in production mode; dev mode requires async get_html()
+        html = spa_handler.get_html_sync(page_data=page_dict)
+
+        return html.encode(self.encoding)
+
+    def _determine_media_type(self, media_type: "MediaType | str | None") -> "MediaType | str":
+        """Determine the media type for the response.
+
+        Args:
+            media_type: The provided media type or None.
+
+        Returns:
+            The determined media type.
+        """
+        if media_type:
+            return media_type
+        if self.template_name:
+            suffixes = PurePath(self.template_name).suffixes
+            for suffix in suffixes:
+                if _type := guess_type(f"name{suffix}")[0]:
+                    return _type
+            return MediaType.TEXT
+        return MediaType.HTML
+
+    def to_asgi_response(
+        self,
+        app: "Litestar | None",
         request: "Request[UserT, AuthT, StateT]",
         *,
-        background: "Optional[Union[BackgroundTask, BackgroundTasks]]" = None,
-        cookies: "Optional[Iterable[Cookie]]" = None,
-        encoded_headers: "Optional[Iterable[tuple[bytes, bytes]]]" = None,
-        headers: "Optional[dict[str, str]]" = None,
+        background: "BackgroundTask | BackgroundTasks | None" = None,
+        cookies: "Iterable[Cookie] | None" = None,
+        encoded_headers: "Iterable[tuple[bytes, bytes]] | None" = None,
+        headers: "dict[str, str] | None" = None,
         is_head_response: "bool" = False,
-        media_type: "Optional[Union[MediaType, str]]" = None,
-        status_code: "Optional[int]" = None,
-        type_encoders: "Optional[TypeEncodersMap]" = None,
+        media_type: "MediaType | str | None" = None,
+        status_code: "int | None" = None,
+        type_encoders: "TypeEncodersMap | None" = None,
     ) -> "ASGIResponse":
         if app is not None:
             warn_deprecation(
@@ -165,51 +320,46 @@ class InertiaResponse(Response[T]):
         type_encoders = (
             {**type_encoders, **(self.response_type_encoders or {})} if type_encoders else self.response_type_encoders
         )
+
+        # Non-Inertia response path
         if not inertia_enabled:
-            media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
+            resolved_media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
             return ASGIResponse(
                 background=self.background or background,
-                body=self.render(self.content, media_type, get_serializer(type_encoders)),
+                body=self.render(self.content, resolved_media_type, get_serializer(type_encoders)),
                 cookies=cookies,
                 encoded_headers=encoded_headers,
                 encoding=self.encoding,
                 headers=headers,
                 is_head_response=is_head_response,
-                media_type=media_type,
+                media_type=resolved_media_type,
                 status_code=self.status_code or status_code,
             )
+
+        # Inertia response path - get request attributes
         is_partial_render = cast("bool", getattr(request, "is_partial_render", False))
-        partial_keys = cast("set[str]", getattr(request, "partial_keys", {}))
+        _empty_set: set[str] = set()
+        partial_keys = cast("set[str]", getattr(request, "partial_keys", _empty_set))
+        partial_except_keys = cast("set[str]", getattr(request, "partial_except_keys", _empty_set))
+        reset_keys = cast("set[str]", getattr(request, "reset_keys", _empty_set))
+
         vite_plugin = request.app.plugins.get(VitePlugin)
         inertia_plugin = request.app.plugins.get(InertiaPlugin)
-        template_engine = request.app.template_engine  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
-        headers.update(
-            {"Vary": "Accept", **get_headers(InertiaHeaderType(enabled=True))},
-        )
-        shared_props = get_shared_props(
-            request,
-            partial_data=partial_keys if is_partial_render else None,
-        )
-        if is_or_contains_lazy_prop(self.content):
-            filtered_content = lazy_render(
-                self.content,
-                partial_keys if is_partial_render else None,
-                inertia_plugin.portal,
-            )
-            if filtered_content is not None:
-                shared_props["content"] = filtered_content
-        elif should_render(self.content, partial_keys):
-            shared_props["content"] = self.content
+        headers.update({"Vary": "Accept", **get_headers(InertiaHeaderType(enabled=True))})
 
-        page_props = PageProps[T](
-            component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
-            props=shared_props,  # pyright: ignore[reportArgumentType]
-            version=vite_plugin.asset_loader.version_id,
-            url=request.url.path,
+        # Determine partial filtering params for v2 protocol
+        partial_data: "set[str] | None" = partial_keys if is_partial_render and partial_keys else None
+        partial_except: "set[str] | None" = partial_except_keys if is_partial_render and partial_except_keys else None
+
+        # Build page props using helper method
+        page_props = self._build_page_props(
+            request, partial_data, partial_except, reset_keys, vite_plugin, inertia_plugin
         )
+
+        # JSON response for Inertia XHR requests
         if is_inertia:
-            media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
-            body = self.render(page_props, media_type, get_serializer(type_encoders))
+            resolved_media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
+            body = self.render(page_props.to_dict(), resolved_media_type, get_serializer(type_encoders))
             return ASGIResponse(  # pyright: ignore[reportUnknownMemberType]
                 background=self.background or background,
                 body=body,
@@ -218,43 +368,28 @@ class InertiaResponse(Response[T]):
                 encoding=self.encoding,
                 headers=headers,
                 is_head_response=is_head_response,
-                media_type=media_type,
+                media_type=resolved_media_type,
                 status_code=self.status_code or status_code,
             )
 
-        if not template_engine:
-            msg = "Template engine is not configured"
-            raise ImproperlyConfiguredException(msg)
-        # it should default to HTML at this point unless the user specified something
-        media_type = media_type or MediaType.HTML
-        if not media_type:
-            if self.template_name:
-                suffixes = PurePath(self.template_name).suffixes
-                for suffix in suffixes:
-                    if _type := guess_type(f"name{suffix}")[0]:
-                        media_type = _type
-                        break
-                else:
-                    media_type = MediaType.TEXT
-            else:
-                media_type = MediaType.HTML
-        context = self.create_template_context(request, page_props, type_encoders)  # pyright: ignore[reportUnknownMemberType]
-        if self.template_str is not None:
-            body = template_engine.render_string(self.template_str, context).encode(self.encoding)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+        # HTML response for initial page load
+        resolved_media_type = self._determine_media_type(media_type or MediaType.HTML)
+
+        # Choose rendering method based on spa_mode configuration
+        if inertia_plugin.config.spa_mode:
+            body = self._render_spa(request, page_props, vite_plugin, inertia_plugin)
         else:
-            template_name = self.template_name or inertia_plugin.config.root_template
-            template = template_engine.get_template(template_name)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
-            body = template.render(**context).encode(self.encoding)  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
+            body = self._render_template(request, page_props, type_encoders, inertia_plugin)
 
         return ASGIResponse(  # pyright: ignore[reportUnknownMemberType]
             background=self.background or background,
-            body=body,  # pyright: ignore[reportUnknownArgumentType]
+            body=body,
             cookies=cookies,
             encoded_headers=encoded_headers,
             encoding=self.encoding,
             headers=headers,
             is_head_response=is_head_response,
-            media_type=media_type,
+            media_type=resolved_media_type,
             status_code=self.status_code or status_code,
         )
 

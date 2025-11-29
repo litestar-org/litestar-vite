@@ -1,14 +1,17 @@
-<script setup>
-import { Head, Link } from "@inertiajs/vue3"
-defineProps({
-  content: {
-    message: String,
-  },
-})
+<script setup lang="ts">
+import { Head } from "@inertiajs/vue3"
+
+defineProps<{
+  message?: string
+}>()
 </script>
 
 <template>
   <Head title="Home" />
-  <h1 class="text-xl pl-4 mb-5">Home Page</h1>
-  <p class="text-sm">{{ content.message }}</p>
+  <div class="max-w-5xl mx-auto px-4 py-10 space-y-3">
+    <p class="uppercase tracking-[0.14em] text-sm font-semibold text-[#edb641]">Litestar · Vite</p>
+    <h1 class="text-3xl font-semibold text-[#202235]">Library (Vue + Inertia)</h1>
+    <p class="text-slate-600">Server-driven SPA with shared backend payloads.</p>
+    <p v-if="message" class="text-[#202235] font-medium">{{ message }}</p>
+  </div>
 </template>

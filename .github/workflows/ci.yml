@@ -17,6 +17,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend deps
+        run: npm ci --ignore-scripts
+
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
@@ -86,6 +95,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
+      - name: Set PYTHONPATH
+        run: echo "PYTHONPATH=$PWD/src/py" >> $GITHUB_ENV
+
       - name: Run slotscheck
         run: uv run slotscheck -m litestar_vite
 
@@ -113,11 +125,13 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     uses: ./.github/workflows/test.yml
     with:
       coverage: ${{ matrix.python-version == '3.12' }}
       python-version: ${{ matrix.python-version }}
+      # ensure optional deps like sniffio are present for Litestar
+      timeout: 60
   sonar:
     needs:
       - test_python

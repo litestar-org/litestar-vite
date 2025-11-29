@@ -12,8 +12,11 @@ Core Features
     :titlesonly:
     :maxdepth: 2
 
-    inertia
     vite
+    modes
+    types
+    inertia
+    migration-0-14
 
 Getting Started
 ---------------
@@ -27,7 +30,7 @@ Install litestar-vite using your preferred package manager:
 
     pip install litestar-vite
 
-**Note:** If you do not have an existing node environment, you can use `nodeenv` to automatically configure one for you by using the ``litestar-vite[nodeenv]`` extras option.
+**Note:** Nodeenv support is optional and off by default. To have litestar-vite provision Node inside your virtualenv, install with ``litestar-vite[nodeenv]`` and enable nodeenv detection (for example ``runtime.detect_nodeenv=True`` or ``make install NODEENV=1``). Otherwise, ensure you already have Node/npm installed.
 
 2. Basic Configuration
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -46,33 +49,22 @@ Configure your Litestar application with the Vite plugin:
 
     app = Litestar(
         plugins=[
-            VitePlugin(
-                config=ViteConfig(
-                    bundle_dir="public",
-                    resource_dir="resources",
-                    use_server_lifespan=True,
-                    hot_reload=True
-                )
-            )
+            VitePlugin(config=ViteConfig(dev_mode=True))
         ]
     )
 
 3. Bootstrap the Typescript Environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you do have an existing vite application, you can create a new one for your Litestar application with the following command:
+If you do not have an existing vite application, you can create a new one for your Litestar application with the following command:
 
 .. code-block:: bash
 
     litestar assets init
+    # Inertia (resources/) example
+    litestar assets init --template react-inertia
+    # Non-Inertia (src/) example under custom frontend dir
+    litestar assets init --template react --frontend-dir web
     litestar assets install
 
 For more detailed information about specific features, refer to the sections in the sidebar.
-
-
-
-.. toctree::
-    :titlesonly:
-    :glob:
-
-    *

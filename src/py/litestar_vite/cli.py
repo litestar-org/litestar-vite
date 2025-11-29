@@ -1,12 +1,151 @@
+import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any
 
-from click import Context, group, option
+from click import Choice, Context, group, option
 from click import Path as ClickPath
 from litestar.cli._utils import LitestarEnv, LitestarGroup  # pyright: ignore[reportPrivateImportUsage]
 
+from litestar_vite.config import DeployConfig, ViteConfig
+from litestar_vite.deploy import ViteDeployer, format_bytes
+from litestar_vite.plugin import _resolve_litestar_version  # pyright: ignore[reportPrivateUsage]
+
 if TYPE_CHECKING:
     from litestar import Litestar
+
+
+# Available framework templates for --template option
+FRAMEWORK_CHOICES = [
+    "react",
+    "react-router",
+    "react-tanstack",
+    "react-inertia",
+    "vue",
+    "vue-inertia",
+    "svelte",
+    "svelte-inertia",
+    "sveltekit",
+    "nuxt",
+    "astro",
+    "htmx",
+    "angular",
+    "angular-cli",
+]
+
+
+def _format_command(command: "list[str] | None") -> str:
+    """Join a command list for display."""
+
+    return " ".join(command or [])
+
+
+def _print_recommended_config(template_name: str, resource_dir: str, bundle_dir: str) -> None:
+    """Print recommended ViteConfig for the scaffolded template.
+
+    Args:
+        template_name: The name of the template that was scaffolded.
+        resource_dir: The resource directory used.
+        bundle_dir: The bundle directory used.
+    """
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+    from rich.panel import Panel
+
+    # Determine mode based on template
+    spa_templates = {"react-router", "react-tanstack"}
+    mode = "spa" if template_name in spa_templates else "template"
+
+    config_snippet = f"""from pathlib import Path
+from litestar_vite import ViteConfig, PathConfig
+
+vite_config = ViteConfig(
+    mode="{mode}",
+    dev_mode=True,  # Set to False in production
+    types=True,     # Enable TypeScript type generation
+    paths=PathConfig(
+        root=Path(__file__).parent,
+        resource_dir="{resource_dir}",
+        bundle_dir="{bundle_dir}",
+    ),
+)"""
+
+    console.print("\n[bold cyan]Recommended ViteConfig:[/]")
+    console.print(Panel(config_snippet, title="app.py", border_style="dim"))
+
+
+def _coerce_option_value(value: str) -> object:
+    """Convert CLI key/value strings into basic Python types."""
+
+    lowered = value.lower()
+    if lowered in {"true", "false"}:
+        return lowered == "true"
+    if value.isdigit():
+        return int(value)
+    try:
+        return float(value)
+    except ValueError:
+        return value
+
+
+def _parse_storage_options(values: tuple[str, ...]) -> dict[str, object]:
+    """Parse repeated --storage-option entries into a dictionary."""
+
+    options: dict[str, object] = {}
+    for item in values:
+        if "=" not in item:
+            msg = f"Invalid storage option '{item}'. Expected key=value."
+            raise ValueError(msg)
+        key, raw = item.split("=", 1)
+        options[key] = _coerce_option_value(raw)
+    return options
+
+
+def _build_deploy_config(
+    base_config: ViteConfig,
+    storage: str | None,
+    storage_options: dict[str, object],
+    no_delete: bool,
+) -> DeployConfig:
+    """Resolve deploy configuration from CLI overrides."""
+
+    deploy_config = base_config.deploy_config
+    if deploy_config is None:
+        msg = "Deployment is not configured. Set ViteConfig.deploy to enable."
+        raise SystemExit(msg)
+
+    merged_options = {**deploy_config.storage_options, **storage_options}
+    deploy_config = deploy_config.with_overrides(
+        storage_backend=storage,
+        storage_options=merged_options,
+        delete_orphaned=False if no_delete else None,
+    )
+
+    if not deploy_config.storage_backend:
+        msg = "Storage backend is required (e.g., gcs://bucket/assets)."
+        raise SystemExit(msg)
+
+    return deploy_config
+
+
+def _run_vite_build(config: ViteConfig, root_dir: Path, console: Any, no_build: bool) -> None:
+    """Run Vite build unless skipped."""
+
+    if no_build:
+        console.print("[dim]Skipping Vite build (--no-build).[/]")
+        return
+
+    from litestar_vite.exceptions import ViteExecutionError
+    from litestar_vite.plugin import set_environment
+
+    console.rule("[yellow]Starting Vite build process[/]", align="left")
+    if config.set_environment:
+        set_environment(config=config, asset_url_override=config.base_url or config.asset_url)
+    os.environ["VITE_BASE_URL"] = config.base_url or config.asset_url or "/"
+    try:
+        config.executor.execute(config.build_command, cwd=root_dir)
+        console.print("[bold green]✓ Build complete[/]")
+    except ViteExecutionError as exc:
+        msg = f"Build failed: {exc!s}"
+        raise SystemExit(msg) from exc
 
 
 @group(cls=LitestarGroup, name="assets")
@@ -14,15 +153,159 @@ def vite_group() -> None:
     """Manage Vite Tasks."""
 
 
+def _select_framework_template(
+    template: "str | None",
+    no_prompt: bool,
+) -> "tuple[str, Any]":
+    """Select and validate the framework template.
+
+    Args:
+        template: User-provided template name or None.
+        no_prompt: Whether to skip interactive prompts.
+
+    Returns:
+        Tuple of (template_name, framework_template).
+
+    Raises:
+        SystemExit: If template is invalid.
+    """
+    import sys
+
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+    from rich.prompt import Prompt
+
+    from litestar_vite.scaffolding import get_available_templates
+    from litestar_vite.scaffolding.templates import get_template
+
+    if template is None and not no_prompt:
+        available = get_available_templates()
+        console.print("\n[bold]Available framework templates:[/]")
+        for i, tmpl in enumerate(available, 1):
+            console.print(f"  {i}. [cyan]{tmpl.type.value}[/] - {tmpl.description}")
+
+        template = Prompt.ask(
+            "\nSelect a framework template",
+            choices=[t.type.value for t in available],
+            default="react",
+        )
+    elif template is None:
+        template = "react"  # Default when --no-prompt
+
+    framework = get_template(template)
+    if framework is None:
+        console.print(f"[red]Unknown template: {template}[/]")
+        sys.exit(1)
+
+    return template, framework
+
+
+def _prompt_for_options(
+    framework: "Any",
+    enable_ssr: "bool | None",
+    tailwind: bool,
+    enable_types: bool,
+    no_prompt: bool,
+) -> "tuple[bool, bool, bool]":
+    """Prompt user for optional features if not specified.
+
+    Args:
+        framework: The framework template.
+        enable_ssr: SSR flag or None.
+        tailwind: TailwindCSS flag.
+        enable_types: Type generation flag.
+        no_prompt: Whether to skip prompts.
+
+    Returns:
+        Tuple of (enable_ssr, tailwind, enable_types).
+    """
+    from rich.prompt import Confirm
+
+    if enable_ssr is None:
+        enable_ssr = (
+            framework.has_ssr if no_prompt else Confirm.ask("Enable server-side rendering?", default=framework.has_ssr)
+        )
+
+    if not tailwind and not no_prompt:
+        tailwind = Confirm.ask("Add TailwindCSS?", default=False)
+
+    if not enable_types and not no_prompt:
+        enable_types = Confirm.ask("Enable TypeScript type generation?", default=True)
+
+    return enable_ssr or False, tailwind, enable_types
+
+
+@vite_group.command(
+    name="doctor",
+    help="Diagnose and fix Vite configuration issues.",
+)
+@option(
+    "--check",
+    is_flag=True,
+    help="Exit with non-zero status if issues found (for CI).",
+)
+@option(
+    "--fix",
+    is_flag=True,
+    help="Auto-fix detected issues (with confirmation).",
+)
+@option(
+    "--no-prompt",
+    is_flag=True,
+    help="Apply fixes without confirmation.",
+)
+@option(
+    "--verbose",
+    is_flag=True,
+    help="Enable verbose output.",
+)
+def vite_doctor(
+    app: "Litestar",
+    check: bool,
+    fix: bool,
+    no_prompt: bool,
+    verbose: bool,
+) -> None:
+    """Diagnose and fix Vite configuration issues."""
+    import sys
+
+    from litestar_vite.doctor import ViteDoctor
+    from litestar_vite.plugin import VitePlugin
+
+    if verbose:
+        app.debug = True
+
+    plugin = app.plugins.get(VitePlugin)
+    doctor = ViteDoctor(plugin.config, verbose=verbose)
+
+    success = doctor.run(fix=fix, no_prompt=no_prompt)
+
+    if check and not success:
+        sys.exit(1)
+
+
 @vite_group.command(
     name="init",
     help="Initialize vite for your project.",
+)
+@option(
+    "--template",
+    type=Choice(FRAMEWORK_CHOICES, case_sensitive=False),
+    help="Frontend framework template to use. Inertia variants available: react-inertia, vue-inertia, svelte-inertia.",
+    default=None,
+    required=False,
 )
 @option(
     "--root-path",
     type=ClickPath(dir_okay=True, file_okay=False, path_type=Path),
     help="The path for the initial the Vite application.  This is the equivalent to the top-level folder in a normal Vue or React application..",
     default=None,
+    required=False,
+)
+@option(
+    "--frontend-dir",
+    type=str,
+    help="Optional subdirectory under root to place the generated frontend (e.g., 'web').",
+    default=".",
     required=False,
 )
 @option(
@@ -52,13 +335,28 @@ def vite_group() -> None:
     type=int,
     help="The port to run the vite server against.",
     default=None,
-    is_flag=True,
     required=False,
 )
 @option(
     "--enable-ssr",
     type=bool,
     help="Enable SSR Support.",
+    required=False,
+    show_default=False,
+    is_flag=True,
+)
+@option(
+    "--tailwind",
+    type=bool,
+    help="Add TailwindCSS to the project.",
+    required=False,
+    show_default=False,
+    is_flag=True,
+)
+@option(
+    "--enable-types",
+    type=bool,
+    help="Enable TypeScript type generation from routes.",
     required=False,
     show_default=False,
     is_flag=True,
@@ -85,29 +383,32 @@ def vite_group() -> None:
 )
 def vite_init(
     ctx: "Context",
-    vite_port: "Optional[int]",
-    enable_ssr: "Optional[bool]",
-    asset_url: "Optional[str]",
-    root_path: "Optional[Path]",
-    bundle_path: "Optional[Path]",
-    resource_path: "Optional[Path]",
-    public_path: "Optional[Path]",
+    template: "str | None",
+    vite_port: "int | None",
+    enable_ssr: "bool | None",
+    asset_url: "str | None",
+    root_path: "Path | None",
+    frontend_dir: str,
+    bundle_path: "Path | None",
+    resource_path: "Path | None",
+    public_path: "Path | None",
+    tailwind: "bool",
+    enable_types: "bool",
     overwrite: "bool",
     verbose: "bool",
     no_prompt: "bool",
     no_install: "bool",
-) -> None:  # sourcery skip: low-code-quality
-    """Run vite build."""
-    import os
+) -> None:
+    """Initialize a new Vite project with framework templates."""
     import sys
-    from importlib.util import find_spec
     from pathlib import Path
 
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
     from rich.prompt import Confirm
 
     from litestar_vite import VitePlugin
-    from litestar_vite.commands import execute_command, init_vite
+    from litestar_vite.scaffolding import TemplateContext, generate_project
+    from litestar_vite.scaffolding.templates import FrameworkType
 
     if callable(ctx.obj):
         ctx.obj = ctx.obj()
@@ -118,61 +419,76 @@ def vite_init(
     config = plugin._config  # pyright: ignore[reportPrivateUsage]
 
     console.rule("[yellow]Initializing Vite[/]", align="left")
+
+    # Resolve root and base values
     root_path = Path(root_path or config.root_dir or Path.cwd())
-    resource_path = Path(resource_path or config.resource_dir)
-    public_path = Path(public_path or config.public_dir)
-    bundle_path = Path(bundle_path or config.bundle_dir)
-    enable_ssr = enable_ssr or config.ssr_enabled
+    frontend_dir = frontend_dir or "."
     asset_url = asset_url or config.asset_url
     vite_port = vite_port or config.port
-    hot_file = Path(bundle_path / config.hot_file)
+    litestar_port = env.port or 8000
 
-    if any(output_path.exists() for output_path in (bundle_path, resource_path)) and not any(
-        [overwrite, no_prompt],
+    # Select framework template
+    template, framework = _select_framework_template(template, no_prompt)
+    console.print(f"\n[green]Using {framework.name} template[/]")
+
+    # Resolve paths now that framework defaults are known
+    resource_path_str = str(resource_path or framework.resource_dir or config.resource_dir)
+    bundle_path_str = str(bundle_path or config.bundle_dir)
+
+    # Check for existing files
+    if (
+        any((root_path / p).exists() for p in [resource_path_str, bundle_path_str])
+        and not any(
+            [overwrite, no_prompt],
+        )
+        and not Confirm.ask("Files were found in the paths specified. Are you sure you wish to overwrite the contents?")
     ):
-        confirm_overwrite = Confirm.ask(
-            "Files were found in the paths specified.  Are you sure you wish to overwrite the contents?",
-        )
-        if not confirm_overwrite:
-            console.print("Skipping Vite initialization")
-            sys.exit(2)
+        console.print("Skipping Vite initialization")
+        sys.exit(2)
 
-    enable_ssr = (
-        True
-        if enable_ssr
-        else False
-        if no_prompt
-        else Confirm.ask(
-            "Do you intend to use Litestar with any SSR framework?",
-        )
-    )
-    init_vite(
-        app=env.app,
-        root_path=root_path,
-        enable_ssr=enable_ssr,
+    # Prompt for optional features
+    enable_ssr, tailwind, enable_types = _prompt_for_options(framework, enable_ssr, tailwind, enable_types, no_prompt)
+
+    # Create template context
+    project_name = root_path.name or "my-project"
+    is_inertia = framework.type in {
+        FrameworkType.REACT_INERTIA,
+        FrameworkType.VUE_INERTIA,
+        FrameworkType.SVELTE_INERTIA,
+    }
+    context = TemplateContext(
+        project_name=project_name,
+        framework=framework,
+        use_typescript=framework.uses_typescript,
+        use_tailwind=tailwind,
         vite_port=vite_port,
+        litestar_port=litestar_port,
         asset_url=asset_url,
-        resource_path=resource_path,
-        public_path=public_path,
-        bundle_path=bundle_path,
-        hot_file=hot_file,
-        litestar_port=env.port or 8000,
+        resource_dir=resource_path_str,
+        bundle_dir=bundle_path_str,
+        base_dir=frontend_dir,
+        enable_ssr=enable_ssr,
+        enable_inertia=is_inertia,
+        enable_types=enable_types,
     )
+
+    # Generate project files
+    console.print("\n[yellow]Generating project files...[/]")
+    generated = generate_project(root_path, context, overwrite=overwrite)
+    console.print(f"\n[green]Generated {len(generated)} files[/]")
+
+    # Install dependencies
     if not no_install:
-        if find_spec("nodeenv") is not None and plugin.config.detect_nodeenv:
-            """Detect nodeenv installed in the current python env before using a global version"""
-            nodeenv_command = (
-                str(Path(Path(sys.executable) / "nodeenv"))
-                if Path(Path(sys.executable) / "nodeenv").exists()
-                else "nodeenv"
-            )
-            install_dir = os.environ.get("VIRTUAL_ENV", sys.prefix)
-            console.rule("[yellow]Starting Nodeenv installation process[/]", align="left")
-            execute_command(command_to_run=[nodeenv_command, install_dir, "--force", "--quiet"], cwd=root_path)
-
         console.rule("[yellow]Starting package installation process[/]", align="left")
+        config.executor.install(root_path)
 
-        execute_command(command_to_run=plugin.config.install_command, cwd=root_path)
+    console.print("\n[bold green]Vite initialization complete![/]")
+
+    # Print recommended config
+    _print_recommended_config(template, context.resource_dir, context.bundle_dir)
+
+    next_steps_cmd = _format_command(config.run_command)
+    console.print(f"\n[dim]Next steps:\n  cd {root_path}\n  {next_steps_cmd}[/]")
 
 
 @vite_group.command(
@@ -182,34 +498,23 @@ def vite_init(
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def vite_install(app: "Litestar", verbose: "bool") -> None:
     """Run vite build."""
-    import os
-    import sys
-    from importlib.util import find_spec
     from pathlib import Path
 
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
-    from litestar_vite.commands import execute_command
     from litestar_vite.plugin import VitePlugin
 
     if verbose:
         app.debug = True
     plugin = app.plugins.get(VitePlugin)
 
-    if find_spec("nodeenv") is not None and plugin.config.detect_nodeenv:
-        """Detect nodeenv installed in the current python env before using a global version"""
-        nodeenv_command = (
-            str(Path(Path(sys.executable) / "nodeenv"))
-            if Path(Path(sys.executable) / "nodeenv").exists()
-            else "nodeenv"
-        )
-        install_dir = os.environ.get("VIRTUAL_ENV", sys.prefix)
-        console.rule("[yellow]Starting Nodeenv installation process[/]", align="left")
-        execute_command(command_to_run=[nodeenv_command, install_dir, "--force", "--quiet"], cwd=plugin.config.root_dir)
-
     console.rule("[yellow]Starting package installation process[/]", align="left")
 
-    execute_command(command_to_run=plugin.config.install_command, cwd=plugin.config.root_dir)
+    if plugin.config.executor:
+        root_dir = Path(plugin.config.root_dir or Path.cwd())
+        plugin.config.executor.install(root_dir)
+    else:
+        console.print("[red]Executor not configured.[/]")
 
 
 @vite_group.command(
@@ -219,9 +524,11 @@ def vite_install(app: "Litestar", verbose: "bool") -> None:
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def vite_build(app: "Litestar", verbose: "bool") -> None:
     """Run vite build."""
+    from pathlib import Path
+
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
-    from litestar_vite.commands import execute_command
+    from litestar_vite.exceptions import ViteExecutionError
     from litestar_vite.plugin import VitePlugin, set_environment
 
     if verbose:
@@ -230,11 +537,110 @@ def vite_build(app: "Litestar", verbose: "bool") -> None:
     plugin = app.plugins.get(VitePlugin)
     if plugin.config.set_environment:
         set_environment(config=plugin.config)
-    p = execute_command(command_to_run=plugin.config.build_command, cwd=plugin.config.root_dir)
-    if p.returncode == 0:
+
+    executor = plugin.config.executor
+    try:
+        root_dir = Path(plugin.config.root_dir or Path.cwd())
+        executor.execute(plugin.config.build_command, cwd=root_dir)
         console.print("[bold green] Assets built.[/]")
+    except ViteExecutionError as e:
+        console.print(f"[bold red] There was an error building the assets: {e!s}[/]")
+
+
+@vite_group.command(
+    name="deploy",
+    help="Build and deploy Vite assets to remote storage via fsspec.",
+)
+@option("--storage", type=str, help="Override storage backend URL (e.g., gcs://bucket/assets).")
+@option(
+    "--storage-option",
+    type=str,
+    multiple=True,
+    help="Storage option key=value forwarded to fsspec (repeat for multiple).",
+)
+@option("--no-build", is_flag=True, help="Deploy existing build without running Vite build.")
+@option("--dry-run", is_flag=True, help="Preview upload/delete plan without making changes.")
+@option("--no-delete", is_flag=True, help="Do not delete orphaned remote files.")
+@option(
+    "--verbose",
+    is_flag=True,
+    help="Enable verbose output. Install providers separately: gcsfs for gcs://, s3fs for s3://, adlfs for abfs://.",
+)
+def vite_deploy(  # noqa: PLR0915
+    app: "Litestar",
+    storage: "str | None",
+    storage_option: "tuple[str, ...]",
+    no_build: bool,
+    dry_run: bool,
+    no_delete: bool,
+    verbose: bool,
+) -> None:
+    """Build and deploy assets to CDN-backed storage."""
+    import sys
+    from pathlib import Path
+
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+
+    from litestar_vite.plugin import VitePlugin
+
+    if verbose:
+        app.debug = True
+
+    plugin = app.plugins.get(VitePlugin)
+    config = plugin.config
+
+    try:
+        storage_options = _parse_storage_options(storage_option)
+        deploy_config = _build_deploy_config(config, storage, storage_options, no_delete)
+    except ValueError as exc:  # pragma: no cover - CLI validation path
+        console.print(f"[red]{exc}[/]")
+        sys.exit(1)
+    except SystemExit as exc:
+        console.print(f"[red]{exc}[/]")
+        sys.exit(1)
+
+    root_dir = Path(config.root_dir or Path.cwd())
+    bundle_dir = config.bundle_dir
+    try:
+        _run_vite_build(config, root_dir, console, no_build)
+    except SystemExit as exc:
+        console.print(f"[red]{exc}[/]")
+        sys.exit(1)
+
+    console.rule("[yellow]Deploying assets[/]", align="left")
+    console.print(f"Storage: {deploy_config.storage_backend}")
+    console.print(f"Delete orphaned: {deploy_config.delete_orphaned}")
+    if dry_run:
+        console.print("[dim]Dry-run enabled. No changes will be made.[/]")
+
+    try:
+        deployer = ViteDeployer(
+            bundle_dir=bundle_dir,
+            manifest_name=config.manifest_name,
+            deploy_config=deploy_config,
+        )
+    except ImportError as exc:  # pragma: no cover - backend import errors
+        console.print(f"[red]Missing backend dependency: {exc}[/]")
+        console.print("Install provider package, e.g., `pip install gcsfs` for gcs:// URLs.")
+        sys.exit(1)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        sys.exit(1)
+
+    def _on_progress(action: str, path: str) -> None:
+        symbol = "+" if action == "upload" else "-"
+        console.print(f"  {symbol} {path}")
+
+    result = deployer.sync(dry_run=dry_run, on_progress=_on_progress)
+
+    console.rule("[yellow]Deploy summary[/]", align="left")
+    console.print(f"Uploaded: {len(result.uploaded)} files ({format_bytes(result.uploaded_bytes)})")
+    console.print(f"Deleted:  {len(result.deleted)} files ({format_bytes(result.deleted_bytes)})")
+    console.print(f"Remote:   {deployer.remote_path}")
+    if result.dry_run:
+        console.print("[dim]No changes applied (dry-run).[/]")
     else:
-        console.print("[bold red] There was an error building the assets.[/]")
+        console.print("[bold green]✓ Deploy complete[/]")
 
 
 @vite_group.command(
@@ -244,9 +650,11 @@ def vite_build(app: "Litestar", verbose: "bool") -> None:
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def vite_serve(app: "Litestar", verbose: "bool") -> None:
     """Run vite serve."""
+    from pathlib import Path
+
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
-    from litestar_vite.commands import execute_command
+    from litestar_vite.exceptions import ViteExecutionError
     from litestar_vite.plugin import VitePlugin, set_environment
 
     if verbose:
@@ -260,28 +668,66 @@ def vite_serve(app: "Litestar", verbose: "bool") -> None:
     else:
         console.rule("[yellow]Starting Vite watch and build process[/]", align="left")
     command_to_run = plugin.config.run_command if plugin.config.hot_reload else plugin.config.build_watch_command
-    execute_command(command_to_run=command_to_run, cwd=plugin.config.root_dir)
-    console.print("[yellow]Vite process stopped.[/]")
+
+    if plugin.config.executor:
+        try:
+            root_dir = Path(plugin.config.root_dir or Path.cwd())
+            plugin.config.executor.execute(command_to_run, cwd=root_dir)
+            console.print("[yellow]Vite process stopped.[/]")
+        except ViteExecutionError as e:
+            console.print(f"[bold red] Vite process failed: {e!s}[/]")
+    else:
+        console.print("[red]Executor not configured.[/]")
 
 
 @vite_group.command(
-    name="generate-routes",
-    help="Generate a JSON file with the route configuration",
+    name="export-routes",
+    help="Export route metadata for type-safe routing.",
 )
 @option(
     "--output",
-    help="output file path",
+    help="Output file path",
     type=ClickPath(dir_okay=False, path_type=Path),
-    default=Path("routes.json"),
-    show_default=True,
+    default=None,
+    show_default=False,
+)
+@option(
+    "--only",
+    help="Only include routes matching these patterns (comma-separated)",
+    type=str,
+    default=None,
+)
+@option(
+    "--except",
+    "exclude",
+    help="Exclude routes matching these patterns (comma-separated)",
+    type=str,
+    default=None,
+)
+@option(
+    "--include-components",
+    help="Include Inertia component names",
+    type=bool,
+    default=True,
+    is_flag=True,
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
-def generate_js_routes(app: "Litestar", output: "Path", verbose: "bool") -> None:
-    """Run vite serve.
+def export_routes(
+    app: "Litestar",
+    output: "Path | None",
+    only: "str | None",
+    exclude: "str | None",
+    include_components: "bool",
+    verbose: "bool",
+) -> None:
+    """Export route metadata for type-safe routing.
 
     Args:
         app: The Litestar application instance.
-        output: The path to the output file.
+        output: The path to the output file. Uses TypeGenConfig if not provided.
+        only: Comma-separated list of route patterns to include.
+        exclude: Comma-separated list of route patterns to exclude.
+        include_components: Include Inertia component names in output.
         verbose: Whether to enable verbose output.
 
     Raises:
@@ -289,25 +735,237 @@ def generate_js_routes(app: "Litestar", output: "Path", verbose: "bool") -> None
     """
     import msgspec
     from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
-    from litestar.serialization import encode_json, get_serializer
 
-    from litestar_vite.plugin import VitePlugin, set_environment
+    from litestar_vite.codegen import generate_routes_json
+    from litestar_vite.config import TypeGenConfig
+    from litestar_vite.plugin import VitePlugin
 
     if verbose:
         app.debug = True
-    serializer = get_serializer(app.type_encoders)
+
     plugin = app.plugins.get(VitePlugin)
-    if plugin.config.set_environment:
-        set_environment(config=plugin.config)
-    content = msgspec.json.format(
-        encode_json(app.openapi_schema.to_schema(), serializer=serializer),
-        indent=4,
+    config = plugin.config
+
+    # Determine output path
+    if output is None:
+        if isinstance(config.types, TypeGenConfig) and config.types.enabled:
+            output = config.types.routes_path
+        else:
+            output = Path("routes.json")
+
+    console.rule(f"[yellow]Exporting routes to {output}[/]", align="left")
+
+    # Parse filter lists
+    only_list = [p.strip() for p in only.split(",")] if only else None
+    exclude_list = [p.strip() for p in exclude.split(",")] if exclude else None
+
+    # Generate routes JSON
+    routes_data = generate_routes_json(
+        app,
+        only=only_list,
+        exclude=exclude_list,
+        include_components=include_components,
     )
 
     try:
+        content = msgspec.json.format(
+            msgspec.json.encode(routes_data),
+            indent=2,
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(content)
+        console.print(f"[green]✓ Routes exported to {output}[/]")
+        console.print(f"[dim]  {len(routes_data.get('routes', {}))} routes exported[/]")
     except OSError as e:  # pragma: no cover
-        msg = f"failed to write schema to path {output}"
+        msg = f"Failed to write routes to path {output}"
         raise LitestarCLIException(msg) from e
 
-    console.print("[yellow]Vite process stopped.[/]")
+
+def _export_openapi_schema(app: "Litestar", types_config: Any) -> None:
+    """Export OpenAPI schema to file.
+
+    Args:
+        app: The Litestar application instance.
+        types_config: The TypeGenConfig instance.
+
+    Raises:
+        LitestarCLIException: If export fails.
+    """
+    import msgspec
+    from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
+    from litestar.serialization import encode_json, get_serializer
+
+    console.print("[dim]1. Exporting OpenAPI schema...[/]")
+    try:
+        serializer = get_serializer(app.type_encoders)
+        schema_dict = app.openapi_schema.to_schema()
+        schema_content = msgspec.json.format(
+            encode_json(schema_dict, serializer=serializer),
+            indent=2,
+        )
+        types_config.openapi_path.parent.mkdir(parents=True, exist_ok=True)
+        types_config.openapi_path.write_bytes(schema_content)
+        console.print(f"[green]✓ Schema exported to {types_config.openapi_path}[/]")
+    except OSError as e:
+        msg = f"Failed to export OpenAPI schema: {e}"
+        raise LitestarCLIException(msg) from e
+
+
+def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
+    """Export routes metadata to file.
+
+    Args:
+        app: The Litestar application instance.
+        types_config: The TypeGenConfig instance.
+
+    Raises:
+        LitestarCLIException: If export fails.
+    """
+    import msgspec
+    from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
+
+    from litestar_vite.codegen import generate_routes_json
+
+    console.print("[dim]2. Exporting route metadata...[/]")
+    try:
+        routes_data = generate_routes_json(app, include_components=True)
+        routes_data["litestar_version"] = _resolve_litestar_version()
+        routes_content = msgspec.json.format(
+            msgspec.json.encode(routes_data),
+            indent=2,
+        )
+        types_config.routes_path.parent.mkdir(parents=True, exist_ok=True)
+        types_config.routes_path.write_bytes(routes_content)
+        console.print(f"[green]✓ Routes exported to {types_config.routes_path}[/]")
+    except OSError as e:
+        msg = f"Failed to export routes: {e}"
+        raise LitestarCLIException(msg) from e
+
+
+def _run_openapi_ts(
+    types_config: Any, root_dir: Any, verbose: bool, install_command: "list[str] | None" = None
+) -> None:
+    """Run @hey-api/openapi-ts to generate TypeScript types.
+
+    Args:
+        types_config: The TypeGenConfig instance.
+        root_dir: The root directory for the project.
+        verbose: Whether to show verbose output.
+        install_command: Command used to install JS dependencies.
+    """
+    import subprocess
+
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+
+    console.print("[dim]3. Running @hey-api/openapi-ts...[/]")
+
+    install_cmd = install_command or ["npm", "install"]
+
+    try:
+        # Check if @hey-api/openapi-ts is installed
+        check_cmd = ["npx", "@hey-api/openapi-ts", "--version"]
+        subprocess.run(check_cmd, check=True, capture_output=True, cwd=root_dir)
+
+        # Run the type generation
+        openapi_cmd = [
+            "npx",
+            "@hey-api/openapi-ts",
+            "-i",
+            str(types_config.openapi_path),
+            "-o",
+            str(types_config.output),
+        ]
+        if types_config.generate_zod:
+            openapi_cmd.extend(["--plugins", "@hey-api/schemas", "@hey-api/types"])
+
+        subprocess.run(openapi_cmd, check=True, cwd=root_dir)
+        console.print(f"[green]✓ Types generated in {types_config.output}[/]")
+    except subprocess.CalledProcessError as e:
+        console.print("[yellow]! @hey-api/openapi-ts failed - install it with:[/]")
+        console.print(f"[dim]  {' '.join([*install_cmd, '-D', '@hey-api/openapi-ts'])}[/]")
+        if verbose:
+            console.print(f"[dim]Error: {e!s}[/]")
+    except FileNotFoundError:
+        console.print("[yellow]! npx not found - ensure Node.js is installed[/]")
+
+
+@vite_group.command(
+    name="generate-types",
+    help="Generate TypeScript types from OpenAPI schema and routes.",
+)
+@option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
+def generate_types(app: "Litestar", verbose: "bool") -> None:
+    """Generate TypeScript types from OpenAPI schema and routes.
+
+    This command:
+    1. Exports the OpenAPI schema (uses litestar's built-in schema generation)
+    2. Exports route metadata
+    3. Runs @hey-api/openapi-ts to generate TypeScript types
+
+    Args:
+        app: The Litestar application instance.
+        verbose: Whether to enable verbose output.
+
+    Raises:
+        LitestarCLIException: If type generation fails.
+    """
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+
+    from litestar_vite.config import TypeGenConfig
+    from litestar_vite.plugin import VitePlugin
+
+    if verbose:
+        app.debug = True
+
+    plugin = app.plugins.get(VitePlugin)
+    config = plugin.config
+
+    # Check if types are enabled
+    if not isinstance(config.types, TypeGenConfig) or not config.types.enabled:
+        console.print("[yellow]Type generation is not enabled in ViteConfig[/]")
+        console.print("[dim]Set types=True or types=TypeGenConfig(enabled=True) in ViteConfig[/]")
+        return
+
+    console.rule("[yellow]Generating TypeScript types[/]", align="left")
+
+    _export_openapi_schema(app, config.types)
+    _export_routes_metadata(app, config.types)
+    _run_openapi_ts(config.types, config.root_dir, verbose, config.install_command)
+
+
+@vite_group.command(
+    name="status",
+    help="Check the status of the Vite integration.",
+)
+def vite_status(app: "Litestar") -> None:
+    """Check the status of the Vite integration."""
+    import httpx
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+
+    from litestar_vite.plugin import VitePlugin
+
+    plugin = app.plugins.get(VitePlugin)
+    config = plugin.config
+
+    console.rule("[yellow]Vite Integration Status[/]", align="left")
+    console.print(f"Dev Mode: {config.dev_mode}")
+    console.print(f"Hot Reload: {config.hot_reload}")
+    console.print(f"Assets URL: {config.asset_url}")
+    console.print(f"Base URL: {config.base_url}")
+
+    manifest_path = Path(f"{config.bundle_dir}/{config.manifest_name}")
+    if manifest_path.exists():
+        console.print(f"[green]✓ Manifest found at {manifest_path}[/]")
+    else:
+        console.print(f"[red]✗ Manifest not found at {manifest_path}[/]")
+
+    if config.dev_mode:
+        url = f"{config.protocol}://{config.host}:{config.port}"
+        try:
+            response = httpx.get(url, timeout=0.5)
+            if response.status_code == 200:
+                console.print(f"[green]✓ Vite server running at {url}[/]")
+            else:
+                console.print(f"[yellow]! Vite server reachable at {url} but returned {response.status_code}[/]")
+        except httpx.HTTPError as e:
+            console.print(f"[red]✗ Vite server not reachable at {url}: {e!s}[/]")

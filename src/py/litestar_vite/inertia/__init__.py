@@ -1,7 +1,17 @@
 from litestar_vite.inertia import helpers
 from litestar_vite.inertia.config import InertiaConfig
 from litestar_vite.inertia.exception_handler import create_inertia_exception_response, exception_to_http_response
-from litestar_vite.inertia.helpers import error, get_shared_props, js_routes_script, lazy, share
+from litestar_vite.inertia.helpers import (
+    defer,
+    error,
+    extract_deferred_props,
+    extract_merge_props,
+    get_shared_props,
+    js_routes_script,
+    lazy,
+    merge,
+    share,
+)
 from litestar_vite.inertia.middleware import InertiaMiddleware
 from litestar_vite.inertia.plugin import InertiaPlugin
 from litestar_vite.inertia.request import InertiaDetails, InertiaHeaders, InertiaRequest
@@ -26,12 +36,16 @@ __all__ = (
     "InertiaRequest",
     "InertiaResponse",
     "create_inertia_exception_response",
+    "defer",
     "error",
     "exception_to_http_response",
+    "extract_deferred_props",
+    "extract_merge_props",
     "generate_js_routes",
     "get_shared_props",
     "helpers",
     "js_routes_script",
     "lazy",
+    "merge",
     "share",
 )

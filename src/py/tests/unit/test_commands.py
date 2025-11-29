@@ -1,250 +1,252 @@
-from __future__ import annotations
+"""Tests for litestar_vite.commands module."""
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
-from jinja2 import Environment, FileSystemLoader, select_autoescape
-
-from litestar_vite.commands import VITE_INIT_TEMPLATES, get_template
 
 pytestmark = pytest.mark.anyio
-here = Path(__file__).parent
 
 
-@pytest.fixture
-def vite_template_env() -> Environment:
-    # Navigate to the actual templates directory in the source code
-    template_path = Path(here.parent.parent / "litestar_vite" / "templates")
-    return Environment(
-        loader=FileSystemLoader([template_path]),
-        autoescape=select_autoescape(),
-    )
+class TestInitVite:
+    """Test init_vite function."""
 
-
-def test_get_template(vite_template_env: Environment) -> None:
-    init_templates = {
-        template_name: get_template(environment=vite_template_env, name=template_name)
-        for template_name in VITE_INIT_TEMPLATES
-    }
-    assert len(init_templates.keys()) == len(VITE_INIT_TEMPLATES)
-
-
-class TestCommandsWithJinjaOptional:
-    """Test commands functionality with Jinja as optional dependency."""
-
-    def test_constants_available_without_jinja(self) -> None:
-        """Test that constants are available even when Jinja is missing."""
-        from litestar_vite.commands import DEFAULT_RESOURCES, VITE_INIT_TEMPLATES
-
-        # Constants should be defined regardless of Jinja availability
-        assert VITE_INIT_TEMPLATES is not None
-        assert DEFAULT_RESOURCES is not None
-        assert isinstance(VITE_INIT_TEMPLATES, set)
-        assert isinstance(DEFAULT_RESOURCES, set)
-
-    def test_get_template_with_jinja_available(self, vite_template_env: Environment) -> None:
-        """Test get_template function when Jinja is available."""
-        from litestar_vite.commands import get_template
-
-        # Should work normally when Jinja is available
-        template = get_template(environment=vite_template_env, name="package.json.j2")
-        assert template is not None
-
-        # Template should be renderable
-        rendered = template.render()
-        assert "package.json" in rendered or "dependencies" in rendered
-
-    def test_get_template_error_handling_when_jinja_missing(self) -> None:
-        """Test get_template error handling when Jinja dependencies are missing."""
-        import sys
-        from unittest.mock import patch
-
-        # Mock jinja2 module to be missing
-        with patch.dict(sys.modules, {"jinja2": None}):
-            # This should handle the import error gracefully
-            from litestar_vite.commands import VITE_INIT_TEMPLATES
-
-            assert VITE_INIT_TEMPLATES is not None
-
-    def test_init_vite_with_jinja_available(self, tmp_path: Path, vite_template_env: Environment) -> None:
-        """Test init_vite function when Jinja is available."""
-        from unittest.mock import Mock
-
+    def test_init_vite_creates_project(self, tmp_path: Path) -> None:
+        """Test that init_vite creates a project with the new scaffolding system."""
         from litestar_vite.commands import init_vite
 
         app = Mock()
 
-        # Should work when Jinja is available
-        try:
-            init_vite(
-                app=app,
-                root_path=tmp_path,
-                resource_path=tmp_path / "resources",
-                asset_url="/static/",
-                public_path=tmp_path / "public",
-                bundle_path=tmp_path / "dist",
-                enable_ssr=False,
-                vite_port=5173,
-                hot_file=tmp_path / "hot",
-                litestar_port=8000,
-            )
-        except Exception as e:
-            # If it fails, it shouldn't be due to missing Jinja when Jinja is available
-            assert "jinja" not in str(e).lower(), f"Should not fail due to Jinja when available: {e}"
+        init_vite(
+            app=app,
+            root_path=tmp_path,
+            resource_path=Path("src"),
+            asset_url="/static/",
+            public_path=Path("public"),
+            bundle_path=Path("dist"),
+            enable_ssr=False,
+            vite_port=5173,
+            hot_file=Path("hot"),
+            litestar_port=8000,
+        )
+
+        # Check that core files were created
+        assert (tmp_path / "vite.config.ts").exists()
+        assert (tmp_path / "package.json").exists()
+        # React template creates main.tsx
+        assert (tmp_path / "src" / "main.tsx").exists()
+
+    def test_init_vite_with_framework(self, tmp_path: Path) -> None:
+        """Test init_vite with different framework templates."""
+        from litestar_vite.commands import init_vite
+
+        app = Mock()
+
+        init_vite(
+            app=app,
+            root_path=tmp_path,
+            resource_path=Path("src"),
+            asset_url="/static/",
+            public_path=Path("public"),
+            bundle_path=Path("dist"),
+            enable_ssr=False,
+            vite_port=5173,
+            hot_file=Path("hot"),
+            litestar_port=8000,
+            framework="vue",
+        )
+
+        # Check that Vue-specific files were created
+        assert (tmp_path / "vite.config.ts").exists()
+        assert (tmp_path / "src" / "main.ts").exists()
+        assert (tmp_path / "src" / "App.vue").exists()
 
     @patch("litestar_vite.commands.JINJA_INSTALLED", False)
     def test_init_vite_error_when_jinja_missing(self, tmp_path: Path) -> None:
         """Test init_vite raises appropriate error when Jinja is missing."""
-        from unittest.mock import Mock
-
         from litestar_vite.exceptions import MissingDependencyError
 
         app = Mock()
 
-        # Test should raise MissingDependencyError when Jinja is not installed
         with pytest.raises(MissingDependencyError) as exc_info:
             from litestar_vite.commands import init_vite
 
             init_vite(
                 app=app,
                 root_path=tmp_path,
-                resource_path=tmp_path / "resources",
+                resource_path=Path("resources"),
                 asset_url="/static/",
-                public_path=tmp_path / "public",
-                bundle_path=tmp_path / "dist",
+                public_path=Path("public"),
+                bundle_path=Path("dist"),
                 enable_ssr=False,
                 vite_port=5173,
-                hot_file=tmp_path / "hot",
+                hot_file=Path("hot"),
                 litestar_port=8000,
             )
 
-        # Should provide clear installation instructions
-        assert "jinja" in str(exc_info.value)
+        assert "jinja" in str(exc_info.value).lower()
 
-    def test_template_generation_conditional_on_jinja(self, tmp_path: Path) -> None:
-        """Test that template generation is conditional on Jinja availability."""
-        import sys
-        from unittest.mock import Mock, patch
 
-        Mock()
+class TestScaffoldingModule:
+    """Test the scaffolding module directly."""
 
-        # Test with Jinja completely missing
-        with patch.dict(sys.modules, {"jinja2": None}):
-            # The commands module should still be importable
-            from litestar_vite.commands import DEFAULT_RESOURCES, VITE_INIT_TEMPLATES
+    def test_get_available_templates(self) -> None:
+        """Test that get_available_templates returns all templates."""
+        from litestar_vite.scaffolding import get_available_templates
 
-            # Constants should still be available
-            assert VITE_INIT_TEMPLATES is not None
-            assert DEFAULT_RESOURCES is not None
+        templates = get_available_templates()
+        assert len(templates) >= 8  # At least 8 framework templates
 
-    def test_backwards_compatibility_imports(self) -> None:
-        """Test that backwards compatibility is maintained for existing imports."""
-        # These imports should work regardless of Jinja availability
-        try:
-            from litestar_vite.commands import DEFAULT_RESOURCES, VITE_INIT_TEMPLATES, get_template
+        # Check that expected frameworks are present
+        template_names = [t.type.value for t in templates]
+        assert "react" in template_names
+        assert "vue" in template_names
+        assert "svelte" in template_names
+        assert "angular" in template_names
+        assert "angular-cli" in template_names
 
-            assert VITE_INIT_TEMPLATES is not None
-            assert DEFAULT_RESOURCES is not None
-            assert get_template is not None
-        except ImportError as e:
-            pytest.fail(f"Basic command imports should not fail regardless of Jinja availability: {e}")
+    def test_get_template_by_string(self) -> None:
+        """Test getting a template by string name."""
+        from litestar_vite.scaffolding.templates import get_template
 
-    def test_command_module_loading_performance(self) -> None:
-        """Test that command module loads quickly without Jinja."""
-        import importlib
-        import time
+        template = get_template("react")
+        assert template is not None
+        assert template.name == "React"
 
-        # Force reimport to test loading time
-        if "litestar_vite.commands" in importlib.sys.modules:
-            del importlib.sys.modules["litestar_vite.commands"]
+    def test_get_template_by_enum(self) -> None:
+        """Test getting a template by enum."""
+        from litestar_vite.scaffolding.templates import FrameworkType, get_template
 
-        start_time = time.time()
-        load_time = time.time() - start_time
+        template = get_template(FrameworkType.VUE)
+        assert template is not None
+        assert template.name == "Vue 3"
 
-        # Should load quickly (less than 100ms)
-        assert load_time < 0.1, f"Commands module took too long to load: {load_time}s"
+    def test_get_template_invalid(self) -> None:
+        """Test getting an invalid template returns None."""
+        from litestar_vite.scaffolding.templates import get_template
 
-    def test_error_message_quality_for_missing_jinja(self) -> None:
-        """Test quality of error messages when Jinja is missing."""
-        from litestar_vite.exceptions import MissingDependencyError
+        template = get_template("invalid-framework")
+        assert template is None
 
-        # Test error message format
-        exception = MissingDependencyError("jinja2", "jinja")
-        error_msg = str(exception)
+    def test_template_context_to_dict(self) -> None:
+        """Test TemplateContext.to_dict() method."""
+        from litestar_vite.scaffolding import TemplateContext
+        from litestar_vite.scaffolding.templates import get_template
 
-        # Should contain essential information
-        assert "jinja2" in error_msg
-        assert "pip install" in error_msg
-        assert "litestar-vite[jinja]" in error_msg
+        framework = get_template("react")
+        assert framework is not None
 
-    def test_template_constants_consistency(self) -> None:
-        """Test that template constants are consistent."""
-        from litestar_vite.commands import DEFAULT_RESOURCES, VITE_INIT_TEMPLATES
+        context = TemplateContext(
+            project_name="test-project",
+            framework=framework,
+            use_typescript=True,
+            vite_port=5173,
+            litestar_port=8000,
+        )
 
-        # Template names should be consistent
-        expected_init_templates = {"package.json.j2", "tsconfig.json.j2", "vite.config.ts.j2"}
-        expected_resources = {"styles.css.j2", "main.ts.j2"}
+        context_dict = context.to_dict()
+        assert context_dict["project_name"] == "test-project"
+        assert context_dict["framework"] == "react"
+        assert context_dict["use_typescript"] is True
 
-        assert VITE_INIT_TEMPLATES == expected_init_templates
-        assert DEFAULT_RESOURCES == expected_resources
+    def test_generate_project(self, tmp_path: Path) -> None:
+        """Test generate_project creates files correctly."""
+        from litestar_vite.scaffolding import TemplateContext, generate_project
+        from litestar_vite.scaffolding.templates import get_template
 
-    def test_command_constants_immutability(self) -> None:
-        """Test that command constants cannot be accidentally modified."""
-        from litestar_vite.commands import DEFAULT_RESOURCES, VITE_INIT_TEMPLATES
+        framework = get_template("react")
+        assert framework is not None
 
-        # Should be able to iterate without modifying original
-        templates_copy = set(VITE_INIT_TEMPLATES)
-        resources_copy = set(DEFAULT_RESOURCES)
+        context = TemplateContext(
+            project_name="test-project",
+            framework=framework,
+            use_typescript=True,
+            vite_port=5173,
+            litestar_port=8000,
+        )
 
-        # Original sets should be unchanged
-        assert VITE_INIT_TEMPLATES == templates_copy
-        assert DEFAULT_RESOURCES == resources_copy
+        generated = generate_project(tmp_path, context)
 
-    def test_conditional_jinja_import_in_type_checking(self) -> None:
-        """Test that TYPE_CHECKING imports don't cause runtime issues."""
-        # This tests the TYPE_CHECKING block imports in commands.py
-        from litestar_vite import commands
+        assert len(generated) > 0
+        assert (tmp_path / "vite.config.ts").exists()
 
-        # Module should load successfully
-        assert hasattr(commands, "VITE_INIT_TEMPLATES")
-        assert hasattr(commands, "DEFAULT_RESOURCES")
-        assert hasattr(commands, "get_template")
+    def test_inertia_templates_exist(self) -> None:
+        """Test that Inertia templates are available."""
+        from litestar_vite.scaffolding.templates import FrameworkType, get_template
 
-    def test_template_environment_creation_conditional(self, tmp_path: Path) -> None:
-        """Test that template environment creation is properly conditional."""
-        from unittest.mock import patch
+        react_inertia = get_template(FrameworkType.REACT_INERTIA)
+        assert react_inertia is not None
+        assert react_inertia.inertia_compatible is True
 
-        # Test that template environment creation handles missing Jinja
-        with patch.dict("sys.modules", {"jinja2": None}):
-            # Should not fail on import
-            from litestar_vite.commands import VITE_INIT_TEMPLATES
+        vue_inertia = get_template(FrameworkType.VUE_INERTIA)
+        assert vue_inertia is not None
+        assert vue_inertia.inertia_compatible is True
 
-            assert VITE_INIT_TEMPLATES is not None
+        svelte_inertia = get_template(FrameworkType.SVELTE_INERTIA)
+        assert svelte_inertia is not None
+        assert svelte_inertia.inertia_compatible is True
 
-    def test_development_vs_production_scenarios_without_jinja(self) -> None:
-        """Test different deployment scenarios without Jinja."""
-        from litestar_vite.commands import DEFAULT_RESOURCES, VITE_INIT_TEMPLATES
+    def test_angular_templates_registered(self) -> None:
+        from litestar_vite.scaffolding.templates import FrameworkType, get_template
 
-        # Should work in both development and production scenarios
-        # where Jinja might not be installed
-        assert len(VITE_INIT_TEMPLATES) > 0
-        assert len(DEFAULT_RESOURCES) > 0
+        angular = get_template(FrameworkType.ANGULAR)
+        cli = get_template(FrameworkType.ANGULAR_CLI)
 
-        # Constants should be usable for non-Jinja operations
-        for template_name in VITE_INIT_TEMPLATES:
-            assert isinstance(template_name, str)
-            assert template_name.endswith(".j2")
+        assert angular is not None
+        assert angular.uses_vite is True
+        assert angular.resource_dir == "src"
 
-    def test_memory_efficiency_without_jinja(self) -> None:
-        """Test memory efficiency when Jinja is not loaded."""
-        import gc
+        assert cli is not None
+        assert cli.uses_vite is False
+        assert cli.resource_dir == "src"
 
-        gc.collect()  # Clean up before test
+    def test_generate_project_angular_overrides_base_files(self, tmp_path: Path) -> None:
+        from litestar_vite.scaffolding import TemplateContext, generate_project
+        from litestar_vite.scaffolding.templates import FrameworkType, get_template
 
-        # Import commands module
-        from litestar_vite import commands
+        framework = get_template(FrameworkType.ANGULAR)
+        assert framework is not None
 
-        # Should not hold references to heavy Jinja objects when Jinja is not available
-        # This is a basic test that the module doesn't leak memory
-        assert commands.VITE_INIT_TEMPLATES is not None
+        context = TemplateContext(
+            project_name="ng-lite",
+            framework=framework,
+            use_typescript=True,
+            vite_port=5173,
+            litestar_port=8000,
+            resource_dir=framework.resource_dir,
+        )
+
+        generated = generate_project(tmp_path, context)
+
+        assert (tmp_path / "vite.config.ts").exists()
+        assert (tmp_path / "tsconfig.json").exists()
+        assert (tmp_path / "src" / "app" / "app.component.ts").exists()
+        # Ensure Angular-specific tsconfig (Bundler resolution) was written, not base
+        tsconfig = (tmp_path / "tsconfig.json").read_text()
+        assert "moduleResolution" in tsconfig
+        assert any(p.name == "tsconfig.json" for p in generated)
+
+    def test_generate_project_angular_cli_skips_vite_base(self, tmp_path: Path) -> None:
+        import json
+
+        from litestar_vite.scaffolding import TemplateContext, generate_project
+        from litestar_vite.scaffolding.templates import FrameworkType, get_template
+
+        framework = get_template(FrameworkType.ANGULAR_CLI)
+        assert framework is not None
+
+        context = TemplateContext(
+            project_name="ng-cli-lite",
+            framework=framework,
+            use_typescript=True,
+            resource_dir=framework.resource_dir,
+            bundle_dir="dist",
+        )
+
+        generate_project(tmp_path, context)
+
+        package_json = json.loads((tmp_path / "package.json").read_text())
+        dev_deps = package_json.get("devDependencies", {})
+
+        assert "litestar-vite-plugin" not in dev_deps
+        assert (tmp_path / "angular.json").exists()

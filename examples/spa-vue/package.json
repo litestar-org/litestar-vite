@@ -1,0 +1,22 @@
+{
+  "name": "spa-vue",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "latest",
+    "vue-tsc": "latest",
+    "typescript": "latest",
+    "@tailwindcss/vite": "^4.0.0",
+    "tailwindcss": "^4.0.0",
+    "litestar-vite-plugin": "file:../../dist/js/",
+    "vite": "^6.0.0"
+  }
+}

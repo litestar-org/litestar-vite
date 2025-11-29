@@ -5,11 +5,11 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Natural Language :: English",
   "Operating System :: OS Independent",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Programming Language :: Python",
   "Topic :: Software Development",
   "Typing :: Typed",
@@ -18,26 +18,32 @@ classifiers = [
   "Topic :: Database",
   "Topic :: Database :: Database Engines/Servers",
 ]
-dependencies = ["litestar>=2.7.0"]
+dependencies = [
+  "litestar>=2.7.0",
+  "httpx>=0.24.1",
+  "websockets>=12.0",
+  "typing_extensions"
+]
 description = "Vite plugin for Litestar"
 keywords = ["litestar", "vite"]
 license = { text = "MIT" }
 name = "litestar-vite"
 readme = "README.md"
-requires-python = ">=3.9"
-version = "0.14.0"
+requires-python = ">=3.10"
+version = "0.15.0-alpha.1"
 
 [project.urls]
-Changelog = "https://cofin.github.io/litestar-vite/latest/changelog"
+Changelog = "https://litestar-org.github.io/litestar-vite/latest/changelog"
 Discord = "https://discord.gg/X3FJqy8d2j"
-Documentation = "https://cofin.github.io/litestar-vite/latest/"
-Homepage = "https://cofin.github.io/litestar-vite/latest/"
-Issue = "https://github.com/cofin/litestar-vite/issues/"
-Source = "https://github.com/cofin/litestar-vite"
+Documentation = "https://litestar-org.github.io/litestar-vite/latest/"
+Homepage = "https://litestar-org.github.io/litestar-vite/latest/"
+Issue = "https://github.com/litestar-org/litestar-vite/issues/"
+Source = "https://github.com/litestar-org/litestar-vite"
 
 [project.optional-dependencies]
 jinja = [ "jinja2"]
 nodeenv = ["nodeenv"]
+http2 = ["h2>=4.0.0"]
 
 [build-system]
 build-backend = "hatchling.build"
@@ -67,9 +73,11 @@ docs = [
     "Pygments","vue-lexer",
     "litestar-sphinx-theme @ git+https://github.com/litestar-org/litestar-sphinx-theme.git@v3",
 ]
-linting = ["pre-commit>=3.4.0", "mypy>=1.5.1", "ruff>=0.0.287", "types-docutils", "slotscheck", "basedpyright", "pyright"]
+linting = ["pre-commit>=3.4.0", "mypy>=1.5.1", "ruff>=0.0.287", "types-docutils", "slotscheck",  "pyright"]
 test = [
+  "fsspec",
   "litestar[standard]",
+  "sniffio",
   "pytest>=7.4.1",
   "pytest-cov",
   "coverage",
@@ -84,19 +92,37 @@ test = [
 allow_dirty = true
 commit = true
 commit_args = "--no-verify"
-current_version = "0.14.0"
+current_version = "0.15.0-alpha.1"
 ignore_missing_files = false
 ignore_missing_version = false
 message = "chore(release): bump to v{new_version}"
-parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)"
+# Parse supports pre-release versions like 0.15.0-alpha.1, 0.15.0-beta.2, 0.15.0-rc.1
+parse = """(?x)
+    (?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)
+    (-(?P<pre>alpha|beta|rc)\\.(?P<pre_n>\\d+))?
+"""
 regex = false
 replace = "{new_version}"
 search = "{current_version}"
-serialize = ["{major}.{minor}.{patch}"]
+# Serialize order: stable first (used when pre is "stable"), then pre-releases
+serialize = [
+    "{major}.{minor}.{patch}",
+    "{major}.{minor}.{patch}-{pre}.{pre_n}",
+]
 sign_tags = false
 tag = false
 tag_message = "chore(release): v{new_version}"
 tag_name = "v{new_version}"
+
+# Pre-release stage configuration
+# "stable" is used internally to represent no pre-release suffix
+[tool.bumpversion.parts.pre]
+optional_value = "stable"
+first_value = "stable"
+values = ["alpha", "beta", "rc", "stable"]
+
+[tool.bumpversion.parts.pre_n]
+first_value = "1"
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
@@ -141,15 +167,15 @@ search = """
       "version": "{current_version}",
 """
 
-[[tool.bumpversion.files]]
-filename = "src/py/litestar_vite/commands.py"
-replace = '    "litestar-vite-plugin": "^{new_version}",'
-search = '    "litestar-vite-plugin": "^{current_version}",'
-
 [tool.pytest.ini_options]
 addopts = ["-q", "-ra"]
 filterwarnings = [
   "ignore::DeprecationWarning:pkg_resources.*",
+  "ignore::PendingDeprecationWarning:rich_click.*",
+  "ignore:`use_markdown=`:PendingDeprecationWarning",
+  "ignore:`use_rich_markup=`:PendingDeprecationWarning",
+  "ignore:`show_metavars_column=`:PendingDeprecationWarning",
+  "ignore:`append_metavars_help=`:PendingDeprecationWarning",
 ]
 testpaths = ["tests", "src/py/tests"]
 tmp_path_retention_policy = "failed"
@@ -284,7 +310,7 @@ lint.ignore = [
 ]
 lint.select = ["ALL"]
 src = ["src/py/litestar_vite", "src/py/tests"]
-target-version = "py39"
+target-version = "py310"
 unsafe-fixes = true
 lint.extend-safe-fixes = ["TC"]
 
@@ -298,7 +324,7 @@ max-complexity = 12
 "__init__.py" = ['F401', 'D104']
 "docs/**/*.*" = ["S", "B", "DTZ", "A", "TC", "ERA", "D", "RET", "E731", "RUF012", "FA100", "ARG001"]
 "docs/conf.py" = ["FIX002", "ARG001", "INP001"]
-"examples/**/*.*" = ["INP001"]
+"examples/**/*.*" = ["INP001","RUF029","DOC201"]
 "src/py/tests/**/*.*" = [
   "A",
   "ARG",
@@ -345,7 +371,7 @@ exclude = [
   "src/py/tests/docker_service_fixtures.py",
 ]
 include = ["src/py/litestar_vite"]
-pythonVersion = "3.9"
+pythonVersion = "3.10"
 strict = ["src/py/litestar_vite/**/*"]
 
 [tool.mypy]

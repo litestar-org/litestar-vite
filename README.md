@@ -1,137 +1,93 @@
 # Litestar Vite
 
-## Installation
+Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA, Template, and Inertia flows, and can proxy Vite dev traffic through your ASGI port or run Vite directly.
 
-```shell
+## Features
+
+- One-port dev: proxies Vite HTTP + WS/HMR through Litestar by default; switch to two-port with `VITE_PROXY_MODE=direct`.
+- Production assets: reads Vite manifest from `public/manifest.json` (configurable) and serves under `asset_url`.
+- Type-safe frontends: optional OpenAPI/routes export + `@hey-api/openapi-ts` via the Vite plugin.
+- Inertia support: v2 protocol with session middleware and optional SPA mode.
+
+## Quick start (SPA)
+
+```bash
 pip install litestar-vite
+litestar assets install  # installs frontend deps via configured executor
 ```
-
-## Usage
-
-Here is a basic application that demonstrates how to use the plugin.
 
 ```python
-from __future__ import annotations
+from litestar import Litestar
+from litestar_vite import VitePlugin, ViteConfig
 
-from pathlib import Path
+app = Litestar(plugins=[VitePlugin(config=ViteConfig(dev_mode=True))])
+```
 
-from litestar import Controller, get, Litestar
-from litestar.response import Template
-from litestar.status_codes import HTTP_200_OK
-from litestar.template.config import TemplateConfig
+```bash
+litestar run  # starts Litestar; Vite dev is proxied automatically
+```
+
+## Template / HTMX
+
+```python
+from litestar import Litestar
 from litestar.contrib.jinja import JinjaTemplateEngine
-from litestar_vite import ViteConfig, VitePlugin
+from litestar.template.config import TemplateConfig
+from litestar_vite import VitePlugin, ViteConfig
 
-class WebController(Controller):
-
-    opt = {"exclude_from_auth": True}
-    include_in_schema = False
-
-    @get(["/", "/{path:str}"],status_code=HTTP_200_OK)
-    async def index(self) -> Template:
-        return Template(template_name="index.html.j2")
-
-template_config = TemplateConfig(engine=JinjaTemplateEngine(directory='templates/'))
-vite = VitePlugin(config=ViteConfig())
-app = Litestar(plugins=[vite], template_config=template_config, route_handlers=[WebController])
-
+app = Litestar(
+    template_config=TemplateConfig(engine=JinjaTemplateEngine(directory="templates")),
+    plugins=[VitePlugin(config=ViteConfig(mode="template", dev_mode=True))],
+)
 ```
 
-Create a template to serve the application in `./templates/index.html.j2`:
+## Inertia (v2)
 
-```html
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <!--IE compatibility-->
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
-    />
-  </head>
+Requires session middleware.
 
-  <body>
-    <div id="app"></div>
-    {{ vite_hmr() }} {{ vite('resources/main.ts') }}
-  </body>
-</html>
+```python
+from litestar import Litestar
+from litestar.middleware.session.server_side import ServerSideSessionConfig, ServerSideSessionMiddleware
+from litestar_vite import VitePlugin, ViteConfig
+from litestar_vite.inertia import InertiaPlugin
+from litestar_vite.inertia.config import InertiaConfig
+
+app = Litestar(
+    middleware=[ServerSideSessionMiddleware(config=ServerSideSessionConfig(secret="secret"))],
+    plugins=[
+        VitePlugin(config=ViteConfig(mode="template", inertia=True, dev_mode=True)),
+        InertiaPlugin(InertiaConfig()),
+    ],
+)
 ```
 
-### Template initialization (Optional)
+## Type generation
 
-This is a command to help initialize Vite for your project. This is generally only needed a single time. You may also manually configure Vite and skip this step.
-
-to initialize a Vite configuration:
-
-```shell
-❯ litestar assets init
-Using Litestar app from app:app
-Initializing Vite ──────────────────────────────────────────────────────────────────────────────────────────
-Do you intend to use Litestar with any SSR framework? [y/n]: n
-INFO - 2023-12-11 12:33:41,455 - root - commands - Writing vite.config.ts
-INFO - 2023-12-11 12:33:41,456 - root - commands - Writing package.json
-INFO - 2023-12-11 12:33:41,456 - root - commands - Writing tsconfig.json
+```python
+VitePlugin(config=ViteConfig(types=True))  # enable exports
 ```
 
-### Install Javascript/Typescript Packages
-
-Install the packages required for development:
-
-**Note** This is equivalent to the the `npm install` by default. This command is configurable.
-
-```shell
-❯ litestar assets install
-Using Litestar app from app:app
-Starting Vite package installation process ──────────────────────────────────────────────────────────────────────────────────────────
-
-added 25 packages, and audited 26 packages in 1s
-
-
-5 packages are looking for funding
-  run `npm fund` for details
-
-
-found 0 vulnerabilities
+```bash
+litestar assets generate-types  # one-off or CI
 ```
 
-### Development
+## CLI cheat sheet
 
-To automatically start and stop the Vite instance with the Litestar application, you can enable the `use_server_lifespan` hooks in the `ViteConfig`.
+- `litestar assets doctor` — diagnose/fix config
+- `litestar assets init --template react|vue|svelte|...` — scaffold frontend
+- `litestar assets build` / `serve` — build or watch
+- `litestar assets deploy --storage gcs://bucket/assets` — upload via fsspec
+- `litestar assets generate-types` — OpenAPI + routes → TS types
+- `litestar assets install` — install frontend deps with the configured executor
 
-Alternately, to start the development server manually, you can run the following
+### Doctor command highlights
 
-```shell
-❯ litestar assets serve
-Using Litestar app from app:app
-Starting Vite build process ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+- Prints Python vs Vite config snapshot (asset URLs, bundle/hot paths, ports, modes).
+- Flags missing hot file (dev proxy), missing manifest (prod), type-gen exports, env/config mismatches, and plugin install issues.
+- `--fix` can rewrite simple vite.config values (assetUrl, bundleDirectory, hotFile, type paths) after creating a backup.
 
-> build
-> vite build
+## Links
 
-
-vite v5.0.7 building for production...
-
-✓ 0 modules transformed.
-
-```
-
-**Note** This is equivalent to the the `npm run dev` command when `hot_reload` is enabled. Otherwise it is equivalent to `npm run build -- --watch`. This command is configurable.
-
-### Building for Production
-
-```shell
-❯ litestar assets build
-Using Litestar app from app:app
-Starting Vite build process ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-> build
-> vite build
-
-
-vite v5.0.7 building for production...
-
-✓ 0 modules transformed.
-
-```
+- Docs: <https://litestar-org.github.io/litestar-vite/>
+- Examples: `examples/` (basic, inertia, spa-react)
+- Issues: <https://github.com/litestar-org/litestar-vite/issues/>

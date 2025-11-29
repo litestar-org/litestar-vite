@@ -1,0 +1,29 @@
+{% if use_tailwind %}
+import tailwindcss from "@tailwindcss/vite";
+{% endif %}
+
+const LITESTAR_PORT = process.env.LITESTAR_PORT || "{{ litestar_port }}";
+
+export default defineNuxtConfig({
+  compatibilityDate: "2024-11-01",
+  devtools: { enabled: true },
+  modules: ["litestar-vite-plugin/nuxt"],
+{% if use_tailwind %}
+  css: ["~/assets/css/tailwind.css"],
+  vite: {
+    plugins: [tailwindcss()],
+  },
+{% endif %}
+  litestar: {
+    apiProxy: `http://localhost:${LITESTAR_PORT}`,
+    apiPrefix: "/api",
+{% if enable_types %}
+    types: {
+      enabled: true,
+      schemaPath: "./openapi.json",
+      routesPath: "./routes.json",
+      output: "types/api",
+    },
+{% endif %}
+  },
+});

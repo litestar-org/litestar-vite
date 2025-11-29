@@ -1,0 +1,34 @@
+import { defineConfig } from "vite";
+import angular from "@analogjs/vite-plugin-angular";
+import litestar from "litestar-vite-plugin";
+
+export default defineConfig({
+  server: {
+    host: process.env.VITE_HOST || "127.0.0.1",
+    port: Number(process.env.VITE_PORT || "{{ vite_port }}"),
+    cors: true,
+    hmr: {
+      host: "localhost",
+      path: "/vite-hmr",
+    },
+  },
+  plugins: [
+    angular(),
+    litestar({
+      input: ["{{ resource_dir }}/main.ts"],
+{% if enable_types %}
+      types: {
+        enabled: true,
+        openapiPath: "src/generated/openapi.json",
+        routesPath: "src/generated/routes.json",
+        output: "src/generated",
+      },
+{% endif %}
+    }),
+  ],
+  resolve: {
+    alias: {
+      "@": "/{{ resource_dir }}",
+    },
+  },
+});

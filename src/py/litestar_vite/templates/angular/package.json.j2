@@ -1,0 +1,26 @@
+{
+  "name": "{{ project_name }}",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"{% if enable_types %},
+    "generate-types": "openapi-ts"{% endif %}
+  },
+  "dependencies": {
+{%- for dep in dependencies %}
+    "{{ dep }}": "latest"{% if not loop.last %},{% endif %}
+{%- endfor %}
+  },
+  "devDependencies": {
+{%- for dep in dev_dependencies %}
+    "{{ dep }}": "latest",
+{%- endfor %}
+{%- if enable_types %}
+    "@hey-api/openapi-ts": "latest",
+{%- endif %}
+    "litestar-vite-plugin": "latest",
+    "vite": "^6.0.0"
+  }
+}

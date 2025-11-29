@@ -36,6 +36,9 @@ extensions = [
     "sphinx_click",
     "sphinx_toolbox.collapse",
     "sphinx_design",
+    "sphinxcontrib.mermaid",
+    "sphinx_paramlinks",
+    "sphinx_togglebutton",
 ]
 
 intersphinx_mapping = {
@@ -145,11 +148,12 @@ templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 # -- Style configuration -----------------------------------------------------
-html_thtml_theme = "litestar_sphinx_theme"
+html_theme = "litestar_sphinx_theme"
 html_static_path = ["_static"]
 html_css_files = ["style.css"]
 html_show_sourcelink = True
 html_title = "Litestar Vite"
+html_favicon = "_static/favicon.ico"
 html_context = {
     "source_type": "github",
     "source_user": "litestar-org",
@@ -167,47 +171,12 @@ brand_colors = {
 }
 
 html_theme_options: dict[str, Any] = {
-    # "logo_target": "/",
-    # "github_url": "https://github.com/litestar-org/litestar-vite",
-    # "github_repo_name": "Litestar Vite",
-    # "nav_links": [
-    #     {"title": "Home", "url": "https://litestar-org.github.io/litestar-vite/"},
-    #     {"title": "Docs", "url": "https://litestar-org.github.io/litestar-vite/latest/"},
-    #     {"title": "Code", "url": "https://github.com/litestar-org/litestar-vite"},
-    # ],
-    # "light_css_variables": {
-    #     # RGB
-    #     "--sy-rc-theme": brand_colors["--brand-primary"]["rgb"],
-    #     "--sy-rc-text": brand_colors["--brand-primary"]["rgb"],
-    #     "--sy-rc-invert": brand_colors["--brand-primary"]["rgb"],
-    #     # "--sy-rc-bg": brand_colors["--brand-secondary"]["rgb"],
-    #     # Hex
-    #     "--sy-c-link": brand_colors["--brand-secondary"]["hex"],
-    #     # "--sy-c-foot-bg": "#191919",
-    #     "--sy-c-foot-divider": brand_colors["--brand-primary"]["hex"],
-    #     "--sy-c-foot-text": brand_colors["--brand-dark"]["hex"],
-    #     "--sy-c-bold": brand_colors["--brand-primary"]["hex"],
-    #     "--sy-c-heading": brand_colors["--brand-primary"]["hex"],
-    #     "--sy-c-text-weak": brand_colors["--brand-primary"]["hex"],
-    #     "--sy-c-text": brand_colors["--brand-dark"]["hex"],
-    #     "--sy-c-bg-weak": brand_colors["--brand-dark"]["rgb"],
-    # },
-    # "dark_css_variables": {
-    #     # RGB
-    #     "--sy-rc-theme": brand_colors["--brand-primary"]["rgb"],
-    #     "--sy-rc-text": brand_colors["--brand-primary"]["rgb"],
-    #     "--sy-rc-invert": brand_colors["--brand-primary"]["rgb"],
-    #     "--sy-rc-bg": brand_colors["--brand-dark"]["rgb"],
-    #     # Hex
-    #     "--sy-c-link": brand_colors["--brand-primary"]["hex"],
-    #     "--sy-c-foot-bg": brand_colors["--brand-dark"]["hex"],
-    #     "--sy-c-foot-divider": brand_colors["--brand-primary"]["hex"],
-    #     "--sy-c-foot-text": brand_colors["--brand-light"]["hex"],
-    #     "--sy-c-bold": brand_colors["--brand-primary"]["hex"],
-    #     "--sy-c-heading": brand_colors["--brand-primary"]["hex"],
-    #     "--sy-c-text-weak": brand_colors["--brand-primary"]["hex"],
-    #     "--sy-c-text": brand_colors["--brand-light"]["hex"],
-    #     "--sy-c-bg-weak": brand_colors["--brand-dark"]["hex"],
-    #     "--sy-c-bg": brand_colors["--brand-primary"]["hex"],
-    # },
+    "logo_target": "/",
+    "github_url": "https://github.com/litestar-org/litestar-vite",
+    "github_repo_name": "Litestar Vite",
+    "nav_links": [
+        {"title": "Home", "url": "https://litestar-org.github.io/litestar-vite/"},
+        {"title": "Docs", "url": "https://litestar-org.github.io/litestar-vite/latest/"},
+        {"title": "Code", "url": "https://github.com/litestar-org/litestar-vite"},
+    ],
 }

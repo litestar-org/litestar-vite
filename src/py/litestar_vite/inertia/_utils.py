@@ -1,19 +1,35 @@
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from litestar_vite.inertia.types import InertiaHeaderType
 
 
 class InertiaHeaders(str, Enum):
-    """Enum for Inertia Headers"""
+    """Enum for Inertia Headers.
 
+    See: https://inertiajs.com/the-protocol
+    """
+
+    # Core headers
     ENABLED = "X-Inertia"
     VERSION = "X-Inertia-Version"
-    PARTIAL_DATA = "X-Inertia-Partial-Data"
-    PARTIAL_COMPONENT = "X-Inertia-Partial-Component"
     LOCATION = "X-Inertia-Location"
     REFERER = "Referer"
+
+    # Partial reload headers
+    PARTIAL_DATA = "X-Inertia-Partial-Data"
+    PARTIAL_COMPONENT = "X-Inertia-Partial-Component"
+    PARTIAL_EXCEPT = "X-Inertia-Partial-Except"  # v2: Props to exclude from partial
+
+    # v2 features
+    RESET = "X-Inertia-Reset"  # Props to reset on navigation
+    ERROR_BAG = "X-Inertia-Error-Bag"  # Validation error bag name
+
+    # Infinite scroll (v2)
+    INFINITE_SCROLL_MERGE_INTENT = "X-Inertia-Infinite-Scroll-Merge-Intent"  # append/prepend
 
 
 def get_enabled_header(enabled: bool = True) -> "dict[str, Any]":

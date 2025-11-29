@@ -1,23 +1,21 @@
-from __future__ import annotations
+"""Flash messages example - demonstrates Litestar flash plugin with Vite."""
 
+import os
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any
 
 from litestar import Controller, Litestar, Request, get
 from litestar.contrib.jinja import JinjaTemplateEngine
-from litestar.middleware.session.server_side import ServerSideSessionConfig
-from litestar.plugins.flash import FlashConfig, FlashPlugin, flash  # pyright: ignore[reportUnknownVariableType]
+from litestar.middleware.session.client_side import CookieBackendConfig
+from litestar.plugins.flash import FlashConfig, FlashPlugin, flash
 from litestar.response import Template
-from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
 
 from litestar_vite import ViteConfig, VitePlugin
-from litestar_vite.inertia import InertiaConfig, InertiaPlugin
-
-if TYPE_CHECKING:
-    from litestar.connection.base import AuthT, StateT, UserT
 
 here = Path(__file__).parent
+SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-key-32c")
+session_backend = CookieBackendConfig(secret=SECRET_KEY)
 
 
 class WebController(Controller):
@@ -27,29 +25,20 @@ class WebController(Controller):
     include_in_schema = False
 
     @get("/")
-    async def index(self, request: Request[UserT, AuthT, StateT]) -> Template:
+    async def index(self, request: Request[Any, Any, Any]) -> Template:
         """Serve site root."""
         flash(request, "Oh no! I've been flashed!", category="error")
 
         return Template(template_name="index.html.j2")
 
 
-templates = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "templates"))
-vite = VitePlugin(
-    config=ViteConfig(
-        hot_reload=True,
-        port=3006,
-        use_server_lifespan=True,
-        dev_mode=True,
-    ),
-)
-inertia = InertiaPlugin(config=InertiaConfig())
+templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)
+vite = VitePlugin(config=ViteConfig())
 flasher = FlashPlugin(config=FlashConfig(template_config=templates))
 
 app = Litestar(
     plugins=[vite, flasher],
     route_handlers=[WebController],
-    middleware=[ServerSideSessionConfig().middleware],
+    middleware=[session_backend.middleware],
     template_config=templates,
-    stores={"sessions": MemoryStore()},
 )

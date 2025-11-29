@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import importlib.util
 import sys
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 from shutil import rmtree
-from typing import TYPE_CHECKING, Callable, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -117,7 +117,7 @@ def app_file(create_app_file: CreateAppFileFixture) -> Path:
 
 @pytest.fixture
 def runner() -> CliRunner:
-    return CliRunner()
+    return CliRunner(env={"PYTHONWARNINGS": "ignore::PendingDeprecationWarning"})
 
 
 @pytest.fixture

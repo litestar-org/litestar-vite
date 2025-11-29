@@ -1,0 +1,43 @@
+<script lang="ts">
+  import { inertia } from "@inertiajs/svelte";
+
+  export let message: string | undefined = undefined;
+</script>
+
+<svelte:head>
+  <title>Home - {{ project_name }}</title>
+</svelte:head>
+
+<main class="app">
+  <h1>{{ project_name }}</h1>
+  <p>Svelte + Inertia.js + Litestar</p>
+  {#if message}
+    <p class="message">{message}</p>
+  {/if}
+  <div class="links">
+    <a href="/users" use:inertia>View Users</a>
+  </div>
+</main>
+
+<style>
+  .app {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 2rem;
+    text-align: center;
+  }
+
+  .message {
+    color: #ff3e00;
+    font-weight: 500;
+  }
+
+  .links a {
+    color: #ff3e00;
+    text-decoration: none;
+  }
+
+  .links a:hover {
+    text-decoration: underline;
+  }
+</style>

@@ -1,0 +1,41 @@
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
+import litestar from "litestar-vite-plugin";
+{% if use_tailwind %}
+import tailwindcss from "@tailwindcss/vite";
+{% endif %}
+
+export default defineConfig({
+  server: {
+    host: "0.0.0.0",
+    port: Number(process.env.VITE_PORT || "{{ vite_port }}"),
+    cors: true,
+    hmr: {
+      host: "localhost",
+    },
+  },
+  plugins: [
+{% if use_tailwind %}
+    tailwindcss(),
+{% endif %}
+    TanStackRouterVite(),
+    react(),
+    litestar({
+      input: ["{{ resource_dir }}/main.tsx"],
+      types: {
+        enabled: true,
+        output: "{{ resource_dir }}/generated/types",
+        openapiPath: "{{ resource_dir }}/generated/openapi.json",
+        routesPath: "{{ resource_dir }}/generated/routes.json",
+        generateZod: true,
+        generateSdk: true,
+      },
+    }),
+  ],
+  resolve: {
+    alias: {
+      "@": "/{{ resource_dir }}",
+    },
+  },
+});

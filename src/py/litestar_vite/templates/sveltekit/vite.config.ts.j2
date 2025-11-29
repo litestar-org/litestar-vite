@@ -1,0 +1,29 @@
+import { sveltekit } from "@sveltejs/kit/vite";
+import { litestarSvelteKit } from "litestar-vite-plugin/sveltekit";
+import { defineConfig } from "vite";
+{% if use_tailwind %}
+import tailwindcss from "@tailwindcss/vite";
+{% endif %}
+
+const LITESTAR_PORT = process.env.LITESTAR_PORT || "{{ litestar_port }}";
+
+export default defineConfig({
+  plugins: [
+{% if use_tailwind %}
+    tailwindcss(),
+{% endif %}
+    litestarSvelteKit({
+      apiProxy: `http://localhost:${LITESTAR_PORT}`,
+      apiPrefix: "/api",
+{% if enable_types %}
+      types: {
+        enabled: true,
+        schemaPath: "./openapi.json",
+        routesPath: "./routes.json",
+        output: "src/lib/generated/api",
+      },
+{% endif %}
+    }),
+    sveltekit(),
+  ],
+});
