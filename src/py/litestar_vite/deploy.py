@@ -61,8 +61,8 @@ def _import_fsspec(storage_backend: str | None) -> tuple[Any, Callable[..., tupl
         msg = "fsspec"
         raise MissingDependencyError(msg, install_package=_suggest_install_extra(storage_backend))
 
-    import fsspec  # type: ignore[reportMissingTypeStubs]
-    from fsspec.core import url_to_fs  # type: ignore[reportMissingTypeStubs]
+    import fsspec  # pyright: ignore[reportMissingTypeStubs]
+    from fsspec.core import url_to_fs  # pyright: ignore[reportMissingTypeStubs]
 
     return fsspec, url_to_fs
 
