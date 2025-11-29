@@ -9,10 +9,11 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 - Type-safe frontends: optional OpenAPI/routes export + `@hey-api/openapi-ts` via the Vite plugin.
 - Inertia support: v2 protocol with session middleware and optional SPA mode.
 
-## Quick start (SPA)
+## Quick start (React TanStack SPA)
 
 ```bash
 pip install litestar-vite
+litestar assets init --template react-tanstack
 litestar assets install  # installs frontend deps via configured executor
 ```
 
@@ -20,12 +21,14 @@ litestar assets install  # installs frontend deps via configured executor
 from litestar import Litestar
 from litestar_vite import VitePlugin, ViteConfig
 
-app = Litestar(plugins=[VitePlugin(config=ViteConfig(dev_mode=True))])
+app = Litestar(plugins=[VitePlugin(config=ViteConfig(dev_mode=True))])  # SPA mode by default
 ```
 
 ```bash
-litestar run  # starts Litestar; Vite dev is proxied automatically
+litestar run --reload  # starts Litestar; Vite dev is proxied automatically
 ```
+
+Other templates: `react`, `vue`, `svelte`, `htmx`, `react-inertia`, `vue-inertia`, `svelte-inertia`, `angular`, `angular-cli`, `astro`, `nuxt`, `sveltekit` (see `litestar assets init --help`).
 
 ## Template / HTMX
 
@@ -47,13 +50,15 @@ Requires session middleware.
 
 ```python
 from litestar import Litestar
-from litestar.middleware.session.server_side import ServerSideSessionConfig, ServerSideSessionMiddleware
+from litestar.middleware.session.client_side import CookieBackendConfig
 from litestar_vite import VitePlugin, ViteConfig
 from litestar_vite.inertia import InertiaPlugin
 from litestar_vite.inertia.config import InertiaConfig
 
+session_backend = CookieBackendConfig(secret="dev-secret")
+
 app = Litestar(
-    middleware=[ServerSideSessionMiddleware(config=ServerSideSessionConfig(secret="secret"))],
+    middleware=[session_backend.middleware],
     plugins=[
         VitePlugin(config=ViteConfig(mode="template", inertia=True, dev_mode=True)),
         InertiaPlugin(InertiaConfig()),
