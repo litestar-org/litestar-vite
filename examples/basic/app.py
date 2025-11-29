@@ -19,7 +19,7 @@ from litestar.response import Template
 from litestar.template import TemplateConfig
 from msgspec import Struct
 
-from litestar_vite import ViteConfig, VitePlugin
+from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 
@@ -90,7 +90,17 @@ class LibraryController(Controller):
         return _get_book(book_id)
 
 
-vite = VitePlugin(config=ViteConfig())
+vite = VitePlugin(
+    config=ViteConfig(
+        paths=PathConfig(root=here, resource_dir="resources", bundle_dir="public"),
+        types=TypeGenConfig(
+            enabled=True,
+            output=Path("resources/generated"),
+            openapi_path=Path("resources/generated/openapi.json"),
+            routes_path=Path("resources/generated/routes.json"),
+        ),
+    )
+)
 templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)
 
 app = Litestar(

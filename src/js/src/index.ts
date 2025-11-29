@@ -266,6 +266,24 @@ async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: ResolvedPl
 /**
  * Resolve the Litestar Plugin configuration.
  */
+function normalizeAppUrl(appUrl: string | undefined, fallbackPort?: string): { url: string | null; note?: string } {
+  if (!appUrl || appUrl === "__litestar_app_url_missing__") {
+    return { url: null, note: "APP_URL missing" }
+  }
+  try {
+    const url = new URL(appUrl)
+
+    // Ensure port present
+    if (!url.port) {
+      url.port = fallbackPort ?? (url.protocol === "https:" ? "443" : "8000")
+    }
+
+    return { url: url.toString() }
+  } catch {
+    return { url: null, note: "APP_URL invalid" }
+  }
+}
+
 function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlugin {
   let viteDevServerUrl: DevServerUrl
   let resolvedConfig: ResolvedConfig
@@ -395,7 +413,10 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
     },
     async configureServer(server) {
       const envDir = resolvedConfig.envDir || process.cwd()
-      const appUrl = loadEnv(resolvedConfig.mode, envDir, "APP_URL").APP_URL ?? "undefined"
+      const envWithApp = loadEnv(resolvedConfig.mode, envDir, "APP_URL")
+      const rawAppUrl = envWithApp.APP_URL ?? "__litestar_app_url_missing__"
+      const normalizedAppUrl = normalizeAppUrl(rawAppUrl, envWithApp.LITESTAR_PORT)
+      const appUrl = normalizedAppUrl.url ?? rawAppUrl
 
       // Resolve hotFile path relative to Vite root to handle --app-dir scenarios
       // The hotFile path in pluginConfig may be relative, so we need to resolve it
@@ -422,7 +443,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
             const backendStatus = await checkBackendAvailability(appUrl)
 
             // Use resolvedConfig.logger for consistency
-            resolvedConfig.logger.info(`\n  ${colors.red(`${colors.bold("LITESTAR")} ${version}`)}  ${colors.dim("plugin")} ${colors.bold(`v${pluginVersion()}`)}`)
+            resolvedConfig.logger.info(`\n  ${colors.red(`${colors.bold("LITESTAR")} ${version}`)}`)
             resolvedConfig.logger.info("")
 
             // Index mode
@@ -468,9 +489,12 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
               resolvedConfig.logger.info("")
               resolvedConfig.logger.info(`  ${colors.yellow("⚠")}  ${colors.bold("Backend Status")}`)
 
-              if (backendStatus.error === "APP_URL not configured") {
+              if (backendStatus.error === "APP_URL not configured" || normalizedAppUrl.note) {
                 resolvedConfig.logger.info(`     ${colors.dim("APP_URL environment variable is not set.")}`)
                 resolvedConfig.logger.info(`     ${colors.dim("Set APP_URL in your .env file or environment.")}`)
+                if (normalizedAppUrl.note === "APP_URL invalid") {
+                  resolvedConfig.logger.info(`     ${colors.dim(`Current APP_URL is invalid: ${rawAppUrl}`)}`)
+                }
               } else {
                 resolvedConfig.logger.info(`     ${colors.dim(backendStatus.error ?? "Backend not available")}`)
                 resolvedConfig.logger.info("")

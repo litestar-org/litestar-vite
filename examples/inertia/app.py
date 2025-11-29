@@ -11,12 +11,12 @@ from litestar.plugins.flash import FlashConfig, FlashPlugin
 from litestar.template import TemplateConfig
 from msgspec import Struct
 
-from litestar_vite import ViteConfig, VitePlugin
+from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
 from litestar_vite.inertia import InertiaConfig, InertiaPlugin
 
 here = Path(__file__).parent
 SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-key-32c")
-session_backend = CookieBackendConfig(secret=SECRET_KEY)
+session_backend = CookieBackendConfig(secret=SECRET_KEY.encode("utf-8"))
 
 
 class Message(Struct):
@@ -92,7 +92,19 @@ class LibraryController(Controller):
         return _get_book(book_id)
 
 
-vite = VitePlugin(config=ViteConfig())
+vite = VitePlugin(
+    config=ViteConfig(
+        paths=PathConfig(root=here, resource_dir="resources", bundle_dir="public"),
+        types=TypeGenConfig(
+            enabled=True,
+            output=Path("resources/generated"),
+            openapi_path=Path("resources/generated/openapi.json"),
+            routes_path=Path("resources/generated/routes.json"),
+            generate_zod=True,
+            generate_sdk=False,
+        ),
+    )
+)
 inertia = InertiaPlugin(config=InertiaConfig(root_template="index.html"))
 templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)
 flasher = FlashPlugin(config=FlashConfig(template_config=templates))

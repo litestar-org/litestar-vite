@@ -11,7 +11,7 @@ from litestar.plugins.flash import FlashConfig, FlashPlugin, flash
 from litestar.response import Template
 from litestar.template.config import TemplateConfig
 
-from litestar_vite import ViteConfig, VitePlugin
+from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-key-32c")
@@ -33,7 +33,19 @@ class WebController(Controller):
 
 
 templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)
-vite = VitePlugin(config=ViteConfig())
+vite = VitePlugin(
+    config=ViteConfig(
+        paths=PathConfig(root=here, resource_dir="resources", bundle_dir="public"),
+        types=TypeGenConfig(
+            enabled=True,
+            output=Path("resources/generated"),
+            openapi_path=Path("resources/generated/openapi.json"),
+            routes_path=Path("resources/generated/routes.json"),
+            generate_zod=True,
+            generate_sdk=False,
+        ),
+    )
+)
 flasher = FlashPlugin(config=FlashConfig(template_config=templates))
 
 app = Litestar(

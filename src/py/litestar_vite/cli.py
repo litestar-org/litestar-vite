@@ -542,9 +542,9 @@ def vite_build(app: "Litestar", verbose: "bool") -> None:
     try:
         root_dir = Path(plugin.config.root_dir or Path.cwd())
         executor.execute(plugin.config.build_command, cwd=root_dir)
-        console.print("[bold green] Assets built.[/]")
+        console.print("[bold green]✓ Assets built[/]")
     except ViteExecutionError as e:
-        console.print(f"[bold red] There was an error building the assets: {e!s}[/]")
+        console.print(f"[bold red]x Asset build failed: {e!s}[/]")
 
 
 @vite_group.command(

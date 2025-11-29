@@ -82,6 +82,8 @@ vite = VitePlugin(
         mode="spa",
         paths=PathConfig(root=here),
         types=TypeGenConfig(generate_sdk=True),
+        # Start the Vite dev server automatically for HMR when running the example
+        dev_mode=True,
     )
 )
 

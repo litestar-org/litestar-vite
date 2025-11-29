@@ -22,9 +22,11 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import logging
 import os
 import signal
 import subprocess
+import sys
 import threading
 from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass
@@ -44,42 +46,6 @@ from websockets.typing import Subprotocol
 
 from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, TypeGenConfig, ViteConfig
 from litestar_vite.exceptions import ViteProcessError
-
-# Disconnect exceptions that should be silently ignored during WebSocket shutdown
-_DISCONNECT_EXCEPTIONS = (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed)
-
-# Cache debug flag check to avoid repeated os.environ lookups
-_vite_proxy_debug: bool | None = None
-
-
-def _is_proxy_debug() -> bool:
-    """Check if VITE_PROXY_DEBUG is enabled (cached)."""
-    global _vite_proxy_debug  # noqa: PLW0603
-    if _vite_proxy_debug is None:
-        _vite_proxy_debug = os.environ.get("VITE_PROXY_DEBUG", "").lower() in ("1", "true", "yes")
-    return _vite_proxy_debug
-
-
-def _configure_proxy_logging() -> None:
-    """Suppress verbose proxy-related logging unless debug is enabled.
-
-    Suppresses INFO-level logs from:
-    - httpx: logs every HTTP request
-    - websockets: logs connection events
-    - uvicorn.protocols.websockets: logs "connection open/closed"
-
-    Only show these logs when VITE_PROXY_DEBUG is enabled.
-    """
-    import logging
-
-    if not _is_proxy_debug():
-        for logger_name in ("httpx", "websockets", "uvicorn.protocols.websockets"):
-            logging.getLogger(logger_name).setLevel(logging.WARNING)
-
-
-# Configure proxy logging on module load
-_configure_proxy_logging()
-
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator, Sequence
@@ -108,8 +74,99 @@ if TYPE_CHECKING:
     from litestar_vite.spa import ViteSPAHandler
 
 
+# Disconnect exceptions that should be silently ignored during WebSocket shutdown
+_DISCONNECT_EXCEPTIONS = (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed)
+_TICK = "[bold green]✓[/]"
+_INFO = "[cyan]•[/]"
+_WARN = "[yellow]![/]"
+_FAIL = "[red]x[/]"
+
+
+# Cache debug flag check to avoid repeated os.environ lookups
+_vite_proxy_debug: bool | None = None
+
+
+def _is_proxy_debug() -> bool:
+    """Check if VITE_PROXY_DEBUG is enabled (cached).
+
+    Returns:
+        True if VITE_PROXY_DEBUG is set to a truthy value, else False.
+    """
+    global _vite_proxy_debug  # noqa: PLW0603
+    if _vite_proxy_debug is None:
+        _vite_proxy_debug = os.environ.get("VITE_PROXY_DEBUG", "").lower() in {"1", "true", "yes"}
+    return _vite_proxy_debug
+
+
+def _configure_proxy_logging() -> None:
+    """Suppress verbose proxy-related logging unless debug is enabled.
+
+    Suppresses INFO-level logs from:
+    - httpx: logs every HTTP request
+    - websockets: logs connection events
+    - uvicorn.protocols.websockets: logs "connection open/closed"
+
+    Only show these logs when VITE_PROXY_DEBUG is enabled.
+    """
+
+    if not _is_proxy_debug():
+        for logger_name in ("httpx", "websockets", "uvicorn.protocols.websockets"):
+            logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+
+# Configure proxy logging on module load
+_configure_proxy_logging()
+
+
+def _infer_port_from_argv() -> str | None:
+    """Best-effort extraction of `--port/-p` from process argv.
+
+    Returns:
+        The port as a string if found, else None.
+    """
+
+    argv = sys.argv[1:]
+    for i, arg in enumerate(argv):
+        if arg in {"-p", "--port"} and i + 1 < len(argv) and argv[i + 1].isdigit():
+            return argv[i + 1]
+        if arg.startswith("--port="):
+            _, _, value = arg.partition("=")
+            if value.isdigit():
+                return value
+    return None
+
+
+def _log_success(message: str) -> None:
+    """Print a success message with consistent styling."""
+
+    console.print(f"{_TICK} {message}")
+
+
+def _log_info(message: str) -> None:
+    """Print an informational message with consistent styling."""
+
+    console.print(f"{_INFO} {message}")
+
+
+def _log_warn(message: str) -> None:
+    """Print a warning message with consistent styling."""
+
+    console.print(f"{_WARN} {message}")
+
+
+def _log_fail(message: str) -> None:
+    """Print an error message with consistent styling."""
+
+    console.print(f"{_FAIL} {message}")
+
+
 def _write_runtime_config_file(config: ViteConfig) -> str:
-    """Write a JSON handoff file for the Vite plugin and return its path."""
+    """Write a JSON handoff file for the Vite plugin and return its path.
+
+    Returns:
+        The path to the written config file.
+
+    """
 
     root = config.root_dir or Path.cwd()
     path = Path(root) / ".litestar-vite.json"
@@ -172,15 +229,28 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
     if base_url:
         os.environ.setdefault("VITE_BASE_URL", base_url)
     os.environ.setdefault("VITE_ALLOW_REMOTE", str(True))
-    # VITE_PORT must be force-set because _ensure_proxy_target() may have picked a new port
-    os.environ["VITE_PORT"] = str(config.port)
-    os.environ["VITE_HOST"] = config.host
+
+    backend_host = os.environ.get("LITESTAR_HOST") or "127.0.0.1"
+    if backend_host == "127.0.0":
+        backend_host = "127.0.0.1"
+    backend_port = os.environ.get("LITESTAR_PORT") or os.environ.get("PORT") or _infer_port_from_argv() or "8000"
+    os.environ["LITESTAR_HOST"] = backend_host
+    os.environ["LITESTAR_PORT"] = str(backend_port)
+    os.environ.setdefault("APP_URL", f"http://{backend_host}:{backend_port}")
+
+    # VITE_ env for the JS side
     os.environ.setdefault("VITE_PROTOCOL", config.protocol)
     os.environ.setdefault("VITE_PROXY_MODE", config.proxy_mode)
+
+    # If the Python side already picked a host/port (e.g., proxy mode with an auto-free port),
+    # surface them to the Vite process unless the user explicitly set them.
+    os.environ.setdefault("VITE_HOST", config.host)
+    os.environ.setdefault("VITE_PORT", str(config.port))
+
     os.environ.setdefault("LITESTAR_VERSION", litestar_version)
     os.environ.setdefault("LITESTAR_VITE_RUNTIME", config.runtime.executor or "node")
     os.environ.setdefault("LITESTAR_VITE_INSTALL_CMD", " ".join(config.install_command))
-    os.environ.setdefault("APP_URL", f"http://localhost:{os.environ.get('LITESTAR_PORT', '8000')}")
+
     if config.is_dev_mode:
         os.environ.setdefault("VITE_DEV_MODE", str(config.is_dev_mode))
 
@@ -237,6 +307,7 @@ _PROXY_PATH_PREFIXES: tuple[str, ...] = (
     "/@vite/client",
     "/@vite/env",
     "/vite-hmr",
+    "/__vite_ping",
     "/node_modules/.vite/",
     "/@analogjs/",
     "/src/",
@@ -409,7 +480,7 @@ def _build_hmr_target_url(
     the full path including the asset prefix (e.g., /static/vite-hmr).
     """
     try:
-        vite_url = hotfile_path.read_text().strip()
+        vite_url = hotfile_path.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
         return None
 
@@ -537,7 +608,7 @@ def create_vite_hmr_handler(  # noqa: C901
                 target,
                 additional_headers=headers,
                 open_timeout=10,
-                subprotocols=typed_subprotocols if typed_subprotocols else None,
+                subprotocols=typed_subprotocols or None,
             ) as upstream:
                 if _is_proxy_debug():
                     console.print("[dim][vite-hmr] ✓ Connected[/]")
@@ -920,8 +991,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             except httpx.HTTPError:
                 time.sleep(0.1)
             else:
+                _log_success("Vite dev server responded to health check")
                 return
-        console.print("[red]Vite server health check failed[/]")
+        _log_fail("Vite server health check failed")
 
     def _export_types_sync(self, app: "Litestar") -> None:
         """Export type metadata synchronously on startup.
@@ -944,7 +1016,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
             from litestar_vite.codegen import generate_routes_json
 
-            console.print("[dim]Exporting type metadata for Vite...[/]")
+            _log_info("Exporting type metadata for Vite...")
 
             # Check if OpenAPI is configured by looking at the plugins registry
             # (accessing openapi_schema property directly raises when not configured)
@@ -979,12 +1051,12 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._config.types.routes_path.parent.mkdir(parents=True, exist_ok=True)
             self._config.types.routes_path.write_bytes(routes_content)
 
-            console.print(
-                f"[green]✓ Types exported to {self._config.types.routes_path}[/]"
+            _log_success(
+                f"Types exported → {self._config.types.routes_path}"
                 + (f" (openapi: {self._config.types.openapi_path})" if has_openapi else " (openapi skipped)")
             )
         except (OSError, TypeError, ValueError, ImportError) as e:  # pragma: no cover
-            console.print(f"[yellow]! Type export failed: {e}[/]")
+            _log_warn(f"Type export failed: {e}")
 
     def _inject_routes_to_spa_handler(self, app: "Litestar") -> None:
         """Extract route metadata and inject it into the SPA handler.
@@ -1013,10 +1085,30 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 exclude=spa_config.routes_exclude,
                 include_components=True,
             )
+            # Filter out schema routes and HEAD/OPTIONS-only routes to keep SPA metadata lean
+            routes = routes_data.get("routes", {})
+            filtered_routes: dict[str, Any] = {}
+            for name, route in routes.items():
+                uri = route.get("uri", "")
+                methods: list[str] = route.get("methods", [])
+
+                # Skip schema-related routes
+                if uri.startswith("/schema"):
+                    continue
+
+                # Skip routes that only expose HEAD/OPTIONS
+                method_set = {m.upper() for m in methods}
+                if method_set and method_set.issubset({"HEAD", "OPTIONS"}):
+                    continue
+
+                filtered_routes[name] = route
+
+            routes_data["routes"] = filtered_routes
+
             self._spa_handler.set_routes_metadata(routes_data)
-            console.print(f"[dim]Injected {len(routes_data.get('routes', {}))} routes into SPA handler[/]")
+            _log_success(f"Injected {len(filtered_routes)} routes into SPA handler")
         except (ImportError, TypeError, ValueError, AttributeError) as e:
-            console.print(f"[yellow]! Route injection failed: {e}[/]")
+            _log_warn(f"Route injection failed: {e}")
 
     @contextmanager
     def server_lifespan(self, app: "Litestar") -> "Iterator[None]":
@@ -1039,10 +1131,19 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._config.set_environment:
             set_environment(config=self._config)
             set_app_environment(app)
+            _log_info("Applied Vite environment variables")
 
+        # Add HEAD→GET middleware for OpenAPI JSON so health checks and tooling work
         # Initialize SPA handler if enabled
         if self._spa_handler is not None:
             asyncio.get_event_loop().run_until_complete(self._spa_handler.initialize())
+            _log_success("SPA handler initialized")
+
+        if not self._config.is_dev_mode and not self._config.has_built_assets():
+            _log_warn(
+                "Vite dev server is disabled (dev_mode=False) but no index.html was found. "
+                "Run your front-end build or set VITE_DEV_MODE=1 to enable HMR."
+            )
 
         # Inject route metadata into SPA handler (if configured)
         self._inject_routes_to_spa_handler(app)
@@ -1052,26 +1153,27 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
         if self._use_server_lifespan and self._config.is_dev_mode:
             if not app.debug:
-                console.print("[yellow]WARNING: Vite dev mode is enabled in production![/]")
+                _log_warn("Vite dev mode is enabled in production!")
 
             command_to_run = self._config.run_command if self._config.hot_reload else self._config.build_watch_command
 
             if self._config.hot_reload:
-                console.rule("[yellow]Starting Vite process with HMR Enabled[/]", align="left")
+                _log_info("Starting Vite dev server (HMR enabled)")
             else:
-                console.rule("[yellow]Starting Vite watch and build process[/]", align="left")
+                _log_info("Starting Vite watch build process")
 
             if self._proxy_target:
-                console.print(f"[dim]Vite proxy target: {self._proxy_target}[/]")
+                _log_info(f"Vite proxy target: {self._proxy_target}")
 
             try:
                 self._vite_process.start(command_to_run, self._config.root_dir)
+                _log_success("Vite process started")
                 if self._config.health_check:
                     self._check_health()
                 yield
             finally:
                 self._vite_process.stop()
-                console.print("[yellow]Vite process stopped.[/]")
+                _log_info("Vite process stopped.")
                 # Shutdown SPA handler
                 if self._spa_handler is not None:
                     asyncio.get_event_loop().run_until_complete(self._spa_handler.shutdown())
@@ -1101,6 +1203,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._config.set_environment:
             set_environment(config=self._config)
             set_app_environment(app)
+            _log_info("Applied Vite environment variables")
 
         # Initialize asset loader asynchronously
         if self._asset_loader is None:
@@ -1110,6 +1213,13 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         # Initialize SPA handler if enabled
         if self._spa_handler is not None:
             await self._spa_handler.initialize()
+            _log_success("SPA handler initialized")
+
+        if not self._config.is_dev_mode and not self._config.has_built_assets():
+            _log_warn(
+                "Vite dev server is disabled (dev_mode=False) but no index.html was found. "
+                "Run your front-end build or set VITE_DEV_MODE=1 to enable HMR."
+            )
 
         # Inject route metadata into SPA handler (if configured)
         self._inject_routes_to_spa_handler(app)
@@ -1122,23 +1232,24 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             if self._config.set_environment:
                 set_environment(config=self._config)
             if not app.debug:
-                console.print("[yellow]WARNING: Vite dev mode is enabled in production![/]")
+                _log_warn("Vite dev mode is enabled in production!")
 
             command_to_run = self._config.run_command if self._config.hot_reload else self._config.build_watch_command
 
             if self._config.hot_reload:
-                console.rule("[yellow]Starting Vite process with HMR Enabled[/]", align="left")
+                _log_info("Starting Vite dev server (HMR enabled)")
             else:
-                console.rule("[yellow]Starting Vite watch and build process[/]", align="left")
+                _log_info("Starting Vite watch build process")
 
             try:
                 self._vite_process.start(command_to_run, self._config.root_dir)
+                _log_success("Vite process started")
                 if self._config.health_check:
                     self._check_health()
                 yield
             finally:
                 self._vite_process.stop()
-                console.print("[yellow]Vite process stopped.[/]")
+                _log_info("Vite process stopped.")
                 # Shutdown SPA handler
                 if self._spa_handler is not None:
                     await self._spa_handler.shutdown()

@@ -312,9 +312,14 @@ class ViteConfig:
 
     - If mode is not explicitly set:
 
-      - Checks for index.html in resource_dir -> SPA mode
+      - Checks for index.html in common locations -> SPA mode
       - Checks if Jinja2 template engine is configured -> Template mode
       - Otherwise defaults to SPA mode
+
+    Dev-mode auto-enable:
+
+    - If mode="spa" and no built assets are found in bundle_dir, dev_mode is
+      enabled automatically (unless VITE_AUTO_DEV_MODE=False).
 
     - Explicit mode parameter overrides auto-detection
 
@@ -346,60 +351,75 @@ class ViteConfig:
 
     def __post_init__(self) -> None:
         """Normalize configurations and apply shortcuts."""
-        # Normalize bool shortcuts to full config objects
+        self._normalize_types()
+        self._normalize_inertia()
+        self._normalize_spa_flag()
+        self._apply_dev_mode_shortcut()
+        self._auto_detect_mode()
+        self._normalize_deploy()
+        self._ensure_spa_default()
+        self._auto_enable_dev_mode()
+
+    def _normalize_types(self) -> None:
         if self.types is True:
             self.types = TypeGenConfig(enabled=True)
         elif self.types is False:
             self.types = TypeGenConfig(enabled=False)
 
+    def _normalize_inertia(self) -> None:
         if self.inertia is True:
             self.inertia = InertiaConfig(enabled=True)
         elif self.inertia is False:
             self.inertia = InertiaConfig(enabled=False)
 
+    def _normalize_spa_flag(self) -> None:
         if self.spa is True:
             self.spa = SPAConfig()
-        # Note: spa=False is left as-is (bool), checked via spa_config property
+        # spa=False left as-is; spa=None handled later
 
-        # Apply dev_mode shortcut
+    def _apply_dev_mode_shortcut(self) -> None:
         if self.dev_mode:
             self.runtime.dev_mode = True
 
-        # Auto-detect mode if not explicitly set
+    def _auto_detect_mode(self) -> None:
         if self.mode is None:
             self.mode = self._detect_mode()
             self._mode_auto_detected = True
 
+    def _normalize_deploy(self) -> None:
         if self.deploy is True:
             self.deploy = DeployConfig(enabled=True)
         elif self.deploy is False:
             self.deploy = DeployConfig(enabled=False)
 
-        # Auto-enable SPA config when mode="spa" and spa not explicitly disabled
-        # spa=None means "auto" (enabled for SPA mode), spa=False means "disabled"
+    def _ensure_spa_default(self) -> None:
         if self.mode == "spa" and self.spa is None:
             self.spa = SPAConfig()
         elif self.spa is None:
-            # For non-SPA modes, default to disabled
             self.spa = False
+
+    def _auto_enable_dev_mode(self) -> None:
+        # Only auto-enable when mode was auto-detected (user didn't force spa/template)
+        if not self._mode_auto_detected:
+            return
+
+        auto_dev_mode = os.getenv("VITE_AUTO_DEV_MODE", "True") in TRUE_VALUES
+        if auto_dev_mode and not self.runtime.dev_mode and self.mode == "spa" and not self.has_built_assets():
+            self.runtime.dev_mode = True
 
     def _detect_mode(self) -> Literal["spa", "template", "htmx"]:
         """Auto-detect the serving mode based on project structure.
 
         Detection order:
-        1. Check for index.html in resource_dir → SPA
+        1. Check for index.html in resource_dir, root_dir, or public_dir → SPA
         2. Check if Jinja2 is installed and likely to be used → Template
         3. Default to SPA
 
         Returns:
             The detected mode.
         """
-        # Check for index.html in resource directory (SPA indicator)
-        resource_dir = (
-            self.paths.resource_dir if isinstance(self.paths.resource_dir, Path) else Path(self.paths.resource_dir)
-        )
-        index_html_path = resource_dir / "index.html"
-        if index_html_path.exists():
+        # Check for index.html in expected locations (SPA indicator)
+        if any(path.exists() for path in self.candidate_index_html_paths()):
             return "spa"
 
         # If Jinja2 is installed, default to template mode
@@ -418,13 +438,12 @@ class ViteConfig:
         """
         if self.mode == "spa":
             # SPA mode validation
-            resource_dir = (
-                self.paths.resource_dir if isinstance(self.paths.resource_dir, Path) else Path(self.paths.resource_dir)
-            )
-            index_html_path = resource_dir / "index.html"
-            if not self.runtime.dev_mode and not index_html_path.exists():
+            index_candidates = self.candidate_index_html_paths()
+            if not self.runtime.dev_mode and not any(path.exists() for path in index_candidates):
+                joined_paths = ", ".join(str(path) for path in index_candidates)
                 msg = (
-                    f"SPA mode requires index.html at {index_html_path}. "
+                    "SPA mode requires index.html at one of: "
+                    f"{joined_paths}. "
                     "Either create the file, run in dev mode, or switch to template mode."
                 )
                 raise ValueError(msg)
@@ -510,6 +529,49 @@ class ViteConfig:
     def asset_url(self) -> str:
         """Get asset URL."""
         return self.paths.asset_url
+
+    def _resolve_to_root(self, path: Path) -> Path:
+        """Resolve a path relative to the configured root directory."""
+
+        if path.is_absolute():
+            return path
+        return self.root_dir / path
+
+    def candidate_index_html_paths(self) -> list[Path]:
+        """Return possible index.html locations for SPA mode detection.
+
+        Order mirrors the JS plugin auto-detection:
+        1. resource_dir/index.html
+        2. root_dir/index.html
+        3. public_dir/index.html
+        """
+
+        resource_dir = self._resolve_to_root(self.resource_dir)
+        public_dir = self._resolve_to_root(self.public_dir)
+        root_dir = self.root_dir
+
+        candidates = [
+            resource_dir / "index.html",
+            root_dir / "index.html",
+            public_dir / "index.html",
+        ]
+
+        unique: list[Path] = []
+        seen: set[Path] = set()
+        for path in candidates:
+            if path in seen:
+                continue
+            seen.add(path)
+            unique.append(path)
+        return unique
+
+    def has_built_assets(self) -> bool:
+        """Check if production assets exist (index.html present)."""
+
+        # For SPA mode the critical artifact is index.html. Manifest is helpful,
+        # but a stale manifest without an index leads to broken pages and
+        # prevents dev_mode auto-enable. Use the index as the signal.
+        return any(path.exists() for path in self.candidate_index_html_paths())
 
     @property
     def host(self) -> str:
