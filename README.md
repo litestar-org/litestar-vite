@@ -116,4 +116,4 @@ const url = route('users.show', { id: 123 });
 
 ## Documentation
 
-For full documentation, visit [https://cofin.github.io/litestar-vite/](https://cofin.github.io/litestar-vite/).
+For full documentation, visit [https://litestar-org.github.io/litestar-vite/](https://litestar-org.github.io/litestar-vite/).

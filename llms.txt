@@ -1,0 +1,39 @@
+# Litestar Vite
+
+> Seamless Litestar ↔ Vite integration for SPA, Template, and Inertia.js apps with type-safe routing and Vite dev tooling.
+
+Litestar-Vite pairs the Litestar Python framework with a Vite (Node) toolchain. It supports single-port proxy dev, asset manifest loading in production, optional type generation, and dual Python/TypeScript plugins. Current version: v0.14.0.
+
+## Quick Start
+- [Install](#install): `pip install litestar-vite` (Python) + `npm install` for your frontend.
+- [SPA setup](#python-api): `VitePlugin(config=ViteConfig(dev_mode=True))` registers proxy, static assets, and HMR.
+- [Template/HTMX](#python-api): `ViteConfig(mode="template", dev_mode=True)` keeps Jinja templates and Vite assets in sync.
+- [Run dev](#install): `litestar run` starts Litestar; Vite dev traffic is proxied by default.
+
+## Modes & Proxy
+- [Proxy vs direct](#modes--proxy): default `proxy` tunnels Vite HTTP+WS through Litestar; set `VITE_PROXY_MODE=direct` to expose Vite on its own port.
+- [Hotfile](#modes--proxy): TS plugin writes `public/hot` with the dev URL; proxy & HMR read it dynamically.
+- [Ports & TLS](#modes--proxy): host/port/env driven (`VITE_HOST`, `VITE_PORT`, `VITE_PROTOCOL`); HTTP/2 proxy enabled by default; SSR output dir optional.
+
+## Python API
+- [ViteConfig](#viteconfig): modes `spa|template|htmx` (auto-detects index.html or Jinja). Paths: `bundle_dir=public`, `resource_dir=src`, `public_dir=public`, `manifest_name=manifest.json`, `hot_file=hot`, `asset_url=/static/`, optional `ssr_output_dir`. Runtime: `dev_mode`, `hot_reload`, `host`, `port=5173`, `protocol=http`, `executor=node|bun|deno|yarn|pnpm`, command overrides, `proxy_mode=proxy`, `spa_handler`, `http2`, `csp_nonce`, `set_environment/static_folders`. Types: `TypeGenConfig(enabled=True, output=src/generated, openapi_path=src/generated/openapi.json, routes_path=src/generated/routes.json, generate_zod=True, generate_sdk=False)`. SPA config: inject routes/CSRF, `app_selector="#app"`. Inertia config: `enabled`, `root_template=index.html`, include routes/flash/errors, extra static/session props. Deploy config optional via `deploy=True`.
+- [VitePlugin](#viteplugin): wires static file serving, Jinja template callables (`vite`, `vite_static`, `vite_partial`, `vite_hmr`), dev proxy middleware + HMR WebSocket, SPA catch-all handler, type export & route injection, Vite process lifecycle via `server_lifespan` / `async_server_lifespan`.
+- [InertiaPlugin](#inertiaplugin): requires session middleware; sets `InertiaRequest`/`InertiaResponse`, registers middleware and exception handler, generates JS routes, supports SPA mode via HtmlTransformer.
+- [CLI](#cli): `litestar assets doctor|init|install|build|serve|deploy|export-routes|generate-types|status`.
+
+## TypeScript API
+- [litestar(config)](#typescript-plugin): Vite plugin factory (ESM). Returns `[LitestarPlugin, ...]` with optional full-reload and type-gen plugins.
+- [PluginConfig](#typescript-plugin): `input` (string|string[]), `assetUrl` `/static/`, `bundleDirectory` `public/dist`, `resourceDirectory` `resources`, `hotFile` `${bundleDirectory}/hot`, `ssr`, `ssrOutputDirectory` `${bundleDirectory}/bootstrap/ssr`, `refresh` (vite-plugin-full-reload), `detectTls`, `autoDetectIndex` true, `transformOnServe` hook, `types` boolean|TypesConfig.
+- [TypesConfig](#typescript-plugin): `enabled`, `output=src/types/api`, `openapiPath=openapi.json`, `routesPath=routes.json`, `generateZod`, `generateSdk`, `debounce=300ms`. When enabled, plugin watches OpenAPI/routes files, runs `@hey-api/openapi-ts`, emits HMR.
+
+## Examples
+- [SPA](examples/spa-react): React/Vue/Svelte single-page setup with proxy HMR.
+- [Template](examples/basic): Jinja/HTMX template mode with Vite asset tags.
+- [Inertia](examples/inertia): Full-stack Inertia.js using `InertiaPlugin` plus SPA handler.
+- [Types](README.md): `litestar assets generate-types` workflow for typed routes/OpenAPI.
+
+## Optional
+- [Deploy](#cli): `litestar assets deploy` syncs manifest/assets via fsspec (gcs://, s3://, etc.).
+- [Type generation](#typescript-plugin): set `types=True` or TypesConfig in Python and TS plugin; run `generate-types` CLI.
+- [Proxy tuning](#modes--proxy): env `VITE_HOST`, `VITE_PORT`, `VITE_PROTOCOL`, `VITE_BASE_URL`, `VITE_ALLOW_REMOTE`.
+- [Docs](https://litestar-org.github.io/litestar-vite/): Full documentation site.

@@ -81,7 +81,7 @@
 ### Documentation Review
 
 - [ ] Review official documentation site
-  - Visit: https://cofin.github.io/litestar-vite/
+  - Visit: https://litestar-org.github.io/litestar-vite/
   - Note: Key patterns, common configurations
   - Extract: Any critical information not in source
 

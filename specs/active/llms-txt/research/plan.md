@@ -146,7 +146,7 @@
 
 | Source | Purpose | Status |
 |--------|---------|--------|
-| https://cofin.github.io/litestar-vite/ | Official documentation | [ ] |
+| https://litestar-org.github.io/litestar-vite/ | Official documentation | [ ] |
 
 ---
 

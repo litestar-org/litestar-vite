@@ -33,12 +33,12 @@ requires-python = ">=3.10"
 version = "0.14.0"
 
 [project.urls]
-Changelog = "https://cofin.github.io/litestar-vite/latest/changelog"
+Changelog = "https://litestar-org.github.io/litestar-vite/latest/changelog"
 Discord = "https://discord.gg/X3FJqy8d2j"
-Documentation = "https://cofin.github.io/litestar-vite/latest/"
-Homepage = "https://cofin.github.io/litestar-vite/latest/"
-Issue = "https://github.com/cofin/litestar-vite/issues/"
-Source = "https://github.com/cofin/litestar-vite"
+Documentation = "https://litestar-org.github.io/litestar-vite/latest/"
+Homepage = "https://litestar-org.github.io/litestar-vite/latest/"
+Issue = "https://github.com/litestar-org/litestar-vite/issues/"
+Source = "https://github.com/litestar-org/litestar-vite"
 
 [project.optional-dependencies]
 jinja = [ "jinja2"]

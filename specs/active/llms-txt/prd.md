@@ -442,7 +442,7 @@ If during implementation we discover ambiguities, they will be documented in the
 
 ### Project Documentation
 
-- [Litestar Vite Documentation](https://cofin.github.io/litestar-vite/)
+- [Litestar Vite Documentation](https://litestar-org.github.io/litestar-vite/)
 - [Litestar Documentation](https://docs.litestar.dev/)
 - [Vite Documentation](https://vitejs.dev/)
 - [Inertia.js Documentation](https://inertiajs.com/)
