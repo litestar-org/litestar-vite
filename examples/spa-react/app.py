@@ -17,7 +17,7 @@ from litestar import Litestar, get
 from litestar.exceptions import NotFoundException
 from msgspec import Struct
 
-from litestar_vite import PathConfig, ViteConfig, VitePlugin
+from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 
@@ -81,6 +81,7 @@ vite = VitePlugin(
     config=ViteConfig(
         mode="spa",
         paths=PathConfig(root=here),
+        types=TypeGenConfig(generate_sdk=True),
     )
 )
 

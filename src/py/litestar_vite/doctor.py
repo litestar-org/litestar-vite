@@ -1,7 +1,6 @@
 """Vite Doctor - Diagnostic Tool."""
 
-from __future__ import annotations
-
+import os
 import re
 import socket
 from dataclasses import dataclass
@@ -9,7 +8,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+from litestar.serialization import encode_json
+from rich.console import Group
+from rich.panel import Panel
 from rich.prompt import Confirm
+from rich.syntax import Syntax
 from rich.table import Table
 
 if TYPE_CHECKING:
@@ -68,6 +71,8 @@ class ViteDoctor:
             console.print("[red]✗ Could not locate or parse vite.config.* file[/]")
             return False
 
+        self._print_config_snapshot()
+
         self._check_asset_url()
         self._check_hot_file()
         self._check_bundle_dir()
@@ -75,6 +80,10 @@ class ViteDoctor:
         self._check_typegen_flags()
         self._check_plugin_spread()
         self._check_dist_files()
+        self._check_hotfile_presence()
+        self._check_manifest_presence()
+        self._check_typegen_artifacts()
+        self._check_env_alignment()
 
         # Runtime checks
         self._check_node_modules()
@@ -108,16 +117,14 @@ class ViteDoctor:
         """Regex-based parsing of vite.config content."""
         parsed = ParsedViteConfig(path=path, content=content)
 
-        # Regex patterns
-        # Using triple quotes to avoid escaping issues
         patterns = {
-            "asset_url": r"""assetUrl\s*:\s*['"]([^'"']+)['"]""",
-            "bundle_dir": r"""bundleDirectory\s*:\s*['"]([^'"']+)['"]""",
-            "hot_file": r"""hotFile\s*:\s*['"]([^'"']+)['"]""",
+            "asset_url": r"""assetUrl\s*:\s*['"]([^'"]+)['"]""",
+            "bundle_dir": r"""bundleDirectory\s*:\s*['"]([^'"]+)['"]""",
+            "hot_file": r"""hotFile\s*:\s*['"]([^'"]+)['"]""",
             "types_enabled": r"""types\s*:\s*{\s*enabled\s*:\s*(true|false)""",
-            "types_output": r"""output\s*:\s*['"]([^'"']+)['"]""",
-            "types_openapi": r"""openapiPath\s*:\s*['"]([^'"']+)['"]""",
-            "types_routes": r"""routesPath\s*:\s*['"]([^'"']+)['"]""",
+            "types_output": r"""output\s*:\s*['"]([^'"]+)['"]""",
+            "types_openapi": r"""openapiPath\s*:\s*['"]([^'"]+)['"]""",
+            "types_routes": r"""routesPath\s*:\s*['"]([^'"]+)['"]""",
             "types_generate_zod": r"""generateZod\s*:\s*(true|false)""",
             "types_generate_sdk": r"""generateSdk\s*:\s*(true|false)""",
         }
@@ -318,34 +325,27 @@ class ViteDoctor:
         content = self.parsed_config.content
 
         # Find all occurrences of litestar(
-        for match in re.finditer(r"(\.{3})?\s*litestar\s*\(", content):
-            is_spread = match.group(1) == "..."
-            if not is_spread:
-                self.issues.append(
-                    DoctorIssue(
-                        check="Plugin Spread Missing",
-                        severity="error",
-                        message="The litestar plugin must be spread into the plugins array: ...litestar(...)",
-                        fix_hint="Add the spread operator: ...litestar({...})",
-                        auto_fixable=False,  # Hard to auto-fix reliably with regex
-                    )
-                )
-                break
+        # Vite plugin arrays accept nested arrays, so lack of spread is allowed.
+        # We keep this check disabled to avoid false positives.
+        _ = content
 
     def _check_dist_files(self) -> None:
         """Verify JS plugin dist files exist."""
-        # This assumes standard node_modules structure
         root = self.config.root_dir or Path.cwd()
-        dist_path = root / "node_modules" / "litestar-vite-plugin" / "dist"
+        pkg_paths = [
+            root / "node_modules" / "@litestar" / "vite-plugin" / "dist",
+            root / "node_modules" / "litestar-vite-plugin" / "dist",
+        ]
 
-        if not dist_path.exists():
-            # Only a warning because they might be using a different package manager or structure
+        dist_path = next((p for p in pkg_paths if p.exists()), None)
+
+        if dist_path is None:
             self.issues.append(
                 DoctorIssue(
                     check="Plugin Dist Missing",
                     severity="warning",
-                    message="Could not find litestar-vite-plugin/dist in node_modules",
-                    fix_hint="Run npm install / pnpm install",
+                    message="Could not find @litestar/vite-plugin dist files in node_modules",
+                    fix_hint="Run litestar assets install (or npm/pnpm/yarn install) in your frontend root",
                     auto_fixable=False,
                 )
             )
@@ -423,6 +423,139 @@ class ViteDoctor:
                 )
             )
 
+    def _check_hotfile_presence(self) -> None:
+        """Warn if hotfile is missing in dev proxy mode."""
+        if not self.config.is_dev_mode or self.config.proxy_mode != "proxy":
+            return
+
+        hot_path = Path(self.config.bundle_dir) / self.config.hot_file
+        if not hot_path.exists():
+            self.issues.append(
+                DoctorIssue(
+                    check="Hotfile Missing",
+                    severity="warning",
+                    message=f"Hotfile not found at {hot_path}",
+                    fix_hint="Start Vite dev server so it can write the hotfile, or set VITE_PROXY_MODE=direct",
+                    auto_fixable=False,
+                )
+            )
+
+    def _check_manifest_presence(self) -> None:
+        """Ensure manifest exists in non-dev mode."""
+        if self.config.is_dev_mode:
+            return
+
+        manifest_path = Path(self.config.bundle_dir) / self.config.manifest_name
+        if not manifest_path.exists():
+            self.issues.append(
+                DoctorIssue(
+                    check="Manifest Missing",
+                    severity="warning",
+                    message=f"Manifest not found at {manifest_path} (expected in production; ok during dev)",
+                    fix_hint="Run litestar assets build (or npm run build) before production",
+                    auto_fixable=False,
+                )
+            )
+
+    def _check_typegen_artifacts(self) -> None:
+        """Verify exported OpenAPI/routes when typegen is enabled."""
+        if isinstance(self.config.types, bool) or not self.config.types.enabled:
+            return
+
+        openapi_path = Path(self.config.types.openapi_path)
+        routes_path = Path(self.config.types.routes_path)
+
+        if not openapi_path.exists():
+            self.issues.append(
+                DoctorIssue(
+                    check="OpenAPI Export Missing",
+                    severity="warning",
+                    message=f"{openapi_path} not found",
+                    fix_hint="Run litestar assets generate-types (or start the app with types enabled)",
+                    auto_fixable=False,
+                )
+            )
+
+        if not routes_path.exists():
+            self.issues.append(
+                DoctorIssue(
+                    check="Routes Export Missing",
+                    severity="warning",
+                    message=f"{routes_path} not found",
+                    fix_hint="Run litestar assets generate-types (or start the app with types enabled)",
+                    auto_fixable=False,
+                )
+            )
+
+    def _check_env_alignment(self) -> None:
+        """Compare key env vars to active config to surface surprises."""
+        env_mismatches: list[tuple[str, str, str]] = []
+        comparisons = {
+            "VITE_PORT": str(self.config.port),
+            "VITE_HOST": self.config.host,
+            "VITE_PROXY_MODE": self.config.proxy_mode,
+            "VITE_PROTOCOL": self.config.protocol,
+            "VITE_BASE_URL": self.config.base_url or self.config.asset_url,
+        }
+
+        for key, expected in comparisons.items():
+            actual = os.getenv(key)
+            if actual is None:
+                continue
+            if str(actual).rstrip("/") != str(expected).rstrip("/"):
+                env_mismatches.append((key, str(actual), str(expected)))
+
+        if env_mismatches:
+            mismatch_lines = ", ".join(f"{k}={a} (expected {e})" for k, a, e in env_mismatches)
+            self.issues.append(
+                DoctorIssue(
+                    check="Env / Config Mismatch",
+                    severity="warning",
+                    message=mismatch_lines,
+                    fix_hint="Unset conflicting env vars or align ViteConfig/runtime before running",
+                    auto_fixable=False,
+                )
+            )
+
+    def _print_config_snapshot(self) -> None:
+        """Print a quick view of Python vs JS config for the user."""
+        if not self.parsed_config:
+            return
+
+        python_cfg = {
+            "mode": self.config.mode,
+            "asset_url": self.config.asset_url,
+            "bundle_dir": str(self.config.bundle_dir),
+            "hot_file": self.config.hot_file,
+            "proxy_mode": self.config.proxy_mode,
+            "dev_mode": self.config.is_dev_mode,
+            "host": self.config.host,
+            "port": self.config.port,
+        }
+
+        js_cfg = {
+            "assetUrl": self.parsed_config.asset_url,
+            "bundleDirectory": self.parsed_config.bundle_dir,
+            "hotFile": self.parsed_config.hot_file,
+            "types.enabled": self.parsed_config.types_enabled,
+            "types.output": self.parsed_config.types_output,
+        }
+
+        py_json = encode_json(python_cfg).decode()
+        js_json = encode_json(js_cfg).decode()
+
+        panel = Panel(
+            Group(
+                "[bold]Python[/]",
+                Syntax(py_json, "json", theme="ansi_dark", word_wrap=True),
+                "[bold]vite.config[/]",
+                Syntax(js_json, "json", theme="ansi_dark", word_wrap=True),
+            ),
+            title="Config snapshot",
+            border_style="dim",
+        )
+        console.print(panel)
+
     def _print_report(self) -> None:
         """Print a table of detected issues."""
         if not self.issues:
@@ -475,14 +608,29 @@ class ViteDoctor:
             expected = issue.context.get("expected")
 
             if key and expected:
-                # Simple regex replacement for the key
-                # This is simplistic and assumes standard formatting
-                pattern = r"(" + key + r"""\s*:\s*['"])([^'"]+)(['"])"""
+                expected_literal = expected if expected in {"true", "false"} else f"'{expected}'"
 
-                if re.search(pattern, content):
-                    content = re.sub(pattern, rf"\g<1>{expected}\g<3>", content)
+                patterns = [
+                    rf"({key}\s*:\s*)(true|false)",
+                    rf"({key}\s*:\s*['\"])([^'\"]+)(['\"])",
+                ]
+
+                replaced = False
+                for pattern in patterns:
+                    match = re.search(pattern, content)
+                    if not match:
+                        continue
+
+                    if len(match.groups()) >= 4:
+                        content = re.sub(pattern, rf"\1{expected_literal}\4", content)
+                    else:
+                        content = re.sub(pattern, rf"\1{expected_literal}", content)
+
                     console.print(f"[green]✓ Fixed {key}[/]")
-                else:
+                    replaced = True
+                    break
+
+                if not replaced:
                     console.print(f"[red]✗ Failed to apply fix for {key} (pattern match failed)[/]")
 
         self.vite_config_path.write_text(content)

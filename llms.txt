@@ -5,7 +5,7 @@
 Litestar-Vite pairs the Litestar Python framework with a Vite (Node) toolchain. It supports single-port proxy dev, asset manifest loading in production, optional type generation, and dual Python/TypeScript plugins. Current version: v0.14.0.
 
 ## Quick Start
-- [Install](#install): `pip install litestar-vite` (Python) + `npm install` for your frontend.
+- [Install](#install): `pip install litestar-vite` (Python) + `litestar assets install` (frontend deps via configured executor).
 - [SPA setup](#python-api): `VitePlugin(config=ViteConfig(dev_mode=True))` registers proxy, static assets, and HMR.
 - [Template/HTMX](#python-api): `ViteConfig(mode="template", dev_mode=True)` keeps Jinja templates and Vite assets in sync.
 - [Run dev](#install): `litestar run` starts Litestar; Vite dev traffic is proxied by default.
@@ -37,3 +37,5 @@ Litestar-Vite pairs the Litestar Python framework with a Vite (Node) toolchain. 
 - [Type generation](#typescript-plugin): set `types=True` or TypesConfig in Python and TS plugin; run `generate-types` CLI.
 - [Proxy tuning](#modes--proxy): env `VITE_HOST`, `VITE_PORT`, `VITE_PROTOCOL`, `VITE_BASE_URL`, `VITE_ALLOW_REMOTE`.
 - [Docs](https://litestar-org.github.io/litestar-vite/): Full documentation site.
+
+- Prefer `litestar assets install` to install frontend deps with your configured executor.

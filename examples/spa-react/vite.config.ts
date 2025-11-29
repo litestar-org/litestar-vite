@@ -15,7 +15,7 @@ export default defineConfig({
         routesPath: "src/generated/routes.json",
         output: "src/generated",
         generateZod: true,
-        generateSdk: true,
+        generateSdk: false,
       },
     }) as PluginOption[]),
   ],

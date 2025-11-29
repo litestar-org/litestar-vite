@@ -6,7 +6,7 @@ Litestar-Vite supplies a Python plugin (`VitePlugin`) and a TypeScript Vite plug
 
 ## Install
 - Python: `pip install litestar-vite` (extras: `litestar-vite[jinja]` for template mode, `litestar-vite[fsspec]` for deploy backends).
-- Frontend deps: run `npm install` (or bun/pnpm/yarn) in your frontend root.
+- Frontend deps: run `litestar assets install` (preferred; uses configured executor) or npm/pnpm/yarn in your frontend root.
 - Dev server: `litestar run` starts Litestar; Vite runs automatically via proxy mode unless `VITE_PROXY_MODE=direct` is set.
 - Type gen tools: `npx @hey-api/openapi-ts` invoked by the TS plugin when types are enabled.
 
@@ -112,8 +112,15 @@ export default litestar({
 2) Start dev server; Litestar exports OpenAPI/routes; TS plugin watches and runs `@hey-api/openapi-ts`.
 3) CI/one-off: `litestar assets generate-types`.
 
+### Doctor command
+- `litestar assets doctor [--check --fix --no-prompt --verbose]`
+- `litestar assets install` — install frontend deps with configured executor (npm/pnpm/yarn/bun)
+- Prints Python vs vite.config snapshot (asset URLs, bundle/hot paths, mode, host/port, types flags).
+- Flags: hot file missing (dev proxy), manifest missing (prod), type-gen exports missing, env/config mismatches, plugin install/dist missing.
+- `--fix` rewrites simple vite.config values (assetUrl, bundleDirectory, hotFile, type paths) after creating a backup.
+
 ## Dev & Deploy Notes
-- Hotfile: `bundle_dir/hot` written by TS plugin; read by proxy/HMR.
+- Hot file: `bundle_dir/hot` written by TS plugin; read by proxy/HMR.
 - Manifest: `bundle_dir/manifest.json` loaded by ViteAssetLoader in prod.
 - Env vars: `ASSET_URL`, `VITE_BASE_URL`, `VITE_PORT`, `VITE_HOST`, `VITE_PROTOCOL`, `VITE_PROXY_MODE`, `VITE_DEV_MODE`, `VITE_HOT_RELOAD`, `VITE_HEALTH_CHECK`, `VITE_ALLOW_REMOTE`, `LITESTAR_VITE_RUNTIME`, `LITESTAR_VITE_INSTALL_CMD`, `LITESTAR_OPENAPI_PATH`.
 - Deploy: `litestar assets deploy --storage gcs://bucket/path [--dry-run --no-delete --storage-option key=val]` uploads manifest/assets using fsspec; `deploy_config.storage_options` merges CLI overrides.

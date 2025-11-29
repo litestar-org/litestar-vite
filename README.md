@@ -13,6 +13,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 
 ```bash
 pip install litestar-vite
+litestar assets install  # installs frontend deps via configured executor
 ```
 
 ```python
@@ -70,13 +71,20 @@ VitePlugin(config=ViteConfig(types=True))  # enable exports
 litestar assets generate-types  # one-off or CI
 ```
 
-## CLI cheatsheet
+## CLI cheat sheet
 
 - `litestar assets doctor` — diagnose/fix config
 - `litestar assets init --template react|vue|svelte|...` — scaffold frontend
 - `litestar assets build` / `serve` — build or watch
 - `litestar assets deploy --storage gcs://bucket/assets` — upload via fsspec
 - `litestar assets generate-types` — OpenAPI + routes → TS types
+- `litestar assets install` — install frontend deps with the configured executor
+
+### Doctor command highlights
+
+- Prints Python vs Vite config snapshot (asset URLs, bundle/hot paths, ports, modes).
+- Flags missing hot file (dev proxy), missing manifest (prod), type-gen exports, env/config mismatches, and plugin install issues.
+- `--fix` can rewrite simple vite.config values (assetUrl, bundleDirectory, hotFile, type paths) after creating a backup.
 
 ## Links
 

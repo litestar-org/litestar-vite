@@ -96,23 +96,6 @@ def test_doctor_detect_typegen_mismatch(doctor: ViteDoctor, tmp_path: Path) -> N
     assert any(i.check == "TypeGen Routes Path Mismatch" for i in doctor.issues)
 
 
-def test_doctor_detect_plugin_spread_missing(doctor: ViteDoctor, tmp_path: Path) -> None:
-    doctor.config.paths.root = tmp_path
-    (tmp_path / "vite.config.ts").write_text("""
-    export default defineConfig({
-        plugins: [
-            litestar({
-                input: ['src/main.ts']
-            })
-        ]
-    })
-    """)
-
-    doctor.run(fix=False)
-
-    assert any(i.check == "Plugin Spread Missing" for i in doctor.issues)
-
-
 def test_doctor_detect_typegen_flags_mismatch(doctor: ViteDoctor, tmp_path: Path) -> None:
     doctor.config.paths.root = tmp_path
     # Python config: generate_zod=True, generate_sdk=False
@@ -138,7 +121,7 @@ def test_doctor_no_issues(doctor: ViteDoctor, tmp_path: Path) -> None:
     doctor.config.paths.root = tmp_path
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({
-        plugins: [...litestar({
+        plugins: [litestar({
             assetUrl: '/static/',
             bundleDirectory: 'public',
             hotFile: 'public/hot',
@@ -154,9 +137,92 @@ def test_doctor_no_issues(doctor: ViteDoctor, tmp_path: Path) -> None:
     })
     """)
 
-    # Mock dist file and node_modules checks since we don't have node_modules in tmp_path
-    with patch.object(doctor, "_check_dist_files"), patch.object(doctor, "_check_node_modules"):
+    # Mock checks that rely on filesystem/network not present in test
+    with (
+        patch.object(doctor, "_check_dist_files"),
+        patch.object(doctor, "_check_node_modules"),
+        patch.object(doctor, "_check_manifest_presence"),
+        patch.object(doctor, "_check_typegen_artifacts"),
+        patch.object(doctor, "_check_env_alignment"),
+        patch.object(doctor, "_check_vite_server_reachable"),
+    ):
         result = doctor.run(fix=False)
 
     assert result is True
     assert not doctor.issues
+
+
+def test_doctor_manifest_missing(doctor: ViteDoctor, tmp_path: Path) -> None:
+    doctor.config.paths.root = tmp_path
+    doctor.config.paths.bundle_dir = Path(tmp_path / "public")
+    doctor.config.runtime.dev_mode = False
+    (tmp_path / "vite.config.ts").write_text("""
+    export default defineConfig({
+        plugins: [...litestar({
+            bundleDirectory: 'REPLACE_ME',
+        })]
+    })
+    """)
+
+    # Replace placeholder with absolute path so Python/JS match
+    cfg_path = tmp_path / "vite.config.ts"
+    cfg_path.write_text(cfg_path.read_text().replace("REPLACE_ME", str(tmp_path / "public")))
+
+    with (
+        patch.object(doctor, "_check_dist_files"),
+        patch.object(doctor, "_check_node_modules"),
+    ):
+        doctor.run(fix=False)
+
+    assert any(i.check == "Manifest Missing" for i in doctor.issues)
+
+
+def test_doctor_hotfile_missing(doctor: ViteDoctor, tmp_path: Path) -> None:
+    doctor.config.paths.root = tmp_path
+    doctor.config.paths.bundle_dir = Path(tmp_path / "public")
+    doctor.config.runtime.dev_mode = True
+    doctor.config.runtime.proxy_mode = "proxy"
+    (tmp_path / "public").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "vite.config.ts").write_text("""
+    export default defineConfig({
+        plugins: [...litestar({
+            bundleDirectory: 'REPLACE_ME',
+        })]
+    })
+    """)
+
+    cfg_path = tmp_path / "vite.config.ts"
+    cfg_path.write_text(cfg_path.read_text().replace("REPLACE_ME", str(tmp_path / "public")))
+
+    with (
+        patch.object(doctor, "_check_dist_files"),
+        patch.object(doctor, "_check_node_modules"),
+        patch.object(doctor, "_check_vite_server_reachable"),
+    ):
+        doctor.run(fix=False)
+
+    assert any(i.check == "Hotfile Missing" for i in doctor.issues)
+
+
+def test_doctor_env_mismatch(doctor: ViteDoctor, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    doctor.config.paths.root = tmp_path
+    doctor.config.runtime.port = 5174
+    monkeypatch.setenv("VITE_PORT", "9999")
+    (tmp_path / "vite.config.ts").write_text("""
+    export default defineConfig({
+        plugins: [...litestar({
+            bundleDirectory: 'public',
+        })]
+    })
+    """)
+
+    with (
+        patch.object(doctor, "_check_dist_files"),
+        patch.object(doctor, "_check_node_modules"),
+        patch.object(doctor, "_check_manifest_presence"),
+        patch.object(doctor, "_check_typegen_artifacts"),
+        patch.object(doctor, "_check_vite_server_reachable"),
+    ):
+        doctor.run(fix=False)
+
+    assert any(i.check == "Env / Config Mismatch" for i in doctor.issues)
