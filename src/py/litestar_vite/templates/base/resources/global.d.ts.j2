@@ -1,0 +1,19 @@
+{% if enable_types -%}
+type ServerRoutes = typeof import("./generated/routes.json")["routes"];
+
+declare global {
+  interface Window {
+    serverRoutes?: ServerRoutes;
+    __LITESTAR_ROUTES__?: ServerRoutes;
+  }
+}
+{% else -%}
+declare global {
+  interface Window {
+    serverRoutes?: Record<string, unknown>;
+    __LITESTAR_ROUTES__?: Record<string, unknown>;
+  }
+}
+{% endif -%}
+
+export {};

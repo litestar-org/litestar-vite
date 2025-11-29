@@ -19,7 +19,7 @@ export interface BackendStatus {
  * health check, since it's typically enabled and responds quickly.
  * The schema path is read from LITESTAR_OPENAPI_PATH env var (default: "/schema").
  */
-export async function checkBackendAvailability(appUrl: string): Promise<BackendStatus> {
+export async function checkBackendAvailability(appUrl: string | null): Promise<BackendStatus> {
   if (!appUrl || appUrl === "undefined") {
     return {
       available: false,

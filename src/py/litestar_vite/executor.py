@@ -61,8 +61,10 @@ class CommandExecutor(JSExecutor):
             command,
             cwd=cwd,
             shell=platform.system() == "Windows",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            # Inherit stdio so long-running dev servers don't block on full pipes and
+            # so users can see Vite output in real time.
+            stdout=None,
+            stderr=None,
         )
 
     def execute(self, args: list[str], cwd: Path) -> None:
@@ -180,8 +182,8 @@ class NodeenvExecutor(JSExecutor):
             command,
             cwd=cwd,
             shell=platform.system() == "Windows",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=None,
+            stderr=None,
         )
 
     def execute(self, args: list[str], cwd: Path) -> None:

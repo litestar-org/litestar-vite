@@ -217,17 +217,25 @@ class ViteSPAHandler:
         Raises:
             ImproperlyConfiguredException: If index.html is not found.
         """
-        index_path = anyio.Path(self._config.resource_dir / "index.html")
-        if not await index_path.exists():
+        resolved_path: anyio.Path | None = None
+        for candidate in self._config.candidate_index_html_paths():
+            candidate_path = anyio.Path(candidate)
+            if await candidate_path.exists():
+                resolved_path = candidate_path
+                break
+
+        if resolved_path is None:
+            joined_paths = ", ".join(str(path) for path in self._config.candidate_index_html_paths())
             msg = (
-                f"index.html not found at {index_path}. "
-                "SPA mode requires index.html in the resource directory. "
+                "index.html not found. "
+                f"Checked: {joined_paths}. "
+                "SPA mode requires index.html in one of the expected locations. "
                 "Did you forget to build your assets?"
             )
             raise ImproperlyConfiguredException(msg)
 
         # Read as bytes first (more efficient), then decode
-        self._cached_bytes = await index_path.read_bytes()
+        self._cached_bytes = await resolved_path.read_bytes()
         self._cached_html = self._cached_bytes.decode("utf-8")
 
     def _get_csrf_token(self, request: "Request[Any, Any, Any]") -> "str | None":
