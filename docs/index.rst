@@ -165,7 +165,7 @@ Installing ``litestar-vite`` is as easy as calling your favorite Python package 
         .. code-block:: bash
             :caption: For the TypeScript/JavaScript library
 
-            npm install @litestar/vite-plugin
+            npm install litestar-vite-plugin
 
 ----
 
@@ -180,19 +180,15 @@ Here's a minimal example to get you started:
     from pathlib import Path
     from litestar import Litestar, get
     from litestar.contrib.jinja import JinjaTemplateEngine
+    from litestar.response import Template
     from litestar.template.config import TemplateConfig
     from litestar_vite import ViteConfig, VitePlugin
 
     @get("/")
-    async def index() -> str:
-        return "index.html"
+    async def index() -> Template:
+        return Template(template_name="index.html")
 
-    vite = VitePlugin(
-        config=ViteConfig(
-            bundle_dir=Path("public"),
-            resource_dir=Path("resources"),
-        )
-    )
+    vite = VitePlugin(config=ViteConfig(dev_mode=True))  # defaults: SPA mode, bundle_dir="public", resource_dir="src"
 
     app = Litestar(
         route_handlers=[index],
@@ -218,6 +214,8 @@ Then in your template:
         <div id="app"></div>
     </body>
     </html>
+
+Install frontend dependencies with ``litestar assets install`` (uses the configured executor), run the backend in development with ``litestar run --reload`` (Vite is proxied automatically when ``dev_mode=True``), and build production assets with ``litestar assets build``.
 
 Run your app with ``litestar run`` and start developing!
 

@@ -6,17 +6,11 @@ Common endpoints across all examples:
 - `/api/books/{book_id}`
 """
 
-from pathlib import Path
-
-from anyio import Path as AsyncPath
 from litestar import Litestar, get
 from litestar.exceptions import NotFoundException
-from litestar.response import Response
 from msgspec import Struct
 
 from litestar_vite import ViteConfig, VitePlugin
-
-here = Path(__file__).parent
 
 
 class Book(Struct):
@@ -48,13 +42,6 @@ def _get_book(book_id: int) -> Book:
     raise NotFoundException(detail=f"Book {book_id} not found")
 
 
-@get("/")
-async def index() -> Response[bytes]:
-    """Serve the SPA index.html."""
-    content = await AsyncPath(here / "index.html").read_bytes()
-    return Response(content=content, media_type="text/html")
-
-
 @get("/api/summary")
 async def summary() -> Summary:
     return Summary(
@@ -78,7 +65,7 @@ async def book_detail(book_id: int) -> Book:
 vite = VitePlugin(config=ViteConfig())
 
 app = Litestar(
-    route_handlers=[index, summary, books, book_detail],
+    route_handlers=[summary, books, book_detail],
     plugins=[vite],
     debug=True,
 )

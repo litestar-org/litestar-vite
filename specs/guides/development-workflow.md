@@ -39,16 +39,17 @@ All project tasks are managed through a `Makefile` and the `uv` Python package m
 
 ### Running the Development Server
 
-To work on an example application (like the `basic` one), you would typically run the Litestar backend and the Vite frontend dev server.
+To work on an example application (like the `basic` one), run Litestar and let it manage Vite for you (single port by default):
 
--   **Run Litestar App**:
+-   **Run Litestar App (starts/proxies Vite)**:
     ```bash
-    uv run uvicorn examples.basic.app:app --reload
+    uv run litestar run --reload --app examples.basic.app:app
     ```
 
--   **Run Vite Dev Server**:
+-   **Two-port option (start Vite yourself)**:
     ```bash
-    npm run dev --workspace=examples/basic
+    uv run litestar assets serve --app examples.basic.app:app
+    uv run litestar run --reload --app examples.basic.app:app
     ```
 
 ### Running Tests

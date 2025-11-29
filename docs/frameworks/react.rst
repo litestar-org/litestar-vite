@@ -52,15 +52,7 @@ Backend Setup
     async def get_data() -> dict:
         return {"message": "Hello from Litestar!"}
 
-    vite = VitePlugin(
-        config=ViteConfig(
-            dev_mode=True,
-            paths=PathConfig(
-                bundle_dir=Path("public"),
-                resource_dir=Path("src"),
-            ),
-        ),
-    )
+    vite = VitePlugin(config=ViteConfig(dev_mode=True))
 
     app = Litestar(
         plugins=[vite],
@@ -78,17 +70,12 @@ Vite Configuration
 
     import { defineConfig } from "vite";
     import react from "@vitejs/plugin-react";
-    import litestar from "@litestar/vite-plugin";
+    import litestar from "litestar-vite-plugin";
 
     export default defineConfig({
       plugins: [
         react(),
-        litestar({
-          input: ["src/main.tsx"],
-          assetUrl: "/static/",
-          bundleDir: "public",
-          resourceDir: "src",
-        }),
+        litestar({ input: ["src/main.tsx"], resourceDirectory: "src" }),
       ],
     });
 
@@ -139,11 +126,13 @@ Running
 
 .. code-block:: bash
 
-    # Terminal 1: Vite dev server
-    npm run dev
-
-    # Terminal 2: Litestar
+    # Recommended: one process; Litestar starts and proxies Vite for you
     litestar run --reload
+
+    # Two-port setup (optional)
+    litestar assets serve  # starts Vite dev server
+    # and in another shell
+    litestar run --reload  # backend only
 
 See Also
 --------

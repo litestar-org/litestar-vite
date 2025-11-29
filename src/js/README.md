@@ -4,20 +4,19 @@ Vite plugin that pairs with the Litestar Python backend. It writes the hotfile V
 
 ## Install
 ```bash
-npm install @litestar/vite-plugin
+npm install litestar-vite-plugin
 ```
 
 ## Vite config (vite.config.ts)
 ```ts
 import { defineConfig } from "vite"
-import litestar from "@litestar/vite-plugin"
+import litestar from "litestar-vite-plugin"
 
 export default defineConfig({
   plugins: [
     litestar({
       input: ["src/main.ts"],
-      assetUrl: "/static/",
-      bundleDirectory: "public/dist",
+      resourceDirectory: "src", // override default "resources" for SPA setups
       types: { enabled: true, output: "src/types/api", generateZod: true },
     }),
   ],
@@ -27,8 +26,8 @@ export default defineConfig({
 ## Options (essentials)
 - `input`: entry file(s) for Vite.
 - `assetUrl`: must match Python `ViteConfig.asset_url` (default `/static/`).
-- `bundleDirectory`: where build output and manifest live (default `public/dist`).
-- `resourceDirectory`: source dir for full-reload watching (default `resources`).
+- `bundleDirectory`: where build output and manifest live (defaults to backend `bundle_dir` or `public`).
+- `resourceDirectory`: source dir for full-reload watching (defaults to backend `resource_dir` or `resources`).
 - `hotFile`: path to write dev URL (default `${bundleDirectory}/hot`).
 - `refresh`: paths or config for vite-plugin-full-reload.
 - `types`: `false` or { `enabled`, `output`, `openapiPath`, `routesPath`, `generateZod`, `generateSdk`, `debounce` }.
