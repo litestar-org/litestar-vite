@@ -7,6 +7,8 @@ from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.exceptions import NotFoundException
 from litestar.response import Template
 from litestar.template import TemplateConfig
+from litestar_htmx import HTMXPlugin, HTMXRequest
+from litestar_htmx.response import HTMXTemplate
 from msgspec import Struct
 
 from litestar_vite import ViteConfig, VitePlugin
@@ -57,11 +59,21 @@ class LibraryController(Controller):
     """Library API and web controller."""
 
     @get("/")
-    async def index(self) -> Template:
+    async def index(self, request: HTMXRequest) -> Template:
         """Serve the home page with initial data."""
-        return Template(
-            template_name="index.html.j2",
-            context={"summary": _get_summary(), "books": BOOKS},
+        context = {"summary": _get_summary(), "books": BOOKS, "request": request}
+        return Template(template_name="index.html.j2", context=context)
+
+    @get("/fragments/book/{book_id:int}")
+    async def book_fragment(self, book_id: int) -> Template:
+        """Return a book card fragment for HTMX swaps."""
+        book = _get_book(book_id)
+        return HTMXTemplate(
+            template_name="partials/book_card.html.j2",
+            context={"book": book},
+            re_target="#book-detail",
+            re_swap="innerHTML",
+            push_url=False,
         )
 
     @get("/api/summary")
@@ -77,12 +89,12 @@ class LibraryController(Controller):
         return _get_book(book_id)
 
 
-vite = VitePlugin(config=ViteConfig(dev_mode=True))
-templates = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "templates"))
+vite = VitePlugin(config=ViteConfig())
+templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)
 
 app = Litestar(
     route_handlers=[LibraryController],
-    plugins=[vite],
+    plugins=[vite, HTMXPlugin()],
     template_config=templates,
     debug=True,
 )

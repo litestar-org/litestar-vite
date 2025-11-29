@@ -80,8 +80,6 @@ async def book_detail(book_id: int) -> Book:
 vite = VitePlugin(
     config=ViteConfig(
         mode="spa",
-        dev_mode=True,
-        types=True,
         paths=PathConfig(root=here),
     )
 )

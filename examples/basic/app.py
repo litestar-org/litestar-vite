@@ -90,8 +90,8 @@ class LibraryController(Controller):
         return _get_book(book_id)
 
 
-vite = VitePlugin(config=ViteConfig(dev_mode=True, types=True))
-templates = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "templates"))
+vite = VitePlugin(config=ViteConfig())
+templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)
 
 app = Litestar(
     route_handlers=[LibraryController],

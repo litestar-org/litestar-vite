@@ -75,7 +75,7 @@ async def book_detail(book_id: int) -> Book:
     return _get_book(book_id)
 
 
-vite = VitePlugin(config=ViteConfig(dev_mode=True, types=True))
+vite = VitePlugin(config=ViteConfig())
 
 app = Litestar(
     route_handlers=[index, summary, books, book_detail],

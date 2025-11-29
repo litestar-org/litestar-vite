@@ -4,11 +4,6 @@ import litestar from "litestar-vite-plugin"
 import { type PluginOption, defineConfig } from "vite"
 
 export default defineConfig({
-  server: {
-    host: "0.0.0.0",
-    port: Number(process.env.VITE_PORT || "38533"),
-    cors: true,
-  },
   plugins: [
     tailwindcss(),
     react(),
@@ -24,9 +19,4 @@ export default defineConfig({
       },
     }) as PluginOption[]),
   ],
-  resolve: {
-    alias: {
-      "@": "/src",
-    },
-  },
 })

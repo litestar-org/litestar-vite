@@ -15,6 +15,7 @@ from litestar_vite import ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-key-32c")
+session_backend = CookieBackendConfig(secret=SECRET_KEY)
 
 
 class WebController(Controller):
@@ -31,13 +32,13 @@ class WebController(Controller):
         return Template(template_name="index.html.j2")
 
 
-templates = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "templates"))
-vite = VitePlugin(config=ViteConfig(dev_mode=True))
+templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)
+vite = VitePlugin(config=ViteConfig())
 flasher = FlashPlugin(config=FlashConfig(template_config=templates))
 
 app = Litestar(
     plugins=[vite, flasher],
     route_handlers=[WebController],
-    middleware=[CookieBackendConfig(secret=SECRET_KEY).middleware],
+    middleware=[session_backend.middleware],
     template_config=templates,
 )

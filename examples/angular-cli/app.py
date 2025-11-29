@@ -22,7 +22,7 @@ async def index() -> Response[bytes]:
     return Response(content=content, media_type="text/html")
 
 
-vite = VitePlugin(config=ViteConfig(dev_mode=True))
+vite = VitePlugin(config=ViteConfig())
 
 app = Litestar(
     route_handlers=[index],

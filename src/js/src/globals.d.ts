@@ -1,12 +1,4 @@
-import type {
-  currentRoute,
-  getRoutes,
-  isCurrentRoute,
-  isRoute,
-  route,
-  toRoute,
-  type RoutesMap,
-} from "./helpers/routes.js"
+import type { RoutesMap, currentRoute, getRoutes, isCurrentRoute, isRoute, route, toRoute } from "./helpers/routes.js"
 
 /**
  * Ambient declarations for browser globals injected by Litestar.
@@ -26,8 +18,8 @@ declare global {
      */
     routes?: Record<string, string>
     /**
-      * Descriptive alias for the route map (name -> uri).
-      */
+     * Descriptive alias for the route map (name -> uri).
+     */
     serverRoutes?: Record<string, string>
   }
 
@@ -54,5 +46,3 @@ declare global {
     }
   }
 }
-
-export {}

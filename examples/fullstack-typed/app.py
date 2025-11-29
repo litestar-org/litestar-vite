@@ -21,6 +21,7 @@ from litestar_vite.inertia import InertiaConfig, InertiaPlugin
 
 here = Path(__file__).parent
 SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-key-32c")
+session_backend = CookieBackendConfig(secret=SECRET_KEY)
 
 
 class Message(Struct):
@@ -91,14 +92,14 @@ class LibraryController(Controller):
         return _get_book(book_id)
 
 
-vite = VitePlugin(config=ViteConfig(dev_mode=True))
+vite = VitePlugin(config=ViteConfig())
 inertia = InertiaPlugin(config=InertiaConfig(root_template="index.html"))
-templates = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "templates"))
+templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)
 
 app = Litestar(
     route_handlers=[LibraryController],
     plugins=[vite, inertia],
     template_config=templates,
-    middleware=[CookieBackendConfig(secret=SECRET_KEY).middleware],
+    middleware=[session_backend.middleware],
     debug=True,
 )

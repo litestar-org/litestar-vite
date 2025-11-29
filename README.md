@@ -1,55 +1,32 @@
 # Litestar Vite
 
-Seamless integration between [Litestar](https://litestar.dev/) and [Vite](https://vitejs.dev/).
+Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA, Template, and Inertia flows, and can proxy Vite dev traffic through your ASGI port or run Vite directly.
 
 ## Features
 
-- ⚡ **Dual Mode Serving**: Supports both SPA (no Jinja required) and Template modes.
-- 🛠️ **Type-Safe Routing**: Auto-generate TypeScript types and route helpers from your Python code.
-- 🚀 **Zero-Config**: Works out of the box with sensible defaults.
-- 📦 **Framework Agnostic**: First-class support for React, Vue, Svelte, HTMX, and more.
-- 🔄 **Inertia.js**: Built-in support for the Inertia.js protocol (v2).
-- 🔌 **Extensible**: Easy to customize configuration and behavior.
+- One-port dev: proxies Vite HTTP + WS/HMR through Litestar by default; switch to two-port with `VITE_PROXY_MODE=direct`.
+- Production assets: reads Vite manifest from `public/manifest.json` (configurable) and serves under `asset_url`.
+- Type-safe frontends: optional OpenAPI/routes export + `@hey-api/openapi-ts` via the Vite plugin.
+- Inertia support: v2 protocol with session middleware and optional SPA mode.
 
-## Installation
+## Quick start (SPA)
 
 ```bash
 pip install litestar-vite
 ```
 
-## Quick Start
-
-### 1. Initialize Project
-
-Use the CLI to scaffold a new project with your preferred framework:
-
-```bash
-# Create a new React project
-litestar assets init --template react
-
-# Or Vue + Inertia
-litestar assets init --template vue-inertia
-
-# Put the frontend under a custom folder (e.g., web/)
-litestar assets init --template react --frontend-dir web
-```
-
-### 2. Configure Application
-
-**SPA Mode (React/Vue/Svelte):**
-
 ```python
 from litestar import Litestar
 from litestar_vite import VitePlugin, ViteConfig
 
-app = Litestar(
-    plugins=[
-        VitePlugin(config=ViteConfig(dev_mode=True))
-    ]
-)
+app = Litestar(plugins=[VitePlugin(config=ViteConfig(dev_mode=True))])
 ```
 
-**Template Mode (Jinja2/HTMX):**
+```bash
+litestar run  # starts Litestar; Vite dev is proxied automatically
+```
+
+## Template / HTMX
 
 ```python
 from litestar import Litestar
@@ -58,62 +35,51 @@ from litestar.template.config import TemplateConfig
 from litestar_vite import VitePlugin, ViteConfig
 
 app = Litestar(
-    template_config=TemplateConfig(
-        engine=JinjaTemplateEngine(directory="templates")
-    ),
-    plugins=[
-        VitePlugin(
-            config=ViteConfig(
-                mode="template",
-                dev_mode=True,
-            )
-        )
-    ]
+    template_config=TemplateConfig(engine=JinjaTemplateEngine(directory="templates")),
+    plugins=[VitePlugin(config=ViteConfig(mode="template", dev_mode=True))],
 )
 ```
 
-### 3. Run Development Server
+## Inertia (v2)
 
-```bash
-# Starts both Litestar and Vite
-litestar run
-```
-
-#### Single-port proxy (default)
-
-In dev, Litestar can proxy Vite traffic (HTTP + WS/HMR) through the ASGI port so you only expose one port.
-
-- Default: `VITE_PROXY_MODE=proxy` (or leave unset). Vite binds to loopback with an auto-picked port if `VITE_PORT` is unset.
-- The hotfile at `public/hot` records the chosen dev URL; the JS plugin/HMR client reads this.
-- Proxied paths include `@vite` assets, `@fs`, `node_modules/.vite`, `src/`, and HMR WebSockets.
-- To use the classic two-port mode, set `VITE_PROXY_MODE=direct` and run Vite separately.
-
-## Type Generation
-
-Keep your frontend in sync with your backend automatically.
-
-**Enable in Config:**
+Requires session middleware.
 
 ```python
-VitePlugin(config=ViteConfig(types=True))
+from litestar import Litestar
+from litestar.middleware.session.server_side import ServerSideSessionConfig, ServerSideSessionMiddleware
+from litestar_vite import VitePlugin, ViteConfig
+from litestar_vite.inertia import InertiaPlugin
+from litestar_vite.inertia.config import InertiaConfig
+
+app = Litestar(
+    middleware=[ServerSideSessionMiddleware(config=ServerSideSessionConfig(secret="secret"))],
+    plugins=[
+        VitePlugin(config=ViteConfig(mode="template", inertia=True, dev_mode=True)),
+        InertiaPlugin(InertiaConfig()),
+    ],
+)
 ```
 
-**Generate Types:**
+## Type generation
+
+```python
+VitePlugin(config=ViteConfig(types=True))  # enable exports
+```
 
 ```bash
-litestar assets generate-types
+litestar assets generate-types  # one-off or CI
 ```
 
-**Use in Frontend:**
+## CLI cheatsheet
 
-```typescript
-import { route } from './lib/api/routes';
-import type { User } from './lib/api/types.gen';
+- `litestar assets doctor` — diagnose/fix config
+- `litestar assets init --template react|vue|svelte|...` — scaffold frontend
+- `litestar assets build` / `serve` — build or watch
+- `litestar assets deploy --storage gcs://bucket/assets` — upload via fsspec
+- `litestar assets generate-types` — OpenAPI + routes → TS types
 
-// Type-safe URL generation
-const url = route('users.show', { id: 123 });
-```
+## Links
 
-## Documentation
-
-For full documentation, visit [https://litestar-org.github.io/litestar-vite/](https://litestar-org.github.io/litestar-vite/).
+- Docs: <https://litestar-org.github.io/litestar-vite/>
+- Examples: `examples/` (basic, inertia, spa-react)
+- Issues: <https://github.com/litestar-org/litestar-vite/issues/>

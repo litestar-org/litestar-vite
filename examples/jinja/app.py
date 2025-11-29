@@ -15,8 +15,8 @@ async def index() -> Template:
     return Template(template_name="index.html", context={"title": "Vite + Litestar App"})
 
 
-vite = VitePlugin(config=ViteConfig(dev_mode=True))
-templates = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "templates"))
+vite = VitePlugin(config=ViteConfig())
+templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)
 
 app = Litestar(
     route_handlers=[index],
