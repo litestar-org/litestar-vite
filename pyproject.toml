@@ -135,17 +135,6 @@ replace = '"version": "{new_version}"'
 search = '"version": "{current_version}"'
 
 [[tool.bumpversion.files]]
-filename = "uv.lock"
-replace = """
-name = "litestar-vite"
-version = "{new_version}"
-"""
-search = """
-name = "litestar-vite"
-version = "{current_version}"
-"""
-
-[[tool.bumpversion.files]]
 filename = "package-lock.json"
 replace = """
   "name": "litestar-vite-plugin",

@@ -102,8 +102,8 @@ release:                                           ## Bump version and create re
 	@make docs
 	@make clean
 	@make build
-	@uv lock --upgrade-package litestar-vite >/dev/null 2>&1
 	@uv run bump-my-version bump $(bump)
+	@uv lock --upgrade-package litestar-vite >/dev/null 2>&1
 	@echo "${OK} Release complete 🎉"
 
 .PHONY: pre-release
@@ -122,8 +122,8 @@ pre-release:                                       ## Start a pre-release: make 
 	@echo "${INFO} Preparing pre-release $(version)... 🧪"
 	@make clean
 	@make build
-	@uv lock --upgrade-package litestar-vite >/dev/null 2>&1
 	@uv run bump-my-version bump --new-version $(version) pre
+	@uv lock --upgrade-package litestar-vite >/dev/null 2>&1
 	@echo "${OK} Pre-release $(version) complete 🧪"
 	@echo ""
 	@echo "${INFO} Next steps:"

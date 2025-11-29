@@ -273,12 +273,13 @@ function normalizeAppUrl(appUrl: string | undefined, fallbackPort?: string): { u
   try {
     const url = new URL(appUrl)
 
-    // Ensure port present
-    if (!url.port) {
-      url.port = fallbackPort ?? (url.protocol === "https:" ? "443" : "8000")
-    }
+    const rebuilt =
+      url.origin +
+      (url.pathname === "/" ? "" : url.pathname) +
+      (url.search ?? "") +
+      (url.hash ?? "")
 
-    return { url: url.toString() }
+    return { url: rebuilt }
   } catch {
     return { url: null, note: "APP_URL invalid" }
   }
