@@ -36,7 +36,9 @@ def test_opt_in_nodeenv_executor() -> None:
     assert isinstance(config.executor, NodeenvExecutor)
 
 
-def test_config_health_check_defaults() -> None:
+def test_config_health_check_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Ensure env defaults don't leak into config
+    monkeypatch.delenv("VITE_BASE_URL", raising=False)
     config = ViteConfig()
     assert config.health_check is False
     assert config.base_url is None
