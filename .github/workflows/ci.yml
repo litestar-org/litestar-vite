@@ -86,6 +86,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
+      - name: Set PYTHONPATH
+        run: echo "PYTHONPATH=$PWD/src/py" >> $GITHUB_ENV
+
       - name: Run slotscheck
         run: uv run slotscheck -m litestar_vite
 
@@ -118,6 +121,8 @@ jobs:
     with:
       coverage: ${{ matrix.python-version == '3.12' }}
       python-version: ${{ matrix.python-version }}
+      # ensure optional deps like sniffio are present for Litestar
+      timeout: 60
   sonar:
     needs:
       - test_python

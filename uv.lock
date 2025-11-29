@@ -478,7 +478,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -863,7 +863,7 @@ dependencies = [
 
 [[package]]
 name = "litestar-vite"
-version = "0.15.0-alpha.1"
+version = "0.15.0a1"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -907,6 +907,7 @@ dev = [
     { name = "pytest-xdist" },
     { name = "ruff" },
     { name = "slotscheck" },
+    { name = "sniffio" },
     { name = "sphinx", version = "8.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "sphinx", version = "8.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "sphinx-autobuild", version = "2024.10.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -957,6 +958,7 @@ test = [
     { name = "pytest-mock" },
     { name = "pytest-sugar" },
     { name = "pytest-xdist" },
+    { name = "sniffio" },
 ]
 
 [package.metadata]
@@ -993,6 +995,7 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.6.1" },
     { name = "ruff", specifier = ">=0.0.287" },
     { name = "slotscheck" },
+    { name = "sniffio" },
     { name = "sphinx", specifier = ">=7.1.2" },
     { name = "sphinx-autobuild", specifier = ">=2021.3.14" },
     { name = "sphinx-click", specifier = ">=4.4.0" },
@@ -1039,6 +1042,7 @@ test = [
     { name = "pytest-mock", specifier = ">=3.11.1" },
     { name = "pytest-sugar" },
     { name = "pytest-xdist", specifier = ">=3.6.1" },
+    { name = "sniffio" },
 ]
 
 [[package]]
@@ -2111,6 +2115,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/4b/57/6fcb8df11e7c76eb87b23bfa931408e47f051c6161749c531b4060a45516/slotscheck-0.19.1.tar.gz", hash = "sha256:6146b7747f8db335a00a66b782f86011b74b995f61746dc5b36a9e77d5326013", size = 16050, upload-time = "2024-10-19T13:30:53.369Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/da/32/bd569256267f80b76b87d21a09795741a175778b954bee1d7b1a89852b6f/slotscheck-0.19.1-py3-none-any.whl", hash = "sha256:bff9926f8d6408ea21b6c6bbaa4389cea1682962e73ee4f30084b6d2b89260ee", size = 16995, upload-time = "2024-10-19T13:30:51.23Z" },
+]
+
+[[package]]
+name = "sniffio"
+version = "1.3.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a2/87/a6771e1546d97e7e041b6ae58d80074f81b7d5121207425c964ddf5cfdbd/sniffio-1.3.1.tar.gz", hash = "sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc", size = 20372, upload-time = "2024-02-25T23:20:04.057Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e9/44/75a9c9421471a6c4805dbf2356f7c181a29c1879239abab1ea2cc8f38b40/sniffio-1.3.1-py3-none-any.whl", hash = "sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2", size = 10235, upload-time = "2024-02-25T23:20:01.196Z" },
 ]
 
 [[package]]
