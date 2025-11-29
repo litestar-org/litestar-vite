@@ -273,11 +273,7 @@ function normalizeAppUrl(appUrl: string | undefined, fallbackPort?: string): { u
   try {
     const url = new URL(appUrl)
 
-    const rebuilt =
-      url.origin +
-      (url.pathname === "/" ? "" : url.pathname) +
-      (url.search ?? "") +
-      (url.hash ?? "")
+    const rebuilt = url.origin + (url.pathname === "/" ? "" : url.pathname) + (url.search ?? "") + (url.hash ?? "")
 
     return { url: rebuilt }
   } catch {
