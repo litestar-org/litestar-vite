@@ -42,6 +42,7 @@ Source = "https://github.com/cofin/litestar-vite"
 [project.optional-dependencies]
 jinja = [ "jinja2"]
 nodeenv = ["nodeenv"]
+http2 = ["h2>=4.0.0"]
 
 [build-system]
 build-backend = "hatchling.build"

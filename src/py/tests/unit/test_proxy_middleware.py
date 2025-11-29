@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -19,15 +20,23 @@ class _Recorder:
         self.events.append(event)
 
 
+@pytest.fixture
+def hotfile(tmp_path: Path) -> Path:
+    """Create a hotfile with a test Vite server URL."""
+    hotfile_path = tmp_path / "hot"
+    hotfile_path.write_text("http://127.0.0.1:9999")
+    return hotfile_path
+
+
 @pytest.mark.anyio
-async def test_proxy_http_short_circuits_non_vite_paths() -> None:
+async def test_proxy_http_short_circuits_non_vite_paths(hotfile: Path) -> None:
     sent = _Recorder()
 
     async def downstream(scope: Scope, receive: Receive, send: Send) -> None:
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await send({"type": "http.response.body", "body": b"ok"})  # type: ignore[arg-type]
 
-    middleware = ViteProxyMiddleware(downstream, "http://127.0.0.1:9999")
+    middleware = ViteProxyMiddleware(downstream, hotfile_path=hotfile)
 
     scope = {
         "type": "http",
@@ -47,12 +56,12 @@ async def test_proxy_http_short_circuits_non_vite_paths() -> None:
 
 
 @pytest.mark.anyio
-async def test_proxy_should_proxy_matches_vite_paths() -> None:
+async def test_proxy_should_proxy_matches_vite_paths(hotfile: Path) -> None:
     # We don't actually hit upstream; just check that _should_proxy matches prefixes
     async def noop(scope: Scope, receive: Receive, send: Send) -> None:
         return None
 
-    middleware = ViteProxyMiddleware(noop, "http://127.0.0.1:9999")
+    middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile)
 
     assert middleware._should_proxy("/@vite/client")
     assert middleware._should_proxy("/node_modules/.vite/chunk.js")

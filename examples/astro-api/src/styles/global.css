@@ -1,4 +1,4 @@
-@import "https://cdn.jsdelivr.net/npm/tailwindcss@3.4.13/dist/tailwind.min.css";
+@import "tailwindcss";
 
 :root {
   font-family: "Inter", "SF Pro Text", system-ui, -apple-system, sans-serif;

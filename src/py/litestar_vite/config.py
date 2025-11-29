@@ -37,6 +37,7 @@ __all__ = (
     "InertiaConfig",
     "PathConfig",
     "RuntimeConfig",
+    "SPAConfig",
     "TypeGenConfig",
     "ViteConfig",
 )
@@ -105,6 +106,10 @@ class RuntimeConfig:
         set_environment: Set Vite environment variables from config.
         set_static_folders: Automatically configure static file serving.
         csp_nonce: Content Security Policy nonce for inline scripts.
+        proxy_mode: Proxy mode for dev server requests.
+        spa_handler: Auto-register catch-all SPA route when mode="spa".
+        http2: Enable HTTP/2 for proxy HTTP requests (better multiplexing).
+            WebSocket traffic (HMR) uses a separate connection and is unaffected.
     """
 
     dev_mode: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)
@@ -127,6 +132,8 @@ class RuntimeConfig:
     proxy_mode: Literal["proxy", "direct"] = field(
         default_factory=lambda: "direct" if os.getenv("VITE_PROXY_MODE", "proxy").lower() == "direct" else "proxy"
     )
+    spa_handler: bool = True
+    http2: bool = True
 
     def __post_init__(self) -> None:
         """Set default commands based on executor."""
@@ -213,6 +220,53 @@ class TypeGenConfig:
             self.routes_path = Path(self.routes_path)
 
 
+def _optional_str_list_factory() -> "Optional[list[str]]":
+    """Factory function returning None for optional list fields."""
+    return None
+
+
+def _default_routes_exclude_factory() -> list[str]:
+    """Factory function for default route exclusions."""
+    return ["vite_spa"]  # Exclude the catch-all SPA handler route by default
+
+
+@dataclass
+class SPAConfig:
+    """Configuration for SPA HTML transformations.
+
+    This configuration controls how the SPA HTML is transformed before serving,
+    including route metadata injection, CSRF token injection, and Inertia.js
+    page data handling.
+
+    Attributes:
+        inject_routes: Whether to inject route metadata into HTML.
+        inject_csrf: Whether to inject CSRF token into HTML (as window.__LITESTAR_CSRF__).
+        routes_var_name: Global variable name for routes (e.g., window.__LITESTAR_ROUTES__).
+        csrf_var_name: Global variable name for CSRF token (e.g., window.__LITESTAR_CSRF__).
+        routes_include: Whitelist patterns for route filtering (None = include all).
+        routes_exclude: Blacklist patterns for route filtering (None = exclude none).
+        app_selector: CSS selector for the app root element (used for data attributes).
+        cache_transformed_html: Cache transformed HTML in production for performance.
+            Note: When inject_csrf=True, caching is disabled since CSRF tokens are per-request.
+
+    Example:
+        config = SPAConfig(
+            inject_routes=True,
+            inject_csrf=True,
+            routes_exclude=["_internal_*"],
+        )
+    """
+
+    inject_routes: bool = True
+    inject_csrf: bool = True
+    routes_var_name: str = "__LITESTAR_ROUTES__"
+    csrf_var_name: str = "__LITESTAR_CSRF__"
+    routes_include: "Optional[list[str]]" = field(default_factory=_optional_str_list_factory)
+    routes_exclude: "Optional[list[str]]" = field(default_factory=_default_routes_exclude_factory)
+    app_selector: str = "#app"
+    cache_transformed_html: bool = True
+
+
 def _str_object_dict_factory() -> dict[str, object]:
     """Factory function for empty dict (typed for pyright)."""
     return {}
@@ -273,6 +327,7 @@ class ViteConfig:
         runtime: Runtime execution settings.
         types: Type generation settings (True enables with defaults).
         inertia: Inertia.js settings (True enables with defaults).
+        spa: SPA transformation settings (True enables with defaults, False disables).
         dev_mode: Convenience shortcut for runtime.dev_mode.
         base_url: Base URL for production assets (CDN support).
     """
@@ -282,6 +337,7 @@ class ViteConfig:
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     types: "Union[TypeGenConfig, bool]" = field(default_factory=lambda: TypeGenConfig(enabled=True))
     inertia: "Union[InertiaConfig, bool]" = False
+    spa: "Union[SPAConfig, bool, None]" = None
     dev_mode: bool = False
     base_url: "Optional[str]" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
 
@@ -302,6 +358,10 @@ class ViteConfig:
         elif self.inertia is False:
             self.inertia = InertiaConfig(enabled=False)
 
+        if self.spa is True:
+            self.spa = SPAConfig()
+        # Note: spa=False is left as-is (bool), checked via spa_config property
+
         # Apply dev_mode shortcut
         if self.dev_mode:
             self.runtime.dev_mode = True
@@ -310,6 +370,14 @@ class ViteConfig:
         if self.mode is None:
             self.mode = self._detect_mode()
             self._mode_auto_detected = True
+
+        # Auto-enable SPA config when mode="spa" and spa not explicitly disabled
+        # spa=None means "auto" (enabled for SPA mode), spa=False means "disabled"
+        if self.mode == "spa" and self.spa is None:
+            self.spa = SPAConfig()
+        elif self.spa is None:
+            # For non-SPA modes, default to disabled
+            self.spa = False
 
     def _detect_mode(self) -> Literal["spa", "template", "htmx"]:
         """Auto-detect the serving mode based on project structure.
@@ -520,6 +588,16 @@ class ViteConfig:
         return self.runtime.proxy_mode
 
     @property
+    def spa_handler(self) -> bool:
+        """Check if SPA handler auto-registration is enabled."""
+        return self.runtime.spa_handler
+
+    @property
+    def http2(self) -> bool:
+        """Check if HTTP/2 is enabled for proxy connections."""
+        return self.runtime.http2
+
+    @property
     def ssr_output_dir(self) -> "Optional[Path]":
         """Get SSR output directory."""
         # __post_init__ normalizes strings to Path
@@ -530,3 +608,14 @@ class ViteConfig:
             if isinstance(self.paths.ssr_output_dir, Path)
             else Path(self.paths.ssr_output_dir)
         )
+
+    @property
+    def spa_config(self) -> "Optional[SPAConfig]":
+        """Get SPA configuration if enabled, or None if disabled.
+
+        Returns:
+            SPAConfig instance if spa transformations are enabled, None otherwise.
+        """
+        if isinstance(self.spa, SPAConfig):
+            return self.spa
+        return None

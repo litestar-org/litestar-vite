@@ -12,9 +12,6 @@ export default defineConfig({
     host: "0.0.0.0",
     port: Number(VITE_PORT),
     cors: true,
-    hmr: {
-      host: "localhost",
-    },
   },
   plugins: [
     tailwindcss(),

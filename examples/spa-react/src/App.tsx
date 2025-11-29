@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom"
 
 type Book = {
   id: number
@@ -15,10 +16,10 @@ type Summary = {
   featured: Book
 }
 
-function App() {
+// Shared data hook
+function useLibraryData() {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [books, setBooks] = useState<Book[]>([])
-  const [view, setView] = useState<"overview" | "books">("overview")
 
   useEffect(() => {
     async function loadData() {
@@ -30,58 +31,108 @@ function App() {
     void loadData()
   }, [])
 
+  return { summary, books }
+}
+
+// Overview page component
+function OverviewPage({ summary }: { summary: Summary | null }) {
   const featured = useMemo(() => summary?.featured, [summary])
+
+  if (!summary || !featured) {
+    return <div className="text-slate-600">Loading...</div>
+  }
+
+  return (
+    <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-lg shadow-slate-200/40 space-y-2">
+      <h2 className="text-xl font-semibold text-[#202235]">{summary.headline}</h2>
+      <p className="text-slate-600">Featured book</p>
+      <article className="border border-slate-200 rounded-xl p-4 bg-gradient-to-b from-white to-slate-50">
+        <h3 className="text-lg font-semibold text-[#202235]">{featured.title}</h3>
+        <p className="text-slate-600 mt-1">
+          {featured.author} • {featured.year}
+        </p>
+        <p className="text-[#202235] text-sm mt-1">{featured.tags.join(" · ")}</p>
+      </article>
+    </section>
+  )
+}
+
+// Books page component
+function BooksPage({ books }: { books: Book[] }) {
+  if (books.length === 0) {
+    return <div className="text-slate-600">Loading...</div>
+  }
+
+  return (
+    <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {books.map((book) => (
+        <article key={book.id} className="border border-slate-200 rounded-xl p-4 bg-gradient-to-b from-white to-slate-50 shadow-sm">
+          <h3 className="text-lg font-semibold text-[#202235]">{book.title}</h3>
+          <p className="text-slate-600 mt-1">
+            {book.author} • {book.year}
+          </p>
+          <p className="text-[#202235] text-sm mt-1">{book.tags.join(" · ")}</p>
+        </article>
+      ))}
+    </section>
+  )
+}
+
+// Navigation component that uses React Router
+function Navigation({ totalBooks }: { totalBooks: number | undefined }) {
+  const location = useLocation()
+  const isOverview = location.pathname === "/" || location.pathname === "/overview"
+  const isBooks = location.pathname === "/books"
+
+  return (
+    <nav className="inline-flex gap-2 bg-slate-100 rounded-full p-1 shadow-sm" aria-label="Views">
+      <Link to="/" className={`px-4 py-2 rounded-full text-sm font-semibold transition ${isOverview ? "bg-white shadow text-[#202235]" : "text-slate-600"}`}>
+        Overview
+      </Link>
+      <Link to="/books" className={`px-4 py-2 rounded-full text-sm font-semibold transition ${isBooks ? "bg-white shadow text-[#202235]" : "text-slate-600"}`}>
+        Books ({totalBooks ?? "–"})
+      </Link>
+    </nav>
+  )
+}
+
+// Main app layout
+function AppLayout() {
+  const { summary, books } = useLibraryData()
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10 space-y-6">
       <header className="space-y-2">
         <p className="uppercase tracking-[0.14em] text-sm font-semibold text-[#edb641]">Litestar · Vite</p>
-        <h1 className="text-3xl font-semibold text-[#202235]">Library (React)</h1>
-        <p className="text-slate-600 max-w-3xl">One backend, many frontends. Switch tabs to see how each framework consumes the same API.</p>
-        <nav className="inline-flex gap-2 bg-slate-100 rounded-full p-1 shadow-sm" aria-label="Views">
-          <button
-            className={`px-4 py-2 rounded-full text-sm font-semibold transition ${view === "overview" ? "bg-white shadow text-[#202235]" : "text-slate-600"}`}
-            onClick={() => setView("overview")}
-          >
-            Overview
-          </button>
-          <button
-            className={`px-4 py-2 rounded-full text-sm font-semibold transition ${view === "books" ? "bg-white shadow text-[#202235]" : "text-slate-600"}`}
-            onClick={() => setView("books")}
-          >
-            Books ({summary?.total_books ?? "–"})
-          </button>
-        </nav>
+        <h1 className="text-3xl font-semibold text-[#202235]">Example Library (React + Router)</h1>
+        <p className="text-slate-600 max-w-3xl">One backend, many frontends. Click the tabs to navigate - notice the URL changes!</p>
+        <Navigation totalBooks={summary?.total_books} />
       </header>
 
-      {view === "overview" && summary && featured && (
-        <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-lg shadow-slate-200/40 space-y-2">
-          <h2 className="text-xl font-semibold text-[#202235]">{summary.headline}</h2>
-          <p className="text-slate-600">Featured book</p>
-          <article className="border border-slate-200 rounded-xl p-4 bg-gradient-to-b from-white to-slate-50">
-            <h3 className="text-lg font-semibold text-[#202235]">{featured.title}</h3>
-            <p className="text-slate-600 mt-1">
-              {featured.author} • {featured.year}
-            </p>
-            <p className="text-[#202235] text-sm mt-1">{featured.tags.join(" · ")}</p>
-          </article>
-        </section>
-      )}
+      <Routes>
+        <Route path="/" element={<OverviewPage summary={summary} />} />
+        <Route path="/overview" element={<OverviewPage summary={summary} />} />
+        <Route path="/books" element={<BooksPage books={books} />} />
+      </Routes>
 
-      {view === "books" && (
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {books.map((book) => (
-            <article key={book.id} className="border border-slate-200 rounded-xl p-4 bg-gradient-to-b from-white to-slate-50 shadow-sm">
-              <h3 className="text-lg font-semibold text-[#202235]">{book.title}</h3>
-              <p className="text-slate-600 mt-1">
-                {book.author} • {book.year}
-              </p>
-              <p className="text-[#202235] text-sm mt-1">{book.tags.join(" · ")}</p>
-            </article>
-          ))}
-        </section>
-      )}
+      {/* Show injected routes from server (if available) */}
+      <footer className="text-xs text-slate-400 pt-8 border-t border-slate-200">
+        <details>
+          <summary className="cursor-pointer">Server Routes (injected via window.__LITESTAR_ROUTES__)</summary>
+          <pre className="mt-2 p-2 bg-slate-100 rounded overflow-auto max-h-48">
+            {JSON.stringify((window as Record<string, unknown>).__LITESTAR_ROUTES__ ?? "Not available", null, 2)}
+          </pre>
+        </details>
+      </footer>
     </div>
+  )
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppLayout />
+    </BrowserRouter>
   )
 }
 

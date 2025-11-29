@@ -198,3 +198,4 @@ specs/archive/
 # Agent telemetry logs
 specs/guides/telemetry/*.jsonl
 public/hot
+src/generated

@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 # Available framework templates for --template option
 FRAMEWORK_CHOICES = [
     "react",
+    "react-router",
+    "react-tanstack",
     "react-inertia",
     "vue",
     "vue-inertia",
@@ -32,6 +34,39 @@ def _format_command(command: "Optional[list[str]]") -> str:
     """Join a command list for display."""
 
     return " ".join(command or [])
+
+
+def _print_recommended_config(template_name: str, resource_dir: str, bundle_dir: str) -> None:
+    """Print recommended ViteConfig for the scaffolded template.
+
+    Args:
+        template_name: The name of the template that was scaffolded.
+        resource_dir: The resource directory used.
+        bundle_dir: The bundle directory used.
+    """
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+    from rich.panel import Panel
+
+    # Determine mode based on template
+    spa_templates = {"react-router", "react-tanstack"}
+    mode = "spa" if template_name in spa_templates else "template"
+
+    config_snippet = f"""from pathlib import Path
+from litestar_vite import ViteConfig, PathConfig
+
+vite_config = ViteConfig(
+    mode="{mode}",
+    dev_mode=True,  # Set to False in production
+    types=True,     # Enable TypeScript type generation
+    paths=PathConfig(
+        root=Path(__file__).parent,
+        resource_dir="{resource_dir}",
+        bundle_dir="{bundle_dir}",
+    ),
+)"""
+
+    console.print("\n[bold cyan]Recommended ViteConfig:[/]")
+    console.print(Panel(config_snippet, title="app.py", border_style="dim"))
 
 
 @group(cls=LitestarGroup, name="assets")
@@ -369,6 +404,10 @@ def vite_init(
         config.executor.install(root_path)
 
     console.print("\n[bold green]Vite initialization complete![/]")
+
+    # Print recommended config
+    _print_recommended_config(template, context.resource_dir, context.bundle_dir)
+
     next_steps_cmd = _format_command(config.run_command)
     console.print(f"\n[dim]Next steps:\n  cd {root_path}\n  {next_steps_cmd}[/]")
 

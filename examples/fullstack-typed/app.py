@@ -6,13 +6,13 @@ Demonstrates:
 - OpenAPI + routes export for typed client generation
 """
 
+import os
 from pathlib import Path
 
-from litestar import Litestar, get
+from litestar import Controller, Litestar, get
 from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.exceptions import NotFoundException
-from litestar.middleware.session.server_side import ServerSideSessionConfig
-from litestar.stores.memory import MemoryStore
+from litestar.middleware.session.client_side import CookieBackendConfig
 from litestar.template import TemplateConfig
 from msgspec import Struct
 
@@ -20,6 +20,7 @@ from litestar_vite import ViteConfig, VitePlugin
 from litestar_vite.inertia import InertiaConfig, InertiaPlugin
 
 here = Path(__file__).parent
+SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-key-32c")
 
 
 class Message(Struct):
@@ -48,19 +49,15 @@ BOOKS: list[Book] = [
 ]
 
 
-@get("/", component="Home")
-async def index() -> Message:
-    """Serve the home page."""
-    return Message(message="Welcome to fullstack-typed!")
+def _get_book(book_id: int) -> Book:
+    for book in BOOKS:
+        if book.id == book_id:
+            return book
+    raise NotFoundException(detail=f"Book {book_id} not found")
 
 
-@get("/books", component="Books")
-async def books_page() -> dict[str, object]:
-    return {"summary": await summary(), "books": await books()}
-
-
-@get("/api/summary")
-async def summary() -> Summary:
+def _get_summary() -> Summary:
+    """Build summary data."""
     return Summary(
         app="litestar-vite library",
         headline="One backend, many frontends",
@@ -69,17 +66,29 @@ async def summary() -> Summary:
     )
 
 
-@get("/api/books")
-async def books() -> list[Book]:
-    return BOOKS
+class LibraryController(Controller):
+    """Library API and Inertia page controller."""
 
+    @get("/", component="Home")
+    async def index(self) -> Message:
+        """Serve the home page."""
+        return Message(message="Welcome to fullstack-typed!")
 
-@get("/api/books/{book_id:int}")
-async def book_detail(book_id: int) -> Book:
-    for book in BOOKS:
-        if book.id == book_id:
-            return book
-    raise NotFoundException(detail=f"Book {book_id} not found")
+    @get("/books", component="Books")
+    async def books_page(self) -> dict[str, object]:
+        return {"summary": _get_summary(), "books": BOOKS}
+
+    @get("/api/summary")
+    async def summary(self) -> Summary:
+        return _get_summary()
+
+    @get("/api/books")
+    async def books(self) -> list[Book]:
+        return BOOKS
+
+    @get("/api/books/{book_id:int}")
+    async def book_detail(self, book_id: int) -> Book:
+        return _get_book(book_id)
 
 
 vite = VitePlugin(config=ViteConfig(dev_mode=True))
@@ -87,10 +96,9 @@ inertia = InertiaPlugin(config=InertiaConfig(root_template="index.html"))
 templates = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "templates"))
 
 app = Litestar(
-    route_handlers=[index, books_page, summary, books, book_detail],
+    route_handlers=[LibraryController],
     plugins=[vite, inertia],
     template_config=templates,
-    middleware=[ServerSideSessionConfig().middleware],
-    stores={"sessions": MemoryStore()},
+    middleware=[CookieBackendConfig(secret=SECRET_KEY).middleware],
     debug=True,
 )

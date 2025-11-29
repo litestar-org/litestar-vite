@@ -1,4 +1,4 @@
-@import "https://cdn.jsdelivr.net/npm/tailwindcss@3.4.13/dist/tailwind.min.css";
+@import "tailwindcss";
 
 :root {
   color: #202235;

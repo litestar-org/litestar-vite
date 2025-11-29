@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "react-router-dom": "^7"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "latest",

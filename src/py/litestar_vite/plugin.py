@@ -26,19 +26,53 @@ import threading
 from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Union, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import anyio
 import httpx  # used in proxy middleware health and HTTP forwarding
 import websockets  # used in proxy middleware WS forwarding
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-from litestar.middleware import DefineMiddleware
+from litestar.enums import ScopeType
+from litestar.exceptions import WebSocketDisconnect
+from litestar.middleware import AbstractMiddleware, DefineMiddleware
 from litestar.plugins import CLIPlugin, InitPluginProtocol
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
-from rich import print as rich_print
 
 from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES
 from litestar_vite.exceptions import ViteProcessError
+
+# Cache debug flag check to avoid repeated os.environ lookups
+_VITE_PROXY_DEBUG: bool | None = None
+
+
+def _is_proxy_debug() -> bool:
+    """Check if VITE_PROXY_DEBUG is enabled (cached)."""
+    global _VITE_PROXY_DEBUG  # noqa: PLW0603
+    if _VITE_PROXY_DEBUG is None:
+        _VITE_PROXY_DEBUG = os.environ.get("VITE_PROXY_DEBUG", "").lower() in ("1", "true", "yes")
+    return _VITE_PROXY_DEBUG
+
+
+def _configure_proxy_logging() -> None:
+    """Suppress verbose proxy-related logging unless debug is enabled.
+
+    Suppresses INFO-level logs from:
+    - httpx: logs every HTTP request
+    - websockets: logs connection events
+    - uvicorn.protocols.websockets: logs "connection open/closed"
+
+    Only show these logs when VITE_PROXY_DEBUG is enabled.
+    """
+    import logging
+
+    if not _is_proxy_debug():
+        for logger_name in ("httpx", "websockets", "uvicorn.protocols.websockets"):
+            logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+
+# Configure proxy logging on module load
+_configure_proxy_logging()
+
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator, Sequence
@@ -64,6 +98,7 @@ if TYPE_CHECKING:
     from litestar_vite.config import ViteConfig
     from litestar_vite.executor import JSExecutor
     from litestar_vite.loader import ViteAssetLoader
+    from litestar_vite.spa import ViteSPAHandler
 
 
 def set_environment(config: "ViteConfig") -> None:
@@ -78,8 +113,9 @@ def set_environment(config: "ViteConfig") -> None:
     litestar_version = _resolve_litestar_version()
     os.environ.setdefault("ASSET_URL", config.asset_url)
     os.environ.setdefault("VITE_ALLOW_REMOTE", str(True))
-    os.environ.setdefault("VITE_PORT", str(config.port))
-    os.environ.setdefault("VITE_HOST", config.host)
+    # VITE_PORT must be force-set because _ensure_proxy_target() may have picked a new port
+    os.environ["VITE_PORT"] = str(config.port)
+    os.environ["VITE_HOST"] = config.host
     os.environ.setdefault("VITE_PROTOCOL", config.protocol)
     os.environ.setdefault("VITE_PROXY_MODE", config.proxy_mode)
     os.environ.setdefault("LITESTAR_VERSION", litestar_version)
@@ -88,6 +124,22 @@ def set_environment(config: "ViteConfig") -> None:
     os.environ.setdefault("APP_URL", f"http://localhost:{os.environ.get('LITESTAR_PORT', '8000')}")
     if config.is_dev_mode:
         os.environ.setdefault("VITE_DEV_MODE", str(config.is_dev_mode))
+
+
+def set_app_environment(app: "Litestar") -> None:
+    """Set environment variables derived from the Litestar app instance.
+
+    This is called after set_environment() once the app is available,
+    to export app-specific configuration like OpenAPI paths.
+
+    Args:
+        app: The Litestar application instance.
+    """
+    # Export OpenAPI schema path for Vite plugin health checks
+    openapi_config = app.openapi_config
+    if openapi_config is not None and openapi_config.path is not None and isinstance(openapi_config.path, str):
+        # The path attribute contains the schema endpoint path (default: "/schema")
+        os.environ.setdefault("LITESTAR_OPENAPI_PATH", openapi_config.path)
 
 
 def _resolve_litestar_version() -> str:
@@ -135,21 +187,35 @@ def _normalize_prefix(prefix: str) -> str:
     return prefix
 
 
-class ViteProxyMiddleware:
-    """ASGI middleware to proxy Vite dev traffic (HTTP + WS) to internal Vite server."""
+class ViteProxyMiddleware(AbstractMiddleware):
+    """ASGI middleware to proxy Vite dev HTTP traffic to internal Vite server.
+
+    HTTP requests use httpx.AsyncClient with optional HTTP/2 support for better
+    connection multiplexing. WebSocket traffic (used by Vite HMR) is handled by
+    a dedicated WebSocket route handler created by create_vite_hmr_handler().
+
+    The middleware reads the Vite server URL from the hotfile dynamically,
+    ensuring it always connects to the correct Vite server even if the port changes.
+    """
+
+    # Only handle HTTP requests - WebSocket HMR is handled by a dedicated route handler
+    scopes = {ScopeType.HTTP}
 
     def __init__(
         self,
         app: "ASGIApp",
-        target_base_url: str,
-        asset_url: Optional[str] = None,
-        resource_dir: Optional[Path] = None,
-        bundle_dir: Optional[Path] = None,
-        root_dir: Optional[Path] = None,
+        hotfile_path: Path,
+        asset_url: "str | None" = None,
+        resource_dir: "Path | None" = None,
+        bundle_dir: "Path | None" = None,
+        root_dir: "Path | None" = None,
+        http2: bool = True,
     ) -> None:
-        self.app = app
-        self.target_base_url = target_base_url.rstrip("/")
+        super().__init__(app)
+        self.hotfile_path = hotfile_path
+        self._cached_target: "str | None" = None
         self.asset_prefix = _normalize_prefix(asset_url) if asset_url else "/"
+        self.http2 = http2
         self._proxy_path_prefixes = _normalize_proxy_prefixes(
             base_prefixes=_PROXY_PATH_PREFIXES,
             asset_url=asset_url,
@@ -158,17 +224,30 @@ class ViteProxyMiddleware:
             root_dir=root_dir,
         )
 
+    def _get_target_base_url(self) -> "str | None":
+        """Read the Vite server URL from the hotfile.
+
+        Caches the result to avoid reading the file on every request.
+        The cache is invalidated if the hotfile is modified.
+        """
+        try:
+            url = self.hotfile_path.read_text().strip()
+            if url != self._cached_target:
+                self._cached_target = url
+                if _is_proxy_debug():
+                    console.print(f"[dim][vite-proxy] Target: {url}[/]")
+            return url.rstrip("/")
+        except FileNotFoundError:
+            return None
+
     async def __call__(self, scope: "Scope", receive: "Receive", send: "Send") -> None:
         scope_dict = cast("dict[str, Any]", scope)
         path = scope_dict.get("path", "")
         should = self._should_proxy(path)
-        if os.environ.get("VITE_PROXY_DEBUG"):
-            rich_print(f"[vite-proxy] path={path!s} should_proxy={should}")
-        if scope["type"] == "http" and should:
+        if _is_proxy_debug():
+            console.print(f"[dim][vite-proxy] {path} → proxy={should}[/]")
+        if should:
             await self._proxy_http(scope_dict, receive, send)
-            return
-        if scope["type"] == "websocket" and should:
-            await self._proxy_ws(scope_dict, receive, send)
             return
         await self.app(scope, receive, send)
 
@@ -183,6 +262,19 @@ class ViteProxyMiddleware:
         return decoded.startswith(self._proxy_path_prefixes) or path.startswith(self._proxy_path_prefixes)
 
     async def _proxy_http(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        target_base_url = self._get_target_base_url()
+        if target_base_url is None:
+            # Hotfile not found - Vite server not running
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 503,
+                    "headers": [(b"content-type", b"text/plain")],
+                }
+            )
+            await send({"type": "http.response.body", "body": b"Vite dev server not running"})
+            return
+
         method = scope.get("method", "GET")
         raw_path = scope.get("raw_path", b"").decode()
         query_string = scope.get("query_string", b"").decode()
@@ -190,7 +282,7 @@ class ViteProxyMiddleware:
         if self.asset_prefix != "/" and not raw_path.startswith(self.asset_prefix):
             proxied_path = f"{self.asset_prefix.rstrip('/')}{raw_path}"
 
-        url = f"{self.target_base_url}{proxied_path}"
+        url = f"{target_base_url}{proxied_path}"
         if query_string:
             url = f"{url}?{query_string}"
 
@@ -204,7 +296,17 @@ class ViteProxyMiddleware:
             body += event.get("body", b"")
             more_body = event.get("more_body", False)
 
-        async with httpx.AsyncClient() as client:
+        # Use HTTP/2 when enabled for better connection multiplexing
+        # Note: httpx handles the protocol negotiation automatically
+        # HTTP/2 requires the h2 package - gracefully fallback if not installed
+        http2_enabled = self.http2
+        if http2_enabled:
+            try:
+                import h2  # noqa: F401  # pyright: ignore[reportMissingImports,reportUnusedImport]
+            except ImportError:
+                http2_enabled = False
+
+        async with httpx.AsyncClient(http2=http2_enabled) as client:
             try:
                 upstream_resp = await client.request(method, url, headers=headers, content=body, timeout=10.0)
             except httpx.HTTPError as exc:  # pragma: no cover - network failure path
@@ -228,45 +330,171 @@ class ViteProxyMiddleware:
         )
         await send({"type": "http.response.body", "body": upstream_resp.content})
 
-    async def _proxy_ws(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
-        raw_path = scope.get("raw_path", b"").decode()
-        query_string = scope.get("query_string", b"").decode()
-        proxied_path = raw_path
-        if self.asset_prefix != "/" and not raw_path.startswith(self.asset_prefix):
-            proxied_path = f"{self.asset_prefix.rstrip('/')}{raw_path}"
 
-        target = f"{self.target_base_url.replace('http', 'ws')}{proxied_path}"
-        if query_string:
-            target = f"{target}?{query_string}"
+def _build_hmr_target_url(
+    hotfile_path: Path,
+    scope: dict[str, Any],
+    hmr_path: str,
+    asset_url: str,
+) -> "str | None":
+    """Build the target WebSocket URL for Vite HMR proxy.
 
-        headers = [(k.decode(), v.decode()) for k, v in scope.get("headers", [])]
-        await send({"type": "websocket.accept"})
+    Returns None if the hotfile doesn't exist (Vite not running).
 
-        async with websockets.connect(target, extra_headers=headers) as upstream:
+    Note: Vite's HMR WebSocket listens at {base}{hmr.path}, so we preserve
+    the full path including the asset prefix (e.g., /static/vite-hmr).
+    """
+    try:
+        vite_url = hotfile_path.read_text().strip()
+    except FileNotFoundError:
+        return None
 
-            async def client_to_upstream() -> None:
-                while True:
-                    message = await receive()
-                    if message["type"] == "websocket.receive":
-                        if "text" in message and message["text"] is not None:
-                            await upstream.send(message["text"])
-                        if "bytes" in message and message["bytes"] is not None:
-                            await upstream.send(message["bytes"])
-                    elif message["type"] == "websocket.disconnect":
-                        await upstream.close()
-                        break
+    ws_url = vite_url.replace("http://", "ws://").replace("https://", "wss://")
+    # Use the original path as-is - Vite expects the full path including base
+    original_path = scope.get("path", hmr_path)
+    query_string = scope.get("query_string", b"").decode()
 
-            async def upstream_to_client() -> None:
-                async for msg in upstream:
-                    if isinstance(msg, str):
-                        await send({"type": "websocket.send", "text": msg})
-                    else:
-                        await send({"type": "websocket.send", "bytes": msg})
-                await send({"type": "websocket.close", "code": 1000})
+    target = f"{ws_url}{original_path}"
+    if query_string:
+        target = f"{target}?{query_string}"
 
-            async with anyio.create_task_group() as tg:
-                tg.start_soon(client_to_upstream)
-                tg.start_soon(upstream_to_client)
+    if _is_proxy_debug():
+        console.print(f"[dim][vite-hmr] Connecting: {target}[/]")
+
+    return target
+
+
+def _extract_forward_headers(scope: dict[str, Any]) -> list[tuple[str, str]]:
+    """Extract headers to forward, excluding WebSocket handshake headers.
+
+    Note: We exclude protocol-specific headers that websockets library handles itself.
+    The sec-websocket-protocol header is also excluded since we handle subprotocols separately.
+    """
+    skip_headers = (
+        b"host",
+        b"upgrade",
+        b"connection",
+        b"sec-websocket-key",
+        b"sec-websocket-version",
+        b"sec-websocket-protocol",
+        b"sec-websocket-extensions",
+    )
+    return [(k.decode(), v.decode()) for k, v in scope.get("headers", []) if k.lower() not in skip_headers]
+
+
+def _extract_subprotocols(scope: dict[str, Any]) -> list[str]:
+    """Extract WebSocket subprotocols from the request headers."""
+    for key, value in scope.get("headers", []):
+        if key.lower() == b"sec-websocket-protocol":
+            # Subprotocols are comma-separated
+            return [p.strip() for p in value.decode().split(",")]
+    return []
+
+
+def create_vite_hmr_handler(
+    hotfile_path: Path,
+    hmr_path: str = "/static/vite-hmr",
+    asset_url: str = "/static/",
+) -> Any:
+    """Create a WebSocket route handler for Vite HMR proxy.
+
+    This handler proxies WebSocket connections from the browser to the Vite
+    dev server for Hot Module Replacement (HMR) functionality.
+
+    The handler reads the Vite server URL from the hotfile on each connection,
+    ensuring it always connects to the correct Vite server even if the port changes.
+
+    Args:
+        hotfile_path: Path to the hotfile written by the Vite plugin.
+        hmr_path: The path to register the WebSocket handler at (e.g., "/static/vite-hmr").
+        asset_url: The asset URL prefix to strip when connecting to Vite (e.g., "/static/").
+
+    Returns:
+        A WebsocketRouteHandler that proxies HMR connections.
+    """
+    from litestar import WebSocket, websocket
+
+    @websocket(path=hmr_path, opt={"exclude_from_auth": True})
+    async def vite_hmr_proxy(socket: "WebSocket[Any, Any, Any]") -> None:
+        """Proxy WebSocket messages between browser and Vite dev server."""
+        scope_dict = dict(socket.scope)
+        target = _build_hmr_target_url(hotfile_path, scope_dict, hmr_path, asset_url)
+        if target is None:
+            console.print("[yellow][vite-hmr] Vite dev server not running[/]")
+            await socket.close(code=1011, reason="Vite dev server not running")
+            return
+
+        headers = _extract_forward_headers(scope_dict)
+        subprotocols = _extract_subprotocols(scope_dict)
+        await socket.accept(subprotocols=subprotocols[0] if subprotocols else None)
+
+        try:
+            # Pass subprotocols to Vite - it may require "vite-hmr" protocol
+            async with websockets.connect(
+                target,
+                additional_headers=headers,
+                open_timeout=10,
+                subprotocols=subprotocols if subprotocols else None,
+            ) as upstream:
+                if _is_proxy_debug():
+                    console.print("[dim][vite-hmr] ✓ Connected[/]")
+
+                async def client_to_upstream() -> None:
+                    """Forward messages from browser to Vite."""
+                    try:
+                        while True:
+                            # Vite HMR uses text messages (JSON)
+                            data = await socket.receive_text()
+                            await upstream.send(data)
+                    except (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed):
+                        # Client disconnected - normal shutdown
+                        pass
+                    finally:
+                        with suppress(websockets.ConnectionClosed):
+                            await upstream.close()
+
+                async def upstream_to_client() -> None:
+                    """Forward messages from Vite to browser."""
+                    try:
+                        async for msg in upstream:
+                            if isinstance(msg, str):
+                                await socket.send_text(msg)
+                            else:
+                                await socket.send_bytes(msg)
+                    except (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed):
+                        # Connection closed - normal shutdown
+                        pass
+                    finally:
+                        with suppress(anyio.ClosedResourceError, WebSocketDisconnect):
+                            await socket.close()
+
+                async with anyio.create_task_group() as tg:
+                    tg.start_soon(client_to_upstream)
+                    tg.start_soon(upstream_to_client)
+        except TimeoutError:
+            if _is_proxy_debug():
+                console.print("[yellow][vite-hmr] Connection timeout - Vite may still be starting[/]")
+            with suppress(anyio.ClosedResourceError, WebSocketDisconnect):
+                await socket.close(code=1011, reason="Vite HMR connection timeout")
+        except OSError as exc:
+            if _is_proxy_debug():
+                console.print(f"[yellow][vite-hmr] Connection failed: {exc}[/]")
+            with suppress(anyio.ClosedResourceError, WebSocketDisconnect):
+                await socket.close(code=1011, reason="Vite HMR connection failed")
+        except WebSocketDisconnect:
+            # Client disconnected - normal shutdown, no error logging needed
+            pass
+        except ExceptionGroup as eg:
+            # Filter out WebSocketDisconnect from the group - they're normal disconnects
+            non_disconnect_errors = [
+                e for e in eg.exceptions if not isinstance(e, (WebSocketDisconnect, websockets.ConnectionClosed, anyio.ClosedResourceError))
+            ]
+            if non_disconnect_errors:
+                # Re-raise only the unexpected errors
+                raise ExceptionGroup("HMR proxy errors", non_disconnect_errors) from eg
+            # All exceptions were normal disconnects - suppress silently
+
+    return vite_hmr_proxy
 
 
 @dataclass
@@ -276,16 +504,16 @@ class StaticFilesConfig:
     This configuration is passed to Litestar's static files router.
     """
 
-    after_request: "Optional[AfterRequestHookHandler]" = None
-    after_response: "Optional[AfterResponseHookHandler]" = None
-    before_request: "Optional[BeforeRequestHookHandler]" = None
-    cache_control: "Optional[CacheControlHeader]" = None
-    exception_handlers: "Optional[ExceptionHandlersMap]" = None
-    guards: "Optional[list[Guard]]" = None
-    middleware: "Optional[Sequence[Middleware]]" = None
-    opt: "Optional[dict[str, Any]]" = None
-    security: "Optional[Sequence[SecurityRequirement]]" = None
-    tags: "Optional[Sequence[str]]" = None
+    after_request: "AfterRequestHookHandler | None" = None
+    after_response: "AfterResponseHookHandler | None" = None
+    before_request: "BeforeRequestHookHandler | None" = None
+    cache_control: "CacheControlHeader | None" = None
+    exception_handlers: "ExceptionHandlersMap | None" = None
+    guards: "list[Guard] | None" = None
+    middleware: "Sequence[Middleware] | None" = None
+    opt: "dict[str, Any] | None" = None
+    security: "Sequence[SecurityRequirement] | None" = None
+    tags: "Sequence[str] | None" = None
 
 
 class ViteProcess:
@@ -303,7 +531,7 @@ class ViteProcess:
         Args:
             executor: The JavaScript executor to use for running Vite.
         """
-        self.process: "Optional[subprocess.Popen[bytes]]" = None
+        self.process: "subprocess.Popen[bytes] | None" = None
         self._lock = threading.Lock()
         self._executor = executor
         if not ViteProcess._atexit_registered:
@@ -312,7 +540,7 @@ class ViteProcess:
             atexit.register(self._atexit_stop)
             ViteProcess._atexit_registered = True
 
-    def start(self, command: list[str], cwd: "Optional[Union[Path, str]]") -> None:
+    def start(self, command: list[str], cwd: "Path | str | None") -> None:
         """Start the Vite process.
 
         Args:
@@ -419,6 +647,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         "_asset_loader",
         "_config",
         "_proxy_target",
+        "_spa_handler",
         "_static_files_config",
         "_use_server_lifespan",
         "_vite_process",
@@ -426,9 +655,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
     def __init__(
         self,
-        config: "Optional[ViteConfig]" = None,
-        asset_loader: "Optional[ViteAssetLoader]" = None,
-        static_files_config: "Optional[StaticFilesConfig]" = None,
+        config: "ViteConfig | None" = None,
+        asset_loader: "ViteAssetLoader | None" = None,
+        static_files_config: "StaticFilesConfig | None" = None,
     ) -> None:
         """Initialize the Vite plugin.
 
@@ -446,7 +675,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._vite_process = ViteProcess(executor=config.executor)
         self._static_files_config: dict[str, Any] = static_files_config.__dict__ if static_files_config else {}
         self._use_server_lifespan = True
-        self._proxy_target: "Optional[str]" = None
+        self._proxy_target: "str | None" = None
+        self._spa_handler: "ViteSPAHandler | None" = None
 
     @property
     def config(self) -> "ViteConfig":
@@ -479,11 +709,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._config.runtime.port = _pick_free_port()
 
         self._proxy_target = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
-
-        # Write hotfile for JS plugin consumption
-        hotfile_path = self._config.bundle_dir / self._config.hot_file
-        hotfile_path.parent.mkdir(parents=True, exist_ok=True)
-        hotfile_path.write_text(self._proxy_target)
+        # Note: We don't write the hotfile here anymore.
+        # The TypeScript Vite plugin writes it when the dev server starts.
+        # This ensures the hotfile contains the actual Vite server URL.
 
     def on_cli_init(self, cli: "Group") -> None:
         """Register CLI commands.
@@ -564,19 +792,47 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             static_files_config: dict[str, Any] = {**base_config, **self._static_files_config}
             app_config.route_handlers.append(create_static_files_router(**static_files_config))
 
-        # Add dev proxy middleware for single-port mode
+        # Add dev proxy middleware and WebSocket HMR handler for single-port mode
         if self._config.is_dev_mode and self._config.proxy_mode == "proxy":
             self._ensure_proxy_target()
+            # Both middleware and WebSocket handler read the Vite URL from the hotfile
+            # This ensures they always connect to the correct port even if it changes
+            # Resolve bundle_dir relative to root_dir to handle --app-dir scenarios
+            bundle_dir = self._config.bundle_dir
+            if not bundle_dir.is_absolute():
+                bundle_dir = self._config.root_dir / bundle_dir
+            hotfile_path = bundle_dir / self._config.hot_file
+            # Add middleware for HTTP proxy requests
             app_config.middleware.append(
                 DefineMiddleware(
                     ViteProxyMiddleware,
-                    target_base_url=self._proxy_target or "",
+                    hotfile_path=hotfile_path,
                     asset_url=self._config.asset_url,
                     resource_dir=self._config.resource_dir,
                     bundle_dir=self._config.bundle_dir,
                     root_dir=self._config.root_dir,
+                    http2=self._config.http2,
                 )
             )
+            # Add WebSocket route handler for HMR
+            # Vite HMR uses WebSocket at {asset_url}/vite-hmr
+            hmr_path = f"{self._config.asset_url.rstrip('/')}/vite-hmr"
+            app_config.route_handlers.append(
+                create_vite_hmr_handler(
+                    hotfile_path=hotfile_path,
+                    hmr_path=hmr_path,
+                    asset_url=self._config.asset_url,
+                )
+            )
+            console.print(f"[dim]Vite HMR proxy enabled at {hmr_path}[/]")
+
+        # Add SPA catch-all route handler if in SPA mode
+        if self._config.mode == "spa" and self._config.spa_handler:
+            from litestar_vite.spa import ViteSPAHandler
+
+            self._spa_handler = ViteSPAHandler(self._config)
+            # Add the catch-all route - it should be last to avoid conflicts with API routes
+            app_config.route_handlers.append(self._spa_handler.create_route_handler())
 
         return app_config
 
@@ -660,6 +916,38 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         except (OSError, TypeError, ValueError, ImportError) as e:  # pragma: no cover
             console.print(f"[yellow]! Type export failed: {e}[/]")
 
+    def _inject_routes_to_spa_handler(self, app: "Litestar") -> None:
+        """Extract route metadata and inject it into the SPA handler.
+
+        This method is called during lifespan startup when SPA route injection
+        is enabled. It uses generate_routes_json() to extract routes and passes
+        them to the SPA handler for HTML injection.
+
+        Args:
+            app: The Litestar application instance.
+        """
+        spa_config = self._config.spa_config
+        if self._spa_handler is None or spa_config is None:
+            return
+
+        if not spa_config.inject_routes:
+            return
+
+        try:
+            from litestar_vite.codegen import generate_routes_json
+
+            # Extract routes with filtering
+            routes_data = generate_routes_json(
+                app,
+                only=spa_config.routes_include,
+                exclude=spa_config.routes_exclude,
+                include_components=True,
+            )
+            self._spa_handler.set_routes_metadata(routes_data)
+            console.print(f"[dim]Injected {len(routes_data.get('routes', {}))} routes into SPA handler[/]")
+        except (ImportError, TypeError, ValueError, AttributeError) as e:
+            console.print(f"[yellow]! Route injection failed: {e}[/]")
+
     @contextmanager
     def server_lifespan(self, app: "Litestar") -> "Iterator[None]":
         """Synchronous context manager for Vite server lifecycle.
@@ -672,14 +960,27 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         Yields:
             None
         """
+        import asyncio
+
+        # Ensure proxy target is set BEFORE environment variables (port selection)
+        if self._use_server_lifespan and self._config.is_dev_mode:
+            self._ensure_proxy_target()
+
         if self._config.set_environment:
             set_environment(config=self._config)
+            set_app_environment(app)
+
+        # Initialize SPA handler if enabled
+        if self._spa_handler is not None:
+            asyncio.get_event_loop().run_until_complete(self._spa_handler.initialize())
+
+        # Inject route metadata into SPA handler (if configured)
+        self._inject_routes_to_spa_handler(app)
 
         # Export types on startup (when enabled)
         self._export_types_sync(app)
 
         if self._use_server_lifespan and self._config.is_dev_mode:
-            self._ensure_proxy_target()
             if not app.debug:
                 console.print("[yellow]WARNING: Vite dev mode is enabled in production![/]")
 
@@ -701,8 +1002,16 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             finally:
                 self._vite_process.stop()
                 console.print("[yellow]Vite process stopped.[/]")
+                # Shutdown SPA handler
+                if self._spa_handler is not None:
+                    asyncio.get_event_loop().run_until_complete(self._spa_handler.shutdown())
         else:
-            yield
+            try:
+                yield
+            finally:
+                # Shutdown SPA handler
+                if self._spa_handler is not None:
+                    asyncio.get_event_loop().run_until_complete(self._spa_handler.shutdown())
 
     @asynccontextmanager
     async def async_server_lifespan(self, app: "Litestar") -> "AsyncIterator[None]":
@@ -721,11 +1030,19 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
         if self._config.set_environment:
             set_environment(config=self._config)
+            set_app_environment(app)
 
         # Initialize asset loader asynchronously
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader(config=self._config)
         await self._asset_loader.initialize()
+
+        # Initialize SPA handler if enabled
+        if self._spa_handler is not None:
+            await self._spa_handler.initialize()
+
+        # Inject route metadata into SPA handler (if configured)
+        self._inject_routes_to_spa_handler(app)
 
         # Export types on startup (when enabled)
         self._export_types_sync(app)
@@ -752,16 +1069,24 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             finally:
                 self._vite_process.stop()
                 console.print("[yellow]Vite process stopped.[/]")
+                # Shutdown SPA handler
+                if self._spa_handler is not None:
+                    await self._spa_handler.shutdown()
         else:
-            yield
+            try:
+                yield
+            finally:
+                # Shutdown SPA handler
+                if self._spa_handler is not None:
+                    await self._spa_handler.shutdown()
 
 
 def _normalize_proxy_prefixes(
     base_prefixes: tuple[str, ...],
-    asset_url: "Optional[str]" = None,
-    resource_dir: "Optional[Path]" = None,
-    bundle_dir: "Optional[Path]" = None,
-    root_dir: "Optional[Path]" = None,
+    asset_url: "str | None" = None,
+    resource_dir: "Path | None" = None,
+    bundle_dir: "Path | None" = None,
+    root_dir: "Path | None" = None,
 ) -> tuple[str, ...]:
     def _normalize_prefix(prefix: str) -> str:
         if not prefix.startswith("/"):
@@ -775,7 +1100,7 @@ def _normalize_proxy_prefixes(
     if asset_url:
         prefixes.append(_normalize_prefix(asset_url))
 
-    def _add_path(path: Union[Path, str, None]) -> None:
+    def _add_path(path: Path | str | None) -> None:
         if path is None:
             return
         p = Path(path)

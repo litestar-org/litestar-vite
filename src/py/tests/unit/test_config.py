@@ -5,6 +5,7 @@ import pytest
 from litestar_vite.config import (
     PathConfig,
     RuntimeConfig,
+    SPAConfig,
     ViteConfig,
 )
 from litestar_vite.executor import (
@@ -193,3 +194,106 @@ def test_mode_detection_prefers_index_html_over_jinja(tmp_path: Path) -> None:
 
     # Even if Jinja2 is installed, should prefer SPA mode due to index.html
     assert config.mode == "spa"
+
+
+# ============================================================================
+# SPAConfig tests
+# ============================================================================
+
+
+def test_spa_config_defaults() -> None:
+    """Test SPAConfig has sensible defaults."""
+    spa_config = SPAConfig()
+
+    assert spa_config.inject_routes is True
+    assert spa_config.routes_var_name == "__LITESTAR_ROUTES__"
+    assert spa_config.routes_include is None
+    assert spa_config.routes_exclude == ["vite_spa"]  # Excludes catch-all by default
+    assert spa_config.app_selector == "#app"
+    assert spa_config.cache_transformed_html is True
+
+
+def test_spa_config_custom_values() -> None:
+    """Test SPAConfig with custom values."""
+    spa_config = SPAConfig(
+        inject_routes=False,
+        routes_var_name="ROUTES",
+        routes_include=["api_*", "public_*"],
+        routes_exclude=["_internal"],
+        app_selector="#root",
+        cache_transformed_html=False,
+    )
+
+    assert spa_config.inject_routes is False
+    assert spa_config.routes_var_name == "ROUTES"
+    assert spa_config.routes_include == ["api_*", "public_*"]
+    assert spa_config.routes_exclude == ["_internal"]
+    assert spa_config.app_selector == "#root"
+    assert spa_config.cache_transformed_html is False
+
+
+def test_vite_config_spa_bool_shortcut() -> None:
+    """Test spa=True creates SPAConfig with defaults."""
+    config = ViteConfig(spa=True)
+
+    assert isinstance(config.spa, SPAConfig)
+    assert config.spa_config is not None
+    assert config.spa_config.inject_routes is True
+    assert config.spa_config.routes_var_name == "__LITESTAR_ROUTES__"
+
+
+def test_vite_config_spa_false() -> None:
+    """Test spa=False explicitly disables SPA config."""
+    config = ViteConfig(mode="spa", spa=False)
+
+    assert config.spa is False
+    assert config.spa_config is None
+
+
+def test_vite_config_spa_explicit_config() -> None:
+    """Test spa can be set to an explicit SPAConfig."""
+    spa_config = SPAConfig(
+        routes_var_name="__CUSTOM_ROUTES__",
+        routes_exclude=["_internal*"],
+    )
+    config = ViteConfig(spa=spa_config)
+
+    assert config.spa is spa_config
+    assert config.spa_config is spa_config
+    assert config.spa_config.routes_var_name == "__CUSTOM_ROUTES__"
+    assert config.spa_config.routes_exclude == ["_internal*"]
+
+
+def test_vite_config_spa_auto_enabled_for_spa_mode(tmp_path: Path) -> None:
+    """Test that SPAConfig is auto-enabled when mode='spa'."""
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<html></html>")
+
+    # Don't explicitly set spa - it should be auto-enabled for mode="spa"
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=resource_dir),
+    )
+
+    assert isinstance(config.spa, SPAConfig)
+    assert config.spa_config is not None
+    assert config.spa_config.inject_routes is True
+
+
+def test_vite_config_spa_not_auto_enabled_for_template_mode() -> None:
+    """Test that SPAConfig is NOT auto-enabled for template mode."""
+    config = ViteConfig(mode="template")
+
+    # spa should remain False for template mode
+    assert config.spa is False
+    assert config.spa_config is None
+
+
+def test_vite_config_spa_can_be_explicitly_disabled() -> None:
+    """Test that spa=False prevents auto-enabling even for SPA mode."""
+    config = ViteConfig(mode="spa", spa=False)
+
+    # Explicitly disabled, should stay False
+    assert config.spa is False
+    assert config.spa_config is None

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from litestar import Litestar, get
+from litestar import Controller, Litestar, get
 from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.exceptions import NotFoundException
 from litestar.response import Template
@@ -43,17 +43,8 @@ def _get_book(book_id: int) -> Book:
     raise NotFoundException(detail=f"Book {book_id} not found")
 
 
-@get("/")
-async def index() -> Template:
-    """Serve the home page with initial data."""
-    return Template(
-        template_name="index.html.j2",
-        context={"summary": await summary(), "books": await books()},
-    )
-
-
-@get("/api/summary")
-async def summary() -> Summary:
+def _get_summary() -> Summary:
+    """Build summary data."""
     return Summary(
         app="litestar-vite library",
         headline="One backend, many frontends",
@@ -62,21 +53,35 @@ async def summary() -> Summary:
     )
 
 
-@get("/api/books")
-async def books() -> list[Book]:
-    return BOOKS
+class LibraryController(Controller):
+    """Library API and web controller."""
 
+    @get("/")
+    async def index(self) -> Template:
+        """Serve the home page with initial data."""
+        return Template(
+            template_name="index.html.j2",
+            context={"summary": _get_summary(), "books": BOOKS},
+        )
 
-@get("/api/books/{book_id:int}")
-async def book_detail(book_id: int) -> Book:
-    return _get_book(book_id)
+    @get("/api/summary")
+    async def summary(self) -> Summary:
+        return _get_summary()
+
+    @get("/api/books")
+    async def books(self) -> list[Book]:
+        return BOOKS
+
+    @get("/api/books/{book_id:int}")
+    async def book_detail(self, book_id: int) -> Book:
+        return _get_book(book_id)
 
 
 vite = VitePlugin(config=ViteConfig(dev_mode=True))
 templates = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "templates"))
 
 app = Litestar(
-    route_handlers=[index, summary, books, book_detail],
+    route_handlers=[LibraryController],
     plugins=[vite],
     template_config=templates,
     debug=True,

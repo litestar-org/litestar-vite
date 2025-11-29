@@ -10,7 +10,7 @@ import { type ConfigEnv, type Plugin, type PluginOption, type ResolvedConfig, ty
 import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-reload"
 
 import { resolveInstallHint } from "./install-hint.js"
-import { type LitestarMeta, loadLitestarMeta } from "./litestar-meta.js"
+import { type BackendStatus, type LitestarMeta, checkBackendAvailability, loadLitestarMeta } from "./litestar-meta.js"
 
 const execAsync = promisify(exec)
 
@@ -282,6 +282,34 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
         },
         server: {
           origin: userConfig.server?.origin ?? "__litestar_vite_placeholder__",
+          // Auto-configure HMR to use a path that routes through Litestar proxy
+          // Note: Vite automatically prepends `base` to `hmr.path`, so we just use "vite-hmr"
+          // Result: base="/static/" + path="vite-hmr" = "/static/vite-hmr"
+          hmr:
+            userConfig.server?.hmr === false
+              ? false
+              : {
+                  path: "vite-hmr",
+                  ...(serverConfig?.hmr ?? {}),
+                  ...(userConfig.server?.hmr === true ? {} : userConfig.server?.hmr),
+                },
+          // Auto-configure proxy to forward API requests to Litestar backend
+          // This allows the app to work when accessing Vite directly (not through Litestar proxy)
+          // Only proxies /api and /schema routes - everything else is handled by Vite
+          proxy:
+            userConfig.server?.proxy ??
+            (env.APP_URL
+              ? {
+                  "/api": {
+                    target: env.APP_URL,
+                    changeOrigin: true,
+                  },
+                  "/schema": {
+                    target: env.APP_URL,
+                    changeOrigin: true,
+                  },
+                }
+              : undefined),
           ...(process.env.VITE_ALLOW_REMOTE
             ? {
                 host: userConfig.server?.host ?? "0.0.0.0",
@@ -292,13 +320,6 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
           ...(serverConfig
             ? {
                 host: userConfig.server?.host ?? serverConfig.host,
-                hmr:
-                  userConfig.server?.hmr === false
-                    ? false
-                    : {
-                        ...serverConfig.hmr,
-                        ...(userConfig.server?.hmr === true ? {} : userConfig.server?.hmr),
-                      },
                 https: userConfig.server?.https ?? serverConfig.https,
               }
             : undefined),
@@ -355,6 +376,13 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
       const envDir = resolvedConfig.envDir || process.cwd()
       const appUrl = loadEnv(resolvedConfig.mode, envDir, "APP_URL").APP_URL ?? "undefined"
 
+      // Resolve hotFile path relative to Vite root to handle --app-dir scenarios
+      // The hotFile path in pluginConfig may be relative, so we need to resolve it
+      // against the Vite root directory to ensure it's written/read from the correct location
+      if (pluginConfig.hotFile && !path.isAbsolute(pluginConfig.hotFile)) {
+        pluginConfig.hotFile = path.resolve(server.config.root, pluginConfig.hotFile)
+      }
+
       // Find index.html path *once* when server starts for logging purposes
       const initialIndexPath = await findIndexHtmlPath(server, pluginConfig)
 
@@ -367,11 +395,16 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
           fs.mkdirSync(path.dirname(pluginConfig.hotFile), { recursive: true })
           fs.writeFileSync(pluginConfig.hotFile, viteDevServerUrl)
 
-          setTimeout(() => {
+          // Check backend availability and log status
+          setTimeout(async () => {
             const version = litestarMeta.litestarVersion ?? process.env.LITESTAR_VERSION ?? "unknown"
+            const backendStatus = await checkBackendAvailability(appUrl)
+
             // Use resolvedConfig.logger for consistency
             resolvedConfig.logger.info(`\n  ${colors.red(`${colors.bold("LITESTAR")} ${version}`)}  ${colors.dim("plugin")} ${colors.bold(`v${pluginVersion()}`)}`)
             resolvedConfig.logger.info("")
+
+            // Index mode
             if (initialIndexPath) {
               resolvedConfig.logger.info(
                 `  ${colors.green("➜")}  ${colors.bold("Index Mode")}: SPA (Serving ${colors.cyan(path.relative(server.config.root, initialIndexPath))} from root)`,
@@ -379,9 +412,57 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
             } else {
               resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Index Mode")}: Litestar (Plugin will serve placeholder for /index.html)`)
             }
+
+            // Dev server URL
             resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Dev Server")}: ${colors.cyan(viteDevServerUrl)}`)
-            resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("App URL")}:    ${colors.cyan(appUrl.replace(/:(\d+)/, (_, port) => `:${colors.bold(port)}`))}`)
-            resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Assets Base")}: ${colors.cyan(resolvedConfig.base)}`) // Log the base path being used
+
+            // App URL with backend status
+            if (backendStatus.available) {
+              resolvedConfig.logger.info(
+                `  ${colors.green("➜")}  ${colors.bold("App URL")}:    ${colors.cyan(appUrl.replace(/:(\d+)/, (_, port) => `:${colors.bold(port)}`))} ${colors.green("✓")}`,
+              )
+            } else {
+              resolvedConfig.logger.info(
+                `  ${colors.yellow("➜")}  ${colors.bold("App URL")}:    ${colors.cyan(appUrl.replace(/:(\d+)/, (_, port) => `:${colors.bold(port)}`))} ${colors.yellow("⚠")}`,
+              )
+            }
+
+            // Assets base path
+            resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Assets Base")}: ${colors.cyan(resolvedConfig.base)}`)
+
+            // Type generation status
+            if (pluginConfig.types !== false && pluginConfig.types.enabled) {
+              const openapiExists = fs.existsSync(path.resolve(process.cwd(), pluginConfig.types.openapiPath))
+              const routesExists = fs.existsSync(path.resolve(process.cwd(), pluginConfig.types.routesPath))
+
+              if (openapiExists || routesExists) {
+                resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Type Gen")}:   ${colors.green("enabled")} ${colors.dim(`→ ${pluginConfig.types.output}`)}`)
+              } else {
+                resolvedConfig.logger.info(`  ${colors.yellow("➜")}  ${colors.bold("Type Gen")}:   ${colors.yellow("waiting")} ${colors.dim("(no schema files yet)")}`)
+              }
+            }
+
+            // Backend status warnings/hints
+            if (!backendStatus.available) {
+              resolvedConfig.logger.info("")
+              resolvedConfig.logger.info(`  ${colors.yellow("⚠")}  ${colors.bold("Backend Status")}`)
+
+              if (backendStatus.error === "APP_URL not configured") {
+                resolvedConfig.logger.info(`     ${colors.dim("APP_URL environment variable is not set.")}`)
+                resolvedConfig.logger.info(`     ${colors.dim("Set APP_URL in your .env file or environment.")}`)
+              } else {
+                resolvedConfig.logger.info(`     ${colors.dim(backendStatus.error ?? "Backend not available")}`)
+                resolvedConfig.logger.info("")
+                resolvedConfig.logger.info(`     ${colors.bold("To start your Litestar app:")}`)
+                resolvedConfig.logger.info(`     ${colors.cyan("litestar run")} ${colors.dim("or")} ${colors.cyan("uvicorn app:app --reload")}`)
+              }
+
+              resolvedConfig.logger.info("")
+              resolvedConfig.logger.info(`     ${colors.dim("The Vite dev server is running and will serve assets.")}`)
+              resolvedConfig.logger.info(`     ${colors.dim("Start your Litestar backend to view the full application.")}`)
+            }
+
+            resolvedConfig.logger.info("")
           }, 100)
         }
       })
@@ -401,53 +482,48 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
         exitHandlersBound = true
       }
 
-      // *** MODIFIED MIDDLEWARE ***
-      return () => {
-        // Run middleware early to intercept before Vite's base/HTML handlers
-        server.middlewares.use(async (req, res, next) => {
-          const indexPath = await findIndexHtmlPath(server, pluginConfig)
-          if (indexPath && (req.url === "/" || req.url === "/index.html")) {
-            const currentUrl = req.url
-            try {
-              const htmlContent = await fs.promises.readFile(indexPath, "utf-8")
-              // Transform the HTML using Vite's pipeline
-              const transformedHtml = await server.transformIndexHtml(req.originalUrl ?? currentUrl, htmlContent, req.originalUrl)
-              res.statusCode = 200
-              res.setHeader("Content-Type", "text/html")
-              res.end(transformedHtml)
-              // Request handled, stop further processing
-              return
-            } catch (e) {
-              // Log the error and pass it to Vite's error handler
-              resolvedConfig.logger.error(`Error serving index.html from ${indexPath}: ${e instanceof Error ? e.message : e}`)
-              next(e)
-              return
-            }
-          }
+      // Add PRE-middleware to intercept requests BEFORE Vite's base redirect
+      // This allows serving index.html at "/" while using a different base for assets
+      server.middlewares.use(async (req, res, next) => {
+        const indexPath = await findIndexHtmlPath(server, pluginConfig)
 
-          // Original logic: If index.html should NOT be served automatically,
-          // AND the request is specifically for /index.html, serve the placeholder.
-          // Requests for '/' will likely be handled by Litestar in this case.
-          if (!indexPath && req.url === "/index.html") {
-            try {
-              const placeholderPath = path.join(dirname(), "dev-server-index.html")
-              const placeholderContent = await fs.promises.readFile(placeholderPath, "utf-8")
-              res.statusCode = 200 // Serve placeholder with 200 OK, or 404 if preferred
-              res.setHeader("Content-Type", "text/html")
-              res.end(placeholderContent.replace(/{{ APP_URL }}/g, appUrl))
-            } catch (e) {
-              resolvedConfig.logger.error(`Error serving placeholder index.html: ${e instanceof Error ? e.message : e}`)
-              res.statusCode = 404
-              res.end("Not Found (Error loading placeholder)")
-            }
-            // Request handled (or error), stop further processing
+        // Serve index.html at root "/" even when base is "/static/"
+        // This prevents Vite from redirecting "/" to "/static/"
+        if (indexPath && (req.url === "/" || req.url === "/index.html")) {
+          const currentUrl = req.url
+          try {
+            const htmlContent = await fs.promises.readFile(indexPath, "utf-8")
+            // Transform the HTML using Vite's pipeline - this injects the correct base-prefixed paths
+            const transformedHtml = await server.transformIndexHtml(req.originalUrl ?? currentUrl, htmlContent, req.originalUrl)
+            res.statusCode = 200
+            res.setHeader("Content-Type", "text/html")
+            res.end(transformedHtml)
+            return
+          } catch (e) {
+            resolvedConfig.logger.error(`Error serving index.html from ${indexPath}: ${e instanceof Error ? e.message : e}`)
+            next(e)
             return
           }
+        }
 
-          // If none of the above conditions matched, pass the request to the next middleware (Vite's default handlers)
-          next()
-        })
-      }
+        // Serve placeholder for /index.html when no index.html exists
+        if (!indexPath && req.url === "/index.html") {
+          try {
+            const placeholderPath = path.join(dirname(), "dev-server-index.html")
+            const placeholderContent = await fs.promises.readFile(placeholderPath, "utf-8")
+            res.statusCode = 200
+            res.setHeader("Content-Type", "text/html")
+            res.end(placeholderContent.replace(/{{ APP_URL }}/g, appUrl))
+          } catch (e) {
+            resolvedConfig.logger.error(`Error serving placeholder index.html: ${e instanceof Error ? e.message : e}`)
+            res.statusCode = 404
+            res.end("Not Found (Error loading placeholder)")
+          }
+          return
+        }
+
+        next()
+      })
     },
   }
 }
@@ -646,8 +722,100 @@ async function emitRouteTypes(routesPath: string, outputDir: string): Promise<vo
   await fs.promises.mkdir(outDir, { recursive: true })
   const outFile = path.join(outDir, "routes.ts")
 
-  const banner = "// AUTO-GENERATED by litestar-vite. Do not edit.\n/* eslint-disable */\n"
-  const body = `export const routes = ${JSON.stringify(json, null, 2)} as const\n\nexport type RouteName = keyof typeof routes\n`
+  const banner = `// AUTO-GENERATED by litestar-vite. Do not edit.
+/* eslint-disable */
+
+`
+
+  // Extract just the routes object from the full metadata
+  const routesData = json.routes || json
+
+  // Build route name union type and route map
+  const routeNames = Object.keys(routesData)
+  const routeNameType = routeNames.length > 0 ? routeNames.map((n) => `"${n}"`).join(" | ") : "never"
+
+  // Build parameter types for each route
+  const routeParamTypes: string[] = []
+  for (const [name, data] of Object.entries(routesData)) {
+    const routeData = data as { uri: string; parameters?: string[]; parameterTypes?: Record<string, string> }
+    if (routeData.parameters && routeData.parameters.length > 0) {
+      const params = routeData.parameters.map((p) => `${p}: string | number`).join("; ")
+      routeParamTypes.push(`  "${name}": { ${params} }`)
+    } else {
+      routeParamTypes.push(`  "${name}": Record<string, never>`)
+    }
+  }
+
+  const body = `/**
+ * Route metadata exported from Litestar.
+ * @see https://litestar-vite.litestar.dev/
+ */
+export const routesMeta = ${JSON.stringify(json, null, 2)} as const
+
+/**
+ * Route name to URI mapping.
+ */
+export const routes = ${JSON.stringify(Object.fromEntries(Object.entries(routesData).map(([name, data]) => [name, (data as { uri: string }).uri])), null, 2)} as const
+
+/**
+ * All available route names.
+ */
+export type RouteName = ${routeNameType}
+
+/**
+ * Parameter types for each route.
+ */
+export interface RouteParams {
+${routeParamTypes.join("\n")}
+}
+
+/**
+ * Generate a URL for a named route with type-safe parameters.
+ *
+ * @param name - The route name
+ * @param params - Route parameters (required if route has path parameters)
+ * @returns The generated URL
+ *
+ * @example
+ * \`\`\`ts
+ * import { route } from '@/generated/routes'
+ *
+ * // Route without parameters
+ * route('home')  // "/"
+ *
+ * // Route with parameters
+ * route('user:detail', { user_id: 123 })  // "/users/123"
+ * \`\`\`
+ */
+export function route<T extends RouteName>(
+  name: T,
+  ...args: RouteParams[T] extends Record<string, never> ? [] : [params: RouteParams[T]]
+): string {
+  let uri = routes[name] as string
+  const params = args[0] as Record<string, string | number> | undefined
+
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      // Handle both {param} and {param:type} syntax
+      uri = uri.replace(new RegExp(\`\\\\{$\{key}(?::[^}]+)?\\\\}\`, "g"), String(value))
+    }
+  }
+
+  return uri
+}
+
+/**
+ * Check if a route name exists.
+ */
+export function hasRoute(name: string): name is RouteName {
+  return name in routes
+}
+
+// Re-export helper functions from litestar-vite-plugin
+// These work with the routes defined above
+export { getCsrfToken, csrfHeaders, csrfFetch } from "litestar-vite-plugin/helpers"
+`
+
   await fs.promises.writeFile(outFile, `${banner}${body}`, "utf-8")
 }
 
@@ -819,7 +987,13 @@ function resolveDevServerUrl(address: AddressInfo, config: ResolvedConfig, userC
   const configHost = typeof config.server.host === "string" ? config.server.host : null
   const remoteHost = process.env.VITE_ALLOW_REMOTE && !userConfig.server?.host ? "localhost" : null
   const serverAddress = isIpv6(address) ? `[${address.address}]` : address.address
-  const host = configHmrHost ?? remoteHost ?? configHost ?? serverAddress
+  let host = configHmrHost ?? remoteHost ?? configHost ?? serverAddress
+
+  // Normalize 0.0.0.0 to 127.0.0.1 - 0.0.0.0 is a bind address meaning "all interfaces"
+  // but is not connectable as a target address for the proxy
+  if (host === "0.0.0.0") {
+    host = "127.0.0.1"
+  }
 
   const configHmrClientPort = typeof config.server.hmr === "object" ? config.server.hmr.clientPort : null
   const port = configHmrClientPort ?? address.port

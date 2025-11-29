@@ -3,17 +3,18 @@
 All examples expose the same backend endpoints so you can compare
 frameworks side-by-side:
 
-- `/api/summary` – overview + featured book
-- `/api/books` – list of books
-- `/api/books/{book_id}` – single book
+- `/api/summary` - overview + featured book
+- `/api/books` - list of books
+- `/api/books/{book_id}` - single book
+
+The VitePlugin automatically handles serving the SPA index.html for all
+non-API routes when mode="spa" (auto-detected or explicit).
 """
 
 from pathlib import Path
 
-from anyio import Path as AsyncPath
 from litestar import Litestar, get
 from litestar.exceptions import NotFoundException
-from litestar.response import Response
 from msgspec import Struct
 
 from litestar_vite import PathConfig, ViteConfig, VitePlugin
@@ -50,17 +51,9 @@ def _get_book(book_id: int) -> Book:
     raise NotFoundException(detail=f"Book {book_id} not found")
 
 
-@get("/")
-async def index() -> Response[bytes]:
-    """Serve the SPA index.html."""
-    content = await AsyncPath(here / "index.html").read_bytes()
-    return Response(content=content, media_type="text/html")
-
-
 @get("/api/summary")
 async def summary() -> Summary:
     """Overview endpoint shared across examples."""
-
     return Summary(
         app="litestar-vite library",
         headline="One backend, many frontends",
@@ -72,28 +65,29 @@ async def summary() -> Summary:
 @get("/api/books")
 async def books() -> list[Book]:
     """Return all books."""
-
     return BOOKS
 
 
 @get("/api/books/{book_id:int}")
 async def book_detail(book_id: int) -> Book:
     """Return a single book."""
-
     return _get_book(book_id)
 
 
+# VitePlugin with mode="spa" automatically:
+# - Registers catch-all route for index.html
+# - Injects route metadata as window.__LITESTAR_ROUTES__ for client-side routing
 vite = VitePlugin(
     config=ViteConfig(
+        mode="spa",
         dev_mode=True,
         types=True,
-        # Point the Vite process at this example directory so /src/* resolves
         paths=PathConfig(root=here),
     )
 )
 
 app = Litestar(
-    route_handlers=[index, summary, books, book_detail],
+    route_handlers=[summary, books, book_detail],  # Just API routes
     plugins=[vite],
     debug=True,
 )

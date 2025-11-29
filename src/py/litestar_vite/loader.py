@@ -56,6 +56,19 @@ def _get_request_from_context(
     return request  # pyright: ignore[reportReturnType,reportUnknownVariableType]
 
 
+def _get_vite_plugin(context: "Mapping[str, Any]") -> "Optional[VitePlugin]":
+    """Get the VitePlugin from the template context.
+
+    Args:
+        context: The template context.
+
+    Returns:
+        The VitePlugin instance or None if not found.
+    """
+    request = _get_request_from_context(context)
+    return request.app.plugins.get("VitePlugin")
+
+
 def render_hmr_client(context: "Mapping[str, Any]", /) -> "markupsafe.Markup":
     """Render the HMR client script tag.
 
@@ -68,9 +81,8 @@ def render_hmr_client(context: "Mapping[str, Any]", /) -> "markupsafe.Markup":
     Returns:
         HTML markup for the HMR client script.
     """
-    request = _get_request_from_context(context)
-    vite_plugin: "Optional[VitePlugin]" = request.app.plugins.get("VitePlugin")
-    if vite_plugin is None:  # pyright: ignore[reportUnnecessaryComparison]
+    vite_plugin = _get_vite_plugin(context)
+    if vite_plugin is None:
         return markupsafe.Markup("")
     return vite_plugin.asset_loader.render_hmr_client()
 
@@ -84,7 +96,7 @@ def render_asset_tag(
     """Render asset tags for the specified path(s).
 
     This is a Jinja2 template callable that renders script/link tags
-    for Vite-managed assets.
+    for Vite-managed assets. Also works for HTMX partial responses.
 
     Args:
         context: The template context containing the request.
@@ -93,10 +105,14 @@ def render_asset_tag(
 
     Returns:
         HTML markup for the asset tags.
+
+    Example:
+        In a Jinja2 template:
+        {{ vite_asset("src/main.ts") }}
+        {{ vite_asset("src/components/UserProfile.tsx") }}  # For partials
     """
-    request = _get_request_from_context(context)
-    vite_plugin: "Optional[VitePlugin]" = request.app.plugins.get("VitePlugin")
-    if vite_plugin is None:  # pyright: ignore[reportUnnecessaryComparison]
+    vite_plugin = _get_vite_plugin(context)
+    if vite_plugin is None:
         return markupsafe.Markup("")
     return vite_plugin.asset_loader.render_asset_tag(path, scripts_attrs)
 
@@ -113,43 +129,15 @@ def render_static_asset(context: "Mapping[str, Any]", /, path: str) -> str:
     Returns:
         The full URL to the static asset.
     """
-    request = _get_request_from_context(context)
-    vite_plugin: "Optional[VitePlugin]" = request.app.plugins.get("VitePlugin")
-    if vite_plugin is None:  # pyright: ignore[reportUnnecessaryComparison]
+    vite_plugin = _get_vite_plugin(context)
+    if vite_plugin is None:
         return ""
     return vite_plugin.asset_loader.get_static_asset(path)
 
 
-def render_partial_asset_tag(
-    context: "Mapping[str, Any]",
-    /,
-    path: str,
-    scripts_attrs: "Optional[dict[str, str]]" = None,
-) -> "markupsafe.Markup":
-    """Render asset tags for HTMX partial responses.
-
-    This is a Jinja2 template callable specifically for HTMX partials.
-    It renders only the necessary script/link tags for the specified entry point,
-    useful for loading component-specific assets in partial page updates.
-
-    Args:
-        context: The template context containing the request.
-        path: Path to the asset entry point.
-        scripts_attrs: Optional attributes for script tags.
-
-    Returns:
-        HTML markup for the asset tags.
-
-    Example:
-        In a Jinja2 template for an HTMX partial:
-        {{ vite_partial("src/components/UserProfile.tsx") }}
-    """
-    request = _get_request_from_context(context)
-    vite_plugin: "Optional[VitePlugin]" = request.app.plugins.get("VitePlugin")
-    if vite_plugin is None:  # pyright: ignore[reportUnnecessaryComparison]
-        return markupsafe.Markup("")
-    # Use the same rendering logic as regular assets
-    return vite_plugin.asset_loader.render_asset_tag(path, scripts_attrs)
+# Backward compatibility alias for render_asset_tag
+# Previously render_partial_asset_tag was a separate function with identical implementation
+render_partial_asset_tag = render_asset_tag
 
 
 class ViteAssetLoader:
@@ -210,15 +198,38 @@ class ViteAssetLoader:
             return
 
         if self._config.hot_reload and self._config.is_dev_mode:
-            await self._read_hot_file()
+            await self._load_hot_file_async()
         else:
-            await self._parse_manifest_async()
+            await self._load_manifest_async()
 
         self._initialized = True
 
-    async def _parse_manifest_async(self) -> None:
-        """Asynchronously parse the Vite manifest file."""
-        manifest_path = anyio.Path(self._config.bundle_dir / self._config.manifest_name)
+    def parse_manifest(self) -> None:
+        """Synchronously parse the Vite manifest file.
+
+        This method reads the manifest.json file in production mode
+        or the hot file in development mode.
+
+        Note: For async contexts, use `initialize()` instead.
+        """
+        if self._config.hot_reload and self._config.is_dev_mode:
+            self._load_hot_file_sync()
+        else:
+            self._load_manifest_sync()
+
+    # --- Internal file loading methods (consolidated sync/async) ---
+
+    def _get_manifest_path(self) -> Path:
+        """Get the path to the manifest file."""
+        return self._config.bundle_dir / self._config.manifest_name
+
+    def _get_hot_file_path(self) -> Path:
+        """Get the path to the hot file."""
+        return self._config.bundle_dir / self._config.hot_file
+
+    async def _load_manifest_async(self) -> None:
+        """Asynchronously load and parse the Vite manifest file."""
+        manifest_path = anyio.Path(self._get_manifest_path())
         try:
             if await manifest_path.exists():
                 content = await manifest_path.read_text()
@@ -229,11 +240,47 @@ class ViteAssetLoader:
         except Exception as exc:
             raise ManifestNotFoundError(str(manifest_path)) from exc
 
-    async def _read_hot_file(self) -> None:
+    def _load_manifest_sync(self) -> None:
+        """Synchronously load and parse the Vite manifest file."""
+        manifest_path = self._get_manifest_path()
+        try:
+            if manifest_path.exists():
+                self._manifest_content = manifest_path.read_text()
+                self._manifest = json.loads(self._manifest_content)
+            else:
+                self._manifest = {}
+        except Exception as exc:
+            raise ManifestNotFoundError(str(manifest_path)) from exc
+
+    async def _load_hot_file_async(self) -> None:
         """Asynchronously read the hot file for dev server URL."""
-        hot_file_path = anyio.Path(self._config.bundle_dir / self._config.hot_file)
+        hot_file_path = anyio.Path(self._get_hot_file_path())
         if await hot_file_path.exists():
             self._vite_base_path = await hot_file_path.read_text()
+
+    def _load_hot_file_sync(self) -> None:
+        """Synchronously read the hot file for dev server URL."""
+        hot_file_path = self._get_hot_file_path()
+        if hot_file_path.exists():
+            self._vite_base_path = hot_file_path.read_text()
+
+    # --- Deprecated async methods (kept for backward compatibility) ---
+
+    async def _parse_manifest_async(self) -> None:
+        """Asynchronously parse the Vite manifest file.
+
+        Deprecated: Use _load_manifest_async instead.
+        """
+        await self._load_manifest_async()
+
+    async def _read_hot_file(self) -> None:
+        """Asynchronously read the hot file for dev server URL.
+
+        Deprecated: Use _load_hot_file_async instead.
+        """
+        await self._load_hot_file_async()
+
+    # --- Properties ---
 
     @property
     def manifest_content(self) -> str:
@@ -258,30 +305,7 @@ class ViteAssetLoader:
             return hashlib.sha256(self._manifest_content.encode("utf-8")).hexdigest()
         return "1.0"
 
-    def parse_manifest(self) -> None:
-        """Synchronously parse the Vite manifest file.
-
-        This method reads the manifest.json file in production mode
-        or the hot file in development mode.
-
-        Note: For async contexts, use `initialize()` instead.
-        """
-        if self._config.hot_reload and self._config.is_dev_mode:
-            hot_file_path = Path(f"{self._config.bundle_dir}/{self._config.hot_file}")
-            if hot_file_path.exists():
-                with hot_file_path.open() as hot_file:
-                    self._vite_base_path = hot_file.read()
-        else:
-            manifest_path = Path(f"{self._config.bundle_dir}/{self._config.manifest_name}")
-            try:
-                if manifest_path.exists():
-                    with manifest_path.open() as manifest_file:
-                        self._manifest_content = manifest_file.read()
-                        self._manifest = json.loads(self._manifest_content)
-                else:
-                    self._manifest = {}
-            except Exception as exc:
-                raise ManifestNotFoundError(str(manifest_path)) from exc
+    # --- HTML generation methods ---
 
     def render_hmr_client(self) -> "markupsafe.Markup":
         """Render the HMR client script tags.
@@ -324,10 +348,7 @@ class ViteAssetLoader:
             return self._vite_server_url(path)
 
         if path not in self._manifest:
-            raise AssetNotFoundError(
-                path,
-                str(Path(f"{self._config.bundle_dir}/{self._config.manifest_name}")),
-            )
+            raise AssetNotFoundError(path, str(self._get_manifest_path()))
 
         return urljoin(
             self._config.base_url or self._config.asset_url,
@@ -407,11 +428,7 @@ class ViteAssetLoader:
         missing = [p for p in path if p not in self._manifest]
         if missing:
             msg = "Cannot find %s in Vite manifest at %s. Did you forget to build your assets after an update?"
-            raise ImproperlyConfiguredException(
-                msg,
-                missing,
-                Path(f"{self._config.bundle_dir}/{self._config.manifest_name}"),
-            )
+            raise ImproperlyConfiguredException(msg, missing, self._get_manifest_path())
 
         tags: list[str] = []
         manifest_entries = {p: self._manifest[p] for p in path if p}

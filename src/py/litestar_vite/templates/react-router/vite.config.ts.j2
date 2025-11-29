@@ -1,0 +1,49 @@
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import litestar from "litestar-vite-plugin";
+{% if use_tailwind %}
+import tailwindcss from "@tailwindcss/vite";
+{% endif %}
+
+const ASSET_URL = process.env.ASSET_URL || "{{ asset_url }}";
+const VITE_PORT = process.env.VITE_PORT || "{{ vite_port }}";
+const LITESTAR_PORT = process.env.LITESTAR_PORT || "{{ litestar_port }}";
+
+export default defineConfig({
+  base: ASSET_URL,
+  server: {
+    host: "0.0.0.0",
+    port: Number(VITE_PORT),
+    cors: true,
+    hmr: {
+      host: "localhost",
+    },
+  },
+  plugins: [
+{% if use_tailwind %}
+    tailwindcss(),
+{% endif %}
+    react(),
+    litestar({
+      input: ["{{ resource_dir }}/main.tsx"],
+      assetUrl: ASSET_URL,
+      bundleDirectory: "{{ bundle_dir }}",
+      resourceDirectory: "{{ resource_dir }}",
+{% if enable_types %}
+      types: {
+        enabled: true,
+        output: "{{ resource_dir }}/generated/types",
+        openapiPath: "{{ resource_dir }}/generated/openapi.json",
+        routesPath: "{{ resource_dir }}/generated/routes.json",
+        generateZod: true,
+        generateSdk: true,
+      },
+{% endif %}
+    }),
+  ],
+  resolve: {
+    alias: {
+      "@": "/{{ resource_dir }}",
+    },
+  },
+});

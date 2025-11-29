@@ -16,6 +16,8 @@ class FrameworkType(str, Enum):
     """Supported frontend framework types."""
 
     REACT = "react"
+    REACT_ROUTER = "react-router"
+    REACT_TANSTACK = "react-tanstack"
     REACT_INERTIA = "react-inertia"
     VUE = "vue"
     VUE_INERTIA = "vue-inertia"
@@ -92,6 +94,71 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         uses_typescript=True,
         has_ssr=False,
         inertia_compatible=True,
+        resource_dir="src",
+    ),
+    FrameworkType.REACT_ROUTER: FrameworkTemplate(
+        name="React + React Router",
+        type=FrameworkType.REACT_ROUTER,
+        description="React 18+ with React Router for SPA routing",
+        vite_plugin="@vitejs/plugin-react",
+        dependencies=["react", "react-dom", "react-router-dom"],
+        dev_dependencies=[
+            "@vitejs/plugin-react",
+            "@types/react",
+            "@types/react-dom",
+            "typescript",
+        ],
+        files=[
+            "vite.config.ts",
+            "tsconfig.json",
+            "package.json",
+            "index.html",
+            "src/main.tsx",
+            "src/App.tsx",
+            "src/routes/index.tsx",
+            "src/routes/books.tsx",
+            "src/App.css",
+        ],
+        uses_typescript=True,
+        has_ssr=False,
+        inertia_compatible=False,
+        resource_dir="src",
+    ),
+    FrameworkType.REACT_TANSTACK: FrameworkTemplate(
+        name="React + TanStack Router",
+        type=FrameworkType.REACT_TANSTACK,
+        description="React 18+ with TanStack Router (file-based), Zod, and API client",
+        vite_plugin="@vitejs/plugin-react",
+        dependencies=[
+            "react",
+            "react-dom",
+            "@tanstack/react-router",
+            "zod",
+        ],
+        dev_dependencies=[
+            "@vitejs/plugin-react",
+            "@tanstack/router-plugin",
+            "@hey-api/openapi-ts",
+            "@types/react",
+            "@types/react-dom",
+            "typescript",
+        ],
+        files=[
+            "vite.config.ts",
+            "tsconfig.json",
+            "package.json",
+            "index.html",
+            "src/main.tsx",
+            "src/routes/__root.tsx",
+            "src/routes/index.tsx",
+            "src/routes/books.tsx",
+            "src/routeTree.gen.ts",
+            "src/App.css",
+            "openapi-ts.config.ts",
+        ],
+        uses_typescript=True,
+        has_ssr=False,
+        inertia_compatible=False,
         resource_dir="src",
     ),
     FrameworkType.REACT_INERTIA: FrameworkTemplate(

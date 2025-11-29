@@ -226,6 +226,51 @@ class InertiaResponse(Response[T]):
         template = template_engine.get_template(template_name)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
         return template.render(**context).encode(self.encoding)  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType,reportReturnType]
 
+    def _render_spa(
+        self,
+        request: "Request[UserT, AuthT, StateT]",
+        page_props: "PageProps[T]",
+        vite_plugin: "VitePlugin",
+        inertia_plugin: "InertiaPlugin",
+    ) -> bytes:
+        """Render the page using SPA mode (HtmlTransformer instead of templates).
+
+        This method uses ViteSPAHandler to get the base HTML and injects
+        the page props as a data-page attribute on the app element.
+
+        Note: This is a synchronous method that requires production mode
+        (cached HTML). In dev mode with HMR, use async get_html() instead.
+
+        Args:
+            request: The request object.
+            page_props: The page props to render.
+            vite_plugin: The Vite plugin instance (for SPA handler access).
+            inertia_plugin: The Inertia plugin instance (for config access).
+
+        Returns:
+            The rendered HTML as bytes.
+
+        Raises:
+            ImproperlyConfiguredException: If ViteSPAHandler is not available.
+        """
+        spa_handler = getattr(vite_plugin, "_spa_handler", None)
+        if spa_handler is None:
+            msg = (
+                "SPA mode requires VitePlugin with mode='spa'. "
+                "Set mode='spa' in ViteConfig or remove spa_mode=True from InertiaConfig."
+            )
+            raise ImproperlyConfiguredException(msg)
+
+        # Convert page props to dict using to_dict() for Inertia.js protocol
+        # (converts snake_case to camelCase)
+        page_dict = page_props.to_dict()
+
+        # Get HTML with page data injected synchronously
+        # This works in production mode; dev mode requires async get_html()
+        html = spa_handler.get_html_sync(page_data=page_dict)
+
+        return html.encode(self.encoding)
+
     def _determine_media_type(self, media_type: "Optional[Union[MediaType, str]]") -> "Union[MediaType, str]":
         """Determine the media type for the response.
 
@@ -331,9 +376,15 @@ class InertiaResponse(Response[T]):
                 status_code=self.status_code or status_code,
             )
 
-        # HTML template response for initial page load
+        # HTML response for initial page load
         resolved_media_type = self._determine_media_type(media_type or MediaType.HTML)
-        body = self._render_template(request, page_props, type_encoders, inertia_plugin)
+
+        # Choose rendering method based on spa_mode configuration
+        if inertia_plugin.config.spa_mode:
+            body = self._render_spa(request, page_props, vite_plugin, inertia_plugin)
+        else:
+            body = self._render_template(request, page_props, type_encoders, inertia_plugin)
+
         return ASGIResponse(  # pyright: ignore[reportUnknownMemberType]
             background=self.background or background,
             body=body,

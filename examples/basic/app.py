@@ -2,9 +2,9 @@
 
 All examples in this repository now expose the same tiny backend:
 
-- `/api/summary` – overview + featured book
-- `/api/books` – list of books
-- `/api/books/{book_id}` – single book
+- `/api/summary` - overview + featured book
+- `/api/books` - list of books
+- `/api/books/{book_id}` - single book
 
 The frontend (here: Jinja2 templates) consumes the same data as the SPA
 examples so you can compare frameworks side-by-side.
@@ -53,25 +53,8 @@ def _get_book(book_id: int) -> Book:
     raise NotFoundException(detail=f"Book {book_id} not found")
 
 
-class WebController(Controller):
-    """Web Controller."""
-
-    opt = {"exclude_from_auth": True}
-    include_in_schema = False
-
-    @get("/")
-    async def index(self) -> Template:
-        """Serve site root."""
-        return Template(
-            template_name="index.html.j2",
-            context={"summary": await summary(), "books": await books()},
-        )
-
-
-@get("/api/summary")
-async def summary() -> Summary:
-    """Overview endpoint used across all examples."""
-
+def _get_summary() -> Summary:
+    """Build summary data."""
     return Summary(
         app="litestar-vite library",
         headline="One backend, many frontends",
@@ -80,25 +63,38 @@ async def summary() -> Summary:
     )
 
 
-@get("/api/books")
-async def books() -> list[Book]:
-    """Return all books."""
+class LibraryController(Controller):
+    """Library API and web controller."""
 
-    return BOOKS
+    @get("/")
+    async def index(self) -> Template:
+        """Serve site root."""
+        return Template(
+            template_name="index.html.j2",
+            context={"summary": _get_summary(), "books": BOOKS},
+        )
 
+    @get("/api/summary")
+    async def summary(self) -> Summary:
+        """Overview endpoint used across all examples."""
+        return _get_summary()
 
-@get("/api/books/{book_id:int}")
-async def book_detail(book_id: int) -> Book:
-    """Return a single book by id."""
+    @get("/api/books")
+    async def books(self) -> list[Book]:
+        """Return all books."""
+        return BOOKS
 
-    return _get_book(book_id)
+    @get("/api/books/{book_id:int}")
+    async def book_detail(self, book_id: int) -> Book:
+        """Return a single book by id."""
+        return _get_book(book_id)
 
 
 vite = VitePlugin(config=ViteConfig(dev_mode=True, types=True))
 templates = TemplateConfig(engine=JinjaTemplateEngine(directory=here / "templates"))
 
 app = Litestar(
-    route_handlers=[WebController, summary, books, book_detail],
+    route_handlers=[LibraryController],
     plugins=[vite],
     template_config=templates,
     debug=True,

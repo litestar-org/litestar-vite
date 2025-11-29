@@ -1,7 +1,5 @@
 """Tests for SPA mode handler."""
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock, patch
@@ -140,7 +138,7 @@ async def test_spa_handler_missing_index_html(tmp_path: Path, monkeypatch: pytes
         await handler.initialize()
 
 
-async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: MockerFixture) -> None:
+async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "MockerFixture") -> None:
     """Test SPA handler proxies to Vite dev server in dev mode."""
     handler = ViteSPAHandler(spa_config_dev)
 
@@ -285,4 +283,292 @@ async def test_spa_handler_fallback_load(spa_config: ViteConfig) -> None:
 
     # Should fallback to loading now
     assert html is not None
+    assert "Test SPA" in html
+
+
+# ============================================================================
+# SPA Handler Transformation Tests
+# ============================================================================
+
+
+@pytest.fixture
+def spa_config_with_transforms(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> ViteConfig:
+    """Create a ViteConfig with SPA transformations enabled.
+
+    Note: inject_csrf is disabled for tests that don't mock the request scope,
+    as CSRF token extraction requires a real request with ScopeState.
+    """
+    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
+
+    # Clear environment variables
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    return ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        spa=SPAConfig(
+            inject_routes=True,
+            inject_csrf=False,  # Disable for tests that don't mock request scope
+            routes_var_name="__ROUTES__",
+            app_selector="#app",
+        ),
+    )
+
+
+async def test_spa_handler_set_routes_metadata(spa_config_with_transforms: ViteConfig) -> None:
+    """Test setting route metadata on the handler."""
+    handler = ViteSPAHandler(spa_config_with_transforms)
+    await handler.initialize()
+
+    routes = {
+        "routes": {
+            "home": {"uri": "/", "methods": ["GET"]},
+            "users": {"uri": "/users", "methods": ["GET", "POST"]},
+        }
+    }
+    handler.set_routes_metadata(routes)
+
+    assert handler._routes_metadata == routes
+    # Setting routes should invalidate cached transformed HTML
+    assert handler._cached_transformed_html is None
+
+
+async def test_spa_handler_transform_html_injects_routes(
+    spa_config_with_transforms: ViteConfig,
+    temp_resource_dir: Path,
+) -> None:
+    """Test that _transform_html injects route metadata."""
+    handler = ViteSPAHandler(spa_config_with_transforms)
+    await handler.initialize()
+
+    routes = {
+        "routes": {
+            "home": {"uri": "/", "methods": ["GET"]},
+        }
+    }
+    handler.set_routes_metadata(routes)
+
+    mock_request = Mock()
+    html = await handler.get_html(mock_request)
+
+    # Should contain the injected routes
+    assert "window.__ROUTES__" in html
+    assert '"home"' in html
+    assert '"uri":"/"' in html or '"uri": "/"' in html
+
+
+async def test_spa_handler_transform_html_with_page_data(
+    spa_config_with_transforms: ViteConfig,
+) -> None:
+    """Test that get_html injects page data."""
+    handler = ViteSPAHandler(spa_config_with_transforms)
+    await handler.initialize()
+
+    page_data = {"component": "Home", "props": {"user": "test"}}
+
+    mock_request = Mock()
+    html = await handler.get_html(mock_request, page_data=page_data)
+
+    # Should contain the injected page data as data-page attribute
+    assert 'data-page="' in html
+    assert "Home" in html
+    assert "test" in html
+
+
+async def test_spa_handler_caches_transformed_html(
+    spa_config_with_transforms: ViteConfig,
+) -> None:
+    """Test that transformed HTML is cached in production."""
+    handler = ViteSPAHandler(spa_config_with_transforms)
+    await handler.initialize()
+
+    routes = {"routes": {"home": {"uri": "/"}}}
+    handler.set_routes_metadata(routes)
+
+    mock_request = Mock()
+
+    # First call should transform and cache
+    html1 = await handler.get_html(mock_request)
+    assert handler._cached_transformed_html is not None
+
+    # Second call should use cache
+    html2 = await handler.get_html(mock_request)
+    assert html1 == html2
+
+
+async def test_spa_handler_page_data_bypasses_cache(
+    spa_config_with_transforms: ViteConfig,
+) -> None:
+    """Test that page_data bypasses transformed HTML cache."""
+    handler = ViteSPAHandler(spa_config_with_transforms)
+    await handler.initialize()
+
+    routes = {"routes": {"home": {"uri": "/"}}}
+    handler.set_routes_metadata(routes)
+
+    mock_request = Mock()
+
+    # Call without page_data to populate cache
+    html_cached = await handler.get_html(mock_request)
+    assert handler._cached_transformed_html is not None
+
+    # Call with page_data should get fresh transformation
+    page_data = {"component": "About", "props": {}}
+    html_with_data = await handler.get_html(mock_request, page_data=page_data)
+
+    # Should have both routes and page data
+    assert "window.__ROUTES__" in html_with_data
+    assert "About" in html_with_data
+    # But the cached version shouldn't have page data
+    assert "About" not in html_cached
+
+
+async def test_spa_handler_get_html_sync(
+    spa_config_with_transforms: ViteConfig,
+) -> None:
+    """Test the synchronous get_html_sync method."""
+    handler = ViteSPAHandler(spa_config_with_transforms)
+    await handler.initialize()
+
+    routes = {"routes": {"home": {"uri": "/"}}}
+    handler.set_routes_metadata(routes)
+
+    # Should work synchronously
+    html = handler.get_html_sync()
+
+    assert "window.__ROUTES__" in html
+    assert "Test SPA" in html
+
+
+async def test_spa_handler_get_html_sync_with_page_data(
+    spa_config_with_transforms: ViteConfig,
+) -> None:
+    """Test get_html_sync with page_data."""
+    handler = ViteSPAHandler(spa_config_with_transforms)
+    await handler.initialize()
+
+    page_data = {"component": "Home", "props": {"message": "Hello"}}
+
+    html = handler.get_html_sync(page_data=page_data)
+
+    assert 'data-page="' in html
+    assert "Home" in html
+
+
+async def test_spa_handler_get_html_sync_fails_in_dev_mode(
+    spa_config_dev: ViteConfig,
+) -> None:
+    """Test that get_html_sync raises error in dev mode."""
+    handler = ViteSPAHandler(spa_config_dev)
+
+    # Mock httpx client for initialization
+    mock_client = AsyncMock()
+    mock_client.aclose = AsyncMock()
+
+    with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
+        await handler.initialize()
+
+        with pytest.raises(RuntimeError, match="dev mode"):
+            handler.get_html_sync()
+
+
+async def test_spa_handler_no_transform_when_spa_config_disabled(
+    temp_resource_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that HTML is not transformed when spa=False."""
+    from litestar_vite.config import PathConfig, RuntimeConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        spa=False,  # Transformations disabled
+    )
+    handler = ViteSPAHandler(config)
+    await handler.initialize()
+
+    mock_request = Mock()
+    html = await handler.get_html(mock_request)
+
+    # Should not have any injected routes
+    assert "window.__" not in html
+    # Should still have original content
+    assert "Test SPA" in html
+
+
+async def test_spa_handler_csrf_injection(
+    temp_resource_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test CSRF token injection into HTML."""
+    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        spa=SPAConfig(
+            inject_routes=False,
+            inject_csrf=True,
+            csrf_var_name="__LITESTAR_CSRF__",
+        ),
+    )
+
+    handler = ViteSPAHandler(config)
+    await handler.initialize()
+
+    # Mock request with scope that has state
+    mock_request = Mock()
+    mock_request.scope = {"state": {"csrf_token": "test-csrf-token-12345"}}
+
+    # Patch litestar ScopeState.from_scope to return a mock with our token
+    mock_scope_state = Mock()
+    mock_scope_state.csrf_token = "test-csrf-token-12345"
+
+    with patch("litestar.utils.scope.state.ScopeState.from_scope", return_value=mock_scope_state):
+        html = await handler.get_html(mock_request)
+
+    # Should have CSRF token injected
+    assert 'window.__LITESTAR_CSRF__ = "test-csrf-token-12345"' in html
+    assert "Test SPA" in html
+
+
+async def test_spa_handler_csrf_injection_sync(
+    temp_resource_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test CSRF token injection with get_html_sync."""
+    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        spa=SPAConfig(
+            inject_routes=False,
+            inject_csrf=True,
+            csrf_var_name="__LITESTAR_CSRF__",
+        ),
+    )
+
+    handler = ViteSPAHandler(config)
+    await handler.initialize()
+
+    # Sync method requires explicit CSRF token
+    html = handler.get_html_sync(csrf_token="sync-csrf-token")
+
+    # Should have CSRF token injected
+    assert 'window.__LITESTAR_CSRF__ = "sync-csrf-token"' in html
     assert "Test SPA" in html
