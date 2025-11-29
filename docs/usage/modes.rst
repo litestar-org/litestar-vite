@@ -15,6 +15,7 @@ The Single Page Application (SPA) mode is designed for modern frontend framework
 - No Jinja2 template engine required.
 - Automatic injection of configuration and data into HTML.
 - Proxies requests to Vite dev server in development.
+- Registers a catch-all ``vite_spa`` route for you (no manual ``/`` handler needed) when ``spa_handler`` is enabled.
 
 **Configuration:**
 

@@ -69,6 +69,12 @@ If you prefer more control, you can set up Vite manually:
     npm install vite
     npm install -D litestar-vite-plugin
 
+You can also install the frontend dependencies through the Litestar CLI once your Python config is in place:
+
+.. code-block:: bash
+
+    litestar assets install
+
 2. Create ``vite.config.js``:
 
 .. code-block:: javascript
@@ -212,10 +218,7 @@ You configure the Vite frontend build process in your `vite.config.ts` (or `.js`
 
     export default defineConfig({
         plugins: [
-            litestar({
-                // Add your configuration options here
-                input: ['src/main.ts'], // use resources/main.ts for Inertia templates
-            })
+            litestar({ input: ['src/main.ts'] })  // use resources/main.ts for Inertia templates
         ]
     })
 
@@ -236,7 +239,7 @@ You configure the Vite frontend build process in your `vite.config.ts` (or `.js`
      - The base path for asset URLs. Defaults to `'/static/'`.
    * - `bundleDirectory`
      - `string`
-     - The directory where compiled assets are written. Defaults to `'public/dist'`.
+     - The directory where compiled assets and `manifest.json` are written. Defaults to `'public'`.
    * - `resourceDirectory`
      - `string`
      - The directory for source assets. Defaults to `'src'` (use `'resources'` for Inertia templates).
@@ -281,7 +284,7 @@ Litestar Vite supports Angular in two ways:
 
   - Runs via Angular CLI `ng serve` with `proxy.conf.json` targeting Litestar.
   - Source dir: `src/`; does **not** use `litestar-vite-plugin` or the typed-routes pipeline.
-  - Use `npm start` / `npm run build` and serve `dist/browser/` via Litestar static files.
+  - Use the standard Angular CLI commands (`npm start` / `ng build`) and serve `dist/browser/` via Litestar static files.
 
 Troubleshooting (Angular)
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -333,12 +336,12 @@ Proxy vs direct modes:
 
 Switch with `VITE_PROXY_MODE=proxy|direct` (or `ViteConfig.runtime.proxy_mode`).
 
-If you prefer to manage the Vite server manually, set `dev_mode=False` in config but run vite manually:
+If you prefer to manage the Vite server manually, keep `dev_mode=True` but start Vite yourself (useful for two-port setups):
 
 .. code-block:: bash
-    :caption: Terminal 1: Start Vite Dev Server
+    :caption: Terminal 1: Start Vite Dev Server via the Litestar CLI
 
-    npm run dev
+    litestar assets serve
 
 .. code-block:: bash
     :caption: Terminal 2: Run Litestar App

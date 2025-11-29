@@ -45,15 +45,7 @@ Backend Setup
     async def hello() -> dict:
         return {"message": "Hello from Litestar!"}
 
-    vite = VitePlugin(
-        config=ViteConfig(
-            dev_mode=True,
-            paths=PathConfig(
-                bundle_dir=Path("public"),
-                resource_dir=Path("src"),
-            ),
-        ),
-    )
+    vite = VitePlugin(config=ViteConfig(dev_mode=True))
 
     app = Litestar(
         plugins=[vite],
@@ -67,17 +59,12 @@ Vite Configuration
 
     import { defineConfig } from "vite";
     import analog from "@analogjs/vite-plugin-angular";
-    import litestar from "@litestar/vite-plugin";
+    import litestar from "litestar-vite-plugin";
 
     export default defineConfig({
       plugins: [
         analog(),
-        litestar({
-          input: ["src/main.ts"],
-          assetUrl: "/static/",
-          bundleDir: "public",
-          resourceDir: "src",
-        }),
+        litestar({ input: ["src/main.ts"], resourceDirectory: "src" }),
       ],
     });
 
@@ -106,6 +93,18 @@ Angular Component
           .subscribe(res => this.message = res.message);
       }
     }
+
+Running (Analog)
+~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+    # Single-port: Litestar starts and proxies Vite
+    litestar run --reload
+
+    # Two-port: start Vite yourself
+    litestar assets serve
+    litestar run --reload
 
 Option 2: Angular CLI
 ---------------------

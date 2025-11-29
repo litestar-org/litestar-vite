@@ -27,7 +27,7 @@ Enable type generation in your ``ViteConfig``:
         config=ViteConfig(
             types=TypeGenConfig(
                 enabled=True,
-                output_dir="src/lib/api",
+                output="src/lib/api",  # override default output dir
             )
         )
     )

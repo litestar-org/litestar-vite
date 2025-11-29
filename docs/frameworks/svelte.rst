@@ -51,15 +51,7 @@ Backend Setup
     async def greeting() -> dict:
         return {"text": "Hello from Litestar!"}
 
-    vite = VitePlugin(
-        config=ViteConfig(
-            dev_mode=True,
-            paths=PathConfig(
-                bundle_dir=Path("public"),
-                resource_dir=Path("src"),
-            ),
-        ),
-    )
+    vite = VitePlugin(config=ViteConfig(dev_mode=True))
 
     app = Litestar(
         plugins=[vite],
@@ -77,17 +69,12 @@ Vite Configuration
 
     import { defineConfig } from "vite";
     import { svelte } from "@sveltejs/vite-plugin-svelte";
-    import litestar from "@litestar/vite-plugin";
+    import litestar from "litestar-vite-plugin";
 
     export default defineConfig({
       plugins: [
         svelte(),
-        litestar({
-          input: ["src/main.ts"],
-          assetUrl: "/static/",
-          bundleDir: "public",
-          resourceDir: "src",
-        }),
+        litestar({ input: ["src/main.ts"], resourceDirectory: "src" }),
       ],
     });
 
@@ -141,10 +128,11 @@ Running
 
 .. code-block:: bash
 
-    # Terminal 1: Vite dev server
-    npm run dev
+    # Recommended: Litestar starts and proxies Vite automatically
+    litestar run --reload
 
-    # Terminal 2: Litestar
+    # Two-port setup (optional)
+    litestar assets serve
     litestar run --reload
 
 See Also

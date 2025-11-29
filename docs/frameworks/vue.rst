@@ -58,15 +58,7 @@ Backend Setup
             ]
         }
 
-    vite = VitePlugin(
-        config=ViteConfig(
-            dev_mode=True,
-            paths=PathConfig(
-                bundle_dir=Path("public"),
-                resource_dir=Path("src"),
-            ),
-        ),
-    )
+    vite = VitePlugin(config=ViteConfig(dev_mode=True))
 
     app = Litestar(
         plugins=[vite],
@@ -84,17 +76,12 @@ Vite Configuration
 
     import { defineConfig } from "vite";
     import vue from "@vitejs/plugin-vue";
-    import litestar from "@litestar/vite-plugin";
+    import litestar from "litestar-vite-plugin";
 
     export default defineConfig({
       plugins: [
         vue(),
-        litestar({
-          input: ["src/main.ts"],
-          assetUrl: "/static/",
-          bundleDir: "public",
-          resourceDir: "src",
-        }),
+        litestar({ input: ["src/main.ts"], resourceDirectory: "src" }),
       ],
     });
 
@@ -152,11 +139,12 @@ Running
 
 .. code-block:: bash
 
-    # Terminal 1: Vite dev server
-    npm run dev
-
-    # Terminal 2: Litestar
+    # Recommended: Litestar starts and proxies Vite when dev_mode=True
     litestar run --reload
+
+    # Two-port setup (optional)
+    litestar assets serve  # Vite dev server
+    litestar run --reload  # backend
 
 See Also
 --------

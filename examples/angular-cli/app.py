@@ -1,31 +1,23 @@
-"""Angular CLI example - uses standard Angular CLI with Litestar backend.
+"""Angular CLI example - standard Angular tooling with Litestar backend.
 
-Demonstrates the Vite proxy integration where Litestar serves the
-index.html and Angular CLI handles asset bundling with HMR in development.
+Angular CLI serves the frontend during development (`npm start`), and the
+built assets under ``dist/browser`` are served by Litestar in production.
 """
 
 from pathlib import Path
 
-from anyio import Path as AsyncPath
-from litestar import Litestar, get
-from litestar.response import Response
-
-from litestar_vite import ViteConfig, VitePlugin
+from litestar import Litestar
+from litestar.static_files.config import StaticFilesConfig
 
 here = Path(__file__).parent
 
-
-@get("/")
-async def index() -> Response[bytes]:
-    """Serve the SPA index.html."""
-    content = await AsyncPath(here / "src" / "index.html").read_bytes()
-    return Response(content=content, media_type="text/html")
-
-
-vite = VitePlugin(config=ViteConfig())
-
 app = Litestar(
-    route_handlers=[index],
-    plugins=[vite],
+    static_files_config=[
+        StaticFilesConfig(
+            path="/",  # serve at root
+            directories=[here / "dist" / "browser", here / "public"],
+            html_mode=True,  # SPA fallback to index.html
+        )
+    ],
     debug=True,
 )
