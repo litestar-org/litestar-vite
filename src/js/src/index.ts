@@ -368,11 +368,24 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
                   },
                 }
               : undefined),
+          // Always respect VITE_PORT when set by Python (regardless of VITE_ALLOW_REMOTE)
+          ...(process.env.VITE_PORT
+            ? {
+                port: userConfig.server?.port ?? Number.parseInt(process.env.VITE_PORT),
+                strictPort: userConfig.server?.strictPort ?? true,
+              }
+            : undefined),
+          // VITE_ALLOW_REMOTE controls host binding (0.0.0.0 for remote access)
+          // Also sets port/strictPort for backwards compatibility when VITE_PORT not set
           ...(process.env.VITE_ALLOW_REMOTE
             ? {
                 host: userConfig.server?.host ?? "0.0.0.0",
-                port: userConfig.server?.port ?? (env.VITE_PORT ? Number.parseInt(env.VITE_PORT) : 5173),
-                strictPort: userConfig.server?.strictPort ?? true,
+                ...(process.env.VITE_PORT
+                  ? {} // port already set above
+                  : {
+                      port: userConfig.server?.port ?? 5173,
+                      strictPort: userConfig.server?.strictPort ?? true,
+                    }),
               }
             : undefined),
           ...(serverConfig

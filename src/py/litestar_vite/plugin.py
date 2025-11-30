@@ -1418,7 +1418,10 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
         # For all proxy modes, pick a free port if not explicitly set
         # This ensures JS integrations know what port to use
-        if os.getenv("VITE_PORT") is None:
+        # Only pick a port if:
+        # 1. VITE_PORT env var is not already set, AND
+        # 2. We haven't already picked a port (check if port != default 5173)
+        if os.getenv("VITE_PORT") is None and self._config.runtime.port == 5173:
             self._config.runtime.port = _pick_free_port()
 
         # For 'vite' mode, set proxy target directly (internal Vite server)
