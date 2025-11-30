@@ -132,6 +132,6 @@ mcp__context7__get-library-docs(
 
 ## Related Files
 
-- `examples/spa-vue/` - Vue SPA example
-- `examples/spa-vue-inertia/` - Vue + Inertia example
+- `examples/vue/` - Vue SPA example
+- `examples/vue-inertia/` - Vue + Inertia example
 - `src/py/litestar_vite/templates/vue/` - Vue templates

@@ -381,4 +381,4 @@ module = "tests.*"
 
 [tool.codespell]
 ignore-words-list = "selectin"
-skip = 'uv.lock,examples/inertia/package-lock.json,examples/inertia/public/assets/*.js'
+skip = 'uv.lock,examples/vue-inertia/package-lock.json,examples/vue-inertia/public/assets/*.js'

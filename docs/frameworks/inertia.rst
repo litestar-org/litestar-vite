@@ -205,6 +205,6 @@ See Also
 --------
 
 - :doc:`/usage/inertia` - Full Inertia.js documentation
-- `Example: inertia <https://github.com/litestar-org/litestar-vite/tree/main/examples/inertia>`_
-- `Example: spa-vue-inertia <https://github.com/litestar-org/litestar-vite/tree/main/examples/spa-vue-inertia>`_
+- `Example: inertia <https://github.com/litestar-org/litestar-vite/tree/main/examples/vue-inertia>`_
+- `Example: vue-inertia <https://github.com/litestar-org/litestar-vite/tree/main/examples/vue-inertia>`_
 - `Inertia.js Documentation <https://inertiajs.com/>`_

@@ -200,18 +200,18 @@ All SSR integrations share:
 All examples in `examples/` directory:
 - `angular/` - Angular with Vite
 - `angular-cli/` - Angular CLI with external proxy mode
-- `astro-api/` - Astro with Litestar API backend
+- `astro/` - Astro with Litestar API backend
 - `basic/` - Basic Jinja template mode
 - `flash/` - Flash messages example
 - `fullstack-typed/` - Full-stack typed routes and API
 - `inertia/` - Inertia.js with Vue
 - `jinja/` - Jinja templates with Vite assets
-- `nuxt-api/` - Nuxt 3 with Litestar API
-- `spa-react/` - React SPA with Vite
-- `spa-svelte/` - Svelte SPA
-- `spa-vue/` - Vue 3 SPA
-- `spa-vue-inertia/` - Vue 3 with Inertia.js
-- `sveltekit-api/` - SvelteKit with Litestar API
+- `nuxt/` - Nuxt 3 with Litestar API
+- `react/` - React SPA with Vite
+- `svelte/` - Svelte SPA
+- `vue/` - Vue 3 SPA
+- `vue-inertia/` - Vue 3 with Inertia.js
+- `sveltekit/` - SvelteKit with Litestar API
 - `template-htmx/` - HTMX with Jinja templates
 
 ### SPA (React/Vue/Svelte)

@@ -131,5 +131,5 @@ mcp__context7__get-library-docs(
 
 ## Related Files
 
-- `examples/nuxt-api/` - Nuxt example
+- `examples/nuxt/` - Nuxt example
 - `src/py/litestar_vite/templates/nuxt/` - Nuxt templates

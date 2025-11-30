@@ -33,12 +33,12 @@ Litestar-Vite pairs the Litestar Python framework with a Vite (Node) toolchain. 
 - [Framework Integrations](#typescript-plugin): `/astro`, `/sveltekit`, `/nuxt` sub-exports for SSR framework integration.
 
 ## Examples
-- [SPA](examples/spa-react): React single-page setup with proxy HMR. Also: spa-vue, spa-svelte.
+- [SPA](examples/react): React single-page setup with proxy HMR. Also: vue, svelte.
 - [Template](examples/basic): Jinja/HTMX template mode with Vite asset tags. Also: jinja, template-htmx.
-- [Inertia](examples/inertia): Full-stack Inertia.js using `InertiaPlugin`. Also: spa-vue-inertia.
+- [Inertia](examples/vue-inertia): Full-stack Inertia.js using `InertiaPlugin`. Also: vue-inertia.
 - [Typed](examples/fullstack-typed): Full-stack typed routes and API generation.
 - [External Dev Server](examples/angular-cli): Angular CLI proxied through Litestar.
-- [SSR Frameworks](examples/nuxt-api): Nuxt/Astro/SvelteKit with Litestar API backend.
+- [SSR Frameworks](examples/nuxt): Nuxt/Astro/SvelteKit with Litestar API backend.
 
 ## Optional
 - [Deploy](#cli): `litestar assets deploy` syncs manifest/assets via fsspec (gcs://, s3://, etc.).

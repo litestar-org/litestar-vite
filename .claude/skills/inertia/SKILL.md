@@ -199,5 +199,5 @@ mcp__context7__get-library-docs(
 ## Related Files
 
 - `src/py/litestar_vite/inertia/` - Python Inertia implementation
-- `examples/inertia/` - Inertia example
-- `examples/spa-vue-inertia/` - Vue + Inertia example
+- `examples/vue-inertia/` - Inertia example
+- `examples/vue-inertia/` - Vue + Inertia example

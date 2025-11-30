@@ -28,7 +28,7 @@ class Example(TypedDict):
 def main() -> None:
     examples: list[Example] = [
         {
-            "name": "spa-react",
+            "name": "react",
             "framework": "react",
             "config": {
                 "enable_types": True,
@@ -36,7 +36,7 @@ def main() -> None:
             },
         },
         {
-            "name": "spa-vue-inertia",
+            "name": "vue-inertia",
             "framework": "vue-inertia",
             "config": {
                 "enable_types": True,
@@ -44,7 +44,7 @@ def main() -> None:
             },
         },
         {
-            "name": "spa-svelte",
+            "name": "svelte",
             "framework": "svelte",
             "config": {
                 "enable_types": True,
@@ -52,7 +52,7 @@ def main() -> None:
             },
         },
         {
-            "name": "sveltekit-api",
+            "name": "sveltekit",
             "framework": "sveltekit",
             "config": {
                 "enable_types": True,
@@ -69,7 +69,7 @@ def main() -> None:
             },
         },
         {
-            "name": "astro-api",
+            "name": "astro",
             "framework": "astro",
             "config": {
                 "enable_types": True,

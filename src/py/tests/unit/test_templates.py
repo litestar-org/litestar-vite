@@ -19,8 +19,8 @@ def test_templates_no_hardcoded_type_paths() -> None:
 
 
 def test_example_dev_scripts_are_framework_specific() -> None:
-    astro = EXAMPLES_ROOT / "astro-api" / "package.json"
-    nuxt = EXAMPLES_ROOT / "nuxt-api" / "package.json"
+    astro = EXAMPLES_ROOT / "astro" / "package.json"
+    nuxt = EXAMPLES_ROOT / "nuxt" / "package.json"
     if astro.exists():
         assert '"dev": "astro dev"' in astro.read_text()
     if nuxt.exists():

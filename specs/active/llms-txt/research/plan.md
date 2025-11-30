@@ -121,8 +121,8 @@
 | `src/py/litestar_vite/cli.py` | CLI commands | [ ] |
 | `src/js/src/index.ts` | TypeScript plugin API | [ ] |
 | `examples/basic/` | Basic usage examples | [ ] |
-| `examples/inertia/` | Inertia.js examples | [ ] |
-| `examples/spa-react/` | React SPA examples | [ ] |
+| `examples/vue-inertia/` | Inertia.js examples | [ ] |
+| `examples/react/` | React SPA examples | [ ] |
 
 ### Priority 3: Context7 Library Documentation
 
@@ -256,7 +256,7 @@ Additional context
 **Source**: examples/ directory
 
 **SPA Mode (React)**:
-- (To be extracted from examples/spa-react/)
+- (To be extracted from examples/react/)
 - Configuration pattern
 - Key code snippets
 
@@ -266,7 +266,7 @@ Additional context
 - Asset loading
 
 **Inertia Mode**:
-- (To be extracted from examples/inertia/)
+- (To be extracted from examples/vue-inertia/)
 - Complete setup
 - Backend + frontend integration
 

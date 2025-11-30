@@ -107,10 +107,10 @@ app = Litestar(
 
 ```bash
 # Build frontend
-cd examples/astro-api && npm run build
+cd examples/astro && npm run build
 
 # Run in production mode
-VITE_DEV_MODE=false litestar --app-dir examples/astro-api run
+VITE_DEV_MODE=false litestar --app-dir examples/astro run
 ```
 
 Configure `bundle_dir` to match your framework's build output:
@@ -151,5 +151,5 @@ litestar assets generate-types  # one-off or CI
 ## Links
 
 - Docs: <https://litestar-org.github.io/litestar-vite/>
-- Examples: `examples/` (basic, inertia, spa-react)
+- Examples: `examples/` (basic, inertia, react)
 - Issues: <https://github.com/litestar-org/litestar-vite/issues/>

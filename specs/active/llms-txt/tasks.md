@@ -74,8 +74,8 @@
 
 - [ ] Gather code examples
   - Review: `/examples/basic/`
-  - Review: `/examples/inertia/`
-  - Review: `/examples/spa-react/`
+  - Review: `/examples/vue-inertia/`
+  - Review: `/examples/react/`
   - Extract: Configuration patterns, usage examples
 
 ### Documentation Review

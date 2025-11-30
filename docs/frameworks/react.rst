@@ -138,4 +138,4 @@ See Also
 --------
 
 - :doc:`inertia` - React with Inertia.js for server-side routing
-- `Example: spa-react <https://github.com/litestar-org/litestar-vite/tree/main/examples/spa-react>`_
+- `Example: react <https://github.com/litestar-org/litestar-vite/tree/main/examples/react>`_

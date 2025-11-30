@@ -283,7 +283,7 @@ Includes everything from llms.txt PLUS:
 | `/src/py/litestar_vite/cli.py` | CLI commands |
 | `/src/js/src/index.ts` | TypeScript plugin API |
 | `/examples/basic/` | Basic usage example |
-| `/examples/inertia/` | Inertia.js example |
+| `/examples/vue-inertia/` | Inertia.js example |
 | Official docs site | Additional patterns and guides |
 
 ---
