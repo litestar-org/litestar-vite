@@ -16,9 +16,9 @@ type Summary = {
   featured: Book
 }
 
-let summary: Summary | null = null
-let books: Book[] = []
-const view: "overview" | "books" = "overview"
+let summary = $state<Summary | null>(null)
+let books = $state<Book[]>([])
+const view = $state<"overview" | "books">("overview")
 
 onMount(async () => {
   const [summaryRes, booksRes] = await Promise.all([fetch("/api/summary"), fetch("/api/books")])
@@ -35,8 +35,8 @@ const featured = $derived(summary?.featured)
     <h1>Library (Svelte)</h1>
     <p class="lede">Same API, different frontend.</p>
     <div class="tabs" role="tablist">
-      <button class:active={view === "overview"} on:click={() => (view = "overview")}>Overview</button>
-      <button class:active={view === "books"} on:click={() => (view = "books")}>Books {summary ? `(${summary.total_books})` : ""}</button>
+      <button class:active={view === "overview"} onclick={() => (view = "overview")}>Overview</button>
+      <button class:active={view === "books"} onclick={() => (view = "books")}>Books {summary ? `(${summary.total_books})` : ""}</button>
     </div>
   </header>
 

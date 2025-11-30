@@ -4,11 +4,15 @@ import litestar from "litestar-vite-plugin/astro";
 import tailwindcss from "@tailwindcss/vite";
 {% endif %}
 
-const LITESTAR_PORT = process.env.LITESTAR_PORT || "{{ litestar_port }}";
+// Litestar manages the dev server port via VITE_PORT and runtime config.
+// The Astro integration reads the port automatically - no hardcoding needed.
+// LITESTAR_PORT is the backend API server port (default {{ litestar_port }}).
+const LITESTAR_PORT = process.env.LITESTAR_PORT ?? "{{ litestar_port }}";
 
 export default defineConfig({
   integrations: [
     litestar({
+      // API proxy points to the Litestar backend
       apiProxy: `http://localhost:${LITESTAR_PORT}`,
       apiPrefix: "/api",
 {% if enable_types %}

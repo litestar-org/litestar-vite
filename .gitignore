@@ -206,5 +206,6 @@ examples/*/.next
 examples/*/.nuxt
 examples/*/dist
 examples/*/build
+examples/*/generated
 examples/*/src/generated
 examples/*/resources/generated

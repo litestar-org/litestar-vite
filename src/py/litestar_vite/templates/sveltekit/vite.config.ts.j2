@@ -5,7 +5,10 @@ import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
 {% endif %}
 
-const LITESTAR_PORT = process.env.LITESTAR_PORT || "{{ litestar_port }}";
+// Litestar manages the dev server port via VITE_PORT and runtime config.
+// The SvelteKit plugin reads the port automatically - no hardcoding needed.
+// LITESTAR_PORT is the backend API server port (default {{ litestar_port }}).
+const LITESTAR_PORT = process.env.LITESTAR_PORT ?? "{{ litestar_port }}";
 
 export default defineConfig({
   plugins: [
@@ -13,6 +16,7 @@ export default defineConfig({
     tailwindcss(),
 {% endif %}
     litestarSvelteKit({
+      // API proxy points to the Litestar backend
       apiProxy: `http://localhost:${LITESTAR_PORT}`,
       apiPrefix: "/api",
 {% if enable_types %}

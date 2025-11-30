@@ -80,5 +80,15 @@ import Layout from "../layouts/Layout.astro"
     }),
   )
 
-  loadData().catch((err) => console.error(err))
+  loadData().catch((err) => {
+    console.error('Failed to load data:', err)
+    // Show error UI so users know something went wrong
+    overview.innerHTML = `
+      <div class="text-red-600 p-4 bg-red-50 rounded-lg border border-red-200">
+        <h3 class="font-semibold">Failed to load data</h3>
+        <p class="text-sm mt-1">${err.message || 'Check that the Litestar server is running.'}</p>
+      </div>
+    `
+    overview.classList.remove('hidden')
+  })
 </script>

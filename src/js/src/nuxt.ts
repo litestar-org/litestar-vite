@@ -134,8 +134,8 @@ interface ResolvedNuxtConfig {
   verbose: boolean
   hotFile?: string
   proxyMode: "vite" | "direct" | "proxy" | null
-  /** Port for Vite dev server (from VITE_PORT env or runtime config) */
-  port?: number
+  /** Preferred dev server port (provided by Python via VITE_PORT) */
+  devPort?: number
 }
 
 /**
@@ -145,14 +145,14 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
   const runtimeConfigPath = process.env.LITESTAR_VITE_CONFIG_PATH
   let hotFile: string | undefined
   let proxyMode: "vite" | "direct" | "proxy" | null = "vite"
-  let port: number | undefined
+  let devPort: number | undefined
 
   // Read port from VITE_PORT environment variable (set by Python)
   const envPort = process.env.VITE_PORT
   if (envPort) {
-    port = Number.parseInt(envPort, 10)
-    if (Number.isNaN(port)) {
-      port = undefined
+    devPort = Number.parseInt(envPort, 10)
+    if (Number.isNaN(devPort)) {
+      devPort = undefined
     }
   }
 
@@ -168,9 +168,9 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
       const hot = json.hotFile ?? "hot"
       hotFile = path.resolve(process.cwd(), bundleDir, hot)
       proxyMode = json.proxyMode ?? "vite"
-      // Runtime config port takes precedence over VITE_PORT env
+      // Runtime config port is the preferred dev server port
       if (json.port !== undefined) {
-        port = json.port
+        devPort = json.port
       }
     } catch {
       hotFile = undefined
@@ -206,7 +206,7 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
     verbose: config.verbose ?? false,
     hotFile,
     proxyMode,
-    port,
+    devPort,
   }
 }
 
@@ -225,21 +225,34 @@ function debounce<T extends (...args: unknown[]) => void>(func: T, wait: number)
 
 /**
  * Create the Vite plugin for API proxying.
+ *
+ * Port handling:
+ * - Python (Litestar) auto-selects a free port and sets VITE_PORT
+ * - This plugin reads VITE_PORT and uses it with strictPort: true
+ * - If VITE_PORT is not set (standalone Nuxt), fallback to Nuxt default (3000)
  */
 function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
+  // Use Python-provided port (via VITE_PORT or runtime config), fallback to Nuxt default
+  const devPort = config.devPort ?? 3000
+
   return {
     name: "litestar-nuxt-proxy",
     config() {
+      // Propagate port to Nuxt/Nitro env vars so the dev server binds correctly
+      process.env.VITE_PORT = String(devPort)
+      process.env.NUXT_PORT = String(devPort)
+      process.env.PORT = String(devPort)
+
       return {
         server: {
-          // Set the port from Python config/env to ensure Nuxt uses the expected port
-          // strictPort: true prevents Nuxt from auto-incrementing to a different port
-          ...(config.port !== undefined
-            ? {
-                port: config.port,
-                strictPort: true,
-              }
-            : {}),
+          // Use the Python-provided port with strictPort to prevent drift
+          port: devPort,
+          strictPort: true,
+          // Avoid HMR port collisions by letting Vite pick a free port for WS
+          hmr: {
+            port: 0,
+            host: "localhost",
+          },
           proxy: {
             [config.apiPrefix]: {
               target: config.apiProxy,
@@ -265,8 +278,12 @@ function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
         if (config.hotFile) {
           const address = server.httpServer?.address()
           if (address && typeof address === "object" && "port" in address) {
-            const host = address.address === "::" ? "localhost" : address.address
-            const url = `http://${host}:${address.port}`
+            // Write Nitro server URL to hotfile for Litestar SSR proxy
+            const hostEnv = process.env.NUXT_HOST ?? process.env.HOST
+            const host = hostEnv ?? (address.address === "::" ? "localhost" : address.address)
+            // Use devPort (from Python) or actual address port
+            const port = devPort ?? address.port
+            const url = `http://${host}:${port}`
             fs.mkdirSync(path.dirname(config.hotFile), { recursive: true })
             fs.writeFileSync(config.hotFile, url)
             if (config.verbose) {
@@ -422,8 +439,7 @@ export function litestarPlugins(userConfig: LitestarNuxtConfig = {}): Plugin[] {
 /**
  * Nuxt module definition for Litestar integration.
  *
- * This is a minimal module interface that can be used with Nuxt's module system.
- * For full type safety, install @nuxt/kit as a dev dependency.
+ * This is a function-based module that works with Nuxt's module system.
  *
  * @example
  * ```typescript
@@ -453,38 +469,74 @@ export function litestarPlugins(userConfig: LitestarNuxtConfig = {}): Plugin[] {
  * }
  * ```
  */
-export const litestarModule = {
-  meta: {
-    name: "litestar-vite",
-    configKey: "litestar",
-    compatibility: {
-      nuxt: ">=3.0.0",
-    },
-  },
 
-  defaults: {
-    apiProxy: "http://localhost:8000",
-    apiPrefix: "/api",
-    types: false,
-    verbose: false,
-  } satisfies LitestarNuxtConfig,
+// Nuxt module interface (simple function-based)
+interface NuxtModuleFunction {
+  (userOptions: LitestarNuxtConfig, nuxt: NuxtContext): void | Promise<void>
+  meta?: {
+    name: string
+    configKey: string
+    compatibility?: { nuxt: string }
+  }
+  getOptions?: () => LitestarNuxtConfig
+}
 
-  /**
-   * Setup function for the Nuxt module.
-   * This is called by Nuxt when the module is loaded.
-   */
-  setup(userOptions: LitestarNuxtConfig, nuxt: { options: { vite: { plugins?: Plugin[] } } }) {
-    const config = resolveConfig(userOptions)
-    const plugins = litestarPlugins(config)
+interface NuxtContext {
+  options: {
+    vite: { plugins?: Plugin[] }
+    runtimeConfig?: {
+      public?: Record<string, unknown>
+    }
+    nitro?: {
+      devProxy?: Record<string, unknown>
+    }
+  }
+  hook?: (name: string, fn: () => void | Promise<void>) => void
+}
 
-    // Add plugins to Nuxt's Vite config
-    nuxt.options.vite = nuxt.options.vite || {}
-    nuxt.options.vite.plugins = nuxt.options.vite.plugins || []
-    nuxt.options.vite.plugins.push(...plugins)
+/**
+ * Litestar Nuxt module setup function.
+ * This function is called by Nuxt when the module is loaded.
+ */
+function litestarNuxtModule(userOptions: LitestarNuxtConfig, nuxt: NuxtContext): void {
+  const config = resolveConfig(userOptions)
+  const plugins = litestarPlugins(config)
 
-    console.log(colors.cyan("[litestar-nuxt]"), "Module initialized")
+  // Add plugins to Nuxt's Vite config
+  nuxt.options.vite = nuxt.options.vite || {}
+  nuxt.options.vite.plugins = nuxt.options.vite.plugins || []
+  nuxt.options.vite.plugins.push(...plugins)
+
+  // Ensure Nitro dev proxy forwards API calls to Litestar backend in dev
+  nuxt.options.nitro = nuxt.options.nitro || {}
+  nuxt.options.nitro.devProxy = nuxt.options.nitro.devProxy || {}
+  nuxt.options.nitro.devProxy[config.apiPrefix] = {
+    target: config.apiProxy,
+    changeOrigin: true,
+    ws: true,
+  }
+
+  console.log(colors.cyan("[litestar-nuxt]"), "Module initialized")
+}
+
+// Add metadata to the function
+litestarNuxtModule.meta = {
+  name: "litestar-vite",
+  configKey: "litestar",
+  compatibility: {
+    nuxt: ">=3.0.0",
   },
 }
+
+// Default options getter
+litestarNuxtModule.getOptions = (): LitestarNuxtConfig => ({
+  apiProxy: "http://localhost:8000",
+  apiPrefix: "/api",
+  types: false,
+  verbose: false,
+})
+
+export const litestarModule: NuxtModuleFunction = litestarNuxtModule
 
 // Default export for Nuxt module system
 export default litestarModule

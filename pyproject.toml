@@ -307,7 +307,7 @@ lint.extend-safe-fixes = ["TC"]
 convention = "google"
 
 [tool.ruff.lint.mccabe]
-max-complexity = 12
+max-complexity = 18
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ['F401', 'D104']

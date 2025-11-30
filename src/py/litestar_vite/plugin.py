@@ -46,11 +46,12 @@ from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, TypeGenConfig, Vi
 from litestar_vite.exceptions import ViteProcessError
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator, Sequence
+    from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 
     from click import Group
     from litestar import Litestar
     from litestar.config.app import AppConfig
+    from litestar.connection import Request
     from litestar.datastructures import CacheControlHeader
     from litestar.openapi.spec import SecurityRequirement
     from litestar.types import (
@@ -78,6 +79,14 @@ _TICK = "[bold green]✓[/]"
 _INFO = "[cyan]•[/]"
 _WARN = "[yellow]![/]"
 _FAIL = "[red]x[/]"
+
+
+def _fmt_path(path: Path) -> str:
+    """Return a path relative to CWD when possible to keep logs short."""
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return str(path)
 
 
 # Cache debug flag check to avoid repeated os.environ lookups
@@ -641,7 +650,7 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
         headers = [
             (k.decode(), v.decode())
             for k, v in scope.get("headers", [])
-            if k.lower() not in (b"host", b"connection", b"keep-alive")
+            if k.lower() not in {b"host", b"connection", b"keep-alive"}
         ]
 
         # Read request body
@@ -740,6 +749,9 @@ def _extract_forward_headers(scope: dict[str, Any]) -> list[tuple[str, str]]:
 
     Note: We exclude protocol-specific headers that websockets library handles itself.
     The sec-websocket-protocol header is also excluded since we handle subprotocols separately.
+
+    Returns:
+        A list of (header_name, header_value) tuples.
     """
     skip_headers = (
         b"host",
@@ -754,7 +766,11 @@ def _extract_forward_headers(scope: dict[str, Any]) -> list[tuple[str, str]]:
 
 
 def _extract_subprotocols(scope: dict[str, Any]) -> list[str]:
-    """Extract WebSocket subprotocols from the request headers."""
+    """Extract WebSocket subprotocols from the request headers.
+
+    Returns:
+        A list of subprotocol strings.
+    """
     for key, value in scope.get("headers", []):
         if key.lower() == b"sec-websocket-protocol":
             # Subprotocols are comma-separated
@@ -804,7 +820,7 @@ async def _run_websocket_proxy(
         tg.start_soon(upstream_to_client)
 
 
-def create_vite_hmr_handler(  # noqa: C901
+def create_vite_hmr_handler(
     hotfile_path: Path,
     hmr_path: str = "/static/vite-hmr",
     asset_url: str = "/static/",
@@ -874,6 +890,190 @@ def create_vite_hmr_handler(  # noqa: C901
     return vite_hmr_proxy
 
 
+def _check_http2_support(enable: bool) -> bool:
+    """Check if HTTP/2 support is available.
+
+    Returns:
+        True if HTTP/2 is enabled and the h2 package is installed, else False.
+    """
+    if not enable:
+        return False
+    try:
+        import h2  # noqa: F401  # pyright: ignore[reportMissingImports,reportUnusedImport]
+    except ImportError:
+        return False
+    else:
+        return True
+
+
+def _build_proxy_url(target_url: str, path: str, query: str) -> str:
+    """Build the full proxy URL from target, path, and query string.
+
+    Returns:
+        The full URL as a string.
+    """
+    url = f"{target_url}{path}"
+    return f"{url}?{query}" if query else url
+
+
+def _create_target_url_getter(
+    target: "str | None", hotfile_path: "Path | None", cached_target: list["str | None"]
+) -> "Callable[[], str | None]":
+    """Create a function that returns the current target URL.
+
+    Returns:
+        A callable that returns the target URL or None if unavailable.
+    """
+
+    def _get_target_url() -> str | None:
+        if target is not None:
+            return target.rstrip("/")
+        if hotfile_path is None:
+            return None
+        try:
+            url = hotfile_path.read_text().strip()
+            if url != cached_target[0]:
+                cached_target[0] = url
+                if _is_proxy_debug():
+                    console.print(f"[dim][ssr-proxy] Dynamic target: {url}[/]")
+            return url.rstrip("/")
+        except FileNotFoundError:
+            return None
+
+    return _get_target_url
+
+
+def create_ssr_proxy_controller(
+    target: "str | None" = None,
+    hotfile_path: "Path | None" = None,
+    http2: bool = True,
+) -> type:
+    """Create a Controller that proxies to an SSR framework dev server.
+
+    This controller is used for SSR frameworks (Astro, Nuxt, SvelteKit) where all
+    non-API requests should be proxied to the framework's dev server for rendering.
+
+    Args:
+        target: Static target URL to proxy to. If None, uses hotfile for dynamic discovery.
+        hotfile_path: Path to the hotfile for dynamic target discovery.
+        http2: Enable HTTP/2 for proxy connections.
+
+    Returns:
+        A Litestar Controller class with HTTP and WebSocket handlers for SSR proxy.
+    """
+    from litestar import Controller, HttpMethod, Response, WebSocket, route, websocket
+
+    cached_target: list[str | None] = [target]
+    get_target_url = _create_target_url_getter(target, hotfile_path, cached_target)
+
+    class SSRProxyController(Controller):
+        """Controller that proxies requests to an SSR framework dev server."""
+
+        include_in_schema = False
+        opt = {"exclude_from_auth": True}
+
+        @route(
+            path=["/", "/{path:path}"],
+            http_method=[
+                HttpMethod.GET,
+                HttpMethod.POST,
+                HttpMethod.PUT,
+                HttpMethod.PATCH,
+                HttpMethod.DELETE,
+                HttpMethod.HEAD,
+                HttpMethod.OPTIONS,
+            ],
+            name="ssr_proxy",
+        )
+        async def http_proxy(self, request: "Request[Any, Any, Any]") -> "Response[bytes]":
+            """Proxy all HTTP requests to the SSR framework dev server."""
+            target_url = get_target_url()
+            if target_url is None:
+                return Response(content=b"SSR dev server not running", status_code=503, media_type="text/plain")
+
+            req_path: str = request.url.path
+            url = _build_proxy_url(target_url, req_path, request.url.query or "")
+
+            if _is_proxy_debug():
+                console.print(f"[dim][ssr-proxy] {request.method} {req_path} → {url}[/]")
+
+            headers_to_forward = [
+                (k, v) for k, v in request.headers.items() if k.lower() not in {"host", "connection", "keep-alive"}
+            ]
+            body = await request.body()
+            http2_enabled = _check_http2_support(http2)
+
+            async with httpx.AsyncClient(http2=http2_enabled, timeout=30.0) as client:
+                try:
+                    upstream_resp = await client.request(
+                        request.method, url, headers=headers_to_forward, content=body, follow_redirects=False
+                    )
+                except httpx.ConnectError:
+                    return Response(
+                        content=f"SSR dev server not running at {target_url}".encode(),
+                        status_code=503,
+                        media_type="text/plain",
+                    )
+                except httpx.HTTPError as exc:
+                    return Response(content=str(exc).encode(), status_code=502, media_type="text/plain")
+
+            return Response(
+                content=upstream_resp.content,
+                status_code=upstream_resp.status_code,
+                headers=dict(upstream_resp.headers.items()),
+                media_type=upstream_resp.headers.get("content-type"),
+            )
+
+        @websocket(path=["/", "/{path:path}"], name="ssr_proxy_ws")
+        async def ws_proxy(self, socket: "WebSocket[Any, Any, Any]") -> None:
+            """Proxy WebSocket connections to the SSR framework dev server (for HMR)."""
+            target_url = get_target_url()
+            if target_url is None:
+                await socket.close(code=1011, reason="SSR dev server not running")
+                return
+
+            ws_target = target_url.replace("http://", "ws://").replace("https://", "wss://")
+            scope_dict = dict(socket.scope)
+            ws_path = str(scope_dict.get("path", "/"))
+            query_bytes = cast("bytes", scope_dict.get("query_string", b""))
+            ws_url = _build_proxy_url(ws_target, ws_path, query_bytes.decode("utf-8") if query_bytes else "")
+
+            if _is_proxy_debug():
+                console.print(f"[dim][ssr-proxy-ws] {ws_path} → {ws_url}[/]")
+
+            headers = _extract_forward_headers(scope_dict)
+            subprotocols = _extract_subprotocols(scope_dict)
+            typed_subprotocols: list[Subprotocol] = [cast("Subprotocol", p) for p in subprotocols]
+
+            await socket.accept(subprotocols=typed_subprotocols[0] if typed_subprotocols else None)
+
+            try:
+                async with websockets.connect(
+                    ws_url, additional_headers=headers, open_timeout=10, subprotocols=typed_subprotocols or None
+                ) as upstream:
+                    if _is_proxy_debug():
+                        console.print("[dim][ssr-proxy-ws] ✓ Connected[/]")
+                    await _run_websocket_proxy(socket, upstream)
+            except TimeoutError:
+                if _is_proxy_debug():
+                    console.print("[yellow][ssr-proxy-ws] Connection timeout[/]")
+                with suppress(anyio.ClosedResourceError, WebSocketDisconnect):
+                    await socket.close(code=1011, reason="SSR HMR connection timeout")
+            except OSError as exc:
+                if _is_proxy_debug():
+                    console.print(f"[yellow][ssr-proxy-ws] Connection failed: {exc}[/]")
+                with suppress(anyio.ClosedResourceError, WebSocketDisconnect):
+                    await socket.close(code=1011, reason="SSR HMR connection failed")
+            except WebSocketDisconnect:
+                pass  # Normal client disconnect
+            except websockets.ConnectionClosed:
+                pass  # Normal connection close
+            except anyio.ClosedResourceError:
+                pass  # Resource already closed
+
+    return SSRProxyController
+
+
 @dataclass
 class StaticFilesConfig:
     """Configuration for static file serving.
@@ -897,10 +1097,14 @@ class ViteProcess:
     """Manages the Vite development server process.
 
     This class handles starting and stopping the Vite dev server process,
-    with proper thread safety and graceful shutdown.
+    with proper thread safety and graceful shutdown. It registers signal
+    handlers for SIGTERM and SIGINT to ensure child processes are terminated
+    even if Python is killed externally.
     """
 
-    _atexit_registered: bool = False
+    _instances: "list[ViteProcess]" = []
+    _signals_registered: bool = False
+    _original_handlers: "dict[int, Any]" = {}
 
     def __init__(self, executor: "JSExecutor") -> None:
         """Initialize the Vite process manager.
@@ -908,14 +1112,55 @@ class ViteProcess:
         Args:
             executor: The JavaScript executor to use for running Vite.
         """
-        self.process: "subprocess.Popen[bytes] | None" = None
+        self.process: "subprocess.Popen[Any] | None" = None
         self._lock = threading.Lock()
         self._executor = executor
-        if not ViteProcess._atexit_registered:
+
+        # Track this instance for signal handler cleanup
+        ViteProcess._instances.append(self)
+
+        # Register signal handlers once (class-level)
+        if not ViteProcess._signals_registered:
+            self._register_signal_handlers()
+            ViteProcess._signals_registered = True
+
+            # Also register atexit as fallback
             import atexit
 
-            atexit.register(self._atexit_stop)
-            ViteProcess._atexit_registered = True
+            atexit.register(ViteProcess._cleanup_all_instances)
+
+    @classmethod
+    def _register_signal_handlers(cls) -> None:
+        """Register signal handlers for graceful shutdown on SIGTERM/SIGINT."""
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                original = signal.signal(sig, cls._signal_handler)
+                cls._original_handlers[sig] = original
+            except (OSError, ValueError):
+                # Signal registration can fail in certain environments
+                pass
+
+    @classmethod
+    def _signal_handler(cls, signum: int, frame: Any) -> None:
+        """Handle termination signals by stopping all Vite processes first."""
+        # Stop all tracked ViteProcess instances
+        cls._cleanup_all_instances()
+
+        # Chain to the original handler
+        original = cls._original_handlers.get(signum, signal.SIG_DFL)
+        if callable(original) and original not in {signal.SIG_IGN, signal.SIG_DFL}:
+            original(signum, frame)
+        elif original == signal.SIG_DFL:
+            # Restore default and re-raise
+            signal.signal(signum, signal.SIG_DFL)
+            os.kill(os.getpid(), signum)
+
+    @classmethod
+    def _cleanup_all_instances(cls) -> None:
+        """Stop all tracked ViteProcess instances."""
+        for instance in cls._instances:
+            with suppress(Exception):
+                instance.stop()
 
     def start(self, command: list[str], cwd: "Path | str | None") -> None:
         """Start the Vite process.
@@ -966,7 +1211,10 @@ class ViteProcess:
             raise ViteProcessError(msg) from e
 
     def stop(self, timeout: float = 5.0) -> None:
-        """Stop the Vite process.
+        """Stop the Vite process and all its child processes.
+
+        Uses process groups to ensure child processes (node, astro, nuxt, vite, etc.)
+        are terminated along with the parent npm/npx process.
 
         Args:
             timeout: Seconds to wait for graceful shutdown before killing.
@@ -976,21 +1224,38 @@ class ViteProcess:
         """
         try:
             with self._lock:
-                if self.process and self.process.poll() is None:
-                    # Send SIGTERM for graceful shutdown
-                    if hasattr(signal, "SIGTERM"):
-                        self.process.terminate()
-                    try:
-                        self.process.wait(timeout=timeout)
-                    except subprocess.TimeoutExpired:
-                        # Force kill if still alive
-                        if hasattr(signal, "SIGKILL"):
-                            self.process.kill()
-                        self.process.wait(timeout=1.0)
+                self._terminate_process_group(timeout)
         except Exception as e:
             console.print(f"[red]Failed to stop Vite process: {e!s}[/]")
             msg = f"Failed to stop Vite process: {e!s}"
             raise ViteProcessError(msg) from e
+
+    def _terminate_process_group(self, timeout: float) -> None:
+        """Terminate the process group, waiting and killing if needed."""
+        if not self.process or self.process.poll() is not None:
+            return
+        # On Unix, kill the entire process group to ensure all children die.
+        # The process was started with start_new_session=True so the pid IS the pgid.
+        if hasattr(os, "killpg") and hasattr(signal, "SIGTERM"):
+            with suppress(ProcessLookupError):
+                os.killpg(self.process.pid, signal.SIGTERM)
+        elif hasattr(signal, "SIGTERM"):
+            self.process.terminate()
+        try:
+            self.process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            self._force_kill_process_group()
+            self.process.wait(timeout=1.0)
+
+    def _force_kill_process_group(self) -> None:
+        """Force kill the process group if still alive."""
+        if not self.process:
+            return
+        if hasattr(os, "killpg") and hasattr(signal, "SIGKILL"):
+            with suppress(ProcessLookupError):
+                os.killpg(self.process.pid, signal.SIGKILL)
+        elif hasattr(signal, "SIGKILL"):
+            self.process.kill()
 
     def _atexit_stop(self) -> None:
         """Best-effort stop on interpreter exit."""
@@ -1073,27 +1338,45 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         return self._asset_loader
 
     def _ensure_proxy_target(self) -> None:
-        """Prepare proxy target URL and hotfile for vite proxy mode."""
-        # Skip if already set, not in vite mode, or not in dev mode
-        if self._proxy_target is not None:
-            return
-        if self._config.proxy_mode != "vite":
-            return
+        """Prepare proxy target URL and port for proxy modes (vite, proxy, ssr).
+
+        For all proxy modes in dev mode:
+        - Auto-selects a free port if VITE_PORT is not explicitly set
+        - Sets the port in runtime config for JS integrations to read
+
+        For 'vite' mode specifically:
+        - Forces loopback host unless VITE_ALLOW_REMOTE is set
+        - Sets _proxy_target directly (JS writes hotfile when server starts)
+
+        For 'proxy'/'ssr' modes:
+        - Port is written to .litestar-vite.json for SSR framework to read
+        - SSR framework writes hotfile with actual URL when ready
+        - Proxy discovers target from hotfile at request time
+        """
+        # Skip if not in dev mode
         if not self._config.is_dev_mode:
             return
 
-        # Force loopback for internal dev server unless explicitly overridden
-        if os.getenv("VITE_ALLOW_REMOTE", "False") not in TRUE_VALUES:
-            self._config.runtime.host = "127.0.0.1"
+        # Skip if proxy disabled
+        if self._config.proxy_mode is None:
+            return
 
-        # If VITE_PORT not explicitly set, pick a free one for the internal server
+        # For all proxy modes, pick a free port if not explicitly set
+        # This ensures JS integrations know what port to use
         if os.getenv("VITE_PORT") is None:
             self._config.runtime.port = _pick_free_port()
 
-        self._proxy_target = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
-        # Note: We don't write the hotfile here anymore.
-        # The TypeScript Vite plugin writes it when the dev server starts.
-        # This ensures the hotfile contains the actual Vite server URL.
+        # For 'vite' mode, set proxy target directly (internal Vite server)
+        if self._config.proxy_mode == "vite":
+            # Skip if proxy target already set
+            if self._proxy_target is not None:
+                return
+            # Force loopback for internal dev server unless explicitly overridden
+            if os.getenv("VITE_ALLOW_REMOTE", "False") not in TRUE_VALUES:
+                self._config.runtime.host = "127.0.0.1"
+            self._proxy_target = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
+        # For 'proxy'/'ssr' modes, target is discovered from hotfile at request time
+        # The SSR framework (Nuxt/Astro/SvelteKit) writes the hotfile when ready
 
     def on_cli_init(self, cli: "Group") -> None:
         """Register CLI commands.
@@ -1120,12 +1403,19 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         Returns:
             The modified application configuration.
         """
+        from litestar import Response
+        from litestar.connection import Request as LitestarRequest
+
         from litestar_vite.loader import (
             render_asset_tag,
             render_hmr_client,
             render_partial_asset_tag,
             render_static_asset,
         )
+
+        # Add Response and Request to signature namespace for SSR proxy handler type hints
+        app_config.signature_namespace["Response"] = Response
+        app_config.signature_namespace["Request"] = LitestarRequest
 
         # Register Jinja2 template callables if Jinja2 is installed and in template mode
         if JINJA_INSTALLED and self._config.mode in {"template", "htmx"}:
@@ -1214,21 +1504,27 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             elif proxy_mode == "proxy":
                 # Proxy mode (blacklist): proxy everything except Litestar routes
                 # Used for SSR frameworks (Astro, Nuxt, SvelteKit) and external servers (Angular CLI)
+                self._ensure_proxy_target()
                 external = self._config.external_dev_server
 
                 # Determine target source: static URL or hotfile (dynamic)
                 static_target = external.target if external else None
 
-                app_config.middleware.append(
-                    DefineMiddleware(
-                        ExternalDevServerProxyMiddleware,
+                # Add catch-all controller (HTTP + WebSocket) that proxies to the SSR framework
+                # This is needed because Litestar's router runs BEFORE middleware,
+                # so without a catch-all route, requests to `/` return 404 before
+                # the middleware can proxy them.
+                # The WebSocket handler is needed for SSR framework HMR.
+                app_config.route_handlers.append(
+                    create_ssr_proxy_controller(
                         target=static_target,
                         hotfile_path=hotfile_path if static_target is None else None,
                         http2=external.http2 if external else True,
                     )
                 )
 
-                # Add HMR WebSocket handler for SSR frameworks using Vite
+                # Add HMR WebSocket handler for Vite asset requests (at /static/vite-hmr)
+                # This is separate from the SSR proxy WebSocket which handles root-level HMR
                 hmr_path = f"{self._config.asset_url.rstrip('/')}/vite-hmr"
                 app_config.route_handlers.append(
                     create_vite_hmr_handler(
@@ -1270,6 +1566,62 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 _log_success("Vite dev server responded to health check")
                 return
         _log_fail("Vite server health check failed")
+
+    def _run_health_check(self) -> None:
+        """Run the appropriate health check based on proxy mode."""
+        if self._config.proxy_mode == "proxy":
+            # SSR framework health check via hotfile
+            bundle_dir = self._config.bundle_dir
+            if not bundle_dir.is_absolute():
+                bundle_dir = self._config.root_dir / bundle_dir
+            hotfile_path = bundle_dir / self._config.hot_file
+            self._check_ssr_health(hotfile_path)
+        else:
+            # Standard Vite dev server health check
+            self._check_health()
+
+    def _check_ssr_health(self, hotfile_path: Path, timeout: float = 10.0) -> bool:
+        """Wait for SSR framework to be ready via hotfile.
+
+        Polls intelligently for the hotfile and validates HTTP connectivity.
+        Exits early as soon as the server is confirmed ready.
+
+        Args:
+            hotfile_path: Path to the hotfile written by the SSR framework.
+            timeout: Maximum time to wait in seconds (default 10s).
+
+        Returns:
+            True if SSR server is ready, False if timeout reached.
+        """
+        import time
+
+        start = time.time()
+        last_url = None
+
+        while time.time() - start < timeout:
+            if hotfile_path.exists():
+                try:
+                    url = hotfile_path.read_text(encoding="utf-8").strip()
+                    if url:
+                        last_url = url
+                        # Try a quick HTTP request to verify server is actually up
+                        resp = httpx.get(url, timeout=0.5, follow_redirects=True)
+                        # Any non-5xx response means server is up (even 404 is fine)
+                        if resp.status_code < 500:
+                            _log_success(f"SSR server ready at {url}")
+                            return True
+                except OSError:
+                    pass  # Hotfile read error, keep polling
+                except httpx.HTTPError:
+                    pass  # Server not ready yet, keep polling
+
+            time.sleep(0.1)  # Poll every 100ms
+
+        if last_url:
+            _log_fail(f"SSR server at {last_url} did not respond within {timeout}s")
+        else:
+            _log_fail(f"SSR hotfile not found at {hotfile_path} within {timeout}s")
+        return False
 
     def _export_types_sync(self, app: "Litestar") -> None:
         """Export type metadata synchronously on startup.
@@ -1328,8 +1680,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._config.types.routes_path.write_bytes(routes_content)
 
             _log_success(
-                f"Types exported → {self._config.types.routes_path}"
-                + (f" (openapi: {self._config.types.openapi_path})" if has_openapi else " (openapi skipped)")
+                f"Types exported → {_fmt_path(self._config.types.routes_path)}"
+                + (f" (openapi: {_fmt_path(self._config.types.openapi_path)})" if has_openapi else " (openapi skipped)")
             )
         except (OSError, TypeError, ValueError, ImportError) as e:  # pragma: no cover
             _log_warn(f"Type export failed: {e}")
@@ -1445,7 +1797,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 self._vite_process.start(command_to_run, self._config.root_dir)
                 _log_success("Vite process started")
                 if self._config.health_check:
-                    self._check_health()
+                    self._run_health_check()
                 yield
             finally:
                 self._vite_process.stop()
@@ -1521,7 +1873,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 self._vite_process.start(command_to_run, self._config.root_dir)
                 _log_success("Vite process started")
                 if self._config.health_check:
-                    self._check_health()
+                    self._run_health_check()
                 yield
             finally:
                 self._vite_process.stop()
