@@ -89,6 +89,11 @@ class ViteSPAHandler:
         self._initialized = False
         self._http_client: "httpx.AsyncClient | None" = None
 
+    @property
+    def is_initialized(self) -> bool:
+        """Whether the handler has been initialized."""
+        return self._initialized
+
     async def initialize(self) -> None:
         """Initialize the handler.
 

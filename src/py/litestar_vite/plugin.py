@@ -1624,7 +1624,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._spa_handler = ViteSPAHandler(self._config)
 
         # Auto-register per-worker lifespan for SPA handler init, asset loader, env setup
-        app_config.lifespan.append(self.lifespan)
+        app_config.lifespan.append(self.lifespan)  # pyright: ignore[reportUnknownMemberType]
 
         return app_config
 
@@ -1905,8 +1905,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._asset_loader = ViteAssetLoader(config=self._config)
         await self._asset_loader.initialize()
 
-        # Initialize SPA handler if enabled (check _initialized to avoid double-init)
-        if self._spa_handler is not None and not self._spa_handler._initialized:
+        # Initialize SPA handler if enabled (check is_initialized to avoid double-init)
+        if self._spa_handler is not None and not self._spa_handler.is_initialized:
             await self._spa_handler.initialize()
             _log_success("SPA handler initialized")
 
