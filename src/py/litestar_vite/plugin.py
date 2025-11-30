@@ -268,6 +268,12 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
     # surface them to the Vite process unless the user explicitly set them.
     os.environ.setdefault("VITE_HOST", config.host)
     os.environ.setdefault("VITE_PORT", str(config.port))
+    # Set framework-specific port env vars for SSR frameworks
+    # Nuxt priority: NUXT_PORT > NITRO_PORT > PORT > devServer.port
+    os.environ.setdefault("NUXT_PORT", str(config.port))
+    os.environ.setdefault("NITRO_PORT", str(config.port))
+    # Generic PORT fallback (Nitro, Astro, etc.)
+    os.environ.setdefault("PORT", str(config.port))
 
     os.environ.setdefault("LITESTAR_VERSION", litestar_version)
     os.environ.setdefault("LITESTAR_VITE_RUNTIME", config.runtime.executor or "node")
@@ -966,6 +972,23 @@ def create_ssr_proxy_controller(
     cached_target: list[str | None] = [target]
     get_target_url = _create_target_url_getter(target, hotfile_path, cached_target)
 
+    cached_hmr_target: list[str | None] = [None]
+
+    def get_hmr_target_url() -> str | None:
+        if hotfile_path is None:
+            return None
+        # JS writes to `${config.hotFile}.hmr`
+        hmr_path = Path(f"{hotfile_path}.hmr")
+        try:
+            url = hmr_path.read_text().strip()
+            if url != cached_hmr_target[0]:
+                cached_hmr_target[0] = url
+                if _is_proxy_debug():
+                    console.print(f"[dim][ssr-proxy] HMR target: {url}[/]")
+            return url.rstrip("/")
+        except FileNotFoundError:
+            return None
+
     class SSRProxyController(Controller):
         """Controller that proxies requests to an SSR framework dev server."""
 
@@ -1027,7 +1050,9 @@ def create_ssr_proxy_controller(
         @websocket(path=["/", "/{path:path}"], name="ssr_proxy_ws")
         async def ws_proxy(self, socket: "WebSocket[Any, Any, Any]") -> None:
             """Proxy WebSocket connections to the SSR framework dev server (for HMR)."""
-            target_url = get_target_url()
+            # Prioritize HMR target if available, else fall back to main target
+            target_url = get_hmr_target_url() or get_target_url()
+
             if target_url is None:
                 await socket.close(code=1011, reason="SSR dev server not running")
                 return

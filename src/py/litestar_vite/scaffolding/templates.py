@@ -310,6 +310,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         files=[
             "vite.config.ts",
             "svelte.config.js",
+            "tsconfig.json",
             "src/app.html",
             "src/app.css",
             "src/routes/+page.svelte",

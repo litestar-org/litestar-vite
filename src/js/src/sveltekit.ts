@@ -322,7 +322,14 @@ export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): Plu
         server.httpServer?.once("listening", () => {
           const address = server.httpServer?.address()
           if (address && typeof address === "object" && "port" in address) {
-            const host = address.address === "::" ? "localhost" : address.address
+            // Normalize IPv6 addresses to localhost, and wrap any remaining IPv6 in brackets
+            let host = address.address
+            if (host === "::" || host === "::1") {
+              host = "localhost"
+            } else if (host.includes(":")) {
+              // IPv6 address - wrap in brackets for URL
+              host = `[${host}]`
+            }
             const url = `http://${host}:${address.port}`
             fs.mkdirSync(path.dirname(hotFile), { recursive: true })
             fs.writeFileSync(hotFile, url)

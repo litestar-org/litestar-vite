@@ -373,10 +373,12 @@ class TestViteProcess:
         # Should not raise an exception
         process.stop()
 
+    @patch("litestar_vite.plugin.os.killpg")
     @patch("signal.SIGTERM", 15)
-    def test_vite_process_stop_graceful(self) -> None:
+    def test_vite_process_stop_graceful(self, mock_killpg: Mock) -> None:
         """Test graceful process stop."""
         mock_process = Mock()
+        mock_process.pid = 12345  # Must be an integer for os.killpg
         mock_process.poll.return_value = None  # Process is running
         mock_process.wait.return_value = 0  # Process exits cleanly
 
@@ -386,16 +388,19 @@ class TestViteProcess:
 
         process.stop()
 
-        mock_process.terminate.assert_called_once()
+        # Process group termination is used on Unix
+        mock_killpg.assert_called_once_with(12345, 15)
         mock_process.wait.assert_called_once()
 
+    @patch("litestar_vite.plugin.os.killpg")
     @patch("signal.SIGTERM", 15)
     @patch("signal.SIGKILL", 9)
-    def test_vite_process_stop_force_kill(self) -> None:
+    def test_vite_process_stop_force_kill(self, mock_killpg: Mock) -> None:
         """Test force killing process when graceful stop fails."""
         import subprocess
 
         mock_process = Mock()
+        mock_process.pid = 12345  # Must be an integer for os.killpg
         mock_process.poll.return_value = None  # Process is running
         mock_process.wait.side_effect = [subprocess.TimeoutExpired("cmd", 5.0), 0]
 
@@ -405,16 +410,20 @@ class TestViteProcess:
 
         process.stop()
 
-        mock_process.terminate.assert_called_once()
-        mock_process.kill.assert_called_once()
+        # First call is SIGTERM, second is SIGKILL after timeout
+        assert mock_killpg.call_count == 2
+        mock_killpg.assert_any_call(12345, 15)  # SIGTERM
+        mock_killpg.assert_any_call(12345, 9)  # SIGKILL
         assert mock_process.wait.call_count == 2
 
+    @patch("litestar_vite.plugin.os.killpg")
     @patch("litestar_vite.plugin.console")
-    def test_vite_process_stop_failure(self, mock_console: Mock) -> None:
+    def test_vite_process_stop_failure(self, mock_console: Mock, mock_killpg: Mock) -> None:
         """Test process stop failure handling."""
         mock_process = Mock()
+        mock_process.pid = 12345  # Must be an integer for os.killpg
         mock_process.poll.return_value = None
-        mock_process.terminate.side_effect = Exception("Stop failed")
+        mock_killpg.side_effect = Exception("Stop failed")
 
         executor = Mock()
         process = ViteProcess(executor)

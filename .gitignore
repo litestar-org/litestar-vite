@@ -209,3 +209,5 @@ examples/*/build
 examples/*/generated
 examples/*/src/generated
 examples/*/resources/generated
+examples/*/.svelte-kit
+examples/*/.output

@@ -1,5 +1,6 @@
 <script lang="ts">
 import { onMount } from "svelte"
+import routesJson from "./generated/routes.json"
 
 type Book = {
   id: number
@@ -18,7 +19,7 @@ type Summary = {
 
 let summary = $state<Summary | null>(null)
 let books = $state<Book[]>([])
-const view = $state<"overview" | "books">("overview")
+let view = $state<"overview" | "books">("overview")
 
 onMount(async () => {
   const [summaryRes, booksRes] = await Promise.all([fetch("/api/summary"), fetch("/api/books")])
@@ -27,132 +28,70 @@ onMount(async () => {
 })
 
 const featured = $derived(summary?.featured)
+const serverRoutes = routesJson.routes
 </script>
 
-<main class="app">
-  <header class="hero">
-    <p class="eyebrow">Litestar + Vite</p>
-    <h1>Library (Svelte)</h1>
-    <p class="lede">Same API, different frontend.</p>
-    <div class="tabs" role="tablist">
-      <button class:active={view === "overview"} onclick={() => (view = "overview")}>Overview</button>
-      <button class:active={view === "books"} onclick={() => (view = "books")}>Books {summary ? `(${summary.total_books})` : ""}</button>
-    </div>
+<main class="mx-auto max-w-5xl space-y-6 px-4 py-10">
+  <header class="space-y-2">
+    <p class="font-semibold text-[#edb641] text-sm uppercase tracking-[0.14em]">Litestar · Vite</p>
+    <h1 class="font-semibold text-3xl text-[#202235]">Library (Svelte)</h1>
+    <p class="max-w-3xl text-slate-600">Same API, different frontend. Svelte 5 with runes.</p>
+    <nav class="inline-flex gap-2 rounded-full bg-slate-100 p-1 shadow-sm" aria-label="Views">
+      <button
+        class="rounded-full px-4 py-2 font-semibold text-sm transition {view === 'overview' ? 'bg-white text-[#202235] shadow' : 'text-slate-600'}"
+        onclick={() => (view = "overview")}
+      >
+        Overview
+      </button>
+      <button
+        class="rounded-full px-4 py-2 font-semibold text-sm transition {view === 'books' ? 'bg-white text-[#202235] shadow' : 'text-slate-600'}"
+        onclick={() => (view = "books")}
+      >
+        Books {summary ? `(${summary.total_books})` : ""}
+      </button>
+    </nav>
   </header>
 
-  {#if view === "overview" && featured}
-    <section class="panel">
-      <h2>{summary?.headline}</h2>
-      <p>Featured book</p>
-      <article class="card">
-        <h3>{featured.title}</h3>
-        <p class="muted">{featured.author} • {featured.year}</p>
-        <p class="chips">{featured.tags.join(" · ")}</p>
-      </article>
+  {#if view === "overview"}
+    <section class="space-y-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/40">
+      {#if featured}
+        <h2 class="font-semibold text-[#202235] text-xl">{summary?.headline}</h2>
+        <p class="text-slate-600">Featured book</p>
+        <article class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4">
+          <h3 class="font-semibold text-[#202235] text-lg">{featured.title}</h3>
+          <p class="mt-1 text-slate-600">{featured.author} • {featured.year}</p>
+          <p class="mt-1 text-[#202235] text-sm">{featured.tags.join(" · ")}</p>
+        </article>
+      {:else}
+        <div class="text-slate-600">Loading...</div>
+      {/if}
     </section>
   {:else}
-    <section class="grid" aria-label="Books">
-      {#each books as book}
-        <article class="card" aria-label={`Book ${book.title}`}>
-          <h3>{book.title}</h3>
-          <p class="muted">{book.author} • {book.year}</p>
-          <p class="chips">{book.tags.join(" · ")}</p>
-        </article>
-      {/each}
+    <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Books">
+      {#if books.length > 0}
+        {#each books as book (book.id)}
+          <article class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+            <h3 class="font-semibold text-[#202235] text-lg">{book.title}</h3>
+            <p class="mt-1 text-slate-600">{book.author} • {book.year}</p>
+            <p class="mt-1 text-[#202235] text-sm">{book.tags.join(" · ")}</p>
+          </article>
+        {/each}
+      {:else}
+        <div class="text-slate-600">Loading...</div>
+      {/if}
     </section>
   {/if}
+
+  <footer class="border-slate-200 border-t pt-8 text-slate-400 text-xs">
+    <details>
+      <summary class="cursor-pointer">Server Routes (from generated routes.json)</summary>
+      <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
+        {#each Object.entries(serverRoutes) as [name, route]}
+          <span class="font-mono text-slate-600">
+            {name} → {route.uri}
+          </span>
+        {/each}
+      </div>
+    </details>
+  </footer>
 </main>
-
-<style>
-  :global(body) {
-    margin: 0;
-    font-family: "Inter", "SF Pro Text", system-ui, -apple-system, sans-serif;
-    background: #f8fafc;
-    color: #0f172a;
-  }
-
-  .app {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 2.5rem 1.5rem 3rem;
-  }
-
-  .hero {
-    display: grid;
-    gap: 0.5rem;
-    margin-bottom: 1.5rem;
-  }
-
-  .eyebrow {
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-weight: 600;
-    color: #a855f7;
-    font-size: 0.85rem;
-  }
-
-  .hero h1 {
-    margin: 0;
-    font-size: 2.1rem;
-  }
-
-  .lede {
-    margin: 0;
-    color: #475569;
-  }
-
-  .tabs {
-    display: inline-flex;
-    gap: 0.5rem;
-    background: #e2e8f0;
-    border-radius: 999px;
-    padding: 0.25rem;
-  }
-
-  .tabs button {
-    border: none;
-    background: transparent;
-    padding: 0.5rem 1.05rem;
-    border-radius: 999px;
-    font-weight: 600;
-    color: #0f172a;
-    cursor: pointer;
-    transition: background 120ms ease, box-shadow 120ms ease;
-  }
-
-  .tabs button.active {
-    background: #fff;
-    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
-  }
-
-  .panel {
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 18px;
-    padding: 1.5rem;
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
-  }
-
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1rem;
-  }
-
-  .card {
-    border: 1px solid #e2e8f0;
-    border-radius: 14px;
-    padding: 1rem 1.25rem;
-    background: linear-gradient(180deg, #fff, #f8fafc);
-  }
-
-  .muted {
-    color: #64748b;
-    margin: 0.15rem 0 0.35rem;
-  }
-
-  .chips {
-    font-size: 0.95rem;
-    color: #0f172a;
-  }
-</style>

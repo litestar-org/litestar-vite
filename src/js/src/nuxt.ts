@@ -38,6 +38,23 @@ import { resolveInstallHint } from "./install-hint.js"
 const execAsync = promisify(exec)
 
 /**
+ * Normalize a host address for use in URLs.
+ * - Converts bind-all addresses (::, 0.0.0.0) to localhost
+ * - Converts IPv6 localhost (::1) to localhost
+ * - Wraps other IPv6 addresses in brackets for URL compatibility
+ */
+function normalizeHost(host: string): string {
+  if (host === "::" || host === "::1" || host === "0.0.0.0") {
+    return "localhost"
+  }
+  // If it contains ":" and isn't already bracketed, it's IPv6
+  if (host.includes(":") && !host.startsWith("[")) {
+    return `[${host}]`
+  }
+  return host
+}
+
+/**
  * Configuration for TypeScript type generation in Nuxt.
  */
 export interface NuxtTypesConfig {
@@ -224,41 +241,47 @@ function debounce<T extends (...args: unknown[]) => void>(func: T, wait: number)
 }
 
 /**
+ * Find a free port.
+ */
+async function getPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    import("node:net").then(({ createServer }) => {
+      const server = createServer()
+      server.unref()
+      server.on("error", reject)
+      server.listen(0, () => {
+        const address = server.address()
+        const port = typeof address === "object" && address ? address.port : 0
+        server.close(() => resolve(port))
+      })
+    })
+  })
+}
+
+/**
  * Create the Vite plugin for API proxying.
  *
  * Port handling:
- * - Python (Litestar) auto-selects a free port and sets VITE_PORT
- * - This plugin reads VITE_PORT and uses it with strictPort: true
- * - If VITE_PORT is not set (standalone Nuxt), fallback to Nuxt default (3000)
+ * - Python (Litestar) auto-selects a free port and sets VITE_PORT + PORT env vars
+ * - Nuxt/Nitro reads PORT from environment (set by Python before npm run dev)
+ * - This plugin just configures the API proxy, not the server port
  */
 function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
-  // Use Python-provided port (via VITE_PORT or runtime config), fallback to Nuxt default
-  const devPort = config.devPort ?? 3000
+  let hmrPort = 0
 
   return {
     name: "litestar-nuxt-proxy",
-    config() {
-      // Propagate port to Nuxt/Nitro env vars so the dev server binds correctly
-      process.env.VITE_PORT = String(devPort)
-      process.env.NUXT_PORT = String(devPort)
-      process.env.PORT = String(devPort)
-
+    async config() {
+      hmrPort = await getPort()
+      // Note: Server port is controlled by PORT env var (set by Python)
+      // We only configure the API proxy here
       return {
         server: {
-          // Use the Python-provided port with strictPort to prevent drift
-          port: devPort,
-          strictPort: true,
           // Avoid HMR port collisions by letting Vite pick a free port for WS
           hmr: {
-            port: 0,
-            host: "localhost",
-          },
-          proxy: {
-            [config.apiPrefix]: {
-              target: config.apiProxy,
-              changeOrigin: true,
-              secure: false,
-            },
+            port: hmrPort,
+            host: "127.0.0.1",
+            clientPort: config.devPort,
           },
         },
       }
@@ -273,29 +296,26 @@ function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
         })
       }
 
-      server.httpServer?.once("listening", () => {
-        // Always write hotfile - proxy mode needs it for dynamic target discovery
-        if (config.hotFile) {
-          const address = server.httpServer?.address()
-          if (address && typeof address === "object" && "port" in address) {
-            // Write Nitro server URL to hotfile for Litestar SSR proxy
-            const hostEnv = process.env.NUXT_HOST ?? process.env.HOST
-            const host = hostEnv ?? (address.address === "::" ? "localhost" : address.address)
-            // Use devPort (from Python) or actual address port
-            const port = devPort ?? address.port
-            const url = `http://${host}:${port}`
-            fs.mkdirSync(path.dirname(config.hotFile), { recursive: true })
-            fs.writeFileSync(config.hotFile, url)
-            if (config.verbose) {
-              console.log(colors.cyan("[litestar-nuxt]"), colors.dim(`Hotfile written: ${config.hotFile} -> ${url}`))
-            }
-          }
+      // Write HMR hotfile
+      if (config.hotFile) {
+        const hmrHotFile = `${config.hotFile}.hmr`
+        const hmrUrl = `http://127.0.0.1:${hmrPort}`
+        fs.writeFileSync(hmrHotFile, hmrUrl)
+        if (config.verbose) {
+          console.log(colors.cyan("[litestar-nuxt]"), colors.dim(`HMR Hotfile written: ${hmrHotFile} -> ${hmrUrl}`))
         }
+      }
+
+      // Note: Hotfile is written by Nuxt's 'listen' hook in litestarNuxtModule,
+      // which fires when Nitro's main HTTP server starts (not Vite's internal HMR server).
+      // This Vite hook only handles the integration status banner.
+      server.httpServer?.once("listening", () => {
         setTimeout(() => {
           console.log("")
           console.log(`  ${colors.cyan("[litestar-nuxt]")} ${colors.green("Integration active")}`)
           console.log(`  ${colors.dim("├─")} API Proxy: ${colors.yellow(config.apiProxy)}`)
           console.log(`  ${colors.dim("├─")} API Prefix: ${colors.yellow(config.apiPrefix)}`)
+          console.log(`  ${colors.dim("├─")} HMR Port: ${colors.yellow(hmrPort)}`)
           if (config.types !== false && config.types.enabled) {
             console.log(`  ${colors.dim("└─")} Types Output: ${colors.yellow(config.types.output)}`)
           } else {
@@ -481,6 +501,12 @@ interface NuxtModuleFunction {
   getOptions?: () => LitestarNuxtConfig
 }
 
+interface ListenInfo {
+  url: string
+  host: string
+  port: number
+}
+
 interface NuxtContext {
   options: {
     vite: { plugins?: Plugin[] }
@@ -490,8 +516,10 @@ interface NuxtContext {
     nitro?: {
       devProxy?: Record<string, unknown>
     }
+    // The litestar config key from nuxt.config.ts
+    litestar?: LitestarNuxtConfig
   }
-  hook?: (name: string, fn: () => void | Promise<void>) => void
+  hook?: (name: string, fn: (...args: unknown[]) => void | Promise<void>) => void
 }
 
 /**
@@ -499,7 +527,11 @@ interface NuxtContext {
  * This function is called by Nuxt when the module is loaded.
  */
 function litestarNuxtModule(userOptions: LitestarNuxtConfig, nuxt: NuxtContext): void {
-  const config = resolveConfig(userOptions)
+  // Merge options from nuxt.options.litestar (configKey) with inline options
+  // The configKey in meta allows users to configure via nuxt.config.ts
+  const nuxtConfigOptions = (nuxt.options as Record<string, unknown>).litestar as LitestarNuxtConfig | undefined
+  const mergedOptions = { ...nuxtConfigOptions, ...userOptions }
+  const config = resolveConfig(mergedOptions)
   const plugins = litestarPlugins(config)
 
   // Add plugins to Nuxt's Vite config
@@ -507,13 +539,60 @@ function litestarNuxtModule(userOptions: LitestarNuxtConfig, nuxt: NuxtContext):
   nuxt.options.vite.plugins = nuxt.options.vite.plugins || []
   nuxt.options.vite.plugins.push(...plugins)
 
-  // Ensure Nitro dev proxy forwards API calls to Litestar backend in dev
+  // Expose API proxy URL in runtime config for server routes to use
+  // Server routes can access this via useRuntimeConfig().public.apiProxy
+  nuxt.options.runtimeConfig = nuxt.options.runtimeConfig || {}
+  nuxt.options.runtimeConfig.public = nuxt.options.runtimeConfig.public || {}
+  nuxt.options.runtimeConfig.public.apiProxy = config.apiProxy
+  nuxt.options.runtimeConfig.public.apiPrefix = config.apiPrefix
+
+  // Configure Nitro devProxy for development HTTP requests
+  // Note: devProxy only handles direct HTTP requests (client-side fetch in dev)
+  // For SSR, users should create a server/api/[...].ts catch-all route with proxyRequest
   nuxt.options.nitro = nuxt.options.nitro || {}
   nuxt.options.nitro.devProxy = nuxt.options.nitro.devProxy || {}
   nuxt.options.nitro.devProxy[config.apiPrefix] = {
     target: config.apiProxy,
     changeOrigin: true,
     ws: true,
+  }
+
+  if (config.verbose) {
+    console.log(colors.cyan("[litestar-nuxt]"), "Runtime config:")
+    console.log(`  apiProxy: ${config.apiProxy}`)
+    console.log(`  apiPrefix: ${config.apiPrefix}`)
+    console.log(`  verbose: ${config.verbose}`)
+    console.log(colors.cyan("[litestar-nuxt]"), "Nitro devProxy configured:")
+    console.log(JSON.stringify(nuxt.options.nitro.devProxy, null, 2))
+  }
+
+  // Write hotfile for Litestar proxy to discover Nuxt server URL
+  // Use the port from NUXT_PORT env (set by Python) since that's what Nuxt will use
+  if (config.hotFile && config.devPort) {
+    const rawHost = process.env.NUXT_HOST || process.env.HOST || "localhost"
+    const host = normalizeHost(rawHost)
+    const url = `http://${host}:${config.devPort}`
+    fs.mkdirSync(path.dirname(config.hotFile), { recursive: true })
+    fs.writeFileSync(config.hotFile, url)
+    if (config.verbose) {
+      console.log(colors.cyan("[litestar-nuxt]"), colors.dim(`Hotfile written: ${config.hotFile} -> ${url}`))
+    }
+  }
+
+  // Also register Nuxt's 'listen' hook as a backup to update hotfile with actual server URL
+  // This fires when Nitro's main HTTP server starts (not Vite's internal HMR server)
+  if (nuxt.hook && config.hotFile) {
+    nuxt.hook("listen", (_server: unknown, listener: unknown) => {
+      const info = listener as ListenInfo
+      if (info && typeof info.port === "number") {
+        const host = normalizeHost(info.host || "localhost")
+        const url = `http://${host}:${info.port}`
+        fs.writeFileSync(config.hotFile as string, url)
+        if (config.verbose) {
+          console.log(colors.cyan("[litestar-nuxt]"), colors.dim(`Hotfile updated via listen hook: ${url}`))
+        }
+      }
+    })
   }
 
   console.log(colors.cyan("[litestar-nuxt]"), "Module initialized")

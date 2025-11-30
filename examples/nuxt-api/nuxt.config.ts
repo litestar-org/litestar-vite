@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite"
 // The Nuxt module reads the port automatically - no hardcoding needed.
 // LITESTAR_PORT is the backend API server port (default 8000).
 const LITESTAR_PORT = process.env.LITESTAR_PORT ?? "8000"
+console.log('LITESTAR_PORT detected:', LITESTAR_PORT)
 
 export default defineNuxtConfig({
   compatibilityDate: "2024-11-01",
@@ -16,7 +17,8 @@ export default defineNuxtConfig({
 
   litestar: {
     // API proxy points to the Litestar backend, not the Nuxt dev server
-    apiProxy: `http://localhost:${LITESTAR_PORT}`,
+    apiProxy: `http://127.0.0.1:${LITESTAR_PORT}`,
     apiPrefix: "/api",
+    verbose: true,
   },
 })
