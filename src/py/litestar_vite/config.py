@@ -52,21 +52,21 @@ JINJA_INSTALLED = bool(find_spec("jinja2"))
 FSSPEC_INSTALLED = bool(find_spec("fsspec"))
 
 
-def _resolve_dev_server_mode() -> Literal["vite_proxy", "vite_direct", "external_proxy"]:
-    """Resolve dev_server_mode from environment variable.
+def _resolve_proxy_mode() -> Literal["vite_proxy", "vite_direct", "external_proxy"]:
+    """Resolve proxy_mode from environment variable.
 
-    Reads VITE_DEV_SERVER_MODE env var. Valid values:
+    Reads VITE_PROXY_MODE env var. Valid values:
     - "vite_proxy" (default): Proxy to internal Vite server
     - "vite_direct": Expose Vite port directly
     - "external_proxy": Proxy to external dev server
 
     Returns:
-        The resolved dev server mode.
+        The resolved proxy mode.
     """
-    env_value = os.getenv("VITE_DEV_SERVER_MODE", "vite_proxy").lower()
-    if env_value in ("vite_direct", "direct"):
+    env_value = os.getenv("VITE_PROXY_MODE", "vite_proxy").lower()
+    if env_value in {"vite_direct", "direct"}:
         return "vite_direct"
-    if env_value in ("external_proxy", "external"):
+    if env_value in {"external_proxy", "external"}:
         return "external_proxy"
     return "vite_proxy"
 
@@ -133,11 +133,11 @@ class RuntimeConfig:
 
     Attributes:
         dev_mode: Enable development mode with HMR/watch.
-        dev_server_mode: Dev server handling mode:
+        proxy_mode: Proxy handling mode:
             - "vite_proxy": Proxy to internal Vite server (default, single-port with HMR)
             - "vite_direct": Expose Vite port directly (multi-port)
             - "external_proxy": Proxy to external dev server (Angular CLI, Next.js, etc.)
-        external_dev_server: Configuration for external dev server (required when dev_server_mode="external_proxy").
+        external_dev_server: Configuration for external dev server (required when proxy_mode="external_proxy").
         host: Vite dev server host.
         port: Vite dev server port.
         protocol: Protocol for dev server (http/https).
@@ -159,9 +159,7 @@ class RuntimeConfig:
     """
 
     dev_mode: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)
-    dev_server_mode: "Literal['vite_proxy', 'vite_direct', 'external_proxy']" = field(
-        default_factory=lambda: _resolve_dev_server_mode()
-    )
+    proxy_mode: "Literal['vite_proxy', 'vite_direct', 'external_proxy']" = field(default_factory=_resolve_proxy_mode)
     external_dev_server: "ExternalDevServer | str | None" = None
     host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "localhost"))
     port: int = field(default_factory=lambda: int(os.getenv("VITE_PORT", "5173")))
@@ -183,14 +181,13 @@ class RuntimeConfig:
     start_dev_server: bool = True
 
     def __post_init__(self) -> None:
-        """Set default commands based on executor and normalize external_dev_server."""
         # Normalize external_dev_server: string → ExternalDevServer
         if isinstance(self.external_dev_server, str):
             self.external_dev_server = ExternalDevServer(target=self.external_dev_server)
 
         # Validate external_proxy mode requires external_dev_server
-        if self.dev_server_mode == "external_proxy" and self.external_dev_server is None:
-            msg = "external_dev_server is required when dev_server_mode='external_proxy'"
+        if self.proxy_mode == "external_proxy" and self.external_dev_server is None:
+            msg = "external_dev_server is required when proxy_mode='external_proxy'"
             raise ValueError(msg)
 
         if self.executor is None:
@@ -277,12 +274,20 @@ class TypeGenConfig:
 
 
 def _optional_str_list_factory() -> "list[str] | None":
-    """Factory function returning None for optional list fields."""
+    """Factory function returning None for optional list fields.
+
+    Returns:
+        None
+    """
     return None
 
 
 def _default_routes_exclude_factory() -> list[str]:
-    """Factory function for default route exclusions."""
+    """Factory function for default route exclusions.
+
+    Returns:
+        List of default route exclusion patterns.
+    """
     return ["vite_spa"]  # Exclude the catch-all SPA handler route by default
 
 
@@ -316,12 +321,20 @@ class SPAConfig:
 
 
 def _str_object_dict_factory() -> dict[str, object]:
-    """Factory function for empty dict (typed for pyright)."""
+    """Factory function for empty dict (typed for pyright).
+
+    Returns:
+        Empty dictionary.
+    """
     return {}
 
 
 def _str_list_factory() -> list[str]:
-    """Factory function for empty string list (typed for pyright)."""
+    """Factory function for empty string list (typed for pyright).
+
+    Returns:
+        Empty list.
+    """
     return []
 
 
@@ -537,7 +550,11 @@ class ViteConfig:
         return self._executor_instance
 
     def _create_executor(self) -> "JSExecutor":
-        """Create the appropriate executor based on runtime config."""
+        """Create the appropriate executor based on runtime config.
+
+        Returns:
+            An instance of the selected JSExecutor.
+        """
         from litestar_vite.executor import (
             BunExecutor,
             DenoExecutor,
@@ -603,7 +620,11 @@ class ViteConfig:
         return self.paths.asset_url
 
     def _resolve_to_root(self, path: Path) -> Path:
-        """Resolve a path relative to the configured root directory."""
+        """Resolve a path relative to the configured root directory.
+
+        Returns:
+            The resolved absolute Path.
+        """
 
         if path.is_absolute():
             return path
@@ -638,7 +659,11 @@ class ViteConfig:
         return unique
 
     def has_built_assets(self) -> bool:
-        """Check if production assets exist (index.html present)."""
+        """Check if production assets exist (index.html present).
+
+        Returns:
+            True if any candidate index.html file exists, False otherwise.
+        """
 
         # For SPA mode the critical artifact is index.html. Manifest is helpful,
         # but a stale manifest without an index leads to broken pages and
@@ -662,12 +687,12 @@ class ViteConfig:
 
     @property
     def hot_reload(self) -> bool:
-        """Check if hot reload is enabled (derived from dev_mode and dev_server_mode).
+        """Check if hot reload is enabled (derived from dev_mode and proxy_mode).
 
         HMR requires dev_mode=True AND a Vite mode (vite_proxy, vite_direct).
         External proxy mode never has HMR since it uses a non-Vite server.
         """
-        return self.runtime.dev_mode and self.runtime.dev_server_mode in {"vite_proxy", "vite_direct"}
+        return self.runtime.dev_mode and self.runtime.proxy_mode in {"vite_proxy", "vite_direct"}
 
     @property
     def is_dev_mode(self) -> bool:
@@ -725,9 +750,9 @@ class ViteConfig:
         return self.runtime.detect_nodeenv
 
     @property
-    def dev_server_mode(self) -> Literal["vite_proxy", "vite_direct", "external_proxy"]:
-        """Get dev server mode."""
-        return self.runtime.dev_server_mode
+    def proxy_mode(self) -> Literal["vite_proxy", "vite_direct", "external_proxy"]:
+        """Get proxy mode."""
+        return self.runtime.proxy_mode
 
     @property
     def external_dev_server(self) -> "ExternalDevServer | None":

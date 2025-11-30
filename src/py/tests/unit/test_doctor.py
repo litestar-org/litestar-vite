@@ -208,7 +208,7 @@ def test_doctor_hotfile_missing(doctor: ViteDoctor, tmp_path: Path) -> None:
     doctor.config.paths.root = tmp_path
     doctor.config.paths.bundle_dir = Path(tmp_path / "public")
     doctor.config.runtime.dev_mode = True
-    doctor.config.runtime.dev_server_mode = "vite_proxy"
+    doctor.config.runtime.proxy_mode = "vite_proxy"
     (tmp_path / "public").mkdir(parents=True, exist_ok=True)
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({

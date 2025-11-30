@@ -65,7 +65,7 @@ def test_new_config_structure() -> None:
         ),
         runtime=RuntimeConfig(
             dev_mode=True,
-            dev_server_mode="vite_proxy",  # Use new field
+            proxy_mode="vite_proxy",  # Use new field
             executor="bun",
         ),
         types=True,  # Shorthand for TypeGenConfig(enabled=True)
@@ -74,7 +74,7 @@ def test_new_config_structure() -> None:
     assert config.bundle_dir == Path("/app/dist")
     assert config.resource_dir == Path("/app/src")
     assert config.is_dev_mode is True
-    assert config.hot_reload is True  # Derived from dev_server_mode
+    assert config.hot_reload is True  # Derived from proxy_mode
     assert config.types.enabled is True  # type: ignore
     assert isinstance(config.executor, BunExecutor)
 
@@ -98,40 +98,40 @@ def test_mode_auto_detection_spa_with_index_html(tmp_path: Path) -> None:
     assert config._mode_auto_detected is True
 
 
-def test_dev_server_mode_defaults_to_vite_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test dev_server_mode defaults to vite_proxy."""
-    monkeypatch.delenv("VITE_DEV_SERVER_MODE", raising=False)
+def test_proxy_mode_defaults_to_vite_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test proxy_mode defaults to vite_proxy."""
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
 
     config = RuntimeConfig()
 
-    assert config.dev_server_mode == "vite_proxy"
+    assert config.proxy_mode == "vite_proxy"
 
 
-def test_dev_server_mode_respects_direct_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test VITE_DEV_SERVER_MODE=direct maps to vite_direct."""
-    monkeypatch.setenv("VITE_DEV_SERVER_MODE", "direct")
-
-    config = RuntimeConfig()
-
-    assert config.dev_server_mode == "vite_direct"
-
-
-def test_dev_server_mode_respects_vite_direct_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test VITE_DEV_SERVER_MODE=vite_direct is recognized."""
-    monkeypatch.setenv("VITE_DEV_SERVER_MODE", "vite_direct")
+def test_proxy_mode_respects_direct_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test VITE_PROXY_MODE=direct maps to vite_direct."""
+    monkeypatch.setenv("VITE_PROXY_MODE", "direct")
 
     config = RuntimeConfig()
 
-    assert config.dev_server_mode == "vite_direct"
+    assert config.proxy_mode == "vite_direct"
 
 
-def test_dev_server_mode_respects_external_proxy_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test VITE_DEV_SERVER_MODE=external_proxy is recognized."""
-    monkeypatch.setenv("VITE_DEV_SERVER_MODE", "external_proxy")
+def test_proxy_mode_respects_vite_direct_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test VITE_PROXY_MODE=vite_direct is recognized."""
+    monkeypatch.setenv("VITE_PROXY_MODE", "vite_direct")
+
+    config = RuntimeConfig()
+
+    assert config.proxy_mode == "vite_direct"
+
+
+def test_proxy_mode_respects_external_proxy_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test VITE_PROXY_MODE=external_proxy is recognized."""
+    monkeypatch.setenv("VITE_PROXY_MODE", "external_proxy")
 
     config = RuntimeConfig(external_dev_server="http://localhost:4200")
 
-    assert config.dev_server_mode == "external_proxy"
+    assert config.proxy_mode == "external_proxy"
 
 
 # ============================================================================
@@ -164,7 +164,7 @@ def test_external_dev_server_custom_values() -> None:
 def test_runtime_config_external_dev_server_string_normalization() -> None:
     """Test external_dev_server string is normalized to ExternalDevServer."""
     config = RuntimeConfig(
-        dev_server_mode="external_proxy",
+        proxy_mode="external_proxy",
         external_dev_server="http://localhost:3000",
     )
 
@@ -176,7 +176,7 @@ def test_runtime_config_external_dev_server_object() -> None:
     """Test external_dev_server can be passed as object."""
     ext = ExternalDevServer(target="http://localhost:4200", http2=True)
     config = RuntimeConfig(
-        dev_server_mode="external_proxy",
+        proxy_mode="external_proxy",
         external_dev_server=ext,
     )
 
@@ -188,7 +188,7 @@ def test_runtime_config_external_dev_server_object() -> None:
 def test_runtime_config_external_proxy_requires_target() -> None:
     """Test external_proxy mode requires external_dev_server."""
     with pytest.raises(ValueError, match="external_dev_server is required"):
-        RuntimeConfig(dev_server_mode="external_proxy", external_dev_server=None)
+        RuntimeConfig(proxy_mode="external_proxy", external_dev_server=None)
 
 
 def test_vite_config_external_proxy_mode() -> None:
@@ -196,12 +196,12 @@ def test_vite_config_external_proxy_mode() -> None:
     config = ViteConfig(
         runtime=RuntimeConfig(
             dev_mode=True,
-            dev_server_mode="external_proxy",
+            proxy_mode="external_proxy",
             external_dev_server=ExternalDevServer(target="http://localhost:4200"),
         )
     )
 
-    assert config.dev_server_mode == "external_proxy"
+    assert config.proxy_mode == "external_proxy"
     assert config.external_dev_server is not None
     assert config.external_dev_server.target == "http://localhost:4200"
     # HMR disabled for external servers
@@ -213,7 +213,7 @@ def test_hot_reload_derived_from_vite_proxy_mode() -> None:
     config = ViteConfig(
         runtime=RuntimeConfig(
             dev_mode=True,
-            dev_server_mode="vite_proxy",
+            proxy_mode="vite_proxy",
         )
     )
 
@@ -225,7 +225,7 @@ def test_hot_reload_derived_from_vite_direct_mode() -> None:
     config = ViteConfig(
         runtime=RuntimeConfig(
             dev_mode=True,
-            dev_server_mode="vite_direct",
+            proxy_mode="vite_direct",
         )
     )
 
@@ -237,7 +237,7 @@ def test_hot_reload_disabled_for_external_proxy() -> None:
     config = ViteConfig(
         runtime=RuntimeConfig(
             dev_mode=True,
-            dev_server_mode="external_proxy",
+            proxy_mode="external_proxy",
             external_dev_server="http://localhost:4200",
         )
     )

@@ -96,7 +96,7 @@ vite = VitePlugin(
             resource_dir=here / "src",
         ),
         runtime=RuntimeConfig(
-            dev_server_mode="external_proxy",
+            proxy_mode="external_proxy",
             external_dev_server=ExternalDevServer(target="http://localhost:4200"),
             # Angular CLI handles its own dev server (ng serve)
             start_dev_server=False,

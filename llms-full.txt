@@ -7,12 +7,12 @@ Litestar-Vite supplies a Python plugin (`VitePlugin`) and a TypeScript Vite plug
 ## Install
 - Python: `pip install litestar-vite` (extras: `litestar-vite[jinja]` for template mode, `litestar-vite[http2]` for HTTP/2 proxy, `litestar-vite[nodeenv]` for virtualenv node).
 - Frontend deps: run `litestar assets install` (preferred; uses configured executor) or npm/pnpm/yarn in your frontend root.
-- Dev server: `litestar run` starts Litestar; Vite runs automatically via proxy mode unless `VITE_DEV_SERVER_MODE=vite_direct` is set.
+- Dev server: `litestar run` starts Litestar; Vite runs automatically via proxy mode unless `VITE_PROXY_MODE=vite_direct` is set.
 - Type gen tools: `npx @hey-api/openapi-ts` invoked by the TS plugin when types are enabled.
 
 ## Project Overview
 - Modes: `spa` (default, auto when `src/index.html` present), `template`, `htmx`. Auto-detects unless `mode` set.
-- Dev Server Modes: `dev_server_mode` controls how the dev server is handled:
+- Proxy Modes: `proxy_mode` controls how proxy requests are handled:
   - `vite_proxy` (default): Single-port, tunnels Vite HTTP/WS through Litestar with full HMR
   - `vite_direct`: Multi-port, exposes Vite on its own port
   - `external_proxy`: Proxy to external dev servers (Angular CLI, Next.js, CRA) via `ExternalDevServer` config
@@ -41,7 +41,7 @@ Litestar-Vite supplies a Python plugin (`VitePlugin`) and a TypeScript Vite plug
 ### ViteConfig (litestar_vite.config)
 - Core: `mode: Literal['spa','template','htmx']|None` (auto-detect), `dev_mode: bool` shortcut → runtime.dev_mode, `base_url: str|None`, `deploy: DeployConfig|bool`, `spa: SPAConfig|bool|None`, `inertia: InertiaConfig|bool`, `types: TypeGenConfig|bool`.
 - Paths (PathConfig defaults): `root=Path.cwd()`, `bundle_dir=public`, `resource_dir=src`, `public_dir=public`, `manifest_name='manifest.json'`, `hot_file='hot'`, `asset_url=os.getenv('ASSET_URL','/static/')`, `ssr_output_dir=None`.
-- Runtime (RuntimeConfig defaults/env): `dev_mode` (env VITE_DEV_MODE), `dev_server_mode` (env VITE_DEV_SERVER_MODE, default 'vite_proxy'), `external_dev_server: ExternalDevServer|str|None`, `host='localhost'`, `port=5173`, `protocol='http'`, `executor='node'|bun|deno|yarn|pnpm`, `run_command/build_command/build_watch_command/install_command` auto-set per executor, `is_react`, `ssr_enabled`, `health_check` (env VITE_HEALTH_CHECK), `detect_nodeenv`, `set_environment=True`, `set_static_folders=True`, `csp_nonce`, `spa_handler=True`, `http2=True`, `start_dev_server=True`.
+- Runtime (RuntimeConfig defaults/env): `dev_mode` (env VITE_DEV_MODE), `proxy_mode` (env VITE_PROXY_MODE, default 'vite_proxy'), `external_dev_server: ExternalDevServer|str|None`, `host='localhost'`, `port=5173`, `protocol='http'`, `executor='node'|bun|deno|yarn|pnpm`, `run_command/build_command/build_watch_command/install_command` auto-set per executor, `is_react`, `ssr_enabled`, `health_check` (env VITE_HEALTH_CHECK), `detect_nodeenv`, `set_environment=True`, `set_static_folders=True`, `csp_nonce`, `spa_handler=True`, `http2=True`, `start_dev_server=True`.
 - TypeGenConfig defaults: `enabled=False`, `output=Path('src/generated')`, `openapi_path=Path('src/generated/openapi.json')`, `routes_path=Path('src/generated/routes.json')`, `generate_zod=True`, `generate_sdk=False`, `watch_patterns=['**/routes.py','**/handlers.py','**/controllers/**/*.py']`.
 - SPAConfig defaults: `inject_routes=True`, `inject_csrf=True`, `routes_var_name='__LITESTAR_ROUTES__'`, `csrf_var_name='__LITESTAR_CSRF__'`, `routes_include=None`, `routes_exclude=['vite_spa']`, `app_selector='#app'`, `cache_transformed_html=True`.
 - InertiaConfig (config.py) defaults: `enabled=False`, `root_template='index.html'`, `include_routes=True`, `include_flash=True`, `include_errors=True`, `extra_static_page_props={}`, `extra_session_page_props=[]`.
@@ -258,7 +258,7 @@ from litestar_vite import ViteConfig, RuntimeConfig, ExternalDevServer
 config = ViteConfig(
     dev_mode=True,
     runtime=RuntimeConfig(
-        dev_server_mode="external_proxy",
+        proxy_mode="external_proxy",
         external_dev_server=ExternalDevServer(target="http://localhost:4200"),
     ),
 )
@@ -291,7 +291,7 @@ export default litestar({
 ## Dev & Deploy Notes
 - Hot file: `bundle_dir/hot` written by TS plugin; read by proxy/HMR.
 - Manifest: `bundle_dir/manifest.json` loaded by ViteAssetLoader in prod.
-- Env vars: `ASSET_URL`, `VITE_BASE_URL`, `VITE_PORT`, `VITE_HOST`, `VITE_PROTOCOL`, `VITE_DEV_SERVER_MODE`, `VITE_DEV_MODE`, `VITE_HOT_RELOAD`, `VITE_HEALTH_CHECK`, `VITE_ALLOW_REMOTE`, `VITE_AUTO_DEV_MODE`, `LITESTAR_VITE_CONFIG_PATH`, `LITESTAR_OPENAPI_PATH`.
+- Env vars: `ASSET_URL`, `VITE_BASE_URL`, `VITE_PORT`, `VITE_HOST`, `VITE_PROTOCOL`, `VITE_PROXY_MODE`, `VITE_DEV_MODE`, `VITE_HOT_RELOAD`, `VITE_HEALTH_CHECK`, `VITE_ALLOW_REMOTE`, `VITE_AUTO_DEV_MODE`, `LITESTAR_VITE_CONFIG_PATH`, `LITESTAR_OPENAPI_PATH`.
 - Deploy: `litestar assets deploy --storage gcs://bucket/path [--dry-run --no-delete --storage-option key=val]` uploads manifest/assets using fsspec; `deploy_config.storage_options` merges CLI overrides.
 
 ## Troubleshooting
@@ -299,15 +299,15 @@ export default litestar({
 - Manifest not found: run `litestar assets build` or configure `bundle_dir`/`manifest_name`.
 - Inertia 500/redirect issues: session middleware required; verify `component` route opt and `root_template`.
 - Type generation skipped: confirm `types.enabled` in ViteConfig and TS plugin; install `@hey-api/openapi-ts`.
-- Two-port dev needed: set `VITE_DEV_SERVER_MODE=vite_direct` and start Vite separately.
-- External dev server (Angular/Next.js): use `dev_server_mode="external_proxy"` with `ExternalDevServer`.
+- Two-port dev needed: set `VITE_PROXY_MODE=vite_direct` and start Vite separately.
+- External dev server (Angular/Next.js): use `proxy_mode="external_proxy"` with `ExternalDevServer`.
 
 ## Migration Guide (v0.14.x → v0.15.x)
 
 ### Breaking Changes
 
-#### `proxy_mode` renamed to `dev_server_mode`
-The `proxy_mode` config option was renamed to `dev_server_mode` with expanded values:
+#### `proxy_mode` values expanded
+The `proxy_mode` values have been expanded with a new `external_proxy` option:
 
 **Before (v0.14.x):**
 ```python
@@ -316,7 +316,7 @@ ViteConfig(runtime=RuntimeConfig(proxy_mode="proxy"))  # or "direct"
 
 **After (v0.15.x):**
 ```python
-ViteConfig(runtime=RuntimeConfig(dev_server_mode="vite_proxy"))  # or "vite_direct"
+ViteConfig(runtime=RuntimeConfig(proxy_mode="vite_proxy"))  # or "vite_direct", "external_proxy"
 ```
 
 Value mapping:
@@ -326,7 +326,7 @@ Value mapping:
 | `"direct"` | `"vite_direct"` | Multi-port, separate Vite server |
 | N/A | `"external_proxy"` | Proxy to external dev servers |
 
-Environment variable: `VITE_PROXY_MODE` → `VITE_DEV_SERVER_MODE`
+Environment variable: `VITE_PROXY_MODE` (unchanged)
 
 #### New `ExternalDevServer` config
 For Angular CLI, Next.js, or other external dev servers:
@@ -336,7 +336,7 @@ from litestar_vite import ViteConfig, RuntimeConfig, ExternalDevServer
 config = ViteConfig(
     dev_mode=True,
     runtime=RuntimeConfig(
-        dev_server_mode="external_proxy",
+        proxy_mode="external_proxy",
         external_dev_server=ExternalDevServer(target="http://localhost:4200"),
     ),
 )

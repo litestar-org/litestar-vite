@@ -10,16 +10,16 @@ Litestar-Vite pairs the Litestar Python framework with a Vite (Node) toolchain. 
 - [Template/HTMX](#python-api): `ViteConfig(mode="template", dev_mode=True)` keeps Jinja templates and Vite assets in sync.
 - [Run dev](#install): `litestar run` starts Litestar; Vite dev traffic is proxied by default.
 
-## Modes & Dev Server
-- [Dev Server Modes](#modes--dev-server): `dev_server_mode` controls dev server handling:
+## Modes & Proxy
+- [Proxy Modes](#modes--proxy): `proxy_mode` controls proxy handling:
   - `vite_proxy` (default): Tunnels Vite HTTP+WS through Litestar (single-port HMR)
   - `vite_direct`: Exposes Vite on its own port (multi-port)
   - `external_proxy`: Proxy to external dev servers (Angular CLI, Next.js, etc.) via `ExternalDevServer`
-- [Hotfile](#modes--dev-server): TS plugin writes `public/hot` with the dev URL; proxy & HMR read it dynamically.
-- [Env vars](#modes--dev-server): `VITE_HOST`, `VITE_PORT`, `VITE_PROTOCOL`, `VITE_DEV_SERVER_MODE`, `VITE_DEV_MODE`.
+- [Hotfile](#modes--proxy): TS plugin writes `public/hot` with the dev URL; proxy & HMR read it dynamically.
+- [Env vars](#modes--proxy): `VITE_HOST`, `VITE_PORT`, `VITE_PROTOCOL`, `VITE_PROXY_MODE`, `VITE_DEV_MODE`.
 
 ## Python API
-- [ViteConfig](#viteconfig): modes `spa|template|htmx` (auto-detects index.html or Jinja). Paths: `bundle_dir=public`, `resource_dir=src`, `public_dir=public`, `manifest_name=manifest.json`, `hot_file=hot`, `asset_url=/static/`, optional `ssr_output_dir`. Runtime: `dev_mode`, `dev_server_mode=vite_proxy`, `external_dev_server`, `host`, `port=5173`, `protocol=http`, `executor=node|bun|deno|yarn|pnpm`, `spa_handler`, `http2`, `start_dev_server`. Types: `TypeGenConfig(enabled, output, openapi_path, routes_path, generate_zod, generate_sdk)`. SPA config: `inject_routes`, `inject_csrf=True`, `routes_var_name`, `csrf_var_name`, `app_selector="#app"`, `cache_transformed_html`. Inertia config: `enabled`, `root_template=index.html`, include routes/flash/errors. Deploy config optional via `deploy=True`.
+- [ViteConfig](#viteconfig): modes `spa|template|htmx` (auto-detects index.html or Jinja). Paths: `bundle_dir=public`, `resource_dir=src`, `public_dir=public`, `manifest_name=manifest.json`, `hot_file=hot`, `asset_url=/static/`, optional `ssr_output_dir`. Runtime: `dev_mode`, `proxy_mode=vite_proxy`, `external_dev_server`, `host`, `port=5173`, `protocol=http`, `executor=node|bun|deno|yarn|pnpm`, `spa_handler`, `http2`, `start_dev_server`. Types: `TypeGenConfig(enabled, output, openapi_path, routes_path, generate_zod, generate_sdk)`. SPA config: `inject_routes`, `inject_csrf=True`, `routes_var_name`, `csrf_var_name`, `app_selector="#app"`, `cache_transformed_html`. Inertia config: `enabled`, `root_template=index.html`, include routes/flash/errors. Deploy config optional via `deploy=True`.
 - [VitePlugin](#viteplugin): wires static file serving, Jinja template callables (`vite`, `vite_static`, `vite_partial`, `vite_hmr`), dev proxy middleware + HMR WebSocket, SPA catch-all handler via `ViteSPAHandler`, type export & route injection.
 - [InertiaPlugin](#inertiaplugin): requires session middleware; sets `InertiaRequest`/`InertiaResponse`, registers middleware and exception handler, generates JS routes, supports SPA mode via `HtmlTransformer`.
 - [CLI](#cli): `litestar assets doctor|init|install|build|serve|deploy|export-routes|generate-types|status`.

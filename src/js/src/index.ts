@@ -192,8 +192,8 @@ interface PythonDefaults {
   publicDir?: string
   manifest?: string
   mode?: string
-  // New dev server mode fields
-  devServerMode?: "vite_proxy" | "vite_direct" | "external_proxy"
+  // Proxy mode fields
+  proxyMode?: "vite_proxy" | "vite_direct" | "external_proxy"
   externalTarget?: string | null
   externalHttp2?: boolean
   // SSR fields
@@ -293,7 +293,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
   let userConfig: UserConfig
   let litestarMeta: LitestarMeta = {}
   const pythonDefaults = loadPythonDefaults()
-  const devServerMode = pythonDefaults?.devServerMode ?? "vite_proxy"
+  const proxyMode = pythonDefaults?.proxyMode ?? "vite_proxy"
   const defaultAliases: Record<string, string> = {
     "@": `/${pluginConfig.resourceDirectory.replace(/^\/+/, "").replace(/\/+$/, "")}/`,
   }
@@ -440,7 +440,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
         if (isAddressInfo(address)) {
           viteDevServerUrl = userConfig.server?.origin ? (userConfig.server.origin as DevServerUrl) : resolveDevServerUrl(address, server.config, userConfig)
           // Only write hotfile for Vite modes (not external_proxy)
-          if (devServerMode !== "external_proxy") {
+          if (proxyMode !== "external_proxy") {
             fs.mkdirSync(path.dirname(pluginConfig.hotFile), { recursive: true })
             fs.writeFileSync(pluginConfig.hotFile, viteDevServerUrl)
           }
@@ -521,7 +521,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
       })
 
       // Clean up hot file (only for Vite modes)
-      if (!exitHandlersBound && devServerMode !== "external_proxy") {
+      if (!exitHandlersBound && proxyMode !== "external_proxy") {
         const clean = () => {
           if (pluginConfig.hotFile && fs.existsSync(pluginConfig.hotFile)) {
             // Check hotFile exists

@@ -193,7 +193,7 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
         "manifest": config.manifest_name,
         "mode": config.mode,
         # New dev server mode fields
-        "devServerMode": config.dev_server_mode,
+        "proxyMode": config.proxy_mode,
         "externalTarget": external_target,
         "externalHttp2": external_http2,
         # SSR fields
@@ -250,7 +250,7 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
 
     # VITE_ env for the JS side
     os.environ.setdefault("VITE_PROTOCOL", config.protocol)
-    os.environ.setdefault("VITE_DEV_SERVER_MODE", config.dev_server_mode)
+    os.environ.setdefault("VITE_PROXY_MODE", config.proxy_mode)
 
     # If the Python side already picked a host/port (e.g., proxy mode with an auto-free port),
     # surface them to the Vite process unless the user explicitly set them.
@@ -1026,7 +1026,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         # Skip if already set, not in vite_proxy mode, or not in dev mode
         if self._proxy_target is not None:
             return
-        if self._config.dev_server_mode != "vite_proxy":
+        if self._config.proxy_mode != "vite_proxy":
             return
         if not self._config.is_dev_mode:
             return
@@ -1123,11 +1123,11 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             static_files_config: dict[str, Any] = {**base_config, **self._static_files_config}
             app_config.route_handlers.append(create_static_files_router(**static_files_config))
 
-        # Add dev proxy middleware based on dev_server_mode
+        # Add dev proxy middleware based on proxy_mode
         if self._config.is_dev_mode:
-            dev_mode = self._config.dev_server_mode
+            proxy_mode = self._config.proxy_mode
 
-            if dev_mode == "vite_proxy":
+            if proxy_mode == "vite_proxy":
                 # Vite proxy mode: HMR via WebSocket + HTTP proxy
                 self._ensure_proxy_target()
                 # Both middleware and WebSocket handler read the Vite URL from the hotfile
@@ -1161,7 +1161,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 )
                 console.print(f"[dim]Vite HMR proxy enabled at {hmr_path}[/]")
 
-            elif dev_mode == "external_proxy":
+            elif proxy_mode == "external_proxy":
                 # External proxy mode: proxy to external dev server (Angular CLI, etc.)
                 external = self._config.external_dev_server
                 if external is not None and external.enabled:

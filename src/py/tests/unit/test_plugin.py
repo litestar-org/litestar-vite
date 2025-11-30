@@ -197,7 +197,7 @@ class TestVitePluginAppIntegration:
     def test_on_app_init_direct_mode_skips_proxy(self) -> None:
         """Proxy middleware should only attach in proxy mode."""
 
-        config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, dev_server_mode="vite_direct"))
+        config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode="vite_direct"))
         plugin = VitePlugin(config=config)
         app_config = AppConfig()
 
@@ -291,7 +291,7 @@ class TestVitePluginLifespan:
         """Test server lifespan with watch mode (no HMR)."""
         config = ViteConfig(
             runtime=RuntimeConfig(
-                dev_mode=True, dev_server_mode="external_proxy", external_dev_server="http://localhost:4200"
+                dev_mode=True, proxy_mode="external_proxy", external_dev_server="http://localhost:4200"
             ),  # Watch mode without HMR
         )
         plugin = VitePlugin(config=config)
