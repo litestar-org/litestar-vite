@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from litestar import WebSocket
 from litestar.exceptions import WebSocketDisconnect
+
 from litestar_vite.plugin import create_ssr_proxy_controller
 
 pytestmark = pytest.mark.anyio
@@ -27,7 +28,7 @@ def hmr_hotfile(hotfile: Path) -> Path:
 
 async def test_ssr_proxy_uses_hmr_target_when_available(hotfile: Path, hmr_hotfile: Path) -> None:
     """Test that SSRProxyController.ws_proxy uses the HMR target from hot.hmr."""
-    
+
     # Create the controller class
     ControllerClass = create_ssr_proxy_controller(hotfile_path=hotfile)
     controller = ControllerClass(owner=MagicMock())
@@ -48,7 +49,7 @@ async def test_ssr_proxy_uses_hmr_target_when_available(hotfile: Path, hmr_hotfi
     # Mock websockets.connect
     with patch("litestar_vite.plugin.websockets.connect") as mock_connect:
         mock_connect.return_value.__aenter__.return_value = AsyncMock()
-        
+
         # Call ws_proxy
         await controller.ws_proxy.fn(controller, socket)
 
@@ -61,7 +62,7 @@ async def test_ssr_proxy_uses_hmr_target_when_available(hotfile: Path, hmr_hotfi
 
 async def test_ssr_proxy_falls_back_to_main_target_when_hmr_missing(hotfile: Path) -> None:
     """Test that SSRProxyController.ws_proxy falls back to main target if hot.hmr is missing."""
-    
+
     # Ensure no hmr file
     hmr_path = Path(f"{hotfile}.hmr")
     if hmr_path.exists():
@@ -86,7 +87,7 @@ async def test_ssr_proxy_falls_back_to_main_target_when_hmr_missing(hotfile: Pat
     # Mock websockets.connect
     with patch("litestar_vite.plugin.websockets.connect") as mock_connect:
         mock_connect.return_value.__aenter__.return_value = AsyncMock()
-        
+
         # Call ws_proxy
         await controller.ws_proxy.fn(controller, socket)
 

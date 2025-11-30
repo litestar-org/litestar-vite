@@ -224,6 +224,18 @@ class InertiaResponse(Response[T]):
         template = template_engine.get_template(template_name)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
         return template.render(**context).encode(self.encoding)  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType,reportReturnType]
 
+    def _get_csrf_token(self, request: "Request[UserT, AuthT, StateT]") -> "str | None":
+        """Extract CSRF token from the request scope.
+
+        Args:
+            request: The incoming request.
+
+        Returns:
+            The CSRF token if available, otherwise None.
+        """
+        csrf_token = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
+        return csrf_token if csrf_token else None
+
     def _render_spa(
         self,
         request: "Request[UserT, AuthT, StateT]",
@@ -236,8 +248,9 @@ class InertiaResponse(Response[T]):
         This method uses ViteSPAHandler to get the base HTML and injects
         the page props as a data-page attribute on the app element.
 
-        Note: This is a synchronous method that requires production mode
-        (cached HTML). In dev mode with HMR, use async get_html() instead.
+        In dev mode, uses the InertiaPlugin's BlockingPortal to call the async
+        get_html() method from this synchronous context. In production mode,
+        uses the synchronous get_html_sync() method for better performance.
 
         Args:
             request: The request object.
@@ -254,8 +267,8 @@ class InertiaResponse(Response[T]):
         spa_handler = getattr(vite_plugin, "_spa_handler", None)
         if spa_handler is None:
             msg = (
-                "SPA mode requires VitePlugin with mode='spa'. "
-                "Set mode='spa' in ViteConfig or remove spa_mode=True from InertiaConfig."
+                "SPA mode requires VitePlugin with mode='spa' or mode='hybrid'. "
+                "Set mode='hybrid' in ViteConfig for template-less Inertia."
             )
             raise ImproperlyConfiguredException(msg)
 
@@ -263,9 +276,16 @@ class InertiaResponse(Response[T]):
         # (converts snake_case to camelCase)
         page_dict = page_props.to_dict()
 
-        # Get HTML with page data injected synchronously
-        # This works in production mode; dev mode requires async get_html()
-        html = spa_handler.get_html_sync(page_data=page_dict)
+        # In dev mode, we need to use the async get_html() method which proxies
+        # to the Vite dev server. Use the BlockingPortal to call it from sync context.
+        if vite_plugin.config.is_dev_mode and vite_plugin.config.hot_reload:
+            from functools import partial
+
+            html = inertia_plugin.portal.call(partial(spa_handler.get_html, request, page_data=page_dict))
+        else:
+            # Production mode: use synchronous method for cached HTML
+            csrf_token = self._get_csrf_token(request)
+            html = spa_handler.get_html_sync(page_data=page_dict, csrf_token=csrf_token)
 
         return html.encode(self.encoding)
 

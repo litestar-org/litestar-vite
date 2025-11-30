@@ -226,6 +226,8 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
             "includeManifest": deploy.include_manifest if deploy else None,
             "contentTypes": deploy.content_types if deploy else None,
         },
+        # Executor for package commands (npx, bunx, etc.)
+        "executor": config.runtime.executor,
     }
 
     path.write_text(json.dumps(payload, indent=2))
@@ -949,6 +951,69 @@ def _create_target_url_getter(
     return _get_target_url
 
 
+def _create_hmr_target_getter(
+    hotfile_path: "Path | None",
+    cached_hmr_target: list["str | None"],
+) -> "Callable[[], str | None]":
+    """Create a function that returns the HMR target URL from hotfile.
+
+    Returns:
+        A callable that returns the HMR target URL or None if unavailable.
+    """
+
+    def _get_hmr_target_url() -> str | None:
+        if hotfile_path is None:
+            return None
+        # JS writes to `${config.hotFile}.hmr`
+        hmr_path = Path(f"{hotfile_path}.hmr")
+        try:
+            url = hmr_path.read_text().strip()
+            if url != cached_hmr_target[0]:
+                cached_hmr_target[0] = url
+                if _is_proxy_debug():
+                    console.print(f"[dim][ssr-proxy] HMR target: {url}[/]")
+            return url.rstrip("/")
+        except FileNotFoundError:
+            return None
+
+    return _get_hmr_target_url
+
+
+async def _handle_ssr_websocket_proxy(
+    socket: Any,
+    ws_url: str,
+    headers: list[tuple[str, str]],
+    typed_subprotocols: "list[Subprotocol]",
+) -> None:
+    """Handle the WebSocket proxy connection to SSR framework.
+
+    Args:
+        socket: The client WebSocket connection.
+        ws_url: The upstream WebSocket URL.
+        headers: Headers to forward.
+        typed_subprotocols: WebSocket subprotocols.
+    """
+    try:
+        async with websockets.connect(
+            ws_url, additional_headers=headers, open_timeout=10, subprotocols=typed_subprotocols or None
+        ) as upstream:
+            if _is_proxy_debug():
+                console.print("[dim][ssr-proxy-ws] ✓ Connected[/]")
+            await _run_websocket_proxy(socket, upstream)
+    except TimeoutError:
+        if _is_proxy_debug():
+            console.print("[yellow][ssr-proxy-ws] Connection timeout[/]")
+        with suppress(anyio.ClosedResourceError, WebSocketDisconnect):
+            await socket.close(code=1011, reason="SSR HMR connection timeout")
+    except OSError as exc:
+        if _is_proxy_debug():
+            console.print(f"[yellow][ssr-proxy-ws] Connection failed: {exc}[/]")
+        with suppress(anyio.ClosedResourceError, WebSocketDisconnect):
+            await socket.close(code=1011, reason="SSR HMR connection failed")
+    except (WebSocketDisconnect, websockets.ConnectionClosed, anyio.ClosedResourceError):
+        pass  # Normal disconnect/close
+
+
 def create_ssr_proxy_controller(
     target: "str | None" = None,
     hotfile_path: "Path | None" = None,
@@ -971,23 +1036,7 @@ def create_ssr_proxy_controller(
 
     cached_target: list[str | None] = [target]
     get_target_url = _create_target_url_getter(target, hotfile_path, cached_target)
-
-    cached_hmr_target: list[str | None] = [None]
-
-    def get_hmr_target_url() -> str | None:
-        if hotfile_path is None:
-            return None
-        # JS writes to `${config.hotFile}.hmr`
-        hmr_path = Path(f"{hotfile_path}.hmr")
-        try:
-            url = hmr_path.read_text().strip()
-            if url != cached_hmr_target[0]:
-                cached_hmr_target[0] = url
-                if _is_proxy_debug():
-                    console.print(f"[dim][ssr-proxy] HMR target: {url}[/]")
-            return url.rstrip("/")
-        except FileNotFoundError:
-            return None
+    get_hmr_target_url = _create_hmr_target_getter(hotfile_path, [None])
 
     class SSRProxyController(Controller):
         """Controller that proxies requests to an SSR framework dev server."""
@@ -1050,7 +1099,6 @@ def create_ssr_proxy_controller(
         @websocket(path=["/", "/{path:path}"], name="ssr_proxy_ws")
         async def ws_proxy(self, socket: "WebSocket[Any, Any, Any]") -> None:
             """Proxy WebSocket connections to the SSR framework dev server (for HMR)."""
-            # Prioritize HMR target if available, else fall back to main target
             target_url = get_hmr_target_url() or get_target_url()
 
             if target_url is None:
@@ -1071,30 +1119,7 @@ def create_ssr_proxy_controller(
             typed_subprotocols: list[Subprotocol] = [cast("Subprotocol", p) for p in subprotocols]
 
             await socket.accept(subprotocols=typed_subprotocols[0] if typed_subprotocols else None)
-
-            try:
-                async with websockets.connect(
-                    ws_url, additional_headers=headers, open_timeout=10, subprotocols=typed_subprotocols or None
-                ) as upstream:
-                    if _is_proxy_debug():
-                        console.print("[dim][ssr-proxy-ws] ✓ Connected[/]")
-                    await _run_websocket_proxy(socket, upstream)
-            except TimeoutError:
-                if _is_proxy_debug():
-                    console.print("[yellow][ssr-proxy-ws] Connection timeout[/]")
-                with suppress(anyio.ClosedResourceError, WebSocketDisconnect):
-                    await socket.close(code=1011, reason="SSR HMR connection timeout")
-            except OSError as exc:
-                if _is_proxy_debug():
-                    console.print(f"[yellow][ssr-proxy-ws] Connection failed: {exc}[/]")
-                with suppress(anyio.ClosedResourceError, WebSocketDisconnect):
-                    await socket.close(code=1011, reason="SSR HMR connection failed")
-            except WebSocketDisconnect:
-                pass  # Normal client disconnect
-            except websockets.ConnectionClosed:
-                pass  # Normal connection close
-            except anyio.ClosedResourceError:
-                pass  # Resource already closed
+            await _handle_ssr_websocket_proxy(socket, ws_url, headers, typed_subprotocols)
 
     return SSRProxyController
 
@@ -1261,9 +1286,11 @@ class ViteProcess:
             return
         # On Unix, kill the entire process group to ensure all children die.
         # The process was started with start_new_session=True so the pid IS the pgid.
-        if hasattr(os, "killpg") and hasattr(signal, "SIGTERM"):
+        pid = self.process.pid
+        # isinstance check needed for tests where pid may be a Mock object
+        if hasattr(os, "killpg") and hasattr(signal, "SIGTERM") and isinstance(pid, int):  # pyright: ignore[reportUnnecessaryIsInstance]
             with suppress(ProcessLookupError):
-                os.killpg(self.process.pid, signal.SIGTERM)
+                os.killpg(pid, signal.SIGTERM)
         elif hasattr(signal, "SIGTERM"):
             self.process.terminate()
         try:
@@ -1271,14 +1298,19 @@ class ViteProcess:
         except subprocess.TimeoutExpired:
             self._force_kill_process_group()
             self.process.wait(timeout=1.0)
+        finally:
+            # Clear reference so atexit cleanup doesn't try to stop again
+            self.process = None
 
     def _force_kill_process_group(self) -> None:
         """Force kill the process group if still alive."""
         if not self.process:
             return
-        if hasattr(os, "killpg") and hasattr(signal, "SIGKILL"):
+        pid = self.process.pid
+        # isinstance check needed for tests where pid may be a Mock object
+        if hasattr(os, "killpg") and hasattr(signal, "SIGKILL") and isinstance(pid, int):  # pyright: ignore[reportUnnecessaryIsInstance]
             with suppress(ProcessLookupError):
-                os.killpg(self.process.pid, signal.SIGKILL)
+                os.killpg(pid, signal.SIGKILL)
         elif hasattr(signal, "SIGKILL"):
             self.process.kill()
 
@@ -1316,7 +1348,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         "_proxy_target",
         "_spa_handler",
         "_static_files_config",
-        "_use_server_lifespan",
         "_vite_process",
     )
 
@@ -1341,7 +1372,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._asset_loader = asset_loader
         self._vite_process = ViteProcess(executor=config.executor)
         self._static_files_config: dict[str, Any] = static_files_config.__dict__ if static_files_config else {}
-        self._use_server_lifespan = True
         self._proxy_target: "str | None" = None
         self._spa_handler: "ViteSPAHandler | None" = None
 
@@ -1403,6 +1433,27 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         # For 'proxy'/'ssr' modes, target is discovered from hotfile at request time
         # The SSR framework (Nuxt/Astro/SvelteKit) writes the hotfile when ready
 
+    def _configure_inertia(self, app_config: "AppConfig") -> "AppConfig":
+        """Configure Inertia.js by registering an InertiaPlugin instance.
+
+        This is called automatically when `inertia` config is provided to ViteConfig.
+        Users can still use InertiaPlugin manually for more control.
+
+        Args:
+            app_config: The Litestar application configuration.
+
+        Returns:
+            The modified application configuration.
+        """
+        from litestar_vite.inertia.plugin import InertiaPlugin
+
+        # Create and register InertiaPlugin - it handles all the configuration
+        # in its own on_app_init method
+        inertia_plugin = InertiaPlugin(config=self._config.inertia)  # type: ignore[arg-type]
+        app_config.plugins.append(inertia_plugin)
+
+        return app_config
+
     def on_cli_init(self, cli: "Group") -> None:
         """Register CLI commands.
 
@@ -1413,14 +1464,124 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
         cli.add_command(vite_group)
 
+    def _configure_jinja_callables(self, app_config: "AppConfig") -> None:
+        """Register Jinja2 template callables for Vite asset handling.
+
+        Args:
+            app_config: The Litestar application configuration.
+        """
+        from litestar.contrib.jinja import JinjaTemplateEngine
+
+        from litestar_vite.loader import (
+            render_asset_tag,
+            render_hmr_client,
+            render_partial_asset_tag,
+            render_static_asset,
+        )
+
+        template_config = app_config.template_config  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+        if template_config and isinstance(
+            template_config.engine_instance,  # pyright: ignore[reportUnknownMemberType]
+            JinjaTemplateEngine,
+        ):
+            engine = template_config.engine_instance  # pyright: ignore[reportUnknownMemberType]
+            engine.register_template_callable(key="vite_hmr", template_callable=render_hmr_client)
+            engine.register_template_callable(key="vite", template_callable=render_asset_tag)
+            engine.register_template_callable(key="vite_static", template_callable=render_static_asset)
+            engine.register_template_callable(key="vite_partial", template_callable=render_partial_asset_tag)
+
+    def _configure_static_files(self, app_config: "AppConfig") -> None:
+        """Configure static file serving for Vite assets.
+
+        Args:
+            app_config: The Litestar application configuration.
+        """
+        static_dirs = [Path(self._config.bundle_dir), Path(self._config.resource_dir)]
+        if Path(self._config.public_dir).exists() and self._config.public_dir != self._config.bundle_dir:
+            static_dirs.append(Path(self._config.public_dir))
+
+        base_config = {
+            "directories": (static_dirs if self._config.is_dev_mode else [Path(self._config.bundle_dir)]),
+            "path": self._config.asset_url,
+            "name": "vite",
+            "html_mode": False,
+            "include_in_schema": False,
+            "opt": {"exclude_from_auth": True},
+        }
+        static_files_config: dict[str, Any] = {**base_config, **self._static_files_config}
+        app_config.route_handlers.append(create_static_files_router(**static_files_config))
+
+    def _configure_dev_proxy(self, app_config: "AppConfig") -> None:
+        """Configure dev proxy middleware and handlers based on proxy_mode.
+
+        Args:
+            app_config: The Litestar application configuration.
+        """
+        proxy_mode = self._config.proxy_mode
+        bundle_dir = self._config.bundle_dir
+        if not bundle_dir.is_absolute():
+            bundle_dir = self._config.root_dir / bundle_dir
+        hotfile_path = bundle_dir / self._config.hot_file
+
+        if proxy_mode == "vite":
+            self._configure_vite_proxy(app_config, hotfile_path)
+        elif proxy_mode == "proxy":
+            self._configure_ssr_proxy(app_config, hotfile_path)
+
+    def _configure_vite_proxy(self, app_config: "AppConfig", hotfile_path: Path) -> None:
+        """Configure Vite proxy mode (whitelist).
+
+        Args:
+            app_config: The Litestar application configuration.
+            hotfile_path: Path to the hotfile.
+        """
+        self._ensure_proxy_target()
+        app_config.middleware.append(
+            DefineMiddleware(
+                ViteProxyMiddleware,
+                hotfile_path=hotfile_path,
+                asset_url=self._config.asset_url,
+                resource_dir=self._config.resource_dir,
+                bundle_dir=self._config.bundle_dir,
+                root_dir=self._config.root_dir,
+                http2=self._config.http2,
+            )
+        )
+        hmr_path = f"{self._config.asset_url.rstrip('/')}/vite-hmr"
+        app_config.route_handlers.append(
+            create_vite_hmr_handler(hotfile_path=hotfile_path, hmr_path=hmr_path, asset_url=self._config.asset_url)
+        )
+        console.print(f"[dim]Vite proxy enabled (whitelist) at {hmr_path}[/]")
+
+    def _configure_ssr_proxy(self, app_config: "AppConfig", hotfile_path: Path) -> None:
+        """Configure SSR proxy mode (blacklist).
+
+        Args:
+            app_config: The Litestar application configuration.
+            hotfile_path: Path to the hotfile.
+        """
+        self._ensure_proxy_target()
+        external = self._config.external_dev_server
+        static_target = external.target if external else None
+
+        app_config.route_handlers.append(
+            create_ssr_proxy_controller(
+                target=static_target,
+                hotfile_path=hotfile_path if static_target is None else None,
+                http2=external.http2 if external else True,
+            )
+        )
+        hmr_path = f"{self._config.asset_url.rstrip('/')}/vite-hmr"
+        app_config.route_handlers.append(
+            create_vite_hmr_handler(hotfile_path=hotfile_path, hmr_path=hmr_path, asset_url=self._config.asset_url)
+        )
+        if static_target:
+            console.print(f"[dim]Proxy enabled (blacklist) → {static_target}[/]")
+        else:
+            console.print("[dim]Proxy enabled (blacklist, dynamic target via hotfile)[/]")
+
     def on_app_init(self, app_config: "AppConfig") -> "AppConfig":
         """Configure the Litestar application for Vite.
-
-        This method:
-        - Registers Jinja2 template callables (if Jinja2 is installed and template mode)
-        - Configures static file serving
-        - Sets up SPA handler if in SPA mode
-        - Sets up the server lifespan hook if enabled
 
         Args:
             app_config: The Litestar application configuration.
@@ -1431,146 +1592,39 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         from litestar import Response
         from litestar.connection import Request as LitestarRequest
 
-        from litestar_vite.loader import (
-            render_asset_tag,
-            render_hmr_client,
-            render_partial_asset_tag,
-            render_static_asset,
-        )
-
         # Add Response and Request to signature namespace for SSR proxy handler type hints
         app_config.signature_namespace["Response"] = Response
         app_config.signature_namespace["Request"] = LitestarRequest
 
-        # Register Jinja2 template callables if Jinja2 is installed and in template mode
-        if JINJA_INSTALLED and self._config.mode in {"template", "htmx"}:
-            from litestar.contrib.jinja import JinjaTemplateEngine
+        # Auto-register Inertia if config is provided
+        if self._config.inertia is not None:
+            app_config = self._configure_inertia(app_config)
 
-            template_config = app_config.template_config  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
-            if template_config and isinstance(
-                template_config.engine_instance,  # pyright: ignore[reportUnknownMemberType]
-                JinjaTemplateEngine,
-            ):
-                engine = template_config.engine_instance  # pyright: ignore[reportUnknownMemberType]
-                engine.register_template_callable(
-                    key="vite_hmr",
-                    template_callable=render_hmr_client,
-                )
-                engine.register_template_callable(
-                    key="vite",
-                    template_callable=render_asset_tag,
-                )
-                engine.register_template_callable(
-                    key="vite_static",
-                    template_callable=render_static_asset,
-                )
-                engine.register_template_callable(
-                    key="vite_partial",
-                    template_callable=render_partial_asset_tag,
-                )
+        # Register Jinja2 template callables if applicable
+        if JINJA_INSTALLED and self._config.mode in {"template", "htmx"}:
+            self._configure_jinja_callables(app_config)
 
         # Configure static file serving
         if self._config.set_static_folders:
-            static_dirs = [
-                Path(self._config.bundle_dir),
-                Path(self._config.resource_dir),
-            ]
-            if Path(self._config.public_dir).exists() and self._config.public_dir != self._config.bundle_dir:
-                static_dirs.append(Path(self._config.public_dir))
-
-            base_config = {
-                "directories": (static_dirs if self._config.is_dev_mode else [Path(self._config.bundle_dir)]),
-                "path": self._config.asset_url,
-                "name": "vite",
-                "html_mode": False,
-                "include_in_schema": False,
-                "opt": {"exclude_from_auth": True},
-            }
-            static_files_config: dict[str, Any] = {**base_config, **self._static_files_config}
-            app_config.route_handlers.append(create_static_files_router(**static_files_config))
+            self._configure_static_files(app_config)
 
         # Add dev proxy middleware based on proxy_mode
         if self._config.is_dev_mode and self._config.proxy_mode is not None:
-            proxy_mode = self._config.proxy_mode
-
-            # Resolve bundle_dir relative to root_dir to handle --app-dir scenarios
-            bundle_dir = self._config.bundle_dir
-            if not bundle_dir.is_absolute():
-                bundle_dir = self._config.root_dir / bundle_dir
-            hotfile_path = bundle_dir / self._config.hot_file
-
-            if proxy_mode == "vite":
-                # Vite proxy mode (whitelist): proxy only Vite assets, HMR via WebSocket
-                self._ensure_proxy_target()
-                # Add middleware for HTTP proxy requests
-                app_config.middleware.append(
-                    DefineMiddleware(
-                        ViteProxyMiddleware,
-                        hotfile_path=hotfile_path,
-                        asset_url=self._config.asset_url,
-                        resource_dir=self._config.resource_dir,
-                        bundle_dir=self._config.bundle_dir,
-                        root_dir=self._config.root_dir,
-                        http2=self._config.http2,
-                    )
-                )
-                # Add WebSocket route handler for HMR
-                # Vite HMR uses WebSocket at {asset_url}/vite-hmr
-                hmr_path = f"{self._config.asset_url.rstrip('/')}/vite-hmr"
-                app_config.route_handlers.append(
-                    create_vite_hmr_handler(
-                        hotfile_path=hotfile_path,
-                        hmr_path=hmr_path,
-                        asset_url=self._config.asset_url,
-                    )
-                )
-                console.print(f"[dim]Vite proxy enabled (whitelist) at {hmr_path}[/]")
-
-            elif proxy_mode == "proxy":
-                # Proxy mode (blacklist): proxy everything except Litestar routes
-                # Used for SSR frameworks (Astro, Nuxt, SvelteKit) and external servers (Angular CLI)
-                self._ensure_proxy_target()
-                external = self._config.external_dev_server
-
-                # Determine target source: static URL or hotfile (dynamic)
-                static_target = external.target if external else None
-
-                # Add catch-all controller (HTTP + WebSocket) that proxies to the SSR framework
-                # This is needed because Litestar's router runs BEFORE middleware,
-                # so without a catch-all route, requests to `/` return 404 before
-                # the middleware can proxy them.
-                # The WebSocket handler is needed for SSR framework HMR.
-                app_config.route_handlers.append(
-                    create_ssr_proxy_controller(
-                        target=static_target,
-                        hotfile_path=hotfile_path if static_target is None else None,
-                        http2=external.http2 if external else True,
-                    )
-                )
-
-                # Add HMR WebSocket handler for Vite asset requests (at /static/vite-hmr)
-                # This is separate from the SSR proxy WebSocket which handles root-level HMR
-                hmr_path = f"{self._config.asset_url.rstrip('/')}/vite-hmr"
-                app_config.route_handlers.append(
-                    create_vite_hmr_handler(
-                        hotfile_path=hotfile_path,
-                        hmr_path=hmr_path,
-                        asset_url=self._config.asset_url,
-                    )
-                )
-
-                if static_target:
-                    console.print(f"[dim]Proxy enabled (blacklist) → {static_target}[/]")
-                else:
-                    console.print("[dim]Proxy enabled (blacklist, dynamic target via hotfile)[/]")
+            self._configure_dev_proxy(app_config)
 
         # Add SPA catch-all route handler if in SPA mode
         if self._config.mode == "spa" and self._config.spa_handler:
             from litestar_vite.spa import ViteSPAHandler
 
             self._spa_handler = ViteSPAHandler(self._config)
-            # Add the catch-all route - it should be last to avoid conflicts with API routes
             app_config.route_handlers.append(self._spa_handler.create_route_handler())
+        elif self._config.mode == "hybrid":
+            from litestar_vite.spa import ViteSPAHandler
+
+            self._spa_handler = ViteSPAHandler(self._config)
+
+        # Auto-register per-worker lifespan for SPA handler init, asset loader, env setup
+        app_config.lifespan.append(self.lifespan)
 
         return app_config
 
@@ -1765,9 +1819,15 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
     @contextmanager
     def server_lifespan(self, app: "Litestar") -> "Iterator[None]":
-        """Synchronous context manager for Vite server lifecycle.
+        """Server-level lifespan context manager (runs ONCE per server, before workers).
 
-        Manages the Vite dev server process during the application lifespan.
+        This is called by Litestar CLI before workers start. It handles:
+        - Environment variable setup (with logging)
+        - Vite dev server process start/stop (ONE instance for all workers)
+        - Type export on startup
+
+        Note: SPA handler and asset loader initialization happens in the per-worker
+        `lifespan` method, which is auto-registered in `on_app_init`.
 
         Args:
             app: The Litestar application instance.
@@ -1775,10 +1835,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         Yields:
             None
         """
-        import asyncio
-
         # Ensure proxy target is set BEFORE environment variables (port selection)
-        if self._use_server_lifespan and self._config.is_dev_mode:
+        if self._config.is_dev_mode:
             self._ensure_proxy_target()
 
         if self._config.set_environment:
@@ -1786,25 +1844,10 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             set_app_environment(app)
             _log_info("Applied Vite environment variables")
 
-        # Add HEAD→GET middleware for OpenAPI JSON so health checks and tooling work
-        # Initialize SPA handler if enabled
-        if self._spa_handler is not None:
-            asyncio.get_event_loop().run_until_complete(self._spa_handler.initialize())
-            _log_success("SPA handler initialized")
-
-        if not self._config.is_dev_mode and not self._config.has_built_assets():
-            _log_warn(
-                "Vite dev server is disabled (dev_mode=False) but no index.html was found. "
-                "Run your front-end build or set VITE_DEV_MODE=1 to enable HMR."
-            )
-
-        # Inject route metadata into SPA handler (if configured)
-        self._inject_routes_to_spa_handler(app)
-
         # Export types on startup (when enabled)
         self._export_types_sync(app)
 
-        if self._use_server_lifespan and self._config.is_dev_mode and self._config.runtime.start_dev_server:
+        if self._config.is_dev_mode and self._config.runtime.start_dev_server:
             if not app.debug:
                 _log_warn("Vite dev mode is enabled in production!")
 
@@ -1827,23 +1870,21 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             finally:
                 self._vite_process.stop()
                 _log_info("Vite process stopped.")
-                # Shutdown SPA handler
-                if self._spa_handler is not None:
-                    asyncio.get_event_loop().run_until_complete(self._spa_handler.shutdown())
         else:
-            try:
-                yield
-            finally:
-                # Shutdown SPA handler
-                if self._spa_handler is not None:
-                    asyncio.get_event_loop().run_until_complete(self._spa_handler.shutdown())
+            yield
 
     @asynccontextmanager
-    async def async_server_lifespan(self, app: "Litestar") -> "AsyncIterator[None]":
-        """Async context manager for Vite server lifecycle.
+    async def lifespan(self, app: "Litestar") -> "AsyncIterator[None]":
+        """Worker-level lifespan context manager (runs per worker process).
 
-        This is the preferred lifespan manager for async applications.
-        It initializes the asset loader asynchronously for non-blocking I/O.
+        This is auto-registered in `on_app_init` and handles per-worker initialization:
+        - Environment variable setup (silently - each worker needs process-local env vars)
+        - Asset loader initialization
+        - SPA handler initialization
+        - Route metadata injection
+
+        Note: The Vite dev server process is started in `server_lifespan`, which
+        runs ONCE per server before workers start.
 
         Args:
             app: The Litestar application instance.
@@ -1853,21 +1894,23 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """
         from litestar_vite.loader import ViteAssetLoader
 
+        # Set environment variables for this worker (no logging - server_lifespan logs once)
+        # Environment variables are process-local, so each worker needs them
         if self._config.set_environment:
             set_environment(config=self._config)
             set_app_environment(app)
-            _log_info("Applied Vite environment variables")
 
         # Initialize asset loader asynchronously
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader(config=self._config)
         await self._asset_loader.initialize()
 
-        # Initialize SPA handler if enabled
-        if self._spa_handler is not None:
+        # Initialize SPA handler if enabled (check _initialized to avoid double-init)
+        if self._spa_handler is not None and not self._spa_handler._initialized:
             await self._spa_handler.initialize()
             _log_success("SPA handler initialized")
 
+        # Warn if no built assets in production
         if not self._config.is_dev_mode and not self._config.has_built_assets():
             _log_warn(
                 "Vite dev server is disabled (dev_mode=False) but no index.html was found. "
@@ -1877,42 +1920,12 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         # Inject route metadata into SPA handler (if configured)
         self._inject_routes_to_spa_handler(app)
 
-        # Export types on startup (when enabled)
-        self._export_types_sync(app)
-
-        if self._use_server_lifespan and self._config.is_dev_mode and self._config.runtime.start_dev_server:
-            self._ensure_proxy_target()
-            if self._config.set_environment:
-                set_environment(config=self._config)
-            if not app.debug:
-                _log_warn("Vite dev mode is enabled in production!")
-
-            command_to_run = self._config.run_command if self._config.hot_reload else self._config.build_watch_command
-
-            if self._config.hot_reload:
-                _log_info("Starting Vite dev server (HMR enabled)")
-            else:
-                _log_info("Starting Vite watch build process")
-
-            try:
-                self._vite_process.start(command_to_run, self._config.root_dir)
-                _log_success("Vite process started")
-                if self._config.health_check:
-                    self._run_health_check()
-                yield
-            finally:
-                self._vite_process.stop()
-                _log_info("Vite process stopped.")
-                # Shutdown SPA handler
-                if self._spa_handler is not None:
-                    await self._spa_handler.shutdown()
-        else:
-            try:
-                yield
-            finally:
-                # Shutdown SPA handler
-                if self._spa_handler is not None:
-                    await self._spa_handler.shutdown()
+        try:
+            yield
+        finally:
+            # Shutdown SPA handler
+            if self._spa_handler is not None:
+                await self._spa_handler.shutdown()
 
 
 def _normalize_proxy_prefixes(

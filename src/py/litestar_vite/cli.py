@@ -842,8 +842,36 @@ def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
         raise LitestarCLIException(msg) from e
 
 
+def _get_package_executor_cmd(executor: "str | None", package: str) -> "list[str]":
+    """Build package executor command list.
+
+    Maps executor to its "npx equivalent" and returns a command list
+    suitable for subprocess.run.
+
+    Args:
+        executor: The JS runtime executor (node, bun, deno, yarn, pnpm).
+        package: The package to run.
+
+    Returns:
+        Command list for subprocess.run.
+    """
+    if executor == "bun":
+        return ["bunx", package]
+    if executor == "deno":
+        return ["deno", "run", "-A", f"npm:{package}"]
+    if executor == "yarn":
+        return ["yarn", "dlx", package]
+    if executor == "pnpm":
+        return ["pnpm", "dlx", package]
+    return ["npx", package]
+
+
 def _run_openapi_ts(
-    types_config: Any, root_dir: Any, verbose: bool, install_command: "list[str] | None" = None
+    types_config: Any,
+    root_dir: Any,
+    verbose: bool,
+    install_command: "list[str] | None" = None,
+    executor: "str | None" = None,
 ) -> None:
     """Run @hey-api/openapi-ts to generate TypeScript types.
 
@@ -852,6 +880,7 @@ def _run_openapi_ts(
         root_dir: The root directory for the project.
         verbose: Whether to show verbose output.
         install_command: Command used to install JS dependencies.
+        executor: The JS runtime executor (node, bun, deno, yarn, pnpm).
     """
     import subprocess
 
@@ -860,23 +889,23 @@ def _run_openapi_ts(
     console.print("[dim]3. Running @hey-api/openapi-ts...[/]")
 
     install_cmd = install_command or ["npm", "install"]
+    pkg_cmd = _get_package_executor_cmd(executor, "@hey-api/openapi-ts")
 
     try:
         # Check if @hey-api/openapi-ts is installed
-        check_cmd = ["npx", "@hey-api/openapi-ts", "--version"]
+        check_cmd = [*pkg_cmd, "--version"]
         subprocess.run(check_cmd, check=True, capture_output=True, cwd=root_dir)
 
         # Run the type generation
         openapi_cmd = [
-            "npx",
-            "@hey-api/openapi-ts",
+            *pkg_cmd,
             "-i",
             str(types_config.openapi_path),
             "-o",
             str(types_config.output),
         ]
         if types_config.generate_zod:
-            openapi_cmd.extend(["--plugins", "@hey-api/schemas", "@hey-api/types"])
+            openapi_cmd.extend(["--plugins", "zod", "@hey-api/typescript"])
 
         subprocess.run(openapi_cmd, check=True, cwd=root_dir)
         console.print(f"[green]✓ Types generated in {types_config.output}[/]")
@@ -886,7 +915,8 @@ def _run_openapi_ts(
         if verbose:
             console.print(f"[dim]Error: {e!s}[/]")
     except FileNotFoundError:
-        console.print("[yellow]! npx not found - ensure Node.js is installed[/]")
+        runtime_name = executor or "Node.js"
+        console.print(f"[yellow]! Package executor not found - ensure {runtime_name} is installed[/]")
 
 
 @vite_group.command(
@@ -930,7 +960,7 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
 
     _export_openapi_schema(app, config.types)
     _export_routes_metadata(app, config.types)
-    _run_openapi_ts(config.types, config.root_dir, verbose, config.install_command)
+    _run_openapi_ts(config.types, config.root_dir, verbose, config.install_command, config.runtime.executor)
 
 
 @vite_group.command(

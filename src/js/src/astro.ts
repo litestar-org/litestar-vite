@@ -17,7 +17,10 @@
  *   integrations: [
  *     litestar({
  *       apiProxy: 'http://localhost:8000',
- *       typesPath: './src/generated/api',
+ *       types: {
+ *         enabled: true,
+ *         output: 'src/generated/api',
+ *       },
  *     }),
  *   ],
  * });
@@ -26,9 +29,16 @@
  * @module
  */
 
+import { exec } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { promisify } from "node:util"
+import colors from "picocolors"
 import type { Plugin, ViteDevServer } from "vite"
+
+import { resolveInstallHint } from "./install-hint.js"
+
+const execAsync = promisify(exec)
 
 /**
  * Astro integration interface.
@@ -94,6 +104,54 @@ interface AstroIntegrationLogger {
 }
 
 /**
+ * Configuration for TypeScript type generation in Astro.
+ */
+export interface AstroTypesConfig {
+  /**
+   * Enable type generation.
+   *
+   * @default false
+   */
+  enabled?: boolean
+
+  /**
+   * Path to output generated TypeScript types.
+   * Relative to the Astro project root.
+   *
+   * @default 'src/types/api'
+   */
+  output?: string
+
+  /**
+   * Path where the OpenAPI schema is exported by Litestar.
+   *
+   * @default 'openapi.json'
+   */
+  openapiPath?: string
+
+  /**
+   * Path where route metadata is exported by Litestar.
+   *
+   * @default 'routes.json'
+   */
+  routesPath?: string
+
+  /**
+   * Generate Zod schemas in addition to TypeScript types.
+   *
+   * @default false
+   */
+  generateZod?: boolean
+
+  /**
+   * Debounce time in milliseconds for type regeneration.
+   *
+   * @default 300
+   */
+  debounce?: number
+}
+
+/**
  * Configuration options for the Litestar Astro integration.
  */
 export interface LitestarAstroConfig {
@@ -115,27 +173,14 @@ export interface LitestarAstroConfig {
   apiPrefix?: string
 
   /**
-   * Path where TypeScript types are generated.
-   * This should match the output path configured in your Litestar ViteConfig.
+   * Enable and configure TypeScript type generation.
    *
-   * @example './src/generated/api'
-   * @default './src/types/api'
-   */
-  typesPath?: string
-
-  /**
-   * Path to the OpenAPI schema file exported by Litestar.
+   * When set to `true`, enables type generation with default settings.
+   * When set to an AstroTypesConfig object, enables type generation with custom settings.
    *
-   * @default 'openapi.json'
+   * @default false
    */
-  openapiPath?: string
-
-  /**
-   * Path to the routes metadata file exported by Litestar.
-   *
-   * @default 'routes.json'
-   */
-  routesPath?: string
+  types?: boolean | AstroTypesConfig
 
   /**
    * Enable verbose logging for debugging.
@@ -151,9 +196,7 @@ export interface LitestarAstroConfig {
 interface ResolvedLitestarAstroConfig {
   apiProxy: string
   apiPrefix: string
-  typesPath: string
-  openapiPath: string
-  routesPath: string
+  types: Required<AstroTypesConfig> | false
   verbose: boolean
   hotFile?: string
   proxyMode: "vite" | "direct" | "proxy" | null
@@ -200,12 +243,33 @@ function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroC
     }
   }
 
+  // Resolve types config
+  let typesConfig: Required<AstroTypesConfig> | false = false
+
+  if (config.types === true) {
+    typesConfig = {
+      enabled: true,
+      output: "src/types/api",
+      openapiPath: "openapi.json",
+      routesPath: "routes.json",
+      generateZod: false,
+      debounce: 300,
+    }
+  } else if (typeof config.types === "object" && config.types !== null) {
+    typesConfig = {
+      enabled: config.types.enabled ?? true,
+      output: config.types.output ?? "src/types/api",
+      openapiPath: config.types.openapiPath ?? "openapi.json",
+      routesPath: config.types.routesPath ?? "routes.json",
+      generateZod: config.types.generateZod ?? false,
+      debounce: config.types.debounce ?? 300,
+    }
+  }
+
   return {
     apiProxy: config.apiProxy ?? "http://localhost:8000",
     apiPrefix: config.apiPrefix ?? "/api",
-    typesPath: config.typesPath ?? "./src/types/api",
-    openapiPath: config.openapiPath ?? "openapi.json",
-    routesPath: config.routesPath ?? "routes.json",
+    types: typesConfig,
     verbose: config.verbose ?? false,
     hotFile,
     proxyMode,
@@ -244,6 +308,255 @@ function createProxyPlugin(config: ResolvedLitestarAstroConfig): Plugin {
 }
 
 /**
+ * Create a debounced function.
+ */
+function debounce<T extends (...args: unknown[]) => void>(func: T, wait: number): T {
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  return ((...args: unknown[]) => {
+    if (timeout) {
+      clearTimeout(timeout)
+    }
+    timeout = setTimeout(() => func(...args), wait)
+  }) as T
+}
+
+/**
+ * Generate TypeScript route types from routes.json metadata.
+ */
+async function emitRouteTypes(routesPath: string, outputDir: string): Promise<void> {
+  const contents = await fs.promises.readFile(routesPath, "utf-8")
+  const json = JSON.parse(contents)
+
+  const outDir = path.resolve(process.cwd(), outputDir)
+  await fs.promises.mkdir(outDir, { recursive: true })
+  const outFile = path.join(outDir, "routes.ts")
+
+  const banner = `// AUTO-GENERATED by litestar-vite. Do not edit.
+/* eslint-disable */
+
+`
+
+  // Extract just the routes object from the full metadata
+  const routesData = json.routes || json
+
+  // Build route name union type and route map
+  const routeNames = Object.keys(routesData)
+  const routeNameType = routeNames.length > 0 ? routeNames.map((n) => `"${n}"`).join(" | ") : "never"
+
+  // Build parameter types for each route
+  const routeParamTypes: string[] = []
+  for (const [name, data] of Object.entries(routesData)) {
+    const routeData = data as { uri: string; parameters?: string[]; parameterTypes?: Record<string, string> }
+    if (routeData.parameters && routeData.parameters.length > 0) {
+      const params = routeData.parameters.map((p) => `${p}: string | number`).join("; ")
+      routeParamTypes.push(`  "${name}": { ${params} }`)
+    } else {
+      routeParamTypes.push(`  "${name}": Record<string, never>`)
+    }
+  }
+
+  const body = `/**
+ * AUTO-GENERATED by litestar-vite.
+ *
+ * Exports:
+ * - routesMeta: full route metadata
+ * - routes: name -> uri map
+ * - serverRoutes: alias of routes for clarity in apps
+ * - route(): type-safe URL generator
+ * - hasRoute(): type guard
+ * - csrf helpers re-exported from litestar-vite-plugin/helpers
+ *
+ * @see https://litestar-vite.litestar.dev/
+ */
+export const routesMeta = ${JSON.stringify(json, null, 2)} as const
+
+/**
+ * Route name to URI mapping.
+ */
+export const routes = ${JSON.stringify(Object.fromEntries(Object.entries(routesData).map(([name, data]) => [name, (data as { uri: string }).uri])), null, 2)} as const
+
+/**
+ * Alias for server-injected route map (more descriptive for consumers).
+ */
+export const serverRoutes = routes
+
+/**
+ * All available route names.
+ */
+export type RouteName = ${routeNameType}
+
+/**
+ * Parameter types for each route.
+ */
+export interface RouteParams {
+${routeParamTypes.join("\n")}
+}
+
+/**
+ * Generate a URL for a named route with type-safe parameters.
+ *
+ * @param name - The route name
+ * @param params - Route parameters (required if route has path parameters)
+ * @returns The generated URL
+ *
+ * @example
+ * \`\`\`ts
+ * import { route } from '@/generated/routes'
+ *
+ * // Route without parameters
+ * route('home')  // "/"
+ *
+ * // Route with parameters
+ * route('user:detail', { user_id: 123 })  // "/users/123"
+ * \`\`\`
+ */
+export function route<T extends RouteName>(
+  name: T,
+  ...args: RouteParams[T] extends Record<string, never> ? [] : [params: RouteParams[T]]
+): string {
+  let uri = routes[name] as string
+  const params = args[0] as Record<string, string | number> | undefined
+
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      // Handle both {param} and {param:type} syntax
+      uri = uri.replace(new RegExp(\`\\\\{$\{key}(?::[^}]+)?\\\\}\`, "g"), String(value))
+    }
+  }
+
+  return uri
+}
+
+/**
+ * Check if a route name exists.
+ */
+export function hasRoute(name: string): name is RouteName {
+  return name in routes
+}
+
+declare global {
+  interface Window {
+    /**
+     * Fully-typed route metadata injected by Litestar.
+     */
+    __LITESTAR_ROUTES__?: typeof routesMeta
+    /**
+     * Simple route map (name -> uri) for legacy consumers.
+     */
+    routes?: typeof routes
+    serverRoutes?: typeof serverRoutes
+  }
+  // eslint-disable-next-line no-var
+  var routes: typeof routes | undefined
+  var serverRoutes: typeof serverRoutes | undefined
+}
+
+// Re-export helper functions from litestar-vite-plugin
+// These work with the routes defined above
+export { getCsrfToken, csrfHeaders, csrfFetch } from "litestar-vite-plugin/helpers"
+`
+
+  await fs.promises.writeFile(outFile, `${banner}${body}`, "utf-8")
+}
+
+/**
+ * Create the type generation Vite plugin for Astro.
+ */
+function createTypeGenerationPlugin(typesConfig: Required<AstroTypesConfig>): Plugin {
+  let server: ViteDevServer | null = null
+  let isGenerating = false
+
+  async function runTypeGeneration(): Promise<boolean> {
+    if (isGenerating) {
+      return false
+    }
+
+    isGenerating = true
+    const startTime = Date.now()
+
+    try {
+      const openapiPath = path.resolve(process.cwd(), typesConfig.openapiPath)
+      if (!fs.existsSync(openapiPath)) {
+        console.log(colors.cyan("[litestar-astro]"), colors.yellow("OpenAPI schema not found:"), typesConfig.openapiPath)
+        return false
+      }
+
+      console.log(colors.cyan("[litestar-astro]"), colors.dim("Generating TypeScript types..."))
+
+      const args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
+
+      if (typesConfig.generateZod) {
+        args.push("--plugins", "zod", "@hey-api/typescript")
+      }
+
+      await execAsync(`npx ${args.join(" ")}`, {
+        cwd: process.cwd(),
+      })
+
+      // Also generate route types if routes.json exists
+      const routesPath = path.resolve(process.cwd(), typesConfig.routesPath)
+      if (fs.existsSync(routesPath)) {
+        await emitRouteTypes(routesPath, typesConfig.output)
+      }
+
+      const duration = Date.now() - startTime
+      console.log(colors.cyan("[litestar-astro]"), colors.green("Types generated"), colors.dim(`in ${duration}ms`))
+
+      // Notify HMR clients
+      if (server) {
+        server.ws.send({
+          type: "custom",
+          event: "litestar:types-updated",
+          data: {
+            output: typesConfig.output,
+            timestamp: Date.now(),
+          },
+        })
+      }
+
+      return true
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.includes("not found") || message.includes("ENOENT")) {
+        console.log(colors.cyan("[litestar-astro]"), colors.yellow("@hey-api/openapi-ts not installed"), "- run:", resolveInstallHint())
+      } else {
+        console.error(colors.cyan("[litestar-astro]"), colors.red("Type generation failed:"), message)
+      }
+      return false
+    } finally {
+      isGenerating = false
+    }
+  }
+
+  const debouncedRunTypeGeneration = debounce(runTypeGeneration, typesConfig.debounce)
+
+  return {
+    name: "litestar-astro-types",
+    enforce: "pre",
+
+    configureServer(devServer) {
+      server = devServer
+      console.log(colors.cyan("[litestar-astro]"), colors.dim("Watching for schema changes:"), colors.yellow(typesConfig.openapiPath))
+    },
+
+    handleHotUpdate({ file }) {
+      if (!typesConfig.enabled) {
+        return
+      }
+
+      const relativePath = path.relative(process.cwd(), file)
+      const openapiPath = typesConfig.openapiPath.replace(/^\.\//, "")
+      const routesPath = typesConfig.routesPath.replace(/^\.\//, "")
+
+      if (relativePath === openapiPath || relativePath === routesPath || file.endsWith(openapiPath) || file.endsWith(routesPath)) {
+        console.log(colors.cyan("[litestar-astro]"), colors.dim("Schema changed:"), colors.yellow(relativePath))
+        debouncedRunTypeGeneration()
+      }
+    },
+  }
+}
+
+/**
  * Litestar integration for Astro.
  *
  * This integration configures Astro to work seamlessly with a Litestar backend,
@@ -263,7 +576,10 @@ function createProxyPlugin(config: ResolvedLitestarAstroConfig): Plugin {
  *     litestar({
  *       apiProxy: 'http://localhost:8000',
  *       apiPrefix: '/api',
- *       typesPath: './src/generated/api',
+ *       types: {
+ *         enabled: true,
+ *         output: 'src/generated/api',
+ *       },
  *     }),
  *   ],
  * });
@@ -299,16 +615,26 @@ export default function litestarAstro(userConfig: LitestarAstroConfig = {}): Ast
           logger.info("Configuring Litestar integration")
           logger.info(`  API Proxy: ${config.apiProxy}`)
           logger.info(`  API Prefix: ${config.apiPrefix}`)
-          logger.info(`  Types Path: ${config.typesPath}`)
+          if (config.types !== false) {
+            logger.info(`  Types Output: ${config.types.output}`)
+          }
           if (config.port !== undefined) {
             logger.info(`  Port: ${config.port}`)
           }
         }
 
+        // Build the plugins array
+        const plugins: Plugin[] = [createProxyPlugin(config)]
+
+        // Add type generation plugin if enabled
+        if (config.types !== false && config.types.enabled) {
+          plugins.push(createTypeGenerationPlugin(config.types))
+        }
+
         // Build the config update object
         const configUpdate: AstroConfigPartial = {
           vite: {
-            plugins: [createProxyPlugin(config)],
+            plugins,
           },
         }
 

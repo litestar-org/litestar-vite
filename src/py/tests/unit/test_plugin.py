@@ -228,11 +228,12 @@ class TestVitePluginAppIntegration:
 class TestVitePluginLifespan:
     """Test VitePlugin server lifespan management."""
 
-    def test_server_lifespan_without_lifespan_management(self) -> None:
-        """Test server lifespan when lifespan management is disabled."""
-        config = ViteConfig()
+    def test_server_lifespan_in_production_without_start_dev_server(self) -> None:
+        """Test server lifespan when dev server is disabled."""
+        config = ViteConfig(
+            runtime=RuntimeConfig(dev_mode=False, start_dev_server=False),
+        )
         plugin = VitePlugin(config=config)
-        plugin._use_server_lifespan = False
         plugin._config.types = False
         app = Mock(spec=Litestar)
 
@@ -256,9 +257,10 @@ class TestVitePluginLifespan:
     @patch("litestar_vite.plugin.set_environment")
     def test_server_lifespan_with_environment_setup(self, mock_set_env: Mock) -> None:
         """Test server lifespan with environment variable setup."""
-        config = ViteConfig(runtime=RuntimeConfig(set_environment=True))
+        config = ViteConfig(
+            runtime=RuntimeConfig(set_environment=True, dev_mode=False, start_dev_server=False),
+        )
         plugin = VitePlugin(config=config)
-        plugin._use_server_lifespan = False
         plugin._config.types = False
         app = Mock(spec=Litestar)
 

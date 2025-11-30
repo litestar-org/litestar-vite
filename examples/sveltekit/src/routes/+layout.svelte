@@ -6,7 +6,7 @@ interface Props {
   children: Snippet
 }
 
-let { children }: Props = $props()
+const { children }: Props = $props()
 </script>
 
 {@render children()}

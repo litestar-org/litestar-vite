@@ -47,17 +47,24 @@ class InertiaDetails:
     def _get_route_component(self) -> "str | None":
         """Get the route component.
 
-        Checks for the `component` key within the route handler configuration.
-
-        Args:
-            request: The request object.
+        Checks for keys defined in ``InertiaConfig.component_opt_keys`` within
+        the route handler configuration. Returns the first key found.
 
         Returns:
-            The route component.
+            The route component name, or None if not set.
+
+        Example:
+            Both of these are equivalent::
+
+                @get("/", component="Home")
+                @get("/", page="Home")
         """
         rh = self.request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
         if rh:
-            return rh.opt.get("component")
+            # Check keys in order: "component", "page" (or custom keys from config)
+            for key in ("component", "page"):
+                if (value := rh.opt.get(key)) is not None:
+                    return value
         return None
 
     def __bool__(self) -> bool:

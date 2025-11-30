@@ -50,7 +50,7 @@ Litestar-Vite supplies a Python plugin (`VitePlugin`) and a TypeScript Vite plug
 
 ### VitePlugin (litestar_vite.plugin)
 - Responsibilities: configure static routes, Jinja template callables (`vite`, `vite_static`, `vite_partial`, `vite_hmr`), start/stop Vite dev process, proxy middleware for HTTP + dedicated HMR WS handler, SPA catch-all via `ViteSPAHandler`, export types/routes on startup, inject routes into SPA HTML, manage env variables and hotfile.
-- Lifespans: `server_lifespan(app)` (sync) and `async_server_lifespan(app)`; both honor `set_environment`, initialize loaders/SPA handler, optionally run Vite dev/build-watch.
+- Lifespans: `server_lifespan(app)` (sync, runs ONCE per server) for Vite process and env setup; `lifespan(app)` (async, auto-registered, runs per worker) for SPA handler and asset loader initialization.
 - Properties: `config`, `asset_loader` (lazy `ViteAssetLoader.initialize_loader`).
 
 ### ViteAssetLoader (litestar_vite.loader)
@@ -67,7 +67,7 @@ Litestar-Vite supplies a Python plugin (`VitePlugin`) and a TypeScript Vite plug
 - Used by ViteSPAHandler and InertiaResponse for consistent HTML transformations.
 
 ### Inertia Integration (litestar_vite.inertia)
-- InertiaConfig: `root_template='index.html'`, `component_opt_key='component'`, `exclude_from_js_routes_key='exclude_from_routes'`, `redirect_unauthorized_to`, `redirect_404`, `extra_static_page_props: dict`, `extra_session_page_props: set[str]`, `spa_mode=False`, `app_selector='#app'`.
+- InertiaConfig: `root_template='index.html'`, `component_opt_keys=('component', 'page')` (tuple of keys to check for component name), `exclude_from_js_routes_key='exclude_from_routes'`, `redirect_unauthorized_to`, `redirect_404`, `extra_static_page_props: dict`, `extra_session_page_props: set[str]`, `spa_mode=False`, `app_selector='#app'`.
 - InertiaPlugin: requires session middleware; sets `request_class=InertiaRequest`, `response_class=InertiaResponse`, registers `InertiaMiddleware`, exception handler, JS route generation on startup, adds lifespan portal for background tasks.
 - InertiaRequest: extends Litestar Request with `inertia` property containing headers and details.
 - InertiaResponse: constructor accepts `content`, `template_name` or `template_str`, `background`, `context`, `cookies`, `headers`, `status_code`, `media_type`; renders via template engine or SPA HtmlTransformer; handles partial reloads, deferred/merge props, CSRF injection, page props building.
@@ -204,15 +204,17 @@ All examples in `examples/` directory:
 - `basic/` - Basic Jinja template mode
 - `flash/` - Flash messages example
 - `fullstack-typed/` - Full-stack typed routes and API
-- `inertia/` - Inertia.js with Vue
 - `jinja/` - Jinja templates with Vite assets
 - `nuxt/` - Nuxt 3 with Litestar API
 - `react/` - React SPA with Vite
+- `react-inertia/` - React with Inertia.js (SPA mode)
+- `react-inertia-jinja/` - React with Inertia.js (Jinja templates)
 - `svelte/` - Svelte SPA
-- `vue/` - Vue 3 SPA
-- `vue-inertia/` - Vue 3 with Inertia.js
 - `sveltekit/` - SvelteKit with Litestar API
 - `template-htmx/` - HTMX with Jinja templates
+- `vue/` - Vue 3 SPA
+- `vue-inertia/` - Vue 3 with Inertia.js (SPA mode)
+- `vue-inertia-jinja/` - Vue 3 with Inertia.js (Jinja templates)
 
 ### SPA (React/Vue/Svelte)
 ```python

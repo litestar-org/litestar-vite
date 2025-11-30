@@ -1,17 +1,18 @@
-"""Vue Inertia SPA example - shared "Library" backend + Inertia frontend."""
+"""Vue Inertia example - template-less Inertia using mode='hybrid'.
+
+This example demonstrates Inertia.js without Jinja templates.
+The HtmlTransformer injects the page data into index.html at runtime.
+"""
 
 import os
 from pathlib import Path
 
 from litestar import Controller, Litestar, get
-from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.exceptions import NotFoundException
 from litestar.middleware.session.client_side import CookieBackendConfig
-from litestar.template import TemplateConfig
 from msgspec import Struct
 
-from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
-from litestar_vite.inertia import InertiaConfig, InertiaPlugin
+from litestar_vite import InertiaConfig, PathConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-32-chars")
@@ -89,8 +90,9 @@ class LibraryController(Controller):
 
 vite = VitePlugin(
     config=ViteConfig(
-        mode="template",  # Use template mode for Inertia (not SPA mode)
+        # mode="hybrid" is auto-detected from Inertia + index.html presence
         paths=PathConfig(root=here, resource_dir="resources", bundle_dir="public"),
+        inertia=InertiaConfig(root_template="index.html"),  # Auto-registers Inertia
         types=TypeGenConfig(
             enabled=True,
             output=Path("resources/generated"),
@@ -99,13 +101,10 @@ vite = VitePlugin(
         ),
     )
 )
-inertia = InertiaPlugin(config=InertiaConfig(root_template="index.html"))
-templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)
 
 app = Litestar(
     route_handlers=[LibraryController],
-    plugins=[vite, inertia],
-    template_config=templates,
+    plugins=[vite],  # Single plugin - Inertia auto-configured
     middleware=[session_backend.middleware],
     debug=True,
 )

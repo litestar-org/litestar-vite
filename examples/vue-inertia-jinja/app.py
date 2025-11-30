@@ -1,15 +1,17 @@
-"""React Inertia example - template-less Inertia using mode='hybrid'.
+"""Vue Inertia example with Jinja templates.
 
-This example demonstrates Inertia.js without Jinja templates.
-The HtmlTransformer injects the page data into index.html at runtime.
+This example demonstrates Inertia.js with traditional Jinja2 templates.
+The page data is injected via Jinja template syntax: {{ page | tojson | e }}
 """
 
 import os
 from pathlib import Path
 
 from litestar import Controller, Litestar, get
+from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.exceptions import NotFoundException
 from litestar.middleware.session.client_side import CookieBackendConfig
+from litestar.template import TemplateConfig
 from msgspec import Struct
 
 from litestar_vite import InertiaConfig, PathConfig, TypeGenConfig, ViteConfig, VitePlugin
@@ -53,6 +55,7 @@ def _get_book(book_id: int) -> Book:
 
 
 def _get_summary() -> Summary:
+    """Build summary data."""
     return Summary(
         app="litestar-vite library",
         headline="One backend, many frontends",
@@ -67,11 +70,11 @@ class LibraryController(Controller):
     @get("/", component="Home")
     async def index(self) -> Message:
         """Serve the home page."""
-        return Message(message="Welcome to React Inertia!")
+        return Message(message="Welcome to Vue Inertia!")
 
     @get("/books", component="Books")
     async def books_page(self) -> dict[str, object]:
-        """Books list page."""
+        """Books list page (shares API payloads)."""
         return {"summary": _get_summary(), "books": BOOKS}
 
     @get("/api/summary")
@@ -87,9 +90,11 @@ class LibraryController(Controller):
         return _get_book(book_id)
 
 
+templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)
+
 vite = VitePlugin(
     config=ViteConfig(
-        # mode="hybrid" is auto-detected from Inertia + index.html presence
+        mode="template",  # Explicit template mode for Jinja-based Inertia
         paths=PathConfig(root=here, resource_dir="resources", bundle_dir="public"),
         inertia=InertiaConfig(root_template="index.html"),  # Auto-registers Inertia
         types=TypeGenConfig(
@@ -104,6 +109,7 @@ vite = VitePlugin(
 app = Litestar(
     route_handlers=[LibraryController],
     plugins=[vite],  # Single plugin - Inertia auto-configured
+    template_config=templates,
     middleware=[session_backend.middleware],
     debug=True,
 )

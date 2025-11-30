@@ -477,3 +477,145 @@ def test_vite_config_spa_can_be_explicitly_disabled() -> None:
     # Explicitly disabled, should stay False
     assert config.spa is False
     assert config.spa_config is None
+
+
+# ============================================================================
+# Hybrid mode tests
+# ============================================================================
+
+
+def test_hybrid_mode_explicit() -> None:
+    """Test that mode='hybrid' can be explicitly set."""
+    from litestar_vite.inertia import InertiaConfig
+
+    config = ViteConfig(
+        mode="hybrid",
+        inertia=InertiaConfig(spa_mode=True),
+    )
+
+    assert config.mode == "hybrid"
+    # Hybrid mode should auto-enable SPAConfig like spa mode
+    assert isinstance(config.spa, SPAConfig)
+    assert config.spa_config is not None
+
+
+def test_hybrid_mode_auto_detected_with_inertia_spa_mode() -> None:
+    """Test that hybrid mode is auto-detected when Inertia spa_mode=True."""
+    from litestar_vite.inertia import InertiaConfig
+
+    config = ViteConfig(
+        inertia=InertiaConfig(spa_mode=True),
+    )
+
+    assert config.mode == "hybrid"
+    assert config._mode_auto_detected is True
+
+
+def test_hybrid_mode_auto_detected_with_index_html(tmp_path: Path) -> None:
+    """Test that hybrid mode is auto-detected when Inertia enabled + index.html exists."""
+    from litestar_vite.inertia import InertiaConfig
+
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<html></html>")
+
+    # No spa_mode set - should auto-detect hybrid from index.html
+    config = ViteConfig(
+        paths=PathConfig(resource_dir=resource_dir),
+        inertia=InertiaConfig(),  # No spa_mode=True needed!
+    )
+
+    assert config.mode == "hybrid"
+    assert config._mode_auto_detected is True
+
+
+def test_template_mode_auto_detected_with_inertia_no_index_html(tmp_path: Path) -> None:
+    """Test that template mode is auto-detected when Inertia enabled but no index.html."""
+    from litestar_vite.inertia import InertiaConfig
+
+    # Empty directory - no index.html
+    config = ViteConfig(
+        paths=PathConfig(resource_dir=tmp_path),
+        inertia=InertiaConfig(),
+    )
+
+    assert config.mode == "template"
+    assert config._mode_auto_detected is True
+
+
+def test_hybrid_mode_validation_requires_index_html(tmp_path: Path) -> None:
+    """Test that hybrid mode validation requires index.html in production."""
+    from litestar_vite.inertia import InertiaConfig
+
+    # Empty directory - no index.html, but spa_mode=True forces hybrid
+    config = ViteConfig(
+        mode="hybrid",
+        paths=PathConfig(resource_dir=tmp_path),
+        inertia=InertiaConfig(spa_mode=True),
+    )
+
+    with pytest.raises(ValueError, match=r"Hybrid mode requires index\.html"):
+        config.validate_mode()
+
+
+def test_hybrid_mode_validation_passes_in_dev_mode(tmp_path: Path) -> None:
+    """Test that hybrid mode validation passes in dev mode without index.html."""
+    from litestar_vite.inertia import InertiaConfig
+
+    # Empty directory - no index.html, but dev_mode=True
+    config = ViteConfig(
+        mode="hybrid",
+        dev_mode=True,
+        paths=PathConfig(resource_dir=tmp_path),
+        inertia=InertiaConfig(spa_mode=True),
+    )
+
+    # Should not raise
+    config.validate_mode()
+
+
+def test_hybrid_mode_validation_passes_with_index_html(tmp_path: Path) -> None:
+    """Test that hybrid mode validation passes when index.html exists."""
+    from litestar_vite.inertia import InertiaConfig
+
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<html></html>")
+
+    config = ViteConfig(
+        mode="hybrid",
+        paths=PathConfig(resource_dir=resource_dir),
+        inertia=InertiaConfig(),  # Auto-detects hybrid from index.html
+    )
+
+    # Should not raise
+    config.validate_mode()
+
+
+def test_inertia_presence_means_enabled(tmp_path: Path) -> None:
+    """Test that presence of InertiaConfig means Inertia is enabled."""
+    from litestar_vite.inertia import InertiaConfig
+
+    # Passing InertiaConfig instance means enabled
+    # Without index.html, defaults to template mode
+    config = ViteConfig(
+        paths=PathConfig(resource_dir=tmp_path),
+        inertia=InertiaConfig(),
+    )
+    assert isinstance(config.inertia, InertiaConfig)
+    assert config.mode == "template"  # No index.html → template
+
+    # Passing True enables with defaults
+    config2 = ViteConfig(
+        paths=PathConfig(resource_dir=tmp_path),
+        inertia=True,
+    )
+    assert isinstance(config2.inertia, InertiaConfig)
+    assert config2.mode == "template"
+
+    # Passing False/None means disabled
+    config3 = ViteConfig(inertia=False)
+    assert config3.inertia is None
+
+    config4 = ViteConfig(inertia=None)
+    assert config4.inertia is None

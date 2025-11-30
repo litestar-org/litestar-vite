@@ -1,45 +1,36 @@
-"""Vite CDN deployment utilities."""
+"""Vite CDN deployment utilities.
+
+The canonical DeployConfig is defined in litestar_vite.config.
+This module re-exports it for backwards compatibility.
+"""
 
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportMissingTypeStubs=false
 
 import json
-import os
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, cast
 
+from litestar_vite.config import DeployConfig
 from litestar_vite.exceptions import MissingDependencyError
+
+# Re-export for backwards compatibility
+__all__ = ("DeployConfig", "FileInfo", "SyncPlan", "SyncResult", "ViteDeployer", "format_bytes")
 
 AbstractFileSystem = Any
 
-TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
 
+def _suggest_install_extra(storage_backend: "str | None") -> str:
+    """Suggest an install target based on backend scheme.
 
-def _default_content_types() -> dict[str, str]:
-    """Default content-type mappings keyed by file extension."""
+    Args:
+        storage_backend: The storage backend URL.
 
-    return {
-        ".js": "application/javascript",
-        ".mjs": "application/javascript",
-        ".cjs": "application/javascript",
-        ".css": "text/css",
-        ".html": "text/html",
-        ".json": "application/json",
-        ".svg": "image/svg+xml",
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".webp": "image/webp",
-        ".woff2": "font/woff2",
-        ".woff": "font/woff",
-    }
-
-
-def _suggest_install_extra(storage_backend: str | None) -> str:
-    """Suggest an install target based on backend scheme."""
-
+    Returns:
+        Suggested package to install.
+    """
     if not storage_backend:
         return "fsspec"
     scheme = storage_backend.split("://", 1)[0]
@@ -54,9 +45,18 @@ def _suggest_install_extra(storage_backend: str | None) -> str:
     return mapping.get(scheme, "fsspec")
 
 
-def _import_fsspec(storage_backend: str | None) -> tuple[Any, Callable[..., tuple[Any, Any]]]:
-    """Import fsspec lazily with a helpful error when missing."""
+def _import_fsspec(storage_backend: "str | None") -> tuple[Any, Callable[..., tuple[Any, Any]]]:
+    """Import fsspec lazily with a helpful error when missing.
 
+    Args:
+        storage_backend: The storage backend URL for error messaging.
+
+    Returns:
+        Tuple of fsspec module and url_to_fs function.
+
+    Raises:
+        MissingDependencyError: If fsspec is not installed.
+    """
     if find_spec("fsspec") is None:
         msg = "fsspec"
         raise MissingDependencyError(msg, install_package=_suggest_install_extra(storage_backend))
@@ -65,56 +65,6 @@ def _import_fsspec(storage_backend: str | None) -> tuple[Any, Callable[..., tupl
     from fsspec.core import url_to_fs  # pyright: ignore[reportMissingTypeStubs]
 
     return fsspec, url_to_fs
-
-
-@dataclass
-class DeployConfig:
-    """CDN deployment configuration.
-
-    Attributes:
-        enabled: Enable deployment features.
-        storage_backend: fsspec URL for the target location (e.g., ``gcs://bucket/path``).
-        storage_options: Provider options forwarded to ``fsspec`` (credentials, region, etc.).
-        delete_orphaned: Remove remote files not present in the local bundle.
-        include_manifest: Upload ``manifest.json`` alongside assets.
-        content_types: Optional content-type overrides keyed by file extension.
-    """
-
-    enabled: bool = False
-    storage_backend: str | None = field(default_factory=lambda: os.getenv("VITE_DEPLOY_STORAGE"))
-    storage_options: dict[str, Any] = field(default_factory=lambda: cast("dict[str, Any]", {}))
-    delete_orphaned: bool = field(default_factory=lambda: os.getenv("VITE_DEPLOY_DELETE", "true") in TRUE_VALUES)
-    include_manifest: bool = True
-    content_types: dict[str, str] = field(default_factory=_default_content_types)
-
-    def __post_init__(self) -> None:
-        """Apply environment fallbacks."""
-        if self.storage_backend is None:
-            self.storage_backend = os.getenv("VITE_DEPLOY_STORAGE")
-
-    def with_overrides(
-        self,
-        storage_backend: str | None = None,
-        storage_options: dict[str, Any] | None = None,
-        delete_orphaned: bool | None = None,
-    ) -> "DeployConfig":
-        """Return a copy with overrides applied.
-
-        Args:
-            storage_backend: Override for the storage URL.
-            storage_options: Override for backend options.
-            delete_orphaned: Override deletion behaviour.
-
-        Returns:
-            DeployConfig copy with updated fields.
-        """
-
-        return replace(
-            self,
-            storage_backend=storage_backend or self.storage_backend,
-            storage_options=storage_options or self.storage_options,
-            delete_orphaned=self.delete_orphaned if delete_orphaned is None else delete_orphaned,
-        )
 
 
 @dataclass

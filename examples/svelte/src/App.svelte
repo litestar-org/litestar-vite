@@ -19,7 +19,7 @@ type Summary = {
 
 let summary = $state<Summary | null>(null)
 let books = $state<Book[]>([])
-let view = $state<"overview" | "books">("overview")
+const view = $state<"overview" | "books">("overview")
 
 onMount(async () => {
   const [summaryRes, booksRes] = await Promise.all([fetch("/api/summary"), fetch("/api/books")])

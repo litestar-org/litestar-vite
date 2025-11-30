@@ -29,15 +29,17 @@ EXAMPLES = [
     ("basic", True, False, False),
     ("flash", True, False, False),
     ("fullstack-typed", True, False, False),
-    ("inertia", False, True, False),  # Inertia uses its own handler
     ("jinja", False, False, False),  # Template mode
     ("nuxt", False, False, True),  # SSR framework - no SPA mode
     ("react", True, False, False),
+    ("react-inertia", False, True, False),  # Inertia hybrid mode
+    ("react-inertia-jinja", False, True, False),  # Inertia template mode
     ("svelte", True, False, False),
-    ("vue", True, False, False),
-    ("vue-inertia", False, True, False),  # Inertia mode
     ("sveltekit", False, False, True),  # SSR framework - no SPA mode
     ("template-htmx", False, False, False),  # Template mode (HTMX)
+    ("vue", True, False, False),
+    ("vue-inertia", False, True, False),  # Inertia hybrid mode
+    ("vue-inertia-jinja", False, True, False),  # Inertia template mode
 ]
 
 
@@ -173,13 +175,23 @@ def test_example_api_endpoints(
 
     # Only test apps that have API routes defined
     api_examples = [
+        "angular",
+        "angular-cli",
         "astro",
-        "nuxt",
-        "sveltekit",
+        "basic",
+        "flash",
         "fullstack-typed",
+        "jinja",
+        "nuxt",
         "react",
+        "react-inertia",
+        "react-inertia-jinja",
         "svelte",
+        "sveltekit",
+        "template-htmx",
         "vue",
+        "vue-inertia",
+        "vue-inertia-jinja",
     ]
 
     if example_name not in api_examples:

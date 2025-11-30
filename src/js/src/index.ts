@@ -11,7 +11,7 @@ import colors from "picocolors"
 import { type ConfigEnv, type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer, loadEnv } from "vite"
 import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-reload"
 
-import { resolveInstallHint } from "./install-hint.js"
+import { resolveInstallHint, resolvePackageExecutor } from "./install-hint.js"
 import { type BackendStatus, type LitestarMeta, checkBackendAvailability, loadLitestarMeta } from "./litestar-meta.js"
 
 const execAsync = promisify(exec)
@@ -169,6 +169,16 @@ export interface PluginConfig {
    * @default false
    */
   types?: boolean | TypesConfig
+  /**
+   * JavaScript runtime executor for package commands.
+   * Used when running tools like @hey-api/openapi-ts.
+   *
+   * This is typically auto-detected from Python config via LITESTAR_VITE_RUNTIME env var,
+   * but can be overridden here for JS-only projects or specific needs.
+   *
+   * @default undefined (uses LITESTAR_VITE_RUNTIME env or 'node')
+   */
+  executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
 }
 
 interface RefreshConfig {
@@ -179,9 +189,11 @@ interface RefreshConfig {
 /**
  * Resolved plugin configuration with all defaults applied.
  * Note: `types` is resolved to `Required<TypesConfig> | false` instead of `boolean | TypesConfig`
+ * Note: `executor` remains optional - undefined means auto-detect from env
  */
-interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types"> {
+interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor"> {
   types: Required<TypesConfig> | false
+  executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
 }
 
 interface PythonDefaults {
@@ -199,6 +211,8 @@ interface PythonDefaults {
   // SSR fields
   ssrEnabled?: boolean
   ssrOutDir?: string
+  // Executor for package commands
+  executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
   types?: {
     enabled: boolean
     output: string
@@ -231,7 +245,7 @@ export default function litestar(config: string | string[] | PluginConfig): [Lit
 
   // Add type generation plugin if enabled
   if (pluginConfig.types !== false && pluginConfig.types.enabled) {
-    plugins.push(resolveTypeGenerationPlugin(pluginConfig.types))
+    plugins.push(resolveTypeGenerationPlugin(pluginConfig.types, pluginConfig.executor))
   }
 
   return plugins as [LitestarPlugin, ...Plugin[]]
@@ -724,6 +738,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     autoDetectIndex: resolvedConfig.autoDetectIndex ?? true,
     transformOnServe: resolvedConfig.transformOnServe ?? ((code) => code),
     types: typesConfig,
+    executor: resolvedConfig.executor ?? pythonDefaults?.executor,
   }
 }
 
@@ -952,10 +967,10 @@ export { getCsrfToken, csrfHeaders, csrfFetch } from "litestar-vite-plugin/helpe
  * Flow:
  * 1. Litestar exports openapi.json and routes.json on startup (via server_lifespan hook)
  * 2. This plugin detects file changes via Vite's handleHotUpdate
- * 3. Runs npx @hey-api/openapi-ts to generate TypeScript types
+ * 3. Runs @hey-api/openapi-ts to generate TypeScript types (using configured executor)
  * 4. Sends HMR event to notify client
  */
-function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>): Plugin {
+function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executor?: string): Plugin {
   let lastTypesHash: string | null = null
   let lastRoutesHash: string | null = null
   let server: ViteDevServer | null = null
@@ -989,13 +1004,13 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>): Plugin
         const args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
 
         if (typesConfig.generateZod) {
-          args.push("--plugins", "@hey-api/schemas", "@hey-api/types")
+          args.push("--plugins", "zod", "@hey-api/typescript")
         }
         if (typesConfig.generateSdk) {
           args.push("--client", "fetch")
         }
 
-        await execAsync(`npx ${args.join(" ")}`, {
+        await execAsync(resolvePackageExecutor(args.join(" "), executor), {
           cwd: process.cwd(),
         })
 
