@@ -38,6 +38,7 @@ __all__ = (
     "FSSPEC_INSTALLED",
     "JINJA_INSTALLED",
     "DeployConfig",
+    "ExternalDevServer",
     "InertiaConfig",
     "PathConfig",
     "RuntimeConfig",
@@ -49,6 +50,25 @@ __all__ = (
 TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
 JINJA_INSTALLED = bool(find_spec("jinja2"))
 FSSPEC_INSTALLED = bool(find_spec("fsspec"))
+
+
+def _resolve_dev_server_mode() -> Literal["vite_proxy", "vite_direct", "external_proxy"]:
+    """Resolve dev_server_mode from environment variable.
+
+    Reads VITE_DEV_SERVER_MODE env var. Valid values:
+    - "vite_proxy" (default): Proxy to internal Vite server
+    - "vite_direct": Expose Vite port directly
+    - "external_proxy": Proxy to external dev server
+
+    Returns:
+        The resolved dev server mode.
+    """
+    env_value = os.getenv("VITE_DEV_SERVER_MODE", "vite_proxy").lower()
+    if env_value in ("vite_direct", "direct"):
+        return "vite_direct"
+    if env_value in ("external_proxy", "external"):
+        return "external_proxy"
+    return "vite_proxy"
 
 
 @dataclass
@@ -90,12 +110,34 @@ class PathConfig:
 
 
 @dataclass
+class ExternalDevServer:
+    """Configuration for external (non-Vite) dev servers.
+
+    Use this when your frontend uses a framework with its own dev server
+    (Angular CLI, Next.js, Create React App, etc.) instead of Vite.
+
+    Attributes:
+        target: The URL of the external dev server (e.g., "http://localhost:4200").
+        http2: Enable HTTP/2 for proxy connections.
+        enabled: Whether the external proxy is enabled.
+    """
+
+    target: str = "http://localhost:4200"
+    http2: bool = False
+    enabled: bool = True
+
+
+@dataclass
 class RuntimeConfig:
     """Runtime execution settings.
 
     Attributes:
         dev_mode: Enable development mode with HMR/watch.
-        hot_reload: Enable Hot Module Replacement (HMR).
+        dev_server_mode: Dev server handling mode:
+            - "vite_proxy": Proxy to internal Vite server (default, single-port with HMR)
+            - "vite_direct": Expose Vite port directly (multi-port)
+            - "external_proxy": Proxy to external dev server (Angular CLI, Next.js, etc.)
+        external_dev_server: Configuration for external dev server (required when dev_server_mode="external_proxy").
         host: Vite dev server host.
         port: Vite dev server port.
         protocol: Protocol for dev server (http/https).
@@ -111,14 +153,16 @@ class RuntimeConfig:
         set_environment: Set Vite environment variables from config.
         set_static_folders: Automatically configure static file serving.
         csp_nonce: Content Security Policy nonce for inline scripts.
-        proxy_mode: Proxy mode for dev server requests.
         spa_handler: Auto-register catch-all SPA route when mode="spa".
         http2: Enable HTTP/2 for proxy HTTP requests (better multiplexing).
             WebSocket traffic (HMR) uses a separate connection and is unaffected.
     """
 
     dev_mode: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)
-    hot_reload: bool = field(default_factory=lambda: os.getenv("VITE_HOT_RELOAD", "True") in TRUE_VALUES)
+    dev_server_mode: "Literal['vite_proxy', 'vite_direct', 'external_proxy']" = field(
+        default_factory=lambda: _resolve_dev_server_mode()
+    )
+    external_dev_server: "ExternalDevServer | str | None" = None
     host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "localhost"))
     port: int = field(default_factory=lambda: int(os.getenv("VITE_PORT", "5173")))
     protocol: Literal["http", "https"] = "http"
@@ -134,14 +178,21 @@ class RuntimeConfig:
     set_environment: bool = True
     set_static_folders: bool = True
     csp_nonce: "str | None" = None
-    proxy_mode: Literal["proxy", "direct"] = field(
-        default_factory=lambda: "direct" if os.getenv("VITE_PROXY_MODE", "proxy").lower() == "direct" else "proxy"
-    )
     spa_handler: bool = True
     http2: bool = True
+    start_dev_server: bool = True
 
     def __post_init__(self) -> None:
-        """Set default commands based on executor."""
+        """Set default commands based on executor and normalize external_dev_server."""
+        # Normalize external_dev_server: string → ExternalDevServer
+        if isinstance(self.external_dev_server, str):
+            self.external_dev_server = ExternalDevServer(target=self.external_dev_server)
+
+        # Validate external_proxy mode requires external_dev_server
+        if self.dev_server_mode == "external_proxy" and self.external_dev_server is None:
+            msg = "external_dev_server is required when dev_server_mode='external_proxy'"
+            raise ValueError(msg)
+
         if self.executor is None:
             self.executor = "node"
 
@@ -611,8 +662,12 @@ class ViteConfig:
 
     @property
     def hot_reload(self) -> bool:
-        """Check if hot reload is enabled."""
-        return self.runtime.hot_reload
+        """Check if hot reload is enabled (derived from dev_mode and dev_server_mode).
+
+        HMR requires dev_mode=True AND a Vite mode (vite_proxy, vite_direct).
+        External proxy mode never has HMR since it uses a non-Vite server.
+        """
+        return self.runtime.dev_mode and self.runtime.dev_server_mode in {"vite_proxy", "vite_direct"}
 
     @property
     def is_dev_mode(self) -> bool:
@@ -670,9 +725,16 @@ class ViteConfig:
         return self.runtime.detect_nodeenv
 
     @property
-    def proxy_mode(self) -> Literal["proxy", "direct"]:
-        """Get proxy mode (proxy=single-port via ASGI, direct=expose Vite port)."""
-        return self.runtime.proxy_mode
+    def dev_server_mode(self) -> Literal["vite_proxy", "vite_direct", "external_proxy"]:
+        """Get dev server mode."""
+        return self.runtime.dev_server_mode
+
+    @property
+    def external_dev_server(self) -> "ExternalDevServer | None":
+        """Get external dev server config."""
+        if isinstance(self.runtime.external_dev_server, ExternalDevServer):
+            return self.runtime.external_dev_server
+        return None
 
     @property
     def spa_handler(self) -> bool:

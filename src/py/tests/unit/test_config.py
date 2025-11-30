@@ -3,6 +3,7 @@ from pathlib import Path, PosixPath
 import pytest
 
 from litestar_vite.config import (
+    ExternalDevServer,
     PathConfig,
     RuntimeConfig,
     SPAConfig,
@@ -64,7 +65,7 @@ def test_new_config_structure() -> None:
         ),
         runtime=RuntimeConfig(
             dev_mode=True,
-            hot_reload=True,
+            dev_server_mode="vite_proxy",  # Use new field
             executor="bun",
         ),
         types=True,  # Shorthand for TypeGenConfig(enabled=True)
@@ -73,7 +74,7 @@ def test_new_config_structure() -> None:
     assert config.bundle_dir == Path("/app/dist")
     assert config.resource_dir == Path("/app/src")
     assert config.is_dev_mode is True
-    assert config.hot_reload is True
+    assert config.hot_reload is True  # Derived from dev_server_mode
     assert config.types.enabled is True  # type: ignore
     assert isinstance(config.executor, BunExecutor)
 
@@ -97,20 +98,151 @@ def test_mode_auto_detection_spa_with_index_html(tmp_path: Path) -> None:
     assert config._mode_auto_detected is True
 
 
-def test_proxy_mode_defaults_to_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+def test_dev_server_mode_defaults_to_vite_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test dev_server_mode defaults to vite_proxy."""
+    monkeypatch.delenv("VITE_DEV_SERVER_MODE", raising=False)
 
     config = RuntimeConfig()
 
-    assert config.proxy_mode == "proxy"
+    assert config.dev_server_mode == "vite_proxy"
 
 
-def test_proxy_mode_respects_direct_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("VITE_PROXY_MODE", "direct")
+def test_dev_server_mode_respects_direct_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test VITE_DEV_SERVER_MODE=direct maps to vite_direct."""
+    monkeypatch.setenv("VITE_DEV_SERVER_MODE", "direct")
 
     config = RuntimeConfig()
 
-    assert config.proxy_mode == "direct"
+    assert config.dev_server_mode == "vite_direct"
+
+
+def test_dev_server_mode_respects_vite_direct_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test VITE_DEV_SERVER_MODE=vite_direct is recognized."""
+    monkeypatch.setenv("VITE_DEV_SERVER_MODE", "vite_direct")
+
+    config = RuntimeConfig()
+
+    assert config.dev_server_mode == "vite_direct"
+
+
+def test_dev_server_mode_respects_external_proxy_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test VITE_DEV_SERVER_MODE=external_proxy is recognized."""
+    monkeypatch.setenv("VITE_DEV_SERVER_MODE", "external_proxy")
+
+    config = RuntimeConfig(external_dev_server="http://localhost:4200")
+
+    assert config.dev_server_mode == "external_proxy"
+
+
+# ============================================================================
+# ExternalDevServer tests
+# ============================================================================
+
+
+def test_external_dev_server_defaults() -> None:
+    """Test ExternalDevServer has sensible defaults."""
+    ext = ExternalDevServer()
+
+    assert ext.target == "http://localhost:4200"
+    assert ext.http2 is False
+    assert ext.enabled is True
+
+
+def test_external_dev_server_custom_values() -> None:
+    """Test ExternalDevServer with custom values."""
+    ext = ExternalDevServer(
+        target="http://localhost:3000",
+        http2=True,
+        enabled=False,
+    )
+
+    assert ext.target == "http://localhost:3000"
+    assert ext.http2 is True
+    assert ext.enabled is False
+
+
+def test_runtime_config_external_dev_server_string_normalization() -> None:
+    """Test external_dev_server string is normalized to ExternalDevServer."""
+    config = RuntimeConfig(
+        dev_server_mode="external_proxy",
+        external_dev_server="http://localhost:3000",
+    )
+
+    assert isinstance(config.external_dev_server, ExternalDevServer)
+    assert config.external_dev_server.target == "http://localhost:3000"
+
+
+def test_runtime_config_external_dev_server_object() -> None:
+    """Test external_dev_server can be passed as object."""
+    ext = ExternalDevServer(target="http://localhost:4200", http2=True)
+    config = RuntimeConfig(
+        dev_server_mode="external_proxy",
+        external_dev_server=ext,
+    )
+
+    assert config.external_dev_server is ext
+    assert isinstance(config.external_dev_server, ExternalDevServer)
+    assert config.external_dev_server.http2 is True
+
+
+def test_runtime_config_external_proxy_requires_target() -> None:
+    """Test external_proxy mode requires external_dev_server."""
+    with pytest.raises(ValueError, match="external_dev_server is required"):
+        RuntimeConfig(dev_server_mode="external_proxy", external_dev_server=None)
+
+
+def test_vite_config_external_proxy_mode() -> None:
+    """Test ViteConfig with external_proxy mode."""
+    config = ViteConfig(
+        runtime=RuntimeConfig(
+            dev_mode=True,
+            dev_server_mode="external_proxy",
+            external_dev_server=ExternalDevServer(target="http://localhost:4200"),
+        )
+    )
+
+    assert config.dev_server_mode == "external_proxy"
+    assert config.external_dev_server is not None
+    assert config.external_dev_server.target == "http://localhost:4200"
+    # HMR disabled for external servers
+    assert config.hot_reload is False
+
+
+def test_hot_reload_derived_from_vite_proxy_mode() -> None:
+    """Test hot_reload is True for vite_proxy mode."""
+    config = ViteConfig(
+        runtime=RuntimeConfig(
+            dev_mode=True,
+            dev_server_mode="vite_proxy",
+        )
+    )
+
+    assert config.hot_reload is True
+
+
+def test_hot_reload_derived_from_vite_direct_mode() -> None:
+    """Test hot_reload is True for vite_direct mode."""
+    config = ViteConfig(
+        runtime=RuntimeConfig(
+            dev_mode=True,
+            dev_server_mode="vite_direct",
+        )
+    )
+
+    assert config.hot_reload is True
+
+
+def test_hot_reload_disabled_for_external_proxy() -> None:
+    """Test hot_reload is False for external_proxy mode."""
+    config = ViteConfig(
+        runtime=RuntimeConfig(
+            dev_mode=True,
+            dev_server_mode="external_proxy",
+            external_dev_server="http://localhost:4200",
+        )
+    )
+
+    assert config.hot_reload is False
 
 
 def test_mode_auto_detection_template_with_jinja(tmp_path: Path) -> None:

@@ -1,8 +1,6 @@
-"""SPA React example - shared "Library" backend + SPA frontend.
+"""SPA React example - shared "Library" backend + React SPA frontend.
 
-All examples expose the same backend endpoints so you can compare
-frameworks side-by-side:
-
+All examples in this repository expose the same backend:
 - `/api/summary` - overview + featured book
 - `/api/books` - list of books
 - `/api/books/{book_id}` - single book
@@ -13,7 +11,7 @@ non-API routes when mode="spa" (auto-detected or explicit).
 
 from pathlib import Path
 
-from litestar import Litestar, get
+from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
 from msgspec import Struct
 
@@ -51,9 +49,8 @@ def _get_book(book_id: int) -> Book:
     raise NotFoundException(detail=f"Book {book_id} not found")
 
 
-@get("/api/summary")
-async def summary() -> Summary:
-    """Overview endpoint shared across examples."""
+def _get_summary() -> Summary:
+    """Build summary data."""
     return Summary(
         app="litestar-vite library",
         headline="One backend, many frontends",
@@ -62,16 +59,23 @@ async def summary() -> Summary:
     )
 
 
-@get("/api/books")
-async def books() -> list[Book]:
-    """Return all books."""
-    return BOOKS
+class LibraryController(Controller):
+    """Library API controller."""
 
+    @get("/api/summary")
+    async def summary(self) -> Summary:
+        """Overview endpoint used across all examples."""
+        return _get_summary()
 
-@get("/api/books/{book_id:int}")
-async def book_detail(book_id: int) -> Book:
-    """Return a single book."""
-    return _get_book(book_id)
+    @get("/api/books")
+    async def books(self) -> list[Book]:
+        """Return all books."""
+        return BOOKS
+
+    @get("/api/books/{book_id:int}")
+    async def book_detail(self, book_id: int) -> Book:
+        """Return a single book by id."""
+        return _get_book(book_id)
 
 
 # VitePlugin with mode="spa" automatically:
@@ -82,13 +86,12 @@ vite = VitePlugin(
         mode="spa",
         paths=PathConfig(root=here),
         types=TypeGenConfig(generate_sdk=True),
-        # Start the Vite dev server automatically for HMR when running the example
         dev_mode=True,
     )
 )
 
 app = Litestar(
-    route_handlers=[summary, books, book_detail],  # Just API routes
+    route_handlers=[LibraryController],
     plugins=[vite],
     debug=True,
 )

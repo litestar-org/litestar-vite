@@ -26,6 +26,8 @@
  * @module
  */
 
+import fs from "node:fs"
+import path from "node:path"
 import type { Plugin, ViteDevServer } from "vite"
 
 /**
@@ -122,12 +124,34 @@ interface ResolvedLitestarAstroConfig {
   openapiPath: string
   routesPath: string
   verbose: boolean
+  hotFile?: string
+  devServerMode: "vite_proxy" | "vite_direct" | "external_proxy"
 }
 
 /**
  * Resolve configuration with defaults.
  */
 function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroConfig {
+  const runtimeConfigPath = process.env.LITESTAR_VITE_CONFIG_PATH
+  let hotFile: string | undefined
+  let devServerMode: "vite_proxy" | "vite_direct" | "external_proxy" = "vite_proxy"
+
+  if (runtimeConfigPath && fs.existsSync(runtimeConfigPath)) {
+    try {
+      const json = JSON.parse(fs.readFileSync(runtimeConfigPath, "utf-8")) as {
+        bundleDir?: string
+        hotFile?: string
+        devServerMode?: "vite_proxy" | "vite_direct" | "external_proxy"
+      }
+      const bundleDir = json.bundleDir ?? "public"
+      const hot = json.hotFile ?? "hot"
+      hotFile = path.resolve(process.cwd(), bundleDir, hot)
+      devServerMode = json.devServerMode ?? "vite_proxy"
+    } catch {
+      hotFile = undefined
+    }
+  }
+
   return {
     apiProxy: config.apiProxy ?? "http://localhost:8000",
     apiPrefix: config.apiPrefix ?? "/api",
@@ -135,6 +159,8 @@ function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroC
     openapiPath: config.openapiPath ?? "openapi.json",
     routesPath: config.routesPath ?? "routes.json",
     verbose: config.verbose ?? false,
+    hotFile,
+    devServerMode,
   }
 }
 
@@ -242,6 +268,21 @@ export default function litestarAstro(userConfig: LitestarAstroConfig = {}): Ast
             }
             next()
           })
+        }
+
+        // Write hotfile so Litestar SPA handler can proxy correctly
+        // Only for Vite modes (not external_proxy)
+        if (config.hotFile && config.devServerMode !== "external_proxy") {
+          const address = server?.httpServer?.address()
+          if (address && typeof address === "object" && "port" in address) {
+            const host = address.address === "::" ? "localhost" : address.address
+            const url = `http://${host}:${address.port}`
+            fs.mkdirSync(path.dirname(config.hotFile), { recursive: true })
+            fs.writeFileSync(config.hotFile, url)
+            if (config.verbose) {
+              logger.info(`Hotfile written: ${config.hotFile} -> ${url}`)
+            }
+          }
         }
       },
 

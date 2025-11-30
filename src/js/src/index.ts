@@ -192,6 +192,12 @@ interface PythonDefaults {
   publicDir?: string
   manifest?: string
   mode?: string
+  // New dev server mode fields
+  devServerMode?: "vite_proxy" | "vite_direct" | "external_proxy"
+  externalTarget?: string | null
+  externalHttp2?: boolean
+  // SSR fields
+  ssrEnabled?: boolean
   ssrOutDir?: string
   types?: {
     enabled: boolean
@@ -286,6 +292,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
   let resolvedConfig: ResolvedConfig
   let userConfig: UserConfig
   let litestarMeta: LitestarMeta = {}
+  const pythonDefaults = loadPythonDefaults()
+  const devServerMode = pythonDefaults?.devServerMode ?? "vite_proxy"
   const defaultAliases: Record<string, string> = {
     "@": `/${pluginConfig.resourceDirectory.replace(/^\/+/, "").replace(/\/+$/, "")}/`,
   }
@@ -431,8 +439,11 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
         const isAddressInfo = (x: string | AddressInfo | null | undefined): x is AddressInfo => typeof x === "object"
         if (isAddressInfo(address)) {
           viteDevServerUrl = userConfig.server?.origin ? (userConfig.server.origin as DevServerUrl) : resolveDevServerUrl(address, server.config, userConfig)
-          fs.mkdirSync(path.dirname(pluginConfig.hotFile), { recursive: true })
-          fs.writeFileSync(pluginConfig.hotFile, viteDevServerUrl)
+          // Only write hotfile for Vite modes (not external_proxy)
+          if (devServerMode !== "external_proxy") {
+            fs.mkdirSync(path.dirname(pluginConfig.hotFile), { recursive: true })
+            fs.writeFileSync(pluginConfig.hotFile, viteDevServerUrl)
+          }
 
           // Check backend availability and log status
           setTimeout(async () => {
@@ -509,8 +520,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
         }
       })
 
-      // Clean up hot file
-      if (!exitHandlersBound) {
+      // Clean up hot file (only for Vite modes)
+      if (!exitHandlersBound && devServerMode !== "external_proxy") {
         const clean = () => {
           if (pluginConfig.hotFile && fs.existsSync(pluginConfig.hotFile)) {
             // Check hotFile exists

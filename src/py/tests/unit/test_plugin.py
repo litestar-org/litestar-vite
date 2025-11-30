@@ -31,13 +31,14 @@ class TestVitePlugin:
         """Test plugin initialization with custom configuration."""
         config = ViteConfig(
             paths=PathConfig(bundle_dir="custom/bundle", resource_dir="custom/resources"),
-            runtime=RuntimeConfig(hot_reload=False),
+            runtime=RuntimeConfig(dev_mode=False),
         )
         plugin = VitePlugin(config=config)
 
         assert plugin._config == config
         assert str(plugin._config.bundle_dir) == "custom/bundle"
-        assert plugin._config.hot_reload is False
+        # hot_reload requires dev_mode=True AND a Vite mode (vite_proxy/vite_direct)
+        assert plugin._config.hot_reload is False  # dev_mode=False disables HMR
         assert plugin._config.executor is not None
 
     def test_plugin_initialization_with_static_files_config(self) -> None:
@@ -196,7 +197,7 @@ class TestVitePluginAppIntegration:
     def test_on_app_init_direct_mode_skips_proxy(self) -> None:
         """Proxy middleware should only attach in proxy mode."""
 
-        config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode="direct"))
+        config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, dev_server_mode="vite_direct"))
         plugin = VitePlugin(config=config)
         app_config = AppConfig()
 
@@ -270,7 +271,7 @@ class TestVitePluginLifespan:
     @patch("litestar_vite.plugin.console")
     def test_server_lifespan_with_vite_process_management(self, mock_console: Mock) -> None:
         """Test server lifespan with Vite process management."""
-        config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, hot_reload=True))
+        config = ViteConfig(runtime=RuntimeConfig(dev_mode=True))
         plugin = VitePlugin(config=config)
         plugin._config.types = False
         app = Mock(spec=Litestar)
@@ -289,7 +290,9 @@ class TestVitePluginLifespan:
     def test_server_lifespan_with_watch_mode(self, mock_console: Mock) -> None:
         """Test server lifespan with watch mode (no HMR)."""
         config = ViteConfig(
-            runtime=RuntimeConfig(dev_mode=True, hot_reload=False),  # Watch mode without HMR
+            runtime=RuntimeConfig(
+                dev_mode=True, dev_server_mode="external_proxy", external_dev_server="http://localhost:4200"
+            ),  # Watch mode without HMR
         )
         plugin = VitePlugin(config=config)
         plugin._config.types = False
@@ -627,7 +630,7 @@ class TestVitePluginJinjaOptionalDependency:
 
     def test_plugin_development_server_without_jinja(self) -> None:
         """Test development server functionality without Jinja."""
-        config = ViteConfig(runtime=RuntimeConfig(hot_reload=True, dev_mode=True))
+        config = ViteConfig(runtime=RuntimeConfig(dev_mode=True))
         plugin = VitePlugin(config=config)
 
         # Development features should work without Jinja
@@ -639,7 +642,7 @@ class TestVitePluginJinjaOptionalDependency:
 
     def test_plugin_production_mode_without_jinja(self) -> None:
         """Test production mode functionality without Jinja."""
-        config = ViteConfig(runtime=RuntimeConfig(hot_reload=False, dev_mode=False))
+        config = ViteConfig(runtime=RuntimeConfig(dev_mode=False))
         plugin = VitePlugin(config=config)
 
         # Production features should work without Jinja

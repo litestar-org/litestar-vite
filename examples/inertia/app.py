@@ -15,7 +15,7 @@ from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
 from litestar_vite.inertia import InertiaConfig, InertiaPlugin
 
 here = Path(__file__).parent
-SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-key-32c")
+SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-32-chars")
 session_backend = CookieBackendConfig(secret=SECRET_KEY.encode("utf-8"))
 
 

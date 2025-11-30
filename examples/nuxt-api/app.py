@@ -1,10 +1,22 @@
-"""Nuxt API example - shared "Library" backend for Nuxt frontend."""
+"""Nuxt API example - shared "Library" backend for Nuxt frontend.
 
-from litestar import Litestar, get
+All examples in this repository expose the same backend:
+- `/api/summary` - overview + featured book
+- `/api/books` - list of books
+- `/api/books/{book_id}` - single book
+
+The Nuxt server proxies /api/* requests to this Litestar server.
+"""
+
+from pathlib import Path
+
+from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
 from msgspec import Struct
 
-from litestar_vite import TypeGenConfig, ViteConfig, VitePlugin
+from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
+
+here = Path(__file__).parent
 
 
 class Book(Struct):
@@ -36,8 +48,8 @@ def _get_book(book_id: int) -> Book:
     raise NotFoundException(detail=f"Book {book_id} not found")
 
 
-@get("/api/summary")
-async def summary() -> Summary:
+def _get_summary() -> Summary:
+    """Build summary data."""
     return Summary(
         app="litestar-vite library",
         headline="One backend, many frontends",
@@ -46,22 +58,32 @@ async def summary() -> Summary:
     )
 
 
-@get("/api/books")
-async def books() -> list[Book]:
-    return BOOKS
+class LibraryController(Controller):
+    """Library API controller."""
 
+    @get("/api/summary")
+    async def summary(self) -> Summary:
+        """Overview endpoint used across all examples."""
+        return _get_summary()
 
-@get("/api/books/{book_id:int}")
-async def book_detail(book_id: int) -> Book:
-    return _get_book(book_id)
+    @get("/api/books")
+    async def books(self) -> list[Book]:
+        """Return all books."""
+        return BOOKS
+
+    @get("/api/books/{book_id:int}")
+    async def book_detail(self, book_id: int) -> Book:
+        """Return a single book by id."""
+        return _get_book(book_id)
 
 
 vite = VitePlugin(
     config=ViteConfig(
-        dev_mode=True,
+        mode="spa",
+        paths=PathConfig(root=here, bundle_dir="public", resource_dir="public"),
         types=TypeGenConfig(
             enabled=True,
-            output="generated",
+            output=Path("generated"),
             generate_zod=True,
             generate_sdk=True,
         ),
@@ -69,7 +91,7 @@ vite = VitePlugin(
 )
 
 app = Litestar(
-    route_handlers=[summary, books, book_detail],
+    route_handlers=[LibraryController],
     plugins=[vite],
     debug=True,
 )

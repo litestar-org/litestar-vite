@@ -18,8 +18,6 @@ Example::
     )
 """
 
-from __future__ import annotations
-
 import importlib.metadata
 import json
 import logging
@@ -180,14 +178,26 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
         # Keep JS defaults (resources/bootstrap/ssr)
         ssr_out_dir_value = None
 
+    # Extract external dev server info
+    external = config.external_dev_server
+    external_target = external.target if external else None
+    external_http2 = external.http2 if external else False
+
     payload = {
         "assetUrl": config.asset_url,
         "baseUrl": config.base_url,
         "bundleDir": bundle_dir_value,
+        "hotFile": config.hot_file,
         "resourceDir": resource_dir_value,
         "publicDir": str(config.public_dir),
         "manifest": config.manifest_name,
         "mode": config.mode,
+        # New dev server mode fields
+        "devServerMode": config.dev_server_mode,
+        "externalTarget": external_target,
+        "externalHttp2": external_http2,
+        # SSR fields
+        "ssrEnabled": config.ssr_enabled,
         "ssrOutDir": ssr_out_dir_value,
         "types": {
             "enabled": types.enabled,
@@ -240,7 +250,7 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
 
     # VITE_ env for the JS side
     os.environ.setdefault("VITE_PROTOCOL", config.protocol)
-    os.environ.setdefault("VITE_PROXY_MODE", config.proxy_mode)
+    os.environ.setdefault("VITE_DEV_SERVER_MODE", config.dev_server_mode)
 
     # If the Python side already picked a host/port (e.g., proxy mode with an auto-free port),
     # surface them to the Vite process unless the user explicitly set them.
@@ -445,6 +455,181 @@ class ViteProxyMiddleware(AbstractMiddleware):
             try:
                 upstream_resp = await client.request(method, url, headers=headers, content=body, timeout=10.0)
             except httpx.HTTPError as exc:  # pragma: no cover - network failure path
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 502,
+                        "headers": [(b"content-type", b"text/plain")],
+                    }
+                )
+                await send({"type": "http.response.body", "body": str(exc).encode()})
+                return
+
+        response_headers = [(k.encode(), v.encode()) for k, v in upstream_resp.headers.items()]
+        await send(
+            {
+                "type": "http.response.start",
+                "status": upstream_resp.status_code,
+                "headers": response_headers,
+            }
+        )
+        await send({"type": "http.response.body", "body": upstream_resp.content})
+
+
+class ExternalDevServerProxyMiddleware(AbstractMiddleware):
+    """ASGI middleware to proxy requests to an external (non-Vite) dev server.
+
+    This middleware proxies all requests that don't match Litestar-registered routes
+    to the target external dev server (e.g., Angular CLI, Next.js, Create React App).
+
+    Unlike ViteProxyMiddleware, this middleware:
+    - Does NOT use hotfile (external server runs independently)
+    - Does NOT handle WebSocket HMR (external server handles its own HMR)
+    - Auto-excludes Litestar routes, static mounts, and schema paths
+    """
+
+    scopes = {ScopeType.HTTP}
+
+    def __init__(
+        self,
+        app: "ASGIApp",
+        target: str,
+        http2: bool = False,
+        litestar_app: "Litestar | None" = None,
+    ) -> None:
+        """Initialize the external dev server proxy middleware.
+
+        Args:
+            app: The ASGI application to wrap.
+            target: The target URL to proxy to (e.g., "http://localhost:4200").
+            http2: Enable HTTP/2 for proxy connections.
+            litestar_app: Optional Litestar app instance for route exclusion.
+        """
+        super().__init__(app)
+        self.target = target.rstrip("/")
+        self.http2 = http2
+        self._litestar_app = litestar_app
+        self._excluded_prefixes: tuple[str, ...] | None = None
+
+    def _get_excluded_prefixes(self, scope: "Scope") -> tuple[str, ...]:
+        """Build list of path prefixes to exclude from proxying.
+
+        Automatically excludes:
+        - All registered Litestar routes
+        - Static file mounts
+        - OpenAPI/schema paths
+        """
+        if self._excluded_prefixes is not None:
+            return self._excluded_prefixes
+
+        prefixes: list[str] = []
+
+        # Get Litestar app from scope if not provided during init
+        app: "Litestar | None" = self._litestar_app or scope.get("app")  # pyright: ignore[reportUnknownMemberType]
+        if app:
+            # Exclude all registered route paths
+            for route in getattr(app, "routes", []):
+                path = getattr(route, "path", None)
+                if path:
+                    # Normalize path to prefix
+                    prefix = path.rstrip("/")
+                    if prefix:
+                        prefixes.append(prefix)
+
+            # Exclude OpenAPI schema path
+            openapi_config = getattr(app, "openapi_config", None)
+            if openapi_config is not None:
+                schema_path = getattr(openapi_config, "path", "/schema")
+                if schema_path:
+                    prefixes.append(schema_path.rstrip("/"))
+
+        # Always exclude common API prefixes
+        prefixes.extend(["/api", "/schema", "/docs"])
+
+        # Remove duplicates and sort by length (longest first for proper matching)
+        unique_prefixes = sorted(set(prefixes), key=len, reverse=True)
+        self._excluded_prefixes = tuple(unique_prefixes)
+
+        if _is_proxy_debug():
+            console.print(f"[dim][external-proxy] Excluded prefixes: {self._excluded_prefixes}[/]")
+
+        return self._excluded_prefixes
+
+    def _should_proxy(self, path: str, scope: "Scope") -> bool:
+        """Determine if the request should be proxied to the external server."""
+        excluded = self._get_excluded_prefixes(scope)
+
+        # Check if path matches any excluded prefix
+        return all(not (path == prefix or path.startswith(f"{prefix}/")) for prefix in excluded)
+
+    async def __call__(self, scope: "Scope", receive: "Receive", send: "Send") -> None:
+        scope_dict = cast("dict[str, Any]", scope)
+        path = scope_dict.get("path", "")
+
+        should = self._should_proxy(path, scope)
+        if _is_proxy_debug():
+            console.print(f"[dim][external-proxy] {path} → proxy={should}[/]")
+
+        if should:
+            await self._proxy_request(scope_dict, receive, send)
+            return
+
+        await self.app(scope, receive, send)
+
+    async def _proxy_request(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        """Proxy the HTTP request to the external dev server."""
+        method = scope.get("method", "GET")
+        raw_path = scope.get("raw_path", b"").decode()
+        query_string = scope.get("query_string", b"").decode()
+
+        url = f"{self.target}{raw_path}"
+        if query_string:
+            url = f"{url}?{query_string}"
+
+        # Build headers, filtering out hop-by-hop headers
+        headers = [
+            (k.decode(), v.decode())
+            for k, v in scope.get("headers", [])
+            if k.lower() not in (b"host", b"connection", b"keep-alive")
+        ]
+
+        # Read request body
+        body = b""
+        more_body = True
+        while more_body:
+            event = await receive()
+            if event["type"] != "http.request":
+                continue
+            body += event.get("body", b"")
+            more_body = event.get("more_body", False)
+
+        # Check for HTTP/2 support
+        http2_enabled = self.http2
+        if http2_enabled:
+            try:
+                import h2  # noqa: F401  # pyright: ignore[reportMissingImports,reportUnusedImport]
+            except ImportError:
+                http2_enabled = False
+
+        async with httpx.AsyncClient(http2=http2_enabled, timeout=30.0) as client:
+            try:
+                upstream_resp = await client.request(method, url, headers=headers, content=body)
+            except httpx.ConnectError:
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 503,
+                        "headers": [(b"content-type", b"text/plain")],
+                    }
+                )
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": f"External dev server not running at {self.target}".encode(),
+                    }
+                )
+                return
+            except httpx.HTTPError as exc:
                 await send(
                     {
                         "type": "http.response.start",
@@ -837,8 +1022,13 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         return self._asset_loader
 
     def _ensure_proxy_target(self) -> None:
-        """Prepare proxy target URL and hotfile for proxy mode."""
-        if self._proxy_target is not None or self._config.proxy_mode != "proxy" or not self._config.is_dev_mode:
+        """Prepare proxy target URL and hotfile for vite_proxy mode."""
+        # Skip if already set, not in vite_proxy mode, or not in dev mode
+        if self._proxy_target is not None:
+            return
+        if self._config.dev_server_mode != "vite_proxy":
+            return
+        if not self._config.is_dev_mode:
             return
 
         # Force loopback for internal dev server unless explicitly overridden
@@ -933,39 +1123,56 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             static_files_config: dict[str, Any] = {**base_config, **self._static_files_config}
             app_config.route_handlers.append(create_static_files_router(**static_files_config))
 
-        # Add dev proxy middleware and WebSocket HMR handler for single-port mode
-        if self._config.is_dev_mode and self._config.proxy_mode == "proxy":
-            self._ensure_proxy_target()
-            # Both middleware and WebSocket handler read the Vite URL from the hotfile
-            # This ensures they always connect to the correct port even if it changes
-            # Resolve bundle_dir relative to root_dir to handle --app-dir scenarios
-            bundle_dir = self._config.bundle_dir
-            if not bundle_dir.is_absolute():
-                bundle_dir = self._config.root_dir / bundle_dir
-            hotfile_path = bundle_dir / self._config.hot_file
-            # Add middleware for HTTP proxy requests
-            app_config.middleware.append(
-                DefineMiddleware(
-                    ViteProxyMiddleware,
-                    hotfile_path=hotfile_path,
-                    asset_url=self._config.asset_url,
-                    resource_dir=self._config.resource_dir,
-                    bundle_dir=self._config.bundle_dir,
-                    root_dir=self._config.root_dir,
-                    http2=self._config.http2,
+        # Add dev proxy middleware based on dev_server_mode
+        if self._config.is_dev_mode:
+            dev_mode = self._config.dev_server_mode
+
+            if dev_mode == "vite_proxy":
+                # Vite proxy mode: HMR via WebSocket + HTTP proxy
+                self._ensure_proxy_target()
+                # Both middleware and WebSocket handler read the Vite URL from the hotfile
+                # This ensures they always connect to the correct port even if it changes
+                # Resolve bundle_dir relative to root_dir to handle --app-dir scenarios
+                bundle_dir = self._config.bundle_dir
+                if not bundle_dir.is_absolute():
+                    bundle_dir = self._config.root_dir / bundle_dir
+                hotfile_path = bundle_dir / self._config.hot_file
+                # Add middleware for HTTP proxy requests
+                app_config.middleware.append(
+                    DefineMiddleware(
+                        ViteProxyMiddleware,
+                        hotfile_path=hotfile_path,
+                        asset_url=self._config.asset_url,
+                        resource_dir=self._config.resource_dir,
+                        bundle_dir=self._config.bundle_dir,
+                        root_dir=self._config.root_dir,
+                        http2=self._config.http2,
+                    )
                 )
-            )
-            # Add WebSocket route handler for HMR
-            # Vite HMR uses WebSocket at {asset_url}/vite-hmr
-            hmr_path = f"{self._config.asset_url.rstrip('/')}/vite-hmr"
-            app_config.route_handlers.append(
-                create_vite_hmr_handler(
-                    hotfile_path=hotfile_path,
-                    hmr_path=hmr_path,
-                    asset_url=self._config.asset_url,
+                # Add WebSocket route handler for HMR
+                # Vite HMR uses WebSocket at {asset_url}/vite-hmr
+                hmr_path = f"{self._config.asset_url.rstrip('/')}/vite-hmr"
+                app_config.route_handlers.append(
+                    create_vite_hmr_handler(
+                        hotfile_path=hotfile_path,
+                        hmr_path=hmr_path,
+                        asset_url=self._config.asset_url,
+                    )
                 )
-            )
-            console.print(f"[dim]Vite HMR proxy enabled at {hmr_path}[/]")
+                console.print(f"[dim]Vite HMR proxy enabled at {hmr_path}[/]")
+
+            elif dev_mode == "external_proxy":
+                # External proxy mode: proxy to external dev server (Angular CLI, etc.)
+                external = self._config.external_dev_server
+                if external is not None and external.enabled:
+                    app_config.middleware.append(
+                        DefineMiddleware(
+                            ExternalDevServerProxyMiddleware,
+                            target=external.target,
+                            http2=external.http2,
+                        )
+                    )
+                    console.print(f"[dim]External dev server proxy enabled → {external.target}[/]")
 
         # Add SPA catch-all route handler if in SPA mode
         if self._config.mode == "spa" and self._config.spa_handler:
@@ -1151,7 +1358,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         # Export types on startup (when enabled)
         self._export_types_sync(app)
 
-        if self._use_server_lifespan and self._config.is_dev_mode:
+        if self._use_server_lifespan and self._config.is_dev_mode and self._config.runtime.start_dev_server:
             if not app.debug:
                 _log_warn("Vite dev mode is enabled in production!")
 
@@ -1227,7 +1434,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         # Export types on startup (when enabled)
         self._export_types_sync(app)
 
-        if self._use_server_lifespan and self._config.is_dev_mode:
+        if self._use_server_lifespan and self._config.is_dev_mode and self._config.runtime.start_dev_server:
             self._ensure_proxy_target()
             if self._config.set_environment:
                 set_environment(config=self._config)

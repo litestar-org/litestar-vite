@@ -400,12 +400,12 @@ class TestJinjaOptionalEdgeCases:
         """Test Jinja optional behavior in development vs production scenarios."""
         from litestar_vite.config import ViteConfig
 
-        # Development scenario
-        dev_config = ViteConfig(runtime=RuntimeConfig(hot_reload=True))
+        # Development scenario - dev_mode=True with vite_proxy mode enables HMR
+        dev_config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, dev_server_mode="vite_proxy"))
         assert dev_config.hot_reload is True
 
-        # Production scenario
-        prod_config = ViteConfig(runtime=RuntimeConfig(hot_reload=False))
+        # Production scenario - dev_mode=False disables HMR
+        prod_config = ViteConfig(runtime=RuntimeConfig(dev_mode=False))
         assert prod_config.hot_reload is False
 
 
@@ -477,7 +477,7 @@ class TestJinjaOptionalProductionReadiness:
                 bundle_dir=Path("/app/public"),
                 resource_dir=Path("/app/resources"),
             ),
-            runtime=RuntimeConfig(hot_reload=False),  # Production setting
+            runtime=RuntimeConfig(dev_mode=False),  # Production setting
         )
 
         plugin = VitePlugin(config=config)
@@ -500,7 +500,7 @@ class TestJinjaOptionalProductionReadiness:
                 bundle_dir=Path("/app/static"),
                 resource_dir=Path("/app/src"),
             ),
-            runtime=RuntimeConfig(hot_reload=False),
+            runtime=RuntimeConfig(dev_mode=False),
         )
 
         loader = ViteAssetLoader.initialize_loader(config=config)

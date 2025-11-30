@@ -137,12 +137,34 @@ interface ResolvedConfig {
   apiPrefix: string
   types: Required<SvelteKitTypesConfig> | false
   verbose: boolean
+  hotFile?: string
+  devServerMode: "vite_proxy" | "vite_direct" | "external_proxy"
 }
 
 /**
  * Resolve configuration with defaults.
  */
 function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
+  const runtimeConfigPath = process.env.LITESTAR_VITE_CONFIG_PATH
+  let hotFile: string | undefined
+  let devServerMode: "vite_proxy" | "vite_direct" | "external_proxy" = "vite_proxy"
+
+  if (runtimeConfigPath && fs.existsSync(runtimeConfigPath)) {
+    try {
+      const json = JSON.parse(fs.readFileSync(runtimeConfigPath, "utf-8")) as {
+        bundleDir?: string
+        hotFile?: string
+        devServerMode?: "vite_proxy" | "vite_direct" | "external_proxy"
+      }
+      const bundleDir = json.bundleDir ?? "public"
+      const hot = json.hotFile ?? "hot"
+      hotFile = path.resolve(process.cwd(), bundleDir, hot)
+      devServerMode = json.devServerMode ?? "vite_proxy"
+    } catch {
+      hotFile = undefined
+    }
+  }
+
   let typesConfig: Required<SvelteKitTypesConfig> | false = false
 
   if (config.types === true) {
@@ -170,6 +192,8 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
     apiPrefix: config.apiPrefix ?? "/api",
     types: typesConfig,
     verbose: config.verbose ?? false,
+    hotFile,
+    devServerMode,
   }
 }
 
@@ -262,6 +286,24 @@ export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): Plu
             console.log(colors.cyan("[litestar-sveltekit]"), `Proxying: ${req.method} ${req.url}`)
           }
           next()
+        })
+      }
+
+      // Write hotfile only for Vite modes (not external_proxy)
+      if (config.hotFile && config.devServerMode !== "external_proxy") {
+        const hotFile = config.hotFile
+
+        server.httpServer?.once("listening", () => {
+          const address = server.httpServer?.address()
+          if (address && typeof address === "object" && "port" in address) {
+            const host = address.address === "::" ? "localhost" : address.address
+            const url = `http://${host}:${address.port}`
+            fs.mkdirSync(path.dirname(hotFile), { recursive: true })
+            fs.writeFileSync(hotFile, url)
+            if (config.verbose) {
+              console.log(colors.cyan("[litestar-sveltekit]"), colors.dim(`Hotfile written: ${hotFile} -> ${url}`))
+            }
+          }
         })
       }
 

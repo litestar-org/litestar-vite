@@ -416,25 +416,47 @@ class ViteSPAHandler:
             The HTML content from the Vite dev server.
 
         Raises:
-            httpx.HTTPError: If the request to the dev server fails.
+            ImproperlyConfiguredException: If the HTTP client is not initialized.
         """
         if self._http_client is None:
             msg = "HTTP client not initialized for dev mode."
             raise ImproperlyConfiguredException(msg)
 
+        dev_base = self._resolve_dev_server_base()
+        target_url = f"{dev_base}/"
+
         try:
             # Request the root path from Vite dev server
-            response = await self._http_client.get("/", follow_redirects=True)
+            response = await self._http_client.get(target_url, follow_redirects=True)
             response.raise_for_status()
         except httpx.HTTPError as e:
-            msg = (
-                f"Failed to proxy request to Vite dev server at "
-                f"{self._config.protocol}://{self._config.host}:{self._config.port}. "
-                f"Is the dev server running? Error: {e!s}"
-            )
+            msg = f"Failed to proxy request to Vite dev server at {target_url}. Is the dev server running? Error: {e!s}"
             raise ImproperlyConfiguredException(msg) from e
         else:
             return response.text
+
+    def _resolve_dev_server_base(self) -> str:
+        """Resolve the dev server base URL.
+
+        Prefer the hotfile URL if present (written by the JS plugin),
+        otherwise fall back to the configured protocol/host/port.
+
+        Returns:
+            The base URL of the Vite dev server.
+        """
+        hotfile = self._config.bundle_dir / self._config.hot_file
+        if not hotfile.is_absolute():
+            hotfile = self._config.root_dir / hotfile
+
+        if hotfile.exists():
+            try:
+                url = hotfile.read_text().strip()
+                if url:
+                    return url.rstrip("/")
+            except OSError:
+                pass
+
+        return f"{self._config.protocol}://{self._config.host}:{self._config.port}"
 
     def create_route_handler(self) -> Any:
         """Create a Litestar route handler for the SPA.

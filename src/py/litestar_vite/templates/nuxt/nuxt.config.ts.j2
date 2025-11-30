@@ -20,8 +20,6 @@ export default defineNuxtConfig({
 {% if enable_types %}
     types: {
       enabled: true,
-      schemaPath: "./openapi.json",
-      routesPath: "./routes.json",
       output: "types/api",
     },
 {% endif %}

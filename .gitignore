@@ -200,3 +200,11 @@ specs/guides/telemetry/*.jsonl
 public/hot
 src/generated
 .litestar-vite.json
+examples/*/.astro
+examples/*/.vite
+examples/*/.next
+examples/*/.nuxt
+examples/*/dist
+examples/*/build
+examples/*/src/generated
+examples/*/resources/generated

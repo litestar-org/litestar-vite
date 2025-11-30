@@ -16,7 +16,7 @@
     "typescript": "latest",
     "@tailwindcss/vite": "^4.0.0",
     "tailwindcss": "^4.0.0",
-    "litestar-vite-plugin": "file:../../dist/js/",
+    "litestar-vite-plugin": "file:../..",
     "vite": "^6.0.0"
   }
 }

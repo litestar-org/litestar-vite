@@ -47,7 +47,7 @@ def spa_config(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Vite
     return ViteConfig(
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
-        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        runtime=RuntimeConfig(dev_mode=False),
     )
 
 
@@ -60,7 +60,7 @@ def spa_config_dev(temp_resource_dir: Path) -> ViteConfig:
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
         dev_mode=True,
-        runtime=RuntimeConfig(hot_reload=True),
+        runtime=RuntimeConfig(dev_mode=True),
     )
 
 
@@ -154,7 +154,7 @@ async def test_spa_handler_missing_index_html(tmp_path: Path, monkeypatch: pytes
     config = ViteConfig(
         mode="spa",
         paths=PathConfig(resource_dir=resource_dir),
-        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        runtime=RuntimeConfig(dev_mode=False),
     )
     handler = ViteSPAHandler(config)
 
@@ -187,7 +187,7 @@ async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "M
         html = await handler.get_html(mock_request)
 
         assert "Dev Server HTML" in html
-        mock_client.get.assert_called_once_with("/", follow_redirects=True)
+        mock_client.get.assert_called_once_with("http://localhost:5173/", follow_redirects=True)
 
 
 async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> None:
@@ -331,7 +331,7 @@ def spa_config_with_transforms(temp_resource_dir: Path, monkeypatch: pytest.Monk
     return ViteConfig(
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
-        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        runtime=RuntimeConfig(dev_mode=False),
         spa=SPAConfig(
             inject_routes=True,
             inject_csrf=False,  # Disable for tests that don't mock request scope
@@ -511,7 +511,7 @@ async def test_spa_handler_no_transform_when_spa_config_disabled(
     config = ViteConfig(
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
-        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        runtime=RuntimeConfig(dev_mode=False),
         spa=False,  # Transformations disabled
     )
     handler = ViteSPAHandler(config)
@@ -539,7 +539,7 @@ async def test_spa_handler_csrf_injection(
     config = ViteConfig(
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
-        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        runtime=RuntimeConfig(dev_mode=False),
         spa=SPAConfig(
             inject_routes=False,
             inject_csrf=True,
@@ -579,7 +579,7 @@ async def test_spa_handler_csrf_injection_sync(
     config = ViteConfig(
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
-        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        runtime=RuntimeConfig(dev_mode=False),
         spa=SPAConfig(
             inject_routes=False,
             inject_csrf=True,

@@ -1,7 +1,7 @@
 ---
 name: testing
 description: Test creation specialist for litestar-vite. Creates comprehensive test suites with 90%+ coverage. Use after implementation is complete.
-tools: Read, Write, Edit, Glob, Grep, Bash, mcp__context7__get-library-docs
+tools: Read, Write, Edit, Glob, Grep, Bash, Task, mcp__context7__resolve-library-id, mcp__context7__get-library-docs
 model: sonnet
 ---
 

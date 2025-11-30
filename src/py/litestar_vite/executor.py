@@ -51,7 +51,16 @@ class CommandExecutor(JSExecutor):
     """Generic command executor."""
 
     def install(self, cwd: Path) -> None:
-        self.execute(["install"], cwd)
+        executable = self._resolve_executable()
+        command = ["install"] if Path("install").name == Path(executable).name else [executable, "install"]
+        process = subprocess.run(
+            command,
+            cwd=cwd,
+            shell=platform.system() == "Windows",
+            check=False,
+        )
+        if process.returncode != 0:
+            raise ViteExecutionError(command, process.returncode, "package install failed")
 
     def run(self, args: list[str], cwd: Path) -> subprocess.Popen[bytes]:
         executable = self._resolve_executable()
@@ -75,10 +84,12 @@ class CommandExecutor(JSExecutor):
             cwd=cwd,
             shell=platform.system() == "Windows",
             check=False,
-            capture_output=True,
+            stdout=None,  # inherit for live output
+            stderr=subprocess.PIPE,
         )
         if process.returncode != 0:
-            raise ViteExecutionError(command, process.returncode, process.stderr.decode())
+            stderr = process.stderr.decode() if process.stderr else ""
+            raise ViteExecutionError(command, process.returncode, stderr)
 
 
 class NodeExecutor(CommandExecutor):

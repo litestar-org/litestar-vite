@@ -1,7 +1,7 @@
 ---
 name: docs-vision
 description: Documentation and quality gate specialist for litestar-vite. Runs quality checks, captures knowledge, and archives completed work. Use after testing passes.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Task, mcp__zen__analyze
 model: sonnet
 ---
 

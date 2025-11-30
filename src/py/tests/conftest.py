@@ -68,5 +68,5 @@ def vite_config(test_app_path: Path) -> Generator[ViteConfig, None, None]:
             bundle_dir=test_app_path / "public",
             resource_dir=test_app_path / "resources",
         ),
-        runtime=RuntimeConfig(hot_reload=True),
+        runtime=RuntimeConfig(dev_mode=True),
     )

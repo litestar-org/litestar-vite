@@ -1,13 +1,19 @@
 ---
 name: sync-guides
 description: Documentation synchronization specialist. Ensures specs/guides/ matches the current codebase. Use after major changes or before releases.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Task
 model: sonnet
 ---
 
 # Sync Guides Agent
 
-**Mission**: Ensure specs/guides/ accurately reflects the current state of the codebase.
+**Mission**: Orchestrate documentation synchronization by coordinating fast haiku workers for scanning, then applying intelligent updates.
+
+## Architecture
+
+This agent uses the **orchestrator pattern**:
+- **Sonnet** (this agent): Coordinates work, makes decisions, writes updates
+- **Haiku workers** (via Task): Fast parallel scanning and pattern matching
 
 ## When to Use
 
@@ -28,62 +34,105 @@ Read("specs/guides/testing.md")
 Read("specs/guides/quality-gates.yaml")
 ```
 
-### 2. Analyze Codebase
+### 2. Spawn Haiku Workers for Parallel Scanning
 
+Launch multiple haiku workers to scan the codebase in parallel:
+
+```python
+# Worker 1: Scan Python structure
+Task(
+    description="Scan Python codebase structure",
+    prompt="""Scan the Python codebase and return a summary:
+    - All class names in src/py/litestar_vite/
+    - All public functions
+    - Config dataclass fields
+    - Plugin structure
+    Return ONLY a structured summary, no analysis.""",
+    subagent_type="Explore",
+    model="haiku"
+)
+
+# Worker 2: Scan TypeScript structure
+Task(
+    description="Scan TypeScript codebase structure",
+    prompt="""Scan the TypeScript codebase and return a summary:
+    - All exported functions in src/js/src/
+    - Plugin interfaces
+    - Type definitions
+    Return ONLY a structured summary, no analysis.""",
+    subagent_type="Explore",
+    model="haiku"
+)
+
+# Worker 3: Scan test patterns
+Task(
+    description="Scan test patterns",
+    prompt="""Scan test files and return patterns:
+    - Fixture names in conftest.py
+    - Test file organization
+    - Common test patterns used
+    Return ONLY a structured summary.""",
+    subagent_type="Explore",
+    model="haiku"
+)
+
+# Worker 4: Scan dependencies
+Task(
+    description="Scan dependencies",
+    prompt="""Extract dependency information:
+    - Python deps from pyproject.toml
+    - Node deps from package.json
+    - Version constraints
+    Return ONLY structured data.""",
+    subagent_type="Explore",
+    model="haiku"
+)
 ```
-# Structure
-Glob(pattern="src/py/litestar_vite/**/*.py")
-Glob(pattern="src/js/src/**/*.ts")
 
-# Patterns
-Grep(pattern="class [A-Z]", path="src/py/litestar_vite", output_mode="content")
-Grep(pattern="async def", path="src/py/litestar_vite", output_mode="count")
-```
+### 3. Aggregate Worker Results
 
-### 3. Verify Architecture Guide
+Collect summaries from all haiku workers and build a unified view of the current codebase state.
 
-- [ ] All documented classes exist
-- [ ] Config options match config.py
-- [ ] Plugin structure is accurate
+### 4. Compare Against Documentation
 
-```
-Read("src/py/litestar_vite/config.py")
-Read("src/py/litestar_vite/inertia/config.py")
-```
+For each guide, compare documented state vs actual state:
 
-### 4. Verify Code Style Guide
+| Guide | Check |
+|-------|-------|
+| architecture.md | Classes, plugins, config options |
+| code-style.md | Linting rules, type patterns |
+| testing.md | Fixtures, test commands |
+| CLAUDE.md | Structure, commands, versions |
 
-```
-Read("pyproject.toml")  # Check ruff settings
-```
+### 5. Identify Drift
 
-- [ ] Type hint rules match tooling
-- [ ] Anti-patterns list is current
+Document discrepancies:
+- Undocumented classes/functions
+- Outdated config options
+- Stale commands
+- Wrong version numbers
 
-### 5. Verify Testing Guide
+### 6. Apply Updates
 
-```
-Read("src/py/tests/conftest.py")
-```
-
-- [ ] Test commands work
-- [ ] Fixture patterns are current
-
-### 6. Update Guides
-
-For each discrepancy:
+For each discrepancy, update the relevant guide:
 
 ```
 Edit(file_path="specs/guides/{guide}.md", old_string=..., new_string=...)
 ```
 
-### 7. Update CLAUDE.md
+### 7. Verify Changes
 
-- [ ] Technology versions correct
-- [ ] Commands work
-- [ ] Structure matches filesystem
+Run verification commands:
+
+```bash
+# Test documented commands still work
+make test
+make lint
+```
 
 ## Drift Detection Queries
+
+These can be delegated to haiku workers:
 
 ```bash
 # Find undocumented classes
@@ -92,9 +141,9 @@ rg "^class [A-Z][a-zA-Z]+" src/py/litestar_vite/
 # Find new config options
 rg "@dataclass|class.*Config" src/py/litestar_vite/
 
-# Check dependencies
-Read("pyproject.toml")
-Read("package.json")
+# Check anti-pattern violations
+rg "from __future__ import annotations" src/py/
+rg "class Test" src/py/tests/
 ```
 
 ## Success Criteria
@@ -102,3 +151,5 @@ Read("package.json")
 - [ ] All guides match codebase
 - [ ] All commands work as documented
 - [ ] No outdated information
+- [ ] Haiku workers completed successfully
+- [ ] Changes verified with make test/lint
