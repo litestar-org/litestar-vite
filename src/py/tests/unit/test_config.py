@@ -6,6 +6,7 @@ from litestar_vite.config import (
     PathConfig,
     RuntimeConfig,
     SPAConfig,
+    TypeGenConfig,
     ViteConfig,
 )
 from litestar_vite.executor import (
@@ -156,6 +157,39 @@ def test_validate_mode_spa_missing_index_html(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match=r"SPA mode requires index\.html"):
         config.validate_mode()
+
+
+def test_type_paths_resolve_relative_and_cascade(tmp_path: Path) -> None:
+    """TypeGen paths resolve under paths.root and cascade when only output is set."""
+    root = tmp_path / "js"
+    config = ViteConfig(
+        paths=PathConfig(root=root),
+        types=TypeGenConfig(
+            enabled=True,
+            output=Path("src/generated/types"),  # only output overridden
+        ),
+    )
+
+    assert isinstance(config.types, TypeGenConfig)
+    assert config.types.output == root / "src/generated/types"
+    # openapi/routes cascade under output when not explicitly set
+    assert config.types.openapi_path == root / "src/generated/types/openapi.json"
+    assert config.types.routes_path == root / "src/generated/types/routes.json"
+
+
+def test_dev_mode_not_auto_enabled_when_mode_explicit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Explicit mode should skip auto dev-mode even when no built assets."""
+    monkeypatch.setenv("VITE_AUTO_DEV_MODE", "True")
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+
+    config = ViteConfig(
+        mode="spa",  # explicit
+        dev_mode=False,
+        paths=PathConfig(root=tmp_path, resource_dir=resource_dir, bundle_dir=tmp_path / "public"),
+    )
+
+    assert config.runtime.dev_mode is False
 
 
 def test_validate_mode_spa_dev_mode_allows_missing_index(tmp_path: Path) -> None:

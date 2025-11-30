@@ -677,14 +677,25 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
       debounce: 300,
     }
   } else if (typeof resolvedConfig.types === "object" && resolvedConfig.types !== null) {
+    const userProvidedOpenapi = Object.prototype.hasOwnProperty.call(resolvedConfig.types, "openapiPath")
+    const userProvidedRoutes = Object.prototype.hasOwnProperty.call(resolvedConfig.types, "routesPath")
+
     typesConfig = {
       enabled: resolvedConfig.types.enabled ?? true,
       output: resolvedConfig.types.output ?? "src/generated/types",
-      openapiPath: resolvedConfig.types.openapiPath ?? "src/generated/openapi.json",
-      routesPath: resolvedConfig.types.routesPath ?? "src/generated/routes.json",
+      openapiPath: resolvedConfig.types.openapiPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "openapi.json") : "src/generated/openapi.json"),
+      routesPath: resolvedConfig.types.routesPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "routes.json") : "src/generated/routes.json"),
       generateZod: resolvedConfig.types.generateZod ?? false,
       generateSdk: resolvedConfig.types.generateSdk ?? false,
       debounce: resolvedConfig.types.debounce ?? 300,
+    }
+
+    // If the user only set output (not openapi/routes), cascade them under output for consistency
+    if (!userProvidedOpenapi && resolvedConfig.types.output) {
+      typesConfig.openapiPath = path.join(typesConfig.output, "openapi.json")
+    }
+    if (!userProvidedRoutes && resolvedConfig.types.output) {
+      typesConfig.routesPath = path.join(typesConfig.output, "routes.json")
     }
   }
 

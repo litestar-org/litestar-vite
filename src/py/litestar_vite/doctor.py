@@ -237,37 +237,51 @@ class ViteDoctor:
         if isinstance(self.config.types, bool) or not self.config.types.enabled:
             return
 
-        # If JS has types enabled, check paths
         if self.parsed_config.types_enabled:
-            # Check openapi path
-            py_openapi = str(self.config.types.openapi_path)
-            js_openapi = self.parsed_config.types_openapi_path
+            root = self.config.root_dir or Path.cwd()
 
-            if js_openapi and py_openapi != js_openapi:
+            def _rel(path: Path | None) -> str:
+                if path is None:
+                    return ""
+                try:
+                    return str(path.resolve().relative_to(root.resolve()))
+                except ValueError:
+                    parts = path.resolve().parts
+                    return "/".join(parts[-3:])  # fallback: last 3 components
+
+            # Check openapi path (only if user set it in JS). Normalize to relative-to-root for fair compare.
+            py_openapi_path = Path(self.config.types.openapi_path)
+            js_openapi_path = (
+                (root / self.parsed_config.types_openapi_path) if self.parsed_config.types_openapi_path else None
+            )
+
+            if self.parsed_config.types_openapi_path and _rel(py_openapi_path) != _rel(js_openapi_path):
                 self.issues.append(
                     DoctorIssue(
                         check="TypeGen OpenAPI Path Mismatch",
                         severity="warning",
-                        message=f"Python '{py_openapi}' != JS '{js_openapi}'",
-                        fix_hint=f"Update vite.config openapiPath to '{py_openapi}'",
+                        message=f"Python '{py_openapi_path}' != JS '{js_openapi_path}'",
+                        fix_hint=f"Update vite.config openapiPath to '{py_openapi_path}'",
                         auto_fixable=True,
-                        context={"key": "openapiPath", "expected": py_openapi},
+                        context={"key": "openapiPath", "expected": str(py_openapi_path)},
                     )
                 )
 
-            # Check routes path
-            py_routes = str(self.config.types.routes_path)
-            js_routes = self.parsed_config.types_routes_path
+            # Check routes path (only if user set it in JS). Normalize to relative-to-root for fair compare.
+            py_routes_path = Path(self.config.types.routes_path)
+            js_routes_path = (
+                (root / self.parsed_config.types_routes_path) if self.parsed_config.types_routes_path else None
+            )
 
-            if js_routes and py_routes != js_routes:
+            if self.parsed_config.types_routes_path and _rel(py_routes_path) != _rel(js_routes_path):
                 self.issues.append(
                     DoctorIssue(
                         check="TypeGen Routes Path Mismatch",
                         severity="warning",
-                        message=f"Python '{py_routes}' != JS '{js_routes}'",
-                        fix_hint=f"Update vite.config routesPath to '{py_routes}'",
+                        message=f"Python '{py_routes_path}' != JS '{js_routes_path}'",
+                        fix_hint=f"Update vite.config routesPath to '{py_routes_path}'",
                         auto_fixable=True,
-                        context={"key": "routesPath", "expected": py_routes},
+                        context={"key": "routesPath", "expected": str(py_routes_path)},
                     )
                 )
 
@@ -280,7 +294,7 @@ class ViteDoctor:
             return
 
         if self.parsed_config.types_enabled:
-            # Check generateZod
+            # Check generateZod (only if set in JS)
             py_zod = self.config.types.generate_zod
             js_zod = self.parsed_config.types_generate_zod
 
@@ -296,7 +310,7 @@ class ViteDoctor:
                     )
                 )
 
-            # Check generateSdk
+            # Check generateSdk (only if set in JS)
             py_sdk = self.config.types.generate_sdk
             js_sdk = self.parsed_config.types_generate_sdk
 

@@ -365,6 +365,7 @@ class ViteConfig:
             self.types = TypeGenConfig(enabled=True)
         elif self.types is False:
             self.types = TypeGenConfig(enabled=False)
+        self._resolve_type_paths(self.types)
 
     def _normalize_inertia(self) -> None:
         if self.inertia is True:
@@ -391,6 +392,26 @@ class ViteConfig:
             self.deploy = DeployConfig(enabled=True)
         elif self.deploy is False:
             self.deploy = DeployConfig(enabled=False)
+
+    def _resolve_type_paths(self, types: TypeGenConfig) -> None:
+        """Resolve type generation paths relative to the configured root."""
+
+        def _to_root(p: Path) -> Path:
+            return p if p.is_absolute() else (self.paths.root / p)
+
+        default_rel = Path("src/generated")
+        default_openapi = default_rel / "openapi.json"
+        default_routes = default_rel / "routes.json"
+
+        # If user only set output, cascade defaults under that output
+        if types.openapi_path == default_openapi and types.output != default_rel:
+            types.openapi_path = types.output / "openapi.json"
+        if types.routes_path == default_routes and types.output != default_rel:
+            types.routes_path = types.output / "routes.json"
+
+        types.output = _to_root(types.output)
+        types.openapi_path = _to_root(types.openapi_path)
+        types.routes_path = _to_root(types.routes_path)
 
     def _ensure_spa_default(self) -> None:
         if self.mode == "spa" and self.spa is None:
@@ -448,7 +469,7 @@ class ViteConfig:
                 )
                 raise ValueError(msg)
 
-        elif self.mode in ("template", "htmx"):
+        elif self.mode in {"template", "htmx"}:
             # Template mode should have Jinja2 available
             if not JINJA_INSTALLED:
                 msg = (
