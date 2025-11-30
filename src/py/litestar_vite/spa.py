@@ -398,8 +398,8 @@ class ViteSPAHandler:
             ImproperlyConfiguredException: If not initialized or in dev mode.
         """
         if not self._initialized:
-            msg = "ViteSPAHandler not initialized. Call initialize() during app startup."
-            raise ImproperlyConfiguredException(msg)
+            # Lazily initialize if a worker didn't run lifespan hooks (e.g., multi-proc servers)
+            await self.initialize()
 
         if self._cached_bytes is None:
             await self._load_index_html()
