@@ -38,8 +38,6 @@ vite = VitePlugin(
         types=TypeGenConfig(
             enabled=True,
             output="src/generated",
-            openapi_path="src/generated/openapi.json",
-            routes_path="src/generated/routes.json",
             generate_zod=True,
             generate_sdk=True,
         ),

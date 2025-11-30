@@ -21,8 +21,6 @@ vite = VitePlugin(
         types=TypeGenConfig(
             enabled=True,
             output=Path("resources/generated"),
-            openapi_path=Path("resources/generated/openapi.json"),
-            routes_path=Path("resources/generated/routes.json"),
             generate_zod=True,
             generate_sdk=False,
         ),
