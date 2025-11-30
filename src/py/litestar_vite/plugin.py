@@ -192,8 +192,10 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
         "publicDir": str(config.public_dir),
         "manifest": config.manifest_name,
         "mode": config.mode,
-        # New dev server mode fields
+        # Dev server fields
         "proxyMode": config.proxy_mode,
+        "port": config.port,
+        "host": config.host,
         "externalTarget": external_target,
         "externalHttp2": external_http2,
         # SSR fields
@@ -250,7 +252,8 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
 
     # VITE_ env for the JS side
     os.environ.setdefault("VITE_PROTOCOL", config.protocol)
-    os.environ.setdefault("VITE_PROXY_MODE", config.proxy_mode)
+    if config.proxy_mode is not None:
+        os.environ.setdefault("VITE_PROXY_MODE", config.proxy_mode)
 
     # If the Python side already picked a host/port (e.g., proxy mode with an auto-free port),
     # surface them to the Vite process unless the user explicitly set them.
@@ -477,14 +480,18 @@ class ViteProxyMiddleware(AbstractMiddleware):
 
 
 class ExternalDevServerProxyMiddleware(AbstractMiddleware):
-    """ASGI middleware to proxy requests to an external (non-Vite) dev server.
+    """ASGI middleware to proxy requests to an external dev server (blacklist mode).
 
     This middleware proxies all requests that don't match Litestar-registered routes
-    to the target external dev server (e.g., Angular CLI, Next.js, Create React App).
+    to the target dev server. It supports two modes:
 
-    Unlike ViteProxyMiddleware, this middleware:
-    - Does NOT use hotfile (external server runs independently)
-    - Does NOT handle WebSocket HMR (external server handles its own HMR)
+    1. **Static target**: Provide a fixed URL (e.g., "http://localhost:4200" for Angular CLI)
+    2. **Dynamic target**: Leave target as None and provide hotfile_path - the proxy reads
+       the target URL from the Vite hotfile (for SSR frameworks like Astro, Nuxt, SvelteKit)
+
+    Unlike ViteProxyMiddleware (whitelist), this middleware:
+    - Uses blacklist approach: proxies everything EXCEPT Litestar routes
+    - Supports both static and dynamic target URLs
     - Auto-excludes Litestar routes, static mounts, and schema paths
     """
 
@@ -493,7 +500,8 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
     def __init__(
         self,
         app: "ASGIApp",
-        target: str,
+        target: "str | None" = None,
+        hotfile_path: "Path | None" = None,
         http2: bool = False,
         litestar_app: "Litestar | None" = None,
     ) -> None:
@@ -501,15 +509,45 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
 
         Args:
             app: The ASGI application to wrap.
-            target: The target URL to proxy to (e.g., "http://localhost:4200").
+            target: Static target URL to proxy to (e.g., "http://localhost:4200").
+                If None, uses hotfile_path for dynamic target discovery.
+            hotfile_path: Path to the Vite hotfile for dynamic target discovery.
+                Used when target is None (SSR frameworks with dynamic ports).
             http2: Enable HTTP/2 for proxy connections.
             litestar_app: Optional Litestar app instance for route exclusion.
         """
         super().__init__(app)
-        self.target = target.rstrip("/")
+        self._static_target = target.rstrip("/") if target else None
+        self._hotfile_path = hotfile_path
+        self._cached_target: str | None = None
         self.http2 = http2
         self._litestar_app = litestar_app
         self._excluded_prefixes: tuple[str, ...] | None = None
+
+    def _get_target(self) -> str | None:
+        """Get the proxy target URL.
+
+        Returns static target if configured, otherwise reads from hotfile.
+        Caches the hotfile result to avoid reading on every request.
+
+        Returns:
+            The target URL or None if unavailable.
+        """
+        if self._static_target:
+            return self._static_target
+
+        if self._hotfile_path:
+            try:
+                url = self._hotfile_path.read_text().strip()
+                if url != self._cached_target:
+                    self._cached_target = url
+                    if _is_proxy_debug():
+                        console.print(f"[dim][proxy] Dynamic target: {url}[/]")
+                return url.rstrip("/")
+            except FileNotFoundError:
+                return None
+
+        return None
 
     def _get_excluded_prefixes(self, scope: "Scope") -> tuple[str, ...]:
         """Build list of path prefixes to exclude from proxying.
@@ -578,11 +616,24 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
 
     async def _proxy_request(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         """Proxy the HTTP request to the external dev server."""
+        target = self._get_target()
+        if target is None:
+            # No target available - dev server not running
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 503,
+                    "headers": [(b"content-type", b"text/plain")],
+                }
+            )
+            await send({"type": "http.response.body", "body": b"Dev server not running"})
+            return
+
         method = scope.get("method", "GET")
         raw_path = scope.get("raw_path", b"").decode()
         query_string = scope.get("query_string", b"").decode()
 
-        url = f"{self.target}{raw_path}"
+        url = f"{target}{raw_path}"
         if query_string:
             url = f"{url}?{query_string}"
 
@@ -625,7 +676,7 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
                 await send(
                     {
                         "type": "http.response.body",
-                        "body": f"External dev server not running at {self.target}".encode(),
+                        "body": f"Dev server not running at {target}".encode(),
                     }
                 )
                 return
@@ -1022,11 +1073,11 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         return self._asset_loader
 
     def _ensure_proxy_target(self) -> None:
-        """Prepare proxy target URL and hotfile for vite_proxy mode."""
-        # Skip if already set, not in vite_proxy mode, or not in dev mode
+        """Prepare proxy target URL and hotfile for vite proxy mode."""
+        # Skip if already set, not in vite mode, or not in dev mode
         if self._proxy_target is not None:
             return
-        if self._config.proxy_mode != "vite_proxy":
+        if self._config.proxy_mode != "vite":
             return
         if not self._config.is_dev_mode:
             return
@@ -1124,19 +1175,18 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             app_config.route_handlers.append(create_static_files_router(**static_files_config))
 
         # Add dev proxy middleware based on proxy_mode
-        if self._config.is_dev_mode:
+        if self._config.is_dev_mode and self._config.proxy_mode is not None:
             proxy_mode = self._config.proxy_mode
 
-            if proxy_mode == "vite_proxy":
-                # Vite proxy mode: HMR via WebSocket + HTTP proxy
+            # Resolve bundle_dir relative to root_dir to handle --app-dir scenarios
+            bundle_dir = self._config.bundle_dir
+            if not bundle_dir.is_absolute():
+                bundle_dir = self._config.root_dir / bundle_dir
+            hotfile_path = bundle_dir / self._config.hot_file
+
+            if proxy_mode == "vite":
+                # Vite proxy mode (whitelist): proxy only Vite assets, HMR via WebSocket
                 self._ensure_proxy_target()
-                # Both middleware and WebSocket handler read the Vite URL from the hotfile
-                # This ensures they always connect to the correct port even if it changes
-                # Resolve bundle_dir relative to root_dir to handle --app-dir scenarios
-                bundle_dir = self._config.bundle_dir
-                if not bundle_dir.is_absolute():
-                    bundle_dir = self._config.root_dir / bundle_dir
-                hotfile_path = bundle_dir / self._config.hot_file
                 # Add middleware for HTTP proxy requests
                 app_config.middleware.append(
                     DefineMiddleware(
@@ -1159,20 +1209,39 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                         asset_url=self._config.asset_url,
                     )
                 )
-                console.print(f"[dim]Vite HMR proxy enabled at {hmr_path}[/]")
+                console.print(f"[dim]Vite proxy enabled (whitelist) at {hmr_path}[/]")
 
-            elif proxy_mode == "external_proxy":
-                # External proxy mode: proxy to external dev server (Angular CLI, etc.)
+            elif proxy_mode == "proxy":
+                # Proxy mode (blacklist): proxy everything except Litestar routes
+                # Used for SSR frameworks (Astro, Nuxt, SvelteKit) and external servers (Angular CLI)
                 external = self._config.external_dev_server
-                if external is not None and external.enabled:
-                    app_config.middleware.append(
-                        DefineMiddleware(
-                            ExternalDevServerProxyMiddleware,
-                            target=external.target,
-                            http2=external.http2,
-                        )
+
+                # Determine target source: static URL or hotfile (dynamic)
+                static_target = external.target if external else None
+
+                app_config.middleware.append(
+                    DefineMiddleware(
+                        ExternalDevServerProxyMiddleware,
+                        target=static_target,
+                        hotfile_path=hotfile_path if static_target is None else None,
+                        http2=external.http2 if external else True,
                     )
-                    console.print(f"[dim]External dev server proxy enabled → {external.target}[/]")
+                )
+
+                # Add HMR WebSocket handler for SSR frameworks using Vite
+                hmr_path = f"{self._config.asset_url.rstrip('/')}/vite-hmr"
+                app_config.route_handlers.append(
+                    create_vite_hmr_handler(
+                        hotfile_path=hotfile_path,
+                        hmr_path=hmr_path,
+                        asset_url=self._config.asset_url,
+                    )
+                )
+
+                if static_target:
+                    console.print(f"[dim]Proxy enabled (blacklist) → {static_target}[/]")
+                else:
+                    console.print("[dim]Proxy enabled (blacklist, dynamic target via hotfile)[/]")
 
         # Add SPA catch-all route handler if in SPA mode
         if self._config.mode == "spa" and self._config.spa_handler:

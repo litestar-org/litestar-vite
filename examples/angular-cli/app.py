@@ -7,7 +7,7 @@ All examples in this repository expose the same backend:
 
 Development:
     Angular CLI dev server runs on port 4200 (`ng serve`).
-    Litestar proxies non-API requests to Angular CLI using external_proxy mode.
+    Litestar proxies non-API requests to Angular CLI using proxy mode with static target.
     Run both servers: `ng serve` and `litestar run --reload`.
 
 Production:
@@ -84,8 +84,8 @@ class LibraryController(Controller):
         return _get_book(book_id)
 
 
-# VitePlugin with external_proxy mode for Angular CLI:
-# - Dev: Proxies to Angular CLI dev server (ng serve on port 4200)
+# VitePlugin with proxy mode for Angular CLI:
+# - Dev: Proxies to Angular CLI dev server (ng serve on port 4200) using static target
 # - Prod: Serves built assets from dist/browser
 vite = VitePlugin(
     config=ViteConfig(
@@ -96,7 +96,7 @@ vite = VitePlugin(
             resource_dir=here / "src",
         ),
         runtime=RuntimeConfig(
-            proxy_mode="external_proxy",
+            proxy_mode="proxy",  # Blacklist proxy - forwards everything except Litestar routes
             external_dev_server=ExternalDevServer(target="http://localhost:4200"),
             # Angular CLI handles its own dev server (ng serve)
             start_dev_server=False,

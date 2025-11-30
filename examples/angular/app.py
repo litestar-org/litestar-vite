@@ -9,11 +9,15 @@ Demonstrates the Vite proxy integration where Litestar serves the
 index.html and Vite handles asset bundling with HMR in development.
 """
 
+from pathlib import Path
+
 from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
 from msgspec import Struct
 
-from litestar_vite import ViteConfig, VitePlugin
+from litestar_vite import PathConfig, ViteConfig, VitePlugin
+
+here = Path(__file__).parent
 
 
 class Book(Struct):
@@ -74,7 +78,7 @@ class LibraryController(Controller):
         return _get_book(book_id)
 
 
-vite = VitePlugin(config=ViteConfig())
+vite = VitePlugin(config=ViteConfig(paths=PathConfig(root=here)))
 
 app = Litestar(
     route_handlers=[LibraryController],

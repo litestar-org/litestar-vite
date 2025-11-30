@@ -439,7 +439,7 @@ class ViteDoctor:
 
     def _check_hotfile_presence(self) -> None:
         """Warn if hotfile is missing in dev proxy mode."""
-        if not self.config.is_dev_mode or self.config.proxy_mode != "vite_proxy":
+        if not self.config.is_dev_mode or self.config.proxy_mode != "vite":
             return
 
         hot_path = Path(self.config.bundle_dir) / self.config.hot_file
@@ -449,7 +449,7 @@ class ViteDoctor:
                     check="Hotfile Missing",
                     severity="warning",
                     message=f"Hotfile not found at {hot_path}",
-                    fix_hint="Start Vite dev server so it can write the hotfile, or set VITE_PROXY_MODE=vite_direct",
+                    fix_hint="Start Vite dev server so it can write the hotfile, or set VITE_PROXY_MODE=direct",
                     auto_fixable=False,
                 )
             )

@@ -52,23 +52,28 @@ JINJA_INSTALLED = bool(find_spec("jinja2"))
 FSSPEC_INSTALLED = bool(find_spec("fsspec"))
 
 
-def _resolve_proxy_mode() -> Literal["vite_proxy", "vite_direct", "external_proxy"]:
+def _resolve_proxy_mode() -> "Literal['vite', 'direct', 'proxy'] | None":
     """Resolve proxy_mode from environment variable.
 
     Reads VITE_PROXY_MODE env var. Valid values:
-    - "vite_proxy" (default): Proxy to internal Vite server
-    - "vite_direct": Expose Vite port directly
-    - "external_proxy": Proxy to external dev server
+    - "vite" (default): Proxy to internal Vite server (whitelist - assets only)
+    - "direct": Expose Vite port directly (no proxy)
+    - "proxy" / "ssr": Proxy everything except Litestar routes (blacklist)
+    - "none": Disable proxy (for production)
 
     Returns:
-        The resolved proxy mode.
+        The resolved proxy mode, or None if disabled.
     """
-    env_value = os.getenv("VITE_PROXY_MODE", "vite_proxy").lower()
+    env_value = os.getenv("VITE_PROXY_MODE", "vite").lower()
+    if env_value in {"none", "disabled", "off"}:
+        return None
     if env_value in {"vite_direct", "direct"}:
-        return "vite_direct"
-    if env_value in {"external_proxy", "external"}:
-        return "external_proxy"
-    return "vite_proxy"
+        return "direct"
+    if env_value in {"external_proxy", "proxy", "ssr", "external"}:
+        return "proxy"
+    if env_value in {"vite_proxy", "vite"}:
+        return "vite"
+    return "vite"
 
 
 @dataclass
@@ -116,13 +121,17 @@ class ExternalDevServer:
     Use this when your frontend uses a framework with its own dev server
     (Angular CLI, Next.js, Create React App, etc.) instead of Vite.
 
+    For SSR frameworks (Astro, Nuxt, SvelteKit) using Vite internally, leave
+    target as None - the proxy will read the dynamic port from the hotfile.
+
     Attributes:
         target: The URL of the external dev server (e.g., "http://localhost:4200").
+            If None, the proxy reads the target URL from the Vite hotfile.
         http2: Enable HTTP/2 for proxy connections.
         enabled: Whether the external proxy is enabled.
     """
 
-    target: str = "http://localhost:4200"
+    target: "str | None" = None
     http2: bool = False
     enabled: bool = True
 
@@ -134,10 +143,11 @@ class RuntimeConfig:
     Attributes:
         dev_mode: Enable development mode with HMR/watch.
         proxy_mode: Proxy handling mode:
-            - "vite_proxy": Proxy to internal Vite server (default, single-port with HMR)
-            - "vite_direct": Expose Vite port directly (multi-port)
-            - "external_proxy": Proxy to external dev server (Angular CLI, Next.js, etc.)
-        external_dev_server: Configuration for external dev server (required when proxy_mode="external_proxy").
+            - "vite" (default): Proxy Vite assets only (whitelist - SPA mode)
+            - "direct": Expose Vite port directly (no proxy)
+            - "proxy" / "ssr": Proxy everything except Litestar routes (blacklist - SSR mode)
+            - None: No proxy (production mode)
+        external_dev_server: Configuration for external dev server (used with proxy_mode="proxy").
         host: Vite dev server host.
         port: Vite dev server port.
         protocol: Protocol for dev server (http/https).
@@ -159,7 +169,7 @@ class RuntimeConfig:
     """
 
     dev_mode: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)
-    proxy_mode: "Literal['vite_proxy', 'vite_direct', 'external_proxy']" = field(default_factory=_resolve_proxy_mode)
+    proxy_mode: "Literal['vite', 'direct', 'proxy', 'ssr'] | None" = field(default_factory=_resolve_proxy_mode)
     external_dev_server: "ExternalDevServer | str | None" = None
     host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "localhost"))
     port: int = field(default_factory=lambda: int(os.getenv("VITE_PORT", "5173")))
@@ -181,14 +191,16 @@ class RuntimeConfig:
     start_dev_server: bool = True
 
     def __post_init__(self) -> None:
+        # Normalize proxy_mode: "ssr" is an alias for "proxy"
+        if self.proxy_mode == "ssr":
+            self.proxy_mode = "proxy"
+
         # Normalize external_dev_server: string → ExternalDevServer
         if isinstance(self.external_dev_server, str):
             self.external_dev_server = ExternalDevServer(target=self.external_dev_server)
 
-        # Validate external_proxy mode requires external_dev_server
-        if self.proxy_mode == "external_proxy" and self.external_dev_server is None:
-            msg = "external_dev_server is required when proxy_mode='external_proxy'"
-            raise ValueError(msg)
+        # Note: proxy mode no longer requires external_dev_server - it can read
+        # the target URL from the hotfile for SSR frameworks using Vite internally
 
         if self.executor is None:
             self.executor = "node"
@@ -689,10 +701,10 @@ class ViteConfig:
     def hot_reload(self) -> bool:
         """Check if hot reload is enabled (derived from dev_mode and proxy_mode).
 
-        HMR requires dev_mode=True AND a Vite mode (vite_proxy, vite_direct).
-        External proxy mode never has HMR since it uses a non-Vite server.
+        HMR requires dev_mode=True AND a Vite-based mode (vite, direct, or proxy/ssr).
+        All modes support HMR since even SSR frameworks use Vite internally.
         """
-        return self.runtime.dev_mode and self.runtime.proxy_mode in {"vite_proxy", "vite_direct"}
+        return self.runtime.dev_mode and self.runtime.proxy_mode in {"vite", "direct", "proxy"}
 
     @property
     def is_dev_mode(self) -> bool:
@@ -750,8 +762,8 @@ class ViteConfig:
         return self.runtime.detect_nodeenv
 
     @property
-    def proxy_mode(self) -> Literal["vite_proxy", "vite_direct", "external_proxy"]:
-        """Get proxy mode."""
+    def proxy_mode(self) -> "Literal['vite', 'direct', 'proxy', 'ssr'] | None":
+        """Get proxy mode. Note: 'ssr' is normalized to 'proxy' at runtime."""
         return self.runtime.proxy_mode
 
     @property

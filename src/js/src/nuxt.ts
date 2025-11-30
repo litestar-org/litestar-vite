@@ -133,7 +133,9 @@ interface ResolvedNuxtConfig {
   types: Required<NuxtTypesConfig> | false
   verbose: boolean
   hotFile?: string
-  proxyMode: "vite_proxy" | "vite_direct" | "external_proxy"
+  proxyMode: "vite" | "direct" | "proxy" | null
+  /** Port for Vite dev server (from VITE_PORT env or runtime config) */
+  port?: number
 }
 
 /**
@@ -142,19 +144,34 @@ interface ResolvedNuxtConfig {
 function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
   const runtimeConfigPath = process.env.LITESTAR_VITE_CONFIG_PATH
   let hotFile: string | undefined
-  let proxyMode: "vite_proxy" | "vite_direct" | "external_proxy" = "vite_proxy"
+  let proxyMode: "vite" | "direct" | "proxy" | null = "vite"
+  let port: number | undefined
+
+  // Read port from VITE_PORT environment variable (set by Python)
+  const envPort = process.env.VITE_PORT
+  if (envPort) {
+    port = Number.parseInt(envPort, 10)
+    if (Number.isNaN(port)) {
+      port = undefined
+    }
+  }
 
   if (runtimeConfigPath && fs.existsSync(runtimeConfigPath)) {
     try {
       const json = JSON.parse(fs.readFileSync(runtimeConfigPath, "utf-8")) as {
         bundleDir?: string
         hotFile?: string
-        proxyMode?: "vite_proxy" | "vite_direct" | "external_proxy"
+        proxyMode?: "vite" | "direct" | "proxy" | null
+        port?: number
       }
       const bundleDir = json.bundleDir ?? "public"
       const hot = json.hotFile ?? "hot"
       hotFile = path.resolve(process.cwd(), bundleDir, hot)
-      proxyMode = json.proxyMode ?? "vite_proxy"
+      proxyMode = json.proxyMode ?? "vite"
+      // Runtime config port takes precedence over VITE_PORT env
+      if (json.port !== undefined) {
+        port = json.port
+      }
     } catch {
       hotFile = undefined
     }
@@ -189,6 +206,7 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
     verbose: config.verbose ?? false,
     hotFile,
     proxyMode,
+    port,
   }
 }
 
@@ -214,6 +232,14 @@ function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
     config() {
       return {
         server: {
+          // Set the port from Python config/env to ensure Nuxt uses the expected port
+          // strictPort: true prevents Nuxt from auto-incrementing to a different port
+          ...(config.port !== undefined
+            ? {
+                port: config.port,
+                strictPort: true,
+              }
+            : {}),
           proxy: {
             [config.apiPrefix]: {
               target: config.apiProxy,
@@ -235,8 +261,8 @@ function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
       }
 
       server.httpServer?.once("listening", () => {
-        // Write hotfile only for Vite modes (not external_proxy)
-        if (config.hotFile && config.proxyMode !== "external_proxy") {
+        // Always write hotfile - proxy mode needs it for dynamic target discovery
+        if (config.hotFile) {
           const address = server.httpServer?.address()
           if (address && typeof address === "object" && "port" in address) {
             const host = address.address === "::" ? "localhost" : address.address

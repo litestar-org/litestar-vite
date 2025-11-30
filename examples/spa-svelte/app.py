@@ -4,13 +4,25 @@ All examples in this repository expose the same backend:
 - `/api/summary` - overview + featured book
 - `/api/books` - list of books
 - `/api/books/{book_id}` - single book
+
+Dev mode (default):
+    litestar --app-dir examples/spa-svelte run
+
+Production mode (serves static build):
+    VITE_DEV_MODE=false litestar --app-dir examples/spa-svelte run
 """
+
+import os
+from pathlib import Path
 
 from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
 from msgspec import Struct
 
-from litestar_vite import ViteConfig, VitePlugin
+from litestar_vite import PathConfig, ViteConfig, VitePlugin
+
+here = Path(__file__).parent
+DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
 
 
 class Book(Struct):
@@ -71,7 +83,7 @@ class LibraryController(Controller):
         return _get_book(book_id)
 
 
-vite = VitePlugin(config=ViteConfig())
+vite = VitePlugin(config=ViteConfig(dev_mode=DEV_MODE, paths=PathConfig(root=here)))
 
 app = Litestar(
     route_handlers=[LibraryController],

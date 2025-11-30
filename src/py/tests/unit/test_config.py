@@ -65,7 +65,7 @@ def test_new_config_structure() -> None:
         ),
         runtime=RuntimeConfig(
             dev_mode=True,
-            proxy_mode="vite_proxy",  # Use new field
+            proxy_mode="vite",  # Use new field
             executor="bun",
         ),
         types=True,  # Shorthand for TypeGenConfig(enabled=True)
@@ -98,40 +98,49 @@ def test_mode_auto_detection_spa_with_index_html(tmp_path: Path) -> None:
     assert config._mode_auto_detected is True
 
 
-def test_proxy_mode_defaults_to_vite_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test proxy_mode defaults to vite_proxy."""
+def test_proxy_mode_defaults_to_vite(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test proxy_mode defaults to vite."""
     monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
 
     config = RuntimeConfig()
 
-    assert config.proxy_mode == "vite_proxy"
+    assert config.proxy_mode == "vite"
 
 
 def test_proxy_mode_respects_direct_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test VITE_PROXY_MODE=direct maps to vite_direct."""
+    """Test VITE_PROXY_MODE=direct maps to direct."""
     monkeypatch.setenv("VITE_PROXY_MODE", "direct")
 
     config = RuntimeConfig()
 
-    assert config.proxy_mode == "vite_direct"
+    assert config.proxy_mode == "direct"
 
 
 def test_proxy_mode_respects_vite_direct_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test VITE_PROXY_MODE=vite_direct is recognized."""
+    """Test VITE_PROXY_MODE=vite_direct is recognized (backwards compat)."""
     monkeypatch.setenv("VITE_PROXY_MODE", "vite_direct")
 
     config = RuntimeConfig()
 
-    assert config.proxy_mode == "vite_direct"
+    assert config.proxy_mode == "direct"
 
 
-def test_proxy_mode_respects_external_proxy_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test VITE_PROXY_MODE=external_proxy is recognized."""
-    monkeypatch.setenv("VITE_PROXY_MODE", "external_proxy")
+def test_proxy_mode_respects_proxy_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test VITE_PROXY_MODE=proxy is recognized."""
+    monkeypatch.setenv("VITE_PROXY_MODE", "proxy")
 
     config = RuntimeConfig(external_dev_server="http://localhost:4200")
 
-    assert config.proxy_mode == "external_proxy"
+    assert config.proxy_mode == "proxy"
+
+
+def test_proxy_mode_ssr_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test VITE_PROXY_MODE=ssr maps to proxy."""
+    monkeypatch.setenv("VITE_PROXY_MODE", "ssr")
+
+    config = RuntimeConfig()
+
+    assert config.proxy_mode == "proxy"
 
 
 # ============================================================================
@@ -143,7 +152,7 @@ def test_external_dev_server_defaults() -> None:
     """Test ExternalDevServer has sensible defaults."""
     ext = ExternalDevServer()
 
-    assert ext.target == "http://localhost:4200"
+    assert ext.target is None  # None = dynamic target via hotfile
     assert ext.http2 is False
     assert ext.enabled is True
 
@@ -164,7 +173,7 @@ def test_external_dev_server_custom_values() -> None:
 def test_runtime_config_external_dev_server_string_normalization() -> None:
     """Test external_dev_server string is normalized to ExternalDevServer."""
     config = RuntimeConfig(
-        proxy_mode="external_proxy",
+        proxy_mode="proxy",
         external_dev_server="http://localhost:3000",
     )
 
@@ -176,7 +185,7 @@ def test_runtime_config_external_dev_server_object() -> None:
     """Test external_dev_server can be passed as object."""
     ext = ExternalDevServer(target="http://localhost:4200", http2=True)
     config = RuntimeConfig(
-        proxy_mode="external_proxy",
+        proxy_mode="proxy",
         external_dev_server=ext,
     )
 
@@ -185,64 +194,67 @@ def test_runtime_config_external_dev_server_object() -> None:
     assert config.external_dev_server.http2 is True
 
 
-def test_runtime_config_external_proxy_requires_target() -> None:
-    """Test external_proxy mode requires external_dev_server."""
-    with pytest.raises(ValueError, match="external_dev_server is required"):
-        RuntimeConfig(proxy_mode="external_proxy", external_dev_server=None)
+def test_runtime_config_proxy_mode_without_target() -> None:
+    """Test proxy mode works without external_dev_server (uses hotfile)."""
+    # No longer raises - proxy mode can read target URL from hotfile
+    config = RuntimeConfig(proxy_mode="proxy", external_dev_server=None)
+    assert config.proxy_mode == "proxy"
+    assert config.external_dev_server is None
 
 
-def test_vite_config_external_proxy_mode() -> None:
-    """Test ViteConfig with external_proxy mode."""
+def test_vite_config_proxy_mode() -> None:
+    """Test ViteConfig with proxy mode."""
     config = ViteConfig(
         runtime=RuntimeConfig(
             dev_mode=True,
-            proxy_mode="external_proxy",
+            proxy_mode="proxy",
             external_dev_server=ExternalDevServer(target="http://localhost:4200"),
         )
     )
 
-    assert config.proxy_mode == "external_proxy"
+    assert config.proxy_mode == "proxy"
     assert config.external_dev_server is not None
     assert config.external_dev_server.target == "http://localhost:4200"
-    # HMR disabled for external servers
-    assert config.hot_reload is False
+    # HMR is now supported in proxy mode (SSR frameworks use Vite internally)
+    assert config.hot_reload is True
 
 
-def test_hot_reload_derived_from_vite_proxy_mode() -> None:
-    """Test hot_reload is True for vite_proxy mode."""
+def test_hot_reload_derived_from_vite_mode() -> None:
+    """Test hot_reload is True for vite mode."""
     config = ViteConfig(
         runtime=RuntimeConfig(
             dev_mode=True,
-            proxy_mode="vite_proxy",
+            proxy_mode="vite",
         )
     )
 
     assert config.hot_reload is True
 
 
-def test_hot_reload_derived_from_vite_direct_mode() -> None:
-    """Test hot_reload is True for vite_direct mode."""
+def test_hot_reload_derived_from_direct_mode() -> None:
+    """Test hot_reload is True for direct mode."""
     config = ViteConfig(
         runtime=RuntimeConfig(
             dev_mode=True,
-            proxy_mode="vite_direct",
+            proxy_mode="direct",
         )
     )
 
     assert config.hot_reload is True
 
 
-def test_hot_reload_disabled_for_external_proxy() -> None:
-    """Test hot_reload is False for external_proxy mode."""
+def test_hot_reload_enabled_for_proxy_mode() -> None:
+    """Test hot_reload is True for proxy mode (SSR frameworks use Vite internally)."""
     config = ViteConfig(
         runtime=RuntimeConfig(
             dev_mode=True,
-            proxy_mode="external_proxy",
+            proxy_mode="proxy",
             external_dev_server="http://localhost:4200",
         )
     )
 
-    assert config.hot_reload is False
+    # HMR is now supported in proxy mode since SSR frameworks use Vite internally
+    assert config.hot_reload is True
 
 
 def test_mode_auto_detection_template_with_jinja(tmp_path: Path) -> None:

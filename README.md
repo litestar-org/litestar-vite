@@ -5,6 +5,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 ## Features
 
 - One-port dev: proxies Vite HTTP + WS/HMR through Litestar by default; switch to two-port with `VITE_PROXY_MODE=direct`.
+- SSR framework support: use `proxy_mode="ssr"` for Astro, Nuxt, SvelteKit - proxies everything except your API routes.
 - Production assets: reads Vite manifest from `public/manifest.json` (configurable) and serves under `asset_url`.
 - Type-safe frontends: optional OpenAPI/routes export + `@hey-api/openapi-ts` via the Vite plugin.
 - Inertia support: v2 protocol with session middleware and optional SPA mode.
@@ -65,6 +66,62 @@ app = Litestar(
     ],
 )
 ```
+
+## SSR Frameworks (Astro, Nuxt, SvelteKit)
+
+For SSR frameworks that handle their own routing, use `proxy_mode="ssr"`:
+
+```python
+import os
+from pathlib import Path
+from litestar import Litestar
+from litestar_vite import VitePlugin, ViteConfig, PathConfig, RuntimeConfig
+
+DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
+
+app = Litestar(
+    plugins=[
+        VitePlugin(config=ViteConfig(
+            dev_mode=DEV_MODE,
+            paths=PathConfig(root=Path(__file__).parent),
+            runtime=RuntimeConfig(
+                proxy_mode="ssr" if DEV_MODE else None,  # Proxy in dev, static in prod
+                spa_handler=not DEV_MODE,  # Serve built files in production
+            ),
+        ))
+    ],
+)
+```
+
+### Proxy Modes
+
+| Mode | Alias | Use Case |
+|------|-------|----------|
+| `vite` | - | SPAs - proxies Vite assets only (default) |
+| `direct` | - | Two-port dev - expose Vite port directly |
+| `proxy` | `ssr` | SSR frameworks - proxies everything except API routes |
+
+### Production Deployment
+
+**Static Build (recommended):** Build your SSR framework to static files, then serve with Litestar:
+
+```bash
+# Build frontend
+cd examples/astro-api && npm run build
+
+# Run in production mode
+VITE_DEV_MODE=false litestar --app-dir examples/astro-api run
+```
+
+Configure `bundle_dir` to match your framework's build output:
+
+| Framework | Default Output | PathConfig |
+|-----------|---------------|------------|
+| Astro | `dist/` | `bundle_dir=Path("dist")` |
+| Nuxt | `.output/public/` | `bundle_dir=Path(".output/public")` |
+| SvelteKit | `build/` | `bundle_dir=Path("build")` |
+
+**Two-Service:** For dynamic SSR, run the Node server alongside Litestar behind a reverse proxy.
 
 ## Type generation
 

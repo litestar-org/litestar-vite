@@ -400,8 +400,8 @@ class TestJinjaOptionalEdgeCases:
         """Test Jinja optional behavior in development vs production scenarios."""
         from litestar_vite.config import ViteConfig
 
-        # Development scenario - dev_mode=True with vite_proxy mode enables HMR
-        dev_config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode="vite_proxy"))
+        # Development scenario - dev_mode=True with vite mode enables HMR
+        dev_config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode="vite"))
         assert dev_config.hot_reload is True
 
         # Production scenario - dev_mode=False disables HMR

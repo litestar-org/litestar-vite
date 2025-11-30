@@ -37,7 +37,7 @@ class TestVitePlugin:
 
         assert plugin._config == config
         assert str(plugin._config.bundle_dir) == "custom/bundle"
-        # hot_reload requires dev_mode=True AND a Vite mode (vite_proxy/vite_direct)
+        # hot_reload requires dev_mode=True AND a Vite mode (vite/direct/proxy)
         assert plugin._config.hot_reload is False  # dev_mode=False disables HMR
         assert plugin._config.executor is not None
 
@@ -197,7 +197,7 @@ class TestVitePluginAppIntegration:
     def test_on_app_init_direct_mode_skips_proxy(self) -> None:
         """Proxy middleware should only attach in proxy mode."""
 
-        config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode="vite_direct"))
+        config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode="direct"))
         plugin = VitePlugin(config=config)
         app_config = AppConfig()
 
@@ -291,7 +291,7 @@ class TestVitePluginLifespan:
         """Test server lifespan with watch mode (no HMR)."""
         config = ViteConfig(
             runtime=RuntimeConfig(
-                dev_mode=True, proxy_mode="external_proxy", external_dev_server="http://localhost:4200"
+                dev_mode=True, proxy_mode="proxy", external_dev_server="http://localhost:4200"
             ),  # Watch mode without HMR
         )
         plugin = VitePlugin(config=config)
