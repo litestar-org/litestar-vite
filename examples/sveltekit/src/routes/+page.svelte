@@ -1,6 +1,6 @@
 <script lang="ts">
-import routesJson from "$lib/generated/routes.json";
-import { onMount } from "svelte";
+import routesJson from "$lib/generated/routes.json"
+import { onMount } from "svelte"
 
 type Book = {
   id: number

@@ -26,9 +26,7 @@ export const handle: Handle = async ({ event, resolve }) => {
           "content-type": event.request.headers.get("content-type") || "application/json",
           accept: event.request.headers.get("accept") || "application/json",
           // Forward auth headers if present
-          ...(event.request.headers.get("authorization")
-            ? { authorization: event.request.headers.get("authorization") as string }
-            : {}),
+          ...(event.request.headers.get("authorization") ? { authorization: event.request.headers.get("authorization") as string } : {}),
           ...(event.request.headers.get("cookie") ? { cookie: event.request.headers.get("cookie") as string } : {}),
         }),
         body: event.request.method !== "GET" && event.request.method !== "HEAD" ? event.request.body : undefined,

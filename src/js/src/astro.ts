@@ -83,14 +83,8 @@ interface AstroIntegration {
       updateConfig: (newConfig: AstroConfigPartial) => unknown
       logger: AstroIntegrationLogger
     }) => void | Promise<void>
-    "astro:server:setup"?: (options: {
-      server: ViteDevServer
-      logger: AstroIntegrationLogger
-    }) => void | Promise<void>
-    "astro:server:start"?: (options: {
-      address: AddressInfo
-      logger: AstroIntegrationLogger
-    }) => void | Promise<void>
+    "astro:server:setup"?: (options: { server: ViteDevServer; logger: AstroIntegrationLogger }) => void | Promise<void>
+    "astro:server:start"?: (options: { address: AddressInfo; logger: AstroIntegrationLogger }) => void | Promise<void>
     "astro:build:start"?: (options: { logger: AstroIntegrationLogger }) => void | Promise<void>
   }
 }

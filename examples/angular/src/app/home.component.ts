@@ -1,5 +1,5 @@
 import { HttpClient } from "@angular/common/http"
-import { Component, type OnInit, computed, inject, signal } from "@angular/core"
+import { Component, computed, inject, type OnInit, signal } from "@angular/core"
 
 type Book = {
   id: number

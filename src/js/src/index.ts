@@ -8,11 +8,11 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 import colors from "picocolors"
-import { type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer, loadEnv } from "vite"
+import { loadEnv, type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer } from "vite"
 import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-reload"
 
 import { resolveInstallHint, resolvePackageExecutor } from "./install-hint.js"
-import { type LitestarMeta, checkBackendAvailability, loadLitestarMeta } from "./litestar-meta.js"
+import { checkBackendAvailability, type LitestarMeta, loadLitestarMeta } from "./litestar-meta.js"
 import { debounce } from "./shared/debounce.js"
 
 const execAsync = promisify(exec)
@@ -718,8 +718,8 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
       debounce: 300,
     }
   } else if (typeof resolvedConfig.types === "object" && resolvedConfig.types !== null) {
-    const userProvidedOpenapi = Object.prototype.hasOwnProperty.call(resolvedConfig.types, "openapiPath")
-    const userProvidedRoutes = Object.prototype.hasOwnProperty.call(resolvedConfig.types, "routesPath")
+    const userProvidedOpenapi = Object.hasOwn(resolvedConfig.types, "openapiPath")
+    const userProvidedRoutes = Object.hasOwn(resolvedConfig.types, "routesPath")
 
     typesConfig = {
       enabled: resolvedConfig.types.enabled ?? true,
