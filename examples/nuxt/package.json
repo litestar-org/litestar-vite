@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "nuxi dev",
     "build": "nuxi build",
-    "preview": "nuxi preview"
+    "preview": "nuxi preview",
+    "serve": "node .output/server/index.mjs",
+    "watch": "npm run serve"
   },
   "dependencies": {
     "nuxt": "latest",

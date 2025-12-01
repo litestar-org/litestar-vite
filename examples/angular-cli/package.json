@@ -6,7 +6,8 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve --proxy-config proxy.conf.json",
-    "build": "ng build"
+    "build": "ng build",
+    "serve": "npx serve dist/angular-cli/browser"
   },
   "dependencies": {
     "@angular/animations": "latest",

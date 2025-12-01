@@ -187,7 +187,7 @@ async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "M
         html = await handler.get_html(mock_request)
 
         assert "Dev Server HTML" in html
-        mock_client.get.assert_called_once_with("http://localhost:5173/", follow_redirects=True)
+        mock_client.get.assert_called_once_with("http://127.0.0.1:5173/", follow_redirects=True)
 
 
 async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> None:

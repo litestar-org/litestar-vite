@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "serve": "astro preview",
+    "watch": "npm run serve"
   },
   "dependencies": {
     "astro": "latest"

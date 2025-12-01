@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "vite",
     "build": "{% if use_typescript %}tsc && {% endif %}vite build",
-    "preview": "vite preview"{% if enable_types %},
+    "preview": "vite preview",
+    "serve": "vite preview",
+    "watch": "npm run serve"{% if enable_types %},
     "generate-types": "openapi-ts"{% endif %}
   },
   "dependencies": {

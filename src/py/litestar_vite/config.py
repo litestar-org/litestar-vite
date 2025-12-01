@@ -340,7 +340,7 @@ class RuntimeConfig:
     dev_mode: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)
     proxy_mode: "Literal['vite', 'direct', 'proxy', 'ssr'] | None" = field(default_factory=_resolve_proxy_mode)
     external_dev_server: "ExternalDevServer | str | None" = None
-    host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "localhost"))
+    host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "127.0.0.1"))
     port: int = field(default_factory=lambda: int(os.getenv("VITE_PORT", "5173")))
     protocol: Literal["http", "https"] = "http"
     executor: "Literal['node', 'bun', 'deno', 'yarn', 'pnpm'] | None" = None
@@ -541,7 +541,7 @@ class ViteConfig:
         deploy: Deployment configuration for CDN publishing.
     """
 
-    mode: "Literal['spa', 'template', 'htmx', 'hybrid'] | None" = None
+    mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'ssr'] | None" = None
     paths: PathConfig = field(default_factory=PathConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     types: "TypeGenConfig | bool" = field(default_factory=lambda: TypeGenConfig(enabled=True))
@@ -563,6 +563,7 @@ class ViteConfig:
         self._apply_dev_mode_shortcut()
         self._auto_detect_mode()
         self._sync_inertia_spa_mode()
+        self._apply_ssr_mode_defaults()
         self._normalize_deploy()
         self._ensure_spa_default()
         self._auto_enable_dev_mode()
@@ -612,6 +613,40 @@ class ViteConfig:
         """
         if self.mode == "hybrid" and isinstance(self.inertia, InertiaConfig):
             self.inertia.spa_mode = True
+
+    def _apply_ssr_mode_defaults(self) -> None:
+        """Apply intelligent defaults for mode='ssr'.
+
+        When mode='ssr' is set, automatically configure proxy_mode and spa_handler
+        based on dev_mode and whether built assets exist:
+
+        - Dev mode: proxy_mode='proxy', spa_handler=False
+          (Proxy all non-API routes to the SSR/SSG framework dev server)
+        - Prod mode with built assets: proxy_mode=None, spa_handler=True
+          (Serve static SSG output like Astro's dist/)
+        - Prod mode without built assets: proxy_mode=None, spa_handler=False
+          (True SSR - Node server handles HTML, Litestar only serves API)
+        """
+        if self.mode != "ssr":
+            return
+
+        if self.runtime.dev_mode:
+            # Dev mode: proxy to framework dev server (Astro/Nuxt/SvelteKit)
+            # Only override proxy_mode if user didn't explicitly set it via env var
+            env_proxy = os.getenv("VITE_PROXY_MODE")
+            if env_proxy is None:
+                self.runtime.proxy_mode = "proxy"
+            # Disable SPA handler to avoid route conflicts with SSR proxy controller
+            self.runtime.spa_handler = False
+        else:
+            # Production mode: no proxy needed
+            self.runtime.proxy_mode = None
+            # Auto-detect: if built assets exist (SSG), enable SPA handler to serve them
+            # Otherwise (true SSR), assume external Node server handles HTML
+            if self.has_built_assets():
+                self.runtime.spa_handler = True
+            else:
+                self.runtime.spa_handler = False
 
     def _normalize_deploy(self) -> None:
         if self.deploy is True:
@@ -974,8 +1009,11 @@ class ViteConfig:
 
     @property
     def build_watch_command(self) -> list[str]:
-        """Get the build watch command."""
-        return self.runtime.build_watch_command or ["npm", "run", "watch"]
+        """Get the serve command for running built frontend.
+
+        Used by `litestar assets serve` to run the production frontend server.
+        """
+        return self.runtime.build_watch_command or ["npm", "run", "serve"]
 
     @property
     def install_command(self) -> list[str]:

@@ -3,9 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "node build",
+    "watch": "npm run serve"
   },
   "dependencies": {
     "svelte": "latest",
@@ -13,7 +15,7 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "latest",
-    "@sveltejs/adapter-auto": "latest",
+    "@sveltejs/adapter-node": "latest",
     "svelte-check": "latest",
     "typescript": "latest",
     "tslib": "latest",

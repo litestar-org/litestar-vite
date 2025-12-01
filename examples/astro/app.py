@@ -1,16 +1,18 @@
-"""Astro API example - shared "Library" backend for Astro frontend.
+"""Astro example - shared "Library" backend for Astro static site.
+
+Astro generates static HTML by default (not SSR). In dev mode, we proxy
+to the Astro dev server. In production, we serve the built static files.
 
 All examples in this repository expose the same backend:
 - `/api/summary` - overview + featured book
 - `/api/books` - list of books
 - `/api/books/{book_id}` - single book
 
-The Astro Vite plugin proxies /api/* requests to this Litestar server.
-
 Dev mode (default):
     litestar --app-dir examples/astro run
 
-Production mode (serves static build):
+Production mode (serves static build from dist/):
+    litestar --app-dir examples/astro assets build
     VITE_DEV_MODE=false litestar --app-dir examples/astro run
 """
 
@@ -21,7 +23,7 @@ from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
 from msgspec import Struct
 
-from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
+from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
@@ -87,14 +89,11 @@ class LibraryController(Controller):
 
 vite = VitePlugin(
     config=ViteConfig(
+        mode="ssr",  # SSR/SSG mode: proxy in dev, serve static in prod
         dev_mode=DEV_MODE,
         paths=PathConfig(
             root=here,
             bundle_dir=Path("dist"),  # Astro outputs to dist/ by default
-        ),
-        runtime=RuntimeConfig(
-            proxy_mode="ssr" if DEV_MODE else None,  # Blacklist proxy in dev, none in prod
-            spa_handler=not DEV_MODE,  # Serve static build in production
         ),
         types=TypeGenConfig(
             enabled=True,

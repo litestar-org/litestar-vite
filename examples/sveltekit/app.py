@@ -1,7 +1,8 @@
-"""SvelteKit example - shared "Library" backend for SvelteKit static site.
+"""SvelteKit example - shared "Library" backend for SvelteKit SSR frontend.
 
-SvelteKit with adapter-static generates static HTML. In dev mode, we proxy
-to the SvelteKit dev server. In production, we serve the built static files.
+SvelteKit runs as an SSR server. In dev mode, Litestar proxies all non-API
+routes to the SvelteKit dev server. In production, run SvelteKit and Litestar
+as separate services behind a reverse proxy.
 
 All examples in this repository expose the same backend:
 - `/api/summary` - overview + featured book
@@ -11,9 +12,12 @@ All examples in this repository expose the same backend:
 Dev mode (default):
     litestar --app-dir examples/sveltekit run
 
-Production mode (serves static build from build/):
+Production (two services behind reverse proxy):
+    # Terminal 1: SvelteKit SSR server
     litestar --app-dir examples/sveltekit assets build
-    VITE_DEV_MODE=false litestar --app-dir examples/sveltekit run
+    litestar --app-dir examples/sveltekit assets serve
+    # Terminal 2: Litestar API server
+    VITE_DEV_MODE=false litestar --app-dir examples/sveltekit run --port 8001
 """
 
 import os
@@ -23,7 +27,7 @@ from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
 from msgspec import Struct
 
-from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
+from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
@@ -89,15 +93,9 @@ class LibraryController(Controller):
 
 vite = VitePlugin(
     config=ViteConfig(
-        mode="spa",  # SvelteKit generates static HTML, served like an SPA
+        mode="ssr",  # SSR mode: proxy in dev, Node serves HTML in prod
         dev_mode=DEV_MODE,
-        paths=PathConfig(
-            root=here,
-            bundle_dir=Path("build"),  # SvelteKit adapter-static output
-        ),
-        runtime=RuntimeConfig(
-            proxy_mode="ssr",  # Proxy to SvelteKit dev server (only active when dev_mode=True)
-        ),
+        paths=PathConfig(root=here),
         types=TypeGenConfig(
             enabled=True,
             output=Path("src/lib/generated"),

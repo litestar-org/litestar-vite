@@ -74,7 +74,7 @@ def test_generate_asset_tags_dev_mode() -> None:
 
     tags = loader.generate_asset_tags("main.js")
     # Should point to vite server
-    assert 'src="http://localhost:5173/static/main.js"' in tags
+    assert 'src="http://127.0.0.1:5173/static/main.js"' in tags
 
 
 def test_generate_asset_tags_missing_entry() -> None:
@@ -89,7 +89,7 @@ def test_generate_asset_tags_missing_entry() -> None:
 def test_get_static_asset_dev_mode() -> None:
     config = ViteConfig(runtime=RuntimeConfig(dev_mode=True))
     loader = ViteAssetLoader(config)
-    assert loader.get_static_asset("test.png") == "http://localhost:5173/static/test.png"
+    assert loader.get_static_asset("test.png") == "http://127.0.0.1:5173/static/test.png"
 
 
 def test_get_static_asset_prod_mode_found() -> None:

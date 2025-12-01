@@ -1,8 +1,8 @@
-"""Nuxt example - shared "Library" backend for Nuxt static site.
+"""Nuxt example - shared "Library" backend for Nuxt SSR frontend.
 
-Nuxt can generate static HTML (nuxi generate) or run as SSR. This example
-uses static generation. In dev mode, we proxy to the Nuxt dev server.
-In production, we serve the built static files from .output/public/.
+Nuxt runs as an SSR server. In dev mode, Litestar proxies all non-API
+routes to the Nuxt dev server. In production, run Nuxt and Litestar
+as separate services behind a reverse proxy.
 
 All examples in this repository expose the same backend:
 - `/api/summary` - overview + featured book
@@ -12,9 +12,12 @@ All examples in this repository expose the same backend:
 Dev mode (default):
     litestar --app-dir examples/nuxt run
 
-Production mode (serves static build from .output/public/):
+Production (two services behind reverse proxy):
+    # Terminal 1: Nuxt SSR server
     litestar --app-dir examples/nuxt assets build
-    VITE_DEV_MODE=false litestar --app-dir examples/nuxt run
+    litestar --app-dir examples/nuxt assets serve
+    # Terminal 2: Litestar API server
+    VITE_DEV_MODE=false litestar --app-dir examples/nuxt run --port 8001
 """
 
 import os
@@ -24,7 +27,7 @@ from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
 from msgspec import Struct
 
-from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
+from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
@@ -90,15 +93,9 @@ class LibraryController(Controller):
 
 vite = VitePlugin(
     config=ViteConfig(
-        mode="spa",  # Nuxt generates static HTML, served like an SPA
+        mode="ssr",  # SSR mode: proxy in dev, Node serves HTML in prod
         dev_mode=DEV_MODE,
-        paths=PathConfig(
-            root=here,
-            bundle_dir=Path(".output/public"),  # Nuxt static generation output
-        ),
-        runtime=RuntimeConfig(
-            proxy_mode="ssr",  # Proxy to Nuxt dev server (only active when dev_mode=True)
-        ),
+        paths=PathConfig(root=here),
         types=TypeGenConfig(
             enabled=True,
             output=Path("generated"),

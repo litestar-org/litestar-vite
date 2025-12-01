@@ -84,9 +84,9 @@ app = Litestar(
 )
 ```
 
-## Static Site Generators (Astro, Nuxt, SvelteKit)
+## Meta-frameworks (Astro, Nuxt, SvelteKit)
 
-For frameworks that generate static HTML, use `mode="spa"` with `proxy_mode="ssr"` in dev:
+Use `proxy_mode="ssr"` to proxy non-API routes to the framework's dev server:
 
 ```python
 import os
@@ -94,15 +94,15 @@ from pathlib import Path
 from litestar import Litestar
 from litestar_vite import VitePlugin, ViteConfig, PathConfig, RuntimeConfig
 
+here = Path(__file__).parent
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
 
 app = Litestar(
     plugins=[
         VitePlugin(config=ViteConfig(
-            mode="spa",  # Serve static build in production
             dev_mode=DEV_MODE,
-            paths=PathConfig(root=Path(__file__).parent, bundle_dir=Path("dist")),
-            runtime=RuntimeConfig(proxy_mode="ssr"),  # Only active when dev_mode=True
+            paths=PathConfig(root=here),
+            runtime=RuntimeConfig(proxy_mode="ssr"),
         ))
     ],
 )
@@ -118,23 +118,24 @@ app = Litestar(
 
 ### Production Deployment
 
-Build the static site, then serve with Litestar:
+**Astro (static):** Astro generates static HTML by default. Build and serve with Litestar:
 
 ```bash
-# Build frontend
 litestar --app-dir examples/astro assets install
 litestar --app-dir examples/astro assets build
-# Run in production mode
 VITE_DEV_MODE=false litestar --app-dir examples/astro run
 ```
 
-Configure `bundle_dir` to match your framework's build output:
+**Nuxt/SvelteKit (SSR):** These run their own Node servers. Deploy as two services:
 
-| Framework | Default Output | PathConfig |
-|-----------|---------------|------------|
-| Astro | `dist/` | `bundle_dir=Path("dist")` |
-| Nuxt | `.output/public/` | `bundle_dir=Path(".output/public")` |
-| SvelteKit | `build/` | `bundle_dir=Path("build")` |
+```bash
+# Terminal 1: SSR server
+litestar --app-dir examples/nuxt assets build
+litestar --app-dir examples/nuxt assets serve
+
+# Terminal 2: Litestar API
+VITE_DEV_MODE=false litestar --app-dir examples/nuxt run --port 8001
+```
 
 ## Type generation
 
