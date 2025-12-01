@@ -1,16 +1,19 @@
-"""Nuxt API example - shared "Library" backend for Nuxt frontend.
+"""Nuxt example - shared "Library" backend for Nuxt static site.
+
+Nuxt can generate static HTML (nuxi generate) or run as SSR. This example
+uses static generation. In dev mode, we proxy to the Nuxt dev server.
+In production, we serve the built static files from .output/public/.
 
 All examples in this repository expose the same backend:
 - `/api/summary` - overview + featured book
 - `/api/books` - list of books
 - `/api/books/{book_id}` - single book
 
-The Nuxt server proxies /api/* requests to this Litestar server.
-
 Dev mode (default):
     litestar --app-dir examples/nuxt run
 
-Production mode (serves static build):
+Production mode (serves static build from .output/public/):
+    litestar --app-dir examples/nuxt assets build
     VITE_DEV_MODE=false litestar --app-dir examples/nuxt run
 """
 
@@ -87,14 +90,14 @@ class LibraryController(Controller):
 
 vite = VitePlugin(
     config=ViteConfig(
+        mode="spa",  # Nuxt generates static HTML, served like an SPA
         dev_mode=DEV_MODE,
         paths=PathConfig(
             root=here,
             bundle_dir=Path(".output/public"),  # Nuxt static generation output
         ),
         runtime=RuntimeConfig(
-            proxy_mode="ssr" if DEV_MODE else None,  # Blacklist proxy in dev, none in prod
-            spa_handler=not DEV_MODE,  # Serve static build in production
+            proxy_mode="ssr",  # Proxy to Nuxt dev server (only active when dev_mode=True)
         ),
         types=TypeGenConfig(
             enabled=True,

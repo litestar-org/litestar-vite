@@ -877,16 +877,19 @@ class ViteConfig:
         """Return possible index.html locations for SPA mode detection.
 
         Order mirrors the JS plugin auto-detection:
-        1. resource_dir/index.html
-        2. root_dir/index.html
-        3. public_dir/index.html
+        1. bundle_dir/index.html (for production static builds like Astro/Nuxt/SvelteKit)
+        2. resource_dir/index.html
+        3. root_dir/index.html
+        4. public_dir/index.html
         """
 
+        bundle_dir = self._resolve_to_root(self.bundle_dir)
         resource_dir = self._resolve_to_root(self.resource_dir)
         public_dir = self._resolve_to_root(self.public_dir)
         root_dir = self.root_dir
 
         candidates = [
+            bundle_dir / "index.html",
             resource_dir / "index.html",
             root_dir / "index.html",
             public_dir / "index.html",

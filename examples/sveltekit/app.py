@@ -1,16 +1,18 @@
-"""SvelteKit API example - shared "Library" backend for SvelteKit frontend.
+"""SvelteKit example - shared "Library" backend for SvelteKit static site.
+
+SvelteKit with adapter-static generates static HTML. In dev mode, we proxy
+to the SvelteKit dev server. In production, we serve the built static files.
 
 All examples in this repository expose the same backend:
 - `/api/summary` - overview + featured book
 - `/api/books` - list of books
 - `/api/books/{book_id}` - single book
 
-The SvelteKit Vite plugin proxies /api/* requests to this Litestar server.
-
 Dev mode (default):
     litestar --app-dir examples/sveltekit run
 
-Production mode (serves static build):
+Production mode (serves static build from build/):
+    litestar --app-dir examples/sveltekit assets build
     VITE_DEV_MODE=false litestar --app-dir examples/sveltekit run
 """
 
@@ -87,14 +89,14 @@ class LibraryController(Controller):
 
 vite = VitePlugin(
     config=ViteConfig(
+        mode="spa",  # SvelteKit generates static HTML, served like an SPA
         dev_mode=DEV_MODE,
         paths=PathConfig(
             root=here,
             bundle_dir=Path("build"),  # SvelteKit adapter-static output
         ),
         runtime=RuntimeConfig(
-            proxy_mode="ssr" if DEV_MODE else None,  # Blacklist proxy in dev, none in prod
-            spa_handler=not DEV_MODE,  # Serve static build in production
+            proxy_mode="ssr",  # Proxy to SvelteKit dev server (only active when dev_mode=True)
         ),
         types=TypeGenConfig(
             enabled=True,
