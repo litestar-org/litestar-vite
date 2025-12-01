@@ -204,8 +204,10 @@ def _prompt_for_options(
     enable_ssr: "bool | None",
     tailwind: bool,
     enable_types: bool,
+    generate_zod: bool,
+    generate_client: bool,
     no_prompt: bool,
-) -> "tuple[bool, bool, bool]":
+) -> "tuple[bool, bool, bool, bool, bool]":
     """Prompt user for optional features if not specified.
 
     Args:
@@ -213,10 +215,12 @@ def _prompt_for_options(
         enable_ssr: SSR flag or None.
         tailwind: TailwindCSS flag.
         enable_types: Type generation flag.
+        generate_zod: Zod schema generation flag.
+        generate_client: API client generation flag.
         no_prompt: Whether to skip prompts.
 
     Returns:
-        Tuple of (enable_ssr, tailwind, enable_types).
+        Tuple of (enable_ssr, tailwind, enable_types, generate_zod, generate_client).
     """
     from rich.prompt import Confirm
 
@@ -231,7 +235,19 @@ def _prompt_for_options(
     if not enable_types and not no_prompt:
         enable_types = Confirm.ask("Enable TypeScript type generation?", default=True)
 
-    return enable_ssr or False, tailwind, enable_types
+    # Only prompt for zod/client if types are enabled
+    if enable_types:
+        if not generate_zod and not no_prompt:
+            generate_zod = Confirm.ask("Generate Zod schemas for validation?", default=True)
+
+        if not generate_client and not no_prompt:
+            generate_client = Confirm.ask("Generate API client?", default=True)
+    else:
+        # If types disabled, also disable zod and client
+        generate_zod = False
+        generate_client = False
+
+    return enable_ssr or False, tailwind, enable_types, generate_zod, generate_client
 
 
 @vite_group.command(
@@ -361,6 +377,22 @@ def vite_doctor(
     show_default=False,
     is_flag=True,
 )
+@option(
+    "--generate-zod",
+    type=bool,
+    help="Generate Zod schemas for runtime validation.",
+    required=False,
+    show_default=False,
+    is_flag=True,
+)
+@option(
+    "--generate-client",
+    type=bool,
+    help="Generate API client from OpenAPI schema.",
+    required=False,
+    show_default=False,
+    is_flag=True,
+)
 @option("--overwrite", type=bool, help="Overwrite any files in place.", default=False, is_flag=True)
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 @option(
@@ -394,6 +426,8 @@ def vite_init(
     public_path: "Path | None",
     tailwind: "bool",
     enable_types: "bool",
+    generate_zod: "bool",
+    generate_client: "bool",
     overwrite: "bool",
     verbose: "bool",
     no_prompt: "bool",
@@ -447,7 +481,9 @@ def vite_init(
         sys.exit(2)
 
     # Prompt for optional features
-    enable_ssr, tailwind, enable_types = _prompt_for_options(framework, enable_ssr, tailwind, enable_types, no_prompt)
+    enable_ssr, tailwind, enable_types, generate_zod, generate_client = _prompt_for_options(
+        framework, enable_ssr, tailwind, enable_types, generate_zod, generate_client, no_prompt
+    )
 
     # Create template context
     project_name = root_path.name or "my-project"
@@ -470,6 +506,8 @@ def vite_init(
         enable_ssr=enable_ssr,
         enable_inertia=is_inertia,
         enable_types=enable_types,
+        generate_zod=generate_zod,
+        generate_client=generate_client,
     )
 
     # Generate project files

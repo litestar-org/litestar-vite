@@ -13,6 +13,9 @@
     "moduleDetection": "force",
     "noEmit": true,
 
+    /* JSX */
+    "jsx": "react-jsx",
+
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,
@@ -24,7 +27,10 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./resources/*"]
-    }
+    },
+
+    /* Types */
+    "types": ["vite/client"]
   },
   "include": ["resources/**/*", "vite.config.ts"]
 }

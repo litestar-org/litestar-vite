@@ -23,6 +23,6 @@
     "tailwindcss": "^4.0.0",
     "@hey-api/openapi-ts": "latest",
     "litestar-vite-plugin": "file:../..",
-    "vite": "^6.0.0"
+    "vite": "^7.0.0"
   }
 }

@@ -224,9 +224,10 @@ interface PythonDefaults {
   } | null
 }
 
-interface LitestarPlugin extends Plugin {
-  config: (config: UserConfig, env: ConfigEnv) => UserConfig
-}
+// Note: We intentionally avoid exporting Vite types to prevent version conflicts.
+// The plugin returns Plugin[] internally but uses `any[]` in the public API to avoid
+// type leakage across different Vite versions (6.x, 7.x). This follows the pragmatic
+// approach used by other multi-version plugins.
 
 type DevServerUrl = `${"http" | "https"}://${string}:${number}`
 
@@ -238,8 +239,10 @@ export const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((path
  * Litestar plugin for Vite.
  *
  * @param config - A config object or relative path(s) of the scripts to be compiled.
+ * @returns An array of Vite plugins. Return type is `any[]` to avoid cross-version type conflicts.
  */
-export default function litestar(config: string | string[] | PluginConfig): [LitestarPlugin, ...Plugin[]] {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export default function litestar(config: string | string[] | PluginConfig): any[] {
   const pluginConfig = resolvePluginConfig(config)
 
   const plugins: Plugin[] = [resolveLitestarPlugin(pluginConfig), ...(resolveFullReloadConfig(pluginConfig) as Plugin[])]
@@ -249,7 +252,7 @@ export default function litestar(config: string | string[] | PluginConfig): [Lit
     plugins.push(resolveTypeGenerationPlugin(pluginConfig.types, pluginConfig.executor))
   }
 
-  return plugins as [LitestarPlugin, ...Plugin[]]
+  return plugins
 }
 
 /**
@@ -301,7 +304,7 @@ function normalizeAppUrl(appUrl: string | undefined, fallbackPort?: string): { u
   }
 }
 
-function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlugin {
+function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
   let viteDevServerUrl: DevServerUrl
   let resolvedConfig: ResolvedConfig
   let userConfig: UserConfig

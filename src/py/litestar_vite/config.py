@@ -1018,11 +1018,20 @@ class ViteConfig:
 
     @property
     def build_watch_command(self) -> list[str]:
-        """Get the serve command for running built frontend.
+        """Get the watch command for building frontend in watch mode.
 
-        Used by `litestar assets serve` to run the production frontend server.
+        Used by `litestar assets serve` when hot_reload is disabled.
         """
-        return self.runtime.build_watch_command or ["npm", "run", "serve"]
+        return self.runtime.build_watch_command or ["npm", "run", "build", "--", "--watch"]
+
+    @property
+    def serve_command(self) -> "list[str] | None":
+        """Get the serve command for running production server.
+
+        Used by `litestar assets serve --production` for SSR frameworks.
+        Returns None if not configured.
+        """
+        return self.runtime.serve_command
 
     @property
     def install_command(self) -> list[str]:
