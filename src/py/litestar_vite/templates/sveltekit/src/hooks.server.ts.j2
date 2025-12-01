@@ -1,0 +1,55 @@
+/**
+ * SvelteKit server hooks for API proxying.
+ *
+ * In production, the SvelteKit Node.js server runs separately from Litestar.
+ * This hook proxies /api/* requests to the Litestar backend so client-side
+ * fetches work correctly without requiring an external reverse proxy.
+ *
+ * Environment variables:
+ *   LITESTAR_API - Base URL of the Litestar API server (default: http://localhost:{{ litestar_port }})
+ */
+import type { Handle } from "@sveltejs/kit"
+
+const LITESTAR_API = process.env.LITESTAR_API || "http://localhost:{{ litestar_port }}"
+
+export const handle: Handle = async ({ event, resolve }) => {
+  // Proxy /api/* requests to the Litestar backend
+  if (event.url.pathname.startsWith("/api")) {
+    const apiUrl = `${LITESTAR_API}${event.url.pathname}${event.url.search}`
+
+    try {
+      // Forward the request to Litestar
+      const response = await fetch(apiUrl, {
+        method: event.request.method,
+        headers: new Headers({
+          // Forward relevant headers
+          "content-type": event.request.headers.get("content-type") || "application/json",
+          accept: event.request.headers.get("accept") || "application/json",
+          // Forward auth headers if present
+          ...(event.request.headers.get("authorization")
+            ? { authorization: event.request.headers.get("authorization")! }
+            : {}),
+          ...(event.request.headers.get("cookie") ? { cookie: event.request.headers.get("cookie")! } : {}),
+        }),
+        body: event.request.method !== "GET" && event.request.method !== "HEAD" ? event.request.body : undefined,
+        // @ts-expect-error - duplex is required for streaming request bodies
+        duplex: "half",
+      })
+
+      // Return the proxied response
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      })
+    } catch (error) {
+      console.error(`[hooks.server] Failed to proxy ${event.url.pathname} to ${apiUrl}:`, error)
+      return new Response(JSON.stringify({ error: "API proxy failed", detail: String(error) }), {
+        status: 502,
+        headers: { "content-type": "application/json" },
+      })
+    }
+  }
+
+  return resolve(event)
+}

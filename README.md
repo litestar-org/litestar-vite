@@ -10,66 +10,83 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 - Type-safe frontends: optional OpenAPI/routes export + `@hey-api/openapi-ts` via the Vite plugin.
 - Inertia support: v2 protocol with session middleware and optional SPA mode.
 
-## Quick start (React TanStack SPA)
+## Quick Start (SPA)
 
 ```bash
 pip install litestar-vite
-litestar assets init --template react-tanstack
-litestar assets install  # installs frontend deps via configured executor
 ```
 
 ```python
+import os
+from pathlib import Path
 from litestar import Litestar
-from litestar_vite import VitePlugin, ViteConfig
+from litestar_vite import VitePlugin, ViteConfig, PathConfig
 
-app = Litestar(plugins=[VitePlugin(config=ViteConfig(dev_mode=True))])  # SPA mode by default
+DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
+
+app = Litestar(
+    plugins=[VitePlugin(config=ViteConfig(
+        dev_mode=DEV_MODE,
+        paths=PathConfig(root=Path(__file__).parent),
+    ))]
+)
 ```
 
 ```bash
-litestar run --reload  # starts Litestar; Vite dev is proxied automatically
+litestar run --reload  # Vite dev server is proxied automatically
 ```
 
-Other templates: `react`, `vue`, `svelte`, `htmx`, `react-inertia`, `vue-inertia`, `svelte-inertia`, `angular`, `angular-cli`, `astro`, `nuxt`, `sveltekit` (see `litestar assets init --help`).
+Scaffold a frontend: `litestar assets init --template vue` (or `react`, `svelte`, `htmx`, `react-inertia`, `vue-inertia`, `angular`, `astro`, `nuxt`, `sveltekit`).
 
 ## Template / HTMX
 
 ```python
+from pathlib import Path
 from litestar import Litestar
 from litestar.contrib.jinja import JinjaTemplateEngine
-from litestar.template.config import TemplateConfig
-from litestar_vite import VitePlugin, ViteConfig
+from litestar.template import TemplateConfig
+from litestar_vite import VitePlugin, ViteConfig, PathConfig
+
+here = Path(__file__).parent
 
 app = Litestar(
-    template_config=TemplateConfig(engine=JinjaTemplateEngine(directory="templates")),
-    plugins=[VitePlugin(config=ViteConfig(mode="template", dev_mode=True))],
+    template_config=TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine),
+    plugins=[VitePlugin(config=ViteConfig(
+        dev_mode=True,
+        paths=PathConfig(root=here),
+    ))],
 )
 ```
 
 ## Inertia (v2)
 
-Requires session middleware.
+Requires session middleware (32-char secret).
 
 ```python
+import os
+from pathlib import Path
 from litestar import Litestar
 from litestar.middleware.session.client_side import CookieBackendConfig
-from litestar_vite import VitePlugin, ViteConfig
-from litestar_vite.inertia import InertiaPlugin
-from litestar_vite.inertia.config import InertiaConfig
+from litestar_vite import VitePlugin, ViteConfig, PathConfig
+from litestar_vite.inertia import InertiaConfig
 
-session_backend = CookieBackendConfig(secret="dev-secret")
+here = Path(__file__).parent
+SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-32-chars")
+session = CookieBackendConfig(secret=SECRET_KEY.encode("utf-8"))
 
 app = Litestar(
-    middleware=[session_backend.middleware],
-    plugins=[
-        VitePlugin(config=ViteConfig(mode="template", inertia=True, dev_mode=True)),
-        InertiaPlugin(InertiaConfig()),
-    ],
+    middleware=[session.middleware],
+    plugins=[VitePlugin(config=ViteConfig(
+        dev_mode=True,
+        paths=PathConfig(root=here),
+        inertia=InertiaConfig(root_template="index.html"),
+    ))],
 )
 ```
 
-## SSR Frameworks (Astro, Nuxt, SvelteKit)
+## Meta-frameworks (Astro, Nuxt, SvelteKit)
 
-For SSR frameworks that handle their own routing, use `proxy_mode="ssr"`:
+Use `proxy_mode="ssr"` to proxy non-API routes to the framework's dev server:
 
 ```python
 import os
@@ -77,17 +94,15 @@ from pathlib import Path
 from litestar import Litestar
 from litestar_vite import VitePlugin, ViteConfig, PathConfig, RuntimeConfig
 
+here = Path(__file__).parent
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
 
 app = Litestar(
     plugins=[
         VitePlugin(config=ViteConfig(
             dev_mode=DEV_MODE,
-            paths=PathConfig(root=Path(__file__).parent),
-            runtime=RuntimeConfig(
-                proxy_mode="ssr" if DEV_MODE else None,  # Proxy in dev, static in prod
-                spa_handler=not DEV_MODE,  # Serve built files in production
-            ),
+            paths=PathConfig(root=here),
+            runtime=RuntimeConfig(proxy_mode="ssr"),
         ))
     ],
 )
@@ -99,29 +114,28 @@ app = Litestar(
 |------|-------|----------|
 | `vite` | - | SPAs - proxies Vite assets only (default) |
 | `direct` | - | Two-port dev - expose Vite port directly |
-| `proxy` | `ssr` | SSR frameworks - proxies everything except API routes |
+| `proxy` | `ssr` | Meta-frameworks - proxies everything except API routes |
 
 ### Production Deployment
 
-**Static Build (recommended):** Build your SSR framework to static files, then serve with Litestar:
+**Astro (static):** Astro generates static HTML by default. Build and serve with Litestar:
 
 ```bash
-# Build frontend
-cd examples/astro && npm run build
-
-# Run in production mode
+litestar --app-dir examples/astro assets install
+litestar --app-dir examples/astro assets build
 VITE_DEV_MODE=false litestar --app-dir examples/astro run
 ```
 
-Configure `bundle_dir` to match your framework's build output:
+**Nuxt/SvelteKit (SSR):** These run their own Node servers. Deploy as two services:
 
-| Framework | Default Output | PathConfig |
-|-----------|---------------|------------|
-| Astro | `dist/` | `bundle_dir=Path("dist")` |
-| Nuxt | `.output/public/` | `bundle_dir=Path(".output/public")` |
-| SvelteKit | `build/` | `bundle_dir=Path("build")` |
+```bash
+# Terminal 1: SSR server
+litestar --app-dir examples/nuxt assets build
+litestar --app-dir examples/nuxt assets serve
 
-**Two-Service:** For dynamic SSR, run the Node server alongside Litestar behind a reverse proxy.
+# Terminal 2: Litestar API
+VITE_DEV_MODE=false litestar --app-dir examples/nuxt run --port 8001
+```
 
 ## Type generation
 
@@ -151,5 +165,5 @@ litestar assets generate-types  # one-off or CI
 ## Links
 
 - Docs: <https://litestar-org.github.io/litestar-vite/>
-- Examples: `examples/` (basic, inertia, react)
+- Examples: `examples/` (react, vue, svelte, react-inertia, vue-inertia, astro, nuxt, sveltekit, htmx)
 - Issues: <https://github.com/litestar-org/litestar-vite/issues/>

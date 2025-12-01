@@ -36,6 +36,8 @@ class TemplateContext:
         enable_ssr: Whether SSR is enabled
         enable_inertia: Whether Inertia.js is used
         enable_types: Whether type generation is enabled
+        generate_zod: Whether to generate Zod schemas
+        generate_client: Whether to generate API client
     """
 
     project_name: str
@@ -51,6 +53,8 @@ class TemplateContext:
     enable_ssr: bool = False
     enable_inertia: bool = False
     enable_types: bool = True
+    generate_zod: bool = False
+    generate_client: bool = False
     extra: dict[str, Any] = field(default_factory=_DictStrAnyFactory)
 
     def to_dict(self) -> dict[str, Any]:
@@ -74,6 +78,8 @@ class TemplateContext:
             "enable_ssr": self.enable_ssr,
             "enable_inertia": self.enable_inertia,
             "enable_types": self.enable_types,
+            "generate_zod": self.generate_zod,
+            "generate_client": self.generate_client,
             "dependencies": self.framework.dependencies,
             "dev_dependencies": self.framework.dev_dependencies,
             "vite_plugin": self.framework.vite_plugin,

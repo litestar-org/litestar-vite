@@ -1,7 +1,7 @@
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import litestar from "litestar-vite-plugin"
-import { type PluginOption, defineConfig } from "vite"
+import { defineConfig, type PluginOption } from "vite"
 
 export default defineConfig({
   plugins: [

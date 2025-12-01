@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "serve": "vite preview"
   },
   "dependencies": {
     "svelte": "latest"
@@ -18,6 +19,6 @@
     "@tailwindcss/vite": "^4.0.0",
     "tailwindcss": "^4.0.0",
     "litestar-vite-plugin": "file:../..",
-    "vite": "^6.0.0"
+    "vite": "^7.0.0"
   }
 }

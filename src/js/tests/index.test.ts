@@ -557,7 +557,7 @@ describe("litestar-vite-plugin", () => {
     const resourceIndexPath = path.join(testRootDir, testResourceDir, "index.html")
     const publicIndexPath = path.join(testRootDir, testPublicDir, "index.html")
     // Use original placeholder path logic
-    const placeholderPath = path.resolve(__dirname, "..", "src", "dev-server-index.html")
+    const _placeholderPath = path.resolve(__dirname, "..", "src", "dev-server-index.html")
 
     beforeEach(() => {
       vi.clearAllMocks()

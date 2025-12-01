@@ -324,6 +324,7 @@ class RuntimeConfig:
         run_command: Custom command to run Vite dev server (auto-detect if None).
         build_command: Custom command to build with Vite (auto-detect if None).
         build_watch_command: Custom command for watch mode build.
+        serve_command: Custom command to run production server (for SSR frameworks).
         install_command: Custom command to install dependencies.
         is_react: Enable React Fast Refresh support.
         ssr_enabled: Enable Server-Side Rendering.
@@ -340,13 +341,14 @@ class RuntimeConfig:
     dev_mode: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)
     proxy_mode: "Literal['vite', 'direct', 'proxy', 'ssr'] | None" = field(default_factory=_resolve_proxy_mode)
     external_dev_server: "ExternalDevServer | str | None" = None
-    host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "localhost"))
+    host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "127.0.0.1"))
     port: int = field(default_factory=lambda: int(os.getenv("VITE_PORT", "5173")))
     protocol: Literal["http", "https"] = "http"
     executor: "Literal['node', 'bun', 'deno', 'yarn', 'pnpm'] | None" = None
     run_command: "list[str] | None" = None
     build_command: "list[str] | None" = None
     build_watch_command: "list[str] | None" = None
+    serve_command: "list[str] | None" = None
     install_command: "list[str] | None" = None
     is_react: bool = False
     ssr_enabled: bool = False
@@ -380,30 +382,35 @@ class RuntimeConfig:
                 "run": ["npm", "run", "dev"],
                 "build": ["npm", "run", "build"],
                 "build_watch": ["npm", "run", "watch"],
+                "serve": ["npm", "run", "serve"],
                 "install": ["npm", "install"],
             },
             "bun": {
                 "run": ["bun", "run", "dev"],
                 "build": ["bun", "run", "build"],
                 "build_watch": ["bun", "run", "watch"],
+                "serve": ["bun", "run", "serve"],
                 "install": ["bun", "install"],
             },
             "deno": {
                 "run": ["deno", "task", "dev"],
                 "build": ["deno", "task", "build"],
                 "build_watch": ["deno", "task", "watch"],
+                "serve": ["deno", "task", "serve"],
                 "install": ["deno", "install"],
             },
             "yarn": {
                 "run": ["yarn", "dev"],
                 "build": ["yarn", "build"],
                 "build_watch": ["yarn", "watch"],
+                "serve": ["yarn", "serve"],
                 "install": ["yarn", "install"],
             },
             "pnpm": {
                 "run": ["pnpm", "dev"],
                 "build": ["pnpm", "build"],
                 "build_watch": ["pnpm", "watch"],
+                "serve": ["pnpm", "serve"],
                 "install": ["pnpm", "install"],
             },
         }
@@ -416,6 +423,8 @@ class RuntimeConfig:
                 self.build_command = cmds["build"]
             if self.build_watch_command is None:
                 self.build_watch_command = cmds["build_watch"]
+            if self.serve_command is None:
+                self.serve_command = cmds["serve"]
             if self.install_command is None:
                 self.install_command = cmds["install"]
 
@@ -541,7 +550,7 @@ class ViteConfig:
         deploy: Deployment configuration for CDN publishing.
     """
 
-    mode: "Literal['spa', 'template', 'htmx', 'hybrid'] | None" = None
+    mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'ssr'] | None" = None
     paths: PathConfig = field(default_factory=PathConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     types: "TypeGenConfig | bool" = field(default_factory=lambda: TypeGenConfig(enabled=True))
@@ -563,6 +572,7 @@ class ViteConfig:
         self._apply_dev_mode_shortcut()
         self._auto_detect_mode()
         self._sync_inertia_spa_mode()
+        self._apply_ssr_mode_defaults()
         self._normalize_deploy()
         self._ensure_spa_default()
         self._auto_enable_dev_mode()
@@ -612,6 +622,40 @@ class ViteConfig:
         """
         if self.mode == "hybrid" and isinstance(self.inertia, InertiaConfig):
             self.inertia.spa_mode = True
+
+    def _apply_ssr_mode_defaults(self) -> None:
+        """Apply intelligent defaults for mode='ssr'.
+
+        When mode='ssr' is set, automatically configure proxy_mode and spa_handler
+        based on dev_mode and whether built assets exist:
+
+        - Dev mode: proxy_mode='proxy', spa_handler=False
+          (Proxy all non-API routes to the SSR/SSG framework dev server)
+        - Prod mode with built assets: proxy_mode=None, spa_handler=True
+          (Serve static SSG output like Astro's dist/)
+        - Prod mode without built assets: proxy_mode=None, spa_handler=False
+          (True SSR - Node server handles HTML, Litestar only serves API)
+        """
+        if self.mode != "ssr":
+            return
+
+        if self.runtime.dev_mode:
+            # Dev mode: proxy to framework dev server (Astro/Nuxt/SvelteKit)
+            # Only override proxy_mode if user didn't explicitly set it via env var
+            env_proxy = os.getenv("VITE_PROXY_MODE")
+            if env_proxy is None:
+                self.runtime.proxy_mode = "proxy"
+            # Disable SPA handler to avoid route conflicts with SSR proxy controller
+            self.runtime.spa_handler = False
+        else:
+            # Production mode: no proxy needed
+            self.runtime.proxy_mode = None
+            # Auto-detect: if built assets exist (SSG), enable SPA handler to serve them
+            # Otherwise (true SSR), assume external Node server handles HTML
+            if self.has_built_assets():
+                self.runtime.spa_handler = True
+            else:
+                self.runtime.spa_handler = False
 
     def _normalize_deploy(self) -> None:
         if self.deploy is True:
@@ -877,16 +921,19 @@ class ViteConfig:
         """Return possible index.html locations for SPA mode detection.
 
         Order mirrors the JS plugin auto-detection:
-        1. resource_dir/index.html
-        2. root_dir/index.html
-        3. public_dir/index.html
+        1. bundle_dir/index.html (for production static builds like Astro/Nuxt/SvelteKit)
+        2. resource_dir/index.html
+        3. root_dir/index.html
+        4. public_dir/index.html
         """
 
+        bundle_dir = self._resolve_to_root(self.bundle_dir)
         resource_dir = self._resolve_to_root(self.resource_dir)
         public_dir = self._resolve_to_root(self.public_dir)
         root_dir = self.root_dir
 
         candidates = [
+            bundle_dir / "index.html",
             resource_dir / "index.html",
             root_dir / "index.html",
             public_dir / "index.html",
@@ -971,8 +1018,20 @@ class ViteConfig:
 
     @property
     def build_watch_command(self) -> list[str]:
-        """Get the build watch command."""
-        return self.runtime.build_watch_command or ["npm", "run", "watch"]
+        """Get the watch command for building frontend in watch mode.
+
+        Used by `litestar assets serve` when hot_reload is disabled.
+        """
+        return self.runtime.build_watch_command or ["npm", "run", "build", "--", "--watch"]
+
+    @property
+    def serve_command(self) -> "list[str] | None":
+        """Get the serve command for running production server.
+
+        Used by `litestar assets serve --production` for SSR frameworks.
+        Returns None if not configured.
+        """
+        return self.runtime.serve_command
 
     @property
     def install_command(self) -> list[str]:

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync, readdirSync, unlinkSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs"
 import { dirname } from "node:path"
 
 /*

@@ -8,11 +8,11 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 import colors from "picocolors"
-import { type ConfigEnv, type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer, loadEnv } from "vite"
+import { loadEnv, type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer } from "vite"
 import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-reload"
 
 import { resolveInstallHint, resolvePackageExecutor } from "./install-hint.js"
-import { type BackendStatus, type LitestarMeta, checkBackendAvailability, loadLitestarMeta } from "./litestar-meta.js"
+import { checkBackendAvailability, type LitestarMeta, loadLitestarMeta } from "./litestar-meta.js"
 import { debounce } from "./shared/debounce.js"
 
 const execAsync = promisify(exec)
@@ -224,9 +224,10 @@ interface PythonDefaults {
   } | null
 }
 
-interface LitestarPlugin extends Plugin {
-  config: (config: UserConfig, env: ConfigEnv) => UserConfig
-}
+// Note: We intentionally avoid exporting Vite types to prevent version conflicts.
+// The plugin returns Plugin[] internally but uses `any[]` in the public API to avoid
+// type leakage across different Vite versions (6.x, 7.x). This follows the pragmatic
+// approach used by other multi-version plugins.
 
 type DevServerUrl = `${"http" | "https"}://${string}:${number}`
 
@@ -238,8 +239,10 @@ export const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((path
  * Litestar plugin for Vite.
  *
  * @param config - A config object or relative path(s) of the scripts to be compiled.
+ * @returns An array of Vite plugins. Return type is `any[]` to avoid cross-version type conflicts.
  */
-export default function litestar(config: string | string[] | PluginConfig): [LitestarPlugin, ...Plugin[]] {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export default function litestar(config: string | string[] | PluginConfig): any[] {
   const pluginConfig = resolvePluginConfig(config)
 
   const plugins: Plugin[] = [resolveLitestarPlugin(pluginConfig), ...(resolveFullReloadConfig(pluginConfig) as Plugin[])]
@@ -249,7 +252,7 @@ export default function litestar(config: string | string[] | PluginConfig): [Lit
     plugins.push(resolveTypeGenerationPlugin(pluginConfig.types, pluginConfig.executor))
   }
 
-  return plugins as [LitestarPlugin, ...Plugin[]]
+  return plugins
 }
 
 /**
@@ -286,7 +289,7 @@ async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: ResolvedPl
 /**
  * Resolve the Litestar Plugin configuration.
  */
-function normalizeAppUrl(appUrl: string | undefined, fallbackPort?: string): { url: string | null; note?: string } {
+function normalizeAppUrl(appUrl: string | undefined, _fallbackPort?: string): { url: string | null; note?: string } {
   if (!appUrl || appUrl === "__litestar_app_url_missing__") {
     return { url: null, note: "APP_URL missing" }
   }
@@ -301,7 +304,7 @@ function normalizeAppUrl(appUrl: string | undefined, fallbackPort?: string): { u
   }
 }
 
-function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlugin {
+function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
   let viteDevServerUrl: DevServerUrl
   let resolvedConfig: ResolvedConfig
   let userConfig: UserConfig
@@ -431,8 +434,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
       const hint = pluginConfig.types !== false ? pluginConfig.types.routesPath : undefined
       litestarMeta = await loadLitestarMeta(resolvedConfig, hint)
     },
-    transform(code: string, id: string): string | undefined {
-      // Added 'id' for context
+    transform(code: string, _id: string): string | undefined {
+      // Added '_id' for context
       // Avoid transforming unrelated files during serve if placeholder isn't present
       if (resolvedConfig.command === "serve" && code.includes("__litestar_vite_placeholder__")) {
         // Debug log transformation
@@ -631,7 +634,7 @@ function ensureCommandShouldRunInEnvironment(command: "build" | "serve", env: Re
 /**
  * The version of the Litestar Vite plugin being run.
  */
-function pluginVersion(): string {
+function _pluginVersion(): string {
   try {
     return JSON.parse(fs.readFileSync(path.join(dirname(), "../package.json")).toString())?.version
   } catch {
@@ -715,8 +718,8 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
       debounce: 300,
     }
   } else if (typeof resolvedConfig.types === "object" && resolvedConfig.types !== null) {
-    const userProvidedOpenapi = Object.prototype.hasOwnProperty.call(resolvedConfig.types, "openapiPath")
-    const userProvidedRoutes = Object.prototype.hasOwnProperty.call(resolvedConfig.types, "routesPath")
+    const userProvidedOpenapi = Object.hasOwn(resolvedConfig.types, "openapiPath")
+    const userProvidedRoutes = Object.hasOwn(resolvedConfig.types, "routesPath")
 
     typesConfig = {
       enabled: resolvedConfig.types.enabled ?? true,
@@ -758,7 +761,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
 /**
  * Resolve the Vite base option from the configuration.
  */
-function resolveBase(config: ResolvedPluginConfig, assetUrl: string): string {
+function resolveBase(_config: ResolvedPluginConfig, assetUrl: string): string {
   // In development mode, use the assetUrl directly
   if (process.env.NODE_ENV === "development") {
     return assetUrl

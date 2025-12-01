@@ -219,6 +219,9 @@ class InertiaResponse(Response[T]):
 
         Returns:
             The rendered template as bytes.
+
+        Raises:
+            ImproperlyConfiguredException: If the template engine is not configured.
         """
         template_engine = request.app.template_engine  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
         if not template_engine:
@@ -243,7 +246,7 @@ class InertiaResponse(Response[T]):
             The CSRF token if available, otherwise None.
         """
         csrf_token = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
-        return csrf_token if csrf_token else None
+        return csrf_token or None
 
     def _render_spa(
         self,
@@ -309,8 +312,8 @@ class InertiaResponse(Response[T]):
         if self.template_name:
             suffixes = PurePath(self.template_name).suffixes
             for suffix in suffixes:
-                if _type := guess_type(f"name{suffix}")[0]:
-                    return _type
+                if type_ := guess_type(f"name{suffix}")[0]:
+                    return type_
             return MediaType.TEXT
         return MediaType.HTML
 
@@ -364,10 +367,10 @@ class InertiaResponse(Response[T]):
 
         # Inertia response path - get request attributes
         is_partial_render = cast("bool", getattr(request, "is_partial_render", False))
-        _empty_set: set[str] = set()
-        partial_keys = cast("set[str]", getattr(request, "partial_keys", _empty_set))
-        partial_except_keys = cast("set[str]", getattr(request, "partial_except_keys", _empty_set))
-        reset_keys = cast("set[str]", getattr(request, "reset_keys", _empty_set))
+        empty_set: set[str] = set()
+        partial_keys = cast("set[str]", getattr(request, "partial_keys", empty_set))
+        partial_except_keys = cast("set[str]", getattr(request, "partial_except_keys", empty_set))
+        reset_keys = cast("set[str]", getattr(request, "reset_keys", empty_set))
 
         vite_plugin = request.app.plugins.get(VitePlugin)
         inertia_plugin = request.app.plugins.get(InertiaPlugin)

@@ -271,11 +271,14 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
     # surface them to the Vite process unless the user explicitly set them.
     os.environ.setdefault("VITE_HOST", config.host)
     os.environ.setdefault("VITE_PORT", str(config.port))
-    # Set framework-specific port env vars for SSR frameworks
-    # Nuxt priority: NUXT_PORT > NITRO_PORT > PORT > devServer.port
+    # Set framework-specific host/port env vars for SSR frameworks
+    # Nuxt/Nitro priority: NUXT_HOST > NITRO_HOST > HOST, NUXT_PORT > NITRO_PORT > PORT
+    os.environ.setdefault("NUXT_HOST", config.host)
     os.environ.setdefault("NUXT_PORT", str(config.port))
+    os.environ.setdefault("NITRO_HOST", config.host)
     os.environ.setdefault("NITRO_PORT", str(config.port))
-    # Generic PORT fallback (Nitro, Astro, etc.)
+    # Generic HOST/PORT fallback (Nitro, Astro, etc.)
+    os.environ.setdefault("HOST", config.host)
     os.environ.setdefault("PORT", str(config.port))
 
     os.environ.setdefault("LITESTAR_VERSION", litestar_version)
@@ -379,7 +382,8 @@ class ViteProxyMiddleware(AbstractMiddleware):
     ) -> None:
         super().__init__(app)
         self.hotfile_path = hotfile_path
-        self._cached_target: "str | None" = None
+        self._cached_target: str | None = None
+        self._cache_initialized = False
         self.asset_prefix = _normalize_prefix(asset_url) if asset_url else "/"
         self.http2 = http2
         self._proxy_path_prefixes = _normalize_proxy_prefixes(
@@ -390,20 +394,28 @@ class ViteProxyMiddleware(AbstractMiddleware):
             root_dir=root_dir,
         )
 
-    def _get_target_base_url(self) -> "str | None":
-        """Read the Vite server URL from the hotfile.
+    def _get_target_base_url(self) -> str | None:
+        """Read the Vite server URL from the hotfile with permanent caching.
 
-        Caches the result to avoid reading the file on every request.
-        The cache is invalidated if the hotfile is modified.
+        The hotfile is read once and cached for the lifetime of the server.
+        Server restart refreshes the cache automatically.
+
+        Returns:
+            The Vite server URL or None if unavailable.
         """
+        if self._cache_initialized:
+            return self._cached_target.rstrip("/") if self._cached_target else None
+
         try:
             url = self.hotfile_path.read_text().strip()
-            if url != self._cached_target:
-                self._cached_target = url
-                if _is_proxy_debug():
-                    console.print(f"[dim][vite-proxy] Target: {url}[/]")
+            self._cached_target = url
+            self._cache_initialized = True
+            if _is_proxy_debug():
+                console.print(f"[dim][vite-proxy] Target: {url}[/]")
             return url.rstrip("/")
         except FileNotFoundError:
+            self._cached_target = None
+            self._cache_initialized = True
             return None
 
     async def __call__(self, scope: "Scope", receive: "Receive", send: "Send") -> None:
@@ -538,15 +550,16 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
         self._static_target = target.rstrip("/") if target else None
         self._hotfile_path = hotfile_path
         self._cached_target: str | None = None
+        self._cache_initialized = False
         self.http2 = http2
         self._litestar_app = litestar_app
         self._excluded_prefixes: tuple[str, ...] | None = None
 
     def _get_target(self) -> str | None:
-        """Get the proxy target URL.
+        """Get the proxy target URL with permanent caching.
 
         Returns static target if configured, otherwise reads from hotfile.
-        Caches the hotfile result to avoid reading on every request.
+        The hotfile is read once and cached for the lifetime of the server.
 
         Returns:
             The target URL or None if unavailable.
@@ -555,14 +568,19 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
             return self._static_target
 
         if self._hotfile_path:
+            if self._cache_initialized:
+                return self._cached_target.rstrip("/") if self._cached_target else None
+
             try:
                 url = self._hotfile_path.read_text().strip()
-                if url != self._cached_target:
-                    self._cached_target = url
-                    if _is_proxy_debug():
-                        console.print(f"[dim][proxy] Dynamic target: {url}[/]")
+                self._cached_target = url
+                self._cache_initialized = True
+                if _is_proxy_debug():
+                    console.print(f"[dim][proxy] Dynamic target: {url}[/]")
                 return url.rstrip("/")
             except FileNotFoundError:
+                self._cached_target = None
+                self._cache_initialized = True
                 return None
 
         return None
@@ -574,6 +592,9 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
         - All registered Litestar routes
         - Static file mounts
         - OpenAPI/schema paths
+
+        Returns:
+            A tuple of excluded path prefixes.
         """
         if self._excluded_prefixes is not None:
             return self._excluded_prefixes
@@ -612,7 +633,11 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
         return self._excluded_prefixes
 
     def _should_proxy(self, path: str, scope: "Scope") -> bool:
-        """Determine if the request should be proxied to the external server."""
+        """Determine if the request should be proxied to the external server.
+
+        Returns:
+            True if the request should be proxied, else False.
+        """
         excluded = self._get_excluded_prefixes(scope)
 
         # Check if path matches any excluded prefix
@@ -728,10 +753,11 @@ def _build_hmr_target_url(
 ) -> "str | None":
     """Build the target WebSocket URL for Vite HMR proxy.
 
-    Returns None if the hotfile doesn't exist (Vite not running).
-
     Note: Vite's HMR WebSocket listens at {base}{hmr.path}, so we preserve
     the full path including the asset prefix (e.g., /static/vite-hmr).
+
+    Returns:
+        The target WebSocket URL or None if the hotfile is not found.
     """
     try:
         vite_url = hotfile_path.read_text(encoding="utf-8").strip()
@@ -928,25 +954,35 @@ def _build_proxy_url(target_url: str, path: str, query: str) -> str:
 def _create_target_url_getter(
     target: "str | None", hotfile_path: "Path | None", cached_target: list["str | None"]
 ) -> "Callable[[], str | None]":
-    """Create a function that returns the current target URL.
+    """Create a function that returns the current target URL with permanent caching.
+
+    The hotfile is read once and cached for the lifetime of the server.
+    Server restart refreshes the cache automatically.
 
     Returns:
         A callable that returns the target URL or None if unavailable.
     """
+    cache_initialized: list[bool] = [False]
 
     def _get_target_url() -> str | None:
         if target is not None:
             return target.rstrip("/")
         if hotfile_path is None:
             return None
+
+        if cache_initialized[0]:
+            return cached_target[0].rstrip("/") if cached_target[0] else None
+
         try:
             url = hotfile_path.read_text().strip()
-            if url != cached_target[0]:
-                cached_target[0] = url
-                if _is_proxy_debug():
-                    console.print(f"[dim][ssr-proxy] Dynamic target: {url}[/]")
+            cached_target[0] = url
+            cache_initialized[0] = True
+            if _is_proxy_debug():
+                console.print(f"[dim][ssr-proxy] Dynamic target: {url}[/]")
             return url.rstrip("/")
         except FileNotFoundError:
+            cached_target[0] = None
+            cache_initialized[0] = True
             return None
 
     return _get_target_url
@@ -956,25 +992,35 @@ def _create_hmr_target_getter(
     hotfile_path: "Path | None",
     cached_hmr_target: list["str | None"],
 ) -> "Callable[[], str | None]":
-    """Create a function that returns the HMR target URL from hotfile.
+    """Create a function that returns the HMR target URL from hotfile with permanent caching.
+
+    The hotfile is read once and cached for the lifetime of the server.
+    Server restart refreshes the cache automatically.
 
     Returns:
         A callable that returns the HMR target URL or None if unavailable.
     """
+    cache_initialized: list[bool] = [False]
 
     def _get_hmr_target_url() -> str | None:
         if hotfile_path is None:
             return None
+
+        if cache_initialized[0]:
+            return cached_hmr_target[0].rstrip("/") if cached_hmr_target[0] else None
+
         # JS writes to `${config.hotFile}.hmr`
         hmr_path = Path(f"{hotfile_path}.hmr")
         try:
             url = hmr_path.read_text(encoding="utf-8").strip()
-            if url != cached_hmr_target[0]:
-                cached_hmr_target[0] = url
-                if _is_proxy_debug():
-                    console.print(f"[dim][ssr-proxy] HMR target: {url}[/]")
+            cached_hmr_target[0] = url
+            cache_initialized[0] = True
+            if _is_proxy_debug():
+                console.print(f"[dim][ssr-proxy] HMR target: {url}[/]")
             return url.rstrip("/")
         except FileNotFoundError:
+            cached_hmr_target[0] = None
+            cache_initialized[0] = True
             return None
 
     return _get_hmr_target_url
@@ -1059,7 +1105,11 @@ def create_ssr_proxy_controller(
             name="ssr_proxy",
         )
         async def http_proxy(self, request: "Request[Any, Any, Any]") -> "Response[bytes]":
-            """Proxy all HTTP requests to the SSR framework dev server."""
+            """Proxy all HTTP requests to the SSR framework dev server.
+
+            Returns:
+                A Response with the proxied content from the SSR server.
+            """
             target_url = get_target_url()
             if target_url is None:
                 return Response(content=b"SSR dev server not running", status_code=503, media_type="text/plain")
@@ -1654,8 +1704,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._config.is_dev_mode and self._config.proxy_mode is not None:
             self._configure_dev_proxy(app_config)
 
-        # Add SPA catch-all route handler if in SPA mode
-        if self._config.mode == "spa" and self._config.spa_handler:
+        # Add SPA catch-all route handler if spa_handler is enabled
+        # This applies to mode="spa", mode="ssr" (with built assets), and when spa_handler=True explicitly
+        if self._config.spa_handler and self._config.mode in {"spa", "ssr"}:
             from litestar_vite.spa import ViteSPAHandler
 
             self._spa_handler = ViteSPAHandler(self._config)
@@ -1961,8 +2012,10 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             await self._spa_handler.initialize(vite_url=self._proxy_target)
             _log_success("SPA handler initialized")
 
-        # Warn if no built assets in production
-        if not self._config.is_dev_mode and not self._config.has_built_assets():
+        # Warn if no built assets in production (skip for SSR mode since Node serves frontend)
+        # Check both mode='ssr' and proxy_mode in case user is using proxy mode directly
+        is_ssr_mode = self._config.mode == "ssr" or self._config.proxy_mode in {"proxy", "ssr"}
+        if not self._config.is_dev_mode and not self._config.has_built_assets() and not is_ssr_mode:
             _log_warn(
                 "Vite dev server is disabled (dev_mode=False) but no index.html was found. "
                 "Run your front-end build or set VITE_DEV_MODE=1 to enable HMR."

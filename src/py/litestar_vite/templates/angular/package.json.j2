@@ -5,19 +5,24 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"{% if enable_types %},
+    "preview": "vite preview",
+    "serve": "vite preview",
+    "watch": "npm run serve"{% if generate_client %},
     "generate-types": "openapi-ts"{% endif %}
   },
   "dependencies": {
 {%- for dep in dependencies %}
-    "{{ dep }}": "latest"{% if not loop.last %},{% endif %}
+    "{{ dep }}": "latest"{% if not loop.last or generate_zod %},{% endif %}
 {%- endfor %}
+{%- if generate_zod %}
+    "zod": "^3.24.0"
+{%- endif %}
   },
   "devDependencies": {
 {%- for dep in dev_dependencies %}
     "{{ dep }}": "latest",
 {%- endfor %}
-{%- if enable_types %}
+{%- if generate_client %}
     "@hey-api/openapi-ts": "latest",
 {%- endif %}
     "litestar-vite-plugin": "latest",

@@ -1,17 +1,28 @@
-"""SvelteKit API example - shared "Library" backend for SvelteKit frontend.
+"""SvelteKit example - shared "Library" backend for SvelteKit SSR frontend.
+
+SvelteKit runs as an SSR server. In dev mode, Litestar proxies all non-API
+routes to the SvelteKit dev server. In production, SvelteKit's `hooks.server.ts`
+proxies /api/* requests to the Litestar backend.
 
 All examples in this repository expose the same backend:
 - `/api/summary` - overview + featured book
 - `/api/books` - list of books
 - `/api/books/{book_id}` - single book
 
-The SvelteKit Vite plugin proxies /api/* requests to this Litestar server.
-
 Dev mode (default):
     litestar --app-dir examples/sveltekit run
 
-Production mode (serves static build):
+Production (two terminals):
+    # Terminal 1: Install deps, build, and serve SvelteKit SSR server
+    litestar --app-dir examples/sveltekit assets install
+    litestar --app-dir examples/sveltekit assets build
+    litestar --app-dir examples/sveltekit assets serve
+
+    # Terminal 2: Litestar API server
     VITE_DEV_MODE=false litestar --app-dir examples/sveltekit run
+
+The SvelteKit server includes `hooks.server.ts` which proxies /api/* requests
+to the Litestar backend (configurable via LITESTAR_API env var, default: localhost:8000).
 """
 
 import os
@@ -21,7 +32,7 @@ from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
 from msgspec import Struct
 
-from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
+from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
@@ -87,15 +98,9 @@ class LibraryController(Controller):
 
 vite = VitePlugin(
     config=ViteConfig(
+        mode="ssr",  # SSR mode: proxy in dev, Node serves HTML in prod
         dev_mode=DEV_MODE,
-        paths=PathConfig(
-            root=here,
-            bundle_dir=Path("build"),  # SvelteKit adapter-static output
-        ),
-        runtime=RuntimeConfig(
-            proxy_mode="ssr" if DEV_MODE else None,  # Blacklist proxy in dev, none in prod
-            spa_handler=not DEV_MODE,  # Serve static build in production
-        ),
+        paths=PathConfig(root=here),
         types=TypeGenConfig(
             enabled=True,
             output=Path("src/lib/generated"),

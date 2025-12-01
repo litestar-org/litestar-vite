@@ -28,7 +28,7 @@ vi.mock("node:fs", () => ({
 
 // Mock node:child_process
 vi.mock("node:child_process", () => {
-  const execFn = vi.fn((cmd: string, opts: unknown, cb?: (err: Error | null, stdout: string, stderr: string) => void) => {
+  const execFn = vi.fn((_cmd: string, opts: unknown, cb?: (err: Error | null, stdout: string, stderr: string) => void) => {
     if (typeof opts === "function") {
       ;(opts as (err: Error | null, stdout: string, stderr: string) => void)(null, "", "")
     } else if (cb) {
