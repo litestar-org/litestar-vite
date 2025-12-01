@@ -82,7 +82,8 @@ async def test_component_inertia_header_enabled(
         assert data["props"]["flash"] == {}
         assert data["props"]["errors"] == {}
         assert data["props"]["csrf_token"] == ""
-        assert data["props"]["content"] == {"thing": "value"}
+        assert data["props"]["thing"] == "value"
+        assert "content" not in data["props"]
 
 
 async def test_component_inertia_flash_header_enabled(
@@ -114,7 +115,8 @@ async def test_component_inertia_flash_header_enabled(
         assert data["props"]["flash"] == {"info": ["a flash message"]}
         assert data["props"]["errors"] == {}
         assert data["props"]["csrf_token"] == ""
-        assert data["props"]["content"] == {"thing": "value"}
+        assert data["props"]["thing"] == "value"
+        assert "content" not in data["props"]
 
 
 async def test_component_inertia_shared_flash_header_enabled(
@@ -148,7 +150,8 @@ async def test_component_inertia_shared_flash_header_enabled(
         assert data["props"]["flash"] == {"info": ["a flash message"]}
         assert data["props"]["errors"] == {}
         assert data["props"]["csrf_token"] == ""
-        assert data["props"]["content"] == {"thing": "value"}
+        assert data["props"]["thing"] == "value"
+        assert "content" not in data["props"]
 
 
 async def test_default_route_response_no_component(
@@ -199,7 +202,8 @@ async def test_component_inertia_invalid_version(
         assert data["props"]["flash"] == {}
         assert data["props"]["errors"] == {}
         assert data["props"]["csrf_token"] == ""
-        assert data["props"]["content"] == {"thing": "value"}
+        assert data["props"]["thing"] == "value"
+        assert "content" not in data["props"]
 
 
 async def test_unauthenticated_redirect(
@@ -300,6 +304,55 @@ async def test_inertia_back(
         )
         assert response.status_code == 307
         assert response.headers.get("location") == "/previous"
+
+
+async def test_props_flattened_and_preserve_explicit_content(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        share(request, "overlap", "shared")
+        return {"overlap": "route", "content": {"keep": True}, "books": [1, 2]}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        props = response.json()["props"]
+        # route content overrides shared props for overlapping keys
+        assert props["overlap"] == "route"
+        # explicit content key is preserved alongside flattened keys
+        assert props["content"] == {"keep": True}
+        # other content entries are lifted to top level
+        assert props["books"] == [1, 2]
+
+
+async def test_non_mapping_content_remains_nested(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> list[int]:
+        return [1, 2, 3]
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        props = response.json()["props"]
+        assert props["content"] == [1, 2, 3]
+        assert "0" not in props  # ensure list not spread
 
 
 def test_deferred_prop_render() -> None:
@@ -481,9 +534,8 @@ async def test_component_inertia_deferred_props(
     ) as client:
         # No partial data, all deferred props should be rendered
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
-        assert response.json()["props"]["content"] == {
-            "static": "value",
-        }
+        assert response.json()["props"]["static"] == "value"
+        assert "content" not in response.json()["props"]
 
         # Partial data, only specified deferred props should be rendered
         response_partial = client.get(
@@ -494,11 +546,10 @@ async def test_component_inertia_deferred_props(
                 InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
             },
         )
-        assert response_partial.json()["props"]["content"] == {
-            "static": "value",
-            "deferred": "deferred_value",
-            "list_deferred": ["list_deferred_value"],
-        }
+        assert response_partial.json()["props"]["static"] == "value"
+        assert response_partial.json()["props"]["deferred"] == "deferred_value"
+        assert response_partial.json()["props"]["list_deferred"] == ["list_deferred_value"]
+        assert "content" not in response_partial.json()["props"]
         # Partial data, only specified deferred props should be rendered
         response_partial2 = client.get(
             "/",
@@ -508,11 +559,10 @@ async def test_component_inertia_deferred_props(
                 InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
             },
         )
-        assert response_partial2.json()["props"]["content"] == {
-            "static": "value",
-            "deferred": "deferred_value",
-            "list_deferred": ["list_deferred_value"],
-        }
+        assert response_partial2.json()["props"]["static"] == "value"
+        assert response_partial2.json()["props"]["deferred"] == "deferred_value"
+        assert response_partial2.json()["props"]["list_deferred"] == ["list_deferred_value"]
+        assert "content" not in response_partial2.json()["props"]
         response_partial3 = client.get(
             "/",
             headers={
@@ -521,13 +571,12 @@ async def test_component_inertia_deferred_props(
                 InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
             },
         )
-        assert response_partial3.json()["props"]["content"] == {
-            "static": "value",
-            "deferred": "deferred_value",
-            "optional": "async_result",
-            "list_deferred": ["list_deferred_value"],
-            "sync": "sync_result",
-        }
+        assert response_partial3.json()["props"]["static"] == "value"
+        assert response_partial3.json()["props"]["deferred"] == "deferred_value"
+        assert response_partial3.json()["props"]["optional"] == "async_result"
+        assert response_partial3.json()["props"]["list_deferred"] == ["list_deferred_value"]
+        assert response_partial3.json()["props"]["sync"] == "sync_result"
+        assert "content" not in response_partial3.json()["props"]
 
 
 # =====================================================

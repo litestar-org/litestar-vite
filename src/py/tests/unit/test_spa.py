@@ -494,7 +494,7 @@ async def test_spa_handler_get_html_sync_fails_in_dev_mode(
     with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
         await handler.initialize()
 
-        with pytest.raises(RuntimeError, match="dev mode"):
+        with pytest.raises(ImproperlyConfiguredException, match="Vite server"):
             handler.get_html_sync()
 
 

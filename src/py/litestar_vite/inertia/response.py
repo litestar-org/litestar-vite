@@ -163,12 +163,21 @@ class InertiaResponse(Response[T]):
         for key in reset_keys:
             shared_props.pop(key, None)
 
+        route_content: Any | None = None
         if is_or_contains_lazy_prop(self.content):
             filtered_content = lazy_render(self.content, partial_data, inertia_plugin.portal, partial_except)
             if filtered_content is not None:
-                shared_props["content"] = filtered_content
+                route_content = filtered_content
         elif should_render(self.content, partial_data, partial_except):
-            shared_props["content"] = self.content
+            route_content = self.content
+
+        if route_content is not None:
+            if isinstance(route_content, Mapping):
+                mapping_content = cast("Mapping[str, Any]", route_content)
+                for key, value in mapping_content.items():
+                    shared_props[key] = value
+            else:
+                shared_props["content"] = route_content
 
         # Extract deferred props metadata for v2 protocol
         deferred_props = extract_deferred_props(shared_props) or None

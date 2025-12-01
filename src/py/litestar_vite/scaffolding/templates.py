@@ -172,6 +172,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
             "@types/react",
             "@types/react-dom",
             "typescript",
+            "vite",
         ],
         files=[
             "vite.config.ts",

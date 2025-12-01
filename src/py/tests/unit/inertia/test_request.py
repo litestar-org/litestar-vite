@@ -419,7 +419,8 @@ async def test_page_kwarg_with_inertia_header(
         data = json.loads(response.text)
         assert data["component"] == "Home"
         assert data["url"] == "/"
-        assert data["props"]["content"] == {"message": "Hello"}
+        assert data["props"]["message"] == "Hello"
+        assert "content" not in data["props"]
 
 
 async def test_no_component_or_page_returns_none(
