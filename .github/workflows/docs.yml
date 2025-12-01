@@ -79,7 +79,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download demo artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: demo-gifs
           path: docs/_static/demos/
