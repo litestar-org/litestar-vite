@@ -324,6 +324,7 @@ class RuntimeConfig:
         run_command: Custom command to run Vite dev server (auto-detect if None).
         build_command: Custom command to build with Vite (auto-detect if None).
         build_watch_command: Custom command for watch mode build.
+        serve_command: Custom command to run production server (for SSR frameworks).
         install_command: Custom command to install dependencies.
         is_react: Enable React Fast Refresh support.
         ssr_enabled: Enable Server-Side Rendering.
@@ -347,6 +348,7 @@ class RuntimeConfig:
     run_command: "list[str] | None" = None
     build_command: "list[str] | None" = None
     build_watch_command: "list[str] | None" = None
+    serve_command: "list[str] | None" = None
     install_command: "list[str] | None" = None
     is_react: bool = False
     ssr_enabled: bool = False
@@ -380,30 +382,35 @@ class RuntimeConfig:
                 "run": ["npm", "run", "dev"],
                 "build": ["npm", "run", "build"],
                 "build_watch": ["npm", "run", "watch"],
+                "serve": ["npm", "run", "serve"],
                 "install": ["npm", "install"],
             },
             "bun": {
                 "run": ["bun", "run", "dev"],
                 "build": ["bun", "run", "build"],
                 "build_watch": ["bun", "run", "watch"],
+                "serve": ["bun", "run", "serve"],
                 "install": ["bun", "install"],
             },
             "deno": {
                 "run": ["deno", "task", "dev"],
                 "build": ["deno", "task", "build"],
                 "build_watch": ["deno", "task", "watch"],
+                "serve": ["deno", "task", "serve"],
                 "install": ["deno", "install"],
             },
             "yarn": {
                 "run": ["yarn", "dev"],
                 "build": ["yarn", "build"],
                 "build_watch": ["yarn", "watch"],
+                "serve": ["yarn", "serve"],
                 "install": ["yarn", "install"],
             },
             "pnpm": {
                 "run": ["pnpm", "dev"],
                 "build": ["pnpm", "build"],
                 "build_watch": ["pnpm", "watch"],
+                "serve": ["pnpm", "serve"],
                 "install": ["pnpm", "install"],
             },
         }
@@ -416,6 +423,8 @@ class RuntimeConfig:
                 self.build_command = cmds["build"]
             if self.build_watch_command is None:
                 self.build_watch_command = cmds["build_watch"]
+            if self.serve_command is None:
+                self.serve_command = cmds["serve"]
             if self.install_command is None:
                 self.install_command = cmds["install"]
 

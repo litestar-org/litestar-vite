@@ -1,8 +1,8 @@
 """SvelteKit example - shared "Library" backend for SvelteKit SSR frontend.
 
 SvelteKit runs as an SSR server. In dev mode, Litestar proxies all non-API
-routes to the SvelteKit dev server. In production, run SvelteKit and Litestar
-as separate services behind a reverse proxy.
+routes to the SvelteKit dev server. In production, SvelteKit's `hooks.server.ts`
+proxies /api/* requests to the Litestar backend.
 
 All examples in this repository expose the same backend:
 - `/api/summary` - overview + featured book
@@ -12,12 +12,17 @@ All examples in this repository expose the same backend:
 Dev mode (default):
     litestar --app-dir examples/sveltekit run
 
-Production (two services behind reverse proxy):
-    # Terminal 1: SvelteKit SSR server
+Production (two terminals):
+    # Terminal 1: Install deps, build, and serve SvelteKit SSR server
+    litestar --app-dir examples/sveltekit assets install
     litestar --app-dir examples/sveltekit assets build
     litestar --app-dir examples/sveltekit assets serve
+
     # Terminal 2: Litestar API server
-    VITE_DEV_MODE=false litestar --app-dir examples/sveltekit run --port 8001
+    VITE_DEV_MODE=false litestar --app-dir examples/sveltekit run
+
+The SvelteKit server includes `hooks.server.ts` which proxies /api/* requests
+to the Litestar backend (configurable via LITESTAR_API env var, default: localhost:8000).
 """
 
 import os

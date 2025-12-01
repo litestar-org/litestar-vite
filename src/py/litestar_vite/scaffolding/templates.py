@@ -314,6 +314,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
             "tsconfig.json",
             "src/app.html",
             "src/app.css",
+            "src/hooks.server.ts",
             "src/routes/+page.svelte",
             "src/routes/+layout.svelte",
         ],
