@@ -431,11 +431,13 @@ class ViteProxyMiddleware(AbstractMiddleware):
         target_base_url = self._get_target_base_url()
         if target_base_url is None:
             # Hotfile not found - Vite server not running
-            await send({
-                "type": "http.response.start",
-                "status": 503,
-                "headers": [(b"content-type", b"text/plain")],
-            })
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 503,
+                    "headers": [(b"content-type", b"text/plain")],
+                }
+            )
             await send({"type": "http.response.body", "body": b"Vite dev server not running"})
             return
 
@@ -474,20 +476,24 @@ class ViteProxyMiddleware(AbstractMiddleware):
             try:
                 upstream_resp = await client.request(method, url, headers=headers, content=body, timeout=10.0)
             except httpx.HTTPError as exc:  # pragma: no cover - network failure path
-                await send({
-                    "type": "http.response.start",
-                    "status": 502,
-                    "headers": [(b"content-type", b"text/plain")],
-                })
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 502,
+                        "headers": [(b"content-type", b"text/plain")],
+                    }
+                )
                 await send({"type": "http.response.body", "body": str(exc).encode()})
                 return
 
         response_headers = [(k.encode(), v.encode()) for k, v in upstream_resp.headers.items()]
-        await send({
-            "type": "http.response.start",
-            "status": upstream_resp.status_code,
-            "headers": response_headers,
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": upstream_resp.status_code,
+                "headers": response_headers,
+            }
+        )
         await send({"type": "http.response.body", "body": upstream_resp.content})
 
 
@@ -631,11 +637,13 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
         target = self._get_target()
         if target is None:
             # No target available - dev server not running
-            await send({
-                "type": "http.response.start",
-                "status": 503,
-                "headers": [(b"content-type", b"text/plain")],
-            })
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 503,
+                    "headers": [(b"content-type", b"text/plain")],
+                }
+            )
             await send({"type": "http.response.body", "body": b"Dev server not running"})
             return
 
@@ -676,31 +684,39 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
             try:
                 upstream_resp = await client.request(method, url, headers=headers, content=body)
             except httpx.ConnectError:
-                await send({
-                    "type": "http.response.start",
-                    "status": 503,
-                    "headers": [(b"content-type", b"text/plain")],
-                })
-                await send({
-                    "type": "http.response.body",
-                    "body": f"Dev server not running at {target}".encode(),
-                })
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 503,
+                        "headers": [(b"content-type", b"text/plain")],
+                    }
+                )
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": f"Dev server not running at {target}".encode(),
+                    }
+                )
                 return
             except httpx.HTTPError as exc:
-                await send({
-                    "type": "http.response.start",
-                    "status": 502,
-                    "headers": [(b"content-type", b"text/plain")],
-                })
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 502,
+                        "headers": [(b"content-type", b"text/plain")],
+                    }
+                )
                 await send({"type": "http.response.body", "body": str(exc).encode()})
                 return
 
         response_headers = [(k.encode(), v.encode()) for k, v in upstream_resp.headers.items()]
-        await send({
-            "type": "http.response.start",
-            "status": upstream_resp.status_code,
-            "headers": response_headers,
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": upstream_resp.status_code,
+                "headers": response_headers,
+            }
+        )
         await send({"type": "http.response.body", "body": upstream_resp.content})
 
 
@@ -1607,8 +1623,16 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if NotFoundException not in handlers:
 
             def _vite_not_found_handler(
-                _request: LitestarRequest[Any, Any, Any], _exc: NotFoundException
-            ) -> Response[bytes]:
+                request: LitestarRequest[Any, Any, Any], exc: NotFoundException
+            ) -> Response[Any]:
+                # Check if this is an Inertia request by looking for X-Inertia header
+                # Inertia requests should be handled by the Inertia exception handler
+                # which supports redirect_404 configuration
+                is_inertia_request = request.headers.get("x-inertia", "").lower() == "true"
+                if is_inertia_request:
+                    from litestar_vite.inertia.exception_handler import exception_to_http_response
+
+                    return exception_to_http_response(request, exc)
                 return Response(status_code=404, content=b"")
 
             handlers[NotFoundException] = _vite_not_found_handler

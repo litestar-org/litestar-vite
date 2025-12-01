@@ -118,6 +118,20 @@ nitpick_ignore = [
     (PY_EXC, "MissingDependencyError"),
     (PY_CLASS, "Environment"),
     (PY_CLASS, "Template"),
+    # litestar-vite config types (not in intersphinx inventory)
+    (PY_CLASS, "litestar_vite.config.DeployConfig"),
+    (PY_CLASS, "litestar_vite.config.ExternalDevServer"),
+    (PY_CLASS, "litestar_vite.config.PathConfig"),
+    (PY_CLASS, "litestar_vite.config.RuntimeConfig"),
+    (PY_CLASS, "litestar_vite.config.TypeGenConfig"),
+    (PY_CLASS, "litestar_vite.config.InertiaConfig"),
+    (PY_CLASS, "litestar_vite.config.SPAConfig"),
+    (PY_CLASS, "litestar_vite.config.ViteConfig"),
+    (PY_CLASS, "TypeGenConfig"),
+    (PY_CLASS, "InertiaConfig"),
+    (PY_CLASS, "SPAConfig"),
+    (PY_CLASS, "DeployConfig"),
+    (PY_CLASS, "Get proxy mode. Note"),
 ]
 nitpick_ignore_regex = [
     (PY_RE, r"litestar_vite.*\.T"),
