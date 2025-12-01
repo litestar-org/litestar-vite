@@ -481,21 +481,31 @@ async def test_spa_handler_get_html_sync_with_page_data(
     assert "Home" in html
 
 
-async def test_spa_handler_get_html_sync_fails_in_dev_mode(
+async def test_spa_handler_get_html_sync_works_in_dev_mode(
     spa_config_dev: ViteConfig,
 ) -> None:
-    """Test that get_html_sync raises error in dev mode."""
+    """Test that get_html_sync works in dev mode with sync HTTP client."""
     handler = ViteSPAHandler(spa_config_dev)
 
-    # Mock httpx client for initialization
-    mock_client = AsyncMock()
-    mock_client.aclose = AsyncMock()
+    # Mock both async and sync httpx clients for initialization
+    mock_async_client = AsyncMock()
+    mock_async_client.aclose = AsyncMock()
 
-    with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
+    mock_sync_client = Mock()
+    mock_response = Mock()
+    mock_response.text = "<html><head></head><body>Dev Mode</body></html>"
+    mock_response.raise_for_status = Mock()
+    mock_sync_client.get.return_value = mock_response
+
+    with (
+        patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_async_client),
+        patch("litestar_vite.spa.httpx.Client", return_value=mock_sync_client),
+    ):
         await handler.initialize()
 
-        with pytest.raises(ImproperlyConfiguredException, match="Vite server"):
-            handler.get_html_sync()
+        html = handler.get_html_sync()
+        assert "Dev Mode" in html
+        mock_sync_client.get.assert_called_once()
 
 
 async def test_spa_handler_no_transform_when_spa_config_disabled(

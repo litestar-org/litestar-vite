@@ -116,7 +116,7 @@ class ViteSPAHandler:
         if self._config.is_dev_mode and self._config.hot_reload:
             # Use provided URL if available (from VitePlugin), otherwise resolve from hotfile
             # The VitePlugin knows the correct URL because it selects the port
-            self._vite_url = vite_url if vite_url else self._resolve_vite_url()
+            self._vite_url = vite_url or self._resolve_vite_url()
 
             # Create HTTP client for proxying to Vite server
             # Uses connection pooling for efficient reuse
@@ -424,9 +424,6 @@ class ViteSPAHandler:
 
         Returns:
             The HTML content as bytes.
-
-        Raises:
-            ImproperlyConfiguredException: If not initialized or in dev mode.
         """
         if not self._initialized:
             # Lazily initialize if a worker didn't run lifespan hooks (e.g., multi-proc servers)
