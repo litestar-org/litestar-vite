@@ -28,7 +28,7 @@ Litestar-Vite pairs the Litestar Python framework with a Vite (Node) toolchain. 
 - [litestar(config)](#typescript-plugin): Vite plugin factory (ESM). Returns `[LitestarPlugin, ...]` with optional full-reload and type-gen plugins.
 - [PluginConfig](#typescript-plugin): `input` (string|string[]), `assetUrl` `/static/`, `bundleDirectory` `public/dist`, `resourceDirectory` `resources`, `hotFile` `${bundleDirectory}/hot`, `ssr`, `ssrOutputDirectory`, `refresh`, `detectTls`, `autoDetectIndex` true, `transformOnServe` hook, `types` boolean|TypesConfig.
 - [TypesConfig](#typescript-plugin): `enabled`, `output=src/types/api`, `openapiPath`, `routesPath`, `generateZod`, `generateSdk`, `debounce=300ms`. When enabled, plugin watches OpenAPI/routes files, runs `@hey-api/openapi-ts`, emits HMR.
-- [Helpers](#typescript-plugin): `litestar-vite-plugin/helpers` exports `route()`, `getCsrfToken()`, `csrfHeaders()`, `csrfFetch()`, `getRoutes()`, `toRoute()`, `currentRoute()`, `isRoute()`, `isCurrentRoute()`.
+- [Helpers](#typescript-plugin): `litestar-vite-plugin/helpers` exports `route()`, `getCsrfToken()`, `csrfHeaders()`, `csrfFetch()`, `getRoutes()`, `toRoute()`, `currentRoute()`, `isRoute()`, `isCurrentRoute()`, `getRelativeUrlPath()`, and `LITESTAR` namespace object (also available as `window.__LITESTAR__`).
 - [Inertia Helpers](#typescript-plugin): `litestar-vite-plugin/inertia-helpers` exports `resolvePageComponent()` plus all route/CSRF helpers.
 - [Framework Integrations](#typescript-plugin): `/astro`, `/sveltekit`, `/nuxt` sub-exports for SSR framework integration.
 

@@ -1,13 +1,11 @@
 import { createInertiaApp } from "@inertiajs/react"
+import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers"
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import "./App.css"
 
 createInertiaApp({
-  resolve: (name) => {
-    const pages = import.meta.glob("./pages/**/*.tsx", { eager: true })
-    return pages[`./pages/${name}.tsx`]
-  },
+  resolve: (name) => resolvePageComponent(`./pages/${name}.tsx`, import.meta.glob("./pages/**/*.tsx")),
   setup({ el, App, props }) {
     createRoot(el).render(
       <StrictMode>

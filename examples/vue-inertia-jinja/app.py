@@ -103,6 +103,7 @@ vite = VitePlugin(
             generate_zod=True,
             generate_sdk=False,
         ),
+        dev_mode=True,
     )
 )
 

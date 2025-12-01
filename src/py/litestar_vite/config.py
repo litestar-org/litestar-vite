@@ -290,11 +290,17 @@ class ExternalDevServer:
     Attributes:
         target: The URL of the external dev server (e.g., "http://localhost:4200").
             If None, the proxy reads the target URL from the Vite hotfile.
+        command: Custom command to start the dev server (e.g., ["ng", "serve"]).
+            If None and start_dev_server=True, uses executor's default start command.
+        build_command: Custom command to build for production (e.g., ["ng", "build"]).
+            If None, uses executor's default build command (e.g., "npm run build").
         http2: Enable HTTP/2 for proxy connections.
         enabled: Whether the external proxy is enabled.
     """
 
     target: "str | None" = None
+    command: "list[str] | None" = None
+    build_command: "list[str] | None" = None
     http2: bool = False
     enabled: bool = True
 
@@ -655,11 +661,35 @@ class ViteConfig:
 
     def _warn_missing_assets(self) -> None:
         """Warn if running in production mode without built assets."""
+        import sys
+
         if self.mode not in {"spa", "hybrid"}:
             return
         if self.runtime.dev_mode:
             return
         if self.has_built_assets():
+            return
+
+        # Skip warning for CLI commands that don't serve the app
+        # These commands just need the config but don't need built assets
+        cli_commands_skip_warning = {
+            "install",
+            "build",
+            "init",
+            "serve",
+            "deploy",
+            "doctor",
+            "generate-types",
+            "export-routes",
+            "status",
+        }
+        argv_str = " ".join(sys.argv)
+        if any(f"assets {cmd}" in argv_str for cmd in cli_commands_skip_warning):
+            return
+
+        # Skip warning when using external dev server (e.g., Angular CLI, Next.js)
+        # These don't use Vite's manifest but have their own build system
+        if self.runtime.external_dev_server is not None:
             return
 
         bundle_path = self._resolve_to_root(self.bundle_dir)

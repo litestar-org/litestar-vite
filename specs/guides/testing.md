@@ -77,4 +77,49 @@ make test
 
 # Run all linting, type-checking, and tests
 make check-all
+
+# Run with coverage report
+make coverage
+
+# Run only linting (includes pre-commit, type-check, slotscheck)
+make lint
+
+# Run only type checking (mypy + pyright)
+make type-check
+```
+
+## Type Checking
+
+The project uses multiple type checkers for comprehensive type safety:
+
+```bash
+# Run mypy (with cache)
+make mypy
+
+# Run mypy without cache
+make mypy-nocache
+
+# Run pyright
+make pyright
+
+# Run basedpyright (stricter variant)
+make basedpyright
+
+# Run all type checkers
+make type-check
+```
+
+## Example Testing
+
+Test all example applications to ensure integrations work correctly:
+
+```bash
+# Install dependencies for all examples
+make install-examples
+
+# Build all examples
+make build-examples
+
+# Run example integration tests
+make test-examples
 ```

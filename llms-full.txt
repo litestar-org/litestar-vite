@@ -107,11 +107,13 @@ Litestar-Vite supplies a Python plugin (`VitePlugin`) and a TypeScript Vite plug
 - `csrfFetch(url, options)`: Fetch wrapper with CSRF token
 - `route(name, params)`: Generate URL from route name
 - `getRoutes()`: Get all routes from window.__LITESTAR_ROUTES__
-- `toRoute(name, params)`: Navigate to route
-- `currentRoute()`: Get current route info
-- `isRoute(name)`: Check if route matches
-- `isCurrentRoute(name)`: Check if current route matches
+- `toRoute(url)`: Convert URL to route name
+- `currentRoute()`: Get current route name from window.location
+- `isRoute(url, name)`: Check if URL matches route (supports wildcards like `user:*`)
+- `isCurrentRoute(name)`: Check if current URL matches route
 - `getRelativeUrlPath(url)`: Extract path from URL
+- `LITESTAR`: Namespace object with all helpers (`window.__LITESTAR__` in browser)
+- Route pattern caching: Compiled regex patterns are cached for performance
 
 ### Inertia Helpers (litestar-vite-plugin/inertia-helpers)
 - Re-exports all from `/helpers`

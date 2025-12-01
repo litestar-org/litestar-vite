@@ -6,7 +6,7 @@ from click import Choice, Context, group, option
 from click import Path as ClickPath
 from litestar.cli._utils import LitestarEnv, LitestarGroup  # pyright: ignore[reportPrivateImportUsage]
 
-from litestar_vite.config import DeployConfig, ViteConfig
+from litestar_vite.config import DeployConfig, ExternalDevServer, ViteConfig
 from litestar_vite.deploy import ViteDeployer, format_bytes
 from litestar_vite.plugin import _resolve_litestar_version  # pyright: ignore[reportPrivateUsage]
 
@@ -541,7 +541,14 @@ def vite_build(app: "Litestar", verbose: "bool") -> None:
     executor = plugin.config.executor
     try:
         root_dir = Path(plugin.config.root_dir or Path.cwd())
-        executor.execute(plugin.config.build_command, cwd=root_dir)
+        # Check for external dev server build command
+        ext = plugin.config.runtime.external_dev_server
+        if isinstance(ext, ExternalDevServer) and ext.enabled:
+            build_cmd = ext.build_command or executor.build_command
+            console.print(f"[dim]Running external build: {' '.join(build_cmd)}[/]")
+            executor.execute(build_cmd, cwd=root_dir)
+        else:
+            executor.execute(plugin.config.build_command, cwd=root_dir)
         console.print("[bold green]✓ Assets built[/]")
     except ViteExecutionError as e:
         console.print(f"[bold red]x Asset build failed: {e!s}[/]")

@@ -21,11 +21,15 @@ Seamless integration between [Litestar](https://litestar.dev/) Python framework 
 ### Essential Commands
 
 ```bash
-make install    # Install all dependencies
-make test       # Run all tests
-make lint       # Run linting
-make fix        # Auto-format code
-make coverage   # Test with coverage
+make install       # Install all dependencies
+make test          # Run all tests
+make lint          # Run linting (pre-commit + type-check + slotscheck)
+make fix           # Auto-format code
+make coverage      # Test with coverage
+make check-all     # Run all checks (lint + test + coverage)
+make type-check    # Run mypy + pyright
+make build         # Build Python + JS packages
+make clean         # Clean temporary build artifacts
 ```
 
 ### Project Structure
@@ -94,6 +98,7 @@ Framework-specific expertise in `.claude/skills/`:
 | `/fix-issue [#]` | Fix GitHub issue |
 | `/sync-llms-txt` | Sync LLM documentation |
 | `/update-templates` | Audit framework templates |
+| `/bootstrap` | Bootstrap new project setup |
 
 ---
 

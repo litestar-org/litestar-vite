@@ -248,9 +248,9 @@ class InertiaResponse(Response[T]):
         This method uses ViteSPAHandler to get the base HTML and injects
         the page props as a data-page attribute on the app element.
 
-        In dev mode, uses the InertiaPlugin's BlockingPortal to call the async
-        get_html() method from this synchronous context. In production mode,
-        uses the synchronous get_html_sync() method for better performance.
+        Uses get_html_sync() for both dev and production modes to avoid
+        deadlocks when calling async code from sync context within the
+        same event loop thread.
 
         Args:
             request: The request object.
@@ -276,16 +276,13 @@ class InertiaResponse(Response[T]):
         # (converts snake_case to camelCase)
         page_dict = page_props.to_dict()
 
-        # In dev mode, we need to use the async get_html() method which proxies
-        # to the Vite dev server. Use the BlockingPortal to call it from sync context.
-        if vite_plugin.config.is_dev_mode and vite_plugin.config.hot_reload:
-            from functools import partial
+        # Get CSRF token for injection
+        csrf_token = self._get_csrf_token(request)
 
-            html = inertia_plugin.portal.call(partial(spa_handler.get_html, request, page_data=page_dict))
-        else:
-            # Production mode: use synchronous method for cached HTML
-            csrf_token = self._get_csrf_token(request)
-            html = spa_handler.get_html_sync(page_data=page_dict, csrf_token=csrf_token)
+        # Use synchronous method for both dev and production modes
+        # In dev mode, this uses a sync HTTP client to avoid event loop deadlocks
+        # In production mode, this uses cached HTML
+        html = spa_handler.get_html_sync(page_data=page_dict, csrf_token=csrf_token)
 
         return html.encode(self.encoding)
 

@@ -42,7 +42,7 @@ from litestar.plugins import CLIPlugin, InitPluginProtocol
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
 from websockets.typing import Subprotocol
 
-from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, TypeGenConfig, ViteConfig
+from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, ExternalDevServer, TypeGenConfig, ViteConfig
 from litestar_vite.exceptions import ViteProcessError
 
 if TYPE_CHECKING:
@@ -1854,11 +1854,17 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             if not app.debug:
                 _log_warn("Vite dev mode is enabled in production!")
 
-            command_to_run = self._config.run_command if self._config.hot_reload else self._config.build_watch_command
-
-            if self._config.hot_reload:
+            # Determine command to run
+            ext = self._config.runtime.external_dev_server
+            if isinstance(ext, ExternalDevServer) and ext.enabled:
+                # External dev server (Angular CLI, Next.js, etc.)
+                command_to_run = ext.command or self._config.executor.start_command
+                _log_info(f"Starting external dev server: {' '.join(command_to_run)}")
+            elif self._config.hot_reload:
+                command_to_run = self._config.run_command
                 _log_info("Starting Vite dev server (HMR enabled)")
             else:
+                command_to_run = self._config.build_watch_command
                 _log_info("Starting Vite watch build process")
 
             if self._proxy_target:
@@ -1866,13 +1872,14 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
             try:
                 self._vite_process.start(command_to_run, self._config.root_dir)
-                _log_success("Vite process started")
-                if self._config.health_check:
+                _log_success("Dev server process started")
+                if self._config.health_check and not (isinstance(ext, ExternalDevServer) and ext.enabled):
+                    # Only run Vite-specific health check for non-external servers
                     self._run_health_check()
                 yield
             finally:
                 self._vite_process.stop()
-                _log_info("Vite process stopped.")
+                _log_info("Dev server process stopped.")
         else:
             yield
 
@@ -1910,7 +1917,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
         # Initialize SPA handler if enabled (check is_initialized to avoid double-init)
         if self._spa_handler is not None and not self._spa_handler.is_initialized:
-            await self._spa_handler.initialize()
+            # Pass the proxy target URL to avoid stale hotfile issues
+            # The VitePlugin knows the correct URL because it selects the port
+            await self._spa_handler.initialize(vite_url=self._proxy_target)
             _log_success("SPA handler initialized")
 
         # Warn if no built assets in production

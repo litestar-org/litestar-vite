@@ -48,7 +48,7 @@
     "build": "npm run build-plugin && npm run build-helpers && npm run build-inertia-helpers && npm run build-integrations",
     "build-plugin": "rm -rf dist/js && npm run build-plugin-types && npm run build-plugin-esm && cp src/js/src/dev-server-index.html dist/js/",
     "build-plugin-types": "tsc --project src/js/tsconfig.json --emitDeclarationOnly",
-    "build-plugin-esm": "esbuild src/js/src/index.ts --platform=node --format=esm --outfile=dist/js/index.js && esbuild src/js/src/install-hint.ts --platform=node --format=esm --outfile=dist/js/install-hint.js && esbuild src/js/src/litestar-meta.ts --platform=node --format=esm --outfile=dist/js/litestar-meta.js",
+    "build-plugin-esm": "esbuild src/js/src/index.ts --platform=node --format=esm --outfile=dist/js/index.js && esbuild src/js/src/install-hint.ts --platform=node --format=esm --outfile=dist/js/install-hint.js && esbuild src/js/src/litestar-meta.ts --platform=node --format=esm --outfile=dist/js/litestar-meta.js && mkdir -p dist/js/shared && esbuild src/js/src/shared/debounce.ts --platform=node --format=esm --outfile=dist/js/shared/debounce.js",
     "build-helpers": "rm -rf dist/js/helpers && tsc --project src/js/tsconfig.helpers.json",
     "build-inertia-helpers": "rm -rf dist/js/inertia-helpers && tsc --project src/js/tsconfig.inertia-helpers.json",
     "build-integrations": "esbuild src/js/src/astro.ts src/js/src/sveltekit.ts src/js/src/nuxt.ts --platform=node --format=esm --outdir=dist/js",
@@ -58,6 +58,7 @@
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
     "@types/node": "^22.15.3",
+    "@vitest/coverage-v8": "^3.2.4",
     "esbuild": "0.25.3",
     "happy-dom": "^20.0.2",
     "typescript": "^5.8.3",

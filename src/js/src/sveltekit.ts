@@ -39,6 +39,7 @@ import colors from "picocolors"
 import type { Plugin, ViteDevServer } from "vite"
 
 import { resolveInstallHint, resolvePackageExecutor } from "./install-hint.js"
+import { debounce } from "./shared/debounce.js"
 
 const execAsync = promisify(exec)
 
@@ -156,11 +157,24 @@ interface ResolvedConfig {
 /**
  * Resolve configuration with defaults.
  */
+/**
+ * Types configuration from Python runtime config.
+ */
+interface PythonTypesConfig {
+  enabled?: boolean
+  output?: string
+  openapiPath?: string
+  routesPath?: string
+  generateZod?: boolean
+  generateSdk?: boolean
+}
+
 function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
   const runtimeConfigPath = process.env.LITESTAR_VITE_CONFIG_PATH
   let hotFile: string | undefined
   let proxyMode: "vite" | "direct" | "proxy" | null = "vite"
   let port: number | undefined
+  let pythonTypesConfig: PythonTypesConfig | undefined
 
   // Read port from VITE_PORT environment variable (set by Python)
   const envPort = process.env.VITE_PORT
@@ -181,6 +195,7 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
         proxyMode?: "vite" | "direct" | "proxy" | null
         port?: number
         executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
+        types?: PythonTypesConfig | null
       }
       const bundleDir = json.bundleDir ?? "public"
       const hot = json.hotFile ?? "hot"
@@ -191,6 +206,10 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
         port = json.port
       }
       pythonExecutor = json.executor
+      // Read types config from Python
+      if (json.types) {
+        pythonTypesConfig = json.types
+      }
     } catch {
       hotFile = undefined
     }
@@ -198,23 +217,36 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
 
   let typesConfig: Required<SvelteKitTypesConfig> | false = false
 
+  // Priority: explicit Vite config > Python runtime config > disabled
   if (config.types === true) {
+    // Explicit `types: true` in Vite config - use Python config if available, else defaults
     typesConfig = {
       enabled: true,
-      output: "src/lib/api",
-      openapiPath: "openapi.json",
-      routesPath: "routes.json",
-      generateZod: false,
+      output: pythonTypesConfig?.output ?? "src/lib/api",
+      openapiPath: pythonTypesConfig?.openapiPath ?? "openapi.json",
+      routesPath: pythonTypesConfig?.routesPath ?? "routes.json",
+      generateZod: pythonTypesConfig?.generateZod ?? false,
       debounce: 300,
     }
   } else if (typeof config.types === "object" && config.types !== null) {
+    // Explicit types object in Vite config - merge with Python config
     typesConfig = {
       enabled: config.types.enabled ?? true,
-      output: config.types.output ?? "src/lib/api",
-      openapiPath: config.types.openapiPath ?? "openapi.json",
-      routesPath: config.types.routesPath ?? "routes.json",
-      generateZod: config.types.generateZod ?? false,
+      output: config.types.output ?? pythonTypesConfig?.output ?? "src/lib/api",
+      openapiPath: config.types.openapiPath ?? pythonTypesConfig?.openapiPath ?? "openapi.json",
+      routesPath: config.types.routesPath ?? pythonTypesConfig?.routesPath ?? "routes.json",
+      generateZod: config.types.generateZod ?? pythonTypesConfig?.generateZod ?? false,
       debounce: config.types.debounce ?? 300,
+    }
+  } else if (config.types !== false && pythonTypesConfig?.enabled) {
+    // No explicit Vite config but Python has types enabled - use Python config
+    typesConfig = {
+      enabled: true,
+      output: pythonTypesConfig.output ?? "src/lib/api",
+      openapiPath: pythonTypesConfig.openapiPath ?? "openapi.json",
+      routesPath: pythonTypesConfig.routesPath ?? "routes.json",
+      generateZod: pythonTypesConfig.generateZod ?? false,
+      debounce: 300,
     }
   }
 
@@ -228,19 +260,6 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
     port,
     executor: config.executor ?? pythonExecutor,
   }
-}
-
-/**
- * Create a debounced function.
- */
-function debounce<T extends (...args: unknown[]) => void>(func: T, wait: number): T {
-  let timeout: ReturnType<typeof setTimeout> | null = null
-  return ((...args: unknown[]) => {
-    if (timeout) {
-      clearTimeout(timeout)
-    }
-    timeout = setTimeout(() => func(...args), wait)
-  }) as T
 }
 
 /**

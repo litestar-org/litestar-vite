@@ -13,6 +13,7 @@ import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-re
 
 import { resolveInstallHint, resolvePackageExecutor } from "./install-hint.js"
 import { type BackendStatus, type LitestarMeta, checkBackendAvailability, loadLitestarMeta } from "./litestar-meta.js"
+import { debounce } from "./shared/debounce.js"
 
 const execAsync = promisify(exec)
 
@@ -256,7 +257,6 @@ export default function litestar(config: string | string[] | PluginConfig): [Lit
  */
 async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: ResolvedPluginConfig): Promise<string | null> {
   if (!pluginConfig.autoDetectIndex) {
-    console.log("Auto-detection disabled.") // Debug log
     return null
   }
 
@@ -817,21 +817,6 @@ function resolveFullReloadConfig({ refresh: config }: ResolvedPluginConfig): Plu
 
     return plugin
   })
-}
-
-/**
- * Create a debounced function that delays invoking func until after
- * wait milliseconds have elapsed since the last time the debounced
- * function was invoked.
- */
-function debounce<T extends (...args: unknown[]) => void>(func: T, wait: number): T {
-  let timeout: ReturnType<typeof setTimeout> | null = null
-  return ((...args: unknown[]) => {
-    if (timeout) {
-      clearTimeout(timeout)
-    }
-    timeout = setTimeout(() => func(...args), wait)
-  }) as T
 }
 
 async function emitRouteTypes(routesPath: string, outputDir: string): Promise<void> {

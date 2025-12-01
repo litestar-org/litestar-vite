@@ -37,6 +37,7 @@ import colors from "picocolors"
 import type { Plugin, ViteDevServer } from "vite"
 
 import { resolveInstallHint } from "./install-hint.js"
+import { debounce } from "./shared/debounce.js"
 
 const execAsync = promisify(exec)
 
@@ -305,19 +306,6 @@ function createProxyPlugin(config: ResolvedLitestarAstroConfig): Plugin {
       }
     },
   }
-}
-
-/**
- * Create a debounced function.
- */
-function debounce<T extends (...args: unknown[]) => void>(func: T, wait: number): T {
-  let timeout: ReturnType<typeof setTimeout> | null = null
-  return ((...args: unknown[]) => {
-    if (timeout) {
-      clearTimeout(timeout)
-    }
-    timeout = setTimeout(() => func(...args), wait)
-  }) as T
 }
 
 /**

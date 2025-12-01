@@ -49,6 +49,16 @@ class JSExecutor(ABC):
             raise ViteExecutableNotFoundError(self.bin_name)
         return path
 
+    @property
+    def start_command(self) -> list[str]:
+        """Get the default command to start the dev server (e.g., npm run start)."""
+        return [self.bin_name, "run", "start"]
+
+    @property
+    def build_command(self) -> list[str]:
+        """Get the default command to build for production (e.g., npm run build)."""
+        return [self.bin_name, "run", "build"]
+
 
 class CommandExecutor(JSExecutor):
     """Generic command executor."""
@@ -238,3 +248,13 @@ class NodeenvExecutor(JSExecutor):
         if npm_path.exists():
             return str(npm_path)
         return "npm"  # Fallback to system npm
+
+    @property
+    def start_command(self) -> list[str]:
+        """Get the default command to start the dev server using nodeenv npm."""
+        return [self._find_npm_in_venv(), "run", "start"]
+
+    @property
+    def build_command(self) -> list[str]:
+        """Get the default command to build for production using nodeenv npm."""
+        return [self._find_npm_in_venv(), "run", "build"]

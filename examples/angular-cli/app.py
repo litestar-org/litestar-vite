@@ -6,24 +6,27 @@ All examples in this repository expose the same backend:
 - `/api/books/{book_id}` - single book
 
 Development:
-    Angular CLI dev server runs on port 4200 (`ng serve`).
-    Litestar proxies non-API requests to Angular CLI using proxy mode with static target.
-    Run both servers: `ng serve` and `litestar run --reload`.
+    VITE_DEV_MODE=1 litestar run --reload
+    (Angular CLI dev server starts automatically and proxies to port 4200)
 
 Production:
-    Built assets in `dist/browser` are served by the VitePlugin.
-    Set DEV_MODE=false or unset it.
+    litestar assets build && litestar run
+    (Built assets in dist/browser are served by Litestar's static file handler)
 """
 
+import os
 from pathlib import Path
 
 from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
+from litestar.static_files import create_static_files_router
 from msgspec import Struct
 
-from litestar_vite import ExternalDevServer, PathConfig, RuntimeConfig, ViteConfig, VitePlugin
+from litestar_vite import ExternalDevServer, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
+dist_dir = here / "dist" / "browser"
+dev_mode = os.getenv("VITE_DEV_MODE", "").lower() in {"1", "true", "yes"}
 
 
 class Book(Struct):
@@ -84,28 +87,48 @@ class LibraryController(Controller):
         return _get_book(book_id)
 
 
-# VitePlugin with proxy mode for Angular CLI:
-# - Dev: Proxies to Angular CLI dev server (ng serve on port 4200) using static target
-# - Prod: Serves built assets from dist/browser
+# VitePlugin for development proxy and type generation
+# - Dev: Auto-starts Angular CLI (ng serve) and proxies to port 4200
+# - Prod: TypeGen only (static files served by Litestar below)
 vite = VitePlugin(
     config=ViteConfig(
-        mode="spa",
+        mode="template",  # Don't use SPA mode - we handle static files ourselves
         paths=PathConfig(
             root=here,
-            bundle_dir=here / "dist" / "browser",
+            bundle_dir=dist_dir,
             resource_dir=here / "src",
         ),
+        types=TypeGenConfig(
+            enabled=True,
+            output=here / "src" / "generated",
+        ),
         runtime=RuntimeConfig(
+            dev_mode=dev_mode,
             proxy_mode="proxy",  # Blacklist proxy - forwards everything except Litestar routes
-            external_dev_server=ExternalDevServer(target="http://localhost:4200"),
-            # Angular CLI handles its own dev server (ng serve)
-            start_dev_server=False,
+            start_dev_server=True,  # Auto-start Angular CLI dev server
+            external_dev_server=ExternalDevServer(
+                target="http://localhost:4200",
+                # command defaults to executor's "start" script (npm run start → ng serve)
+                # build_command defaults to executor's "build" script (npm run build → ng build)
+            ),
         ),
     )
 )
 
+# Static file router for production (serves Angular CLI built assets)
+# Only active when not in dev mode and dist/browser exists
+static_files = (
+    create_static_files_router(
+        path="/",
+        directories=[dist_dir],
+        html_mode=True,  # SPA fallback - serves index.html for non-file routes
+    )
+    if not dev_mode and dist_dir.exists()
+    else None
+)
+
 app = Litestar(
-    route_handlers=[LibraryController],
+    route_handlers=[LibraryController, *([static_files] if static_files else [])],
     plugins=[vite],
     debug=True,
 )

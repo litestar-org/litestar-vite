@@ -38,12 +38,28 @@ export interface RoutesMap {
  */
 export type RouteName = keyof RoutesMap["routes"]
 
+/**
+ * Litestar helpers namespace for clean global access.
+ */
+export interface LitestarHelpers {
+  route: typeof route
+  toRoute: typeof toRoute
+  currentRoute: typeof currentRoute
+  isRoute: typeof isRoute
+  isCurrentRoute: typeof isCurrentRoute
+  getRelativeUrlPath: typeof getRelativeUrlPath
+  routes: Record<string, string>
+}
+
 declare global {
   interface Window {
     __LITESTAR_ROUTES__?: RoutesMap
+    __LITESTAR__?: LitestarHelpers
     routes?: Record<string, string>
     serverRoutes?: Record<string, string>
   }
+  // eslint-disable-next-line no-var
+  var __LITESTAR__: LitestarHelpers | undefined
   // eslint-disable-next-line no-var
   var routes: Record<string, string>
   // eslint-disable-next-line no-var
@@ -61,6 +77,45 @@ declare global {
 
 type RouteArg = string | number | boolean
 type RouteArgs = Record<string, RouteArg> | RouteArg[]
+
+/**
+ * Cache for compiled route patterns to avoid repeated regex compilation.
+ */
+const routePatternCache = new Map<string, RegExp>()
+
+/**
+ * Compile a route pattern to a regex for URL matching.
+ * Results are cached for performance.
+ *
+ * @param routePattern - Route pattern with optional {param:type} placeholders
+ * @returns Compiled regex pattern
+ */
+function compileRoutePattern(routePattern: string): RegExp {
+  const cached = routePatternCache.get(routePattern)
+  if (cached) {
+    return cached
+  }
+
+  const regexPattern = routePattern.replace(/\//g, "\\/").replace(/\{([^}]+)\}/g, (_, paramSpec) => {
+    // Handle {param:type} syntax
+    const paramType = paramSpec.includes(":") ? paramSpec.split(":")[1] : "str"
+
+    switch (paramType) {
+      case "uuid":
+        return "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+      case "path":
+        return ".*"
+      case "int":
+        return "\\d+"
+      default:
+        return "[^/]+"
+    }
+  })
+
+  const compiled = new RegExp(`^${regexPattern}$`)
+  routePatternCache.set(routePattern, compiled)
+  return compiled
+}
 
 /**
  * Get the routes object from the page.
@@ -219,23 +274,7 @@ export function toRoute(url: string): string | null {
   const normalizedUrl = processedUrl === "/" ? processedUrl : processedUrl.replace(/\/$/, "")
 
   for (const [routeName, routePattern] of Object.entries(routes)) {
-    const regexPattern = routePattern.replace(/\//g, "\\/").replace(/\{([^}]+)\}/g, (_, paramSpec) => {
-      // Handle {param:type} syntax
-      const paramType = paramSpec.includes(":") ? paramSpec.split(":")[1] : "str"
-
-      switch (paramType) {
-        case "uuid":
-          return "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-        case "path":
-          return ".*"
-        case "int":
-          return "\\d+"
-        default:
-          return "[^/]+"
-      }
-    })
-
-    const regex = new RegExp(`^${regexPattern}$`)
+    const regex = compileRoutePattern(routePattern)
     if (regex.test(normalizedUrl)) {
       return routeName
     }
@@ -288,22 +327,7 @@ export function isRoute(url: string, routeName: string): boolean {
 
   for (const name of matchingRouteNames) {
     const routePattern = routes[name]
-    const regexPattern = routePattern.replace(/\//g, "\\/").replace(/\{([^}]+)\}/g, (_, paramSpec) => {
-      const paramType = paramSpec.includes(":") ? paramSpec.split(":")[1] : "str"
-
-      switch (paramType) {
-        case "uuid":
-          return "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-        case "path":
-          return "(.*)"
-        case "int":
-          return "(\\d+)"
-        default:
-          return "([^/]+)"
-      }
-    })
-
-    const regex = new RegExp(`^${regexPattern}$`)
+    const regex = compileRoutePattern(routePattern)
     if (regex.test(normalizedUrl)) {
       return true
     }
@@ -335,18 +359,29 @@ export function isCurrentRoute(routeName: string): boolean {
   return routeNameRegex.test(current)
 }
 
-// Set up global functions for backward compatibility
-if (typeof globalThis !== "undefined") {
-  globalThis.routes = globalThis.routes || {}
-  globalThis.serverRoutes = globalThis.serverRoutes || globalThis.routes
-  ;(globalThis as Record<string, unknown>).route = route
-  ;(globalThis as Record<string, unknown>).toRoute = toRoute
-  ;(globalThis as Record<string, unknown>).currentRoute = currentRoute
-  ;(globalThis as Record<string, unknown>).isRoute = isRoute
-  ;(globalThis as Record<string, unknown>).isCurrentRoute = isCurrentRoute
+/**
+ * Litestar helpers namespace object.
+ * Access via window.__LITESTAR__ or import functions directly from this module.
+ */
+export const LITESTAR: LitestarHelpers = {
+  route,
+  toRoute,
+  currentRoute,
+  isRoute,
+  isCurrentRoute,
+  getRelativeUrlPath,
+  routes: {},
 }
 
-// Keep serverRoutes fresh during Vite HMR when the plugin regenerates metadata/types
+// Set up namespaced global access
+if (typeof globalThis !== "undefined") {
+  globalThis.__LITESTAR__ = LITESTAR
+  // Also set up routes for internal use
+  globalThis.routes = globalThis.routes || LITESTAR.routes
+  globalThis.serverRoutes = globalThis.serverRoutes || globalThis.routes
+}
+
+// Keep routes fresh during Vite HMR when the plugin regenerates metadata/types
 if (import.meta.hot) {
   import.meta.hot.on("litestar:types-updated", () => {
     if (typeof window === "undefined") {
@@ -354,8 +389,13 @@ if (import.meta.hot) {
     }
     const updated = getRoutes()
     if (updated) {
+      // Update all references
+      LITESTAR.routes = updated
       window.serverRoutes = updated
       window.routes = updated
+      if (window.__LITESTAR__) {
+        window.__LITESTAR__.routes = updated
+      }
     }
   })
 }

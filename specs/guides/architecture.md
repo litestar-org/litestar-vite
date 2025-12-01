@@ -19,6 +19,7 @@ The backend code is located in `src/py/litestar_vite/`.
 -   **Asynchronous by Default**: All I/O-bound operations (database access, API calls) should be `async` to leverage Litestar's performance benefits.
 -   **Dependency Injection**: Litestar's dependency injection is used to manage resources like database sessions and services. Dependencies should be defined in a reusable way.
 -   **Configuration**: Configuration is managed through Pydantic models within the `config.py` files, allowing for type-safe and environment-aware settings.
+-   **Modular Design**: Core functionality is split across specialized modules (config, plugin, loader, SPA handler, Inertia integration, etc.).
 
 ### Configuration (`ViteConfig`)
 
@@ -38,24 +39,88 @@ The `ViteConfig` class in `config.py` controls the integration behavior. Key opt
 
 Python is the source of truth: `set_environment()` now writes `.litestar-vite.json` (path exported via `LITESTAR_VITE_CONFIG_PATH`) containing `assetUrl`, `bundleDirectory`, `resourceDirectory`, `publicDir`, `manifest`, `ssrOutDir`, typegen paths, and deploy defaults. The JS plugin consumes this file to set defaults; only override in `vite.config.ts` when you intentionally diverge.
 
-### Component Layers
+### Core Modules
 
-While not strictly enforced, the backend aims to follow a layered approach:
+The backend is organized into specialized modules:
 
-1.  **Controllers/Route Handlers**: Defined in modules like `plugin.py` or `cli.py`. These are the entry points for HTTP requests or CLI commands. They are responsible for parsing input, calling the relevant services, and returning a response.
-2.  **Services**: (Conceptual) Business logic should be encapsulated within service classes or functions. This project may not have explicit `Service` classes, but logic is often grouped by feature (e.g., `loader.py`, `config.py`).
-3.  **Executors**: The `JSExecutor` abstraction in `executor.py` handles the execution of external JavaScript runtime commands, isolating the CLI logic from the specific runtime (Node, Bun, Deno, etc.).
-4.  **Data Models / Schemas**: Pydantic or standard dataclasses are used for data validation and serialization.
+1.  **Configuration & Plugin**:
+    -   `config.py`: `ViteConfig`, `SPAConfig`, and other configuration models
+    -   `plugin.py`: `VitePlugin` - main Litestar plugin registration
+
+2.  **Asset Management**:
+    -   `loader.py`: `ViteAssetLoader` - reads Vite manifest and serves assets
+    -   `deploy.py`: CDN deployment utilities using fsspec backends
+
+3.  **SPA Support**:
+    -   `spa.py`: `ViteSPAHandler` - serves SPA index.html in dev/production modes
+    -   `html_transform.py`: `HtmlTransformer` - HTML manipulation for route injection
+
+4.  **CLI & Tooling**:
+    -   `cli.py`: CLI entry points for Vite integration
+    -   `commands.py`: CLI command implementations
+    -   `executor.py`: `JSExecutor` abstraction for Node/Bun/Deno runtimes
+    -   `doctor.py`: Diagnostic utilities for troubleshooting
+    -   `codegen.py`: Code generation utilities (route typegen, etc.)
+
+5.  **Scaffolding**:
+    -   `scaffolding/`: Project template generation and initialization
+
+6.  **Inertia.js Integration** (`inertia/`):
+    -   `plugin.py`: `InertiaPlugin` - Litestar plugin
+    -   `config.py`: `InertiaConfig` - configuration
+    -   `middleware.py`: `InertiaMiddleware` - handles Inertia protocol
+    -   `request.py`: `InertiaRequest` - enhanced request class
+    -   `response.py`: `InertiaResponse` - Inertia page responses
+    -   `routes.py`: `InertiaRoute` - specialized route handlers
+    -   `helpers.py`: Helper functions (`share`, `lazy`, `error`, redirects)
+    -   `types.py`: TypedDict and type definitions
+    -   `exception_handler.py`: Exception handling for Inertia requests
+    -   `_utils.py`: Internal utilities
 
 ## Frontend Architecture (TypeScript/Vite)
 
 The core frontend code is located in `src/js/`. The `examples/` directory contains various frontend application examples (Vue, etc.).
+
+### Directory Structure
+
+```
+src/js/src/
+├── index.ts              # Main Vite plugin entry point
+├── install-hint.ts       # Package manager detection utilities
+├── litestar-meta.ts      # Runtime config loading from .litestar-vite.json
+├── globals.d.ts          # TypeScript global type definitions
+├── dev-server-index.html # Dev server fallback HTML template
+├── astro.ts              # Astro integration
+├── nuxt.ts               # Nuxt module integration
+├── sveltekit.ts          # SvelteKit integration
+├── helpers/              # Frontend helper utilities
+│   ├── index.ts          # Barrel export
+│   ├── csrf.ts           # CSRF token utilities
+│   └── routes.ts         # Route generation and matching
+├── shared/               # Shared utilities across modules
+│   ├── index.ts          # Barrel export
+│   └── debounce.ts       # Type-safe debounce utility
+└── inertia-helpers/      # Inertia.js specific helpers
+    └── index.ts          # resolvePageComponent + re-exports
+```
 
 ### Key Principles
 
 -   **Modularity**: Code is organized into modules and components.
 -   **Type Safety**: TypeScript is used throughout to ensure type safety.
 -   **Build Optimization**: Vite handles the development server (with HMR) and production builds. The configuration is in `vite.config.ts`.
+-   **DRY**: Shared utilities in `shared/` are used across framework integrations to avoid duplication.
+-   **Performance**: Route regex patterns are cached to avoid repeated compilation.
+
+### Frontend Helpers (`litestar-vite-plugin/helpers`)
+
+The helpers module provides utilities for working with Litestar routes and CSRF tokens from the frontend:
+
+-   **CSRF Utilities**: `getCsrfToken()`, `csrfHeaders()`, `csrfFetch()` - Get CSRF token from `window.__LITESTAR_CSRF__` or meta tag.
+-   **Route Utilities**: `route()`, `getRoutes()`, `toRoute()`, `currentRoute()`, `isRoute()`, `isCurrentRoute()` - Generate and match URLs against injected route metadata.
+-   **`LITESTAR` Namespace**: All helpers are also exported as a namespace object, accessible as `window.__LITESTAR__` in the browser.
+
+Route metadata is injected by the backend via `window.__LITESTAR_ROUTES__` (SPA mode) or `window.routes` (legacy/Inertia mode).
 
 ### Vite Plugin Configuration
 
@@ -72,27 +137,96 @@ The `litestar-vite-plugin` (default export in `src/js/src/index.ts`) configures 
 -   **`detectTls`**: Utilize TLS certificates.
 -   **`autoDetectIndex`**: Automatically detect `index.html` (default: `true`).
 
+### Framework Integrations
+
+The project provides integrations for multiple meta-frameworks:
+
+#### Astro Integration (`astro.ts`)
+
+Provides Vite integration for Astro projects with automatic HMR proxying and asset serving.
+
+#### Nuxt Integration (`nuxt.ts`)
+
+Nuxt 3 module that configures Vite for SSR/SPA modes with Litestar backend. Handles:
+-   HMR proxy setup
+-   SSR bundle configuration
+-   Build output coordination
+
+#### SvelteKit Integration (`sveltekit.ts`)
+
+SvelteKit adapter that bridges SvelteKit's SSR with Litestar. Features:
+-   Automatic adapter detection
+-   SSR HMR proxying
+-   Build artifact coordination
+
 ### Inertia.js Integration
 
-For SPA-style applications, the project uses an Inertia.js integration. The backend components are located in `src/py/litestar_vite/inertia/`.
+For SPA-style applications, the project provides comprehensive Inertia.js support. The backend components are located in `src/py/litestar_vite/inertia/`, and frontend helpers are in `src/js/src/inertia-helpers/`.
 
-#### Core Components
+#### Backend Components
 
--   **`InertiaPlugin`**: Registers the Inertia integration with Litestar.
--   **`InertiaResponse`**: The response class used to render Inertia pages.
--   **`InertiaRequest`**: Extends Litestar's request with Inertia-specific properties.
--   **`InertiaMiddleware`**: Handles the Inertia protocol (headers, shared data).
+-   **`InertiaPlugin`**: Registers the Inertia integration with Litestar
+-   **`InertiaConfig`**: Configuration for Inertia integration
+-   **`InertiaResponse`**: Response class for rendering Inertia pages
+-   **`InertiaRequest`**: Enhanced request class with Inertia-specific properties
+-   **`InertiaMiddleware`**: Handles the Inertia protocol (headers, shared data)
+-   **`InertiaRoute`**: Specialized route handler for Inertia endpoints
+-   **Exception handling**: Automatic error page rendering for Inertia requests
 
-#### Helpers
+#### Frontend Helpers
 
--   **`InertiaRedirect`**, **`InertiaExternalRedirect`**: For handling redirects within Inertia.
--   **`InertiaBack`**: Redirect back to the previous page.
--   **`share`**: Share data with all Inertia responses.
--   **`lazy`**: Define lazy-loaded props.
--   **`error`**: Flash error messages.
+-   **`resolvePageComponent`**: Dynamic page component resolution for code-splitting
+-   **Re-exports**: Provides type-safe access to Inertia adapter functions
+
+#### Helper Functions
+
+-   **`InertiaRedirect`**, **`InertiaExternalRedirect`**: Redirect handling within Inertia
+-   **`InertiaBack`**: Redirect to previous page
+-   **`share`**: Share data across all Inertia responses
+-   **`lazy`**: Define lazy-loaded props for performance
+-   **`error`**: Flash error messages to client
 
 ## Communication
 
 -   **Vite Manifest**: The `ViteAssetLoader` (`loader.py`) reads the `manifest.json` file generated by `vite build`. This manifest maps source asset names to their hashed output filenames.
 -   **Dev Server Proxy**: During development, the Litestar application does not serve the assets directly. Instead, it proxies requests to the Vite dev server, enabling Hot Module Replacement (HMR).
 -   **API Calls**: For non-Inertia pages, the frontend can make standard RESTful API calls to endpoints exposed by the Litestar backend.
+-   **Config Synchronization**: Python writes `.litestar-vite.json` (via `set_environment()`) that the JS plugin reads as defaults, ensuring configuration consistency.
+
+## Example Applications
+
+The `examples/` directory contains working examples demonstrating various integration patterns:
+
+### Framework Examples
+
+-   **`angular/`**: Angular 18+ with signals integration
+-   **`angular-cli/`**: Angular CLI-based setup
+-   **`astro/`**: Astro static site integration
+-   **`nuxt/`**: Nuxt 3 SSR/SPA integration
+-   **`sveltekit/`**: SvelteKit SSR integration
+-   **`svelte/`**: Standalone Svelte 5 with runes
+
+### React Examples
+
+-   **`react/`**: Basic React SPA
+-   **`react-inertia/`**: React with Inertia.js
+-   **`react-inertia-jinja/`**: React + Inertia with Jinja2 templates
+
+### Vue Examples
+
+-   **`vue/`**: Basic Vue 3 SPA
+-   **`vue-inertia/`**: Vue 3 with Inertia.js (Composition API)
+-   **`vue-inertia-jinja/`**: Vue + Inertia with Jinja2 templates
+
+### Templating & HTMX
+
+-   **`template-htmx/`**: HTMX hypermedia integration
+-   **`jinja/`**: Server-side Jinja2 templates with Vite assets
+-   **`flash/`**: Flash messages demonstration
+
+### Other
+
+-   **`basic/`**: Minimal Vite integration setup
+-   **`fullstack-typed/`**: End-to-end TypeScript with route typegen
+
+Each example includes its own `package.json`, Vite configuration, and demonstrates best practices for that particular stack.

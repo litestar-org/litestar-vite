@@ -12,7 +12,6 @@ export default defineConfig({
   plugins: [
     tailwindcss(),
     litestarSvelteKit({
-      // API proxy points to the Litestar backend
       apiProxy: `http://localhost:${LITESTAR_PORT}`,
       apiPrefix: "/api",
     }),

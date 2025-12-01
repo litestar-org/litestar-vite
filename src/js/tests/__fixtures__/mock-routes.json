@@ -1,0 +1,41 @@
+{
+  "routes": {
+    "home": {
+      "uri": "/",
+      "methods": ["GET"]
+    },
+    "users:list": {
+      "uri": "/api/users",
+      "methods": ["GET"]
+    },
+    "users:get": {
+      "uri": "/api/users/{user_id:uuid}",
+      "methods": ["GET"],
+      "parameters": ["user_id"],
+      "parameterTypes": {
+        "user_id": "uuid"
+      }
+    },
+    "users:create": {
+      "uri": "/api/users",
+      "methods": ["POST"]
+    },
+    "files:download": {
+      "uri": "/files/{file_path:path}",
+      "methods": ["GET"],
+      "parameters": ["file_path"],
+      "parameterTypes": {
+        "file_path": "path"
+      }
+    },
+    "posts:list": {
+      "uri": "/posts/page/{page:int}",
+      "methods": ["GET"],
+      "parameters": ["page"],
+      "parameterTypes": {
+        "page": "int"
+      }
+    }
+  },
+  "litestar_version": "2.15.0"
+}

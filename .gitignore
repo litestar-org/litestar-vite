@@ -211,3 +211,5 @@ examples/*/src/generated
 examples/*/resources/generated
 examples/*/.svelte-kit
 examples/*/.output
+examples/*/.angular
+coverage/

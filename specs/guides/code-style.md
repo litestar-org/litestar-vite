@@ -31,10 +31,21 @@ All Python code is automatically formatted and linted using tools configured in 
     -   Imports are automatically sorted by Ruff.
     -   Group imports logically (standard library, third-party, first-party).
 
+### Additional Python Tools
+
+-   **Slotscheck**: Validates `__slots__` definitions for memory efficiency
+-   **Pre-commit**: Automated hooks for code quality (configured in `.pre-commit-config.yaml`)
+
 ### Tooling Commands
 
--   **Lint & Type-Check**: `make lint`
--   **Auto-format**: `make fix`
+-   **Lint & Type-Check**: `make lint` (runs pre-commit, mypy, pyright, slotscheck)
+-   **Auto-format**: `make fix` (runs ruff with auto-fixes)
+-   **Type-check only**: `make type-check` (runs mypy + pyright)
+-   **Slotscheck**: `make slotscheck` (validates `__slots__`)
+-   **Individual type checkers**:
+    -   `make mypy` - MyPy with cache
+    -   `make pyright` - Pyright
+    -   `make basedpyright` - Stricter Pyright variant
 
 ### Config Source of Truth
 -   When both Python and Vite need the same values (asset/base URL, bundle/resource dirs, manifest), prefer setting them in `ViteConfig`. `set_environment()` writes `.litestar-vite.json` and the JS plugin uses it as defaults. Keep `vite.config.ts` overrides minimal.

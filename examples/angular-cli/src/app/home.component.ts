@@ -1,43 +1,123 @@
-import { Component } from "@angular/core"
+import { HttpClient } from "@angular/common/http"
+import { Component, type OnInit, computed, inject, signal } from "@angular/core"
+
+type Book = {
+  id: number
+  title: string
+  author: string
+  year: number
+  tags: string[]
+}
+
+type Summary = {
+  app: string
+  headline: string
+  total_books: number
+  featured: Book
+}
+
+type RouteInfo = { uri: string; methods?: string[] }
+type RoutesData = { routes: Record<string, RouteInfo> }
 
 @Component({
   selector: "app-home",
   standalone: true,
   template: `
-    <main>
-      <section class="card">
-        <h1>angular-cli</h1>
-        <p>Angular CLI scaffold wired for Litestar APIs via <code>proxy.conf.json</code>.</p>
-        <p>Run <code>npm start</code> and the backend on port 8000 to develop.</p>
-      </section>
+    <main class="mx-auto max-w-5xl space-y-6 px-4 py-10">
+      <header class="space-y-2">
+        <p class="font-semibold text-[#edb641] text-sm uppercase tracking-[0.14em]">Litestar · Angular CLI</p>
+        <h1 class="font-semibold text-3xl text-[#202235]">Library (Angular CLI)</h1>
+        <p class="max-w-3xl text-slate-600">Same API, different frontend. Angular 21 with zoneless signals via Angular CLI.</p>
+        <nav class="inline-flex gap-2 rounded-full bg-slate-100 p-1 shadow-sm" aria-label="Views">
+          <button
+            class="rounded-full px-4 py-2 font-semibold text-sm transition"
+            [class.bg-white]="view() === 'overview'"
+            [class.text-slate-900]="view() === 'overview'"
+            [class.shadow]="view() === 'overview'"
+            [class.text-slate-600]="view() !== 'overview'"
+            (click)="view.set('overview')"
+          >
+            Overview
+          </button>
+          <button
+            class="rounded-full px-4 py-2 font-semibold text-sm transition"
+            [class.bg-white]="view() === 'books'"
+            [class.text-slate-900]="view() === 'books'"
+            [class.shadow]="view() === 'books'"
+            [class.text-slate-600]="view() !== 'books'"
+            (click)="view.set('books')"
+          >
+            Books {{ summary() ? '(' + summary()!.total_books + ')' : '' }}
+          </button>
+        </nav>
+      </header>
+
+      @if (view() === 'overview') {
+        <section class="space-y-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/40">
+          @if (featured()) {
+            <h2 class="font-semibold text-[#202235] text-xl">{{ summary()?.headline }}</h2>
+            <p class="text-slate-600">Featured book</p>
+            <article class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4">
+              <h3 class="font-semibold text-[#202235] text-lg">{{ featured()!.title }}</h3>
+              <p class="mt-1 text-slate-600">{{ featured()!.author }} • {{ featured()!.year }}</p>
+              <p class="mt-1 text-[#202235] text-sm">{{ featured()!.tags.join(' · ') }}</p>
+            </article>
+          } @else {
+            <div class="text-slate-600">Loading...</div>
+          }
+        </section>
+      } @else {
+        <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Books">
+          @if (books().length > 0) {
+            @for (book of books(); track book.id) {
+              <article class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+                <h3 class="font-semibold text-[#202235] text-lg">{{ book.title }}</h3>
+                <p class="mt-1 text-slate-600">{{ book.author }} • {{ book.year }}</p>
+                <p class="mt-1 text-[#202235] text-sm">{{ book.tags.join(' · ') }}</p>
+              </article>
+            }
+          } @else {
+            <div class="text-slate-600">Loading...</div>
+          }
+        </section>
+      }
+
+      <footer class="border-slate-200 border-t pt-8 text-slate-400 text-xs">
+        <details>
+          <summary class="cursor-pointer">Server Routes (from generated routes.json)</summary>
+          <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
+            @for (entry of routeEntries(); track entry[0]) {
+              <span class="font-mono text-slate-600">
+                {{ entry[0] }} → {{ entry[1].uri }}
+              </span>
+            }
+          </div>
+        </details>
+      </footer>
     </main>
   `,
-  styles: [
-    `
-      main {
-        max-width: 960px;
-        margin: 4rem auto;
-        padding: 0 1.5rem;
-      }
-      .card {
-        background: white;
-        border-radius: 12px;
-        padding: 24px;
-        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
-        border: 1px solid #e2e8f0;
-      }
-      h1 {
-        font-size: 2rem;
-        margin-bottom: 0.75rem;
-      }
-      code {
-        background: #0f172a;
-        color: #e2e8f0;
-        padding: 2px 6px;
-        border-radius: 6px;
-        font-size: 0.9em;
-      }
-    `,
-  ],
 })
-export class HomeComponent {}
+export class HomeComponent implements OnInit {
+  private http = inject(HttpClient)
+
+  // Signals for reactive state
+  summary = signal<Summary | null>(null)
+  books = signal<Book[]>([])
+  view = signal<"overview" | "books">("overview")
+  routes = signal<RoutesData | null>(null)
+
+  // Computed signals
+  featured = computed(() => this.summary()?.featured)
+  routeEntries = computed(() => {
+    const r = this.routes()
+    return r ? (Object.entries(r.routes) as [string, RouteInfo][]) : []
+  })
+
+  ngOnInit() {
+    // Fetch data on init
+    this.http.get<Summary>("/api/summary").subscribe((data) => this.summary.set(data))
+    this.http.get<Book[]>("/api/books").subscribe((data) => this.books.set(data))
+    // Load routes from generated file (Angular CLI serves from root, not /static/)
+    this.http.get<RoutesData>("/src/generated/routes.json").subscribe((data) => this.routes.set(data))
+  }
+}
