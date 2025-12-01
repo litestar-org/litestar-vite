@@ -203,7 +203,7 @@ describe("Vite 7.0 Compatibility", () => {
     it("supports Vite 7.0 middleware configuration", () => {
       const plugin = litestar("resources/js/app.ts")[0]
 
-      const middlewareFn = vi.fn()
+      const _middlewareFn = vi.fn()
       const config = plugin.config(
         {
           server: {

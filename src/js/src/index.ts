@@ -8,11 +8,11 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 import colors from "picocolors"
-import { type ConfigEnv, type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer, loadEnv } from "vite"
+import { type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer, loadEnv } from "vite"
 import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-reload"
 
 import { resolveInstallHint, resolvePackageExecutor } from "./install-hint.js"
-import { type BackendStatus, type LitestarMeta, checkBackendAvailability, loadLitestarMeta } from "./litestar-meta.js"
+import { type LitestarMeta, checkBackendAvailability, loadLitestarMeta } from "./litestar-meta.js"
 import { debounce } from "./shared/debounce.js"
 
 const execAsync = promisify(exec)
@@ -289,7 +289,7 @@ async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: ResolvedPl
 /**
  * Resolve the Litestar Plugin configuration.
  */
-function normalizeAppUrl(appUrl: string | undefined, fallbackPort?: string): { url: string | null; note?: string } {
+function normalizeAppUrl(appUrl: string | undefined, _fallbackPort?: string): { url: string | null; note?: string } {
   if (!appUrl || appUrl === "__litestar_app_url_missing__") {
     return { url: null, note: "APP_URL missing" }
   }
@@ -434,8 +434,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       const hint = pluginConfig.types !== false ? pluginConfig.types.routesPath : undefined
       litestarMeta = await loadLitestarMeta(resolvedConfig, hint)
     },
-    transform(code: string, id: string): string | undefined {
-      // Added 'id' for context
+    transform(code: string, _id: string): string | undefined {
+      // Added '_id' for context
       // Avoid transforming unrelated files during serve if placeholder isn't present
       if (resolvedConfig.command === "serve" && code.includes("__litestar_vite_placeholder__")) {
         // Debug log transformation
@@ -634,7 +634,7 @@ function ensureCommandShouldRunInEnvironment(command: "build" | "serve", env: Re
 /**
  * The version of the Litestar Vite plugin being run.
  */
-function pluginVersion(): string {
+function _pluginVersion(): string {
   try {
     return JSON.parse(fs.readFileSync(path.join(dirname(), "../package.json")).toString())?.version
   } catch {
@@ -761,7 +761,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
 /**
  * Resolve the Vite base option from the configuration.
  */
-function resolveBase(config: ResolvedPluginConfig, assetUrl: string): string {
+function resolveBase(_config: ResolvedPluginConfig, assetUrl: string): string {
   // In development mode, use the assetUrl directly
   if (process.env.NODE_ENV === "development") {
     return assetUrl

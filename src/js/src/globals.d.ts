@@ -37,6 +37,7 @@ declare global {
     currentRoute?: typeof currentRoute
     isRoute?: typeof isRoute
     isCurrentRoute?: typeof isCurrentRoute
+    getRoutes?: typeof getRoutes
   }
 
   interface ImportMeta {
