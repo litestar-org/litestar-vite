@@ -13,9 +13,9 @@ Litestar-Vite supplies a Python plugin (`VitePlugin`) and a TypeScript Vite plug
 ## Project Overview
 - Modes: `spa` (default, auto when `src/index.html` present), `template`, `htmx`. Auto-detects unless `mode` set.
 - Proxy Modes: `proxy_mode` controls how proxy requests are handled:
-  - `vite_proxy` (default): Single-port, tunnels Vite HTTP/WS through Litestar with full HMR
-  - `vite_direct`: Multi-port, exposes Vite on its own port
-  - `external_proxy`: Proxy to external dev servers (Angular CLI, Next.js, CRA) via `ExternalDevServer` config
+  - `vite` (default): Single-port, tunnels Vite HTTP/WS through Litestar with full HMR
+  - `direct`: Multi-port, exposes Vite on its own port
+  - `proxy` (alias: `ssr`): Proxy to external dev servers (Angular CLI, Next.js, SSR frameworks) via `ExternalDevServer` config
 - Hotfile: `public/hot` holds current dev URL, written by TS plugin.
 - Assets: production uses Vite manifest (`public/manifest.json` by default); static served from `asset_url` (default `/static/`).
 - Type generation: Python exports OpenAPI + routes; TS plugin watches and runs `@hey-api/openapi-ts`, emits HMR.
@@ -41,10 +41,10 @@ Litestar-Vite supplies a Python plugin (`VitePlugin`) and a TypeScript Vite plug
 ### ViteConfig (litestar_vite.config)
 - Core: `mode: Literal['spa','template','htmx']|None` (auto-detect), `dev_mode: bool` shortcut → runtime.dev_mode, `base_url: str|None`, `deploy: DeployConfig|bool`, `spa: SPAConfig|bool|None`, `inertia: InertiaConfig|bool`, `types: TypeGenConfig|bool`.
 - Paths (PathConfig defaults): `root=Path.cwd()`, `bundle_dir=public`, `resource_dir=src`, `public_dir=public`, `manifest_name='manifest.json'`, `hot_file='hot'`, `asset_url=os.getenv('ASSET_URL','/static/')`, `ssr_output_dir=None`.
-- Runtime (RuntimeConfig defaults/env): `dev_mode` (env VITE_DEV_MODE), `proxy_mode` (env VITE_PROXY_MODE, default 'vite_proxy'), `external_dev_server: ExternalDevServer|str|None`, `host='localhost'`, `port=5173`, `protocol='http'`, `executor='node'|bun|deno|yarn|pnpm`, `run_command/build_command/build_watch_command/install_command` auto-set per executor, `is_react`, `ssr_enabled`, `health_check` (env VITE_HEALTH_CHECK), `detect_nodeenv`, `set_environment=True`, `set_static_folders=True`, `csp_nonce`, `spa_handler=True`, `http2=True`, `start_dev_server=True`.
+- Runtime (RuntimeConfig defaults/env): `dev_mode` (env VITE_DEV_MODE), `proxy_mode` (env VITE_PROXY_MODE, default 'vite'), `external_dev_server: ExternalDevServer|str|None`, `host='localhost'`, `port=5173`, `protocol='http'`, `executor='node'|bun|deno|yarn|pnpm`, `run_command/build_command/build_watch_command/install_command` auto-set per executor, `is_react`, `ssr_enabled`, `health_check` (env VITE_HEALTH_CHECK), `detect_nodeenv`, `set_environment=True`, `set_static_folders=True`, `csp_nonce`, `spa_handler=True`, `http2=True`, `start_dev_server=True`.
 - TypeGenConfig defaults: `enabled=False`, `output=Path('src/generated')`, `openapi_path=Path('src/generated/openapi.json')`, `routes_path=Path('src/generated/routes.json')`, `generate_zod=True`, `generate_sdk=False`, `watch_patterns=['**/routes.py','**/handlers.py','**/controllers/**/*.py']`.
 - SPAConfig defaults: `inject_routes=True`, `inject_csrf=True`, `routes_var_name='__LITESTAR_ROUTES__'`, `csrf_var_name='__LITESTAR_CSRF__'`, `routes_include=None`, `routes_exclude=['vite_spa']`, `app_selector='#app'`, `cache_transformed_html=True`.
-- InertiaConfig (config.py) defaults: `enabled=False`, `root_template='index.html'`, `include_routes=True`, `include_flash=True`, `include_errors=True`, `extra_static_page_props={}`, `extra_session_page_props=[]`.
+- InertiaConfig (config.py) defaults: `root_template='index.html'`, `component_opt_keys=('component','page')`, `exclude_from_js_routes_key='exclude_from_routes'`, `redirect_unauthorized_to=None`, `redirect_404=None`, `extra_static_page_props={}`, `extra_session_page_props=set()`, `spa_mode=False`, `app_selector='#app'`.
 - ExternalDevServer: `target='http://localhost:4200'`, `http2=False`, `enabled=True`. Use for Angular CLI, Next.js, CRA, etc.
 - DeployConfig (deploy.py): created when `deploy=True`; fields include `storage_backend`, `storage_options`, `delete_orphaned`, `include_manifest`, `content_types`.
 
@@ -67,10 +67,10 @@ Litestar-Vite supplies a Python plugin (`VitePlugin`) and a TypeScript Vite plug
 - Used by ViteSPAHandler and InertiaResponse for consistent HTML transformations.
 
 ### Inertia Integration (litestar_vite.inertia)
-- InertiaConfig: `root_template='index.html'`, `component_opt_keys=('component', 'page')` (tuple of keys to check for component name), `exclude_from_js_routes_key='exclude_from_routes'`, `redirect_unauthorized_to`, `redirect_404`, `extra_static_page_props: dict`, `extra_session_page_props: set[str]`, `spa_mode=False`, `app_selector='#app'`.
+- InertiaConfig: `root_template='index.html'`, `component_opt_keys=('component', 'page')` (tuple of keys to check for component name - allows flexible naming), `exclude_from_js_routes_key='exclude_from_routes'`, `redirect_unauthorized_to`, `redirect_404`, `extra_static_page_props: dict`, `extra_session_page_props: set[str]`, `spa_mode=False` (template-less rendering), `app_selector='#app'`.
 - InertiaPlugin: requires session middleware; sets `request_class=InertiaRequest`, `response_class=InertiaResponse`, registers `InertiaMiddleware`, exception handler, JS route generation on startup, adds lifespan portal for background tasks.
 - InertiaRequest: extends Litestar Request with `inertia` property containing headers and details.
-- InertiaResponse: constructor accepts `content`, `template_name` or `template_str`, `background`, `context`, `cookies`, `headers`, `status_code`, `media_type`; renders via template engine or SPA HtmlTransformer; handles partial reloads, deferred/merge props, CSRF injection, page props building.
+- InertiaResponse: constructor accepts `content`, `template_name` or `template_str`, `background`, `context`, `cookies`, `headers`, `status_code`, `media_type`; renders via template engine or SPA HtmlTransformer; handles partial reloads, deferred/merge props, CSRF injection, page props building. Props are flattened at the top level (no nested "content" key for explicit content).
 - Redirect helpers: `InertiaRedirect`, `InertiaBack`, `InertiaExternalRedirect`.
 - Props helpers: `share()`, `lazy()`, `defer()`, `merge()`, `error()`, `get_shared_props()`, `extract_deferred_props()`, `extract_merge_props()`.
 - Route helpers: `generate_js_routes()`, `js_routes_script()`.
@@ -118,6 +118,13 @@ Litestar-Vite supplies a Python plugin (`VitePlugin`) and a TypeScript Vite plug
 ### Inertia Helpers (litestar-vite-plugin/inertia-helpers)
 - Re-exports all from `/helpers`
 - `resolvePageComponent(path, pages)`: Resolve Inertia page component from glob import
+- `unwrapPageProps(props)`: Unwrap Litestar's content prop for ergonomic access
+  - Checks if props.content exists and is an object (not array)
+  - Spreads content at top level: `{...rest, ...content}`
+  - Used internally by `resolvePageComponent` for automatic unwrapping
+- Internal `wrapComponent(module)`: Auto-wraps components to call `unwrapPageProps`
+  - Handles ES modules with default export and direct function exports
+  - Preserves static properties (displayName, layout, etc.)
 
 ### SSR Framework Integrations
 
@@ -262,7 +269,7 @@ from litestar_vite import ViteConfig, RuntimeConfig, ExternalDevServer
 config = ViteConfig(
     dev_mode=True,
     runtime=RuntimeConfig(
-        proxy_mode="external_proxy",
+        proxy_mode="proxy",
         external_dev_server=ExternalDevServer(target="http://localhost:4200"),
     ),
 )
@@ -303,15 +310,15 @@ export default litestar({
 - Manifest not found: run `litestar assets build` or configure `bundle_dir`/`manifest_name`.
 - Inertia 500/redirect issues: session middleware required; verify `component` route opt and `root_template`.
 - Type generation skipped: confirm `types.enabled` in ViteConfig and TS plugin; install `@hey-api/openapi-ts`.
-- Two-port dev needed: set `VITE_PROXY_MODE=vite_direct` and start Vite separately.
-- External dev server (Angular/Next.js): use `proxy_mode="external_proxy"` with `ExternalDevServer`.
+- Two-port dev needed: set `VITE_PROXY_MODE=direct` and start Vite separately.
+- External dev server (Angular/Next.js): use `proxy_mode="proxy"` with `ExternalDevServer`.
 
 ## Migration Guide (v0.14.x → v0.15.x)
 
 ### Breaking Changes
 
-#### `proxy_mode` values expanded
-The `proxy_mode` values have been expanded with a new `external_proxy` option:
+#### `proxy_mode` values simplified
+The `proxy_mode` values have been simplified and normalized:
 
 **Before (v0.14.x):**
 ```python
@@ -320,17 +327,17 @@ ViteConfig(runtime=RuntimeConfig(proxy_mode="proxy"))  # or "direct"
 
 **After (v0.15.x):**
 ```python
-ViteConfig(runtime=RuntimeConfig(proxy_mode="vite_proxy"))  # or "vite_direct", "external_proxy"
+ViteConfig(runtime=RuntimeConfig(proxy_mode="vite"))  # or "direct", "proxy"
 ```
 
 Value mapping:
 | Old (v0.14) | New (v0.15) | Description |
 |-------------|-------------|-------------|
-| `"proxy"` | `"vite_proxy"` | Single-port proxy (default) |
-| `"direct"` | `"vite_direct"` | Multi-port, separate Vite server |
-| N/A | `"external_proxy"` | Proxy to external dev servers |
+| `"proxy"` | `"vite"` | Single-port proxy (default) |
+| `"direct"` | `"direct"` | Multi-port, separate Vite server (unchanged) |
+| N/A | `"proxy"` (or `"ssr"`) | Proxy to external dev servers |
 
-Environment variable: `VITE_PROXY_MODE` (unchanged)
+Environment variable: `VITE_PROXY_MODE` supports `vite`, `direct`, `proxy`, `ssr`, `vite_proxy`, `vite_direct`, `external_proxy` (normalized internally)
 
 #### New `ExternalDevServer` config
 For Angular CLI, Next.js, or other external dev servers:
@@ -340,19 +347,22 @@ from litestar_vite import ViteConfig, RuntimeConfig, ExternalDevServer
 config = ViteConfig(
     dev_mode=True,
     runtime=RuntimeConfig(
-        proxy_mode="external_proxy",
+        proxy_mode="proxy",
         external_dev_server=ExternalDevServer(target="http://localhost:4200"),
     ),
 )
 ```
 
 ### New Features in v0.15
-- `ViteSPAHandler` class for programmatic SPA HTML handling
+- `ViteSPAHandler` class for programmatic SPA HTML handling with `is_initialized` property
 - `HtmlTransformer` for HTML manipulation utilities
 - SSR framework integrations (`/astro`, `/sveltekit`, `/nuxt`)
 - `inject_csrf=True` default in SPAConfig
 - `start_dev_server` flag in RuntimeConfig
 - Expanded CLI templates (14 total including angular-cli, astro, sveltekit, nuxt)
+- Inertia.js prop flattening: `component_opt_keys` tuple for flexible component naming
+- `unwrapPageProps()` helper in `inertia-helpers` for ergonomic prop access
+- Inertia `spa_mode` for template-less rendering with HtmlTransformer
 
 ### Deprecations
 - None in v0.15

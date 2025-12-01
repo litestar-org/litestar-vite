@@ -34,9 +34,11 @@ from typing import TYPE_CHECKING, Any, cast
 import anyio
 import httpx  # used in proxy middleware health and HTTP forwarding
 import websockets  # used in proxy middleware WS forwarding
+from litestar import Response
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+from litestar.connection import Request
 from litestar.enums import ScopeType
-from litestar.exceptions import WebSocketDisconnect
+from litestar.exceptions import NotFoundException, WebSocketDisconnect
 from litestar.middleware import AbstractMiddleware, DefineMiddleware
 from litestar.plugins import CLIPlugin, InitPluginProtocol
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
@@ -51,7 +53,6 @@ if TYPE_CHECKING:
     from click import Group
     from litestar import Litestar
     from litestar.config.app import AppConfig
-    from litestar.connection import Request
     from litestar.datastructures import CacheControlHeader
     from litestar.openapi.spec import SecurityRequirement
     from litestar.types import (
@@ -430,13 +431,11 @@ class ViteProxyMiddleware(AbstractMiddleware):
         target_base_url = self._get_target_base_url()
         if target_base_url is None:
             # Hotfile not found - Vite server not running
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 503,
-                    "headers": [(b"content-type", b"text/plain")],
-                }
-            )
+            await send({
+                "type": "http.response.start",
+                "status": 503,
+                "headers": [(b"content-type", b"text/plain")],
+            })
             await send({"type": "http.response.body", "body": b"Vite dev server not running"})
             return
 
@@ -475,24 +474,20 @@ class ViteProxyMiddleware(AbstractMiddleware):
             try:
                 upstream_resp = await client.request(method, url, headers=headers, content=body, timeout=10.0)
             except httpx.HTTPError as exc:  # pragma: no cover - network failure path
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 502,
-                        "headers": [(b"content-type", b"text/plain")],
-                    }
-                )
+                await send({
+                    "type": "http.response.start",
+                    "status": 502,
+                    "headers": [(b"content-type", b"text/plain")],
+                })
                 await send({"type": "http.response.body", "body": str(exc).encode()})
                 return
 
         response_headers = [(k.encode(), v.encode()) for k, v in upstream_resp.headers.items()]
-        await send(
-            {
-                "type": "http.response.start",
-                "status": upstream_resp.status_code,
-                "headers": response_headers,
-            }
-        )
+        await send({
+            "type": "http.response.start",
+            "status": upstream_resp.status_code,
+            "headers": response_headers,
+        })
         await send({"type": "http.response.body", "body": upstream_resp.content})
 
 
@@ -636,13 +631,11 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
         target = self._get_target()
         if target is None:
             # No target available - dev server not running
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 503,
-                    "headers": [(b"content-type", b"text/plain")],
-                }
-            )
+            await send({
+                "type": "http.response.start",
+                "status": 503,
+                "headers": [(b"content-type", b"text/plain")],
+            })
             await send({"type": "http.response.body", "body": b"Dev server not running"})
             return
 
@@ -683,39 +676,31 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
             try:
                 upstream_resp = await client.request(method, url, headers=headers, content=body)
             except httpx.ConnectError:
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 503,
-                        "headers": [(b"content-type", b"text/plain")],
-                    }
-                )
-                await send(
-                    {
-                        "type": "http.response.body",
-                        "body": f"Dev server not running at {target}".encode(),
-                    }
-                )
+                await send({
+                    "type": "http.response.start",
+                    "status": 503,
+                    "headers": [(b"content-type", b"text/plain")],
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": f"Dev server not running at {target}".encode(),
+                })
                 return
             except httpx.HTTPError as exc:
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 502,
-                        "headers": [(b"content-type", b"text/plain")],
-                    }
-                )
+                await send({
+                    "type": "http.response.start",
+                    "status": 502,
+                    "headers": [(b"content-type", b"text/plain")],
+                })
                 await send({"type": "http.response.body", "body": str(exc).encode()})
                 return
 
         response_headers = [(k.encode(), v.encode()) for k, v in upstream_resp.headers.items()]
-        await send(
-            {
-                "type": "http.response.start",
-                "status": upstream_resp.status_code,
-                "headers": response_headers,
-            }
-        )
+        await send({
+            "type": "http.response.start",
+            "status": upstream_resp.status_code,
+            "headers": response_headers,
+        })
         await send({"type": "http.response.body", "body": upstream_resp.content})
 
 
@@ -967,7 +952,7 @@ def _create_hmr_target_getter(
         # JS writes to `${config.hotFile}.hmr`
         hmr_path = Path(f"{hotfile_path}.hmr")
         try:
-            url = hmr_path.read_text().strip()
+            url = hmr_path.read_text(encoding="utf-8").strip()
             if url != cached_hmr_target[0]:
                 cached_hmr_target[0] = url
                 if _is_proxy_debug():
@@ -1499,17 +1484,35 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         Args:
             app_config: The Litestar application configuration.
         """
-        static_dirs = [Path(self._config.bundle_dir), Path(self._config.resource_dir)]
-        if Path(self._config.public_dir).exists() and self._config.public_dir != self._config.bundle_dir:
-            static_dirs.append(Path(self._config.public_dir))
+        bundle_dir = Path(self._config.bundle_dir)
+        if not bundle_dir.is_absolute():
+            bundle_dir = self._config.root_dir / bundle_dir
+
+        resource_dir = Path(self._config.resource_dir)
+        if not resource_dir.is_absolute():
+            resource_dir = self._config.root_dir / resource_dir
+
+        public_dir = Path(self._config.public_dir)
+        if not public_dir.is_absolute():
+            public_dir = self._config.root_dir / public_dir
+
+        static_dirs = [bundle_dir, resource_dir]
+        if public_dir.exists() and public_dir != bundle_dir:
+            static_dirs.append(public_dir)
+
+        def _static_not_found_handler(
+            _request: Request[Any, Any, Any], _exc: NotFoundException
+        ) -> Response[bytes]:  # pragma: no cover - trivial
+            return Response(status_code=404, content=b"")
 
         base_config = {
-            "directories": (static_dirs if self._config.is_dev_mode else [Path(self._config.bundle_dir)]),
+            "directories": (static_dirs if self._config.is_dev_mode else [bundle_dir]),
             "path": self._config.asset_url,
             "name": "vite",
             "html_mode": False,
             "include_in_schema": False,
             "opt": {"exclude_from_auth": True},
+            "exception_handlers": {NotFoundException: _static_not_found_handler},
         }
         static_files_config: dict[str, Any] = {**base_config, **self._static_files_config}
         app_config.route_handlers.append(create_static_files_router(**static_files_config))
@@ -1598,6 +1601,18 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         # Add Response and Request to signature namespace for SSR proxy handler type hints
         app_config.signature_namespace["Response"] = Response
         app_config.signature_namespace["Request"] = LitestarRequest
+
+        # Provide a consistent 404 response for missing static assets / routes (e.g., Vite HMR/static lookups)
+        handlers: ExceptionHandlersMap = cast("ExceptionHandlersMap", app_config.exception_handlers or {})  # pyright: ignore
+        if NotFoundException not in handlers:
+
+            def _vite_not_found_handler(
+                _request: LitestarRequest[Any, Any, Any], _exc: NotFoundException
+            ) -> Response[bytes]:
+                return Response(status_code=404, content=b"")
+
+            handlers[NotFoundException] = _vite_not_found_handler
+            app_config.exception_handlers = handlers  # pyright: ignore[reportUnknownMemberType]
 
         # Auto-register Inertia if config is provided
         if self._config.inertia is not None:

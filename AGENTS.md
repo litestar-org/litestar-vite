@@ -36,11 +36,22 @@ make clean         # Clean temporary build artifacts
 
 ```
 src/py/litestar_vite/     # Python library
-  ├── config.py           # ViteConfig
+  ├── config.py           # ViteConfig (PathConfig, RuntimeConfig, TypeGenConfig, etc.)
   ├── plugin.py           # VitePlugin
   ├── loader.py           # ViteAssetLoader
+  ├── spa.py              # ViteSPAHandler (async + sync)
+  ├── html_transform.py   # HtmlTransformer
+  ├── deploy.py           # CDN deployment
+  ├── codegen.py          # Route type generation
   └── inertia/            # Inertia.js integration
+      ├── plugin.py       # InertiaPlugin
+      ├── response.py     # InertiaResponse (props flattening)
+      ├── middleware.py   # InertiaMiddleware
+      └── helpers.py      # share, lazy, defer, merge
 src/js/src/               # TypeScript library
+  ├── index.ts            # Main Vite plugin
+  ├── helpers/            # CSRF, routes utilities
+  └── inertia-helpers/    # resolvePageComponent
 examples/                 # Framework examples
 specs/guides/             # Project standards
 ```

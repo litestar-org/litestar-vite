@@ -913,7 +913,7 @@ class ViteConfig:
             does not indicate built assets exist.
         """
         bundle_path = self._resolve_to_root(self.bundle_dir)
-        manifest_path = bundle_path / ".vite" / self.manifest_name
+        manifest_path = bundle_path / self.manifest_name
         index_path = bundle_path / "index.html"
 
         # Check for Vite manifest (primary indicator of built assets)
