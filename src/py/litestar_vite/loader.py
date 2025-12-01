@@ -221,7 +221,10 @@ class ViteAssetLoader:
 
     def _get_manifest_path(self) -> Path:
         """Get the path to the manifest file."""
-        return self._config.bundle_dir / self._config.manifest_name
+        bundle_dir = self._config.bundle_dir
+        if not bundle_dir.is_absolute():
+            bundle_dir = self._config.root_dir / bundle_dir
+        return bundle_dir / self._config.manifest_name
 
     def _get_hot_file_path(self) -> Path:
         """Get the path to the hot file."""

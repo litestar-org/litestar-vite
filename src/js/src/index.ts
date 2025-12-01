@@ -11,8 +11,9 @@ import colors from "picocolors"
 import { type ConfigEnv, type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer, loadEnv } from "vite"
 import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-reload"
 
-import { resolveInstallHint } from "./install-hint.js"
+import { resolveInstallHint, resolvePackageExecutor } from "./install-hint.js"
 import { type BackendStatus, type LitestarMeta, checkBackendAvailability, loadLitestarMeta } from "./litestar-meta.js"
+import { debounce } from "./shared/debounce.js"
 
 const execAsync = promisify(exec)
 
@@ -169,6 +170,16 @@ export interface PluginConfig {
    * @default false
    */
   types?: boolean | TypesConfig
+  /**
+   * JavaScript runtime executor for package commands.
+   * Used when running tools like @hey-api/openapi-ts.
+   *
+   * This is typically auto-detected from Python config via LITESTAR_VITE_RUNTIME env var,
+   * but can be overridden here for JS-only projects or specific needs.
+   *
+   * @default undefined (uses LITESTAR_VITE_RUNTIME env or 'node')
+   */
+  executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
 }
 
 interface RefreshConfig {
@@ -179,9 +190,11 @@ interface RefreshConfig {
 /**
  * Resolved plugin configuration with all defaults applied.
  * Note: `types` is resolved to `Required<TypesConfig> | false` instead of `boolean | TypesConfig`
+ * Note: `executor` remains optional - undefined means auto-detect from env
  */
-interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types"> {
+interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor"> {
   types: Required<TypesConfig> | false
+  executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
 }
 
 interface PythonDefaults {
@@ -192,7 +205,15 @@ interface PythonDefaults {
   publicDir?: string
   manifest?: string
   mode?: string
+  // Proxy mode fields
+  proxyMode?: "vite_proxy" | "vite_direct" | "external_proxy"
+  externalTarget?: string | null
+  externalHttp2?: boolean
+  // SSR fields
+  ssrEnabled?: boolean
   ssrOutDir?: string
+  // Executor for package commands
+  executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
   types?: {
     enabled: boolean
     output: string
@@ -225,7 +246,7 @@ export default function litestar(config: string | string[] | PluginConfig): [Lit
 
   // Add type generation plugin if enabled
   if (pluginConfig.types !== false && pluginConfig.types.enabled) {
-    plugins.push(resolveTypeGenerationPlugin(pluginConfig.types))
+    plugins.push(resolveTypeGenerationPlugin(pluginConfig.types, pluginConfig.executor))
   }
 
   return plugins as [LitestarPlugin, ...Plugin[]]
@@ -236,7 +257,6 @@ export default function litestar(config: string | string[] | PluginConfig): [Lit
  */
 async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: ResolvedPluginConfig): Promise<string | null> {
   if (!pluginConfig.autoDetectIndex) {
-    console.log("Auto-detection disabled.") // Debug log
     return null
   }
 
@@ -286,6 +306,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
   let resolvedConfig: ResolvedConfig
   let userConfig: UserConfig
   let litestarMeta: LitestarMeta = {}
+  const pythonDefaults = loadPythonDefaults()
+  const proxyMode = pythonDefaults?.proxyMode ?? "vite_proxy"
   const defaultAliases: Record<string, string> = {
     "@": `/${pluginConfig.resourceDirectory.replace(/^\/+/, "").replace(/\/+$/, "")}/`,
   }
@@ -346,11 +368,24 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
                   },
                 }
               : undefined),
+          // Always respect VITE_PORT when set by Python (regardless of VITE_ALLOW_REMOTE)
+          ...(process.env.VITE_PORT
+            ? {
+                port: userConfig.server?.port ?? Number.parseInt(process.env.VITE_PORT),
+                strictPort: userConfig.server?.strictPort ?? true,
+              }
+            : undefined),
+          // VITE_ALLOW_REMOTE controls host binding (0.0.0.0 for remote access)
+          // Also sets port/strictPort for backwards compatibility when VITE_PORT not set
           ...(process.env.VITE_ALLOW_REMOTE
             ? {
                 host: userConfig.server?.host ?? "0.0.0.0",
-                port: userConfig.server?.port ?? (env.VITE_PORT ? Number.parseInt(env.VITE_PORT) : 5173),
-                strictPort: userConfig.server?.strictPort ?? true,
+                ...(process.env.VITE_PORT
+                  ? {} // port already set above
+                  : {
+                      port: userConfig.server?.port ?? 5173,
+                      strictPort: userConfig.server?.strictPort ?? true,
+                    }),
               }
             : undefined),
           ...(serverConfig
@@ -431,8 +466,11 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
         const isAddressInfo = (x: string | AddressInfo | null | undefined): x is AddressInfo => typeof x === "object"
         if (isAddressInfo(address)) {
           viteDevServerUrl = userConfig.server?.origin ? (userConfig.server.origin as DevServerUrl) : resolveDevServerUrl(address, server.config, userConfig)
-          fs.mkdirSync(path.dirname(pluginConfig.hotFile), { recursive: true })
-          fs.writeFileSync(pluginConfig.hotFile, viteDevServerUrl)
+          // Only write hotfile for Vite modes (not external_proxy)
+          if (proxyMode !== "external_proxy") {
+            fs.mkdirSync(path.dirname(pluginConfig.hotFile), { recursive: true })
+            fs.writeFileSync(pluginConfig.hotFile, viteDevServerUrl)
+          }
 
           // Check backend availability and log status
           setTimeout(async () => {
@@ -509,8 +547,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): LitestarPlug
         }
       })
 
-      // Clean up hot file
-      if (!exitHandlersBound) {
+      // Clean up hot file (only for Vite modes)
+      if (!exitHandlersBound && proxyMode !== "external_proxy") {
         const clean = () => {
           if (pluginConfig.hotFile && fs.existsSync(pluginConfig.hotFile)) {
             // Check hotFile exists
@@ -677,14 +715,25 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
       debounce: 300,
     }
   } else if (typeof resolvedConfig.types === "object" && resolvedConfig.types !== null) {
+    const userProvidedOpenapi = Object.prototype.hasOwnProperty.call(resolvedConfig.types, "openapiPath")
+    const userProvidedRoutes = Object.prototype.hasOwnProperty.call(resolvedConfig.types, "routesPath")
+
     typesConfig = {
       enabled: resolvedConfig.types.enabled ?? true,
       output: resolvedConfig.types.output ?? "src/generated/types",
-      openapiPath: resolvedConfig.types.openapiPath ?? "src/generated/openapi.json",
-      routesPath: resolvedConfig.types.routesPath ?? "src/generated/routes.json",
+      openapiPath: resolvedConfig.types.openapiPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "openapi.json") : "src/generated/openapi.json"),
+      routesPath: resolvedConfig.types.routesPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "routes.json") : "src/generated/routes.json"),
       generateZod: resolvedConfig.types.generateZod ?? false,
       generateSdk: resolvedConfig.types.generateSdk ?? false,
       debounce: resolvedConfig.types.debounce ?? 300,
+    }
+
+    // If the user only set output (not openapi/routes), cascade them under output for consistency
+    if (!userProvidedOpenapi && resolvedConfig.types.output) {
+      typesConfig.openapiPath = path.join(typesConfig.output, "openapi.json")
+    }
+    if (!userProvidedRoutes && resolvedConfig.types.output) {
+      typesConfig.routesPath = path.join(typesConfig.output, "routes.json")
     }
   }
 
@@ -702,6 +751,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     autoDetectIndex: resolvedConfig.autoDetectIndex ?? true,
     transformOnServe: resolvedConfig.transformOnServe ?? ((code) => code),
     types: typesConfig,
+    executor: resolvedConfig.executor ?? pythonDefaults?.executor,
   }
 }
 
@@ -767,21 +817,6 @@ function resolveFullReloadConfig({ refresh: config }: ResolvedPluginConfig): Plu
 
     return plugin
   })
-}
-
-/**
- * Create a debounced function that delays invoking func until after
- * wait milliseconds have elapsed since the last time the debounced
- * function was invoked.
- */
-function debounce<T extends (...args: unknown[]) => void>(func: T, wait: number): T {
-  let timeout: ReturnType<typeof setTimeout> | null = null
-  return ((...args: unknown[]) => {
-    if (timeout) {
-      clearTimeout(timeout)
-    }
-    timeout = setTimeout(() => func(...args), wait)
-  }) as T
 }
 
 async function emitRouteTypes(routesPath: string, outputDir: string): Promise<void> {
@@ -930,10 +965,10 @@ export { getCsrfToken, csrfHeaders, csrfFetch } from "litestar-vite-plugin/helpe
  * Flow:
  * 1. Litestar exports openapi.json and routes.json on startup (via server_lifespan hook)
  * 2. This plugin detects file changes via Vite's handleHotUpdate
- * 3. Runs npx @hey-api/openapi-ts to generate TypeScript types
+ * 3. Runs @hey-api/openapi-ts to generate TypeScript types (using configured executor)
  * 4. Sends HMR event to notify client
  */
-function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>): Plugin {
+function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executor?: string): Plugin {
   let lastTypesHash: string | null = null
   let lastRoutesHash: string | null = null
   let server: ViteDevServer | null = null
@@ -967,13 +1002,13 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>): Plugin
         const args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
 
         if (typesConfig.generateZod) {
-          args.push("--plugins", "@hey-api/schemas", "@hey-api/types")
+          args.push("--plugins", "zod", "@hey-api/typescript")
         }
         if (typesConfig.generateSdk) {
           args.push("--client", "fetch")
         }
 
-        await execAsync(`npx ${args.join(" ")}`, {
+        await execAsync(resolvePackageExecutor(args.join(" "), executor), {
           cwd: process.cwd(),
         })
 

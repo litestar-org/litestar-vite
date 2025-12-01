@@ -119,6 +119,6 @@ mcp__context7__get-library-docs(
 
 ## Related Files
 
-- `examples/spa-react/` - React SPA example
-- `examples/inertia/` - React + Inertia example
+- `examples/react/` - React SPA example
+- `examples/vue-inertia/` - React + Inertia example
 - `src/py/litestar_vite/templates/react/` - React templates

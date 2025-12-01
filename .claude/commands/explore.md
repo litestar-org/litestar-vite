@@ -42,16 +42,16 @@ src/js/src/
 
 ```
 examples/
-├── spa-react/         # React SPA
-├── spa-vue/           # Vue 3 SPA
-├── spa-svelte/        # Svelte 5 SPA
-├── spa-vue-inertia/   # Vue + Inertia
+├── react/         # React SPA
+├── vue/           # Vue 3 SPA
+├── svelte/        # Svelte 5 SPA
+├── vue-inertia/   # Vue + Inertia
 ├── inertia/           # React + Inertia
 ├── angular/           # Angular + Vite
 ├── angular-cli/       # Angular CLI
-├── nuxt-api/          # Nuxt 3
-├── sveltekit-api/     # SvelteKit
-├── astro-api/         # Astro
+├── nuxt/          # Nuxt 3
+├── sveltekit/     # SvelteKit
+├── astro/         # Astro
 ├── template-htmx/     # HTMX
 ├── basic/             # Basic Vite
 ├── flash/             # Flash messages

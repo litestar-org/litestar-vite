@@ -12,8 +12,9 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "noEmit": true,
-{% if framework == "react" %}
+{% if framework in ["react", "react-inertia", "react-router", "react-tanstack"] %}
     "jsx": "react-jsx",
+    "types": ["vite/client"],
 {% elif framework == "vue" or framework == "vue-inertia" %}
     "jsx": "preserve",
 {% endif %}

@@ -152,6 +152,33 @@ def test_doctor_no_issues(doctor: ViteDoctor, tmp_path: Path) -> None:
     assert not doctor.issues
 
 
+def test_doctor_type_paths_mismatch(doctor: ViteDoctor, tmp_path: Path) -> None:
+    doctor.config.paths.root = tmp_path
+    (tmp_path / "vite.config.ts").write_text("""
+    export default defineConfig({
+        plugins: [litestar({
+            types: {
+                enabled: true,
+                output: 'src/generated',
+                openapiPath: 'src/generated/other-openapi.json',
+            }
+        })]
+    })
+    """)
+
+    with (
+        patch.object(doctor, "_check_dist_files"),
+        patch.object(doctor, "_check_node_modules"),
+        patch.object(doctor, "_check_manifest_presence"),
+        patch.object(doctor, "_check_typegen_artifacts"),
+        patch.object(doctor, "_check_env_alignment"),
+        patch.object(doctor, "_check_vite_server_reachable"),
+    ):
+        doctor.run(fix=False)
+
+    assert any(i.check == "TypeGen OpenAPI Path Mismatch" for i in doctor.issues)
+
+
 def test_doctor_manifest_missing(doctor: ViteDoctor, tmp_path: Path) -> None:
     doctor.config.paths.root = tmp_path
     doctor.config.paths.bundle_dir = Path(tmp_path / "public")
@@ -181,7 +208,7 @@ def test_doctor_hotfile_missing(doctor: ViteDoctor, tmp_path: Path) -> None:
     doctor.config.paths.root = tmp_path
     doctor.config.paths.bundle_dir = Path(tmp_path / "public")
     doctor.config.runtime.dev_mode = True
-    doctor.config.runtime.proxy_mode = "proxy"
+    doctor.config.runtime.proxy_mode = "vite"
     (tmp_path / "public").mkdir(parents=True, exist_ok=True)
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({

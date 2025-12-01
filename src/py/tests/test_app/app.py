@@ -19,7 +19,7 @@ vite = VitePlugin(
             bundle_dir=Path(here / "web" / "public"),
             resource_dir=Path(here / "web" / "resources"),
         ),
-        runtime=RuntimeConfig(hot_reload=True),
+        runtime=RuntimeConfig(dev_mode=True),
     ),
 )
 app = Litestar(plugins=[vite], template_config=template_config)

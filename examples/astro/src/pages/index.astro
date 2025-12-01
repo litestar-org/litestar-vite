@@ -1,0 +1,144 @@
+---
+import Layout from "../layouts/Layout.astro"
+---
+
+<Layout title="Library (Astro)">
+  <main class="mx-auto max-w-5xl space-y-6 px-4 py-10" id="app">
+    <header class="space-y-2">
+      <p class="font-semibold text-[#edb641] text-sm uppercase tracking-[0.14em]">Litestar · Vite</p>
+      <h1 class="font-semibold text-3xl text-[#202235]">Library (Astro)</h1>
+      <p class="max-w-3xl text-slate-600">Same API, different frontend. Astro with API proxy to Litestar.</p>
+      <nav class="inline-flex gap-2 rounded-full bg-slate-100 p-1 shadow-sm" role="tablist" aria-label="Views">
+        <button
+          class="rounded-full px-4 py-2 font-semibold text-sm transition bg-white text-[#202235] shadow"
+          data-view="overview"
+          type="button"
+        >Overview</button>
+        <button
+          class="rounded-full px-4 py-2 font-semibold text-sm transition text-slate-600"
+          data-view="books"
+          id="books-tab"
+          type="button"
+        >Books</button>
+      </nav>
+    </header>
+
+    <section id="overview" class="space-y-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/40 hidden">
+      <div class="text-slate-600">Loading...</div>
+    </section>
+    <section id="books" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 hidden" aria-label="Books">
+      <div class="text-slate-600">Loading...</div>
+    </section>
+
+    <footer class="border-slate-200 border-t pt-8 text-slate-400 text-xs">
+      <details>
+        <summary class="cursor-pointer">Server Routes (from API)</summary>
+        <div id="routes-list" class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
+          <span class="text-slate-600">Loading...</span>
+        </div>
+      </details>
+    </footer>
+  </main>
+</Layout>
+
+<script>
+  const tabButtons = document.querySelectorAll('[data-view]') as NodeListOf<HTMLButtonElement>
+  const overview = document.getElementById('overview') as HTMLElement
+  const books = document.getElementById('books') as HTMLElement
+  const booksTab = document.getElementById('books-tab') as HTMLButtonElement
+  const routesList = document.getElementById('routes-list') as HTMLElement
+
+  interface Book {
+    id: number
+    title: string
+    author: string
+    year: number
+    tags: string[]
+  }
+
+  interface Summary {
+    app: string
+    headline: string
+    total_books: number
+    featured: Book
+  }
+
+  async function loadData() {
+    const [summaryRes, booksRes] = await Promise.all([
+      fetch('/api/summary'),
+      fetch('/api/books'),
+    ])
+    const summary: Summary = await summaryRes.json()
+    const bookList: Book[] = await booksRes.json()
+
+    // Update books tab with count
+    booksTab.textContent = `Books (${summary.total_books})`
+
+    // Render overview
+    overview.innerHTML = `
+      <h2 class="font-semibold text-[#202235] text-xl">${summary.headline}</h2>
+      <p class="text-slate-600">Featured book</p>
+      <article class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4">
+        <h3 class="font-semibold text-[#202235] text-lg">${summary.featured.title}</h3>
+        <p class="mt-1 text-slate-600">${summary.featured.author} • ${summary.featured.year}</p>
+        <p class="mt-1 text-[#202235] text-sm">${summary.featured.tags.join(' · ')}</p>
+      </article>
+    `
+
+    // Render books
+    books.innerHTML = bookList
+      .map(
+        (book) => `
+          <article class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+            <h3 class="font-semibold text-[#202235] text-lg">${book.title}</h3>
+            <p class="mt-1 text-slate-600">${book.author} • ${book.year}</p>
+            <p class="mt-1 text-[#202235] text-sm">${book.tags.join(' · ')}</p>
+          </article>
+        `,
+      )
+      .join('')
+
+    // Load routes for footer
+    try {
+      const routesRes = await fetch('/api/summary')
+      if (routesRes.ok) {
+        // Since we don't have a routes endpoint in Astro example, show API endpoints
+        routesList.innerHTML = `
+          <span class="font-mono text-slate-600">api.summary → /api/summary</span>
+          <span class="font-mono text-slate-600">api.books → /api/books</span>
+          <span class="font-mono text-slate-600">api.book_detail → /api/books/{book_id}</span>
+        `
+      }
+    } catch {
+      routesList.innerHTML = '<span class="text-slate-600">Routes not available</span>'
+    }
+
+    showView('overview')
+  }
+
+  function showView(view: string) {
+    overview.classList.toggle('hidden', view !== 'overview')
+    books.classList.toggle('hidden', view !== 'books')
+    tabButtons.forEach((btn) => {
+      const active = btn.dataset.view === view
+      btn.className = `rounded-full px-4 py-2 font-semibold text-sm transition ${active ? 'bg-white text-[#202235] shadow' : 'text-slate-600'}`
+    })
+  }
+
+  tabButtons.forEach((btn) =>
+    btn.addEventListener('click', () => {
+      showView(btn.dataset.view!)
+    }),
+  )
+
+  loadData().catch((err) => {
+    console.error('Failed to load data:', err)
+    overview.innerHTML = `
+      <div class="text-red-600 p-4 bg-red-50 rounded-lg border border-red-200">
+        <h3 class="font-semibold">Failed to load data</h3>
+        <p class="text-sm mt-1">${err.message || 'Check that the Litestar server is running.'}</p>
+      </div>
+    `
+    overview.classList.remove('hidden')
+  })
+</script>

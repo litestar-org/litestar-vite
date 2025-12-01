@@ -24,8 +24,6 @@ export default defineConfig({
 {% if enable_types %}
       types: {
         enabled: true,
-        schemaPath: "./openapi.json",
-        routesPath: "./routes.json",
         output: "{{ resource_dir }}/generated/api",
       },
 {% endif %}

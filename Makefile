@@ -270,3 +270,35 @@ docs-demos:                                        ## Generate demo GIFs locally
 		VHS_NO_SANDBOX=true vhs "$$tape"; \
 	done
 	@echo "${OK} Demo GIFs generated successfully"
+
+# =============================================================================
+# Example Management
+# =============================================================================
+
+.PHONY: install-examples
+install-examples:                                  ## Install dependencies for all examples
+	@echo "${INFO} Installing example dependencies... 📦"
+	@for dir in examples/*/; do \
+		if [ -f "$${dir}package.json" ]; then \
+			echo "${INFO} Installing $${dir}..."; \
+			(cd "$${dir}" && NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm install --no-fund --quiet) || exit 1; \
+		fi \
+	done
+	@echo "${OK} Example dependencies installed"
+
+.PHONY: build-examples
+build-examples:                                    ## Build all frontend examples
+	@echo "${INFO} Building all examples... 📦"
+	@for dir in examples/*/; do \
+		if [ -f "$${dir}package.json" ]; then \
+			echo "${INFO} Building $${dir}..."; \
+			(cd "$${dir}" && NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run build --quiet) || exit 1; \
+		fi \
+	done
+	@echo "${OK} All examples built successfully"
+
+.PHONY: test-examples
+test-examples: build-examples                      ## Build and test all examples
+	@echo "${INFO} Testing examples... 🧪"
+	@uv run pytest src/py/tests/integration/test_examples.py -v
+	@echo "${OK} Example tests passed"

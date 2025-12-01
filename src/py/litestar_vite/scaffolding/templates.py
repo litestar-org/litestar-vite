@@ -172,6 +172,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
             "@types/react",
             "@types/react-dom",
             "typescript",
+            "vite",
         ],
         files=[
             "vite.config.ts",
@@ -310,6 +311,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         files=[
             "vite.config.ts",
             "svelte.config.js",
+            "tsconfig.json",
             "src/app.html",
             "src/app.css",
             "src/routes/+page.svelte",
@@ -381,7 +383,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
     FrameworkType.ANGULAR: FrameworkTemplate(
         name="Angular (Vite)",
         type=FrameworkType.ANGULAR,
-        description="Angular 18+ with Vite (Analog plugin) and Litestar proxy defaults",
+        description="Angular 21+ with Vite (zoneless signals)",
         vite_plugin="@analogjs/vite-plugin-angular",
         dependencies=[
             "@angular/animations",
@@ -392,7 +394,6 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
             "@angular/platform-browser",
             "@angular/router",
             "rxjs",
-            "zone.js",
         ],
         dev_dependencies=[
             "@analogjs/vite-plugin-angular",
@@ -426,7 +427,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
     FrameworkType.ANGULAR_CLI: FrameworkTemplate(
         name="Angular CLI",
         type=FrameworkType.ANGULAR_CLI,
-        description="Angular CLI (non-Vite) with dev-server proxy",
+        description="Angular 21+ with zoneless signals and TailwindCSS (Angular CLI)",
         vite_plugin=None,
         dependencies=[
             "@angular/animations",
@@ -438,7 +439,8 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
             "@angular/platform-browser-dynamic",
             "@angular/router",
             "rxjs",
-            "zone.js",
+            "@tailwindcss/postcss",
+            "tailwindcss",
         ],
         dev_dependencies=[
             "@angular-devkit/build-angular",
@@ -446,6 +448,8 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
             "@angular/compiler-cli",
             "@types/node",
             "typescript",
+            "postcss",
+            "autoprefixer",
         ],
         files=[
             "angular.json",
@@ -454,6 +458,8 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
             "tsconfig.spec.json",
             "package.json",
             "proxy.conf.json",
+            ".postcssrc.json",
+            "tailwind.config.js",
             "src/index.html",
             "src/main.ts",
             "src/styles.css",

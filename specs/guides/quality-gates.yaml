@@ -45,6 +45,10 @@ documentation_gates:
       - pattern: "from __future__ import annotations"
         severity: "error"
         message: "Use explicit stringification instead"
+        known_violations:
+          - "src/py/tests/integration/cli/test_init.py"
+          - "src/py/tests/integration/cli/test_status.py"
+          - "src/py/tests/integration/cli/conftest.py"
 
       - pattern: "Optional["
         severity: "error"
@@ -54,6 +58,13 @@ documentation_gates:
         path: "tests/"
         severity: "error"
         message: "Use function-based pytest instead of class-based tests"
+        known_violations:
+          - "src/py/tests/unit/inertia/test_request.py"
+          - "src/py/tests/unit/inertia/test_response.py"
+          - "src/py/tests/unit/test_plugin.py"
+          - "src/py/tests/integration/test_optional_jinja.py"
+          - "src/py/tests/unit/test_commands.py"
+          - "src/py/tests/unit/test_executor.py"
 
       - pattern: "hasattr\\(|getattr("
         severity: "warning"
@@ -64,3 +75,12 @@ documentation_gates:
 
   - name: knowledge_captured
     description: "New patterns must be documented before archival"
+
+  - name: recent_patterns_documented
+    patterns_to_capture:
+      - "Props flattening in InertiaResponse._build_page_props()"
+      - "ViteSPAHandler.is_initialized property for init checks"
+      - "ViteSPAHandler.get_html_sync() for sync contexts"
+      - "HTTP/2 support with h2 package fallback"
+      - "External dev server config (ExternalDevServer)"
+      - "Port auto-selection for proxy modes"

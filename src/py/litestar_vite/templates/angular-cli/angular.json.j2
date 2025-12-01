@@ -9,14 +9,16 @@
       "prefix": "app",
       "architect": {
         "build": {
-          "builder": "@angular-devkit/build-angular:browser",
+          "builder": "@angular-devkit/build-angular:application",
           "options": {
-            "outputPath": "dist/browser",
+            "outputPath": "dist",
             "index": "src/index.html",
-            "main": "src/main.ts",
-            "polyfills": ["zone.js"],
+            "browser": "src/main.ts",
             "tsConfig": "tsconfig.app.json",
-            "assets": ["src/favicon.ico", "src/assets"],
+            "assets": [
+              { "glob": "**/*", "input": "src/assets", "output": "/assets" },
+              { "glob": "**/*", "input": "src/generated", "output": "/src/generated" }
+            ],
             "styles": ["src/styles.css"],
             "scripts": []
           }
@@ -24,12 +26,11 @@
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
           "options": {
-            "browserTarget": "{{ project_name }}:build",
+            "buildTarget": "{{ project_name }}:build",
             "proxyConfig": "proxy.conf.json"
           }
         }
       }
     }
-  },
-  "defaultProject": "{{ project_name }}"
+  }
 }

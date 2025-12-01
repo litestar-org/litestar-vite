@@ -110,10 +110,10 @@ src/js/src/
 └── inertia-helpers/   # Inertia helper utilities
 
 examples/
-├── spa-react/         # React SPA
-├── spa-vue/           # Vue 3 SPA
-├── spa-svelte/        # Svelte 5 SPA
-├── spa-vue-inertia/   # Vue + Inertia
+├── react/         # React SPA
+├── vue/           # Vue 3 SPA
+├── svelte/        # Svelte 5 SPA
+├── vue-inertia/   # Vue + Inertia
 ├── inertia/           # React + Inertia
 ├── basic/             # Basic Vite integration
 └── ...                # More examples

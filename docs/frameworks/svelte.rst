@@ -139,4 +139,4 @@ See Also
 --------
 
 - :doc:`inertia` - Svelte with Inertia.js for server-side routing
-- `Example: spa-svelte <https://github.com/litestar-org/litestar-vite/tree/main/examples/spa-svelte>`_
+- `Example: svelte <https://github.com/litestar-org/litestar-vite/tree/main/examples/svelte>`_

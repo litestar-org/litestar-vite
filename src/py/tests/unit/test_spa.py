@@ -47,7 +47,7 @@ def spa_config(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Vite
     return ViteConfig(
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
-        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        runtime=RuntimeConfig(dev_mode=False),
     )
 
 
@@ -60,7 +60,7 @@ def spa_config_dev(temp_resource_dir: Path) -> ViteConfig:
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
         dev_mode=True,
-        runtime=RuntimeConfig(hot_reload=True),
+        runtime=RuntimeConfig(dev_mode=True),
     )
 
 
@@ -115,6 +115,30 @@ async def test_spa_handler_not_initialized_error(spa_config: ViteConfig) -> None
         await handler.get_html(mock_request)
 
 
+@pytest.mark.asyncio
+async def test_spa_get_bytes_lazy_initialize(tmp_path: Path) -> None:
+    """get_bytes should lazily initialize when lifespan didn't run."""
+    from litestar_vite.config import PathConfig, RuntimeConfig
+
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<!doctype html><html></html>")
+
+    config = ViteConfig(
+        mode="spa",
+        dev_mode=False,
+        paths=PathConfig(root=tmp_path, resource_dir=resource_dir, bundle_dir=tmp_path / "public"),
+        runtime=RuntimeConfig(dev_mode=False),
+    )
+    handler = ViteSPAHandler(config)
+    # Simulate a worker that never ran initialize()
+    handler._initialized = False
+
+    data = await handler.get_bytes()
+
+    assert data.startswith(b"<!doctype html>")
+
+
 async def test_spa_handler_missing_index_html(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test that missing index.html raises error."""
     from litestar_vite.config import PathConfig, RuntimeConfig
@@ -130,7 +154,7 @@ async def test_spa_handler_missing_index_html(tmp_path: Path, monkeypatch: pytes
     config = ViteConfig(
         mode="spa",
         paths=PathConfig(resource_dir=resource_dir),
-        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        runtime=RuntimeConfig(dev_mode=False),
     )
     handler = ViteSPAHandler(config)
 
@@ -163,7 +187,7 @@ async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "M
         html = await handler.get_html(mock_request)
 
         assert "Dev Server HTML" in html
-        mock_client.get.assert_called_once_with("/", follow_redirects=True)
+        mock_client.get.assert_called_once_with("http://localhost:5173/", follow_redirects=True)
 
 
 async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> None:
@@ -307,7 +331,7 @@ def spa_config_with_transforms(temp_resource_dir: Path, monkeypatch: pytest.Monk
     return ViteConfig(
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
-        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        runtime=RuntimeConfig(dev_mode=False),
         spa=SPAConfig(
             inject_routes=True,
             inject_csrf=False,  # Disable for tests that don't mock request scope
@@ -470,7 +494,7 @@ async def test_spa_handler_get_html_sync_fails_in_dev_mode(
     with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
         await handler.initialize()
 
-        with pytest.raises(RuntimeError, match="dev mode"):
+        with pytest.raises(ImproperlyConfiguredException, match="Vite server"):
             handler.get_html_sync()
 
 
@@ -487,7 +511,7 @@ async def test_spa_handler_no_transform_when_spa_config_disabled(
     config = ViteConfig(
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
-        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        runtime=RuntimeConfig(dev_mode=False),
         spa=False,  # Transformations disabled
     )
     handler = ViteSPAHandler(config)
@@ -515,7 +539,7 @@ async def test_spa_handler_csrf_injection(
     config = ViteConfig(
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
-        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        runtime=RuntimeConfig(dev_mode=False),
         spa=SPAConfig(
             inject_routes=False,
             inject_csrf=True,
@@ -555,7 +579,7 @@ async def test_spa_handler_csrf_injection_sync(
     config = ViteConfig(
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
-        runtime=RuntimeConfig(dev_mode=False, hot_reload=False),
+        runtime=RuntimeConfig(dev_mode=False),
         spa=SPAConfig(
             inject_routes=False,
             inject_csrf=True,

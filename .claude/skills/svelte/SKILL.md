@@ -145,6 +145,6 @@ mcp__context7__get-library-docs(
 
 ## Related Files
 
-- `examples/spa-svelte/` - Svelte SPA example
-- `examples/sveltekit-api/` - SvelteKit example
+- `examples/svelte/` - Svelte SPA example
+- `examples/sveltekit/` - SvelteKit example
 - `src/py/litestar_vite/templates/svelte/` - Svelte templates

@@ -62,7 +62,14 @@ def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "E
     Returns:
         The response object.
     """
-    inertia_enabled = getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False)
+    # Check if this is an Inertia request by:
+    # 1. InertiaRequest.inertia_enabled (route has component)
+    # 2. InertiaRequest.is_inertia (X-Inertia header present)
+    # 3. Direct header check (fallback for 404s before routing when request isn't InertiaRequest)
+    is_inertia_header = request.headers.get("x-inertia", "").lower() == "true"
+    inertia_enabled = (
+        getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False) or is_inertia_header
+    )
 
     if not inertia_enabled:
         if isinstance(exc, NotFoundError):

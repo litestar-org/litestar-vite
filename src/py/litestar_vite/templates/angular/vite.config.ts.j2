@@ -1,34 +1,21 @@
-import { defineConfig } from "vite";
 import angular from "@analogjs/vite-plugin-angular";
-import litestar from "litestar-vite-plugin";
+{% if use_tailwind %}import tailwindcss from "@tailwindcss/vite";
+{% endif %}import litestar from "litestar-vite-plugin";
+import { defineConfig } from "vite";
 
 export default defineConfig({
-  server: {
-    host: process.env.VITE_HOST || "127.0.0.1",
-    port: Number(process.env.VITE_PORT || "{{ vite_port }}"),
-    cors: true,
-    hmr: {
-      host: "localhost",
-      path: "/vite-hmr",
-    },
-  },
-  plugins: [
-    angular(),
-    litestar({
-      input: ["{{ resource_dir }}/main.ts"],
-{% if enable_types %}
-      types: {
-        enabled: true,
-        openapiPath: "src/generated/openapi.json",
-        routesPath: "src/generated/routes.json",
-        output: "src/generated",
-      },
-{% endif %}
-    }),
-  ],
   resolve: {
+    mainFields: ["module"],
     alias: {
       "@": "/{{ resource_dir }}",
     },
   },
+  plugins: [
+    // Angular plugin must be first
+    angular(),
+{% if use_tailwind %}    tailwindcss(),
+{% endif %}    litestar({
+      input: ["{{ resource_dir }}/main.ts"{% if use_tailwind %}, "{{ resource_dir }}/styles.css"{% endif %}],
+    }),
+  ],
 });

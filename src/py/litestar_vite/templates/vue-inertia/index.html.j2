@@ -2,12 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="/static/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title inertia>{{ project_name }}</title>
+    {{ "{{ vite_hmr() }}" }}
+    {{ "{{ vite('{{ resource_dir }}/main.ts') }}" }}
   </head>
   <body>
-    <div id="app" data-page="{{ "{{ page | tojson | e }}" }}"></div>
-    <script type="module" src="/{{ resource_dir }}/main.ts"></script>
+    <div id="app" data-page='{{ "{{ inertia | safe }}" }}'></div>
   </body>
 </html>

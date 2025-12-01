@@ -150,5 +150,5 @@ See Also
 --------
 
 - :doc:`inertia` - Vue with Inertia.js for server-side routing
-- `Example: spa-vue <https://github.com/litestar-org/litestar-vite/tree/main/examples/spa-vue>`_
-- `Example: spa-vue-inertia <https://github.com/litestar-org/litestar-vite/tree/main/examples/spa-vue-inertia>`_
+- `Example: vue <https://github.com/litestar-org/litestar-vite/tree/main/examples/vue>`_
+- `Example: vue-inertia <https://github.com/litestar-org/litestar-vite/tree/main/examples/vue-inertia>`_

@@ -6,8 +6,8 @@ This guide provides instructions and best practices for writing and running test
 
 The project uses a dual testing strategy for its Python backend and TypeScript frontend.
 
--   **Backend (Python)**: [pytest](https://docs.pytest.org/) is the primary framework for all Python tests.
--   **Frontend (TypeScript)**: [Vitest](https://vitest.dev/) is used for tests related to the core JavaScript/TypeScript library.
+- **Backend (Python)**: [pytest](https://docs.pytest.org/) is the primary framework for all Python tests.
+- **Frontend (TypeScript)**: [Vitest](https://vitest.dev/) is used for tests related to the core JavaScript/TypeScript library.
 
 The full test suite can be run with a single command: `make test`.
 
@@ -17,18 +17,44 @@ Python tests are located in `src/py/tests/`.
 
 ### Test Types
 
-1.  **Unit Tests (`src/py/tests/unit/`)**: These tests focus on individual components (functions, classes) in isolation. Dependencies, especially I/O-bound ones like databases or network calls, must be mocked.
-    -   **Framework**: `pytest`
-    -   **Mocks**: `unittest.mock` (especially `AsyncMock` for async code).
+1. **Unit Tests (`src/py/tests/unit/`)**: These tests focus on individual components (functions, classes) in isolation. Dependencies, especially I/O-bound ones like databases or network calls, must be mocked.
+    - **Framework**: `pytest`
+    - **Mocks**: `unittest.mock` (especially `AsyncMock` for async code).
 
-2.  **Integration Tests (`src/py/tests/integration/`)**: These tests verify the interaction between multiple components. They may use real dependencies like a test database or a live Vite dev server process.
+2. **Integration Tests (`src/py/tests/integration/`)**: These tests verify the interaction between multiple components. They may use real dependencies like a test database or a live Vite dev server process.
 
 ### Key Practices
 
--   **Function-Based Tests**: All tests **must** be function-based. Do not use class-based tests (`class Test...:`).
--   **Fixtures**: Use `pytest` fixtures (`@pytest.fixture`) to provide reusable setup and teardown logic, such as creating mock objects or database sessions.
--   **Async Tests**: Mark `async` test functions with `@pytest.mark.asyncio`.
--   **Coverage**: Aim for at least 90% test coverage for any new or modified code. The full coverage report can be generated with `make coverage`.
+- **Function-Based Tests**: All tests **must** be function-based. Do not use class-based tests (`class Test...:`).
+    - Good: `async def test_inertia_response_flattens_props() -> None:`
+    - Bad: `class TestInertiaResponse:`
+- **Fixtures**: Use `pytest` fixtures (`@pytest.fixture`) to provide reusable setup and teardown logic, such as creating mock objects or database sessions.
+- **Async Tests**: Mark `async` test functions with `@pytest.mark.asyncio`.
+- **Coverage**: Aim for at least 90% test coverage for any new or modified code. The full coverage report can be generated with `make coverage`.
+
+### Test Organization
+
+Tests mirror the source structure:
+
+```
+src/py/tests/
+├── unit/              # Fast, isolated tests
+│   ├── inertia/       # Inertia-specific unit tests
+│   ├── test_config.py
+│   └── test_asset_loader.py
+├── integration/       # Tests with real dependencies
+│   ├── cli/           # CLI command integration tests
+│   └── test_examples.py
+└── conftest.py        # Shared fixtures
+```
+
+### Recent Test Patterns
+
+The inertia-props-top-level feature introduced these test patterns:
+
+1. **Props flattening tests**: Verify dict props are merged at top-level
+2. **Content wrapping tests**: Verify non-dict content goes under `content` key
+3. **Inertia protocol tests**: Test v2 protocol features (deferred, merge, prepend props)
 
 ### Running Python Tests
 
@@ -52,8 +78,8 @@ The core TypeScript library tests are located in `src/js/tests/`.
 
 ### Key Practices
 
--   **Modern Syntax**: Use modern ES module syntax (`import`, `export`).
--   **Mocking**: Use Vitest's built-in mocking capabilities (`vi.mock`, `vi.fn`).
+- **Modern Syntax**: Use modern ES module syntax (`import`, `export`).
+- **Mocking**: Use Vitest's built-in mocking capabilities (`vi.mock`, `vi.fn`).
 
 ### Running Frontend Tests
 
@@ -77,4 +103,49 @@ make test
 
 # Run all linting, type-checking, and tests
 make check-all
+
+# Run with coverage report
+make coverage
+
+# Run only linting (includes pre-commit, type-check, slotscheck)
+make lint
+
+# Run only type checking (mypy + pyright)
+make type-check
+```
+
+## Type Checking
+
+The project uses multiple type checkers for comprehensive type safety:
+
+```bash
+# Run mypy (with cache)
+make mypy
+
+# Run mypy without cache
+make mypy-nocache
+
+# Run pyright
+make pyright
+
+# Run basedpyright (stricter variant)
+make basedpyright
+
+# Run all type checkers
+make type-check
+```
+
+## Example Testing
+
+Test all example applications to ensure integrations work correctly:
+
+```bash
+# Install dependencies for all examples
+make install-examples
+
+# Build all examples
+make build-examples
+
+# Run example integration tests
+make test-examples
 ```

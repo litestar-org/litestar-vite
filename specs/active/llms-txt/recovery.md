@@ -139,8 +139,8 @@ For content extraction:
 
 For examples:
 1. `/examples/basic/` - Basic usage
-2. `/examples/inertia/` - Inertia.js integration
-3. `/examples/spa-react/` - SPA mode
+2. `/examples/vue-inertia/` - Inertia.js integration
+3. `/examples/react/` - SPA mode
 
 ### Potential Issues
 

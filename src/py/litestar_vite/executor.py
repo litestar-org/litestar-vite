@@ -17,6 +17,9 @@ from litestar.cli._utils import console
 
 from litestar_vite.exceptions import ViteExecutableNotFoundError, ViteExecutionError
 
+# Windows-only constant for creating new process groups
+_CREATE_NEW_PROCESS_GROUP: int = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
 
 class JSExecutor(ABC):
     """Abstract base class for Javascript executors."""
@@ -31,7 +34,7 @@ class JSExecutor(ABC):
         """Install dependencies."""
 
     @abstractmethod
-    def run(self, args: list[str], cwd: Path) -> subprocess.Popen[bytes]:
+    def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
         """Run a command."""
 
     @abstractmethod
@@ -46,26 +49,52 @@ class JSExecutor(ABC):
             raise ViteExecutableNotFoundError(self.bin_name)
         return path
 
+    @property
+    def start_command(self) -> list[str]:
+        """Get the default command to start the dev server (e.g., npm run start)."""
+        return [self.bin_name, "run", "start"]
+
+    @property
+    def build_command(self) -> list[str]:
+        """Get the default command to build for production (e.g., npm run build)."""
+        return [self.bin_name, "run", "build"]
+
 
 class CommandExecutor(JSExecutor):
     """Generic command executor."""
 
     def install(self, cwd: Path) -> None:
-        self.execute(["install"], cwd)
-
-    def run(self, args: list[str], cwd: Path) -> subprocess.Popen[bytes]:
         executable = self._resolve_executable()
-        # Avoid double-prefixing the executable when callers pass it explicitly
-        command = args if args and Path(args[0]).name == Path(executable).name else [executable, *args]
-        return subprocess.Popen(
+        command = ["install"] if Path("install").name == Path(executable).name else [executable, "install"]
+        process = subprocess.run(
             command,
             cwd=cwd,
             shell=platform.system() == "Windows",
-            # Inherit stdio so long-running dev servers don't block on full pipes and
-            # so users can see Vite output in real time.
-            stdout=None,
-            stderr=None,
+            check=False,
         )
+        if process.returncode != 0:
+            raise ViteExecutionError(command, process.returncode, "package install failed")
+
+    def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
+        executable = self._resolve_executable()
+        # Avoid double-prefixing the executable when callers pass it explicitly
+        command = args if args and Path(args[0]).name == Path(executable).name else [executable, *args]
+        # Use start_new_session=True on Unix to create a new process group.
+        # This ensures all child processes (node, astro, nuxt, vite, etc.) can be
+        # terminated together using os.killpg() on the process group.
+        # On Windows, use CREATE_NEW_PROCESS_GROUP flag.
+        kwargs: dict[str, Any] = {
+            "cwd": cwd,
+            "stdout": None,  # inherit for live output
+            "stderr": None,
+        }
+        if platform.system() == "Windows":
+            kwargs["shell"] = True
+            kwargs["creationflags"] = _CREATE_NEW_PROCESS_GROUP
+        else:
+            kwargs["shell"] = False
+            kwargs["start_new_session"] = True
+        return subprocess.Popen(command, **kwargs)
 
     def execute(self, args: list[str], cwd: Path) -> None:
         executable = self._resolve_executable()
@@ -75,10 +104,12 @@ class CommandExecutor(JSExecutor):
             cwd=cwd,
             shell=platform.system() == "Windows",
             check=False,
-            capture_output=True,
+            stdout=None,  # inherit for live output
+            stderr=subprocess.PIPE,
         )
         if process.returncode != 0:
-            raise ViteExecutionError(command, process.returncode, process.stderr.decode())
+            stderr = process.stderr.decode() if process.stderr else ""
+            raise ViteExecutionError(command, process.returncode, stderr)
 
 
 class NodeExecutor(CommandExecutor):
@@ -175,16 +206,24 @@ class NodeenvExecutor(JSExecutor):
         command = [npm_path, "install"]
         subprocess.run(command, cwd=cwd, check=True)
 
-    def run(self, args: list[str], cwd: Path) -> subprocess.Popen[bytes]:
+    def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
         npm_path = self._find_npm_in_venv()
         command = [npm_path, *args]
-        return subprocess.Popen(
-            command,
-            cwd=cwd,
-            shell=platform.system() == "Windows",
-            stdout=None,
-            stderr=None,
-        )
+        # Use start_new_session=True on Unix to create a new process group.
+        # This ensures all child processes (node, astro, nuxt, vite, etc.) can be
+        # terminated together using os.killpg() on the process group.
+        kwargs: dict[str, Any] = {
+            "cwd": cwd,
+            "stdout": None,
+            "stderr": None,
+        }
+        if platform.system() == "Windows":
+            kwargs["shell"] = True
+            kwargs["creationflags"] = _CREATE_NEW_PROCESS_GROUP
+        else:
+            kwargs["shell"] = False
+            kwargs["start_new_session"] = True
+        return subprocess.Popen(command, **kwargs)
 
     def execute(self, args: list[str], cwd: Path) -> None:
         npm_path = self._find_npm_in_venv()
@@ -209,3 +248,13 @@ class NodeenvExecutor(JSExecutor):
         if npm_path.exists():
             return str(npm_path)
         return "npm"  # Fallback to system npm
+
+    @property
+    def start_command(self) -> list[str]:
+        """Get the default command to start the dev server using nodeenv npm."""
+        return [self._find_npm_in_venv(), "run", "start"]
+
+    @property
+    def build_command(self) -> list[str]:
+        """Get the default command to build for production using nodeenv npm."""
+        return [self._find_npm_in_venv(), "run", "build"]

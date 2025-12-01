@@ -163,12 +163,21 @@ class InertiaResponse(Response[T]):
         for key in reset_keys:
             shared_props.pop(key, None)
 
+        route_content: Any | None = None
         if is_or_contains_lazy_prop(self.content):
             filtered_content = lazy_render(self.content, partial_data, inertia_plugin.portal, partial_except)
             if filtered_content is not None:
-                shared_props["content"] = filtered_content
+                route_content = filtered_content
         elif should_render(self.content, partial_data, partial_except):
-            shared_props["content"] = self.content
+            route_content = self.content
+
+        if route_content is not None:
+            if isinstance(route_content, Mapping):
+                mapping_content = cast("Mapping[str, Any]", route_content)
+                for key, value in mapping_content.items():
+                    shared_props[key] = value
+            else:
+                shared_props["content"] = route_content
 
         # Extract deferred props metadata for v2 protocol
         deferred_props = extract_deferred_props(shared_props) or None
@@ -224,6 +233,18 @@ class InertiaResponse(Response[T]):
         template = template_engine.get_template(template_name)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
         return template.render(**context).encode(self.encoding)  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType,reportReturnType]
 
+    def _get_csrf_token(self, request: "Request[UserT, AuthT, StateT]") -> "str | None":
+        """Extract CSRF token from the request scope.
+
+        Args:
+            request: The incoming request.
+
+        Returns:
+            The CSRF token if available, otherwise None.
+        """
+        csrf_token = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
+        return csrf_token if csrf_token else None
+
     def _render_spa(
         self,
         request: "Request[UserT, AuthT, StateT]",
@@ -236,8 +257,9 @@ class InertiaResponse(Response[T]):
         This method uses ViteSPAHandler to get the base HTML and injects
         the page props as a data-page attribute on the app element.
 
-        Note: This is a synchronous method that requires production mode
-        (cached HTML). In dev mode with HMR, use async get_html() instead.
+        Uses get_html_sync() for both dev and production modes to avoid
+        deadlocks when calling async code from sync context within the
+        same event loop thread.
 
         Args:
             request: The request object.
@@ -254,8 +276,8 @@ class InertiaResponse(Response[T]):
         spa_handler = getattr(vite_plugin, "_spa_handler", None)
         if spa_handler is None:
             msg = (
-                "SPA mode requires VitePlugin with mode='spa'. "
-                "Set mode='spa' in ViteConfig or remove spa_mode=True from InertiaConfig."
+                "SPA mode requires VitePlugin with mode='spa' or mode='hybrid'. "
+                "Set mode='hybrid' in ViteConfig for template-less Inertia."
             )
             raise ImproperlyConfiguredException(msg)
 
@@ -263,9 +285,13 @@ class InertiaResponse(Response[T]):
         # (converts snake_case to camelCase)
         page_dict = page_props.to_dict()
 
-        # Get HTML with page data injected synchronously
-        # This works in production mode; dev mode requires async get_html()
-        html = spa_handler.get_html_sync(page_data=page_dict)
+        # Get CSRF token for injection
+        csrf_token = self._get_csrf_token(request)
+
+        # Use synchronous method for both dev and production modes
+        # In dev mode, this uses a sync HTTP client to avoid event loop deadlocks
+        # In production mode, this uses cached HTML
+        html = spa_handler.get_html_sync(page_data=page_dict, csrf_token=csrf_token)
 
         return html.encode(self.encoding)
 

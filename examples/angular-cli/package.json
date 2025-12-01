@@ -2,6 +2,7 @@
   "name": "angular-cli",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "ng": "ng",
     "start": "ng serve --proxy-config proxy.conf.json",
@@ -17,7 +18,8 @@
     "@angular/platform-browser-dynamic": "latest",
     "@angular/router": "latest",
     "rxjs": "latest",
-    "zone.js": "latest"
+    "@tailwindcss/postcss": "^4.0.0",
+    "tailwindcss": "^4.0.0"
   },
   "devDependencies": {
     "@angular-devkit/build-angular": "latest",
@@ -25,6 +27,7 @@
     "@angular/compiler-cli": "latest",
     "@types/node": "latest",
     "typescript": "latest",
-    "@types/jasmine": "latest"
+    "postcss": "latest",
+    "autoprefixer": "latest"
   }
 }

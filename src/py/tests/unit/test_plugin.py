@@ -31,13 +31,14 @@ class TestVitePlugin:
         """Test plugin initialization with custom configuration."""
         config = ViteConfig(
             paths=PathConfig(bundle_dir="custom/bundle", resource_dir="custom/resources"),
-            runtime=RuntimeConfig(hot_reload=False),
+            runtime=RuntimeConfig(dev_mode=False),
         )
         plugin = VitePlugin(config=config)
 
         assert plugin._config == config
         assert str(plugin._config.bundle_dir) == "custom/bundle"
-        assert plugin._config.hot_reload is False
+        # hot_reload requires dev_mode=True AND a Vite mode (vite/direct/proxy)
+        assert plugin._config.hot_reload is False  # dev_mode=False disables HMR
         assert plugin._config.executor is not None
 
     def test_plugin_initialization_with_static_files_config(self) -> None:
@@ -227,11 +228,12 @@ class TestVitePluginAppIntegration:
 class TestVitePluginLifespan:
     """Test VitePlugin server lifespan management."""
 
-    def test_server_lifespan_without_lifespan_management(self) -> None:
-        """Test server lifespan when lifespan management is disabled."""
-        config = ViteConfig()
+    def test_server_lifespan_in_production_without_start_dev_server(self) -> None:
+        """Test server lifespan when dev server is disabled."""
+        config = ViteConfig(
+            runtime=RuntimeConfig(dev_mode=False, start_dev_server=False),
+        )
         plugin = VitePlugin(config=config)
-        plugin._use_server_lifespan = False
         plugin._config.types = False
         app = Mock(spec=Litestar)
 
@@ -255,9 +257,10 @@ class TestVitePluginLifespan:
     @patch("litestar_vite.plugin.set_environment")
     def test_server_lifespan_with_environment_setup(self, mock_set_env: Mock) -> None:
         """Test server lifespan with environment variable setup."""
-        config = ViteConfig(runtime=RuntimeConfig(set_environment=True))
+        config = ViteConfig(
+            runtime=RuntimeConfig(set_environment=True, dev_mode=False, start_dev_server=False),
+        )
         plugin = VitePlugin(config=config)
-        plugin._use_server_lifespan = False
         plugin._config.types = False
         app = Mock(spec=Litestar)
 
@@ -270,7 +273,7 @@ class TestVitePluginLifespan:
     @patch("litestar_vite.plugin.console")
     def test_server_lifespan_with_vite_process_management(self, mock_console: Mock) -> None:
         """Test server lifespan with Vite process management."""
-        config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, hot_reload=True))
+        config = ViteConfig(runtime=RuntimeConfig(dev_mode=True))
         plugin = VitePlugin(config=config)
         plugin._config.types = False
         app = Mock(spec=Litestar)
@@ -289,7 +292,9 @@ class TestVitePluginLifespan:
     def test_server_lifespan_with_watch_mode(self, mock_console: Mock) -> None:
         """Test server lifespan with watch mode (no HMR)."""
         config = ViteConfig(
-            runtime=RuntimeConfig(dev_mode=True, hot_reload=False),  # Watch mode without HMR
+            runtime=RuntimeConfig(
+                dev_mode=True, proxy_mode="proxy", external_dev_server="http://localhost:4200"
+            ),  # Watch mode without HMR
         )
         plugin = VitePlugin(config=config)
         plugin._config.types = False
@@ -370,10 +375,12 @@ class TestViteProcess:
         # Should not raise an exception
         process.stop()
 
+    @patch("litestar_vite.plugin.os.killpg")
     @patch("signal.SIGTERM", 15)
-    def test_vite_process_stop_graceful(self) -> None:
+    def test_vite_process_stop_graceful(self, mock_killpg: Mock) -> None:
         """Test graceful process stop."""
         mock_process = Mock()
+        mock_process.pid = 12345  # Must be an integer for os.killpg
         mock_process.poll.return_value = None  # Process is running
         mock_process.wait.return_value = 0  # Process exits cleanly
 
@@ -383,16 +390,19 @@ class TestViteProcess:
 
         process.stop()
 
-        mock_process.terminate.assert_called_once()
+        # Process group termination is used on Unix
+        mock_killpg.assert_called_once_with(12345, 15)
         mock_process.wait.assert_called_once()
 
+    @patch("litestar_vite.plugin.os.killpg")
     @patch("signal.SIGTERM", 15)
     @patch("signal.SIGKILL", 9)
-    def test_vite_process_stop_force_kill(self) -> None:
+    def test_vite_process_stop_force_kill(self, mock_killpg: Mock) -> None:
         """Test force killing process when graceful stop fails."""
         import subprocess
 
         mock_process = Mock()
+        mock_process.pid = 12345  # Must be an integer for os.killpg
         mock_process.poll.return_value = None  # Process is running
         mock_process.wait.side_effect = [subprocess.TimeoutExpired("cmd", 5.0), 0]
 
@@ -402,16 +412,20 @@ class TestViteProcess:
 
         process.stop()
 
-        mock_process.terminate.assert_called_once()
-        mock_process.kill.assert_called_once()
+        # First call is SIGTERM, second is SIGKILL after timeout
+        assert mock_killpg.call_count == 2
+        mock_killpg.assert_any_call(12345, 15)  # SIGTERM
+        mock_killpg.assert_any_call(12345, 9)  # SIGKILL
         assert mock_process.wait.call_count == 2
 
+    @patch("litestar_vite.plugin.os.killpg")
     @patch("litestar_vite.plugin.console")
-    def test_vite_process_stop_failure(self, mock_console: Mock) -> None:
+    def test_vite_process_stop_failure(self, mock_console: Mock, mock_killpg: Mock) -> None:
         """Test process stop failure handling."""
         mock_process = Mock()
+        mock_process.pid = 12345  # Must be an integer for os.killpg
         mock_process.poll.return_value = None
-        mock_process.terminate.side_effect = Exception("Stop failed")
+        mock_killpg.side_effect = Exception("Stop failed")
 
         executor = Mock()
         process = ViteProcess(executor)
@@ -627,7 +641,7 @@ class TestVitePluginJinjaOptionalDependency:
 
     def test_plugin_development_server_without_jinja(self) -> None:
         """Test development server functionality without Jinja."""
-        config = ViteConfig(runtime=RuntimeConfig(hot_reload=True, dev_mode=True))
+        config = ViteConfig(runtime=RuntimeConfig(dev_mode=True))
         plugin = VitePlugin(config=config)
 
         # Development features should work without Jinja
@@ -639,7 +653,7 @@ class TestVitePluginJinjaOptionalDependency:
 
     def test_plugin_production_mode_without_jinja(self) -> None:
         """Test production mode functionality without Jinja."""
-        config = ViteConfig(runtime=RuntimeConfig(hot_reload=False, dev_mode=False))
+        config = ViteConfig(runtime=RuntimeConfig(dev_mode=False))
         plugin = VitePlugin(config=config)
 
         # Production features should work without Jinja

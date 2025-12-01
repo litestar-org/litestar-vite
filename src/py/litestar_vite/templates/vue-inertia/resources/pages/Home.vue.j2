@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head } from "@inertiajs/vue3";
+import { Head, Link } from "@inertiajs/vue3";
 
 defineProps<{
   message?: string;
@@ -8,23 +8,15 @@ defineProps<{
 
 <template>
   <Head title="Home" />
-  <div class="app">
-    <h1>{{ "{{ project_name }}" }}</h1>
-    <p>Vue 3 + Inertia.js + Litestar</p>
-    <p v-if="message" class="message">{{ "{{ message }}" }}</p>
+  <div class="max-w-5xl mx-auto px-4 py-10 text-center space-y-6">
+    <h1 class="text-3xl font-semibold text-[#202235]">{{ "{{ project_name }}" }}</h1>
+    <p class="text-slate-600">Vue 3 + Inertia.js + Litestar</p>
+    <p v-if="message" class="text-[#646cff] font-medium">{{ "{{ message }}" }}</p>
+
+    <nav class="flex justify-center gap-4">
+      <Link href="/books" class="rounded-full bg-[#202235] px-6 py-2 font-semibold text-white text-sm transition hover:bg-[#2d3348]">
+        View Books
+      </Link>
+    </nav>
   </div>
 </template>
-
-<style scoped>
-.app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-}
-
-.message {
-  color: #646cff;
-  font-weight: 500;
-}
-</style>

@@ -21,22 +21,37 @@ Seamless integration between [Litestar](https://litestar.dev/) Python framework 
 ### Essential Commands
 
 ```bash
-make install    # Install all dependencies
-make test       # Run all tests
-make lint       # Run linting
-make fix        # Auto-format code
-make coverage   # Test with coverage
+make install       # Install all dependencies
+make test          # Run all tests
+make lint          # Run linting (pre-commit + type-check + slotscheck)
+make fix           # Auto-format code
+make coverage      # Test with coverage
+make check-all     # Run all checks (lint + test + coverage)
+make type-check    # Run mypy + pyright
+make build         # Build Python + JS packages
+make clean         # Clean temporary build artifacts
 ```
 
 ### Project Structure
 
 ```
 src/py/litestar_vite/     # Python library
-  ├── config.py           # ViteConfig
+  ├── config.py           # ViteConfig (PathConfig, RuntimeConfig, TypeGenConfig, etc.)
   ├── plugin.py           # VitePlugin
   ├── loader.py           # ViteAssetLoader
+  ├── spa.py              # ViteSPAHandler (async + sync)
+  ├── html_transform.py   # HtmlTransformer
+  ├── deploy.py           # CDN deployment
+  ├── codegen.py          # Route type generation
   └── inertia/            # Inertia.js integration
+      ├── plugin.py       # InertiaPlugin
+      ├── response.py     # InertiaResponse (props flattening)
+      ├── middleware.py   # InertiaMiddleware
+      └── helpers.py      # share, lazy, defer, merge
 src/js/src/               # TypeScript library
+  ├── index.ts            # Main Vite plugin
+  ├── helpers/            # CSRF, routes utilities
+  └── inertia-helpers/    # resolvePageComponent
 examples/                 # Framework examples
 specs/guides/             # Project standards
 ```
@@ -94,6 +109,7 @@ Framework-specific expertise in `.claude/skills/`:
 | `/fix-issue [#]` | Fix GitHub issue |
 | `/sync-llms-txt` | Sync LLM documentation |
 | `/update-templates` | Audit framework templates |
+| `/bootstrap` | Bootstrap new project setup |
 
 ---
 

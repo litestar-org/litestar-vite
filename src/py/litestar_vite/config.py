@@ -23,21 +23,23 @@ Example usage::
     VitePlugin(config=ViteConfig(mode="template", dev_mode=True))
 """
 
+import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from importlib.util import find_spec
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
+
+logger = logging.getLogger("litestar_vite")
 
 if TYPE_CHECKING:
     from litestar_vite.executor import JSExecutor
-
-from litestar_vite.deploy import DeployConfig
 
 __all__ = (
     "FSSPEC_INSTALLED",
     "JINJA_INSTALLED",
     "DeployConfig",
+    "ExternalDevServer",
     "InertiaConfig",
     "PathConfig",
     "RuntimeConfig",
@@ -49,6 +51,192 @@ __all__ = (
 TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
 JINJA_INSTALLED = bool(find_spec("jinja2"))
 FSSPEC_INSTALLED = bool(find_spec("fsspec"))
+
+
+def _empty_dict_factory() -> dict[str, Any]:
+    """Factory for empty dict with proper type annotation.
+
+    Returns:
+        An empty dictionary for storing page props.
+    """
+    return {}
+
+
+def _empty_set_factory() -> set[str]:
+    """Factory for empty set with proper type annotation.
+
+    Returns:
+        An empty set for storing session property keys.
+    """
+    return set()
+
+
+def _default_content_types() -> dict[str, str]:
+    """Default content-type mappings keyed by file extension.
+
+    Returns:
+        Dictionary mapping file extensions to MIME types.
+    """
+    return {
+        ".js": "application/javascript",
+        ".mjs": "application/javascript",
+        ".cjs": "application/javascript",
+        ".css": "text/css",
+        ".html": "text/html",
+        ".json": "application/json",
+        ".svg": "image/svg+xml",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".woff2": "font/woff2",
+        ".woff": "font/woff",
+    }
+
+
+def _default_storage_options() -> dict[str, Any]:
+    """Factory for empty storage options dict.
+
+    Returns:
+        An empty dictionary for storage provider options.
+    """
+    return cast("dict[str, Any]", {})
+
+
+@dataclass
+class DeployConfig:
+    """CDN deployment configuration.
+
+    Attributes:
+        enabled: Enable deployment features.
+        storage_backend: fsspec URL for the target location (e.g., ``gcs://bucket/path``).
+        storage_options: Provider options forwarded to ``fsspec`` (credentials, region, etc.).
+        delete_orphaned: Remove remote files not present in the local bundle.
+        include_manifest: Upload ``manifest.json`` alongside assets.
+        content_types: Optional content-type overrides keyed by file extension.
+    """
+
+    enabled: bool = False
+    storage_backend: "str | None" = field(default_factory=lambda: os.getenv("VITE_DEPLOY_STORAGE"))
+    storage_options: dict[str, Any] = field(default_factory=_default_storage_options)
+    delete_orphaned: bool = field(default_factory=lambda: os.getenv("VITE_DEPLOY_DELETE", "true") in TRUE_VALUES)
+    include_manifest: bool = True
+    content_types: dict[str, str] = field(default_factory=_default_content_types)
+
+    def __post_init__(self) -> None:
+        """Apply environment fallbacks."""
+        if self.storage_backend is None:
+            self.storage_backend = os.getenv("VITE_DEPLOY_STORAGE")
+
+    def with_overrides(
+        self,
+        storage_backend: "str | None" = None,
+        storage_options: "dict[str, Any] | None" = None,
+        delete_orphaned: "bool | None" = None,
+    ) -> "DeployConfig":
+        """Return a copy with overrides applied.
+
+        Args:
+            storage_backend: Override for the storage URL.
+            storage_options: Override for backend options.
+            delete_orphaned: Override deletion behaviour.
+
+        Returns:
+            DeployConfig copy with updated fields.
+        """
+        return replace(
+            self,
+            storage_backend=storage_backend or self.storage_backend,
+            storage_options=storage_options or self.storage_options,
+            delete_orphaned=self.delete_orphaned if delete_orphaned is None else delete_orphaned,
+        )
+
+
+@dataclass
+class InertiaConfig:
+    """Configuration for InertiaJS support.
+
+    This is the canonical configuration class for Inertia.js integration.
+    Presence of an InertiaConfig instance indicates Inertia is enabled.
+
+    Attributes:
+        root_template: Name of the root template to use.
+        component_opt_keys: Identifiers for getting inertia component from route opts.
+        exclude_from_js_routes_key: Identifier to exclude route from generated routes.
+        redirect_unauthorized_to: Path for unauthorized request redirects.
+        redirect_404: Path for 404 request redirects.
+        extra_static_page_props: Static props added to every page response.
+        extra_session_page_props: Session keys to include in page props.
+        spa_mode: Use SPA mode (HtmlTransformer) instead of Jinja2 templates.
+        app_selector: CSS selector for the app root element in SPA mode.
+    """
+
+    root_template: str = "index.html"
+    """Name of the root template to use.
+
+    This must be a path that is found by the Vite Plugin template config
+    """
+    component_opt_keys: "tuple[str, ...]" = ("component", "page")
+    """Identifiers to use on routes to get the inertia component to render.
+
+    The first key found in the route handler opts will be used. This allows
+    semantic flexibility - use "component" or "page" depending on preference.
+
+    Example:
+        # All equivalent:
+        @get("/", component="Home")
+        @get("/", page="Home")
+
+        # Custom keys:
+        InertiaConfig(component_opt_keys=("view", "component", "page"))
+    """
+    exclude_from_js_routes_key: str = "exclude_from_routes"
+    """An identifier to use on routes to exclude a route from the generated routes typescript file."""
+    redirect_unauthorized_to: "str | None" = None
+    """Optionally supply a path where unauthorized requests should redirect."""
+    redirect_404: "str | None" = None
+    """Optionally supply a path where 404 requests should redirect."""
+    extra_static_page_props: "dict[str, Any]" = field(default_factory=_empty_dict_factory)
+    """A dictionary of values to automatically add in to page props on every response."""
+    extra_session_page_props: "set[str]" = field(default_factory=_empty_set_factory)
+    """A set of session keys for which the value automatically be added (if it exists) to the response."""
+    spa_mode: bool = False
+    """Enable SPA mode to render without Jinja2 templates.
+
+    When True, InertiaResponse uses ViteSPAHandler and HtmlTransformer
+    to inject page data instead of rendering Jinja2 templates.
+    This allows template-less Inertia applications.
+    """
+    app_selector: str = "#app"
+    """CSS selector for the app root element.
+
+    Used in SPA mode to locate the element where data-page attribute
+    should be injected. Defaults to "#app".
+    """
+
+
+def _resolve_proxy_mode() -> "Literal['vite', 'direct', 'proxy'] | None":
+    """Resolve proxy_mode from environment variable.
+
+    Reads VITE_PROXY_MODE env var. Valid values:
+    - "vite" (default): Proxy to internal Vite server (whitelist - assets only)
+    - "direct": Expose Vite port directly (no proxy)
+    - "proxy" / "ssr": Proxy everything except Litestar routes (blacklist)
+    - "none": Disable proxy (for production)
+
+    Returns:
+        The resolved proxy mode, or None if disabled.
+    """
+    env_value = os.getenv("VITE_PROXY_MODE", "vite").lower()
+    if env_value in {"none", "disabled", "off"}:
+        return None
+    if env_value in {"vite_direct", "direct"}:
+        return "direct"
+    if env_value in {"external_proxy", "proxy", "ssr", "external"}:
+        return "proxy"
+    if env_value in {"vite_proxy", "vite"}:
+        return "vite"
+    return "vite"
 
 
 @dataclass
@@ -90,12 +278,45 @@ class PathConfig:
 
 
 @dataclass
+class ExternalDevServer:
+    """Configuration for external (non-Vite) dev servers.
+
+    Use this when your frontend uses a framework with its own dev server
+    (Angular CLI, Next.js, Create React App, etc.) instead of Vite.
+
+    For SSR frameworks (Astro, Nuxt, SvelteKit) using Vite internally, leave
+    target as None - the proxy will read the dynamic port from the hotfile.
+
+    Attributes:
+        target: The URL of the external dev server (e.g., "http://localhost:4200").
+            If None, the proxy reads the target URL from the Vite hotfile.
+        command: Custom command to start the dev server (e.g., ["ng", "serve"]).
+            If None and start_dev_server=True, uses executor's default start command.
+        build_command: Custom command to build for production (e.g., ["ng", "build"]).
+            If None, uses executor's default build command (e.g., "npm run build").
+        http2: Enable HTTP/2 for proxy connections.
+        enabled: Whether the external proxy is enabled.
+    """
+
+    target: "str | None" = None
+    command: "list[str] | None" = None
+    build_command: "list[str] | None" = None
+    http2: bool = False
+    enabled: bool = True
+
+
+@dataclass
 class RuntimeConfig:
     """Runtime execution settings.
 
     Attributes:
         dev_mode: Enable development mode with HMR/watch.
-        hot_reload: Enable Hot Module Replacement (HMR).
+        proxy_mode: Proxy handling mode:
+            - "vite" (default): Proxy Vite assets only (whitelist - SPA mode)
+            - "direct": Expose Vite port directly (no proxy)
+            - "proxy" / "ssr": Proxy everything except Litestar routes (blacklist - SSR mode)
+            - None: No proxy (production mode)
+        external_dev_server: Configuration for external dev server (used with proxy_mode="proxy").
         host: Vite dev server host.
         port: Vite dev server port.
         protocol: Protocol for dev server (http/https).
@@ -111,14 +332,14 @@ class RuntimeConfig:
         set_environment: Set Vite environment variables from config.
         set_static_folders: Automatically configure static file serving.
         csp_nonce: Content Security Policy nonce for inline scripts.
-        proxy_mode: Proxy mode for dev server requests.
         spa_handler: Auto-register catch-all SPA route when mode="spa".
         http2: Enable HTTP/2 for proxy HTTP requests (better multiplexing).
             WebSocket traffic (HMR) uses a separate connection and is unaffected.
     """
 
     dev_mode: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)
-    hot_reload: bool = field(default_factory=lambda: os.getenv("VITE_HOT_RELOAD", "True") in TRUE_VALUES)
+    proxy_mode: "Literal['vite', 'direct', 'proxy', 'ssr'] | None" = field(default_factory=_resolve_proxy_mode)
+    external_dev_server: "ExternalDevServer | str | None" = None
     host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "localhost"))
     port: int = field(default_factory=lambda: int(os.getenv("VITE_PORT", "5173")))
     protocol: Literal["http", "https"] = "http"
@@ -134,14 +355,22 @@ class RuntimeConfig:
     set_environment: bool = True
     set_static_folders: bool = True
     csp_nonce: "str | None" = None
-    proxy_mode: Literal["proxy", "direct"] = field(
-        default_factory=lambda: "direct" if os.getenv("VITE_PROXY_MODE", "proxy").lower() == "direct" else "proxy"
-    )
     spa_handler: bool = True
     http2: bool = True
+    start_dev_server: bool = True
 
     def __post_init__(self) -> None:
-        """Set default commands based on executor."""
+        # Normalize proxy_mode: "ssr" is an alias for "proxy"
+        if self.proxy_mode == "ssr":
+            self.proxy_mode = "proxy"
+
+        # Normalize external_dev_server: string → ExternalDevServer
+        if isinstance(self.external_dev_server, str):
+            self.external_dev_server = ExternalDevServer(target=self.external_dev_server)
+
+        # Note: proxy mode no longer requires external_dev_server - it can read
+        # the target URL from the hotfile for SSR frameworks using Vite internally
+
         if self.executor is None:
             self.executor = "node"
 
@@ -226,12 +455,20 @@ class TypeGenConfig:
 
 
 def _optional_str_list_factory() -> "list[str] | None":
-    """Factory function returning None for optional list fields."""
+    """Factory function returning None for optional list fields.
+
+    Returns:
+        None
+    """
     return None
 
 
 def _default_routes_exclude_factory() -> list[str]:
-    """Factory function for default route exclusions."""
+    """Factory function for default route exclusions.
+
+    Returns:
+        List of default route exclusion patterns.
+    """
     return ["vite_spa"]  # Exclude the catch-all SPA handler route by default
 
 
@@ -264,39 +501,6 @@ class SPAConfig:
     cache_transformed_html: bool = True
 
 
-def _str_object_dict_factory() -> dict[str, object]:
-    """Factory function for empty dict (typed for pyright)."""
-    return {}
-
-
-def _str_list_factory() -> list[str]:
-    """Factory function for empty string list (typed for pyright)."""
-    return []
-
-
-@dataclass
-class InertiaConfig:
-    """Inertia.js specific settings.
-
-    Attributes:
-        enabled: Enable Inertia.js integration.
-        root_template: Root HTML template for Inertia.
-        include_routes: Include routes metadata in page props.
-        include_flash: Include flash messages in page props.
-        include_errors: Include validation errors in page props.
-        extra_static_page_props: Additional static props to include on every page.
-        extra_session_page_props: Session keys to include as page props.
-    """
-
-    enabled: bool = False
-    root_template: str = "index.html"
-    include_routes: bool = True
-    include_flash: bool = True
-    include_errors: bool = True
-    extra_static_page_props: dict[str, object] = field(default_factory=_str_object_dict_factory)
-    extra_session_page_props: list[str] = field(default_factory=_str_list_factory)
-
-
 @dataclass
 class ViteConfig:
     """Root Vite configuration.
@@ -306,12 +510,14 @@ class ViteConfig:
 
     - dev_mode: Shortcut for runtime.dev_mode
     - types=True: Enable type generation with defaults
-    - inertia=True: Enable Inertia.js with defaults
+    - inertia=True or InertiaConfig(): Enable Inertia.js (presence = enabled)
 
     Mode auto-detection:
 
     - If mode is not explicitly set:
 
+      - If Inertia is enabled with spa_mode=True -> Hybrid mode
+      - If Inertia is enabled without spa_mode -> Template mode
       - Checks for index.html in common locations -> SPA mode
       - Checks if Jinja2 template engine is configured -> Template mode
       - Otherwise defaults to SPA mode
@@ -324,22 +530,22 @@ class ViteConfig:
     - Explicit mode parameter overrides auto-detection
 
     Attributes:
-        mode: Serving mode - "spa", "template", or "htmx". Auto-detected if not set.
+        mode: Serving mode - "spa", "template", "htmx", or "hybrid". Auto-detected if not set.
         paths: File system paths configuration.
         runtime: Runtime execution settings.
         types: Type generation settings (True enables with defaults).
-        inertia: Inertia.js settings (True enables with defaults).
+        inertia: Inertia.js settings (True/InertiaConfig enables, False/None disables).
         spa: SPA transformation settings (True enables with defaults, False disables).
         dev_mode: Convenience shortcut for runtime.dev_mode.
         base_url: Base URL for production assets (CDN support).
         deploy: Deployment configuration for CDN publishing.
     """
 
-    mode: "Literal['spa', 'template', 'htmx'] | None" = None
+    mode: "Literal['spa', 'template', 'htmx', 'hybrid'] | None" = None
     paths: PathConfig = field(default_factory=PathConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     types: "TypeGenConfig | bool" = field(default_factory=lambda: TypeGenConfig(enabled=True))
-    inertia: "InertiaConfig | bool" = False
+    inertia: "InertiaConfig | bool | None" = None
     spa: "SPAConfig | bool | None" = None
     dev_mode: bool = False
     base_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
@@ -356,21 +562,32 @@ class ViteConfig:
         self._normalize_spa_flag()
         self._apply_dev_mode_shortcut()
         self._auto_detect_mode()
+        self._sync_inertia_spa_mode()
         self._normalize_deploy()
         self._ensure_spa_default()
         self._auto_enable_dev_mode()
+        self._warn_missing_assets()
 
     def _normalize_types(self) -> None:
         if self.types is True:
             self.types = TypeGenConfig(enabled=True)
         elif self.types is False:
             self.types = TypeGenConfig(enabled=False)
+        self._resolve_type_paths(self.types)
 
     def _normalize_inertia(self) -> None:
+        """Normalize inertia configuration.
+
+        Supports:
+        - True: Enable with defaults -> InertiaConfig()
+        - False/None: Disabled -> None
+        - InertiaConfig: Use as-is
+        """
         if self.inertia is True:
-            self.inertia = InertiaConfig(enabled=True)
+            self.inertia = InertiaConfig()
         elif self.inertia is False:
-            self.inertia = InertiaConfig(enabled=False)
+            self.inertia = None
+        # InertiaConfig instance is used as-is
 
     def _normalize_spa_flag(self) -> None:
         if self.spa is True:
@@ -386,14 +603,44 @@ class ViteConfig:
             self.mode = self._detect_mode()
             self._mode_auto_detected = True
 
+    def _sync_inertia_spa_mode(self) -> None:
+        """Sync InertiaConfig.spa_mode with detected mode.
+
+        When mode='hybrid' is detected (from index.html presence),
+        set InertiaConfig.spa_mode=True so InertiaResponse uses
+        HtmlTransformer instead of Jinja templates.
+        """
+        if self.mode == "hybrid" and isinstance(self.inertia, InertiaConfig):
+            self.inertia.spa_mode = True
+
     def _normalize_deploy(self) -> None:
         if self.deploy is True:
             self.deploy = DeployConfig(enabled=True)
         elif self.deploy is False:
             self.deploy = DeployConfig(enabled=False)
 
+    def _resolve_type_paths(self, types: TypeGenConfig) -> None:
+        """Resolve type generation paths relative to the configured root."""
+
+        def _to_root(p: Path) -> Path:
+            return p if p.is_absolute() else (self.paths.root / p)
+
+        default_rel = Path("src/generated")
+        default_openapi = default_rel / "openapi.json"
+        default_routes = default_rel / "routes.json"
+
+        # If user only set output, cascade defaults under that output
+        if types.openapi_path == default_openapi and types.output != default_rel:
+            types.openapi_path = types.output / "openapi.json"
+        if types.routes_path == default_routes and types.output != default_rel:
+            types.routes_path = types.output / "routes.json"
+
+        types.output = _to_root(types.output)
+        types.openapi_path = _to_root(types.openapi_path)
+        types.routes_path = _to_root(types.routes_path)
+
     def _ensure_spa_default(self) -> None:
-        if self.mode == "spa" and self.spa is None:
+        if self.mode in {"spa", "hybrid"} and self.spa is None:
             self.spa = SPAConfig()
         elif self.spa is None:
             self.spa = False
@@ -404,20 +651,89 @@ class ViteConfig:
             return
 
         auto_dev_mode = os.getenv("VITE_AUTO_DEV_MODE", "True") in TRUE_VALUES
-        if auto_dev_mode and not self.runtime.dev_mode and self.mode == "spa" and not self.has_built_assets():
+        if (
+            auto_dev_mode
+            and not self.runtime.dev_mode
+            and self.mode in {"spa", "hybrid"}
+            and not self.has_built_assets()
+        ):
             self.runtime.dev_mode = True
 
-    def _detect_mode(self) -> Literal["spa", "template", "htmx"]:
+    def _warn_missing_assets(self) -> None:
+        """Warn if running in production mode without built assets."""
+        import sys
+
+        if self.mode not in {"spa", "hybrid"}:
+            return
+        if self.runtime.dev_mode:
+            return
+        if self.has_built_assets():
+            return
+
+        # Skip warning for CLI commands that don't serve the app
+        # These commands just need the config but don't need built assets
+        cli_commands_skip_warning = {
+            "install",
+            "build",
+            "init",
+            "serve",
+            "deploy",
+            "doctor",
+            "generate-types",
+            "export-routes",
+            "status",
+        }
+        argv_str = " ".join(sys.argv)
+        if any(f"assets {cmd}" in argv_str for cmd in cli_commands_skip_warning):
+            return
+
+        # Skip warning when using external dev server (e.g., Angular CLI, Next.js)
+        # These don't use Vite's manifest but have their own build system
+        if self.runtime.external_dev_server is not None:
+            return
+
+        bundle_path = self._resolve_to_root(self.bundle_dir)
+        manifest_path = bundle_path / ".vite" / self.manifest_name
+        logger.warning(
+            "Vite manifest not found at %s. "
+            "Run 'litestar assets build' (or 'npm run build') to build assets, "
+            "or set dev_mode=True for development. "
+            "Assets will not load correctly without built files or a running Vite dev server.",
+            manifest_path,
+        )
+
+    def _detect_mode(self) -> Literal["spa", "template", "htmx", "hybrid"]:
         """Auto-detect the serving mode based on project structure.
 
         Detection order:
-        1. Check for index.html in resource_dir, root_dir, or public_dir → SPA
-        2. Check if Jinja2 is installed and likely to be used → Template
-        3. Default to SPA
+        1. If Inertia is enabled:
+           a. If spa_mode=True (explicit) → Hybrid
+           b. If spa_mode=False (explicit) → Template (Jinja-based)
+           c. If index.html exists → Hybrid (auto-detected)
+           d. Otherwise → Template (Jinja-based)
+        2. Check for index.html in resource_dir, root_dir, or public_dir → SPA
+        3. Check if Jinja2 is installed and likely to be used → Template
+        4. Default to SPA
 
         Returns:
             The detected mode.
         """
+        # Check if Inertia is enabled (presence of config = enabled)
+        inertia_enabled = isinstance(self.inertia, InertiaConfig)
+
+        if inertia_enabled:
+            # If spa_mode is explicitly True, use hybrid mode
+            if self.inertia.spa_mode:  # type: ignore[union-attr]
+                return "hybrid"
+
+            # Auto-detect: if index.html exists, use hybrid mode (HtmlTransformer)
+            # This means users don't need to set spa_mode=True when they have an index.html
+            if any(path.exists() for path in self.candidate_index_html_paths()):
+                return "hybrid"
+
+            # No index.html found - fall back to template mode (Jinja-based Inertia)
+            return "template"
+
         # Check for index.html in expected locations (SPA indicator)
         if any(path.exists() for path in self.candidate_index_html_paths()):
             return "spa"
@@ -448,7 +764,19 @@ class ViteConfig:
                 )
                 raise ValueError(msg)
 
-        elif self.mode in ("template", "htmx"):
+        elif self.mode == "hybrid":
+            # Hybrid mode validation - needs index.html like SPA mode
+            index_candidates = self.candidate_index_html_paths()
+            if not self.runtime.dev_mode and not any(path.exists() for path in index_candidates):
+                joined_paths = ", ".join(str(path) for path in index_candidates)
+                msg = (
+                    "Hybrid mode requires index.html at one of: "
+                    f"{joined_paths}. "
+                    "Either create the file or run in dev mode."
+                )
+                raise ValueError(msg)
+
+        elif self.mode in {"template", "htmx"}:
             # Template mode should have Jinja2 available
             if not JINJA_INSTALLED:
                 msg = (
@@ -465,7 +793,11 @@ class ViteConfig:
         return self._executor_instance
 
     def _create_executor(self) -> "JSExecutor":
-        """Create the appropriate executor based on runtime config."""
+        """Create the appropriate executor based on runtime config.
+
+        Returns:
+            An instance of the selected JSExecutor.
+        """
         from litestar_vite.executor import (
             BunExecutor,
             DenoExecutor,
@@ -531,7 +863,11 @@ class ViteConfig:
         return self.paths.asset_url
 
     def _resolve_to_root(self, path: Path) -> Path:
-        """Resolve a path relative to the configured root directory."""
+        """Resolve a path relative to the configured root directory.
+
+        Returns:
+            The resolved absolute Path.
+        """
 
         if path.is_absolute():
             return path
@@ -566,12 +902,23 @@ class ViteConfig:
         return unique
 
     def has_built_assets(self) -> bool:
-        """Check if production assets exist (index.html present)."""
+        """Check if production assets exist in the bundle directory.
 
-        # For SPA mode the critical artifact is index.html. Manifest is helpful,
-        # but a stale manifest without an index leads to broken pages and
-        # prevents dev_mode auto-enable. Use the index as the signal.
-        return any(path.exists() for path in self.candidate_index_html_paths())
+        Returns:
+            True if manifest.json or built index.html exists in bundle_dir.
+
+        Note:
+            This method checks the bundle_dir (output directory) for built artifacts,
+            NOT source directories. The presence of source index.html in resource_dir
+            does not indicate built assets exist.
+        """
+        bundle_path = self._resolve_to_root(self.bundle_dir)
+        manifest_path = bundle_path / self.manifest_name
+        index_path = bundle_path / "index.html"
+
+        # Check for Vite manifest (primary indicator of built assets)
+        # or index.html in the bundle output directory
+        return manifest_path.exists() or index_path.exists()
 
     @property
     def host(self) -> str:
@@ -590,8 +937,12 @@ class ViteConfig:
 
     @property
     def hot_reload(self) -> bool:
-        """Check if hot reload is enabled."""
-        return self.runtime.hot_reload
+        """Check if hot reload is enabled (derived from dev_mode and proxy_mode).
+
+        HMR requires dev_mode=True AND a Vite-based mode (vite, direct, or proxy/ssr).
+        All modes support HMR since even SSR frameworks use Vite internally.
+        """
+        return self.runtime.dev_mode and self.runtime.proxy_mode in {"vite", "direct", "proxy"}
 
     @property
     def is_dev_mode(self) -> bool:
@@ -649,9 +1000,16 @@ class ViteConfig:
         return self.runtime.detect_nodeenv
 
     @property
-    def proxy_mode(self) -> Literal["proxy", "direct"]:
-        """Get proxy mode (proxy=single-port via ASGI, direct=expose Vite port)."""
+    def proxy_mode(self) -> "Literal['vite', 'direct', 'proxy', 'ssr'] | None":
+        """Get proxy mode. Note: 'ssr' is normalized to 'proxy' at runtime."""
         return self.runtime.proxy_mode
+
+    @property
+    def external_dev_server(self) -> "ExternalDevServer | None":
+        """Get external dev server config."""
+        if isinstance(self.runtime.external_dev_server, ExternalDevServer):
+            return self.runtime.external_dev_server
+        return None
 
     @property
     def spa_handler(self) -> bool:

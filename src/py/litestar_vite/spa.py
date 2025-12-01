@@ -69,9 +69,11 @@ class ViteSPAHandler:
         "_cached_transformed_html",
         "_config",
         "_http_client",
+        "_http_client_sync",
         "_initialized",
         "_routes_metadata",
         "_spa_config",
+        "_vite_url",
     )
 
     def __init__(self, config: "ViteConfig") -> None:
@@ -88,19 +90,35 @@ class ViteSPAHandler:
         self._routes_metadata: "dict[str, Any] | None" = None
         self._initialized = False
         self._http_client: "httpx.AsyncClient | None" = None
+        self._http_client_sync: "httpx.Client | None" = None
+        self._vite_url: "str | None" = None
 
-    async def initialize(self) -> None:
+    @property
+    def is_initialized(self) -> bool:
+        """Whether the handler has been initialized."""
+        return self._initialized
+
+    async def initialize(self, vite_url: "str | None" = None) -> None:
         """Initialize the handler.
 
         This method should be called during app startup to:
         - Initialize the HTTP client for dev mode proxying
         - Load and cache the index.html in production mode
+
+        Args:
+            vite_url: Optional Vite server URL to use for proxying. If provided,
+                     this takes precedence over hotfile resolution. This is typically
+                     passed by VitePlugin which knows the correct URL.
         """
         if self._initialized:
             return
 
         if self._config.is_dev_mode and self._config.hot_reload:
-            # Create HTTP client for proxying to Vite dev server
+            # Use provided URL if available (from VitePlugin), otherwise resolve from hotfile
+            # The VitePlugin knows the correct URL because it selects the port
+            self._vite_url = vite_url if vite_url else self._resolve_vite_url()
+
+            # Create HTTP client for proxying to Vite server
             # Uses connection pooling for efficient reuse
             # HTTP/2 is controlled by config and requires the h2 package
             http2_enabled = self._config.http2
@@ -111,9 +129,12 @@ class ViteSPAHandler:
                     http2_enabled = False
 
             self._http_client = httpx.AsyncClient(
-                base_url=f"{self._config.protocol}://{self._config.host}:{self._config.port}",
                 timeout=httpx.Timeout(5.0),
                 http2=http2_enabled,
+            )
+            # Also create a synchronous client for use in sync contexts (e.g., Inertia response)
+            self._http_client_sync = httpx.Client(
+                timeout=httpx.Timeout(5.0),
             )
         else:
             # Load and cache index.html for production
@@ -124,13 +145,17 @@ class ViteSPAHandler:
     async def shutdown(self) -> None:
         """Shutdown the handler.
 
-        Closes the HTTP client if it was created for dev mode.
+        Closes the HTTP clients if they were created for dev mode.
         """
         if self._http_client is not None:
             # Ignore RuntimeError if transport is already closed (uvloop edge case)
             with suppress(RuntimeError):
                 await self._http_client.aclose()
             self._http_client = None
+        if self._http_client_sync is not None:
+            with suppress(RuntimeError):
+                self._http_client_sync.close()
+            self._http_client_sync = None
 
     def set_routes_metadata(self, routes: dict[str, Any]) -> None:
         """Set route metadata for injection into HTML.
@@ -329,11 +354,13 @@ class ViteSPAHandler:
         page_data: "dict[str, Any] | None" = None,
         csrf_token: "str | None" = None,
     ) -> str:
-        """Get the HTML for the SPA synchronously (production only).
+        """Get the HTML for the SPA synchronously.
 
         This method is for use in synchronous contexts where async is not
-        available. It requires the handler to be initialized and HTML to be
-        cached (production mode).
+        available (e.g., Litestar's Response.to_asgi_response).
+
+        In dev mode, uses a synchronous HTTP client to fetch from Vite.
+        In production mode, uses cached HTML.
 
         Note:
             CSRF token injection requires passing the token explicitly since
@@ -348,16 +375,21 @@ class ViteSPAHandler:
 
         Raises:
             ImproperlyConfiguredException: If not initialized or no cached HTML.
-            RuntimeError: If called in dev mode (async proxy required).
         """
         if not self._initialized:
             msg = "ViteSPAHandler not initialized. Call initialize() during app startup."
             raise ImproperlyConfiguredException(msg)
 
+        # Dev mode: fetch from Vite dev server synchronously
         if self._config.is_dev_mode and self._config.hot_reload:
-            msg = "get_html_sync cannot be used in dev mode. Use get_html() instead."
-            raise RuntimeError(msg)
+            base_html = self._proxy_to_dev_server_sync()
+            # In dev mode, always transform fresh (no caching for HMR)
+            needs_transform = self._spa_config is not None or page_data is not None
+            if needs_transform:
+                return self._transform_html(base_html, page_data, csrf_token)
+            return base_html
 
+        # Production mode: use cached HTML
         if self._cached_html is None:
             msg = "No cached HTML available. Ensure initialize() was called in production mode."
             raise ImproperlyConfiguredException(msg)
@@ -376,10 +408,9 @@ class ViteSPAHandler:
 
         # Check if we can use cached transformed HTML (routes only)
         if self._spa_config is not None and self._spa_config.cache_transformed_html:
-            if self._cached_transformed_html is not None:
-                return self._cached_transformed_html
-            # Transform and cache (routes only)
-            self._cached_transformed_html = self._transform_html(base_html, None, None)
+            if self._cached_transformed_html is None:
+                # Transform and cache (routes only)
+                self._cached_transformed_html = self._transform_html(base_html, None, None)
             return self._cached_transformed_html
 
         # Caching disabled, transform fresh
@@ -407,34 +438,94 @@ class ViteSPAHandler:
         return self._cached_bytes or b""
 
     async def _proxy_to_dev_server(self, request: "Request[Any, Any, Any]") -> str:
-        """Proxy the request to the Vite dev server.
+        """Proxy the request to the Vite server.
 
         Args:
             request: The incoming request.
 
         Returns:
-            The HTML content from the Vite dev server.
+            The HTML content from the Vite server.
 
         Raises:
-            httpx.HTTPError: If the request to the dev server fails.
+            ImproperlyConfiguredException: If the HTTP client is not initialized.
         """
         if self._http_client is None:
             msg = "HTTP client not initialized for dev mode."
             raise ImproperlyConfiguredException(msg)
 
+        if self._vite_url is None:
+            msg = "Vite URL not resolved. Ensure initialize() was called."
+            raise ImproperlyConfiguredException(msg)
+
+        target_url = f"{self._vite_url}/"
+
         try:
-            # Request the root path from Vite dev server
-            response = await self._http_client.get("/", follow_redirects=True)
+            # Request the root path from Vite server
+            response = await self._http_client.get(target_url, follow_redirects=True)
             response.raise_for_status()
         except httpx.HTTPError as e:
-            msg = (
-                f"Failed to proxy request to Vite dev server at "
-                f"{self._config.protocol}://{self._config.host}:{self._config.port}. "
-                f"Is the dev server running? Error: {e!s}"
-            )
+            msg = f"Failed to proxy request to Vite server at {target_url}. Is the dev server running? Error: {e!s}"
             raise ImproperlyConfiguredException(msg) from e
         else:
             return response.text
+
+    def _proxy_to_dev_server_sync(self) -> str:
+        """Synchronously proxy the request to the Vite server.
+
+        This method is used by Inertia's synchronous response rendering
+        to avoid deadlocks when calling async code from sync context
+        within the same event loop thread.
+
+        Returns:
+            The HTML content from the Vite server.
+
+        Raises:
+            ImproperlyConfiguredException: If the HTTP client is not initialized.
+        """
+        if self._http_client_sync is None:
+            msg = "Synchronous HTTP client not initialized for dev mode."
+            raise ImproperlyConfiguredException(msg)
+
+        if self._vite_url is None:
+            msg = "Vite URL not resolved. Ensure initialize() was called."
+            raise ImproperlyConfiguredException(msg)
+
+        target_url = f"{self._vite_url}/"
+
+        try:
+            response = self._http_client_sync.get(target_url, follow_redirects=True)
+            response.raise_for_status()
+        except httpx.HTTPError as e:
+            msg = f"Failed to proxy request to Vite server at {target_url}. Is the dev server running? Error: {e!s}"
+            raise ImproperlyConfiguredException(msg) from e
+        else:
+            return response.text
+
+    def _resolve_vite_url(self) -> str:
+        """Resolve the Vite server URL from hotfile or config.
+
+        This is called once at initialization time. The URL is cached
+        and only refreshed when the Python server restarts/reloads.
+
+        Prefer the hotfile URL if present (written by the JS plugin),
+        otherwise fall back to the configured protocol/host/port.
+
+        Returns:
+            The base URL of the Vite server (without trailing slash).
+        """
+        hotfile = self._config.bundle_dir / self._config.hot_file
+        if not hotfile.is_absolute():
+            hotfile = self._config.root_dir / hotfile
+
+        if hotfile.exists():
+            try:
+                url = hotfile.read_text().strip()
+                if url:
+                    return url.rstrip("/")
+            except OSError:
+                pass
+
+        return f"{self._config.protocol}://{self._config.host}:{self._config.port}"
 
     def create_route_handler(self) -> Any:
         """Create a Litestar route handler for the SPA.

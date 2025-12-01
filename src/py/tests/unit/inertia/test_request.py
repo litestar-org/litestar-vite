@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 import pytest
@@ -245,3 +243,290 @@ def test_page_props_to_dict() -> None:
     assert "prependProps" not in result
     assert "deepMergeProps" not in result
     assert "matchPropsOn" not in result
+
+
+# =====================================================
+# Page Component Alias Tests (component_opt_keys)
+# =====================================================
+
+
+async def test_page_kwarg_enables_inertia(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: "TemplateConfig[Any]",  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
+) -> None:
+    """Test that @get("/", page="Home") enables inertia.
+
+    The 'page' kwarg should work exactly like 'component' to enable
+    Inertia rendering for a route.
+    """
+
+    @get("/", page="Home")
+    async def handler(request: InertiaRequest[Any, Any, Any]) -> bool:
+        return request.inertia_enabled
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/")
+        # Should return HTML template, not "true"
+        assert response.text.startswith("<!DOCTYPE html>")
+
+
+async def test_page_kwarg_returns_correct_component(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: "TemplateConfig[Any]",  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
+) -> None:
+    """Test that page kwarg returns correct component name.
+
+    The component name set via 'page' should be retrievable via
+    request.inertia.route_component.
+    """
+    import json
+
+    @get("/dashboard", page="Dashboard")
+    async def handler(request: InertiaRequest[Any, Any, Any]) -> str:
+        return request.inertia.route_component or ""
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # When Inertia header is sent, it returns JSON with component
+        response = client.get("/dashboard", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = json.loads(response.text)
+        assert data["component"] == "Dashboard"
+
+
+async def test_page_opt_dict_works(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: "TemplateConfig[Any]",  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
+) -> None:
+    """Test that opt={"page": "Home"} works.
+
+    Using the opt dictionary directly should also work with 'page' key.
+    """
+    import json
+
+    @get("/profile", opt={"page": "UserProfile"})
+    async def handler(request: InertiaRequest[Any, Any, Any]) -> str:
+        return request.inertia.route_component or ""
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # When Inertia header is sent, it returns JSON with component
+        response = client.get("/profile", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = json.loads(response.text)
+        assert data["component"] == "UserProfile"
+
+
+async def test_component_kwarg_still_works(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: "TemplateConfig[Any]",  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
+) -> None:
+    """Test backward compatibility with component kwarg.
+
+    The original 'component' kwarg must continue to work to ensure
+    backward compatibility with existing code.
+    """
+    import json
+
+    @get("/about", component="About")
+    async def handler(request: InertiaRequest[Any, Any, Any]) -> str:
+        return request.inertia.route_component or ""
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # When Inertia header is sent, it returns JSON with component
+        response = client.get("/about", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = json.loads(response.text)
+        assert data["component"] == "About"
+
+
+async def test_component_takes_precedence(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: "TemplateConfig[Any]",  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
+) -> None:
+    """Test that component takes precedence over page.
+
+    When both 'component' and 'page' are specified, 'component' should win
+    because it appears first in the default component_opt_keys tuple.
+    """
+    import json
+
+    @get("/conflict", component="ComponentWins", page="PageLoses")
+    async def handler(request: InertiaRequest[Any, Any, Any]) -> str:
+        return request.inertia.route_component or ""
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # When Inertia header is sent, it returns JSON with component
+        response = client.get("/conflict", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = json.loads(response.text)
+        assert data["component"] == "ComponentWins"
+
+
+async def test_page_kwarg_with_inertia_header(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: "TemplateConfig[Any]",  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
+) -> None:
+    """Test page kwarg with Inertia header returns JSON.
+
+    When the X-Inertia header is present, the response should be JSON
+    with the page component, not HTML.
+    """
+    import json
+
+    @get("/", page="Home")
+    async def handler(request: InertiaRequest[Any, Any, Any]) -> dict[str, str]:
+        return {"message": "Hello"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = json.loads(response.text)
+        assert data["component"] == "Home"
+        assert data["url"] == "/"
+        assert data["props"]["message"] == "Hello"
+        assert "content" not in data["props"]
+
+
+async def test_no_component_or_page_returns_none(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: "TemplateConfig[Any]",  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
+) -> None:
+    """Test that route without component or page returns None.
+
+    When neither 'component' nor 'page' is set, route_component should be None.
+    """
+
+    @get("/no-inertia")
+    async def handler(request: Request[Any, Any, Any]) -> str:
+        component = request.inertia.route_component  # pyright: ignore
+        return component if component else "none"
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/no-inertia")
+        assert response.text == "none"
+
+
+async def test_page_with_empty_string_value(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: "TemplateConfig[Any]",  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
+) -> None:
+    """Test that page="" (empty string) is treated as None.
+
+    Empty string values should be ignored and treated as if not set.
+    """
+
+    @get("/empty", page="", component="Fallback")
+    async def handler(request: InertiaRequest[Any, Any, Any]) -> str:
+        return request.inertia.route_component or "none"
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # With Inertia header, should return JSON
+        import json
+
+        response = client.get("/empty", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = json.loads(response.text)
+        # Empty page should fallback to component
+        assert data["component"] == "Fallback"
+
+
+async def test_inertia_enabled_check_with_page(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: "TemplateConfig[Any]",  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
+) -> None:
+    """Test that inertia_enabled is True when page is set.
+
+    The inertia_enabled property should return True when 'page' kwarg is used.
+    """
+
+    @get("/dashboard", page="Dashboard")
+    async def handler(request: InertiaRequest[Any, Any, Any]) -> str:
+        return "enabled" if request.inertia_enabled else "disabled"
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Should render HTML since inertia is enabled
+        response = client.get("/dashboard")
+        assert response.text.startswith("<!DOCTYPE html>")
+
+
+async def test_page_with_special_characters(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: "TemplateConfig[Any]",  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
+) -> None:
+    """Test page kwarg with special characters.
+
+    Component names with special characters should be handled correctly.
+    """
+    import json
+
+    @get("/special", page="Admin/Users/Index")
+    async def handler(request: InertiaRequest[Any, Any, Any]) -> dict[str, str]:
+        return {"data": "test"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/special", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = json.loads(response.text)
+        assert data["component"] == "Admin/Users/Index"
