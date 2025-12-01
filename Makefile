@@ -73,7 +73,7 @@ destroy:                                            ## Destroy the virtual envir
 upgrade:                                            ## Upgrade all dependencies to latest stable versions
 	@echo "${INFO} Updating all dependencies... 🔄"
 	@uv lock --upgrade
-	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm upgrade --no-fund --latest
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm update --no-fund
 	@echo "${OK} Dependencies updated 🔄"
 	@uv run pre-commit autoupdate
 	@echo "${OK} Updated Pre-commit hooks 🔄"
