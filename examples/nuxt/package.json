@@ -7,11 +7,13 @@
     "build": "nuxi build",
     "preview": "nuxi preview",
     "serve": "node .output/server/index.mjs",
-    "watch": "npm run serve"
+    "watch": "npm run serve",
+    "generate-types": "openapi-ts --config hey-api.config.ts"
   },
   "dependencies": {
     "nuxt": "latest",
-    "vue": "latest"
+    "vue": "latest",
+    "axios": "^1.7.7"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
@@ -19,6 +21,8 @@
     "typescript": "latest",
     "vue-tsc": "latest",
     "litestar-vite-plugin": "file:../..",
-    "vite": "^7.0.0"
+    "vite": "^7.0.0",
+    "@hey-api/openapi-ts": "latest",
+    "@hey-api/client-axios": "latest"
   }
 }

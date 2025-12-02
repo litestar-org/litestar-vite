@@ -1001,14 +1001,36 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
           resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("generating TypeScript types...")}`)
         }
 
-        // Build @hey-api/openapi-ts command
-        const args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
+        // Prefer user config if present
+        const candidates = [path.resolve(process.cwd(), "hey-api.config.ts"), path.resolve(process.cwd(), "openapi-ts.config.ts")]
+        const configPath = candidates.find((p) => fs.existsSync(p))
+
+        let args: string[]
+        if (configPath) {
+          args = ["@hey-api/openapi-ts", "--config", configPath]
+        } else {
+          args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
+
+          const plugins = ["@hey-api/types", "@hey-api/schemas"]
+          if (typesConfig.generateSdk) {
+            plugins.push("@hey-api/services", "@hey-api/client-axios")
+          }
+          if (typesConfig.generateZod) {
+            plugins.push("zod")
+          }
+
+          if (plugins.length) {
+            args.push("--plugins", ...plugins)
+          }
+        }
 
         if (typesConfig.generateZod) {
-          args.push("--plugins", "zod", "@hey-api/typescript")
-        }
-        if (typesConfig.generateSdk) {
-          args.push("--client", "fetch")
+          try {
+            // eslint-disable-next-line import/no-dynamic-require, @typescript-eslint/no-var-requires
+            require.resolve("zod", { paths: [process.cwd()] })
+          } catch {
+            resolvedConfig?.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("zod not installed")} - run: ${resolveInstallHint()} zod`)
+          }
         }
 
         await execAsync(resolvePackageExecutor(args.join(" "), executor), {
@@ -1049,7 +1071,10 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
         const message = error instanceof Error ? error.message : String(error)
         // Don't show error if @hey-api/openapi-ts is not installed - just warn once
         if (message.includes("not found") || message.includes("ENOENT")) {
-          resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("@hey-api/openapi-ts not installed")} - run: ${resolveInstallHint()}`)
+          const zodHint = typesConfig.generateZod ? " zod" : ""
+          resolvedConfig.logger.warn(
+            `${colors.cyan("litestar-vite")} ${colors.yellow("@hey-api/openapi-ts not installed")} - run: ${resolveInstallHint()} -D @hey-api/openapi-ts @hey-api/client-axios${zodHint}`,
+          )
         } else {
           resolvedConfig.logger.error(`${colors.cyan("litestar-vite")} ${colors.red("type generation failed:")} ${message}`)
         }

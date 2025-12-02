@@ -447,8 +447,8 @@ class TypeGenConfig:
     output: Path = field(default_factory=lambda: Path("src/generated"))
     openapi_path: Path = field(default_factory=lambda: Path("src/generated/openapi.json"))
     routes_path: Path = field(default_factory=lambda: Path("src/generated/routes.json"))
-    generate_zod: bool = True
-    generate_sdk: bool = False
+    generate_zod: bool = False
+    generate_sdk: bool = True
     watch_patterns: list[str] = field(
         default_factory=lambda: ["**/routes.py", "**/handlers.py", "**/controllers/**/*.py"]
     )

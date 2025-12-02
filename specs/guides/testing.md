@@ -149,3 +149,65 @@ make build-examples
 # Run example integration tests
 make test-examples
 ```
+
+## End-to-End (E2E) Testing
+
+E2E tests validate the complete developer experience by running actual servers.
+
+### Critical: Use Litestar CLI Commands
+
+**ALWAYS use `litestar assets` commands instead of npm/node directly in tests!**
+
+```python
+# CORRECT - Uses Litestar CLI
+def start_dev_mode():
+    # Start Vite dev server via Litestar
+    subprocess.Popen(["litestar", "assets", "serve"], cwd=example_dir, env=env)
+    # Start Litestar backend
+    subprocess.Popen(["litestar", "run", "--port", str(port)], cwd=example_dir, env=env)
+
+def start_production_mode():
+    # Build assets via Litestar
+    subprocess.run(["litestar", "assets", "build"], cwd=example_dir, env=env, check=True)
+    # Start Litestar backend (serves static files)
+    subprocess.Popen(["litestar", "run", "--port", str(port)], cwd=example_dir, env=env)
+    # For SSR: also start production Node server
+    subprocess.Popen(["litestar", "assets", "serve", "--production"], cwd=example_dir, env=env)
+
+# WRONG - Bypasses Litestar integration
+def start_dev_mode_wrong():
+    subprocess.Popen(["npm", "run", "dev"])  # NO! Use litestar assets serve
+    subprocess.Popen(["npm", "run", "build"])  # NO! Use litestar assets build
+```
+
+**Why this matters:**
+- The Litestar CLI manages port allocation, environment variables, and process coordination
+- Direct npm commands bypass the Python-JS integration layer
+- Tests must validate the real developer experience, not just that npm works
+
+### E2E Test Structure
+
+```
+src/py/tests/e2e/
+├── __init__.py
+├── conftest.py           # Server fixtures with proper cleanup
+├── server_manager.py     # ExampleServer class using litestar CLI
+├── port_allocator.py     # Unique port assignment per example
+├── health_check.py       # HTTP polling utilities
+├── assertions.py         # HTML/API validation helpers
+├── test_dev_mode.py      # Dev mode tests for all examples
+└── test_production_mode.py  # Production mode tests
+```
+
+### Running E2E Tests
+
+```bash
+# Run all E2E tests
+make test-examples-e2e
+
+# Run E2E tests for specific example
+uv run pytest src/py/tests/e2e/ -k "react" -v
+
+# Run with verbose output for debugging
+uv run pytest src/py/tests/e2e/ -v -s
+```

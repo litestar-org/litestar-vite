@@ -12,8 +12,11 @@
   },
   "dependencies": {
 {%- for dep in dependencies %}
-    "{{ dep }}": "latest"{% if not loop.last or generate_zod %},{% endif %}
+    "{{ dep }}": "latest"{% if not loop.last or generate_zod or generate_client %},{% endif %}
 {%- endfor %}
+{%- if generate_client %}
+    "axios": "^1.7.7"{% if generate_zod %},{% endif %}
+{%- endif %}
 {%- if generate_zod %}
     "zod": "^3.24.0"
 {%- endif %}
@@ -24,6 +27,7 @@
 {%- endfor %}
 {%- if generate_client %}
     "@hey-api/openapi-ts": "latest",
+    "@hey-api/client-axios": "latest",
 {%- endif %}
     "litestar-vite-plugin": "latest",
     "vite": "^6.0.0"

@@ -7,16 +7,20 @@
     "build": "astro build",
     "preview": "astro preview",
     "serve": "astro preview",
-    "watch": "npm run serve"
+    "watch": "npm run serve",
+    "generate-types": "openapi-ts --config hey-api.config.ts"
   },
   "dependencies": {
-    "astro": "latest"
+    "astro": "latest",
+    "axios": "^1.7.7"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
     "tailwindcss": "^4.0.0",
     "typescript": "latest",
     "litestar-vite-plugin": "file:../..",
-    "vite": "^7.0.0"
+    "vite": "^7.0.0",
+    "@hey-api/openapi-ts": "latest",
+    "@hey-api/client-axios": "latest"
   }
 }

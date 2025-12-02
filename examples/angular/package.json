@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "generate-types": "openapi-ts --config hey-api.config.ts"
   },
   "dependencies": {
     "@angular/animations": "latest",
@@ -16,7 +17,8 @@
     "@angular/forms": "latest",
     "@angular/platform-browser": "latest",
     "@angular/router": "latest",
-    "rxjs": "latest"
+    "rxjs": "latest",
+    "axios": "^1.7.7"
   },
   "devDependencies": {
     "@analogjs/vite-plugin-angular": "latest",
@@ -28,6 +30,8 @@
     "litestar-vite-plugin": "file:../..",
     "tailwindcss": "^4.0.0",
     "typescript": "latest",
-    "vite": "^7.0.0"
+    "vite": "^7.0.0",
+    "@hey-api/openapi-ts": "latest",
+    "@hey-api/client-axios": "latest"
   }
 }

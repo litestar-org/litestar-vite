@@ -254,11 +254,76 @@ def _extract_query_params(handler: HTTPRouteHandler, path_param_names: set[str])
     return query_params
 
 
+def _ts_type_from_openapi(schema: dict[str, Any]) -> str:
+    """Map a minimal subset of OpenAPI types to TypeScript types."""
+
+    if not schema:
+        return "unknown"
+
+    t = schema.get("type")
+    fmt = schema.get("format")
+    if t == "string":
+        return "string"
+    if t in {"integer", "number"}:
+        return "number"
+    if t == "boolean":
+        return "boolean"
+    if t == "array":
+        item = _ts_type_from_openapi(schema.get("items", {}))
+        return f"{item}[]"
+    if t == "object":
+        return "Record<string, unknown>"
+    # fall back to format hints for common cases
+    if fmt in {"uuid", "date-time", "date", "email"}:
+        return "string"
+    return "unknown"
+
+
+def _openapi_lookup(openapi_schema: dict[str, Any] | None) -> dict[tuple[str, str], dict[str, Any]]:
+    """Build a lookup of (path, method) -> operation object from OpenAPI schema."""
+
+    if not openapi_schema:
+        return {}
+
+    paths = openapi_schema.get("paths", {})
+    lookup: dict[tuple[str, str], dict[str, Any]] = {}
+    for path, methods in paths.items():
+        if not isinstance(methods, dict):
+            continue
+        for method, operation in methods.items():
+            if method.lower() not in {"get", "post", "put", "patch", "delete", "head", "options"}:
+                continue
+            lookup[(path, method.upper())] = operation or {}
+    return lookup
+
+
+def _apply_openapi_params(
+    operation: dict[str, Any] | None,
+    params: dict[str, str],
+    query_params: dict[str, str],
+) -> None:
+    if not operation:
+        return
+
+    for param in operation.get("parameters", []):
+        name = param.get("name")
+        schema = param.get("schema", {})
+        ts_type = _ts_type_from_openapi(schema)
+
+        if param.get("in") == "path" and name:
+            params[name] = ts_type or "string"
+        elif param.get("in") == "query" and name:
+            if not param.get("required", False) and ts_type != "unknown":
+                ts_type = f"{ts_type} | undefined"
+            query_params[name] = ts_type or "unknown"
+
+
 def extract_route_metadata(
     app: Litestar,
     *,
     only: "list[str] | None" = None,
     exclude: "list[str] | None" = None,
+    openapi_schema: dict[str, Any] | None = None,
 ) -> list[RouteMetadata]:
     """Extract route metadata from a Litestar application.
 
@@ -271,6 +336,7 @@ def extract_route_metadata(
         List of route metadata objects.
     """
     routes_metadata: list[RouteMetadata] = []
+    op_lookup = _openapi_lookup(openapi_schema)
 
     for route in app.routes:
         if not isinstance(route, type(route)) or not hasattr(route, "route_handler_map"):
@@ -295,12 +361,16 @@ def extract_route_metadata(
             # Extract methods
             methods = [method.upper() for method in route_handler.http_methods]
 
-            # Extract path parameters
+            # Extract path parameters (override with OpenAPI if available)
             params = _extract_path_params(full_path)
             path_param_names = set(params.keys())
 
             # Extract query parameters (excludes path params, body, deps, system types)
             query_params = _extract_query_params(route_handler, path_param_names)
+
+            # Enhance with OpenAPI types when available
+            operation = op_lookup.get((_normalize_path(full_path), methods[0] if methods else ""))
+            _apply_openapi_params(operation, params, query_params)
 
             # Extract Inertia component (if present)
             component = None
@@ -330,6 +400,7 @@ def generate_routes_json(
     only: "list[str] | None" = None,
     exclude: "list[str] | None" = None,
     include_components: bool = False,
+    openapi_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Generate Ziggy-compatible routes JSON.
 
@@ -342,7 +413,7 @@ def generate_routes_json(
     Returns:
         Dictionary with routes in Ziggy-compatible format.
     """
-    routes_metadata = extract_route_metadata(app, only=only, exclude=exclude)
+    routes_metadata = extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
 
     routes_dict: dict[str, Any] = {}
 

@@ -8,7 +8,7 @@ import httpx
 def assert_html_contains_assets(
     response: httpx.Response,
     asset_keywords: Iterable[str] = ("assets", "static"),
-    shell_markers: Iterable[str] = ("<app-root", "<div id=\"app\"", "<body"),
+    shell_markers: Iterable[str] = ("<app-root", '<div id="app"', "<body"),
 ) -> None:
     """Ensure the HTML references assets or contains an app shell marker."""
     body = response.text.lower()

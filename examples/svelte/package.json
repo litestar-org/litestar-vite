@@ -6,10 +6,12 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "generate-types": "openapi-ts --config hey-api.config.ts"
   },
   "dependencies": {
-    "svelte": "latest"
+    "svelte": "latest",
+    "axios": "^1.7.7"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "latest",
@@ -19,6 +21,8 @@
     "@tailwindcss/vite": "^4.0.0",
     "tailwindcss": "^4.0.0",
     "litestar-vite-plugin": "file:../..",
-    "vite": "^7.0.0"
+    "vite": "^7.0.0",
+    "@hey-api/openapi-ts": "latest",
+    "@hey-api/client-axios": "latest"
   }
 }

@@ -238,10 +238,12 @@ def _prompt_for_options(
     # Only prompt for zod/client if types are enabled
     if enable_types:
         if not generate_zod and not no_prompt:
-            generate_zod = Confirm.ask("Generate Zod schemas for validation?", default=True)
+            generate_zod = Confirm.ask("Generate Zod schemas for validation?", default=False)
 
         if not generate_client and not no_prompt:
             generate_client = Confirm.ask("Generate API client?", default=True)
+        if generate_client is None:
+            generate_client = True
     else:
         # If types disabled, also disable zod and client
         generate_zod = False
@@ -693,13 +695,13 @@ def vite_deploy(  # noqa: PLR0915
     help="Serve frontend assets. For SSR frameworks (mode='ssr'), runs production Node server. Otherwise runs Vite dev server.",
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
-@option("--production", type=bool, help="Force production mode (run serve_command).", default=False, is_flag=True)
+@option("--production", type=bool, help="Force production mode (run serve_command).", default=False, is_flag=True)  # pyright: ignore
 def vite_serve(app: "Litestar", verbose: "bool", production: "bool") -> None:
     """Run frontend server.
 
-    For SSR frameworks (SvelteKit, Nuxt, Astro), runs the production Node server
-    using the `serve_command` (npm run serve). For SPA frameworks, runs the
-    Vite dev server with HMR.
+    In dev mode (default): Runs the dev server (npm run dev) for all frameworks.
+    In production mode (--production or dev_mode=False): Runs the production
+    server (npm run serve) for SSR frameworks.
 
     Use --production to force running the production server (serve_command).
     """
@@ -717,9 +719,11 @@ def vite_serve(app: "Litestar", verbose: "bool", production: "bool") -> None:
     if plugin.config.set_environment:
         set_environment(config=plugin.config)
 
-    # For SSR mode or explicit --production, use serve_command (production server)
-    is_ssr_mode = plugin.config.mode == "ssr"
-    use_production_server = production or is_ssr_mode
+    # Use production server when:
+    # 1. --production flag is set, OR
+    # 2. dev_mode is False (production deployment)
+    # Note: SSR mode alone doesn't mean production - SSR apps also have dev servers
+    use_production_server = production or not plugin.config.dev_mode
 
     if use_production_server:
         console.rule("[yellow]Starting production server[/]", align="left")
@@ -932,8 +936,7 @@ def _get_package_executor_cmd(executor: "str | None", package: str) -> "list[str
 
 
 def _run_openapi_ts(
-    types_config: Any,
-    root_dir: Any,
+    config: Any,
     verbose: bool,
     install_command: "list[str] | None" = None,
     executor: "str | None" = None,
@@ -941,15 +944,21 @@ def _run_openapi_ts(
     """Run @hey-api/openapi-ts to generate TypeScript types.
 
     Args:
-        types_config: The TypeGenConfig instance.
-        root_dir: The root directory for the project.
+        config: The ViteConfig instance (with .types resolved).
         verbose: Whether to show verbose output.
         install_command: Command used to install JS dependencies.
         executor: The JS runtime executor (node, bun, deno, yarn, pnpm).
     """
     import subprocess
+    from pathlib import Path
 
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+
+    types_config = config.types
+    root_dir = Path(config.root_dir or Path.cwd())
+    resource_dir = Path(config.resource_dir)
+    if not resource_dir.is_absolute():
+        resource_dir = root_dir / resource_dir
 
     console.print("[dim]3. Running @hey-api/openapi-ts...[/]")
 
@@ -961,22 +970,43 @@ def _run_openapi_ts(
         check_cmd = [*pkg_cmd, "--version"]
         subprocess.run(check_cmd, check=True, capture_output=True, cwd=root_dir)
 
-        # Run the type generation
-        openapi_cmd = [
-            *pkg_cmd,
-            "-i",
-            str(types_config.openapi_path),
-            "-o",
-            str(types_config.output),
+        # Prefer a user-provided config file if present
+        candidate_configs = [
+            resource_dir / "hey-api.config.ts",
+            resource_dir / "openapi-ts.config.ts",
+            root_dir / "hey-api.config.ts",
+            root_dir / "openapi-ts.config.ts",
         ]
-        if types_config.generate_zod:
-            openapi_cmd.extend(["--plugins", "zod", "@hey-api/typescript"])
+        config_path = next((p for p in candidate_configs if p.exists()), None)
+
+        if config_path is not None:
+            openapi_cmd = [*pkg_cmd, "--config", str(config_path)]
+        else:
+            openapi_cmd = [
+                *pkg_cmd,
+                "-i",
+                str(types_config.openapi_path),
+                "-o",
+                str(types_config.output),
+            ]
+
+            plugins: list[str] = ["@hey-api/types", "@hey-api/schemas"]
+            if getattr(types_config, "generate_sdk", True):
+                plugins.extend(["@hey-api/services", "@hey-api/client-axios"])
+            if types_config.generate_zod:
+                plugins.append("zod")
+
+            if plugins:
+                openapi_cmd.extend(["--plugins", *plugins])
 
         subprocess.run(openapi_cmd, check=True, cwd=root_dir)
         console.print(f"[green]✓ Types generated in {types_config.output}[/]")
     except subprocess.CalledProcessError as e:
         console.print("[yellow]! @hey-api/openapi-ts failed - install it with:[/]")
-        console.print(f"[dim]  {' '.join([*install_cmd, '-D', '@hey-api/openapi-ts'])}[/]")
+        extra = ["@hey-api/openapi-ts", "@hey-api/client-axios"]
+        if getattr(types_config, "generate_zod", False):
+            extra.append("zod")
+        console.print(f"[dim]  {' '.join([*install_cmd, '-D', *extra])}[/]")
         if verbose:
             console.print(f"[dim]Error: {e!s}[/]")
     except FileNotFoundError:
@@ -1025,7 +1055,7 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
 
     _export_openapi_schema(app, config.types)
     _export_routes_metadata(app, config.types)
-    _run_openapi_ts(config.types, config.root_dir, verbose, config.install_command, config.runtime.executor)
+    _run_openapi_ts(config, verbose, config.install_command, config.runtime.executor)
 
 
 @vite_group.command(

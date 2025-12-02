@@ -85,6 +85,7 @@ test = [
   "pytest-sugar",
   "pytest-mock>=3.11.1",
   "pytest-xdist>=3.6.1",
+  "pytest-timeout>=2.0.0",
   "httpx>=0.24.1",
 ]
 

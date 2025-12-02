@@ -118,6 +118,6 @@ export class HomeComponent implements OnInit {
     this.http.get<Summary>("/api/summary").subscribe((data) => this.summary.set(data));
     this.http.get<Book[]>("/api/books").subscribe((data) => this.books.set(data));
     // Load routes from generated file
-    this.http.get<RoutesData>("/src/generated/routes.json").subscribe((data) => this.routes.set(data));
+    this.http.get<RoutesData>("/{{ resource_dir }}/generated/routes.json").subscribe((data) => this.routes.set(data));
   }
 }
