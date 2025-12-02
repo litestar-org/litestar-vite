@@ -34,6 +34,18 @@ def _cleanup_processes_after_session() -> Generator[None, None, None]:
             proc.kill()
 
 
+@pytest.fixture(autouse=True)
+def _cleanup_processes_after_test() -> Generator[None, None, None]:
+    yield
+    for proc in list(RUNNING_PROCS):
+        try:
+            if proc.poll() is None:
+                proc.terminate()
+                proc.wait(timeout=5)
+        except Exception:
+            proc.kill()
+
+
 EXAMPLE_PARAMS = [pytest.param(name, marks=pytest.mark.xdist_group(name)) for name in EXAMPLE_NAMES]
 
 

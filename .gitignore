@@ -213,3 +213,4 @@ examples/*/.svelte-kit
 examples/*/.output
 examples/*/.angular
 coverage/
+examples/flash/public

@@ -32,31 +32,43 @@ class ExampleServer:
         self.example_dir = EXAMPLES_DIR / example_name
         self.vite_port, self.litestar_port = get_ports_for_example(example_name)
         self._processes: list[subprocess.Popen[bytes]] = []
+        self._dev_mode = False
 
     # ---------------------------- lifecycle ---------------------------- #
     def start_dev_mode(self) -> None:
         """Start dev servers (Vite/Angular CLI + Litestar)."""
         env = self._base_env(dev_mode=True)
-        self._processes.append(self._spawn(self._dev_command(), env=env, cwd=self.example_dir))
+        if not self._is_cli_example():
+            self._processes.append(self._spawn(self._dev_command(), env=env, cwd=self.example_dir))
         self._processes.append(self._spawn(self._litestar_command(), env=env))
         logger.info("Started dev mode for %s (vite=%s, litestar=%s)", self.example_name, self.vite_port, self.litestar_port)
+        self._dev_mode = True
 
     def start_production_mode(self) -> None:
         """Build and start production servers."""
-        env = self._base_env(dev_mode=False)
-        self._run(["npm", "run", "build"], cwd=self.example_dir, env=env)
+        env = self._base_env(dev_mode=False, port_override=self.vite_port)
+        self._run([sys.executable, "-m", "litestar", "--app-dir", str(self.example_dir), "assets", "build"], cwd=self.example_dir, env=env)
         self._processes.append(self._spawn(self._litestar_command(), env=env))
         if self.example_name in SSR_EXAMPLES | STATIC_SSR_EXAMPLES | CLI_EXAMPLES:
             self._processes.append(self._spawn(self._serve_command(), env=env, cwd=self.example_dir))
         logger.info("Started production mode for %s (litestar=%s)", self.example_name, self.litestar_port)
+        self._dev_mode = False
 
     def wait_until_ready(self, timeout: float = 120.0) -> None:
         """Wait until Litestar responds to /api/summary or /."""
+        # Ensure frontend or node server is up when applicable to avoid Litestar proxy 500s.
+        if (self._dev_mode and not self._is_cli_example()) or self._is_ssr_example() or self._is_static_ssr_example():
+            wait_for_http(f"http://127.0.0.1:{self.vite_port}/", timeout=timeout, processes=self._processes)
+
         base_url = f"http://127.0.0.1:{self.litestar_port}"
         try:
-            wait_for_http(f"{base_url}/api/summary", timeout=timeout)
+            wait_for_http(f"{base_url}/api/summary", timeout=timeout, processes=self._processes)
         except TimeoutError:
-            wait_for_http(f"{base_url}/", timeout=timeout)
+            wait_for_http(f"{base_url}/", timeout=timeout, processes=self._processes)
+        # Ensure homepage returns successfully (helps Angular CLI where proxy can lag).
+        wait_for_http(f"{base_url}/", timeout=timeout, processes=self._processes, expected_statuses=(200,))
+        if self._is_ssr_example() or self._is_static_ssr_example():
+            wait_for_http(f"http://127.0.0.1:{self.vite_port}/", timeout=timeout, processes=self._processes)
         self._assert_processes_alive()
 
     def stop(self) -> None:
@@ -95,21 +107,29 @@ class ExampleServer:
         return ["npm", "run", "serve"]
 
     # ---------------------------- helpers ---------------------------- #
-    def _base_env(self, dev_mode: bool) -> dict[str, str]:
+    def _base_env(self, dev_mode: bool, port_override: int | None = None) -> dict[str, str]:
         env = os.environ.copy()
         env.update(
             {
-                "VITE_PORT": str(self.vite_port),
                 "LITESTAR_PORT": str(self.litestar_port),
                 "VITE_DEV_MODE": "true" if dev_mode else "false",
+                "npm_config_cache": str(Path.home() / ".cache" / "npm"),
             }
         )
+        if not self._is_cli_example():
+            env["VITE_PORT"] = str(self.vite_port)
+        if port_override is not None:
+            env.setdefault("PORT", str(port_override))
+            env.setdefault("NITRO_PORT", str(port_override))
+            env.setdefault("HOST", "127.0.0.1")
         return env
 
     def _run(self, cmd: list[str], cwd: Path, env: dict[str, str]) -> None:
         result = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True)
         if result.returncode != 0:
-            raise RuntimeError(f"Command failed: {' '.join(cmd)}\n{result.stderr.decode()}")
+            stdout = result.stdout.decode() if result.stdout else ""
+            stderr = result.stderr.decode() if result.stderr else ""
+            raise RuntimeError(f"Command failed: {' '.join(cmd)}\nstdout:\n{stdout}\nstderr:\n{stderr}")
         logger.info("Command succeeded: %s", " ".join(cmd))
 
     def _spawn(self, cmd: list[str], env: dict[str, str], cwd: Path | None = None) -> subprocess.Popen[bytes]:
@@ -148,3 +168,12 @@ class ExampleServer:
         for proc in list(self._processes):
             if proc.poll() is not None:
                 raise RuntimeError(f"Process for {self.example_name} exited early with code {proc.returncode}")
+
+    def _is_ssr_example(self) -> bool:
+        return self.example_name in SSR_EXAMPLES
+
+    def _is_static_ssr_example(self) -> bool:
+        return self.example_name in STATIC_SSR_EXAMPLES
+
+    def _is_cli_example(self) -> bool:
+        return self.example_name in CLI_EXAMPLES

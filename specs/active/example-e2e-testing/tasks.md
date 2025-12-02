@@ -132,6 +132,10 @@
 - [ ] Verify parallel execution
 - [ ] Check timing and optimize
 - [ ] Add retry logic for flaky scenarios
+- [ ] Resolve port-collision timeouts observed in dev-mode (basic, angular, fullstack-typed, sveltekit, react-inertia)
+- [ ] Stabilize SSR examples in prod/dev: astro 404/timeout, nuxt/sveltekit 404 in prod
+- [ ] Fix angular-cli dev proxy readiness (503 bursts; asset detection loosened)
+- [ ] Fix litestar port binding conflicts (360xx) by adjusting allocator or freeing ports between tests
 
 ## Phase 8: Documentation
 

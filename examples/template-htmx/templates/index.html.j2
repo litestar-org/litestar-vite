@@ -31,7 +31,8 @@
       hx-get="/fragments/book/{{ summary.featured.id }}"
       hx-trigger="load"
     >
-      {% include "partials/book_card.html.j2" with book=summary.featured %}
+      {% set book = summary.featured %}
+      {% include "partials/book_card.html.j2" %}
     </section>
   </section>
 

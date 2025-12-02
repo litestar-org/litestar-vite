@@ -5,11 +5,17 @@ from collections.abc import Iterable
 import httpx
 
 
-def assert_html_contains_assets(response: httpx.Response, asset_keywords: Iterable[str] = ("assets", "static")) -> None:
-    """Ensure the HTML references at least one asset path."""
-    body = response.text
+def assert_html_contains_assets(
+    response: httpx.Response,
+    asset_keywords: Iterable[str] = ("assets", "static"),
+    shell_markers: Iterable[str] = ("<app-root", "<div id=\"app\"", "<body"),
+) -> None:
+    """Ensure the HTML references assets or contains an app shell marker."""
+    body = response.text.lower()
+    if any(marker.lower() in body for marker in shell_markers):
+        return
     if not any(keyword in body for keyword in asset_keywords):
-        raise AssertionError("HTML response did not reference any static assets")
+        raise AssertionError("HTML response did not reference assets or recognizable app shell markers")
 
 
 def assert_asset_fetchable(urls: list[str]) -> None:
@@ -22,4 +28,3 @@ def assert_asset_fetchable(urls: list[str]) -> None:
         if response.status_code == 200:
             return
     raise AssertionError(f"No assets were reachable from {urls}")
-

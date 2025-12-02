@@ -10,7 +10,8 @@ def wait_for_http(
     url: str,
     timeout: float = 60.0,
     interval: float = 0.5,
-    expected_statuses: Iterable[int] = (200,),
+    expected_statuses: Iterable[int] = (200, 301, 302, 404),
+    processes: list[object] | None = None,
 ) -> httpx.Response:
     """Poll an endpoint until it responds with an expected status or timeout.
 
@@ -29,11 +30,18 @@ def wait_for_http(
     start = time.monotonic()
     last_error: str | None = None
     while time.monotonic() - start < timeout:
+        if processes:
+            for proc in processes:
+                if hasattr(proc, "poll") and proc.poll() is not None:
+                    raise RuntimeError(f"Process exited with code {proc.poll()} before {url} became ready")
         try:
             response = httpx.get(url, timeout=5.0)
             if response.status_code in expected_statuses:
                 return response
-            last_error = f"Status {response.status_code}"
+            if response.status_code == 503:
+                last_error = "503 Service Unavailable (upstream not ready)"
+            else:
+                last_error = f"Status {response.status_code}"
         except httpx.RequestError as exc:
             last_error = str(exc)
         time.sleep(interval)

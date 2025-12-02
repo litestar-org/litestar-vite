@@ -43,8 +43,8 @@ def get_ports_for_example(example_name: str) -> tuple[int, int]:
     except ValueError as exc:
         raise ValueError(f"Unknown example name: {example_name}") from exc
 
-    vite_port = 5000 + index * 10
-    litestar_port = 8000 + index * 10
+    vite_port = 35000 + index * 10
+    litestar_port = 36000 + index * 10
     return vite_port, litestar_port
 
 
