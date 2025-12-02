@@ -1,6 +1,5 @@
-from pathlib import Path
-
 import json
+from pathlib import Path
 
 from litestar_vite.config import ViteConfig
 from litestar_vite.plugin import _write_runtime_config_file
