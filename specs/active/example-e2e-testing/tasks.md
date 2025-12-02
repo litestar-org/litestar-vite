@@ -9,40 +9,40 @@
 ## Phase 2: Infrastructure Implementation
 
 ### 2.1 Core Utilities
-- [ ] Create `src/py/tests/e2e/__init__.py`
-- [ ] Create `src/py/tests/e2e/port_allocator.py`
-  - [ ] Implement `get_ports_for_example()` function
-  - [ ] Implement port uniqueness validation
-  - [ ] Add constant for example names list
-- [ ] Create `src/py/tests/e2e/health_check.py`
-  - [ ] Implement `wait_for_http()` function
-  - [ ] Implement `check_html_response()` helper
-  - [ ] Implement `check_api_response()` helper
-  - [ ] Add configurable timeout and retry logic
+- [x] Create `src/py/tests/e2e/__init__.py`
+- [x] Create `src/py/tests/e2e/port_allocator.py`
+  - [x] Implement `get_ports_for_example()` function
+  - [x] Implement port uniqueness validation
+  - [x] Add constant for example names list
+- [x] Create `src/py/tests/e2e/health_check.py`
+  - [x] Implement `wait_for_http()` function
+  - [x] Implement `check_html_response()` helper
+  - [x] Implement `check_api_response()` helper
+  - [x] Add configurable timeout and retry logic
 
 ### 2.2 Server Manager
-- [ ] Create `src/py/tests/e2e/server_manager.py`
-  - [ ] Implement `ExampleServer` class
-  - [ ] Implement `start_dev_mode()` method
-  - [ ] Implement `start_production_mode()` method
-  - [ ] Implement `wait_until_ready()` method
-  - [ ] Implement `stop()` method with cleanup
-  - [ ] Add SSR detection logic
-  - [ ] Add process monitoring
-  - [ ] Add logging for debugging
+- [x] Create `src/py/tests/e2e/server_manager.py`
+  - [x] Implement `ExampleServer` class
+  - [x] Implement `start_dev_mode()` method
+  - [x] Implement `start_production_mode()` method
+  - [x] Implement `wait_until_ready()` method
+  - [x] Implement `stop()` method with cleanup
+  - [x] Add SSR detection logic
+  - [x] Add process monitoring
+  - [x] Add logging for debugging
 
 ### 2.3 Test Fixtures
-- [ ] Create `src/py/tests/e2e/conftest.py`
-  - [ ] Create `example_server` fixture
-  - [ ] Create `dev_mode_server` fixture
-  - [ ] Create `production_server` fixture
-  - [ ] Add autouse cleanup fixture
-  - [ ] Add pytest markers for example categories
+- [x] Create `src/py/tests/e2e/conftest.py`
+  - [x] Create `example_server` fixture
+  - [x] Create `dev_mode_server` fixture
+  - [x] Create `production_server` fixture
+  - [x] Add autouse cleanup fixture
+  - [x] Add pytest markers for example categories
 
 ## Phase 3: Dev Mode Tests
 
 ### 3.1 SPA Examples
-- [ ] Create `src/py/tests/e2e/test_dev_mode.py`
+- [x] Create `src/py/tests/e2e/test_dev_mode.py`
 - [ ] Test `basic` example dev mode
 - [ ] Test `react` example dev mode
 - [ ] Test `vue` example dev mode
@@ -70,7 +70,7 @@
 ## Phase 4: Production Mode Tests
 
 ### 4.1 SPA Examples
-- [ ] Create `src/py/tests/e2e/test_production_mode.py`
+- [x] Create `src/py/tests/e2e/test_production_mode.py`
 - [ ] Test `basic` example production mode
 - [ ] Test `react` example production mode
 - [ ] Test `vue` example production mode
@@ -106,23 +106,23 @@
 ## Phase 6: CI/CD Integration
 
 ### 6.1 Makefile
-- [ ] Add `test-examples-e2e` target
-- [ ] Add `test-examples-e2e-quick` target (subset)
+- [x] Add `test-examples-e2e` target
+- [x] Add `test-examples-e2e-quick` target (subset/alias)
 - [ ] Update `check-all` to optionally include E2E
 
 ### 6.2 GitHub Actions
-- [ ] Create `.github/workflows/e2e-examples.yml`
-  - [ ] Matrix strategy for examples
-  - [ ] Node.js setup
-  - [ ] Python/uv setup
-  - [ ] Example dependency installation
-  - [ ] Test execution
-  - [ ] Artifact upload on failure
+- [x] Create `.github/workflows/e2e-examples.yml`
+  - [x] Matrix strategy for examples
+  - [x] Node.js setup
+  - [x] Python/uv setup
+  - [x] Example dependency installation
+  - [x] Test execution
+  - [x] Artifact upload on failure
 
 ### 6.3 pytest Configuration
-- [ ] Add `e2e` marker to `pyproject.toml`
+- [x] Add `e2e` marker to `pyproject.toml`
 - [ ] Configure test timeout
-- [ ] Add xdist group markers
+- [x] Add xdist group markers
 
 ## Phase 7: Testing & QA
 

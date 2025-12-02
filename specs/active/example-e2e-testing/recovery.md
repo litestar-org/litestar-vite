@@ -2,7 +2,7 @@
 
 ## Current State
 
-**Status**: PRD and task breakdown complete. Ready for implementation.
+**Status**: Implementation in progress – core E2E scaffolding, fixtures, and tests added.
 
 ## Files Created
 
@@ -32,41 +32,13 @@
 |------|---------|
 | `Makefile` | Add `test-examples-e2e` target |
 | `pyproject.toml` | Add pytest markers |
+| `specs/active/example-e2e-testing/tasks.md` | Progress updates |
 
 ## Next Steps
 
-1. **Start implementation** by creating the e2e test directory:
-   ```bash
-   mkdir -p src/py/tests/e2e
-   ```
-
-2. **Implement port allocator** first as it has no dependencies:
-   ```python
-   # port_allocator.py
-   EXAMPLE_NAMES = ["angular", "angular-cli", "astro", ...]
-   def get_ports_for_example(name: str) -> tuple[int, int]: ...
-   ```
-
-3. **Implement health check** utilities:
-   ```python
-   # health_check.py
-   def wait_for_http(url: str, timeout: float = 30.0) -> None: ...
-   ```
-
-4. **Implement ExampleServer** class:
-   ```python
-   # server_manager.py
-   class ExampleServer:
-       def start_dev_mode(self) -> None: ...
-       def start_production_mode(self) -> None: ...
-       def stop(self) -> None: ...
-   ```
-
-5. **Create fixtures** in conftest.py
-
-6. **Write first test** for `basic` example to validate infrastructure
-
-7. **Expand tests** to all examples
+1. Wire E2E target into `check-all` if required by QA gate.
+2. Add explicit timeouts/pytest-timeout configuration if desired.
+3. Run full E2E suite locally once resource budget allows.
 
 ## Context for Resumption
 

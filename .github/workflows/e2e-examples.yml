@@ -1,0 +1,62 @@
+name: e2e-examples
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test_examples_e2e:
+    name: "E2E Examples (${{ matrix.example }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          - react
+          - vue
+          - svelte
+          - angular
+          - sveltekit
+          - nuxt
+          - astro
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: |
+          npm ci --ignore-scripts
+          uv sync --all-extras --dev
+
+      - name: Install example dependencies
+        run: |
+          cd examples/${{ matrix.example }}
+          npm ci --ignore-scripts
+
+      - name: Run E2E tests
+        env:
+          PYTEST_ADDOPTS: "-m e2e -k ${{ matrix.example }} -n auto --maxfail=1"
+        run: |
+          uv run pytest src/py/tests/e2e -v
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs-${{ matrix.example }}
+          path: |
+            .pytest_cache
+            coverage.xml

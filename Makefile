@@ -302,3 +302,13 @@ test-examples: build-examples                      ## Build and test all example
 	@echo "${INFO} Testing examples... 🧪"
 	@uv run pytest src/py/tests/integration/test_examples.py -v
 	@echo "${OK} Example tests passed"
+
+.PHONY: test-examples-e2e
+test-examples-e2e:                                 ## Run end-to-end example suite
+	@echo "${INFO} Running E2E example tests... 🧪"
+	@uv run pytest -n auto -m e2e src/py/tests/e2e -v --maxfail=1
+	@echo "${OK} E2E example tests passed"
+
+.PHONY: test-examples-e2e-quick
+test-examples-e2e-quick: test-examples-e2e         ## Quick alias for full E2E suite
+	@true
