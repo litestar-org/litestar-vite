@@ -42,9 +42,8 @@ jobs:
           uv sync --all-extras --dev
 
       - name: Install example dependencies
-        run: |
-          cd examples/${{ matrix.example }}
-          npm ci --ignore-scripts
+        run: npm ci --ignore-scripts
+        working-directory: examples/${{ matrix.example }}
 
       - name: Run E2E tests
         env:
