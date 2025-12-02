@@ -41,7 +41,11 @@ _SYSTEM_TYPE_NAMES = frozenset(
 
 
 def _str_dict_factory() -> dict[str, str]:
-    """Factory function for empty string dict (typed for pyright)."""
+    """Factory function for empty string dict (typed for pyright).
+
+    Returns:
+        An empty dictionary with str keys and str values.
+    """
     return {}
 
 
@@ -256,27 +260,26 @@ def _extract_query_params(handler: HTTPRouteHandler, path_param_names: set[str])
 
 def _ts_type_from_openapi(schema: dict[str, Any]) -> str:
     """Map a minimal subset of OpenAPI types to TypeScript types."""
+    ts_type = "unknown"
+    if schema:
+        t = schema.get("type")
+        fmt = schema.get("format")
 
-    if not schema:
-        return "unknown"
+        if t == "string":
+            ts_type = "string"
+        elif t in {"integer", "number"}:
+            ts_type = "number"
+        elif t == "boolean":
+            ts_type = "boolean"
+        elif t == "array":
+            item = _ts_type_from_openapi(schema.get("items", {}))
+            ts_type = f"{item}[]"
+        elif t == "object":
+            ts_type = "Record<string, unknown>"
+        elif fmt in {"uuid", "date-time", "date", "email"}:
+            ts_type = "string"
 
-    t = schema.get("type")
-    fmt = schema.get("format")
-    if t == "string":
-        return "string"
-    if t in {"integer", "number"}:
-        return "number"
-    if t == "boolean":
-        return "boolean"
-    if t == "array":
-        item = _ts_type_from_openapi(schema.get("items", {}))
-        return f"{item}[]"
-    if t == "object":
-        return "Record<string, unknown>"
-    # fall back to format hints for common cases
-    if fmt in {"uuid", "date-time", "date", "email"}:
-        return "string"
-    return "unknown"
+    return ts_type
 
 
 def _openapi_lookup(openapi_schema: dict[str, Any] | None) -> dict[tuple[str, str], dict[str, Any]]:
@@ -290,10 +293,17 @@ def _openapi_lookup(openapi_schema: dict[str, Any] | None) -> dict[tuple[str, st
     for path, methods in paths.items():
         if not isinstance(methods, dict):
             continue
-        for method, operation in methods.items():
-            if method.lower() not in {"get", "post", "put", "patch", "delete", "head", "options"}:
+        for method_obj, operation_obj in methods.items():  # pyright: ignore
+            if not isinstance(method_obj, str):
                 continue
-            lookup[(path, method.upper())] = operation or {}
+            method = method_obj
+            operation: dict[str, Any] = operation_obj or {}  # pyright: ignore
+
+            lower = method.lower()
+            if lower not in {"get", "post", "put", "patch", "delete", "head", "options"}:
+                continue
+
+            lookup[path, method.upper()] = operation
     return lookup
 
 
@@ -331,6 +341,7 @@ def extract_route_metadata(
         app: Litestar application instance.
         only: Whitelist patterns (route names or paths to include).
         exclude: Blacklist patterns (route names or paths to exclude).
+        openapi_schema: Optional OpenAPI schema used to enrich parameter and query types.
 
     Returns:
         List of route metadata objects.
@@ -409,6 +420,7 @@ def generate_routes_json(
         only: Whitelist patterns (route names or paths to include).
         exclude: Blacklist patterns (route names or paths to exclude).
         include_components: Include Inertia component names in output.
+        openapi_schema: Optional OpenAPI schema used to enrich parameter and query types.
 
     Returns:
         Dictionary with routes in Ziggy-compatible format.

@@ -242,8 +242,6 @@ def _prompt_for_options(
 
         if not generate_client and not no_prompt:
             generate_client = Confirm.ask("Generate API client?", default=True)
-        if generate_client is None:
-            generate_client = True
     else:
         # If types disabled, also disable zod and client
         generate_zod = False

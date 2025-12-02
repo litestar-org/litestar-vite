@@ -25,4 +25,4 @@ export default {
     export: true,
     type: "typescript",
   },
-};
+}

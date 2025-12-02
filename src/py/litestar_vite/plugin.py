@@ -250,6 +250,7 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
         },
         # Executor for package commands (npx, bunx, etc.)
         "executor": config.runtime.executor,
+        "litestarVersion": _resolve_litestar_version(),
     }
 
     path.write_text(json.dumps(payload, indent=2))
@@ -276,8 +277,6 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
     os.environ.setdefault("VITE_ALLOW_REMOTE", str(True))
 
     backend_host = os.environ.get("LITESTAR_HOST") or "127.0.0.1"
-    if backend_host == "127.0.0":
-        backend_host = "127.0.0.1"
     backend_port = os.environ.get("LITESTAR_PORT") or os.environ.get("PORT") or _infer_port_from_argv() or "8000"
     os.environ["LITESTAR_HOST"] = backend_host
     os.environ["LITESTAR_PORT"] = str(backend_port)
@@ -1864,10 +1863,11 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
             # Export routes
             openapi_schema = None
-            try:
-                openapi_schema = app.openapi_schema.to_schema()
-            except Exception:  # pragma: no cover - OpenAPI not configured
-                openapi_schema = None
+            if getattr(app, "openapi_schema", None) is not None:
+                try:
+                    openapi_schema = app.openapi_schema.to_schema()
+                except (AttributeError, TypeError, ValueError):  # pragma: no cover - OpenAPI not configured
+                    openapi_schema = None
 
             routes_data = generate_routes_json(app, include_components=True, openapi_schema=openapi_schema)
             routes_data["litestar_version"] = _resolve_litestar_version()
@@ -1906,10 +1906,11 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             from litestar_vite.codegen import generate_routes_json
 
             openapi_schema = None
-            try:
-                openapi_schema = app.openapi_schema.to_schema()
-            except Exception:  # pragma: no cover - OpenAPI not configured
-                openapi_schema = None
+            if getattr(app, "openapi_schema", None) is not None:
+                try:
+                    openapi_schema = app.openapi_schema.to_schema()
+                except (AttributeError, TypeError, ValueError):  # pragma: no cover - OpenAPI not configured
+                    openapi_schema = None
 
             # Extract routes with filtering
             routes_data = generate_routes_json(

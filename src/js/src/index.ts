@@ -326,7 +326,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       const serverConfig = command === "serve" ? (resolveDevelopmentEnvironmentServerConfig(pluginConfig.detectTls) ?? resolveEnvironmentServerConfig(env)) : undefined
       const devBase = pluginConfig.assetUrl.startsWith("/") ? pluginConfig.assetUrl : pluginConfig.assetUrl.replace(/\/+$/, "")
 
-      ensureCommandShouldRunInEnvironment(command, env)
+      ensureCommandShouldRunInEnvironment(command, env, mode)
 
       return {
         base: userConfig.base ?? (command === "build" ? resolveBase(pluginConfig, assetUrl) : devBase),
@@ -614,9 +614,13 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
 /**
  * Validate the command can run in the given environment.
  */
-function ensureCommandShouldRunInEnvironment(command: "build" | "serve", env: Record<string, string>): void {
+function ensureCommandShouldRunInEnvironment(command: "build" | "serve", env: Record<string, string>, mode?: string): void {
   const allowedDevModes = ["dev", "development", "local", "docker"]
   if (command === "build" || env.LITESTAR_BYPASS_ENV_CHECK === "1") {
+    return
+  }
+
+  if (mode === "test" || env.VITEST || env.VITE_TEST || env.NODE_ENV === "test") {
     return
   }
 
@@ -977,6 +981,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
   let server: ViteDevServer | null = null
   let isGenerating = false
   let resolvedConfig: ResolvedConfig | null = null
+  let chosenConfigPath: string | null = null
 
   /**
    * Run @hey-api/openapi-ts to generate TypeScript types from the OpenAPI schema.
@@ -990,20 +995,22 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
     const startTime = Date.now()
 
     try {
-      // Check if openapi.json exists
-      const openapiPath = path.resolve(process.cwd(), typesConfig.openapiPath)
-      const routesPath = path.resolve(process.cwd(), typesConfig.routesPath)
+      const projectRoot = resolvedConfig?.root ?? process.cwd()
+      const openapiPath = path.resolve(projectRoot, typesConfig.openapiPath)
+      const routesPath = path.resolve(projectRoot, typesConfig.routesPath)
 
       let generated = false
 
       if (fs.existsSync(openapiPath)) {
-        if (resolvedConfig) {
-          resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("generating TypeScript types...")}`)
-        }
+        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("generating TypeScript types...")}`)
 
-        // Prefer user config if present
-        const candidates = [path.resolve(process.cwd(), "hey-api.config.ts"), path.resolve(process.cwd(), "openapi-ts.config.ts")]
-        const configPath = candidates.find((p) => fs.existsSync(p))
+        // Prefer user config if present (deterministic order)
+        const candidates = [path.resolve(projectRoot, ".hey-api.config.ts"), path.resolve(projectRoot, "hey-api.config.ts"), path.resolve(projectRoot, "openapi-ts.config.ts")]
+        const configPath = candidates.find((p) => fs.existsSync(p)) || null
+        chosenConfigPath = configPath
+        if (resolvedConfig) {
+          resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("openapi-ts config: ")}${configPath ?? "<built-in defaults>"}`)
+        }
 
         let args: string[]
         if (configPath) {
@@ -1034,12 +1041,12 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
         }
 
         await execAsync(resolvePackageExecutor(args.join(" "), executor), {
-          cwd: process.cwd(),
+          cwd: projectRoot,
         })
 
         generated = true
       } else if (resolvedConfig) {
-        resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("OpenAPI schema not found:")} ${typesConfig.openapiPath}`)
+        resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("OpenAPI schema not found:")} ${openapiPath}`)
       }
 
       // Always try to emit routes types when routes metadata is present
@@ -1101,7 +1108,13 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
 
       // Log that we're watching for schema changes
       if (typesConfig.enabled) {
-        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("watching for schema changes:")} ${colors.yellow(typesConfig.openapiPath)}`)
+        const root = resolvedConfig?.root ?? process.cwd()
+        const openapiAbs = path.resolve(root, typesConfig.openapiPath)
+        const routesAbs = path.resolve(root, typesConfig.routesPath)
+        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("watching schema/routes:")} ${colors.yellow(openapiAbs)}, ${colors.yellow(routesAbs)}`)
+        if (chosenConfigPath) {
+          resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("openapi-ts config:")} ${colors.yellow(chosenConfigPath)}`)
+        }
       }
     },
 
@@ -1110,7 +1123,8 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
         return
       }
 
-      const relativePath = path.relative(process.cwd(), file)
+      const root = resolvedConfig?.root ?? process.cwd()
+      const relativePath = path.relative(root, file)
       const openapiPath = typesConfig.openapiPath.replace(/^\.\//, "")
       const routesPath = typesConfig.routesPath.replace(/^\.\//, "")
 
