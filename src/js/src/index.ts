@@ -309,6 +309,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
   let resolvedConfig: ResolvedConfig
   let userConfig: UserConfig
   let litestarMeta: LitestarMeta = {}
+  let shuttingDown = false
   const pythonDefaults = loadPythonDefaults()
   const proxyMode = pythonDefaults?.proxyMode ?? "vite_proxy"
   const defaultAliases: Record<string, string> = {
@@ -324,6 +325,35 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       const env = loadEnv(mode, userConfig.envDir || process.cwd(), "")
       const assetUrl = normalizeAssetUrl(env.ASSET_URL || pluginConfig.assetUrl)
       const serverConfig = command === "serve" ? (resolveDevelopmentEnvironmentServerConfig(pluginConfig.detectTls) ?? resolveEnvironmentServerConfig(env)) : undefined
+
+      const withProxyErrorSilencer = (proxyConfig: Record<string, any> | undefined) => {
+        if (!proxyConfig) return undefined
+        return Object.fromEntries(
+          Object.entries(proxyConfig).map(([key, value]) => {
+            if (typeof value !== "object" || value === null) {
+              return [key, value]
+            }
+            const existingConfigure = value.configure
+            return [
+              key,
+              {
+                ...value,
+                configure(proxy: any, opts: any) {
+                  proxy.on("error", (err: any) => {
+                    const msg = String(err?.message ?? "")
+                    if (shuttingDown || msg.includes("ECONNREFUSED") || msg.includes("ECONNRESET") || msg.includes("socket hang up")) {
+                      return
+                    }
+                  })
+                  if (typeof existingConfigure === "function") {
+                    existingConfigure(proxy, opts)
+                  }
+                },
+              },
+            ]
+          }),
+        )
+      }
       const devBase = pluginConfig.assetUrl.startsWith("/") ? pluginConfig.assetUrl : pluginConfig.assetUrl.replace(/\/+$/, "")
 
       ensureCommandShouldRunInEnvironment(command, env, mode)
@@ -357,20 +387,21 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           // Auto-configure proxy to forward API requests to Litestar backend
           // This allows the app to work when accessing Vite directly (not through Litestar proxy)
           // Only proxies /api and /schema routes - everything else is handled by Vite
-          proxy:
+          proxy: withProxyErrorSilencer(
             userConfig.server?.proxy ??
-            (env.APP_URL
-              ? {
-                  "/api": {
-                    target: env.APP_URL,
-                    changeOrigin: true,
-                  },
-                  "/schema": {
-                    target: env.APP_URL,
-                    changeOrigin: true,
-                  },
-                }
-              : undefined),
+              (env.APP_URL
+                ? {
+                    "/api": {
+                      target: env.APP_URL,
+                      changeOrigin: true,
+                    },
+                    "/schema": {
+                      target: env.APP_URL,
+                      changeOrigin: true,
+                    },
+                  }
+                : undefined),
+          ),
           // Always respect VITE_PORT when set by Python (regardless of VITE_ALLOW_REMOTE)
           ...(process.env.VITE_PORT
             ? {
@@ -559,9 +590,18 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           }
         }
         process.on("exit", clean)
-        process.on("SIGINT", () => process.exit())
-        process.on("SIGTERM", () => process.exit())
-        process.on("SIGHUP", () => process.exit())
+        process.on("SIGINT", () => {
+          shuttingDown = true
+          process.exit()
+        })
+        process.on("SIGTERM", () => {
+          shuttingDown = true
+          process.exit()
+        })
+        process.on("SIGHUP", () => {
+          shuttingDown = true
+          process.exit()
+        })
         exitHandlersBound = true
       }
 
