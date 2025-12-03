@@ -24,9 +24,8 @@
     "tslib": "latest",
     "@tailwindcss/vite": "^4.0.0",
     "tailwindcss": "^4.0.0",
-    "@hey-api/openapi-ts": "latest",
+    "@hey-api/openapi-ts": "^0.88.0",
     "litestar-vite-plugin": "file:../..",
-    "vite": "^7.0.0",
-    "@hey-api/client-axios": "latest"
+    "vite": "^7.0.0"
   }
 }

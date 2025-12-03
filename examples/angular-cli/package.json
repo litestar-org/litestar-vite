@@ -32,7 +32,6 @@
     "typescript": "latest",
     "postcss": "latest",
     "autoprefixer": "latest",
-    "@hey-api/openapi-ts": "latest",
-    "@hey-api/client-axios": "latest"
+    "@hey-api/openapi-ts": "^0.88.0"
   }
 }

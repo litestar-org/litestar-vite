@@ -1144,7 +1144,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
         if (message.includes("not found") || message.includes("ENOENT")) {
           const zodHint = typesConfig.generateZod ? " zod" : ""
           resolvedConfig.logger.warn(
-            `${colors.cyan("litestar-vite")} ${colors.yellow("@hey-api/openapi-ts not installed")} - run: ${resolveInstallHint()} -D @hey-api/openapi-ts @hey-api/client-axios${zodHint}`,
+            `${colors.cyan("litestar-vite")} ${colors.yellow("@hey-api/openapi-ts not installed")} - run: ${resolveInstallHint()} -D @hey-api/openapi-ts${zodHint}`,
           )
         } else {
           resolvedConfig.logger.error(`${colors.cyan("litestar-vite")} ${colors.red("type generation failed:")} ${message}`)

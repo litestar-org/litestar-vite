@@ -23,7 +23,6 @@
     "vue-tsc": "latest",
     "litestar-vite-plugin": "file:../..",
     "vite": "^7.0.0",
-    "@hey-api/openapi-ts": "latest",
-    "@hey-api/client-axios": "latest"
+    "@hey-api/openapi-ts": "^0.88.0"
   }
 }

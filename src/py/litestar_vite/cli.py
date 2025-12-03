@@ -990,7 +990,7 @@ def _run_openapi_ts(
 
             plugins: list[str] = ["@hey-api/types", "@hey-api/schemas"]
             if getattr(types_config, "generate_sdk", True):
-                plugins.extend(["@hey-api/services", "@hey-api/client-axios"])
+                plugins.extend(["@hey-api/services"])
             if types_config.generate_zod:
                 plugins.append("zod")
 
@@ -1001,7 +1001,7 @@ def _run_openapi_ts(
         console.print(f"[green]✓ Types generated in {types_config.output}[/]")
     except subprocess.CalledProcessError as e:
         console.print("[yellow]! @hey-api/openapi-ts failed - install it with:[/]")
-        extra = ["@hey-api/openapi-ts", "@hey-api/client-axios"]
+        extra = ["@hey-api/openapi-ts"]
         if getattr(types_config, "generate_zod", False):
             extra.append("zod")
         console.print(f"[dim]  {' '.join([*install_cmd, '-D', *extra])}[/]")
@@ -1028,9 +1028,6 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     Args:
         app: The Litestar application instance.
         verbose: Whether to enable verbose output.
-
-    Raises:
-        LitestarCLIException: If type generation fails.
     """
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 

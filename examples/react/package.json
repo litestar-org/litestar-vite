@@ -24,7 +24,6 @@
     "typescript": "^5.9.3",
     "litestar-vite-plugin": "file:../..",
     "vite": "^7.2.6",
-    "@hey-api/openapi-ts": "^0.88.0",
-    "@hey-api/client-axios": "^0.9.1"
+    "@hey-api/openapi-ts": "^0.88.0"
   }
 }
