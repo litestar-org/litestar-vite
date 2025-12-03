@@ -138,7 +138,7 @@ pre-release:                                       ## Start a pre-release: make 
 .PHONY: clean
 clean:                                              ## Cleanup temporary build artifacts
 	@echo "${INFO} Cleaning working directory... 🧹"
-	@rm -rf pytest_cache .ruff_cache .hypothesis build/ -rf dist/ .eggs/ .coverage coverage.xml coverage.json htmlcov/ .pytest_cache tests/.pytest_cache tests/**/.pytest_cache .mypy_cache .unasyncd_cache/ .auto_pytabs_cache node_modules >/dev/null 2>&1
+	@rm -rf pytest_cache .ruff_cache .hypothesis build/ -rf dist/ .eggs/ .coverage coverage.xml coverage.json htmlcov/ .pytest_cache tests/.pytest_cache tests/**/.pytest_cache .mypy_cache .unasyncd_cache/ .auto_pytabs_cache node_modules docs-build coverage >/dev/null 2>&1
 	@find . -name '*.egg-info' -exec rm -rf {} + >/dev/null 2>&1
 	@find . -type f -name '*.egg' -exec rm -f {} + >/dev/null 2>&1
 	@find . -name '*.pyc' -exec rm -f {} + >/dev/null 2>&1
@@ -161,6 +161,7 @@ clean-examples:                                     ## Clean all example build a
 	@find examples -maxdepth 2 -type d -name ".output" -exec rm -rf {} + >/dev/null 2>&1 || true
 	@find examples -maxdepth 2 -type d -name ".svelte-kit" -exec rm -rf {} + >/dev/null 2>&1 || true
 	@find examples -maxdepth 3 -type d -name "generated" -exec rm -rf {} + >/dev/null 2>&1 || true
+	@find examples -maxdepth 2 -type f -name ".litestar*.json" -exec rm -f {} + >/dev/null 2>&1 || true
 	@echo "${OK} Example artifacts cleaned"
 
 # =============================================================================
