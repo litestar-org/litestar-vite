@@ -11,19 +11,6 @@ from .server_manager import EXAMPLES_DIR, RUNNING_PROCS, ExampleServer
 # Can be overridden with E2E_TEST_TIMEOUT env var or @pytest.mark.timeout(X)
 E2E_TEST_TIMEOUT = int(os.environ.get("E2E_TEST_TIMEOUT", "60"))
 
-# =============================================================================
-# TODO(SSR-E2E): Re-enable SSR examples once port detection is stabilized
-# =============================================================================
-# The following SSR examples are temporarily disabled due to flaky port detection:
-# - astro, nuxt, sveltekit: These SSR frameworks have complex Node server lifecycles
-#   with varying output formats that make reliable port detection challenging.
-#
-# To re-enable: Remove from SKIP_EXAMPLES and improve OutputCapture patterns in
-# server_manager.py to handle all SSR framework output variations.
-#
-# Tracked issue: https://github.com/litestar-org/litestar-vite/issues/XXX
-# =============================================================================
-
 # Examples that require special handling and should be skipped in the standard E2E suite
 SKIP_EXAMPLES: set[str] = set()
 
