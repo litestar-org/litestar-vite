@@ -1,4 +1,4 @@
-import "htmx.org"
+import htmx from "htmx.org"
 import Alpine from "alpinejs"
 import "./styles.css"
 
@@ -6,7 +6,12 @@ import "./styles.css"
 // This provides: typed routes (hx-route), CSRF injection, JSON templating, and flash messages
 import { registerHtmxExtension } from "litestar-vite-plugin/helpers"
 
+// Ensure htmx is available globally and initialize it
+window.htmx = htmx
+// Register our extension before processing the page
 registerHtmxExtension()
+// Process the initial DOM so hx-* attributes are activated
+htmx.process(document.body)
 
 // Initialize Alpine.js with flash store
 Alpine.store("flash", {
