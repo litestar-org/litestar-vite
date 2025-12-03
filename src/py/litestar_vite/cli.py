@@ -39,6 +39,15 @@ def _format_command(command: "list[str] | None") -> str:
     return " ".join(command or [])
 
 
+def _relative_path(path: Path) -> str:
+    """Return path relative to CWD when possible."""
+
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return str(path)
+
+
 def _print_recommended_config(template_name: str, resource_dir: str, bundle_dir: str) -> None:
     """Print recommended ViteConfig for the scaffolded template.
 
@@ -887,7 +896,7 @@ def _export_openapi_schema(app: "Litestar", types_config: Any) -> None:
         )
         types_config.openapi_path.parent.mkdir(parents=True, exist_ok=True)
         types_config.openapi_path.write_bytes(schema_content)
-        console.print(f"[green]✓ Schema exported to {types_config.openapi_path}[/]")
+        console.print(f"[green]✓ Schema exported to {_relative_path(types_config.openapi_path)}[/]")
     except OSError as e:
         msg = f"Failed to export OpenAPI schema: {e}"
         raise LitestarCLIException(msg) from e
@@ -918,7 +927,7 @@ def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
         )
         types_config.routes_path.parent.mkdir(parents=True, exist_ok=True)
         types_config.routes_path.write_bytes(routes_content)
-        console.print(f"[green]✓ Routes exported to {types_config.routes_path}[/]")
+        console.print(f"[green]✓ Routes exported to {_relative_path(types_config.routes_path)}[/]")
     except OSError as e:
         msg = f"Failed to export routes: {e}"
         raise LitestarCLIException(msg) from e

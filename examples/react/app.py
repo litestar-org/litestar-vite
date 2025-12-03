@@ -85,7 +85,7 @@ vite = VitePlugin(
     config=ViteConfig(
         mode="spa",
         paths=PathConfig(root=here),
-        types=TypeGenConfig(generate_sdk=True),
+        types=TypeGenConfig(enabled=True, generate_sdk=True),
         dev_mode=True,
     )
 )
