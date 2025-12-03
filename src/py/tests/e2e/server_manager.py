@@ -81,12 +81,19 @@ ANGULAR_CLI_PORT_PATTERN = re.compile(r"localhost:(\d+)")
 class OutputCapture:
     """Captures process output and extracts port information."""
 
-    def __init__(self, stream: "IO[bytes] | None", patterns: list[re.Pattern[str]]) -> None:
+    def __init__(
+        self,
+        stream: "IO[bytes] | None",
+        patterns: list[re.Pattern[str]],
+        process: "subprocess.Popen[bytes] | None" = None,
+    ) -> None:
         self.stream = stream
         self.patterns = patterns
+        self.process = process  # Reference to check if process is still alive
         self.port: int | None = None
         self.output_lines: list[str] = []
         self._thread: Thread | None = None
+        self._stream_closed = False
 
     def start(self) -> None:
         """Start capturing output in a background thread."""
@@ -99,18 +106,23 @@ class OutputCapture:
         """Read lines and extract port."""
         if self.stream is None:
             return
-        for line_bytes in self.stream:
-            line = line_bytes.decode(errors="replace").strip()
-            self.output_lines.append(line)
-            logger.debug("Output: %s", line)
+        try:
+            for line_bytes in self.stream:
+                line = line_bytes.decode(errors="replace").strip()
+                self.output_lines.append(line)
+                logger.debug("Output: %s", line)
 
-            if self.port is None:
-                for pattern in self.patterns:
-                    match = pattern.search(line)
-                    if match:
-                        self.port = int(match.group(1))
-                        logger.info("Detected port: %d from line: %s", self.port, line)
-                        break
+                if self.port is None:
+                    for pattern in self.patterns:
+                        match = pattern.search(line)
+                        if match:
+                            self.port = int(match.group(1))
+                            logger.info("Detected port: %d from line: %s", self.port, line)
+                            break
+        except Exception as e:
+            logger.warning("Output capture error: %s", e)
+        finally:
+            self._stream_closed = True
 
     def wait_for_port(self, timeout: float = 60.0) -> int:
         """Wait until port is detected or timeout.
@@ -123,13 +135,42 @@ class OutputCapture:
 
         Raises:
             TimeoutError: If port is not detected within the timeout period.
+            RuntimeError: If the process exits before port is detected.
         """
         start = time.monotonic()
+        last_line_count = 0
+
         while time.monotonic() - start < timeout:
             if self.port is not None:
                 return self.port
+
+            # Check if process has exited (fail fast)
+            if self.process is not None and self.process.poll() is not None:
+                output = "\n".join(self.output_lines[-30:])
+                raise RuntimeError(
+                    f"Server process exited with code {self.process.returncode} before port was detected.\n"
+                    f"Output:\n{output}"
+                )
+
+            # Check if stream closed without port detection
+            if self._stream_closed and self.port is None:
+                output = "\n".join(self.output_lines[-30:])
+                raise RuntimeError(f"Output stream closed without detecting port.\nOutput:\n{output}")
+
+            # Log progress every 10 seconds if no new output
+            current_lines = len(self.output_lines)
+            elapsed = time.monotonic() - start
+            if elapsed > 10 and current_lines == last_line_count and int(elapsed) % 10 == 0:
+                logger.warning(
+                    "Waiting for port... %.0fs elapsed, %d lines captured, no new output",
+                    elapsed,
+                    current_lines,
+                )
+            last_line_count = current_lines
+
             time.sleep(0.1)
-        output = "\n".join(self.output_lines[-20:])
+
+        output = "\n".join(self.output_lines[-30:])
         raise TimeoutError(f"Could not detect port within {timeout}s. Last output:\n{output}")
 
     def get_output(self) -> str:
@@ -242,6 +283,9 @@ class ExampleServer:
 
         # For SSR examples, also start production Node server
         if self._is_ssr_example():
+            # Verify build artifacts exist before attempting to serve
+            self._verify_ssr_build()
+
             ssr_patterns = [VITE_PORT_PATTERN, ASTRO_PORT_PATTERN, NUXT_PORT_PATTERN, LISTENING_PORT_PATTERN]
             ssr_proc, ssr_capture = self._spawn_with_capture(
                 self._assets_serve_production_command(),
@@ -443,14 +487,16 @@ class ExampleServer:
             Environment variables dict for subprocess.
         """
         env = os.environ.copy()
-        env.update({
-            "VITE_DEV_MODE": "true" if dev_mode else "false",
-            # Let Vite/Litestar auto-select ports
-            # Don't set VITE_PORT or LITESTAR_PORT
-            "HOST": "127.0.0.1",
-            # npm cache to avoid permission issues
-            "npm_config_cache": str(Path.home() / ".cache" / "npm"),
-        })
+        env.update(
+            {
+                "VITE_DEV_MODE": "true" if dev_mode else "false",
+                # Let Vite/Litestar auto-select ports
+                # Don't set VITE_PORT or LITESTAR_PORT
+                "HOST": "127.0.0.1",
+                # npm cache to avoid permission issues
+                "npm_config_cache": str(Path.home() / ".cache" / "npm"),
+            }
+        )
         # Remove any port env vars that might interfere
         for key in ["VITE_PORT", "LITESTAR_PORT", "PORT", "NITRO_PORT"]:
             env.pop(key, None)
@@ -536,7 +582,8 @@ class ExampleServer:
         )
         RUNNING_PROCS.append(proc)
 
-        capture = OutputCapture(proc.stdout, patterns)
+        # Pass process reference so OutputCapture can detect early exits
+        capture = OutputCapture(proc.stdout, patterns, process=proc)
         capture.start()
 
         return proc, capture
@@ -591,6 +638,37 @@ class ExampleServer:
             True if the example uses a CLI-based build tool.
         """
         return self.example_name in CLI_EXAMPLES
+
+    def _verify_ssr_build(self) -> None:
+        """Verify SSR build artifacts exist before serving.
+
+        Raises:
+            RuntimeError: If required build artifacts are missing.
+        """
+        # Map SSR examples to their expected build output directories
+        build_dirs: dict[str, list[str]] = {
+            "sveltekit": ["build"],
+            "nuxt": [".output", ".nuxt"],
+            "astro": ["dist"],
+        }
+
+        expected_dirs = build_dirs.get(self.example_name, [])
+        if not expected_dirs:
+            logger.warning("No build verification configured for SSR example: %s", self.example_name)
+            return
+
+        for dir_name in expected_dirs:
+            build_path = self.example_dir / dir_name
+            if build_path.exists():
+                logger.info("Build artifact verified: %s", build_path)
+                return
+
+        # None of the expected directories exist
+        raise RuntimeError(
+            f"SSR build artifacts missing for {self.example_name}. "
+            f"Expected one of: {expected_dirs} in {self.example_dir}. "
+            "The 'litestar assets build' command may have failed silently."
+        )
 
     def _infer_vite_port(self, capture: OutputCapture) -> int | None:
         """Infer Vite port from captured output, skipping backend ports."""

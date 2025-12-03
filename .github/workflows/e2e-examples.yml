@@ -39,15 +39,41 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
+      - name: Build root JS plugin
+        run: |
+          npm ci
+          npm run build
+
       - name: Install example dependencies
         run: uv run litestar assets install
         working-directory: examples/${{ matrix.example }}
 
       - name: Run E2E tests
         env:
-          PYTEST_ADDOPTS: "-m e2e -k ${{ matrix.example }} -n auto --maxfail=1"
+          # Run tests serially (-n 0) to avoid race conditions with shared resources
+          # Each matrix job already isolates by example, so parallelism is at job level
+          PYTEST_ADDOPTS: "-m e2e -k ${{ matrix.example }} -n 0 --maxfail=1"
+          # Increase timeout for CI environment (slower than local)
+          E2E_TEST_TIMEOUT: "120"
         run: |
-          uv run pytest src/py/tests/e2e -v
+          uv run pytest src/py/tests/e2e -v --timeout=120
+
+      - name: Collect debug info on failure
+        if: failure()
+        run: |
+          echo "=== Node/npm versions ==="
+          node --version
+          npm --version
+          echo "=== Example directory contents ==="
+          ls -la examples/${{ matrix.example }}/
+          echo "=== node_modules status ==="
+          ls -la examples/${{ matrix.example }}/node_modules/ 2>/dev/null | head -20 || echo "node_modules not found"
+          echo "=== Build output check ==="
+          ls -la examples/${{ matrix.example }}/dist/ 2>/dev/null || echo "dist/ not found"
+          ls -la examples/${{ matrix.example }}/build/ 2>/dev/null || echo "build/ not found"
+          ls -la examples/${{ matrix.example }}/.output/ 2>/dev/null || echo ".output/ not found"
+          echo "=== Package.json scripts ==="
+          cat examples/${{ matrix.example }}/package.json | grep -A 20 '"scripts"' || true
 
       - name: Upload logs on failure
         if: failure()
@@ -57,3 +83,5 @@ jobs:
           path: |
             .pytest_cache
             coverage.xml
+            examples/${{ matrix.example }}/node_modules/.cache/
+          retention-days: 7

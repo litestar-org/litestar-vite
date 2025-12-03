@@ -1,14 +1,15 @@
 """Pytest fixtures for example E2E suite."""
 
+import os
 from collections.abc import Generator
 
 import pytest
 
 from .server_manager import EXAMPLES_DIR, RUNNING_PROCS, ExampleServer
 
-# Default timeout for E2E tests (60 seconds per test)
-# Can be overridden with @pytest.mark.timeout(X) on individual tests
-E2E_TEST_TIMEOUT = 60
+# Default timeout for E2E tests (seconds per test)
+# Can be overridden with E2E_TEST_TIMEOUT env var or @pytest.mark.timeout(X)
+E2E_TEST_TIMEOUT = int(os.environ.get("E2E_TEST_TIMEOUT", "60"))
 
 # =============================================================================
 # TODO(SSR-E2E): Re-enable SSR examples once port detection is stabilized
@@ -132,7 +133,8 @@ def dev_mode_server(example_server: ExampleServer) -> Generator[ExampleServer, N
         ExampleServer: Running server in development mode.
     """
     example_server.start_dev_mode()
-    example_server.wait_until_ready()
+    # Use E2E_TEST_TIMEOUT for wait_until_ready (respects env var override)
+    example_server.wait_until_ready(timeout=float(E2E_TEST_TIMEOUT))
     yield example_server
     example_server.stop()
 
@@ -149,6 +151,7 @@ def production_server(example_server: ExampleServer) -> Generator[ExampleServer,
         ExampleServer: Running server in production mode.
     """
     example_server.start_production_mode()
-    example_server.wait_until_ready()
+    # Use E2E_TEST_TIMEOUT for wait_until_ready (respects env var override)
+    example_server.wait_until_ready(timeout=float(E2E_TEST_TIMEOUT))
     yield example_server
     example_server.stop()
