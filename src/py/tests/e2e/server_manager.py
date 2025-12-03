@@ -495,6 +495,9 @@ class ExampleServer:
                 "HOST": "127.0.0.1",
                 # npm cache to avoid permission issues
                 "npm_config_cache": str(Path.home() / ".cache" / "npm"),
+                # Bypass CI environment check in Vite plugin for E2E tests
+                # We intentionally test dev mode in CI to validate the full experience
+                "LITESTAR_BYPASS_ENV_CHECK": "1",
             }
         )
         # Remove any port env vars that might interfere

@@ -55,6 +55,8 @@ jobs:
           PYTEST_ADDOPTS: "-m e2e -k ${{ matrix.example }} -n 0 --maxfail=1"
           # Increase timeout for CI environment (slower than local)
           E2E_TEST_TIMEOUT: "120"
+          # Bypass CI environment check in Vite plugin (we're intentionally testing dev mode in CI)
+          LITESTAR_BYPASS_ENV_CHECK: "1"
         run: |
           uv run pytest src/py/tests/e2e -v --timeout=120
 
