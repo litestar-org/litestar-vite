@@ -91,6 +91,8 @@ class LibraryController(Controller):
 
 vite = VitePlugin(
     config=ViteConfig(
+        mode="template",
+        dev_mode=True,
         paths=PathConfig(root=here, resource_dir="resources", bundle_dir="public"),
         types=TypeGenConfig(
             enabled=False,

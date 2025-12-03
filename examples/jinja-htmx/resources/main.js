@@ -4,16 +4,9 @@ import "./styles.css"
 
 // Import and register the Litestar HTMX extension
 // This provides: typed routes (hx-route), CSRF injection, JSON templating, and flash messages
-import { onFlash, registerHtmxExtension } from "litestar-vite-plugin/helpers"
+import { registerHtmxExtension } from "litestar-vite-plugin/helpers"
 
 registerHtmxExtension()
-
-// Set up flash message handler
-// Flash messages are triggered via HX-Trigger: {"showFlash": {"message": "...", "level": "..."}}
-onFlash((message, level) => {
-  // Dispatch to Alpine's flash store
-  window.dispatchEvent(new CustomEvent("flash", { detail: { message, level } }))
-})
 
 // Initialize Alpine.js with flash store
 Alpine.store("flash", {
