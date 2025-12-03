@@ -88,7 +88,7 @@ vite = VitePlugin(
         types=TypeGenConfig(enabled=True, generate_sdk=True),
         # Fixed port for E2E tests - can be removed for local dev or customized for production
         runtime=RuntimeConfig(port=5001),
-        dev_mode=True,
+        # dev_mode reads from VITE_DEV_MODE env var (defaults to False/production)
     )
 )
 

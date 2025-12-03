@@ -35,7 +35,7 @@ from msgspec import Struct
 from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
-DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
+DEV_MODE = os.getenv("VITE_DEV_MODE", "false").lower() in ("true", "1", "yes")
 
 
 class Book(Struct):

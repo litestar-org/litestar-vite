@@ -257,9 +257,8 @@ class ExampleServer:
     def start_dev_mode(self) -> None:
         """Start dev servers using Litestar CLI.
 
-        For dev mode:
-        1. `litestar assets serve` - Starts Vite dev server (uses configured port)
-        2. `litestar run` - Starts Litestar backend (auto-selects port)
+        For ALL examples in dev mode: just `litestar run`
+        The plugin auto-starts Vite via start_dev_server=True (default).
         """
         # Ensure the configured port is free before starting
         self._ensure_port_free()
@@ -270,28 +269,8 @@ class ExampleServer:
         self._ensure_plugin_built(env)
         self._ensure_assets_installed(env)
 
-        # Start frontend dev server via litestar assets serve
-        vite_patterns = [
-            VITE_PORT_PATTERN,
-            ASTRO_PORT_PATTERN,
-            NUXT_PORT_PATTERN,
-            LISTENING_PORT_PATTERN,
-            GENERIC_HOST_PATTERN,
-            SVELTEKIT_PORT_PATTERN,
-            ANY_HOST_PORT_PATTERN,
-        ]
-        if self._is_cli_example():
-            vite_patterns.append(ANGULAR_CLI_PORT_PATTERN)
-        vite_proc, vite_capture = self._spawn_with_capture(
-            self._assets_serve_command(),
-            env=env,
-            patterns=vite_patterns,
-        )
-        self._processes.append(vite_proc)
-        self._captures.append(vite_capture)
-
         # Start Litestar backend on a free port
-        # Note: uvicorn doesn't auto-select ports like Vite, so we find one first
+        # The plugin auto-starts Vite dev server via start_dev_server=True
         self.litestar_port = find_free_port()
         litestar_proc, litestar_capture = self._spawn_with_capture(
             self._litestar_run_command(self.litestar_port),
@@ -361,7 +340,7 @@ class ExampleServer:
             timeout: Maximum seconds to wait for servers to be ready.
 
         Raises:
-            TimeoutError: If servers don't become ready within timeout.
+            ValueError: If example port configuration is missing.
         """
         # Get the known Vite port for this example
         self.vite_port = EXAMPLE_PORTS.get(self.example_name)
@@ -447,8 +426,11 @@ class ExampleServer:
         ]
 
     def _assets_install_command(self) -> list[str]:
-        """Command to install frontend deps: `litestar assets install`."""
+        """Command to install frontend deps: `litestar assets install`.
 
+        Returns:
+               Command arguments list for subprocess.
+        """
         return [
             sys.executable,
             "-m",
@@ -523,11 +505,21 @@ class ExampleServer:
             Environment variables dict for subprocess.
         """
         env = os.environ.copy()
+
+        # CRITICAL: Remove all Vite/Litestar-related env vars to ensure clean isolation.
+        # The plugin's set_environment() uses setdefault() which does NOT override existing
+        # values. If the parent process has stale VITE_PORT etc., subprocesses would inherit
+        # the wrong ports. By removing these vars, we ensure RuntimeConfig.port from each
+        # example's app.py is used correctly.
+        for key in list(env.keys()):
+            if key.startswith(("VITE_", "LITESTAR_", "NUXT_", "NITRO_")):
+                del env[key]
+        # Also remove PORT which some frameworks use as fallback
+        env.pop("PORT", None)
+
         env.update(
             {
                 "VITE_DEV_MODE": "true" if dev_mode else "false",
-                # Let Vite/Litestar auto-select ports
-                # Don't set VITE_PORT or LITESTAR_PORT
                 "HOST": "127.0.0.1",
                 # npm cache to avoid permission issues
                 "npm_config_cache": str(Path.home() / ".cache" / "npm"),
@@ -544,8 +536,6 @@ class ExampleServer:
                 "NODE_OPTIONS": "--no-warnings",
             }
         )
-        # Note: We no longer remove VITE_PORT since examples configure it via RuntimeConfig.port
-        # The set_environment() in plugin.py will set VITE_PORT from RuntimeConfig
         return env
 
     def _run(self, cmd: list[str], cwd: Path, env: dict[str, str]) -> None:

@@ -54,6 +54,11 @@ def _cleanup_processes_after_session() -> Generator[None, None, None]:
     Yields:
         None: Allows pytest to run session-scoped cleanup after tests complete.
     """
+    import signal
+    import subprocess
+
+    from .server_manager import EXAMPLE_PORTS
+
     yield
 
     # Stop all cached servers
@@ -73,39 +78,10 @@ def _cleanup_processes_after_session() -> Generator[None, None, None]:
             pass
     _prod_servers.clear()
 
-    # Clean up any remaining processes
+    # Clean up any remaining processes we spawned
     for proc in list(RUNNING_PROCS):
         try:
             if proc.poll() is None:
-                proc.terminate()
-                proc.wait(timeout=5)
-        except Exception:
-            try:
-                proc.kill()
-            except Exception:
-                pass
-
-
-@pytest.fixture(autouse=True)
-def _cleanup_processes_after_test() -> Generator[None, None, None]:
-    """Ensure all processes are cleaned up after each test.
-
-    Yields:
-        None: Allows pytest to run test-scoped cleanup after each test.
-    """
-    import signal
-    import subprocess
-    import time
-
-    from .server_manager import EXAMPLE_PORTS
-
-    yield
-
-    # First, terminate processes we spawned
-    for proc in list(RUNNING_PROCS):
-        try:
-            if proc.poll() is None:
-                # Kill the entire process group to ensure child processes (npm, node, vite) are killed
                 try:
                     os.killpg(proc.pid, signal.SIGTERM)
                 except (ProcessLookupError, PermissionError):
@@ -113,24 +89,16 @@ def _cleanup_processes_after_test() -> Generator[None, None, None]:
                 proc.wait(timeout=5)
         except Exception:
             try:
-                # Force kill if graceful termination fails
                 try:
                     os.killpg(proc.pid, signal.SIGKILL)
                 except (ProcessLookupError, PermissionError):
                     proc.kill()
             except Exception:
                 pass
-        finally:
-            if proc in RUNNING_PROCS:
-                RUNNING_PROCS.remove(proc)
 
-    # Wait a moment for ports to be released
-    time.sleep(0.5)
-
-    # Kill any remaining processes on our fixed ports (handles orphaned node/vite processes)
+    # Kill any orphaned processes on our fixed ports
     for port in EXAMPLE_PORTS.values():
         try:
-            # Use lsof to find PIDs using the port and kill them
             result = subprocess.run(
                 ["lsof", "-t", "-i", f":{port}"],
                 capture_output=True,
@@ -146,6 +114,11 @@ def _cleanup_processes_after_test() -> Generator[None, None, None]:
                         pass
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
+
+
+# NOTE: We do NOT use per-test cleanup because servers are cached and reused.
+# Cleanup happens at session end via _cleanup_processes_after_session.
+# This avoids killing servers that subsequent tests want to reuse.
 
 
 @pytest.fixture(params=EXAMPLE_PARAMS)

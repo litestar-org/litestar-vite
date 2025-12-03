@@ -11,7 +11,7 @@ from litestar_htmx import HTMXPlugin, HTMXRequest
 from litestar_htmx.response import HTMXTemplate
 from msgspec import Struct
 
-from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
+from litestar_vite import PathConfig, RuntimeConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 
@@ -92,15 +92,10 @@ class LibraryController(Controller):
 vite = VitePlugin(
     config=ViteConfig(
         mode="template",
-        dev_mode=True,
         paths=PathConfig(root=here, resource_dir="resources", bundle_dir="public"),
-        types=TypeGenConfig(
-            enabled=False,
-            output=Path("resources/generated"),
-            generate_sdk=False,
-        ),
         # Fixed port for E2E tests - can be removed for local dev or customized for production
         runtime=RuntimeConfig(port=5061),
+        # dev_mode reads from VITE_DEV_MODE env var (defaults to False/production)
     )
 )
 templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)
