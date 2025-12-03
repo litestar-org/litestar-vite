@@ -74,17 +74,30 @@ def _cleanup_processes_after_test() -> Generator[None, None, None]:
     Yields:
         None: Allows pytest to run test-scoped cleanup after each test.
     """
+    import signal
+
     yield
     for proc in list(RUNNING_PROCS):
         try:
             if proc.poll() is None:
-                proc.terminate()
+                # Kill the entire process group to ensure child processes (npm, node, vite) are killed
+                try:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                except (ProcessLookupError, PermissionError):
+                    proc.terminate()
                 proc.wait(timeout=5)
         except Exception:
             try:
-                proc.kill()
+                # Force kill if graceful termination fails
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    proc.kill()
             except Exception:
                 pass
+        finally:
+            if proc in RUNNING_PROCS:
+                RUNNING_PROCS.remove(proc)
 
 
 @pytest.fixture(params=EXAMPLE_PARAMS)
