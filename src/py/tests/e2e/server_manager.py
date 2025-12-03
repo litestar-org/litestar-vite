@@ -53,6 +53,8 @@ CLI_EXAMPLES: set[str] = {"angular-cli"}
 RUNNING_PROCS: list[subprocess.Popen[bytes]] = []
 # Track examples that have already installed frontend deps to avoid repeated installs
 INSTALLED_EXAMPLES: set[str] = set()
+# Track plugin build to avoid repeated root builds
+PLUGIN_BUILT: bool = False
 
 # Patterns to extract ports from output
 # Vite/SvelteKit output: "Local:   http://localhost:5173/" (may be prefixed by Unicode arrow)
@@ -174,7 +176,8 @@ class ExampleServer:
         """
         env = self._base_env(dev_mode=True)
 
-        # Ensure frontend deps are installed once per example
+        # Ensure plugin is built and deps installed once per example
+        self._ensure_plugin_built(env)
         self._ensure_assets_installed(env)
 
         # Start frontend dev server via litestar assets serve
@@ -221,7 +224,8 @@ class ExampleServer:
         """
         env = self._base_env(dev_mode=False)
 
-        # Ensure frontend deps are installed once per example
+        # Ensure plugin is built and deps installed once per example
+        self._ensure_plugin_built(env)
         self._ensure_assets_installed(env)
 
         # Build assets via litestar assets build
@@ -479,6 +483,24 @@ class ExampleServer:
             stderr = result.stderr.decode() if result.stderr else ""
             raise RuntimeError(f"Command failed: {' '.join(cmd)}\nstdout:\n{stdout}\nstderr:\n{stderr}")
         logger.info("Command succeeded: %s", " ".join(cmd))
+
+    def _ensure_plugin_built(self, env: dict[str, str]) -> None:
+        """Build root JS plugin once so examples can resolve file:../.. dependency."""
+
+        global PLUGIN_BUILT
+        if PLUGIN_BUILT:
+            return
+
+        repo_root = EXAMPLES_DIR.parent
+        dist_js = repo_root / "dist" / "js" / "index.js"
+        if dist_js.exists():
+            PLUGIN_BUILT = True
+            return
+
+        logger.info("Building root plugin dist/js for examples")
+        build_cmd = ["npm", "run", "build"]
+        self._run(build_cmd, cwd=repo_root, env=env)
+        PLUGIN_BUILT = True
 
     def _ensure_assets_installed(self, env: dict[str, str]) -> None:
         """Run `litestar assets install` once per example to fetch frontend deps."""
