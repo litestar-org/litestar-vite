@@ -1077,7 +1077,8 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
 
         let args: string[]
         if (configPath) {
-          args = ["@hey-api/openapi-ts", "--config", configPath]
+          // openapi-ts CLI (v0.88+) expects --file/-f for config path
+          args = ["@hey-api/openapi-ts", "--file", configPath]
         } else {
           args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
 
