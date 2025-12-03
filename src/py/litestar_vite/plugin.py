@@ -144,6 +144,27 @@ def _infer_port_from_argv() -> str | None:
     return None
 
 
+def _is_non_serving_assets_cli() -> bool:
+    """Return True when running CLI assets commands that don't start a server.
+
+    This suppresses dev-proxy setup/logging for commands like `assets build`
+    where only a Vite build is performed and no proxy should be initialized.
+    """
+
+    argv_str = " ".join(sys.argv)
+    non_serving_commands = (
+        " assets build",
+        " assets install",
+        " assets deploy",
+        " assets doctor",
+        " assets generate-types",
+        " assets export-routes",
+        " assets status",
+        " assets init",
+    )
+    return any(cmd in argv_str for cmd in non_serving_commands)
+
+
 def _log_success(message: str) -> None:
     """Print a success message with consistent styling."""
 
@@ -177,7 +198,7 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
     """
 
     root = config.root_dir or Path.cwd()
-    path = Path(root) / ".litestar-vite.json"
+    path = Path(root) / ".litestar.json"
     types = config.types if isinstance(config.types, TypeGenConfig) else None
     deploy = config.deploy_config
     resource_dir = config.resource_dir
@@ -229,6 +250,7 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
         },
         # Executor for package commands (npx, bunx, etc.)
         "executor": config.runtime.executor,
+        "litestarVersion": _resolve_litestar_version(),
     }
 
     path.write_text(json.dumps(payload, indent=2))
@@ -255,8 +277,6 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
     os.environ.setdefault("VITE_ALLOW_REMOTE", str(True))
 
     backend_host = os.environ.get("LITESTAR_HOST") or "127.0.0.1"
-    if backend_host == "127.0.0":
-        backend_host = "127.0.0.1"
     backend_port = os.environ.get("LITESTAR_PORT") or os.environ.get("PORT") or _infer_port_from_argv() or "8000"
     os.environ["LITESTAR_HOST"] = backend_host
     os.environ["LITESTAR_PORT"] = str(backend_port)
@@ -1455,7 +1475,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         - Sets _proxy_target directly (JS writes hotfile when server starts)
 
         For 'proxy'/'ssr' modes:
-        - Port is written to .litestar-vite.json for SSR framework to read
+        - Port is written to .litestar.json for SSR framework to read
         - SSR framework writes hotfile with actual URL when ready
         - Proxy discovers target from hotfile at request time
         """
@@ -1700,8 +1720,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._config.set_static_folders:
             self._configure_static_files(app_config)
 
-        # Add dev proxy middleware based on proxy_mode
-        if self._config.is_dev_mode and self._config.proxy_mode is not None:
+        # Add dev proxy middleware based on proxy_mode (skip non-serving CLI commands)
+        if self._config.is_dev_mode and self._config.proxy_mode is not None and not _is_non_serving_assets_cli():
             self._configure_dev_proxy(app_config)
 
         # Add SPA catch-all route handler if spa_handler is enabled
@@ -1842,7 +1862,14 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 console.print("[yellow]! OpenAPI schema not available; skipping openapi.json export[/]")
 
             # Export routes
-            routes_data = generate_routes_json(app, include_components=True)
+            openapi_schema = None
+            if getattr(app, "openapi_schema", None) is not None:
+                try:
+                    openapi_schema = app.openapi_schema.to_schema()
+                except (AttributeError, TypeError, ValueError):  # pragma: no cover - OpenAPI not configured
+                    openapi_schema = None
+
+            routes_data = generate_routes_json(app, include_components=True, openapi_schema=openapi_schema)
             routes_data["litestar_version"] = _resolve_litestar_version()
             routes_content = msgspec.json.format(
                 msgspec.json.encode(routes_data),
@@ -1878,12 +1905,20 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         try:
             from litestar_vite.codegen import generate_routes_json
 
+            openapi_schema = None
+            if getattr(app, "openapi_schema", None) is not None:
+                try:
+                    openapi_schema = app.openapi_schema.to_schema()
+                except (AttributeError, TypeError, ValueError):  # pragma: no cover - OpenAPI not configured
+                    openapi_schema = None
+
             # Extract routes with filtering
             routes_data = generate_routes_json(
                 app,
                 only=spa_config.routes_include,
                 exclude=spa_config.routes_exclude,
                 include_components=True,
+                openapi_schema=openapi_schema,
             )
             # Filter out schema routes and HEAD/OPTIONS-only routes to keep SPA metadata lean
             routes = routes_data.get("routes", {})

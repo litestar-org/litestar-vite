@@ -7,7 +7,8 @@
     "ng": "ng",
     "start": "ng serve --proxy-config proxy.conf.json",
     "build": "ng build",
-    "serve": "npx serve dist/angular-cli/browser"
+    "serve": "npx serve dist/angular-cli/browser",
+    "generate-types": "openapi-ts --config hey-api.config.ts"
   },
   "dependencies": {
     "@angular/animations": "latest",
@@ -20,7 +21,8 @@
     "@angular/router": "latest",
     "rxjs": "latest",
     "@tailwindcss/postcss": "^4.0.0",
-    "tailwindcss": "^4.0.0"
+    "tailwindcss": "^4.0.0",
+    "axios": "^1.7.7"
   },
   "devDependencies": {
     "@angular-devkit/build-angular": "latest",
@@ -29,6 +31,8 @@
     "@types/node": "latest",
     "typescript": "latest",
     "postcss": "latest",
-    "autoprefixer": "latest"
+    "autoprefixer": "latest",
+    "@hey-api/openapi-ts": "latest",
+    "@hey-api/client-axios": "latest"
   }
 }

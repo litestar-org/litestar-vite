@@ -21,6 +21,16 @@
           }
         }
       }
+    },
+    {
+      "includes": ["**/helpers/htmx.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConfusingVoidType": "off"
+          }
+        }
+      }
     }
   ],
   "assist": { "actions": { "source": { "organizeImports": "on" } } },

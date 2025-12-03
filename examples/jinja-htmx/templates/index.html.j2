@@ -1,0 +1,133 @@
+{% extends "base.html.j2" %}
+
+{% block content %}
+<main class="mx-auto max-w-5xl space-y-6 px-4 py-10" x-data="{ view: 'overview' }" hx-boost="true">
+  <header class="space-y-2">
+    <p class="text-sm font-semibold uppercase tracking-[0.14em] text-[#edb641]">Litestar · Vite</p>
+    <h1 class="text-3xl font-semibold text-[#202235]">Library (HTMX)</h1>
+    <p class="text-slate-600">Progressive enhancement using the same backend payloads.</p>
+    <div class="inline-flex gap-2 rounded-full bg-slate-100 p-1 shadow-sm" role="tablist">
+      <button
+        class="rounded-full px-4 py-2 text-sm font-semibold transition"
+        :class="view === 'overview' ? 'bg-white shadow text-[#202235]' : 'text-slate-600'"
+        @click="view = 'overview'"
+        type="button"
+      >Overview</button>
+      <button
+        class="rounded-full px-4 py-2 text-sm font-semibold transition"
+        :class="view === 'books' ? 'bg-white shadow text-[#202235]' : 'text-slate-600'"
+        @click="view = 'books'"
+        type="button"
+      >Books ({{ summary.total_books }})</button>
+      <button
+        class="rounded-full px-4 py-2 text-sm font-semibold transition"
+        :class="view === 'json' ? 'bg-white shadow text-[#202235]' : 'text-slate-600'"
+        @click="view = 'json'"
+        type="button"
+      >JSON Demo</button>
+    </div>
+  </header>
+
+  <section x-show="view === 'overview'" class="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/40">
+    <h2 class="text-xl font-semibold text-[#202235]">{{ summary.headline }}</h2>
+    <p class="text-slate-600">Featured book</p>
+    <section
+      id="book-detail"
+      class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm"
+      hx-get="/fragments/book/{{ summary.featured.id }}"
+      hx-trigger="load"
+    >
+      {% set book = summary.featured %}
+      {% include "partials/book_card.html.j2" %}
+    </section>
+  </section>
+
+  <section x-show="view === 'books'" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Books">
+    {% for book in books %}
+    <article class="space-y-2 rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+      <h3 class="text-lg font-semibold text-[#202235]">{{ book.title }}</h3>
+      <p class="mt-1 text-slate-600">{{ book.author }} • {{ book.year }}</p>
+      <p class="mt-1 text-sm text-[#202235]">{{ book.tags | join(' · ') }}</p>
+      <button
+        class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white shadow hover:bg-slate-800"
+        hx-get="/fragments/book/{{ book.id }}"
+        hx-target="#book-detail"
+        hx-swap="innerHTML"
+      >
+        Preview in overview
+      </button>
+    </article>
+    {% endfor %}
+  </section>
+
+  {# JSON Templating Demo - Client-side rendering from JSON API #}
+  <section x-show="view === 'json'" class="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/40">
+    <h2 class="text-xl font-semibold text-[#202235]">JSON Templating Demo</h2>
+    <p class="text-slate-600">Client-side rendering from the <code class="rounded bg-slate-100 px-1">/api/books</code> JSON endpoint using native HTML templates.</p>
+
+    <button
+      class="inline-flex items-center gap-2 rounded-lg bg-[#edb641] px-4 py-2 text-sm font-semibold text-[#202235] shadow hover:bg-[#d9a638]"
+      hx-get="/api/books"
+      hx-target="#json-books"
+      hx-swap="json"
+    >
+      Load Books from JSON API
+    </button>
+
+    <div id="json-books" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {# ls-for with "book in $data" syntax - $data is the JSON response #}
+      <template ls-for="book in $data" ls-key="book.id">
+        <article :id="`book-${book.id}`" class="space-y-2 rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+          <h3 class="text-lg font-semibold text-[#202235]">${book.title}</h3>
+          <p class="mt-1 text-slate-600">${book.author} • ${book.year}</p>
+          <p class="mt-1 text-sm text-[#202235]">${book.tags.join(' · ')}</p>
+          <span class="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+            ✓ Client-side rendered
+          </span>
+        </article>
+      </template>
+    </div>
+
+    {# Single item demo #}
+    <h3 class="text-lg font-semibold text-[#202235] mt-6">Single Item Demo</h3>
+    <p class="text-slate-600 text-sm">Fetch a single book - properties are directly accessible via prototype inheritance.</p>
+
+    <div class="flex gap-2">
+      <button
+        class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white shadow hover:bg-slate-800"
+        hx-get="/api/books/1"
+        hx-target="#single-book"
+        hx-swap="json"
+      >Book 1</button>
+      <button
+        class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white shadow hover:bg-slate-800"
+        hx-get="/api/books/2"
+        hx-target="#single-book"
+        hx-swap="json"
+      >Book 2</button>
+      <button
+        class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white shadow hover:bg-slate-800"
+        hx-get="/api/books/3"
+        hx-target="#single-book"
+        hx-swap="json"
+      >Book 3</button>
+    </div>
+
+    <div id="single-book" class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+      {# Direct property access: title, author, year inherit from JSON via prototype #}
+      <template ls-if="id">
+        <h4 class="text-lg font-semibold text-[#202235]">${title}</h4>
+        <p class="text-slate-600">${author} • ${year}</p>
+        <div class="flex flex-wrap gap-1 mt-2">
+          <template ls-for="tag in tags">
+            <span class="rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-700">${tag}</span>
+          </template>
+        </div>
+      </template>
+      <template ls-else>
+        <p class="text-slate-500 italic">Click a button above to load a book...</p>
+      </template>
+    </div>
+  </section>
+</main>
+{% endblock %}

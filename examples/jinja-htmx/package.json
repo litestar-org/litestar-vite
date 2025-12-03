@@ -1,0 +1,27 @@
+{
+  "name": "template-htmx",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "vite preview",
+    "generate-types": "openapi-ts --config hey-api.config.ts"
+  },
+  "dependencies": {
+    "htmx.org": "latest",
+    "alpinejs": "latest",
+    "axios": "^1.7.7",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "typescript": "latest",
+    "@tailwindcss/vite": "^4.0.0",
+    "tailwindcss": "^4.0.0",
+    "litestar-vite-plugin": "file:../..",
+    "vite": "^7.0.0",
+    "@hey-api/openapi-ts": "latest",
+    "@hey-api/client-axios": "latest"
+  }
+}

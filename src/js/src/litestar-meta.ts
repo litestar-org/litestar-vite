@@ -34,7 +34,11 @@ export async function checkBackendAvailability(appUrl: string | null): Promise<B
     // Use OpenAPI schema endpoint as a lightweight health check
     // The path is configurable via LITESTAR_OPENAPI_PATH (set by Python plugin)
     const schemaPath = process.env.LITESTAR_OPENAPI_PATH || "/schema"
-    const checkUrl = new URL(schemaPath, appUrl).href
+    const urlObj = new URL(schemaPath, appUrl)
+    if (urlObj.hostname === "0.0.0.0") {
+      urlObj.hostname = "127.0.0.1"
+    }
+    const checkUrl = urlObj.href
     const response = await fetch(checkUrl, {
       method: "GET",
       signal: controller.signal,
@@ -87,11 +91,25 @@ function firstExisting(paths: string[]): string | null {
   return null
 }
 
+function loadVersionFromRuntimeConfig(): string | null {
+  const cfgPath = process.env.LITESTAR_VITE_CONFIG_PATH
+  if (!cfgPath || !fs.existsSync(cfgPath)) return null
+  try {
+    const raw = fs.readFileSync(cfgPath, "utf8")
+    const data = JSON.parse(raw) as Record<string, unknown>
+    const v = data?.litestarVersion
+    return typeof v === "string" && v.trim() ? v.trim() : null
+  } catch {
+    return null
+  }
+}
+
 export async function loadLitestarMeta(resolvedConfig: ResolvedConfig, routesPathHint?: string): Promise<LitestarMeta> {
   const fromEnv = process.env.LITESTAR_VERSION?.trim()
-  if (fromEnv) {
-    return { litestarVersion: fromEnv }
-  }
+  if (fromEnv) return { litestarVersion: fromEnv }
+
+  const fromRuntime = loadVersionFromRuntimeConfig()
+  if (fromRuntime) return { litestarVersion: fromRuntime }
 
   const root = resolvedConfig.root ?? process.cwd()
   const candidates = [routesPathHint ? path.resolve(root, routesPathHint) : null, path.resolve(root, "src/generated/routes.json"), path.resolve(root, "routes.json")].filter(

@@ -32,6 +32,33 @@ make build         # Build Python + JS packages
 make clean         # Clean temporary build artifacts
 ```
 
+### Litestar Assets CLI (Critical)
+
+**ALWAYS use `litestar assets` commands instead of npm/node directly!**
+
+```bash
+# Development
+litestar assets install          # Install frontend packages (NOT npm install)
+litestar assets serve            # Start Vite dev server (NOT npm run dev)
+litestar run                     # Start Litestar backend
+
+# Production
+litestar assets build            # Build frontend assets (NOT npm run build)
+litestar assets serve --production  # Run SSR production server (for SSR modes)
+litestar run                     # Serve built assets via Litestar
+
+# Utilities
+litestar assets status           # Check Vite integration status
+litestar assets doctor           # Diagnose configuration issues
+litestar assets generate-types   # Generate TypeScript types from OpenAPI
+litestar assets export-routes    # Export route metadata for type-safe routing
+```
+
+**Why this matters:**
+- The Litestar CLI manages port allocation, environment variables, and process coordination
+- Direct npm commands bypass the Python-JS integration layer
+- Tests and examples MUST use these commands to validate the real developer experience
+
 ### Project Structure
 
 ```
@@ -216,3 +243,5 @@ For comprehensive documentation, see:
 | `hasattr()`/`getattr()` | Type guards |
 | Nested try/except | Flat error handling |
 | Mutable defaults | `None` with conditional |
+| `npm run dev/build` in tests | `litestar assets serve/build` |
+| Direct Node.js commands | Litestar CLI commands |

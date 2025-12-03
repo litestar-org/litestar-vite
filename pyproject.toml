@@ -85,6 +85,7 @@ test = [
   "pytest-sugar",
   "pytest-mock>=3.11.1",
   "pytest-xdist>=3.6.1",
+  "pytest-timeout>=2.0.0",
   "httpx>=0.24.1",
 ]
 
@@ -171,6 +172,14 @@ tmp_path_retention_policy = "failed"
 tmp_path_retention_count = 3
 asyncio_default_fixture_loop_scope = "function"
 asyncio_mode = "auto"
+markers = [
+  "e2e: end-to-end example tests",
+  "spa: SPA example subset",
+  "template: template-mode example subset",
+  "inertia: inertia example subset",
+  "ssr: SSR example subset",
+  "cli: CLI example subset",
+]
 
 [tool.coverage.report]
 exclude_lines = [

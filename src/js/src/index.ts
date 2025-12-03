@@ -232,6 +232,7 @@ interface PythonDefaults {
 type DevServerUrl = `${"http" | "https"}://${string}:${number}`
 
 let exitHandlersBound = false
+let warnedMissingRuntimeConfig = false
 
 export const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((path) => fs.existsSync(path.replace(/\*\*$/, "")))
 
@@ -309,6 +310,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
   let resolvedConfig: ResolvedConfig
   let userConfig: UserConfig
   let litestarMeta: LitestarMeta = {}
+  let shuttingDown = false
   const pythonDefaults = loadPythonDefaults()
   const proxyMode = pythonDefaults?.proxyMode ?? "vite_proxy"
   const defaultAliases: Record<string, string> = {
@@ -324,9 +326,38 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       const env = loadEnv(mode, userConfig.envDir || process.cwd(), "")
       const assetUrl = normalizeAssetUrl(env.ASSET_URL || pluginConfig.assetUrl)
       const serverConfig = command === "serve" ? (resolveDevelopmentEnvironmentServerConfig(pluginConfig.detectTls) ?? resolveEnvironmentServerConfig(env)) : undefined
+
+      const withProxyErrorSilencer = (proxyConfig: Record<string, any> | undefined) => {
+        if (!proxyConfig) return undefined
+        return Object.fromEntries(
+          Object.entries(proxyConfig).map(([key, value]) => {
+            if (typeof value !== "object" || value === null) {
+              return [key, value]
+            }
+            const existingConfigure = value.configure
+            return [
+              key,
+              {
+                ...value,
+                configure(proxy: any, opts: any) {
+                  proxy.on("error", (err: any) => {
+                    const msg = String(err?.message ?? "")
+                    if (shuttingDown || msg.includes("ECONNREFUSED") || msg.includes("ECONNRESET") || msg.includes("socket hang up")) {
+                      return
+                    }
+                  })
+                  if (typeof existingConfigure === "function") {
+                    existingConfigure(proxy, opts)
+                  }
+                },
+              },
+            ]
+          }),
+        )
+      }
       const devBase = pluginConfig.assetUrl.startsWith("/") ? pluginConfig.assetUrl : pluginConfig.assetUrl.replace(/\/+$/, "")
 
-      ensureCommandShouldRunInEnvironment(command, env)
+      ensureCommandShouldRunInEnvironment(command, env, mode)
 
       return {
         base: userConfig.base ?? (command === "build" ? resolveBase(pluginConfig, assetUrl) : devBase),
@@ -357,20 +388,21 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           // Auto-configure proxy to forward API requests to Litestar backend
           // This allows the app to work when accessing Vite directly (not through Litestar proxy)
           // Only proxies /api and /schema routes - everything else is handled by Vite
-          proxy:
+          proxy: withProxyErrorSilencer(
             userConfig.server?.proxy ??
-            (env.APP_URL
-              ? {
-                  "/api": {
-                    target: env.APP_URL,
-                    changeOrigin: true,
-                  },
-                  "/schema": {
-                    target: env.APP_URL,
-                    changeOrigin: true,
-                  },
-                }
-              : undefined),
+              (env.APP_URL
+                ? {
+                    "/api": {
+                      target: env.APP_URL,
+                      changeOrigin: true,
+                    },
+                    "/schema": {
+                      target: env.APP_URL,
+                      changeOrigin: true,
+                    },
+                  }
+                : undefined),
+          ),
           // Always respect VITE_PORT when set by Python (regardless of VITE_ALLOW_REMOTE)
           ...(process.env.VITE_PORT
             ? {
@@ -559,9 +591,18 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           }
         }
         process.on("exit", clean)
-        process.on("SIGINT", () => process.exit())
-        process.on("SIGTERM", () => process.exit())
-        process.on("SIGHUP", () => process.exit())
+        process.on("SIGINT", () => {
+          shuttingDown = true
+          process.exit()
+        })
+        process.on("SIGTERM", () => {
+          shuttingDown = true
+          process.exit()
+        })
+        process.on("SIGHUP", () => {
+          shuttingDown = true
+          process.exit()
+        })
         exitHandlersBound = true
       }
 
@@ -614,9 +655,13 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
 /**
  * Validate the command can run in the given environment.
  */
-function ensureCommandShouldRunInEnvironment(command: "build" | "serve", env: Record<string, string>): void {
+function ensureCommandShouldRunInEnvironment(command: "build" | "serve", env: Record<string, string>, mode?: string): void {
   const allowedDevModes = ["dev", "development", "local", "docker"]
   if (command === "build" || env.LITESTAR_BYPASS_ENV_CHECK === "1") {
+    return
+  }
+
+  if (mode === "test" || env.VITEST || env.VITE_TEST || env.NODE_ENV === "test") {
     return
   }
 
@@ -643,11 +688,16 @@ function _pluginVersion(): string {
 }
 
 function loadPythonDefaults(): PythonDefaults | null {
+  // Avoid noisy warnings during automated tests
+  const isTestEnv = Boolean(process.env.VITEST || process.env.VITE_TEST || process.env.NODE_ENV === "test")
+
   const configPath = process.env.LITESTAR_VITE_CONFIG_PATH
   if (!configPath) {
+    warnMissingRuntimeConfig("env", isTestEnv)
     return null
   }
   if (!fs.existsSync(configPath)) {
+    warnMissingRuntimeConfig("file", isTestEnv)
     return null
   }
   try {
@@ -656,6 +706,23 @@ function loadPythonDefaults(): PythonDefaults | null {
   } catch {
     return null
   }
+}
+
+function warnMissingRuntimeConfig(reason: "env" | "file", suppress: boolean): void {
+  if (warnedMissingRuntimeConfig || suppress) return
+  warnedMissingRuntimeConfig = true
+
+  const hint =
+    reason === "env"
+      ? "LITESTAR_VITE_CONFIG_PATH not set. Start Vite via `litestar assets serve` or set the env var to point at .litestar.json."
+      : "Runtime config .litestar.json not found. Ensure backend started with `litestar assets serve/build` or set LITESTAR_VITE_CONFIG_PATH."
+
+  // eslint-disable-next-line no-console
+  console.warn(
+    `${colors.yellow("[litestar-vite]")} ${hint}\n${colors.dim(
+      "The Python plugin writes .litestar.json; running Vite directly skips important defaults (asset paths, proxy, types).",
+    )}`,
+  )
 }
 
 /**
@@ -977,6 +1044,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
   let server: ViteDevServer | null = null
   let isGenerating = false
   let resolvedConfig: ResolvedConfig | null = null
+  let chosenConfigPath: string | null = null
 
   /**
    * Run @hey-api/openapi-ts to generate TypeScript types from the OpenAPI schema.
@@ -990,34 +1058,58 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
     const startTime = Date.now()
 
     try {
-      // Check if openapi.json exists
-      const openapiPath = path.resolve(process.cwd(), typesConfig.openapiPath)
-      const routesPath = path.resolve(process.cwd(), typesConfig.routesPath)
+      const projectRoot = resolvedConfig?.root ?? process.cwd()
+      const openapiPath = path.resolve(projectRoot, typesConfig.openapiPath)
+      const routesPath = path.resolve(projectRoot, typesConfig.routesPath)
 
       let generated = false
 
       if (fs.existsSync(openapiPath)) {
+        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("generating TypeScript types...")}`)
+
+        // Prefer user config if present (deterministic order)
+        const candidates = [path.resolve(projectRoot, ".hey-api.config.ts"), path.resolve(projectRoot, "hey-api.config.ts"), path.resolve(projectRoot, "openapi-ts.config.ts")]
+        const configPath = candidates.find((p) => fs.existsSync(p)) || null
+        chosenConfigPath = configPath
         if (resolvedConfig) {
-          resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("generating TypeScript types...")}`)
+          resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("openapi-ts config: ")}${configPath ?? "<built-in defaults>"}`)
         }
 
-        // Build @hey-api/openapi-ts command
-        const args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
+        let args: string[]
+        if (configPath) {
+          args = ["@hey-api/openapi-ts", "--config", configPath]
+        } else {
+          args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
+
+          const plugins = ["@hey-api/types", "@hey-api/schemas"]
+          if (typesConfig.generateSdk) {
+            plugins.push("@hey-api/services", "@hey-api/client-axios")
+          }
+          if (typesConfig.generateZod) {
+            plugins.push("zod")
+          }
+
+          if (plugins.length) {
+            args.push("--plugins", ...plugins)
+          }
+        }
 
         if (typesConfig.generateZod) {
-          args.push("--plugins", "zod", "@hey-api/typescript")
-        }
-        if (typesConfig.generateSdk) {
-          args.push("--client", "fetch")
+          try {
+            // eslint-disable-next-line import/no-dynamic-require, @typescript-eslint/no-var-requires
+            require.resolve("zod", { paths: [process.cwd()] })
+          } catch {
+            resolvedConfig?.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("zod not installed")} - run: ${resolveInstallHint()} zod`)
+          }
         }
 
         await execAsync(resolvePackageExecutor(args.join(" "), executor), {
-          cwd: process.cwd(),
+          cwd: projectRoot,
         })
 
         generated = true
       } else if (resolvedConfig) {
-        resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("OpenAPI schema not found:")} ${typesConfig.openapiPath}`)
+        resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("OpenAPI schema not found:")} ${openapiPath}`)
       }
 
       // Always try to emit routes types when routes metadata is present
@@ -1049,7 +1141,10 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
         const message = error instanceof Error ? error.message : String(error)
         // Don't show error if @hey-api/openapi-ts is not installed - just warn once
         if (message.includes("not found") || message.includes("ENOENT")) {
-          resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("@hey-api/openapi-ts not installed")} - run: ${resolveInstallHint()}`)
+          const zodHint = typesConfig.generateZod ? " zod" : ""
+          resolvedConfig.logger.warn(
+            `${colors.cyan("litestar-vite")} ${colors.yellow("@hey-api/openapi-ts not installed")} - run: ${resolveInstallHint()} -D @hey-api/openapi-ts @hey-api/client-axios${zodHint}`,
+          )
         } else {
           resolvedConfig.logger.error(`${colors.cyan("litestar-vite")} ${colors.red("type generation failed:")} ${message}`)
         }
@@ -1076,7 +1171,13 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
 
       // Log that we're watching for schema changes
       if (typesConfig.enabled) {
-        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("watching for schema changes:")} ${colors.yellow(typesConfig.openapiPath)}`)
+        const root = resolvedConfig?.root ?? process.cwd()
+        const openapiAbs = path.resolve(root, typesConfig.openapiPath)
+        const routesAbs = path.resolve(root, typesConfig.routesPath)
+        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("watching schema/routes:")} ${colors.yellow(openapiAbs)}, ${colors.yellow(routesAbs)}`)
+        if (chosenConfigPath) {
+          resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("openapi-ts config:")} ${colors.yellow(chosenConfigPath)}`)
+        }
       }
     },
 
@@ -1085,7 +1186,8 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
         return
       }
 
-      const relativePath = path.relative(process.cwd(), file)
+      const root = resolvedConfig?.root ?? process.cwd()
+      const relativePath = path.relative(root, file)
       const openapiPath = typesConfig.openapiPath.replace(/^\.\//, "")
       const routesPath = typesConfig.routesPath.replace(/^\.\//, "")
 

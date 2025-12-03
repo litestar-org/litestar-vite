@@ -1,0 +1,29 @@
+/// <reference types="vite/client" />
+
+// Default Hey API codegen config for litestar-vite
+export default {
+  input: "{{ resource_dir }}/generated/openapi.json",
+  output: "{{ resource_dir }}/generated",
+  plugins: [{ name: "@hey-api/client-axios" }],
+  exportCore: true,
+  exportServices: true,
+  exportModels: true,
+  exportSchemas: true,
+  useOptions: true,
+  useUnionTypes: true,
+  name: "ApiClient",
+  postfixServices: "Service",
+  postfixModels: "",
+  enumNames: true,
+  operationId: true,
+  format: true,
+  types: {
+    dates: "string",
+    enums: "typescript",
+    numbers: "string",
+  },
+  schemas: {
+    export: true,
+    type: "typescript",
+  },
+};
