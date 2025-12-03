@@ -1,5 +1,5 @@
-import htmx from "htmx.org"
 import Alpine from "alpinejs"
+import htmx from "htmx.org"
 import "./styles.css"
 
 // Import and register the Litestar HTMX extension

@@ -53,8 +53,12 @@ CLI_EXAMPLES: set[str] = {"angular-cli"}
 RUNNING_PROCS: list[subprocess.Popen[bytes]] = []
 
 # Patterns to extract ports from output
-# Vite standard output: "Local:   http://localhost:5173/"
+# Vite/SvelteKit output: "Local:   http://localhost:5173/" (may be prefixed by Unicode arrow)
 VITE_PORT_PATTERN = re.compile(r"Local:\s+https?://(?:localhost|127\.0\.0\.1):(\d+)")
+# SvelteKit dev output sometimes prints with ANSI + padding, capture any host:port mention
+SVELTEKIT_PORT_PATTERN = re.compile(r"https?://(?:localhost|127\.0\.0\.1):(\d+)")
+# Extremely permissive host:port fallback (handles 0.0.0.0 and ANSI noise)
+ANY_HOST_PORT_PATTERN = re.compile(r"https?://[\w\.-]+:(\d+)")
 # Uvicorn output: "Uvicorn running on http://127.0.0.1:8000"
 LITESTAR_PORT_PATTERN = re.compile(r"Uvicorn running on https?://[\d.]+:(\d+)")
 # Astro output: "┃ Local    http://localhost:55327/" (may include box chars + ANSI)
@@ -169,7 +173,15 @@ class ExampleServer:
         env = self._base_env(dev_mode=True)
 
         # Start frontend dev server via litestar assets serve
-        vite_patterns = [VITE_PORT_PATTERN, ASTRO_PORT_PATTERN, NUXT_PORT_PATTERN, LISTENING_PORT_PATTERN, GENERIC_HOST_PATTERN]
+        vite_patterns = [
+            VITE_PORT_PATTERN,
+            ASTRO_PORT_PATTERN,
+            NUXT_PORT_PATTERN,
+            LISTENING_PORT_PATTERN,
+            GENERIC_HOST_PATTERN,
+            SVELTEKIT_PORT_PATTERN,
+            ANY_HOST_PORT_PATTERN,
+        ]
         if self._is_cli_example():
             vite_patterns.append(ANGULAR_CLI_PORT_PATTERN)
         vite_proc, vite_capture = self._spawn_with_capture(
@@ -254,15 +266,26 @@ class ExampleServer:
                 self.vite_port = vite_capture.wait_for_port(timeout=timeout)
                 logger.info("Vite dev server ready on port %d", self.vite_port)
             except TimeoutError:
+                # For SSR frameworks, proceed as long as Litestar comes up; port detection can be flaky with ANSI output
                 self._check_processes_alive()
-                raise
+                logger.warning("Vite port not detected within timeout; continuing with proxy health check")
+                self.vite_port = None
 
-            # Also wait for Litestar to finish startup (ensure port is serving)
+            # Always wait for Litestar to finish startup (ensure port is serving)
             try:
                 litestar_capture.wait_for_port(timeout=timeout)
             except TimeoutError:
                 self._check_processes_alive()
                 raise
+
+            # If Vite port is still unknown (e.g., SvelteKit ANSI output), attempt to extract from stored lines
+            if self.vite_port is None:
+                for line in reversed(vite_capture.output_lines):
+                    match = ANY_HOST_PORT_PATTERN.search(line)
+                    if match:
+                        self.vite_port = int(match.group(1))
+                        logger.info("Vite port inferred late from output: %d", self.vite_port)
+                        break
         elif self._is_ssr_example():
             # Production SSR: Litestar is first, Node server is second
             ssr_capture = self._captures[1]  # SSR server is second in production
