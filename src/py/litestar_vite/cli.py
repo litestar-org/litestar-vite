@@ -148,6 +148,23 @@ def _run_vite_build(config: ViteConfig, root_dir: Path, console: Any, no_build: 
         raise SystemExit(msg) from exc
 
 
+def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: Any) -> None:
+    """Export OpenAPI schema and routes prior to running a build.
+
+    Skips generation when type generation is disabled.
+    """
+
+    from litestar_vite.config import TypeGenConfig
+
+    types_config = config.types
+    if not isinstance(types_config, TypeGenConfig) or not types_config.enabled:
+        return
+
+    console.print("[dim]Preparing OpenAPI schema and routes...[/]")
+    _export_openapi_schema(app, types_config)
+    _export_routes_metadata(app, types_config)
+
+
 @group(cls=LitestarGroup, name="assets")
 def vite_group() -> None:
     """Manage Vite Tasks."""
@@ -165,9 +182,6 @@ def _select_framework_template(
 
     Returns:
         Tuple of (template_name, framework_template).
-
-    Raises:
-        SystemExit: If template is invalid.
     """
     import sys
 
@@ -573,6 +587,7 @@ def vite_build(app: "Litestar", verbose: "bool") -> None:
         app.debug = True
     console.rule("[yellow]Starting Vite build process[/]", align="left")
     plugin = app.plugins.get(VitePlugin)
+    _generate_schema_and_routes(app, plugin.config, console)
     if plugin.config.set_environment:
         set_environment(config=plugin.config)
 

@@ -26,16 +26,13 @@ EXAMPLES = [
     ("angular", True, False, False),
     ("angular-cli", True, False, False),
     ("astro", False, False, True),  # SSR framework - no SPA mode
-    ("basic", True, False, False),
-    ("flash", True, False, False),
-    ("jinja", False, False, False),  # Template mode
+    ("jinja-htmx", False, False, False),  # Template mode (HTMX)
     ("nuxt", False, False, True),  # SSR framework - no SPA mode
     ("react", True, False, False),
     ("react-inertia", False, True, False),  # Inertia hybrid mode
     ("react-inertia-jinja", False, True, False),  # Inertia template mode
     ("svelte", True, False, False),
     ("sveltekit", False, False, True),  # SSR framework - no SPA mode
-    ("template-htmx", False, False, False),  # Template mode (HTMX)
     ("vue", True, False, False),
     ("vue-inertia", False, True, False),  # Inertia hybrid mode
     ("vue-inertia-jinja", False, True, False),  # Inertia template mode
@@ -177,17 +174,13 @@ def test_example_api_endpoints(
         "angular",
         "angular-cli",
         "astro",
-        "basic",
-        "flash",
-        "fullstack-typed",
-        "jinja",
+        "jinja-htmx",
         "nuxt",
         "react",
         "react-inertia",
         "react-inertia-jinja",
         "svelte",
         "sveltekit",
-        "template-htmx",
         "vue",
         "vue-inertia",
         "vue-inertia-jinja",
