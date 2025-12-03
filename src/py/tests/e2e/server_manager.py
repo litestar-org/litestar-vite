@@ -16,6 +16,7 @@ Critical: NEVER use npm/node commands directly - always use litestar CLI!
 import logging
 import os
 import re
+import shutil
 import signal
 import socket
 import subprocess
@@ -498,6 +499,14 @@ class ExampleServer:
                 # Bypass CI environment check in Vite plugin for E2E tests
                 # We intentionally test dev mode in CI to validate the full experience
                 "LITESTAR_BYPASS_ENV_CHECK": "1",
+                # Force unbuffered output for reliable port detection in CI
+                "PYTHONUNBUFFERED": "1",
+                # Disable interactive features that might buffer output
+                "CI": "true",
+                # Force color output to be consistent with expected patterns
+                "FORCE_COLOR": "1",
+                # Node.js: force immediate stdout flushing
+                "NODE_OPTIONS": "--no-warnings",
             }
         )
         # Remove any port env vars that might interfere
@@ -575,13 +584,17 @@ class ExampleServer:
             Tuple of (subprocess handle, output capture instance).
         """
         logger.info("Spawning: %s", " ".join(cmd))
+        # Use stdbuf to force line-buffered output if available (Linux)
+        # This helps ensure Vite/Node output is immediately available
+        stdbuf_cmd = ["stdbuf", "-oL", "-eL", *cmd] if shutil.which("stdbuf") else cmd
         proc = subprocess.Popen(
-            cmd,
+            stdbuf_cmd,
             cwd=self.example_dir,
             env=env,
             start_new_session=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            bufsize=0,  # Unbuffered
         )
         RUNNING_PROCS.append(proc)
 
