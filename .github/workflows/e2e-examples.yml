@@ -14,13 +14,23 @@ jobs:
       fail-fast: false
       matrix:
         example:
+          # SPA examples
           - react
           - vue
           - svelte
           - angular
+          - angular-cli
+          # SSR examples
           - sveltekit
           - nuxt
           - astro
+          # Inertia examples
+          - react-inertia
+          - react-inertia-jinja
+          - vue-inertia
+          - vue-inertia-jinja
+          # Template examples
+          - jinja-htmx
     steps:
       - uses: actions/checkout@v4
 
@@ -52,7 +62,8 @@ jobs:
         env:
           # Run tests serially (-n 0) to avoid race conditions with shared resources
           # Each matrix job already isolates by example, so parallelism is at job level
-          PYTEST_ADDOPTS: "-m e2e -k ${{ matrix.example }} -n 0 --maxfail=1"
+          # Use exact match with brackets to avoid 'svelte' matching 'sveltekit'
+          PYTEST_ADDOPTS: "-m e2e -k '[${{ matrix.example }}]' -n 0 --maxfail=1"
           # Increase timeout for CI environment (slower than local)
           E2E_TEST_TIMEOUT: "120"
           # Bypass CI environment check in Vite plugin (we're intentionally testing dev mode in CI)
