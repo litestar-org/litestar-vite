@@ -11,7 +11,7 @@ from litestar_htmx import HTMXPlugin, HTMXRequest
 from litestar_htmx.response import HTMXTemplate
 from msgspec import Struct
 
-from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
+from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 
@@ -99,6 +99,8 @@ vite = VitePlugin(
             output=Path("resources/generated"),
             generate_sdk=False,
         ),
+        # Fixed port for E2E tests - can be removed for local dev or customized for production
+        runtime=RuntimeConfig(port=5061),
     )
 )
 templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)

@@ -12,7 +12,7 @@ from litestar.exceptions import NotFoundException
 from litestar.middleware.session.client_side import CookieBackendConfig
 from msgspec import Struct
 
-from litestar_vite import InertiaConfig, PathConfig, TypeGenConfig, ViteConfig, VitePlugin
+from litestar_vite import InertiaConfig, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-32-chars")
@@ -99,6 +99,8 @@ vite = VitePlugin(
             generate_zod=True,
             generate_sdk=False,
         ),
+        # Fixed port for E2E tests - can be removed for local dev or customized for production
+        runtime=RuntimeConfig(port=5012),
     )
 )
 

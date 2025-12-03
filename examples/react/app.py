@@ -15,7 +15,7 @@ from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
 from msgspec import Struct
 
-from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
+from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 
@@ -86,6 +86,8 @@ vite = VitePlugin(
         mode="spa",
         paths=PathConfig(root=here),
         types=TypeGenConfig(enabled=True, generate_sdk=True),
+        # Fixed port for E2E tests - can be removed for local dev or customized for production
+        runtime=RuntimeConfig(port=5001),
         dev_mode=True,
     )
 )

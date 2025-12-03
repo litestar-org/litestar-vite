@@ -102,7 +102,9 @@ vite = VitePlugin(
             enabled=True,
             output=here / "src" / "generated",
         ),
+        # Fixed port for E2E tests - can be removed for local dev or customized for production
         runtime=RuntimeConfig(
+            port=5032,
             dev_mode=dev_mode,
             proxy_mode="proxy",  # Blacklist proxy - forwards everything except Litestar routes
             start_dev_server=True,  # Auto-start Angular CLI dev server
