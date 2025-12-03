@@ -11,16 +11,17 @@
     "generate-types": "openapi-ts --config hey-api.config.ts"
   },
   "dependencies": {
-    "astro": "latest",
-    "axios": "^1.7.7"
+    "astro": "^5.16.3",
+    "axios": "^1.13.2",
+    "zod": "^4.1.13"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.0.0",
-    "tailwindcss": "^4.0.0",
-    "typescript": "latest",
+    "@tailwindcss/vite": "^4.1.17",
+    "tailwindcss": "^4.1.17",
+    "typescript": "^5.9.3",
     "litestar-vite-plugin": "file:../..",
-    "vite": "^7.0.0",
-    "@hey-api/openapi-ts": "latest",
-    "@hey-api/client-axios": "latest"
+    "vite": "^7.2.6",
+    "@hey-api/openapi-ts": "^0.88.0",
+    "@hey-api/client-axios": "^0.9.1"
   }
 }

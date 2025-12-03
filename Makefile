@@ -147,7 +147,21 @@ clean:                                              ## Cleanup temporary build a
 	@find . -name '__pycache__' -exec rm -rf {} + >/dev/null 2>&1
 	@find . -name '.ipynb_checkpoints' -exec rm -rf {} + >/dev/null 2>&1
 	@echo "${OK} Working directory cleaned"
+	$(MAKE) clean-examples
 	$(MAKE) docs-clean
+
+.PHONY: clean-examples
+clean-examples:                                     ## Clean all example build artifacts
+	@echo "${INFO} Cleaning example artifacts... 🧹"
+	@find examples -maxdepth 2 -type d -name "node_modules" -exec rm -rf {} + >/dev/null 2>&1 || true
+	@find examples -maxdepth 2 -type d -name "public" -exec rm -rf {} + >/dev/null 2>&1 || true
+	@find examples -maxdepth 2 -type d -name ".vite" -exec rm -rf {} + >/dev/null 2>&1 || true
+	@find examples -maxdepth 2 -type d -name ".angular" -exec rm -rf {} + >/dev/null 2>&1 || true
+	@find examples -maxdepth 2 -type d -name ".nuxt" -exec rm -rf {} + >/dev/null 2>&1 || true
+	@find examples -maxdepth 2 -type d -name ".output" -exec rm -rf {} + >/dev/null 2>&1 || true
+	@find examples -maxdepth 2 -type d -name ".svelte-kit" -exec rm -rf {} + >/dev/null 2>&1 || true
+	@find examples -maxdepth 3 -type d -name "generated" -exec rm -rf {} + >/dev/null 2>&1 || true
+	@echo "${OK} Example artifacts cleaned"
 
 # =============================================================================
 # Testing and Quality Checks
@@ -281,7 +295,7 @@ install-examples:                                  ## Install dependencies for a
 	@for dir in examples/*/; do \
 		if [ -f "$${dir}package.json" ]; then \
 			echo "${INFO} Installing $${dir}..."; \
-			(cd "$${dir}" && NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm install --no-fund --quiet) || exit 1; \
+			uv run litestar --app-dir "$${dir%/}" assets install || exit 1; \
 		fi \
 	done
 	@echo "${OK} Example dependencies installed"
@@ -292,7 +306,7 @@ build-examples:                                    ## Build all frontend example
 	@for dir in examples/*/; do \
 		if [ -f "$${dir}package.json" ]; then \
 			echo "${INFO} Building $${dir}..."; \
-			(cd "$${dir}" && NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run build --quiet) || exit 1; \
+			uv run litestar --app-dir "$${dir%/}" assets build || exit 1; \
 		fi \
 	done
 	@echo "${OK} All examples built successfully"
@@ -308,7 +322,3 @@ test-examples-e2e:                                 ## Run end-to-end example sui
 	@echo "${INFO} Running E2E example tests... 🧪"
 	@uv run pytest -n auto -m e2e src/py/tests/e2e -v --maxfail=1
 	@echo "${OK} E2E example tests passed"
-
-.PHONY: test-examples-e2e-quick
-test-examples-e2e-quick: test-examples-e2e         ## Quick alias for full E2E suite
-	@true

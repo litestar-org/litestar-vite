@@ -28,7 +28,6 @@ EXAMPLES = [
     ("astro", False, False, True),  # SSR framework - no SPA mode
     ("basic", True, False, False),
     ("flash", True, False, False),
-    ("fullstack-typed", True, False, False),
     ("jinja", False, False, False),  # Template mode
     ("nuxt", False, False, True),  # SSR framework - no SPA mode
     ("react", True, False, False),

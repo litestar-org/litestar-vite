@@ -232,6 +232,7 @@ interface PythonDefaults {
 type DevServerUrl = `${"http" | "https"}://${string}:${number}`
 
 let exitHandlersBound = false
+let warnedMissingRuntimeConfig = false
 
 export const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((path) => fs.existsSync(path.replace(/\*\*$/, "")))
 
@@ -687,11 +688,16 @@ function _pluginVersion(): string {
 }
 
 function loadPythonDefaults(): PythonDefaults | null {
+  // Avoid noisy warnings during automated tests
+  const isTestEnv = Boolean(process.env.VITEST || process.env.VITE_TEST || process.env.NODE_ENV === "test")
+
   const configPath = process.env.LITESTAR_VITE_CONFIG_PATH
   if (!configPath) {
+    warnMissingRuntimeConfig("env", isTestEnv)
     return null
   }
   if (!fs.existsSync(configPath)) {
+    warnMissingRuntimeConfig("file", isTestEnv)
     return null
   }
   try {
@@ -700,6 +706,23 @@ function loadPythonDefaults(): PythonDefaults | null {
   } catch {
     return null
   }
+}
+
+function warnMissingRuntimeConfig(reason: "env" | "file", suppress: boolean): void {
+  if (warnedMissingRuntimeConfig || suppress) return
+  warnedMissingRuntimeConfig = true
+
+  const hint =
+    reason === "env"
+      ? "LITESTAR_VITE_CONFIG_PATH not set. Start Vite via `litestar assets serve` or set the env var to point at .litestar.json."
+      : "Runtime config .litestar.json not found. Ensure backend started with `litestar assets serve/build` or set LITESTAR_VITE_CONFIG_PATH."
+
+  // eslint-disable-next-line no-console
+  console.warn(
+    `${colors.yellow("[litestar-vite]")} ${hint}\n${colors.dim(
+      "The Python plugin writes .litestar.json; running Vite directly skips important defaults (asset paths, proxy, types).",
+    )}`,
+  )
 }
 
 /**

@@ -10,21 +10,21 @@
     "generate-types": "openapi-ts --config hey-api.config.ts"
   },
   "dependencies": {
-    "react": "latest",
-    "react-dom": "latest",
-    "react-router-dom": "^7",
-    "axios": "^1.7.7"
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.10.0",
+    "axios": "^1.13.2"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "@tailwindcss/vite": "^4.0.0",
-    "tailwindcss": "^4.0.0",
-    "typescript": "latest",
+    "@vitejs/plugin-react": "^5.1.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@tailwindcss/vite": "^4.1.17",
+    "tailwindcss": "^4.1.17",
+    "typescript": "^5.9.3",
     "litestar-vite-plugin": "file:../..",
-    "vite": "^7.0.0",
-    "@hey-api/openapi-ts": "latest",
-    "@hey-api/client-axios": "latest"
+    "vite": "^7.2.6",
+    "@hey-api/openapi-ts": "^0.88.0",
+    "@hey-api/client-axios": "^0.9.1"
   }
 }

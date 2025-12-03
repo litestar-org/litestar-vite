@@ -198,7 +198,7 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
     """
 
     root = config.root_dir or Path.cwd()
-    path = Path(root) / ".litestar-vite.json"
+    path = Path(root) / ".litestar.json"
     types = config.types if isinstance(config.types, TypeGenConfig) else None
     deploy = config.deploy_config
     resource_dir = config.resource_dir
@@ -1475,7 +1475,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         - Sets _proxy_target directly (JS writes hotfile when server starts)
 
         For 'proxy'/'ssr' modes:
-        - Port is written to .litestar-vite.json for SSR framework to read
+        - Port is written to .litestar.json for SSR framework to read
         - SSR framework writes hotfile with actual URL when ready
         - Proxy discovers target from hotfile at request time
         """

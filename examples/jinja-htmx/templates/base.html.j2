@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="csrf-token" content="{{ csrf_token | default('') }}" />
   <title>{% block title %}{{ project_name }}{% endblock %}</title>
   {{ vite_hmr() }}
   {{ vite('resources/main.js') }}
 </head>
-<body>
+<body hx-ext="litestar">
   {% block content %}{% endblock %}
 </body>
 </html>

@@ -1,5 +1,5 @@
 {
-  "name": "basic",
+  "name": "template-htmx",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,8 @@
   "dependencies": {
     "htmx.org": "latest",
     "alpinejs": "latest",
-    "axios": "^1.7.7"
+    "axios": "^1.7.7",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "typescript": "latest",

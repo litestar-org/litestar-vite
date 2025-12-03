@@ -21,6 +21,17 @@ export default defineConfig({
       input: ["{{ resource_dir }}/main.js"],
     }),
   ],
+  build: {
+    rollupOptions: {
+      onwarn(warning, warn) {
+        // Suppress eval warnings from htmx (htmx uses eval for dynamic attribute evaluation)
+        if (warning.code === "EVAL" && warning.id?.includes("htmx")) {
+          return;
+        }
+        warn(warning);
+      },
+    },
+  },
   resolve: {
     alias: {
       "@": "/{{ resource_dir }}",

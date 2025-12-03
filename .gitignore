@@ -199,6 +199,7 @@ specs/archive/
 specs/guides/telemetry/*.jsonl
 public/hot
 src/generated
+.litestar.json
 .litestar-vite.json
 examples/*/.astro
 examples/*/.vite

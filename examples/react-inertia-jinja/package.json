@@ -15,7 +15,8 @@
     "react": "latest",
     "react-dom": "latest",
     "tailwindcss": "^4.1.17",
-    "axios": "^1.7.7"
+    "axios": "^1.7.7",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/react": "latest",

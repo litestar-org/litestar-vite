@@ -12,7 +12,7 @@ describe("litestar-meta runtime config fallback", () => {
 
   const makeTempRuntimeConfig = (version: string): string => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "litevite-"))
-    const cfgPath = path.join(dir, ".litestar-vite.json")
+    const cfgPath = path.join(dir, ".litestar.json")
     const payload = { litestarVersion: version }
     fs.writeFileSync(cfgPath, JSON.stringify(payload), "utf8")
     return cfgPath

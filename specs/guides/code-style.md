@@ -49,7 +49,7 @@ All Python code is automatically formatted and linted using tools configured in 
 
 ### Config Source of Truth
 
-- When both Python and Vite need the same values (asset/base URL, bundle/resource dirs, manifest), prefer setting them in `ViteConfig`. `set_environment()` writes `.litestar-vite.json` and the JS plugin uses it as defaults. Keep `vite.config.ts` overrides minimal.
+- When both Python and Vite need the same values (asset/base URL, bundle/resource dirs, manifest), prefer setting them in `ViteConfig`. `set_environment()` writes `.litestar.json` and the JS plugin uses it as defaults. Keep `vite.config.ts` overrides minimal.
 
 ## TypeScript/JavaScript Code Style
 

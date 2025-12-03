@@ -48,6 +48,11 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def _get_available_examples() -> list[str]:
+    """Discover available example names.
+
+    Returns:
+        list[str]: Names of examples available for E2E testing.
+    """
     examples: list[str] = []
     if EXAMPLES_DIR.exists():
         examples.extend(
@@ -65,7 +70,11 @@ EXAMPLE_PARAMS = [pytest.param(name, marks=pytest.mark.xdist_group(name)) for na
 
 @pytest.fixture(scope="session", autouse=True)
 def _cleanup_processes_after_session() -> Generator[None, None, None]:
-    """Ensure all processes are cleaned up after the test session."""
+    """Ensure all processes are cleaned up after the test session.
+
+    Yields:
+        None: Allows pytest to run session-scoped cleanup after tests complete.
+    """
     yield
     for proc in list(RUNNING_PROCS):
         try:
@@ -81,7 +90,11 @@ def _cleanup_processes_after_session() -> Generator[None, None, None]:
 
 @pytest.fixture(autouse=True)
 def _cleanup_processes_after_test() -> Generator[None, None, None]:
-    """Ensure all processes are cleaned up after each test."""
+    """Ensure all processes are cleaned up after each test.
+
+    Yields:
+        None: Allows pytest to run test-scoped cleanup after each test.
+    """
     yield
     for proc in list(RUNNING_PROCS):
         try:
@@ -97,13 +110,21 @@ def _cleanup_processes_after_test() -> Generator[None, None, None]:
 
 @pytest.fixture(params=EXAMPLE_PARAMS)
 def example_name(request: pytest.FixtureRequest) -> str:
-    """Provide example name from parametrized list."""
+    """Provide example name from parametrized list.
+
+    Returns:
+        str: Example name for the current test parameter.
+    """
     return str(request.param)
 
 
 @pytest.fixture
 def example_server(example_name: str) -> Generator[ExampleServer, None, None]:
-    """Create an ExampleServer for the given example."""
+    """Create an ExampleServer for the given example.
+
+    Yields:
+        ExampleServer: Server instance for the requested example.
+    """
     server = ExampleServer(example_name)
     yield server
     server.stop()
@@ -115,6 +136,9 @@ def dev_mode_server(example_server: ExampleServer) -> Generator[ExampleServer, N
 
     Uses `litestar assets serve` + `litestar run`.
     Ports are auto-selected and parsed from output.
+
+    Yields:
+        ExampleServer: Running server in development mode.
     """
     example_server.start_dev_mode()
     example_server.wait_until_ready()
@@ -129,6 +153,9 @@ def production_server(example_server: ExampleServer) -> Generator[ExampleServer,
     Uses `litestar assets build` + `litestar run`.
     For SSR: also uses `litestar assets serve --production`.
     Ports are auto-selected and parsed from output.
+
+    Yields:
+        ExampleServer: Running server in production mode.
     """
     example_server.start_production_mode()
     example_server.wait_until_ready()

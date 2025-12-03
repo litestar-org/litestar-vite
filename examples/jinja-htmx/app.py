@@ -1,31 +1,19 @@
-"""Fullstack typed example - shared "Library" backend + React Inertia.
+"""HTMX + Alpine.js + Litestar template example (shared "Library" backend)."""
 
-Demonstrates:
-- Inertia.js for server-driven SPA routing
-- React frontend
-- OpenAPI + routes export for typed client generation
-"""
-
-import os
 from pathlib import Path
 
 from litestar import Controller, Litestar, get
 from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.exceptions import NotFoundException
-from litestar.middleware.session.client_side import CookieBackendConfig
-from litestar.template import TemplateConfig
+from litestar.response import Template
+from litestar.template.config import TemplateConfig
+from litestar_htmx import HTMXPlugin, HTMXRequest
+from litestar_htmx.response import HTMXTemplate
 from msgspec import Struct
 
 from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
-from litestar_vite.inertia import InertiaConfig, InertiaPlugin
 
 here = Path(__file__).parent
-SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-32-chars")
-session_backend = CookieBackendConfig(secret=SECRET_KEY.encode("utf-8"))
-
-
-class Message(Struct):
-    message: str
 
 
 class Book(Struct):
@@ -68,16 +56,25 @@ def _get_summary() -> Summary:
 
 
 class LibraryController(Controller):
-    """Library API and Inertia page controller."""
+    """Library API and web controller."""
 
-    @get("/", component="Home")
-    async def index(self) -> Message:
-        """Serve the home page."""
-        return Message(message="Welcome to fullstack-typed!")
+    @get("/")
+    async def index(self, request: HTMXRequest) -> Template:
+        """Serve the home page with initial data."""
+        context = {"summary": _get_summary(), "books": BOOKS, "request": request}
+        return Template(template_name="index.html.j2", context=context)
 
-    @get("/books", component="Books")
-    async def books_page(self) -> dict[str, object]:
-        return {"summary": _get_summary(), "books": BOOKS}
+    @get("/fragments/book/{book_id:int}")
+    async def book_fragment(self, book_id: int) -> Template:
+        """Return a book card fragment for HTMX swaps."""
+        book = _get_book(book_id)
+        return HTMXTemplate(
+            template_name="partials/book_card.html.j2",
+            context={"book": book},
+            re_target="#book-detail",
+            re_swap="innerHTML",
+            push_url=False,
+        )
 
     @get("/api/summary")
     async def summary(self) -> Summary:
@@ -96,20 +93,17 @@ vite = VitePlugin(
     config=ViteConfig(
         paths=PathConfig(root=here, resource_dir="resources", bundle_dir="public"),
         types=TypeGenConfig(
-            enabled=True,
+            enabled=False,
             output=Path("resources/generated"),
-            generate_zod=True,
             generate_sdk=False,
         ),
     )
 )
-inertia = InertiaPlugin(config=InertiaConfig(root_template="index.html"))
 templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)
 
 app = Litestar(
     route_handlers=[LibraryController],
-    plugins=[vite, inertia],
+    plugins=[vite, HTMXPlugin()],
     template_config=templates,
-    middleware=[session_backend.middleware],
     debug=True,
 )
