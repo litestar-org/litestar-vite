@@ -214,6 +214,8 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
     external_target = external.target if external else None
     external_http2 = external.http2 if external else False
 
+    litestar_version = os.environ.get("LITESTAR_VERSION") or _resolve_litestar_version()
+
     payload = {
         "assetUrl": config.asset_url,
         "baseUrl": config.base_url,
@@ -250,7 +252,7 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
         },
         # Executor for package commands (npx, bunx, etc.)
         "executor": config.runtime.executor,
-        "litestarVersion": _resolve_litestar_version(),
+        "litestarVersion": litestar_version,
     }
 
     path.write_text(json.dumps(payload, indent=2))
@@ -267,7 +269,7 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
         config: The Vite configuration.
         asset_url_override: Optional asset URL to force (e.g., CDN base during build).
     """
-    litestar_version = _resolve_litestar_version()
+    litestar_version = os.environ.get("LITESTAR_VERSION") or _resolve_litestar_version()
     asset_url = asset_url_override or config.asset_url
     base_url = config.base_url or asset_url
     if asset_url:
@@ -301,7 +303,7 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
     os.environ.setdefault("HOST", config.host)
     os.environ.setdefault("PORT", str(config.port))
 
-    os.environ.setdefault("LITESTAR_VERSION", litestar_version)
+    os.environ["LITESTAR_VERSION"] = litestar_version
     os.environ.setdefault("LITESTAR_VITE_RUNTIME", config.runtime.executor or "node")
     os.environ.setdefault("LITESTAR_VITE_INSTALL_CMD", " ".join(config.install_command))
 
