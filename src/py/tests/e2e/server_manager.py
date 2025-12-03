@@ -64,6 +64,8 @@ NUXT_PORT_PATTERN = re.compile(r"Local:\s+https?://localhost:(\d+)")
 # Nitro/Nuxt production: "Listening on http://127.0.0.1:5173"
 # SvelteKit production: "Listening on http://0.0.0.0:3000"
 LISTENING_PORT_PATTERN = re.compile(r"Listening on https?://[\d.]+:(\d+)")
+# Angular CLI dev output: "\u2714 Local:   http://localhost:4200/" or "listening on localhost:4200"
+ANGULAR_CLI_PORT_PATTERN = re.compile(r"localhost:(\d+)")
 
 
 class OutputCapture:
@@ -165,6 +167,8 @@ class ExampleServer:
 
         # Start frontend dev server via litestar assets serve
         vite_patterns = [VITE_PORT_PATTERN, ASTRO_PORT_PATTERN, NUXT_PORT_PATTERN]
+        if self._is_cli_example():
+            vite_patterns.append(ANGULAR_CLI_PORT_PATTERN)
         vite_proc, vite_capture = self._spawn_with_capture(
             self._assets_serve_command(),
             env=env,
