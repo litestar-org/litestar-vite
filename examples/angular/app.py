@@ -9,6 +9,7 @@ Demonstrates the Vite proxy integration where Litestar serves the
 index.html and Vite handles asset bundling with HMR in development.
 """
 
+import os
 from pathlib import Path
 
 from litestar import Controller, Litestar, get
@@ -18,6 +19,7 @@ from msgspec import Struct
 from litestar_vite import PathConfig, RuntimeConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
+DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
 
 
 class Book(Struct):
@@ -81,6 +83,7 @@ class LibraryController(Controller):
 # Fixed port for E2E tests - can be removed for local dev or customized for production
 vite = VitePlugin(
     config=ViteConfig(
+        dev_mode=DEV_MODE,
         paths=PathConfig(root=here),
         runtime=RuntimeConfig(port=5031),
     )

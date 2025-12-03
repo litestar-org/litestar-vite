@@ -1,7 +1,4 @@
-"""Astro example - shared "Library" backend for Astro static site.
-
-Astro generates static HTML by default (not SSR). In dev mode, we proxy
-to the Astro dev server. In production, we serve the built static files.
+"""Astro example - shared "Library" backend + Astro static site frontend.
 
 All examples in this repository expose the same backend:
 - `/api/summary` - overview + featured book
@@ -11,8 +8,7 @@ All examples in this repository expose the same backend:
 Dev mode (default):
     litestar --app-dir examples/astro run
 
-Production mode (serves static build from dist/):
-    litestar --app-dir examples/astro assets build
+Production mode (serves static build):
     VITE_DEV_MODE=false litestar --app-dir examples/astro run
 """
 
@@ -26,7 +22,7 @@ from msgspec import Struct
 from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
-DEV_MODE = os.getenv("VITE_DEV_MODE", "false").lower() in ("true", "1", "yes")
+DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
 
 
 class Book(Struct):

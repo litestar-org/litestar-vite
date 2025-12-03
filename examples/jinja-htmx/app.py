@@ -1,5 +1,6 @@
-"""HTMX + Alpine.js + Litestar template example (shared "Library" backend)."""
+"""HTMX + Litestar template example (shared "Library" backend)."""
 
+import os
 from pathlib import Path
 
 from litestar import Controller, Litestar, get
@@ -14,6 +15,7 @@ from msgspec import Struct
 from litestar_vite import PathConfig, RuntimeConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
+DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
 
 
 class Book(Struct):
@@ -92,10 +94,10 @@ class LibraryController(Controller):
 vite = VitePlugin(
     config=ViteConfig(
         mode="template",
+        dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources", bundle_dir="public"),
         # Fixed port for E2E tests - can be removed for local dev or customized for production
         runtime=RuntimeConfig(port=5061),
-        # dev_mode reads from VITE_DEV_MODE env var (defaults to False/production)
     )
 )
 templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)

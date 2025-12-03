@@ -17,6 +17,7 @@ from msgspec import Struct
 from litestar_vite import InertiaConfig, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
+DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
 SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-32-chars")
 session_backend = CookieBackendConfig(secret=SECRET_KEY.encode("utf-8"))
 
@@ -94,6 +95,7 @@ templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEng
 vite = VitePlugin(
     config=ViteConfig(
         mode="template",  # Explicit template mode for Jinja-based Inertia
+        dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources", bundle_dir="public"),
         inertia=InertiaConfig(root_template="index.html"),  # Auto-registers Inertia
         types=TypeGenConfig(

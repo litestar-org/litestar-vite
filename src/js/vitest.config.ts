@@ -1,6 +1,15 @@
+import path from "node:path"
 import { defineConfig } from "vitest/config"
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // Map package paths to source files for testing
+      "litestar-vite-plugin/helpers": path.resolve(__dirname, "src/helpers/index.ts"),
+      "litestar-vite-plugin/inertia-helpers": path.resolve(__dirname, "src/inertia-helpers/index.ts"),
+      "litestar-vite-plugin": path.resolve(__dirname, "src/index.ts"),
+    },
+  },
   test: {
     environment: "happy-dom",
     globals: true,

@@ -5,13 +5,11 @@ All examples in this repository expose the same backend:
 - `/api/books` - list of books
 - `/api/books/{book_id}` - single book
 
-Development:
-    VITE_DEV_MODE=1 litestar run --reload
-    (Angular CLI dev server starts automatically and proxies to port 4200)
+Dev mode (default):
+    litestar --app-dir examples/angular-cli run
 
-Production:
-    litestar assets build && litestar run
-    (Built assets in dist/browser are served by Litestar's static file handler)
+Production mode (serves static build):
+    VITE_DEV_MODE=false litestar --app-dir examples/angular-cli run
 """
 
 import os
@@ -26,7 +24,7 @@ from litestar_vite import ExternalDevServer, PathConfig, RuntimeConfig, TypeGenC
 
 here = Path(__file__).parent
 dist_dir = here / "dist" / "browser"
-dev_mode = os.getenv("VITE_DEV_MODE", "").lower() in {"1", "true", "yes"}
+DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
 
 
 class Book(Struct):
@@ -93,6 +91,7 @@ class LibraryController(Controller):
 vite = VitePlugin(
     config=ViteConfig(
         mode="template",  # Don't use SPA mode - we handle static files ourselves
+        dev_mode=DEV_MODE,
         paths=PathConfig(
             root=here,
             bundle_dir=dist_dir,
@@ -105,13 +104,10 @@ vite = VitePlugin(
         # Fixed port for E2E tests - can be removed for local dev or customized for production
         runtime=RuntimeConfig(
             port=5032,
-            dev_mode=dev_mode,
             proxy_mode="proxy",  # Blacklist proxy - forwards everything except Litestar routes
             start_dev_server=True,  # Auto-start Angular CLI dev server
             external_dev_server=ExternalDevServer(
                 target="http://localhost:4200",
-                # command defaults to executor's "start" script (npm run start → ng serve)
-                # build_command defaults to executor's "build" script (npm run build → ng build)
             ),
         ),
     )
@@ -125,7 +121,7 @@ static_files = (
         directories=[dist_dir],
         html_mode=True,  # SPA fallback - serves index.html for non-file routes
     )
-    if not dev_mode and dist_dir.exists()
+    if not DEV_MODE and dist_dir.exists()
     else None
 )
 
