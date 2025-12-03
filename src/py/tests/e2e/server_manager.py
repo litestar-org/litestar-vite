@@ -43,8 +43,8 @@ def find_free_port() -> int:
 EXAMPLES_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "examples"
 
 # SSR examples that run their own dev server (proxy to Node in dev, serve static in prod)
-# These need `litestar assets serve` in dev mode to start the framework dev server
-SSR_EXAMPLES: set[str] = {"nuxt", "sveltekit", "astro"}
+# Astro example uses static SSG output, so treat it as non-SSR here
+SSR_EXAMPLES: set[str] = {"nuxt", "sveltekit"}
 
 # CLI examples use their own build tools (Angular CLI)
 CLI_EXAMPLES: set[str] = {"angular-cli"}
@@ -57,10 +57,13 @@ RUNNING_PROCS: list[subprocess.Popen[bytes]] = []
 VITE_PORT_PATTERN = re.compile(r"Local:\s+https?://(?:localhost|127\.0\.0\.1):(\d+)")
 # Uvicorn output: "Uvicorn running on http://127.0.0.1:8000"
 LITESTAR_PORT_PATTERN = re.compile(r"Uvicorn running on https?://[\d.]+:(\d+)")
-# Astro output: "┃ Local    http://localhost:55327/" (multiple spaces, box character prefix)
-ASTRO_PORT_PATTERN = re.compile(r"Local\s+https?://localhost:(\d+)")
-# Nuxt dev output: "Local:    http://localhost:3000/"
-NUXT_PORT_PATTERN = re.compile(r"Local:\s+https?://localhost:(\d+)")
+# Astro output: "┃ Local    http://localhost:55327/" (may include box chars + ANSI)
+# Accept any ANSI prefix and host variants
+ASTRO_PORT_PATTERN = re.compile(r"(?:\x1b\[[0-9;]*m)?Local\s+https?://(?:localhost|127\.0\.0\.1):(\d+)")
+# Generic fallback to catch stray host prints
+GENERIC_HOST_PATTERN = re.compile(r"https?://(?:localhost|127\.0\.0\.1):(\d+)")
+# Nuxt dev output: "➜ Local:    http://127.0.0.1:60411/" (ANSI arrow, host may be 127 or localhost)
+NUXT_PORT_PATTERN = re.compile(r"Local:\s+https?://(?:localhost|127\.0\.0\.1):(\d+)")
 # Nitro/Nuxt production: "Listening on http://127.0.0.1:5173"
 # SvelteKit production: "Listening on http://0.0.0.0:3000"
 LISTENING_PORT_PATTERN = re.compile(r"Listening on https?://[\d.]+:(\d+)")
@@ -166,7 +169,7 @@ class ExampleServer:
         env = self._base_env(dev_mode=True)
 
         # Start frontend dev server via litestar assets serve
-        vite_patterns = [VITE_PORT_PATTERN, ASTRO_PORT_PATTERN, NUXT_PORT_PATTERN]
+        vite_patterns = [VITE_PORT_PATTERN, ASTRO_PORT_PATTERN, NUXT_PORT_PATTERN, LISTENING_PORT_PATTERN, GENERIC_HOST_PATTERN]
         if self._is_cli_example():
             vite_patterns.append(ANGULAR_CLI_PORT_PATTERN)
         vite_proc, vite_capture = self._spawn_with_capture(
@@ -246,9 +249,17 @@ class ExampleServer:
         if self._dev_mode:
             # Dev mode: Vite is first, Litestar is second
             vite_capture = self._captures[0]
+            litestar_capture = self._captures[1]
             try:
                 self.vite_port = vite_capture.wait_for_port(timeout=timeout)
                 logger.info("Vite dev server ready on port %d", self.vite_port)
+            except TimeoutError:
+                self._check_processes_alive()
+                raise
+
+            # Also wait for Litestar to finish startup (ensure port is serving)
+            try:
+                litestar_capture.wait_for_port(timeout=timeout)
             except TimeoutError:
                 self._check_processes_alive()
                 raise
@@ -262,24 +273,31 @@ class ExampleServer:
                 self._check_processes_alive()
                 raise
 
+            # Ensure SSR server responds before proceeding
+            self._verify_http_ready(port=self.vite_port, timeout=30.0)
+
         self._check_processes_alive()
 
         # Final health check - verify Litestar responds to HTTP
         self._verify_http_ready(timeout=30.0)
 
-    def _verify_http_ready(self, timeout: float = 30.0) -> None:
+    def _verify_http_ready(self, timeout: float = 30.0, port: int | None = None) -> None:
         """Verify servers respond to HTTP requests.
 
         Args:
             timeout: Maximum seconds to wait for HTTP response.
+            port: Specific port to check (defaults to litestar_port).
 
         Raises:
             TimeoutError: If server doesn't respond within timeout.
         """
         import httpx
 
+        if port is None:
+            port = self.litestar_port
+
         start = time.monotonic()
-        base_url = f"http://127.0.0.1:{self.litestar_port}"
+        base_url = f"http://127.0.0.1:{port}"
 
         while time.monotonic() - start < timeout:
             self._check_processes_alive()

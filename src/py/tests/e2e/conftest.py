@@ -26,8 +26,6 @@ E2E_TEST_TIMEOUT = 60
 # Examples that require special handling and should be skipped in the standard E2E suite
 SKIP_EXAMPLES: set[str] = {
     # TODO(SSR-E2E): Re-enable once port detection is stabilized
-    "astro",
-    "nuxt",
     "sveltekit",
 }
 
