@@ -49,7 +49,6 @@ SSR_EXAMPLES: set[str] = {"nuxt", "sveltekit"}
 # CLI examples use their own build tools (Angular CLI)
 CLI_EXAMPLES: set[str] = {"angular-cli"}
 
-# Track all spawned processes to enable global cleanup in fixtures
 RUNNING_PROCS: list[subprocess.Popen[bytes]] = []
 # Track examples that have already installed frontend deps to avoid repeated installs
 INSTALLED_EXAMPLES: set[str] = set()
@@ -255,7 +254,7 @@ class ExampleServer:
         self._dev_mode = False
         logger.info("Started production mode for %s", self.example_name)
 
-    def wait_until_ready(self, timeout: float = 45.0) -> None:
+    def wait_until_ready(self, timeout: float = 60.0) -> None:
         """Wait until servers are ready.
 
         Process layout differs by mode:
@@ -268,36 +267,30 @@ class ExampleServer:
 
         Raises:
             TimeoutError: If servers don't become ready within timeout.
-            RuntimeError: If any process exits unexpectedly.
         """
         if self._dev_mode:
             # Dev mode: Vite is first, Litestar is second
             vite_capture = self._captures[0]
             litestar_capture = self._captures[1]
             try:
-                self.vite_port = vite_capture.wait_for_port(timeout=min(timeout, 15.0))
+                self.vite_port = vite_capture.wait_for_port(timeout=timeout)
                 logger.info("Vite dev server ready on port %d", self.vite_port)
             except TimeoutError:
                 # For SSR frameworks, proceed as long as Litestar comes up; port detection can be flaky with ANSI output
                 self._check_processes_alive()
                 logger.warning("Vite port not detected within timeout; continuing with proxy health check")
-                self.vite_port = None
+                self.vite_port = self._infer_vite_port(vite_capture)
 
             # Always wait for Litestar to finish startup (ensure port is serving)
             try:
-                litestar_capture.wait_for_port(timeout=min(timeout, 20.0))
+                litestar_capture.wait_for_port(timeout=timeout)
             except TimeoutError:
                 self._check_processes_alive()
                 raise
 
             # If Vite port is still unknown (e.g., SvelteKit ANSI output), attempt to extract from stored lines
             if self.vite_port is None:
-                for line in reversed(vite_capture.output_lines):
-                    match = ANY_HOST_PORT_PATTERN.search(line)
-                    if match:
-                        self.vite_port = int(match.group(1))
-                        logger.info("Vite port inferred late from output: %d", self.vite_port)
-                        break
+                self.vite_port = self._infer_vite_port(vite_capture)
         elif self._is_ssr_example():
             # Production SSR: Litestar is first, Node server is second
             ssr_capture = self._captures[1]  # SSR server is second in production
@@ -309,14 +302,14 @@ class ExampleServer:
                 raise
 
             # Ensure SSR server responds before proceeding
-            self._verify_http_ready(port=self.vite_port, timeout=30.0)
+            self._verify_http_ready(port=self.vite_port, timeout=timeout)
 
         self._check_processes_alive()
 
         # Final health check - verify Litestar responds to HTTP
-        self._verify_http_ready(timeout=30.0)
+        self._verify_http_ready(timeout=timeout)
 
-    def _verify_http_ready(self, timeout: float = 30.0, port: int | None = None) -> None:
+    def _verify_http_ready(self, timeout: float = 45.0, port: int | None = None) -> None:
         """Verify servers respond to HTTP requests.
 
         Args:
@@ -450,16 +443,14 @@ class ExampleServer:
             Environment variables dict for subprocess.
         """
         env = os.environ.copy()
-        env.update(
-            {
-                "VITE_DEV_MODE": "true" if dev_mode else "false",
-                # Let Vite/Litestar auto-select ports
-                # Don't set VITE_PORT or LITESTAR_PORT
-                "HOST": "127.0.0.1",
-                # npm cache to avoid permission issues
-                "npm_config_cache": str(Path.home() / ".cache" / "npm"),
-            }
-        )
+        env.update({
+            "VITE_DEV_MODE": "true" if dev_mode else "false",
+            # Let Vite/Litestar auto-select ports
+            # Don't set VITE_PORT or LITESTAR_PORT
+            "HOST": "127.0.0.1",
+            # npm cache to avoid permission issues
+            "npm_config_cache": str(Path.home() / ".cache" / "npm"),
+        })
         # Remove any port env vars that might interfere
         for key in ["VITE_PORT", "LITESTAR_PORT", "PORT", "NITRO_PORT"]:
             env.pop(key, None)
@@ -493,13 +484,19 @@ class ExampleServer:
 
         repo_root = EXAMPLES_DIR.parent
         dist_js = repo_root / "dist" / "js" / "index.js"
-        if dist_js.exists():
-            PLUGIN_BUILT = True
-            return
 
-        logger.info("Building root plugin dist/js for examples")
-        build_cmd = ["npm", "run", "build"]
-        self._run(build_cmd, cwd=repo_root, env=env)
+        # Install JS deps if missing
+        node_modules = repo_root / "node_modules"
+        if not node_modules.exists():
+            install_cmd = ["npm", "ci"] if (repo_root / "package-lock.json").exists() else ["npm", "install"]
+            logger.info("Installing root JS deps for plugin build (%s)", " ".join(install_cmd))
+            self._run(install_cmd, cwd=repo_root, env=env)
+
+        if not dist_js.exists():
+            logger.info("Building root plugin dist/js for examples")
+            build_cmd = ["npm", "run", "build"]
+            self._run(build_cmd, cwd=repo_root, env=env)
+
         PLUGIN_BUILT = True
 
     def _ensure_assets_installed(self, env: dict[str, str]) -> None:
@@ -594,3 +591,18 @@ class ExampleServer:
             True if the example uses a CLI-based build tool.
         """
         return self.example_name in CLI_EXAMPLES
+
+    def _infer_vite_port(self, capture: OutputCapture) -> int | None:
+        """Infer Vite port from captured output, skipping backend ports."""
+
+        backend_port = self.litestar_port
+        for line in reversed(capture.output_lines):
+            if "proxying /api" in line or "litestar" in line.lower():
+                continue
+            match = ANY_HOST_PORT_PATTERN.search(line)
+            if match:
+                port_val = int(match.group(1))
+                if port_val != backend_port:
+                    logger.info("Vite port inferred from output: %d", port_val)
+                    return port_val
+        return None
