@@ -166,6 +166,9 @@ filterwarnings = [
   "ignore:`use_rich_markup=`:PendingDeprecationWarning",
   "ignore:`show_metavars_column=`:PendingDeprecationWarning",
   "ignore:`append_metavars_help=`:PendingDeprecationWarning",
+  # Litestar typing warnings - from litestar's Parameter annotation handling
+  "ignore:Deprecated default value specification:DeprecationWarning:litestar.*",
+  "ignore:Ambiguous default values:litestar.utils.warnings.LitestarWarning:litestar.*",
 ]
 testpaths = ["tests", "src/py/tests"]
 tmp_path_retention_policy = "failed"

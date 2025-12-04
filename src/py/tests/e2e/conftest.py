@@ -9,7 +9,8 @@ from .server_manager import EXAMPLES_DIR, RUNNING_PROCS, ExampleServer
 
 # Default timeout for E2E tests (seconds per test)
 # Can be overridden with E2E_TEST_TIMEOUT env var or @pytest.mark.timeout(X)
-E2E_TEST_TIMEOUT = int(os.environ.get("E2E_TEST_TIMEOUT", "60"))
+# 90s default allows slow SSR frameworks (Astro, Nuxt) time to start
+E2E_TEST_TIMEOUT = int(os.environ.get("E2E_TEST_TIMEOUT", "90"))
 
 # Examples that require special handling and should be skipped in the standard E2E suite
 SKIP_EXAMPLES: set[str] = set()

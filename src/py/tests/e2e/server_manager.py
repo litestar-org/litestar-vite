@@ -420,18 +420,30 @@ class ExampleServer:
         start = time.monotonic()
         base_url = f"http://127.0.0.1:{port}"
 
+        last_status = None
+        last_error = None
         while time.monotonic() - start < timeout:
             self._check_processes_alive()
             try:
                 response = httpx.get(f"{base_url}/", timeout=5.0)
-                if response.status_code in (200, 301, 302, 404):
+                last_status = response.status_code
+                # Accept any response that's not a connection error
+                # SSR frameworks may return 500/503 while building, but that means server is up
+                if response.status_code < 500:
                     logger.info("HTTP ready: %s returned %d", base_url, response.status_code)
                     return
-            except httpx.RequestError:
-                pass
+                # 5xx means server is up but SSR framework is still building - keep waiting
+                logger.debug("HTTP waiting: %s returned %d (SSR building)", base_url, response.status_code)
+            except httpx.RequestError as e:
+                last_error = str(e)
             time.sleep(0.5)
 
-        raise TimeoutError(f"HTTP health check failed for {base_url}")
+        msg = f"HTTP health check failed for {base_url}"
+        if last_status:
+            msg += f" (last status: {last_status})"
+        if last_error:
+            msg += f" (last error: {last_error})"
+        raise TimeoutError(msg)
 
     def _verify_proxy_ready(self, timeout: float = 60.0) -> None:
         """Verify external dev server is ready via Litestar proxy.
