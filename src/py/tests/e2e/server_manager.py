@@ -43,9 +43,13 @@ def find_free_port() -> int:
 
 EXAMPLES_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "examples"
 
-# SSR examples that run their own dev server (proxy to Node in dev, serve static in prod)
-# Astro example uses static SSG output, so treat it as non-SSR here
+# SSR examples that run their own Node server in BOTH dev AND production
+# These need `litestar assets serve --production` to start the Node production server
 SSR_EXAMPLES: set[str] = {"nuxt", "sveltekit"}
+
+# SSG (Static Site Generation) examples that run their own dev server but NOT in production
+# In production, they build static files served directly by Litestar (no Node server needed)
+SSG_EXAMPLES: set[str] = {"astro"}
 
 # CLI examples use their own build tools (Angular CLI)
 CLI_EXAMPLES: set[str] = {"angular-cli"}
@@ -67,6 +71,13 @@ EXAMPLE_PORTS: dict[str, int] = {
     "nuxt": 5041,
     "astro": 5051,
     "jinja-htmx": 5061,
+}
+
+# External dev server target ports for CLI examples
+# These are the ports where external dev servers (not Vite) actually listen
+# For angular-cli: Angular CLI uses port 4200 by default, not the Litestar proxy port
+EXTERNAL_TARGET_PORTS: dict[str, int] = {
+    "angular-cli": 4200,  # Angular CLI always uses port 4200
 }
 
 RUNNING_PROCS: list[subprocess.Popen[bytes]] = []
@@ -289,10 +300,14 @@ class ExampleServer:
         For production mode:
         1. `litestar assets build` - Build frontend assets
         2. `litestar run` - Serve built assets via Litestar (auto-selects port)
-        3. For SSR: `litestar assets serve --production` - Start Node production server
+        3. For SSR only: `litestar assets serve --production` - Start Node production server
+
+        Note: SSG examples (Astro) do NOT need a production Node server - Litestar
+        serves the static files directly from the build output.
         """
         # Ensure the configured port is free before starting (for SSR production server)
-        self._ensure_port_free()
+        if self._is_ssr_example():
+            self._ensure_port_free()
 
         env = self._base_env(dev_mode=False)
 
@@ -314,11 +329,12 @@ class ExampleServer:
         self._captures.append(litestar_capture)
 
         # For SSR examples, also start production Node server
+        # SSG examples (Astro) do NOT need this - Litestar serves static files directly
         if self._is_ssr_example():
             # Verify build artifacts exist before attempting to serve
             self._verify_ssr_build()
 
-            ssr_patterns = [VITE_PORT_PATTERN, ASTRO_PORT_PATTERN, NUXT_PORT_PATTERN, LISTENING_PORT_PATTERN]
+            ssr_patterns = [VITE_PORT_PATTERN, NUXT_PORT_PATTERN, LISTENING_PORT_PATTERN]
             ssr_proc, ssr_capture = self._spawn_with_capture(
                 self._assets_serve_production_command(),
                 env=env,
@@ -326,6 +342,10 @@ class ExampleServer:
             )
             self._processes.append(ssr_proc)
             self._captures.append(ssr_capture)
+        elif self._is_ssg_example():
+            # SSG examples just need build verification - no production server needed
+            self._verify_ssr_build()
+            logger.info("SSG build verified for %s - Litestar will serve static files", self.example_name)
 
         self._dev_mode = False
         logger.info("Started production mode for %s", self.example_name)
@@ -358,13 +378,27 @@ class ExampleServer:
         logger.info("Litestar backend ready on port %d", self.litestar_port)
 
         if self._dev_mode:
-            # In dev mode, also verify Vite dev server is responding
-            self._verify_http_ready(port=self.vite_port, timeout=timeout)
-            logger.info("Vite dev server ready on port %d", self.vite_port)
+            # In dev mode, also verify the frontend dev server is responding
+            if self.example_name in CLI_EXAMPLES:
+                # CLI examples (angular-cli) use external dev servers that take time to build
+                # We check via Litestar proxy (which returns 503 until external server is ready)
+                # Don't check the external port directly - go through the Litestar proxy
+                self._verify_proxy_ready(timeout=timeout)
+                logger.info("External dev server ready (via Litestar proxy)")
+            elif self.example_name in SSR_EXAMPLES or self.example_name in SSG_EXAMPLES:
+                # SSR/SSG examples (nuxt, sveltekit, astro) use dynamic ports via hotfile
+                # Litestar proxy handles forwarding - if Litestar works, the dev server is working
+                logger.info("SSR/SSG dev server integrated via Litestar proxy")
+            else:
+                # Standard Vite examples - check the configured port
+                self._verify_http_ready(port=self.vite_port, timeout=timeout)
+                logger.info("Vite dev server ready on port %d", self.vite_port)
         elif self._is_ssr_example():
-            # In production SSR, verify the Node server is responding
+            # In production SSR (not SSG!), verify the Node server is responding
+            # SSG examples (astro) don't run a production server - Litestar serves static files
             self._verify_http_ready(port=self.vite_port, timeout=timeout)
             logger.info("SSR production server ready on port %d", self.vite_port)
+        # Note: SSG examples in production don't need additional checks - Litestar serves static files
 
         self._check_processes_alive()
 
@@ -398,6 +432,45 @@ class ExampleServer:
             time.sleep(0.5)
 
         raise TimeoutError(f"HTTP health check failed for {base_url}")
+
+    def _verify_proxy_ready(self, timeout: float = 60.0) -> None:
+        """Verify external dev server is ready via Litestar proxy.
+
+        For CLI examples (Angular CLI), the external server takes time to build.
+        We check via Litestar's proxy which returns 503 while building, then 200 when ready.
+
+        Args:
+            timeout: Maximum seconds to wait for proxy to return 200.
+
+        Raises:
+            TimeoutError: If proxy doesn't return 200 within timeout.
+        """
+        import httpx
+
+        start = time.monotonic()
+        base_url = f"http://127.0.0.1:{self.litestar_port}"
+        last_status = None
+
+        while time.monotonic() - start < timeout:
+            self._check_processes_alive()
+            try:
+                # Check root path through Litestar proxy
+                response = httpx.get(f"{base_url}/", timeout=5.0)
+                last_status = response.status_code
+                if response.status_code == 200:
+                    logger.info("Proxy ready: %s returned 200", base_url)
+                    return
+                if response.status_code == 503:
+                    # Still building - this is expected, keep waiting
+                    logger.debug("Proxy building: %s returned 503", base_url)
+            except httpx.RequestError as e:
+                logger.debug("Proxy request error: %s", e)
+            time.sleep(0.5)
+
+        raise TimeoutError(
+            f"Proxy health check failed for {base_url}. "
+            f"Last status: {last_status}. External dev server may still be building."
+        )
 
     def stop(self) -> None:
         """Terminate all child processes."""
@@ -664,12 +737,27 @@ class ExampleServer:
                 )
 
     def _is_ssr_example(self) -> bool:
-        """Check if this is an SSR example (Nuxt, SvelteKit, Astro).
+        """Check if this is an SSR example that needs a production Node server.
+
+        SSR examples (Nuxt, SvelteKit) run a Node server in production.
+        SSG examples (Astro) do NOT - they generate static files served by Litestar.
 
         Returns:
-            True if the example uses SSR framework.
+            True if the example needs a production Node server.
         """
         return self.example_name in SSR_EXAMPLES
+
+    def _is_ssg_example(self) -> bool:
+        """Check if this is an SSG (Static Site Generation) example.
+
+        SSG examples (Astro) generate static files at build time.
+        In dev mode, they run a dev server (like SSR).
+        In production, Litestar serves the static files directly (no Node server).
+
+        Returns:
+            True if the example uses SSG.
+        """
+        return self.example_name in SSG_EXAMPLES
 
     def _is_cli_example(self) -> bool:
         """Check if this is a CLI-based example (Angular CLI).
@@ -680,16 +768,16 @@ class ExampleServer:
         return self.example_name in CLI_EXAMPLES
 
     def _verify_ssr_build(self) -> None:
-        """Verify SSR build artifacts exist before serving.
+        """Verify SSR/SSG build artifacts exist before serving.
 
         Raises:
             RuntimeError: If required build artifacts are missing.
         """
-        # Map SSR examples to their expected build output directories
+        # Map SSR/SSG examples to their expected build output directories
         build_dirs: dict[str, list[str]] = {
             "sveltekit": ["build"],
             "nuxt": [".output", ".nuxt"],
-            "astro": ["dist"],
+            "astro": ["dist"],  # SSG - static files
         }
 
         expected_dirs = build_dirs.get(self.example_name, [])

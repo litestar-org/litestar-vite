@@ -550,7 +550,7 @@ class ViteConfig:
         deploy: Deployment configuration for CDN publishing.
     """
 
-    mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'ssr'] | None" = None
+    mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'ssr', 'ssg'] | None" = None
     paths: PathConfig = field(default_factory=PathConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     types: "TypeGenConfig | bool" = field(default_factory=lambda: TypeGenConfig(enabled=True))
@@ -566,6 +566,7 @@ class ViteConfig:
 
     def __post_init__(self) -> None:
         """Normalize configurations and apply shortcuts."""
+        self._normalize_mode()
         self._normalize_types()
         self._normalize_inertia()
         self._normalize_spa_flag()
@@ -577,6 +578,18 @@ class ViteConfig:
         self._ensure_spa_default()
         self._auto_enable_dev_mode()
         self._warn_missing_assets()
+
+    def _normalize_mode(self) -> None:
+        """Normalize mode aliases.
+
+        - 'ssg' (Static Site Generation) is an alias for 'ssr' since both need
+          proxy mode in development (to forward to framework dev server) but
+          serve static files in production. The key difference is just semantic:
+          SSG builds static HTML at build time, SSR renders at request time,
+          but the Litestar integration behavior is identical.
+        """
+        if self.mode == "ssg":
+            self.mode = "ssr"
 
     def _normalize_types(self) -> None:
         if self.types is True:

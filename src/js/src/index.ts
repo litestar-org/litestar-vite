@@ -1082,9 +1082,9 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
         } else {
           args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
 
-          const plugins = ["@hey-api/types", "@hey-api/schemas"]
+          const plugins = ["@hey-api/typescript", "@hey-api/schemas"]
           if (typesConfig.generateSdk) {
-            plugins.push("@hey-api/services", "@hey-api/client-axios")
+            plugins.push("@hey-api/sdk", "@hey-api/client-axios")
           }
           if (typesConfig.generateZod) {
             plugins.push("zod")
@@ -1178,6 +1178,17 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
         resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("watching schema/routes:")} ${colors.yellow(openapiAbs)}, ${colors.yellow(routesAbs)}`)
         if (chosenConfigPath) {
           resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("openapi-ts config:")} ${colors.yellow(chosenConfigPath)}`)
+        }
+      }
+    },
+
+    async buildStart() {
+      // Run type generation at build start if enabled and openapi.json exists
+      if (typesConfig.enabled) {
+        const projectRoot = resolvedConfig?.root ?? process.cwd()
+        const openapiPath = path.resolve(projectRoot, typesConfig.openapiPath)
+        if (fs.existsSync(openapiPath)) {
+          await runTypeGeneration()
         }
       }
     },

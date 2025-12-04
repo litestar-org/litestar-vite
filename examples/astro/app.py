@@ -85,7 +85,7 @@ class LibraryController(Controller):
 
 vite = VitePlugin(
     config=ViteConfig(
-        mode="ssr",  # SSR/SSG mode: proxy in dev, serve static in prod
+        mode="ssg",  # Static Site Generation: proxy in dev, serve static in prod
         dev_mode=DEV_MODE,
         paths=PathConfig(
             root=here,

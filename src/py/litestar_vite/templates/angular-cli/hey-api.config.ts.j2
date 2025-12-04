@@ -6,8 +6,11 @@ export default defineConfig({
   plugins: [
     "@hey-api/typescript",
     "@hey-api/schemas",
-    "@hey-api/sdk",
-    "@hey-api/client-axios",
+    {
+      name: "@hey-api/sdk",
+      asClass: true,
+    },
+    "@hey-api/client-angular",
 {%- if generate_zod %}
     "zod",
 {%- endif %}

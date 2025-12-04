@@ -12,8 +12,8 @@
   "dependencies": {
     "vue": "latest",
     "@inertiajs/vue3": "latest",
-    "zod": "^3.24.0",
-    "axios": "^1.7.7"
+    "zod": "^4.0.0",
+    "axios": "^1.13.2"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "latest",

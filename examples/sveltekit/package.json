@@ -13,19 +13,18 @@
   "dependencies": {
     "svelte": "latest",
     "@sveltejs/kit": "latest",
-    "axios": "^1.7.7",
-    "zod": "^3.24.0"
+    "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "latest",
-    "@sveltejs/adapter-node": "latest",
-    "svelte-check": "latest",
-    "typescript": "latest",
-    "tslib": "latest",
-    "@tailwindcss/vite": "^4.0.0",
-    "tailwindcss": "^4.0.0",
     "@hey-api/openapi-ts": "^0.88.0",
+    "@sveltejs/adapter-node": "latest",
+    "@sveltejs/vite-plugin-svelte": "latest",
+    "@tailwindcss/vite": "^4.0.0",
     "litestar-vite-plugin": "file:../..",
+    "svelte-check": "latest",
+    "tailwindcss": "^4.0.0",
+    "tslib": "latest",
+    "typescript": "latest",
     "vite": "^7.0.0"
   }
 }
