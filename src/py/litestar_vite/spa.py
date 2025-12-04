@@ -7,8 +7,12 @@ In dev mode, it proxies requests to the Vite dev server for HMR support.
 In production, it serves the built index.html with async caching.
 
 HTML transformations are applied based on SPAConfig settings:
-- Route metadata injection (window.__LITESTAR_ROUTES__)
+- CSRF token injection (window.__LITESTAR_CSRF__)
 - Page data injection for Inertia.js (data-page attribute)
+
+Note:
+    Route metadata is now generated as TypeScript (routes.ts) at build time.
+    See TypeGenConfig.generate_routes to enable typed route generation.
 """
 
 from contextlib import suppress
@@ -38,7 +42,7 @@ class ViteSPAHandler:
     It supports:
     - Development mode: Proxies to Vite dev server for HMR
     - Production mode: Serves built index.html with caching
-    - Route metadata injection: Injects route info for client-side routing
+    - CSRF token injection: Injects token for form submissions
     - Page data injection: Injects Inertia.js page props as data attributes
 
     Performance optimizations:
@@ -47,6 +51,10 @@ class ViteSPAHandler:
     - Transformed HTML cached in production to avoid repeated transformations
     - Uses __slots__ for reduced memory footprint
 
+    Note:
+        Route metadata is now generated as TypeScript (routes.ts) at build time.
+        See TypeGenConfig.generate_routes to enable typed route generation.
+
     Attributes:
         config: The Vite configuration.
 
@@ -54,10 +62,6 @@ class ViteSPAHandler:
         handler = ViteSPAHandler(config)
         await handler.initialize()
         html = await handler.get_html(request)
-
-        # With route metadata injection
-        handler.set_routes_metadata({"home": {"uri": "/", "methods": ["GET"]}})
-        html = await handler.get_html(request)  # Includes window.__LITESTAR_ROUTES__
 
         # With page data (for Inertia.js)
         html = await handler.get_html(request, page_data={"component": "Home", "props": {...}})
@@ -71,7 +75,6 @@ class ViteSPAHandler:
         "_http_client",
         "_http_client_sync",
         "_initialized",
-        "_routes_metadata",
         "_spa_config",
         "_vite_url",
     )
@@ -87,7 +90,6 @@ class ViteSPAHandler:
         self._cached_html: "str | None" = None
         self._cached_bytes: "bytes | None" = None
         self._cached_transformed_html: "str | None" = None
-        self._routes_metadata: "dict[str, Any] | None" = None
         self._initialized = False
         self._http_client: "httpx.AsyncClient | None" = None
         self._http_client_sync: "httpx.Client | None" = None
@@ -157,39 +159,23 @@ class ViteSPAHandler:
                 self._http_client_sync.close()
             self._http_client_sync = None
 
-    def set_routes_metadata(self, routes: dict[str, Any]) -> None:
-        """Set route metadata for injection into HTML.
-
-        This method stores route metadata that will be injected as a global
-        JavaScript variable (e.g., window.__LITESTAR_ROUTES__) when get_html()
-        is called with a configured SPAConfig.
-
-        Args:
-            routes: Route metadata dictionary from generate_routes_json().
-                    Expected format: {"routes": {"name": {"uri": "/path", "methods": [...]}}}
-
-        Note:
-            Calling this method invalidates any cached transformed HTML,
-            ensuring the next request gets fresh content with updated routes.
-        """
-        self._routes_metadata = routes
-        # Invalidate cached transformed HTML when routes change
-        self._cached_transformed_html = None
-
     def _transform_html(
         self,
         html: str,
         page_data: "dict[str, Any] | None" = None,
         csrf_token: "str | None" = None,
     ) -> str:
-        """Transform HTML by injecting route metadata, CSRF token, and/or page data.
+        """Transform HTML by injecting CSRF token and/or page data.
 
         This method applies transformations based on SPAConfig settings:
-        - Injects route metadata as a global JavaScript variable
         - Injects CSRF token as a global JavaScript variable
         - Injects page data as a data attribute on the app element
 
         Uses msgspec for fast JSON serialization.
+
+        Note:
+            Route metadata is now generated as TypeScript (routes.ts) at build time
+            instead of runtime injection. See TypeGenConfig.generate_routes.
 
         Args:
             html: The raw HTML content to transform.
@@ -206,14 +192,6 @@ class ViteSPAHandler:
                 json_data = msgspec.json.encode(page_data).decode("utf-8")
                 html = HtmlTransformer.set_data_attribute(html, "#app", "data-page", json_data)
             return html
-
-        # Inject route metadata if configured
-        if self._spa_config.inject_routes and self._routes_metadata is not None:
-            html = HtmlTransformer.inject_json_script(
-                html,
-                self._spa_config.routes_var_name,
-                self._routes_metadata,
-            )
 
         # Inject CSRF token if configured
         if self._spa_config.inject_csrf and csrf_token:

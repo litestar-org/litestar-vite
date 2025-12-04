@@ -385,10 +385,8 @@ def test_spa_config_defaults() -> None:
     """Test SPAConfig has sensible defaults."""
     spa_config = SPAConfig()
 
-    assert spa_config.inject_routes is True
-    assert spa_config.routes_var_name == "__LITESTAR_ROUTES__"
-    assert spa_config.routes_include is None
-    assert spa_config.routes_exclude == ["vite_spa"]  # Excludes catch-all by default
+    assert spa_config.inject_csrf is True
+    assert spa_config.csrf_var_name == "__LITESTAR_CSRF__"
     assert spa_config.app_selector == "#app"
     assert spa_config.cache_transformed_html is True
 
@@ -396,18 +394,14 @@ def test_spa_config_defaults() -> None:
 def test_spa_config_custom_values() -> None:
     """Test SPAConfig with custom values."""
     spa_config = SPAConfig(
-        inject_routes=False,
-        routes_var_name="ROUTES",
-        routes_include=["api_*", "public_*"],
-        routes_exclude=["_internal"],
+        inject_csrf=False,
+        csrf_var_name="CSRF_TOKEN",
         app_selector="#root",
         cache_transformed_html=False,
     )
 
-    assert spa_config.inject_routes is False
-    assert spa_config.routes_var_name == "ROUTES"
-    assert spa_config.routes_include == ["api_*", "public_*"]
-    assert spa_config.routes_exclude == ["_internal"]
+    assert spa_config.inject_csrf is False
+    assert spa_config.csrf_var_name == "CSRF_TOKEN"
     assert spa_config.app_selector == "#root"
     assert spa_config.cache_transformed_html is False
 
@@ -418,8 +412,8 @@ def test_vite_config_spa_bool_shortcut() -> None:
 
     assert isinstance(config.spa, SPAConfig)
     assert config.spa_config is not None
-    assert config.spa_config.inject_routes is True
-    assert config.spa_config.routes_var_name == "__LITESTAR_ROUTES__"
+    assert config.spa_config.inject_csrf is True
+    assert config.spa_config.csrf_var_name == "__LITESTAR_CSRF__"
 
 
 def test_vite_config_spa_false() -> None:
@@ -433,15 +427,15 @@ def test_vite_config_spa_false() -> None:
 def test_vite_config_spa_explicit_config() -> None:
     """Test spa can be set to an explicit SPAConfig."""
     spa_config = SPAConfig(
-        routes_var_name="__CUSTOM_ROUTES__",
-        routes_exclude=["_internal*"],
+        csrf_var_name="__CUSTOM_CSRF__",
+        app_selector="#custom-app",
     )
     config = ViteConfig(spa=spa_config)
 
     assert config.spa is spa_config
     assert config.spa_config is spa_config
-    assert config.spa_config.routes_var_name == "__CUSTOM_ROUTES__"
-    assert config.spa_config.routes_exclude == ["_internal*"]
+    assert config.spa_config.csrf_var_name == "__CUSTOM_CSRF__"
+    assert config.spa_config.app_selector == "#custom-app"
 
 
 def test_vite_config_spa_auto_enabled_for_spa_mode(tmp_path: Path) -> None:
@@ -458,7 +452,7 @@ def test_vite_config_spa_auto_enabled_for_spa_mode(tmp_path: Path) -> None:
 
     assert isinstance(config.spa, SPAConfig)
     assert config.spa_config is not None
-    assert config.spa_config.inject_routes is True
+    assert config.spa_config.inject_csrf is True
 
 
 def test_vite_config_spa_not_auto_enabled_for_template_mode() -> None:

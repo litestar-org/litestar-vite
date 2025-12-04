@@ -437,9 +437,11 @@ class TypeGenConfig:
         enabled: Enable type generation pipeline.
         output: Output directory for generated types.
         openapi_path: Path to export OpenAPI schema.
-        routes_path: Path to export routes metadata.
+        routes_path: Path to export routes metadata (JSON format).
+        routes_ts_path: Path to export typed routes TypeScript file.
         generate_zod: Generate Zod schemas from OpenAPI.
         generate_sdk: Generate SDK client from OpenAPI.
+        generate_routes: Generate typed routes.ts file (Ziggy-style).
         watch_patterns: File patterns to watch for type regeneration.
     """
 
@@ -447,8 +449,10 @@ class TypeGenConfig:
     output: Path = field(default_factory=lambda: Path("src/generated"))
     openapi_path: Path = field(default_factory=lambda: Path("src/generated/openapi.json"))
     routes_path: Path = field(default_factory=lambda: Path("src/generated/routes.json"))
+    routes_ts_path: "Path | None" = None
     generate_zod: bool = False
     generate_sdk: bool = True
+    generate_routes: bool = True
     watch_patterns: list[str] = field(
         default_factory=lambda: ["**/routes.py", "**/handlers.py", "**/controllers/**/*.py"]
     )
@@ -461,24 +465,8 @@ class TypeGenConfig:
             self.openapi_path = Path(self.openapi_path)
         if isinstance(self.routes_path, str):
             self.routes_path = Path(self.routes_path)
-
-
-def _optional_str_list_factory() -> "list[str] | None":
-    """Factory function returning None for optional list fields.
-
-    Returns:
-        None
-    """
-    return None
-
-
-def _default_routes_exclude_factory() -> list[str]:
-    """Factory function for default route exclusions.
-
-    Returns:
-        List of default route exclusion patterns.
-    """
-    return ["vite_spa"]  # Exclude the catch-all SPA handler route by default
+        if isinstance(self.routes_ts_path, str):
+            self.routes_ts_path = Path(self.routes_ts_path)
 
 
 @dataclass
@@ -486,26 +474,21 @@ class SPAConfig:
     """Configuration for SPA HTML transformations.
 
     This configuration controls how the SPA HTML is transformed before serving,
-    including route metadata injection, CSRF token injection, and Inertia.js
-    page data handling.
+    including CSRF token injection and Inertia.js page data handling.
+
+    Note:
+        Route metadata is now generated as TypeScript (routes.ts) at build time
+        instead of runtime injection. Use TypeGenConfig.generate_routes to enable.
 
     Attributes:
-        inject_routes: Whether to inject route metadata into HTML.
         inject_csrf: Whether to inject CSRF token into HTML (as window.__LITESTAR_CSRF__).
-        routes_var_name: Global variable name for routes (e.g., window.__LITESTAR_ROUTES__).
         csrf_var_name: Global variable name for CSRF token (e.g., window.__LITESTAR_CSRF__).
-        routes_include: Whitelist patterns for route filtering (None = include all).
-        routes_exclude: Blacklist patterns for route filtering (None = exclude none).
         app_selector: CSS selector for the app root element (used for data attributes).
         cache_transformed_html: Cache transformed HTML in production; disabled when inject_csrf=True because CSRF tokens are per-request.
     """
 
-    inject_routes: bool = True
     inject_csrf: bool = True
-    routes_var_name: str = "__LITESTAR_ROUTES__"
     csrf_var_name: str = "__LITESTAR_CSRF__"
-    routes_include: "list[str] | None" = field(default_factory=_optional_str_list_factory)
-    routes_exclude: "list[str] | None" = field(default_factory=_default_routes_exclude_factory)
     app_selector: str = "#app"
     cache_transformed_html: bool = True
 
@@ -692,9 +675,16 @@ class ViteConfig:
         if types.routes_path == default_routes and types.output != default_rel:
             types.routes_path = types.output / "routes.json"
 
+        # Set default routes_ts_path if not specified
+        if types.routes_ts_path is None or (
+            types.routes_ts_path == default_rel / "routes.ts" and types.output != default_rel
+        ):
+            types.routes_ts_path = types.output / "routes.ts"
+
         types.output = _to_root(types.output)
         types.openapi_path = _to_root(types.openapi_path)
         types.routes_path = _to_root(types.routes_path)
+        types.routes_ts_path = _to_root(types.routes_ts_path)
 
     def _ensure_spa_default(self) -> None:
         if self.mode in {"spa", "hybrid"} and self.spa is None:

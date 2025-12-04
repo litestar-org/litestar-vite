@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import litestar from "../src"
-import { currentRoute, getRelativeUrlPath, isCurrentRoute, isRoute, resolvePageComponent, route, toRoute } from "../src/inertia-helpers"
+import { resolvePageComponent } from "../src/inertia-helpers"
 
 // Mock the fs module
 vi.mock("fs", async () => {
@@ -794,120 +794,6 @@ describe("inertia-helpers", () => {
     await expect(resolvePageComponent<{ default: string }>("missing-page", pages)).rejects.toThrow("Page not found: missing-page")
   })
 
-  describe("route() edge cases", () => {
-    it("handles missing route names", () => {
-      expect(route("non-existent-route")).toBe("#")
-    })
-
-    it("handles array arguments", () => {
-      const result = route("users:get", ["123e4567-e89b-12d3-a456-426614174000"])
-      expect(result).toContain("/api/users/get/123e4567-e89b-12d3-a456-426614174000")
-    })
-
-    it("handles wrong number of arguments", () => {
-      expect(route("users:get", [])).toBe("#")
-    })
-
-    it("handles missing arguments in object", () => {
-      expect(route("users:get", { wrong_id: "123" })).toBe("#")
-    })
-  })
-
-  describe("getRelativeUrlPath()", () => {
-    it("handles invalid URLs", () => {
-      expect(getRelativeUrlPath("invalid-url")).toBe("invalid-url")
-    })
-
-    it("preserves query parameters and hash", () => {
-      expect(getRelativeUrlPath("http://example.com/path?query=1#hash")).toBe("/path?query=1#hash")
-    })
-  })
-
-  describe("toRoute()", () => {
-    it("handles root path", () => {
-      expect(toRoute("/")).toBe("home")
-    })
-
-    it("handles UUID parameters", () => {
-      expect(toRoute("/api/users/get/123e4567-e89b-12d3-a456-426614174000")).toBe("users:get")
-    })
-
-    it("handles path parameters", () => {
-      expect(toRoute("/saq/static/some/deep/path")).toBe("saq")
-    })
-
-    it("handles non-matching routes", () => {
-      expect(toRoute("/non-existent")).toBe(null)
-    })
-
-    it("handles trailing slashes", () => {
-      expect(toRoute("/api/users/list/")).toBe("users:list")
-    })
-  })
-
-  describe("currentRoute()", () => {
-    beforeEach(() => {
-      Object.defineProperty(window, "location", {
-        value: {
-          pathname: "/api/users/list",
-        },
-        writable: true,
-      })
-    })
-
-    it("returns current route name", () => {
-      expect(currentRoute()).toBe("users:list")
-    })
-
-    it("returns null for non-matching routes", () => {
-      window.location.pathname = "/non-existent"
-      expect(currentRoute()).toBe(null)
-    })
-  })
-
-  describe("isRoute()", () => {
-    it("matches exact routes", () => {
-      expect(isRoute("/api/users/list", "users:list")).toBe(true)
-    })
-
-    it("matches routes with parameters", () => {
-      expect(isRoute("/api/users/get/123e4567-e89b-12d3-a456-426614174000", "users:*")).toBe(true)
-    })
-
-    it("handles non-matching routes", () => {
-      expect(isRoute("/non-existent", "users:*")).toBe(false)
-    })
-
-    it("matches routes with path parameters", () => {
-      expect(isRoute("/saq/static/deep/nested/path", "saq")).toBe(true)
-    })
-  })
-
-  describe("isCurrentRoute()", () => {
-    beforeEach(() => {
-      Object.defineProperty(window, "location", {
-        value: {
-          pathname: "/api/users/list",
-        },
-        writable: true,
-      })
-    })
-
-    it("matches current route with pattern", () => {
-      expect(isCurrentRoute("users:*")).toBe(true)
-    })
-
-    it("handles exact matches", () => {
-      expect(isCurrentRoute("users:list")).toBe(true)
-    })
-
-    it("handles non-matching routes", () => {
-      expect(isCurrentRoute("teams:*")).toBe(false)
-    })
-
-    it("handles invalid current route", () => {
-      window.location.pathname = "/non-existent"
-      expect(isCurrentRoute("users:*")).toBe(false)
-    })
-  })
+  // Note: Route utility tests removed - use generated routes.ts instead
+  // See: import { route, routes } from '@/generated/routes'
 })

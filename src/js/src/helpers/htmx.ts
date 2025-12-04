@@ -1,13 +1,17 @@
 /**
  * Litestar HTMX Extension
  *
- * Lightweight JSON templating for HTMX with typed routes and CSRF.
+ * Lightweight JSON templating for HTMX with CSRF support.
  *
  * Features:
  * - `hx-swap="json"` - Client-side JSON templating
- * - `hx-route` - Typed route URL generation
  * - Automatic CSRF token injection
  * - Template syntax: `ls-for`, `ls-if`, `:attr`, `@event`, `${expr}`
+ *
+ * For typed routes, import from your generated routes file:
+ * ```ts
+ * import { route } from '@/generated/routes'
+ * ```
  *
  * @example
  * ```html
@@ -25,7 +29,9 @@
  */
 
 import { getCsrfToken } from "./csrf.js"
-import { getRoutes, route } from "./routes.js"
+
+/** Type for route function - matches generated routes.ts */
+type RouteFn = (name: string, params?: Record<string, string | number>) => string
 
 declare global {
   interface Window {
@@ -53,8 +59,8 @@ interface Ctx {
   $index?: number
   $key?: string
   $event?: Event
-  route: typeof route
-  navigate: (name: string, params?: Record<string, string | number>) => void
+  route?: RouteFn
+  navigate?: (name: string, params?: Record<string, string | number>) => void
   [key: string]: unknown
 }
 
@@ -70,18 +76,10 @@ export function registerHtmxExtension(): void {
   if (typeof window === "undefined" || !window.htmx) return
 
   window.htmx.defineExtension("litestar", {
-    init() {
-      document.querySelectorAll("[hx-route]").forEach((el) => processRoute(el as HTMLElement))
-    },
-
     onEvent(name, evt) {
       if (name === "htmx:configRequest") {
         const token = getCsrfToken()
         if (token) (evt.detail as { headers: Record<string, string> }).headers["X-CSRF-Token"] = token
-      }
-      if (name === "htmx:afterProcessNode") {
-        const el = (evt.detail as { elt: Element }).elt
-        if (el instanceof HTMLElement && el.hasAttribute("hx-route")) processRoute(el)
       }
       return true
     },
@@ -114,28 +112,11 @@ export function registerHtmxExtension(): void {
 }
 
 // =============================================================================
-// Typed Routes (hx-route)
+// Note: hx-route functionality removed - use generated routes directly
+// Import route from your generated routes.ts file instead:
+//   import { route } from '@/generated/routes'
+//   element.setAttribute('hx-get', route('my_route', { id: 123 }))
 // =============================================================================
-
-function processRoute(el: HTMLElement): void {
-  const name = el.getAttribute("hx-route")
-  if (!name || !getRoutes()) return
-
-  let params: Record<string, string | number> | undefined
-  try {
-    const p = el.getAttribute("hx-route-params")
-    if (p) params = JSON.parse(p)
-  } catch {}
-
-  const url = params ? route(name, params) : route(name)
-  if (url === "#") return
-
-  const method = el.getAttribute("hx-route-method")?.toLowerCase() ?? "get"
-  el.setAttribute(`hx-${method}`, url)
-  el.removeAttribute("hx-route")
-  el.removeAttribute("hx-route-params")
-  el.removeAttribute("hx-route-method")
-}
 
 // =============================================================================
 // JSON Swap Entry Point
@@ -449,10 +430,8 @@ function ifDir(tpl: HTMLTemplateElement, ctx: Ctx, _parentEnd?: Node, parse = fa
 function rootCtx(data: unknown): Ctx {
   const ctx: Ctx = {
     $data: data,
-    route,
-    navigate: (n, p) => {
-      window.location.href = route(n, p)
-    },
+    // Note: route and navigate are optional - users can provide their own
+    // by importing from their generated routes.ts file
   }
   if (data && typeof data === "object") Object.setPrototypeOf(ctx, data)
   return ctx

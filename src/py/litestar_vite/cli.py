@@ -802,6 +802,15 @@ def vite_serve(app: "Litestar", verbose: "bool", production: "bool") -> None:
     default=True,
     is_flag=True,
 )
+@option(
+    "--typescript",
+    "--ts",
+    "typescript",
+    help="Generate typed routes.ts file (Ziggy-style) instead of JSON",
+    type=bool,
+    default=False,
+    is_flag=True,
+)
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def export_routes(
     app: "Litestar",
@@ -809,6 +818,7 @@ def export_routes(
     only: "str | None",
     exclude: "str | None",
     include_components: "bool",
+    typescript: "bool",
     verbose: "bool",
 ) -> None:
     """Export route metadata for type-safe routing.
@@ -819,6 +829,7 @@ def export_routes(
         only: Comma-separated list of route patterns to include.
         exclude: Comma-separated list of route patterns to exclude.
         include_components: Include Inertia component names in output.
+        typescript: Generate typed routes.ts file instead of JSON.
         verbose: Whether to enable verbose output.
 
     Raises:
@@ -827,7 +838,7 @@ def export_routes(
     import msgspec
     from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
 
-    from litestar_vite.codegen import generate_routes_json
+    from litestar_vite.codegen import generate_routes_json, generate_routes_ts
     from litestar_vite.config import TypeGenConfig
     from litestar_vite.plugin import VitePlugin
 
@@ -837,39 +848,62 @@ def export_routes(
     plugin = app.plugins.get(VitePlugin)
     config = plugin.config
 
-    # Determine output path
-    if output is None:
-        if isinstance(config.types, TypeGenConfig) and config.types.enabled:
-            output = config.types.routes_path
-        else:
-            output = Path("routes.json")
-
-    console.rule(f"[yellow]Exporting routes to {output}[/]", align="left")
-
     # Parse filter lists
     only_list = [p.strip() for p in only.split(",")] if only else None
     exclude_list = [p.strip() for p in exclude.split(",")] if exclude else None
 
-    # Generate routes JSON
-    routes_data = generate_routes_json(
-        app,
-        only=only_list,
-        exclude=exclude_list,
-        include_components=include_components,
-    )
+    if typescript:
+        # Generate typed routes.ts file
+        if output is None:
+            if isinstance(config.types, TypeGenConfig) and config.types.enabled and config.types.routes_ts_path:
+                output = config.types.routes_ts_path
+            else:
+                output = Path("routes.ts")
 
-    try:
-        content = msgspec.json.format(
-            msgspec.json.encode(routes_data),
-            indent=2,
+        console.rule(f"[yellow]Exporting typed routes to {output}[/]", align="left")
+
+        routes_ts_content = generate_routes_ts(
+            app,
+            only=only_list,
+            exclude=exclude_list,
         )
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_bytes(content)
-        console.print(f"[green]✓ Routes exported to {output}[/]")
-        console.print(f"[dim]  {len(routes_data.get('routes', {}))} routes exported[/]")
-    except OSError as e:  # pragma: no cover
-        msg = f"Failed to write routes to path {output}"
-        raise LitestarCLIException(msg) from e
+
+        try:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(routes_ts_content, encoding="utf-8")
+            console.print(f"[green]✓ Typed routes exported to {output}[/]")
+        except OSError as e:  # pragma: no cover
+            msg = f"Failed to write routes to path {output}"
+            raise LitestarCLIException(msg) from e
+    else:
+        # Generate routes JSON (existing behavior)
+        if output is None:
+            if isinstance(config.types, TypeGenConfig) and config.types.enabled:
+                output = config.types.routes_path
+            else:
+                output = Path("routes.json")
+
+        console.rule(f"[yellow]Exporting routes to {output}[/]", align="left")
+
+        routes_data = generate_routes_json(
+            app,
+            only=only_list,
+            exclude=exclude_list,
+            include_components=include_components,
+        )
+
+        try:
+            content = msgspec.json.format(
+                msgspec.json.encode(routes_data),
+                indent=2,
+            )
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(content)
+            console.print(f"[green]✓ Routes exported to {output}[/]")
+            console.print(f"[dim]  {len(routes_data.get('routes', {}))} routes exported[/]")
+        except OSError as e:  # pragma: no cover
+            msg = f"Failed to write routes to path {output}"
+            raise LitestarCLIException(msg) from e
 
 
 def _export_openapi_schema(app: "Litestar", types_config: Any) -> None:

@@ -338,21 +338,8 @@ describe("htmx extension", () => {
     })
 
     describe("context helpers", () => {
-      it("provides route() helper", () => {
-        // Mock routes using correct structure: window.__LITESTAR_ROUTES__.routes with uri field
-        ;(window as Record<string, unknown>).__LITESTAR_ROUTES__ = {
-          routes: {
-            "api:books": { uri: "/api/books", methods: ["GET"] },
-          },
-        }
-
-        container.innerHTML = "<a :href=\"route('api:books')\">Books</a>"
-        swapJson(container, {})
-        // route() returns full URL with origin, so check it contains the path
-        expect(container.querySelector("a")?.getAttribute("href")).toContain("/api/books")
-
-        delete (window as Record<string, unknown>).__LITESTAR_ROUTES__
-      })
+      // Note: route() helper is no longer built-in. Users should import from generated routes.ts
+      // See: import { route } from '@/generated/routes'
 
       it("provides $data alias for root data", () => {
         container.innerHTML = "<p>${JSON.stringify($data)}</p>"

@@ -1820,8 +1820,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
     def _export_types_sync(self, app: "Litestar") -> None:
         """Export type metadata synchronously on startup.
 
-        This exports OpenAPI schema and route metadata when type generation
-        is enabled. The Vite plugin watches these files and triggers
+        This exports OpenAPI schema, route metadata (JSON), and typed routes (TypeScript)
+        when type generation is enabled. The Vite plugin watches these files and triggers
         @hey-api/openapi-ts when they change.
 
         Args:
@@ -1836,7 +1836,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             import msgspec
             from litestar.serialization import encode_json, get_serializer
 
-            from litestar_vite.codegen import generate_routes_json
+            from litestar_vite.codegen import generate_routes_json, generate_routes_ts
 
             _log_info("Exporting type metadata for Vite...")
 
@@ -1846,12 +1846,15 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
             openapi_plugin = next((p for p in app.plugins._plugins if isinstance(p, OpenAPIPlugin)), None)  # pyright: ignore[reportPrivateUsage]
             has_openapi = openapi_plugin is not None and openapi_plugin._openapi_config is not None  # pyright: ignore[reportPrivateUsage]
+            openapi_schema: "dict[str, Any] | None" = None
+
             if has_openapi:
                 try:
                     serializer = get_serializer(
                         app.type_encoders if isinstance(getattr(app, "type_encoders", None), dict) else None
                     )
                     schema_dict = app.openapi_schema.to_schema()
+                    openapi_schema = schema_dict
                     schema_content = msgspec.json.format(
                         encode_json(schema_dict, serializer=serializer),
                         indent=2,
@@ -1863,14 +1866,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             else:
                 console.print("[yellow]! OpenAPI schema not available; skipping openapi.json export[/]")
 
-            # Export routes
-            openapi_schema = None
-            if getattr(app, "openapi_schema", None) is not None:
-                try:
-                    openapi_schema = app.openapi_schema.to_schema()
-                except (AttributeError, TypeError, ValueError):  # pragma: no cover - OpenAPI not configured
-                    openapi_schema = None
-
+            # Export routes JSON
             routes_data = generate_routes_json(app, include_components=True, openapi_schema=openapi_schema)
             routes_data["litestar_version"] = _resolve_litestar_version()
             routes_content = msgspec.json.format(
@@ -1880,72 +1876,26 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._config.types.routes_path.parent.mkdir(parents=True, exist_ok=True)
             self._config.types.routes_path.write_bytes(routes_content)
 
-            _log_success(
-                f"Types exported → {_fmt_path(self._config.types.routes_path)}"
-                + (f" (openapi: {_fmt_path(self._config.types.openapi_path)})" if has_openapi else " (openapi skipped)")
-            )
+            # Export typed routes TypeScript file
+            routes_ts_exported = False
+            if self._config.types.generate_routes and self._config.types.routes_ts_path is not None:
+                try:
+                    routes_ts_content = generate_routes_ts(app, openapi_schema=openapi_schema)
+                    self._config.types.routes_ts_path.parent.mkdir(parents=True, exist_ok=True)
+                    self._config.types.routes_ts_path.write_text(routes_ts_content, encoding="utf-8")
+                    routes_ts_exported = True
+                except (TypeError, ValueError, OSError) as exc:  # pragma: no cover
+                    console.print(f"[yellow]! routes.ts export skipped: {exc}[/]")
+
+            # Log success
+            exported_files = [_fmt_path(self._config.types.routes_path)]
+            if has_openapi:
+                exported_files.append(f"openapi: {_fmt_path(self._config.types.openapi_path)}")
+            if routes_ts_exported and self._config.types.routes_ts_path is not None:
+                exported_files.append(f"routes.ts: {_fmt_path(self._config.types.routes_ts_path)}")
+            _log_success(f"Types exported → {', '.join(exported_files)}")
         except (OSError, TypeError, ValueError, ImportError) as e:  # pragma: no cover
             _log_warn(f"Type export failed: {e}")
-
-    def _inject_routes_to_spa_handler(self, app: "Litestar") -> None:
-        """Extract route metadata and inject it into the SPA handler.
-
-        This method is called during lifespan startup when SPA route injection
-        is enabled. It uses generate_routes_json() to extract routes and passes
-        them to the SPA handler for HTML injection.
-
-        Args:
-            app: The Litestar application instance.
-        """
-        spa_config = self._config.spa_config
-        if self._spa_handler is None or spa_config is None:
-            return
-
-        if not spa_config.inject_routes:
-            return
-
-        try:
-            from litestar_vite.codegen import generate_routes_json
-
-            openapi_schema = None
-            if getattr(app, "openapi_schema", None) is not None:
-                try:
-                    openapi_schema = app.openapi_schema.to_schema()
-                except (AttributeError, TypeError, ValueError):  # pragma: no cover - OpenAPI not configured
-                    openapi_schema = None
-
-            # Extract routes with filtering
-            routes_data = generate_routes_json(
-                app,
-                only=spa_config.routes_include,
-                exclude=spa_config.routes_exclude,
-                include_components=True,
-                openapi_schema=openapi_schema,
-            )
-            # Filter out schema routes and HEAD/OPTIONS-only routes to keep SPA metadata lean
-            routes = routes_data.get("routes", {})
-            filtered_routes: dict[str, Any] = {}
-            for name, route in routes.items():
-                uri = route.get("uri", "")
-                methods: list[str] = route.get("methods", [])
-
-                # Skip schema-related routes
-                if uri.startswith("/schema"):
-                    continue
-
-                # Skip routes that only expose HEAD/OPTIONS
-                method_set = {m.upper() for m in methods}
-                if method_set and method_set.issubset({"HEAD", "OPTIONS"}):
-                    continue
-
-                filtered_routes[name] = route
-
-            routes_data["routes"] = filtered_routes
-
-            self._spa_handler.set_routes_metadata(routes_data)
-            _log_success(f"Injected {len(filtered_routes)} routes into SPA handler")
-        except (ImportError, TypeError, ValueError, AttributeError) as e:
-            _log_warn(f"Route injection failed: {e}")
 
     @contextmanager
     def server_lifespan(self, app: "Litestar") -> "Iterator[None]":
@@ -2057,9 +2007,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 "Vite dev server is disabled (dev_mode=False) but no index.html was found. "
                 "Run your front-end build or set VITE_DEV_MODE=1 to enable HMR."
             )
-
-        # Inject route metadata into SPA handler (if configured)
-        self._inject_routes_to_spa_handler(app)
 
         try:
             yield
