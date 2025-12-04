@@ -215,3 +215,4 @@ examples/*/.output
 examples/*/.angular
 coverage/
 examples/flash/public
+coverage.json
