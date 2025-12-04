@@ -30,7 +30,7 @@ license = { text = "MIT" }
 name = "litestar-vite"
 readme = "README.md"
 requires-python = ">=3.10"
-version = "0.15.0-alpha.4"
+version = "0.15.0-alpha.5"
 
 [project.urls]
 Changelog = "https://litestar-org.github.io/litestar-vite/latest/changelog"
@@ -93,7 +93,7 @@ test = [
 allow_dirty = true
 commit = false
 commit_args = "--no-verify"
-current_version = "0.15.0-alpha.4"
+current_version = "0.15.0-alpha.5"
 ignore_missing_files = false
 ignore_missing_version = false
 message = "chore(release): bump to `v{new_version}`"

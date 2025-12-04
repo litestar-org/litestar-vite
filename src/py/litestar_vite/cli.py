@@ -1002,7 +1002,7 @@ def _run_openapi_ts(
         config_path = next((p for p in candidate_configs if p.exists()), None)
 
         if config_path is not None:
-            openapi_cmd = [*pkg_cmd, "--config", str(config_path)]
+            openapi_cmd = [*pkg_cmd, "--file", str(config_path)]
         else:
             openapi_cmd = [
                 *pkg_cmd,
