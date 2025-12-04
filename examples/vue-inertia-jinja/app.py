@@ -97,14 +97,9 @@ vite = VitePlugin(
     config=ViteConfig(
         mode="template",  # Explicit template mode for Jinja-based Inertia
         dev_mode=DEV_MODE,
-        paths=PathConfig(root=here, resource_dir="resources", bundle_dir="public"),
+        paths=PathConfig(root=here, resource_dir="resources"),
         inertia=InertiaConfig(root_template="index.html"),  # Auto-registers Inertia
-        types=TypeGenConfig(
-            enabled=True,
-            output=Path("resources/generated"),
-            generate_zod=True,
-            generate_sdk=True,
-        ),
+        types=TypeGenConfig(output=Path("resources/generated"), generate_zod=True),
         # Fixed port for E2E tests - can be removed for local dev or customized for production
         runtime=RuntimeConfig(port=5013),
     )

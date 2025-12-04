@@ -16,7 +16,7 @@ from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
 from msgspec import Struct
 
-from litestar_vite import PathConfig, RuntimeConfig, ViteConfig, VitePlugin
+from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
@@ -85,6 +85,7 @@ vite = VitePlugin(
     config=ViteConfig(
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here),
+        types=TypeGenConfig(),
         runtime=RuntimeConfig(port=5031),
     )
 )

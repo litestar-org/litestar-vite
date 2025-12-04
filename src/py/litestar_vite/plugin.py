@@ -90,6 +90,44 @@ def _fmt_path(path: Path) -> str:
         return str(path)
 
 
+def _write_if_changed(path: Path, content: bytes | str, encoding: str = "utf-8") -> bool:
+    """Write content to file only if it differs from the existing content.
+
+    Uses hash comparison to avoid unnecessary writes that would trigger
+    file watchers and unnecessary rebuilds.
+
+    Args:
+        path: The file path to write to.
+        content: The content to write (bytes or str).
+        encoding: Encoding for string content.
+
+    Returns:
+        True if file was written (content changed), False if skipped (unchanged).
+    """
+    import hashlib
+
+    # Convert string to bytes if needed
+    content_bytes = content.encode(encoding) if isinstance(content, str) else content
+
+    # Check if file exists and has same content
+    if path.exists():
+        try:
+            existing_hash = hashlib.md5(path.read_bytes()).hexdigest()  # noqa: S324
+            new_hash = hashlib.md5(content_bytes).hexdigest()  # noqa: S324
+            if existing_hash == new_hash:
+                return False
+        except OSError:
+            pass  # File read failed, proceed with write
+
+    # Write the file
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(content, str):
+        path.write_text(content, encoding=encoding)
+    else:
+        path.write_bytes(content)
+    return True
+
+
 # Cache debug flag check to avoid repeated os.environ lookups
 _vite_proxy_debug: bool | None = None
 
@@ -235,7 +273,7 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
         "ssrEnabled": config.ssr_enabled,
         "ssrOutDir": ssr_out_dir_value,
         "types": {
-            "enabled": types.enabled,
+            "enabled": True,  # Presence of TypeGenConfig means enabled
             "output": str(types.output),
             "openapiPath": str(types.openapi_path),
             "routesPath": str(types.routes_path),
@@ -1829,7 +1867,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """
         from litestar_vite.config import TypeGenConfig
 
-        if not isinstance(self._config.types, TypeGenConfig) or not self._config.types.enabled:
+        if not isinstance(self._config.types, TypeGenConfig):
             return
 
         try:
@@ -1848,6 +1886,10 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             has_openapi = openapi_plugin is not None and openapi_plugin._openapi_config is not None  # pyright: ignore[reportPrivateUsage]
             openapi_schema: "dict[str, Any] | None" = None
 
+            # Track which files were actually written (changed)
+            exported_files: list[str] = []
+            unchanged_files: list[str] = []
+
             if has_openapi:
                 try:
                     serializer = get_serializer(
@@ -1859,8 +1901,10 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                         encode_json(schema_dict, serializer=serializer),
                         indent=2,
                     )
-                    self._config.types.openapi_path.parent.mkdir(parents=True, exist_ok=True)
-                    self._config.types.openapi_path.write_bytes(schema_content)
+                    if _write_if_changed(self._config.types.openapi_path, schema_content):
+                        exported_files.append(f"openapi: {_fmt_path(self._config.types.openapi_path)}")
+                    else:
+                        unchanged_files.append("openapi.json")
                 except (TypeError, ValueError, OSError, AttributeError) as exc:  # pragma: no cover
                     console.print(f"[yellow]! OpenAPI export skipped: {exc}[/]")
             else:
@@ -1873,27 +1917,27 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 msgspec.json.encode(routes_data),
                 indent=2,
             )
-            self._config.types.routes_path.parent.mkdir(parents=True, exist_ok=True)
-            self._config.types.routes_path.write_bytes(routes_content)
+            if _write_if_changed(self._config.types.routes_path, routes_content):
+                exported_files.append(_fmt_path(self._config.types.routes_path))
+            else:
+                unchanged_files.append("routes.json")
 
             # Export typed routes TypeScript file
-            routes_ts_exported = False
             if self._config.types.generate_routes and self._config.types.routes_ts_path is not None:
                 try:
                     routes_ts_content = generate_routes_ts(app, openapi_schema=openapi_schema)
-                    self._config.types.routes_ts_path.parent.mkdir(parents=True, exist_ok=True)
-                    self._config.types.routes_ts_path.write_text(routes_ts_content, encoding="utf-8")
-                    routes_ts_exported = True
+                    if _write_if_changed(self._config.types.routes_ts_path, routes_ts_content):
+                        exported_files.append(f"routes.ts: {_fmt_path(self._config.types.routes_ts_path)}")
+                    else:
+                        unchanged_files.append("routes.ts")
                 except (TypeError, ValueError, OSError) as exc:  # pragma: no cover
                     console.print(f"[yellow]! routes.ts export skipped: {exc}[/]")
 
-            # Log success
-            exported_files = [_fmt_path(self._config.types.routes_path)]
-            if has_openapi:
-                exported_files.append(f"openapi: {_fmt_path(self._config.types.openapi_path)}")
-            if routes_ts_exported and self._config.types.routes_ts_path is not None:
-                exported_files.append(f"routes.ts: {_fmt_path(self._config.types.routes_ts_path)}")
-            _log_success(f"Types exported → {', '.join(exported_files)}")
+            # Log results
+            if exported_files:
+                _log_success(f"Types exported → {', '.join(exported_files)}")
+            if unchanged_files:
+                _log_info(f"Types unchanged → {', '.join(unchanged_files)}")
         except (OSError, TypeError, ValueError, ImportError) as e:  # pragma: no cover
             _log_warn(f"Type export failed: {e}")
 
@@ -1937,6 +1981,13 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 # External dev server (Angular CLI, Next.js, etc.)
                 command_to_run = ext.command or self._config.executor.start_command
                 _log_info(f"Starting external dev server: {' '.join(command_to_run)}")
+                # Write hotfile with external target URL for proxy to discover
+                # (JS plugins write this for Vite, but external servers don't use Vite)
+                if ext.target:
+                    hotfile_path = self._config.bundle_dir / self._config.hot_file
+                    hotfile_path.parent.mkdir(parents=True, exist_ok=True)
+                    hotfile_path.write_text(ext.target)
+                    _log_info(f"Hotfile written: {hotfile_path} -> {ext.target}")
             elif self._config.hot_reload:
                 command_to_run = self._config.run_command
                 _log_info("Starting Vite dev server (HMR enabled)")

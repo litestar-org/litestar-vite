@@ -7,7 +7,7 @@
     "ng": "ng",
     "start": "ng serve --proxy-config proxy.conf.json",
     "build": "ng build",
-    "serve": "npx serve dist/angular-cli/browser",
+    "serve": "npx serve dist/browser",
     "generate-types": "openapi-ts --config openapi-ts.config.ts"
   },
   "dependencies": {

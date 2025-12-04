@@ -12,7 +12,7 @@ from litestar_htmx import HTMXPlugin, HTMXRequest
 from litestar_htmx.response import HTMXTemplate
 from msgspec import Struct
 
-from litestar_vite import PathConfig, RuntimeConfig, ViteConfig, VitePlugin
+from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
@@ -95,8 +95,8 @@ vite = VitePlugin(
     config=ViteConfig(
         mode="template",
         dev_mode=DEV_MODE,
-        paths=PathConfig(root=here, resource_dir="resources", bundle_dir="public"),
-        # Fixed port for E2E tests - can be removed for local dev or customized for production
+        paths=PathConfig(root=here, resource_dir="resources"),
+        types=TypeGenConfig(output=Path("resources/generated")),
         runtime=RuntimeConfig(port=5061),
     )
 )

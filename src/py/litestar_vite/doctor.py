@@ -15,6 +15,8 @@ from rich.prompt import Confirm
 from rich.syntax import Syntax
 from rich.table import Table
 
+from litestar_vite.config import TypeGenConfig
+
 if TYPE_CHECKING:
     from litestar_vite.config import ViteConfig
 
@@ -233,8 +235,8 @@ class ViteDoctor:
         if not self.parsed_config:
             return
 
-        # Only check if types are enabled in Python config
-        if isinstance(self.config.types, bool) or not self.config.types.enabled:
+        # Only check if types are enabled in Python config (presence of TypeGenConfig = enabled)
+        if not isinstance(self.config.types, TypeGenConfig):
             return
 
         if self.parsed_config.types_enabled:
@@ -290,7 +292,7 @@ class ViteDoctor:
         if not self.parsed_config:
             return
 
-        if isinstance(self.config.types, bool) or not self.config.types.enabled:
+        if not isinstance(self.config.types, TypeGenConfig):
             return
 
         if self.parsed_config.types_enabled:
@@ -473,7 +475,7 @@ class ViteDoctor:
 
     def _check_typegen_artifacts(self) -> None:
         """Verify exported OpenAPI/routes when typegen is enabled."""
-        if isinstance(self.config.types, bool) or not self.config.types.enabled:
+        if not isinstance(self.config.types, TypeGenConfig):
             return
 
         openapi_path = Path(self.config.types.openapi_path)

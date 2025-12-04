@@ -328,6 +328,43 @@ def _apply_openapi_params(
             query_params[name] = ts_type or "unknown"
 
 
+def _make_unique_name(base_name: str, used_names: set[str], path: str, methods: list[str]) -> str:
+    """Generate a unique route name, avoiding collisions.
+
+    Args:
+        base_name: The preferred route name.
+        used_names: Set of already-used route names.
+        path: Route path for generating fallback name.
+        methods: HTTP methods for this route.
+
+    Returns:
+        A unique route name.
+    """
+    if base_name not in used_names:
+        return base_name
+
+    # Generate a path-based suffix for deduplication
+    # /api/books/{book_id} -> api_books_book_id
+    path_suffix = path.strip("/").replace("/", "_").replace("{", "").replace("}", "").replace("-", "_")
+    method_suffix = methods[0].lower() if methods else ""
+
+    # Try path-based name
+    candidate = f"{base_name}_{path_suffix}" if path_suffix else base_name
+    if candidate not in used_names:
+        return candidate
+
+    # Try with method suffix
+    candidate = f"{base_name}_{path_suffix}_{method_suffix}" if path_suffix else f"{base_name}_{method_suffix}"
+    if candidate not in used_names:
+        return candidate
+
+    # Fall back to counter
+    counter = 2
+    while f"{candidate}_{counter}" in used_names:
+        counter += 1
+    return f"{candidate}_{counter}"
+
+
 def extract_route_metadata(
     app: Litestar,
     *,
@@ -347,6 +384,7 @@ def extract_route_metadata(
         List of route metadata objects.
     """
     routes_metadata: list[RouteMetadata] = []
+    used_names: set[str] = set()
     op_lookup = _openapi_lookup(openapi_schema)
 
     for route in app.routes:
@@ -357,20 +395,24 @@ def extract_route_metadata(
         http_route: HTTPRoute = route  # type: ignore[assignment]
 
         for route_handler in http_route.route_handlers:
-            # Get route name
-            route_name = route_handler.name or route_handler.handler_name or str(route_handler)
+            # Get base route name
+            base_name = route_handler.name or route_handler.handler_name or str(route_handler)
 
-            # Get full path (including mount paths)
+            # Extract methods first (needed for unique name generation)
+            methods = [method.upper() for method in route_handler.http_methods]
+
+            # Get full path
             full_path = str(http_route.path)
+
+            # Make name unique
+            route_name = _make_unique_name(base_name, used_names, full_path, methods)
+            used_names.add(route_name)
 
             # Apply filters
             if only and not any(pattern in route_name or pattern in full_path for pattern in only):
                 continue
             if exclude and any(pattern in route_name or pattern in full_path for pattern in exclude):
                 continue
-
-            # Extract methods
-            methods = [method.upper() for method in route_handler.http_methods]
 
             # Extract path parameters (override with OpenAPI if available)
             params = _extract_path_params(full_path)

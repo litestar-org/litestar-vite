@@ -32,5 +32,6 @@
       "@/*": ["./{{ resource_dir }}/*"]
     }
   },
-  "include": ["{{ resource_dir }}/**/*", "vite.config.ts"{% if framework == "vue" or framework == "vue-inertia" %}, "env.d.ts"{% endif %}]
+  "include": ["{{ resource_dir }}/**/*", "vite.config.ts"{% if framework == "vue" or framework == "vue-inertia" %}, "env.d.ts"{% endif %}],
+  "exclude": ["{{ resource_dir }}/generated/**"]
 }

@@ -691,10 +691,17 @@ function loadPythonDefaults(): PythonDefaults | null {
   // Avoid noisy warnings during automated tests
   const isTestEnv = Boolean(process.env.VITEST || process.env.VITE_TEST || process.env.NODE_ENV === "test")
 
-  const configPath = process.env.LITESTAR_VITE_CONFIG_PATH
+  // Try explicit env var first, then fall back to .litestar.json in cwd
+  let configPath = process.env.LITESTAR_VITE_CONFIG_PATH
   if (!configPath) {
-    warnMissingRuntimeConfig("env", isTestEnv)
-    return null
+    // Check for .litestar.json in current directory as fallback
+    const defaultPath = path.join(process.cwd(), ".litestar.json")
+    if (fs.existsSync(defaultPath)) {
+      configPath = defaultPath
+    } else {
+      warnMissingRuntimeConfig("env", isTestEnv)
+      return null
+    }
   }
   if (!fs.existsSync(configPath)) {
     warnMissingRuntimeConfig("file", isTestEnv)

@@ -370,6 +370,12 @@ class RuntimeConfig:
         if isinstance(self.external_dev_server, str):
             self.external_dev_server = ExternalDevServer(target=self.external_dev_server)
 
+        # Auto-set proxy_mode="proxy" when external_dev_server is configured
+        # External dev servers (Angular CLI, Next.js, etc.) need blacklist proxy mode
+        # Override default "vite" mode which only proxies Vite-specific routes
+        if self.external_dev_server is not None and self.proxy_mode in (None, "vite"):
+            self.proxy_mode = "proxy"
+
         # Note: proxy mode no longer requires external_dev_server - it can read
         # the target URL from the hotfile for SSR frameworks using Vite internally
 
@@ -433,8 +439,10 @@ class RuntimeConfig:
 class TypeGenConfig:
     """Type generation settings.
 
+    Presence of this config enables type generation. Use ``types=None`` or
+    ``types=False`` in ViteConfig to disable.
+
     Attributes:
-        enabled: Enable type generation pipeline.
         output: Output directory for generated types.
         openapi_path: Path to export OpenAPI schema.
         routes_path: Path to export routes metadata (JSON format).
@@ -445,7 +453,6 @@ class TypeGenConfig:
         watch_patterns: File patterns to watch for type regeneration.
     """
 
-    enabled: bool = False
     output: Path = field(default_factory=lambda: Path("src/generated"))
     openapi_path: Path = field(default_factory=lambda: Path("src/generated/openapi.json"))
     routes_path: Path = field(default_factory=lambda: Path("src/generated/routes.json"))
@@ -501,7 +508,7 @@ class ViteConfig:
     Supports shortcuts for common configurations:
 
     - dev_mode: Shortcut for runtime.dev_mode
-    - types=True: Enable type generation with defaults
+    - types=True or TypeGenConfig(): Enable type generation (presence = enabled)
     - inertia=True or InertiaConfig(): Enable Inertia.js (presence = enabled)
 
     Mode auto-detection:
@@ -525,7 +532,7 @@ class ViteConfig:
         mode: Serving mode - "spa", "template", "htmx", or "hybrid". Auto-detected if not set.
         paths: File system paths configuration.
         runtime: Runtime execution settings.
-        types: Type generation settings (True enables with defaults).
+        types: Type generation settings (True/TypeGenConfig enables, False/None disables).
         inertia: Inertia.js settings (True/InertiaConfig enables, False/None disables).
         spa: SPA transformation settings (True enables with defaults, False disables).
         dev_mode: Convenience shortcut for runtime.dev_mode.
@@ -536,7 +543,7 @@ class ViteConfig:
     mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'ssr', 'ssg'] | None" = None
     paths: PathConfig = field(default_factory=PathConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
-    types: "TypeGenConfig | bool" = field(default_factory=lambda: TypeGenConfig(enabled=True))
+    types: "TypeGenConfig | bool | None" = None
     inertia: "InertiaConfig | bool | None" = None
     spa: "SPAConfig | bool | None" = None
     dev_mode: bool = False
@@ -575,10 +582,19 @@ class ViteConfig:
             self.mode = "ssr"
 
     def _normalize_types(self) -> None:
+        """Normalize type generation configuration.
+
+        Supports:
+        - True: Enable with defaults -> TypeGenConfig()
+        - False/None: Disabled -> None
+        - TypeGenConfig: Use as-is (presence = enabled)
+        """
         if self.types is True:
-            self.types = TypeGenConfig(enabled=True)
-        elif self.types is False:
-            self.types = TypeGenConfig(enabled=False)
+            self.types = TypeGenConfig()
+        elif self.types is False or self.types is None:
+            self.types = None
+            return
+        # TypeGenConfig instance - resolve paths
         self._resolve_type_paths(self.types)
 
     def _normalize_inertia(self) -> None:

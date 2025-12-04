@@ -68,14 +68,14 @@ def test_new_config_structure() -> None:
             proxy_mode="vite",  # Use new field
             executor="bun",
         ),
-        types=True,  # Shorthand for TypeGenConfig(enabled=True)
+        types=True,  # Shorthand for TypeGenConfig()
     )
     assert config.mode == "spa"
     assert config.bundle_dir == Path("/app/dist")
     assert config.resource_dir == Path("/app/src")
     assert config.is_dev_mode is True
     assert config.hot_reload is True  # Derived from proxy_mode
-    assert config.types.enabled is True  # type: ignore
+    assert isinstance(config.types, TypeGenConfig)  # Presence = enabled
     assert isinstance(config.executor, BunExecutor)
 
 
@@ -309,7 +309,6 @@ def test_type_paths_resolve_relative_and_cascade(tmp_path: Path) -> None:
     config = ViteConfig(
         paths=PathConfig(root=root),
         types=TypeGenConfig(
-            enabled=True,
             output=Path("src/generated/types"),  # only output overridden
         ),
     )

@@ -855,7 +855,7 @@ def export_routes(
     if typescript:
         # Generate typed routes.ts file
         if output is None:
-            if isinstance(config.types, TypeGenConfig) and config.types.enabled and config.types.routes_ts_path:
+            if isinstance(config.types, TypeGenConfig) and config.types.routes_ts_path:
                 output = config.types.routes_ts_path
             else:
                 output = Path("routes.ts")
@@ -878,7 +878,7 @@ def export_routes(
     else:
         # Generate routes JSON (existing behavior)
         if output is None:
-            if isinstance(config.types, TypeGenConfig) and config.types.enabled:
+            if isinstance(config.types, TypeGenConfig):
                 output = config.types.routes_path
             else:
                 output = Path("routes.json")
@@ -949,7 +949,7 @@ def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
     import msgspec
     from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
 
-    from litestar_vite.codegen import generate_routes_json
+    from litestar_vite.codegen import generate_routes_json, generate_routes_ts
 
     console.print("[dim]2. Exporting route metadata...[/]")
     try:
@@ -962,6 +962,13 @@ def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
         types_config.routes_path.parent.mkdir(parents=True, exist_ok=True)
         types_config.routes_path.write_bytes(routes_content)
         console.print(f"[green]✓ Routes exported to {_relative_path(types_config.routes_path)}[/]")
+
+        # Also export routes.ts if configured
+        if types_config.generate_routes and types_config.routes_ts_path is not None:
+            routes_ts_content = generate_routes_ts(app)
+            types_config.routes_ts_path.parent.mkdir(parents=True, exist_ok=True)
+            types_config.routes_ts_path.write_text(routes_ts_content, encoding="utf-8")
+            console.print(f"[green]✓ TypeScript routes exported to {_relative_path(types_config.routes_ts_path)}[/]")
     except OSError as e:
         msg = f"Failed to export routes: {e}"
         raise LitestarCLIException(msg) from e
@@ -1098,10 +1105,10 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     plugin = app.plugins.get(VitePlugin)
     config = plugin.config
 
-    # Check if types are enabled
-    if not isinstance(config.types, TypeGenConfig) or not config.types.enabled:
+    # Check if types are enabled (presence of TypeGenConfig = enabled)
+    if not isinstance(config.types, TypeGenConfig):
         console.print("[yellow]Type generation is not enabled in ViteConfig[/]")
-        console.print("[dim]Set types=True or types=TypeGenConfig(enabled=True) in ViteConfig[/]")
+        console.print("[dim]Set types=True or types=TypeGenConfig() in ViteConfig[/]")
         return
 
     console.rule("[yellow]Generating TypeScript types[/]", align="left")

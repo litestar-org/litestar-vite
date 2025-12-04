@@ -92,22 +92,14 @@ vite = VitePlugin(
     config=ViteConfig(
         mode="template",  # Don't use SPA mode - we handle static files ourselves
         dev_mode=DEV_MODE,
-        paths=PathConfig(
-            root=here,
-            bundle_dir=dist_dir,
-            resource_dir=here / "src",
-        ),
-        types=TypeGenConfig(
-            enabled=True,
-            output=here / "src" / "generated",
-        ),
-        # Fixed port for E2E tests - can be removed for local dev or customized for production
+        paths=PathConfig(root=here, bundle_dir=dist_dir),
+        types=TypeGenConfig(),  # output defaults to "src/generated"
+        # External dev server auto-sets proxy_mode="proxy"
         runtime=RuntimeConfig(
-            port=5032,
-            proxy_mode="proxy",  # Blacklist proxy - forwards everything except Litestar routes
-            start_dev_server=True,  # Auto-start Angular CLI dev server
             external_dev_server=ExternalDevServer(
                 target="http://localhost:4200",
+                command=["npm", "run", "start"],
+                build_command=["npm", "run", "build"],
             ),
         ),
     )

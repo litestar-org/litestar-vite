@@ -91,12 +91,7 @@ vite = VitePlugin(
             root=here,
             bundle_dir=Path("dist"),  # Astro outputs to dist/ by default
         ),
-        types=TypeGenConfig(
-            enabled=True,
-            output=Path("src/generated"),
-            generate_zod=True,
-            generate_sdk=True,
-        ),
+        types=TypeGenConfig(generate_zod=True),
         # Fixed port for E2E tests - can be removed for local dev or customized for production
         runtime=RuntimeConfig(port=5051),
     )

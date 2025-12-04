@@ -28,7 +28,6 @@ def test_export_routes_integration(tmp_path: Path) -> None:
 
     config = ViteConfig(
         types=TypeGenConfig(
-            enabled=True,
             openapi_path=tmp_path / "openapi.json",
             routes_path=tmp_path / "routes.json",
         ),
@@ -68,7 +67,6 @@ def test_export_schema_integration(tmp_path: Path) -> None:
 
     config = ViteConfig(
         types=TypeGenConfig(
-            enabled=True,
             openapi_path=tmp_path / "openapi.json",
         ),
     )
@@ -138,7 +136,6 @@ def test_export_routes_typescript_integration(tmp_path: Path) -> None:
 
     config = ViteConfig(
         types=TypeGenConfig(
-            enabled=True,
             generate_routes=True,
             routes_ts_path=tmp_path / "routes.ts",
         ),
@@ -181,7 +178,6 @@ def test_typescript_routes_with_config(tmp_path: Path) -> None:
 
     config = ViteConfig(
         types=TypeGenConfig(
-            enabled=True,
             generate_routes=True,
             routes_ts_path=tmp_path / "src" / "generated" / "routes.ts",
         ),
