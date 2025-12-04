@@ -101,6 +101,24 @@ describe("litestar-vite-plugin", () => {
     vi.resetAllMocks()
   })
 
+  const createRuntimeConfig = (data: Record<string, unknown>): string => {
+    const tmpDir = fs.mkdtempSync(path.join(process.cwd(), "vitest-litestar-"))
+    const configPath = path.join(tmpDir, ".litestar.json")
+    fs.writeFileSync(configPath, JSON.stringify(data), "utf-8")
+    process.env.LITESTAR_VITE_CONFIG_PATH = configPath
+    return configPath
+  }
+
+  const cleanupRuntimeConfig = (configPath: string | undefined): void => {
+    if (!configPath) return
+    try {
+      fs.rmSync(path.dirname(configPath), { recursive: true, force: true })
+    } catch {
+      // ignore
+    }
+    delete process.env.LITESTAR_VITE_CONFIG_PATH
+  }
+
   it("handles missing configuration", () => {
     /* eslint-disable-next-line @typescript-eslint/ban-ts-comment */
     /* @ts-ignore */
@@ -151,6 +169,81 @@ describe("litestar-vite-plugin", () => {
     expect(ssrConfig.build?.manifest).toBe(false)
     expect(ssrConfig.build?.outDir).toBe("other-ssr-output")
     expect(ssrConfig.build?.rollupOptions?.input).toBe("resources/js/ssr.ts")
+  })
+
+  it("uses publicDir from python defaults when provided", () => {
+    const configPath = createRuntimeConfig({
+      publicDir: "python-public",
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({}, { command: "build", mode: "production" })
+
+      expect(config.publicDir).toBe("python-public")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("prefers user publicDir over python defaults", () => {
+    const configPath = createRuntimeConfig({
+      publicDir: "python-public",
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({ publicDir: "user-public" }, { command: "build", mode: "production" })
+
+      expect(config.publicDir).toBe("user-public")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("checks bundleDirectory for index.html when auto-detecting", async () => {
+    const plugin = litestar({
+      input: "resources/js/app.ts",
+      bundleDirectory: "custom-dist",
+    })[0]
+
+    const accessSpy = vi.spyOn(fs.promises, "access").mockImplementation((p: fs.PathLike) => {
+      const file = String(p)
+      if (file.endsWith(path.join("custom-dist", "index.html"))) {
+        return Promise.resolve()
+      }
+      if (file.endsWith(path.join("resources", "js", "index.html"))) {
+        return Promise.reject(new Error("ENOENT"))
+      }
+      if (file.endsWith(path.join("index.html"))) {
+        return Promise.reject(new Error("ENOENT"))
+      }
+      return Promise.reject(new Error("ENOENT"))
+    })
+
+    // Run config hook to set up plugin state
+    plugin.config?.({}, { command: "serve", mode: "development" })
+
+    // Simulate Vite's configResolved hook so envDir is present
+    const fakeResolvedConfig = {
+      root: process.cwd(),
+      envDir: process.cwd(),
+      mode: "development",
+      base: "/",
+      command: "serve",
+      server: {},
+      build: {},
+    }
+    plugin.configResolved?.(fakeResolvedConfig as any)
+
+    await (plugin as any).configureServer?.(
+      {
+        middlewares: { use: vi.fn() },
+        config: { root: process.cwd(), envDir: process.cwd(), mode: "development" },
+      },
+      { command: "serve", mode: "development" },
+    )
+    expect(accessSpy).toHaveBeenCalled()
   })
 
   it("respects the users build.manifest config option", () => {

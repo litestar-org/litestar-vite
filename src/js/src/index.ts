@@ -93,6 +93,13 @@ export interface PluginConfig {
    */
   bundleDirectory?: string
   /**
+   * Vite's public directory for static, unprocessed assets.
+   * Mirrors Vite's `publicDir` option.
+   *
+   * @default 'public'
+   */
+  publicDir?: string
+  /**
    * Litestar's public assets directory.  These are the assets that Vite will serve when developing.
    *
    * @default 'resources'
@@ -289,7 +296,8 @@ async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: ResolvedPl
   const possiblePaths = [
     path.join(root, "index.html"),
     path.join(root, pluginConfig.resourceDirectory.replace(/^\//, ""), "index.html"), // Ensure resourceDirectory path is relative to root
-    path.join(root, "public", "index.html"), // Check public even if publicDir is false, might exist
+    path.join(root, pluginConfig.publicDir.replace(/^\//, ""), "index.html"),
+    path.join(root, pluginConfig.bundleDirectory.replace(/^\//, ""), "index.html"),
   ]
   // console.log("Checking paths:", possiblePaths); // Debug log
 
@@ -381,7 +389,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
 
       return {
         base: userConfig.base ?? (command === "build" ? resolveBase(pluginConfig, assetUrl) : devBase),
-        publicDir: userConfig.publicDir ?? false,
+        publicDir: userConfig.publicDir ?? pluginConfig.publicDir ?? false,
         clearScreen: false,
         build: {
           manifest: userConfig.build?.manifest ?? (ssr ? false : "manifest.json"),
@@ -831,6 +839,14 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     }
   }
 
+  if (typeof resolvedConfig.publicDir === "string") {
+    resolvedConfig.publicDir = resolvedConfig.publicDir.trim().replace(/^\/+/, "").replace(/\/+$/, "")
+
+    if (resolvedConfig.publicDir === "") {
+      throw new Error("litestar-vite-plugin: publicDir must be a subdirectory. E.g. 'public'.")
+    }
+  }
+
   if (typeof resolvedConfig.ssrOutputDirectory === "string") {
     resolvedConfig.ssrOutputDirectory = resolvedConfig.ssrOutputDirectory.trim().replace(/^\/+/, "").replace(/\/+$/, "")
   }
@@ -905,6 +921,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     assetUrl: normalizeAssetUrl(resolvedConfig.assetUrl ?? pythonDefaults?.assetUrl ?? "/static/"),
     resourceDirectory: resolvedConfig.resourceDirectory ?? pythonDefaults?.resourceDir ?? "resources",
     bundleDirectory: resolvedConfig.bundleDirectory ?? pythonDefaults?.bundleDir ?? "public",
+    publicDir: resolvedConfig.publicDir ?? pythonDefaults?.publicDir ?? "public",
     ssr: resolvedConfig.ssr ?? resolvedConfig.input,
     ssrOutputDirectory:
       resolvedConfig.ssrOutputDirectory ?? pythonDefaults?.ssrOutDir ?? path.join(resolvedConfig.resourceDirectory ?? pythonDefaults?.resourceDir ?? "resources", "bootstrap/ssr"),

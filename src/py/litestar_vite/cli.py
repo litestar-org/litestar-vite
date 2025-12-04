@@ -491,10 +491,11 @@ def vite_init(
     # Resolve paths now that framework defaults are known
     resource_path_str = str(resource_path or framework.resource_dir or config.resource_dir)
     bundle_path_str = str(bundle_path or config.bundle_dir)
+    public_path_str = str(public_path or config.public_dir)
 
     # Check for existing files
     if (
-        any((root_path / p).exists() for p in [resource_path_str, bundle_path_str])
+        any((root_path / p).exists() for p in [resource_path_str, bundle_path_str, public_path_str])
         and not any(
             [overwrite, no_prompt],
         )
@@ -525,6 +526,7 @@ def vite_init(
         asset_url=asset_url,
         resource_dir=resource_path_str,
         bundle_dir=bundle_path_str,
+        public_dir=public_path_str,
         base_dir=frontend_dir,
         enable_ssr=enable_ssr,
         enable_inertia=is_inertia,

@@ -71,6 +71,7 @@ def init_vite(
         asset_url=asset_url,
         resource_dir=str(resource_path),
         bundle_dir=str(bundle_path),
+        public_dir=str(public_path),
         enable_ssr=enable_ssr,
         enable_inertia=template.inertia_compatible and "inertia" in framework,
         enable_types=True,

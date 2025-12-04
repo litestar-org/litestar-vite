@@ -44,11 +44,11 @@ jobs:
 
       - name: Test
         if: ${{ !inputs.coverage }}
-        run: uv run pytest --dist "loadgroup" -m "" -n 2
+        run: uv run pytest --dist "loadgroup" -m "not e2e" -n 2
 
       - name: Test with coverage
         if: ${{ inputs.coverage }}
-        run: uv run pytest --dist "loadgroup" -m "" --cov=litestar_vite --cov-report=xml -n 2
+        run: uv run pytest --dist "loadgroup" -m "not e2e" --cov=litestar_vite --cov-report=xml -n 2
 
       - uses: actions/upload-artifact@v5
         if: ${{ inputs.coverage }}

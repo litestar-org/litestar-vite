@@ -49,6 +49,7 @@ class TemplateContext:
     asset_url: str = "/static/"
     resource_dir: str = "resources"
     bundle_dir: str = "public"
+    public_dir: str = "public"
     base_dir: str = "."
     enable_ssr: bool = False
     enable_inertia: bool = False
@@ -74,6 +75,7 @@ class TemplateContext:
             "asset_url": self.asset_url,
             "resource_dir": self.resource_dir,
             "bundle_dir": self.bundle_dir,
+            "public_dir": self.public_dir,
             "base_dir": self.base_dir,
             "enable_ssr": self.enable_ssr,
             "enable_inertia": self.enable_inertia,
@@ -156,6 +158,10 @@ def _process_templates(
         # Rewrite resources/ paths to use configured resource_dir
         if relative_path.parts and relative_path.parts[0] == "resources":
             relative_path = Path(resource_dir, *relative_path.parts[1:])
+
+        # Allow relocating Vite's public directory when scaffolding
+        if relative_path.parts and relative_path.parts[0] == "public":
+            relative_path = Path(context_dict.get("public_dir", "public"), *relative_path.parts[1:])
 
         output_path = output_dir / str(relative_path).replace(".j2", "")
 
