@@ -32,7 +32,7 @@ import Layout from "../layouts/Layout.astro"
 
     <footer class="border-slate-200 border-t pt-8 text-slate-400 text-xs">
       <details>
-        <summary class="cursor-pointer">Server Routes (from API)</summary>
+        <summary class="cursor-pointer">Type-safe route() helper usage</summary>
         <div id="routes-list" class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
           <span class="text-slate-600">Loading...</span>
         </div>
@@ -42,6 +42,9 @@ import Layout from "../layouts/Layout.astro"
 </Layout>
 
 <script>
+  // Import type-safe route helper
+  import { route } from "../generated/routes"
+
   const tabButtons = document.querySelectorAll('[data-view]') as NodeListOf<HTMLButtonElement>
   const overview = document.getElementById('overview') as HTMLElement
   const books = document.getElementById('books') as HTMLElement
@@ -64,9 +67,10 @@ import Layout from "../layouts/Layout.astro"
   }
 
   async function loadData() {
+    // Using type-safe route() helper instead of hardcoded strings
     const [summaryRes, booksRes] = await Promise.all([
-      fetch('/api/summary'),
-      fetch('/api/books'),
+      fetch(route("summary")),
+      fetch(route("books")),
     ])
     const summary: Summary = await summaryRes.json()
     const bookList: Book[] = await booksRes.json()
@@ -98,20 +102,14 @@ import Layout from "../layouts/Layout.astro"
       )
       .join('')
 
-    // Load routes for footer
-    try {
-      const routesRes = await fetch('/api/summary')
-      if (routesRes.ok) {
-        // Since we don't have a routes endpoint in Astro example, show API endpoints
-        routesList.innerHTML = `
-          <span class="font-mono text-slate-600">api.summary → /api/summary</span>
-          <span class="font-mono text-slate-600">api.books → /api/books</span>
-          <span class="font-mono text-slate-600">api.book_detail → /api/books/{book_id}</span>
-        `
-      }
-    } catch {
-      routesList.innerHTML = '<span class="text-slate-600">Routes not available</span>'
-    }
+    // Show type-safe route() helper usage in footer
+    routesList.innerHTML = `
+      <div class="col-span-full space-y-1 rounded bg-slate-100 p-2 font-mono">
+        <div>route("summary") → ${route("summary")}</div>
+        <div>route("books") → ${route("books")}</div>
+        <div>route("book_detail", { book_id: 42 }) → ${route("book_detail", { book_id: 42 })}</div>
+      </div>
+    `
 
     showView('overview')
   }

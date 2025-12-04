@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom"
+import { route } from "@/generated/routes"
 import routesJson from "./generated/routes.json"
 
 type Book = {
@@ -27,7 +28,8 @@ function useLibraryData() {
 
   useEffect(() => {
     async function loadData() {
-      const [summaryRes, booksRes] = await Promise.all([fetch("/api/summary"), fetch("/api/books")])
+      // Using type-safe route() helper instead of hardcoded strings
+      const [summaryRes, booksRes] = await Promise.all([fetch(route("summary")), fetch(route("books"))])
       setSummary(await summaryRes.json())
       setBooks(await booksRes.json())
     }
@@ -122,6 +124,16 @@ function AppLayout() {
       {/* Show injected routes from server (if available) */}
       <footer className="border-slate-200 border-t pt-8 text-slate-400 text-xs">
         <details>
+          <summary className="cursor-pointer">Type-safe route() helper usage</summary>
+          <div className="mt-2 space-y-1 rounded bg-slate-100 p-2 font-mono">
+            <div>route("summary") → {route("summary")}</div>
+            <div>route("books") → {route("books")}</div>
+            <div>
+              route("book_detail", {"{ book_id: 42 }"}) → {route("book_detail", { book_id: 42 })}
+            </div>
+          </div>
+        </details>
+        <details className="mt-2">
           <summary className="cursor-pointer">Server Routes (window.serverRoutes / window.__LITESTAR_ROUTES__)</summary>
           <pre className="mt-2 max-h-48 overflow-auto rounded bg-slate-100 p-2">
             {JSON.stringify(window.serverRoutes ?? window.__LITESTAR_ROUTES__ ?? "Not available", null, 2)}

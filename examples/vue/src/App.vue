@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue"
+import { route } from "@/generated/routes"
 import routesJson from "./generated/routes.json"
 
 type Book = {
@@ -25,7 +26,8 @@ const featured = computed(() => summary.value?.featured)
 const serverRoutes = routesJson.routes
 
 onMounted(async () => {
-  const [summaryRes, booksRes] = await Promise.all([fetch("/api/summary"), fetch("/api/books")])
+  // Using type-safe route() helper instead of hardcoded strings
+  const [summaryRes, booksRes] = await Promise.all([fetch(route("summary")), fetch(route("books"))])
   summary.value = await summaryRes.json()
   books.value = await booksRes.json()
 })
@@ -81,10 +83,18 @@ onMounted(async () => {
 
     <footer class="border-slate-200 border-t pt-8 text-slate-400 text-xs">
       <details>
+        <summary class="cursor-pointer">Type-safe route() helper usage</summary>
+        <div class="mt-2 space-y-1 rounded bg-slate-100 p-2 font-mono">
+          <div>route("summary") → {{ route("summary") }}</div>
+          <div>route("books") → {{ route("books") }}</div>
+          <div>route("book_detail", { book_id: 42 }) → {{ route("book_detail", { book_id: 42 }) }}</div>
+        </div>
+      </details>
+      <details class="mt-2">
         <summary class="cursor-pointer">Server Routes (from generated routes.json)</summary>
         <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
-          <span v-for="(route, name) in serverRoutes" :key="name" class="font-mono text-slate-600">
-            {{ name }} → {{ route.uri }}
+          <span v-for="(routeData, name) in serverRoutes" :key="name" class="font-mono text-slate-600">
+            {{ name }} → {{ routeData.uri }}
           </span>
         </div>
       </details>
