@@ -166,7 +166,7 @@ def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: An
     from litestar_vite.config import TypeGenConfig
 
     types_config = config.types
-    if not isinstance(types_config, TypeGenConfig) or not types_config.enabled:
+    if not isinstance(types_config, TypeGenConfig):
         return
 
     console.print("[dim]Preparing OpenAPI schema and routes...[/]")
@@ -878,10 +878,7 @@ def export_routes(
     else:
         # Generate routes JSON (existing behavior)
         if output is None:
-            if isinstance(config.types, TypeGenConfig):
-                output = config.types.routes_path
-            else:
-                output = Path("routes.json")
+            output = config.types.routes_path if isinstance(config.types, TypeGenConfig) else Path("routes.json")
 
         console.rule(f"[yellow]Exporting routes to {output}[/]", align="left")
 

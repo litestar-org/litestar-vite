@@ -393,7 +393,8 @@ describe("litestar-vite-plugin", () => {
   it("does not configure full reload when configuration it not an object", () => {
     const plugins = litestar("resources/js/app.js")
 
-    expect(plugins.length).toBe(2) // main + types plugin when types enabled by default
+    // With auto mode, types are disabled when no .litestar.json exists
+    expect(plugins.length).toBe(1) // main plugin only (types disabled in auto mode without .litestar.json)
   })
 
   it("does not configure full reload when refresh is not present", () => {
