@@ -1776,6 +1776,20 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
             self._spa_handler = ViteSPAHandler(self._config)
 
+        # Auto-register static files for mode="external" in production
+        # This is for non-Vite frameworks like Angular CLI that have their own build system
+        if self._config.mode == "external" and not self._config.is_dev_mode:
+            bundle_dir = self._config.bundle_dir
+            if not bundle_dir.is_absolute():
+                bundle_dir = self._config.root_dir / bundle_dir
+            if bundle_dir.exists():
+                static_router = create_static_files_router(
+                    path="/",
+                    directories=[bundle_dir],
+                    html_mode=True,  # SPA fallback - serves index.html for non-file routes
+                )
+                app_config.route_handlers.append(static_router)
+
         # Auto-register per-worker lifespan for SPA handler init, asset loader, env setup
         app_config.lifespan.append(self.lifespan)  # pyright: ignore[reportUnknownMemberType]
 

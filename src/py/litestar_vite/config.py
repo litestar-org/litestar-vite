@@ -529,7 +529,9 @@ class ViteConfig:
     - Explicit mode parameter overrides auto-detection
 
     Attributes:
-        mode: Serving mode - "spa", "template", "htmx", or "hybrid". Auto-detected if not set.
+        mode: Serving mode - "spa", "template", "htmx", "hybrid", "ssr", "ssg", or "external".
+            Auto-detected if not set. Use "external" for non-Vite frameworks (Angular CLI, etc.)
+            that have their own build system - auto-serves bundle_dir in production.
         paths: File system paths configuration.
         runtime: Runtime execution settings.
         types: Type generation settings (True/TypeGenConfig enables, False/None disables).
@@ -540,7 +542,7 @@ class ViteConfig:
         deploy: Deployment configuration for CDN publishing.
     """
 
-    mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'ssr', 'ssg'] | None" = None
+    mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'ssr', 'ssg', 'external'] | None" = None
     paths: PathConfig = field(default_factory=PathConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     types: "TypeGenConfig | bool | None" = None

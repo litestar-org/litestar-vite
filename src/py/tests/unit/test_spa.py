@@ -176,8 +176,10 @@ async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "M
     mock_client.aclose = AsyncMock()
 
     # Patch httpx.AsyncClient
+    expected_url = "http://127.0.0.1:5173"
     with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
-        await handler.initialize()
+        # Pass explicit vite_url to avoid hotfile resolution picking up stale hotfiles
+        await handler.initialize(vite_url=expected_url)
 
         # Verify client was created
         assert handler._http_client is not None
@@ -187,7 +189,7 @@ async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "M
         html = await handler.get_html(mock_request)
 
         assert "Dev Server HTML" in html
-        mock_client.get.assert_called_once_with("http://127.0.0.1:5173/", follow_redirects=True)
+        mock_client.get.assert_called_once_with(f"{expected_url}/", follow_redirects=True)
 
 
 async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> None:
@@ -200,7 +202,8 @@ async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> N
     mock_client.aclose = AsyncMock()
 
     with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
-        await handler.initialize()
+        # Pass explicit vite_url to avoid hotfile resolution
+        await handler.initialize(vite_url="http://127.0.0.1:5173")
 
         mock_request = Mock()
         with pytest.raises(ImproperlyConfiguredException, match="Failed to proxy request"):
@@ -215,7 +218,8 @@ async def test_spa_handler_shutdown(spa_config_dev: ViteConfig) -> None:
     mock_client.aclose = AsyncMock()
 
     with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
-        await handler.initialize()
+        # Pass explicit vite_url to avoid hotfile resolution
+        await handler.initialize(vite_url="http://127.0.0.1:5173")
 
         assert handler._http_client is not None
 
@@ -446,7 +450,8 @@ async def test_spa_handler_get_html_sync_works_in_dev_mode(
         patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_async_client),
         patch("litestar_vite.spa.httpx.Client", return_value=mock_sync_client),
     ):
-        await handler.initialize()
+        # Pass explicit vite_url to avoid hotfile resolution
+        await handler.initialize(vite_url="http://127.0.0.1:5173")
 
         html = handler.get_html_sync()
         assert "Dev Mode" in html

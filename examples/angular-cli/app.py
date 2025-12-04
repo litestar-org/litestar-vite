@@ -17,7 +17,6 @@ from pathlib import Path
 
 from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
-from litestar.static_files import create_static_files_router
 from msgspec import Struct
 
 from litestar_vite import ExternalDevServer, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
@@ -85,16 +84,15 @@ class LibraryController(Controller):
         return _get_book(book_id)
 
 
-# VitePlugin for development proxy and type generation
+# VitePlugin for development proxy, type generation, and production static serving
 # - Dev: Auto-starts Angular CLI (ng serve) and proxies to port 4200
-# - Prod: TypeGen only (static files served by Litestar below)
+# - Prod: mode="external" auto-serves bundle_dir as static files
 vite = VitePlugin(
     config=ViteConfig(
-        mode="template",  # Don't use SPA mode - we handle static files ourselves
+        mode="external",  # Non-Vite framework: auto-serves bundle_dir in production
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, bundle_dir=dist_dir),
         types=TypeGenConfig(),  # output defaults to "src/generated"
-        # External dev server auto-sets proxy_mode="proxy"
         runtime=RuntimeConfig(
             external_dev_server=ExternalDevServer(
                 target="http://localhost:4200",
@@ -105,20 +103,8 @@ vite = VitePlugin(
     )
 )
 
-# Static file router for production (serves Angular CLI built assets)
-# Only active when not in dev mode and dist/browser exists
-static_files = (
-    create_static_files_router(
-        path="/",
-        directories=[dist_dir],
-        html_mode=True,  # SPA fallback - serves index.html for non-file routes
-    )
-    if not DEV_MODE and dist_dir.exists()
-    else None
-)
-
 app = Litestar(
-    route_handlers=[LibraryController, *([static_files] if static_files else [])],
+    route_handlers=[LibraryController],
     plugins=[vite],
     debug=True,
 )
