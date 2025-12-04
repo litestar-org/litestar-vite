@@ -99,7 +99,7 @@ vite = VitePlugin(
             enabled=True,
             output=Path("resources/generated"),
             generate_zod=True,
-            generate_sdk=False,
+            generate_sdk=True,
         ),
         # Fixed port for E2E tests - can be removed for local dev or customized for production
         runtime=RuntimeConfig(port=5012),

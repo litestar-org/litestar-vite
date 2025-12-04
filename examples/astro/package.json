@@ -8,7 +8,7 @@
     "preview": "astro preview",
     "serve": "astro preview",
     "watch": "npm run serve",
-    "generate-types": "openapi-ts --config hey-api.config.ts"
+    "generate-types": "openapi-ts --config openapi-ts.config.ts"
   },
   "dependencies": {
     "astro": "^5.16.3",

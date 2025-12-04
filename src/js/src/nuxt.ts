@@ -505,7 +505,7 @@ function createTypeGenerationPlugin(typesConfig: Required<NuxtTypesConfig>, exec
 
       // Check for user config file first
       const projectRoot = process.cwd()
-      const candidates = [path.resolve(projectRoot, ".hey-api.config.ts"), path.resolve(projectRoot, "hey-api.config.ts"), path.resolve(projectRoot, "openapi-ts.config.ts")]
+      const candidates = [path.resolve(projectRoot, "openapi-ts.config.ts"), path.resolve(projectRoot, "hey-api.config.ts"), path.resolve(projectRoot, ".hey-api.config.ts")]
       const configPath = candidates.find((p) => fs.existsSync(p)) || null
 
       let args: string[]

@@ -1068,7 +1068,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
         resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("generating TypeScript types...")}`)
 
         // Prefer user config if present (deterministic order)
-        const candidates = [path.resolve(projectRoot, ".hey-api.config.ts"), path.resolve(projectRoot, "hey-api.config.ts"), path.resolve(projectRoot, "openapi-ts.config.ts")]
+        const candidates = [path.resolve(projectRoot, "openapi-ts.config.ts"), path.resolve(projectRoot, "hey-api.config.ts"), path.resolve(projectRoot, ".hey-api.config.ts")]
         const configPath = candidates.find((p) => fs.existsSync(p)) || null
         chosenConfigPath = configPath
         if (resolvedConfig) {

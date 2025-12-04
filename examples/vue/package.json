@@ -7,7 +7,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "serve": "vite preview",
-    "generate-types": "openapi-ts --config hey-api.config.ts"
+    "generate-types": "openapi-ts --config openapi-ts.config.ts"
   },
   "dependencies": {
     "vue": "latest",

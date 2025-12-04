@@ -992,12 +992,12 @@ def _run_openapi_ts(
         check_cmd = [*pkg_cmd, "--version"]
         subprocess.run(check_cmd, check=True, capture_output=True, cwd=root_dir)
 
-        # Prefer a user-provided config file if present
+        # Prefer a user-provided config file if present (prioritize openapi-ts.config.ts)
         candidate_configs = [
-            resource_dir / "hey-api.config.ts",
             resource_dir / "openapi-ts.config.ts",
-            root_dir / "hey-api.config.ts",
+            resource_dir / "hey-api.config.ts",
             root_dir / "openapi-ts.config.ts",
+            root_dir / "hey-api.config.ts",
         ]
         config_path = next((p for p in candidate_configs if p.exists()), None)
 
@@ -1012,9 +1012,9 @@ def _run_openapi_ts(
                 str(types_config.output),
             ]
 
-            plugins: list[str] = ["@hey-api/types", "@hey-api/schemas"]
+            plugins: list[str] = ["@hey-api/typescript", "@hey-api/schemas"]
             if getattr(types_config, "generate_sdk", True):
-                plugins.extend(["@hey-api/services"])
+                plugins.extend(["@hey-api/sdk"])
             if types_config.generate_zod:
                 plugins.append("zod")
 

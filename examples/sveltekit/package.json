@@ -8,7 +8,7 @@
     "preview": "vite preview",
     "serve": "node build",
     "watch": "npm run serve",
-    "generate-types": "openapi-ts --config hey-api.config.ts"
+    "generate-types": "openapi-ts --config openapi-ts.config.ts"
   },
   "dependencies": {
     "svelte": "latest",
