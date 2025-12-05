@@ -334,6 +334,11 @@ class ExampleServer:
             # Verify build artifacts exist before attempting to serve
             self._verify_ssr_build()
 
+            # Get the known Vite port for this example (needed before wait_until_ready sets it)
+            self.vite_port = EXAMPLE_PORTS.get(self.example_name)
+            if self.vite_port is None:
+                raise ValueError(f"No port configured for SSR example: {self.example_name}")
+
             # Set VITE_PORT for SSR production server
             # The Litestar plugin will use this to configure the Nitro/SSR server port
             ssr_env = env.copy()
