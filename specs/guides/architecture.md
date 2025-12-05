@@ -27,7 +27,7 @@ The `ViteConfig` class in `config.py` controls the integration behavior. It uses
 
 - **`PathConfig`**: File system paths (bundle_dir, resource_dir, public_dir, asset_url)
 - **`RuntimeConfig`**: Execution settings (dev_mode, proxy_mode, external_dev_server, http2)
-- **`TypeGenConfig`**: Type generation settings (enabled, output paths, Zod/SDK generation)
+- **`TypeGenConfig`**: Type generation settings (enabled, output paths, Zod/SDK/Routes generation)
 - **`InertiaConfig`**: Inertia.js settings (root_template, component_opt_keys, spa_mode)
 - **`SPAConfig`**: SPA transformation settings (inject_routes, inject_csrf, cache_transformed_html)
 - **`DeployConfig`**: CDN deployment settings (storage_backend, delete_orphaned, content_types)
@@ -129,6 +129,26 @@ The helpers module provides utilities for working with Litestar routes and CSRF 
 - **`LITESTAR` Namespace**: All helpers are also exported as a namespace object, accessible as `window.__LITESTAR__` in the browser.
 
 Route metadata is injected by the backend via `window.__LITESTAR_ROUTES__` (SPA mode) or `window.routes` (legacy/Inertia mode).
+
+### Type-Safe Routing (Generated)
+
+When `types.enabled` is true (default), the Vite plugin generates a `routes.ts` file (default: `src/generated/routes.ts`) based on the exported route metadata. This provides fully typed routing:
+
+```typescript
+import { route } from '../generated/routes';
+
+// Type-safe URL generation - checked at compile time
+const url = route('users:get', { id: 123 });
+```
+
+The generated file exports:
+- **`route(name, params)`**: Type-safe URL generator.
+- **`routes`**: Dictionary of route metadata.
+- **`RouteName`**: Union type of all available route names.
+- **`RouteParams`**: Typed parameter interfaces for each route.
+- **CSRF Helpers**: Re-exports `getCsrfToken`, `csrfHeaders`, `csrfFetch` for convenience.
+
+This is the preferred routing method over the untyped runtime helpers.
 
 ### Vite Plugin Configuration
 

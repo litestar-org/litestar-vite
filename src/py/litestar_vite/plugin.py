@@ -1503,6 +1503,55 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._asset_loader = ViteAssetLoader.initialize_loader(config=self._config)
         return self._asset_loader
 
+    def _resolve_bundle_dir(self) -> Path:
+        """Resolve the bundle directory to an absolute path.
+
+        Returns:
+            The absolute path to the bundle directory.
+        """
+        bundle_dir = Path(self._config.bundle_dir)
+        if not bundle_dir.is_absolute():
+            return self._config.root_dir / bundle_dir
+        return bundle_dir
+
+    def _resolve_hotfile_path(self) -> Path:
+        """Resolve the path to the hotfile.
+
+        Returns:
+            The absolute path to the hotfile.
+        """
+        return self._resolve_bundle_dir() / self._config.hot_file
+
+    def _write_hotfile(self, content: str) -> None:
+        """Write content to the hotfile.
+
+        Args:
+            content: The content to write (usually the dev server URL).
+        """
+        hotfile_path = self._resolve_hotfile_path()
+        hotfile_path.parent.mkdir(parents=True, exist_ok=True)
+        hotfile_path.write_text(content, encoding="utf-8")
+        _log_info(f"Hotfile written: {hotfile_path} -> {content}")
+
+    def _resolve_dev_command(self) -> "list[str]":
+        """Resolve the command to run for the dev server.
+
+        Returns:
+            The list of command arguments.
+        """
+        ext = self._config.runtime.external_dev_server
+        if isinstance(ext, ExternalDevServer) and ext.enabled:
+            command = ext.command or self._config.executor.start_command
+            _log_info(f"Starting external dev server: {' '.join(command)}")
+            return command
+
+        if self._config.hot_reload:
+            _log_info("Starting Vite dev server (HMR enabled)")
+            return self._config.run_command
+
+        _log_info("Starting Vite watch build process")
+        return self._config.build_watch_command
+
     def _ensure_proxy_target(self) -> None:
         """Prepare proxy target URL and port for proxy modes (vite, proxy, ssr).
 
@@ -1610,9 +1659,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         Args:
             app_config: The Litestar application configuration.
         """
-        bundle_dir = Path(self._config.bundle_dir)
-        if not bundle_dir.is_absolute():
-            bundle_dir = self._config.root_dir / bundle_dir
+        bundle_dir = self._resolve_bundle_dir()
 
         resource_dir = Path(self._config.resource_dir)
         if not resource_dir.is_absolute():
@@ -1650,10 +1697,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             app_config: The Litestar application configuration.
         """
         proxy_mode = self._config.proxy_mode
-        bundle_dir = self._config.bundle_dir
-        if not bundle_dir.is_absolute():
-            bundle_dir = self._config.root_dir / bundle_dir
-        hotfile_path = bundle_dir / self._config.hot_file
+        hotfile_path = self._resolve_hotfile_path()
 
         if proxy_mode == "vite":
             self._configure_vite_proxy(app_config, hotfile_path)
@@ -1779,9 +1823,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         # Auto-register static files for mode="external" in production
         # This is for non-Vite frameworks like Angular CLI that have their own build system
         if self._config.mode == "external" and not self._config.is_dev_mode:
-            bundle_dir = self._config.bundle_dir
-            if not bundle_dir.is_absolute():
-                bundle_dir = self._config.root_dir / bundle_dir
+            bundle_dir = self._resolve_bundle_dir()
             if bundle_dir.exists():
                 static_router = create_static_files_router(
                     path="/",
@@ -1817,11 +1859,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """Run the appropriate health check based on proxy mode."""
         if self._config.proxy_mode == "proxy":
             # SSR framework health check via hotfile
-            bundle_dir = self._config.bundle_dir
-            if not bundle_dir.is_absolute():
-                bundle_dir = self._config.root_dir / bundle_dir
-            hotfile_path = bundle_dir / self._config.hot_file
-            self._check_ssr_health(hotfile_path)
+            self._check_ssr_health(self._resolve_hotfile_path())
         else:
             # Standard Vite dev server health check
             self._check_health()
@@ -1985,33 +2023,32 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             if not app.debug:
                 _log_warn("Vite dev mode is enabled in production!")
 
-            # Determine command to run
             ext = self._config.runtime.external_dev_server
-            if isinstance(ext, ExternalDevServer) and ext.enabled:
-                # External dev server (Angular CLI, Next.js, etc.)
-                command_to_run = ext.command or self._config.executor.start_command
-                _log_info(f"Starting external dev server: {' '.join(command_to_run)}")
-                # Write hotfile with external target URL for proxy to discover
-                # (JS plugins write this for Vite, but external servers don't use Vite)
-                if ext.target:
-                    hotfile_path = self._config.bundle_dir / self._config.hot_file
-                    hotfile_path.parent.mkdir(parents=True, exist_ok=True)
-                    hotfile_path.write_text(ext.target)
-                    _log_info(f"Hotfile written: {hotfile_path} -> {ext.target}")
-            elif self._config.hot_reload:
-                command_to_run = self._config.run_command
-                _log_info("Starting Vite dev server (HMR enabled)")
-            else:
-                command_to_run = self._config.build_watch_command
-                _log_info("Starting Vite watch build process")
+            is_external = isinstance(ext, ExternalDevServer) and ext.enabled
+
+            # Determine command (logs the command type)
+            command_to_run = self._resolve_dev_command()
 
             if self._proxy_target:
                 _log_info(f"Vite proxy target: {self._proxy_target}")
 
+            # Write hotfile BEFORE starting dev server to avoid race conditions.
+            # The proxy controller/SPA handler reads the hotfile on first request - if it
+            # doesn't exist yet, behavior varies: SSR proxy caches None forever (returning 503),
+            # while SPA handler falls back to config. By writing upfront, we ensure consistent
+            # behavior and immediate proxy availability for all modes.
+            if is_external and isinstance(ext, ExternalDevServer) and ext.target:
+                # External dev server with static target - write target URL to hotfile
+                self._write_hotfile(ext.target)
+            elif not is_external:
+                # Internal Vite/SSR server - write computed target URL to hotfile
+                target_url = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
+                self._write_hotfile(target_url)
+
             try:
                 self._vite_process.start(command_to_run, self._config.root_dir)
                 _log_success("Dev server process started")
-                if self._config.health_check and not (isinstance(ext, ExternalDevServer) and ext.enabled):
+                if self._config.health_check and not is_external:
                     # Only run Vite-specific health check for non-external servers
                     self._run_health_check()
                 yield

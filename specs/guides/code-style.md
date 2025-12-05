@@ -84,13 +84,3 @@ npx biome check --apply .
 This project uses `pre-commit` to ensure that all code committed to the repository meets our quality standards. The hooks are defined in `.pre-commit-config.yaml` and are installed automatically when you run `make install`.
 
 The hooks will automatically run `ruff`, `biome`, `mypy`, and other checks before allowing a commit to be created.
-
-## Known Anti-Pattern Violations
-
-The following files currently violate the "no future annotations" standard and should be updated:
-
-- `src/py/tests/integration/cli/test_init.py`
-- `src/py/tests/integration/cli/test_status.py`
-- `src/py/tests/integration/cli/conftest.py`
-
-These use `from __future__ import annotations` and should be refactored to use explicit string annotations instead.

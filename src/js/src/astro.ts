@@ -290,6 +290,9 @@ function createProxyPlugin(config: ResolvedLitestarAstroConfig): Plugin {
     config() {
       return {
         server: {
+          // Force IPv4 binding for consistency with Python proxy configuration
+          // Without this, Astro might bind to IPv6 localhost which the proxy can't reach
+          host: "127.0.0.1",
           // Set the port from Python config/env to ensure Astro uses the expected port
           // strictPort: true prevents Astro from auto-incrementing to a different port
           ...(config.port !== undefined
@@ -659,14 +662,20 @@ export default function litestarAstro(userConfig: LitestarAstroConfig = {}): Ast
           },
         }
 
-        // Set the Astro server port in dev mode
-        // This must be done through Astro's server config, not Vite's
-        if (command === "dev" && config.port !== undefined) {
+        // Set the Astro server port and host in dev mode
+        // This must be done through Astro's server config, not just Vite's
+        if (command === "dev") {
           configUpdate.server = {
-            port: config.port,
+            // Force IPv4 binding for consistency with Python proxy configuration
+            host: "127.0.0.1",
+            // Set port from Python config/env if provided
+            ...(config.port !== undefined ? { port: config.port } : {}),
           }
           if (config.verbose) {
-            logger.info(`Setting Astro server port to ${config.port}`)
+            logger.info(`Setting Astro server host to 127.0.0.1`)
+            if (config.port !== undefined) {
+              logger.info(`Setting Astro server port to ${config.port}`)
+            }
           }
         }
 

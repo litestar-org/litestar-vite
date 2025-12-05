@@ -45,10 +45,6 @@ documentation_gates:
       - pattern: "from __future__ import annotations"
         severity: "error"
         message: "Use explicit stringification instead"
-        known_violations:
-          - "src/py/tests/integration/cli/test_init.py"
-          - "src/py/tests/integration/cli/test_status.py"
-          - "src/py/tests/integration/cli/conftest.py"
 
       - pattern: "Optional["
         severity: "error"

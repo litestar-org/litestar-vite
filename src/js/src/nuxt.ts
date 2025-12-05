@@ -286,9 +286,20 @@ function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
     async config() {
       hmrPort = await getPort()
       // Note: Server port is controlled by PORT env var (set by Python)
-      // We only configure the API proxy here
+      // We configure the host binding and HMR here
       return {
         server: {
+          // Force IPv4 binding for consistency with Python proxy configuration
+          // Without this, Nuxt/Nitro might bind to IPv6 localhost which the proxy can't reach
+          host: "127.0.0.1",
+          // Set the port from Python config/env to ensure Nuxt uses the expected port
+          // strictPort: true prevents auto-incrementing to a different port
+          ...(config.devPort !== undefined
+            ? {
+                port: config.devPort,
+                strictPort: true,
+              }
+            : {}),
           // Avoid HMR port collisions by letting Vite pick a free port for WS
           hmr: {
             port: hmrPort,

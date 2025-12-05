@@ -330,6 +330,9 @@ export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): Plu
     config() {
       return {
         server: {
+          // Force IPv4 binding for consistency with Python proxy configuration
+          // Without this, SvelteKit might bind to IPv6 localhost which the proxy can't reach
+          host: "127.0.0.1",
           // Set the port from Python config/env to ensure SvelteKit uses the expected port
           // strictPort: true prevents SvelteKit from auto-incrementing to a different port
           ...(config.port !== undefined
