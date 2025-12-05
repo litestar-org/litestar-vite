@@ -387,8 +387,10 @@ class ExampleServer:
                 logger.info("External dev server ready (via Litestar proxy)")
             elif self.example_name in SSR_EXAMPLES or self.example_name in SSG_EXAMPLES:
                 # SSR/SSG examples (nuxt, sveltekit, astro) use dynamic ports via hotfile
-                # Litestar proxy handles forwarding - if Litestar works, the dev server is working
-                logger.info("SSR/SSG dev server integrated via Litestar proxy")
+                # Litestar proxy handles forwarding but the SSR dev server takes time to start
+                # We need to verify via proxy (returns 500 until SSR server is ready)
+                self._verify_proxy_ready(timeout=timeout)
+                logger.info("SSR/SSG dev server ready (via Litestar proxy)")
             else:
                 # Standard Vite examples - check the configured port
                 self._verify_http_ready(port=self.vite_port, timeout=timeout)
