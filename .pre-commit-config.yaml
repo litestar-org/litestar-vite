@@ -10,7 +10,7 @@ repos:
     hooks:
       - id: local-biome-check
         name: biome check
-        entry: npm exec biome -- check --write --files-ignore-unknown=true --no-errors-on-unmatched
+        entry: npm exec biome -- check --write --unsafe --files-ignore-unknown=true --no-errors-on-unmatched
         language: system
         types: [text]
         files: "\\.(jsx?|tsx?|c(js|ts)|m(js|ts)|d\\.(ts|cts|mts)|jsonc?|css|svelte|vue|astro|graphql|gql)$"

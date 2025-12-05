@@ -72,7 +72,7 @@ function testRoute<T extends TestRouteName>(name: T, params?: TestRouteParams<T>
       }
     }
     if (queryParts.length > 0) {
-      url += "?" + queryParts.join("&")
+      url += `?${queryParts.join("&")}`
     }
   }
 

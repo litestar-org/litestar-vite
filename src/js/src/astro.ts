@@ -672,7 +672,7 @@ export default function litestarAstro(userConfig: LitestarAstroConfig = {}): Ast
             ...(config.port !== undefined ? { port: config.port } : {}),
           }
           if (config.verbose) {
-            logger.info(`Setting Astro server host to 127.0.0.1`)
+            logger.info("Setting Astro server host to 127.0.0.1")
             if (config.port !== undefined) {
               logger.info(`Setting Astro server port to ${config.port}`)
             }
