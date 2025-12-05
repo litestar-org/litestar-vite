@@ -751,7 +751,7 @@ class ExampleServer:
             cwd=self.example_dir,
             env=env,
             start_new_session=True,
-            stdin=subprocess.DEVNULL,  # Prevent stdin-related issues in CI
+            stdin=subprocess.PIPE,  # Keep stdin open but unused - prevents Nitro from exiting on stdin close
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             bufsize=0,  # Unbuffered
