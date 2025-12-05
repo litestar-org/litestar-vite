@@ -612,3 +612,24 @@ def test_inertia_presence_means_enabled(tmp_path: Path) -> None:
 
     config4 = ViteConfig(inertia=None)
     assert config4.inertia is None
+
+
+# ============================================================================
+# Mode alias tests
+# ============================================================================
+
+
+def test_mode_alias_ssg_to_ssr() -> None:
+    """Test that mode='ssg' is normalized to 'ssr'."""
+    config = ViteConfig(mode="ssg")
+
+    assert config.mode == "ssr"
+
+
+def test_mode_alias_inertia_to_hybrid() -> None:
+    """Test that mode='inertia' is normalized to 'hybrid'."""
+    config = ViteConfig(mode="inertia")
+
+    assert config.mode == "hybrid"
+    # Hybrid mode should auto-enable SPAConfig
+    assert isinstance(config.spa, SPAConfig)

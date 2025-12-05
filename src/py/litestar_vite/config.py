@@ -549,7 +549,7 @@ class ViteConfig:
         deploy: Deployment configuration for CDN publishing.
     """
 
-    mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'ssr', 'ssg', 'external'] | None" = None
+    mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'inertia', 'ssr', 'ssg', 'external'] | None" = None
     paths: PathConfig = field(default_factory=PathConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     types: "TypeGenConfig | bool | None" = None
@@ -581,17 +581,20 @@ class ViteConfig:
     def _normalize_mode(self) -> None:
         """Normalize mode aliases.
 
-        - 'ssg' (Static Site Generation) is an alias for 'ssr' since both:
-          - Dev mode: use blacklist proxy (proxy_mode='proxy') to forward all
-            non-API routes to the framework's dev server (Astro, etc.)
-          - Production: serve static files from bundle_dir
-          SSG frameworks like Astro handle their own routing in dev mode,
-          just like SSR frameworks (Nuxt, SvelteKit). The difference is that
-          SSG pre-renders at build time while SSR renders per-request, but
+        Aliases:
+        - 'ssg' → 'ssr': Static Site Generation uses the same proxy behavior as SSR.
+          Both use blacklist proxy in dev mode (forward non-API routes to framework's
+          dev server). SSG pre-renders at build time, SSR renders per-request, but
           their dev-time proxy behavior is identical.
+
+        - 'inertia' → 'hybrid': Inertia.js apps without Jinja templates use hybrid mode.
+          This is clearer terminology since "hybrid" refers to the SPA-with-server-routing
+          pattern that Inertia implements.
         """
         if self.mode == "ssg":
             self.mode = "ssr"
+        elif self.mode == "inertia":
+            self.mode = "hybrid"
 
     def _normalize_types(self) -> None:
         """Normalize type generation configuration.

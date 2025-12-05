@@ -24,7 +24,7 @@ import msgspec
 from litestar import Response, get
 from litestar.exceptions import ImproperlyConfiguredException
 
-from litestar_vite.html_transform import HtmlTransformer
+from litestar_vite.html_transform import inject_head_script, set_data_attribute
 
 if TYPE_CHECKING:
     from litestar.connection import Request
@@ -190,19 +190,19 @@ class ViteSPAHandler:
             # But still inject page_data if provided
             if page_data is not None:
                 json_data = msgspec.json.encode(page_data).decode("utf-8")
-                html = HtmlTransformer.set_data_attribute(html, "#app", "data-page", json_data)
+                html = set_data_attribute(html, "#app", "data-page", json_data)
             return html
 
         # Inject CSRF token if configured
         if self._spa_config.inject_csrf and csrf_token:
             # Inject as a simple string assignment (not JSON object)
             script = f'window.{self._spa_config.csrf_var_name} = "{csrf_token}";'
-            html = HtmlTransformer.inject_head_script(html, script, escape=False)
+            html = inject_head_script(html, script, escape=False)
 
         # Inject page data as data-page attribute if provided
         if page_data is not None:
             json_data = msgspec.json.encode(page_data).decode("utf-8")
-            html = HtmlTransformer.set_data_attribute(
+            html = set_data_attribute(
                 html,
                 self._spa_config.app_selector,
                 "data-page",

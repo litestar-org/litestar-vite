@@ -10,7 +10,7 @@ import pytest
 from .assertions import assert_html_contains_assets
 from .conftest import E2E_TEST_TIMEOUT
 from .health_check import check_api_response, check_html_response
-from .server_manager import ExampleServer, SSG_EXAMPLES, SSR_EXAMPLES
+from .server_manager import SSG_EXAMPLES, SSR_EXAMPLES, ExampleServer
 
 pytestmark = [pytest.mark.e2e, pytest.mark.timeout(E2E_TEST_TIMEOUT)]
 

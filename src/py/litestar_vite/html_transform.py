@@ -24,7 +24,14 @@ _HTML_END_PATTERN = re.compile(r"</html\s*>", re.IGNORECASE)
 
 @lru_cache(maxsize=128)
 def _get_id_selector_pattern(element_id: str) -> re.Pattern[str]:
-    """Get compiled regex pattern for ID selector (cached)."""
+    """Get compiled regex pattern for ID selector (cached).
+
+    Args:
+        element_id: The element ID to match (without the # prefix).
+
+    Returns:
+        Compiled regex pattern for matching elements with the given ID.
+    """
     return re.compile(
         rf'(<[a-zA-Z][a-zA-Z0-9]*\s+[^>]*id\s*=\s*["\']?{re.escape(element_id)}["\']?[^>]*)(>)',
         re.IGNORECASE,
@@ -33,13 +40,27 @@ def _get_id_selector_pattern(element_id: str) -> re.Pattern[str]:
 
 @lru_cache(maxsize=128)
 def _get_element_selector_pattern(element_name: str) -> re.Pattern[str]:
-    """Get compiled regex pattern for element selector (cached)."""
+    """Get compiled regex pattern for element selector (cached).
+
+    Args:
+        element_name: The HTML element name to match (e.g., "div", "span").
+
+    Returns:
+        Compiled regex pattern for matching elements with the given tag name.
+    """
     return re.compile(rf"(<{re.escape(element_name)}[^>]*)(>)", re.IGNORECASE)
 
 
 @lru_cache(maxsize=128)
 def _get_attr_pattern(attr: str) -> re.Pattern[str]:
-    """Get compiled regex pattern for attribute matching (cached)."""
+    """Get compiled regex pattern for attribute matching (cached).
+
+    Args:
+        attr: The attribute name to match (e.g., "data-page", "id").
+
+    Returns:
+        Compiled regex pattern for matching the attribute with its value.
+    """
     return re.compile(rf'{re.escape(attr)}\s*=\s*["\'][^"\']*["\']', re.IGNORECASE)
 
 
@@ -221,27 +242,3 @@ def inject_json_script(html: str, var_name: str, data: dict[str, Any]) -> str:
     json_data = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
     script = f"window.{var_name} = {json_data};"
     return inject_head_script(html, script, escape=False)
-
-
-# Backward compatibility: HtmlTransformer class wrapping module functions
-class HtmlTransformer:
-    """HTML transformer for injecting scripts and attributes.
-
-    This class provides static methods for safely injecting content into HTML documents.
-    It uses regex-based matching for performance.
-
-    Note:
-        This class is provided for backward compatibility. The underlying functions
-        are also available as module-level functions (e.g., `inject_head_script`).
-
-    Example:
-        html = HtmlTransformer.inject_head_script(html, "console.log('injected');")
-        html = HtmlTransformer.set_data_attribute(html, "#app", "data-page", '{"foo":"bar"}')
-    """
-
-    inject_head_script = staticmethod(inject_head_script)
-    inject_body_content = staticmethod(inject_body_content)
-    set_data_attribute = staticmethod(set_data_attribute)
-    inject_json_script = staticmethod(inject_json_script)
-    _escape_script = staticmethod(_escape_script)
-    _escape_attr = staticmethod(_escape_attr)

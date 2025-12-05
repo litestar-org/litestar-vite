@@ -1,6 +1,13 @@
 """Tests for HTML transformation utilities."""
 
-from litestar_vite.html_transform import HtmlTransformer
+from litestar_vite.html_transform import (
+    _escape_attr,
+    _escape_script,
+    inject_body_content,
+    inject_head_script,
+    inject_json_script,
+    set_data_attribute,
+)
 
 
 def test_inject_head_script_basic() -> None:
@@ -17,7 +24,7 @@ def test_inject_head_script_basic() -> None:
     </html>
     """
     script = "console.log('test');"
-    result = HtmlTransformer.inject_head_script(html, script)
+    result = inject_head_script(html, script)
 
     assert "<script>console.log('test');</script>" in result
     assert result.index("</head>") > result.index("<script>console.log('test');</script>")
@@ -27,7 +34,7 @@ def test_inject_head_script_with_escape() -> None:
     """Test script injection with escaping.</test>"""
     html = "<html><head></head><body></body></html>"
     script = "const x = '</script>';"
-    result = HtmlTransformer.inject_head_script(html, script, escape=True)
+    result = inject_head_script(html, script, escape=True)
 
     # Should escape the closing script tag
     assert r"<\/script>" in result
@@ -38,7 +45,7 @@ def test_inject_head_script_no_escape() -> None:
     """Test script injection without escaping."""
     html = "<html><head></head><body></body></html>"
     script = "const x = 1;"
-    result = HtmlTransformer.inject_head_script(html, script, escape=False)
+    result = inject_head_script(html, script, escape=False)
 
     assert "<script>const x = 1;</script>" in result
 
@@ -47,7 +54,7 @@ def test_inject_head_script_case_insensitive() -> None:
     """Test script injection with different case head tags."""
     html = "<HTML><HEAD></HEAD><BODY></BODY></HTML>"
     script = "console.log('test');"
-    result = HtmlTransformer.inject_head_script(html, script)
+    result = inject_head_script(html, script)
 
     assert "<script>console.log('test');</script>" in result
 
@@ -70,7 +77,7 @@ def test_inject_head_script_with_comment() -> None:
     </html>
     """
     script = "console.log('test');"
-    result = HtmlTransformer.inject_head_script(html, script)
+    result = inject_head_script(html, script)
 
     # The script is injected (though possibly before the comment)
     assert "<script>console.log('test');</script>" in result
@@ -81,7 +88,7 @@ def test_inject_head_script_no_head_tag() -> None:
     """Test script injection when no head tag exists."""
     html = "<html><body></body></html>"
     script = "console.log('test');"
-    result = HtmlTransformer.inject_head_script(html, script)
+    result = inject_head_script(html, script)
 
     # Should fall back to injecting before </html> or at the end
     assert "<script>console.log('test');</script>" in result
@@ -90,7 +97,7 @@ def test_inject_head_script_no_head_tag() -> None:
 def test_inject_head_script_empty() -> None:
     """Test injecting empty script returns unchanged HTML."""
     html = "<html><head></head><body></body></html>"
-    result = HtmlTransformer.inject_head_script(html, "")
+    result = inject_head_script(html, "")
 
     assert result == html
 
@@ -99,7 +106,7 @@ def test_inject_body_content_end() -> None:
     """Test injecting content at the end of body."""
     html = "<html><head></head><body><div>existing</div></body></html>"
     content = '<div id="portal"></div>'
-    result = HtmlTransformer.inject_body_content(html, content, position="end")
+    result = inject_body_content(html, content, position="end")
 
     assert '<div id="portal"></div>' in result
     assert result.index("</body>") > result.index('<div id="portal"></div>')
@@ -109,7 +116,7 @@ def test_inject_body_content_start() -> None:
     """Test injecting content at the start of body."""
     html = "<html><head></head><body><div>existing</div></body></html>"
     content = '<div id="top"></div>'
-    result = HtmlTransformer.inject_body_content(html, content, position="start")
+    result = inject_body_content(html, content, position="start")
 
     assert '<div id="top"></div>' in result
     assert result.index('<div id="top"></div>') < result.index("<div>existing</div>")
@@ -119,7 +126,7 @@ def test_inject_body_content_case_insensitive() -> None:
     """Test body content injection is case-insensitive."""
     html = "<HTML><HEAD></HEAD><BODY></BODY></HTML>"
     content = '<div id="test"></div>'
-    result = HtmlTransformer.inject_body_content(html, content, position="end")
+    result = inject_body_content(html, content, position="end")
 
     assert '<div id="test"></div>' in result
 
@@ -127,7 +134,7 @@ def test_inject_body_content_case_insensitive() -> None:
 def test_inject_body_content_empty() -> None:
     """Test injecting empty content returns unchanged HTML."""
     html = "<html><head></head><body></body></html>"
-    result = HtmlTransformer.inject_body_content(html, "", position="end")
+    result = inject_body_content(html, "", position="end")
 
     assert result == html
 
@@ -135,7 +142,7 @@ def test_inject_body_content_empty() -> None:
 def test_set_data_attribute_id_selector() -> None:
     """Test setting data attribute with ID selector."""
     html = '<html><body><div id="app">content</div></body></html>'
-    result = HtmlTransformer.set_data_attribute(html, "#app", "data-page", '{"foo":"bar"}')
+    result = set_data_attribute(html, "#app", "data-page", '{"foo":"bar"}')
 
     assert 'data-page="' in result
     assert "&quot;" in result  # JSON should be escaped
@@ -144,7 +151,7 @@ def test_set_data_attribute_id_selector() -> None:
 def test_set_data_attribute_element_selector() -> None:
     """Test setting data attribute with element selector."""
     html = "<html><body><div>content</div></body></html>"
-    result = HtmlTransformer.set_data_attribute(html, "div", "data-test", "value")
+    result = set_data_attribute(html, "div", "data-test", "value")
 
     assert 'data-test="value"' in result
 
@@ -152,7 +159,7 @@ def test_set_data_attribute_element_selector() -> None:
 def test_set_data_attribute_replace_existing() -> None:
     """Test replacing an existing data attribute."""
     html = '<html><body><div id="app" data-page="old">content</div></body></html>'
-    result = HtmlTransformer.set_data_attribute(html, "#app", "data-page", "new")
+    result = set_data_attribute(html, "#app", "data-page", "new")
 
     assert 'data-page="new"' in result
     assert 'data-page="old"' not in result
@@ -163,7 +170,7 @@ def test_set_data_attribute_escapes_value() -> None:
     html = '<html><body><div id="app"></div></body></html>'
     # Value with characters that need escaping
     value = '<script>alert("xss")</script>'
-    result = HtmlTransformer.set_data_attribute(html, "#app", "data-value", value)
+    result = set_data_attribute(html, "#app", "data-value", value)
 
     # Should be escaped
     assert "&lt;" in result
@@ -176,7 +183,7 @@ def test_set_data_attribute_escapes_value() -> None:
 def test_set_data_attribute_empty_selector() -> None:
     """Test with empty selector returns unchanged HTML."""
     html = '<html><body><div id="app"></div></body></html>'
-    result = HtmlTransformer.set_data_attribute(html, "", "data-test", "value")
+    result = set_data_attribute(html, "", "data-test", "value")
 
     assert result == html
 
@@ -185,7 +192,7 @@ def test_inject_json_script() -> None:
     """Test injecting JSON data as a script."""
     html = "<html><head></head><body></body></html>"
     data = {"routes": {"home": "/", "about": "/about"}, "user": {"id": 1, "name": "Test"}}
-    result = HtmlTransformer.inject_json_script(html, "__ROUTES__", data)
+    result = inject_json_script(html, "__ROUTES__", data)
 
     assert "window.__ROUTES__" in result
     assert '{"routes":' in result
@@ -197,7 +204,7 @@ def test_inject_json_script_with_unicode() -> None:
     """Test JSON injection preserves unicode characters."""
     html = "<html><head></head><body></body></html>"
     data = {"message": "Hello 世界 🌍"}
-    result = HtmlTransformer.inject_json_script(html, "__DATA__", data)
+    result = inject_json_script(html, "__DATA__", data)
 
     assert "window.__DATA__" in result
     # Unicode should be preserved (ensure_ascii=False)
@@ -222,16 +229,16 @@ def test_complex_html_transformation() -> None:
 
     # Inject routes metadata
     routes = {"home": "/", "users": "/users"}
-    html = HtmlTransformer.inject_json_script(html, "__ROUTES__", routes)
+    html = inject_json_script(html, "__ROUTES__", routes)
 
     # Inject head script
-    html = HtmlTransformer.inject_head_script(html, "console.log('init');")
+    html = inject_head_script(html, "console.log('init');")
 
     # Set data attribute
-    html = HtmlTransformer.set_data_attribute(html, "#app", "data-page", '{"component":"Home"}')
+    html = set_data_attribute(html, "#app", "data-page", '{"component":"Home"}')
 
     # Inject body content
-    html = HtmlTransformer.inject_body_content(html, '<div id="portal"></div>', position="end")
+    html = inject_body_content(html, '<div id="portal"></div>', position="end")
 
     # Verify all transformations
     assert "window.__ROUTES__" in html
@@ -250,7 +257,7 @@ def test_malformed_html_handling() -> None:
     script = "console.log('test');"
 
     # Should not raise an exception
-    result = HtmlTransformer.inject_head_script(html, script)
+    result = inject_head_script(html, script)
     assert script in result
 
 
@@ -265,7 +272,7 @@ def test_html_with_inline_scripts() -> None:
     </html>
     """
     script = "var injected = 2;"
-    result = HtmlTransformer.inject_head_script(html, script)
+    result = inject_head_script(html, script)
 
     # Both scripts should be present
     assert "var existing = 1;" in result
@@ -275,7 +282,7 @@ def test_html_with_inline_scripts() -> None:
 def test_escape_script_helper() -> None:
     """Test the internal script escaping helper."""
     script = "const html = '</script><script>alert(1)</script>';"
-    escaped = HtmlTransformer._escape_script(script)
+    escaped = _escape_script(script)
 
     assert r"<\/script>" in escaped
     assert "</script>" not in escaped or escaped.count("</script>") == 0
@@ -284,7 +291,7 @@ def test_escape_script_helper() -> None:
 def test_escape_attr_helper() -> None:
     """Test the internal attribute escaping helper."""
     value = '<script>alert("xss")&test</script>'
-    escaped = HtmlTransformer._escape_attr(value)
+    escaped = _escape_attr(value)
 
     assert "&lt;" in escaped
     assert "&gt;" in escaped

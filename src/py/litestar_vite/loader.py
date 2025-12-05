@@ -42,7 +42,11 @@ def _get_request_from_context(
         context: The template context.
 
     Returns:
-        The request object.
+        The request object from the template context.
+
+    Raises:
+        ValueError: If 'request' is not found in the template context.
+        TypeError: If 'request' is not a Litestar Request object.
     """
     from litestar.connection import Request
 
@@ -63,9 +67,15 @@ def _get_vite_plugin(context: "Mapping[str, Any]") -> "VitePlugin | None":
         context: The template context.
 
     Returns:
-        The VitePlugin instance or None if not found.
+        The VitePlugin instance, or None if not registered.
+
+    Raises:
+        ValueError: If 'request' is not found in the template context
+            (propagated from _get_request_from_context).
+        TypeError: If 'request' is not a Litestar Request object
+            (propagated from _get_request_from_context).
     """
-    request = _get_request_from_context(context)
+    request = _get_request_from_context(context)  # raises ValueError, TypeError
     return request.app.plugins.get("VitePlugin")
 
 
@@ -79,7 +89,8 @@ def render_hmr_client(context: "Mapping[str, Any]", /) -> "markupsafe.Markup":
         context: The template context containing the request.
 
     Returns:
-        HTML markup for the HMR client script.
+        HTML markup for the HMR client script, or empty markup if
+        VitePlugin is not registered.
     """
     vite_plugin = _get_vite_plugin(context)
     if vite_plugin is None:
@@ -104,7 +115,8 @@ def render_asset_tag(
         scripts_attrs: Optional attributes for script tags.
 
     Returns:
-        HTML markup for the asset tags.
+        HTML markup for the asset tags, or empty markup if VitePlugin
+        is not registered.
 
     Example:
         In a Jinja2 template:
@@ -127,7 +139,8 @@ def render_static_asset(context: "Mapping[str, Any]", /, path: str) -> str:
         path: Path to the static asset.
 
     Returns:
-        The full URL to the static asset.
+        The full URL to the static asset, or empty string if VitePlugin
+        is not registered.
     """
     vite_plugin = _get_vite_plugin(context)
     if vite_plugin is None:
@@ -135,9 +148,70 @@ def render_static_asset(context: "Mapping[str, Any]", /, path: str) -> str:
     return vite_plugin.asset_loader.get_static_asset(path)
 
 
-# Backward compatibility alias for render_asset_tag
-# Previously render_partial_asset_tag was a separate function with identical implementation
-render_partial_asset_tag = render_asset_tag
+def render_routes(
+    context: "Mapping[str, Any]",
+    /,
+    *,
+    only: "list[str] | None" = None,
+    exclude: "list[str] | None" = None,
+    include_components: bool = False,
+) -> "markupsafe.Markup":
+    """Render inline script tag with route definitions.
+
+    This is a Jinja2 template callable that renders an inline script tag
+    containing route metadata for client-side type-safe routing.
+
+    The script defines a global `window.Litestar.routes` object that can be
+    used by frontend routers.
+
+    Uses Litestar's built-in serializers, picking up any custom type encoders
+    configured on the app.
+
+    Args:
+        context: The template context containing the request.
+        only: Optional list of route patterns to include.
+        exclude: Optional list of route patterns to exclude.
+        include_components: Include Inertia component names.
+
+    Returns:
+        HTML markup for the inline routes script containing route metadata
+        as a JSON object.
+
+    Example:
+        In a Jinja2 template:
+        {{ vite_routes() }}
+        {{ vite_routes(exclude=['/api/internal']) }}
+    """
+    from litestar.serialization import encode_json, get_serializer
+
+    from litestar_vite.codegen import generate_routes_json
+
+    request = _get_request_from_context(context)
+    app = request.app
+
+    # Generate routes JSON
+    routes_data = generate_routes_json(
+        app,
+        only=only,
+        exclude=exclude,
+        include_components=include_components,
+    )
+
+    # Use Litestar's serializer to pick up any custom type encoders from the app
+    type_encoders = app.type_encoders if isinstance(getattr(app, "type_encoders", None), dict) else None
+    serializer = get_serializer(type_encoders)
+    routes_json = encode_json(routes_data, serializer=serializer).decode("utf-8")
+
+    # Generate inline script tag
+    script = dedent(f"""\
+        <script type="text/javascript">
+        (function() {{
+            window.Litestar = window.Litestar || {{}};
+            window.Litestar.routes = {routes_json};
+        }})();
+        </script>""")
+
+    return markupsafe.Markup(script)
 
 
 class ViteAssetLoader:
@@ -220,18 +294,30 @@ class ViteAssetLoader:
     # --- Internal file loading methods (consolidated sync/async) ---
 
     def _get_manifest_path(self) -> Path:
-        """Get the path to the manifest file."""
+        """Get the path to the manifest file.
+
+        Returns:
+            Absolute path to the Vite manifest file.
+        """
         bundle_dir = self._config.bundle_dir
         if not bundle_dir.is_absolute():
             bundle_dir = self._config.root_dir / bundle_dir
         return bundle_dir / self._config.manifest_name
 
     def _get_hot_file_path(self) -> Path:
-        """Get the path to the hot file."""
+        """Get the path to the hot file.
+
+        Returns:
+            Path to the Vite hot file used for dev server URL discovery.
+        """
         return self._config.bundle_dir / self._config.hot_file
 
     async def _load_manifest_async(self) -> None:
-        """Asynchronously load and parse the Vite manifest file."""
+        """Asynchronously load and parse the Vite manifest file.
+
+        Raises:
+            ManifestNotFoundError: If the manifest file cannot be read or parsed.
+        """
         manifest_path = anyio.Path(self._get_manifest_path())
         try:
             if await manifest_path.exists():
@@ -244,7 +330,11 @@ class ViteAssetLoader:
             raise ManifestNotFoundError(str(manifest_path)) from exc
 
     def _load_manifest_sync(self) -> None:
-        """Synchronously load and parse the Vite manifest file."""
+        """Synchronously load and parse the Vite manifest file.
+
+        Raises:
+            ManifestNotFoundError: If the manifest file cannot be read or parsed.
+        """
         manifest_path = self._get_manifest_path()
         try:
             if manifest_path.exists():
@@ -267,32 +357,24 @@ class ViteAssetLoader:
         if hot_file_path.exists():
             self._vite_base_path = hot_file_path.read_text()
 
-    # --- Deprecated async methods (kept for backward compatibility) ---
-
-    async def _parse_manifest_async(self) -> None:
-        """Asynchronously parse the Vite manifest file.
-
-        Deprecated: Use _load_manifest_async instead.
-        """
-        await self._load_manifest_async()
-
-    async def _read_hot_file(self) -> None:
-        """Asynchronously read the hot file for dev server URL.
-
-        Deprecated: Use _load_hot_file_async instead.
-        """
-        await self._load_hot_file_async()
-
     # --- Properties ---
 
     @property
     def manifest_content(self) -> str:
-        """Get the raw manifest content."""
+        """Get the raw manifest content.
+
+        Returns:
+            The raw JSON string content of the Vite manifest file.
+        """
         return self._manifest_content
 
     @manifest_content.setter
     def manifest_content(self, value: str) -> None:
-        """Set the manifest content."""
+        """Set the manifest content.
+
+        Args:
+            value: The raw JSON string content to set.
+        """
         self._manifest_content = value
 
     @cached_property

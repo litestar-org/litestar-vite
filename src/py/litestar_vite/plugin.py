@@ -1589,7 +1589,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         from litestar_vite.loader import (
             render_asset_tag,
             render_hmr_client,
-            render_partial_asset_tag,
+            render_routes,
             render_static_asset,
         )
 
@@ -1602,7 +1602,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             engine.register_template_callable(key="vite_hmr", template_callable=render_hmr_client)
             engine.register_template_callable(key="vite", template_callable=render_asset_tag)
             engine.register_template_callable(key="vite_static", template_callable=render_static_asset)
-            engine.register_template_callable(key="vite_partial", template_callable=render_partial_asset_tag)
+            engine.register_template_callable(key="vite_routes", template_callable=render_routes)
 
     def _configure_static_files(self, app_config: "AppConfig") -> None:
         """Configure static file serving for Vite assets.

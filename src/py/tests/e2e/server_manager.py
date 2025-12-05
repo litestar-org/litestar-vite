@@ -52,7 +52,7 @@ SSR_EXAMPLES: set[str] = {"nuxt", "sveltekit"}
 SSG_EXAMPLES: set[str] = {"astro"}
 
 # CLI examples use their own build tools (Angular CLI)
-CLI_EXAMPLES: set[str] = {"angular-cli"}
+EXTERNAL_EXAMPLES: set[str] = {"angular-cli"}
 
 # Fixed Vite ports configured in each example's app.py RuntimeConfig.port
 # These must match the ports in examples/*/app.py
@@ -407,7 +407,7 @@ class ExampleServer:
 
         if self._dev_mode:
             # In dev mode, also verify the frontend dev server is responding
-            if self.example_name in CLI_EXAMPLES:
+            if self.example_name in EXTERNAL_EXAMPLES:
                 # CLI examples (angular-cli) use external dev servers that take time to build
                 # We check via Litestar proxy (which returns 503 until external server is ready)
                 # Don't check the external port directly - go through the Litestar proxy
@@ -436,9 +436,7 @@ class ExampleServer:
 
         self._check_processes_alive()
 
-    def _verify_http_ready(
-        self, timeout: float = 45.0, port: int | None = None, health_path: str = "/"
-    ) -> None:
+    def _verify_http_ready(self, timeout: float = 45.0, port: int | None = None, health_path: str = "/") -> None:
         """Verify servers respond to HTTP requests.
 
         Args:
@@ -824,7 +822,7 @@ class ExampleServer:
         Returns:
             True if the example uses a CLI-based build tool.
         """
-        return self.example_name in CLI_EXAMPLES
+        return self.example_name in EXTERNAL_EXAMPLES
 
     def _verify_ssr_build(self) -> None:
         """Verify SSR/SSG build artifacts exist before serving.

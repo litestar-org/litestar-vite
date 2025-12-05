@@ -40,7 +40,12 @@ from litestar_vite.config import (
     TypeGenConfig,
     ViteConfig,
 )
-from litestar_vite.html_transform import HtmlTransformer
+from litestar_vite.html_transform import (
+    inject_body_content,
+    inject_head_script,
+    inject_json_script,
+    set_data_attribute,
+)
 from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.plugin import VitePlugin
 from litestar_vite.spa import ViteSPAHandler
@@ -49,7 +54,6 @@ __all__ = (
     # Config components
     "DeployConfig",
     "ExternalDevServer",
-    "HtmlTransformer",
     "InertiaConfig",
     "PathConfig",
     "RouteMetadata",
@@ -65,4 +69,9 @@ __all__ = (
     "generate_routes_json",
     # Submodule
     "inertia",
+    # HTML transformation utilities
+    "inject_body_content",
+    "inject_head_script",
+    "inject_json_script",
+    "set_data_attribute",
 )
