@@ -351,29 +351,12 @@ class ExampleServer:
             # Some frameworks use PORT/HOST as fallback
             ssr_env["PORT"] = str(self.vite_port)
             ssr_env["HOST"] = "127.0.0.1"
-            # Disable Nitro's graceful shutdown which includes stdin EOF detection
-            # In CI environments, stdin handling can cause servers to exit immediately
-            # See: https://nitro.build/deploy/node for shutdown options
-            ssr_env["NITRO_SHUTDOWN_DISABLED"] = "true"
-
             ssr_patterns = [VITE_PORT_PATTERN, NUXT_PORT_PATTERN, LISTENING_PORT_PATTERN]
-
-            # For Nuxt, run node directly instead of going through litestar CLI + npm.
-            # npm can have stdin handling issues in CI environments that cause Nitro
-            # to exit immediately. Running node directly gives us full control.
-            if self.example_name == "nuxt":
-                nuxt_server = self.example_dir / ".output" / "server" / "index.mjs"
-                ssr_proc, ssr_capture = self._spawn_with_capture(
-                    ["node", str(nuxt_server)],
-                    env=ssr_env,
-                    patterns=ssr_patterns,
-                )
-            else:
-                ssr_proc, ssr_capture = self._spawn_with_capture(
-                    self._assets_serve_production_command(),
-                    env=ssr_env,
-                    patterns=ssr_patterns,
-                )
+            ssr_proc, ssr_capture = self._spawn_with_capture(
+                self._assets_serve_production_command(),
+                env=ssr_env,
+                patterns=ssr_patterns,
+            )
             self._processes.append(ssr_proc)
             self._captures.append(ssr_capture)
         elif self._is_ssg_example():
