@@ -351,6 +351,10 @@ class ExampleServer:
             # Some frameworks use PORT/HOST as fallback
             ssr_env["PORT"] = str(self.vite_port)
             ssr_env["HOST"] = "127.0.0.1"
+            # Disable Nitro's graceful shutdown which includes stdin EOF detection
+            # In CI environments, stdin handling can cause servers to exit immediately
+            # See: https://nitro.build/deploy/node for shutdown options
+            ssr_env["NITRO_SHUTDOWN_DISABLED"] = "true"
 
             ssr_patterns = [VITE_PORT_PATTERN, NUXT_PORT_PATTERN, LISTENING_PORT_PATTERN]
             ssr_proc, ssr_capture = self._spawn_with_capture(
