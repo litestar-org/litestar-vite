@@ -16,7 +16,6 @@ Critical: NEVER use npm/node commands directly - always use litestar CLI!
 import logging
 import os
 import re
-import shutil
 import signal
 import socket
 import subprocess
@@ -743,15 +742,19 @@ class ExampleServer:
             Tuple of (subprocess handle, output capture instance).
         """
         logger.info("Spawning: %s", " ".join(cmd))
-        # Use stdbuf to force line-buffered output if available (Linux)
-        # This helps ensure Vite/Node output is immediately available
-        stdbuf_cmd = ["stdbuf", "-oL", "-eL", *cmd] if shutil.which("stdbuf") else cmd
+        # NOTE: We intentionally do NOT use stdbuf here.
+        # While stdbuf helps with line-buffered output, it can interfere with stdin
+        # handling for Node.js/Nitro servers. Nitro detects stdin EOF and exits
+        # gracefully to prevent zombie processes. When stdbuf wraps the command,
+        # stdin handling can become unreliable in some CI environments.
+        # The trade-off (potentially buffered output) is acceptable since we poll
+        # for readiness via HTTP rather than parsing output.
         proc = subprocess.Popen(
-            stdbuf_cmd,
+            cmd,
             cwd=self.example_dir,
             env=env,
             start_new_session=True,
-            stdin=subprocess.PIPE,  # Keep stdin open but unused - prevents Nitro from exiting on stdin close
+            stdin=subprocess.PIPE,  # Keep stdin open - prevents Nitro from exiting on stdin EOF
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             bufsize=0,  # Unbuffered
