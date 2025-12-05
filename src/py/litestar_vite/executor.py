@@ -83,8 +83,16 @@ class CommandExecutor(JSExecutor):
         # This ensures all child processes (node, astro, nuxt, vite, etc.) can be
         # terminated together using os.killpg() on the process group.
         # On Windows, use CREATE_NEW_PROCESS_GROUP flag.
+        #
+        # stdin=subprocess.PIPE: Keep stdin open to prevent Node.js/Nitro from exiting.
+        # In headless CI environments, stdin is often closed or /dev/null. Node.js
+        # servers detect stdin EOF and exit gracefully to prevent zombie processes.
+        # Using PIPE creates an open file descriptor that the child sees as "waiting
+        # for input" - keeping the server alive. We never write to it; the buffer
+        # stays empty and the child blocks on read (which is desired for servers).
         kwargs: dict[str, Any] = {
             "cwd": cwd,
+            "stdin": subprocess.PIPE,  # Keep stdin open for headless CI compatibility
             "stdout": None,  # inherit for live output
             "stderr": None,
         }
@@ -213,8 +221,16 @@ class NodeenvExecutor(JSExecutor):
         # Use start_new_session=True on Unix to create a new process group.
         # This ensures all child processes (node, astro, nuxt, vite, etc.) can be
         # terminated together using os.killpg() on the process group.
+        #
+        # stdin=subprocess.PIPE: Keep stdin open to prevent Node.js/Nitro from exiting.
+        # In headless CI environments, stdin is often closed or /dev/null. Node.js
+        # servers detect stdin EOF and exit gracefully to prevent zombie processes.
+        # Using PIPE creates an open file descriptor that the child sees as "waiting
+        # for input" - keeping the server alive. We never write to it; the buffer
+        # stays empty and the child blocks on read (which is desired for servers).
         kwargs: dict[str, Any] = {
             "cwd": cwd,
+            "stdin": subprocess.PIPE,  # Keep stdin open for headless CI compatibility
             "stdout": None,
             "stderr": None,
         }

@@ -18,7 +18,6 @@ export default defineNuxtConfig({
     // API proxy points to the Litestar backend (apiPrefix defaults to "/api")
     apiProxy: `http://127.0.0.1:${LITESTAR_PORT}`,
     verbose: true,
-    // Match Python TypeGenConfig paths (defaults are "types/api", "openapi.json", "routes.json")
     types: {
       output: "generated",
       openapiPath: "generated/openapi.json",
