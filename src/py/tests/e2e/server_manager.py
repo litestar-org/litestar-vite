@@ -334,10 +334,19 @@ class ExampleServer:
             # Verify build artifacts exist before attempting to serve
             self._verify_ssr_build()
 
+            # Set VITE_PORT for SSR production server
+            # The Litestar plugin will use this to configure the Nitro/SSR server port
+            ssr_env = env.copy()
+            ssr_env["VITE_PORT"] = str(self.vite_port)
+            # Nitro specifically uses NITRO_PORT
+            ssr_env["NITRO_PORT"] = str(self.vite_port)
+            # Some frameworks use PORT as fallback
+            ssr_env["PORT"] = str(self.vite_port)
+
             ssr_patterns = [VITE_PORT_PATTERN, NUXT_PORT_PATTERN, LISTENING_PORT_PATTERN]
             ssr_proc, ssr_capture = self._spawn_with_capture(
                 self._assets_serve_production_command(),
-                env=env,
+                env=ssr_env,
                 patterns=ssr_patterns,
             )
             self._processes.append(ssr_proc)
