@@ -26,7 +26,7 @@ def reset_litestar_app_env(monkeypatch: MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-def root_command() -> LitestarGroup:
+def root_command() -> "LitestarGroup":
     import litestar.cli.main
 
     return cast("LitestarGroup", importlib.reload(litestar.cli.main).litestar_group)
@@ -119,17 +119,17 @@ def runner() -> CliRunner:
 
 
 @pytest.fixture
-def mock_uvicorn_run(mocker: MockerFixture) -> MagicMock:
+def mock_uvicorn_run(mocker: MockerFixture) -> "MagicMock":
     return mocker.patch("uvicorn.run")
 
 
 @pytest.fixture()
-def mock_subprocess_run(mocker: MockerFixture) -> MagicMock:
+def mock_subprocess_run(mocker: MockerFixture) -> "MagicMock":
     return mocker.patch("subprocess.run")
 
 
 @pytest.fixture
-def mock_confirm_ask(mocker: MockerFixture) -> Generator[MagicMock, None, None]:
+def mock_confirm_ask(mocker: MockerFixture) -> "Generator[MagicMock, None, None]":
     yield mocker.patch("rich.prompt.Confirm.ask", return_value=True)
 
 
