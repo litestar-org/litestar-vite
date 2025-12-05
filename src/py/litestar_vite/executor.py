@@ -104,6 +104,7 @@ class CommandExecutor(JSExecutor):
             cwd=cwd,
             shell=platform.system() == "Windows",
             check=False,
+            stdin=subprocess.PIPE,  # Keep stdin open - Nitro exits when stdin is closed
             stdout=None,  # inherit for live output
             stderr=subprocess.PIPE,
         )
