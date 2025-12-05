@@ -652,23 +652,25 @@ class ExampleServer:
         # Also remove PORT which some frameworks use as fallback
         env.pop("PORT", None)
 
-        env.update({
-            "VITE_DEV_MODE": "true" if dev_mode else "false",
-            "HOST": "127.0.0.1",
-            # npm cache to avoid permission issues
-            "npm_config_cache": str(Path.home() / ".cache" / "npm"),
-            # Bypass CI environment check in Vite plugin for E2E tests
-            # We intentionally test dev mode in CI to validate the full experience
-            "LITESTAR_BYPASS_ENV_CHECK": "1",
-            # Force unbuffered output for reliable port detection in CI
-            "PYTHONUNBUFFERED": "1",
-            # Disable interactive features that might buffer output
-            "CI": "true",
-            # Force color output to be consistent with expected patterns
-            "FORCE_COLOR": "1",
-            # Node.js: force immediate stdout flushing
-            "NODE_OPTIONS": "--no-warnings",
-        })
+        env.update(
+            {
+                "VITE_DEV_MODE": "true" if dev_mode else "false",
+                "HOST": "127.0.0.1",
+                # npm cache to avoid permission issues
+                "npm_config_cache": str(Path.home() / ".cache" / "npm"),
+                # Bypass CI environment check in Vite plugin for E2E tests
+                # We intentionally test dev mode in CI to validate the full experience
+                "LITESTAR_BYPASS_ENV_CHECK": "1",
+                # Force unbuffered output for reliable port detection in CI
+                "PYTHONUNBUFFERED": "1",
+                # Disable interactive features that might buffer output
+                "CI": "true",
+                # Force color output to be consistent with expected patterns
+                "FORCE_COLOR": "1",
+                # Node.js: force immediate stdout flushing
+                "NODE_OPTIONS": "--no-warnings",
+            }
+        )
         return env
 
     def _run(self, cmd: list[str], cwd: Path, env: dict[str, str]) -> None:
