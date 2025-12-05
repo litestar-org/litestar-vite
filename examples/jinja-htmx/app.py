@@ -96,7 +96,7 @@ vite = VitePlugin(
         mode="template",
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources"),
-        types=TypeGenConfig(output=Path("resources/generated")),
+        types=TypeGenConfig(output=Path("resources/generated"), generate_sdk=False),
         runtime=RuntimeConfig(port=5061),
     )
 )

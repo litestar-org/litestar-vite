@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build && tsc -b --noEmit",
     "preview": "vite preview",
     "serve": "vite preview",
     "generate-types": "openapi-ts --config openapi-ts.config.ts"
@@ -22,7 +22,7 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
-    "litestar-vite-plugin": "latest",
+    "litestar-vite-plugin": "file:../..",
     "typescript": "latest",
     "vite": "^7.0.0",
     "@hey-api/openapi-ts": "^0.88.0"

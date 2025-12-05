@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "{% if use_typescript %}{% if framework in ['vue', 'vue-inertia'] %}vue-tsc -b{% else %}tsc{% endif %} && {% endif %}vite build",
+    "build": "vite build{% if use_typescript %} && {% if framework in ['vue', 'vue-inertia'] %}vue-tsc -b --noEmit{% else %}tsc -b --noEmit{% endif %}{% endif %}",
     "preview": "vite preview",
     "serve": "vite preview",
     "watch": "npm run serve"{% if generate_client %},

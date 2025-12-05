@@ -454,9 +454,9 @@ class TypeGenConfig:
     """
 
     output: Path = field(default_factory=lambda: Path("src/generated"))
-    openapi_path: Path = field(default_factory=lambda: Path("src/generated/openapi.json"))
-    routes_path: Path = field(default_factory=lambda: Path("src/generated/routes.json"))
-    routes_ts_path: "Path | None" = None
+    openapi_path: "Path | None" = field(default=None)  # Computed in __post_init__ if None
+    routes_path: "Path | None" = field(default=None)  # Computed in __post_init__ if None
+    routes_ts_path: "Path | None" = field(default=None)  # Computed in __post_init__ if None
     generate_zod: bool = False
     generate_sdk: bool = True
     generate_routes: bool = True
@@ -465,14 +465,21 @@ class TypeGenConfig:
     )
 
     def __post_init__(self) -> None:
-        """Normalize path types."""
+        """Normalize path types and compute defaults based on output directory."""
         if isinstance(self.output, str):
             self.output = Path(self.output)
-        if isinstance(self.openapi_path, str):
+        # Compute defaults relative to output directory if not explicitly set
+        if self.openapi_path is None:
+            self.openapi_path = self.output / "openapi.json"
+        elif isinstance(self.openapi_path, str):
             self.openapi_path = Path(self.openapi_path)
-        if isinstance(self.routes_path, str):
+        if self.routes_path is None:
+            self.routes_path = self.output / "routes.json"
+        elif isinstance(self.routes_path, str):
             self.routes_path = Path(self.routes_path)
-        if isinstance(self.routes_ts_path, str):
+        if self.routes_ts_path is None:
+            self.routes_ts_path = self.output / "routes.ts"
+        elif isinstance(self.routes_ts_path, str):
             self.routes_ts_path = Path(self.routes_ts_path)
 
 
@@ -574,11 +581,14 @@ class ViteConfig:
     def _normalize_mode(self) -> None:
         """Normalize mode aliases.
 
-        - 'ssg' (Static Site Generation) is an alias for 'ssr' since both need
-          proxy mode in development (to forward to framework dev server) but
-          serve static files in production. The key difference is just semantic:
-          SSG builds static HTML at build time, SSR renders at request time,
-          but the Litestar integration behavior is identical.
+        - 'ssg' (Static Site Generation) is an alias for 'ssr' since both:
+          - Dev mode: use blacklist proxy (proxy_mode='proxy') to forward all
+            non-API routes to the framework's dev server (Astro, etc.)
+          - Production: serve static files from bundle_dir
+          SSG frameworks like Astro handle their own routing in dev mode,
+          just like SSR frameworks (Nuxt, SvelteKit). The difference is that
+          SSG pre-renders at build time while SSR renders per-request, but
+          their dev-time proxy behavior is identical.
         """
         if self.mode == "ssg":
             self.mode = "ssr"
@@ -700,9 +710,11 @@ class ViteConfig:
             types.routes_ts_path = types.output / "routes.ts"
 
         types.output = _to_root(types.output)
-        types.openapi_path = _to_root(types.openapi_path)
-        types.routes_path = _to_root(types.routes_path)
-        types.routes_ts_path = _to_root(types.routes_ts_path)
+        # After __post_init__, these are guaranteed to be Path (not None)
+        # The type is Path | None to allow None as input, but __post_init__ computes defaults
+        types.openapi_path = _to_root(types.openapi_path) if types.openapi_path else types.output / "openapi.json"
+        types.routes_path = _to_root(types.routes_path) if types.routes_path else types.output / "routes.json"
+        types.routes_ts_path = _to_root(types.routes_ts_path) if types.routes_ts_path else types.output / "routes.ts"
 
     def _ensure_spa_default(self) -> None:
         if self.mode in {"spa", "hybrid"} and self.spa is None:

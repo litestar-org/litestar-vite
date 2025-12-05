@@ -1120,12 +1120,9 @@ declare global {
     /**
      * Simple route map (name -> uri) for legacy consumers.
      */
-    routes?: typeof routes
-    serverRoutes?: typeof serverRoutes
+    routes?: Record<string, string>
+    serverRoutes?: Record<string, string>
   }
-  // eslint-disable-next-line no-var
-  var routes: typeof routes | undefined
-  var serverRoutes: typeof serverRoutes | undefined
 }
 
 // Re-export helper functions from litestar-vite-plugin
@@ -1175,23 +1172,31 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
 
       let generated = false
 
-      if (fs.existsSync(openapiPath)) {
-        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("generating TypeScript types...")}`)
+      // Prefer user config if present (deterministic order)
+      const candidates = [path.resolve(projectRoot, "openapi-ts.config.ts"), path.resolve(projectRoot, "hey-api.config.ts"), path.resolve(projectRoot, ".hey-api.config.ts")]
+      const configPath = candidates.find((p) => fs.existsSync(p)) || null
+      chosenConfigPath = configPath
 
-        // Prefer user config if present (deterministic order)
-        const candidates = [path.resolve(projectRoot, "openapi-ts.config.ts"), path.resolve(projectRoot, "hey-api.config.ts"), path.resolve(projectRoot, ".hey-api.config.ts")]
-        const configPath = candidates.find((p) => fs.existsSync(p)) || null
-        chosenConfigPath = configPath
+      // Skip openapi-ts if SDK generation is disabled and no custom config exists
+      // (e.g., HTMX apps that only need routes.ts, not API client types)
+      const shouldRunOpenApiTs = configPath || typesConfig.generateSdk
+
+      if (fs.existsSync(openapiPath) && shouldRunOpenApiTs) {
+        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("generating TypeScript types...")}`)
         if (resolvedConfig) {
           resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("openapi-ts config: ")}${configPath ?? "<built-in defaults>"}`)
         }
+
+        // Output API client to a subdirectory to avoid deleting routes.ts and other files
+        // openapi-ts clears its output directory, so we isolate it
+        const sdkOutput = path.join(typesConfig.output, "api")
 
         let args: string[]
         if (configPath) {
           // openapi-ts CLI (v0.88+) expects --file/-f for config path
           args = ["@hey-api/openapi-ts", "--file", configPath]
         } else {
-          args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
+          args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", sdkOutput]
 
           const plugins = ["@hey-api/typescript", "@hey-api/schemas"]
           if (typesConfig.generateSdk) {
@@ -1220,8 +1225,6 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
         })
 
         generated = true
-      } else if (resolvedConfig) {
-        resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("OpenAPI schema not found:")} ${openapiPath}`)
       }
 
       // Always try to emit routes types when routes metadata is present
@@ -1312,11 +1315,12 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
         }
       }
 
-      // Run type generation at build start if enabled and openapi.json exists
+      // Run type generation at build start if enabled and openapi.json or routes.json exists
       if (typesConfig.enabled) {
         const projectRoot = resolvedConfig?.root ?? process.cwd()
         const openapiPath = path.resolve(projectRoot, typesConfig.openapiPath)
-        if (fs.existsSync(openapiPath)) {
+        const routesPath = path.resolve(projectRoot, typesConfig.routesPath)
+        if (fs.existsSync(openapiPath) || fs.existsSync(routesPath)) {
           await runTypeGeneration()
         }
       }

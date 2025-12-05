@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build && tsc -b --noEmit",
     "preview": "vite preview",
     "serve": "vite preview",
     "generate-types": "openapi-ts --config openapi-ts.config.ts"
