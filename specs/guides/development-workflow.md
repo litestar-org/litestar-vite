@@ -39,17 +39,17 @@ All project tasks are managed through a `Makefile` and the `uv` Python package m
 
 ### Running the Development Server
 
-To work on an example application (like the `basic` one), run Litestar and let it manage Vite for you (single port by default):
+To work on an example application (like the `vue` one), run Litestar and let it manage Vite for you (single port by default):
 
 -   **Run Litestar App (starts/proxies Vite)**:
     ```bash
-    uv run litestar run --reload --app examples.basic.app:app
+    uv run litestar --app examples.vue.app:app run --reload
     ```
 
 -   **Two-port option (start Vite yourself)**:
     ```bash
-    uv run litestar assets serve --app examples.basic.app:app
-    uv run litestar run --reload --app examples.basic.app:app
+    uv run litestar --app examples.vue.app:app assets serve
+    uv run litestar --app examples.vue.app:app run --reload
     ```
 
 ### Running Tests

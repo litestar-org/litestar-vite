@@ -253,13 +253,7 @@ The `examples/` directory contains working examples demonstrating various integr
 
 ### Templating & HTMX
 
-- **`template-htmx/`**: HTMX hypermedia integration
-- **`jinja/`**: Server-side Jinja2 templates with Vite assets
-- **`flash/`**: Flash messages demonstration
+- **`jinja-htmx/`**: HTMX hypermedia integration with Jinja2 templates
 
-### Other
-
-- **`basic/`**: Minimal Vite integration setup
-- **`fullstack-typed/`**: End-to-end TypeScript with route typegen
 
 Each example includes its own `package.json`, Vite configuration, and demonstrates best practices for that particular stack.
