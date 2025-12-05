@@ -190,6 +190,15 @@ def production_server(example_name: str) -> Generator[ExampleServer, None, None]
     Yields:
         ExampleServer: Running server in production mode.
     """
+    # Stop any dev server for this example first - they use the same Vite port
+    # This prevents EADDRINUSE errors when dev and prod tests run in same session
+    if example_name in _dev_servers:
+        try:
+            _dev_servers[example_name].stop()
+        except Exception:
+            pass
+        del _dev_servers[example_name]
+
     # Reuse existing server if already running for this example
     if example_name in _prod_servers:
         server = _prod_servers[example_name]
