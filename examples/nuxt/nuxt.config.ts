@@ -19,5 +19,11 @@ export default defineNuxtConfig({
     apiProxy: `http://127.0.0.1:${LITESTAR_PORT}`,
     apiPrefix: "/api",
     verbose: true,
+    // Match Python TypeGenConfig paths
+    types: {
+      output: "generated",
+      openapiPath: "generated/openapi.json",
+      routesPath: "generated/routes.json",
+    },
   },
 })

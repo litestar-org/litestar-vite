@@ -13,6 +13,12 @@ export default defineConfig({
       // API proxy points to the Litestar backend
       apiProxy: `http://localhost:${LITESTAR_PORT}`,
       apiPrefix: "/api",
+      // Match Python TypeGenConfig paths
+      types: {
+        output: "src/generated",
+        openapiPath: "src/generated/openapi.json",
+        routesPath: "src/generated/routes.json",
+      },
     }),
   ],
   vite: {

@@ -373,9 +373,23 @@ class ExampleServer:
             self.litestar_port,
         )
 
-        # Wait for Litestar backend to be ready (serves API and proxies to Vite in dev)
-        self._verify_http_ready(port=self.litestar_port, timeout=timeout)
+        start = time.monotonic()
+
+        # Wait for Litestar backend to be ready
+        # For SSR/SSG examples, check /api/summary instead of / because:
+        # - The homepage (/) is proxied to the SSR dev server
+        # - The SSR dev server takes time to start and returns 500 initially
+        # - API routes (/api/*) are handled directly by Litestar without proxy
+        if self._dev_mode and (self.example_name in SSR_EXAMPLES or self.example_name in SSG_EXAMPLES):
+            self._verify_http_ready(port=self.litestar_port, timeout=timeout, health_path="/api/summary")
+        else:
+            self._verify_http_ready(port=self.litestar_port, timeout=timeout)
         logger.info("Litestar backend ready on port %d", self.litestar_port)
+
+        # Calculate remaining timeout after Litestar check
+        elapsed = time.monotonic() - start
+        remaining_timeout = max(timeout - elapsed, 30.0)  # At least 30s for frontend
+        logger.info("Remaining timeout for frontend: %.1fs", remaining_timeout)
 
         if self._dev_mode:
             # In dev mode, also verify the frontend dev server is responding
@@ -383,13 +397,13 @@ class ExampleServer:
                 # CLI examples (angular-cli) use external dev servers that take time to build
                 # We check via Litestar proxy (which returns 503 until external server is ready)
                 # Don't check the external port directly - go through the Litestar proxy
-                self._verify_proxy_ready(timeout=timeout)
+                self._verify_proxy_ready(timeout=remaining_timeout)
                 logger.info("External dev server ready (via Litestar proxy)")
             elif self.example_name in SSR_EXAMPLES or self.example_name in SSG_EXAMPLES:
                 # SSR/SSG examples (nuxt, sveltekit, astro) use dynamic ports via hotfile
                 # Litestar proxy handles forwarding but the SSR dev server takes time to start
                 # We need to verify via proxy (returns 500 until SSR server is ready)
-                self._verify_proxy_ready(timeout=timeout)
+                self._verify_proxy_ready(timeout=remaining_timeout)
                 logger.info("SSR/SSG dev server ready (via Litestar proxy)")
             else:
                 # Standard Vite examples - check the configured port
@@ -404,12 +418,15 @@ class ExampleServer:
 
         self._check_processes_alive()
 
-    def _verify_http_ready(self, timeout: float = 45.0, port: int | None = None) -> None:
+    def _verify_http_ready(
+        self, timeout: float = 45.0, port: int | None = None, health_path: str = "/"
+    ) -> None:
         """Verify servers respond to HTTP requests.
 
         Args:
             timeout: Maximum seconds to wait for HTTP response.
             port: Specific port to check (defaults to litestar_port).
+            health_path: Path to check for health (default "/", use "/api/summary" for SSR/SSG).
 
         Raises:
             TimeoutError: If server doesn't respond within timeout.
@@ -421,21 +438,22 @@ class ExampleServer:
 
         start = time.monotonic()
         base_url = f"http://127.0.0.1:{port}"
+        health_url = f"{base_url}{health_path}"
 
         last_status = None
         last_error = None
         while time.monotonic() - start < timeout:
             self._check_processes_alive()
             try:
-                response = httpx.get(f"{base_url}/", timeout=5.0)
+                response = httpx.get(health_url, timeout=5.0)
                 last_status = response.status_code
                 # Accept any response that's not a connection error
                 # SSR frameworks may return 500/503 while building, but that means server is up
                 if response.status_code < 500:
-                    logger.info("HTTP ready: %s returned %d", base_url, response.status_code)
+                    logger.info("HTTP ready: %s returned %d", health_url, response.status_code)
                     return
                 # 5xx means server is up but SSR framework is still building - keep waiting
-                logger.debug("HTTP waiting: %s returned %d (SSR building)", base_url, response.status_code)
+                logger.debug("HTTP waiting: %s returned %d (SSR building)", health_url, response.status_code)
             except httpx.RequestError as e:
                 last_error = str(e)
             time.sleep(0.5)
