@@ -90,6 +90,44 @@ def _fmt_path(path: Path) -> str:
         return str(path)
 
 
+def _write_if_changed(path: Path, content: bytes | str, encoding: str = "utf-8") -> bool:
+    """Write content to file only if it differs from the existing content.
+
+    Uses hash comparison to avoid unnecessary writes that would trigger
+    file watchers and unnecessary rebuilds.
+
+    Args:
+        path: The file path to write to.
+        content: The content to write (bytes or str).
+        encoding: Encoding for string content.
+
+    Returns:
+        True if file was written (content changed), False if skipped (unchanged).
+    """
+    import hashlib
+
+    # Convert string to bytes if needed
+    content_bytes = content.encode(encoding) if isinstance(content, str) else content
+
+    # Check if file exists and has same content
+    if path.exists():
+        try:
+            existing_hash = hashlib.md5(path.read_bytes()).hexdigest()  # noqa: S324
+            new_hash = hashlib.md5(content_bytes).hexdigest()  # noqa: S324
+            if existing_hash == new_hash:
+                return False
+        except OSError:
+            pass  # File read failed, proceed with write
+
+    # Write the file
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(content, str):
+        path.write_text(content, encoding=encoding)
+    else:
+        path.write_bytes(content)
+    return True
+
+
 # Cache debug flag check to avoid repeated os.environ lookups
 _vite_proxy_debug: bool | None = None
 
@@ -144,6 +182,27 @@ def _infer_port_from_argv() -> str | None:
     return None
 
 
+def _is_non_serving_assets_cli() -> bool:
+    """Return True when running CLI assets commands that don't start a server.
+
+    This suppresses dev-proxy setup/logging for commands like `assets build`
+    where only a Vite build is performed and no proxy should be initialized.
+    """
+
+    argv_str = " ".join(sys.argv)
+    non_serving_commands = (
+        " assets build",
+        " assets install",
+        " assets deploy",
+        " assets doctor",
+        " assets generate-types",
+        " assets export-routes",
+        " assets status",
+        " assets init",
+    )
+    return any(cmd in argv_str for cmd in non_serving_commands)
+
+
 def _log_success(message: str) -> None:
     """Print a success message with consistent styling."""
 
@@ -177,7 +236,7 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
     """
 
     root = config.root_dir or Path.cwd()
-    path = Path(root) / ".litestar-vite.json"
+    path = Path(root) / ".litestar.json"
     types = config.types if isinstance(config.types, TypeGenConfig) else None
     deploy = config.deploy_config
     resource_dir = config.resource_dir
@@ -192,6 +251,8 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
     external = config.external_dev_server
     external_target = external.target if external else None
     external_http2 = external.http2 if external else False
+
+    litestar_version = os.environ.get("LITESTAR_VERSION") or _resolve_litestar_version()
 
     payload = {
         "assetUrl": config.asset_url,
@@ -212,7 +273,7 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
         "ssrEnabled": config.ssr_enabled,
         "ssrOutDir": ssr_out_dir_value,
         "types": {
-            "enabled": types.enabled,
+            "enabled": True,  # Presence of TypeGenConfig means enabled
             "output": str(types.output),
             "openapiPath": str(types.openapi_path),
             "routesPath": str(types.routes_path),
@@ -229,6 +290,7 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
         },
         # Executor for package commands (npx, bunx, etc.)
         "executor": config.runtime.executor,
+        "litestarVersion": litestar_version,
     }
 
     path.write_text(json.dumps(payload, indent=2))
@@ -245,7 +307,7 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
         config: The Vite configuration.
         asset_url_override: Optional asset URL to force (e.g., CDN base during build).
     """
-    litestar_version = _resolve_litestar_version()
+    litestar_version = os.environ.get("LITESTAR_VERSION") or _resolve_litestar_version()
     asset_url = asset_url_override or config.asset_url
     base_url = config.base_url or asset_url
     if asset_url:
@@ -255,8 +317,6 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
     os.environ.setdefault("VITE_ALLOW_REMOTE", str(True))
 
     backend_host = os.environ.get("LITESTAR_HOST") or "127.0.0.1"
-    if backend_host == "127.0.0":
-        backend_host = "127.0.0.1"
     backend_port = os.environ.get("LITESTAR_PORT") or os.environ.get("PORT") or _infer_port_from_argv() or "8000"
     os.environ["LITESTAR_HOST"] = backend_host
     os.environ["LITESTAR_PORT"] = str(backend_port)
@@ -281,7 +341,7 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
     os.environ.setdefault("HOST", config.host)
     os.environ.setdefault("PORT", str(config.port))
 
-    os.environ.setdefault("LITESTAR_VERSION", litestar_version)
+    os.environ["LITESTAR_VERSION"] = litestar_version
     os.environ.setdefault("LITESTAR_VITE_RUNTIME", config.runtime.executor or "node")
     os.environ.setdefault("LITESTAR_VITE_INSTALL_CMD", " ".join(config.install_command))
 
@@ -1443,6 +1503,55 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._asset_loader = ViteAssetLoader.initialize_loader(config=self._config)
         return self._asset_loader
 
+    def _resolve_bundle_dir(self) -> Path:
+        """Resolve the bundle directory to an absolute path.
+
+        Returns:
+            The absolute path to the bundle directory.
+        """
+        bundle_dir = Path(self._config.bundle_dir)
+        if not bundle_dir.is_absolute():
+            return self._config.root_dir / bundle_dir
+        return bundle_dir
+
+    def _resolve_hotfile_path(self) -> Path:
+        """Resolve the path to the hotfile.
+
+        Returns:
+            The absolute path to the hotfile.
+        """
+        return self._resolve_bundle_dir() / self._config.hot_file
+
+    def _write_hotfile(self, content: str) -> None:
+        """Write content to the hotfile.
+
+        Args:
+            content: The content to write (usually the dev server URL).
+        """
+        hotfile_path = self._resolve_hotfile_path()
+        hotfile_path.parent.mkdir(parents=True, exist_ok=True)
+        hotfile_path.write_text(content, encoding="utf-8")
+        _log_info(f"Hotfile written: {hotfile_path} -> {content}")
+
+    def _resolve_dev_command(self) -> "list[str]":
+        """Resolve the command to run for the dev server.
+
+        Returns:
+            The list of command arguments.
+        """
+        ext = self._config.runtime.external_dev_server
+        if isinstance(ext, ExternalDevServer) and ext.enabled:
+            command = ext.command or self._config.executor.start_command
+            _log_info(f"Starting external dev server: {' '.join(command)}")
+            return command
+
+        if self._config.hot_reload:
+            _log_info("Starting Vite dev server (HMR enabled)")
+            return self._config.run_command
+
+        _log_info("Starting Vite watch build process")
+        return self._config.build_watch_command
+
     def _ensure_proxy_target(self) -> None:
         """Prepare proxy target URL and port for proxy modes (vite, proxy, ssr).
 
@@ -1455,7 +1564,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         - Sets _proxy_target directly (JS writes hotfile when server starts)
 
         For 'proxy'/'ssr' modes:
-        - Port is written to .litestar-vite.json for SSR framework to read
+        - Port is written to .litestar.json for SSR framework to read
         - SSR framework writes hotfile with actual URL when ready
         - Proxy discovers target from hotfile at request time
         """
@@ -1529,7 +1638,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         from litestar_vite.loader import (
             render_asset_tag,
             render_hmr_client,
-            render_partial_asset_tag,
+            render_routes,
             render_static_asset,
         )
 
@@ -1542,7 +1651,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             engine.register_template_callable(key="vite_hmr", template_callable=render_hmr_client)
             engine.register_template_callable(key="vite", template_callable=render_asset_tag)
             engine.register_template_callable(key="vite_static", template_callable=render_static_asset)
-            engine.register_template_callable(key="vite_partial", template_callable=render_partial_asset_tag)
+            engine.register_template_callable(key="vite_routes", template_callable=render_routes)
 
     def _configure_static_files(self, app_config: "AppConfig") -> None:
         """Configure static file serving for Vite assets.
@@ -1550,9 +1659,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         Args:
             app_config: The Litestar application configuration.
         """
-        bundle_dir = Path(self._config.bundle_dir)
-        if not bundle_dir.is_absolute():
-            bundle_dir = self._config.root_dir / bundle_dir
+        bundle_dir = self._resolve_bundle_dir()
 
         resource_dir = Path(self._config.resource_dir)
         if not resource_dir.is_absolute():
@@ -1590,10 +1697,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             app_config: The Litestar application configuration.
         """
         proxy_mode = self._config.proxy_mode
-        bundle_dir = self._config.bundle_dir
-        if not bundle_dir.is_absolute():
-            bundle_dir = self._config.root_dir / bundle_dir
-        hotfile_path = bundle_dir / self._config.hot_file
+        hotfile_path = self._resolve_hotfile_path()
 
         if proxy_mode == "vite":
             self._configure_vite_proxy(app_config, hotfile_path)
@@ -1700,8 +1804,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._config.set_static_folders:
             self._configure_static_files(app_config)
 
-        # Add dev proxy middleware based on proxy_mode
-        if self._config.is_dev_mode and self._config.proxy_mode is not None:
+        # Add dev proxy middleware based on proxy_mode (skip non-serving CLI commands)
+        if self._config.is_dev_mode and self._config.proxy_mode is not None and not _is_non_serving_assets_cli():
             self._configure_dev_proxy(app_config)
 
         # Add SPA catch-all route handler if spa_handler is enabled
@@ -1715,6 +1819,18 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             from litestar_vite.spa import ViteSPAHandler
 
             self._spa_handler = ViteSPAHandler(self._config)
+
+        # Auto-register static files for mode="external" in production
+        # This is for non-Vite frameworks like Angular CLI that have their own build system
+        if self._config.mode == "external" and not self._config.is_dev_mode:
+            bundle_dir = self._resolve_bundle_dir()
+            if bundle_dir.exists():
+                static_router = create_static_files_router(
+                    path="/",
+                    directories=[bundle_dir],
+                    html_mode=True,  # SPA fallback - serves index.html for non-file routes
+                )
+                app_config.route_handlers.append(static_router)
 
         # Auto-register per-worker lifespan for SPA handler init, asset loader, env setup
         app_config.lifespan.append(self.lifespan)  # pyright: ignore[reportUnknownMemberType]
@@ -1743,11 +1859,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """Run the appropriate health check based on proxy mode."""
         if self._config.proxy_mode == "proxy":
             # SSR framework health check via hotfile
-            bundle_dir = self._config.bundle_dir
-            if not bundle_dir.is_absolute():
-                bundle_dir = self._config.root_dir / bundle_dir
-            hotfile_path = bundle_dir / self._config.hot_file
-            self._check_ssr_health(hotfile_path)
+            self._check_ssr_health(self._resolve_hotfile_path())
         else:
             # Standard Vite dev server health check
             self._check_health()
@@ -1798,8 +1910,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
     def _export_types_sync(self, app: "Litestar") -> None:
         """Export type metadata synchronously on startup.
 
-        This exports OpenAPI schema and route metadata when type generation
-        is enabled. The Vite plugin watches these files and triggers
+        This exports OpenAPI schema, route metadata (JSON), and typed routes (TypeScript)
+        when type generation is enabled. The Vite plugin watches these files and triggers
         @hey-api/openapi-ts when they change.
 
         Args:
@@ -1807,7 +1919,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """
         from litestar_vite.config import TypeGenConfig
 
-        if not isinstance(self._config.types, TypeGenConfig) or not self._config.types.enabled:
+        if not isinstance(self._config.types, TypeGenConfig):
             return
 
         try:
@@ -1824,91 +1936,58 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
             openapi_plugin = next((p for p in app.plugins._plugins if isinstance(p, OpenAPIPlugin)), None)  # pyright: ignore[reportPrivateUsage]
             has_openapi = openapi_plugin is not None and openapi_plugin._openapi_config is not None  # pyright: ignore[reportPrivateUsage]
+            openapi_schema: "dict[str, Any] | None" = None
+
+            # Track which files were actually written (changed)
+            exported_files: list[str] = []
+            unchanged_files: list[str] = []
+
             if has_openapi:
                 try:
                     serializer = get_serializer(
                         app.type_encoders if isinstance(getattr(app, "type_encoders", None), dict) else None
                     )
                     schema_dict = app.openapi_schema.to_schema()
+                    openapi_schema = schema_dict
                     schema_content = msgspec.json.format(
                         encode_json(schema_dict, serializer=serializer),
                         indent=2,
                     )
-                    self._config.types.openapi_path.parent.mkdir(parents=True, exist_ok=True)
-                    self._config.types.openapi_path.write_bytes(schema_content)
+                    openapi_path = self._config.types.openapi_path
+                    if openapi_path is None:
+                        openapi_path = self._config.types.output / "openapi.json"
+                    if _write_if_changed(openapi_path, schema_content):
+                        exported_files.append(f"openapi: {_fmt_path(openapi_path)}")
+                    else:
+                        unchanged_files.append("openapi.json")
                 except (TypeError, ValueError, OSError, AttributeError) as exc:  # pragma: no cover
                     console.print(f"[yellow]! OpenAPI export skipped: {exc}[/]")
             else:
                 console.print("[yellow]! OpenAPI schema not available; skipping openapi.json export[/]")
 
-            # Export routes
-            routes_data = generate_routes_json(app, include_components=True)
+            # Export routes JSON
+            routes_data = generate_routes_json(app, include_components=True, openapi_schema=openapi_schema)
             routes_data["litestar_version"] = _resolve_litestar_version()
             routes_content = msgspec.json.format(
                 msgspec.json.encode(routes_data),
                 indent=2,
             )
-            self._config.types.routes_path.parent.mkdir(parents=True, exist_ok=True)
-            self._config.types.routes_path.write_bytes(routes_content)
+            routes_path = self._config.types.routes_path
+            if routes_path is None:
+                routes_path = self._config.types.output / "routes.json"
+            if _write_if_changed(routes_path, routes_content):
+                exported_files.append(_fmt_path(routes_path))
+            else:
+                unchanged_files.append("routes.json")
+            # Note: routes.ts is generated by the Vite plugin from routes.json during build
 
-            _log_success(
-                f"Types exported → {_fmt_path(self._config.types.routes_path)}"
-                + (f" (openapi: {_fmt_path(self._config.types.openapi_path)})" if has_openapi else " (openapi skipped)")
-            )
+            # Log results
+            if exported_files:
+                _log_success(f"Types exported → {', '.join(exported_files)}")
+            if unchanged_files:
+                _log_info(f"Types unchanged → {', '.join(unchanged_files)}")
         except (OSError, TypeError, ValueError, ImportError) as e:  # pragma: no cover
             _log_warn(f"Type export failed: {e}")
-
-    def _inject_routes_to_spa_handler(self, app: "Litestar") -> None:
-        """Extract route metadata and inject it into the SPA handler.
-
-        This method is called during lifespan startup when SPA route injection
-        is enabled. It uses generate_routes_json() to extract routes and passes
-        them to the SPA handler for HTML injection.
-
-        Args:
-            app: The Litestar application instance.
-        """
-        spa_config = self._config.spa_config
-        if self._spa_handler is None or spa_config is None:
-            return
-
-        if not spa_config.inject_routes:
-            return
-
-        try:
-            from litestar_vite.codegen import generate_routes_json
-
-            # Extract routes with filtering
-            routes_data = generate_routes_json(
-                app,
-                only=spa_config.routes_include,
-                exclude=spa_config.routes_exclude,
-                include_components=True,
-            )
-            # Filter out schema routes and HEAD/OPTIONS-only routes to keep SPA metadata lean
-            routes = routes_data.get("routes", {})
-            filtered_routes: dict[str, Any] = {}
-            for name, route in routes.items():
-                uri = route.get("uri", "")
-                methods: list[str] = route.get("methods", [])
-
-                # Skip schema-related routes
-                if uri.startswith("/schema"):
-                    continue
-
-                # Skip routes that only expose HEAD/OPTIONS
-                method_set = {m.upper() for m in methods}
-                if method_set and method_set.issubset({"HEAD", "OPTIONS"}):
-                    continue
-
-                filtered_routes[name] = route
-
-            routes_data["routes"] = filtered_routes
-
-            self._spa_handler.set_routes_metadata(routes_data)
-            _log_success(f"Injected {len(filtered_routes)} routes into SPA handler")
-        except (ImportError, TypeError, ValueError, AttributeError) as e:
-            _log_warn(f"Route injection failed: {e}")
 
     @contextmanager
     def server_lifespan(self, app: "Litestar") -> "Iterator[None]":
@@ -1944,26 +2023,32 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             if not app.debug:
                 _log_warn("Vite dev mode is enabled in production!")
 
-            # Determine command to run
             ext = self._config.runtime.external_dev_server
-            if isinstance(ext, ExternalDevServer) and ext.enabled:
-                # External dev server (Angular CLI, Next.js, etc.)
-                command_to_run = ext.command or self._config.executor.start_command
-                _log_info(f"Starting external dev server: {' '.join(command_to_run)}")
-            elif self._config.hot_reload:
-                command_to_run = self._config.run_command
-                _log_info("Starting Vite dev server (HMR enabled)")
-            else:
-                command_to_run = self._config.build_watch_command
-                _log_info("Starting Vite watch build process")
+            is_external = isinstance(ext, ExternalDevServer) and ext.enabled
+
+            # Determine command (logs the command type)
+            command_to_run = self._resolve_dev_command()
 
             if self._proxy_target:
                 _log_info(f"Vite proxy target: {self._proxy_target}")
 
+            # Write hotfile BEFORE starting dev server to avoid race conditions.
+            # The proxy controller/SPA handler reads the hotfile on first request - if it
+            # doesn't exist yet, behavior varies: SSR proxy caches None forever (returning 503),
+            # while SPA handler falls back to config. By writing upfront, we ensure consistent
+            # behavior and immediate proxy availability for all modes.
+            if is_external and isinstance(ext, ExternalDevServer) and ext.target:
+                # External dev server with static target - write target URL to hotfile
+                self._write_hotfile(ext.target)
+            elif not is_external:
+                # Internal Vite/SSR server - write computed target URL to hotfile
+                target_url = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
+                self._write_hotfile(target_url)
+
             try:
                 self._vite_process.start(command_to_run, self._config.root_dir)
                 _log_success("Dev server process started")
-                if self._config.health_check and not (isinstance(ext, ExternalDevServer) and ext.enabled):
+                if self._config.health_check and not is_external:
                     # Only run Vite-specific health check for non-external servers
                     self._run_health_check()
                 yield
@@ -2020,9 +2105,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 "Vite dev server is disabled (dev_mode=False) but no index.html was found. "
                 "Run your front-end build or set VITE_DEV_MODE=1 to enable HMR."
             )
-
-        # Inject route metadata into SPA handler (if configured)
-        self._inject_routes_to_spa_handler(app)
 
         try:
             yield

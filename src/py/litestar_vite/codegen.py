@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from litestar.routes import HTTPRoute
 
 
-__all__ = ("RouteMetadata", "extract_route_metadata", "generate_routes_json")
+__all__ = ("RouteMetadata", "extract_route_metadata", "generate_routes_json", "generate_routes_ts")
 
 # Compiled regex patterns for path parsing (compiled once at module load)
 _PATH_PARAM_TYPE_PATTERN = re.compile(r"\{([^:}]+):[^}]+\}")
@@ -41,7 +41,11 @@ _SYSTEM_TYPE_NAMES = frozenset(
 
 
 def _str_dict_factory() -> dict[str, str]:
-    """Factory function for empty string dict (typed for pyright)."""
+    """Factory function for empty string dict (typed for pyright).
+
+    Returns:
+        An empty dictionary with str keys and str values.
+    """
     return {}
 
 
@@ -254,11 +258,119 @@ def _extract_query_params(handler: HTTPRouteHandler, path_param_names: set[str])
     return query_params
 
 
+def _ts_type_from_openapi(schema: dict[str, Any]) -> str:
+    """Map a minimal subset of OpenAPI types to TypeScript types."""
+    ts_type = "unknown"
+    if schema:
+        t = schema.get("type")
+        fmt = schema.get("format")
+
+        if t == "string":
+            ts_type = "string"
+        elif t in {"integer", "number"}:
+            ts_type = "number"
+        elif t == "boolean":
+            ts_type = "boolean"
+        elif t == "array":
+            item = _ts_type_from_openapi(schema.get("items", {}))
+            ts_type = f"{item}[]"
+        elif t == "object":
+            ts_type = "Record<string, unknown>"
+        elif fmt in {"uuid", "date-time", "date", "email"}:
+            ts_type = "string"
+
+    return ts_type
+
+
+def _openapi_lookup(openapi_schema: dict[str, Any] | None) -> dict[tuple[str, str], dict[str, Any]]:
+    """Build a lookup of (path, method) -> operation object from OpenAPI schema."""
+
+    if not openapi_schema:
+        return {}
+
+    paths = openapi_schema.get("paths", {})
+    lookup: dict[tuple[str, str], dict[str, Any]] = {}
+    for path, methods in paths.items():
+        if not isinstance(methods, dict):
+            continue
+        for method_obj, operation_obj in methods.items():  # pyright: ignore
+            if not isinstance(method_obj, str):
+                continue
+            method = method_obj
+            operation: dict[str, Any] = operation_obj or {}  # pyright: ignore
+
+            lower = method.lower()
+            if lower not in {"get", "post", "put", "patch", "delete", "head", "options"}:
+                continue
+
+            lookup[path, method.upper()] = operation
+    return lookup
+
+
+def _apply_openapi_params(
+    operation: dict[str, Any] | None,
+    params: dict[str, str],
+    query_params: dict[str, str],
+) -> None:
+    if not operation:
+        return
+
+    for param in operation.get("parameters", []):
+        name = param.get("name")
+        schema = param.get("schema", {})
+        ts_type = _ts_type_from_openapi(schema)
+
+        if param.get("in") == "path" and name:
+            params[name] = ts_type or "string"
+        elif param.get("in") == "query" and name:
+            if not param.get("required", False) and ts_type != "unknown":
+                ts_type = f"{ts_type} | undefined"
+            query_params[name] = ts_type or "unknown"
+
+
+def _make_unique_name(base_name: str, used_names: set[str], path: str, methods: list[str]) -> str:
+    """Generate a unique route name, avoiding collisions.
+
+    Args:
+        base_name: The preferred route name.
+        used_names: Set of already-used route names.
+        path: Route path for generating fallback name.
+        methods: HTTP methods for this route.
+
+    Returns:
+        A unique route name.
+    """
+    if base_name not in used_names:
+        return base_name
+
+    # Generate a path-based suffix for deduplication
+    # /api/books/{book_id} -> api_books_book_id
+    path_suffix = path.strip("/").replace("/", "_").replace("{", "").replace("}", "").replace("-", "_")
+    method_suffix = methods[0].lower() if methods else ""
+
+    # Try path-based name
+    candidate = f"{base_name}_{path_suffix}" if path_suffix else base_name
+    if candidate not in used_names:
+        return candidate
+
+    # Try with method suffix
+    candidate = f"{base_name}_{path_suffix}_{method_suffix}" if path_suffix else f"{base_name}_{method_suffix}"
+    if candidate not in used_names:
+        return candidate
+
+    # Fall back to counter
+    counter = 2
+    while f"{candidate}_{counter}" in used_names:
+        counter += 1
+    return f"{candidate}_{counter}"
+
+
 def extract_route_metadata(
     app: Litestar,
     *,
     only: "list[str] | None" = None,
     exclude: "list[str] | None" = None,
+    openapi_schema: dict[str, Any] | None = None,
 ) -> list[RouteMetadata]:
     """Extract route metadata from a Litestar application.
 
@@ -266,11 +378,14 @@ def extract_route_metadata(
         app: Litestar application instance.
         only: Whitelist patterns (route names or paths to include).
         exclude: Blacklist patterns (route names or paths to exclude).
+        openapi_schema: Optional OpenAPI schema used to enrich parameter and query types.
 
     Returns:
         List of route metadata objects.
     """
     routes_metadata: list[RouteMetadata] = []
+    used_names: set[str] = set()
+    op_lookup = _openapi_lookup(openapi_schema)
 
     for route in app.routes:
         if not isinstance(route, type(route)) or not hasattr(route, "route_handler_map"):
@@ -280,11 +395,18 @@ def extract_route_metadata(
         http_route: HTTPRoute = route  # type: ignore[assignment]
 
         for route_handler in http_route.route_handlers:
-            # Get route name
-            route_name = route_handler.name or route_handler.handler_name or str(route_handler)
+            # Get base route name
+            base_name = route_handler.name or route_handler.handler_name or str(route_handler)
 
-            # Get full path (including mount paths)
+            # Extract methods first (needed for unique name generation)
+            methods = [method.upper() for method in route_handler.http_methods]
+
+            # Get full path
             full_path = str(http_route.path)
+
+            # Make name unique
+            route_name = _make_unique_name(base_name, used_names, full_path, methods)
+            used_names.add(route_name)
 
             # Apply filters
             if only and not any(pattern in route_name or pattern in full_path for pattern in only):
@@ -292,15 +414,16 @@ def extract_route_metadata(
             if exclude and any(pattern in route_name or pattern in full_path for pattern in exclude):
                 continue
 
-            # Extract methods
-            methods = [method.upper() for method in route_handler.http_methods]
-
-            # Extract path parameters
+            # Extract path parameters (override with OpenAPI if available)
             params = _extract_path_params(full_path)
             path_param_names = set(params.keys())
 
             # Extract query parameters (excludes path params, body, deps, system types)
             query_params = _extract_query_params(route_handler, path_param_names)
+
+            # Enhance with OpenAPI types when available
+            operation = op_lookup.get((_normalize_path(full_path), methods[0] if methods else ""))
+            _apply_openapi_params(operation, params, query_params)
 
             # Extract Inertia component (if present)
             component = None
@@ -330,6 +453,7 @@ def generate_routes_json(
     only: "list[str] | None" = None,
     exclude: "list[str] | None" = None,
     include_components: bool = False,
+    openapi_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Generate Ziggy-compatible routes JSON.
 
@@ -338,11 +462,12 @@ def generate_routes_json(
         only: Whitelist patterns (route names or paths to include).
         exclude: Blacklist patterns (route names or paths to exclude).
         include_components: Include Inertia component names in output.
+        openapi_schema: Optional OpenAPI schema used to enrich parameter and query types.
 
     Returns:
         Dictionary with routes in Ziggy-compatible format.
     """
-    routes_metadata = extract_route_metadata(app, only=only, exclude=exclude)
+    routes_metadata = extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
 
     routes_dict: dict[str, Any] = {}
 
@@ -365,3 +490,292 @@ def generate_routes_json(
         routes_dict[route.name] = route_data
 
     return {"routes": routes_dict}
+
+
+# TypeScript type mapping
+_TS_TYPE_MAP: dict[str, str] = {
+    # OpenAPI types
+    "string": "string",
+    "integer": "number",
+    "number": "number",
+    "boolean": "boolean",
+    "array": "unknown[]",
+    "object": "Record<string, unknown>",
+    # Common formats
+    "uuid": "string",
+    "date": "string",
+    "date-time": "string",
+    "email": "string",
+    "uri": "string",
+    "url": "string",
+    # Python/Litestar path parameter types
+    "int": "number",
+    "float": "number",
+    "str": "string",
+    "bool": "boolean",
+    "path": "string",
+    # Defaults
+    "unknown": "unknown",
+}
+
+
+def _ts_type_for_param(param_type: str) -> str:
+    """Map a parameter type string to TypeScript type.
+
+    Args:
+        param_type: Type string from OpenAPI schema or Litestar path param.
+
+    Returns:
+        TypeScript type string.
+    """
+    # Handle optional markers
+    is_optional = "undefined" in param_type or param_type.endswith("?")
+    clean_type = param_type.replace(" | undefined", "").replace("?", "").strip()
+
+    ts_type = _TS_TYPE_MAP.get(clean_type, "unknown")
+
+    if is_optional and "undefined" not in ts_type:
+        return f"{ts_type} | undefined"
+    return ts_type
+
+
+def _is_type_required(param_type: str) -> bool:
+    """Check if a parameter type indicates a required field.
+
+    Args:
+        param_type: Type string potentially containing '| undefined'.
+
+    Returns:
+        True if the parameter is required (no undefined marker).
+    """
+    return "undefined" not in param_type and not param_type.endswith("?")
+
+
+def _escape_ts_string(s: str) -> str:
+    """Escape a string for use in TypeScript string literals.
+
+    Args:
+        s: String to escape.
+
+    Returns:
+        Escaped string safe for TypeScript.
+    """
+    return s.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"')
+
+
+def generate_routes_ts(
+    app: Litestar,
+    *,
+    only: "list[str] | None" = None,
+    exclude: "list[str] | None" = None,
+    openapi_schema: dict[str, Any] | None = None,
+) -> str:
+    """Generate typed routes TypeScript file (Ziggy-style).
+
+    This function generates a routes.ts file with:
+    - Type-safe route names as a union type
+    - Type-safe path and query parameters per route
+    - A `route()` function with proper overloads for compile-time safety
+    - Helper functions: hasRoute(), getRouteNames(), getRoute()
+
+    The generated file works with relative paths by default. For separate dev
+    servers, set VITE_API_URL environment variable.
+
+    Args:
+        app: Litestar application instance.
+        only: Whitelist patterns (route names or paths to include).
+        exclude: Blacklist patterns (route names or paths to exclude).
+        openapi_schema: Optional OpenAPI schema for enhanced type info.
+
+    Returns:
+        TypeScript source code as a string.
+
+    Example:
+        ts_content = generate_routes_ts(app)
+        Path("src/generated/routes.ts").write_text(ts_content)
+    """
+    routes_metadata = extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
+
+    # Build route data structures
+    route_names: list[str] = []
+    path_params_entries: list[str] = []
+    query_params_entries: list[str] = []
+    routes_entries: list[str] = []
+
+    for route in routes_metadata:
+        route_name = route.name
+        route_names.append(route_name)
+
+        # Build path params interface entry
+        if route.params:
+            param_fields: list[str] = []
+            for param_name, param_type in route.params.items():
+                ts_type = _ts_type_for_param(param_type)
+                # Path params are always required
+                ts_type_clean = ts_type.replace(" | undefined", "")
+                param_fields.append(f"    {param_name}: {ts_type_clean};")
+            path_params_entries.append(f"  '{route_name}': {{\n" + "\n".join(param_fields) + "\n  };")
+        else:
+            path_params_entries.append(f"  '{route_name}': Record<string, never>;")
+
+        # Build query params interface entry
+        if route.query_params:
+            query_param_fields: list[str] = []
+            for param_name, param_type in route.query_params.items():
+                ts_type = _ts_type_for_param(param_type)
+                is_required = _is_type_required(param_type)
+                ts_type_clean = ts_type.replace(" | undefined", "")
+                if is_required:
+                    query_param_fields.append(f"    {param_name}: {ts_type_clean};")
+                else:
+                    query_param_fields.append(f"    {param_name}?: {ts_type_clean};")
+            query_params_entries.append(f"  '{route_name}': {{\n" + "\n".join(query_param_fields) + "\n  };")
+        else:
+            query_params_entries.append(f"  '{route_name}': Record<string, never>;")
+
+        # Build routes object entry
+        methods_str = ", ".join(f"'{m}'" for m in route.methods)
+        route_entry_lines = [
+            f"  '{route_name}': {{",
+            f"    path: '{_escape_ts_string(route.path)}',",
+            f"    methods: [{methods_str}] as const,",
+        ]
+        if route.params:
+            param_names_str = ", ".join(f"'{p}'" for p in route.params)
+            route_entry_lines.append(f"    pathParams: [{param_names_str}] as const,")
+        if route.query_params:
+            query_names_str = ", ".join(f"'{p}'" for p in route.query_params)
+            route_entry_lines.append(f"    queryParams: [{query_names_str}] as const,")
+        if route.component:
+            route_entry_lines.append(f"    component: '{_escape_ts_string(route.component)}',")
+        route_entry_lines.append("  },")
+        routes_entries.append("\n".join(route_entry_lines))
+
+    # Generate TypeScript content
+    route_names_union = "\n  | ".join(f"'{name}'" for name in route_names) if route_names else "never"
+
+    return f"""/**
+ * Auto-generated route definitions for litestar-vite.
+ * DO NOT EDIT - regenerated on server restart and file changes.
+ *
+ * @generated
+ */
+
+// API base URL - only needed for separate dev servers
+// Set VITE_API_URL=http://localhost:8000 when running Vite separately
+const API_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ?? '';
+
+/** All available route names */
+export type RouteName =
+  | {route_names_union};
+
+/** Path parameter definitions per route */
+export interface RoutePathParams {{
+{chr(10).join(path_params_entries)}
+}}
+
+/** Query parameter definitions per route */
+export interface RouteQueryParams {{
+{chr(10).join(query_params_entries)}
+}}
+
+/** Combined parameters (path + query) */
+export type RouteParams<T extends RouteName> =
+  RoutePathParams[T] & RouteQueryParams[T];
+
+/** Route metadata */
+export const routes = {{
+{chr(10).join(routes_entries)}
+}} as const;
+
+/** Check if path params are required for a route */
+type HasRequiredPathParams<T extends RouteName> =
+  RoutePathParams[T] extends Record<string, never> ? false : true;
+
+/** Check if query params have any required fields */
+type HasRequiredQueryParams<T extends RouteName> =
+  RouteQueryParams[T] extends Record<string, never>
+    ? false
+    : Partial<RouteQueryParams[T]> extends RouteQueryParams[T]
+      ? false
+      : true;
+
+/** Routes that require parameters (path or query) */
+type RoutesWithRequiredParams = {{
+  [K in RouteName]: HasRequiredPathParams<K> extends true
+    ? K
+    : HasRequiredQueryParams<K> extends true
+      ? K
+      : never;
+}}[RouteName];
+
+/** Routes without any required parameters */
+type RoutesWithoutRequiredParams = Exclude<RouteName, RoutesWithRequiredParams>;
+
+/**
+ * Generate a URL for a named route.
+ *
+ * @example
+ * route('books')                              // '/api/books'
+ * route('book_detail', {{ book_id: 123 }})      // '/api/books/123'
+ * route('search', {{ q: 'test', limit: 5 }})    // '/api/search?q=test&limit=5'
+ */
+export function route<T extends RoutesWithoutRequiredParams>(name: T): string;
+export function route<T extends RoutesWithoutRequiredParams>(
+  name: T,
+  params?: RouteParams<T>,
+): string;
+export function route<T extends RoutesWithRequiredParams>(
+  name: T,
+  params: RouteParams<T>,
+): string;
+export function route<T extends RouteName>(
+  name: T,
+  params?: RouteParams<T>,
+): string {{
+  const def = routes[name];
+  let url = def.path;
+
+  // Replace path parameters
+  if (params && 'pathParams' in def) {{
+    for (const param of def.pathParams) {{
+      const value = (params as Record<string, unknown>)[param];
+      if (value !== undefined) {{
+        url = url.replace(`{{${{param}}}}`, String(value));
+      }}
+    }}
+  }}
+
+  // Add query parameters
+  if (params && 'queryParams' in def) {{
+    const queryParts: string[] = [];
+    for (const param of def.queryParams) {{
+      const value = (params as Record<string, unknown>)[param];
+      if (value !== undefined) {{
+        queryParts.push(`${{encodeURIComponent(param)}}=${{encodeURIComponent(String(value))}}`);
+      }}
+    }}
+    if (queryParts.length > 0) {{
+      url += '?' + queryParts.join('&');
+    }}
+  }}
+
+  // Apply API URL if set (for separate dev servers)
+  return API_URL ? API_URL.replace(/\\/$/, '') + url : url;
+}}
+
+/** Check if a route exists */
+export function hasRoute(name: string): name is RouteName {{
+  return name in routes;
+}}
+
+/** Get all route names */
+export function getRouteNames(): RouteName[] {{
+  return Object.keys(routes) as RouteName[];
+}}
+
+/** Get route metadata */
+export function getRoute<T extends RouteName>(name: T): (typeof routes)[T] {{
+  return routes[name];
+}}
+"""

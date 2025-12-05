@@ -19,6 +19,9 @@
 {%- for dep in dev_dependencies %}
     "{{ dep }}": "latest",
 {%- endfor %}
+{%- if generate_client %}
+    "@hey-api/openapi-ts": "^0.88.0",
+{%- endif %}
     "@types/jasmine": "latest"
   }
 }

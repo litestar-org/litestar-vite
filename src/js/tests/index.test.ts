@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import litestar from "../src"
-import { currentRoute, getRelativeUrlPath, isCurrentRoute, isRoute, resolvePageComponent, route, toRoute } from "../src/inertia-helpers"
+import { resolvePageComponent } from "../src/inertia-helpers"
 
 // Mock the fs module
 vi.mock("fs", async () => {
@@ -101,6 +101,24 @@ describe("litestar-vite-plugin", () => {
     vi.resetAllMocks()
   })
 
+  const createRuntimeConfig = (data: Record<string, unknown>): string => {
+    const tmpDir = fs.mkdtempSync(path.join(process.cwd(), "vitest-litestar-"))
+    const configPath = path.join(tmpDir, ".litestar.json")
+    fs.writeFileSync(configPath, JSON.stringify(data), "utf-8")
+    process.env.LITESTAR_VITE_CONFIG_PATH = configPath
+    return configPath
+  }
+
+  const cleanupRuntimeConfig = (configPath: string | undefined): void => {
+    if (!configPath) return
+    try {
+      fs.rmSync(path.dirname(configPath), { recursive: true, force: true })
+    } catch {
+      // ignore
+    }
+    delete process.env.LITESTAR_VITE_CONFIG_PATH
+  }
+
   it("handles missing configuration", () => {
     /* eslint-disable-next-line @typescript-eslint/ban-ts-comment */
     /* @ts-ignore */
@@ -151,6 +169,81 @@ describe("litestar-vite-plugin", () => {
     expect(ssrConfig.build?.manifest).toBe(false)
     expect(ssrConfig.build?.outDir).toBe("other-ssr-output")
     expect(ssrConfig.build?.rollupOptions?.input).toBe("resources/js/ssr.ts")
+  })
+
+  it("uses publicDir from python defaults when provided", () => {
+    const configPath = createRuntimeConfig({
+      publicDir: "python-public",
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({}, { command: "build", mode: "production" })
+
+      expect(config.publicDir).toBe("python-public")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("prefers user publicDir over python defaults", () => {
+    const configPath = createRuntimeConfig({
+      publicDir: "python-public",
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({ publicDir: "user-public" }, { command: "build", mode: "production" })
+
+      expect(config.publicDir).toBe("user-public")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("checks bundleDirectory for index.html when auto-detecting", async () => {
+    const plugin = litestar({
+      input: "resources/js/app.ts",
+      bundleDirectory: "custom-dist",
+    })[0]
+
+    const accessSpy = vi.spyOn(fs.promises, "access").mockImplementation((p: fs.PathLike) => {
+      const file = String(p)
+      if (file.endsWith(path.join("custom-dist", "index.html"))) {
+        return Promise.resolve()
+      }
+      if (file.endsWith(path.join("resources", "js", "index.html"))) {
+        return Promise.reject(new Error("ENOENT"))
+      }
+      if (file.endsWith(path.join("index.html"))) {
+        return Promise.reject(new Error("ENOENT"))
+      }
+      return Promise.reject(new Error("ENOENT"))
+    })
+
+    // Run config hook to set up plugin state
+    plugin.config?.({}, { command: "serve", mode: "development" })
+
+    // Simulate Vite's configResolved hook so envDir is present
+    const fakeResolvedConfig = {
+      root: process.cwd(),
+      envDir: process.cwd(),
+      mode: "development",
+      base: "/",
+      command: "serve",
+      server: {},
+      build: {},
+    }
+    plugin.configResolved?.(fakeResolvedConfig as any)
+
+    await (plugin as any).configureServer?.(
+      {
+        middlewares: { use: vi.fn() },
+        config: { root: process.cwd(), envDir: process.cwd(), mode: "development" },
+      },
+      { command: "serve", mode: "development" },
+    )
+    expect(accessSpy).toHaveBeenCalled()
   })
 
   it("respects the users build.manifest config option", () => {
@@ -393,7 +486,8 @@ describe("litestar-vite-plugin", () => {
   it("does not configure full reload when configuration it not an object", () => {
     const plugins = litestar("resources/js/app.js")
 
-    expect(plugins.length).toBe(2) // main + types plugin when types enabled by default
+    // With auto mode, types are disabled when no .litestar.json exists
+    expect(plugins.length).toBe(1) // main plugin only (types disabled in auto mode without .litestar.json)
   })
 
   it("does not configure full reload when refresh is not present", () => {
@@ -794,120 +888,6 @@ describe("inertia-helpers", () => {
     await expect(resolvePageComponent<{ default: string }>("missing-page", pages)).rejects.toThrow("Page not found: missing-page")
   })
 
-  describe("route() edge cases", () => {
-    it("handles missing route names", () => {
-      expect(route("non-existent-route")).toBe("#")
-    })
-
-    it("handles array arguments", () => {
-      const result = route("users:get", ["123e4567-e89b-12d3-a456-426614174000"])
-      expect(result).toContain("/api/users/get/123e4567-e89b-12d3-a456-426614174000")
-    })
-
-    it("handles wrong number of arguments", () => {
-      expect(route("users:get", [])).toBe("#")
-    })
-
-    it("handles missing arguments in object", () => {
-      expect(route("users:get", { wrong_id: "123" })).toBe("#")
-    })
-  })
-
-  describe("getRelativeUrlPath()", () => {
-    it("handles invalid URLs", () => {
-      expect(getRelativeUrlPath("invalid-url")).toBe("invalid-url")
-    })
-
-    it("preserves query parameters and hash", () => {
-      expect(getRelativeUrlPath("http://example.com/path?query=1#hash")).toBe("/path?query=1#hash")
-    })
-  })
-
-  describe("toRoute()", () => {
-    it("handles root path", () => {
-      expect(toRoute("/")).toBe("home")
-    })
-
-    it("handles UUID parameters", () => {
-      expect(toRoute("/api/users/get/123e4567-e89b-12d3-a456-426614174000")).toBe("users:get")
-    })
-
-    it("handles path parameters", () => {
-      expect(toRoute("/saq/static/some/deep/path")).toBe("saq")
-    })
-
-    it("handles non-matching routes", () => {
-      expect(toRoute("/non-existent")).toBe(null)
-    })
-
-    it("handles trailing slashes", () => {
-      expect(toRoute("/api/users/list/")).toBe("users:list")
-    })
-  })
-
-  describe("currentRoute()", () => {
-    beforeEach(() => {
-      Object.defineProperty(window, "location", {
-        value: {
-          pathname: "/api/users/list",
-        },
-        writable: true,
-      })
-    })
-
-    it("returns current route name", () => {
-      expect(currentRoute()).toBe("users:list")
-    })
-
-    it("returns null for non-matching routes", () => {
-      window.location.pathname = "/non-existent"
-      expect(currentRoute()).toBe(null)
-    })
-  })
-
-  describe("isRoute()", () => {
-    it("matches exact routes", () => {
-      expect(isRoute("/api/users/list", "users:list")).toBe(true)
-    })
-
-    it("matches routes with parameters", () => {
-      expect(isRoute("/api/users/get/123e4567-e89b-12d3-a456-426614174000", "users:*")).toBe(true)
-    })
-
-    it("handles non-matching routes", () => {
-      expect(isRoute("/non-existent", "users:*")).toBe(false)
-    })
-
-    it("matches routes with path parameters", () => {
-      expect(isRoute("/saq/static/deep/nested/path", "saq")).toBe(true)
-    })
-  })
-
-  describe("isCurrentRoute()", () => {
-    beforeEach(() => {
-      Object.defineProperty(window, "location", {
-        value: {
-          pathname: "/api/users/list",
-        },
-        writable: true,
-      })
-    })
-
-    it("matches current route with pattern", () => {
-      expect(isCurrentRoute("users:*")).toBe(true)
-    })
-
-    it("handles exact matches", () => {
-      expect(isCurrentRoute("users:list")).toBe(true)
-    })
-
-    it("handles non-matching routes", () => {
-      expect(isCurrentRoute("teams:*")).toBe(false)
-    })
-
-    it("handles invalid current route", () => {
-      window.location.pathname = "/non-existent"
-      expect(isCurrentRoute("users:*")).toBe(false)
-    })
-  })
+  // Note: Route utility tests removed - use generated routes.ts instead
+  // See: import { route, routes } from '@/generated/routes'
 })

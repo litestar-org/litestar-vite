@@ -7,22 +7,24 @@
     "build": "vite build",
     "preview": "vite preview",
     "serve": "node build",
-    "watch": "npm run serve"
+    "watch": "npm run serve",
+    "generate-types": "openapi-ts --config openapi-ts.config.ts"
   },
   "dependencies": {
     "svelte": "latest",
-    "@sveltejs/kit": "latest"
+    "@sveltejs/kit": "latest",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "latest",
+    "@hey-api/openapi-ts": "^0.88.0",
     "@sveltejs/adapter-node": "latest",
-    "svelte-check": "latest",
-    "typescript": "latest",
-    "tslib": "latest",
+    "@sveltejs/vite-plugin-svelte": "latest",
     "@tailwindcss/vite": "^4.0.0",
-    "tailwindcss": "^4.0.0",
-    "@hey-api/openapi-ts": "latest",
     "litestar-vite-plugin": "file:../..",
+    "svelte-check": "latest",
+    "tailwindcss": "^4.0.0",
+    "tslib": "latest",
+    "typescript": "latest",
     "vite": "^7.0.0"
   }
 }

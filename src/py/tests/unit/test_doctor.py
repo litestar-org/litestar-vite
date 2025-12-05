@@ -21,7 +21,6 @@ def vite_config() -> ViteConfig:
             asset_url="/static/",
         ),
         types=TypeGenConfig(
-            enabled=True,
             output=Path("src/generated"),
             openapi_path=Path("src/generated/openapi.json"),
             routes_path=Path("src/generated/routes.json"),

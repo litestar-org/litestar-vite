@@ -93,6 +93,13 @@ export interface PluginConfig {
    */
   bundleDirectory?: string
   /**
+   * Vite's public directory for static, unprocessed assets.
+   * Mirrors Vite's `publicDir` option.
+   *
+   * @default 'public'
+   */
+  publicDir?: string
+  /**
    * Litestar's public assets directory.  These are the assets that Vite will serve when developing.
    *
    * @default 'resources'
@@ -145,18 +152,36 @@ export interface PluginConfig {
   /**
    * Enable and configure TypeScript type generation.
    *
-   * When set to `true`, enables type generation with default settings.
-   * When set to a TypesConfig object, enables type generation with custom settings.
+   * Configuration priority (highest to lowest):
+   * 1. Explicit vite.config.ts value - ALWAYS wins
+   * 2. .litestar.json value - used if no explicit config
+   * 3. Hardcoded defaults - fallback if nothing else
    *
-   * Type generation creates TypeScript types from your Litestar OpenAPI schema
-   * and route metadata using @hey-api/openapi-ts.
+   * When set to `"auto"` (recommended): reads all config from `.litestar.json`.
+   * If `.litestar.json` is missing, type generation is disabled.
+   *
+   * When set to `true`: enables type generation with hardcoded defaults.
+   * When set to `false`: disables type generation entirely.
+   * When set to a TypesConfig object: uses your explicit settings.
+   *
+   * When not specified (undefined): behaves like `"auto"` - reads from
+   * `.litestar.json` if present, otherwise disabled.
    *
    * @example
    * ```ts
-   * // Simple enable
+   * // Recommended: auto-read from .litestar.json (simplest)
+   * litestar({ input: 'src/main.ts' })
+   *
+   * // Explicit auto mode
+   * litestar({ input: 'src/main.ts', types: 'auto' })
+   *
+   * // Force enable with hardcoded defaults (ignores .litestar.json)
    * litestar({ input: 'src/main.ts', types: true })
    *
-   * // With custom config
+   * // Force disable
+   * litestar({ input: 'src/main.ts', types: false })
+   *
+   * // Manual override (ignores .litestar.json for types)
    * litestar({
    *   input: 'src/main.ts',
    *   types: {
@@ -167,9 +192,9 @@ export interface PluginConfig {
    * })
    * ```
    *
-   * @default false
+   * @default undefined (auto-detect from .litestar.json)
    */
-  types?: boolean | TypesConfig
+  types?: boolean | "auto" | TypesConfig
   /**
    * JavaScript runtime executor for package commands.
    * Used when running tools like @hey-api/openapi-ts.
@@ -195,6 +220,8 @@ interface RefreshConfig {
 interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor"> {
   types: Required<TypesConfig> | false
   executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
+  /** Whether .litestar.json was found (used for validation warnings) */
+  hasPythonConfig: boolean
 }
 
 interface PythonDefaults {
@@ -232,6 +259,7 @@ interface PythonDefaults {
 type DevServerUrl = `${"http" | "https"}://${string}:${number}`
 
 let exitHandlersBound = false
+let warnedMissingRuntimeConfig = false
 
 export const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((path) => fs.existsSync(path.replace(/\*\*$/, "")))
 
@@ -249,7 +277,7 @@ export default function litestar(config: string | string[] | PluginConfig): any[
 
   // Add type generation plugin if enabled
   if (pluginConfig.types !== false && pluginConfig.types.enabled) {
-    plugins.push(resolveTypeGenerationPlugin(pluginConfig.types, pluginConfig.executor))
+    plugins.push(resolveTypeGenerationPlugin(pluginConfig.types, pluginConfig.executor, pluginConfig.hasPythonConfig))
   }
 
   return plugins
@@ -268,7 +296,8 @@ async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: ResolvedPl
   const possiblePaths = [
     path.join(root, "index.html"),
     path.join(root, pluginConfig.resourceDirectory.replace(/^\//, ""), "index.html"), // Ensure resourceDirectory path is relative to root
-    path.join(root, "public", "index.html"), // Check public even if publicDir is false, might exist
+    path.join(root, pluginConfig.publicDir.replace(/^\//, ""), "index.html"),
+    path.join(root, pluginConfig.bundleDirectory.replace(/^\//, ""), "index.html"),
   ]
   // console.log("Checking paths:", possiblePaths); // Debug log
 
@@ -309,6 +338,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
   let resolvedConfig: ResolvedConfig
   let userConfig: UserConfig
   let litestarMeta: LitestarMeta = {}
+  let shuttingDown = false
   const pythonDefaults = loadPythonDefaults()
   const proxyMode = pythonDefaults?.proxyMode ?? "vite_proxy"
   const defaultAliases: Record<string, string> = {
@@ -324,13 +354,42 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       const env = loadEnv(mode, userConfig.envDir || process.cwd(), "")
       const assetUrl = normalizeAssetUrl(env.ASSET_URL || pluginConfig.assetUrl)
       const serverConfig = command === "serve" ? (resolveDevelopmentEnvironmentServerConfig(pluginConfig.detectTls) ?? resolveEnvironmentServerConfig(env)) : undefined
+
+      const withProxyErrorSilencer = (proxyConfig: Record<string, any> | undefined) => {
+        if (!proxyConfig) return undefined
+        return Object.fromEntries(
+          Object.entries(proxyConfig).map(([key, value]) => {
+            if (typeof value !== "object" || value === null) {
+              return [key, value]
+            }
+            const existingConfigure = value.configure
+            return [
+              key,
+              {
+                ...value,
+                configure(proxy: any, opts: any) {
+                  proxy.on("error", (err: any) => {
+                    const msg = String(err?.message ?? "")
+                    if (shuttingDown || msg.includes("ECONNREFUSED") || msg.includes("ECONNRESET") || msg.includes("socket hang up")) {
+                      return
+                    }
+                  })
+                  if (typeof existingConfigure === "function") {
+                    existingConfigure(proxy, opts)
+                  }
+                },
+              },
+            ]
+          }),
+        )
+      }
       const devBase = pluginConfig.assetUrl.startsWith("/") ? pluginConfig.assetUrl : pluginConfig.assetUrl.replace(/\/+$/, "")
 
-      ensureCommandShouldRunInEnvironment(command, env)
+      ensureCommandShouldRunInEnvironment(command, env, mode)
 
       return {
         base: userConfig.base ?? (command === "build" ? resolveBase(pluginConfig, assetUrl) : devBase),
-        publicDir: userConfig.publicDir ?? false,
+        publicDir: userConfig.publicDir ?? pluginConfig.publicDir ?? false,
         clearScreen: false,
         build: {
           manifest: userConfig.build?.manifest ?? (ssr ? false : "manifest.json"),
@@ -357,20 +416,21 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           // Auto-configure proxy to forward API requests to Litestar backend
           // This allows the app to work when accessing Vite directly (not through Litestar proxy)
           // Only proxies /api and /schema routes - everything else is handled by Vite
-          proxy:
+          proxy: withProxyErrorSilencer(
             userConfig.server?.proxy ??
-            (env.APP_URL
-              ? {
-                  "/api": {
-                    target: env.APP_URL,
-                    changeOrigin: true,
-                  },
-                  "/schema": {
-                    target: env.APP_URL,
-                    changeOrigin: true,
-                  },
-                }
-              : undefined),
+              (env.APP_URL
+                ? {
+                    "/api": {
+                      target: env.APP_URL,
+                      changeOrigin: true,
+                    },
+                    "/schema": {
+                      target: env.APP_URL,
+                      changeOrigin: true,
+                    },
+                  }
+                : undefined),
+          ),
           // Always respect VITE_PORT when set by Python (regardless of VITE_ALLOW_REMOTE)
           ...(process.env.VITE_PORT
             ? {
@@ -428,8 +488,23 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           base: `${resolvedConfig.base}/`,
         }
       }
-      // Debug log resolved config
-      // console.log("Resolved Vite Config:", resolvedConfig);
+
+      // Early validation: warn if running serve without backend config
+      if (resolvedConfig.command === "serve" && !pluginConfig.hasPythonConfig && !warnedMissingRuntimeConfig) {
+        warnedMissingRuntimeConfig = true
+        if (typeof resolvedConfig.logger?.warn === "function") {
+          resolvedConfig.logger.warn(formatMissingConfigWarning())
+        }
+      }
+
+      // Validate resource directory exists (if explicitly configured)
+      const resourceDir = path.resolve(resolvedConfig.root, pluginConfig.resourceDirectory)
+      if (!fs.existsSync(resourceDir) && typeof resolvedConfig.logger?.warn === "function") {
+        resolvedConfig.logger.warn(
+          `${colors.cyan("litestar-vite")} ${colors.yellow("Resource directory not found:")} ${resourceDir}\n` +
+            `  Expected directory: ${colors.dim(pluginConfig.resourceDirectory)}`,
+        )
+      }
 
       const hint = pluginConfig.types !== false ? pluginConfig.types.routesPath : undefined
       litestarMeta = await loadLitestarMeta(resolvedConfig, hint)
@@ -559,9 +634,18 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           }
         }
         process.on("exit", clean)
-        process.on("SIGINT", () => process.exit())
-        process.on("SIGTERM", () => process.exit())
-        process.on("SIGHUP", () => process.exit())
+        process.on("SIGINT", () => {
+          shuttingDown = true
+          process.exit()
+        })
+        process.on("SIGTERM", () => {
+          shuttingDown = true
+          process.exit()
+        })
+        process.on("SIGHUP", () => {
+          shuttingDown = true
+          process.exit()
+        })
         exitHandlersBound = true
       }
 
@@ -614,9 +698,13 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
 /**
  * Validate the command can run in the given environment.
  */
-function ensureCommandShouldRunInEnvironment(command: "build" | "serve", env: Record<string, string>): void {
+function ensureCommandShouldRunInEnvironment(command: "build" | "serve", env: Record<string, string>, mode?: string): void {
   const allowedDevModes = ["dev", "development", "local", "docker"]
   if (command === "build" || env.LITESTAR_BYPASS_ENV_CHECK === "1") {
+    return
+  }
+
+  if (mode === "test" || env.VITEST || env.VITE_TEST || env.NODE_ENV === "test") {
     return
   }
 
@@ -643,11 +731,23 @@ function _pluginVersion(): string {
 }
 
 function loadPythonDefaults(): PythonDefaults | null {
-  const configPath = process.env.LITESTAR_VITE_CONFIG_PATH
+  // Avoid noisy warnings during automated tests
+  const isTestEnv = Boolean(process.env.VITEST || process.env.VITE_TEST || process.env.NODE_ENV === "test")
+
+  // Try explicit env var first, then fall back to .litestar.json in cwd
+  let configPath = process.env.LITESTAR_VITE_CONFIG_PATH
   if (!configPath) {
-    return null
+    // Check for .litestar.json in current directory as fallback
+    const defaultPath = path.join(process.cwd(), ".litestar.json")
+    if (fs.existsSync(defaultPath)) {
+      configPath = defaultPath
+    } else {
+      warnMissingRuntimeConfig("env", isTestEnv)
+      return null
+    }
   }
   if (!fs.existsSync(configPath)) {
+    warnMissingRuntimeConfig("file", isTestEnv)
     return null
   }
   try {
@@ -656,6 +756,58 @@ function loadPythonDefaults(): PythonDefaults | null {
   } catch {
     return null
   }
+}
+
+/**
+ * Format a beautiful startup warning message when .litestar.json is missing.
+ * Uses unicode box drawing characters and colors for visual appeal.
+ */
+function formatMissingConfigWarning(): string {
+  const y = colors.yellow
+  const c = colors.cyan
+  const d = colors.dim
+  const b = colors.bold
+
+  const lines = [
+    "",
+    y("╭─────────────────────────────────────────────────────────────────╮"),
+    `${y("│")}                                                                 ${y("│")}`,
+    `${y("│")}  ${y("⚠")}  ${b("Litestar backend configuration not found")}                   ${y("│")}`,
+    `${y("│")}                                                                 ${y("│")}`,
+    `${y("│")}  The plugin couldn't find ${c(".litestar.json")} which is normally     ${y("│")}`,
+    `${y("│")}  created when the Litestar backend starts.                     ${y("│")}`,
+    `${y("│")}                                                                 ${y("│")}`,
+    `${y("│")}  ${b("Quick fix")} - run one of these commands first:                  ${y("│")}`,
+    `${y("│")}                                                                 ${y("│")}`,
+    `${y("│")}    ${c("$ litestar run")}              ${d("# Start backend only")}            ${y("│")}`,
+    `${y("│")}    ${c("$ litestar assets serve")}     ${d("# Start backend + Vite together")} ${y("│")}`,
+    `${y("│")}                                                                 ${y("│")}`,
+    `${y("│")}  Or manually configure the plugin in ${c("vite.config.ts")}:           ${y("│")}`,
+    `${y("│")}                                                                 ${y("│")}`,
+    `${y("│")}    ${d("litestar({")}                                                  ${y("│")}`,
+    `${y("│")}    ${d('  input: ["src/main.tsx"],')}                                  ${y("│")}`,
+    `${y("│")}    ${d('  assetUrl: "/static/",')}                                     ${y("│")}`,
+    `${y("│")}    ${d('  bundleDirectory: "public",')}                                ${y("│")}`,
+    `${y("│")}    ${d("  types: false,")}                                             ${y("│")}`,
+    `${y("│")}    ${d("})")}                                                          ${y("│")}`,
+    `${y("│")}                                                                 ${y("│")}`,
+    `${y("│")}  Docs: ${c("https://docs.litestar.dev/vite/getting-started")}          ${y("│")}`,
+    `${y("│")}                                                                 ${y("│")}`,
+    y("╰─────────────────────────────────────────────────────────────────╯"),
+    "",
+    d("Continuing with defaults... some features may not work."),
+    "",
+  ]
+
+  return lines.join("\n")
+}
+
+function warnMissingRuntimeConfig(_reason: "env" | "file", suppress: boolean): void {
+  if (warnedMissingRuntimeConfig || suppress) return
+  warnedMissingRuntimeConfig = true
+
+  // eslint-disable-next-line no-console
+  console.warn(formatMissingConfigWarning())
 }
 
 /**
@@ -687,6 +839,14 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     }
   }
 
+  if (typeof resolvedConfig.publicDir === "string") {
+    resolvedConfig.publicDir = resolvedConfig.publicDir.trim().replace(/^\/+/, "").replace(/\/+$/, "")
+
+    if (resolvedConfig.publicDir === "") {
+      throw new Error("litestar-vite-plugin: publicDir must be a subdirectory. E.g. 'public'.")
+    }
+  }
+
   if (typeof resolvedConfig.ssrOutputDirectory === "string") {
     resolvedConfig.ssrOutputDirectory = resolvedConfig.ssrOutputDirectory.trim().replace(/^\/+/, "").replace(/\/+$/, "")
   }
@@ -695,19 +855,20 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     resolvedConfig.refresh = [{ paths: refreshPaths }]
   }
 
-  // Resolve types configuration (default enabled)
+  // Resolve types configuration
+  // Priority: explicit vite.config.ts > .litestar.json > hardcoded defaults
+  //
+  // Behavior:
+  // - undefined or "auto": read from .litestar.json, disabled if not found
+  // - true: use hardcoded defaults (ignore .litestar.json)
+  // - false: disabled
+  // - object: use explicit config (ignore .litestar.json for types)
   let typesConfig: Required<TypesConfig> | false = false
-  if (typeof resolvedConfig.types === "undefined" && pythonDefaults?.types) {
-    typesConfig = {
-      enabled: pythonDefaults.types.enabled,
-      output: pythonDefaults.types.output,
-      openapiPath: pythonDefaults.types.openapiPath,
-      routesPath: pythonDefaults.types.routesPath,
-      generateZod: pythonDefaults.types.generateZod,
-      generateSdk: pythonDefaults.types.generateSdk,
-      debounce: 300,
-    }
-  } else if (resolvedConfig.types === true || typeof resolvedConfig.types === "undefined") {
+
+  if (resolvedConfig.types === false) {
+    // Explicitly disabled - do nothing, typesConfig stays false
+  } else if (resolvedConfig.types === true) {
+    // Explicitly enabled with hardcoded defaults (ignores .litestar.json)
     typesConfig = {
       enabled: true,
       output: "src/generated/types",
@@ -717,7 +878,22 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
       generateSdk: false,
       debounce: 300,
     }
+  } else if (resolvedConfig.types === "auto" || typeof resolvedConfig.types === "undefined") {
+    // Auto mode: read from .litestar.json if available, otherwise disabled
+    if (pythonDefaults?.types) {
+      typesConfig = {
+        enabled: pythonDefaults.types.enabled,
+        output: pythonDefaults.types.output,
+        openapiPath: pythonDefaults.types.openapiPath,
+        routesPath: pythonDefaults.types.routesPath,
+        generateZod: pythonDefaults.types.generateZod,
+        generateSdk: pythonDefaults.types.generateSdk,
+        debounce: 300,
+      }
+    }
+    // If no pythonDefaults, typesConfig stays false (disabled)
   } else if (typeof resolvedConfig.types === "object" && resolvedConfig.types !== null) {
+    // Explicit object config - user overrides
     const userProvidedOpenapi = Object.hasOwn(resolvedConfig.types, "openapiPath")
     const userProvidedRoutes = Object.hasOwn(resolvedConfig.types, "routesPath")
 
@@ -745,6 +921,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     assetUrl: normalizeAssetUrl(resolvedConfig.assetUrl ?? pythonDefaults?.assetUrl ?? "/static/"),
     resourceDirectory: resolvedConfig.resourceDirectory ?? pythonDefaults?.resourceDir ?? "resources",
     bundleDirectory: resolvedConfig.bundleDirectory ?? pythonDefaults?.bundleDir ?? "public",
+    publicDir: resolvedConfig.publicDir ?? pythonDefaults?.publicDir ?? "public",
     ssr: resolvedConfig.ssr ?? resolvedConfig.input,
     ssrOutputDirectory:
       resolvedConfig.ssrOutputDirectory ?? pythonDefaults?.ssrOutDir ?? path.join(resolvedConfig.resourceDirectory ?? pythonDefaults?.resourceDir ?? "resources", "bootstrap/ssr"),
@@ -755,6 +932,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     transformOnServe: resolvedConfig.transformOnServe ?? ((code) => code),
     types: typesConfig,
     executor: resolvedConfig.executor ?? pythonDefaults?.executor,
+    hasPythonConfig: pythonDefaults !== null,
   }
 }
 
@@ -942,12 +1120,9 @@ declare global {
     /**
      * Simple route map (name -> uri) for legacy consumers.
      */
-    routes?: typeof routes
-    serverRoutes?: typeof serverRoutes
+    routes?: Record<string, string>
+    serverRoutes?: Record<string, string>
   }
-  // eslint-disable-next-line no-var
-  var routes: typeof routes | undefined
-  var serverRoutes: typeof serverRoutes | undefined
 }
 
 // Re-export helper functions from litestar-vite-plugin
@@ -971,12 +1146,13 @@ export { getCsrfToken, csrfHeaders, csrfFetch } from "litestar-vite-plugin/helpe
  * 3. Runs @hey-api/openapi-ts to generate TypeScript types (using configured executor)
  * 4. Sends HMR event to notify client
  */
-function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executor?: string): Plugin {
+function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executor?: string, hasPythonConfig?: boolean): Plugin {
   let lastTypesHash: string | null = null
   let lastRoutesHash: string | null = null
   let server: ViteDevServer | null = null
   let isGenerating = false
   let resolvedConfig: ResolvedConfig | null = null
+  let chosenConfigPath: string | null = null
 
   /**
    * Run @hey-api/openapi-ts to generate TypeScript types from the OpenAPI schema.
@@ -990,34 +1166,65 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
     const startTime = Date.now()
 
     try {
-      // Check if openapi.json exists
-      const openapiPath = path.resolve(process.cwd(), typesConfig.openapiPath)
-      const routesPath = path.resolve(process.cwd(), typesConfig.routesPath)
+      const projectRoot = resolvedConfig?.root ?? process.cwd()
+      const openapiPath = path.resolve(projectRoot, typesConfig.openapiPath)
+      const routesPath = path.resolve(projectRoot, typesConfig.routesPath)
 
       let generated = false
 
-      if (fs.existsSync(openapiPath)) {
+      // Prefer user config if present (deterministic order)
+      const candidates = [path.resolve(projectRoot, "openapi-ts.config.ts"), path.resolve(projectRoot, "hey-api.config.ts"), path.resolve(projectRoot, ".hey-api.config.ts")]
+      const configPath = candidates.find((p) => fs.existsSync(p)) || null
+      chosenConfigPath = configPath
+
+      // Skip openapi-ts if SDK generation is disabled and no custom config exists
+      // (e.g., HTMX apps that only need routes.ts, not API client types)
+      const shouldRunOpenApiTs = configPath || typesConfig.generateSdk
+
+      if (fs.existsSync(openapiPath) && shouldRunOpenApiTs) {
+        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("generating TypeScript types...")}`)
         if (resolvedConfig) {
-          resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("generating TypeScript types...")}`)
+          resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("openapi-ts config: ")}${configPath ?? "<built-in defaults>"}`)
         }
 
-        // Build @hey-api/openapi-ts command
-        const args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
+        // Output API client to a subdirectory to avoid deleting routes.ts and other files
+        // openapi-ts clears its output directory, so we isolate it
+        const sdkOutput = path.join(typesConfig.output, "api")
+
+        let args: string[]
+        if (configPath) {
+          // openapi-ts CLI (v0.88+) expects --file/-f for config path
+          args = ["@hey-api/openapi-ts", "--file", configPath]
+        } else {
+          args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", sdkOutput]
+
+          const plugins = ["@hey-api/typescript", "@hey-api/schemas"]
+          if (typesConfig.generateSdk) {
+            plugins.push("@hey-api/sdk", "@hey-api/client-axios")
+          }
+          if (typesConfig.generateZod) {
+            plugins.push("zod")
+          }
+
+          if (plugins.length) {
+            args.push("--plugins", ...plugins)
+          }
+        }
 
         if (typesConfig.generateZod) {
-          args.push("--plugins", "zod", "@hey-api/typescript")
-        }
-        if (typesConfig.generateSdk) {
-          args.push("--client", "fetch")
+          try {
+            // eslint-disable-next-line import/no-dynamic-require, @typescript-eslint/no-var-requires
+            require.resolve("zod", { paths: [process.cwd()] })
+          } catch {
+            resolvedConfig?.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("zod not installed")} - run: ${resolveInstallHint()} zod`)
+          }
         }
 
         await execAsync(resolvePackageExecutor(args.join(" "), executor), {
-          cwd: process.cwd(),
+          cwd: projectRoot,
         })
 
         generated = true
-      } else if (resolvedConfig) {
-        resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("OpenAPI schema not found:")} ${typesConfig.openapiPath}`)
       }
 
       // Always try to emit routes types when routes metadata is present
@@ -1049,7 +1256,10 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
         const message = error instanceof Error ? error.message : String(error)
         // Don't show error if @hey-api/openapi-ts is not installed - just warn once
         if (message.includes("not found") || message.includes("ENOENT")) {
-          resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("@hey-api/openapi-ts not installed")} - run: ${resolveInstallHint()}`)
+          const zodHint = typesConfig.generateZod ? " zod" : ""
+          resolvedConfig.logger.warn(
+            `${colors.cyan("litestar-vite")} ${colors.yellow("@hey-api/openapi-ts not installed")} - run: ${resolveInstallHint()} -D @hey-api/openapi-ts${zodHint}`,
+          )
         } else {
           resolvedConfig.logger.error(`${colors.cyan("litestar-vite")} ${colors.red("type generation failed:")} ${message}`)
         }
@@ -1076,7 +1286,43 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
 
       // Log that we're watching for schema changes
       if (typesConfig.enabled) {
-        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("watching for schema changes:")} ${colors.yellow(typesConfig.openapiPath)}`)
+        const root = resolvedConfig?.root ?? process.cwd()
+        const openapiAbs = path.resolve(root, typesConfig.openapiPath)
+        const routesAbs = path.resolve(root, typesConfig.routesPath)
+        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("watching schema/routes:")} ${colors.yellow(openapiAbs)}, ${colors.yellow(routesAbs)}`)
+        if (chosenConfigPath) {
+          resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("openapi-ts config:")} ${colors.yellow(chosenConfigPath)}`)
+        }
+      }
+    },
+
+    async buildStart() {
+      // Validate configuration - warn if types enabled without proper backend setup
+      if (typesConfig.enabled && !hasPythonConfig) {
+        const projectRoot = resolvedConfig?.root ?? process.cwd()
+        const openapiPath = path.resolve(projectRoot, typesConfig.openapiPath)
+
+        if (!fs.existsSync(openapiPath)) {
+          // Types enabled but no .litestar.json and no openapi.json - likely misconfigured
+          this.warn(
+            "Type generation is enabled but .litestar.json was not found.\n" +
+              "The Litestar backend generates this file on startup.\n\n" +
+              "Solutions:\n" +
+              `  1. Start the backend first: ${colors.cyan("litestar run")}\n` +
+              `  2. Use integrated dev: ${colors.cyan("litestar assets serve")}\n` +
+              `  3. Disable types: ${colors.cyan("litestar({ input: [...], types: false })")}\n`,
+          )
+        }
+      }
+
+      // Run type generation at build start if enabled and openapi.json or routes.json exists
+      if (typesConfig.enabled) {
+        const projectRoot = resolvedConfig?.root ?? process.cwd()
+        const openapiPath = path.resolve(projectRoot, typesConfig.openapiPath)
+        const routesPath = path.resolve(projectRoot, typesConfig.routesPath)
+        if (fs.existsSync(openapiPath) || fs.existsSync(routesPath)) {
+          await runTypeGeneration()
+        }
       }
     },
 
@@ -1085,7 +1331,8 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
         return
       }
 
-      const relativePath = path.relative(process.cwd(), file)
+      const root = resolvedConfig?.root ?? process.cwd()
+      const relativePath = path.relative(root, file)
       const openapiPath = typesConfig.openapiPath.replace(/^\.\//, "")
       const routesPath = typesConfig.routesPath.replace(/^\.\//, "")
 

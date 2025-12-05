@@ -1,0 +1,105 @@
+name: e2e-examples
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test_examples_e2e:
+    name: "E2E Examples (${{ matrix.example }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          # SPA examples
+          - react
+          - vue
+          - svelte
+          - angular
+          - angular-cli
+          # SSR examples
+          - sveltekit
+          - nuxt
+          - astro
+          # Inertia examples
+          - react-inertia
+          - react-inertia-jinja
+          - vue-inertia
+          - vue-inertia-jinja
+          # Template examples
+          - jinja-htmx
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Build root JS plugin
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install example dependencies
+        run: uv run litestar assets install
+        working-directory: examples/${{ matrix.example }}
+
+      - name: Run E2E tests
+        env:
+          # Run tests serially (-n 0) to avoid race conditions with shared resources
+          # Each matrix job already isolates by example, so parallelism is at job level
+          # Use exact match with brackets to avoid 'svelte' matching 'sveltekit'
+          PYTEST_ADDOPTS: "-m e2e -k '[${{ matrix.example }}]' -n 0 --maxfail=1"
+          # Increase timeout for CI environment (slower than local)
+          # SSR frameworks like Nuxt/SvelteKit need extra time on first cold start
+          E2E_TEST_TIMEOUT: "180"
+          # Bypass CI environment check in Vite plugin (we're intentionally testing dev mode in CI)
+          LITESTAR_BYPASS_ENV_CHECK: "1"
+        run: |
+          uv run pytest src/py/tests/e2e -v --timeout=180
+
+      - name: Collect debug info on failure
+        if: failure()
+        run: |
+          echo "=== Node/npm versions ==="
+          node --version
+          npm --version
+          echo "=== Example directory contents ==="
+          ls -la examples/${{ matrix.example }}/
+          echo "=== node_modules status ==="
+          ls -la examples/${{ matrix.example }}/node_modules/ 2>/dev/null | head -20 || echo "node_modules not found"
+          echo "=== Build output check ==="
+          ls -la examples/${{ matrix.example }}/dist/ 2>/dev/null || echo "dist/ not found"
+          ls -la examples/${{ matrix.example }}/build/ 2>/dev/null || echo "build/ not found"
+          ls -la examples/${{ matrix.example }}/.output/ 2>/dev/null || echo ".output/ not found"
+          ls -la examples/${{ matrix.example }}/public/ 2>/dev/null || echo "public/ not found"
+          ls -la examples/${{ matrix.example }}/public/assets/ 2>/dev/null || echo "public/assets/ not found"
+          echo "=== Manifest check ==="
+          cat examples/${{ matrix.example }}/public/manifest.json 2>/dev/null || echo "manifest.json not found"
+          echo "=== Package.json scripts ==="
+          cat examples/${{ matrix.example }}/package.json | grep -A 20 '"scripts"' || true
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs-${{ matrix.example }}
+          path: |
+            .pytest_cache
+            coverage.xml
+            examples/${{ matrix.example }}/node_modules/.cache/
+          retention-days: 7

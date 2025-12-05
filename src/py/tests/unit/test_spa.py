@@ -176,8 +176,10 @@ async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "M
     mock_client.aclose = AsyncMock()
 
     # Patch httpx.AsyncClient
+    expected_url = "http://127.0.0.1:5173"
     with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
-        await handler.initialize()
+        # Pass explicit vite_url to avoid hotfile resolution picking up stale hotfiles
+        await handler.initialize(vite_url=expected_url)
 
         # Verify client was created
         assert handler._http_client is not None
@@ -187,7 +189,7 @@ async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "M
         html = await handler.get_html(mock_request)
 
         assert "Dev Server HTML" in html
-        mock_client.get.assert_called_once_with("http://127.0.0.1:5173/", follow_redirects=True)
+        mock_client.get.assert_called_once_with(f"{expected_url}/", follow_redirects=True)
 
 
 async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> None:
@@ -200,7 +202,8 @@ async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> N
     mock_client.aclose = AsyncMock()
 
     with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
-        await handler.initialize()
+        # Pass explicit vite_url to avoid hotfile resolution
+        await handler.initialize(vite_url="http://127.0.0.1:5173")
 
         mock_request = Mock()
         with pytest.raises(ImproperlyConfiguredException, match="Failed to proxy request"):
@@ -215,7 +218,8 @@ async def test_spa_handler_shutdown(spa_config_dev: ViteConfig) -> None:
     mock_client.aclose = AsyncMock()
 
     with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
-        await handler.initialize()
+        # Pass explicit vite_url to avoid hotfile resolution
+        await handler.initialize(vite_url="http://127.0.0.1:5173")
 
         assert handler._http_client is not None
 
@@ -333,54 +337,10 @@ def spa_config_with_transforms(temp_resource_dir: Path, monkeypatch: pytest.Monk
         paths=PathConfig(resource_dir=temp_resource_dir),
         runtime=RuntimeConfig(dev_mode=False),
         spa=SPAConfig(
-            inject_routes=True,
             inject_csrf=False,  # Disable for tests that don't mock request scope
-            routes_var_name="__ROUTES__",
             app_selector="#app",
         ),
     )
-
-
-async def test_spa_handler_set_routes_metadata(spa_config_with_transforms: ViteConfig) -> None:
-    """Test setting route metadata on the handler."""
-    handler = ViteSPAHandler(spa_config_with_transforms)
-    await handler.initialize()
-
-    routes = {
-        "routes": {
-            "home": {"uri": "/", "methods": ["GET"]},
-            "users": {"uri": "/users", "methods": ["GET", "POST"]},
-        }
-    }
-    handler.set_routes_metadata(routes)
-
-    assert handler._routes_metadata == routes
-    # Setting routes should invalidate cached transformed HTML
-    assert handler._cached_transformed_html is None
-
-
-async def test_spa_handler_transform_html_injects_routes(
-    spa_config_with_transforms: ViteConfig,
-    temp_resource_dir: Path,
-) -> None:
-    """Test that _transform_html injects route metadata."""
-    handler = ViteSPAHandler(spa_config_with_transforms)
-    await handler.initialize()
-
-    routes = {
-        "routes": {
-            "home": {"uri": "/", "methods": ["GET"]},
-        }
-    }
-    handler.set_routes_metadata(routes)
-
-    mock_request = Mock()
-    html = await handler.get_html(mock_request)
-
-    # Should contain the injected routes
-    assert "window.__ROUTES__" in html
-    assert '"home"' in html
-    assert '"uri":"/"' in html or '"uri": "/"' in html
 
 
 async def test_spa_handler_transform_html_with_page_data(
@@ -408,12 +368,9 @@ async def test_spa_handler_caches_transformed_html(
     handler = ViteSPAHandler(spa_config_with_transforms)
     await handler.initialize()
 
-    routes = {"routes": {"home": {"uri": "/"}}}
-    handler.set_routes_metadata(routes)
-
     mock_request = Mock()
 
-    # First call should transform and cache
+    # First call should cache
     html1 = await handler.get_html(mock_request)
     assert handler._cached_transformed_html is not None
 
@@ -429,9 +386,6 @@ async def test_spa_handler_page_data_bypasses_cache(
     handler = ViteSPAHandler(spa_config_with_transforms)
     await handler.initialize()
 
-    routes = {"routes": {"home": {"uri": "/"}}}
-    handler.set_routes_metadata(routes)
-
     mock_request = Mock()
 
     # Call without page_data to populate cache
@@ -442,8 +396,7 @@ async def test_spa_handler_page_data_bypasses_cache(
     page_data = {"component": "About", "props": {}}
     html_with_data = await handler.get_html(mock_request, page_data=page_data)
 
-    # Should have both routes and page data
-    assert "window.__ROUTES__" in html_with_data
+    # Should have page data
     assert "About" in html_with_data
     # But the cached version shouldn't have page data
     assert "About" not in html_cached
@@ -456,13 +409,9 @@ async def test_spa_handler_get_html_sync(
     handler = ViteSPAHandler(spa_config_with_transforms)
     await handler.initialize()
 
-    routes = {"routes": {"home": {"uri": "/"}}}
-    handler.set_routes_metadata(routes)
-
     # Should work synchronously
     html = handler.get_html_sync()
 
-    assert "window.__ROUTES__" in html
     assert "Test SPA" in html
 
 
@@ -501,7 +450,8 @@ async def test_spa_handler_get_html_sync_works_in_dev_mode(
         patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_async_client),
         patch("litestar_vite.spa.httpx.Client", return_value=mock_sync_client),
     ):
-        await handler.initialize()
+        # Pass explicit vite_url to avoid hotfile resolution
+        await handler.initialize(vite_url="http://127.0.0.1:5173")
 
         html = handler.get_html_sync()
         assert "Dev Mode" in html
@@ -551,7 +501,6 @@ async def test_spa_handler_csrf_injection(
         paths=PathConfig(resource_dir=temp_resource_dir),
         runtime=RuntimeConfig(dev_mode=False),
         spa=SPAConfig(
-            inject_routes=False,
             inject_csrf=True,
             csrf_var_name="__LITESTAR_CSRF__",
         ),
@@ -591,7 +540,6 @@ async def test_spa_handler_csrf_injection_sync(
         paths=PathConfig(resource_dir=temp_resource_dir),
         runtime=RuntimeConfig(dev_mode=False),
         spa=SPAConfig(
-            inject_routes=False,
             inject_csrf=True,
             csrf_var_name="__LITESTAR_CSRF__",
         ),

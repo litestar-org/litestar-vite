@@ -13,6 +13,7 @@ export default defineConfig({
     tailwindcss(),
     litestar({
       input: ["src/main.ts", "src/styles.css"],
+      resourceDirectory: "src",
     }),
   ],
 })

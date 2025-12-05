@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "generate-types": "openapi-ts --config openapi-ts.config.ts"
   },
   "dependencies": {
     "@angular/animations": "latest",
@@ -23,6 +24,7 @@
     "@angular/build": "latest",
     "@angular/compiler-cli": "latest",
     "@angular/platform-browser-dynamic": "latest",
+    "@hey-api/openapi-ts": "^0.88.0",
     "@tailwindcss/vite": "^4.0.0",
     "@types/node": "latest",
     "litestar-vite-plugin": "file:../..",

@@ -39,6 +39,15 @@ def _format_command(command: "list[str] | None") -> str:
     return " ".join(command or [])
 
 
+def _relative_path(path: Path) -> str:
+    """Return path relative to CWD when possible."""
+
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return str(path)
+
+
 def _print_recommended_config(template_name: str, resource_dir: str, bundle_dir: str) -> None:
     """Print recommended ViteConfig for the scaffolded template.
 
@@ -148,6 +157,23 @@ def _run_vite_build(config: ViteConfig, root_dir: Path, console: Any, no_build: 
         raise SystemExit(msg) from exc
 
 
+def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: Any) -> None:
+    """Export OpenAPI schema and routes prior to running a build.
+
+    Skips generation when type generation is disabled.
+    """
+
+    from litestar_vite.config import TypeGenConfig
+
+    types_config = config.types
+    if not isinstance(types_config, TypeGenConfig):
+        return
+
+    console.print("[dim]Preparing OpenAPI schema and routes...[/]")
+    _export_openapi_schema(app, types_config)
+    _export_routes_metadata(app, types_config)
+
+
 @group(cls=LitestarGroup, name="assets")
 def vite_group() -> None:
     """Manage Vite Tasks."""
@@ -165,9 +191,6 @@ def _select_framework_template(
 
     Returns:
         Tuple of (template_name, framework_template).
-
-    Raises:
-        SystemExit: If template is invalid.
     """
     import sys
 
@@ -238,7 +261,7 @@ def _prompt_for_options(
     # Only prompt for zod/client if types are enabled
     if enable_types:
         if not generate_zod and not no_prompt:
-            generate_zod = Confirm.ask("Generate Zod schemas for validation?", default=True)
+            generate_zod = Confirm.ask("Generate Zod schemas for validation?", default=False)
 
         if not generate_client and not no_prompt:
             generate_client = Confirm.ask("Generate API client?", default=True)
@@ -468,10 +491,11 @@ def vite_init(
     # Resolve paths now that framework defaults are known
     resource_path_str = str(resource_path or framework.resource_dir or config.resource_dir)
     bundle_path_str = str(bundle_path or config.bundle_dir)
+    public_path_str = str(public_path or config.public_dir)
 
     # Check for existing files
     if (
-        any((root_path / p).exists() for p in [resource_path_str, bundle_path_str])
+        any((root_path / p).exists() for p in [resource_path_str, bundle_path_str, public_path_str])
         and not any(
             [overwrite, no_prompt],
         )
@@ -502,6 +526,7 @@ def vite_init(
         asset_url=asset_url,
         resource_dir=resource_path_str,
         bundle_dir=bundle_path_str,
+        public_dir=public_path_str,
         base_dir=frontend_dir,
         enable_ssr=enable_ssr,
         enable_inertia=is_inertia,
@@ -573,6 +598,7 @@ def vite_build(app: "Litestar", verbose: "bool") -> None:
         app.debug = True
     console.rule("[yellow]Starting Vite build process[/]", align="left")
     plugin = app.plugins.get(VitePlugin)
+    _generate_schema_and_routes(app, plugin.config, console)
     if plugin.config.set_environment:
         set_environment(config=plugin.config)
 
@@ -590,6 +616,7 @@ def vite_build(app: "Litestar", verbose: "bool") -> None:
         console.print("[bold green]✓ Assets built[/]")
     except ViteExecutionError as e:
         console.print(f"[bold red]x Asset build failed: {e!s}[/]")
+        raise SystemExit(1) from None
 
 
 @vite_group.command(
@@ -693,13 +720,13 @@ def vite_deploy(  # noqa: PLR0915
     help="Serve frontend assets. For SSR frameworks (mode='ssr'), runs production Node server. Otherwise runs Vite dev server.",
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
-@option("--production", type=bool, help="Force production mode (run serve_command).", default=False, is_flag=True)
+@option("--production", type=bool, help="Force production mode (run serve_command).", default=False, is_flag=True)  # pyright: ignore
 def vite_serve(app: "Litestar", verbose: "bool", production: "bool") -> None:
     """Run frontend server.
 
-    For SSR frameworks (SvelteKit, Nuxt, Astro), runs the production Node server
-    using the `serve_command` (npm run serve). For SPA frameworks, runs the
-    Vite dev server with HMR.
+    In dev mode (default): Runs the dev server (npm run dev) for all frameworks.
+    In production mode (--production or dev_mode=False): Runs the production
+    server (npm run serve) for SSR frameworks.
 
     Use --production to force running the production server (serve_command).
     """
@@ -717,9 +744,11 @@ def vite_serve(app: "Litestar", verbose: "bool", production: "bool") -> None:
     if plugin.config.set_environment:
         set_environment(config=plugin.config)
 
-    # For SSR mode or explicit --production, use serve_command (production server)
-    is_ssr_mode = plugin.config.mode == "ssr"
-    use_production_server = production or is_ssr_mode
+    # Use production server when:
+    # 1. --production flag is set, OR
+    # 2. dev_mode is False (production deployment)
+    # Note: SSR mode alone doesn't mean production - SSR apps also have dev servers
+    use_production_server = production or not plugin.config.dev_mode
 
     if use_production_server:
         console.rule("[yellow]Starting production server[/]", align="left")
@@ -776,6 +805,15 @@ def vite_serve(app: "Litestar", verbose: "bool", production: "bool") -> None:
     default=True,
     is_flag=True,
 )
+@option(
+    "--typescript",
+    "--ts",
+    "typescript",
+    help="Generate typed routes.ts file (Ziggy-style) instead of JSON",
+    type=bool,
+    default=False,
+    is_flag=True,
+)
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def export_routes(
     app: "Litestar",
@@ -783,6 +821,7 @@ def export_routes(
     only: "str | None",
     exclude: "str | None",
     include_components: "bool",
+    typescript: "bool",
     verbose: "bool",
 ) -> None:
     """Export route metadata for type-safe routing.
@@ -793,6 +832,7 @@ def export_routes(
         only: Comma-separated list of route patterns to include.
         exclude: Comma-separated list of route patterns to exclude.
         include_components: Include Inertia component names in output.
+        typescript: Generate typed routes.ts file instead of JSON.
         verbose: Whether to enable verbose output.
 
     Raises:
@@ -801,7 +841,7 @@ def export_routes(
     import msgspec
     from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
 
-    from litestar_vite.codegen import generate_routes_json
+    from litestar_vite.codegen import generate_routes_json, generate_routes_ts
     from litestar_vite.config import TypeGenConfig
     from litestar_vite.plugin import VitePlugin
 
@@ -811,39 +851,64 @@ def export_routes(
     plugin = app.plugins.get(VitePlugin)
     config = plugin.config
 
-    # Determine output path
-    if output is None:
-        if isinstance(config.types, TypeGenConfig) and config.types.enabled:
-            output = config.types.routes_path
-        else:
-            output = Path("routes.json")
-
-    console.rule(f"[yellow]Exporting routes to {output}[/]", align="left")
-
     # Parse filter lists
     only_list = [p.strip() for p in only.split(",")] if only else None
     exclude_list = [p.strip() for p in exclude.split(",")] if exclude else None
 
-    # Generate routes JSON
-    routes_data = generate_routes_json(
-        app,
-        only=only_list,
-        exclude=exclude_list,
-        include_components=include_components,
-    )
+    if typescript:
+        # Generate typed routes.ts file
+        if output is None:
+            if isinstance(config.types, TypeGenConfig) and config.types.routes_ts_path:
+                output = config.types.routes_ts_path
+            else:
+                output = Path("routes.ts")
 
-    try:
-        content = msgspec.json.format(
-            msgspec.json.encode(routes_data),
-            indent=2,
+        console.rule(f"[yellow]Exporting typed routes to {output}[/]", align="left")
+
+        routes_ts_content = generate_routes_ts(
+            app,
+            only=only_list,
+            exclude=exclude_list,
         )
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_bytes(content)
-        console.print(f"[green]✓ Routes exported to {output}[/]")
-        console.print(f"[dim]  {len(routes_data.get('routes', {}))} routes exported[/]")
-    except OSError as e:  # pragma: no cover
-        msg = f"Failed to write routes to path {output}"
-        raise LitestarCLIException(msg) from e
+
+        try:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(routes_ts_content, encoding="utf-8")
+            console.print(f"[green]✓ Typed routes exported to {output}[/]")
+        except OSError as e:  # pragma: no cover
+            msg = f"Failed to write routes to path {output}"
+            raise LitestarCLIException(msg) from e
+    else:
+        # Generate routes JSON (existing behavior)
+        if output is None:
+            if isinstance(config.types, TypeGenConfig) and config.types.routes_path is not None:
+                output = config.types.routes_path
+            elif isinstance(config.types, TypeGenConfig):
+                output = config.types.output / "routes.json"
+            else:
+                output = Path("routes.json")
+
+        console.rule(f"[yellow]Exporting routes to {output}[/]", align="left")
+
+        routes_data = generate_routes_json(
+            app,
+            only=only_list,
+            exclude=exclude_list,
+            include_components=include_components,
+        )
+
+        try:
+            content = msgspec.json.format(
+                msgspec.json.encode(routes_data),
+                indent=2,
+            )
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(content)
+            console.print(f"[green]✓ Routes exported to {output}[/]")
+            console.print(f"[dim]  {len(routes_data.get('routes', {}))} routes exported[/]")
+        except OSError as e:  # pragma: no cover
+            msg = f"Failed to write routes to path {output}"
+            raise LitestarCLIException(msg) from e
 
 
 def _export_openapi_schema(app: "Litestar", types_config: Any) -> None:
@@ -870,7 +935,7 @@ def _export_openapi_schema(app: "Litestar", types_config: Any) -> None:
         )
         types_config.openapi_path.parent.mkdir(parents=True, exist_ok=True)
         types_config.openapi_path.write_bytes(schema_content)
-        console.print(f"[green]✓ Schema exported to {types_config.openapi_path}[/]")
+        console.print(f"[green]✓ Schema exported to {_relative_path(types_config.openapi_path)}[/]")
     except OSError as e:
         msg = f"Failed to export OpenAPI schema: {e}"
         raise LitestarCLIException(msg) from e
@@ -901,7 +966,8 @@ def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
         )
         types_config.routes_path.parent.mkdir(parents=True, exist_ok=True)
         types_config.routes_path.write_bytes(routes_content)
-        console.print(f"[green]✓ Routes exported to {types_config.routes_path}[/]")
+        console.print(f"[green]✓ Routes exported to {_relative_path(types_config.routes_path)}[/]")
+        # Note: routes.ts is generated by the Vite plugin from routes.json during vite build
     except OSError as e:
         msg = f"Failed to export routes: {e}"
         raise LitestarCLIException(msg) from e
@@ -932,8 +998,7 @@ def _get_package_executor_cmd(executor: "str | None", package: str) -> "list[str
 
 
 def _run_openapi_ts(
-    types_config: Any,
-    root_dir: Any,
+    config: Any,
     verbose: bool,
     install_command: "list[str] | None" = None,
     executor: "str | None" = None,
@@ -941,15 +1006,21 @@ def _run_openapi_ts(
     """Run @hey-api/openapi-ts to generate TypeScript types.
 
     Args:
-        types_config: The TypeGenConfig instance.
-        root_dir: The root directory for the project.
+        config: The ViteConfig instance (with .types resolved).
         verbose: Whether to show verbose output.
         install_command: Command used to install JS dependencies.
         executor: The JS runtime executor (node, bun, deno, yarn, pnpm).
     """
     import subprocess
+    from pathlib import Path
 
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+
+    types_config = config.types
+    root_dir = Path(config.root_dir or Path.cwd())
+    resource_dir = Path(config.resource_dir)
+    if not resource_dir.is_absolute():
+        resource_dir = root_dir / resource_dir
 
     console.print("[dim]3. Running @hey-api/openapi-ts...[/]")
 
@@ -961,22 +1032,43 @@ def _run_openapi_ts(
         check_cmd = [*pkg_cmd, "--version"]
         subprocess.run(check_cmd, check=True, capture_output=True, cwd=root_dir)
 
-        # Run the type generation
-        openapi_cmd = [
-            *pkg_cmd,
-            "-i",
-            str(types_config.openapi_path),
-            "-o",
-            str(types_config.output),
+        # Prefer a user-provided config file if present (prioritize openapi-ts.config.ts)
+        candidate_configs = [
+            resource_dir / "openapi-ts.config.ts",
+            resource_dir / "hey-api.config.ts",
+            root_dir / "openapi-ts.config.ts",
+            root_dir / "hey-api.config.ts",
         ]
-        if types_config.generate_zod:
-            openapi_cmd.extend(["--plugins", "zod", "@hey-api/typescript"])
+        config_path = next((p for p in candidate_configs if p.exists()), None)
+
+        if config_path is not None:
+            openapi_cmd = [*pkg_cmd, "--file", str(config_path)]
+        else:
+            openapi_cmd = [
+                *pkg_cmd,
+                "-i",
+                str(types_config.openapi_path),
+                "-o",
+                str(types_config.output),
+            ]
+
+            plugins: list[str] = ["@hey-api/typescript", "@hey-api/schemas"]
+            if getattr(types_config, "generate_sdk", True):
+                plugins.extend(["@hey-api/sdk"])
+            if types_config.generate_zod:
+                plugins.append("zod")
+
+            if plugins:
+                openapi_cmd.extend(["--plugins", *plugins])
 
         subprocess.run(openapi_cmd, check=True, cwd=root_dir)
         console.print(f"[green]✓ Types generated in {types_config.output}[/]")
     except subprocess.CalledProcessError as e:
         console.print("[yellow]! @hey-api/openapi-ts failed - install it with:[/]")
-        console.print(f"[dim]  {' '.join([*install_cmd, '-D', '@hey-api/openapi-ts'])}[/]")
+        extra = ["@hey-api/openapi-ts"]
+        if getattr(types_config, "generate_zod", False):
+            extra.append("zod")
+        console.print(f"[dim]  {' '.join([*install_cmd, '-D', *extra])}[/]")
         if verbose:
             console.print(f"[dim]Error: {e!s}[/]")
     except FileNotFoundError:
@@ -1000,9 +1092,6 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     Args:
         app: The Litestar application instance.
         verbose: Whether to enable verbose output.
-
-    Raises:
-        LitestarCLIException: If type generation fails.
     """
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
@@ -1015,17 +1104,17 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     plugin = app.plugins.get(VitePlugin)
     config = plugin.config
 
-    # Check if types are enabled
-    if not isinstance(config.types, TypeGenConfig) or not config.types.enabled:
+    # Check if types are enabled (presence of TypeGenConfig = enabled)
+    if not isinstance(config.types, TypeGenConfig):
         console.print("[yellow]Type generation is not enabled in ViteConfig[/]")
-        console.print("[dim]Set types=True or types=TypeGenConfig(enabled=True) in ViteConfig[/]")
+        console.print("[dim]Set types=True or types=TypeGenConfig() in ViteConfig[/]")
         return
 
     console.rule("[yellow]Generating TypeScript types[/]", align="left")
 
     _export_openapi_schema(app, config.types)
     _export_routes_metadata(app, config.types)
-    _run_openapi_ts(config.types, config.root_dir, verbose, config.install_command, config.runtime.executor)
+    _run_openapi_ts(config, verbose, config.install_command, config.runtime.executor)
 
 
 @vite_group.command(

@@ -9,15 +9,17 @@ The VitePlugin automatically handles serving the SPA index.html for all
 non-API routes when mode="spa" (auto-detected or explicit).
 """
 
+import os
 from pathlib import Path
 
 from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
 from msgspec import Struct
 
-from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
+from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
+DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
 
 
 class Book(Struct):
@@ -84,9 +86,11 @@ class LibraryController(Controller):
 vite = VitePlugin(
     config=ViteConfig(
         mode="spa",
+        dev_mode=DEV_MODE,
         paths=PathConfig(root=here),
-        types=TypeGenConfig(generate_sdk=True),
-        dev_mode=True,
+        types=TypeGenConfig(),  # generate_sdk=True is the default
+        # Fixed port for E2E tests - can be removed for local dev or customized for production
+        runtime=RuntimeConfig(port=5001),
     )
 )
 

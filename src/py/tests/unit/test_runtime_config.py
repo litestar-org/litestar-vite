@@ -1,0 +1,20 @@
+import json
+from pathlib import Path
+
+from litestar_vite.config import ViteConfig
+from litestar_vite.plugin import _write_runtime_config_file
+
+
+def test_runtime_config_includes_litestar_version(tmp_path: Path, monkeypatch: object) -> None:
+    # Arrange
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+    # ensure a predictable version
+    monkeypatch.setenv("LITESTAR_VERSION", "9.9.9")
+
+    # Act
+    path_str = _write_runtime_config_file(cfg)
+    data = json.loads(Path(path_str).read_text())
+
+    # Assert
+    assert data["litestarVersion"] == "9.9.9"

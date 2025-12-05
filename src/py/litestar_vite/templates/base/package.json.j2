@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "{% if use_typescript %}{% if framework in ['vue', 'vue-inertia'] %}vue-tsc -b{% else %}tsc{% endif %} && {% endif %}vite build",
+    "build": "vite build{% if use_typescript %} && {% if framework in ['vue', 'vue-inertia'] %}vue-tsc -b --noEmit{% else %}tsc -b --noEmit{% endif %}{% endif %}",
     "preview": "vite preview",
     "serve": "vite preview",
     "watch": "npm run serve"{% if generate_client %},
@@ -12,20 +12,27 @@
   },
   "dependencies": {
 {%- for dep in dependencies %}
-    "{{ dep }}": "latest"{% if not loop.last or generate_zod %},{% endif %}
+    "{{ dep }}": "latest"{% if not loop.last or generate_zod or generate_client %},{% endif %}
 {%- endfor %}
+{%- if generate_client %}
+    "axios": "^1.13.2"{% if generate_zod %},{% endif %}
+{%- endif %}
 {%- if generate_zod %}
-    "zod": "^3.24.0"
+    "zod": "^4.1.13"
 {%- endif %}
   },
   "devDependencies": {
 {%- for dep in dev_dependencies %}
     "{{ dep }}": "latest",
 {%- endfor %}
+{%- if use_tailwind %}
+    "@tailwindcss/vite": "^4.1.17",
+    "tailwindcss": "^4.1.17",
+{%- endif %}
 {%- if generate_client %}
-    "@hey-api/openapi-ts": "latest",
+    "@hey-api/openapi-ts": "^0.88.0",
 {%- endif %}
     "litestar-vite-plugin": "latest",
-    "vite": "^6.0.0"
+    "vite": "^7.2.6"
   }
 }

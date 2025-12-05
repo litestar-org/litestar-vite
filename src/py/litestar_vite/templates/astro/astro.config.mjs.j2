@@ -16,7 +16,7 @@ export default defineConfig({
       apiProxy: `http://localhost:${LITESTAR_PORT}`,
       apiPrefix: "/api",
 {% if enable_types %}
-      typesPath: "./src/generated",
+      typesPath: "./{{ resource_dir }}/generated",
 {% endif %}
     }),
   ],

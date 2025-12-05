@@ -6,10 +6,10 @@
  *
  * @example
  * ```ts
- * import { route, getCsrfToken, csrfFetch } from 'litestar-vite-plugin/helpers'
+ * import { getCsrfToken, csrfFetch } from 'litestar-vite-plugin/helpers'
  *
- * // Generate a URL for a named route
- * const url = route('user:detail', { user_id: 123 })
+ * // Get CSRF token
+ * const token = getCsrfToken()
  *
  * // Make a fetch request with CSRF token
  * await csrfFetch('/api/submit', {
@@ -18,23 +18,18 @@
  * })
  * ```
  *
+ * For type-safe routing, import from your generated routes file:
+ * ```ts
+ * import { route, routes, type RouteName } from '@/generated/routes'
+ *
+ * // Type-safe URL generation
+ * const url = route('user_detail', { user_id: 123 })  // Compile-time checked!
+ * ```
+ *
  * @module
  */
 
 // CSRF utilities
 export { csrfFetch, csrfHeaders, getCsrfToken } from "./csrf.js"
-
-// Route utilities
-export {
-  currentRoute,
-  getRelativeUrlPath,
-  getRoutes,
-  isCurrentRoute,
-  isRoute,
-  LITESTAR,
-  type LitestarHelpers,
-  type RouteDefinition,
-  type RoutesMap,
-  route,
-  toRoute,
-} from "./routes.js"
+// HTMX utilities
+export { addDirective, registerHtmxExtension, setDebug as setHtmxDebug, swapJson } from "./htmx.js"

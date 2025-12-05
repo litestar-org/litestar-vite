@@ -1,4 +1,5 @@
 import { Head, Link } from "@inertiajs/react"
+import { route } from "@/generated/routes"
 
 interface Props {
   message?: string
@@ -21,7 +22,8 @@ export default function Home({ message }: Props) {
         </section>
 
         <nav className="flex gap-4">
-          <Link href="/books" className="rounded-full bg-[#202235] px-6 py-2 font-semibold text-sm text-white transition hover:bg-[#2d3348]">
+          {/* Using type-safe route() helper like Laravel's Ziggy */}
+          <Link href={route("books_page")} className="rounded-full bg-[#202235] px-6 py-2 font-semibold text-sm text-white transition hover:bg-[#2d3348]">
             View Books
           </Link>
         </nav>

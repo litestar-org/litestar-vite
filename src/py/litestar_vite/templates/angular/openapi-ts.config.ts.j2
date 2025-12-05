@@ -1,0 +1,18 @@
+import { defineConfig } from "@hey-api/openapi-ts";
+
+export default defineConfig({
+  input: "./{{ resource_dir }}/generated/openapi.json",
+  output: "./{{ resource_dir }}/generated/api",
+  plugins: [
+    "@hey-api/typescript",
+    "@hey-api/schemas",
+    {
+      name: "@hey-api/sdk",
+      asClass: true,
+    },
+    "@hey-api/client-angular",
+{%- if generate_zod %}
+    "zod",
+{%- endif %}
+  ],
+});

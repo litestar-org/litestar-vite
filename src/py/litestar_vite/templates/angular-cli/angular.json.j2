@@ -17,7 +17,7 @@
             "tsConfig": "tsconfig.app.json",
             "assets": [
               { "glob": "**/*", "input": "src/assets", "output": "/assets" },
-              { "glob": "**/*", "input": "src/generated", "output": "/src/generated" }
+              { "glob": "**/*", "input": "{{ resource_dir }}/generated", "output": "/{{ resource_dir }}/generated" }
             ],
             "styles": ["src/styles.css"],
             "scripts": []

@@ -4,23 +4,26 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build && tsc -b --noEmit",
     "preview": "vite preview",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "generate-types": "openapi-ts --config openapi-ts.config.ts"
   },
   "dependencies": {
-    "react": "latest",
-    "react-dom": "latest",
-    "react-router-dom": "^7"
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.10.0",
+    "axios": "^1.13.2"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "@tailwindcss/vite": "^4.0.0",
-    "tailwindcss": "^4.0.0",
-    "typescript": "latest",
+    "@vitejs/plugin-react": "^5.1.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@tailwindcss/vite": "^4.1.17",
+    "tailwindcss": "^4.1.17",
+    "typescript": "^5.9.3",
     "litestar-vite-plugin": "file:../..",
-    "vite": "^7.0.0"
+    "vite": "^7.2.6",
+    "@hey-api/openapi-ts": "^0.88.0"
   }
 }

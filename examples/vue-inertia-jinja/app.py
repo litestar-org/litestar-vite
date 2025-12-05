@@ -14,9 +14,10 @@ from litestar.middleware.session.client_side import CookieBackendConfig
 from litestar.template import TemplateConfig
 from msgspec import Struct
 
-from litestar_vite import InertiaConfig, PathConfig, TypeGenConfig, ViteConfig, VitePlugin
+from litestar_vite import InertiaConfig, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
+DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
 SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-32-chars")
 session_backend = CookieBackendConfig(secret=SECRET_KEY.encode("utf-8"))
 
@@ -95,15 +96,12 @@ templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEng
 vite = VitePlugin(
     config=ViteConfig(
         mode="template",  # Explicit template mode for Jinja-based Inertia
-        paths=PathConfig(root=here, resource_dir="resources", bundle_dir="public"),
+        dev_mode=DEV_MODE,
+        paths=PathConfig(root=here, resource_dir="resources"),
         inertia=InertiaConfig(root_template="index.html"),  # Auto-registers Inertia
-        types=TypeGenConfig(
-            enabled=True,
-            output=Path("resources/generated"),
-            generate_zod=True,
-            generate_sdk=False,
-        ),
-        dev_mode=True,
+        types=TypeGenConfig(output=Path("resources/generated"), generate_zod=True),
+        # Fixed port for E2E tests - can be removed for local dev or customized for production
+        runtime=RuntimeConfig(port=5013),
     )
 )
 

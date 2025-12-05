@@ -84,6 +84,13 @@ export interface SvelteKitTypesConfig {
   generateZod?: boolean
 
   /**
+   * Generate SDK client functions for API calls.
+   *
+   * @default true
+   */
+  generateSdk?: boolean
+
+  /**
    * Debounce time in milliseconds for type regeneration.
    *
    * @default 300
@@ -226,6 +233,7 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
       openapiPath: pythonTypesConfig?.openapiPath ?? "openapi.json",
       routesPath: pythonTypesConfig?.routesPath ?? "routes.json",
       generateZod: pythonTypesConfig?.generateZod ?? false,
+      generateSdk: pythonTypesConfig?.generateSdk ?? true,
       debounce: 300,
     }
   } else if (typeof config.types === "object" && config.types !== null) {
@@ -236,6 +244,7 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
       openapiPath: config.types.openapiPath ?? pythonTypesConfig?.openapiPath ?? "openapi.json",
       routesPath: config.types.routesPath ?? pythonTypesConfig?.routesPath ?? "routes.json",
       generateZod: config.types.generateZod ?? pythonTypesConfig?.generateZod ?? false,
+      generateSdk: config.types.generateSdk ?? pythonTypesConfig?.generateSdk ?? true,
       debounce: config.types.debounce ?? 300,
     }
   } else if (config.types !== false && pythonTypesConfig?.enabled) {
@@ -246,6 +255,7 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
       openapiPath: pythonTypesConfig.openapiPath ?? "openapi.json",
       routesPath: pythonTypesConfig.routesPath ?? "routes.json",
       generateZod: pythonTypesConfig.generateZod ?? false,
+      generateSdk: pythonTypesConfig.generateSdk ?? true,
       debounce: 300,
     }
   }
@@ -320,6 +330,9 @@ export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): Plu
     config() {
       return {
         server: {
+          // Force IPv4 binding for consistency with Python proxy configuration
+          // Without this, SvelteKit might bind to IPv6 localhost which the proxy can't reach
+          host: "127.0.0.1",
           // Set the port from Python config/env to ensure SvelteKit uses the expected port
           // strictPort: true prevents SvelteKit from auto-incrementing to a different port
           ...(config.port !== undefined
@@ -563,14 +576,34 @@ function createTypeGenerationPlugin(typesConfig: Required<SvelteKitTypesConfig>,
 
       console.log(colors.cyan("[litestar-sveltekit]"), colors.dim("Generating TypeScript types..."))
 
-      const args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
+      // Check for user config file first
+      const projectRoot = process.cwd()
+      const candidates = [path.resolve(projectRoot, "openapi-ts.config.ts"), path.resolve(projectRoot, "hey-api.config.ts"), path.resolve(projectRoot, ".hey-api.config.ts")]
+      const configPath = candidates.find((p) => fs.existsSync(p)) || null
 
-      if (typesConfig.generateZod) {
-        args.push("--plugins", "zod", "@hey-api/typescript")
+      let args: string[]
+      if (configPath) {
+        // Use user config file
+        console.log(colors.cyan("[litestar-sveltekit]"), colors.dim("Using config:"), configPath)
+        args = ["@hey-api/openapi-ts", "--file", configPath]
+      } else {
+        // Build args with proper plugins
+        args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
+
+        const plugins = ["@hey-api/typescript", "@hey-api/schemas"]
+        if (typesConfig.generateSdk) {
+          plugins.push("@hey-api/sdk", "@hey-api/client-fetch")
+        }
+        if (typesConfig.generateZod) {
+          plugins.push("zod")
+        }
+        if (plugins.length) {
+          args.push("--plugins", ...plugins)
+        }
       }
 
       await execAsync(resolvePackageExecutor(args.join(" "), executor), {
-        cwd: process.cwd(),
+        cwd: projectRoot,
       })
 
       // Also generate route types if routes.json exists
@@ -617,6 +650,16 @@ function createTypeGenerationPlugin(typesConfig: Required<SvelteKitTypesConfig>,
     configureServer(devServer) {
       server = devServer
       console.log(colors.cyan("[litestar-sveltekit]"), colors.dim("Watching for schema changes:"), colors.yellow(typesConfig.openapiPath))
+    },
+
+    async buildStart() {
+      // Run type generation at build start if enabled and openapi.json exists
+      if (typesConfig.enabled) {
+        const openapiPath = path.resolve(process.cwd(), typesConfig.openapiPath)
+        if (fs.existsSync(openapiPath)) {
+          await runTypeGeneration()
+        }
+      }
     },
 
     handleHotUpdate({ file }) {

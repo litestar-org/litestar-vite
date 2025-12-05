@@ -32,10 +32,10 @@ from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
 from msgspec import Struct
 
-from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
+from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
-DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
+DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
 
 
 class Book(Struct):
@@ -101,12 +101,9 @@ vite = VitePlugin(
         mode="ssr",  # SSR mode: proxy in dev, Node serves HTML in prod
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here),
-        types=TypeGenConfig(
-            enabled=True,
-            output=Path("src/lib/generated"),
-            generate_zod=True,
-            generate_sdk=True,
-        ),
+        types=TypeGenConfig(output=Path("src/lib/generated"), generate_zod=True),
+        # Fixed port for E2E tests - can be removed for local dev or customized for production
+        runtime=RuntimeConfig(port=5022),
     )
 )
 

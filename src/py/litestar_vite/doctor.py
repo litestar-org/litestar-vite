@@ -15,6 +15,8 @@ from rich.prompt import Confirm
 from rich.syntax import Syntax
 from rich.table import Table
 
+from litestar_vite.config import TypeGenConfig
+
 if TYPE_CHECKING:
     from litestar_vite.config import ViteConfig
 
@@ -233,8 +235,8 @@ class ViteDoctor:
         if not self.parsed_config:
             return
 
-        # Only check if types are enabled in Python config
-        if isinstance(self.config.types, bool) or not self.config.types.enabled:
+        # Only check if types are enabled in Python config (presence of TypeGenConfig = enabled)
+        if not isinstance(self.config.types, TypeGenConfig):
             return
 
         if self.parsed_config.types_enabled:
@@ -250,7 +252,9 @@ class ViteDoctor:
                     return "/".join(parts[-3:])  # fallback: last 3 components
 
             # Check openapi path (only if user set it in JS). Normalize to relative-to-root for fair compare.
-            py_openapi_path = Path(self.config.types.openapi_path)
+            py_openapi_path = self.config.types.openapi_path
+            if py_openapi_path is None:
+                py_openapi_path = self.config.types.output / "openapi.json"
             js_openapi_path = (
                 (root / self.parsed_config.types_openapi_path) if self.parsed_config.types_openapi_path else None
             )
@@ -268,7 +272,9 @@ class ViteDoctor:
                 )
 
             # Check routes path (only if user set it in JS). Normalize to relative-to-root for fair compare.
-            py_routes_path = Path(self.config.types.routes_path)
+            py_routes_path = self.config.types.routes_path
+            if py_routes_path is None:
+                py_routes_path = self.config.types.output / "routes.json"
             js_routes_path = (
                 (root / self.parsed_config.types_routes_path) if self.parsed_config.types_routes_path else None
             )
@@ -290,7 +296,7 @@ class ViteDoctor:
         if not self.parsed_config:
             return
 
-        if isinstance(self.config.types, bool) or not self.config.types.enabled:
+        if not isinstance(self.config.types, TypeGenConfig):
             return
 
         if self.parsed_config.types_enabled:
@@ -473,11 +479,15 @@ class ViteDoctor:
 
     def _check_typegen_artifacts(self) -> None:
         """Verify exported OpenAPI/routes when typegen is enabled."""
-        if isinstance(self.config.types, bool) or not self.config.types.enabled:
+        if not isinstance(self.config.types, TypeGenConfig):
             return
 
-        openapi_path = Path(self.config.types.openapi_path)
-        routes_path = Path(self.config.types.routes_path)
+        openapi_path = self.config.types.openapi_path
+        if openapi_path is None:
+            openapi_path = self.config.types.output / "openapi.json"
+        routes_path = self.config.types.routes_path
+        if routes_path is None:
+            routes_path = self.config.types.output / "routes.json"
 
         if not openapi_path.exists():
             self.issues.append(

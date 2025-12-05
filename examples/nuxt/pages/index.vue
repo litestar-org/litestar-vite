@@ -1,4 +1,7 @@
 <script setup lang="ts">
+// Import type-safe route helper from generated routes
+import { route } from "~/generated/routes"
+
 type Book = {
   id: number
   title: string
@@ -18,19 +21,12 @@ type Summary = {
 const config = useRuntimeConfig()
 const apiBase = config.public.apiProxy as string
 
-// Fetch data from Litestar backend using the full baseURL
+// Fetch data from Litestar backend using type-safe route() helper
 // This works correctly for both SSR and client-side hydration
-const { data: summary } = await useFetch<Summary>("/api/summary", { baseURL: apiBase })
-const { data: books } = await useFetch<Book[]>("/api/books", { baseURL: apiBase })
+const { data: summary } = await useFetch<Summary>(route("summary"), { baseURL: apiBase })
+const { data: books } = await useFetch<Book[]>(route("books"), { baseURL: apiBase })
 
 const view = ref<"overview" | "books">("overview")
-
-// API routes (since Nuxt doesn't have generated routes.json)
-const apiRoutes = {
-  "api.summary": { uri: "/api/summary" },
-  "api.books": { uri: "/api/books" },
-  "api.book_detail": { uri: "/api/books/{book_id}" },
-}
 </script>
 
 <template>
@@ -83,11 +79,11 @@ const apiRoutes = {
 
     <footer class="border-slate-200 border-t pt-8 text-slate-400 text-xs">
       <details>
-        <summary class="cursor-pointer">Server Routes (API endpoints)</summary>
-        <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
-          <span v-for="(route, name) in apiRoutes" :key="name" class="font-mono text-slate-600">
-            {{ name }} → {{ route.uri }}
-          </span>
+        <summary class="cursor-pointer">Type-safe route() helper usage</summary>
+        <div class="mt-2 space-y-1 rounded bg-slate-100 p-2 font-mono">
+          <div>route("summary") → {{ route("summary") }}</div>
+          <div>route("books") → {{ route("books") }}</div>
+          <div>route("book_detail", { book_id: 42 }) → {{ route("book_detail", { book_id: 42 }) }}</div>
         </div>
       </details>
     </footer>

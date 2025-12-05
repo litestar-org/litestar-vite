@@ -370,6 +370,12 @@ class RuntimeConfig:
         if isinstance(self.external_dev_server, str):
             self.external_dev_server = ExternalDevServer(target=self.external_dev_server)
 
+        # Auto-set proxy_mode="proxy" when external_dev_server is configured
+        # External dev servers (Angular CLI, Next.js, etc.) need blacklist proxy mode
+        # Override default "vite" mode which only proxies Vite-specific routes
+        if self.external_dev_server is not None and self.proxy_mode in (None, "vite"):
+            self.proxy_mode = "proxy"
+
         # Note: proxy mode no longer requires external_dev_server - it can read
         # the target URL from the hotfile for SSR frameworks using Vite internally
 
@@ -433,52 +439,48 @@ class RuntimeConfig:
 class TypeGenConfig:
     """Type generation settings.
 
+    Presence of this config enables type generation. Use ``types=None`` or
+    ``types=False`` in ViteConfig to disable.
+
     Attributes:
-        enabled: Enable type generation pipeline.
         output: Output directory for generated types.
         openapi_path: Path to export OpenAPI schema.
-        routes_path: Path to export routes metadata.
+        routes_path: Path to export routes metadata (JSON format).
+        routes_ts_path: Path to export typed routes TypeScript file.
         generate_zod: Generate Zod schemas from OpenAPI.
         generate_sdk: Generate SDK client from OpenAPI.
+        generate_routes: Generate typed routes.ts file (Ziggy-style).
         watch_patterns: File patterns to watch for type regeneration.
     """
 
-    enabled: bool = False
     output: Path = field(default_factory=lambda: Path("src/generated"))
-    openapi_path: Path = field(default_factory=lambda: Path("src/generated/openapi.json"))
-    routes_path: Path = field(default_factory=lambda: Path("src/generated/routes.json"))
-    generate_zod: bool = True
-    generate_sdk: bool = False
+    openapi_path: "Path | None" = field(default=None)  # Computed in __post_init__ if None
+    routes_path: "Path | None" = field(default=None)  # Computed in __post_init__ if None
+    routes_ts_path: "Path | None" = field(default=None)  # Computed in __post_init__ if None
+    generate_zod: bool = False
+    generate_sdk: bool = True
+    generate_routes: bool = True
     watch_patterns: list[str] = field(
         default_factory=lambda: ["**/routes.py", "**/handlers.py", "**/controllers/**/*.py"]
     )
 
     def __post_init__(self) -> None:
-        """Normalize path types."""
+        """Normalize path types and compute defaults based on output directory."""
         if isinstance(self.output, str):
             self.output = Path(self.output)
-        if isinstance(self.openapi_path, str):
+        # Compute defaults relative to output directory if not explicitly set
+        if self.openapi_path is None:
+            self.openapi_path = self.output / "openapi.json"
+        elif isinstance(self.openapi_path, str):
             self.openapi_path = Path(self.openapi_path)
-        if isinstance(self.routes_path, str):
+        if self.routes_path is None:
+            self.routes_path = self.output / "routes.json"
+        elif isinstance(self.routes_path, str):
             self.routes_path = Path(self.routes_path)
-
-
-def _optional_str_list_factory() -> "list[str] | None":
-    """Factory function returning None for optional list fields.
-
-    Returns:
-        None
-    """
-    return None
-
-
-def _default_routes_exclude_factory() -> list[str]:
-    """Factory function for default route exclusions.
-
-    Returns:
-        List of default route exclusion patterns.
-    """
-    return ["vite_spa"]  # Exclude the catch-all SPA handler route by default
+        if self.routes_ts_path is None:
+            self.routes_ts_path = self.output / "routes.ts"
+        elif isinstance(self.routes_ts_path, str):
+            self.routes_ts_path = Path(self.routes_ts_path)
 
 
 @dataclass
@@ -486,26 +488,21 @@ class SPAConfig:
     """Configuration for SPA HTML transformations.
 
     This configuration controls how the SPA HTML is transformed before serving,
-    including route metadata injection, CSRF token injection, and Inertia.js
-    page data handling.
+    including CSRF token injection and Inertia.js page data handling.
+
+    Note:
+        Route metadata is now generated as TypeScript (routes.ts) at build time
+        instead of runtime injection. Use TypeGenConfig.generate_routes to enable.
 
     Attributes:
-        inject_routes: Whether to inject route metadata into HTML.
         inject_csrf: Whether to inject CSRF token into HTML (as window.__LITESTAR_CSRF__).
-        routes_var_name: Global variable name for routes (e.g., window.__LITESTAR_ROUTES__).
         csrf_var_name: Global variable name for CSRF token (e.g., window.__LITESTAR_CSRF__).
-        routes_include: Whitelist patterns for route filtering (None = include all).
-        routes_exclude: Blacklist patterns for route filtering (None = exclude none).
         app_selector: CSS selector for the app root element (used for data attributes).
         cache_transformed_html: Cache transformed HTML in production; disabled when inject_csrf=True because CSRF tokens are per-request.
     """
 
-    inject_routes: bool = True
     inject_csrf: bool = True
-    routes_var_name: str = "__LITESTAR_ROUTES__"
     csrf_var_name: str = "__LITESTAR_CSRF__"
-    routes_include: "list[str] | None" = field(default_factory=_optional_str_list_factory)
-    routes_exclude: "list[str] | None" = field(default_factory=_default_routes_exclude_factory)
     app_selector: str = "#app"
     cache_transformed_html: bool = True
 
@@ -518,7 +515,7 @@ class ViteConfig:
     Supports shortcuts for common configurations:
 
     - dev_mode: Shortcut for runtime.dev_mode
-    - types=True: Enable type generation with defaults
+    - types=True or TypeGenConfig(): Enable type generation (presence = enabled)
     - inertia=True or InertiaConfig(): Enable Inertia.js (presence = enabled)
 
     Mode auto-detection:
@@ -539,10 +536,12 @@ class ViteConfig:
     - Explicit mode parameter overrides auto-detection
 
     Attributes:
-        mode: Serving mode - "spa", "template", "htmx", or "hybrid". Auto-detected if not set.
+        mode: Serving mode - "spa", "template", "htmx", "hybrid", "ssr", "ssg", or "external".
+            Auto-detected if not set. Use "external" for non-Vite frameworks (Angular CLI, etc.)
+            that have their own build system - auto-serves bundle_dir in production.
         paths: File system paths configuration.
         runtime: Runtime execution settings.
-        types: Type generation settings (True enables with defaults).
+        types: Type generation settings (True/TypeGenConfig enables, False/None disables).
         inertia: Inertia.js settings (True/InertiaConfig enables, False/None disables).
         spa: SPA transformation settings (True enables with defaults, False disables).
         dev_mode: Convenience shortcut for runtime.dev_mode.
@@ -550,10 +549,10 @@ class ViteConfig:
         deploy: Deployment configuration for CDN publishing.
     """
 
-    mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'ssr'] | None" = None
+    mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'inertia', 'ssr', 'ssg', 'external'] | None" = None
     paths: PathConfig = field(default_factory=PathConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
-    types: "TypeGenConfig | bool" = field(default_factory=lambda: TypeGenConfig(enabled=True))
+    types: "TypeGenConfig | bool | None" = None
     inertia: "InertiaConfig | bool | None" = None
     spa: "SPAConfig | bool | None" = None
     dev_mode: bool = False
@@ -566,6 +565,7 @@ class ViteConfig:
 
     def __post_init__(self) -> None:
         """Normalize configurations and apply shortcuts."""
+        self._normalize_mode()
         self._normalize_types()
         self._normalize_inertia()
         self._normalize_spa_flag()
@@ -578,11 +578,38 @@ class ViteConfig:
         self._auto_enable_dev_mode()
         self._warn_missing_assets()
 
+    def _normalize_mode(self) -> None:
+        """Normalize mode aliases.
+
+        Aliases:
+        - 'ssg' → 'ssr': Static Site Generation uses the same proxy behavior as SSR.
+          Both use blacklist proxy in dev mode (forward non-API routes to framework's
+          dev server). SSG pre-renders at build time, SSR renders per-request, but
+          their dev-time proxy behavior is identical.
+
+        - 'inertia' → 'hybrid': Inertia.js apps without Jinja templates use hybrid mode.
+          This is clearer terminology since "hybrid" refers to the SPA-with-server-routing
+          pattern that Inertia implements.
+        """
+        if self.mode == "ssg":
+            self.mode = "ssr"
+        elif self.mode == "inertia":
+            self.mode = "hybrid"
+
     def _normalize_types(self) -> None:
+        """Normalize type generation configuration.
+
+        Supports:
+        - True: Enable with defaults -> TypeGenConfig()
+        - False/None: Disabled -> None
+        - TypeGenConfig: Use as-is (presence = enabled)
+        """
         if self.types is True:
-            self.types = TypeGenConfig(enabled=True)
-        elif self.types is False:
-            self.types = TypeGenConfig(enabled=False)
+            self.types = TypeGenConfig()
+        elif self.types is False or self.types is None:
+            self.types = None
+            return
+        # TypeGenConfig instance - resolve paths
         self._resolve_type_paths(self.types)
 
     def _normalize_inertia(self) -> None:
@@ -679,9 +706,18 @@ class ViteConfig:
         if types.routes_path == default_routes and types.output != default_rel:
             types.routes_path = types.output / "routes.json"
 
+        # Set default routes_ts_path if not specified
+        if types.routes_ts_path is None or (
+            types.routes_ts_path == default_rel / "routes.ts" and types.output != default_rel
+        ):
+            types.routes_ts_path = types.output / "routes.ts"
+
         types.output = _to_root(types.output)
-        types.openapi_path = _to_root(types.openapi_path)
-        types.routes_path = _to_root(types.routes_path)
+        # After __post_init__, these are guaranteed to be Path (not None)
+        # The type is Path | None to allow None as input, but __post_init__ computes defaults
+        types.openapi_path = _to_root(types.openapi_path) if types.openapi_path else types.output / "openapi.json"
+        types.routes_path = _to_root(types.routes_path) if types.routes_path else types.output / "routes.json"
+        types.routes_ts_path = _to_root(types.routes_ts_path) if types.routes_ts_path else types.output / "routes.ts"
 
     def _ensure_spa_default(self) -> None:
         if self.mode in {"spa", "hybrid"} and self.spa is None:

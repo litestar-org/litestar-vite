@@ -1,7 +1,4 @@
-"""Astro example - shared "Library" backend for Astro static site.
-
-Astro generates static HTML by default (not SSR). In dev mode, we proxy
-to the Astro dev server. In production, we serve the built static files.
+"""Astro example - shared "Library" backend + Astro static site frontend.
 
 All examples in this repository expose the same backend:
 - `/api/summary` - overview + featured book
@@ -11,8 +8,7 @@ All examples in this repository expose the same backend:
 Dev mode (default):
     litestar --app-dir examples/astro run
 
-Production mode (serves static build from dist/):
-    litestar --app-dir examples/astro assets build
+Production mode (serves static build):
     VITE_DEV_MODE=false litestar --app-dir examples/astro run
 """
 
@@ -23,10 +19,10 @@ from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
 from msgspec import Struct
 
-from litestar_vite import PathConfig, TypeGenConfig, ViteConfig, VitePlugin
+from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
-DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
+DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
 
 
 class Book(Struct):
@@ -89,18 +85,15 @@ class LibraryController(Controller):
 
 vite = VitePlugin(
     config=ViteConfig(
-        mode="ssr",  # SSR/SSG mode: proxy in dev, serve static in prod
+        mode="ssg",  # Static Site Generation: proxy in dev, serve static in prod
         dev_mode=DEV_MODE,
         paths=PathConfig(
             root=here,
             bundle_dir=Path("dist"),  # Astro outputs to dist/ by default
         ),
-        types=TypeGenConfig(
-            enabled=True,
-            output=Path("src/generated"),
-            generate_zod=True,
-            generate_sdk=True,
-        ),
+        types=TypeGenConfig(generate_zod=True),
+        # Fixed port for E2E tests - can be removed for local dev or customized for production
+        runtime=RuntimeConfig(port=5051),
     )
 )
 

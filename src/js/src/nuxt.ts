@@ -96,6 +96,13 @@ export interface NuxtTypesConfig {
   generateZod?: boolean
 
   /**
+   * Generate SDK client functions for API calls.
+   *
+   * @default true
+   */
+  generateSdk?: boolean
+
+  /**
    * Debounce time in milliseconds for type regeneration.
    *
    * @default 300
@@ -218,6 +225,7 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
       openapiPath: "openapi.json",
       routesPath: "routes.json",
       generateZod: false,
+      generateSdk: true,
       debounce: 300,
     }
   } else if (typeof config.types === "object" && config.types !== null) {
@@ -227,6 +235,7 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
       openapiPath: config.types.openapiPath ?? "openapi.json",
       routesPath: config.types.routesPath ?? "routes.json",
       generateZod: config.types.generateZod ?? false,
+      generateSdk: config.types.generateSdk ?? true,
       debounce: config.types.debounce ?? 300,
     }
   }
@@ -277,9 +286,20 @@ function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
     async config() {
       hmrPort = await getPort()
       // Note: Server port is controlled by PORT env var (set by Python)
-      // We only configure the API proxy here
+      // We configure the host binding and HMR here
       return {
         server: {
+          // Force IPv4 binding for consistency with Python proxy configuration
+          // Without this, Nuxt/Nitro might bind to IPv6 localhost which the proxy can't reach
+          host: "127.0.0.1",
+          // Set the port from Python config/env to ensure Nuxt uses the expected port
+          // strictPort: true prevents auto-incrementing to a different port
+          ...(config.devPort !== undefined
+            ? {
+                port: config.devPort,
+                strictPort: true,
+              }
+            : {}),
           // Avoid HMR port collisions by letting Vite pick a free port for WS
           hmr: {
             port: hmrPort,
@@ -494,14 +514,34 @@ function createTypeGenerationPlugin(typesConfig: Required<NuxtTypesConfig>, exec
 
       console.log(colors.cyan("[litestar-nuxt]"), colors.dim("Generating TypeScript types..."))
 
-      const args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
+      // Check for user config file first
+      const projectRoot = process.cwd()
+      const candidates = [path.resolve(projectRoot, "openapi-ts.config.ts"), path.resolve(projectRoot, "hey-api.config.ts"), path.resolve(projectRoot, ".hey-api.config.ts")]
+      const configPath = candidates.find((p) => fs.existsSync(p)) || null
 
-      if (typesConfig.generateZod) {
-        args.push("--plugins", "zod", "@hey-api/typescript")
+      let args: string[]
+      if (configPath) {
+        // Use user config file
+        console.log(colors.cyan("[litestar-nuxt]"), colors.dim("Using config:"), configPath)
+        args = ["@hey-api/openapi-ts", "--file", configPath]
+      } else {
+        // Build args with proper plugins
+        args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", typesConfig.output]
+
+        const plugins = ["@hey-api/typescript", "@hey-api/schemas"]
+        if (typesConfig.generateSdk) {
+          plugins.push("@hey-api/sdk", "@hey-api/client-nuxt")
+        }
+        if (typesConfig.generateZod) {
+          plugins.push("zod")
+        }
+        if (plugins.length) {
+          args.push("--plugins", ...plugins)
+        }
       }
 
       await execAsync(resolvePackageExecutor(args.join(" "), executor), {
-        cwd: process.cwd(),
+        cwd: projectRoot,
       })
 
       // Also generate route types if routes.json exists
@@ -548,6 +588,16 @@ function createTypeGenerationPlugin(typesConfig: Required<NuxtTypesConfig>, exec
     configureServer(devServer) {
       server = devServer
       console.log(colors.cyan("[litestar-nuxt]"), colors.dim("Watching for schema changes:"), colors.yellow(typesConfig.openapiPath))
+    },
+
+    async buildStart() {
+      // Run type generation at build start if enabled and openapi.json exists
+      if (typesConfig.enabled) {
+        const openapiPath = path.resolve(process.cwd(), typesConfig.openapiPath)
+        if (fs.existsSync(openapiPath)) {
+          await runTypeGeneration()
+        }
+      }
     },
 
     handleHotUpdate({ file }) {

@@ -4,6 +4,11 @@
  * This module re-exports common helpers from litestar-vite-plugin/helpers
  * and adds Inertia-specific utilities.
  *
+ * For type-safe routing, import from your generated routes file:
+ * ```ts
+ * import { route, routes, type RouteName } from '@/generated/routes'
+ * ```
+ *
  * @module
  */
 
@@ -12,18 +17,8 @@
 export {
   csrfFetch,
   csrfHeaders,
-  currentRoute,
   // CSRF utilities
   getCsrfToken,
-  getRelativeUrlPath,
-  getRoutes,
-  isCurrentRoute,
-  isRoute,
-  type RouteDefinition,
-  type RoutesMap,
-  // Route utilities
-  route,
-  toRoute,
 } from "litestar-vite-plugin/helpers"
 
 /**
