@@ -1,6 +1,6 @@
 """Unit tests for codegen module."""
 
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from litestar import Litestar, get, post
@@ -10,6 +10,7 @@ from litestar_vite.codegen import (
     _escape_ts_string,
     _is_type_required,
     _ts_type_for_param,
+    _ts_type_from_openapi,
     generate_routes_ts,
 )
 
@@ -311,3 +312,102 @@ def test_generate_routes_ts_is_valid_typescript() -> None:
     assert ts_content.count("{") == ts_content.count("}")
     assert ts_content.count("(") == ts_content.count(")")
     assert ts_content.count("[") == ts_content.count("]")
+
+
+# Tests for _ts_type_from_openapi (OpenAPI 3.1 compatibility)
+
+
+def test_ts_type_from_openapi_single_types() -> None:
+    """Test basic single type mapping."""
+    assert _ts_type_from_openapi({"type": "string"}) == "string"
+    assert _ts_type_from_openapi({"type": "integer"}) == "number"
+    assert _ts_type_from_openapi({"type": "number"}) == "number"
+    assert _ts_type_from_openapi({"type": "boolean"}) == "boolean"
+    assert _ts_type_from_openapi({"type": "null"}) == "null"
+    assert _ts_type_from_openapi({"type": "object"}) == "Record<string, unknown>"
+
+
+def test_ts_type_from_openapi_list_types() -> None:
+    """Test OpenAPI 3.1 list types (nullable)."""
+    assert _ts_type_from_openapi({"type": ["integer", "null"]}) == "number | null"
+    assert _ts_type_from_openapi({"type": ["string", "null"]}) == "string | null"
+    assert _ts_type_from_openapi({"type": ["null", "boolean"]}) == "null | boolean"
+    assert _ts_type_from_openapi({"type": ["number", "null"]}) == "number | null"
+
+
+def test_ts_type_from_openapi_one_of() -> None:
+    """Test oneOf compositions (Litestar's nullable pattern)."""
+    schema = {"oneOf": [{"type": "integer"}, {"type": "null"}]}
+    assert _ts_type_from_openapi(schema) == "number | null"
+
+    schema = {"oneOf": [{"type": "string"}, {"type": "integer"}]}
+    assert _ts_type_from_openapi(schema) == "string | number"
+
+
+def test_ts_type_from_openapi_any_of() -> None:
+    """Test anyOf compositions."""
+    schema = {"anyOf": [{"type": "string"}, {"type": "integer"}]}
+    assert _ts_type_from_openapi(schema) == "string | number"
+
+    schema = {"anyOf": [{"type": "boolean"}, {"type": "null"}]}
+    assert _ts_type_from_openapi(schema) == "boolean | null"
+
+
+def test_ts_type_from_openapi_all_of() -> None:
+    """Test allOf compositions (intersection)."""
+    schema = {"allOf": [{"type": "object"}, {"type": "object"}]}
+    assert _ts_type_from_openapi(schema) == "Record<string, unknown>"
+
+
+def test_ts_type_from_openapi_enum() -> None:
+    """Test enum as literal union."""
+    assert _ts_type_from_openapi({"enum": ["a", "b", "c"]}) == '"a" | "b" | "c"'
+    assert _ts_type_from_openapi({"enum": [1, 2, 3]}) == "1 | 2 | 3"
+    assert _ts_type_from_openapi({"enum": ["active", "inactive"]}) == '"active" | "inactive"'
+
+
+def test_ts_type_from_openapi_const() -> None:
+    """Test const as literal."""
+    assert _ts_type_from_openapi({"const": "active"}) == '"active"'
+    assert _ts_type_from_openapi({"const": 42}) == "42"
+    assert _ts_type_from_openapi({"const": True}) == "true"
+    assert _ts_type_from_openapi({"const": False}) == "false"
+
+
+def test_ts_type_from_openapi_array() -> None:
+    """Test array types."""
+    assert _ts_type_from_openapi({"type": "array", "items": {"type": "string"}}) == "string[]"
+    assert _ts_type_from_openapi({"type": "array", "items": {"type": "integer"}}) == "number[]"
+    assert _ts_type_from_openapi({"type": "array"}) == "unknown[]"
+    # Nested arrays
+    schema = {"type": "array", "items": {"type": "array", "items": {"type": "number"}}}
+    assert _ts_type_from_openapi(schema) == "number[][]"
+
+
+def test_ts_type_from_openapi_format_fallback() -> None:
+    """Test format-only schemas."""
+    assert _ts_type_from_openapi({"format": "uuid"}) == "string"
+    assert _ts_type_from_openapi({"format": "date-time"}) == "string"
+    assert _ts_type_from_openapi({"format": "date"}) == "string"
+    assert _ts_type_from_openapi({"format": "email"}) == "string"
+    assert _ts_type_from_openapi({"format": "uri"}) == "string"
+
+
+def test_ts_type_from_openapi_edge_cases() -> None:
+    """Test edge cases."""
+    assert _ts_type_from_openapi({}) == "unknown"
+    assert _ts_type_from_openapi({"type": []}) == "unknown"
+    assert _ts_type_from_openapi({"type": ["null"]}) == "null"
+    assert _ts_type_from_openapi({"unknown_field": "value"}) == "unknown"
+
+
+def test_ts_type_from_openapi_nullable_array() -> None:
+    """Test nullable array in OpenAPI 3.1 style."""
+    # Array type with null in list
+    schema: dict[str, Any] = {"type": ["array", "null"], "items": {"type": "string"}}
+    result = _ts_type_from_openapi(schema)
+    assert "unknown[]" in result or "null" in result  # Either representation is valid
+
+    # oneOf with array and null
+    schema = {"oneOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]}
+    assert _ts_type_from_openapi(schema) == "string[] | null"

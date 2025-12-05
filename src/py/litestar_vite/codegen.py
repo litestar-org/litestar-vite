@@ -39,6 +39,18 @@ _SYSTEM_TYPE_NAMES = frozenset(
     }
 )
 
+# OpenAPI to TypeScript type map
+# Mirrors Litestar's typescript_converter: litestar/_openapi/typescript_converter/schema_parsing.py
+_OPENAPI_TS_TYPE_MAP: dict[str, str] = {
+    "array": "unknown[]",
+    "boolean": "boolean",
+    "integer": "number",
+    "null": "null",
+    "number": "number",
+    "object": "Record<string, unknown>",
+    "string": "string",
+}
+
 
 def _str_dict_factory() -> dict[str, str]:
     """Factory function for empty string dict (typed for pyright).
@@ -258,28 +270,99 @@ def _extract_query_params(handler: HTTPRouteHandler, path_param_names: set[str])
     return query_params
 
 
-def _ts_type_from_openapi(schema: dict[str, Any]) -> str:
-    """Map a minimal subset of OpenAPI types to TypeScript types."""
-    ts_type = "unknown"
-    if schema:
-        t = schema.get("type")
-        fmt = schema.get("format")
+def _join_types(types: list[str], separator: str = " | ") -> str:
+    """Join type strings, filtering duplicates and 'unknown'.
 
-        if t == "string":
-            ts_type = "string"
-        elif t in {"integer", "number"}:
-            ts_type = "number"
-        elif t == "boolean":
-            ts_type = "boolean"
-        elif t == "array":
-            item = _ts_type_from_openapi(schema.get("items", {}))
-            ts_type = f"{item}[]"
-        elif t == "object":
-            ts_type = "Record<string, unknown>"
-        elif fmt in {"uuid", "date-time", "date", "email"}:
-            ts_type = "string"
+    Returns:
+        Joined type string.
+    """
+    unique = list(dict.fromkeys(t for t in types if t != "unknown"))
+    return separator.join(unique) if unique else "unknown"
 
-    return ts_type
+
+def _ts_type_from_openapi(schema: dict[str, Any]) -> str:  # noqa: PLR0911
+    """Map OpenAPI schema to TypeScript type string.
+
+    Mirrors Litestar's typescript_converter patterns to handle OpenAPI 3.1 schemas.
+    See: litestar/_openapi/typescript_converter/schema_parsing.py
+
+    Args:
+        schema: OpenAPI schema dictionary.
+
+    Returns:
+        TypeScript type string.
+    """
+    if not schema:
+        return "unknown"
+
+    # Handle oneOf/anyOf compositions (nullable types in OpenAPI 3.1)
+    # Litestar uses one_of for optional fields: Schema(one_of=[type_schema, null_schema])
+    if one_of := schema.get("oneOf"):
+        sub_schemas: list[dict[str, Any]] = [s for s in one_of if isinstance(s, dict)]
+        types = [_ts_type_from_openapi(s) for s in sub_schemas]
+        return _join_types(types)
+
+    if any_of := schema.get("anyOf"):
+        sub_schemas = [s for s in any_of if isinstance(s, dict)]
+        types = [_ts_type_from_openapi(s) for s in sub_schemas]
+        return _join_types(types)
+
+    # Handle allOf (intersection types)
+    if all_of := schema.get("allOf"):
+        sub_schemas = [s for s in all_of if isinstance(s, dict)]
+        types = [_ts_type_from_openapi(s) for s in sub_schemas]
+        return _join_types(types, " & ")
+
+    # Handle enum (literal union)
+    if enum := schema.get("enum"):
+        literals: list[str] = []
+        for v in enum:
+            if isinstance(v, str):
+                literals.append(f'"{v}"')
+            elif isinstance(v, bool):
+                literals.append("true" if v else "false")
+            else:
+                literals.append(str(v))
+        return " | ".join(literals) if literals else "unknown"
+
+    # Handle const (single literal)
+    if (const := schema.get("const")) is not None:
+        if isinstance(const, str):
+            return f'"{const}"'
+        if isinstance(const, bool):
+            return "true" if const else "false"
+        return str(const)
+
+    # Get the type field
+    t = schema.get("type")
+
+    # Handle list types: ["integer", "null"] -> "number | null"
+    # This is the key fix for OpenAPI 3.1
+    if isinstance(t, list):
+        type_list: list[Any] = t  # pyright: ignore[reportUnknownVariableType]
+        type_names: list[str] = [str(item) for item in type_list if isinstance(item, str)]
+        types = [_OPENAPI_TS_TYPE_MAP.get(name, "unknown") for name in type_names]
+        unique = list(dict.fromkeys(types))  # Preserve order, remove duplicates
+        return " | ".join(unique) if unique else "unknown"
+
+    # Handle single type
+    if isinstance(t, str):
+        # Special case: array with items
+        if t == "array":
+            items: Any = schema.get("items", {})  # pyright: ignore[reportUnknownVariableType]
+            item_schema: dict[str, Any] = items if isinstance(items, dict) else {}  # pyright: ignore[reportUnknownVariableType]
+            item_type = _ts_type_from_openapi(item_schema)
+            return f"{item_type}[]"
+
+        return _OPENAPI_TS_TYPE_MAP.get(t, "unknown")
+
+    # Handle format-only schemas (no type but has format like uuid, date-time)
+    fmt = schema.get("format")
+    if fmt in {"uuid", "date-time", "date", "time", "email", "uri", "url"}:
+        return "string"
+
+    # No type specified - could be any JSON value
+    return "unknown"
 
 
 def _openapi_lookup(openapi_schema: dict[str, Any] | None) -> dict[tuple[str, str], dict[str, Any]]:
