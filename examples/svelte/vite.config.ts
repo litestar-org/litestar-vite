@@ -9,6 +9,7 @@ export default defineConfig({
     svelte(),
     litestar({
       input: ["src/main.ts"],
+      resourceDirectory: "src",
     }),
   ],
 })

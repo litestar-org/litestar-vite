@@ -9,6 +9,7 @@ export default defineConfig({
     vue(),
     litestar({
       input: ["src/main.ts"],
+      resourceDirectory: "src",
     }),
   ],
 })
