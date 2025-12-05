@@ -480,12 +480,12 @@ class ExampleServer:
                 # Check root path through Litestar proxy
                 response = httpx.get(f"{base_url}/", timeout=5.0)
                 last_status = response.status_code
-                if response.status_code == 200:
-                    logger.info("Proxy ready: %s returned 200", base_url)
+                if response.status_code < 500:
+                    # Any non-5xx status means the dev server is responding
+                    logger.info("Proxy ready: %s returned %d", base_url, response.status_code)
                     return
-                if response.status_code == 503:
-                    # Still building - this is expected, keep waiting
-                    logger.debug("Proxy building: %s returned 503", base_url)
+                # 5xx status (500, 502, 503) means dev server is still building
+                logger.debug("Proxy building: %s returned %d", base_url, response.status_code)
             except httpx.RequestError as e:
                 logger.debug("Proxy request error: %s", e)
             time.sleep(0.5)
