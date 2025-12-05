@@ -65,11 +65,12 @@ jobs:
           # Use exact match with brackets to avoid 'svelte' matching 'sveltekit'
           PYTEST_ADDOPTS: "-m e2e -k '[${{ matrix.example }}]' -n 0 --maxfail=1"
           # Increase timeout for CI environment (slower than local)
-          E2E_TEST_TIMEOUT: "120"
+          # SSR frameworks like Nuxt/SvelteKit need extra time on first cold start
+          E2E_TEST_TIMEOUT: "180"
           # Bypass CI environment check in Vite plugin (we're intentionally testing dev mode in CI)
           LITESTAR_BYPASS_ENV_CHECK: "1"
         run: |
-          uv run pytest src/py/tests/e2e -v --timeout=120
+          uv run pytest src/py/tests/e2e -v --timeout=180
 
       - name: Collect debug info on failure
         if: failure()
@@ -85,6 +86,10 @@ jobs:
           ls -la examples/${{ matrix.example }}/dist/ 2>/dev/null || echo "dist/ not found"
           ls -la examples/${{ matrix.example }}/build/ 2>/dev/null || echo "build/ not found"
           ls -la examples/${{ matrix.example }}/.output/ 2>/dev/null || echo ".output/ not found"
+          ls -la examples/${{ matrix.example }}/public/ 2>/dev/null || echo "public/ not found"
+          ls -la examples/${{ matrix.example }}/public/assets/ 2>/dev/null || echo "public/assets/ not found"
+          echo "=== Manifest check ==="
+          cat examples/${{ matrix.example }}/public/manifest.json 2>/dev/null || echo "manifest.json not found"
           echo "=== Package.json scripts ==="
           cat examples/${{ matrix.example }}/package.json | grep -A 20 '"scripts"' || true
 

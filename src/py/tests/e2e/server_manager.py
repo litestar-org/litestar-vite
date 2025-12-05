@@ -443,6 +443,15 @@ class ExampleServer:
             msg += f" (last status: {last_status})"
         if last_error:
             msg += f" (last error: {last_error})"
+
+        # Include captured server output for debugging
+        if self._captures:
+            for i, capture in enumerate(self._captures):
+                output = capture.get_output()
+                if output:
+                    # Show last 30 lines of output
+                    lines = output.split("\n")[-30:]
+                    msg += f"\n\n=== Server output (capture {i + 1}) ===\n{chr(10).join(lines)}"
         raise TimeoutError(msg)
 
     def _verify_proxy_ready(self, timeout: float = 60.0) -> None:
