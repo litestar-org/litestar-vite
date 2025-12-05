@@ -304,6 +304,9 @@ class ExampleServer:
 
         Note: SSG examples (Astro) do NOT need a production Node server - Litestar
         serves the static files directly from the build output.
+
+        Raises:
+            ValueError: If example port configuration is missing.
         """
         # Ensure the configured port is free before starting (for SSR production server)
         if self._is_ssr_example():
@@ -343,10 +346,12 @@ class ExampleServer:
             # The Litestar plugin will use this to configure the Nitro/SSR server port
             ssr_env = env.copy()
             ssr_env["VITE_PORT"] = str(self.vite_port)
-            # Nitro specifically uses NITRO_PORT
+            # Nitro specifically uses NITRO_PORT and NITRO_HOST
             ssr_env["NITRO_PORT"] = str(self.vite_port)
-            # Some frameworks use PORT as fallback
+            ssr_env["NITRO_HOST"] = "127.0.0.1"
+            # Some frameworks use PORT/HOST as fallback
             ssr_env["PORT"] = str(self.vite_port)
+            ssr_env["HOST"] = "127.0.0.1"
 
             ssr_patterns = [VITE_PORT_PATTERN, NUXT_PORT_PATTERN, LISTENING_PORT_PATTERN]
             ssr_proc, ssr_capture = self._spawn_with_capture(
@@ -647,25 +652,23 @@ class ExampleServer:
         # Also remove PORT which some frameworks use as fallback
         env.pop("PORT", None)
 
-        env.update(
-            {
-                "VITE_DEV_MODE": "true" if dev_mode else "false",
-                "HOST": "127.0.0.1",
-                # npm cache to avoid permission issues
-                "npm_config_cache": str(Path.home() / ".cache" / "npm"),
-                # Bypass CI environment check in Vite plugin for E2E tests
-                # We intentionally test dev mode in CI to validate the full experience
-                "LITESTAR_BYPASS_ENV_CHECK": "1",
-                # Force unbuffered output for reliable port detection in CI
-                "PYTHONUNBUFFERED": "1",
-                # Disable interactive features that might buffer output
-                "CI": "true",
-                # Force color output to be consistent with expected patterns
-                "FORCE_COLOR": "1",
-                # Node.js: force immediate stdout flushing
-                "NODE_OPTIONS": "--no-warnings",
-            }
-        )
+        env.update({
+            "VITE_DEV_MODE": "true" if dev_mode else "false",
+            "HOST": "127.0.0.1",
+            # npm cache to avoid permission issues
+            "npm_config_cache": str(Path.home() / ".cache" / "npm"),
+            # Bypass CI environment check in Vite plugin for E2E tests
+            # We intentionally test dev mode in CI to validate the full experience
+            "LITESTAR_BYPASS_ENV_CHECK": "1",
+            # Force unbuffered output for reliable port detection in CI
+            "PYTHONUNBUFFERED": "1",
+            # Disable interactive features that might buffer output
+            "CI": "true",
+            # Force color output to be consistent with expected patterns
+            "FORCE_COLOR": "1",
+            # Node.js: force immediate stdout flushing
+            "NODE_OPTIONS": "--no-warnings",
+        })
         return env
 
     def _run(self, cmd: list[str], cwd: Path, env: dict[str, str]) -> None:
@@ -746,6 +749,7 @@ class ExampleServer:
             cwd=self.example_dir,
             env=env,
             start_new_session=True,
+            stdin=subprocess.DEVNULL,  # Prevent stdin-related issues in CI
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             bufsize=0,  # Unbuffered

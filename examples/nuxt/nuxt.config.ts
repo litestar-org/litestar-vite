@@ -15,11 +15,10 @@ export default defineNuxtConfig({
   },
 
   litestar: {
-    // API proxy points to the Litestar backend, not the Nuxt dev server
+    // API proxy points to the Litestar backend (apiPrefix defaults to "/api")
     apiProxy: `http://127.0.0.1:${LITESTAR_PORT}`,
-    apiPrefix: "/api",
     verbose: true,
-    // Match Python TypeGenConfig paths
+    // Match Python TypeGenConfig paths (defaults are "types/api", "openapi.json", "routes.json")
     types: {
       output: "generated",
       openapiPath: "generated/openapi.json",
