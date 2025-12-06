@@ -12,7 +12,10 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 from litestar import Litestar
+from litestar._openapi.typescript_converter.schema_parsing import parse_schema
 from litestar.handlers import HTTPRouteHandler
+from litestar.openapi.spec import Schema
+from litestar.openapi.spec.enums import OpenAPIType
 
 if TYPE_CHECKING:
     from litestar.routes import HTTPRoute
@@ -38,6 +41,9 @@ _SYSTEM_TYPE_NAMES = frozenset(
         "Send",
     }
 )
+
+# Valid OpenAPI type values for validation
+_OPENAPI_TYPE_VALUES = frozenset(e.value for e in OpenAPIType)
 
 
 def _str_dict_factory() -> dict[str, str]:
@@ -258,28 +264,65 @@ def _extract_query_params(handler: HTTPRouteHandler, path_param_names: set[str])
     return query_params
 
 
+def _dict_to_schema(d: dict[str, Any]) -> Schema:
+    """Convert an OpenAPI schema dict to a Litestar Schema object.
+
+    Args:
+        d: OpenAPI schema dictionary.
+
+    Returns:
+        Litestar Schema object.
+    """
+    if not d:
+        return Schema()
+
+    # Convert type string(s) to OpenAPIType enum(s)
+    t = d.get("type")
+    schema_type: "OpenAPIType | list[OpenAPIType] | None" = None
+    if isinstance(t, str) and t in _OPENAPI_TYPE_VALUES:
+        schema_type = OpenAPIType(t)
+    elif isinstance(t, list):
+        schema_type = [OpenAPIType(x) for x in t if isinstance(x, str) and x in _OPENAPI_TYPE_VALUES] or None  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+
+    # Handle nested schemas recursively
+    # pyright: ignore[reportUnknownArgumentType] - dict contents validated with isinstance
+    one_of = [_dict_to_schema(s) for s in d.get("oneOf", []) if isinstance(s, dict)] or None  # pyright: ignore[reportUnknownArgumentType]
+    any_of = [_dict_to_schema(s) for s in d.get("anyOf", []) if isinstance(s, dict)] or None  # pyright: ignore[reportUnknownArgumentType]
+    all_of = [_dict_to_schema(s) for s in d.get("allOf", []) if isinstance(s, dict)] or None  # pyright: ignore[reportUnknownArgumentType]
+    items_dict = d.get("items")
+    items = _dict_to_schema(items_dict) if isinstance(items_dict, dict) else None  # pyright: ignore[reportUnknownArgumentType]
+
+    return Schema(
+        type=schema_type,
+        one_of=one_of,
+        any_of=any_of,
+        all_of=all_of,
+        items=items,
+        enum=d.get("enum"),
+        const=d.get("const"),
+        format=d.get("format"),
+    )
+
+
 def _ts_type_from_openapi(schema: dict[str, Any]) -> str:
-    """Map a minimal subset of OpenAPI types to TypeScript types."""
-    ts_type = "unknown"
-    if schema:
-        t = schema.get("type")
-        fmt = schema.get("format")
+    """Map OpenAPI schema dict to TypeScript type string.
 
-        if t == "string":
-            ts_type = "string"
-        elif t in {"integer", "number"}:
-            ts_type = "number"
-        elif t == "boolean":
-            ts_type = "boolean"
-        elif t == "array":
-            item = _ts_type_from_openapi(schema.get("items", {}))
-            ts_type = f"{item}[]"
-        elif t == "object":
-            ts_type = "Record<string, unknown>"
-        elif fmt in {"uuid", "date-time", "date", "email"}:
-            ts_type = "string"
+    Uses Litestar's typescript_converter for consistent type generation.
+    See: litestar/_openapi/typescript_converter/schema_parsing.py
 
-    return ts_type
+    Args:
+        schema: OpenAPI schema dictionary.
+
+    Returns:
+        TypeScript type string.
+    """
+    try:
+        litestar_schema = _dict_to_schema(schema)
+        ts_element = parse_schema(litestar_schema)
+        return ts_element.write()
+    except (TypeError, ValueError, KeyError):
+        # Fallback for schemas that can't be converted
+        return "any"
 
 
 def _openapi_lookup(openapi_schema: dict[str, Any] | None) -> dict[tuple[str, str], dict[str, Any]]:

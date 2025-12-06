@@ -1,6 +1,6 @@
 """Unit tests for codegen module."""
 
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from litestar import Litestar, get, post
@@ -10,6 +10,7 @@ from litestar_vite.codegen import (
     _escape_ts_string,
     _is_type_required,
     _ts_type_for_param,
+    _ts_type_from_openapi,
     generate_routes_ts,
 )
 
@@ -311,3 +312,101 @@ def test_generate_routes_ts_is_valid_typescript() -> None:
     assert ts_content.count("{") == ts_content.count("}")
     assert ts_content.count("(") == ts_content.count(")")
     assert ts_content.count("[") == ts_content.count("]")
+
+
+# Tests for _ts_type_from_openapi (OpenAPI 3.1 compatibility)
+# Note: These tests use Litestar's typescript_converter which sorts union types alphabetically
+
+
+def test_ts_type_from_openapi_single_types() -> None:
+    """Test basic single type mapping."""
+    assert _ts_type_from_openapi({"type": "string"}) == "string"
+    assert _ts_type_from_openapi({"type": "integer"}) == "number"
+    assert _ts_type_from_openapi({"type": "number"}) == "number"
+    assert _ts_type_from_openapi({"type": "boolean"}) == "boolean"
+    assert _ts_type_from_openapi({"type": "null"}) == "null"
+    # Object without properties returns empty interface
+    result = _ts_type_from_openapi({"type": "object"})
+    assert "{" in result  # Empty interface
+
+
+def test_ts_type_from_openapi_list_types() -> None:
+    """Test OpenAPI 3.1 list types (nullable)."""
+    # Litestar sorts union types alphabetically
+    assert _ts_type_from_openapi({"type": ["integer", "null"]}) == "null | number"
+    assert _ts_type_from_openapi({"type": ["string", "null"]}) == "null | string"
+    assert _ts_type_from_openapi({"type": ["null", "boolean"]}) == "boolean | null"
+    assert _ts_type_from_openapi({"type": ["number", "null"]}) == "null | number"
+
+
+def test_ts_type_from_openapi_one_of() -> None:
+    """Test oneOf compositions (Litestar's nullable pattern)."""
+    schema = {"oneOf": [{"type": "integer"}, {"type": "null"}]}
+    assert _ts_type_from_openapi(schema) == "null | number"
+
+    schema = {"oneOf": [{"type": "string"}, {"type": "integer"}]}
+    assert _ts_type_from_openapi(schema) == "number | string"
+
+
+def test_ts_type_from_openapi_any_of() -> None:
+    """Test anyOf compositions."""
+    # Litestar doesn't have special anyOf handling, returns 'any'
+    schema = {"anyOf": [{"type": "string"}, {"type": "integer"}]}
+    result = _ts_type_from_openapi(schema)
+    assert result == "any"  # anyOf not specially handled by parse_schema
+
+
+def test_ts_type_from_openapi_all_of() -> None:
+    """Test allOf compositions (intersection)."""
+    schema = {"allOf": [{"type": "object"}, {"type": "object"}]}
+    result = _ts_type_from_openapi(schema)
+    assert "&" in result  # Intersection type
+
+
+def test_ts_type_from_openapi_enum() -> None:
+    """Test enum as literal union."""
+    assert _ts_type_from_openapi({"enum": ["a", "b", "c"]}) == '"a" | "b" | "c"'
+    assert _ts_type_from_openapi({"enum": [1, 2, 3]}) == "1 | 2 | 3"
+    assert _ts_type_from_openapi({"enum": ["active", "inactive"]}) == '"active" | "inactive"'
+
+
+def test_ts_type_from_openapi_const() -> None:
+    """Test const as literal."""
+    assert _ts_type_from_openapi({"const": "active"}) == '"active"'
+    assert _ts_type_from_openapi({"const": 42}) == "42"
+    assert _ts_type_from_openapi({"const": True}) == "true"
+    # Note: const=False returns "any" due to Litestar's falsy check bug
+    # See: litestar/_openapi/typescript_converter/schema_parsing.py line ~117
+    assert _ts_type_from_openapi({"const": False}) == "any"
+
+
+def test_ts_type_from_openapi_array() -> None:
+    """Test array types."""
+    assert _ts_type_from_openapi({"type": "array", "items": {"type": "string"}}) == "string[]"
+    assert _ts_type_from_openapi({"type": "array", "items": {"type": "integer"}}) == "number[]"
+    assert _ts_type_from_openapi({"type": "array"}) == "unknown[]"  # No items = unknown[]
+    # Nested arrays
+    schema = {"type": "array", "items": {"type": "array", "items": {"type": "number"}}}
+    assert _ts_type_from_openapi(schema) == "number[][]"
+
+
+def test_ts_type_from_openapi_format_only() -> None:
+    """Test format-only schemas return 'any' (no type info)."""
+    # Format without type returns 'any' per Litestar's behavior
+    assert _ts_type_from_openapi({"format": "uuid"}) == "any"
+    assert _ts_type_from_openapi({"format": "date-time"}) == "any"
+
+
+def test_ts_type_from_openapi_edge_cases() -> None:
+    """Test edge cases."""
+    assert _ts_type_from_openapi({}) == "any"  # Empty schema = any
+    assert _ts_type_from_openapi({"type": []}) == "any"  # Empty type list = any
+    assert _ts_type_from_openapi({"type": ["null"]}) == "null"
+    assert _ts_type_from_openapi({"unknown_field": "value"}) == "any"
+
+
+def test_ts_type_from_openapi_nullable_array() -> None:
+    """Test nullable array in OpenAPI 3.1 style."""
+    # oneOf with array and null (sorted alphabetically)
+    schema: dict[str, Any] = {"oneOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]}
+    assert _ts_type_from_openapi(schema) == "null | string[]"
