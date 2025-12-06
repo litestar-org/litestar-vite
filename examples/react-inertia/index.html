@@ -7,7 +7,7 @@
     <title inertia>react-inertia</title>
   </head>
   <body>
-    <div id="app" data-page="{{ page | tojson | e }}"></div>
+    <div id="app" data-page='{{ inertia | safe }}'></div>
     <script type="module" src="/resources/main.tsx"></script>
   </body>
 </html>

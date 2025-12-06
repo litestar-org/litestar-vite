@@ -72,7 +72,7 @@ async def test_spa_handler_initialization(spa_config: ViteConfig) -> None:
     assert handler._cached_html is None
     assert not handler._initialized
 
-    await handler.initialize()
+    await handler.initialize_async()
 
     assert handler._initialized
     assert handler._cached_html is not None
@@ -82,7 +82,7 @@ async def test_spa_handler_initialization(spa_config: ViteConfig) -> None:
 async def test_spa_handler_production_mode(spa_config: ViteConfig) -> None:
     """Test SPA handler serves cached HTML in production."""
     handler = ViteSPAHandler(spa_config)
-    await handler.initialize()
+    await handler.initialize_async()
 
     @get("/")
     async def index() -> str:
@@ -159,7 +159,7 @@ async def test_spa_handler_missing_index_html(tmp_path: Path, monkeypatch: pytes
     handler = ViteSPAHandler(config)
 
     with pytest.raises(ImproperlyConfiguredException, match=r"index\.html not found"):
-        await handler.initialize()
+        await handler.initialize_async()
 
 
 async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "MockerFixture") -> None:
@@ -179,7 +179,7 @@ async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "M
     expected_url = "http://127.0.0.1:5173"
     with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
         # Pass explicit vite_url to avoid hotfile resolution picking up stale hotfiles
-        await handler.initialize(vite_url=expected_url)
+        await handler.initialize_async(vite_url=expected_url)
 
         # Verify client was created
         assert handler._http_client is not None
@@ -203,7 +203,7 @@ async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> N
 
     with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
         # Pass explicit vite_url to avoid hotfile resolution
-        await handler.initialize(vite_url="http://127.0.0.1:5173")
+        await handler.initialize_async(vite_url="http://127.0.0.1:5173")
 
         mock_request = Mock()
         with pytest.raises(ImproperlyConfiguredException, match="Failed to proxy request"):
@@ -219,11 +219,11 @@ async def test_spa_handler_shutdown(spa_config_dev: ViteConfig) -> None:
 
     with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
         # Pass explicit vite_url to avoid hotfile resolution
-        await handler.initialize(vite_url="http://127.0.0.1:5173")
+        await handler.initialize_async(vite_url="http://127.0.0.1:5173")
 
         assert handler._http_client is not None
 
-        await handler.shutdown()
+        await handler.shutdown_async()
 
         mock_client.aclose.assert_called_once()
         assert handler._http_client is None
@@ -232,7 +232,7 @@ async def test_spa_handler_shutdown(spa_config_dev: ViteConfig) -> None:
 async def test_spa_handler_create_route_handler(spa_config: ViteConfig) -> None:
     """Test creating a Litestar route handler from SPA handler."""
     handler = ViteSPAHandler(spa_config)
-    await handler.initialize()
+    await handler.initialize_async()
 
     route = handler.create_route_handler()
 
@@ -245,7 +245,7 @@ async def test_spa_handler_create_route_handler(spa_config: ViteConfig) -> None:
 async def test_spa_handler_route_handler_integration(spa_config: ViteConfig) -> None:
     """Test SPA handler route handler in a Litestar app."""
     handler = ViteSPAHandler(spa_config)
-    await handler.initialize()
+    await handler.initialize_async()
 
     route = handler.create_route_handler()
 
@@ -266,7 +266,7 @@ async def test_spa_handler_route_handler_integration(spa_config: ViteConfig) -> 
 async def test_spa_handler_caches_html(spa_config: ViteConfig, temp_resource_dir: Path) -> None:
     """Test that SPA handler caches HTML and doesn't reload on every request."""
     handler = ViteSPAHandler(spa_config)
-    await handler.initialize()
+    await handler.initialize_async()
 
     # Get HTML first time
     mock_request = Mock()
@@ -288,10 +288,10 @@ async def test_spa_handler_double_initialization(spa_config: ViteConfig) -> None
     """Test that double initialization is safe (idempotent)."""
     handler = ViteSPAHandler(spa_config)
 
-    await handler.initialize()
+    await handler.initialize_async()
     cached_html_1 = handler._cached_html
 
-    await handler.initialize()
+    await handler.initialize_async()
     cached_html_2 = handler._cached_html
 
     # Should not reload
@@ -348,7 +348,7 @@ async def test_spa_handler_transform_html_with_page_data(
 ) -> None:
     """Test that get_html injects page data."""
     handler = ViteSPAHandler(spa_config_with_transforms)
-    await handler.initialize()
+    await handler.initialize_async()
 
     page_data = {"component": "Home", "props": {"user": "test"}}
 
@@ -366,7 +366,7 @@ async def test_spa_handler_caches_transformed_html(
 ) -> None:
     """Test that transformed HTML is cached in production."""
     handler = ViteSPAHandler(spa_config_with_transforms)
-    await handler.initialize()
+    await handler.initialize_async()
 
     mock_request = Mock()
 
@@ -384,7 +384,7 @@ async def test_spa_handler_page_data_bypasses_cache(
 ) -> None:
     """Test that page_data bypasses transformed HTML cache."""
     handler = ViteSPAHandler(spa_config_with_transforms)
-    await handler.initialize()
+    await handler.initialize_async()
 
     mock_request = Mock()
 
@@ -407,7 +407,7 @@ async def test_spa_handler_get_html_sync(
 ) -> None:
     """Test the synchronous get_html_sync method."""
     handler = ViteSPAHandler(spa_config_with_transforms)
-    await handler.initialize()
+    await handler.initialize_async()
 
     # Should work synchronously
     html = handler.get_html_sync()
@@ -420,7 +420,7 @@ async def test_spa_handler_get_html_sync_with_page_data(
 ) -> None:
     """Test get_html_sync with page_data."""
     handler = ViteSPAHandler(spa_config_with_transforms)
-    await handler.initialize()
+    await handler.initialize_async()
 
     page_data = {"component": "Home", "props": {"message": "Hello"}}
 
@@ -451,7 +451,7 @@ async def test_spa_handler_get_html_sync_works_in_dev_mode(
         patch("litestar_vite.spa.httpx.Client", return_value=mock_sync_client),
     ):
         # Pass explicit vite_url to avoid hotfile resolution
-        await handler.initialize(vite_url="http://127.0.0.1:5173")
+        await handler.initialize_async(vite_url="http://127.0.0.1:5173")
 
         html = handler.get_html_sync()
         assert "Dev Mode" in html
@@ -475,7 +475,7 @@ async def test_spa_handler_no_transform_when_spa_config_disabled(
         spa=False,  # Transformations disabled
     )
     handler = ViteSPAHandler(config)
-    await handler.initialize()
+    await handler.initialize_async()
 
     mock_request = Mock()
     html = await handler.get_html(mock_request)
@@ -507,7 +507,7 @@ async def test_spa_handler_csrf_injection(
     )
 
     handler = ViteSPAHandler(config)
-    await handler.initialize()
+    await handler.initialize_async()
 
     # Mock request with scope that has state
     mock_request = Mock()
@@ -546,7 +546,7 @@ async def test_spa_handler_csrf_injection_sync(
     )
 
     handler = ViteSPAHandler(config)
-    await handler.initialize()
+    await handler.initialize_async()
 
     # Sync method requires explicit CSRF token
     html = handler.get_html_sync(csrf_token="sync-csrf-token")

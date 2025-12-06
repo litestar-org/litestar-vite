@@ -15,8 +15,10 @@ Note:
     See TypeGenConfig.generate_routes to enable typed route generation.
 """
 
+import logging
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, NoReturn
 
 import anyio
 import httpx
@@ -30,6 +32,8 @@ if TYPE_CHECKING:
     from litestar.connection import Request
 
     from litestar_vite.config import SPAConfig, ViteConfig
+
+logger = logging.getLogger("litestar_vite")
 
 # Pre-encoded content type header for production responses
 _HTML_MEDIA_TYPE = "text/html; charset=utf-8"
@@ -100,8 +104,8 @@ class ViteSPAHandler:
         """Whether the handler has been initialized."""
         return self._initialized
 
-    async def initialize(self, vite_url: "str | None" = None) -> None:
-        """Initialize the handler.
+    async def initialize_async(self, vite_url: "str | None" = None) -> None:
+        """Initialize the handler asynchronously.
 
         This method should be called during app startup to:
         - Initialize the HTTP client for dev mode proxying
@@ -116,38 +120,73 @@ class ViteSPAHandler:
             return
 
         if self._config.is_dev_mode and self._config.hot_reload:
-            # Use provided URL if available (from VitePlugin), otherwise resolve from hotfile
-            # The VitePlugin knows the correct URL because it selects the port
-            self._vite_url = vite_url or self._resolve_vite_url()
-
-            # Create HTTP client for proxying to Vite server
-            # Uses connection pooling for efficient reuse
-            # HTTP/2 is controlled by config and requires the h2 package
-            http2_enabled = self._config.http2
-            if http2_enabled:
-                try:
-                    import h2  # noqa: F401  # pyright: ignore[reportMissingImports,reportUnusedImport]
-                except ImportError:
-                    http2_enabled = False
-
-            self._http_client = httpx.AsyncClient(
-                timeout=httpx.Timeout(5.0),
-                http2=http2_enabled,
-            )
-            # Also create a synchronous client for use in sync contexts (e.g., Inertia response)
-            self._http_client_sync = httpx.Client(
-                timeout=httpx.Timeout(5.0),
-            )
+            self._init_http_clients(vite_url)
         else:
             # Load and cache index.html for production
-            await self._load_index_html()
+            await self._load_index_html_async()
 
         self._initialized = True
 
-    async def shutdown(self) -> None:
-        """Shutdown the handler.
+    def initialize_sync(self, vite_url: "str | None" = None) -> None:
+        """Initialize the handler synchronously.
+
+        This method should be called during app startup to:
+        - Initialize the HTTP client for dev mode proxying
+        - Load and cache the index.html in production mode
+
+        This is the preferred initialization method for lifespan hooks
+        since file I/O during startup is negligible.
+
+        Args:
+            vite_url: Optional Vite server URL to use for proxying. If provided,
+                     this takes precedence over hotfile resolution. This is typically
+                     passed by VitePlugin which knows the correct URL.
+        """
+        if self._initialized:
+            return
+
+        if self._config.is_dev_mode and self._config.hot_reload:
+            self._init_http_clients(vite_url)
+        else:
+            # Load and cache index.html for production
+            self._load_index_html_sync()
+
+        self._initialized = True
+
+    def _init_http_clients(self, vite_url: "str | None" = None) -> None:
+        """Initialize HTTP clients for dev mode proxying.
+
+        Args:
+            vite_url: Optional Vite server URL to use for proxying.
+        """
+        # Use provided URL if available (from VitePlugin), otherwise resolve from hotfile
+        # The VitePlugin knows the correct URL because it selects the port
+        self._vite_url = vite_url or self._resolve_vite_url()
+
+        # Create HTTP client for proxying to Vite server
+        # Uses connection pooling for efficient reuse
+        # HTTP/2 is controlled by config and requires the h2 package
+        http2_enabled = self._config.http2
+        if http2_enabled:
+            try:
+                import h2  # noqa: F401  # pyright: ignore[reportMissingImports,reportUnusedImport]
+            except ImportError:
+                http2_enabled = False
+
+        self._http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(5.0),
+            http2=http2_enabled,
+        )
+        # Also create a synchronous client for use in sync contexts (e.g., Inertia response)
+        self._http_client_sync = httpx.Client(
+            timeout=httpx.Timeout(5.0),
+        )
+
+    async def shutdown_async(self) -> None:
+        """Shutdown the handler asynchronously.
 
         Closes the HTTP clients if they were created for dev mode.
+        This method is async because httpx.AsyncClient.aclose() is async.
         """
         if self._http_client is not None:
             # Ignore RuntimeError if transport is already closed (uvloop edge case)
@@ -211,8 +250,8 @@ class ViteSPAHandler:
 
         return html
 
-    async def _load_index_html(self) -> None:
-        """Load index.html from disk and cache it in memory.
+    async def _load_index_html_async(self) -> None:
+        """Asynchronously load index.html from disk and cache it in memory.
 
         Caches both string and bytes representations to avoid
         encoding overhead on each request.
@@ -228,18 +267,49 @@ class ViteSPAHandler:
                 break
 
         if resolved_path is None:
-            joined_paths = ", ".join(str(path) for path in self._config.candidate_index_html_paths())
-            msg = (
-                "index.html not found. "
-                f"Checked: {joined_paths}. "
-                "SPA mode requires index.html in one of the expected locations. "
-                "Did you forget to build your assets?"
-            )
-            raise ImproperlyConfiguredException(msg)
+            self._raise_index_not_found()
 
         # Read as bytes first (more efficient), then decode
-        self._cached_bytes = await resolved_path.read_bytes()
+        self._cached_bytes = await resolved_path.read_bytes()  # type: ignore[union-attr]
         self._cached_html = self._cached_bytes.decode("utf-8")
+
+    def _load_index_html_sync(self) -> None:
+        """Synchronously load index.html from disk and cache it in memory.
+
+        Caches both string and bytes representations to avoid
+        encoding overhead on each request.
+
+        Raises:
+            ImproperlyConfiguredException: If index.html is not found.
+        """
+        resolved_path: Path | None = None
+        for candidate in self._config.candidate_index_html_paths():
+            candidate_path = Path(candidate)
+            if candidate_path.exists():
+                resolved_path = candidate_path
+                break
+
+        if resolved_path is None:
+            self._raise_index_not_found()
+
+        # Read as bytes first (more efficient), then decode
+        self._cached_bytes = resolved_path.read_bytes()  # type: ignore[union-attr]
+        self._cached_html = self._cached_bytes.decode("utf-8")
+
+    def _raise_index_not_found(self) -> NoReturn:
+        """Raise an exception when index.html is not found.
+
+        Raises:
+            ImproperlyConfiguredException: Always raised with paths checked.
+        """
+        joined_paths = ", ".join(str(path) for path in self._config.candidate_index_html_paths())
+        msg = (
+            "index.html not found. "
+            f"Checked: {joined_paths}. "
+            "SPA mode requires index.html in one of the expected locations. "
+            "Did you forget to build your assets?"
+        )
+        raise ImproperlyConfiguredException(msg)
 
     def _get_csrf_token(self, request: "Request[Any, Any, Any]") -> "str | None":
         """Extract CSRF token from the request scope.
@@ -302,7 +372,7 @@ class ViteSPAHandler:
         # Production mode
         if self._cached_html is None:
             # Fallback: try to load now if not cached
-            await self._load_index_html()
+            await self._load_index_html_async()
 
         base_html = self._cached_html or ""
 
@@ -344,19 +414,24 @@ class ViteSPAHandler:
             CSRF token injection requires passing the token explicitly since
             this method doesn't have access to the request scope.
 
+            If the handler is not initialized, this method will lazily
+            initialize it with a warning. This is a fallback for cases
+            where the lifespan hook didn't run properly.
+
         Args:
             page_data: Optional page data to inject as data-page attribute.
             csrf_token: Optional CSRF token to inject.
 
         Returns:
             The HTML content as a string, optionally transformed.
-
-        Raises:
-            ImproperlyConfiguredException: If not initialized or no cached HTML.
         """
         if not self._initialized:
-            msg = "ViteSPAHandler not initialized. Call initialize() during app startup."
-            raise ImproperlyConfiguredException(msg)
+            # Lazy initialization fallback - lifespan may not have run properly
+            logger.warning(
+                "ViteSPAHandler lazy init triggered - lifespan may not have run. "
+                "Consider calling initialize_sync() explicitly during app startup."
+            )
+            self.initialize_sync()
 
         # Dev mode: fetch from Vite dev server synchronously
         if self._config.is_dev_mode and self._config.hot_reload:
@@ -405,10 +480,10 @@ class ViteSPAHandler:
         """
         if not self._initialized:
             # Lazily initialize if a worker didn't run lifespan hooks (e.g., multi-proc servers)
-            await self.initialize()
+            await self.initialize_async()
 
         if self._cached_bytes is None:
-            await self._load_index_html()
+            await self._load_index_html_async()
 
         return self._cached_bytes or b""
 
@@ -429,7 +504,7 @@ class ViteSPAHandler:
             raise ImproperlyConfiguredException(msg)
 
         if self._vite_url is None:
-            msg = "Vite URL not resolved. Ensure initialize() was called."
+            msg = "Vite URL not resolved. Ensure initialize_sync() or initialize_async() was called."
             raise ImproperlyConfiguredException(msg)
 
         target_url = f"{self._vite_url}/"
@@ -462,7 +537,7 @@ class ViteSPAHandler:
             raise ImproperlyConfiguredException(msg)
 
         if self._vite_url is None:
-            msg = "Vite URL not resolved. Ensure initialize() was called."
+            msg = "Vite URL not resolved. Ensure initialize_sync() or initialize_async() was called."
             raise ImproperlyConfiguredException(msg)
 
         target_url = f"{self._vite_url}/"

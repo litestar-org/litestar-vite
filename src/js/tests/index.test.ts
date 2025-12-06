@@ -765,16 +765,20 @@ describe("litestar-vite-plugin", () => {
       expect(mockNext).not.toHaveBeenCalled()
     })
 
-    it("calls next() when index.html is not detected and url is /", async () => {
+    it("serves placeholder when index.html is not detected and url is /", async () => {
+      // When no index.html exists (hybrid/inertia mode), serve the placeholder at root
+      // This helps users who accidentally navigate to the Vite dev server port
+      const appUrl = "http://test.app:8000"
+      process.env.APP_URL = appUrl
       await setupServer()
       mockFs(null)
 
       await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
 
-      expect(mockRes.statusCode).toBe(0)
-      expect(mockRes.setHeader).not.toHaveBeenCalled()
-      expect(mockRes.end).not.toHaveBeenCalled()
-      expect(mockNext).toHaveBeenCalledTimes(1)
+      expect(mockRes.statusCode).toBe(200)
+      expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+      expect(mockRes.end).toHaveBeenCalledWith(actualPlaceholderContent.replace(/{{ APP_URL }}/g, appUrl))
+      expect(mockNext).not.toHaveBeenCalled()
     })
 
     it("calls next() for non-root and non-/index.html requests", async () => {
@@ -789,16 +793,20 @@ describe("litestar-vite-plugin", () => {
       expect(mockNext).toHaveBeenCalledTimes(1)
     })
 
-    it("calls next() for / when autoDetectIndex is false, even if index exists", async () => {
+    it("serves placeholder for / when autoDetectIndex is false, even if index exists", async () => {
+      // When autoDetectIndex is false, we don't look for index.html
+      // So we serve the placeholder to guide users to the backend URL
+      const appUrl = "http://test.app:8000"
+      process.env.APP_URL = appUrl
       await setupServer({ autoDetectIndex: false })
       mockFs(rootIndexPath)
 
       await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
 
-      expect(mockRes.statusCode).toBe(0)
-      expect(mockRes.setHeader).not.toHaveBeenCalled()
-      expect(mockRes.end).not.toHaveBeenCalled()
-      expect(mockNext).toHaveBeenCalledTimes(1)
+      expect(mockRes.statusCode).toBe(200)
+      expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+      expect(mockRes.end).toHaveBeenCalledWith(actualPlaceholderContent.replace(/{{ APP_URL }}/g, appUrl))
+      expect(mockNext).not.toHaveBeenCalled()
     })
 
     it("serves placeholder for /index.html when autoDetectIndex is false", async () => {

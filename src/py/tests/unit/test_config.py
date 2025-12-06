@@ -522,17 +522,23 @@ def test_hybrid_mode_auto_detected_with_index_html(tmp_path: Path) -> None:
     assert config._mode_auto_detected is True
 
 
-def test_template_mode_auto_detected_with_inertia_no_index_html(tmp_path: Path) -> None:
-    """Test that template mode is auto-detected when Inertia enabled but no index.html."""
+def test_hybrid_mode_auto_detected_when_inertia_enabled(tmp_path: Path) -> None:
+    """Test that hybrid mode is auto-detected when InertiaConfig is present.
+
+    When InertiaConfig is provided, we default to hybrid mode because:
+    1. In dev mode, Vite dev server serves the index.html
+    2. In production, built assets include index.html
+    Users who want Jinja2 templates with Inertia should set mode="template" explicitly.
+    """
     from litestar_vite.inertia import InertiaConfig
 
-    # Empty directory - no index.html
+    # Empty directory - no index.html (doesn't matter, defaults to hybrid)
     config = ViteConfig(
         paths=PathConfig(resource_dir=tmp_path),
         inertia=InertiaConfig(),
     )
 
-    assert config.mode == "template"
+    assert config.mode == "hybrid"
     assert config._mode_auto_detected is True
 
 
@@ -590,13 +596,13 @@ def test_inertia_presence_means_enabled(tmp_path: Path) -> None:
     from litestar_vite.inertia import InertiaConfig
 
     # Passing InertiaConfig instance means enabled
-    # Without index.html, defaults to template mode
+    # Defaults to hybrid mode regardless of index.html presence
     config = ViteConfig(
         paths=PathConfig(resource_dir=tmp_path),
         inertia=InertiaConfig(),
     )
     assert isinstance(config.inertia, InertiaConfig)
-    assert config.mode == "template"  # No index.html → template
+    assert config.mode == "hybrid"  # InertiaConfig present → hybrid
 
     # Passing True enables with defaults
     config2 = ViteConfig(
@@ -604,7 +610,7 @@ def test_inertia_presence_means_enabled(tmp_path: Path) -> None:
         inertia=True,
     )
     assert isinstance(config2.inertia, InertiaConfig)
-    assert config2.mode == "template"
+    assert config2.mode == "hybrid"
 
     # Passing False/None means disabled
     config3 = ViteConfig(inertia=False)

@@ -585,6 +585,44 @@ def error(
         connection.logger.warning(msg)
 
 
+def flash(
+    connection: "ASGIConnection[Any, Any, Any, Any]",
+    message: "str",
+    category: "str" = "info",
+) -> "None":
+    """Add a flash message to the session.
+
+    Flash messages are stored in the session and passed to the frontend
+    via the `flash` prop in every Inertia response. They're automatically
+    cleared after being displayed (pop semantics).
+
+    This function works without requiring Litestar's FlashPlugin or
+    any Jinja2 template configuration, making it ideal for SPA-only
+    Inertia applications.
+
+    Args:
+        connection: The ASGI connection (Request or WebSocket).
+        message: The message text to display.
+        category: The message category (e.g., "success", "error", "warning", "info").
+                  Defaults to "info".
+
+    Example:
+        from litestar_vite.inertia import flash
+
+        @post("/create")
+        async def create_item(request: Request) -> InertiaResponse:
+            # ... create item ...
+            flash(request, "Item created successfully!", "success")
+            return InertiaResponse(...)
+    """
+    try:
+        messages = connection.session.setdefault("_messages", [])
+        messages.append({"category": category, "message": message})
+    except (AttributeError, ImproperlyConfiguredException):
+        msg = "Unable to set flash message. A valid session was not found for this request."
+        connection.logger.warning(msg)
+
+
 def js_routes_script(js_routes: "Routes") -> "Markup":
     @lru_cache
     def _markup_safe_json_dumps(js_routes: "str") -> "Markup":

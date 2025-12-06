@@ -89,7 +89,16 @@ class InertiaPlugin(InitPluginProtocol):
         else:
             msg = "The Inertia plugin require a session middleware."
             raise ImproperlyConfiguredException(msg)
-        app_config.exception_handlers.update({Exception: exception_to_http_response})  # pyright: ignore[reportUnknownMemberType]
+        from litestar.exceptions import HTTPException
+
+        # Register for both Exception and HTTPException to ensure our handler takes precedence
+        # over the default HTTPException handler
+        app_config.exception_handlers.update(  # pyright: ignore[reportUnknownMemberType]
+            {
+                Exception: exception_to_http_response,
+                HTTPException: exception_to_http_response,
+            }
+        )
         app_config.request_class = InertiaRequest
         app_config.response_class = InertiaResponse
         app_config.middleware.append(InertiaMiddleware)
