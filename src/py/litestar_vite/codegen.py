@@ -282,16 +282,15 @@ def _dict_to_schema(d: dict[str, Any]) -> Schema:
     if isinstance(t, str) and t in _OPENAPI_TYPE_VALUES:
         schema_type = OpenAPIType(t)
     elif isinstance(t, list):
-        schema_type = [OpenAPIType(x) for x in t if isinstance(x, str) and x in _OPENAPI_TYPE_VALUES]
-        if not schema_type:
-            schema_type = None
+        schema_type = [OpenAPIType(x) for x in t if isinstance(x, str) and x in _OPENAPI_TYPE_VALUES] or None  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
 
     # Handle nested schemas recursively
-    one_of = [_dict_to_schema(s) for s in d.get("oneOf", []) if isinstance(s, dict)] or None
-    any_of = [_dict_to_schema(s) for s in d.get("anyOf", []) if isinstance(s, dict)] or None
-    all_of = [_dict_to_schema(s) for s in d.get("allOf", []) if isinstance(s, dict)] or None
+    # pyright: ignore[reportUnknownArgumentType] - dict contents validated with isinstance
+    one_of = [_dict_to_schema(s) for s in d.get("oneOf", []) if isinstance(s, dict)] or None  # pyright: ignore[reportUnknownArgumentType]
+    any_of = [_dict_to_schema(s) for s in d.get("anyOf", []) if isinstance(s, dict)] or None  # pyright: ignore[reportUnknownArgumentType]
+    all_of = [_dict_to_schema(s) for s in d.get("allOf", []) if isinstance(s, dict)] or None  # pyright: ignore[reportUnknownArgumentType]
     items_dict = d.get("items")
-    items = _dict_to_schema(items_dict) if isinstance(items_dict, dict) else None
+    items = _dict_to_schema(items_dict) if isinstance(items_dict, dict) else None  # pyright: ignore[reportUnknownArgumentType]
 
     return Schema(
         type=schema_type,
