@@ -18,7 +18,6 @@ from litestar_vite.inertia.helpers import (
 from litestar_vite.inertia.response import InertiaResponse
 from litestar_vite.plugin import VitePlugin
 
-
 # =====================================================
 # scroll_props() Helper Tests
 # =====================================================

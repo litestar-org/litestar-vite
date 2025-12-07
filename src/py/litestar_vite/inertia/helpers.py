@@ -2,6 +2,7 @@ import inspect
 from collections import defaultdict
 from collections.abc import Callable, Coroutine, Generator, Iterable, Mapping
 from contextlib import contextmanager
+from dataclasses import dataclass
 from functools import lru_cache
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Generic, Literal, TypeGuard, TypeVar, cast, overload
@@ -58,14 +59,66 @@ def lazy(
     key: str,
     value_or_callable: "T | Callable[..., Coroutine[Any, Any, None]] | Callable[..., T] | Callable[..., T | Coroutine[Any, Any, T]] | None" = None,
 ) -> "StaticProp[str, None] | StaticProp[str, T] | DeferredProp[str, T] | DeferredProp[str, None]":
-    """Wrap an async function to return a DeferredProp.
+    """Create a lazy prop that is only included during partial reloads.
+
+    Lazy props are excluded from the initial page load and only sent when
+    explicitly requested via partial reload (X-Inertia-Partial-Data header).
+    This optimizes initial page load by deferring non-critical data.
+
+    There are two use cases for lazy():
+
+    **1. Static Value (bandwidth optimization)**:
+        The value is computed eagerly but only sent during partial reloads.
+        Use when the value is cheap to compute but you want to reduce initial payload.
+
+        >>> lazy("user_count", len(users))  # Computed now, sent on partial reload
+
+    **2. Callable (bandwidth + CPU optimization)**:
+        The callable is only invoked during partial reloads.
+        Use when the value is expensive to compute.
+
+        >>> lazy("permissions", lambda: Permission.all())  # Computed on partial reload
+
+    .. warning:: **False Lazy Pitfall**
+
+        Be careful not to accidentally call the function when passing it:
+
+        >>> # WRONG: expensive_fn() is called immediately, defeating lazy behavior
+        >>> lazy("data", expensive_fn())
+        >>>
+        >>> # CORRECT: Pass the function reference, not the result
+        >>> lazy("data", expensive_fn)
+
+        This is a Python evaluation order issue, not a framework limitation.
 
     Args:
-        key: The key to store the value under.
-        value_or_callable: The value or callable to store.
+        key: The key to store the value under in the props dict.
+        value_or_callable: Either a static value (computed eagerly, sent lazily)
+            or a callable (computed and sent lazily). If None, creates a lazy
+            prop with None value.
 
     Returns:
-        The wrapped value or callable.
+        StaticProp if value_or_callable is not callable, DeferredProp otherwise.
+
+    Example::
+
+        from litestar_vite.inertia import lazy, InertiaResponse
+
+        @get("/dashboard", component="Dashboard")
+        async def dashboard() -> InertiaResponse:
+            return InertiaResponse({
+                "user": current_user,  # Always sent
+                # Static lazy: computed now, sent only on partial reload
+                "user_count": lazy("user_count", 42),
+                # Callable lazy: computed only when requested
+                "permissions": lazy("permissions", lambda: Permission.all()),
+                # Async callable lazy
+                "notifications": lazy("notifications", fetch_notifications),
+            })
+
+    See Also:
+        - :func:`defer`: For v2 grouped deferred props loaded after page render
+        - Inertia.js partial reloads: https://inertiajs.com/partial-reloads
     """
     if value_or_callable is None:
         return StaticProp[str, None](key=key, value=None)
@@ -111,6 +164,114 @@ def defer(
         value=callback,
         group=group,
     )
+
+
+@dataclass
+class PropFilter:
+    """Configuration for prop filtering during partial reloads.
+
+    Used with ``only()`` and ``except_()`` helpers to explicitly control
+    which props are sent during partial reload requests.
+
+    Attributes:
+        include: Set of prop keys to include (only send these).
+        exclude: Set of prop keys to exclude (send all except these).
+    """
+
+    include: "set[str] | None" = None
+    exclude: "set[str] | None" = None
+
+    def should_include(self, key: str) -> bool:
+        """Check if a prop key should be included.
+
+        Args:
+            key: The prop key to check.
+
+        Returns:
+            True if the prop should be included, False otherwise.
+        """
+        # Exclude takes precedence (v2 protocol behavior)
+        if self.exclude is not None:
+            return key not in self.exclude
+        if self.include is not None:
+            return key in self.include
+        return True
+
+
+def only(*keys: str) -> PropFilter:
+    """Create a filter that only includes the specified prop keys.
+
+    Use this to explicitly limit which props are sent during partial reloads.
+    Only the specified props will be included in the response.
+
+    Args:
+        *keys: The prop keys to include.
+
+    Returns:
+        A PropFilter configured to include only the specified keys.
+
+    Example::
+
+        from litestar_vite.inertia import only, InertiaResponse
+
+        @get("/users", component="Users")
+        async def list_users(
+            request: InertiaRequest,
+            user_service: UserService,
+        ) -> InertiaResponse:
+            # Only send "users" prop during partial reload
+            return InertiaResponse(
+                {
+                    "users": user_service.list(),
+                    "teams": team_service.list(),  # Not sent if filtered
+                    "stats": stats_service.get(),  # Not sent if filtered
+                },
+                prop_filter=only("users"),
+            )
+
+    Note:
+        This is a server-side helper. The client should use Inertia's
+        ``router.reload({ only: ['users'] })`` for client-initiated filtering.
+    """
+    return PropFilter(include=set(keys))
+
+
+def except_(*keys: str) -> PropFilter:
+    """Create a filter that excludes the specified prop keys.
+
+    Use this to explicitly exclude certain props during partial reloads.
+    All props except the specified ones will be included in the response.
+
+    Args:
+        *keys: The prop keys to exclude.
+
+    Returns:
+        A PropFilter configured to exclude the specified keys.
+
+    Example::
+
+        from litestar_vite.inertia import except_, InertiaResponse
+
+        @get("/users", component="Users")
+        async def list_users(
+            request: InertiaRequest,
+            user_service: UserService,
+        ) -> InertiaResponse:
+            # Send all props except "stats" during partial reload
+            return InertiaResponse(
+                {
+                    "users": user_service.list(),
+                    "teams": team_service.list(),
+                    "stats": expensive_stats(),  # Excluded if filtered
+                },
+                prop_filter=except_("stats"),
+            )
+
+    Note:
+        The function is named ``except_`` with a trailing underscore to avoid
+        conflicting with Python's ``except`` keyword.
+    """
+    return PropFilter(exclude=set(keys))
 
 
 class MergeProp(Generic[PropKeyT, T]):

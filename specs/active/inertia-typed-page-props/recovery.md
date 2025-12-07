@@ -2,9 +2,23 @@
 
 ## Current State
 
-**Status**: PRD Complete, Ready for Implementation (after inertia-protocol-compliance)
+**Status**: PRD Complete, Ready for Implementation (after prerequisites)
+
+**Updated**: 2025-12-07 - Dependencies and .litestar.json integration added
 
 The comprehensive PRD and task breakdown have been created based on architectural analysis of the existing type generation system and Inertia integration.
+
+### Prerequisite PRDs (Must Complete First)
+
+1. **inertia-protocol-compliance** (~95% complete)
+   - Provides `share()` helper, middleware fixes, pagination integration
+   - `PaginationContainer` protocol now available in config.py
+
+2. **inertia-defensive-hardening** (NEW - P0 Security)
+   - Fixes open redirect vulnerability (#123)
+   - Fixes cookie leak in redirects (#126)
+   - Fixes exception handler crashes (#124, #125)
+   - **Security issues must be resolved before new features**
 
 ## Files Created
 
@@ -143,12 +157,19 @@ make lint
 
 ## Dependencies
 
-### Prerequisite PRD
+### Prerequisite PRDs
 
 - `specs/active/inertia-protocol-compliance/` - Must be completed first
-  - Ensures `share()` helper works correctly
-  - Ensures InertiaConfig is properly integrated
-  - Fixes version mismatch and header issues
+    - Ensures `share()` helper works correctly
+    - Ensures InertiaConfig is properly integrated
+    - Fixes version mismatch and header issues
+    - Pagination integration (`PaginationContainer` protocol) completed
+
+- `specs/active/inertia-defensive-hardening/` - P0 Security (NEW)
+    - Fixes open redirect vulnerability (#123)
+    - Fixes cookie leak in redirects (#126)
+    - Fixes exception handler crashes (#124, #125)
+    - Security issues must be resolved before new features
 
 ### External Dependencies
 
@@ -156,9 +177,29 @@ make lint
 - msgspec (existing) - Python type introspection
 - Vite (existing) - File watching and plugin system
 
+### .litestar.json Integration
+
+The `.litestar.json` file should be extended to include type generation config:
+
+```json
+{
+  "types": {
+    "enabled": true,
+    "output": "./src/generated",
+    "generatePageProps": true,
+    "pagePropsPath": "./src/generated/page-props.ts"
+  }
+}
+```
+
+This allows the TypeScript Vite plugin to read config without parsing Python.
+
 ## Related PRDs
 
-- `specs/active/inertia-protocol-compliance/` - Prerequisite (P0)
+- `specs/active/inertia-protocol-compliance/` - Prerequisite (P0) - ~95% complete
+- `specs/active/inertia-defensive-hardening/` - Prerequisite (P0 Security) - NEW
+- `specs/active/openapi-ts-migration/` - Related - migrates @hey-api plugin names
+- `specs/active/example-e2e-testing/` - Related - E2E tests for examples
 - `specs/archive/inertia-integration-fixes/` - Previous Inertia work
 
 ## Key Files to Study

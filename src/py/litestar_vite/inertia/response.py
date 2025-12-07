@@ -197,8 +197,10 @@ class InertiaResponse(Response[T]):
                 for key, value in mapping_content.items():
                     shared_props[key] = value
             elif is_pagination_container(route_content):
-                # If returning OffsetPagination directly, use "items" as the key
-                shared_props["items"] = route_content
+                # If returning OffsetPagination directly, use route's "key" opt or default to "items"
+                route_handler = request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
+                prop_key = (route_handler.opt.get("key", "items") if route_handler else "items") or "items"
+                shared_props[prop_key] = route_content
             else:
                 shared_props["content"] = route_content
 

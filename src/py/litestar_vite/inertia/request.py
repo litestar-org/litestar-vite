@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote
 
 from litestar import Request
@@ -13,8 +13,10 @@ from litestar.connection.base import (
 
 from litestar_vite.inertia._utils import InertiaHeaders
 
-__all__ = ("InertiaDetails", "InertiaRequest")
+__all__ = ("InertiaDetails", "InertiaHeaders", "InertiaRequest")
 
+# Default component opt keys if InertiaPlugin is not available
+_DEFAULT_COMPONENT_OPT_KEYS: "tuple[str, ...]" = ("component", "page")
 
 if TYPE_CHECKING:
     from litestar.types import Receive, Scope, Send
@@ -58,11 +60,22 @@ class InertiaDetails:
 
                 @get("/", component="Home")
                 @get("/", page="Home")
+
+            With custom keys configured::
+
+                InertiaConfig(component_opt_keys=("view", "component", "page"))
+                @get("/", view="Home")  # Also works
         """
         rh = self.request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
         if rh:
-            # Check keys in order: "component", "page" (or custom keys from config)
-            for key in ("component", "page"):
+            # Get component opt keys from InertiaPlugin config, or use defaults
+            component_opt_keys: "tuple[str, ...]" = _DEFAULT_COMPONENT_OPT_KEYS
+            inertia_plugin: "Any" = self.request.app.plugins.get("InertiaPlugin")  # pyright: ignore[reportUnknownMemberType]
+            if inertia_plugin and hasattr(inertia_plugin, "config"):
+                component_opt_keys = inertia_plugin.config.component_opt_keys
+
+            # Check keys in configured order
+            for key in component_opt_keys:
                 if (value := rh.opt.get(key)) is not None:
                     return value
         return None

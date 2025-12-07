@@ -1129,3 +1129,146 @@ async def test_http_exception_404_preserved_for_non_inertia_requests(
         response = client.get("/api/items/999")
         # Should return 404, NOT 500
         assert response.status_code == 404
+
+
+# Pagination Container Tests
+
+
+async def test_pagination_container_default_key(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that pagination containers use 'items' as default key."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class MockPagination:
+        items: list[str]
+        limit: int
+        offset: int
+        total: int
+
+    @get("/users", component="Users")
+    async def handler(request: Request[Any, Any, Any]) -> MockPagination:
+        return MockPagination(items=["user1", "user2"], limit=10, offset=0, total=2)
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/users", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # Pagination should be unwrapped to just items under default "items" key
+        assert data["props"]["items"] == ["user1", "user2"]
+        assert "limit" not in data["props"]
+        assert "offset" not in data["props"]
+        assert "total" not in data["props"]
+
+
+async def test_pagination_container_custom_key(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that pagination containers use route's 'key' opt when provided."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class MockPagination:
+        items: list[str]
+        limit: int
+        offset: int
+        total: int
+
+    @get("/users", component="Users", key="users")
+    async def handler(request: Request[Any, Any, Any]) -> MockPagination:
+        return MockPagination(items=["user1", "user2"], limit=10, offset=0, total=2)
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/users", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # Pagination should be unwrapped to just items under custom "users" key
+        assert data["props"]["users"] == ["user1", "user2"]
+        assert "items" not in data["props"]
+
+
+async def test_pagination_in_dict_preserves_key(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that pagination in dict uses dict key, not route key opt."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class MockPagination:
+        items: list[str]
+        limit: int
+        offset: int
+        total: int
+
+    @get("/users", component="Users", key="ignored")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"members": MockPagination(items=["user1", "user2"], limit=10, offset=0, total=2)}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/users", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # Dict key "members" should be used, not route opt "key"
+        assert data["props"]["members"] == ["user1", "user2"]
+        assert "items" not in data["props"]
+        assert "ignored" not in data["props"]
+
+
+async def test_pagination_with_infinite_scroll_opt(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that infinite_scroll=True calculates scroll_props from pagination."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class MockPagination:
+        items: list[str]
+        limit: int
+        offset: int
+        total: int
+
+    @get("/posts", component="Posts", key="posts", infinite_scroll=True)
+    async def handler(request: Request[Any, Any, Any]) -> MockPagination:
+        # Page 2 of 5 (offset=10, limit=10, total=50)
+        return MockPagination(items=["post1", "post2"], limit=10, offset=10, total=50)
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/posts", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # Items should be under custom key
+        assert data["props"]["posts"] == ["post1", "post2"]
+        # scroll_props should be calculated from pagination metadata
+        assert "scrollProps" in data
+        assert data["scrollProps"]["currentPage"] == 2  # offset=10, limit=10 -> page 2
+        assert data["scrollProps"]["previousPage"] == 1
+        assert data["scrollProps"]["nextPage"] == 3
