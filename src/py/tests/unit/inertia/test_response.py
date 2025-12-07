@@ -1272,3 +1272,307 @@ async def test_pagination_with_infinite_scroll_opt(
         assert data["scrollProps"]["currentPage"] == 2  # offset=10, limit=10 -> page 2
         assert data["scrollProps"]["previousPage"] == 1
         assert data["scrollProps"]["nextPage"] == 3
+
+
+# =====================================================
+# Security Tests - Open Redirect Prevention (GitHub #123)
+# =====================================================
+
+
+async def test_inertia_back_rejects_cross_origin_referer(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaBack rejects cross-origin Referer headers (fixes #123)."""
+
+    @get("/back", component="Back")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Cross-origin Referer should be rejected
+        response = client.get(
+            "/back",
+            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "https://evil.com/malicious"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        # Should redirect to base URL, not evil.com
+        assert response.headers.get("location") == "http://testserver.local/"
+
+
+async def test_inertia_back_allows_same_origin_referer(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaBack allows same-origin Referer headers."""
+
+    @get("/back", component="Back")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Same-origin Referer should be allowed
+        response = client.get(
+            "/back",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                "Referer": "http://testserver.local/previous-page",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        assert response.headers.get("location") == "http://testserver.local/previous-page"
+
+
+async def test_inertia_back_allows_relative_referer(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaBack allows relative URL Referer headers."""
+
+    @get("/back", component="Back")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Relative URLs should be allowed (they're safe)
+        response = client.get(
+            "/back",
+            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "/previous-page"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        assert response.headers.get("location") == "/previous-page"
+
+
+async def test_inertia_back_rejects_javascript_scheme(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaBack rejects javascript: scheme in Referer."""
+
+    @get("/back", component="Back")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # javascript: scheme should be rejected
+        response = client.get(
+            "/back",
+            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "javascript:alert(1)"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        # Should redirect to base URL, not execute JS
+        assert response.headers.get("location") == "http://testserver.local/"
+
+
+async def test_inertia_back_rejects_protocol_relative_url(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaBack rejects protocol-relative URLs (//evil.com)."""
+
+    @get("/back", component="Back")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Protocol-relative URLs should be rejected (they redirect to external domain)
+        response = client.get(
+            "/back",
+            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "//evil.com/path"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        # Should redirect to base URL, not evil.com
+        assert response.headers.get("location") == "http://testserver.local/"
+
+
+async def test_inertia_back_missing_referer_uses_base_url(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaBack uses base_url when Referer is missing."""
+
+    @get("/back", component="Back")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # No Referer header - should use base URL
+        response = client.get(
+            "/back",
+            headers={InertiaHeaders.ENABLED.value: "true"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        assert response.headers.get("location") == "http://testserver.local/"
+
+
+async def test_inertia_redirect_rejects_cross_origin_url(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaRedirect rejects cross-origin redirect_to URLs."""
+    from litestar_vite.inertia.response import InertiaRedirect
+
+    @get("/redirect", component="Redirect")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaRedirect:
+        # Attempt cross-origin redirect
+        return InertiaRedirect(request, redirect_to="https://evil.com/malicious")
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/redirect",
+            headers={InertiaHeaders.ENABLED.value: "true"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        # Should redirect to base URL, not evil.com
+        assert response.headers.get("location") == "http://testserver.local/"
+
+
+async def test_inertia_redirect_allows_relative_url(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaRedirect allows relative URLs."""
+    from litestar_vite.inertia.response import InertiaRedirect
+
+    @get("/redirect", component="Redirect")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaRedirect:
+        return InertiaRedirect(request, redirect_to="/dashboard")
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/redirect",
+            headers={InertiaHeaders.ENABLED.value: "true"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        assert response.headers.get("location") == "/dashboard"
+
+
+# =====================================================
+# Security Tests - Cookie Leak Prevention (GitHub #126)
+# =====================================================
+
+
+async def test_inertia_back_no_cookie_echo(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaBack does not echo request cookies (fixes #126)."""
+
+    @get("/back", component="Back")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Send request with a cookie
+        response = client.get(
+            "/back",
+            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "/previous"},
+            cookies={"session_id": "secret_session_value"},
+            follow_redirects=False,
+        )
+        # The response should NOT have Set-Cookie header echoing the session_id
+        set_cookie_headers = response.headers.get_list("set-cookie")
+        session_cookie_echoed = any("session_id=secret_session_value" in c for c in set_cookie_headers)
+        assert not session_cookie_echoed, "Request cookies should not be echoed in response"
+
+
+async def test_inertia_external_redirect_no_cookie_echo(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaExternalRedirect does not echo request cookies (fixes #126)."""
+
+    @get("/external", component="External")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaExternalRedirect:
+        return InertiaExternalRedirect(request, redirect_to="https://external-site.com/callback")
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/external",
+            headers={InertiaHeaders.ENABLED.value: "true"},
+            cookies={"auth_token": "secret_token"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 409
+        # The response should NOT have Set-Cookie header echoing the auth_token
+        set_cookie_headers = response.headers.get_list("set-cookie")
+        token_cookie_echoed = any("auth_token=secret_token" in c for c in set_cookie_headers)
+        assert not token_cookie_echoed, "Request cookies should not be echoed in response"

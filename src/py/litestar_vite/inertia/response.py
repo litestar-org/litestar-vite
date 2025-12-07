@@ -9,7 +9,7 @@ from typing import (
     TypeVar,
     cast,
 )
-from urllib.parse import quote, urlparse, urlunparse
+from urllib.parse import quote, urlparse
 
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
@@ -48,6 +48,41 @@ if TYPE_CHECKING:
 
 
 T = TypeVar("T")
+
+
+def _get_redirect_url(request: "Request[Any, Any, Any]", url: str | None) -> str:
+    """Get a validated redirect URL, ensuring same-origin to prevent open redirect attacks.
+
+    This function validates that a redirect URL is safe to use by checking:
+    1. Relative URLs (no scheme/netloc) are always allowed
+    2. Absolute URLs must be same-origin (matching netloc)
+    3. URL schemes must be http or https
+
+    Args:
+        request: The request object for base URL comparison.
+        url: The URL to validate (e.g., Referer header or redirect_to parameter).
+
+    Returns:
+        The validated URL, or base_url if validation fails or URL is invalid.
+    """
+    base_url = str(request.base_url)
+
+    if not url:
+        return base_url
+
+    parsed = urlparse(url)
+    base = urlparse(base_url)
+
+    if not parsed.scheme and not parsed.netloc:
+        return url
+
+    if parsed.scheme not in {"http", "https"}:
+        return base_url
+
+    if parsed.netloc != base.netloc:
+        return base_url
+
+    return url
 
 
 class InertiaResponse(Response[T]):
@@ -493,7 +528,17 @@ class InertiaResponse(Response[T]):
 
 
 class InertiaExternalRedirect(Response[Any]):
-    """Client side redirect."""
+    """External redirect via Inertia protocol (409 + X-Inertia-Location).
+
+    This response type triggers a client-side hard redirect in Inertia.js.
+    Unlike InertiaRedirect, this does NOT validate the redirect URL as same-origin
+    because external redirects are explicitly intended for cross-origin navigation
+    (e.g., OAuth callbacks, external payment pages).
+
+    Note:
+        Request cookies are intentionally NOT passed to the response to prevent
+        cookie leakage in redirect responses.
+    """
 
     def __init__(
         self,
@@ -501,20 +546,31 @@ class InertiaExternalRedirect(Response[Any]):
         redirect_to: "str",
         **kwargs: "Any",
     ) -> None:
-        """Initialize external redirect, Set status code to 409 (required by Inertia),
-        and pass redirect url.
+        """Initialize external redirect with 409 status and X-Inertia-Location header.
+
+        Args:
+            request: The request object.
+            redirect_to: The URL to redirect to (can be external).
+            **kwargs: Additional keyword arguments passed to the Response constructor.
         """
         super().__init__(
             content=b"",
             status_code=HTTP_409_CONFLICT,
             headers={"X-Inertia-Location": quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")},
-            cookies=request.cookies,
             **kwargs,
         )
 
 
 class InertiaRedirect(Redirect):
-    """Client side redirect."""
+    """Redirect to a specified URL with same-origin validation.
+
+    This class validates the redirect URL to prevent open redirect attacks.
+    If the URL is not same-origin, it falls back to the application's base URL.
+
+    Note:
+        Request cookies are intentionally NOT passed to the response to prevent
+        cookie leakage in redirect responses.
+    """
 
     def __init__(
         self,
@@ -522,33 +578,47 @@ class InertiaRedirect(Redirect):
         redirect_to: "str",
         **kwargs: "Any",
     ) -> None:
-        """Initialize external redirect, Set status code to 409 (required by Inertia),
-        and pass redirect url.
+        """Initialize redirect with safe URL validation.
+
+        Args:
+            request: The request object.
+            redirect_to: The URL to redirect to. Must be same-origin or relative.
+            **kwargs: Additional keyword arguments passed to the Redirect constructor.
         """
-        referer = urlparse(request.headers.get("Referer", str(request.base_url)))
-        redirect_to = urlunparse(urlparse(redirect_to)._replace(scheme=referer.scheme))
+        safe_url = _get_redirect_url(request, redirect_to)
         super().__init__(  # pyright: ignore[reportUnknownMemberType]
-            path=redirect_to,
+            path=safe_url,
             status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
-            cookies=request.cookies,
             **kwargs,
         )
 
 
 class InertiaBack(Redirect):
-    """Client side redirect."""
+    """Redirect back to the previous page using the Referer header.
+
+    This class safely validates the Referer header to prevent open redirect
+    attacks. If the Referer is not same-origin or is missing, it falls back
+    to the application's base URL.
+
+    Note:
+        Request cookies are intentionally NOT passed to the response to prevent
+        cookie leakage in redirect responses.
+    """
 
     def __init__(
         self,
         request: "Request[Any, Any, Any]",
         **kwargs: "Any",
     ) -> None:
-        """Initialize external redirect, Set status code to 409 (required by Inertia),
-        and pass redirect url.
+        """Initialize back redirect with safe URL validation.
+
+        Args:
+            request: The request object.
+            **kwargs: Additional keyword arguments passed to the Redirect constructor.
         """
+        safe_url = _get_redirect_url(request, request.headers.get("Referer"))
         super().__init__(  # pyright: ignore[reportUnknownMemberType]
-            path=request.headers.get("Referer", str(request.base_url)),
+            path=safe_url,
             status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
-            cookies=request.cookies,
             **kwargs,
         )

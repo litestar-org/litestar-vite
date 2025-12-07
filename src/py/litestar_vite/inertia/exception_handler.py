@@ -43,6 +43,7 @@ if TYPE_CHECKING:
 
     from litestar_vite.inertia.plugin import InertiaPlugin
 
+
 FIELD_ERR_RE = re.compile(r"field `(.+)`$")
 
 
@@ -91,39 +92,67 @@ def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "E
 def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", exc: "Exception") -> "Response[Any]":
     """Create the inertia exception response.
 
+    This function handles exceptions for Inertia-enabled routes, returning appropriate
+    responses based on the exception type and status code.
+
+    Note:
+        This function uses defensive programming techniques to handle edge cases:
+        - Type-safe handling of exception ``extra`` attribute (may be string, list, dict, or None)
+        - Graceful handling when InertiaPlugin is not registered
+        - Broad exception handling for flash() calls (non-critical operation)
+
     Args:
         request: The request object.
         exc: The exception to handle.
 
     Returns:
-        The response object.
+        The response object, either an InertiaResponse, InertiaRedirect, or InertiaBack.
     """
     is_inertia = getattr(request, "is_inertia", False)
     status_code = getattr(exc, "status_code", HTTP_500_INTERNAL_SERVER_ERROR)
     preferred_type = MediaType.HTML if not is_inertia else MediaType.JSON
-    detail = getattr(exc, "detail", "")  # litestar exceptions
-    extras = getattr(exc, "extra", "")  # msgspec exceptions
-    content: dict[str, Any] = {"status_code": status_code, "message": getattr(exc, "detail", "")}
-    inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
+    detail = getattr(exc, "detail", "") or ""
+    extras: Any = getattr(exc, "extra", None)
+    content: dict[str, Any] = {"status_code": status_code, "message": detail}
+
+    inertia_plugin: "InertiaPlugin | None"
+    try:
+        inertia_plugin = request.app.plugins.get("InertiaPlugin")
+    except KeyError:
+        inertia_plugin = None
+
     if extras:
         content.update({"extra": extras})
+
     try:
-        flash(request, detail, category="error")
-    except (AttributeError, ImproperlyConfiguredException):
-        msg = "Unable to set `flash` session state.  A valid session was not found for this request."
-        request.logger.warning(msg)
-    if extras and len(extras) >= 1:
-        message = extras[0]
-        default_field = f"root.{message.get('key')}" if message.get("key", None) is not None else "root"  # type: ignore
-        error_detail = cast("str", message.get("message", detail))  # type: ignore[union-attr] # pyright: ignore[reportUnknownMemberType]
-        match = FIELD_ERR_RE.search(error_detail)
-        field = match.group(1) if match else default_field
-        if isinstance(message, dict):
+        if detail:
+            flash(request, detail, category="error")
+    except (AttributeError, KeyError, RuntimeError, ImproperlyConfiguredException):
+        request.logger.warning("Unable to set flash message", exc_info=True)
+
+    if extras and isinstance(extras, (list, tuple)) and len(extras) >= 1:  # pyright: ignore[reportUnknownArgumentType]
+        first_extra = extras[0]  # pyright: ignore[reportUnknownVariableType]
+        if isinstance(first_extra, dict):
+            message: dict[str, str] = cast("dict[str, str]", first_extra)
+            key_value = message.get("key")
+            default_field = f"root.{key_value}" if key_value is not None else "root"
+            error_detail = str(message.get("message", detail) or detail)
+            match = FIELD_ERR_RE.search(error_detail)
+            field = match.group(1) if match else default_field
             error(request, field, error_detail or detail)
+
     if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST}:
         return InertiaBack(request)
     if isinstance(exc, PermissionDeniedException):
         return InertiaBack(request)
+
+    if inertia_plugin is None:
+        return InertiaResponse[Any](
+            media_type=preferred_type,
+            content=content,
+            status_code=status_code,
+        )
+
     if (status_code == HTTP_401_UNAUTHORIZED or isinstance(exc, NotAuthorizedException)) and (
         inertia_plugin.config.redirect_unauthorized_to is not None
         and request.url.path != inertia_plugin.config.redirect_unauthorized_to

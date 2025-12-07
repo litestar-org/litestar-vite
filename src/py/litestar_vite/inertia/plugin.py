@@ -121,8 +121,6 @@ class InertiaPlugin(InitPluginProtocol):
             raise ImproperlyConfiguredException(msg)
         from litestar.exceptions import HTTPException
 
-        # Register for both Exception and HTTPException to ensure our handler takes precedence
-        # over the default HTTPException handler
         app_config.exception_handlers.update(  # pyright: ignore[reportUnknownMemberType]
             {
                 Exception: exception_to_http_response,

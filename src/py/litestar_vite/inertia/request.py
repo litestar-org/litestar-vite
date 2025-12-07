@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 from urllib.parse import unquote
 
 from litestar import Request
@@ -20,6 +20,8 @@ _DEFAULT_COMPONENT_OPT_KEYS: "tuple[str, ...]" = ("component", "page")
 
 if TYPE_CHECKING:
     from litestar.types import Receive, Scope, Send
+
+    from litestar_vite.inertia.plugin import InertiaPlugin
 
 
 class InertiaDetails:
@@ -68,16 +70,16 @@ class InertiaDetails:
         """
         rh = self.request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
         if rh:
-            # Get component opt keys from InertiaPlugin config, or use defaults
             component_opt_keys: "tuple[str, ...]" = _DEFAULT_COMPONENT_OPT_KEYS
-            inertia_plugin: "Any" = self.request.app.plugins.get("InertiaPlugin")  # pyright: ignore[reportUnknownMemberType]
-            if inertia_plugin and hasattr(inertia_plugin, "config"):
+            try:
+                inertia_plugin: "InertiaPlugin" = self.request.app.plugins.get("InertiaPlugin")
                 component_opt_keys = inertia_plugin.config.component_opt_keys
+            except KeyError:
+                pass
 
-            # Check keys in configured order
             for key in component_opt_keys:
                 if (value := rh.opt.get(key)) is not None:
-                    return value
+                    return cast("str", value)
         return None
 
     def __bool__(self) -> bool:
