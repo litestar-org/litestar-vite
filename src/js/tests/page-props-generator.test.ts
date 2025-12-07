@@ -8,7 +8,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { describe, expect, it } from "vitest"
 
 // Import the interface type for our test data
 interface InertiaPagePropsJson {
@@ -32,14 +32,14 @@ interface InertiaPagePropsJson {
 /**
  * Helper to create a temporary directory for test output.
  */
-function createTempDir(): string {
+function _createTempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "litestar-vite-test-"))
 }
 
 /**
  * Helper to create a test inertia-pages.json file.
  */
-function createTestPagesJson(tmpDir: string, data: InertiaPagePropsJson): string {
+function _createTestPagesJson(tmpDir: string, data: InertiaPagePropsJson): string {
   const pagesPath = path.join(tmpDir, "inertia-pages.json")
   fs.writeFileSync(pagesPath, JSON.stringify(data, null, 2))
   return pagesPath
