@@ -51,8 +51,12 @@ Use the CLI to scaffold any framework:
 
 .. code-block:: bash
 
-    # React
+    # React (SPA)
     litestar assets init --template react
+
+    # React with routing (new in v0.15)
+    litestar assets init --template react-router
+    litestar assets init --template react-tanstack
 
     # Vue
     litestar assets init --template vue
@@ -63,13 +67,21 @@ Use the CLI to scaffold any framework:
     # Angular (Vite-based)
     litestar assets init --template angular
 
+    # Angular CLI (traditional)
+    litestar assets init --template angular-cli
+
     # HTMX
     litestar assets init --template htmx
+
+    # Meta-frameworks
+    litestar assets init --template nuxt
+    litestar assets init --template sveltekit
+    litestar assets init --template astro
 
     # With Inertia.js
     litestar assets init --template react-inertia
     litestar assets init --template vue-inertia
-    litestar assets init --template svelte-inertia
+    litestar assets init --template svelte-inertia  # New in v0.15
 
 Framework Comparison
 --------------------

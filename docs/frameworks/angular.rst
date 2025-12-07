@@ -64,7 +64,7 @@ Vite Configuration
     export default defineConfig({
       plugins: [
         analog(),
-        litestar({ input: ["src/main.ts"], resourceDirectory: "src" }),
+        litestar({ input: ["src/main.ts"] }),  // resourceDir read from .litestar.json
       ],
     });
 

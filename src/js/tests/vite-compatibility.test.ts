@@ -66,7 +66,7 @@ describe("Vite 7.0 Compatibility", () => {
     it("handles Vite 7.0 build optimizations", () => {
       const plugin = litestar({
         input: "resources/js/app.ts",
-        bundleDirectory: "dist",
+        bundleDir: "dist",
       })[0]
 
       const config = plugin.config({}, { command: "build", mode: "production" })
@@ -444,7 +444,7 @@ describe("Vite 7.0 Compatibility", () => {
       // Test that older configurations still work
       const plugin = litestar({
         input: "resources/js/app.js",
-        bundleDirectory: "public",
+        bundleDir: "public",
         assetUrl: "/static/",
       })[0]
 

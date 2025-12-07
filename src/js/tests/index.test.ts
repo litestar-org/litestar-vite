@@ -153,9 +153,9 @@ describe("litestar-vite-plugin", () => {
     const plugin = litestar({
       input: "resources/js/app.ts",
       assetUrl: "other-static",
-      bundleDirectory: "other-build",
+      bundleDir: "other-build",
       ssr: "resources/js/ssr.ts",
-      ssrOutputDirectory: "other-ssr-output",
+      ssrOutDir: "other-ssr-output",
     })[0]
 
     const config = plugin.config({}, { command: "build", mode: "production" })
@@ -201,10 +201,10 @@ describe("litestar-vite-plugin", () => {
     }
   })
 
-  it("checks bundleDirectory for index.html when auto-detecting", async () => {
+  it("checks bundleDir for index.html when auto-detecting", async () => {
     const plugin = litestar({
       input: "resources/js/app.ts",
-      bundleDirectory: "custom-dist",
+      bundleDir: "custom-dist",
     })[0]
 
     const accessSpy = vi.spyOn(fs.promises, "access").mockImplementation((p: fs.PathLike) => {
@@ -312,7 +312,7 @@ describe("litestar-vite-plugin", () => {
   it("accepts a partial configuration with an asset URL", () => {
     const plugin = litestar({
       input: "resources/js/app.js",
-      bundleDirectory: "/public/build/",
+      bundleDir: "/public/build/",
       assetUrl: "/over/the/rainbow/",
       ssr: "resources/js/ssr.js",
     })[0]
@@ -349,21 +349,21 @@ describe("litestar-vite-plugin", () => {
     expect(prodConfig.base).toBe("http://example.com/")
   })
 
-  it("prevents setting an empty bundleDirectory", () => {
+  it("prevents setting an empty bundleDir", () => {
     expect(
       () =>
         litestar({
           input: "resources/js/app.js",
-          bundleDirectory: "",
+          bundleDir: "",
         })[0],
-    ).toThrowError("bundleDirectory must be a subdirectory")
+    ).toThrowError("bundleDir must be a subdirectory")
   })
 
   it("handles surrounding slashes on directories", () => {
     const plugin = litestar({
       input: "resources/js/app.js",
-      bundleDirectory: "/build/test/",
-      ssrOutputDirectory: "/ssr-output/test/",
+      bundleDir: "/build/test/",
+      ssrOutDir: "/ssr-output/test/",
     })[0]
 
     const config = plugin.config({}, { command: "build", mode: "production" })
@@ -686,7 +686,7 @@ describe("litestar-vite-plugin", () => {
 
       plugin = litestar({
         input: "resources/js/app.js",
-        resourceDirectory: testResourceDir,
+        resourceDir: testResourceDir,
         autoDetectIndex: true,
         ...pluginOptions,
       })[0]

@@ -84,7 +84,7 @@ Inertia's Axios instance is pre-configured, but for manual requests:
 SPA Mode
 --------
 
-In SPA mode, CSRF tokens are injected via ``HtmlTransformer``:
+In SPA mode, CSRF tokens are injected via HTML transformation:
 
 .. code-block:: javascript
 

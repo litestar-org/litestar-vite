@@ -103,7 +103,7 @@ The ``component_opt_keys`` parameter controls which decorator keys specify the c
 SPA Mode
 --------
 
-SPA mode uses ``HtmlTransformer`` instead of Jinja2 templates:
+SPA mode uses HTML transformation instead of Jinja2 templates:
 
 .. code-block:: python
 
@@ -171,6 +171,29 @@ Controls TypeScript type generation for page props.
            include_default_auth=False,  # Custom user model
        ),
    )
+
+Vite Plugin Auto-Detection
+--------------------------
+
+When you enable Inertia (`inertia=True`), the Python backend writes a `.litestar.json` file
+with `mode: "inertia"`. The Vite plugin automatically reads this file and enables `inertiaMode`,
+which:
+
+- Disables auto-detection of `index.html` in the project
+- Shows a placeholder page when accessing Vite directly, directing users to the backend URL
+- Displays "Index Mode: Inertia" in the dev server console
+
+This ensures users access your app through Litestar (where Inertia responses are generated)
+rather than directly through Vite.
+
+You can also explicitly set `inertiaMode: true` in your `vite.config.ts`:
+
+.. code-block:: javascript
+
+   litestar({
+     input: ['resources/main.tsx'],
+     inertiaMode: true,  // Explicit (normally auto-detected)
+   })
 
 See Also
 --------

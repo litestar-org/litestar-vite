@@ -67,7 +67,7 @@ src/py/litestar_vite/     # Python library
   ├── plugin.py           # VitePlugin
   ├── loader.py           # ViteAssetLoader
   ├── spa.py              # ViteSPAHandler (async + sync)
-  ├── html_transform.py   # HtmlTransformer
+  ├── html_transform.py   # HTML transformation functions
   ├── deploy.py           # CDN deployment
   ├── codegen.py          # Route type generation
   └── inertia/            # Inertia.js integration

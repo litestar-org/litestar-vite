@@ -122,7 +122,7 @@ def test_doctor_no_issues(doctor: ViteDoctor, tmp_path: Path) -> None:
     export default defineConfig({
         plugins: [litestar({
             assetUrl: '/static/',
-            bundleDirectory: 'public',
+            bundleDir: 'public',
             hotFile: 'public/hot',
             types: {
                 enabled: true,
@@ -185,7 +185,7 @@ def test_doctor_manifest_missing(doctor: ViteDoctor, tmp_path: Path) -> None:
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({
         plugins: [...litestar({
-            bundleDirectory: 'REPLACE_ME',
+            bundleDir: 'REPLACE_ME',
         })]
     })
     """)
@@ -212,7 +212,7 @@ def test_doctor_hotfile_missing(doctor: ViteDoctor, tmp_path: Path) -> None:
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({
         plugins: [...litestar({
-            bundleDirectory: 'REPLACE_ME',
+            bundleDir: 'REPLACE_ME',
         })]
     })
     """)
@@ -237,7 +237,7 @@ def test_doctor_env_mismatch(doctor: ViteDoctor, tmp_path: Path, monkeypatch: py
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({
         plugins: [...litestar({
-            bundleDirectory: 'public',
+            bundleDir: 'public',
         })]
     })
     """)

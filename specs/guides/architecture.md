@@ -44,7 +44,7 @@ Key `RuntimeConfig` options:
 - **`is_react`**: Enable React Fast Refresh
 - **`ssr_enabled`**: Enable Server-Side Rendering
 
-Python is the source of truth: `set_environment()` now writes `.litestar.json` (path exported via `LITESTAR_VITE_CONFIG_PATH`) containing `assetUrl`, `bundleDirectory`, `resourceDirectory`, `publicDir`, `manifest`, `ssrOutDir`, typegen paths, and deploy defaults. The JS plugin consumes this file to set defaults; only override in `vite.config.ts` when you intentionally diverge.
+Python is the source of truth: `set_environment()` writes `.litestar.json` containing `assetUrl`, `bundleDir`, `resourceDir`, `publicDir`, `manifest`, `ssrOutDir`, `mode`, typegen paths, and deploy defaults. The JS plugin reads this file automatically - only `input` is required in `vite.config.ts`. Override only when you intentionally diverge from Python config.
 
 ### Core Modules
 
@@ -60,7 +60,7 @@ The backend is organized into specialized modules:
 
 3. **SPA Support**:
     - `spa.py`: `ViteSPAHandler` - serves SPA index.html in dev/production modes with both async and sync HTTP client support
-    - `html_transform.py`: `HtmlTransformer` - HTML manipulation for route injection
+    - `html_transform.py`: HTML transformation functions (`inject_head_script`, `set_data_attribute`, etc.)
     - Key features: `is_initialized` property, `get_html_sync()` for sync contexts, cached HTML in production
 
 4. **CLI & Tooling**:
@@ -152,18 +152,27 @@ This is the preferred routing method over the untyped runtime helpers.
 
 ### Vite Plugin Configuration
 
-The `litestar-vite-plugin` (default export in `src/js/src/index.ts`) configures Vite to work with Litestar. Key options:
+The `litestar-vite-plugin` (default export in `src/js/src/index.ts`) configures Vite to work with Litestar.
 
-- **`input`**: Entry points to compile (required).
+When running via Litestar CLI, the plugin reads defaults from `.litestar.json` automatically. Only `input` is required:
+
+```typescript
+litestar({ input: ['src/main.ts'] })
+```
+
+Key options (auto-populated from `.litestar.json` when available):
+
+- **`input`**: Entry points to compile (**required**).
 - **`assetUrl`**: Base path for asset URLs (default: `/static/`).
-- **`bundleDirectory`**: Output directory for assets (default: `public/dist`).
-- **`resourceDirectory`**: Source directory (default: `resources`).
-- **`hotFile`**: Path to the hot file for HMR (default: `public/hot`).
+- **`bundleDir`**: Output directory for assets (default: `public`).
+- **`resourceDir`**: Source directory (default: `resources`).
+- **`hotFile`**: Path to the hot file for HMR (default: `${bundleDir}/hot`).
 - **`ssr`**: SSR entry point.
-- **`ssrOutputDirectory`**: Output directory for SSR bundle.
+- **`ssrOutDir`**: Output directory for SSR bundle.
 - **`refresh`**: Configuration for full page reload on file changes.
 - **`detectTls`**: Utilize TLS certificates.
 - **`autoDetectIndex`**: Automatically detect `index.html` (default: `true`).
+- **`inertiaMode`**: Disable index auto-detection for Inertia apps (auto-detected from `.litestar.json`).
 
 ### Framework Integrations
 
