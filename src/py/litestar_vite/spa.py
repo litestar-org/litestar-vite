@@ -269,8 +269,7 @@ class ViteSPAHandler:
         if resolved_path is None:
             self._raise_index_not_found()
 
-        # Read as bytes first (more efficient), then decode
-        self._cached_bytes = await resolved_path.read_bytes()  # type: ignore[union-attr]
+        self._cached_bytes = await resolved_path.read_bytes()
         self._cached_html = self._cached_bytes.decode("utf-8")
 
     def _load_index_html_sync(self) -> None:
@@ -292,8 +291,7 @@ class ViteSPAHandler:
         if resolved_path is None:
             self._raise_index_not_found()
 
-        # Read as bytes first (more efficient), then decode
-        self._cached_bytes = resolved_path.read_bytes()  # type: ignore[union-attr]
+        self._cached_bytes = resolved_path.read_bytes()
         self._cached_html = self._cached_bytes.decode("utf-8")
 
     def _raise_index_not_found(self) -> NoReturn:
