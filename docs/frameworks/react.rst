@@ -17,83 +17,59 @@ This creates a React 18+ project with TypeScript support.
 Project Structure
 -----------------
 
+React applications use **SPA mode** - Vite serves the ``index.html`` directly:
+
 .. code-block:: text
 
     my-app/
-    ├── app.py              # Litestar backend
+    ├── app.py              # Litestar backend (API only)
+    ├── index.html          # Vite entry point (root level)
     ├── package.json
     ├── vite.config.ts
     ├── tsconfig.json
-    ├── templates/
-    │   └── index.html      # Jinja template
     └── src/
-        ├── main.tsx        # Entry point
+        ├── main.tsx        # React entry point
         ├── App.tsx         # Root component
-        └── style.css
+        └── app.css
 
 Backend Setup
 -------------
 
-.. code-block:: python
+In SPA mode, Litestar serves only your API endpoints. The VitePlugin handles
+serving the frontend automatically:
 
-    from pathlib import Path
-    from litestar import Litestar, get
-    from litestar.contrib.jinja import JinjaTemplateEngine
-    from litestar.response import Template
-    from litestar.template.config import TemplateConfig
-    from litestar_vite import ViteConfig, VitePlugin
-    from litestar_vite.config import PathConfig
+.. literalinclude:: /../examples/react/app.py
+   :language: python
+   :start-after: # [docs-start:spa-vite-config]
+   :end-before: # [docs-end:spa-vite-config]
+   :caption: examples/react/app.py
 
-    @get("/")
-    async def index() -> Template:
-        return Template(template_name="index.html")
+Key points:
 
-    @get("/api/data")
-    async def get_data() -> dict:
-        return {"message": "Hello from Litestar!"}
-
-    vite = VitePlugin(config=ViteConfig(dev_mode=True))
-
-    app = Litestar(
-        plugins=[vite],
-        route_handlers=[index, get_data],
-        template_config=TemplateConfig(
-            directory=Path("templates"),
-            engine=JinjaTemplateEngine,
-        ),
-    )
+- ``mode="spa"`` tells Vite to serve ``index.html`` for non-API routes
+- No ``template_config`` needed - Jinja is not used in SPA mode
+- ``TypeGenConfig()`` enables TypeScript type generation from OpenAPI
 
 Vite Configuration
 ------------------
 
-.. code-block:: typescript
+.. literalinclude:: /../examples/react/vite.config.ts
+   :language: typescript
+   :caption: vite.config.ts
 
-    import { defineConfig } from "vite";
-    import react from "@vitejs/plugin-react";
-    import litestar from "litestar-vite-plugin";
+HTML Entry Point
+----------------
 
-    export default defineConfig({
-      plugins: [
-        react(),
-        litestar({ input: ["src/main.tsx"], resourceDirectory: "src" }),
-      ],
-    });
+In SPA mode, ``index.html`` lives at the project root and uses standard Vite syntax:
 
-Template
---------
+.. literalinclude:: /../examples/react/index.html
+   :language: html
+   :caption: index.html
 
-.. code-block:: jinja
+.. note::
 
-    <!DOCTYPE html>
-    <html>
-    <head>
-        {{ vite_hmr() }}
-        {{ vite('src/main.tsx') }}
-    </head>
-    <body>
-        <div id="root"></div>
-    </body>
-    </html>
+   Unlike template mode, SPA mode doesn't use Jinja helpers like ``{{ vite() }}``.
+   Vite processes the HTML directly.
 
 React Component
 ---------------
@@ -106,9 +82,9 @@ React Component
       const [message, setMessage] = useState("");
 
       useEffect(() => {
-        fetch("/api/data")
+        fetch("/api/summary")
           .then((res) => res.json())
-          .then((data) => setMessage(data.message));
+          .then((data) => setMessage(data.headline));
       }, []);
 
       return (
@@ -126,16 +102,28 @@ Running
 
 .. code-block:: bash
 
-    # Recommended: one process; Litestar starts and proxies Vite for you
+    # Recommended: Litestar proxies Vite automatically in dev mode
     litestar run --reload
 
-    # Two-port setup (optional)
-    litestar assets serve  # starts Vite dev server
-    # and in another shell
-    litestar run --reload  # backend only
+    # Alternative: Two-process setup
+    litestar assets serve  # Vite dev server
+    litestar run --reload  # Backend only (in another terminal)
+
+Type Generation
+---------------
+
+With ``types=TypeGenConfig()`` enabled, run:
+
+.. code-block:: bash
+
+    litestar assets generate-types
+
+This generates TypeScript types from your OpenAPI schema. See :doc:`/usage/types`
+for more details.
 
 See Also
 --------
 
 - :doc:`inertia` - React with Inertia.js for server-side routing
+- :doc:`/usage/types` - TypeScript type generation
 - `Example: react <https://github.com/litestar-org/litestar-vite/tree/main/examples/react>`_

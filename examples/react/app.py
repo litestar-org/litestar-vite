@@ -80,6 +80,7 @@ class LibraryController(Controller):
         return _get_book(book_id)
 
 
+# [docs-start:spa-vite-config]
 # VitePlugin with mode="spa" automatically:
 # - Registers catch-all route for index.html
 # - Injects route metadata as window.__LITESTAR_ROUTES__ for client-side routing
@@ -89,7 +90,6 @@ vite = VitePlugin(
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here),
         types=TypeGenConfig(),  # generate_sdk=True is the default
-        # Fixed port for E2E tests - can be removed for local dev or customized for production
         runtime=RuntimeConfig(port=5001),
     )
 )
@@ -99,3 +99,4 @@ app = Litestar(
     plugins=[vite],
     debug=True,
 )
+# [docs-end:spa-vite-config]

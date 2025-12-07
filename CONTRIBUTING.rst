@@ -59,6 +59,51 @@ To run or build the docs locally, you need to first install the required depende
 
 Then you can serve the documentation with ``make docs-serve``, or build them with ``make docs``.
 
+Demo GIFs
++++++++++
+
+The documentation includes animated GIFs demonstrating key features. These are generated from VHS tape files
+located in ``docs/_tapes/``.
+
+**Requirements:**
+
+- `VHS <https://github.com/charmbracelet/vhs>`_ - Terminal recorder
+- ``ffmpeg`` - Video processing (VHS dependency)
+- ``ttyd`` - Terminal emulator (VHS dependency)
+
+**Installation:**
+
+.. code-block:: bash
+
+    # macOS
+    brew install vhs
+
+    # Linux (with Go installed)
+    go install github.com/charmbracelet/vhs@latest
+
+**Regenerating demos:**
+
+.. code-block:: bash
+
+    make docs-demos
+
+This command processes all ``.tape`` files in ``docs/_tapes/`` and outputs GIFs to ``docs/_static/demos/``.
+
+**Available demos:**
+
+- ``scaffolding.gif`` - Project scaffolding with ``litestar assets init``
+- ``hmr.gif`` - Integrated dev server with HMR
+- ``type-generation.gif`` - TypeScript type generation from OpenAPI
+- ``assets-cli.gif`` - Asset management CLI overview
+- ``production-build.gif`` - Production build workflow
+
+**Creating new demos:**
+
+1. Create a new ``.tape`` file in ``docs/_tapes/``
+2. Follow the existing tape structure (see any existing tape for reference)
+3. Run ``make docs-demos`` to generate the GIF
+4. Reference the GIF in documentation with ``.. image:: /_static/demos/your-demo.gif``
+
 Creating a new release
 ----------------------
 

@@ -16,90 +16,59 @@ This creates a Vue 3 project with TypeScript support.
 Project Structure
 -----------------
 
+Vue applications use **SPA mode** - Vite serves the ``index.html`` directly:
+
 .. code-block:: text
 
     my-app/
-    ├── app.py              # Litestar backend
+    ├── app.py              # Litestar backend (API only)
+    ├── index.html          # Vite entry point (root level)
     ├── package.json
     ├── vite.config.ts
     ├── tsconfig.json
-    ├── templates/
-    │   └── index.html      # Jinja template
     └── src/
-        ├── main.ts         # Entry point
+        ├── main.ts         # Vue entry point
         ├── App.vue         # Root component
-        ├── style.css
-        └── components/
-            └── Counter.vue
+        └── style.css
 
 Backend Setup
 -------------
 
-.. code-block:: python
+In SPA mode, Litestar serves only your API endpoints. The VitePlugin handles
+serving the frontend automatically:
 
-    from pathlib import Path
-    from litestar import Litestar, get
-    from litestar.contrib.jinja import JinjaTemplateEngine
-    from litestar.response import Template
-    from litestar.template.config import TemplateConfig
-    from litestar_vite import ViteConfig, VitePlugin
-    from litestar_vite.config import PathConfig
+.. literalinclude:: /../examples/vue/app.py
+   :language: python
+   :start-after: # [docs-start:spa-vite-config]
+   :end-before: # [docs-end:spa-vite-config]
+   :caption: examples/vue/app.py
 
-    @get("/")
-    async def index() -> Template:
-        return Template(template_name="index.html")
+Key points:
 
-    @get("/api/users")
-    async def get_users() -> dict:
-        return {
-            "users": [
-                {"id": 1, "name": "Alice"},
-                {"id": 2, "name": "Bob"},
-            ]
-        }
-
-    vite = VitePlugin(config=ViteConfig(dev_mode=True))
-
-    app = Litestar(
-        plugins=[vite],
-        route_handlers=[index, get_users],
-        template_config=TemplateConfig(
-            directory=Path("templates"),
-            engine=JinjaTemplateEngine,
-        ),
-    )
+- ``mode="spa"`` tells Vite to serve ``index.html`` for non-API routes
+- No ``template_config`` needed - Jinja is not used in SPA mode
+- ``TypeGenConfig()`` enables TypeScript type generation from OpenAPI
 
 Vite Configuration
 ------------------
 
-.. code-block:: typescript
+.. literalinclude:: /../examples/vue/vite.config.ts
+   :language: typescript
+   :caption: vite.config.ts
 
-    import { defineConfig } from "vite";
-    import vue from "@vitejs/plugin-vue";
-    import litestar from "litestar-vite-plugin";
+HTML Entry Point
+----------------
 
-    export default defineConfig({
-      plugins: [
-        vue(),
-        litestar({ input: ["src/main.ts"], resourceDirectory: "src" }),
-      ],
-    });
+In SPA mode, ``index.html`` lives at the project root and uses standard Vite syntax:
 
-Template
---------
+.. literalinclude:: /../examples/vue/index.html
+   :language: html
+   :caption: index.html
 
-.. code-block:: jinja
+.. note::
 
-    <!DOCTYPE html>
-    <html>
-    <head>
-        {{ vite_hmr() }}
-        {{ vite('src/main.ts') }}
-    </head>
-    <body>
-        <div id="app"></div>
-    </body>
-    </html>
+   Unlike template mode, SPA mode doesn't use Jinja helpers like ``{{ vite() }}``.
+   Vite processes the HTML directly.
 
 Vue Component
 -------------
@@ -109,28 +78,23 @@ Vue Component
     <script setup lang="ts">
     import { ref, onMounted } from "vue";
 
-    interface User {
-      id: number;
-      name: string;
+    interface Summary {
+      app: string;
+      headline: string;
     }
 
-    const users = ref<User[]>([]);
+    const summary = ref<Summary | null>(null);
 
     onMounted(async () => {
-      const res = await fetch("/api/users");
-      const data = await res.json();
-      users.value = data.users;
+      const res = await fetch("/api/summary");
+      summary.value = await res.json();
     });
     </script>
 
     <template>
       <div>
         <h1>Vue + Litestar</h1>
-        <ul>
-          <li v-for="user in users" :key="user.id">
-            {{ user.name }}
-          </li>
-        </ul>
+        <p v-if="summary">{{ summary.headline }}</p>
       </div>
     </template>
 
@@ -139,16 +103,28 @@ Running
 
 .. code-block:: bash
 
-    # Recommended: Litestar starts and proxies Vite when dev_mode=True
+    # Recommended: Litestar proxies Vite automatically in dev mode
     litestar run --reload
 
-    # Two-port setup (optional)
+    # Alternative: Two-process setup
     litestar assets serve  # Vite dev server
-    litestar run --reload  # backend
+    litestar run --reload  # Backend only (in another terminal)
+
+Type Generation
+---------------
+
+With ``types=TypeGenConfig()`` enabled, run:
+
+.. code-block:: bash
+
+    litestar assets generate-types
+
+This generates TypeScript types from your OpenAPI schema. See :doc:`/usage/types`
+for more details.
 
 See Also
 --------
 
 - :doc:`inertia` - Vue with Inertia.js for server-side routing
+- :doc:`/usage/types` - TypeScript type generation
 - `Example: vue <https://github.com/litestar-org/litestar-vite/tree/main/examples/vue>`_
-- `Example: vue-inertia <https://github.com/litestar-org/litestar-vite/tree/main/examples/vue-inertia>`_
