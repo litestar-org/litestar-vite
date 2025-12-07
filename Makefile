@@ -286,6 +286,9 @@ docs-demos:                                        ## Generate demo GIFs locally
 	done
 	@echo "${OK} Demo GIFs generated successfully"
 
+.PHONY: docs-all
+docs-all: docs-demos docs                          ## Generate demos and build documentation
+
 # =============================================================================
 # Example Management
 # =============================================================================

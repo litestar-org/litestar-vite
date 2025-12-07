@@ -13,23 +13,15 @@ Root Template
 The root template is the HTML shell for your Inertia application.
 It's rendered on initial page loads with page data embedded.
 
-.. code-block:: html
+.. literalinclude:: /../examples/react-inertia-jinja/templates/index.html
+   :language: jinja
    :caption: templates/index.html
 
-   <!DOCTYPE html>
-   <html lang="en">
-   <head>
-       <meta charset="utf-8" />
-       <meta name="viewport" content="width=device-width, initial-scale=1" />
-       <title>My App</title>
-       {{ vite('resources/main.ts') }}
-       {{ vite_hmr() }}
-   </head>
-   <body>
-       <div id="app" data-page="{{ inertia }}"></div>
-       {{ js_routes }}
-   </body>
-   </html>
+Key features:
+
+- ``<title inertia>`` - Enables dynamic title updates via Inertia's ``<Head>`` component
+- ``{{ inertia | safe }}`` - JSON-encoded page props (use ``| safe`` to prevent escaping)
+- ``{{ vite_hmr() }}`` and ``{{ vite() }}`` - Vite asset injection
 
 Template Helpers
 ----------------
@@ -46,10 +38,8 @@ These helpers are automatically available in your templates:
      - Include Vite assets (JS, CSS)
    * - ``{{ vite_hmr() }}``
      - HMR client script (dev mode)
-   * - ``{{ inertia }}``
+   * - ``{{ inertia | safe }}``
      - JSON-encoded page props for ``data-page``
-   * - ``{{ js_routes }}``
-     - Route definitions script
    * - ``{{ csrf_input }}``
      - Hidden CSRF input field
    * - ``{{ csrf_token }}``
@@ -58,7 +48,7 @@ These helpers are automatically available in your templates:
 The inertia Helper
 ------------------
 
-The ``{{ inertia }}`` helper outputs JSON for the ``data-page`` attribute:
+The ``{{ inertia | safe }}`` helper outputs JSON for the ``data-page`` attribute:
 
 .. code-block:: json
 
@@ -69,24 +59,39 @@ The ``{{ inertia }}`` helper outputs JSON for the ``data-page`` attribute:
      "version": "abc123"
    }
 
-Always use it in the ``data-page`` attribute:
+.. important::
+
+   Always use ``| safe`` with the inertia helper to prevent HTML escaping:
+
+   .. code-block:: html
+
+      <div id="app" data-page='{{ inertia | safe }}'></div>
+
+   Without ``| safe``, special characters in props will be escaped, breaking JSON parsing.
+
+Dynamic Titles
+--------------
+
+Add the ``inertia`` attribute to ``<title>`` for dynamic title support:
 
 .. code-block:: html
 
-   <div id="app" data-page="{{ inertia }}"></div>
+   <title inertia>Default Title</title>
 
-The js_routes Helper
---------------------
+Then update titles from your components using Inertia's ``<Head>`` component:
 
-``{{ js_routes }}`` injects route definitions as a script:
+.. code-block:: tsx
 
-.. code-block:: html
+   import { Head } from '@inertiajs/react';
 
-   <script type="module">
-   globalThis.routes = JSON.parse('{"home":"/","users":"/users",...}')
-   </script>
-
-Routes are available as ``window.routes`` for the ``route()`` helper.
+   function Dashboard() {
+     return (
+       <>
+         <Head title="Dashboard - My App" />
+         {/* page content */}
+       </>
+     );
+   }
 
 SPA Mode (No Templates)
 -----------------------
@@ -130,7 +135,7 @@ Change the root element selector:
 
 .. code-block:: html
 
-   <div id="root" data-page="{{ inertia }}"></div>
+   <div id="root" data-page='{{ inertia | safe }}'></div>
 
 Multiple Templates
 ------------------
@@ -183,8 +188,7 @@ Using template inheritance:
    {% extends "base.html" %}
 
    {% block body %}
-   <div id="app" data-page="{{ inertia }}"></div>
-   {{ js_routes }}
+   <div id="app" data-page='{{ inertia | safe }}'></div>
    {% endblock %}
 
 See Also

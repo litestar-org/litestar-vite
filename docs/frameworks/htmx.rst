@@ -3,6 +3,7 @@ HTMX
 ====
 
 HTMX integration for hypermedia-driven applications with minimal JavaScript.
+Litestar-Vite provides seamless integration with the `litestar-htmx <https://github.com/litestar-org/litestar-htmx>`_ extension.
 
 Quick Start
 -----------
@@ -17,107 +18,124 @@ Project Structure
 .. code-block:: text
 
     my-app/
-    ├── app.py              # Litestar backend
+    ├── app.py                    # Litestar backend with HTMX
     ├── package.json
     ├── vite.config.ts
     ├── templates/
-    │   ├── index.html      # Main page
-    │   └── partials/       # HTMX partials
-    │       └── items.html
-    └── src/
-        ├── main.ts         # Entry (minimal)
+    │   ├── base.html.j2          # Base template with Vite + HTMX
+    │   ├── index.html.j2         # Main page
+    │   └── partials/
+    │       └── book_card.html.j2 # Reusable fragment
+    └── resources/
+        ├── main.js               # Entry (minimal)
         └── style.css
 
 Backend Setup
 -------------
 
-.. code-block:: python
+HTMX applications use ``mode="template"`` with the ``HTMXPlugin`` from ``litestar-htmx``:
 
-    from pathlib import Path
-    from litestar import Litestar, get
-    from litestar.contrib.jinja import JinjaTemplateEngine
-    from litestar.response import Template
-    from litestar.template.config import TemplateConfig
-    from litestar_vite import ViteConfig, VitePlugin
-    from litestar_vite.config import PathConfig
+.. literalinclude:: /../examples/jinja-htmx/app.py
+   :language: python
+   :start-after: # [docs-start:htmx-imports]
+   :end-before: # [docs-end:htmx-imports]
+   :caption: Imports for HTMX application
 
-    @get("/")
-    async def index() -> Template:
-        return Template(template_name="index.html")
+.. literalinclude:: /../examples/jinja-htmx/app.py
+   :language: python
+   :start-after: # [docs-start:htmx-vite-config]
+   :end-before: # [docs-end:htmx-vite-config]
+   :caption: VitePlugin and app configuration
 
-    @get("/items")
-    async def get_items() -> Template:
-        items = [
-            {"id": 1, "name": "Item 1"},
-            {"id": 2, "name": "Item 2"},
-        ]
-        return Template(
-            template_name="partials/items.html",
-            context={"items": items},
-        )
+Key points:
 
-    vite = VitePlugin(
-        config=ViteConfig(
-            dev_mode=True,
-            paths=PathConfig(
-                bundle_dir=Path("public"),
-                resource_dir=Path("src"),
-            ),
-        ),
-    )
+- ``mode="template"`` enables Jinja2 template rendering
+- ``HTMXPlugin()`` adds HTMX-specific request/response handling
+- Templates use ``.html.j2`` extension (Jinja2)
 
-    app = Litestar(
-        plugins=[vite],
-        route_handlers=[index, get_items],
-        template_config=TemplateConfig(
-            directory=Path("templates"),
-            engine=JinjaTemplateEngine,
-        ),
-    )
-
-Main Template
+Base Template
 -------------
 
-.. code-block:: jinja
+The base template sets up Vite HMR and the Litestar HTMX extension:
 
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-        {{ vite_hmr() }}
-        {{ vite('src/main.ts') }}
-    </head>
-    <body>
-        <h1>HTMX + Litestar</h1>
+.. literalinclude:: /../examples/jinja-htmx/templates/base.html.j2
+   :language: html+jinja
+   :caption: templates/base.html.j2
 
-        <button hx-get="/items" hx-target="#items">
-            Load Items
-        </button>
+Key features:
 
-        <div id="items">
-            <!-- Items loaded here -->
-        </div>
-    </body>
-    </html>
+- ``{{ vite_hmr() }}`` - Enables hot module replacement in development
+- ``{{ vite('resources/main.js') }}`` - Loads bundled assets
+- ``hx-ext="litestar"`` - Enables the Litestar HTMX extension for JSON templating
+- ``csrf_token`` - CSRF protection for forms and HTMX requests
+
+HTMX Fragments
+--------------
+
+Return partial HTML for HTMX swaps using ``HTMXTemplate``:
+
+.. literalinclude:: /../examples/jinja-htmx/app.py
+   :language: python
+   :start-after: # [docs-start:htmx-fragment]
+   :end-before: # [docs-end:htmx-fragment]
+   :caption: Fragment endpoint with HTMXTemplate
+   :dedent: 4
+
+The ``HTMXTemplate`` response allows:
+
+- ``re_target`` - Override the target element
+- ``re_swap`` - Override the swap method
+- ``push_url`` - Control browser history
 
 Partial Template
 ----------------
 
-.. code-block:: jinja
+Fragment templates are simple Jinja2 partials:
 
-    {# templates/partials/items.html #}
-    <ul>
-    {% for item in items %}
-        <li>{{ item.name }}</li>
-    {% endfor %}
-    </ul>
+.. literalinclude:: /../examples/jinja-htmx/templates/partials/book_card.html.j2
+   :language: html+jinja
+   :caption: templates/partials/book_card.html.j2
+
+JSON Templating (Litestar Extension)
+------------------------------------
+
+The ``hx-ext="litestar"`` extension enables client-side JSON templating
+using ``hx-swap="json"`` with template directives:
+
+.. code-block:: html+jinja
+
+    <!-- Fetch JSON and render client-side -->
+    <button hx-get="/api/books" hx-target="#books" hx-swap="json">
+        Load Books
+    </button>
+
+    <div id="books">
+        <!-- ls-for iterates over JSON array -->
+        <template ls-for="book in $data" ls-key="book.id">
+            <article>
+                <h3>${book.title}</h3>
+                <p>${book.author} - ${book.year}</p>
+            </article>
+        </template>
+    </div>
+
+Template directives:
+
+- ``ls-for="item in $data"`` - Iterate over JSON response (``$data`` is the response)
+- ``ls-key="item.id"`` - Unique key for efficient updates
+- ``ls-if="condition"`` - Conditional rendering
+- ``ls-else`` - Else branch for conditionals
+- ``${expression}`` - Interpolate values (JavaScript template literal syntax)
+
+This enables hybrid rendering: server-side HTML for initial load, client-side
+templating for dynamic updates from JSON APIs.
 
 HTMX Patterns
 -------------
 
 **Inline Editing**:
 
-.. code-block:: jinja
+.. code-block:: html+jinja
 
     <div hx-get="/edit/{{ item.id }}"
          hx-trigger="click"
@@ -127,7 +145,7 @@ HTMX Patterns
 
 **Form Submission**:
 
-.. code-block:: jinja
+.. code-block:: html+jinja
 
     <form hx-post="/items"
           hx-target="#items"
@@ -138,7 +156,7 @@ HTMX Patterns
 
 **Delete with Confirmation**:
 
-.. code-block:: jinja
+.. code-block:: html+jinja
 
     <button hx-delete="/items/{{ item.id }}"
             hx-confirm="Delete this item?"
@@ -154,9 +172,11 @@ Why HTMX?
 - **Server-rendered**: Full HTML responses, great for SEO
 - **Progressive enhancement**: Works without JS (degrades gracefully)
 - **Simple mental model**: Request → HTML response → DOM update
+- **JSON templating**: Client-side rendering when needed via Litestar extension
 
 See Also
 --------
 
-- `Example: template-htmx <https://github.com/litestar-org/litestar-vite/tree/main/examples/template-htmx>`_
+- `Example: jinja-htmx <https://github.com/litestar-org/litestar-vite/tree/main/examples/jinja-htmx>`_
 - `HTMX Documentation <https://htmx.org/>`_
+- `litestar-htmx <https://github.com/litestar-org/litestar-htmx>`_

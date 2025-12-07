@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 
+# [docs-start:htmx-imports]
 from litestar import Controller, Litestar, get
 from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.exceptions import NotFoundException
@@ -13,6 +14,8 @@ from litestar_htmx.response import HTMXTemplate
 from msgspec import Struct
 
 from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
+
+# [docs-end:htmx-imports]
 
 here = Path(__file__).parent
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
@@ -57,6 +60,7 @@ def _get_summary() -> Summary:
     )
 
 
+# [docs-start:htmx-controller]
 class LibraryController(Controller):
     """Library API and web controller."""
 
@@ -66,6 +70,7 @@ class LibraryController(Controller):
         context = {"summary": _get_summary(), "books": BOOKS, "request": request}
         return Template(template_name="index.html.j2", context=context)
 
+    # [docs-start:htmx-fragment]
     @get("/fragments/book/{book_id:int}")
     async def book_fragment(self, book_id: int) -> Template:
         """Return a book card fragment for HTMX swaps."""
@@ -77,6 +82,8 @@ class LibraryController(Controller):
             re_swap="innerHTML",
             push_url=False,
         )
+
+    # [docs-end:htmx-fragment]
 
     @get("/api/summary")
     async def summary(self) -> Summary:
@@ -91,6 +98,10 @@ class LibraryController(Controller):
         return _get_book(book_id)
 
 
+# [docs-end:htmx-controller]
+
+
+# [docs-start:htmx-vite-config]
 vite = VitePlugin(
     config=ViteConfig(
         mode="template",
@@ -108,3 +119,4 @@ app = Litestar(
     template_config=templates,
     debug=True,
 )
+# [docs-end:htmx-vite-config]

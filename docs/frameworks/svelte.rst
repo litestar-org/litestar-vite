@@ -16,83 +16,59 @@ This creates a Svelte 5 project with TypeScript support.
 Project Structure
 -----------------
 
+Svelte applications use **SPA mode** - Vite serves the ``index.html`` directly:
+
 .. code-block:: text
 
     my-app/
-    ├── app.py              # Litestar backend
+    ├── app.py              # Litestar backend (API only)
+    ├── index.html          # Vite entry point (root level)
     ├── package.json
     ├── vite.config.ts
     ├── svelte.config.js
-    ├── templates/
-    │   └── index.html      # Jinja template
     └── src/
-        ├── main.ts         # Entry point
+        ├── main.ts         # Svelte entry point
         ├── App.svelte      # Root component
         └── style.css
 
 Backend Setup
 -------------
 
-.. code-block:: python
+In SPA mode, Litestar serves only your API endpoints. The VitePlugin handles
+serving the frontend automatically:
 
-    from pathlib import Path
-    from litestar import Litestar, get
-    from litestar.contrib.jinja import JinjaTemplateEngine
-    from litestar.response import Template
-    from litestar.template.config import TemplateConfig
-    from litestar_vite import ViteConfig, VitePlugin
-    from litestar_vite.config import PathConfig
+.. literalinclude:: /../examples/svelte/app.py
+   :language: python
+   :start-after: # [docs-start:spa-vite-config]
+   :end-before: # [docs-end:spa-vite-config]
+   :caption: examples/svelte/app.py
 
-    @get("/")
-    async def index() -> Template:
-        return Template(template_name="index.html")
+Key points:
 
-    @get("/api/greeting")
-    async def greeting() -> dict:
-        return {"text": "Hello from Litestar!"}
-
-    vite = VitePlugin(config=ViteConfig(dev_mode=True))
-
-    app = Litestar(
-        plugins=[vite],
-        route_handlers=[index, greeting],
-        template_config=TemplateConfig(
-            directory=Path("templates"),
-            engine=JinjaTemplateEngine,
-        ),
-    )
+- ``mode="spa"`` tells Vite to serve ``index.html`` for non-API routes
+- No ``template_config`` needed - Jinja is not used in SPA mode
+- ``TypeGenConfig()`` enables TypeScript type generation from OpenAPI
 
 Vite Configuration
 ------------------
 
-.. code-block:: typescript
+.. literalinclude:: /../examples/svelte/vite.config.ts
+   :language: typescript
+   :caption: vite.config.ts
 
-    import { defineConfig } from "vite";
-    import { svelte } from "@sveltejs/vite-plugin-svelte";
-    import litestar from "litestar-vite-plugin";
+HTML Entry Point
+----------------
 
-    export default defineConfig({
-      plugins: [
-        svelte(),
-        litestar({ input: ["src/main.ts"], resourceDirectory: "src" }),
-      ],
-    });
+In SPA mode, ``index.html`` lives at the project root and uses standard Vite syntax:
 
-Template
---------
+.. literalinclude:: /../examples/svelte/index.html
+   :language: html
+   :caption: index.html
 
-.. code-block:: jinja
+.. note::
 
-    <!DOCTYPE html>
-    <html>
-    <head>
-        {{ vite_hmr() }}
-        {{ vite('src/main.ts') }}
-    </head>
-    <body>
-        <div id="app"></div>
-    </body>
-    </html>
+   Unlike template mode, SPA mode doesn't use Jinja helpers like ``{{ vite() }}``.
+   Vite processes the HTML directly.
 
 Svelte Component
 ----------------
@@ -102,41 +78,48 @@ Svelte Component
     <script lang="ts">
       import { onMount } from "svelte";
 
-      let greeting = $state("");
+      let summary = $state<{ headline: string } | null>(null);
 
       onMount(async () => {
-        const res = await fetch("/api/greeting");
-        const data = await res.json();
-        greeting = data.text;
+        const res = await fetch("/api/summary");
+        summary = await res.json();
       });
     </script>
 
     <main>
       <h1>Svelte + Litestar</h1>
-      <p>{greeting}</p>
+      {#if summary}
+        <p>{summary.headline}</p>
+      {/if}
     </main>
-
-    <style>
-      main {
-        text-align: center;
-        padding: 2rem;
-      }
-    </style>
 
 Running
 -------
 
 .. code-block:: bash
 
-    # Recommended: Litestar starts and proxies Vite automatically
+    # Recommended: Litestar proxies Vite automatically in dev mode
     litestar run --reload
 
-    # Two-port setup (optional)
-    litestar assets serve
-    litestar run --reload
+    # Alternative: Two-process setup
+    litestar assets serve  # Vite dev server
+    litestar run --reload  # Backend only (in another terminal)
+
+Type Generation
+---------------
+
+With ``types=TypeGenConfig()`` enabled, run:
+
+.. code-block:: bash
+
+    litestar assets generate-types
+
+This generates TypeScript types from your OpenAPI schema. See :doc:`/usage/types`
+for more details.
 
 See Also
 --------
 
 - :doc:`inertia` - Svelte with Inertia.js for server-side routing
+- :doc:`/usage/types` - TypeScript type generation
 - `Example: svelte <https://github.com/litestar-org/litestar-vite/tree/main/examples/svelte>`_

@@ -83,9 +83,10 @@ class LibraryController(Controller):
         return _get_book(book_id)
 
 
-# Fixed port for E2E tests - can be removed for local dev or customized for production
+# [docs-start:spa-vite-config]
 vite = VitePlugin(
     config=ViteConfig(
+        mode="spa",
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here),
         types=TypeGenConfig(),
@@ -98,3 +99,4 @@ app = Litestar(
     plugins=[vite],
     debug=True,
 )
+# [docs-end:spa-vite-config]
