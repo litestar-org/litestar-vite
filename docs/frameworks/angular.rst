@@ -55,18 +55,16 @@ Backend Setup
 Vite Configuration
 ~~~~~~~~~~~~~~~~~~
 
-.. code-block:: typescript
+.. literalinclude:: /../examples/angular/vite.config.ts
+   :language: typescript
+   :caption: vite.config.ts
 
-    import { defineConfig } from "vite";
-    import analog from "@analogjs/vite-plugin-angular";
-    import litestar from "litestar-vite-plugin";
+Key configuration:
 
-    export default defineConfig({
-      plugins: [
-        analog(),
-        litestar({ input: ["src/main.ts"] }),  // resourceDir read from .litestar.json
-      ],
-    });
+- ``angular()`` plugin must come first
+- ``input`` includes both TypeScript entry and CSS
+- ``resourceDir`` explicitly set to ``src``
+- ``resolve.mainFields`` set to ``["module"]`` for Angular compatibility
 
 Angular Component
 ~~~~~~~~~~~~~~~~~

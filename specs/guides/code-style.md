@@ -1,5 +1,7 @@
 # Code Style Guide for litestar-vite
 
+**Version**: 0.15.0-beta.1 | **Updated**: 2025-12-07
+
 This document defines the code style and quality standards for both the Python backend and TypeScript frontend. Consistency is enforced through automated tooling.
 
 ## General Principles
@@ -49,7 +51,8 @@ All Python code is automatically formatted and linted using tools configured in 
 
 ### Config Source of Truth
 
-- When both Python and Vite need the same values (asset/base URL, bundle/resource dirs, manifest), prefer setting them in `ViteConfig`. `set_environment()` writes `.litestar.json` and the JS plugin uses it as defaults. Keep `vite.config.ts` overrides minimal.
+- When both Python and Vite need the same values (asset/base URL, bundle/resource dirs, manifest), prefer setting them in `ViteConfig`. The plugin's `on_app_init()` method writes `.litestar.json` during startup and the JS plugin uses it as defaults. Keep `vite.config.ts` overrides minimal.
+- See `specs/guides/config-precedence.md` for detailed configuration flow documentation.
 
 ## TypeScript/JavaScript Code Style
 

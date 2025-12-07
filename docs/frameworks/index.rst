@@ -44,6 +44,30 @@ working examples for each supported framework.
 
         Hypermedia-driven applications
 
+Meta-Frameworks
+~~~~~~~~~~~~~~~
+
+.. grid:: 1 1 2 3
+    :gutter: 3
+
+    .. grid-item-card:: :octicon:`rocket` Nuxt
+        :link: nuxt
+        :link-type: doc
+
+        Universal Vue 3 SSR framework
+
+    .. grid-item-card:: :octicon:`rocket` SvelteKit
+        :link: sveltekit
+        :link-type: doc
+
+        Full-stack Svelte framework
+
+    .. grid-item-card:: :octicon:`rocket` Astro
+        :link: astro
+        :link-type: doc
+
+        Content-focused multi-framework SSG/SSR
+
 Quick Scaffold
 --------------
 
@@ -125,6 +149,21 @@ Framework Comparison
      - Vite + HMR
      - No
      - Server-rendered, minimal JS
+   * - Nuxt
+     - ``pages/``
+     - Nuxt dev
+     - No
+     - Universal SSR, auto-routing
+   * - SvelteKit
+     - ``src/routes/``
+     - SvelteKit dev
+     - No
+     - Full-stack Svelte, SSR
+   * - Astro
+     - ``src/pages/``
+     - Astro dev
+     - No
+     - Static sites, islands architecture
 
 .. toctree::
     :maxdepth: 2
@@ -134,5 +173,8 @@ Framework Comparison
     vue
     svelte
     angular
-    inertia
     htmx
+    nuxt
+    sveltekit
+    astro
+    inertia

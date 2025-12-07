@@ -31,11 +31,17 @@ The CLI provides a streamlined setup process:
     # Initialize a new Vite project (React default)
     litestar assets init
 
+    # Available templates:
+    # SPA: react, react-router, react-tanstack, vue, svelte
+    # Inertia: react-inertia, vue-inertia, svelte-inertia
+    # SSR: sveltekit, nuxt, astro
+    # Other: angular, angular-cli, htmx
+
     # Inertia templates keep Laravel-style paths under resources/
     litestar assets init --template vue-inertia
 
     # Non-Inertia templates default to src/; place everything under web/
-    litestar assets init --template react --frontend-dir web
+    litestar assets init --template react-router --frontend-dir web
 
 This command will:
 
@@ -162,6 +168,53 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - `DeployConfig | bool`
      - Deployment configuration for CDN publishing.
 
+**`SPAConfig` Parameters**:
+
+.. list-table::
+   :widths: 25 15 60
+   :header-rows: 1
+
+   * - Parameter
+     - Type
+     - Description
+   * - `inject_csrf`
+     - `bool`
+     - Inject CSRF token into HTML as `window.__LITESTAR_CSRF__`. Defaults to `True`.
+   * - `csrf_var_name`
+     - `str`
+     - Global variable name for CSRF token. Defaults to `"__LITESTAR_CSRF__"`.
+   * - `app_selector`
+     - `str`
+     - CSS selector for the app root element (used for data attributes). Defaults to `"#app"`.
+   * - `cache_transformed_html`
+     - `bool`
+     - Cache transformed HTML in production. Automatically disabled when `inject_csrf=True` since CSRF tokens are per-request. Defaults to `True`.
+
+**`ExternalDevServer` Parameters**:
+
+.. list-table::
+   :widths: 25 15 60
+   :header-rows: 1
+
+   * - Parameter
+     - Type
+     - Description
+   * - `target`
+     - `str | None`
+     - URL of the external dev server (e.g., `"http://localhost:4200"` for Angular CLI). If `None`, reads from hotfile (for SSR frameworks using Vite internally).
+   * - `command`
+     - `list[str] | None`
+     - Custom command to start the dev server (e.g., `["ng", "serve"]`). If `None`, uses executor's default start command.
+   * - `build_command`
+     - `list[str] | None`
+     - Custom command to build for production (e.g., `["ng", "build"]`). If `None`, uses executor's default build command.
+   * - `http2`
+     - `bool`
+     - Enable HTTP/2 for proxy connections. Defaults to `False`.
+   * - `enabled`
+     - `bool`
+     - Whether the external proxy is enabled. Defaults to `True`.
+
 **`PathConfig` Parameters**:
 
 .. list-table::
@@ -210,10 +263,10 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - Enable development mode with HMR/watch. Reads from `VITE_DEV_MODE` env var.
    * - `proxy_mode`
      - `str | None`
-     - Proxy handling: `"vite"` (whitelist), `"direct"` (no proxy), `"proxy"`/`"ssr"` (blacklist), or `None`.
+     - Proxy handling mode: `"vite"` (default, whitelist - proxies Vite assets only), `"direct"` (expose Vite port directly, no proxy), `"proxy"` (blacklist - proxies everything except Litestar routes, used for SSR frameworks), or `None` (disabled, production mode). Note: `"ssr"` is normalized to `"proxy"` internally.
    * - `external_dev_server`
      - `ExternalDevServer | str | None`
-     - Configuration for external dev servers (Angular CLI, etc.).
+     - Configuration for external dev servers (Angular CLI, Next.js, etc.). Can be a string URL (e.g., `"http://localhost:4200"`) or an `ExternalDevServer` object with `target`, `command`, `build_command`, `http2`, and `enabled` fields. When set, automatically switches `proxy_mode` to `"proxy"` if not explicitly configured.
    * - `host`
      - `str`
      - Host for Vite dev server. Defaults to `"127.0.0.1"` or `VITE_HOST` env var.
@@ -234,10 +287,10 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - Enable Server-Side Rendering. Defaults to `False`.
    * - `http2`
      - `bool`
-     - Enable HTTP/2 for proxy connections (requires `h2` package). Defaults to `True`.
+     - Enable HTTP/2 for proxy HTTP requests (better connection multiplexing). WebSocket/HMR uses a separate connection. Requires `h2` package. Defaults to `True`.
    * - `start_dev_server`
      - `bool`
-     - Auto-start dev server process. Defaults to `True`.
+     - Auto-start dev server process managed by Litestar. Set to `False` if managing the dev server externally. Defaults to `True`.
    * - `spa_handler`
      - `bool`
      - Auto-register catch-all SPA route when mode="spa". Defaults to `True`.
@@ -301,7 +354,7 @@ For standalone Vite usage (without Litestar), you can specify paths explicitly:
      - The base path for asset URLs. Defaults to `'/static/'`.
    * - `bundleDir`
      - `string`
-     - The directory where compiled assets and `manifest.json` are written. Defaults to `'public/dist'`.
+     - The directory where compiled assets and `manifest.json` are written. Defaults to `'public'`.
    * - `resourceDir`
      - `string`
      - The directory for source assets. Defaults to `'resources'`.
@@ -331,7 +384,7 @@ For standalone Vite usage (without Litestar), you can specify paths explicitly:
      - Enable Inertia mode (disables `index.html` auto-detection). Auto-detected from `.litestar.json` when mode is `"inertia"`. Defaults to `false`.
    * - `types`
      - `boolean | "auto" | TypesConfig`
-     - Type generation configuration. `"auto"` reads from `.litestar.json`. Defaults to `undefined` (auto-detect).
+     - Type generation configuration. `"auto"` or `undefined` reads from `.litestar.json` (recommended). `true` enables with hardcoded defaults. `false` disables. Object allows fine-grained control with fields: `enabled`, `output`, `openapiPath`, `routesPath`, `pagePropsPath`, `generateZod`, `generateSdk`, `globalRoute`, `debounce`. Defaults to `undefined` (auto-detect).
    * - `executor`
      - `string`
      - JavaScript runtime: `"node"`, `"bun"`, `"deno"`, `"yarn"`, or `"pnpm"`. Auto-detected from Python config.

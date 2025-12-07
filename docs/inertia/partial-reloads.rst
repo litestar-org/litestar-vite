@@ -123,11 +123,32 @@ The v2 protocol uses these headers for partial reloads:
    * - Header
      - Description
    * - ``X-Inertia-Partial-Data``
-     - Comma-separated list of props to include
+     - Comma-separated list of props to include (e.g., ``users,teams``)
    * - ``X-Inertia-Partial-Except``
-     - Comma-separated list of props to exclude (takes precedence)
+     - Comma-separated list of props to exclude (takes precedence over Partial-Data)
    * - ``X-Inertia-Reset``
-     - Props to reset to initial values
+     - Comma-separated list of props to reset/remove from shared state
+
+When ``X-Inertia-Partial-Except`` is present, it takes precedence over
+``X-Inertia-Partial-Data``. This matches the v2 protocol behavior where
+exclusion is stronger than inclusion.
+
+Reset Props
+-----------
+
+The ``X-Inertia-Reset`` header removes specified props from the shared state:
+
+.. code-block:: typescript
+
+   // Client-side: reset specific props during partial reload
+   router.reload({
+     only: ["users"],
+     reset: ["flash", "errors"]  // Clear flash and errors
+   })
+
+On the backend, reset props are removed from ``shared_props`` before
+building the page response. This is useful for clearing one-time data
+like flash messages or validation errors.
 
 Example Use Case
 ----------------

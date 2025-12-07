@@ -73,6 +73,16 @@ export interface TypesConfig {
    */
   generateSdk?: boolean
   /**
+   * Register route() function globally on window object.
+   *
+   * When true, the generated routes.ts will include code that registers
+   * the type-safe route() function on `window.route`, similar to Laravel's
+   * Ziggy library. This allows using route() without imports.
+   *
+   * @default false
+   */
+  globalRoute?: boolean
+  /**
    * Debounce time in milliseconds for type regeneration.
    * Prevents regeneration from running too frequently when
    * multiple files are written in quick succession.
@@ -109,7 +119,7 @@ export interface PluginConfig {
   /**
    * Litestar's public assets directory.  These are the assets that Vite will serve when developing.
    *
-   * @default 'resources'
+   * @default 'src'
    */
   resourceDir?: string
 
@@ -285,6 +295,7 @@ export interface BridgeSchema {
     pagePropsPath?: string
     generateZod: boolean
     generateSdk: boolean
+    globalRoute: boolean
   } | null
 
   // Package executor
@@ -940,6 +951,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
       pagePropsPath: "src/generated/inertia-pages.json",
       generateZod: false,
       generateSdk: false,
+      globalRoute: false,
       debounce: 300,
     }
   } else if (resolvedConfig.types === "auto" || typeof resolvedConfig.types === "undefined") {
@@ -953,6 +965,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
         pagePropsPath: pythonDefaults.types.pagePropsPath ?? path.join(pythonDefaults.types.output, "inertia-pages.json"),
         generateZod: pythonDefaults.types.generateZod,
         generateSdk: pythonDefaults.types.generateSdk,
+        globalRoute: pythonDefaults.types.globalRoute ?? false,
         debounce: 300,
       }
     }
@@ -972,6 +985,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
         resolvedConfig.types.pagePropsPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "inertia-pages.json") : "src/generated/inertia-pages.json"),
       generateZod: resolvedConfig.types.generateZod ?? false,
       generateSdk: resolvedConfig.types.generateSdk ?? false,
+      globalRoute: resolvedConfig.types.globalRoute ?? false,
       debounce: resolvedConfig.types.debounce ?? 300,
     }
 
@@ -993,11 +1007,11 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   const result: ResolvedPluginConfig = {
     input: resolvedConfig.input,
     assetUrl: normalizeAssetUrl(resolvedConfig.assetUrl ?? pythonDefaults?.assetUrl ?? "/static/"),
-    resourceDir: resolvedConfig.resourceDir ?? pythonDefaults?.resourceDir ?? "resources",
+    resourceDir: resolvedConfig.resourceDir ?? pythonDefaults?.resourceDir ?? "src",
     bundleDir: resolvedConfig.bundleDir ?? pythonDefaults?.bundleDir ?? "public",
     publicDir: resolvedConfig.publicDir ?? pythonDefaults?.publicDir ?? "public",
     ssr: resolvedConfig.ssr ?? resolvedConfig.input,
-    ssrOutDir: resolvedConfig.ssrOutDir ?? pythonDefaults?.ssrOutDir ?? path.join(resolvedConfig.resourceDir ?? pythonDefaults?.resourceDir ?? "resources", "bootstrap/ssr"),
+    ssrOutDir: resolvedConfig.ssrOutDir ?? pythonDefaults?.ssrOutDir ?? path.join(resolvedConfig.resourceDir ?? pythonDefaults?.resourceDir ?? "src", "bootstrap/ssr"),
     refresh: resolvedConfig.refresh ?? false,
     hotFile: resolvedConfig.hotFile ?? path.join(resolvedConfig.bundleDir ?? "public", "hot"),
     detectTls: resolvedConfig.detectTls ?? false,
@@ -1324,7 +1338,7 @@ declare module "litestar-vite/inertia" {
   await fs.promises.writeFile(outFile, body, "utf-8")
 }
 
-async function emitRouteTypes(routesPath: string, outputDir: string): Promise<void> {
+async function emitRouteTypes(routesPath: string, outputDir: string, globalRoute: boolean = false): Promise<void> {
   const contents = await fs.promises.readFile(routesPath, "utf-8")
   const json = JSON.parse(contents)
 
@@ -1446,12 +1460,23 @@ declare global {
      */
     routes?: Record<string, string>
     serverRoutes?: Record<string, string>
+    /**
+     * Global route helper (available when globalRoute=true in TypeGenConfig).
+     * @see route
+     */
+    route?: typeof route
   }
 }
 
 // Re-export helper functions from litestar-vite-plugin
 // These work with the routes defined above
 export { getCsrfToken, csrfHeaders, csrfFetch } from "litestar-vite-plugin/helpers"
+${globalRoute ? `
+// Register route() globally on window for Laravel/Ziggy-style usage
+if (typeof window !== "undefined") {
+  window.route = route
+}
+` : ""}
 `
 
   await fs.promises.writeFile(outFile, `${banner}${body}`, "utf-8")
@@ -1556,7 +1581,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
 
       // Always try to emit routes types when routes metadata is present
       if (fs.existsSync(routesPath)) {
-        await emitRouteTypes(routesPath, typesConfig.output)
+        await emitRouteTypes(routesPath, typesConfig.output, typesConfig.globalRoute ?? false)
         generated = true
       }
 

@@ -569,6 +569,9 @@ class TypeGenConfig:
             Auto-enabled when both types and inertia are configured.
         page_props_path: Path to export page props metadata (JSON format).
         watch_patterns: File patterns to watch for type regeneration.
+        global_route: Register route() function globally on window object.
+            When True, adds ``window.route = route`` to generated routes.ts,
+            providing Laravel/Ziggy-style global access without imports.
     """
 
     output: Path = field(default_factory=lambda: Path("src/generated"))
@@ -579,13 +582,22 @@ class TypeGenConfig:
     generate_sdk: bool = True
     generate_routes: bool = True
     generate_page_props: bool = True
-    """Generate Inertia page props TypeScript file.
+    global_route: bool = False
+    """Register route() function globally on window object.
 
-    When True and Inertia is enabled, generates inertia-pages.json metadata
-    that the Vite plugin uses to create page-props.ts with typed page props.
+    When True, the generated routes.ts will include code that registers
+    the type-safe route() function on ``window.route``, similar to Laravel's
+    Ziggy library. This allows using route() without imports:
 
-    Auto-enabled when both types and inertia are configured. Set to False
-    to disable page props generation while keeping other type generation.
+    .. code-block:: typescript
+
+        // With global_route=True, no import needed:
+        window.route('user-profile', { userId: 123 })
+
+        // TypeScript users should add to global.d.ts:
+        // declare const route: typeof import('@/generated/routes').route
+
+    Default is False to encourage explicit imports for better tree-shaking.
     """
     page_props_path: "Path | None" = field(default=None)  # Computed in __post_init__ if None
     """Path to export page props metadata JSON.

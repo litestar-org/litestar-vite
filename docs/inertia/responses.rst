@@ -61,6 +61,9 @@ InertiaResponse Parameters
    * - ``scroll_props``
      - ``ScrollPropsConfig | None``
      - Pagination config for infinite scroll
+   * - ``prop_filter``
+     - ``PropFilter | None``
+     - Server-side prop filtering for partial reloads
    * - ``context``
      - ``dict[str, Any] | None``
      - Additional template context
@@ -113,9 +116,46 @@ The ``items`` are extracted and included in props. Use ``key`` opt to customize:
    async def list_users(...) -> OffsetPagination:
        ...  # Props will have "users" instead of "items"
 
+Prop Filtering
+--------------
+
+Filter which props are sent during partial reloads using ``only()`` and ``except_()``:
+
+.. code-block:: python
+
+   from litestar_vite.inertia import InertiaResponse, only, except_
+
+   @get("/users", component="Users")
+   async def list_users(request: InertiaRequest) -> InertiaResponse:
+       return InertiaResponse(
+           content={
+               "users": User.all(),
+               "teams": Team.all(),
+               "stats": expensive_stats(),
+           },
+           # Only send "users" prop during partial reloads
+           prop_filter=only("users"),
+       )
+
+   @get("/dashboard", component="Dashboard")
+   async def dashboard(request: InertiaRequest) -> InertiaResponse:
+       return InertiaResponse(
+           content={
+               "summary": get_summary(),
+               "charts": get_charts(),
+               "debug_info": get_debug_info(),
+           },
+           # Send all props except "debug_info" during partial reloads
+           prop_filter=except_("debug_info"),
+       )
+
+Note: This is server-side filtering. Clients should use Inertia's
+``router.reload({ only: [...] })`` for client-initiated filtering.
+
 See Also
 --------
 
+- :doc:`partial-reloads` - Prop filtering and lazy props
 - :doc:`redirects` - Redirect responses
 - :doc:`merging-props` - Infinite scroll patterns
 - :doc:`history-encryption` - History encryption

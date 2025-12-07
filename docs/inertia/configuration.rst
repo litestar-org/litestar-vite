@@ -146,7 +146,7 @@ Automatically include session keys in page props:
 InertiaTypeGenConfig Reference
 ------------------------------
 
-Controls TypeScript type generation for page props.
+Controls TypeScript type generation for Inertia page props (new in v0.15).
 
 .. list-table::
    :widths: 25 15 60
@@ -162,6 +162,25 @@ Controls TypeScript type generation for page props.
      - ``bool``
      - Include default FlashMessages interface. Default: ``True``
 
+When ``include_default_auth=True`` (default), the generated ``page-props.ts`` includes:
+
+- ``User`` interface: ``{ id: string, email: string, name?: string | null }``
+- ``AuthData`` interface: ``{ isAuthenticated: boolean, user?: User }``
+
+You can extend these via TypeScript module augmentation:
+
+.. code-block:: typescript
+
+   // Standard auth (95% of users) - extend defaults
+   declare module 'litestar-vite/inertia' {
+     interface User {
+       avatarUrl?: string
+       roles: Role[]
+     }
+   }
+
+For non-standard user models (e.g., ``uuid`` instead of ``id``, ``username`` instead of ``email``), disable defaults:
+
 .. code-block:: python
 
    from litestar_vite.config import InertiaTypeGenConfig
@@ -171,6 +190,18 @@ Controls TypeScript type generation for page props.
            include_default_auth=False,  # Custom user model
        ),
    )
+
+Then define your own User interface in TypeScript:
+
+.. code-block:: typescript
+
+   // Custom auth (5% of users) - define from scratch
+   declare module 'litestar-vite/inertia' {
+     interface User {
+       uuid: string      // No id!
+       username: string  // No email!
+     }
+   }
 
 Vite Plugin Auto-Detection
 --------------------------

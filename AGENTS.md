@@ -1,6 +1,6 @@
 # AI Agent Guidelines for litestar-vite
 
-**Version**: 3.0 | **Updated**: 2025-11-28
+**Version**: 3.1 | **Updated**: 2025-12-07 | **Project Version**: 0.15.0-beta.1
 
 Seamless integration between [Litestar](https://litestar.dev/) Python framework and [Vite](https://vitejs.dev/) with [Inertia.js](https://inertiajs.com/) support.
 
@@ -74,11 +74,11 @@ src/py/litestar_vite/     # Python library
       ├── plugin.py       # InertiaPlugin
       ├── response.py     # InertiaResponse (props flattening)
       ├── middleware.py   # InertiaMiddleware
-      └── helpers.py      # share, lazy, defer, merge
+      └── helpers.py      # share, lazy, defer, merge, flash, error, only, except_, clear_history, scroll_props
 src/js/src/               # TypeScript library
   ├── index.ts            # Main Vite plugin
-  ├── helpers/            # CSRF, routes utilities
-  └── inertia-helpers/    # resolvePageComponent
+  ├── helpers/            # CSRF utilities, HTMX utilities (addDirective, registerHtmxExtension, setHtmxDebug, swapJson)
+  └── inertia-helpers/    # resolvePageComponent, unwrapPageProps
 examples/                 # Framework examples
 specs/guides/             # Project standards
 ```

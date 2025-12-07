@@ -4,6 +4,8 @@ This guide explains how configuration flows between Python (Litestar) and TypeSc
 
 ## Architecture Overview
 
+**Version**: 0.15.0-beta.1
+
 ```
 ┌─────────────────────┐
 │   Python ViteConfig │
@@ -88,11 +90,14 @@ These fields are meaningful to both Python and TypeScript:
 
 These are configured in Python and not exposed to TypeScript:
 
-- `DeployConfig` - CDN deployment settings
-- `SPAConfig` - Single-page app settings (CSRF, selectors)
-- `InertiaConfig` - Inertia.js integration settings
-- `RuntimeConfig.run_command`, `build_command`, etc.
-- `http2`, `start_dev_server`, `health_check`
+- `DeployConfig` - CDN deployment settings (storage_backend, delete_orphaned, include_manifest, content_types)
+- `SPAConfig` - Single-page app settings (inject_csrf, cache_transformed_html, csrf_var_name, app_selector)
+- `InertiaConfig` - Inertia.js integration settings (root_template, component_opt_keys, spa_mode, encrypt_history, type_gen)
+- `InertiaTypeGenConfig` - Inertia type generation (include_default_auth, include_default_flash)
+- `RuntimeConfig.run_command`, `build_command`, `serve_command`, `install_command`, etc.
+- `RuntimeConfig.http2`, `start_dev_server`, `health_check`, `detect_nodeenv`, `set_environment`, `set_static_folders`, `csp_nonce`, `spa_handler`
+- `ExternalDevServer` - External dev server config (target, command, build_command, http2, enabled)
+- `PaginationContainer` - Protocol for pagination unwrapping
 
 ### TypeScript-Only Fields
 

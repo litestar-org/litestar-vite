@@ -153,8 +153,31 @@ Deferred props are included in the ``deferredProps`` field:
      }
    }
 
+Advanced: Helper Utilities
+---------------------------
+
+For advanced use cases, litestar-vite provides helper utilities:
+
+.. code-block:: python
+
+   from litestar_vite.inertia import extract_deferred_props
+
+   # Extract deferred props metadata from props dict
+   props = {
+       "users": [...],
+       "teams": defer("teams", get_teams, group="attributes"),
+       "projects": defer("projects", get_projects, group="attributes"),
+       "permissions": defer("permissions", get_permissions),  # default group
+   }
+
+   groups = extract_deferred_props(props)
+   # Result: {"default": ["permissions"], "attributes": ["teams", "projects"]}
+
+This is used internally by ``InertiaResponse`` to build the page object
+with the ``deferredProps`` field for the Inertia v2 protocol.
+
 See Also
 --------
 
-- :doc:`partial-reloads` - Manual partial reloads
+- :doc:`partial-reloads` - Manual partial reloads with lazy()
 - :doc:`merging-props` - Infinite scroll patterns

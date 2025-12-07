@@ -1,3 +1,7 @@
+# Quality Gates for litestar-vite
+# Version: 0.15.0-beta.1
+# Updated: 2025-12-07
+
 implementation_gates:
   - name: local_tests_pass
     command: "make test"
@@ -46,7 +50,7 @@ documentation_gates:
         severity: "error"
         message: "Use explicit stringification instead"
 
-      - pattern: "Optional["
+      - pattern: "Optional\\["
         severity: "error"
         message: "Use T | None (PEP 604) instead of Optional[T]"
 
@@ -77,6 +81,13 @@ documentation_gates:
       - "Props flattening in InertiaResponse._build_page_props()"
       - "ViteSPAHandler.is_initialized property for init checks"
       - "ViteSPAHandler.get_html_sync() for sync contexts"
-      - "HTTP/2 support with h2 package fallback"
+      - "HTTP/2 support with h2 package fallback (RuntimeConfig.http2)"
       - "External dev server config (ExternalDevServer)"
       - "Port auto-selection for proxy modes"
+      - "InertiaTypeGenConfig for page props type generation (v0.15)"
+      - "HTMX helper utilities (addDirective, registerHtmxExtension, setHtmxDebug, swapJson)"
+      - "SPAConfig.cache_transformed_html option"
+      - "RuntimeConfig.start_dev_server option"
+      - "Mode aliases: ssg->ssr, inertia->hybrid"
+      - "Inertia v2 features: defer(), clear_history(), encrypt_history"
+      - "PaginationContainer protocol for scroll regions"

@@ -7,10 +7,14 @@ Client-side navigation and route helpers.
 .. seealso::
    Official Inertia.js docs: `Links <https://inertiajs.com/links>`_
 
+.. tip::
+   **Plain URLs work everywhere!** You're not required to use the ``route()`` helper.
+   See :doc:`routing` for details on how litestar-vite compares to Laravel/Ziggy.
+
 Inertia Link Component
 ----------------------
 
-Use the Inertia Link component for SPA navigation:
+Use the Inertia Link component for SPA navigation. Both plain URLs and the ``route()`` helper work:
 
 .. tab-set::
 
@@ -124,6 +128,7 @@ Or use the configured key:
 See Also
 --------
 
+- :doc:`routing` - Comparison with Laravel/Ziggy, plain URL support
 - :doc:`type-generation` - Typed routes
 - `Inertia.js Links <https://inertiajs.com/links>`_ - Official docs
 - `Inertia.js Manual Visits <https://inertiajs.com/manual-visits>`_ - Programmatic navigation

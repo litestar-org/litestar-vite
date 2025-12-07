@@ -240,12 +240,9 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
     types = config.types if isinstance(config.types, TypeGenConfig) else None
     deploy = config.deploy_config
     resource_dir = config.resource_dir
-    resource_dir_value = str(resource_dir) if resource_dir != Path("src") else None
+    resource_dir_value = str(resource_dir)
     bundle_dir_value = str(config.bundle_dir)
     ssr_out_dir_value = str(config.ssr_output_dir) if config.ssr_output_dir else None
-    if resource_dir_value is None:
-        # Keep JS defaults (resources/bootstrap/ssr)
-        ssr_out_dir_value = None
 
     # Extract external dev server info
     external = config.external_dev_server
@@ -280,6 +277,7 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
             "pagePropsPath": str(types.page_props_path) if types.page_props_path else None,
             "generateZod": types.generate_zod,
             "generateSdk": types.generate_sdk,
+            "globalRoute": types.global_route,
         }
         if types
         else None,
