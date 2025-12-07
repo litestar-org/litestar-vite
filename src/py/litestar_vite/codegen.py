@@ -871,7 +871,7 @@ def _get_return_type_name(handler: HTTPRouteHandler) -> "str | None":
     # Get the return annotation from the handler
     # handler.fn is a Ref that wraps the actual function
     handler_fn = handler.fn
-    fn = handler_fn.value if hasattr(handler_fn, "value") else handler_fn
+    fn = handler_fn.value if hasattr(handler_fn, "value") else handler_fn  # pyright: ignore
     annotations = getattr(fn, "__annotations__", {})
     return_type = annotations.get("return")
 

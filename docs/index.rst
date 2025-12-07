@@ -313,6 +313,7 @@ Explore the Documentation
     :hidden:
 
     usage/index
+    inertia/index
     frameworks/index
     reference/index
 

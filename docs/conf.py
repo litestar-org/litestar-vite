@@ -132,6 +132,11 @@ nitpick_ignore = [
     (PY_CLASS, "SPAConfig"),
     (PY_CLASS, "DeployConfig"),
     (PY_CLASS, "Get proxy mode. Note"),
+    # Inertia types
+    (PY_CLASS, "litestar_vite.config.InertiaTypeGenConfig"),
+    (PY_CLASS, "InertiaTypeGenConfig"),
+    (PY_CLASS, "ScrollPropsConfig"),
+    (PY_CLASS, "litestar_vite.inertia.types.ScrollPropsConfig"),
 ]
 nitpick_ignore_regex = [
     (PY_RE, r"litestar_vite.*\.T"),

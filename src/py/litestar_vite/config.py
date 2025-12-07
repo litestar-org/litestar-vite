@@ -65,7 +65,8 @@ class PaginationContainer(Protocol):
     - litestar.pagination.ClassicPagination
     - advanced_alchemy.service.OffsetPagination
 
-    Custom types can implement this protocol:
+    Custom types can implement this protocol::
+
         @dataclass
         class MyPagination:
             items: list[T]

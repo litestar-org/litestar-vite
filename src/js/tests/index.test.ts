@@ -856,6 +856,65 @@ describe("litestar-vite-plugin", () => {
   })
 })
 
+describe("type generation config detection", () => {
+  const originalEnv = { ...process.env }
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(process.cwd(), "vitest-config-detect-"))
+    process.env = { ...originalEnv }
+  })
+
+  afterEach(() => {
+    process.env = { ...originalEnv }
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    } catch {
+      // ignore
+    }
+  })
+
+  it("prefers openapi-ts.config.ts over hey-api.config.ts", () => {
+    // Create both config files
+    fs.writeFileSync(path.join(tempDir, "openapi-ts.config.ts"), "export default {}")
+    fs.writeFileSync(path.join(tempDir, "hey-api.config.ts"), "export default {}")
+
+    // Check detection order
+    const candidates = [path.resolve(tempDir, "openapi-ts.config.ts"), path.resolve(tempDir, "hey-api.config.ts"), path.resolve(tempDir, ".hey-api.config.ts")]
+    const configPath = candidates.find((p) => fs.existsSync(p)) || null
+
+    expect(configPath).toBe(path.resolve(tempDir, "openapi-ts.config.ts"))
+  })
+
+  it("falls back to hey-api.config.ts when openapi-ts.config.ts missing", () => {
+    // Create only hey-api config
+    fs.writeFileSync(path.join(tempDir, "hey-api.config.ts"), "export default {}")
+
+    const candidates = [path.resolve(tempDir, "openapi-ts.config.ts"), path.resolve(tempDir, "hey-api.config.ts"), path.resolve(tempDir, ".hey-api.config.ts")]
+    const configPath = candidates.find((p) => fs.existsSync(p)) || null
+
+    expect(configPath).toBe(path.resolve(tempDir, "hey-api.config.ts"))
+  })
+
+  it("falls back to .hey-api.config.ts (dotfile) when others missing", () => {
+    // Create only the dotfile variant
+    fs.writeFileSync(path.join(tempDir, ".hey-api.config.ts"), "export default {}")
+
+    const candidates = [path.resolve(tempDir, "openapi-ts.config.ts"), path.resolve(tempDir, "hey-api.config.ts"), path.resolve(tempDir, ".hey-api.config.ts")]
+    const configPath = candidates.find((p) => fs.existsSync(p)) || null
+
+    expect(configPath).toBe(path.resolve(tempDir, ".hey-api.config.ts"))
+  })
+
+  it("returns null when no config file exists", () => {
+    // Create empty directory - no config files
+    const candidates = [path.resolve(tempDir, "openapi-ts.config.ts"), path.resolve(tempDir, "hey-api.config.ts"), path.resolve(tempDir, ".hey-api.config.ts")]
+    const configPath = candidates.find((p) => fs.existsSync(p)) || null
+
+    expect(configPath).toBeNull()
+  })
+})
+
 describe("inertia-helpers", () => {
   const testPath = "./__data__/dummy.ts"
 
