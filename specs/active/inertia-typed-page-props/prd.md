@@ -205,6 +205,212 @@ export interface PageProps {
 }
 ```
 
+### 7. Dynamic `share()` Props Strategy (Two-Tier with Sensible Defaults)
+
+**Problem**: Props set via `share()` in guards/middleware are runtime-only and invisible to static analysis.
+
+```python
+# Real-world example from litestar-fullstack-inertia guards.py
+async def current_user_from_session(session, connection):
+    if user_id is None:
+        share(connection, "auth", {"isAuthenticated": False})
+        return None
+    if user and user.is_active:
+        share(connection, "auth", {"isAuthenticated": True, "user": service.to_schema(user)})
+        return user
+    share(connection, "auth", {"isAuthenticated": False})
+    return None
+```
+
+**Solution: Two-Tier SharedProps with Sensible Defaults (Laravel Jetstream-inspired)**
+
+Based on multi-model consensus and real-world patterns from litestar-fullstack-inertia:
+
+```typescript
+// src/generated/page-props.ts
+
+/**
+ * Generated shared props (always present).
+ * Includes built-in props + static config props.
+ */
+export interface GeneratedSharedProps {
+  flash?: FlashMessages
+  errors?: Record<string, string[]>
+  csrf_token?: string
+  // Plus any from InertiaConfig.extra_static_page_props
+}
+
+/**
+ * Default User interface - minimal baseline for common auth patterns.
+ * Users extend this with their full user model.
+ *
+ * @example
+ * declare module 'litestar-vite/inertia' {
+ *   interface User {
+ *     avatarUrl?: string | null
+ *     roles: Role[]
+ *     teams: Team[]
+ *   }
+ * }
+ */
+export interface User {
+  id: string
+  email: string
+  name?: string | null
+}
+
+/**
+ * Default AuthData interface - mirrors Laravel Jetstream pattern.
+ * Users extend this with additional auth metadata.
+ */
+export interface AuthData {
+  isAuthenticated: boolean
+  user?: User
+}
+
+/**
+ * Default FlashMessages interface - category to messages mapping.
+ * Standard pattern: success, error, info, warning categories.
+ */
+export interface FlashMessages {
+  [category: string]: string[]
+}
+
+/**
+ * User-defined shared props for dynamic share() calls.
+ * Extend this interface to add types for your guards/middleware.
+ *
+ * By default includes `auth` and `flash` with sensible defaults.
+ * Disable defaults via config if not using auth patterns.
+ *
+ * @example
+ * // src/types/shared-props.ts
+ * declare module 'litestar-vite/inertia' {
+ *   interface SharedProps {
+ *     locale?: string
+ *     currentTeam?: CurrentTeam
+ *   }
+ *   interface User {
+ *     avatarUrl?: string | null
+ *     roles: Role[]
+ *     teams: Team[]
+ *   }
+ * }
+ */
+export interface SharedProps {
+  auth?: AuthData
+  flash?: FlashMessages
+}
+
+/** Full page props = generated + user-defined shared */
+export type FullSharedProps = GeneratedSharedProps & SharedProps
+
+/** Page props mapped by component name */
+export interface PageProps {
+  Home: HomeProps & FullSharedProps
+  Books: BooksProps & FullSharedProps
+}
+```
+
+**Why Provide Defaults (Laravel Jetstream Alignment):**
+
+1. **Nearly Universal**: 95%+ of Inertia apps have `auth` with `isAuthenticated` + optional `user`
+2. **Laravel Parity**: Laravel Jetstream provides identical defaults - familiar to migrating users
+3. **Zero-Config DX**: New users get working types immediately without understanding augmentation
+4. **Easy Extension**: TypeScript interfaces naturally extend via module augmentation
+
+**Configuration Flags:**
+
+```python
+@dataclass
+class InertiaTypeGenConfig:
+    """Type generation options for Inertia pages."""
+
+    include_default_auth: bool = True      # Include AuthData and User defaults
+    include_default_flash: bool = True     # Include FlashMessages default
+
+    # For users NOT using auth patterns (rare, but supported)
+    # ViteConfig(inertia=InertiaConfig(type_gen=InertiaTypeGenConfig(include_default_auth=False)))
+```
+
+**Two User Workflows:**
+
+#### Standard Auth (95% of users) - Extend defaults
+
+```typescript
+// src/types/shared-props.ts
+declare module 'litestar-vite/inertia' {
+  // Extend the default User with your full model
+  // Base User already has: id, email, name
+  interface User {
+    isActive?: boolean
+    isSuperuser?: boolean
+    isVerified?: boolean
+    avatarUrl?: string | null
+    oauthAccounts: OAuthAccount[]
+    roles: UserRole[]
+    teams: UserTeam[]
+  }
+
+  // Add additional shared props from your guards
+  interface SharedProps {
+    currentTeam?: CurrentTeam
+    locale?: string
+  }
+}
+```
+
+#### Custom Auth (5% of users) - Define from scratch
+
+For users with non-standard user models (no `email` field, `uuid` instead of `id`, etc.):
+
+```python
+# Python config - disable defaults entirely
+ViteConfig(
+    inertia=InertiaConfig(
+        type_gen=InertiaTypeGenConfig(include_default_auth=False)
+    )
+)
+```
+
+```typescript
+// Generated page-props.ts when include_default_auth=False:
+export interface User {}       // Empty - user defines everything
+export interface AuthData {}   // Empty - user defines everything
+
+// src/types/shared-props.ts - define your custom structure
+declare module 'litestar-vite/inertia' {
+  interface User {
+    uuid: string           // No id!
+    username: string       // No email!
+    displayName: string
+  }
+
+  interface AuthData {
+    loggedIn: boolean      // Different field name
+    currentUser?: User
+    permissions: string[]
+  }
+
+  interface SharedProps {
+    auth?: AuthData
+  }
+}
+```
+
+**Why two workflows:**
+
+TypeScript module augmentation **extends** interfaces - you can add fields but not remove them.
+If your `User` model doesn't have `email` or uses `uuid` instead of `id`, you need the escape hatch.
+
+**Key Design Decisions (from Multi-Model Consensus):**
+
+1. **Two-tier, not three-tier**: Collapse BuiltIn + Static into `GeneratedSharedProps`
+2. **No AST analysis**: Don't attempt to parse `share()` calls from guard code
+3. **Single canonical name**: `SharedProps` is the one interface users extend
+4. **Sensible defaults**: `User`, `AuthData`, `FlashMessages` match Laravel Jetstream patterns
+5. **Config flags for escape hatch**: Disable defaults for non-standard auth patterns
+
 ---
 
 ## Acceptance Criteria
@@ -214,7 +420,11 @@ export interface PageProps {
 - [ ] New `export_inertia_pages()` function in `codegen.py`
 - [ ] `inertia-pages.json` metadata file generated with component→type mapping
 - [ ] `page-props.ts` generated with `PageProps` interface
-- [ ] SharedProps interface includes flash, errors, csrf_token
+- [ ] Two-tier SharedProps: `GeneratedSharedProps` + `SharedProps`
+- [ ] `GeneratedSharedProps` includes flash, errors, csrf_token + static config props
+- [ ] Default types provided: `User`, `AuthData`, `FlashMessages` (Laravel Jetstream pattern)
+- [ ] `SharedProps` includes `auth?: AuthData` and `flash?: FlashMessages` by default
+- [ ] Config flags: `include_default_auth`, `include_default_flash` to disable defaults
 - [ ] Works with msgspec Struct, Pydantic BaseModel, TypedDict, and dict return types
 
 ### P1 - Integration
@@ -295,16 +505,59 @@ export interface PageProps {
 3. **TypeScript Generation**: Vite plugin reads metadata and emits:
    ```typescript
    // page-props.ts
-   import type { BooksPageProps } from './api/types'
+   import type { BooksPageProps, AppConfig } from './api/types'
 
-   export interface SharedProps {
-     flash?: { success?: string; error?: string }
+   /** Generated shared props (always present) */
+   export interface GeneratedSharedProps {
      errors?: Record<string, string[]>
      csrf_token?: string
+     // Plus any from InertiaConfig.extra_static_page_props
    }
 
+   /** Default User - minimal baseline (users extend via augmentation) */
+   export interface User {
+     id: string
+     email: string
+     name?: string | null
+   }
+
+   /** Default AuthData - mirrors Laravel Jetstream pattern */
+   export interface AuthData {
+     isAuthenticated: boolean
+     user?: User
+   }
+
+   /** Default FlashMessages - category to messages mapping */
+   export interface FlashMessages {
+     [category: string]: string[]
+   }
+
+   /**
+    * User-defined shared props for dynamic share() calls.
+    * Includes sensible defaults for auth and flash.
+    *
+    * @example
+    * declare module 'litestar-vite/inertia' {
+    *   interface User {
+    *     avatarUrl?: string
+    *     roles: Role[]
+    *   }
+    *   interface SharedProps {
+    *     locale?: string
+    *     currentTeam?: CurrentTeam
+    *   }
+    * }
+    */
+   export interface SharedProps {
+     auth?: AuthData
+     flash?: FlashMessages
+   }
+
+   /** Full shared props = generated + user-defined */
+   export type FullSharedProps = GeneratedSharedProps & SharedProps
+
    export interface PageProps {
-     Books: BooksPageProps & SharedProps
+     Books: BooksPageProps & FullSharedProps
    }
    ```
 
@@ -358,17 +611,70 @@ litestar assets generate-types
 ```typescript
 // src/generated/page-props.ts
 
-/** Shared props available on every Inertia page */
-export interface SharedProps {
-  flash?: { success?: string; error?: string }
+/** Generated shared props (always present) */
+export interface GeneratedSharedProps {
   errors?: Record<string, string[]>
   csrf_token?: string
+  // Plus any from InertiaConfig.extra_static_page_props
 }
+
+/**
+ * Default User interface - minimal baseline for common auth patterns.
+ * Users extend this via module augmentation with their full user model.
+ */
+export interface User {
+  id: string
+  email: string
+  name?: string | null
+}
+
+/**
+ * Default AuthData interface - mirrors Laravel Jetstream pattern.
+ * isAuthenticated + optional user is the universal pattern.
+ */
+export interface AuthData {
+  isAuthenticated: boolean
+  user?: User
+}
+
+/**
+ * Default FlashMessages interface - category to messages mapping.
+ * Standard categories: success, error, info, warning.
+ */
+export interface FlashMessages {
+  [category: string]: string[]
+}
+
+/**
+ * User-defined shared props for dynamic share() calls in guards/middleware.
+ * Includes sensible defaults matching Laravel Jetstream patterns.
+ *
+ * @example
+ * // Extend with your full user model and additional shared props:
+ * declare module 'litestar-vite/inertia' {
+ *   interface User {
+ *     avatarUrl?: string | null
+ *     roles: Role[]
+ *     teams: Team[]
+ *   }
+ *   interface SharedProps {
+ *     locale?: string
+ *     currentTeam?: CurrentTeam
+ *   }
+ * }
+ */
+export interface SharedProps {
+  auth?: AuthData
+  flash?: FlashMessages
+}
+
+/** Full shared props = generated + user-defined */
+export type FullSharedProps = GeneratedSharedProps & SharedProps
 
 /** Page props mapped by component name */
 export interface PageProps {
-  Home: HomeProps & SharedProps
-  Books: BooksProps & SharedProps
+  Home: HomeProps & FullSharedProps
+  Books: BooksProps & FullSharedProps
   // ... auto-generated for each Inertia route
 }
 
@@ -423,24 +729,31 @@ export type InertiaPageProps<C extends ComponentName> = PageProps[C]
 
 - [x] Can we reuse existing OpenAPI schema refs for page props?
   - **Answer**: Yes, handlers already generate OpenAPI schemas for return types
+- [x] How to handle dynamic `share()` calls in guards/middleware?
+  - **Answer**: Three-tier SharedProps approach. `DynamicSharedProps` is an empty interface users extend via module augmentation. This matches Laravel's approach - no magic, just documentation.
 - [ ] Should we support multiple components per route?
   - Needs investigation of use case
 - [ ] How to handle `lazy()` and `defer()` prop types?
   - These wrap values; need to extract inner type
 - [ ] Should `usePage()` be typed via module augmentation?
   - Could provide better DX but adds complexity
+- [ ] Should we attempt static analysis of `share()` calls in guards?
+  - v2 consideration: Could parse AST to find `share(request, "key", TypedValue)` patterns
+  - Complex and fragile; recommend document-only approach for v1
 
 ## Risks & Mitigations
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
 | Complex dict literals without type hints | Medium | Use `Record<string, unknown>` fallback; warn on untyped handlers |
+| Dynamic `share()` props not typed | Medium | Empty `DynamicSharedProps` interface for user extension; document pattern clearly |
 | Breaking existing type generation workflows | Low | Auto-on only when BOTH `types` AND `inertia` enabled; easy opt-out |
 | Performance impact on app startup | Low | Only runs on `generate-types` command, not at runtime |
 | Type name collisions between pages | Low | Use component name as prefix; warn on collisions |
 | Circular type dependencies | Low | Let @hey-api/openapi-ts handle; it's battle-tested |
 | Users confused by extra generated file | Low | File is passive; can be ignored or disabled with one flag |
 | Global TS pollution breaking builds | None | v1 uses explicit imports only; no global augmentation |
+| Users forget to extend DynamicSharedProps | Low | Generate JSDoc with clear example; TypeScript errors guide users |
 
 ## Dependencies
 
@@ -577,6 +890,16 @@ Both models agreed on the following key design decisions:
 
 6. **Industry Alignment**: Modern meta-frameworks (Remix, Next.js, tRPC) all offer similar patterns. This positions litestar-vite as a premium choice.
 
+7. **Two-Tier Architecture**: Collapse `BuiltInSharedProps` + `StaticSharedProps` into `GeneratedSharedProps`. Single `SharedProps` interface for users to extend.
+
+8. **No AST Analysis**: Don't attempt to parse `share()` calls from guard code. Users extend `SharedProps` manually.
+
+9. **Sensible Defaults (Laravel Jetstream Pattern)**: Provide `User`, `AuthData`, `FlashMessages` interfaces as defaults:
+   - `User`: `{ id: string, email: string, name?: string | null }`
+   - `AuthData`: `{ isAuthenticated: boolean, user?: User }`
+   - `FlashMessages`: `{ [category: string]: string[] }`
+   - Config flags to disable defaults for edge cases
+
 ### Key Insight from Gemini 3 Pro
 
 > "The generated `page-props.ts` is a passive file. Its existence doesn't break existing code, enabling perfect graceful degradation."
@@ -590,3 +913,11 @@ Both models agreed on the following key design decisions:
 **"Batteries included for those who want them, invisible for those who don't."**
 
 Users get type safety automatically when they enable the right configs, but the feature degrades gracefully at every level - from "full types" to "ignore the file" to "no types at all" - with zero breakage at any layer.
+
+### Laravel Jetstream Alignment
+
+The default types mirror what Laravel Jetstream provides:
+- **Universal patterns**: Nearly every Inertia app has auth + flash
+- **Familiar to Laravel users**: Same interface names and structure
+- **Zero-config DX**: New users get working types immediately
+- **Easy extension**: TypeScript module augmentation for customization

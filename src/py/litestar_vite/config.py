@@ -43,6 +43,7 @@ __all__ = (
     "DeployConfig",
     "ExternalDevServer",
     "InertiaConfig",
+    "InertiaTypeGenConfig",
     "PaginationContainer",
     "PathConfig",
     "RuntimeConfig",
@@ -254,6 +255,78 @@ class InertiaConfig:
     Note: Encryption happens client-side; requires HTTPS in production.
     See: https://inertiajs.com/history-encryption
     """
+    type_gen: "InertiaTypeGenConfig | None" = None
+    """Type generation options for Inertia page props.
+
+    Controls default types in generated page-props.ts. Set to InertiaTypeGenConfig()
+    or leave as None for defaults. Use InertiaTypeGenConfig(include_default_auth=False)
+    to disable default User/AuthData interfaces for non-standard user models.
+    """
+
+
+@dataclass
+class InertiaTypeGenConfig:
+    """Type generation options for Inertia page props.
+
+    Controls which default types are included in the generated page-props.ts file.
+    This follows Laravel Jetstream patterns - sensible defaults for common auth patterns.
+
+    Attributes:
+        include_default_auth: Include default User and AuthData interfaces.
+            Default User has: id, email, name. Users extend via module augmentation.
+            Set to False if your User model doesn't have these fields (uses uuid, username, etc.)
+        include_default_flash: Include default FlashMessages interface.
+            Uses { [category: string]: string[] } pattern for flash messages.
+
+    Example:
+        Standard auth (95% of users) - just extend defaults::
+
+            # Python: use defaults
+            ViteConfig(inertia=InertiaConfig())
+
+            # TypeScript: extend User interface
+            declare module 'litestar-vite/inertia' {
+                interface User {
+                    avatarUrl?: string
+                    roles: Role[]
+                }
+            }
+
+        Custom auth (5% of users) - define from scratch::
+
+            # Python: disable defaults
+            ViteConfig(inertia=InertiaConfig(
+                type_gen=InertiaTypeGenConfig(include_default_auth=False)
+            ))
+
+            # TypeScript: define your custom User
+            declare module 'litestar-vite/inertia' {
+                interface User {
+                    uuid: string  // No id!
+                    username: string  // No email!
+                }
+            }
+    """
+
+    include_default_auth: bool = True
+    """Include default User and AuthData interfaces.
+
+    When True, generates:
+    - User: { id: string, email: string, name?: string | null }
+    - AuthData: { isAuthenticated: boolean, user?: User }
+
+    Users extend via TypeScript module augmentation.
+    Set to False if your User model has different required fields.
+    """
+
+    include_default_flash: bool = True
+    """Include default FlashMessages interface.
+
+    When True, generates:
+    - FlashMessages: { [category: string]: string[] }
+
+    Standard flash message pattern used by most web frameworks.
+    """
 
 
 def _resolve_proxy_mode() -> "Literal['vite', 'direct', 'proxy'] | None":
@@ -414,7 +487,7 @@ class RuntimeConfig:
         # Auto-set proxy_mode="proxy" when external_dev_server is configured
         # External dev servers (Angular CLI, Next.js, etc.) need blacklist proxy mode
         # Override default "vite" mode which only proxies Vite-specific routes
-        if self.external_dev_server is not None and self.proxy_mode in (None, "vite"):
+        if self.external_dev_server is not None and self.proxy_mode in {None, "vite"}:
             self.proxy_mode = "proxy"
 
         # Note: proxy mode no longer requires external_dev_server - it can read
@@ -491,6 +564,9 @@ class TypeGenConfig:
         generate_zod: Generate Zod schemas from OpenAPI.
         generate_sdk: Generate SDK client from OpenAPI.
         generate_routes: Generate typed routes.ts file (Ziggy-style).
+        generate_page_props: Generate Inertia page props TypeScript file.
+            Auto-enabled when both types and inertia are configured.
+        page_props_path: Path to export page props metadata (JSON format).
         watch_patterns: File patterns to watch for type regeneration.
     """
 
@@ -501,6 +577,21 @@ class TypeGenConfig:
     generate_zod: bool = False
     generate_sdk: bool = True
     generate_routes: bool = True
+    generate_page_props: bool = True
+    """Generate Inertia page props TypeScript file.
+
+    When True and Inertia is enabled, generates inertia-pages.json metadata
+    that the Vite plugin uses to create page-props.ts with typed page props.
+
+    Auto-enabled when both types and inertia are configured. Set to False
+    to disable page props generation while keeping other type generation.
+    """
+    page_props_path: "Path | None" = field(default=None)  # Computed in __post_init__ if None
+    """Path to export page props metadata JSON.
+
+    The Vite plugin reads this file to generate page-props.ts.
+    Defaults to output / "inertia-pages.json".
+    """
     watch_patterns: list[str] = field(
         default_factory=lambda: ["**/routes.py", "**/handlers.py", "**/controllers/**/*.py"]
     )
@@ -522,6 +613,10 @@ class TypeGenConfig:
             self.routes_ts_path = self.output / "routes.ts"
         elif isinstance(self.routes_ts_path, str):
             self.routes_ts_path = Path(self.routes_ts_path)
+        if self.page_props_path is None:
+            self.page_props_path = self.output / "inertia-pages.json"
+        elif isinstance(self.page_props_path, str):
+            self.page_props_path = Path(self.page_props_path)
 
 
 @dataclass
@@ -740,12 +835,15 @@ class ViteConfig:
         default_rel = Path("src/generated")
         default_openapi = default_rel / "openapi.json"
         default_routes = default_rel / "routes.json"
+        default_page_props = default_rel / "inertia-pages.json"
 
         # If user only set output, cascade defaults under that output
         if types.openapi_path == default_openapi and types.output != default_rel:
             types.openapi_path = types.output / "openapi.json"
         if types.routes_path == default_routes and types.output != default_rel:
             types.routes_path = types.output / "routes.json"
+        if types.page_props_path == default_page_props and types.output != default_rel:
+            types.page_props_path = types.output / "inertia-pages.json"
 
         # Set default routes_ts_path if not specified
         if types.routes_ts_path is None or (
@@ -759,6 +857,9 @@ class ViteConfig:
         types.openapi_path = _to_root(types.openapi_path) if types.openapi_path else types.output / "openapi.json"
         types.routes_path = _to_root(types.routes_path) if types.routes_path else types.output / "routes.json"
         types.routes_ts_path = _to_root(types.routes_ts_path) if types.routes_ts_path else types.output / "routes.ts"
+        types.page_props_path = (
+            _to_root(types.page_props_path) if types.page_props_path else types.output / "inertia-pages.json"
+        )
 
     def _ensure_spa_default(self) -> None:
         if self.mode in {"spa", "hybrid"} and self.spa is None:

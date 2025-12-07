@@ -54,6 +54,13 @@ export interface TypesConfig {
    */
   routesPath?: string
   /**
+   * Path where Inertia page props metadata is exported by Litestar.
+   * The Vite plugin watches this file for page props type generation.
+   *
+   * @default 'inertia-pages.json'
+   */
+  pagePropsPath?: string
+  /**
    * Generate Zod schemas in addition to TypeScript types.
    *
    * @default false
@@ -246,6 +253,7 @@ interface PythonDefaults {
     output: string
     openapiPath: string
     routesPath: string
+    pagePropsPath?: string
     generateZod: boolean
     generateSdk: boolean
   } | null
@@ -500,10 +508,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       // Validate resource directory exists (if explicitly configured)
       const resourceDir = path.resolve(resolvedConfig.root, pluginConfig.resourceDirectory)
       if (!fs.existsSync(resourceDir) && typeof resolvedConfig.logger?.warn === "function") {
-        resolvedConfig.logger.warn(
-          `${colors.cyan("litestar-vite")} ${colors.yellow("Resource directory not found:")} ${resourceDir}\n` +
-            `  Expected directory: ${colors.dim(pluginConfig.resourceDirectory)}`,
-        )
+        resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("Resource directory not found:")} ${pluginConfig.resourceDirectory}`)
       }
 
       const hint = pluginConfig.types !== false ? pluginConfig.types.routesPath : undefined
@@ -667,7 +672,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
             res.end(transformedHtml)
             return
           } catch (e) {
-            resolvedConfig.logger.error(`Error serving index.html from ${indexPath}: ${e instanceof Error ? e.message : e}`)
+            const relIndexPath = path.relative(server.config.root, indexPath)
+            resolvedConfig.logger.error(`Error serving index.html from ${relIndexPath}: ${e instanceof Error ? e.message : e}`)
             next(e)
             return
           }
@@ -876,6 +882,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
       output: "src/generated/types",
       openapiPath: "src/generated/openapi.json",
       routesPath: "src/generated/routes.json",
+      pagePropsPath: "src/generated/inertia-pages.json",
       generateZod: false,
       generateSdk: false,
       debounce: 300,
@@ -888,6 +895,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
         output: pythonDefaults.types.output,
         openapiPath: pythonDefaults.types.openapiPath,
         routesPath: pythonDefaults.types.routesPath,
+        pagePropsPath: pythonDefaults.types.pagePropsPath ?? path.join(pythonDefaults.types.output, "inertia-pages.json"),
         generateZod: pythonDefaults.types.generateZod,
         generateSdk: pythonDefaults.types.generateSdk,
         debounce: 300,
@@ -898,23 +906,29 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     // Explicit object config - user overrides
     const userProvidedOpenapi = Object.hasOwn(resolvedConfig.types, "openapiPath")
     const userProvidedRoutes = Object.hasOwn(resolvedConfig.types, "routesPath")
+    const userProvidedPageProps = Object.hasOwn(resolvedConfig.types, "pagePropsPath")
 
     typesConfig = {
       enabled: resolvedConfig.types.enabled ?? true,
       output: resolvedConfig.types.output ?? "src/generated/types",
       openapiPath: resolvedConfig.types.openapiPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "openapi.json") : "src/generated/openapi.json"),
       routesPath: resolvedConfig.types.routesPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "routes.json") : "src/generated/routes.json"),
+      pagePropsPath:
+        resolvedConfig.types.pagePropsPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "inertia-pages.json") : "src/generated/inertia-pages.json"),
       generateZod: resolvedConfig.types.generateZod ?? false,
       generateSdk: resolvedConfig.types.generateSdk ?? false,
       debounce: resolvedConfig.types.debounce ?? 300,
     }
 
-    // If the user only set output (not openapi/routes), cascade them under output for consistency
+    // If the user only set output (not openapi/routes/pageProps), cascade them under output for consistency
     if (!userProvidedOpenapi && resolvedConfig.types.output) {
       typesConfig.openapiPath = path.join(typesConfig.output, "openapi.json")
     }
     if (!userProvidedRoutes && resolvedConfig.types.output) {
       typesConfig.routesPath = path.join(typesConfig.output, "routes.json")
+    }
+    if (!userProvidedPageProps && resolvedConfig.types.output) {
+      typesConfig.pagePropsPath = path.join(typesConfig.output, "inertia-pages.json")
     }
   }
 
@@ -1000,6 +1014,195 @@ function resolveFullReloadConfig({ refresh: config }: ResolvedPluginConfig): Plu
 
     return plugin
   })
+}
+
+/**
+ * Configuration for Inertia page props type generation.
+ */
+interface InertiaPagePropsJson {
+  pages: Record<
+    string,
+    {
+      route: string
+      propsType?: string
+      schemaRef?: string
+      handler?: string
+    }
+  >
+  sharedProps: Record<string, { type: string; optional?: boolean }>
+  typeGenConfig: {
+    includeDefaultAuth: boolean
+    includeDefaultFlash: boolean
+  }
+  generatedAt: string
+}
+
+/**
+ * Generate page-props.ts from inertia-pages.json metadata.
+ */
+async function emitPagePropsTypes(pagesPath: string, outputDir: string): Promise<void> {
+  const contents = await fs.promises.readFile(pagesPath, "utf-8")
+  const json: InertiaPagePropsJson = JSON.parse(contents)
+
+  const outDir = path.resolve(process.cwd(), outputDir)
+  await fs.promises.mkdir(outDir, { recursive: true })
+  const outFile = path.join(outDir, "page-props.ts")
+
+  const { includeDefaultAuth, includeDefaultFlash } = json.typeGenConfig
+
+  // Build default types based on config
+  let userTypes = ""
+  let authTypes = ""
+  let flashTypes = ""
+
+  if (includeDefaultAuth) {
+    userTypes = `/**
+ * Default User interface - minimal baseline for common auth patterns.
+ * Users extend this via module augmentation with their full user model.
+ *
+ * @example
+ * declare module 'litestar-vite/inertia' {
+ *   interface User {
+ *     avatarUrl?: string | null
+ *     roles: Role[]
+ *     teams: Team[]
+ *   }
+ * }
+ */
+export interface User {
+  id: string
+  email: string
+  name?: string | null
+}
+
+`
+    authTypes = `/**
+ * Default AuthData interface - mirrors Laravel Jetstream pattern.
+ * isAuthenticated + optional user is the universal pattern.
+ */
+export interface AuthData {
+  isAuthenticated: boolean
+  user?: User
+}
+
+`
+  } else {
+    // Empty interfaces for user extension
+    userTypes = `/**
+ * User interface - define via module augmentation.
+ * Default auth types are disabled.
+ *
+ * @example
+ * declare module 'litestar-vite/inertia' {
+ *   interface User {
+ *     uuid: string
+ *     username: string
+ *   }
+ * }
+ */
+export interface User {}
+
+`
+    authTypes = `/**
+ * AuthData interface - define via module augmentation.
+ * Default auth types are disabled.
+ */
+export interface AuthData {}
+
+`
+  }
+
+  if (includeDefaultFlash) {
+    flashTypes = `/**
+ * Default FlashMessages interface - category to messages mapping.
+ * Standard categories: success, error, info, warning.
+ */
+export interface FlashMessages {
+  [category: string]: string[]
+}
+
+`
+  } else {
+    flashTypes = `/**
+ * FlashMessages interface - define via module augmentation.
+ * Default flash types are disabled.
+ */
+export interface FlashMessages {}
+
+`
+  }
+
+  // Build SharedProps with defaults
+  const sharedPropsContent =
+    includeDefaultAuth || includeDefaultFlash
+      ? `  auth?: AuthData
+  flash?: FlashMessages`
+      : ""
+
+  // Build page props entries
+  const pageEntries: string[] = []
+  for (const [component, data] of Object.entries(json.pages)) {
+    const propsType = data.propsType ? data.propsType : "Record<string, unknown>"
+    pageEntries.push(`  "${component}": ${propsType} & FullSharedProps`)
+  }
+
+  const body = `// AUTO-GENERATED by litestar-vite. Do not edit.
+/* eslint-disable */
+
+${userTypes}${authTypes}${flashTypes}/**
+ * Generated shared props (always present).
+ * Includes built-in props + static config props.
+ */
+export interface GeneratedSharedProps {
+  errors?: Record<string, string[]>
+  csrf_token?: string
+}
+
+/**
+ * User-defined shared props for dynamic share() calls in guards/middleware.
+ * Extend this interface via module augmentation.
+ *
+ * @example
+ * declare module 'litestar-vite/inertia' {
+ *   interface User {
+ *     avatarUrl?: string | null
+ *     roles: Role[]
+ *     teams: Team[]
+ *   }
+ *   interface SharedProps {
+ *     locale?: string
+ *     currentTeam?: CurrentTeam
+ *   }
+ * }
+ */
+export interface SharedProps {
+${sharedPropsContent}
+}
+
+/** Full shared props = generated + user-defined */
+export type FullSharedProps = GeneratedSharedProps & SharedProps
+
+/** Page props mapped by component name */
+export interface PageProps {
+${pageEntries.join("\n")}
+}
+
+/** Component name union type */
+export type ComponentName = keyof PageProps
+
+/** Type-safe props for a specific component */
+export type InertiaPageProps<C extends ComponentName> = PageProps[C]
+
+/** Get props type for a specific page component */
+export type PagePropsFor<C extends ComponentName> = PageProps[C]
+
+// Re-export for module augmentation
+declare module "litestar-vite/inertia" {
+  export { User, AuthData, FlashMessages, SharedProps, GeneratedSharedProps, FullSharedProps, PageProps, ComponentName, InertiaPageProps, PagePropsFor }
+}
+`
+
+  await fs.promises.writeFile(outFile, body, "utf-8")
 }
 
 async function emitRouteTypes(routesPath: string, outputDir: string): Promise<void> {
@@ -1151,6 +1354,7 @@ export { getCsrfToken, csrfHeaders, csrfFetch } from "litestar-vite-plugin/helpe
 function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executor?: string, hasPythonConfig?: boolean): Plugin {
   let lastTypesHash: string | null = null
   let lastRoutesHash: string | null = null
+  let lastPagePropsHash: string | null = null
   let server: ViteDevServer | null = null
   let isGenerating = false
   let resolvedConfig: ResolvedConfig | null = null
@@ -1171,6 +1375,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
       const projectRoot = resolvedConfig?.root ?? process.cwd()
       const openapiPath = path.resolve(projectRoot, typesConfig.openapiPath)
       const routesPath = path.resolve(projectRoot, typesConfig.routesPath)
+      const pagePropsPath = path.resolve(projectRoot, typesConfig.pagePropsPath)
 
       let generated = false
 
@@ -1186,7 +1391,8 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
       if (fs.existsSync(openapiPath) && shouldRunOpenApiTs) {
         resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("generating TypeScript types...")}`)
         if (resolvedConfig) {
-          resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("openapi-ts config: ")}${configPath ?? "<built-in defaults>"}`)
+          const relConfigPath = configPath ? path.relative(resolvedConfig.root, configPath) : null
+          resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("openapi-ts config: ")}${relConfigPath ?? "<built-in defaults>"}`)
         }
 
         // Output API client to a subdirectory to avoid deleting routes.ts and other files
@@ -1232,6 +1438,12 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
       // Always try to emit routes types when routes metadata is present
       if (fs.existsSync(routesPath)) {
         await emitRouteTypes(routesPath, typesConfig.output)
+        generated = true
+      }
+
+      // Emit Inertia page props types when metadata is present
+      if (fs.existsSync(pagePropsPath)) {
+        await emitPagePropsTypes(pagePropsPath, typesConfig.output)
         generated = true
       }
 
@@ -1289,11 +1501,13 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
       // Log that we're watching for schema changes
       if (typesConfig.enabled) {
         const root = resolvedConfig?.root ?? process.cwd()
-        const openapiAbs = path.resolve(root, typesConfig.openapiPath)
-        const routesAbs = path.resolve(root, typesConfig.routesPath)
-        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("watching schema/routes:")} ${colors.yellow(openapiAbs)}, ${colors.yellow(routesAbs)}`)
+        // Use relative paths for cleaner output
+        const openapiRel = typesConfig.openapiPath
+        const routesRel = typesConfig.routesPath
+        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("watching schema/routes:")} ${colors.yellow(openapiRel)}, ${colors.yellow(routesRel)}`)
         if (chosenConfigPath) {
-          resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("openapi-ts config:")} ${colors.yellow(chosenConfigPath)}`)
+          const relConfigPath = path.relative(root, chosenConfigPath)
+          resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("openapi-ts config:")} ${colors.yellow(relConfigPath)}`)
         }
       }
     },
@@ -1337,19 +1551,27 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
       const relativePath = path.relative(root, file)
       const openapiPath = typesConfig.openapiPath.replace(/^\.\//, "")
       const routesPath = typesConfig.routesPath.replace(/^\.\//, "")
+      const pagePropsPath = typesConfig.pagePropsPath.replace(/^\.\//, "")
 
-      // Check if the changed file is our OpenAPI schema or routes metadata
-      if (relativePath === openapiPath || relativePath === routesPath || file.endsWith(openapiPath) || file.endsWith(routesPath)) {
+      // Check if the changed file is our OpenAPI schema, routes, or page props metadata
+      const isOpenapi = relativePath === openapiPath || file.endsWith(openapiPath)
+      const isRoutes = relativePath === routesPath || file.endsWith(routesPath)
+      const isPageProps = relativePath === pagePropsPath || file.endsWith(pagePropsPath)
+
+      if (isOpenapi || isRoutes || isPageProps) {
         if (resolvedConfig) {
           resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("schema changed:")} ${colors.yellow(relativePath)}`)
         }
         const newHash = await hashFile(file)
-        if (relativePath === openapiPath) {
+        if (isOpenapi) {
           if (lastTypesHash === newHash) return
           lastTypesHash = newHash
-        } else {
+        } else if (isRoutes) {
           if (lastRoutesHash === newHash) return
           lastRoutesHash = newHash
+        } else if (isPageProps) {
+          if (lastPagePropsHash === newHash) return
+          lastPagePropsHash = newHash
         }
         debouncedRunTypeGeneration()
       }
