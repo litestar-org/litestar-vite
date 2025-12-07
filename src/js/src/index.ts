@@ -153,6 +153,18 @@ export interface PluginConfig {
    */
   autoDetectIndex?: boolean
   /**
+   * Enable Inertia mode, which disables index.html auto-detection.
+   *
+   * In Inertia apps, the backend (Litestar) serves all HTML responses.
+   * When enabled, direct access to the Vite dev server will show a placeholder
+   * page directing users to access the app through the backend.
+   *
+   * Auto-detected from `.litestar.json` when mode is "inertia".
+   *
+   * @default false (auto-detected from .litestar.json)
+   */
+  inertiaMode?: boolean
+  /**
    * Transform the code while serving.
    */
   transformOnServe?: (code: string, url: DevServerUrl) => string
@@ -223,10 +235,13 @@ interface RefreshConfig {
  * Resolved plugin configuration with all defaults applied.
  * Note: `types` is resolved to `Required<TypesConfig> | false` instead of `boolean | TypesConfig`
  * Note: `executor` remains optional - undefined means auto-detect from env
+ * Note: `inertiaMode` is resolved to boolean (auto-detected from .litestar.json mode)
  */
-interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor"> {
+interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor" | "inertiaMode"> {
   types: Required<TypesConfig> | false
   executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
+  /** Whether in Inertia mode (backend serves HTML, not Vite) */
+  inertiaMode: boolean
   /** Whether .litestar.json was found (used for validation warnings) */
   hasPythonConfig: boolean
 }
@@ -295,6 +310,12 @@ export default function litestar(config: string | string[] | PluginConfig): any[
  * Resolve the index.html path to use for the Vite server.
  */
 async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: ResolvedPluginConfig): Promise<string | null> {
+  // In Inertia mode, never auto-detect index.html - the backend serves all HTML
+  // Users should access the app through Litestar, not Vite directly
+  if (pluginConfig.inertiaMode) {
+    return null
+  }
+
   if (!pluginConfig.autoDetectIndex) {
     return null
   }
@@ -569,6 +590,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
               resolvedConfig.logger.info(
                 `  ${colors.green("➜")}  ${colors.bold("Index Mode")}: SPA (Serving ${colors.cyan(path.relative(server.config.root, initialIndexPath))} from root)`,
               )
+            } else if (pluginConfig.inertiaMode) {
+              resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Index Mode")}: Inertia (Backend serves HTML - access app through ${colors.cyan(appUrl)})`)
             } else {
               resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Index Mode")}: Litestar (Plugin will serve placeholder for /index.html)`)
             }
@@ -932,6 +955,9 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     }
   }
 
+  // Auto-detect Inertia mode from .litestar.json if not explicitly set
+  const inertiaMode = resolvedConfig.inertiaMode ?? pythonDefaults?.mode === "inertia"
+
   return {
     input: resolvedConfig.input,
     assetUrl: normalizeAssetUrl(resolvedConfig.assetUrl ?? pythonDefaults?.assetUrl ?? "/static/"),
@@ -945,6 +971,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     hotFile: resolvedConfig.hotFile ?? path.join(resolvedConfig.bundleDirectory ?? "public", "hot"),
     detectTls: resolvedConfig.detectTls ?? false,
     autoDetectIndex: resolvedConfig.autoDetectIndex ?? true,
+    inertiaMode,
     transformOnServe: resolvedConfig.transformOnServe ?? ((code) => code),
     types: typesConfig,
     executor: resolvedConfig.executor ?? pythonDefaults?.executor,

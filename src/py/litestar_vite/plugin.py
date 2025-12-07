@@ -277,6 +277,7 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
             "output": str(types.output),
             "openapiPath": str(types.openapi_path),
             "routesPath": str(types.routes_path),
+            "pagePropsPath": str(types.page_props_path) if types.page_props_path else None,
             "generateZod": types.generate_zod,
             "generateSdk": types.generate_sdk,
         }
@@ -393,6 +394,9 @@ def _pick_free_port() -> int:
         return sock.getsockname()[1]
 
 
+# Vite internal paths that should always be proxied to the dev server.
+# Project-specific paths (resource_dir, bundle_dir, asset_url) are added dynamically
+# by _normalize_proxy_prefixes() based on ViteConfig.
 _PROXY_PATH_PREFIXES: tuple[str, ...] = (
     "/@vite",
     "/@id/",
@@ -404,7 +408,25 @@ _PROXY_PATH_PREFIXES: tuple[str, ...] = (
     "/__vite_ping",
     "/node_modules/.vite/",
     "/@analogjs/",
-    "/src/",
+)
+
+# Hop-by-hop headers that must not be forwarded by proxies (RFC 2616 §13.5.1)
+# These headers are connection-specific and forwarding them causes protocol errors.
+# We also exclude content-length and content-encoding because httpx automatically
+# decompresses responses (gzip/brotli), making the original values invalid.
+_HOP_BY_HOP_HEADERS = frozenset(
+    {
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailers",
+        "transfer-encoding",
+        "upgrade",
+        "content-length",
+        "content-encoding",
+    }
 )
 
 
@@ -544,29 +566,43 @@ class ViteProxyMiddleware(AbstractMiddleware):
             except ImportError:
                 http2_enabled = False
 
-        async with httpx.AsyncClient(http2=http2_enabled) as client:
-            try:
-                upstream_resp = await client.request(method, url, headers=headers, content=body, timeout=10.0)
-            except httpx.HTTPError as exc:  # pragma: no cover - network failure path
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 502,
-                        "headers": [(b"content-type", b"text/plain")],
-                    }
-                )
-                await send({"type": "http.response.body", "body": str(exc).encode()})
-                return
+        # Initialize response variables with error defaults.
+        # We capture the response data inside the context manager, then send OUTSIDE.
+        # This prevents "Exception caught after response started" errors caused by
+        # httpx AsyncClient.__aexit__ cleanup exceptions occurring after ASGI response is sent.
+        response_status = 502
+        response_headers: list[tuple[bytes, bytes]] = [(b"content-type", b"text/plain")]
+        response_body = b"Bad gateway"
+        got_full_body = False
 
-        response_headers = [(k.encode(), v.encode()) for k, v in upstream_resp.headers.items()]
+        try:
+            async with httpx.AsyncClient(http2=http2_enabled) as client:
+                upstream_resp = await client.request(method, url, headers=headers, content=body, timeout=10.0)
+                # Capture response data while connection is still open
+                response_status = upstream_resp.status_code
+                # Filter out hop-by-hop headers that must not be forwarded
+                response_headers = [
+                    (k.encode(), v.encode())
+                    for k, v in upstream_resp.headers.items()
+                    if k.lower() not in _HOP_BY_HOP_HEADERS
+                ]
+                response_body = upstream_resp.content
+                got_full_body = True
+        except httpx.HTTPError as exc:  # pragma: no cover - network failure path
+            if not got_full_body:
+                # Real upstream failure - use error response
+                response_body = f"Upstream error: {exc}".encode()
+            # If got_full_body=True, this is a cleanup error - keep the successful response
+
+        # Send response OUTSIDE context manager - httpx cleanup is complete
         await send(
             {
                 "type": "http.response.start",
-                "status": upstream_resp.status_code,
+                "status": response_status,
                 "headers": response_headers,
             }
         )
-        await send({"type": "http.response.body", "body": upstream_resp.content})
+        await send({"type": "http.response.body", "body": response_body})
 
 
 class ExternalDevServerProxyMiddleware(AbstractMiddleware):
@@ -765,44 +801,47 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
             except ImportError:
                 http2_enabled = False
 
-        async with httpx.AsyncClient(http2=http2_enabled, timeout=30.0) as client:
-            try:
-                upstream_resp = await client.request(method, url, headers=headers, content=body)
-            except httpx.ConnectError:
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 503,
-                        "headers": [(b"content-type", b"text/plain")],
-                    }
-                )
-                await send(
-                    {
-                        "type": "http.response.body",
-                        "body": f"Dev server not running at {target}".encode(),
-                    }
-                )
-                return
-            except httpx.HTTPError as exc:
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 502,
-                        "headers": [(b"content-type", b"text/plain")],
-                    }
-                )
-                await send({"type": "http.response.body", "body": str(exc).encode()})
-                return
+        # Initialize response variables with error defaults.
+        # We capture the response data inside the context manager, then send OUTSIDE.
+        # This prevents "Exception caught after response started" errors caused by
+        # httpx AsyncClient.__aexit__ cleanup exceptions occurring after ASGI response is sent.
+        response_status = 502
+        response_headers: list[tuple[bytes, bytes]] = [(b"content-type", b"text/plain")]
+        response_body = b"Bad gateway"
+        got_full_body = False
 
-        response_headers = [(k.encode(), v.encode()) for k, v in upstream_resp.headers.items()]
+        try:
+            async with httpx.AsyncClient(http2=http2_enabled, timeout=30.0) as client:
+                upstream_resp = await client.request(method, url, headers=headers, content=body)
+                # Capture response data while connection is still open
+                response_status = upstream_resp.status_code
+                # Filter out hop-by-hop headers that must not be forwarded
+                response_headers = [
+                    (k.encode(), v.encode())
+                    for k, v in upstream_resp.headers.items()
+                    if k.lower() not in _HOP_BY_HOP_HEADERS
+                ]
+                response_body = upstream_resp.content
+                got_full_body = True
+        except httpx.ConnectError:
+            # Dev server not reachable - 503 Service Unavailable
+            response_status = 503
+            response_body = f"Dev server not running at {target}".encode()
+        except httpx.HTTPError as exc:
+            if not got_full_body:
+                # Real upstream failure - use error response
+                response_body = f"Upstream error: {exc}".encode()
+            # If got_full_body=True, this is a cleanup error - keep the successful response
+
+        # Send response OUTSIDE context manager - httpx cleanup is complete
         await send(
             {
                 "type": "http.response.start",
-                "status": upstream_resp.status_code,
+                "status": response_status,
                 "headers": response_headers,
             }
         )
-        await send({"type": "http.response.body", "body": upstream_resp.content})
+        await send({"type": "http.response.body", "body": response_body})
 
 
 def _build_hmr_target_url(
