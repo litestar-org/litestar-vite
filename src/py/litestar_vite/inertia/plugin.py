@@ -23,7 +23,37 @@ def set_js_routes(app: "Litestar") -> "None":
 
 
 class InertiaPlugin(InitPluginProtocol):
-    """Inertia plugin."""
+    """Inertia plugin.
+
+    This plugin configures Litestar for Inertia.js support, including:
+    - Session middleware requirement validation
+    - Exception handler for Inertia responses
+    - InertiaRequest and InertiaResponse as default classes
+    - Type encoders for StaticProp and DeferredProp
+
+    BlockingPortal Behavior:
+        The plugin creates a BlockingPortal during its lifespan for executing
+        async DeferredProp callbacks from synchronous type encoders. This is
+        necessary because Litestar's JSON serialization happens synchronously,
+        but DeferredProp may contain async callables.
+
+        The portal is shared across all requests during the app's lifetime.
+        Type encoders for StaticProp and DeferredProp use ``val.render()``
+        which may access this portal for async resolution.
+
+        If you're using DeferredProp outside of InertiaResponse (e.g., in
+        custom serialization), ensure the app lifespan is active and the
+        portal is available via ``inertia_plugin.portal``.
+
+    Example::
+
+        from litestar_vite.inertia import InertiaPlugin, InertiaConfig
+
+        app = Litestar(
+            plugins=[InertiaPlugin(InertiaConfig())],
+            middleware=[ServerSideSessionConfig().middleware],
+        )
+    """
 
     __slots__ = ("_portal", "config")
 
@@ -89,7 +119,14 @@ class InertiaPlugin(InitPluginProtocol):
         else:
             msg = "The Inertia plugin require a session middleware."
             raise ImproperlyConfiguredException(msg)
-        app_config.exception_handlers.update({Exception: exception_to_http_response})  # pyright: ignore[reportUnknownMemberType]
+        from litestar.exceptions import HTTPException
+
+        app_config.exception_handlers.update(  # pyright: ignore[reportUnknownMemberType]
+            {
+                Exception: exception_to_http_response,
+                HTTPException: exception_to_http_response,
+            }
+        )
         app_config.request_class = InertiaRequest
         app_config.response_class = InertiaResponse
         app_config.middleware.append(InertiaMiddleware)

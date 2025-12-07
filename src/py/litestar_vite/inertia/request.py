@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from urllib.parse import unquote
 
 from litestar import Request
@@ -13,11 +13,15 @@ from litestar.connection.base import (
 
 from litestar_vite.inertia._utils import InertiaHeaders
 
-__all__ = ("InertiaDetails", "InertiaRequest")
+__all__ = ("InertiaDetails", "InertiaHeaders", "InertiaRequest")
 
+# Default component opt keys if InertiaPlugin is not available
+_DEFAULT_COMPONENT_OPT_KEYS: "tuple[str, ...]" = ("component", "page")
 
 if TYPE_CHECKING:
     from litestar.types import Receive, Scope, Send
+
+    from litestar_vite.inertia.plugin import InertiaPlugin
 
 
 class InertiaDetails:
@@ -58,13 +62,24 @@ class InertiaDetails:
 
                 @get("/", component="Home")
                 @get("/", page="Home")
+
+            With custom keys configured::
+
+                InertiaConfig(component_opt_keys=("view", "component", "page"))
+                @get("/", view="Home")  # Also works
         """
         rh = self.request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
         if rh:
-            # Check keys in order: "component", "page" (or custom keys from config)
-            for key in ("component", "page"):
+            component_opt_keys: "tuple[str, ...]" = _DEFAULT_COMPONENT_OPT_KEYS
+            try:
+                inertia_plugin: "InertiaPlugin" = self.request.app.plugins.get("InertiaPlugin")
+                component_opt_keys = inertia_plugin.config.component_opt_keys
+            except KeyError:
+                pass
+
+            for key in component_opt_keys:
                 if (value := rh.opt.get(key)) is not None:
-                    return value
+                    return cast("str", value)
         return None
 
     def __bool__(self) -> bool:
@@ -147,6 +162,18 @@ class InertiaDetails:
             'append' or 'prepend' for infinite scroll merging.
         """
         return self._get_header_value(InertiaHeaders.INFINITE_SCROLL_MERGE_INTENT)
+
+    @cached_property
+    def version(self) -> "str | None":
+        """Get the Inertia asset version from the client.
+
+        The client sends this header so the server can detect version mismatches
+        and trigger a hard refresh when assets have changed.
+
+        Returns:
+            The version string sent by the client, or None if not present.
+        """
+        return self._get_header_value(InertiaHeaders.VERSION)
 
     @cached_property
     def referer(self) -> "str | None":
@@ -253,3 +280,15 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
         Returns 'append' or 'prepend' for infinite scroll merging.
         """
         return self.inertia.merge_intent
+
+    @property
+    def inertia_version(self) -> "str | None":
+        """Get the Inertia asset version sent by the client.
+
+        The client sends this header so the server can detect version mismatches
+        and trigger a hard refresh when assets have changed.
+
+        Returns:
+            The version string sent by the client, or None if not present.
+        """
+        return self.inertia.version

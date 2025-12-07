@@ -673,8 +673,10 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           }
         }
 
-        // Serve placeholder for /index.html when no index.html exists
-        if (!indexPath && req.url === "/index.html") {
+        // Serve placeholder for "/" or "/index.html" when no index.html exists
+        // This is especially useful for hybrid/inertia mode where the backend serves the SPA
+        // Users who accidentally navigate to the Vite port will see helpful guidance
+        if (!indexPath && (req.url === "/" || req.url === "/index.html")) {
           try {
             const placeholderPath = path.join(dirname(), "dev-server-index.html")
             const placeholderContent = await fs.promises.readFile(placeholderPath, "utf-8")

@@ -2094,7 +2094,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._spa_handler is not None and not self._spa_handler.is_initialized:
             # Pass the proxy target URL to avoid stale hotfile issues
             # The VitePlugin knows the correct URL because it selects the port
-            await self._spa_handler.initialize(vite_url=self._proxy_target)
+            # Use sync initialization - file I/O during startup is negligible
+            self._spa_handler.initialize_sync(vite_url=self._proxy_target)
             _log_success("SPA handler initialized")
 
         # Warn if no built assets in production (skip for SSR mode since Node serves frontend)
@@ -2109,9 +2110,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         try:
             yield
         finally:
-            # Shutdown SPA handler
+            # Shutdown SPA handler (async because AsyncClient.aclose is async)
             if self._spa_handler is not None:
-                await self._spa_handler.shutdown()
+                await self._spa_handler.shutdown_async()
 
 
 def _normalize_proxy_prefixes(

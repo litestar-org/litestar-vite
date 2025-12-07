@@ -353,6 +353,7 @@ max-complexity = 18
   "UP006",
   "SLF001",
   "ERA001",
+  "RUF029"
 
 ]
 "tools/*.py" = [ "PLR0911"]

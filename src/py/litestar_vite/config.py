@@ -28,11 +28,13 @@ import os
 from dataclasses import dataclass, field, replace
 from importlib.util import find_spec
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkable
 
 logger = logging.getLogger("litestar_vite")
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from litestar_vite.executor import JSExecutor
 
 __all__ = (
@@ -41,12 +43,38 @@ __all__ = (
     "DeployConfig",
     "ExternalDevServer",
     "InertiaConfig",
+    "PaginationContainer",
     "PathConfig",
     "RuntimeConfig",
     "SPAConfig",
     "TypeGenConfig",
     "ViteConfig",
 )
+
+
+@runtime_checkable
+class PaginationContainer(Protocol):
+    """Protocol for pagination containers that can be unwrapped for Inertia scroll.
+
+    Any type that has `items` and pagination metadata can implement this protocol.
+    The response will extract items and calculate scroll_props automatically.
+
+    Built-in support:
+    - litestar.pagination.OffsetPagination
+    - litestar.pagination.ClassicPagination
+    - advanced_alchemy.service.OffsetPagination
+
+    Custom types can implement this protocol:
+        @dataclass
+        class MyPagination:
+            items: list[T]
+            total: int
+            limit: int
+            offset: int
+    """
+
+    items: "Sequence[Any]"
+
 
 TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
 JINJA_INSTALLED = bool(find_spec("jinja2"))
@@ -212,6 +240,19 @@ class InertiaConfig:
 
     Used in SPA mode to locate the element where data-page attribute
     should be injected. Defaults to "#app".
+    """
+    encrypt_history: bool = False
+    """Enable browser history encryption globally (v2 feature).
+
+    When True, all Inertia responses will include `encryptHistory: true`
+    in the page object. The Inertia client will encrypt history state
+    using browser's crypto API before pushing to history.
+
+    This prevents sensitive data from being visible in browser history
+    after a user logs out. Individual responses can override this setting.
+
+    Note: Encryption happens client-side; requires HTTPS in production.
+    See: https://inertiajs.com/history-encryption
     """
 
 
@@ -787,10 +828,10 @@ class ViteConfig:
 
         Detection order:
         1. If Inertia is enabled:
-           a. If spa_mode=True (explicit) → Hybrid
-           b. If spa_mode=False (explicit) → Template (Jinja-based)
-           c. If index.html exists → Hybrid (auto-detected)
-           d. Otherwise → Template (Jinja-based)
+           a. Default to hybrid mode for SPA-style Inertia applications
+           b. Hybrid mode works with ViteSPAHandler + HtmlTransformer
+           c. index.html is served by Vite dev server in dev mode or built assets in production
+           Note: If using Jinja2 templates with Inertia, set mode="template" explicitly.
         2. Check for index.html in resource_dir, root_dir, or public_dir → SPA
         3. Check if Jinja2 is installed and likely to be used → Template
         4. Default to SPA
@@ -802,17 +843,10 @@ class ViteConfig:
         inertia_enabled = isinstance(self.inertia, InertiaConfig)
 
         if inertia_enabled:
-            # If spa_mode is explicitly True, use hybrid mode
-            if self.inertia.spa_mode:  # type: ignore[union-attr]
-                return "hybrid"
-
-            # Auto-detect: if index.html exists, use hybrid mode (HtmlTransformer)
-            # This means users don't need to set spa_mode=True when they have an index.html
-            if any(path.exists() for path in self.candidate_index_html_paths()):
-                return "hybrid"
-
-            # No index.html found - fall back to template mode (Jinja-based Inertia)
-            return "template"
+            # Default to hybrid mode for Inertia applications
+            # This works for both dev mode (Vite dev server) and production (built assets)
+            # Users who want Jinja2 templates should set mode="template" explicitly
+            return "hybrid"
 
         # Check for index.html in expected locations (SPA indicator)
         if any(path.exists() for path in self.candidate_index_html_paths()):

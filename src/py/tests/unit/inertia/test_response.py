@@ -174,11 +174,13 @@ async def test_default_route_response_no_component(
         assert response.content == b'{"thing":"value"}'
 
 
-async def test_component_inertia_invalid_version(
+async def test_component_inertia_version_mismatch_returns_409(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
+    """Test that version mismatch returns 409 with X-Inertia-Location header per protocol."""
+
     @get("/", component="Home")
     async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
         return {"thing": "value"}
@@ -194,16 +196,10 @@ async def test_component_inertia_invalid_version(
             "/",
             headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: "wrong"},
         )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["component"] == "Home"
-        assert data["url"] == "/"
-        assert "version" in data  # version is a hash, not a fixed value
-        assert data["props"]["flash"] == {}
-        assert data["props"]["errors"] == {}
-        assert data["props"]["csrf_token"] == ""
-        assert data["props"]["thing"] == "value"
-        assert "content" not in data["props"]
+        # Per Inertia protocol: version mismatch returns 409 with X-Inertia-Location
+        assert response.status_code == 409
+        assert InertiaHeaders.LOCATION.value in response.headers
+        assert response.headers[InertiaHeaders.LOCATION.value] == "http://testserver.local/"
 
 
 async def test_unauthenticated_redirect(
@@ -724,3 +720,859 @@ async def test_lazy_render_with_partial_except() -> None:
     assert result2 == {
         "static": "value",
     }
+
+
+# =====================================================
+# X-Inertia-Version Header Tests
+# =====================================================
+
+
+async def test_inertia_response_includes_version_header_json(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that X-Inertia-Version header is included in JSON responses."""
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        # X-Inertia-Version header must be present per protocol
+        assert "X-Inertia-Version" in response.headers
+        # Version should match the asset version
+        assert response.headers["X-Inertia-Version"] == response.json()["version"]
+
+
+async def test_inertia_response_includes_version_header_html(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that X-Inertia-Version header is included in HTML responses."""
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Request without X-Inertia header (initial page load)
+        response = client.get("/")
+        # X-Inertia-Version header should be present for HTML responses too
+        assert "X-Inertia-Version" in response.headers
+        # Should be a valid version string
+        assert len(response.headers["X-Inertia-Version"]) > 0
+
+
+# =====================================================
+# History Encryption Tests (v2)
+# =====================================================
+
+
+async def test_encrypt_history_response_parameter(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that encrypt_history parameter sets encryptHistory in page props."""
+    from litestar_vite.inertia.response import InertiaResponse
+
+    @get("/secure", component="Secure")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaResponse[dict[str, str]]:
+        return InertiaResponse({"secret": "data"}, encrypt_history=True)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/secure", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # encryptHistory should be true (camelCase in JSON)
+        assert data["encryptHistory"] is True
+
+
+async def test_encrypt_history_defaults_to_false(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that encrypt_history defaults to false when not set."""
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # encryptHistory should be false by default
+        assert data["encryptHistory"] is False
+
+
+async def test_encrypt_history_config_default(
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaConfig.encrypt_history sets the default."""
+    from litestar_vite.inertia.config import InertiaConfig
+    from litestar_vite.inertia.plugin import InertiaPlugin
+
+    # Create plugin with encrypt_history enabled globally
+    inertia_config = InertiaConfig(root_template="index.html.j2", encrypt_history=True)
+    inertia_plugin_encrypted = InertiaPlugin(config=inertia_config)
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin_encrypted, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # Should inherit from config
+        assert data["encryptHistory"] is True
+
+
+async def test_encrypt_history_response_overrides_config(
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that response-level encrypt_history overrides config default."""
+    from litestar_vite.inertia.config import InertiaConfig
+    from litestar_vite.inertia.plugin import InertiaPlugin
+    from litestar_vite.inertia.response import InertiaResponse
+
+    # Create plugin with encrypt_history enabled globally
+    inertia_config = InertiaConfig(root_template="index.html.j2", encrypt_history=True)
+    inertia_plugin_encrypted = InertiaPlugin(config=inertia_config)
+
+    @get("/public", component="Public")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaResponse[dict[str, str]]:
+        # Explicitly disable for this response
+        return InertiaResponse({"data": "value"}, encrypt_history=False)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin_encrypted, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/public", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # Response parameter should override config
+        assert data["encryptHistory"] is False
+
+
+async def test_clear_history_parameter(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that clear_history parameter sets clearHistory in page props."""
+    from litestar_vite.inertia.response import InertiaResponse
+
+    @get("/logout", component="Logout")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaResponse[dict[str, str]]:
+        return InertiaResponse({"message": "Logged out"}, clear_history=True)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/logout", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # clearHistory should be true (camelCase in JSON)
+        assert data["clearHistory"] is True
+
+
+async def test_clear_history_defaults_to_false(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that clear_history defaults to false."""
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # clearHistory should be false by default
+        assert data["clearHistory"] is False
+
+
+# =====================================================
+# Scroll Props Tests (v2)
+# =====================================================
+
+
+async def test_scroll_props_parameter(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that scroll_props parameter sets scroll config in page props."""
+    from litestar_vite.inertia.helpers import scroll_props
+    from litestar_vite.inertia.response import InertiaResponse
+
+    @get("/posts", component="Posts")
+    async def handler(request: Request[Any, Any, Any], page: int = 1) -> InertiaResponse[dict[str, Any]]:
+        posts = [{"id": i, "title": f"Post {i}"} for i in range((page - 1) * 10, page * 10)]
+        return InertiaResponse(
+            {"posts": posts},
+            scroll_props=scroll_props(
+                current_page=page,
+                previous_page=page - 1 if page > 1 else None,
+                next_page=page + 1 if page < 5 else None,
+            ),
+        )
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/posts?page=2", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # scrollProps should be present with correct data (camelCase)
+        assert "scrollProps" in data
+        scroll_config = data["scrollProps"]
+        assert scroll_config["pageName"] == "page"
+        assert scroll_config["currentPage"] == 2
+        assert scroll_config["previousPage"] == 1
+        assert scroll_config["nextPage"] == 3
+
+
+async def test_scroll_props_first_page(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test scroll_props on first page (no previous)."""
+    from litestar_vite.inertia.helpers import scroll_props
+    from litestar_vite.inertia.response import InertiaResponse
+
+    @get("/items", component="Items")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaResponse[dict[str, list[int]]]:
+        return InertiaResponse(
+            {"items": [1, 2, 3]},
+            scroll_props=scroll_props(current_page=1, previous_page=None, next_page=2),
+        )
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/items", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        scroll_config = data["scrollProps"]
+        assert scroll_config["currentPage"] == 1
+        # previousPage should not be in JSON when None (Inertia protocol)
+        assert "previousPage" not in scroll_config
+        assert scroll_config["nextPage"] == 2
+
+
+async def test_scroll_props_last_page(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test scroll_props on last page (no next)."""
+    from litestar_vite.inertia.helpers import scroll_props
+    from litestar_vite.inertia.response import InertiaResponse
+
+    @get("/items", component="Items")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaResponse[dict[str, list[int]]]:
+        return InertiaResponse(
+            {"items": [91, 92, 93]},
+            scroll_props=scroll_props(current_page=10, previous_page=9, next_page=None),
+        )
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/items", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        scroll_config = data["scrollProps"]
+        assert scroll_config["currentPage"] == 10
+        assert scroll_config["previousPage"] == 9
+        # nextPage should not be in JSON when None
+        assert "nextPage" not in scroll_config
+
+
+# =====================================================
+# Exception Handler Tests (GitHub #122)
+# =====================================================
+
+
+async def test_http_exception_preserves_status_code_for_non_inertia_requests(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that HTTPExceptions preserve their status code for non-Inertia requests.
+
+    GitHub #122: The exception handler was converting HTTPExceptions (like
+    NotAuthorizedException with 401) to InternalServerException (500) for
+    non-Inertia requests.
+    """
+
+    @get("/api/protected")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        raise NotAuthorizedException(detail="User not authenticated")
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Non-Inertia request (no X-Inertia header)
+        response = client.get("/api/protected")
+        # Should return 401, NOT 500
+        assert response.status_code == 401
+
+
+async def test_http_exception_403_preserved_for_non_inertia_requests(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that PermissionDeniedException (403) is preserved for non-Inertia requests."""
+    from litestar.exceptions import PermissionDeniedException
+
+    @get("/api/admin")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        raise PermissionDeniedException(detail="Admin access required")
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/api/admin")
+        # Should return 403, NOT 500
+        assert response.status_code == 403
+
+
+async def test_http_exception_404_preserved_for_non_inertia_requests(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that NotFoundException (404) is preserved for non-Inertia requests."""
+    from litestar.exceptions import NotFoundException
+
+    @get("/api/items/{item_id:int}")
+    async def handler(request: Request[Any, Any, Any], item_id: int) -> dict[str, Any]:
+        raise NotFoundException(detail=f"Item {item_id} not found")
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/api/items/999")
+        # Should return 404, NOT 500
+        assert response.status_code == 404
+
+
+# Pagination Container Tests
+
+
+async def test_pagination_container_default_key(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that pagination containers use 'items' as default key."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class MockPagination:
+        items: list[str]
+        limit: int
+        offset: int
+        total: int
+
+    @get("/users", component="Users")
+    async def handler(request: Request[Any, Any, Any]) -> MockPagination:
+        return MockPagination(items=["user1", "user2"], limit=10, offset=0, total=2)
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/users", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # Pagination should be unwrapped to just items under default "items" key
+        assert data["props"]["items"] == ["user1", "user2"]
+        assert "limit" not in data["props"]
+        assert "offset" not in data["props"]
+        assert "total" not in data["props"]
+
+
+async def test_pagination_container_custom_key(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that pagination containers use route's 'key' opt when provided."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class MockPagination:
+        items: list[str]
+        limit: int
+        offset: int
+        total: int
+
+    @get("/users", component="Users", key="users")
+    async def handler(request: Request[Any, Any, Any]) -> MockPagination:
+        return MockPagination(items=["user1", "user2"], limit=10, offset=0, total=2)
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/users", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # Pagination should be unwrapped to just items under custom "users" key
+        assert data["props"]["users"] == ["user1", "user2"]
+        assert "items" not in data["props"]
+
+
+async def test_pagination_in_dict_preserves_key(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that pagination in dict uses dict key, not route key opt."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class MockPagination:
+        items: list[str]
+        limit: int
+        offset: int
+        total: int
+
+    @get("/users", component="Users", key="ignored")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"members": MockPagination(items=["user1", "user2"], limit=10, offset=0, total=2)}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/users", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # Dict key "members" should be used, not route opt "key"
+        assert data["props"]["members"] == ["user1", "user2"]
+        assert "items" not in data["props"]
+        assert "ignored" not in data["props"]
+
+
+async def test_pagination_with_infinite_scroll_opt(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that infinite_scroll=True calculates scroll_props from pagination."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class MockPagination:
+        items: list[str]
+        limit: int
+        offset: int
+        total: int
+
+    @get("/posts", component="Posts", key="posts", infinite_scroll=True)
+    async def handler(request: Request[Any, Any, Any]) -> MockPagination:
+        # Page 2 of 5 (offset=10, limit=10, total=50)
+        return MockPagination(items=["post1", "post2"], limit=10, offset=10, total=50)
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/posts", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # Items should be under custom key
+        assert data["props"]["posts"] == ["post1", "post2"]
+        # scroll_props should be calculated from pagination metadata
+        assert "scrollProps" in data
+        assert data["scrollProps"]["currentPage"] == 2  # offset=10, limit=10 -> page 2
+        assert data["scrollProps"]["previousPage"] == 1
+        assert data["scrollProps"]["nextPage"] == 3
+
+
+# =====================================================
+# Security Tests - Open Redirect Prevention (GitHub #123)
+# =====================================================
+
+
+async def test_inertia_back_rejects_cross_origin_referer(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaBack rejects cross-origin Referer headers (fixes #123)."""
+
+    @get("/back", component="Back")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Cross-origin Referer should be rejected
+        response = client.get(
+            "/back",
+            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "https://evil.com/malicious"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        # Should redirect to base URL, not evil.com
+        assert response.headers.get("location") == "http://testserver.local/"
+
+
+async def test_inertia_back_allows_same_origin_referer(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaBack allows same-origin Referer headers."""
+
+    @get("/back", component="Back")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Same-origin Referer should be allowed
+        response = client.get(
+            "/back",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                "Referer": "http://testserver.local/previous-page",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        assert response.headers.get("location") == "http://testserver.local/previous-page"
+
+
+async def test_inertia_back_allows_relative_referer(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaBack allows relative URL Referer headers."""
+
+    @get("/back", component="Back")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Relative URLs should be allowed (they're safe)
+        response = client.get(
+            "/back",
+            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "/previous-page"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        assert response.headers.get("location") == "/previous-page"
+
+
+async def test_inertia_back_rejects_javascript_scheme(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaBack rejects javascript: scheme in Referer."""
+
+    @get("/back", component="Back")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # javascript: scheme should be rejected
+        response = client.get(
+            "/back",
+            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "javascript:alert(1)"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        # Should redirect to base URL, not execute JS
+        assert response.headers.get("location") == "http://testserver.local/"
+
+
+async def test_inertia_back_rejects_protocol_relative_url(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaBack rejects protocol-relative URLs (//evil.com)."""
+
+    @get("/back", component="Back")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Protocol-relative URLs should be rejected (they redirect to external domain)
+        response = client.get(
+            "/back",
+            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "//evil.com/path"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        # Should redirect to base URL, not evil.com
+        assert response.headers.get("location") == "http://testserver.local/"
+
+
+async def test_inertia_back_missing_referer_uses_base_url(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaBack uses base_url when Referer is missing."""
+
+    @get("/back", component="Back")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # No Referer header - should use base URL
+        response = client.get(
+            "/back",
+            headers={InertiaHeaders.ENABLED.value: "true"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        assert response.headers.get("location") == "http://testserver.local/"
+
+
+async def test_inertia_redirect_rejects_cross_origin_url(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaRedirect rejects cross-origin redirect_to URLs."""
+    from litestar_vite.inertia.response import InertiaRedirect
+
+    @get("/redirect", component="Redirect")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaRedirect:
+        # Attempt cross-origin redirect
+        return InertiaRedirect(request, redirect_to="https://evil.com/malicious")
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/redirect",
+            headers={InertiaHeaders.ENABLED.value: "true"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        # Should redirect to base URL, not evil.com
+        assert response.headers.get("location") == "http://testserver.local/"
+
+
+async def test_inertia_redirect_allows_relative_url(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaRedirect allows relative URLs."""
+    from litestar_vite.inertia.response import InertiaRedirect
+
+    @get("/redirect", component="Redirect")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaRedirect:
+        return InertiaRedirect(request, redirect_to="/dashboard")
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/redirect",
+            headers={InertiaHeaders.ENABLED.value: "true"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        assert response.headers.get("location") == "/dashboard"
+
+
+# =====================================================
+# Security Tests - Cookie Leak Prevention (GitHub #126)
+# =====================================================
+
+
+async def test_inertia_back_no_cookie_echo(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaBack does not echo request cookies (fixes #126)."""
+
+    @get("/back", component="Back")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Send request with a cookie
+        response = client.get(
+            "/back",
+            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "/previous"},
+            cookies={"session_id": "secret_session_value"},
+            follow_redirects=False,
+        )
+        # The response should NOT have Set-Cookie header echoing the session_id
+        set_cookie_headers = response.headers.get_list("set-cookie")
+        session_cookie_echoed = any("session_id=secret_session_value" in c for c in set_cookie_headers)
+        assert not session_cookie_echoed, "Request cookies should not be echoed in response"
+
+
+async def test_inertia_external_redirect_no_cookie_echo(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that InertiaExternalRedirect does not echo request cookies (fixes #126)."""
+
+    @get("/external", component="External")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaExternalRedirect:
+        return InertiaExternalRedirect(request, redirect_to="https://external-site.com/callback")
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/external",
+            headers={InertiaHeaders.ENABLED.value: "true"},
+            cookies={"auth_token": "secret_token"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 409
+        # The response should NOT have Set-Cookie header echoing the auth_token
+        set_cookie_headers = response.headers.get_list("set-cookie")
+        token_cookie_echoed = any("auth_token=secret_token" in c for c in set_cookie_headers)
+        assert not token_cookie_echoed, "Request cookies should not be echoed in response"

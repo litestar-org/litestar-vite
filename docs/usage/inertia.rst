@@ -72,9 +72,9 @@ Add the `InertiaPlugin` to your Litestar application and configure it with the `
    * - `root_template`
      - `str`
      - The name of the root Jinja2 template. Defaults to `"index.html"`.
-   * - `component_opt_key`
-     - `str`
-     - The key used in route handlers to specify the Inertia component. Defaults to `"component"`.
+   * - `component_opt_keys`
+     - `tuple[str, ...]`
+     - Keys used in route handlers to specify the Inertia component. Checked in order. Defaults to `("component", "page")`.
    * - `exclude_from_js_routes_key`
      - `str`
      - The key used in route handlers to exclude a route from the generated JS routes file. Defaults to `"exclude_from_routes"`.
@@ -90,6 +90,9 @@ Add the `InertiaPlugin` to your Litestar application and configure it with the `
    * - `extra_session_page_props`
      - `set[str]`
      - A set of session keys whose values will be shared with every page.
+   * - `encrypt_history`
+     - `bool`
+     - Enable history encryption globally for all Inertia pages. Defaults to `False`.
 
 2. Create Root Template
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -180,6 +183,55 @@ Use the `share()` function to provide data that should be available on every pag
 
 For application-wide shared data (static) or session-based shared keys, you can also use the `extra_static_page_props` and `extra_session_page_props` options in `InertiaConfig`.
 
+Lazy Props
+~~~~~~~~~~
+
+Use the `lazy()` function to mark props that should only be included during partial reloads, not on initial page load. This is useful for data that isn't immediately visible or that you want to load on demand.
+
+.. code-block:: python
+
+    from litestar.handlers import get
+    from litestar_vite.inertia import lazy
+
+    @get("/dashboard", component="Dashboard")
+    async def dashboard() -> dict[str, Any]:
+        return {
+            "stats": {"visits": 100},           # Always included
+            "notifications": lazy(get_notifications),  # Only on partial reload
+        }
+
+**Understanding Lazy Prop Behavior**:
+
+There are two ways to use ``lazy()``:
+
+1. **Static value** (bandwidth optimization): The value is computed immediately but only sent during partial reloads.
+
+   .. code-block:: python
+
+       lazy("key", expensive_result)  # Value already computed
+
+2. **Callable** (bandwidth + CPU optimization): The callable is only invoked during partial reloads.
+
+   .. code-block:: python
+
+       lazy("key", expensive_function)  # Function called only when needed
+
+.. warning::
+
+    **Avoid the "False Lazy" pitfall!**
+
+    .. code-block:: python
+
+        # WRONG - function is called immediately (eager evaluation)
+        lazy("stats", get_expensive_stats())
+
+        # CORRECT - function reference passed, called only on partial reload
+        lazy("stats", get_expensive_stats)
+
+    With the wrong pattern, the expensive function runs on every request even though
+    the result is only sent during partial reloads. Pass the function reference
+    (without parentheses) to defer both computation and transmission.
+
 Deferred Props
 ~~~~~~~~~~~~~~
 
@@ -225,6 +277,98 @@ Supported strategies are `"append"` (default), `"prepend"`, and `"deep"` (for re
 
     # Update existing items if IDs match, otherwise append
     "users": merge(new_users, match_on="id")
+
+Prop Filtering
+~~~~~~~~~~~~~~
+
+Use the ``only()`` and ``except_()`` helpers to create explicit prop filters. These are useful for controlling which props are included during partial reloads.
+
+.. code-block:: python
+
+    from litestar_vite.inertia import only, except_
+
+    # Include only specific props
+    filter_users = only("users", "pagination")
+
+    # Exclude specific props
+    filter_no_meta = except_("meta", "debug_info")
+
+    # Use with should_include() method
+    if filter_users.should_include("users"):  # True
+        # Include this prop
+        pass
+
+    if filter_users.should_include("settings"):  # False
+        # Skip this prop
+        pass
+
+These filters integrate with the Inertia partial reload mechanism to efficiently return only requested data.
+
+Scroll Props (Infinite Scroll)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use the ``scroll_props()`` helper to create pagination metadata for infinite scrolling. This works with the ``merge()`` function to enable seamless infinite scroll UIs.
+
+.. code-block:: python
+
+    from litestar_vite.inertia import scroll_props, merge
+
+    @get("/posts", component="Posts")
+    async def posts(page: int = 1) -> dict[str, Any]:
+        posts_page = await get_posts(page=page, per_page=20)
+        return {
+            "posts": merge(posts_page.items, strategy="append"),
+            "scroll": scroll_props(
+                page_name="page",
+                current_page=page,
+                previous_page=page - 1 if page > 1 else None,
+                next_page=page + 1 if posts_page.has_next else None,
+            ),
+        }
+
+History Encryption
+~~~~~~~~~~~~~~~~~~
+
+Inertia v2 supports history encryption to protect sensitive data in the browser history. Use these parameters in ``InertiaResponse``:
+
+.. code-block:: python
+
+    from litestar_vite.inertia import InertiaResponse
+
+    @get("/sensitive-data", component="SensitiveData")
+    async def sensitive() -> InertiaResponse:
+        return InertiaResponse(
+            component="SensitiveData",
+            props={"secret": "classified"},
+            encrypt_history=True,   # Encrypt this page in browser history
+        )
+
+    @get("/logout", component="Logout")
+    async def logout() -> InertiaResponse:
+        return InertiaResponse(
+            component="Logout",
+            props={},
+            clear_history=True,     # Clear encrypted history on this navigation
+        )
+
+You can also use the ``clear_history()`` helper to mark the session for history clearing:
+
+.. code-block:: python
+
+    from litestar_vite.inertia import clear_history
+
+    @post("/logout")
+    async def logout(request: Request) -> InertiaRedirect:
+        clear_history(request)  # Mark session for history clearing
+        return InertiaRedirect(request, "/login")
+
+To enable history encryption globally, set it in ``InertiaConfig``:
+
+.. code-block:: python
+
+    InertiaConfig(
+        encrypt_history=True,  # Encrypt all pages by default
+    )
 
 Navigation
 ----------
