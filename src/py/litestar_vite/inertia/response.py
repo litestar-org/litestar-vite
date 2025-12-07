@@ -1,3 +1,4 @@
+import contextlib
 import itertools
 from collections.abc import Iterable, Mapping
 from mimetypes import guess_type
@@ -26,15 +27,17 @@ from litestar_vite.inertia._utils import get_headers
 from litestar_vite.inertia.helpers import (
     extract_deferred_props,
     extract_merge_props,
+    extract_pagination_scroll_props,
     get_shared_props,
     is_merge_prop,
     is_or_contains_lazy_prop,
+    is_pagination_container,
     js_routes_script,
     lazy_render,
     should_render,
 )
 from litestar_vite.inertia.plugin import InertiaPlugin
-from litestar_vite.inertia.types import InertiaHeaderType, PageProps
+from litestar_vite.inertia.types import InertiaHeaderType, PageProps, ScrollPropsConfig
 from litestar_vite.plugin import VitePlugin
 
 if TYPE_CHECKING:
@@ -64,6 +67,9 @@ class InertiaResponse(Response[T]):
         media_type: "MediaType | str | None" = None,
         status_code: "int" = HTTP_200_OK,
         type_encoders: "TypeEncodersMap | None" = None,
+        encrypt_history: "bool | None" = None,
+        clear_history: bool = False,
+        scroll_props: "ScrollPropsConfig | None" = None,
     ) -> None:
         """Handle the rendering of a given template into a bytes string.
 
@@ -83,6 +89,17 @@ class InertiaResponse(Response[T]):
                 the media type based on the template name. If this fails, fall back to ``text/plain``.
             status_code: A value for the response HTTP status code.
             type_encoders: A mapping of types to callables that transform them into types supported for serialization.
+            encrypt_history: Enable browser history encryption for this response (v2 feature).
+                When True, the Inertia client encrypts history state using the browser's
+                crypto API. If None, falls back to InertiaConfig.encrypt_history.
+                See: https://inertiajs.com/history-encryption
+            clear_history: Clear previously encrypted history state (v2 feature).
+                When True, the client will regenerate its encryption key, invalidating
+                all previously encrypted history entries. Use during logout to ensure
+                sensitive data cannot be recovered from browser history.
+            scroll_props: Configuration for infinite scroll (v2 feature).
+                Provides next/previous page information for paginated data.
+                Use the scroll_props() helper to create this configuration.
 
         Raises:
             ValueError: If both template_name and template_str are provided.
@@ -107,6 +124,9 @@ class InertiaResponse(Response[T]):
         self.context = context or {}
         self.template_name = template_name
         self.template_str = template_str
+        self.encrypt_history = encrypt_history
+        self.clear_history = clear_history
+        self.scroll_props = scroll_props
 
     def create_template_context(
         self,
@@ -176,6 +196,9 @@ class InertiaResponse(Response[T]):
                 mapping_content = cast("Mapping[str, Any]", route_content)
                 for key, value in mapping_content.items():
                     shared_props[key] = value
+            elif is_pagination_container(route_content):
+                # If returning OffsetPagination directly, use "items" as the key
+                shared_props["items"] = route_content
             else:
                 shared_props["content"] = route_content
 
@@ -190,16 +213,53 @@ class InertiaResponse(Response[T]):
             if is_merge_prop(value):
                 shared_props[key] = value.value
 
+        # Extract pagination containers - always unwrap items from OffsetPagination/ClassicPagination
+        # Only calculate scroll_props if:
+        # 1. Explicitly provided via scroll_props parameter, OR
+        # 2. Route has infinite_scroll=True opt value
+        extracted_scroll_props: "ScrollPropsConfig | None" = self.scroll_props
+
+        # Check if route has infinite_scroll opt enabled
+        route_handler = request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
+        infinite_scroll_enabled = bool(route_handler and route_handler.opt.get("infinite_scroll", False))
+
+        for key, value in list(shared_props.items()):
+            if is_pagination_container(value):
+                items, scroll = extract_pagination_scroll_props(value)
+                shared_props[key] = items
+                # Only use extracted scroll_props if:
+                # - Not explicitly provided AND
+                # - infinite_scroll is enabled on the route
+                if extracted_scroll_props is None and scroll is not None and infinite_scroll_enabled:
+                    extracted_scroll_props = scroll
+
+        # Determine encrypt_history value (v2 feature)
+        # Priority: response param > config default > False
+        encrypt_history = self.encrypt_history
+        if encrypt_history is None:
+            encrypt_history = inertia_plugin.config.encrypt_history
+
+        # Check for session-based clear_history flag (v2 feature)
+        # This is set by clear_history() helper during logout flows
+        # The flag is consumed (popped) to ensure it only triggers once
+        clear_history_flag = self.clear_history
+        if not clear_history_flag:
+            with contextlib.suppress(AttributeError, ImproperlyConfiguredException):
+                clear_history_flag = request.session.pop("_inertia_clear_history", False)  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
+
         return PageProps[T](
             component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
             props=shared_props,  # pyright: ignore[reportArgumentType]
             version=vite_plugin.asset_loader.version_id,
             url=request.url.path,
+            encrypt_history=encrypt_history,
+            clear_history=clear_history_flag,
             deferred_props=deferred_props,
             merge_props=merge_props_list or None,
             prepend_props=prepend_props_list or None,
             deep_merge_props=deep_merge_props_list or None,
             match_props_on=match_props_on or None,
+            scroll_props=extracted_scroll_props,
         )
 
     def _render_template(
@@ -374,7 +434,14 @@ class InertiaResponse(Response[T]):
 
         vite_plugin = request.app.plugins.get(VitePlugin)
         inertia_plugin = request.app.plugins.get(InertiaPlugin)
-        headers.update({"Vary": "Accept", **get_headers(InertiaHeaderType(enabled=True))})
+        # Include X-Inertia-Version header per Inertia protocol
+        # Client uses this to detect version mismatches and trigger hard refresh
+        headers.update(
+            {
+                "Vary": "Accept",
+                **get_headers(InertiaHeaderType(enabled=True, version=vite_plugin.asset_loader.version_id)),
+            }
+        )
 
         # Determine partial filtering params for v2 protocol
         partial_data: "set[str] | None" = partial_keys if is_partial_render and partial_keys else None

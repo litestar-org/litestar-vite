@@ -28,11 +28,13 @@ import os
 from dataclasses import dataclass, field, replace
 from importlib.util import find_spec
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkable
 
 logger = logging.getLogger("litestar_vite")
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from litestar_vite.executor import JSExecutor
 
 __all__ = (
@@ -41,12 +43,38 @@ __all__ = (
     "DeployConfig",
     "ExternalDevServer",
     "InertiaConfig",
+    "PaginationContainer",
     "PathConfig",
     "RuntimeConfig",
     "SPAConfig",
     "TypeGenConfig",
     "ViteConfig",
 )
+
+
+@runtime_checkable
+class PaginationContainer(Protocol):
+    """Protocol for pagination containers that can be unwrapped for Inertia scroll.
+
+    Any type that has `items` and pagination metadata can implement this protocol.
+    The response will extract items and calculate scroll_props automatically.
+
+    Built-in support:
+    - litestar.pagination.OffsetPagination
+    - litestar.pagination.ClassicPagination
+    - advanced_alchemy.service.OffsetPagination
+
+    Custom types can implement this protocol:
+        @dataclass
+        class MyPagination:
+            items: list[T]
+            total: int
+            limit: int
+            offset: int
+    """
+
+    items: "Sequence[Any]"
+
 
 TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
 JINJA_INSTALLED = bool(find_spec("jinja2"))

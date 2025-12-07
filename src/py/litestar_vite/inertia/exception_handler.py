@@ -72,6 +72,10 @@ def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "E
     )
 
     if not inertia_enabled:
+        # If it's already an HTTPException, use it directly with its original status code
+        if isinstance(exc, HTTPException):
+            return cast("Response[Any]", create_exception_response(request, exc))
+        # Convert repository/domain exceptions to appropriate HTTP exceptions
         if isinstance(exc, NotFoundError):
             http_exc = NotFoundException
         elif isinstance(exc, (RepositoryError, ConflictError)):

@@ -149,6 +149,18 @@ class InertiaDetails:
         return self._get_header_value(InertiaHeaders.INFINITE_SCROLL_MERGE_INTENT)
 
     @cached_property
+    def version(self) -> "str | None":
+        """Get the Inertia asset version from the client.
+
+        The client sends this header so the server can detect version mismatches
+        and trigger a hard refresh when assets have changed.
+
+        Returns:
+            The version string sent by the client, or None if not present.
+        """
+        return self._get_header_value(InertiaHeaders.VERSION)
+
+    @cached_property
     def referer(self) -> "str | None":
         """Get the referer.
 
@@ -253,3 +265,15 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
         Returns 'append' or 'prepend' for infinite scroll merging.
         """
         return self.inertia.merge_intent
+
+    @property
+    def inertia_version(self) -> "str | None":
+        """Get the Inertia asset version sent by the client.
+
+        The client sends this header so the server can detect version mismatches
+        and trigger a hard refresh when assets have changed.
+
+        Returns:
+            The version string sent by the client, or None if not present.
+        """
+        return self.inertia.version

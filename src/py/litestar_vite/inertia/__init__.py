@@ -2,6 +2,7 @@ from litestar_vite.inertia import helpers
 from litestar_vite.inertia.config import InertiaConfig
 from litestar_vite.inertia.exception_handler import create_inertia_exception_response, exception_to_http_response
 from litestar_vite.inertia.helpers import (
+    clear_history,
     defer,
     error,
     extract_deferred_props,
@@ -11,6 +12,7 @@ from litestar_vite.inertia.helpers import (
     js_routes_script,
     lazy,
     merge,
+    scroll_props,
     share,
 )
 from litestar_vite.inertia.middleware import InertiaMiddleware
@@ -22,7 +24,6 @@ from litestar_vite.inertia.response import (
     InertiaRedirect,
     InertiaResponse,
 )
-
 from .routes import generate_js_routes
 
 __all__ = (
@@ -36,6 +37,7 @@ __all__ = (
     "InertiaRedirect",
     "InertiaRequest",
     "InertiaResponse",
+    "clear_history",
     "create_inertia_exception_response",
     "defer",
     "error",
@@ -49,5 +51,6 @@ __all__ = (
     "js_routes_script",
     "lazy",
     "merge",
+    "scroll_props",
     "share",
 )

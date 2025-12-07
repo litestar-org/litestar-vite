@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
     from litestar_vite.inertia.plugin import InertiaPlugin
     from litestar_vite.inertia.routes import Routes
+    from litestar_vite.inertia.types import ScrollPropsConfig
 
 T = TypeVar("T")
 T_ParamSpec = ParamSpec("T_ParamSpec")
@@ -203,6 +204,52 @@ def merge(
         merge("posts", updated_posts, match_on="id")
     """
     return MergeProp[str, T](key=key, value=value, strategy=strategy, match_on=match_on)
+
+
+def scroll_props(
+    page_name: str = "page",
+    current_page: int = 1,
+    previous_page: "int | None" = None,
+    next_page: "int | None" = None,
+) -> "ScrollPropsConfig":
+    """Create scroll props configuration for infinite scroll (v2 feature).
+
+    Scroll props allow Inertia to manage pagination state for infinite scroll
+    patterns, providing next/previous page information to the client.
+
+    Args:
+        page_name: The query parameter name for pagination. Defaults to "page".
+        current_page: The current page number. Defaults to 1.
+        previous_page: The previous page number, or None if at first page.
+        next_page: The next page number, or None if at last page.
+
+    Returns:
+        A ScrollPropsConfig instance for use in InertiaResponse.
+
+    Example::
+
+        from litestar_vite.inertia import scroll_props, InertiaResponse
+
+        @get("/posts", component="Posts")
+        async def list_posts(page: int = 1) -> InertiaResponse:
+            posts = await Post.paginate(page=page, per_page=20)
+            return InertiaResponse(
+                {"posts": merge("posts", posts.items)},
+                scroll_props=scroll_props(
+                    current_page=page,
+                    previous_page=page - 1 if page > 1 else None,
+                    next_page=page + 1 if posts.has_more else None,
+                ),
+            )
+    """
+    from litestar_vite.inertia.types import ScrollPropsConfig
+
+    return ScrollPropsConfig(
+        page_name=page_name,
+        current_page=current_page,
+        previous_page=previous_page,
+        next_page=next_page,
+    )
 
 
 def is_merge_prop(value: "Any") -> "TypeGuard[MergeProp[Any, Any]]":
@@ -401,19 +448,23 @@ def should_render(
     value: "Any",
     partial_data: "set[str] | None" = None,
     partial_except: "set[str] | None" = None,
+    key: "str | None" = None,
 ) -> "bool":
-    """Check if value should be rendered.
+    """Check if value should be rendered based on partial reload filtering.
 
     For v2 protocol, partial_except takes precedence over partial_data.
+    When a key is provided, filtering applies to all props (not just lazy props).
 
     Args:
         value: Any value to check
         partial_data: Optional set of keys to include (X-Inertia-Partial-Data)
         partial_except: Optional set of keys to exclude (X-Inertia-Partial-Except, v2)
+        key: Optional key name for this prop (enables key-based filtering for all props)
 
     Returns:
         bool: True if value should be rendered
     """
+    # Handle lazy props (original behavior)
     if is_lazy_prop(value):
         # v2: partial_except takes precedence - exclude these props
         if partial_except:
@@ -423,6 +474,17 @@ def should_render(
             return value.key in partial_data
         # No filtering specified, don't render lazy props on initial load
         return False
+
+    # Handle key-based filtering for all props (v2 enhanced behavior)
+    if key is not None:
+        # v2: partial_except takes precedence - exclude these props
+        if partial_except:
+            return key not in partial_except
+        # Only include if in partial_data (for partial reloads)
+        if partial_data:
+            return key in partial_data
+
+    # Default: render all non-lazy props
     return True
 
 
@@ -521,20 +583,31 @@ def get_shared_props(
         shared_props = cast("dict[str,Any]", request.session.pop("_shared", {}))
         inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
 
-        # Handle deferred props
+        # Handle shared props with key-based partial filtering
         for key, value in shared_props.items():
-            if is_lazy_prop(value) and should_render(value, partial_data, partial_except):
-                props[key] = value.render(inertia_plugin.portal)
+            # Use key-based filtering for all props (v2 enhanced behavior)
+            if not should_render(value, partial_data, partial_except, key=key):
                 continue
-            if should_render(value, partial_data, partial_except):
+            if is_lazy_prop(value):
+                props[key] = value.render(inertia_plugin.portal)
+            else:
                 props[key] = value
 
         for message in cast("list[dict[str,Any]]", request.session.pop("_messages", [])):
             flash[message["category"]].append(message["message"])
 
-        props.update(inertia_plugin.config.extra_static_page_props)
+        # Static page props - also apply partial filtering
+        for key, value in inertia_plugin.config.extra_static_page_props.items():
+            if should_render(value, partial_data, partial_except, key=key):
+                props[key] = value
+
+        # Session props - also apply partial filtering
         for session_prop in inertia_plugin.config.extra_session_page_props:
-            if session_prop not in props and session_prop in request.session:
+            if (
+                session_prop not in props
+                and session_prop in request.session
+                and should_render(None, partial_data, partial_except, key=session_prop)
+            ):
                 props[session_prop] = request.session.get(session_prop)
 
     except (AttributeError, ImproperlyConfiguredException):
@@ -623,6 +696,40 @@ def flash(
         connection.logger.warning(msg)
 
 
+def clear_history(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
+    """Mark that the next response should clear client history encryption keys.
+
+    This function sets a session flag that will be consumed by the next
+    InertiaResponse, causing it to include `clearHistory: true` in the page
+    object. The Inertia client will then regenerate its encryption key,
+    invalidating all previously encrypted history entries.
+
+    This should typically be called during logout to ensure sensitive data
+    cannot be recovered from browser history after a user logs out.
+
+    Args:
+        connection: The ASGI connection (Request).
+
+    Note:
+        Requires session middleware to be configured.
+        See: https://inertiajs.com/history-encryption
+
+    Example:
+        from litestar_vite.inertia import clear_history
+
+        @post("/logout")
+        async def logout(request: Request) -> InertiaRedirect:
+            request.session.clear()  # Clear session data
+            clear_history(request)   # Clear encrypted history
+            return InertiaRedirect(request, redirect_to="/login")
+    """
+    try:
+        connection.session["_inertia_clear_history"] = True
+    except (AttributeError, ImproperlyConfiguredException):
+        msg = "Unable to set clear_history flag. A valid session was not found for this request."
+        connection.logger.warning(msg)
+
+
 def js_routes_script(js_routes: "Routes") -> "Markup":
     @lru_cache
     def _markup_safe_json_dumps(js_routes: "str") -> "Markup":
@@ -636,3 +743,113 @@ def js_routes_script(js_routes: "Routes") -> "Markup":
         </script>
         """),
     )
+
+
+def is_pagination_container(value: "Any") -> bool:
+    """Check if a value is a pagination container.
+
+    Detects common pagination types from Litestar and Advanced Alchemy:
+    - litestar.pagination.OffsetPagination (items, limit, offset, total)
+    - litestar.pagination.ClassicPagination (items, page_size, current_page, total_pages)
+    - advanced_alchemy.service.OffsetPagination
+
+    Also supports any object with an `items` attribute and pagination metadata.
+
+    Args:
+        value: The value to check.
+
+    Returns:
+        True if value appears to be a pagination container.
+    """
+    if value is None:
+        return False
+
+    # Must have items attribute
+    if not hasattr(value, "items"):
+        return False
+
+    # Check for OffsetPagination style (limit, offset, total)
+    has_offset_style = all(hasattr(value, attr) for attr in ("limit", "offset", "total"))
+
+    # Check for ClassicPagination style (page_size, current_page, total_pages)
+    has_classic_style = all(hasattr(value, attr) for attr in ("page_size", "current_page", "total_pages"))
+
+    return has_offset_style or has_classic_style
+
+
+def extract_pagination_scroll_props(
+    value: "Any",
+    page_param: str = "page",
+) -> "tuple[Any, ScrollPropsConfig | None]":
+    """Extract items and scroll props from a pagination container.
+
+    For OffsetPagination, calculates page numbers from limit/offset/total.
+    For ClassicPagination, uses current_page/total_pages directly.
+
+    Args:
+        value: A pagination container (OffsetPagination, ClassicPagination, etc.).
+        page_param: The query parameter name for pagination (default: "page").
+
+    Returns:
+        A tuple of (items, scroll_props) where scroll_props is None if
+        value is not a pagination container.
+
+    Example::
+
+        # OffsetPagination with limit=10, offset=20, total=50
+        # → current_page=3, previous_page=2, next_page=4
+
+        items, scroll = extract_pagination_scroll_props(pagination)
+        # items = pagination.items
+        # scroll = ScrollPropsConfig(current_page=3, previous_page=2, next_page=4)
+    """
+    from litestar_vite.inertia.types import ScrollPropsConfig
+
+    if not is_pagination_container(value):
+        return value, None
+
+    items = value.items
+
+    # OffsetPagination style (limit, offset, total)
+    if hasattr(value, "limit") and hasattr(value, "offset") and hasattr(value, "total"):
+        limit = value.limit
+        offset = value.offset
+        total = value.total
+
+        # Calculate page numbers from offset/limit
+        if limit > 0:
+            current_page = (offset // limit) + 1
+            total_pages = (total + limit - 1) // limit  # Ceiling division
+        else:
+            current_page = 1
+            total_pages = 1
+
+        previous_page = current_page - 1 if current_page > 1 else None
+        next_page = current_page + 1 if current_page < total_pages else None
+
+        scroll_props = ScrollPropsConfig(
+            page_name=page_param,
+            current_page=current_page,
+            previous_page=previous_page,
+            next_page=next_page,
+        )
+        return items, scroll_props
+
+    # ClassicPagination style (page_size, current_page, total_pages)
+    if hasattr(value, "current_page") and hasattr(value, "total_pages"):
+        current_page = value.current_page
+        total_pages = value.total_pages
+
+        previous_page = current_page - 1 if current_page > 1 else None
+        next_page = current_page + 1 if current_page < total_pages else None
+
+        scroll_props = ScrollPropsConfig(
+            page_name=page_param,
+            current_page=current_page,
+            previous_page=previous_page,
+            next_page=next_page,
+        )
+        return items, scroll_props
+
+    # Fallback - has items but we couldn't determine pagination metadata
+    return items, None
