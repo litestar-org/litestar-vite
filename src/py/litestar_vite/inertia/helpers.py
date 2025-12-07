@@ -840,7 +840,8 @@ def flash(
         category: The message category (e.g., "success", "error", "warning", "info").
                   Defaults to "info".
 
-    Example:
+    Example::
+
         from litestar_vite.inertia import flash
 
         @post("/create")
@@ -875,7 +876,8 @@ def clear_history(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
         Requires session middleware to be configured.
         See: https://inertiajs.com/history-encryption
 
-    Example:
+    Example::
+
         from litestar_vite.inertia import clear_history
 
         @post("/logout")

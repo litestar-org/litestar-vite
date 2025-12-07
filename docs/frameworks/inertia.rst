@@ -5,6 +5,9 @@ Inertia.js
 Inertia.js lets you build modern SPAs with server-side routing. No API layer needed -
 your Litestar routes return page components directly.
 
+.. seealso::
+   For comprehensive documentation, see the :doc:`/inertia/index` section.
+
 Supported Frameworks
 --------------------
 
@@ -12,199 +15,116 @@ Supported Frameworks
 - Vue: ``litestar assets init --template vue-inertia``
 - Svelte: ``litestar assets init --template svelte-inertia``
 
-How It Works
-------------
-
-1. Server returns ``InertiaResponse`` with component name and props
-2. Inertia renders the component client-side
-3. Navigation uses XHR, updating only the page component
-4. Full SPA experience with server-side routing
-
-Backend Setup
--------------
+Quick Start
+-----------
 
 .. code-block:: python
 
-    from pathlib import Path
-    from litestar import Litestar, get
-    from litestar.contrib.jinja import JinjaTemplateEngine
-    from litestar.template.config import TemplateConfig
-    from litestar_vite import ViteConfig, VitePlugin
-    from litestar_vite.config import PathConfig
-    from litestar_vite.inertia import InertiaConfig, InertiaPlugin, InertiaResponse
+   from litestar import Litestar, get
+   from litestar_vite import ViteConfig, VitePlugin
 
-    @get("/")
-    async def home() -> InertiaResponse:
-        return InertiaResponse(
-            component="Home",
-            props={"message": "Welcome!"},
-        )
+   @get("/", component="Home")
+   async def home() -> dict:
+       return {"message": "Welcome!"}
 
-    @get("/users")
-    async def users() -> InertiaResponse:
-        return InertiaResponse(
-            component="Users",
-            props={
-                "users": [
-                    {"id": 1, "name": "Alice"},
-                    {"id": 2, "name": "Bob"},
-                ]
-            },
-        )
+   @get("/users", component="Users")
+   async def users() -> dict:
+       return {"users": [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]}
 
-    vite = VitePlugin(
-        config=ViteConfig(
-            dev_mode=True,
-            paths=PathConfig(
-                bundle_dir=Path("public"),
-                resource_dir=Path("resources"),  # Inertia uses resources/
-            ),
-        ),
-    )
-
-    inertia = InertiaPlugin(
-        config=InertiaConfig(root_template="index.html")
-    )
-
-    app = Litestar(
-        plugins=[vite, inertia],
-        route_handlers=[home, users],
-        template_config=TemplateConfig(
-            directory=Path("templates"),
-            engine=JinjaTemplateEngine,
-        ),
-    )
+   app = Litestar(
+       route_handlers=[home, users],
+       plugins=[
+           VitePlugin(config=ViteConfig(dev_mode=True, inertia=True)),
+       ],
+   )
 
 Root Template
 -------------
 
-.. code-block:: jinja
+.. code-block:: html
 
-    <!DOCTYPE html>
-    <html>
-    <head>
-        {{ vite_hmr() }}
-        {{ vite('resources/main.tsx') }}
-    </head>
-    <body>
-        {{ inertia_body() }}
-    </body>
-    </html>
+   <!DOCTYPE html>
+   <html>
+   <head>
+       {{ vite_hmr() }}
+       {{ vite('resources/main.tsx') }}
+   </head>
+   <body>
+       <div id="app" data-page="{{ inertia }}"></div>
+       {{ js_routes }}
+   </body>
+   </html>
 
-React Example
--------------
-
-**Entry Point (resources/main.tsx)**:
-
-.. code-block:: tsx
-
-    import { createInertiaApp } from "@inertiajs/react";
-    import { createRoot } from "react-dom/client";
-
-    const pages = import.meta.glob("./pages/**/*.tsx", { eager: true });
-
-    createInertiaApp({
-      resolve: (name) => pages[`./pages/${name}.tsx`],
-      setup({ el, App, props }) {
-        createRoot(el).render(<App {...props} />);
-      },
-    });
-
-**Page Component (resources/pages/Home.tsx)**:
+React Entry Point
+-----------------
 
 .. code-block:: tsx
 
-    import { Link } from "@inertiajs/react";
+   import { createInertiaApp } from "@inertiajs/react";
+   import { createRoot } from "react-dom/client";
 
-    interface Props {
-      message: string;
-    }
+   const pages = import.meta.glob("./pages/**/*.tsx", { eager: true });
 
-    export default function Home({ message }: Props) {
-      return (
-        <div>
-          <h1>{message}</h1>
-          <Link href="/users">View Users</Link>
-        </div>
-      );
-    }
+   createInertiaApp({
+     resolve: (name) => pages[`./pages/${name}.tsx`],
+     setup({ el, App, props }) {
+       createRoot(el).render(<App {...props} />);
+     },
+   });
 
-Vue Example
------------
-
-**Entry Point (resources/main.ts)**:
+Vue Entry Point
+---------------
 
 .. code-block:: typescript
 
-    import { createInertiaApp } from "@inertiajs/vue3";
-    import { createApp, h } from "vue";
+   import { createInertiaApp } from "@inertiajs/vue3";
+   import { createApp, h } from "vue";
 
-    const pages = import.meta.glob("./pages/**/*.vue", { eager: true });
+   const pages = import.meta.glob("./pages/**/*.vue", { eager: true });
 
-    createInertiaApp({
-      resolve: (name) => pages[`./pages/${name}.vue`],
-      setup({ el, App, props, plugin }) {
-        createApp({ render: () => h(App, props) })
-          .use(plugin)
-          .mount(el);
-      },
-    });
+   createInertiaApp({
+     resolve: (name) => pages[`./pages/${name}.vue`],
+     setup({ el, App, props, plugin }) {
+       createApp({ render: () => h(App, props) })
+         .use(plugin)
+         .mount(el);
+     },
+   });
 
-**Page Component (resources/pages/Home.vue)**:
+Learn More
+----------
 
-.. code-block:: vue
+.. grid:: 1 1 2 2
+    :gutter: 2
 
-    <script setup lang="ts">
-    import { Link } from "@inertiajs/vue3";
+    .. grid-item-card:: :octicon:`book` Full Documentation
+        :link: /inertia/index
+        :link-type: doc
 
-    defineProps<{
-      message: string;
-    }>();
-    </script>
+        Configuration, helpers, responses, and more
 
-    <template>
-      <div>
-        <h1>{{ message }}</h1>
-        <Link href="/users">View Users</Link>
-      </div>
-    </template>
+    .. grid-item-card:: :octicon:`code-square` TypeScript Integration
+        :link: /inertia/typescript
+        :link-type: doc
 
-Forms
------
+        Type-safe routes and page props
 
-Inertia provides form helpers for handling submissions:
+    .. grid-item-card:: :octicon:`shield-check` Security
+        :link: /inertia/csrf-protection
+        :link-type: doc
 
-.. code-block:: tsx
+        CSRF protection and history encryption
 
-    import { useForm } from "@inertiajs/react";
+    .. grid-item-card:: :octicon:`beaker` Examples
+        :link: https://github.com/litestar-org/litestar-fullstack-inertia
+        :link-type: url
 
-    function CreateUser() {
-      const { data, setData, post, processing, errors } = useForm({
-        name: "",
-        email: "",
-      });
-
-      function submit(e: React.FormEvent) {
-        e.preventDefault();
-        post("/users");
-      }
-
-      return (
-        <form onSubmit={submit}>
-          <input
-            value={data.name}
-            onChange={(e) => setData("name", e.target.value)}
-          />
-          {errors.name && <span>{errors.name}</span>}
-          <button disabled={processing}>Create</button>
-        </form>
-      );
-    }
+        Production-ready fullstack template
 
 See Also
 --------
 
-- :doc:`/usage/inertia` - Full Inertia.js documentation
-- `Example: inertia <https://github.com/litestar-org/litestar-vite/tree/main/examples/vue-inertia>`_
-- `Example: vue-inertia <https://github.com/litestar-org/litestar-vite/tree/main/examples/vue-inertia>`_
-- `Inertia.js Documentation <https://inertiajs.com/>`_
+- :doc:`/inertia/index` - Complete Inertia.js documentation
+- :doc:`/inertia/installation` - Installation guide
+- :doc:`/inertia/configuration` - Configuration reference
+- `Inertia.js Documentation <https://inertiajs.com/>`_ - Official docs

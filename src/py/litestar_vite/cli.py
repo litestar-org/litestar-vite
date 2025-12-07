@@ -158,12 +158,13 @@ def _run_vite_build(config: ViteConfig, root_dir: Path, console: Any, no_build: 
 
 
 def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: Any) -> None:
-    """Export OpenAPI schema and routes prior to running a build.
+    """Export OpenAPI schema, routes, and Inertia page props prior to running a build.
 
     Skips generation when type generation is disabled.
     """
+    import msgspec
 
-    from litestar_vite.config import TypeGenConfig
+    from litestar_vite.config import InertiaConfig, TypeGenConfig
 
     types_config = config.types
     if not isinstance(types_config, TypeGenConfig):
@@ -172,6 +173,18 @@ def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: An
     console.print("[dim]Preparing OpenAPI schema and routes...[/]")
     _export_openapi_schema(app, types_config)
     _export_routes_metadata(app, types_config)
+
+    # Export Inertia page props if both Inertia and page_props generation are enabled
+    if isinstance(config.inertia, InertiaConfig) and types_config.generate_page_props and types_config.page_props_path:
+        # Load OpenAPI schema for type references
+        openapi_schema: dict[str, Any] | None = None
+        try:
+            if types_config.openapi_path and types_config.openapi_path.exists():
+                openapi_schema = msgspec.json.decode(types_config.openapi_path.read_bytes())
+        except Exception:  # noqa: BLE001, S110
+            pass  # Non-fatal - page props can work without schema references
+
+        _export_inertia_pages_metadata(app, types_config, config.inertia, openapi_schema)
 
 
 @group(cls=LitestarGroup, name="assets")
@@ -973,6 +986,57 @@ def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
         raise LitestarCLIException(msg) from e
 
 
+def _export_inertia_pages_metadata(
+    app: "Litestar",
+    types_config: Any,
+    inertia_config: Any,
+    openapi_schema: "dict[str, Any] | None" = None,
+) -> None:
+    """Export Inertia page props metadata to file.
+
+    Args:
+        app: The Litestar application instance.
+        types_config: The TypeGenConfig instance.
+        inertia_config: The InertiaConfig instance.
+        openapi_schema: Optional pre-loaded OpenAPI schema.
+
+    Raises:
+        LitestarCLIException: If export fails.
+    """
+    import msgspec
+    from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
+
+    from litestar_vite.codegen import generate_inertia_pages_json
+    from litestar_vite.config import InertiaTypeGenConfig
+
+    console.print("[dim]4. Exporting Inertia page props metadata...[/]")
+
+    # Get InertiaTypeGenConfig defaults
+    inertia_type_gen = inertia_config.type_gen if hasattr(inertia_config, "type_gen") else None
+    if inertia_type_gen is None:
+        inertia_type_gen = InertiaTypeGenConfig()
+
+    try:
+        pages_data = generate_inertia_pages_json(
+            app,
+            openapi_schema=openapi_schema,
+            include_default_auth=inertia_type_gen.include_default_auth,
+            include_default_flash=inertia_type_gen.include_default_flash,
+        )
+        pages_content = msgspec.json.format(
+            msgspec.json.encode(pages_data),
+            indent=2,
+        )
+        types_config.page_props_path.parent.mkdir(parents=True, exist_ok=True)
+        types_config.page_props_path.write_bytes(pages_content)
+        num_pages = len(pages_data.get("pages", {}))
+        console.print(f"[green]✓ Page props exported to {_relative_path(types_config.page_props_path)}[/]")
+        console.print(f"[dim]  {num_pages} Inertia page(s) found[/]")
+    except OSError as e:
+        msg = f"Failed to export Inertia page props: {e}"
+        raise LitestarCLIException(msg) from e
+
+
 def _get_package_executor_cmd(executor: "str | None", package: str) -> "list[str]":
     """Build package executor command list.
 
@@ -1088,14 +1152,16 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     1. Exports the OpenAPI schema (uses litestar's built-in schema generation)
     2. Exports route metadata
     3. Runs @hey-api/openapi-ts to generate TypeScript types
+    4. If Inertia is enabled: exports page props metadata
 
     Args:
         app: The Litestar application instance.
         verbose: Whether to enable verbose output.
     """
+    import msgspec
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
-    from litestar_vite.config import TypeGenConfig
+    from litestar_vite.config import InertiaConfig, TypeGenConfig
     from litestar_vite.plugin import VitePlugin
 
     if verbose:
@@ -1115,6 +1181,20 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     _export_openapi_schema(app, config.types)
     _export_routes_metadata(app, config.types)
     _run_openapi_ts(config, verbose, config.install_command, config.runtime.executor)
+
+    # Export Inertia page props if both Inertia and page_props generation are enabled
+    if isinstance(config.inertia, InertiaConfig) and config.types.generate_page_props and config.types.page_props_path:
+        # Load OpenAPI schema for type references
+        openapi_schema: dict[str, Any] | None = None
+        try:
+            if config.types.openapi_path and config.types.openapi_path.exists():
+                openapi_schema = msgspec.json.decode(config.types.openapi_path.read_bytes())
+        except Exception:  # noqa: BLE001
+            # Non-fatal - page props can work without schema references
+            if verbose:
+                console.print("[dim]! Could not load OpenAPI schema for type references[/]")
+
+        _export_inertia_pages_metadata(app, config.types, config.inertia, openapi_schema)
 
 
 @vite_group.command(

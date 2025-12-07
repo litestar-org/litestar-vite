@@ -21,7 +21,15 @@ if TYPE_CHECKING:
     from litestar.routes import HTTPRoute
 
 
-__all__ = ("RouteMetadata", "extract_route_metadata", "generate_routes_json", "generate_routes_ts")
+__all__ = (
+    "InertiaPageMetadata",
+    "RouteMetadata",
+    "extract_inertia_pages",
+    "extract_route_metadata",
+    "generate_inertia_pages_json",
+    "generate_routes_json",
+    "generate_routes_ts",
+)
 
 # Compiled regex patterns for path parsing (compiled once at module load)
 _PATH_PARAM_TYPE_PATTERN = re.compile(r"\{([^:}]+):[^}]+\}")
@@ -822,3 +830,234 @@ export function getRoute<T extends RouteName>(name: T): (typeof routes)[T] {{
   return routes[name];
 }}
 """
+
+
+# =============================================================================
+# Inertia Page Props Generation
+# =============================================================================
+
+
+@dataclass
+class InertiaPageMetadata:
+    """Metadata for an Inertia page component.
+
+    Attributes:
+        component: Inertia component name (e.g., "Home", "Books/Index").
+        route_path: Route path for this page.
+        props_type: TypeScript type name for page props (from OpenAPI).
+        schema_ref: OpenAPI schema $ref if available.
+        handler_name: Python handler function name.
+    """
+
+    component: str
+    route_path: str
+    props_type: "str | None" = None
+    schema_ref: "str | None" = None
+    handler_name: "str | None" = None
+
+
+def _get_return_type_name(handler: HTTPRouteHandler) -> "str | None":
+    """Extract the return type name from a route handler.
+
+    Looks for msgspec Struct, Pydantic BaseModel, TypedDict, or other
+    typed return annotations and extracts a meaningful type name.
+
+    Args:
+        handler: The Litestar route handler.
+
+    Returns:
+        The type name string or None if untyped.
+    """
+    # Get the return annotation from the handler
+    # handler.fn is a Ref that wraps the actual function
+    handler_fn = handler.fn
+    fn = handler_fn.value if hasattr(handler_fn, "value") else handler_fn  # pyright: ignore
+    annotations = getattr(fn, "__annotations__", {})
+    return_type = annotations.get("return")
+
+    if return_type is None:
+        return None
+
+    # Handle string annotations
+    if isinstance(return_type, str):
+        return return_type
+
+    # Get the type name
+    type_name = getattr(return_type, "__name__", None)
+    if type_name:
+        return type_name
+
+    # Handle generic types (e.g., dict[str, Any])
+    origin = getattr(return_type, "__origin__", None)
+    if origin is not None:
+        return getattr(origin, "__name__", str(origin))
+
+    return str(return_type)
+
+
+def _get_openapi_schema_ref(
+    handler: HTTPRouteHandler,
+    openapi_schema: dict[str, Any] | None,
+    route_path: str,
+    method: str = "GET",
+) -> "str | None":
+    """Find the OpenAPI schema $ref for a handler's response type.
+
+    Args:
+        handler: The route handler.
+        openapi_schema: The full OpenAPI schema dict.
+        route_path: The normalized route path.
+        method: HTTP method (default GET for page routes).
+
+    Returns:
+        Schema $ref string like "#/components/schemas/BooksPageProps" or None.
+    """
+    if not openapi_schema:
+        return None
+
+    paths = openapi_schema.get("paths", {})
+    path_item = paths.get(route_path, {})
+    operation = path_item.get(method.lower(), {})
+
+    # Look for 200 response schema
+    responses = operation.get("responses", {})
+    success_response = responses.get("200", responses.get("2XX", {}))
+    content = success_response.get("content", {})
+
+    # Check JSON content type
+    json_content = content.get("application/json", {})
+    schema = json_content.get("schema", {})
+
+    # Return $ref if it exists
+    ref = schema.get("$ref")
+    if ref:
+        return ref
+
+    return None
+
+
+def extract_inertia_pages(
+    app: "Litestar",
+    *,
+    openapi_schema: dict[str, Any] | None = None,
+) -> list[InertiaPageMetadata]:
+    """Extract Inertia page metadata from a Litestar application.
+
+    Finds all routes with Inertia component annotations and extracts
+    their return type information for TypeScript type generation.
+
+    Args:
+        app: Litestar application instance.
+        openapi_schema: Optional OpenAPI schema for enhanced type info.
+
+    Returns:
+        List of InertiaPageMetadata objects.
+    """
+    pages: list[InertiaPageMetadata] = []
+
+    for route in app.routes:
+        if not hasattr(route, "route_handler_map"):
+            continue
+
+        http_route: "HTTPRoute" = route  # type: ignore[assignment]
+
+        for route_handler in http_route.route_handlers:
+            # Look for Inertia component in handler opts
+            component = None
+            if hasattr(route_handler, "opt") and route_handler.opt:
+                # Check common keys: "component", "page"
+                component = route_handler.opt.get("component") or route_handler.opt.get("page")
+
+            if not component:
+                continue
+
+            # Get route info
+            full_path = str(http_route.path)
+            normalized_path = _normalize_path(full_path)
+            handler_name = route_handler.handler_name or route_handler.name
+
+            # Get return type info
+            props_type = _get_return_type_name(route_handler)
+
+            # Get OpenAPI schema ref
+            # http_methods is a set, so use next(iter(...)) to get the first method
+            method = next(iter(route_handler.http_methods), "GET") if route_handler.http_methods else "GET"
+            schema_ref = _get_openapi_schema_ref(
+                route_handler,
+                openapi_schema,
+                normalized_path,
+                method=str(method),
+            )
+
+            pages.append(
+                InertiaPageMetadata(
+                    component=component,
+                    route_path=normalized_path,
+                    props_type=props_type,
+                    schema_ref=schema_ref,
+                    handler_name=handler_name,
+                )
+            )
+
+    return pages
+
+
+def generate_inertia_pages_json(
+    app: "Litestar",
+    *,
+    openapi_schema: dict[str, Any] | None = None,
+    include_default_auth: bool = True,
+    include_default_flash: bool = True,
+) -> dict[str, Any]:
+    """Generate Inertia pages metadata JSON.
+
+    Creates a JSON structure consumed by the Vite plugin to generate
+    page-props.ts with typed page props for each Inertia component.
+
+    Args:
+        app: Litestar application instance.
+        openapi_schema: Optional OpenAPI schema for enhanced type info.
+        include_default_auth: Include default User/AuthData types.
+        include_default_flash: Include default FlashMessages type.
+
+    Returns:
+        Dictionary with pages metadata for JSON export.
+    """
+    pages_metadata = extract_inertia_pages(app, openapi_schema=openapi_schema)
+
+    pages_dict: dict[str, dict[str, Any]] = {}
+
+    for page in pages_metadata:
+        page_data: dict[str, Any] = {
+            "route": page.route_path,
+        }
+
+        if page.props_type:
+            page_data["propsType"] = page.props_type
+
+        if page.schema_ref:
+            page_data["schemaRef"] = page.schema_ref
+
+        if page.handler_name:
+            page_data["handler"] = page.handler_name
+
+        pages_dict[page.component] = page_data
+
+    # Shared props structure (built-in props always present)
+    shared_props: dict[str, dict[str, Any]] = {
+        "errors": {"type": "Record<string, string[]>", "optional": True},
+        "csrf_token": {"type": "string", "optional": True},
+    }
+
+    # Type generation config
+    type_gen_config: dict[str, bool] = {
+        "includeDefaultAuth": include_default_auth,
+        "includeDefaultFlash": include_default_flash,
+    }
+
+    return {
+        "pages": pages_dict,
+        "sharedProps": shared_props,
+        "typeGenConfig": type_gen_config,
+        "generatedAt": __import__("datetime").datetime.now(tz=__import__("datetime").timezone.utc).isoformat(),
+    }
