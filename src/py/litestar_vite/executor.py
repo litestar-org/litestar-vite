@@ -25,9 +25,11 @@ class JSExecutor(ABC):
     """Abstract base class for Javascript executors."""
 
     bin_name: ClassVar[str]
+    silent_flag: ClassVar[str] = "--silent"  # Default silent flag for npm-style executors
 
-    def __init__(self, executable_path: "Path | str | None" = None) -> None:
+    def __init__(self, executable_path: "Path | str | None" = None, *, silent: bool = False) -> None:
         self.executable_path = executable_path
+        self.silent = silent
 
     @abstractmethod
     def install(self, cwd: Path) -> None:
@@ -48,6 +50,33 @@ class JSExecutor(ABC):
         if path is None:
             raise ViteExecutableNotFoundError(self.bin_name)
         return path
+
+    def _apply_silent_flag(self, args: list[str]) -> list[str]:
+        """Apply silent flag to command args if silent mode is enabled.
+
+        The silent flag is inserted after 'run' in npm-style commands
+        (e.g., ['npm', 'run', 'dev'] -> ['npm', 'run', '--silent', 'dev']).
+
+        Args:
+            args: The command arguments.
+
+        Returns:
+            Modified args with silent flag inserted if applicable.
+        """
+        if not self.silent or not self.silent_flag:
+            return args
+
+        # For npm-style commands like ['run', 'dev'], insert --silent after 'run'
+        if args and args[0] == "run" and len(args) >= 2:
+            return [args[0], self.silent_flag, *args[1:]]
+
+        # For full commands like ['npm', 'run', 'dev'], insert --silent after 'run'
+        try:
+            run_idx = args.index("run")
+            return [*args[: run_idx + 1], self.silent_flag, *args[run_idx + 1 :]]
+        except ValueError:
+            # No 'run' in command, add silent flag at the end for install/other commands
+            return args
 
     @property
     def start_command(self) -> list[str]:
@@ -77,6 +106,8 @@ class CommandExecutor(JSExecutor):
 
     def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
         executable = self._resolve_executable()
+        # Apply silent flag if enabled
+        args = self._apply_silent_flag(args)
         # Avoid double-prefixing the executable when callers pass it explicitly
         command = args if args and Path(args[0]).name == Path(executable).name else [executable, *args]
         # Use start_new_session=True on Unix to create a new process group.
@@ -106,6 +137,8 @@ class CommandExecutor(JSExecutor):
 
     def execute(self, args: list[str], cwd: Path) -> None:
         executable = self._resolve_executable()
+        # Apply silent flag if enabled
+        args = self._apply_silent_flag(args)
         command = args if args and Path(args[0]).name == Path(executable).name else [executable, *args]
         process = subprocess.run(
             command,
@@ -137,6 +170,7 @@ class DenoExecutor(CommandExecutor):
     """Deno executor."""
 
     bin_name = "deno"
+    silent_flag: ClassVar[str] = ""  # Deno doesn't have an npm-style silent flag
 
     def install(self, cwd: Path) -> None:
         # Deno doesn't strictly have an "install" command for deps in the same way,
@@ -167,14 +201,15 @@ class NodeenvExecutor(JSExecutor):
 
     bin_name = "nodeenv"
 
-    def __init__(self, config: Any = None) -> None:
+    def __init__(self, config: Any = None, *, silent: bool = False) -> None:
         """Initialize NodeenvExecutor.
 
         Args:
             config: Optional ViteConfig for detecting nodeenv. Can be the new
                     ViteConfig or legacy config. Only used to check detect_nodeenv.
+            silent: Whether to suppress npm output with --silent flag.
         """
-        super().__init__(None)
+        super().__init__(None, silent=silent)
         self.config = config
         # Extract detect_nodeenv flag - works with both old and new config (opt-in default)
         self._detect_nodeenv = getattr(config, "detect_nodeenv", False) if config else False
@@ -217,6 +252,8 @@ class NodeenvExecutor(JSExecutor):
 
     def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
         npm_path = self._find_npm_in_venv()
+        # Apply silent flag if enabled
+        args = self._apply_silent_flag(args)
         command = [npm_path, *args]
         # Use start_new_session=True on Unix to create a new process group.
         # This ensures all child processes (node, astro, nuxt, vite, etc.) can be
@@ -244,6 +281,8 @@ class NodeenvExecutor(JSExecutor):
 
     def execute(self, args: list[str], cwd: Path) -> None:
         npm_path = self._find_npm_in_venv()
+        # Apply silent flag if enabled
+        args = self._apply_silent_flag(args)
         command = [npm_path, *args]
         process = subprocess.run(
             command,

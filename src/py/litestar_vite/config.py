@@ -44,6 +44,7 @@ __all__ = (
     "ExternalDevServer",
     "InertiaConfig",
     "InertiaTypeGenConfig",
+    "LoggingConfig",
     "PaginationContainer",
     "PathConfig",
     "RuntimeConfig",
@@ -656,6 +657,64 @@ class SPAConfig:
     cache_transformed_html: bool = True
 
 
+def _get_default_log_level() -> "Literal['quiet', 'normal', 'verbose']":
+    """Get default log level from environment variable.
+
+    Checks LITESTAR_VITE_LOG_LEVEL environment variable.
+    Falls back to "normal" if not set or invalid.
+
+    Returns:
+        The log level from environment or "normal" default.
+    """
+    env_level = os.getenv("LITESTAR_VITE_LOG_LEVEL", "").lower()
+    if env_level in {"quiet", "normal", "verbose"}:
+        return env_level  # type: ignore[return-value]
+    return "normal"
+
+
+@dataclass
+class LoggingConfig:
+    """Logging configuration for console output.
+
+    Controls the verbosity and style of console output from both Python
+    and TypeScript (via .litestar.json bridge).
+
+    Attributes:
+        level: Logging verbosity level.
+            - "quiet": Minimal output (errors only)
+            - "normal": Standard operational messages (default)
+            - "verbose": Detailed debugging information
+            Can also be set via LITESTAR_VITE_LOG_LEVEL environment variable.
+            Precedence: explicit config > env var > default ("normal")
+        show_paths_absolute: Show absolute paths instead of relative paths.
+            Default False shows cleaner relative paths in output.
+        suppress_npm_output: Suppress npm/yarn/pnpm script echo lines.
+            When True, hides lines like "> dev" / "> vite" from output.
+        suppress_vite_banner: Suppress the Vite startup banner.
+            When True, only the LITESTAR banner is shown.
+        timestamps: Include timestamps in log messages.
+
+    Example:
+        Quiet mode for CI/CD::
+
+            ViteConfig(logging=LoggingConfig(level="quiet"))
+
+        Verbose debugging::
+
+            ViteConfig(logging=LoggingConfig(level="verbose", show_paths_absolute=True))
+
+        Environment variable::
+
+            export LITESTAR_VITE_LOG_LEVEL=quiet
+    """
+
+    level: "Literal['quiet', 'normal', 'verbose']" = field(default_factory=_get_default_log_level)
+    show_paths_absolute: bool = False
+    suppress_npm_output: bool = False
+    suppress_vite_banner: bool = False
+    timestamps: bool = False
+
+
 @dataclass
 class ViteConfig:
     """Root Vite configuration.
@@ -693,6 +752,7 @@ class ViteConfig:
         types: Type generation settings (True/TypeGenConfig enables, False/None disables).
         inertia: Inertia.js settings (True/InertiaConfig enables, False/None disables).
         spa: SPA transformation settings (True enables with defaults, False disables).
+        logging: Logging configuration (True enables with defaults, None uses defaults).
         dev_mode: Convenience shortcut for runtime.dev_mode.
         base_url: Base URL for production assets (CDN support).
         deploy: Deployment configuration for CDN publishing.
@@ -704,6 +764,7 @@ class ViteConfig:
     types: "TypeGenConfig | bool | None" = None
     inertia: "InertiaConfig | bool | None" = None
     spa: "SPAConfig | bool | None" = None
+    logging: "LoggingConfig | bool | None" = None
     dev_mode: bool = False
     base_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
     deploy: "DeployConfig | bool" = False
@@ -718,6 +779,7 @@ class ViteConfig:
         self._normalize_types()
         self._normalize_inertia()
         self._normalize_spa_flag()
+        self._normalize_logging()
         self._apply_dev_mode_shortcut()
         self._auto_detect_mode()
         self._sync_inertia_spa_mode()
@@ -779,6 +841,18 @@ class ViteConfig:
         if self.spa is True:
             self.spa = SPAConfig()
         # spa=False left as-is; spa=None handled later
+
+    def _normalize_logging(self) -> None:
+        """Normalize logging configuration.
+
+        Supports:
+        - True: Enable with defaults -> LoggingConfig()
+        - False/None: Use defaults -> LoggingConfig()
+        - LoggingConfig: Use as-is
+        """
+        if self.logging is True or self.logging is None or self.logging is False:
+            self.logging = LoggingConfig()
+        # LoggingConfig instance is used as-is
 
     def _apply_dev_mode_shortcut(self) -> None:
         if self.dev_mode:
@@ -1020,6 +1094,13 @@ class ViteConfig:
             self._executor_instance = self._create_executor()
         return self._executor_instance
 
+    def reset_executor(self) -> None:
+        """Reset the cached executor instance.
+
+        Call this after modifying logging config to pick up new settings.
+        """
+        self._executor_instance = None
+
     def _create_executor(self) -> "JSExecutor":
         """Create the appropriate executor based on runtime config.
 
@@ -1036,19 +1117,20 @@ class ViteConfig:
         )
 
         executor_type = self.runtime.executor or "node"
+        silent = self.logging_config.suppress_npm_output
 
         if executor_type == "bun":
-            return BunExecutor()
+            return BunExecutor(silent=silent)
         if executor_type == "deno":
-            return DenoExecutor()
+            return DenoExecutor(silent=silent)
         if executor_type == "yarn":
-            return YarnExecutor()
+            return YarnExecutor(silent=silent)
         if executor_type == "pnpm":
-            return PnpmExecutor()
+            return PnpmExecutor(silent=silent)
         # Default to node
         if self.runtime.detect_nodeenv:
-            return NodeenvExecutor(self)
-        return NodeExecutor()
+            return NodeenvExecutor(self, silent=silent)
+        return NodeExecutor(silent=silent)
 
     # Convenience properties for backward compatibility and ease of use
     @property
@@ -1297,3 +1379,15 @@ class ViteConfig:
         if isinstance(self.deploy, DeployConfig) and self.deploy.enabled:
             return self.deploy
         return None
+
+    @property
+    def logging_config(self) -> LoggingConfig:
+        """Get logging configuration.
+
+        Returns:
+            LoggingConfig instance (always available after normalization).
+        """
+        # After _normalize_logging(), self.logging is always LoggingConfig
+        if isinstance(self.logging, LoggingConfig):
+            return self.logging
+        return LoggingConfig()
