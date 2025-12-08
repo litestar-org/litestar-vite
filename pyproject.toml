@@ -77,6 +77,7 @@ linting = ["pre-commit>=3.4.0", "mypy>=1.5.1", "ruff>=0.0.287", "types-docutils"
 test = [
   "fsspec",
   "litestar[standard,cryptography,jwt,jinja]",
+  "litestar-granian[uvloop]",
   "sniffio",
   "pytest>=7.4.1",
   "pytest-cov",
@@ -327,6 +328,7 @@ max-complexity = 18
 "docs/**/*.*" = ["S", "B", "DTZ", "A", "TC", "ERA", "D", "RET", "E731", "RUF012", "FA100", "ARG001"]
 "docs/conf.py" = ["FIX002", "ARG001", "INP001"]
 "examples/**/*.*" = ["INP001","RUF029","DOC201"]
+"src/py/litestar_vite/plugin.py" = ["BLE001"]  # Intentional broad exception catch in proxy middleware
 "src/py/tests/**/*.*" = [
   "A",
   "ARG",
