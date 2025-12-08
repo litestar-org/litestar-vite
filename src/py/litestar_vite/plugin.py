@@ -596,14 +596,20 @@ class ViteProxyMiddleware(AbstractMiddleware):
             # If got_full_body=True, this is a cleanup error - keep the successful response
 
         # Send response OUTSIDE context manager - httpx cleanup is complete
-        await send(
-            {
-                "type": "http.response.start",
-                "status": response_status,
-                "headers": response_headers,
-            }
-        )
-        await send({"type": "http.response.body", "body": response_body})
+        try:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": response_status,
+                    "headers": response_headers,
+                }
+            )
+            await send({"type": "http.response.body", "body": response_body})
+        except Exception as send_exc:
+            import traceback
+            console.print(f"[red][VITE-PROXY-DEBUG] ViteProxyMiddleware SEND exception: type={type(send_exc).__name__}, exc={send_exc}[/]")
+            console.print(f"[red][VITE-PROXY-DEBUG] SEND Traceback:\n{traceback.format_exc()}[/]")
+            raise
 
 
 class ExternalDevServerProxyMiddleware(AbstractMiddleware):
@@ -838,14 +844,20 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
             # If got_full_body=True, this is a cleanup error - keep the successful response
 
         # Send response OUTSIDE context manager - httpx cleanup is complete
-        await send(
-            {
-                "type": "http.response.start",
-                "status": response_status,
-                "headers": response_headers,
-            }
-        )
-        await send({"type": "http.response.body", "body": response_body})
+        try:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": response_status,
+                    "headers": response_headers,
+                }
+            )
+            await send({"type": "http.response.body", "body": response_body})
+        except Exception as send_exc:
+            import traceback
+            console.print(f"[red][VITE-PROXY-DEBUG] ExternalDevServerProxyMiddleware SEND exception: type={type(send_exc).__name__}, exc={send_exc}[/]")
+            console.print(f"[red][VITE-PROXY-DEBUG] SEND Traceback:\n{traceback.format_exc()}[/]")
+            raise
 
 
 def _build_hmr_target_url(
