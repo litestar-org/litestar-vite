@@ -160,7 +160,7 @@ litestar assets generate-types  # one-off or CI
 
 - Prints Python vs Vite config snapshot (asset URLs, bundle/hot paths, ports, modes).
 - Flags missing hot file (dev proxy), missing manifest (prod), type-gen exports, env/config mismatches, and plugin install issues.
-- `--fix` can rewrite simple vite.config values (assetUrl, bundleDirectory, hotFile, type paths) after creating a backup.
+- `--fix` can rewrite simple vite.config values (assetUrl, bundleDir, hotFile, type paths) after creating a backup.
 
 ## Links
 

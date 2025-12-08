@@ -31,11 +31,17 @@ The CLI provides a streamlined setup process:
     # Initialize a new Vite project (React default)
     litestar assets init
 
+    # Available templates:
+    # SPA: react, react-router, react-tanstack, vue, svelte
+    # Inertia: react-inertia, vue-inertia, svelte-inertia
+    # SSR: sveltekit, nuxt, astro
+    # Other: angular, angular-cli, htmx
+
     # Inertia templates keep Laravel-style paths under resources/
     litestar assets init --template vue-inertia
 
     # Non-Inertia templates default to src/; place everything under web/
-    litestar assets init --template react --frontend-dir web
+    litestar assets init --template react-router --frontend-dir web
 
 This command will:
 
@@ -117,9 +123,9 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
                     ),
                     runtime=RuntimeConfig(
                         port=5173,
-                        hot_reload=True,
+                        dev_mode=True,
                     ),
-                    mode="spa", # or "template", "htmx"
+                    mode="spa",  # or "template", "htmx", "hybrid", "ssr", "external"
                 )
             )
         ]
@@ -135,8 +141,8 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - Type
      - Description
    * - `mode`
-     - `str`
-     - Operation mode: `"spa"`, `"template"`, or `"htmx"`. Defaults to `"spa"`.
+     - `str | None`
+     - Operation mode: `"spa"`, `"template"`, `"htmx"`, `"hybrid"`, `"ssr"`, `"ssg"`, or `"external"`. Auto-detected if not set.
    * - `paths`
      - `PathConfig`
      - File system paths configuration.
@@ -144,14 +150,70 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - `RuntimeConfig`
      - Runtime execution settings.
    * - `types`
-     - `TypeGenConfig | bool`
-     - Type generation settings.
+     - `TypeGenConfig | bool | None`
+     - Type generation settings. `True` enables with defaults, `False`/`None` disables.
    * - `inertia`
-     - `InertiaConfig | bool`
-     - Inertia.js settings.
+     - `InertiaConfig | bool | None`
+     - Inertia.js settings. `True` enables with defaults, `False`/`None` disables.
+   * - `spa`
+     - `SPAConfig | bool | None`
+     - SPA transformation settings.
    * - `dev_mode`
      - `bool`
-     - Shortcut to enable development mode.
+     - Shortcut for `runtime.dev_mode`. Defaults to `False`.
+   * - `base_url`
+     - `str | None`
+     - Base URL for production assets (CDN support). Reads from `VITE_BASE_URL` env var.
+   * - `deploy`
+     - `DeployConfig | bool`
+     - Deployment configuration for CDN publishing.
+
+**`SPAConfig` Parameters**:
+
+.. list-table::
+   :widths: 25 15 60
+   :header-rows: 1
+
+   * - Parameter
+     - Type
+     - Description
+   * - `inject_csrf`
+     - `bool`
+     - Inject CSRF token into HTML as `window.__LITESTAR_CSRF__`. Defaults to `True`.
+   * - `csrf_var_name`
+     - `str`
+     - Global variable name for CSRF token. Defaults to `"__LITESTAR_CSRF__"`.
+   * - `app_selector`
+     - `str`
+     - CSS selector for the app root element (used for data attributes). Defaults to `"#app"`.
+   * - `cache_transformed_html`
+     - `bool`
+     - Cache transformed HTML in production. Automatically disabled when `inject_csrf=True` since CSRF tokens are per-request. Defaults to `True`.
+
+**`ExternalDevServer` Parameters**:
+
+.. list-table::
+   :widths: 25 15 60
+   :header-rows: 1
+
+   * - Parameter
+     - Type
+     - Description
+   * - `target`
+     - `str | None`
+     - URL of the external dev server (e.g., `"http://localhost:4200"` for Angular CLI). If `None`, reads from hotfile (for SSR frameworks using Vite internally).
+   * - `command`
+     - `list[str] | None`
+     - Custom command to start the dev server (e.g., `["ng", "serve"]`). If `None`, uses executor's default start command.
+   * - `build_command`
+     - `list[str] | None`
+     - Custom command to build for production (e.g., `["ng", "build"]`). If `None`, uses executor's default build command.
+   * - `http2`
+     - `bool`
+     - Enable HTTP/2 for proxy connections. Defaults to `False`.
+   * - `enabled`
+     - `bool`
+     - Whether the external proxy is enabled. Defaults to `True`.
 
 **`PathConfig` Parameters**:
 
@@ -162,24 +224,30 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
    * - Parameter
      - Type
      - Description
+   * - `root`
+     - `Path | str`
+     - Root directory of the project. Defaults to current working directory.
    * - `bundle_dir`
      - `Path | str`
-     - Location of compiled assets. Defaults to `"public"`.
+     - Location of compiled assets and manifest.json. Defaults to `"public"`.
    * - `resource_dir`
      - `Path | str`
-     - Directory for source files. Defaults to `"src"` (use `"resources"` for Inertia templates).
+     - TypeScript/JavaScript source directory. Defaults to `"src"` (use `"resources"` for Inertia templates).
    * - `public_dir`
      - `Path | str`
-     - The public directory Vite serves assets from. Defaults to `"public"`.
+     - Static public assets directory (served as-is by Vite). Defaults to `"public"`.
    * - `manifest_name`
      - `str`
      - Name of the Vite manifest file. Defaults to `"manifest.json"`.
    * - `hot_file`
      - `str`
-     - Name of the hot file. Defaults to `"hot"`.
+     - Name of the hot file indicating dev server URL. Defaults to `"hot"`.
    * - `asset_url`
      - `str`
-     - Base URL for static assets. Defaults to `"/static/"`.
+     - Base URL for static asset references. Defaults to `"/static/"` or `ASSET_URL` env var.
+   * - `ssr_output_dir`
+     - `Path | str | None`
+     - SSR output directory. Defaults to `None`.
 
 **`RuntimeConfig` Parameters**:
 
@@ -192,24 +260,59 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - Description
    * - `dev_mode`
      - `bool`
-     - Enable development mode.
-   * - `hot_reload`
-     - `bool`
-     - Enable Hot Module Replacement.
+     - Enable development mode with HMR/watch. Reads from `VITE_DEV_MODE` env var.
+   * - `proxy_mode`
+     - `str | None`
+     - Proxy handling mode: `"vite"` (default, whitelist - proxies Vite assets only), `"direct"` (expose Vite port directly, no proxy), `"proxy"` (blacklist - proxies everything except Litestar routes, used for SSR frameworks), or `None` (disabled, production mode). Note: `"ssr"` is normalized to `"proxy"` internally.
+   * - `external_dev_server`
+     - `ExternalDevServer | str | None`
+     - Configuration for external dev servers (Angular CLI, Next.js, etc.). Can be a string URL (e.g., `"http://localhost:4200"`) or an `ExternalDevServer` object with `target`, `command`, `build_command`, `http2`, and `enabled` fields. When set, automatically switches `proxy_mode` to `"proxy"` if not explicitly configured.
    * - `host`
      - `str`
-     - Host for Vite dev server. Defaults to `"localhost"`.
+     - Host for Vite dev server. Defaults to `"127.0.0.1"` or `VITE_HOST` env var.
    * - `port`
      - `int`
-     - Port for Vite dev server. Defaults to `5173`.
-   * - `executor`
+     - Port for Vite dev server. Defaults to `5173` or `VITE_PORT` env var.
+   * - `protocol`
      - `str`
-     - JS executor (`"node"`, `"bun"`, `"deno"`). Defaults to `"node"`.
+     - Protocol for dev server: `"http"` or `"https"`. Defaults to `"http"`.
+   * - `executor`
+     - `str | None`
+     - JS executor: `"node"`, `"bun"`, `"deno"`, `"yarn"`, or `"pnpm"`. Defaults to `"node"`.
+   * - `is_react`
+     - `bool`
+     - Enable React Fast Refresh support. Defaults to `False`.
+   * - `ssr_enabled`
+     - `bool`
+     - Enable Server-Side Rendering. Defaults to `False`.
+   * - `http2`
+     - `bool`
+     - Enable HTTP/2 for proxy HTTP requests (better connection multiplexing). WebSocket/HMR uses a separate connection. Requires `h2` package. Defaults to `True`.
+   * - `start_dev_server`
+     - `bool`
+     - Auto-start dev server process managed by Litestar. Set to `False` if managing the dev server externally. Defaults to `True`.
+   * - `spa_handler`
+     - `bool`
+     - Auto-register catch-all SPA route when mode="spa". Defaults to `True`.
+   * - `set_environment`
+     - `bool`
+     - Write `.litestar.json` config file on startup. Defaults to `True`.
+   * - `set_static_folders`
+     - `bool`
+     - Automatically configure static file serving. Defaults to `True`.
+   * - `detect_nodeenv`
+     - `bool`
+     - Detect and use nodeenv in virtualenv. Defaults to `False`.
+   * - `health_check`
+     - `bool`
+     - Enable health check for dev server startup. Defaults to `False`.
 
 Vite Plugin Configuration (`litestar-vite-plugin`)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You configure the Vite frontend build process in your `vite.config.ts` (or `.js`).
+
+When running via the Litestar CLI (`litestar run` or `litestar assets serve`), Python writes a `.litestar.json` file that the Vite plugin reads automatically. This means **only `input` is required** - all other settings are inherited from Python:
 
 .. code-block:: javascript
 
@@ -218,8 +321,20 @@ You configure the Vite frontend build process in your `vite.config.ts` (or `.js`
 
     export default defineConfig({
         plugins: [
-            litestar({ input: ['src/main.ts'] })  // use resources/main.ts for Inertia templates
+            litestar({ input: ['src/main.ts'] })
         ]
+    })
+
+For standalone Vite usage (without Litestar), you can specify paths explicitly:
+
+.. code-block:: javascript
+
+    // Only needed when NOT using Litestar CLI
+    litestar({
+        input: ['src/main.ts'],
+        assetUrl: '/static/',
+        bundleDir: 'public',
+        resourceDir: 'src',
     })
 
 **Available Plugin Parameters**:
@@ -237,18 +352,42 @@ You configure the Vite frontend build process in your `vite.config.ts` (or `.js`
    * - `assetUrl`
      - `string`
      - The base path for asset URLs. Defaults to `'/static/'`.
-   * - `bundleDirectory`
+   * - `bundleDir`
      - `string`
      - The directory where compiled assets and `manifest.json` are written. Defaults to `'public'`.
-   * - `resourceDirectory`
+   * - `resourceDir`
      - `string`
-     - The directory for source assets. Defaults to `'src'` (use `'resources'` for Inertia templates).
+     - The directory for source assets. Defaults to `'resources'`.
+   * - `publicDir`
+     - `string`
+     - Vite's public directory for static assets. Defaults to `'public'`.
    * - `hotFile`
      - `string`
-     - The path to the "hot" file. Defaults to `${bundleDirectory}/hot`.
+     - The path to the "hot" file. Defaults to `'${bundleDir}/hot'`.
+   * - `ssr`
+     - `string | string[]`
+     - The path of the SSR entry point.
+   * - `ssrOutDir`
+     - `string`
+     - The directory where the SSR bundle should be written. Defaults to `'${bundleDir}/bootstrap/ssr'`.
+   * - `refresh`
+     - `boolean | string | string[] | RefreshConfig`
+     - Configuration for full page refresh on file changes. Defaults to `false`.
+   * - `detectTls`
+     - `string | boolean | null`
+     - Utilize TLS certificates. Defaults to `null`.
+   * - `autoDetectIndex`
+     - `boolean`
+     - Automatically detect and serve `index.html`. Defaults to `true`.
+   * - `inertiaMode`
+     - `boolean`
+     - Enable Inertia mode (disables `index.html` auto-detection). Auto-detected from `.litestar.json` when mode is `"inertia"`. Defaults to `false`.
    * - `types`
-     - `object | boolean`
-     - Type generation configuration.
+     - `boolean | "auto" | TypesConfig`
+     - Type generation configuration. `"auto"` or `undefined` reads from `.litestar.json` (recommended). `true` enables with hardcoded defaults. `false` disables. Object allows fine-grained control with fields: `enabled`, `output`, `openapiPath`, `routesPath`, `pagePropsPath`, `generateZod`, `generateSdk`, `globalRoute`, `debounce`. Defaults to `undefined` (auto-detect).
+   * - `executor`
+     - `string`
+     - JavaScript runtime: `"node"`, `"bun"`, `"deno"`, `"yarn"`, or `"pnpm"`. Auto-detected from Python config.
 
 Template Integration
 ~~~~~~~~~~~~~~~~~~~~

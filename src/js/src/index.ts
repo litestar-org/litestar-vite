@@ -73,6 +73,16 @@ export interface TypesConfig {
    */
   generateSdk?: boolean
   /**
+   * Register route() function globally on window object.
+   *
+   * When true, the generated routes.ts will include code that registers
+   * the type-safe route() function on `window.route`, similar to Laravel's
+   * Ziggy library. This allows using route() without imports.
+   *
+   * @default false
+   */
+  globalRoute?: boolean
+  /**
    * Debounce time in milliseconds for type regeneration.
    * Prevents regeneration from running too frequently when
    * multiple files are written in quick succession.
@@ -98,7 +108,7 @@ export interface PluginConfig {
    *
    * @default 'public/dist'
    */
-  bundleDirectory?: string
+  bundleDir?: string
   /**
    * Vite's public directory for static, unprocessed assets.
    * Mirrors Vite's `publicDir` option.
@@ -109,14 +119,14 @@ export interface PluginConfig {
   /**
    * Litestar's public assets directory.  These are the assets that Vite will serve when developing.
    *
-   * @default 'resources'
+   * @default 'src'
    */
-  resourceDirectory?: string
+  resourceDir?: string
 
   /**
    * The path to the "hot" file.
    *
-   * @default `${bundleDirectory}/hot`
+   * @default `${bundleDir}/hot`
    */
   hotFile?: string
 
@@ -128,9 +138,9 @@ export interface PluginConfig {
   /**
    * The directory where the SSR bundle should be written.
    *
-   * @default '${bundleDirectory}/bootstrap/ssr'
+   * @default '${bundleDir}/bootstrap/ssr'
    */
-  ssrOutputDirectory?: string
+  ssrOutDir?: string
 
   /**
    * Configuration for performing full page refresh on python (or other) file changes.
@@ -152,6 +162,18 @@ export interface PluginConfig {
    * @default true
    */
   autoDetectIndex?: boolean
+  /**
+   * Enable Inertia mode, which disables index.html auto-detection.
+   *
+   * In Inertia apps, the backend (Litestar) serves all HTML responses.
+   * When enabled, direct access to the Vite dev server will show a placeholder
+   * page directing users to access the app through the backend.
+   *
+   * Auto-detected from `.litestar.json` when mode is "inertia".
+   *
+   * @default false (auto-detected from .litestar.json)
+   */
+  inertiaMode?: boolean
   /**
    * Transform the code while serving.
    */
@@ -223,32 +245,49 @@ interface RefreshConfig {
  * Resolved plugin configuration with all defaults applied.
  * Note: `types` is resolved to `Required<TypesConfig> | false` instead of `boolean | TypesConfig`
  * Note: `executor` remains optional - undefined means auto-detect from env
+ * Note: `inertiaMode` is resolved to boolean (auto-detected from .litestar.json mode)
  */
-interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor"> {
+interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor" | "inertiaMode"> {
   types: Required<TypesConfig> | false
   executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
+  /** Whether in Inertia mode (backend serves HTML, not Vite) */
+  inertiaMode: boolean
   /** Whether .litestar.json was found (used for validation warnings) */
   hasPythonConfig: boolean
 }
 
-interface PythonDefaults {
-  assetUrl?: string
-  baseUrl?: string
-  bundleDir?: string
-  resourceDir?: string
-  publicDir?: string
-  manifest?: string
-  mode?: string
-  // Proxy mode fields
-  proxyMode?: "vite_proxy" | "vite_direct" | "external_proxy"
-  externalTarget?: string | null
-  externalHttp2?: boolean
-  // SSR fields
-  ssrEnabled?: boolean
-  ssrOutDir?: string
-  // Executor for package commands
-  executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
-  types?: {
+/**
+ * Bridge schema for `.litestar.json` - the shared configuration contract
+ * between Python (Litestar) and TypeScript (Vite plugin).
+ *
+ * Python writes this file on startup; TypeScript reads it as defaults.
+ * Field names use camelCase (JavaScript convention) and match exactly
+ * between the JSON file and this TypeScript interface.
+ *
+ * Precedence: vite.config.ts > .litestar.json > hardcoded defaults
+ */
+export interface BridgeSchema {
+  // Path configuration
+  assetUrl: string
+  bundleDir: string
+  resourceDir: string
+  publicDir: string
+  hotFile: string
+  manifest: string
+
+  // Runtime configuration
+  mode: "spa" | "inertia" | "ssr" | "hybrid"
+  proxyMode: "vite_proxy" | "vite_direct" | "external_proxy"
+  host: string
+  port: number
+  protocol: "http" | "https"
+
+  // SSR configuration
+  ssrEnabled: boolean
+  ssrOutDir: string | null
+
+  // Type generation configuration
+  types: {
     enabled: boolean
     output: string
     openapiPath: string
@@ -256,7 +295,26 @@ interface PythonDefaults {
     pagePropsPath?: string
     generateZod: boolean
     generateSdk: boolean
+    globalRoute: boolean
   } | null
+
+  // Package executor
+  executor: "node" | "bun" | "deno" | "yarn" | "pnpm"
+
+  // Metadata
+  litestarVersion: string
+}
+
+/**
+ * Python defaults read from `.litestar.json`.
+ * Uses Partial<BridgeSchema> since values may be missing in older versions
+ * or standalone JS configurations.
+ */
+interface PythonDefaults extends Partial<BridgeSchema> {
+  // Legacy/additional fields that may appear
+  baseUrl?: string
+  externalTarget?: string | null
+  externalHttp2?: boolean
 }
 
 // Note: We intentionally avoid exporting Vite types to prevent version conflicts.
@@ -295,6 +353,12 @@ export default function litestar(config: string | string[] | PluginConfig): any[
  * Resolve the index.html path to use for the Vite server.
  */
 async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: ResolvedPluginConfig): Promise<string | null> {
+  // In Inertia mode, never auto-detect index.html - the backend serves all HTML
+  // Users should access the app through Litestar, not Vite directly
+  if (pluginConfig.inertiaMode) {
+    return null
+  }
+
   if (!pluginConfig.autoDetectIndex) {
     return null
   }
@@ -303,9 +367,9 @@ async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: ResolvedPl
   const root = server.config.root
   const possiblePaths = [
     path.join(root, "index.html"),
-    path.join(root, pluginConfig.resourceDirectory.replace(/^\//, ""), "index.html"), // Ensure resourceDirectory path is relative to root
+    path.join(root, pluginConfig.resourceDir.replace(/^\//, ""), "index.html"), // Ensure resourceDir path is relative to root
     path.join(root, pluginConfig.publicDir.replace(/^\//, ""), "index.html"),
-    path.join(root, pluginConfig.bundleDirectory.replace(/^\//, ""), "index.html"),
+    path.join(root, pluginConfig.bundleDir.replace(/^\//, ""), "index.html"),
   ]
   // console.log("Checking paths:", possiblePaths); // Debug log
 
@@ -350,7 +414,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
   const pythonDefaults = loadPythonDefaults()
   const proxyMode = pythonDefaults?.proxyMode ?? "vite_proxy"
   const defaultAliases: Record<string, string> = {
-    "@": `/${pluginConfig.resourceDirectory.replace(/^\/+/, "").replace(/\/+$/, "")}/`,
+    "@": `/${pluginConfig.resourceDir.replace(/^\/+/, "").replace(/\/+$/, "")}/`,
   }
 
   return {
@@ -506,9 +570,9 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       }
 
       // Validate resource directory exists (if explicitly configured)
-      const resourceDir = path.resolve(resolvedConfig.root, pluginConfig.resourceDirectory)
-      if (!fs.existsSync(resourceDir) && typeof resolvedConfig.logger?.warn === "function") {
-        resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("Resource directory not found:")} ${pluginConfig.resourceDirectory}`)
+      const resourceDirPath = path.resolve(resolvedConfig.root, pluginConfig.resourceDir)
+      if (!fs.existsSync(resourceDirPath) && typeof resolvedConfig.logger?.warn === "function") {
+        resolvedConfig.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("Resource directory not found:")} ${pluginConfig.resourceDir}`)
       }
 
       const hint = pluginConfig.types !== false ? pluginConfig.types.routesPath : undefined
@@ -569,6 +633,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
               resolvedConfig.logger.info(
                 `  ${colors.green("➜")}  ${colors.bold("Index Mode")}: SPA (Serving ${colors.cyan(path.relative(server.config.root, initialIndexPath))} from root)`,
               )
+            } else if (pluginConfig.inertiaMode) {
+              resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Index Mode")}: Inertia (Backend serves HTML - access app through ${colors.cyan(appUrl)})`)
             } else {
               resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Index Mode")}: Litestar (Plugin will serve placeholder for /index.html)`)
             }
@@ -795,7 +861,7 @@ function formatMissingConfigWarning(): string {
     `${y("│")}    ${d("litestar({")}                                                  ${y("│")}`,
     `${y("│")}    ${d('  input: ["src/main.tsx"],')}                                  ${y("│")}`,
     `${y("│")}    ${d('  assetUrl: "/static/",')}                                     ${y("│")}`,
-    `${y("│")}    ${d('  bundleDirectory: "public",')}                                ${y("│")}`,
+    `${y("│")}    ${d('  bundleDir: "public",')}                                     ${y("│")}`,
     `${y("│")}    ${d("  types: false,")}                                             ${y("│")}`,
     `${y("│")}    ${d("})")}                                                          ${y("│")}`,
     `${y("│")}                                                                 ${y("│")}`,
@@ -831,19 +897,19 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   if (typeof resolvedConfig.input === "undefined") {
     throw new Error('litestar-vite-plugin: missing configuration for "input".')
   }
-  if (typeof resolvedConfig.resourceDirectory === "string") {
-    resolvedConfig.resourceDirectory = resolvedConfig.resourceDirectory.trim().replace(/^\/+/, "").replace(/\/+$/, "")
+  if (typeof resolvedConfig.resourceDir === "string") {
+    resolvedConfig.resourceDir = resolvedConfig.resourceDir.trim().replace(/^\/+/, "").replace(/\/+$/, "")
 
-    if (resolvedConfig.resourceDirectory === "") {
-      throw new Error("litestar-vite-plugin: resourceDirectory must be a subdirectory. E.g. 'resources'.")
+    if (resolvedConfig.resourceDir === "") {
+      throw new Error("litestar-vite-plugin: resourceDir must be a subdirectory. E.g. 'resources'.")
     }
   }
 
-  if (typeof resolvedConfig.bundleDirectory === "string") {
-    resolvedConfig.bundleDirectory = resolvedConfig.bundleDirectory.trim().replace(/^\/+/, "").replace(/\/+$/, "")
+  if (typeof resolvedConfig.bundleDir === "string") {
+    resolvedConfig.bundleDir = resolvedConfig.bundleDir.trim().replace(/^\/+/, "").replace(/\/+$/, "")
 
-    if (resolvedConfig.bundleDirectory === "") {
-      throw new Error("litestar-vite-plugin: bundleDirectory must be a subdirectory. E.g. 'public'.")
+    if (resolvedConfig.bundleDir === "") {
+      throw new Error("litestar-vite-plugin: bundleDir must be a subdirectory. E.g. 'public'.")
     }
   }
 
@@ -855,8 +921,8 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     }
   }
 
-  if (typeof resolvedConfig.ssrOutputDirectory === "string") {
-    resolvedConfig.ssrOutputDirectory = resolvedConfig.ssrOutputDirectory.trim().replace(/^\/+/, "").replace(/\/+$/, "")
+  if (typeof resolvedConfig.ssrOutDir === "string") {
+    resolvedConfig.ssrOutDir = resolvedConfig.ssrOutDir.trim().replace(/^\/+/, "").replace(/\/+$/, "")
   }
 
   if (resolvedConfig.refresh === true) {
@@ -885,6 +951,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
       pagePropsPath: "src/generated/inertia-pages.json",
       generateZod: false,
       generateSdk: false,
+      globalRoute: false,
       debounce: 300,
     }
   } else if (resolvedConfig.types === "auto" || typeof resolvedConfig.types === "undefined") {
@@ -898,6 +965,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
         pagePropsPath: pythonDefaults.types.pagePropsPath ?? path.join(pythonDefaults.types.output, "inertia-pages.json"),
         generateZod: pythonDefaults.types.generateZod,
         generateSdk: pythonDefaults.types.generateSdk,
+        globalRoute: pythonDefaults.types.globalRoute ?? false,
         debounce: 300,
       }
     }
@@ -917,6 +985,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
         resolvedConfig.types.pagePropsPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "inertia-pages.json") : "src/generated/inertia-pages.json"),
       generateZod: resolvedConfig.types.generateZod ?? false,
       generateSdk: resolvedConfig.types.generateSdk ?? false,
+      globalRoute: resolvedConfig.types.globalRoute ?? false,
       debounce: resolvedConfig.types.debounce ?? 300,
     }
 
@@ -932,23 +1001,87 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     }
   }
 
-  return {
+  // Auto-detect Inertia mode from .litestar.json if not explicitly set
+  const inertiaMode = resolvedConfig.inertiaMode ?? pythonDefaults?.mode === "inertia"
+
+  const result: ResolvedPluginConfig = {
     input: resolvedConfig.input,
     assetUrl: normalizeAssetUrl(resolvedConfig.assetUrl ?? pythonDefaults?.assetUrl ?? "/static/"),
-    resourceDirectory: resolvedConfig.resourceDirectory ?? pythonDefaults?.resourceDir ?? "resources",
-    bundleDirectory: resolvedConfig.bundleDirectory ?? pythonDefaults?.bundleDir ?? "public",
+    resourceDir: resolvedConfig.resourceDir ?? pythonDefaults?.resourceDir ?? "src",
+    bundleDir: resolvedConfig.bundleDir ?? pythonDefaults?.bundleDir ?? "public",
     publicDir: resolvedConfig.publicDir ?? pythonDefaults?.publicDir ?? "public",
     ssr: resolvedConfig.ssr ?? resolvedConfig.input,
-    ssrOutputDirectory:
-      resolvedConfig.ssrOutputDirectory ?? pythonDefaults?.ssrOutDir ?? path.join(resolvedConfig.resourceDirectory ?? pythonDefaults?.resourceDir ?? "resources", "bootstrap/ssr"),
+    ssrOutDir: resolvedConfig.ssrOutDir ?? pythonDefaults?.ssrOutDir ?? path.join(resolvedConfig.resourceDir ?? pythonDefaults?.resourceDir ?? "src", "bootstrap/ssr"),
     refresh: resolvedConfig.refresh ?? false,
-    hotFile: resolvedConfig.hotFile ?? path.join(resolvedConfig.bundleDirectory ?? "public", "hot"),
+    hotFile: resolvedConfig.hotFile ?? path.join(resolvedConfig.bundleDir ?? "public", "hot"),
     detectTls: resolvedConfig.detectTls ?? false,
     autoDetectIndex: resolvedConfig.autoDetectIndex ?? true,
+    inertiaMode,
     transformOnServe: resolvedConfig.transformOnServe ?? ((code) => code),
     types: typesConfig,
     executor: resolvedConfig.executor ?? pythonDefaults?.executor,
     hasPythonConfig: pythonDefaults !== null,
+  }
+
+  // Validate config against Python defaults and warn on mismatches
+  validateAgainstPythonDefaults(result, pythonDefaults, resolvedConfig)
+
+  return result
+}
+
+/**
+ * Validate resolved config against Python defaults and warn on mismatches.
+ *
+ * This function implements the "Smart Merge with Validation" pattern:
+ * - vite.config.ts values take precedence (as they should)
+ * - But we warn when they differ from Python's .litestar.json
+ * - This helps catch configuration drift between Python and TypeScript
+ *
+ * @param resolved - The fully resolved plugin configuration
+ * @param pythonDefaults - The defaults read from .litestar.json (if present)
+ * @param userConfig - The original user config from vite.config.ts
+ */
+function validateAgainstPythonDefaults(resolved: ResolvedPluginConfig, pythonDefaults: PythonDefaults | null, userConfig: PluginConfig): void {
+  if (!pythonDefaults) return
+
+  const warnings: string[] = []
+
+  // Only warn for fields that were explicitly set in vite.config.ts
+  // AND differ from Python defaults. Don't warn when:
+  // - Using Python defaults as fallback (user didn't explicitly set the value)
+  // - Python defaults don't have a meaningful value for the field (null/undefined)
+
+  // Helper to check if a Python default value is meaningful (not null/undefined)
+  const hasPythonValue = (value: unknown): value is string => typeof value === "string" && value.length > 0
+
+  if (userConfig.assetUrl !== undefined && hasPythonValue(pythonDefaults.assetUrl) && resolved.assetUrl !== pythonDefaults.assetUrl) {
+    warnings.push(`assetUrl: vite.config.ts="${resolved.assetUrl}" differs from Python="${pythonDefaults.assetUrl}"`)
+  }
+
+  if (userConfig.bundleDir !== undefined && hasPythonValue(pythonDefaults.bundleDir) && resolved.bundleDir !== pythonDefaults.bundleDir) {
+    warnings.push(`bundleDir: vite.config.ts="${resolved.bundleDir}" differs from Python="${pythonDefaults.bundleDir}"`)
+  }
+
+  if (userConfig.resourceDir !== undefined && hasPythonValue(pythonDefaults.resourceDir) && resolved.resourceDir !== pythonDefaults.resourceDir) {
+    warnings.push(`resourceDir: vite.config.ts="${resolved.resourceDir}" differs from Python="${pythonDefaults.resourceDir}"`)
+  }
+
+  if (userConfig.publicDir !== undefined && hasPythonValue(pythonDefaults.publicDir) && resolved.publicDir !== pythonDefaults.publicDir) {
+    warnings.push(`publicDir: vite.config.ts="${resolved.publicDir}" differs from Python="${pythonDefaults.publicDir}"`)
+  }
+
+  if (pythonDefaults.ssrEnabled && userConfig.ssrOutDir !== undefined && hasPythonValue(pythonDefaults.ssrOutDir) && resolved.ssrOutDir !== pythonDefaults.ssrOutDir) {
+    warnings.push(`ssrOutDir: vite.config.ts="${resolved.ssrOutDir}" differs from Python="${pythonDefaults.ssrOutDir}"`)
+  }
+
+  if (warnings.length > 0) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      colors.yellow("[litestar-vite] Configuration mismatch detected:\n") +
+        warnings.map((w) => `  ${colors.dim("•")} ${w}`).join("\n") +
+        `\n\n${colors.dim("Precedence: vite.config.ts > .litestar.json > defaults")}\n` +
+        colors.dim("See: https://docs.litestar.dev/vite/config-precedence\n"),
+    )
   }
 }
 
@@ -982,10 +1115,10 @@ function resolveInput(config: ResolvedPluginConfig, ssr: boolean): string | stri
 function resolveOutDir(config: ResolvedPluginConfig, ssr: boolean): string {
   if (ssr) {
     // Return path relative to root
-    return config.ssrOutputDirectory.replace(/^\/+/, "").replace(/\/+$/, "")
+    return config.ssrOutDir.replace(/^\/+/, "").replace(/\/+$/, "")
   }
   // Return path relative to root
-  return config.bundleDirectory.replace(/^\/+/, "").replace(/\/+$/, "")
+  return config.bundleDir.replace(/^\/+/, "").replace(/\/+$/, "")
 }
 
 function resolveFullReloadConfig({ refresh: config }: ResolvedPluginConfig): PluginOption[] {
@@ -1205,7 +1338,7 @@ declare module "litestar-vite/inertia" {
   await fs.promises.writeFile(outFile, body, "utf-8")
 }
 
-async function emitRouteTypes(routesPath: string, outputDir: string): Promise<void> {
+async function emitRouteTypes(routesPath: string, outputDir: string, globalRoute = false): Promise<void> {
   const contents = await fs.promises.readFile(routesPath, "utf-8")
   const json = JSON.parse(contents)
 
@@ -1327,12 +1460,27 @@ declare global {
      */
     routes?: Record<string, string>
     serverRoutes?: Record<string, string>
+    /**
+     * Global route helper (available when globalRoute=true in TypeGenConfig).
+     * @see route
+     */
+    route?: typeof route
   }
 }
 
 // Re-export helper functions from litestar-vite-plugin
 // These work with the routes defined above
 export { getCsrfToken, csrfHeaders, csrfFetch } from "litestar-vite-plugin/helpers"
+${
+  globalRoute
+    ? `
+// Register route() globally on window for Laravel/Ziggy-style usage
+if (typeof window !== "undefined") {
+  window.route = route
+}
+`
+    : ""
+}
 `
 
   await fs.promises.writeFile(outFile, `${banner}${body}`, "utf-8")
@@ -1437,7 +1585,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
 
       // Always try to emit routes types when routes metadata is present
       if (fs.existsSync(routesPath)) {
-        await emitRouteTypes(routesPath, typesConfig.output)
+        await emitRouteTypes(routesPath, typesConfig.output, typesConfig.globalRoute ?? false)
         generated = true
       }
 

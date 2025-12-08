@@ -26,6 +26,26 @@ Use ``share()`` to provide data to all pages during a request:
 
 Shared data is merged with page props and available in every component.
 
+Lazy Shared Props
+------------------
+
+Shared props can be lazy to optimize partial reloads:
+
+.. code-block:: python
+
+   from litestar_vite.inertia import share, lazy
+
+   @get("/dashboard", component="Dashboard")
+   async def dashboard(request: Request) -> dict:
+       # Share expensive data lazily
+       share(request, "permissions", lazy("permissions", get_all_permissions))
+       share(request, "notifications", lazy("notifications", get_notifications))
+
+       return {"stats": {...}}
+
+Lazy shared props are only included when explicitly requested via partial reload,
+reducing the initial page load size.
+
 Guards and Middleware
 ---------------------
 
@@ -162,6 +182,34 @@ These props are automatically included:
      - Validation errors by field
    * - ``csrf_token``
      - CSRF token for form submissions
+
+Partial Reload Filtering
+-------------------------
+
+Shared props respect partial reload filters (v2 feature). When using
+``only`` or ``except`` in partial reloads, shared props are filtered too:
+
+.. code-block:: python
+
+   # Static shared prop
+   InertiaConfig(extra_static_page_props={"app_name": "My App"})
+
+   # Session shared prop
+   InertiaConfig(extra_session_page_props={"locale"})
+
+   # Client requests only specific props
+   router.reload({ only: ["users"] })
+   # Result: Only "users" is included, shared props are excluded
+
+   # Client excludes specific props
+   router.reload({ except: ["debug"] })
+   # Result: All props including shared props, except "debug"
+
+This applies to:
+
+- ``extra_static_page_props`` - filtered by key
+- ``extra_session_page_props`` - filtered by key
+- Props set via ``share()`` - filtered by key
 
 See Also
 --------

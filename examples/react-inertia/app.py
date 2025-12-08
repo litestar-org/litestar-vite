@@ -1,7 +1,7 @@
 """React Inertia example - template-less Inertia using mode='hybrid'.
 
 This example demonstrates Inertia.js without Jinja templates.
-The HtmlTransformer injects the page data into index.html at runtime.
+Page data is injected into index.html at runtime via HTML transformation.
 """
 
 import os

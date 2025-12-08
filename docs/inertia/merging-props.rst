@@ -159,7 +159,7 @@ Create pagination metadata for infinite scroll:
 Automatic Pagination
 --------------------
 
-Return pagination objects directly - scroll props are extracted:
+Return pagination objects directly - items and scroll props are extracted:
 
 .. code-block:: python
 
@@ -171,6 +171,25 @@ Return pagination objects directly - scroll props are extracted:
        return OffsetPagination(items=posts, offset=offset, limit=limit, total=total)
 
 The ``infinite_scroll=True`` opt enables automatic scroll_props extraction.
+
+Supported pagination types:
+
+- ``litestar.pagination.OffsetPagination`` - ``items``, ``limit``, ``offset``, ``total``
+- ``litestar.pagination.ClassicPagination`` - ``items``, ``page_size``, ``current_page``, ``total_pages``
+- ``advanced_alchemy.service.OffsetPagination`` - same as Litestar OffsetPagination
+- Any object with an ``items`` attribute and pagination metadata
+
+The pagination container is automatically unwrapped:
+
+1. ``items`` attribute is extracted and used as the prop value
+2. If ``infinite_scroll=True`` on the route, ``scroll_props`` is calculated from pagination metadata
+3. Prop key defaults to ``"items"`` but can be customized with ``key`` opt
+
+.. code-block:: python
+
+   @get("/posts", component="Posts", infinite_scroll=True, key="posts")
+   async def list_posts(offset: int = 0) -> OffsetPagination:
+       ...  # Props will have "posts" instead of "items"
 
 Protocol Response
 -----------------

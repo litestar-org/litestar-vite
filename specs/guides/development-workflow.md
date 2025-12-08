@@ -1,5 +1,7 @@
 # Development Workflow for litestar-vite
 
+**Version**: 0.15.0-beta.1 | **Updated**: 2025-12-07
+
 This guide describes the standard development workflow for contributing to the `litestar-vite` project. It covers initial setup, daily development tasks, and the quality assurance process.
 
 ## 1. Initial Setup
@@ -7,8 +9,8 @@ This guide describes the standard development workflow for contributing to the `
 All project tasks are managed through a `Makefile` and the `uv` Python package manager.
 
 1.  **Prerequisites**:
-    -   Python 3.8+
-    -   Node.js and npm
+    -   Python 3.10+
+    -   Node.js 20.19.0+ or 22.12.0+
     -   `curl`
 
 2.  **Install `uv`**:
@@ -85,14 +87,18 @@ This project uses `pre-commit` to enforce code quality at the time of commit. Wh
 
 If any of the checks fail, the commit will be aborted. You must fix the reported issues and re-add the files to your commit. For formatting issues, the hooks may fix them for you automatically; in this case, you just need to `git add` the modified files and commit again.
 
-## 4. Gemini Agent Workflow
+## 4. AI Agent Workflow
 
-For significant features, this project uses the Gemini Agent System.
+For significant features, this project uses an AI agent system with specialized agents for different phases.
 
--   **Start a feature**: `gemini /prd "My new feature"`
--   **Implement a feature**: `gemini /implement <feature-slug>`
+See `AGENTS.md` and `CLAUDE.md` for detailed documentation on:
+- `/prd [feature]` - Create Product Requirements Documents
+- `/implement [slug]` - Implement features from PRDs
+- `/test [slug]` - Create comprehensive test suites
+- `/review [slug]` - Quality gates and documentation
+- Specialized subagents: `prd`, `expert`, `testing`, `docs-vision`, `sync-guides`
 
-The agent system will guide the feature through a rigorous process of planning, implementation, testing, and review, ensuring all quality gates are met. Refer to `.gemini/GEMINI.md` for more details.
+The agent system guides features through planning, implementation, testing, and review, ensuring all quality gates are met.
 
 ## 5. Release Workflow
 

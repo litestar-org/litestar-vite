@@ -153,9 +153,9 @@ describe("litestar-vite-plugin", () => {
     const plugin = litestar({
       input: "resources/js/app.ts",
       assetUrl: "other-static",
-      bundleDirectory: "other-build",
+      bundleDir: "other-build",
       ssr: "resources/js/ssr.ts",
-      ssrOutputDirectory: "other-ssr-output",
+      ssrOutDir: "other-ssr-output",
     })[0]
 
     const config = plugin.config({}, { command: "build", mode: "production" })
@@ -201,10 +201,10 @@ describe("litestar-vite-plugin", () => {
     }
   })
 
-  it("checks bundleDirectory for index.html when auto-detecting", async () => {
+  it("checks bundleDir for index.html when auto-detecting", async () => {
     const plugin = litestar({
       input: "resources/js/app.ts",
-      bundleDirectory: "custom-dist",
+      bundleDir: "custom-dist",
     })[0]
 
     const accessSpy = vi.spyOn(fs.promises, "access").mockImplementation((p: fs.PathLike) => {
@@ -293,41 +293,41 @@ describe("litestar-vite-plugin", () => {
 
   it("accepts a partial configuration", () => {
     const plugin = litestar({
-      input: "resources/js/app.js",
-      ssr: "resources/js/ssr.js",
+      input: "src/js/app.js",
+      ssr: "src/js/ssr.js",
     })[0]
 
     const config = plugin.config({}, { command: "build", mode: "production" })
     expect(config.base).toMatch("static/")
     expect(config.build?.manifest).toBe("manifest.json")
     expect(config.build?.outDir).toBe("public")
-    expect(config.build?.rollupOptions?.input).toBe("resources/js/app.js")
+    expect(config.build?.rollupOptions?.input).toBe("src/js/app.js")
 
     const ssrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
     expect(ssrConfig.base).toMatch("static/")
     expect(ssrConfig.build?.manifest).toBe(false)
-    expect(ssrConfig.build?.outDir).toMatch("resources/bootstrap/ssr")
-    expect(ssrConfig.build?.rollupOptions?.input).toMatch("resources/js/ssr.js")
+    expect(ssrConfig.build?.outDir).toMatch("src/bootstrap/ssr")
+    expect(ssrConfig.build?.rollupOptions?.input).toMatch("src/js/ssr.js")
   })
   it("accepts a partial configuration with an asset URL", () => {
     const plugin = litestar({
-      input: "resources/js/app.js",
-      bundleDirectory: "/public/build/",
+      input: "src/js/app.js",
+      bundleDir: "/public/build/",
       assetUrl: "/over/the/rainbow/",
-      ssr: "resources/js/ssr.js",
+      ssr: "src/js/ssr.js",
     })[0]
 
     const config = plugin.config({}, { command: "build", mode: "production" })
     expect(config.base).toBe("/over/the/rainbow/")
     expect(config.build?.manifest).toBe("manifest.json")
     expect(config.build?.outDir).toBe("public/build")
-    expect(config.build?.rollupOptions?.input).toBe("resources/js/app.js")
+    expect(config.build?.rollupOptions?.input).toBe("src/js/app.js")
 
     const ssrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
     expect(ssrConfig.base).toBe("/over/the/rainbow/")
     expect(ssrConfig.build?.manifest).toBe(false)
-    expect(ssrConfig.build?.outDir).toBe("resources/bootstrap/ssr")
-    expect(ssrConfig.build?.rollupOptions?.input).toBe("resources/js/ssr.js")
+    expect(ssrConfig.build?.outDir).toBe("src/bootstrap/ssr")
+    expect(ssrConfig.build?.rollupOptions?.input).toBe("src/js/ssr.js")
   })
 
   it("uses the default entry point when ssr entry point is not provided", () => {
@@ -349,21 +349,21 @@ describe("litestar-vite-plugin", () => {
     expect(prodConfig.base).toBe("http://example.com/")
   })
 
-  it("prevents setting an empty bundleDirectory", () => {
+  it("prevents setting an empty bundleDir", () => {
     expect(
       () =>
         litestar({
           input: "resources/js/app.js",
-          bundleDirectory: "",
+          bundleDir: "",
         })[0],
-    ).toThrowError("bundleDirectory must be a subdirectory")
+    ).toThrowError("bundleDir must be a subdirectory")
   })
 
   it("handles surrounding slashes on directories", () => {
     const plugin = litestar({
       input: "resources/js/app.js",
-      bundleDirectory: "/build/test/",
-      ssrOutputDirectory: "/ssr-output/test/",
+      bundleDir: "/build/test/",
+      ssrOutDir: "/ssr-output/test/",
     })[0]
 
     const config = plugin.config({}, { command: "build", mode: "production" })
@@ -375,15 +375,15 @@ describe("litestar-vite-plugin", () => {
   })
 
   it("provides an @ alias by default", () => {
-    const plugin = litestar("resources/js/app.js")[0]
+    const plugin = litestar("src/js/app.js")[0]
 
     const config = plugin.config({}, { command: "build", mode: "development" })
 
-    expect(config.resolve?.alias?.["@"]).toBe("/resources/")
+    expect(config.resolve?.alias?.["@"]).toBe("/src/")
   })
 
   it("respects a users existing @ alias", () => {
-    const plugin = litestar("resources/js/app.js")[0]
+    const plugin = litestar("src/js/app.js")[0]
 
     const config = plugin.config(
       {
@@ -400,7 +400,7 @@ describe("litestar-vite-plugin", () => {
   })
 
   it("appends an Alias object when using an alias array", () => {
-    const plugin = litestar("resources/js/app.js")[0]
+    const plugin = litestar("src/js/app.js")[0]
 
     const config = plugin.config(
       {
@@ -413,7 +413,7 @@ describe("litestar-vite-plugin", () => {
 
     expect(config.resolve?.alias).toEqual([
       { find: "@", replacement: "/something/else" },
-      { find: "@", replacement: "/resources/" },
+      { find: "@", replacement: "/src/" },
     ])
   })
 
@@ -686,7 +686,7 @@ describe("litestar-vite-plugin", () => {
 
       plugin = litestar({
         input: "resources/js/app.js",
-        resourceDirectory: testResourceDir,
+        resourceDir: testResourceDir,
         autoDetectIndex: true,
         ...pluginOptions,
       })[0]

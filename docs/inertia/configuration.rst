@@ -103,7 +103,7 @@ The ``component_opt_keys`` parameter controls which decorator keys specify the c
 SPA Mode
 --------
 
-SPA mode uses ``HtmlTransformer`` instead of Jinja2 templates:
+SPA mode uses HTML transformation instead of Jinja2 templates:
 
 .. code-block:: python
 
@@ -146,7 +146,7 @@ Automatically include session keys in page props:
 InertiaTypeGenConfig Reference
 ------------------------------
 
-Controls TypeScript type generation for page props.
+Controls TypeScript type generation for Inertia page props (new in v0.15).
 
 .. list-table::
    :widths: 25 15 60
@@ -162,6 +162,25 @@ Controls TypeScript type generation for page props.
      - ``bool``
      - Include default FlashMessages interface. Default: ``True``
 
+When ``include_default_auth=True`` (default), the generated ``page-props.ts`` includes:
+
+- ``User`` interface: ``{ id: string, email: string, name?: string | null }``
+- ``AuthData`` interface: ``{ isAuthenticated: boolean, user?: User }``
+
+You can extend these via TypeScript module augmentation:
+
+.. code-block:: typescript
+
+   // Standard auth (95% of users) - extend defaults
+   declare module 'litestar-vite/inertia' {
+     interface User {
+       avatarUrl?: string
+       roles: Role[]
+     }
+   }
+
+For non-standard user models (e.g., ``uuid`` instead of ``id``, ``username`` instead of ``email``), disable defaults:
+
 .. code-block:: python
 
    from litestar_vite.config import InertiaTypeGenConfig
@@ -171,6 +190,41 @@ Controls TypeScript type generation for page props.
            include_default_auth=False,  # Custom user model
        ),
    )
+
+Then define your own User interface in TypeScript:
+
+.. code-block:: typescript
+
+   // Custom auth (5% of users) - define from scratch
+   declare module 'litestar-vite/inertia' {
+     interface User {
+       uuid: string      // No id!
+       username: string  // No email!
+     }
+   }
+
+Vite Plugin Auto-Detection
+--------------------------
+
+When you enable Inertia (`inertia=True`), the Python backend writes a `.litestar.json` file
+with `mode: "inertia"`. The Vite plugin automatically reads this file and enables `inertiaMode`,
+which:
+
+- Disables auto-detection of `index.html` in the project
+- Shows a placeholder page when accessing Vite directly, directing users to the backend URL
+- Displays "Index Mode: Inertia" in the dev server console
+
+This ensures users access your app through Litestar (where Inertia responses are generated)
+rather than directly through Vite.
+
+You can also explicitly set `inertiaMode: true` in your `vite.config.ts`:
+
+.. code-block:: javascript
+
+   litestar({
+     input: ['resources/main.tsx'],
+     inertiaMode: true,  // Explicit (normally auto-detected)
+   })
 
 See Also
 --------

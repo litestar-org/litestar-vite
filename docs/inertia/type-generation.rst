@@ -66,6 +66,9 @@ TypeGenConfig Reference
    * - ``generate_page_props``
      - ``bool``
      - Generate page props types. Default: ``True``
+   * - ``global_route``
+     - ``bool``
+     - Register ``route()`` globally on ``window``. Default: ``False``
    * - ``watch_patterns``
      - ``list[str]``
      - Patterns to watch for regeneration

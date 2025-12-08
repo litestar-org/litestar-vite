@@ -84,7 +84,7 @@ Inertia's Axios instance is pre-configured, but for manual requests:
 SPA Mode
 --------
 
-In SPA mode, CSRF tokens are injected via ``HtmlTransformer``:
+In SPA mode, CSRF tokens are injected via HTML transformation:
 
 .. code-block:: javascript
 
@@ -103,6 +103,29 @@ Configure the variable name:
            csrf_var_name="__LITESTAR_CSRF__",  # Default
        ),
    )
+
+CSRF Helper Functions
+---------------------
+
+The ``litestar-vite-plugin/helpers`` package provides utility functions for CSRF token handling:
+
+.. code-block:: typescript
+
+   import { getCsrfToken, csrfHeaders, csrfFetch } from 'litestar-vite-plugin/helpers';
+
+   // Get CSRF token (from window.__LITESTAR_CSRF__ or meta tag)
+   const token = getCsrfToken();
+
+   // Get headers object with CSRF token
+   const headers = csrfHeaders();
+
+   // Make a fetch request with CSRF token automatically included
+   await csrfFetch('/api/submit', {
+     method: 'POST',
+     body: JSON.stringify(data),
+   });
+
+These helpers work in both SPA and template modes, automatically detecting the token source.
 
 Form Submissions
 ----------------

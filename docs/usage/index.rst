@@ -16,7 +16,15 @@ Core Features
     modes
     types
     inertia
-    migration-0-14
+
+Migration Guide
+---------------
+
+.. toctree::
+    :titlesonly:
+    :maxdepth: 1
+
+    migration-v015
 
 Getting Started
 ---------------

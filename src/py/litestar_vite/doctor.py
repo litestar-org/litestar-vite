@@ -121,7 +121,7 @@ class ViteDoctor:
 
         patterns = {
             "asset_url": r"""assetUrl\s*:\s*['"]([^'"]+)['"]""",
-            "bundle_dir": r"""bundleDirectory\s*:\s*['"]([^'"]+)['"]""",
+            "bundle_dir": r"""bundleDir\s*:\s*['"]([^'"]+)['"]""",
             "hot_file": r"""hotFile\s*:\s*['"]([^'"]+)['"]""",
             "types_enabled": r"""types\s*:\s*{\s*enabled\s*:\s*(true|false)""",
             "types_output": r"""output\s*:\s*['"]([^'"]+)['"]""",
@@ -188,7 +188,7 @@ class ViteDoctor:
         # Python config stores just the filename usually, but plugin constructs full path
         # We need to check expectation. The JS plugin expects full path usually or relative to bundle.
         # Actually, Litestar config.hot_file is a filename (default "hot").
-        # JS plugin config.hotFile defaults to `${bundleDirectory}/hot`.
+        # JS plugin config.hotFile defaults to `${bundleDir}/hot`.
 
         # If the user has a custom hotFile in JS, we should check if it aligns.
         # This check is tricky because of defaults.
@@ -223,10 +223,10 @@ class ViteDoctor:
                 DoctorIssue(
                     check="Bundle Directory Mismatch",
                     severity="error",
-                    message=f"Python bundle_dir '{py_dir}' != JS bundleDirectory '{js_dir}'",
-                    fix_hint=f"Update vite.config to use bundleDirectory: '{py_dir}'",
+                    message=f"Python bundle_dir '{py_dir}' != JS bundleDir '{js_dir}'",
+                    fix_hint=f"Update vite.config to use bundleDir: '{py_dir}'",
                     auto_fixable=True,
-                    context={"key": "bundleDirectory", "expected": py_dir},
+                    context={"key": "bundleDir", "expected": py_dir},
                 )
             )
 
@@ -559,7 +559,7 @@ class ViteDoctor:
 
         js_cfg = {
             "assetUrl": self.parsed_config.asset_url,
-            "bundleDirectory": self.parsed_config.bundle_dir,
+            "bundleDir": self.parsed_config.bundle_dir,
             "hotFile": self.parsed_config.hot_file,
             "types.enabled": self.parsed_config.types_enabled,
             "types.output": self.parsed_config.types_output,

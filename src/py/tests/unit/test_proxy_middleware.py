@@ -63,9 +63,18 @@ async def test_proxy_should_proxy_matches_vite_paths(hotfile: Path) -> None:
 
     middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile)
 
+    # Vite internal paths are always proxied
     assert middleware._should_proxy("/@vite/client")
     assert middleware._should_proxy("/node_modules/.vite/chunk.js")
-    assert middleware._should_proxy("/src/main.ts")
     assert middleware._should_proxy("/vite-hmr")
     assert middleware._should_proxy("/@analogjs/vite-plugin-angular")
     assert not middleware._should_proxy("/api/users")
+
+    # Project paths (resource_dir) are proxied when configured
+    middleware_with_src = ViteProxyMiddleware(noop, hotfile_path=hotfile, resource_dir=Path("src"))
+    assert middleware_with_src._should_proxy("/src/main.ts")
+
+    # Custom resource dir
+    middleware_with_resources = ViteProxyMiddleware(noop, hotfile_path=hotfile, resource_dir=Path("resources"))
+    assert middleware_with_resources._should_proxy("/resources/app.tsx")
+    assert not middleware_with_resources._should_proxy("/src/main.ts")  # /src not proxied without explicit config

@@ -197,7 +197,7 @@ class InertiaConfig:
         redirect_404: Path for 404 request redirects.
         extra_static_page_props: Static props added to every page response.
         extra_session_page_props: Session keys to include in page props.
-        spa_mode: Use SPA mode (HtmlTransformer) instead of Jinja2 templates.
+        spa_mode: Use SPA mode (HTML transformation) instead of Jinja2 templates.
         app_selector: CSS selector for the app root element in SPA mode.
     """
 
@@ -233,7 +233,7 @@ class InertiaConfig:
     spa_mode: bool = False
     """Enable SPA mode to render without Jinja2 templates.
 
-    When True, InertiaResponse uses ViteSPAHandler and HtmlTransformer
+    When True, InertiaResponse uses ViteSPAHandler and HTML transformation
     to inject page data instead of rendering Jinja2 templates.
     This allows template-less Inertia applications.
     """
@@ -569,6 +569,9 @@ class TypeGenConfig:
             Auto-enabled when both types and inertia are configured.
         page_props_path: Path to export page props metadata (JSON format).
         watch_patterns: File patterns to watch for type regeneration.
+        global_route: Register route() function globally on window object.
+            When True, adds ``window.route = route`` to generated routes.ts,
+            providing Laravel/Ziggy-style global access without imports.
     """
 
     output: Path = field(default_factory=lambda: Path("src/generated"))
@@ -579,13 +582,22 @@ class TypeGenConfig:
     generate_sdk: bool = True
     generate_routes: bool = True
     generate_page_props: bool = True
-    """Generate Inertia page props TypeScript file.
+    global_route: bool = False
+    """Register route() function globally on window object.
 
-    When True and Inertia is enabled, generates inertia-pages.json metadata
-    that the Vite plugin uses to create page-props.ts with typed page props.
+    When True, the generated routes.ts will include code that registers
+    the type-safe route() function on ``window.route``, similar to Laravel's
+    Ziggy library. This allows using route() without imports:
 
-    Auto-enabled when both types and inertia are configured. Set to False
-    to disable page props generation while keeping other type generation.
+    .. code-block:: typescript
+
+        // With global_route=True, no import needed:
+        window.route('user-profile', { userId: 123 })
+
+        // TypeScript users should add to global.d.ts:
+        // declare const route: typeof import('@/generated/routes').route
+
+    Default is False to encourage explicit imports for better tree-shaking.
     """
     page_props_path: "Path | None" = field(default=None)  # Computed in __post_init__ if None
     """Path to export page props metadata JSON.
@@ -782,7 +794,7 @@ class ViteConfig:
 
         When mode='hybrid' is detected (from index.html presence),
         set InertiaConfig.spa_mode=True so InertiaResponse uses
-        HtmlTransformer instead of Jinja templates.
+        HTML transformation instead of Jinja templates.
         """
         if self.mode == "hybrid" and isinstance(self.inertia, InertiaConfig):
             self.inertia.spa_mode = True
@@ -931,7 +943,7 @@ class ViteConfig:
         Detection order:
         1. If Inertia is enabled:
            a. Default to hybrid mode for SPA-style Inertia applications
-           b. Hybrid mode works with ViteSPAHandler + HtmlTransformer
+           b. Hybrid mode works with ViteSPAHandler + HTML transformation
            c. index.html is served by Vite dev server in dev mode or built assets in production
            Note: If using Jinja2 templates with Inertia, set mode="template" explicitly.
         2. Check for index.html in resource_dir, root_dir, or public_dir → SPA

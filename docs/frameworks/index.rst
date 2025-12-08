@@ -44,6 +44,30 @@ working examples for each supported framework.
 
         Hypermedia-driven applications
 
+Meta-Frameworks
+~~~~~~~~~~~~~~~
+
+.. grid:: 1 1 2 3
+    :gutter: 3
+
+    .. grid-item-card:: :octicon:`rocket` Nuxt
+        :link: nuxt
+        :link-type: doc
+
+        Universal Vue 3 SSR framework
+
+    .. grid-item-card:: :octicon:`rocket` SvelteKit
+        :link: sveltekit
+        :link-type: doc
+
+        Full-stack Svelte framework
+
+    .. grid-item-card:: :octicon:`rocket` Astro
+        :link: astro
+        :link-type: doc
+
+        Content-focused multi-framework SSG/SSR
+
 Quick Scaffold
 --------------
 
@@ -51,8 +75,12 @@ Use the CLI to scaffold any framework:
 
 .. code-block:: bash
 
-    # React
+    # React (SPA)
     litestar assets init --template react
+
+    # React with routing (new in v0.15)
+    litestar assets init --template react-router
+    litestar assets init --template react-tanstack
 
     # Vue
     litestar assets init --template vue
@@ -63,13 +91,21 @@ Use the CLI to scaffold any framework:
     # Angular (Vite-based)
     litestar assets init --template angular
 
+    # Angular CLI (traditional)
+    litestar assets init --template angular-cli
+
     # HTMX
     litestar assets init --template htmx
+
+    # Meta-frameworks
+    litestar assets init --template nuxt
+    litestar assets init --template sveltekit
+    litestar assets init --template astro
 
     # With Inertia.js
     litestar assets init --template react-inertia
     litestar assets init --template vue-inertia
-    litestar assets init --template svelte-inertia
+    litestar assets init --template svelte-inertia  # New in v0.15
 
 Framework Comparison
 --------------------
@@ -113,6 +149,21 @@ Framework Comparison
      - Vite + HMR
      - No
      - Server-rendered, minimal JS
+   * - Nuxt
+     - ``pages/``
+     - Nuxt dev
+     - No
+     - Universal SSR, auto-routing
+   * - SvelteKit
+     - ``src/routes/``
+     - SvelteKit dev
+     - No
+     - Full-stack Svelte, SSR
+   * - Astro
+     - ``src/pages/``
+     - Astro dev
+     - No
+     - Static sites, islands architecture
 
 .. toctree::
     :maxdepth: 2
@@ -122,5 +173,8 @@ Framework Comparison
     vue
     svelte
     angular
-    inertia
     htmx
+    nuxt
+    sveltekit
+    astro
+    inertia

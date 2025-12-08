@@ -1,7 +1,7 @@
 # Litestar Vite
 > Seamless Litestar ↔ Vite integration for SPA, Template, and Inertia.js apps with type-safe routing and Vite dev tooling.
 
-Current Version: **v0.15.0-alpha.5**
+Current Version: **v0.15.0-beta.1**
 Documentation: [litestar-org.github.io/litestar-vite/latest/](https://litestar-org.github.io/litestar-vite/latest/)
 
 ## Quick Start
@@ -33,30 +33,32 @@ litestar run
 
 ## Core Features
 
-- **Modes**: `spa` (default), `template` (Jinja/HTMX), `hybrid` (Inertia SPA), `ssr` (Astro/Nuxt), `external` (Angular CLI).
+- **Modes**: `spa` (default), `template` (Jinja/HTMX), `hybrid` (Inertia SPA), `ssr` (Astro/Nuxt/SvelteKit), `external` (Angular CLI).
 - **Proxy**:
   - `vite` (default): Tunnels Vite traffic through Litestar (single port).
   - `direct`: Exposes Vite on its own port.
   - `proxy`: Proxies external dev servers (Next.js, Angular).
-- **Inertia.js**: Full integration with `InertiaPlugin`, including protocol v2, SSR, and Flash messages.
+- **Inertia.js**: Full protocol v2 support with SSR, deferred props, history encryption, and flash messages.
 - **Type Safety**: Generates TypeScript types for routes and OpenAPI schemas via `litestar assets generate-types`.
 
 ## Configuration (ViteConfig)
 
 ### Key Options
-- `mode`: Serving mode (auto-detected if None).
+- `mode`: Serving mode (auto-detected if None). Aliases: `ssg` → `ssr`, `inertia` → `hybrid`.
 - `dev_mode`: Enable HMR and dev server (env: `VITE_DEV_MODE`).
-- `runtime`: Execution settings (`host`, `port`, `executor`).
-- `paths`: File system paths (`root`, `bundle_dir`, `resource_dir`).
-- `types`: Type generation settings (`TypeGenConfig`).
-- `inertia`: Inertia settings (`InertiaConfig`).
-- `spa`: SPA transformation settings (`SPAConfig`).
+- `runtime`: Execution settings (`RuntimeConfig`): host, port, executor, proxy_mode.
+- `paths`: File system paths (`PathConfig`): root, bundle_dir, resource_dir, asset_url.
+- `types`: Type generation settings (`TypeGenConfig` or `True`/`False`).
+- `inertia`: Inertia settings (`InertiaConfig` or `True`/`False`).
+- `spa`: SPA transformation settings (`SPAConfig` or `True`/`False`).
+- `deploy`: CDN deployment (`DeployConfig`).
 
 ### Environment Variables
 - `VITE_DEV_MODE`: `True` / `False`
 - `VITE_PROXY_MODE`: `vite`, `direct`, `proxy`
 - `VITE_HOST`, `VITE_PORT`: Dev server connection
 - `ASSET_URL`: Base URL for static assets
+- `VITE_AUTO_DEV_MODE`: Auto-enable dev if no assets (default: `True`)
 
 ## CLI Commands
 *Use `litestar assets` instead of direct npm/node commands.*
@@ -64,28 +66,36 @@ litestar run
 - `litestar assets install`: Install frontend deps.
 - `litestar assets serve`: Run dev server (or watch mode).
 - `litestar assets build`: Build for production.
-- `litestar assets init`: Scaffold new frontend.
+- `litestar assets init`: Scaffold new frontend (react, vue, svelte, react-inertia, etc.).
 - `litestar assets doctor`: Diagnose configuration.
 - `litestar assets generate-types`: Generate TS types.
+- `litestar assets deploy`: Upload assets to object storage (s3/gcs).
+- `litestar assets status`: Check Vite integration status.
 
 ## Frontend Integration (TypeScript)
 
-**vite.config.ts**:
+**vite.config.ts** (minimal - paths read from `.litestar.json`):
 ```typescript
 import litestar from "litestar-vite-plugin";
 
 export default {
   plugins: [
-    litestar({
-      input: ["src/main.ts"],
-      assetUrl: "/static/",
-      types: { enabled: true }
-    })
+    litestar({ input: ["src/main.ts"] })  // Only input is required
   ]
 };
 ```
 
 **Framework Helpers**:
 - `litestar-vite-plugin/inertia-helpers`: `resolvePageComponent`, `unwrapPageProps`.
-- `litestar-vite-plugin/helpers`: `route()`, `csrfFetch()`.
+- `litestar-vite-plugin/helpers`: `getCsrfToken()`, `csrfFetch()`, `csrfHeaders()`, HTMX utilities.
 - Integrations: `/astro`, `/sveltekit`, `/nuxt`.
+
+## Inertia.js Helpers (Python)
+
+- `share(key, value)`: Share props globally.
+- `lazy(key, callback)`: Lazy-loaded props (v1 style).
+- `defer(key, callback, group)`: Deferred props with grouping (v2).
+- `merge(key, value)`: Merge props with client state.
+- `flash(category, message)`: Flash messages.
+- `error(key, message)`: Validation errors.
+- `clear_history()`: Clear encrypted history (v2).

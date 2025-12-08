@@ -10,7 +10,10 @@ Handle errors gracefully in Inertia applications.
 Validation Errors
 -----------------
 
-Validation errors are passed to the frontend via the ``errors`` prop:
+The ``error()`` Helper
+~~~~~~~~~~~~~~~~~~~~~~
+
+Set validation errors manually using the ``error()`` helper:
 
 .. code-block:: python
 
@@ -31,6 +34,13 @@ Validation errors are passed to the frontend via the ``errors`` prop:
 
        await User.create(**data)
        return InertiaRedirect(request, "/users")
+
+The ``error()`` helper sets errors in the session, which are then included
+in the ``errors`` prop of the next Inertia response. Errors are automatically
+cleared after being displayed (pop semantics).
+
+Frontend Usage
+~~~~~~~~~~~~~~
 
 Errors are available in the ``errors`` prop:
 
@@ -71,6 +81,43 @@ Litestar automatically converts Pydantic validation errors to the
        # Pydantic validation errors are automatically caught
        user = await User.create(**data.dict())
        return InertiaRedirect(request, f"/users/{user.id}")
+
+Error Bags
+----------
+
+The Inertia protocol supports error bags to scope validation errors:
+
+.. code-block:: python
+
+   # Errors are scoped by the X-Inertia-Error-Bag header sent by the client
+   # The error() helper automatically respects the error bag from the request
+
+   @post("/profile")
+   async def update_profile(request: Request) -> InertiaBack:
+       data = await request.json()
+
+       # Error bag is extracted from X-Inertia-Error-Bag header
+       error_bag = request.headers.get("X-Inertia-Error-Bag")
+
+       if not data.get("email"):
+           error(request, "email", "Email is required")
+           return InertiaBack(request)
+
+       # Errors are scoped to the error bag on the frontend
+       return InertiaRedirect(request, "/profile")
+
+On the frontend, errors are scoped by bag:
+
+.. code-block:: tsx
+
+   interface Props {
+     errors: {
+       // Scoped to specific error bag (if X-Inertia-Error-Bag header sent)
+       createUser?: { email?: string; name?: string };
+       // Or unscoped errors
+       email?: string;
+     };
+   }
 
 Flash Messages
 --------------

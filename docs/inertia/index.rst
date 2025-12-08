@@ -58,6 +58,7 @@ Quick Example
    redirects
    forms
    links
+   routing
 
 .. toctree::
    :maxdepth: 1

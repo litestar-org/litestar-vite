@@ -352,7 +352,7 @@ class InertiaResponse(Response[T]):
         vite_plugin: "VitePlugin",
         inertia_plugin: "InertiaPlugin",
     ) -> bytes:
-        """Render the page using SPA mode (HtmlTransformer instead of templates).
+        """Render the page using SPA mode (HTML transformation instead of templates).
 
         This method uses ViteSPAHandler to get the base HTML and injects
         the page props as a data-page attribute on the app element.
