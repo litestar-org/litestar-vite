@@ -34,9 +34,46 @@ FRAMEWORK_CHOICES = [
 
 
 def _format_command(command: "list[str] | None") -> str:
-    """Join a command list for display."""
+    """Join a command list for display.
 
+    Returns:
+        Space-joined command string or empty string.
+    """
     return " ".join(command or [])
+
+
+def _apply_cli_log_level(config: ViteConfig, *, verbose: bool = False, quiet: bool = False) -> None:
+    """Apply CLI log level overrides to the config.
+
+    Precedence: --quiet > --verbose > config/env
+
+    Args:
+        config: The ViteConfig to modify.
+        verbose: If True, set log level to "verbose".
+        quiet: If True, set log level to "quiet" (takes precedence over verbose).
+    """
+    from litestar_vite.config import LoggingConfig
+
+    if quiet:
+        config.logging = LoggingConfig(
+            level="quiet",
+            show_paths_absolute=config.logging_config.show_paths_absolute,
+            suppress_npm_output=config.logging_config.suppress_npm_output,
+            suppress_vite_banner=config.logging_config.suppress_vite_banner,
+            timestamps=config.logging_config.timestamps,
+        )
+        # Reset executor to pick up new silent setting
+        config.reset_executor()
+    elif verbose:
+        config.logging = LoggingConfig(
+            level="verbose",
+            show_paths_absolute=config.logging_config.show_paths_absolute,
+            suppress_npm_output=config.logging_config.suppress_npm_output,
+            suppress_vite_banner=config.logging_config.suppress_vite_banner,
+            timestamps=config.logging_config.timestamps,
+        )
+        # Reset executor to pick up new silent setting
+        config.reset_executor()
 
 
 def _relative_path(path: Path) -> str:
@@ -82,8 +119,11 @@ vite_config = ViteConfig(
 
 
 def _coerce_option_value(value: str) -> object:
-    """Convert CLI key/value strings into basic Python types."""
+    """Convert CLI key/value strings into basic Python types.
 
+    Returns:
+        Converted value (bool, int, float, or original string).
+    """
     lowered = value.lower()
     if lowered in {"true", "false"}:
         return lowered == "true"
@@ -96,8 +136,14 @@ def _coerce_option_value(value: str) -> object:
 
 
 def _parse_storage_options(values: tuple[str, ...]) -> dict[str, object]:
-    """Parse repeated --storage-option entries into a dictionary."""
+    """Parse repeated --storage-option entries into a dictionary.
 
+    Returns:
+        Dictionary of parsed storage options.
+
+    Raises:
+        ValueError: If an option is not in key=value format.
+    """
     options: dict[str, object] = {}
     for item in values:
         if "=" not in item:
@@ -114,8 +160,14 @@ def _build_deploy_config(
     storage_options: dict[str, object],
     no_delete: bool,
 ) -> DeployConfig:
-    """Resolve deploy configuration from CLI overrides."""
+    """Resolve deploy configuration from CLI overrides.
 
+    Returns:
+        Resolved DeployConfig with CLI overrides applied.
+
+    Raises:
+        SystemExit: If deployment is not configured or storage backend is missing.
+    """
     deploy_config = base_config.deploy_config
     if deploy_config is None:
         msg = "Deployment is not configured. Set ViteConfig.deploy to enable."
@@ -572,8 +624,9 @@ def vite_init(
     help="Install frontend packages.",
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
-def vite_install(app: "Litestar", verbose: "bool") -> None:
-    """Run vite build."""
+@option("--quiet", type=bool, help="Suppress non-essential output.", default=False, is_flag=True)
+def vite_install(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
+    """Install frontend packages."""
     from pathlib import Path
 
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
@@ -582,9 +635,14 @@ def vite_install(app: "Litestar", verbose: "bool") -> None:
 
     if verbose:
         app.debug = True
+
     plugin = app.plugins.get(VitePlugin)
 
-    console.rule("[yellow]Starting package installation process[/]", align="left")
+    # Apply CLI log level overrides
+    _apply_cli_log_level(plugin.config, verbose=verbose, quiet=quiet)
+
+    if not quiet:
+        console.rule("[yellow]Starting package installation process[/]", align="left")
 
     if plugin.config.executor:
         root_dir = Path(plugin.config.root_dir or Path.cwd())
@@ -598,8 +656,13 @@ def vite_install(app: "Litestar", verbose: "bool") -> None:
     help="Building frontend assets with Vite.",
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
-def vite_build(app: "Litestar", verbose: "bool") -> None:
-    """Run vite build."""
+@option("--quiet", type=bool, help="Suppress non-essential output.", default=False, is_flag=True)
+def vite_build(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
+    """Run vite build.
+
+    Raises:
+        SystemExit: If the build fails.
+    """
     from pathlib import Path
 
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
@@ -609,8 +672,14 @@ def vite_build(app: "Litestar", verbose: "bool") -> None:
 
     if verbose:
         app.debug = True
-    console.rule("[yellow]Starting Vite build process[/]", align="left")
+
     plugin = app.plugins.get(VitePlugin)
+
+    # Apply CLI log level overrides
+    _apply_cli_log_level(plugin.config, verbose=verbose, quiet=quiet)
+
+    if not quiet:
+        console.rule("[yellow]Starting Vite build process[/]", align="left")
     _generate_schema_and_routes(app, plugin.config, console)
     if plugin.config.set_environment:
         set_environment(config=plugin.config)
@@ -733,8 +802,9 @@ def vite_deploy(  # noqa: PLR0915
     help="Serve frontend assets. For SSR frameworks (mode='ssr'), runs production Node server. Otherwise runs Vite dev server.",
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
+@option("--quiet", type=bool, help="Suppress non-essential output.", default=False, is_flag=True)
 @option("--production", type=bool, help="Force production mode (run serve_command).", default=False, is_flag=True)  # pyright: ignore
-def vite_serve(app: "Litestar", verbose: "bool", production: "bool") -> None:
+def vite_serve(app: "Litestar", verbose: "bool", quiet: "bool", production: "bool") -> None:
     """Run frontend server.
 
     In dev mode (default): Runs the dev server (npm run dev) for all frameworks.
@@ -754,6 +824,9 @@ def vite_serve(app: "Litestar", verbose: "bool", production: "bool") -> None:
         app.debug = True
 
     plugin = app.plugins.get(VitePlugin)
+
+    # Apply CLI log level overrides
+    _apply_cli_log_level(plugin.config, verbose=verbose, quiet=quiet)
     if plugin.config.set_environment:
         set_environment(config=plugin.config)
 

@@ -14,6 +14,8 @@ import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-re
 import { resolveInstallHint, resolvePackageExecutor } from "./install-hint.js"
 import { checkBackendAvailability, type LitestarMeta, loadLitestarMeta } from "./litestar-meta.js"
 import { debounce } from "./shared/debounce.js"
+import { formatPath } from "./shared/format-path.js"
+import { createLogger } from "./shared/logger.js"
 
 const execAsync = promisify(exec)
 
@@ -301,6 +303,15 @@ export interface BridgeSchema {
   // Package executor
   executor: "node" | "bun" | "deno" | "yarn" | "pnpm"
 
+  // Logging configuration
+  logging: {
+    level: "quiet" | "normal" | "verbose"
+    showPathsAbsolute: boolean
+    suppressNpmOutput: boolean
+    suppressViteBanner: boolean
+    timestamps: boolean
+  } | null
+
   // Metadata
   litestarVersion: string
 }
@@ -413,6 +424,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
   let shuttingDown = false
   const pythonDefaults = loadPythonDefaults()
   const proxyMode = pythonDefaults?.proxyMode ?? "vite_proxy"
+  const logger = createLogger(pythonDefaults?.logging)
   const defaultAliases: Record<string, string> = {
     "@": `/${pluginConfig.resourceDir.replace(/^\/+/, "").replace(/\/+$/, "")}/`,
   }
@@ -621,28 +633,27 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
 
           // Check backend availability and log status
           setTimeout(async () => {
-            const version = litestarMeta.litestarVersion ?? process.env.LITESTAR_VERSION ?? "unknown"
+            // Skip banner in quiet mode
+            if (logger.config.level === "quiet") return
+
+            const litestarVersion = litestarMeta.litestarVersion ?? process.env.LITESTAR_VERSION ?? "unknown"
             const backendStatus = await checkBackendAvailability(appUrl)
 
-            // Use resolvedConfig.logger for consistency
-            resolvedConfig.logger.info(`\n  ${colors.red(`${colors.bold("LITESTAR")} ${version}`)}`)
+            // Combined LITESTAR + VITE banner (replaces separate Vite banner)
+            resolvedConfig.logger.info(`\n  ${colors.red(`${colors.bold("LITESTAR")} ${litestarVersion}`)}`)
             resolvedConfig.logger.info("")
 
-            // Index mode
+            // Mode - simplified display
             if (initialIndexPath) {
-              resolvedConfig.logger.info(
-                `  ${colors.green("➜")}  ${colors.bold("Index Mode")}: SPA (Serving ${colors.cyan(path.relative(server.config.root, initialIndexPath))} from root)`,
-              )
+              const relIndexPath = logger.path(initialIndexPath, server.config.root)
+              resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Mode")}:       SPA (${colors.cyan(relIndexPath)})`)
             } else if (pluginConfig.inertiaMode) {
-              resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Index Mode")}: Inertia (Backend serves HTML - access app through ${colors.cyan(appUrl)})`)
+              resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Mode")}:       Inertia`)
             } else {
-              resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Index Mode")}: Litestar (Plugin will serve placeholder for /index.html)`)
+              resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Mode")}:       Litestar`)
             }
 
-            // Dev server URL
-            resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Dev Server")}: ${colors.cyan(viteDevServerUrl)}`)
-
-            // App URL with backend status
+            // App URL with backend status - this is the main URL users care about
             if (backendStatus.available) {
               resolvedConfig.logger.info(
                 `  ${colors.green("➜")}  ${colors.bold("App URL")}:    ${colors.cyan(appUrl.replace(/:(\d+)/, (_, port) => `:${colors.bold(port)}`))} ${colors.green("✓")}`,
@@ -653,22 +664,23 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
               )
             }
 
-            // Assets base path
-            resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Assets Base")}: ${colors.cyan(resolvedConfig.base)}`)
+            // Dev server URL (where Vite is actually running)
+            resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Dev Server")}: ${colors.cyan(viteDevServerUrl)}`)
 
-            // Type generation status
+            // Type generation status - use relative path
             if (pluginConfig.types !== false && pluginConfig.types.enabled) {
               const openapiExists = fs.existsSync(path.resolve(process.cwd(), pluginConfig.types.openapiPath))
               const routesExists = fs.existsSync(path.resolve(process.cwd(), pluginConfig.types.routesPath))
+              const relTypesOutput = logger.path(pluginConfig.types.output, process.cwd())
 
               if (openapiExists || routesExists) {
-                resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Type Gen")}:   ${colors.green("enabled")} ${colors.dim(`→ ${pluginConfig.types.output}`)}`)
+                resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Type Gen")}:   ${colors.dim(`${relTypesOutput}/`)}`)
               } else {
                 resolvedConfig.logger.info(`  ${colors.yellow("➜")}  ${colors.bold("Type Gen")}:   ${colors.yellow("waiting")} ${colors.dim("(no schema files yet)")}`)
               }
             }
 
-            // Backend status warnings/hints
+            // Backend status warnings/hints (only when backend is not available)
             if (!backendStatus.available) {
               resolvedConfig.logger.info("")
               resolvedConfig.logger.info(`  ${colors.yellow("⚠")}  ${colors.bold("Backend Status")}`)
@@ -1537,10 +1549,10 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
       const shouldRunOpenApiTs = configPath || typesConfig.generateSdk
 
       if (fs.existsSync(openapiPath) && shouldRunOpenApiTs) {
-        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("generating TypeScript types...")}`)
-        if (resolvedConfig) {
-          const relConfigPath = configPath ? path.relative(resolvedConfig.root, configPath) : null
-          resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("openapi-ts config: ")}${relConfigPath ?? "<built-in defaults>"}`)
+        resolvedConfig?.logger.info(`${colors.cyan("•")} Generating TypeScript types...`)
+        if (resolvedConfig && configPath) {
+          const relConfigPath = formatPath(configPath, resolvedConfig.root)
+          resolvedConfig.logger.info(`${colors.cyan("•")} openapi-ts config: ${relConfigPath}`)
         }
 
         // Output API client to a subdirectory to avoid deleting routes.ts and other files
@@ -1572,7 +1584,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
             // eslint-disable-next-line import/no-dynamic-require, @typescript-eslint/no-var-requires
             require.resolve("zod", { paths: [process.cwd()] })
           } catch {
-            resolvedConfig?.logger.warn(`${colors.cyan("litestar-vite")} ${colors.yellow("zod not installed")} - run: ${resolveInstallHint()} zod`)
+            resolvedConfig?.logger.warn(`${colors.yellow("!")} zod not installed - run: ${resolveInstallHint()} zod`)
           }
         }
 
@@ -1597,7 +1609,7 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
 
       if (generated && resolvedConfig) {
         const duration = Date.now() - startTime
-        resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.green("TypeScript artifacts updated")} ${colors.dim(`in ${duration}ms`)}`)
+        resolvedConfig.logger.info(`${colors.green("✓")} TypeScript artifacts updated ${colors.dim(`(${duration}ms)`)}`)
       }
 
       // Notify HMR clients that types have been updated
@@ -1649,13 +1661,13 @@ function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executo
       // Log that we're watching for schema changes
       if (typesConfig.enabled) {
         const root = resolvedConfig?.root ?? process.cwd()
-        // Use relative paths for cleaner output
-        const openapiRel = typesConfig.openapiPath
-        const routesRel = typesConfig.routesPath
-        resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("watching schema/routes:")} ${colors.yellow(openapiRel)}, ${colors.yellow(routesRel)}`)
+        // Use relative paths for cleaner output - just show filenames since they're usually in generated/
+        const openapiRel = path.basename(typesConfig.openapiPath)
+        const routesRel = path.basename(typesConfig.routesPath)
+        resolvedConfig?.logger.info(`${colors.cyan("•")} Watching: ${colors.yellow(openapiRel)}, ${colors.yellow(routesRel)}`)
         if (chosenConfigPath) {
-          const relConfigPath = path.relative(root, chosenConfigPath)
-          resolvedConfig?.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("openapi-ts config:")} ${colors.yellow(relConfigPath)}`)
+          const relConfigPath = formatPath(chosenConfigPath, root)
+          resolvedConfig?.logger.info(`${colors.cyan("•")} openapi-ts config: ${colors.yellow(relConfigPath)}`)
         }
       }
     },
