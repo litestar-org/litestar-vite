@@ -587,29 +587,20 @@ class ViteProxyMiddleware(AbstractMiddleware):
                 response_body = upstream_resp.content
                 got_full_body = True
         except Exception as exc:  # pragma: no cover - catch all cleanup errors
-            import traceback
-            console.print(f"[red][VITE-PROXY-DEBUG] ViteProxyMiddleware exception: type={type(exc).__name__}, got_full_body={got_full_body}, exc={exc}[/]")
-            console.print(f"[red][VITE-PROXY-DEBUG] Traceback:\n{traceback.format_exc()}[/]")
             if not got_full_body:
                 # Real upstream failure - use error response
                 response_body = f"Upstream error: {exc}".encode()
             # If got_full_body=True, this is a cleanup error - keep the successful response
 
         # Send response OUTSIDE context manager - httpx cleanup is complete
-        try:
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": response_status,
-                    "headers": response_headers,
-                }
-            )
-            await send({"type": "http.response.body", "body": response_body})
-        except Exception as send_exc:
-            import traceback
-            console.print(f"[red][VITE-PROXY-DEBUG] ViteProxyMiddleware SEND exception: type={type(send_exc).__name__}, exc={send_exc}[/]")
-            console.print(f"[red][VITE-PROXY-DEBUG] SEND Traceback:\n{traceback.format_exc()}[/]")
-            raise
+        await send(
+            {
+                "type": "http.response.start",
+                "status": response_status,
+                "headers": response_headers,
+            }
+        )
+        await send({"type": "http.response.body", "body": response_body, "more_body": False})
 
 
 class ExternalDevServerProxyMiddleware(AbstractMiddleware):
@@ -835,29 +826,20 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
             response_status = 503
             response_body = f"Dev server not running at {target}".encode()
         except Exception as exc:  # pragma: no cover - catch all cleanup errors
-            import traceback
-            console.print(f"[red][VITE-PROXY-DEBUG] ExternalDevServerProxyMiddleware exception: type={type(exc).__name__}, got_full_body={got_full_body}, exc={exc}[/]")
-            console.print(f"[red][VITE-PROXY-DEBUG] Traceback:\n{traceback.format_exc()}[/]")
             if not got_full_body:
                 # Real upstream failure - use error response
                 response_body = f"Upstream error: {exc}".encode()
             # If got_full_body=True, this is a cleanup error - keep the successful response
 
         # Send response OUTSIDE context manager - httpx cleanup is complete
-        try:
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": response_status,
-                    "headers": response_headers,
-                }
-            )
-            await send({"type": "http.response.body", "body": response_body})
-        except Exception as send_exc:
-            import traceback
-            console.print(f"[red][VITE-PROXY-DEBUG] ExternalDevServerProxyMiddleware SEND exception: type={type(send_exc).__name__}, exc={send_exc}[/]")
-            console.print(f"[red][VITE-PROXY-DEBUG] SEND Traceback:\n{traceback.format_exc()}[/]")
-            raise
+        await send(
+            {
+                "type": "http.response.start",
+                "status": response_status,
+                "headers": response_headers,
+            }
+        )
+        await send({"type": "http.response.body", "body": response_body, "more_body": False})
 
 
 def _build_hmr_target_url(
