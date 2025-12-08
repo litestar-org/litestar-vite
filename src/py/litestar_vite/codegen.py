@@ -427,8 +427,8 @@ def extract_route_metadata(
 
     Args:
         app: Litestar application instance.
-        only: Whitelist patterns (route names or paths to include).
-        exclude: Blacklist patterns (route names or paths to exclude).
+        only: Include patterns (route names or paths to include).
+        exclude: Exclude patterns (route names or paths to exclude).
         openapi_schema: Optional OpenAPI schema used to enrich parameter and query types.
 
     Returns:
@@ -510,8 +510,8 @@ def generate_routes_json(
 
     Args:
         app: Litestar application instance.
-        only: Whitelist patterns (route names or paths to include).
-        exclude: Blacklist patterns (route names or paths to exclude).
+        only: Include patterns (route names or paths to include).
+        exclude: Exclude patterns (route names or paths to exclude).
         include_components: Include Inertia component names in output.
         openapi_schema: Optional OpenAPI schema used to enrich parameter and query types.
 
@@ -634,8 +634,8 @@ def generate_routes_ts(
 
     Args:
         app: Litestar application instance.
-        only: Whitelist patterns (route names or paths to include).
-        exclude: Blacklist patterns (route names or paths to exclude).
+        only: Include patterns (route names or paths to include).
+        exclude: Exclude patterns (route names or paths to exclude).
         openapi_schema: Optional OpenAPI schema for enhanced type info.
 
     Returns:

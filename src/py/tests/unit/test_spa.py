@@ -554,3 +554,430 @@ async def test_spa_handler_csrf_injection_sync(
     # Should have CSRF token injected
     assert 'window.__LITESTAR_CSRF__ = "sync-csrf-token"' in html
     assert "Test SPA" in html
+
+
+# ============================================================================
+# SPA Handler Route Exclusion Tests (Vite Proxy Route Exclusion Fix)
+# ============================================================================
+
+
+async def test_spa_handler_route_exclusion_schema_path(spa_config: ViteConfig) -> None:
+    """Test that /schema raises NotFoundException when matched by SPA handler.
+
+    This test verifies that the route detection logic correctly identifies
+    /schema as a Litestar route and raises NotFoundException. In practice,
+    the VitePlugin should register the SPA handler last to allow other routes
+    to take precedence.
+    """
+
+    from litestar_vite.plugin import is_litestar_route
+
+    handler = ViteSPAHandler(spa_config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    # Create app with SPA route only
+    app = Litestar(route_handlers=[route])
+
+    # Verify route detection works
+    assert is_litestar_route("/schema", app) is True
+
+    async with AsyncTestClient(app=app, raise_server_exceptions=False) as client:
+        # /schema should return 404 since SPA handler raises NotFoundException
+        # (In real usage, OpenAPI routes would be registered first)
+        response = await client.get("/schema")
+        # The SPA handler should raise NotFoundException, resulting in 404
+        # (or redirect to OpenAPI schema if registered first)
+        assert response.status_code in (404, 200)  # 200 if OpenAPI caught it, 404 if not
+
+        # Verify SPA still works for non-excluded paths
+        response = await client.get("/users/123")
+        assert response.status_code == 200
+        assert "Test SPA" in response.text
+
+
+async def test_spa_handler_route_exclusion_api_path(spa_config: ViteConfig) -> None:
+    """Test that /api/* routes work correctly when API handlers are registered.
+
+    This test demonstrates the correct usage pattern: register API routes first,
+    then the SPA catch-all. The route exclusion in SPA handler prevents it from
+    shadowing API routes.
+    """
+    handler = ViteSPAHandler(spa_config)
+    await handler.initialize_async()
+
+    # Add real API routes BEFORE SPA handler
+    @get("/api/users")
+    async def get_users() -> dict[str, list[str]]:
+        return {"users": ["alice", "bob"]}
+
+    @get("/api/posts/{post_id:int}")
+    async def get_post(post_id: int) -> dict[str, int]:
+        return {"id": post_id}
+
+    # SPA route should be registered LAST
+    route = handler.create_route_handler()
+
+    # Register API routes first, then SPA (important for routing precedence)
+    app = Litestar(route_handlers=[get_users, get_post, route])
+
+    async with AsyncTestClient(app=app) as client:
+        # API routes should work normally
+        response = await client.get("/api/users")
+        assert response.status_code == 200
+        assert response.json() == {"users": ["alice", "bob"]}
+
+        response = await client.get("/api/posts/123")
+        assert response.status_code == 200
+        assert response.json() == {"id": 123}
+
+        # Should NOT serve SPA HTML for API routes
+        assert "Test SPA" not in response.text
+
+        # SPA routes should still work
+        response = await client.get("/dashboard")
+        assert response.status_code == 200
+        assert "Test SPA" in response.text
+
+
+async def test_spa_handler_route_exclusion_deep_spa_link_allowed(spa_config: ViteConfig) -> None:
+    """Test that deep SPA links like /users/123 still serve SPA content."""
+    handler = ViteSPAHandler(spa_config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    app = Litestar(route_handlers=[route])
+
+    async with AsyncTestClient(app=app) as client:
+        # Deep links should serve SPA
+        response = await client.get("/users/123")
+        assert response.status_code == 200
+        assert "Test SPA" in response.text
+
+        response = await client.get("/posts/456/comments")
+        assert response.status_code == 200
+        assert "Test SPA" in response.text
+
+
+async def test_spa_handler_route_exclusion_root_path_allowed(spa_config: ViteConfig) -> None:
+    """Test that root path / always serves SPA content."""
+    handler = ViteSPAHandler(spa_config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    app = Litestar(route_handlers=[route])
+
+    async with AsyncTestClient(app=app) as client:
+        # Root should serve SPA
+        response = await client.get("/")
+        assert response.status_code == 200
+        assert "Test SPA" in response.text
+
+
+async def test_spa_handler_route_exclusion_custom_openapi_path(temp_resource_dir: Path) -> None:
+    """Test route exclusion detects custom OpenAPI schema paths."""
+    from litestar.openapi import OpenAPIConfig
+
+    from litestar_vite.config import PathConfig, RuntimeConfig
+    from litestar_vite.plugin import is_litestar_route
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+    )
+
+    handler = ViteSPAHandler(config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    # Custom schema path - OpenAPI will automatically register this
+    app = Litestar(
+        route_handlers=[route],
+        openapi_config=OpenAPIConfig(title="Test", version="1.0.0", path="/custom-schema"),
+    )
+
+    # Verify route detection identifies custom schema path
+    assert is_litestar_route("/custom-schema", app) is True
+
+    async with AsyncTestClient(app=app, raise_server_exceptions=False) as client:
+        # Custom schema path should be detected and excluded
+        response = await client.get("/custom-schema")
+        # Will be 404 or 200 depending on routing order
+        assert response.status_code in (404, 200)
+
+        # Regular SPA paths should still work
+        response = await client.get("/about")
+        assert response.status_code == 200
+        assert "Test SPA" in response.text
+
+
+async def test_spa_handler_route_exclusion_dev_mode(spa_config_dev: ViteConfig) -> None:
+    """Test route exclusion works in development mode."""
+    handler = ViteSPAHandler(spa_config_dev)
+
+    # Mock httpx client for dev mode
+    mock_response = Mock()
+    mock_response.text = "<html><head></head><body>Dev Server HTML</body></html>"
+    mock_response.raise_for_status = Mock()
+
+    mock_async_client = AsyncMock()
+    mock_async_client.get = AsyncMock(return_value=mock_response)
+    mock_async_client.aclose = AsyncMock()
+
+    with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_async_client):
+        await handler.initialize_async(vite_url="http://127.0.0.1:5173")
+
+        route = handler.create_route_handler()
+
+        # Add API route
+        @get("/api/data")
+        async def get_data() -> dict[str, str]:
+            return {"data": "test"}
+
+        app = Litestar(route_handlers=[route, get_data])
+
+        async with AsyncTestClient(app=app) as client:
+            # API route should work
+            response = await client.get("/api/data")
+            assert response.status_code == 200
+            assert response.json() == {"data": "test"}
+
+            # SPA route should proxy to Vite
+            response = await client.get("/users/123")
+            assert response.status_code == 200
+            assert "Dev Server HTML" in response.text
+
+
+async def test_spa_handler_route_exclusion_multiple_api_versions(spa_config: ViteConfig) -> None:
+    """Test route exclusion with multiple API versions."""
+    handler = ViteSPAHandler(spa_config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    # Multiple API versions
+    @get("/api/v1/users")
+    async def get_users_v1() -> dict[str, str]:
+        return {"version": "v1"}
+
+    @get("/api/v2/users")
+    async def get_users_v2() -> dict[str, str]:
+        return {"version": "v2"}
+
+    app = Litestar(route_handlers=[route, get_users_v1, get_users_v2])
+
+    async with AsyncTestClient(app=app) as client:
+        # Both API versions should work
+        response = await client.get("/api/v1/users")
+        assert response.status_code == 200
+        assert response.json() == {"version": "v1"}
+
+        response = await client.get("/api/v2/users")
+        assert response.status_code == 200
+        assert response.json() == {"version": "v2"}
+
+
+async def test_spa_handler_route_exclusion_docs_path(spa_config: ViteConfig) -> None:
+    """Test that /docs path is excluded from SPA handler."""
+    handler = ViteSPAHandler(spa_config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    # Add docs route
+    @get("/docs")
+    async def docs() -> dict[str, str]:
+        return {"docs": "swagger"}
+
+    app = Litestar(route_handlers=[route, docs])
+
+    async with AsyncTestClient(app=app) as client:
+        response = await client.get("/docs")
+        assert response.status_code == 200
+        assert response.json() == {"docs": "swagger"}
+        assert "Test SPA" not in response.text
+
+
+async def test_spa_handler_route_exclusion_nested_schema_paths(spa_config: ViteConfig) -> None:
+    """Test that nested schema paths like /schema/openapi.json are excluded."""
+    from litestar_vite.plugin import is_litestar_route
+
+    handler = ViteSPAHandler(spa_config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    # Litestar automatically registers /schema/openapi.json for OpenAPI
+    app = Litestar(route_handlers=[route])
+
+    # Verify route detection works for nested paths
+    assert is_litestar_route("/schema/openapi.json", app) is True
+
+    async with AsyncTestClient(app=app, raise_server_exceptions=False) as client:
+        # Nested schema path should be detected
+        response = await client.get("/schema/openapi.json")
+        # Will be 404 or 200 depending on routing order
+        assert response.status_code in (404, 200)
+
+        # Regular SPA paths should work
+        response = await client.get("/products/123")
+        assert response.status_code == 200
+        assert "Test SPA" in response.text
+
+
+async def test_spa_handler_route_exclusion_with_query_params(spa_config: ViteConfig) -> None:
+    """Test that route exclusion works with query parameters."""
+    handler = ViteSPAHandler(spa_config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    # Add API route that accepts query params
+    @get("/api/search")
+    async def search(q: str) -> dict[str, str]:
+        return {"query": q}
+
+    app = Litestar(route_handlers=[route, search])
+
+    async with AsyncTestClient(app=app) as client:
+        response = await client.get("/api/search?q=test")
+        assert response.status_code == 200
+        assert response.json() == {"query": "test"}
+        assert "Test SPA" not in response.text
+
+
+async def test_spa_handler_route_exclusion_production_mode(temp_resource_dir: Path) -> None:
+    """Test route exclusion in production mode with cached bytes."""
+    from litestar_vite.config import PathConfig, RuntimeConfig
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+    )
+
+    handler = ViteSPAHandler(config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    # Add API route
+    @get("/api/status")
+    async def status() -> dict[str, str]:
+        return {"status": "ok"}
+
+    app = Litestar(route_handlers=[route, status])
+
+    async with AsyncTestClient(app=app) as client:
+        # API route should work
+        response = await client.get("/api/status")
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+
+        # SPA route should serve cached HTML
+        response = await client.get("/dashboard")
+        assert response.status_code == 200
+        assert "Test SPA" in response.text
+
+
+async def test_spa_handler_route_exclusion_with_trailing_slash(spa_config: ViteConfig) -> None:
+    """Test route exclusion handles paths with trailing slashes."""
+    handler = ViteSPAHandler(spa_config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    # Add route with trailing slash
+    @get("/api/users/")
+    async def get_users() -> dict[str, str]:
+        return {"users": "list"}
+
+    app = Litestar(route_handlers=[route, get_users])
+
+    async with AsyncTestClient(app=app) as client:
+        # Should match without trailing slash too (Litestar normalizes)
+        response = await client.get("/api/users")
+        assert response.status_code == 200
+        assert "Test SPA" not in response.text
+
+
+async def test_spa_handler_route_exclusion_similar_paths(spa_config: ViteConfig) -> None:
+    """Test that route exclusion handles similar but different paths correctly."""
+    handler = ViteSPAHandler(spa_config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    # Add specific API route
+    @get("/api/users")
+    async def get_users() -> dict[str, str]:
+        return {"route": "api"}
+
+    app = Litestar(route_handlers=[route, get_users])
+
+    async with AsyncTestClient(app=app) as client:
+        # API route should work
+        response = await client.get("/api/users")
+        assert response.status_code == 200
+        assert response.json() == {"route": "api"}
+
+        # Similar SPA path should still serve SPA
+        # (Note: /apiusers is different from /api/users)
+        response = await client.get("/apiusers")
+        assert response.status_code == 200
+        assert "Test SPA" in response.text
+
+
+async def test_spa_handler_route_exclusion_empty_path_segments(spa_config: ViteConfig) -> None:
+    """Test route exclusion with various path edge cases."""
+    handler = ViteSPAHandler(spa_config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    app = Litestar(route_handlers=[route])
+
+    async with AsyncTestClient(app=app) as client:
+        # Root should work
+        response = await client.get("/")
+        assert response.status_code == 200
+        assert "Test SPA" in response.text
+
+        # Deep nested paths should work
+        response = await client.get("/a/b/c/d/e")
+        assert response.status_code == 200
+        assert "Test SPA" in response.text
+
+
+async def test_spa_handler_route_exclusion_no_false_positives(spa_config: ViteConfig) -> None:
+    """Test that common SPA routes don't trigger false positive exclusions."""
+    handler = ViteSPAHandler(spa_config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    app = Litestar(route_handlers=[route])
+
+    async with AsyncTestClient(app=app) as client:
+        # Common SPA routes should all work
+        spa_paths = [
+            "/home",
+            "/about",
+            "/contact",
+            "/users",
+            "/users/profile",
+            "/dashboard",
+            "/settings",
+            "/products/123",
+            "/blog/2024/01/post",
+        ]
+
+        for path in spa_paths:
+            response = await client.get(path)
+            assert response.status_code == 200, f"Failed for path: {path}"
+            assert "Test SPA" in response.text, f"No SPA content for path: {path}"

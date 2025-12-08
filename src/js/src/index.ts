@@ -1121,16 +1121,33 @@ function resolveInput(config: ResolvedPluginConfig, ssr: boolean): string | stri
 }
 
 /**
+ * Check if a path is absolute (Unix or Windows).
+ */
+function isAbsolutePath(path: string): boolean {
+  // Unix absolute path starts with /
+  // Windows absolute path starts with drive letter (C:\, D:\, etc.)
+  return path.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(path)
+}
+
+/**
  * Resolve the Vite outDir path from the configuration.
- * Should be relative to the project root for Vite config, Vite resolves it internally.
+ *
+ * For relative paths: strips leading slashes (legacy behavior for Vite resolution).
+ * For absolute paths: preserves the path, only strips trailing slashes.
+ *
+ * This ensures absolute paths like `/home/user/project/public` work correctly
+ * instead of being converted to `home/user/project/public`.
  */
 function resolveOutDir(config: ResolvedPluginConfig, ssr: boolean): string {
-  if (ssr) {
-    // Return path relative to root
-    return config.ssrOutDir.replace(/^\/+/, "").replace(/\/+$/, "")
+  const dir = ssr ? config.ssrOutDir : config.bundleDir
+
+  // Preserve absolute paths (Unix or Windows)
+  if (isAbsolutePath(dir)) {
+    return dir.replace(/[\\/]+$/, "") // Only strip trailing slashes
   }
-  // Return path relative to root
-  return config.bundleDir.replace(/^\/+/, "").replace(/\/+$/, "")
+
+  // For relative paths, strip leading slashes (legacy behavior)
+  return dir.replace(/^\/+/, "").replace(/\/+$/, "")
 }
 
 function resolveFullReloadConfig({ refresh: config }: ResolvedPluginConfig): PluginOption[] {

@@ -243,7 +243,7 @@ def test_example_proxy_mode_config(
 
     if is_ssr:
         # SSR frameworks should use "proxy" mode (or "ssr" which resolves to "proxy")
-        # for blacklist-style proxying that forwards everything except Litestar routes
+        # for deny list-style proxying that forwards everything except Litestar routes
         assert config.proxy_mode == "proxy", (
             f"{example_name}: SSR framework should use proxy_mode='ssr' or 'proxy'. "
             f"Got proxy_mode='{config.proxy_mode}'. "

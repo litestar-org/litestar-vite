@@ -24,9 +24,10 @@ import anyio
 import httpx
 import msgspec
 from litestar import Response, get
-from litestar.exceptions import ImproperlyConfiguredException
+from litestar.exceptions import ImproperlyConfiguredException, NotFoundException
 
 from litestar_vite.html_transform import inject_head_script, set_data_attribute
+from litestar_vite.plugin import is_litestar_route
 
 if TYPE_CHECKING:
     from litestar.connection import Request
@@ -578,6 +579,11 @@ class ViteSPAHandler:
     def create_route_handler(self) -> Any:
         """Create a Litestar route handler for the SPA.
 
+        The handler includes route exclusion logic to prevent the SPA catch-all
+        from shadowing Litestar-registered routes (e.g., /schema, /api/*).
+        When a request matches a Litestar route, NotFoundException is raised
+        to let the router handle it properly.
+
         Returns:
             A Litestar route handler that serves the SPA HTML.
 
@@ -600,7 +606,17 @@ class ViteSPAHandler:
                 include_in_schema=False,
             )
             async def spa_handler_dev(request: "Request[Any, Any, Any]") -> Response[str]:
-                """Serve the SPA HTML (dev mode - proxied from Vite)."""
+                """Serve the SPA HTML (dev mode - proxied from Vite).
+
+                Checks if the request path matches a Litestar route before serving.
+                If it does, raises NotFoundException to let the router handle it.
+                """
+                # Check if path is a Litestar route - if so, don't serve SPA
+                # This prevents the catch-all from shadowing /schema, /api, etc.
+                path = request.url.path
+                if path != "/" and is_litestar_route(path, request.app):
+                    raise NotFoundException(detail=f"Not an SPA route: {path}")
+
                 html = await get_html(request)
                 return Response(
                     content=html,
@@ -619,7 +635,17 @@ class ViteSPAHandler:
             cache=3600,  # Cache for 1 hour
         )
         async def spa_handler_prod(request: "Request[Any, Any, Any]") -> Response[bytes]:
-            """Serve the SPA HTML (production - cached)."""
+            """Serve the SPA HTML (production - cached).
+
+            Checks if the request path matches a Litestar route before serving.
+            If it does, raises NotFoundException to let the router handle it.
+            """
+            # Check if path is a Litestar route - if so, don't serve SPA
+            # This prevents the catch-all from shadowing /schema, /api, etc.
+            path = request.url.path
+            if path != "/" and is_litestar_route(path, request.app):
+                raise NotFoundException(detail=f"Not an SPA route: {path}")
+
             content = await get_bytes()
             return Response(content=content, status_code=200, media_type=_HTML_MEDIA_TYPE)
 

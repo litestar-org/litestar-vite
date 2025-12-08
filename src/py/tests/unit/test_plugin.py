@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-from litestar import Litestar
+from litestar import Litestar, get
 from litestar.config.app import AppConfig
 from litestar.template.config import TemplateConfig
 
@@ -835,3 +835,305 @@ def test_vite_plugin_optional_performance_without_jinja() -> None:
 
     # Should initialize quickly (less than 100ms)
     assert init_time < 0.1, f"Plugin initialization too slow: {init_time}s"
+
+
+# =====================================================
+# Route Detection Tests (for SPA catch-all exclusion)
+# =====================================================
+
+
+def test_get_litestar_route_prefixes_with_multiple_routes() -> None:
+    """Test get_litestar_route_prefixes collects all registered routes."""
+    from litestar_vite.plugin import get_litestar_route_prefixes
+
+    @get("/users")
+    async def get_users() -> dict[str, str]:
+        return {"message": "users"}
+
+    @get("/posts/{post_id:int}")
+    async def get_post(post_id: int) -> dict[str, int]:
+        return {"id": post_id}
+
+    @get("/api/v1/items")
+    async def get_items() -> dict[str, str]:
+        return {"message": "items"}
+
+    app = Litestar(route_handlers=[get_users, get_post, get_items])
+
+    prefixes = get_litestar_route_prefixes(app)
+
+    # Should include all registered routes
+    assert "/users" in prefixes
+    assert "/posts/{post_id:int}" in prefixes
+    assert "/api/v1/items" in prefixes
+    # Should include common API prefixes as fallback
+    assert "/api" in prefixes
+    assert "/schema" in prefixes
+    assert "/docs" in prefixes
+
+
+def test_get_litestar_route_prefixes_includes_openapi_config_path() -> None:
+    """Test that OpenAPI schema path is included in prefixes."""
+    from litestar.openapi import OpenAPIConfig
+
+    from litestar_vite.plugin import get_litestar_route_prefixes
+
+    @get("/hello")
+    async def hello() -> dict[str, str]:
+        return {"message": "hello"}
+
+    # Custom OpenAPI schema path
+    app = Litestar(
+        route_handlers=[hello],
+        openapi_config=OpenAPIConfig(title="Test API", version="1.0.0", path="/custom-schema"),
+    )
+
+    prefixes = get_litestar_route_prefixes(app)
+
+    # Should include custom schema path
+    assert "/custom-schema" in prefixes
+    # Should still include fallback schema path
+    assert "/schema" in prefixes
+
+
+def test_get_litestar_route_prefixes_caches_by_app() -> None:
+    """Test that route prefixes are cached per app instance."""
+    from litestar_vite.plugin import _app_route_prefixes_cache, get_litestar_route_prefixes
+
+    @get("/users")
+    async def get_users() -> dict[str, str]:
+        return {"message": "users"}
+
+    app1 = Litestar(route_handlers=[get_users])
+    app2 = Litestar(route_handlers=[get_users])
+
+    # Clear cache before test
+    _app_route_prefixes_cache.clear()
+
+    # First call should populate cache
+    prefixes1 = get_litestar_route_prefixes(app1)
+    assert id(app1) in _app_route_prefixes_cache
+
+    # Second call with same app should return cached result
+    prefixes1_again = get_litestar_route_prefixes(app1)
+    assert prefixes1 is prefixes1_again  # Same object (tuple is immutable)
+
+    # Different app should have separate cache entry
+    prefixes2 = get_litestar_route_prefixes(app2)
+    assert id(app2) in _app_route_prefixes_cache
+    assert prefixes1 == prefixes2  # Same content
+    assert prefixes1 is not prefixes2  # Different objects
+
+
+def test_get_litestar_route_prefixes_with_no_openapi() -> None:
+    """Test route prefixes when OpenAPI is disabled."""
+    from litestar_vite.plugin import get_litestar_route_prefixes
+
+    @get("/users")
+    async def get_users() -> dict[str, str]:
+        return {"message": "users"}
+
+    app = Litestar(route_handlers=[get_users], openapi_config=None)
+
+    prefixes = get_litestar_route_prefixes(app)
+
+    # Should still include fallback prefixes
+    assert "/api" in prefixes
+    assert "/schema" in prefixes
+    assert "/docs" in prefixes
+
+
+def test_get_litestar_route_prefixes_strips_trailing_slashes() -> None:
+    """Test that route prefixes have trailing slashes stripped."""
+    from litestar_vite.plugin import get_litestar_route_prefixes
+
+    # Mock a route with trailing slash
+    @get("/users/")
+    async def get_users() -> dict[str, str]:
+        return {"message": "users"}
+
+    app = Litestar(route_handlers=[get_users])
+
+    prefixes = get_litestar_route_prefixes(app)
+
+    # Should strip trailing slash
+    assert "/users" in prefixes
+    assert "/users/" not in prefixes
+
+
+def test_get_litestar_route_prefixes_sorted_by_length() -> None:
+    """Test that route prefixes are sorted by length (longest first)."""
+    from litestar_vite.plugin import get_litestar_route_prefixes
+
+    @get("/a")
+    async def route_a() -> dict[str, str]:
+        return {}
+
+    @get("/api/v1/users")
+    async def route_long() -> dict[str, str]:
+        return {}
+
+    @get("/api")
+    async def route_api() -> dict[str, str]:
+        return {}
+
+    app = Litestar(route_handlers=[route_a, route_long, route_api])
+
+    prefixes = get_litestar_route_prefixes(app)
+
+    # Find indices
+    idx_long = prefixes.index("/api/v1/users")
+    idx_api = prefixes.index("/api")
+    idx_a = prefixes.index("/a")
+
+    # Longer paths should come first
+    assert idx_long < idx_api
+    assert idx_api < idx_a
+
+
+def test_is_litestar_route_exact_match() -> None:
+    """Test is_litestar_route with exact path match."""
+    from litestar_vite.plugin import is_litestar_route
+
+    @get("/custom-endpoint")
+    async def custom_endpoint() -> dict[str, str]:
+        return {"message": "custom"}
+
+    app = Litestar(route_handlers=[custom_endpoint], openapi_config=None)
+
+    # Exact match should return True
+    assert is_litestar_route("/custom-endpoint", app) is True
+
+
+def test_is_litestar_route_prefix_match() -> None:
+    """Test is_litestar_route with prefix matching."""
+    from litestar_vite.plugin import is_litestar_route
+
+    @get("/api/users")
+    async def get_users() -> dict[str, str]:
+        return {"message": "users"}
+
+    app = Litestar(route_handlers=[get_users])
+
+    # Prefix match should return True
+    assert is_litestar_route("/api/users/123", app) is True
+    assert is_litestar_route("/api/v1/items", app) is True  # Matches /api fallback
+
+
+def test_is_litestar_route_non_match() -> None:
+    """Test is_litestar_route returns False for non-matching paths."""
+    from litestar_vite.plugin import is_litestar_route
+
+    @get("/api/users")
+    async def get_users() -> dict[str, str]:
+        return {"message": "users"}
+
+    app = Litestar(route_handlers=[get_users])
+
+    # Non-matching paths should return False
+    assert is_litestar_route("/users/123", app) is False
+    assert is_litestar_route("/posts", app) is False
+    assert is_litestar_route("/home", app) is False
+
+
+def test_is_litestar_route_with_schema_path() -> None:
+    """Test is_litestar_route matches OpenAPI schema path."""
+    from litestar.openapi import OpenAPIConfig
+
+    from litestar_vite.plugin import is_litestar_route
+
+    @get("/hello")
+    async def hello() -> dict[str, str]:
+        return {"message": "hello"}
+
+    app = Litestar(
+        route_handlers=[hello],
+        openapi_config=OpenAPIConfig(title="Test API", version="1.0.0", path="/schema"),
+    )
+
+    # Should match schema path
+    assert is_litestar_route("/schema", app) is True
+    assert is_litestar_route("/schema/openapi.json", app) is True
+
+
+def test_is_litestar_route_with_path_parameters() -> None:
+    """Test is_litestar_route with path parameters."""
+    from litestar_vite.plugin import is_litestar_route
+
+    @get("/api/users/{user_id:int}")
+    async def get_user(user_id: int) -> dict[str, int]:
+        return {"id": user_id}
+
+    app = Litestar(route_handlers=[get_user])
+
+    # Should match based on /api prefix (from fallback)
+    assert is_litestar_route("/api/users/123", app) is True
+    assert is_litestar_route("/api/posts/456", app) is True
+
+
+def test_is_litestar_route_case_sensitive() -> None:
+    """Test that is_litestar_route is case-sensitive."""
+    from litestar_vite.plugin import is_litestar_route
+
+    @get("/api/users")
+    async def get_users() -> dict[str, str]:
+        return {"message": "users"}
+
+    app = Litestar(route_handlers=[get_users])
+
+    # Case matters
+    assert is_litestar_route("/api/users", app) is True
+    assert is_litestar_route("/API/users", app) is False
+    assert is_litestar_route("/Api/users", app) is False
+
+
+def test_is_litestar_route_with_root_path() -> None:
+    """Test is_litestar_route with root path."""
+    from litestar_vite.plugin import is_litestar_route
+
+    @get("/")
+    async def root() -> dict[str, str]:
+        return {"message": "root"}
+
+    app = Litestar(route_handlers=[root])
+
+    # Root should not match (special case in SPA handler)
+    # But the function itself should return False since no prefix matches
+    assert is_litestar_route("/", app) is False
+
+
+def test_is_litestar_route_cache_performance() -> None:
+    """Test that route detection is fast due to caching."""
+    from litestar_vite.plugin import get_litestar_route_prefixes, is_litestar_route
+
+    @get("/api/users")
+    async def get_users() -> dict[str, str]:
+        return {"message": "users"}
+
+    app = Litestar(route_handlers=[get_users])
+
+    # Prime the cache
+    get_litestar_route_prefixes(app)
+
+    # Measure performance of subsequent calls
+    start = time.time()
+    for _ in range(1000):
+        is_litestar_route("/users/123", app)
+    elapsed = time.time() - start
+
+    # Should complete very quickly (< 10ms for 1000 iterations)
+    assert elapsed < 0.01, f"Route detection too slow: {elapsed}s for 1000 iterations"
+
+
+def test_get_litestar_route_prefixes_with_empty_app() -> None:
+    """Test get_litestar_route_prefixes with app that has no routes."""
+    from litestar_vite.plugin import get_litestar_route_prefixes
+
+    app = Litestar(route_handlers=[])
+
+    prefixes = get_litestar_route_prefixes(app)
+
+    # Should still include common fallback prefixes
+    assert "/api" in prefixes
+    assert "/schema" in prefixes
+    assert "/docs" in prefixes
