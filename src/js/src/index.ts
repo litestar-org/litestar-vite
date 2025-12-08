@@ -1338,7 +1338,7 @@ declare module "litestar-vite/inertia" {
   await fs.promises.writeFile(outFile, body, "utf-8")
 }
 
-async function emitRouteTypes(routesPath: string, outputDir: string, globalRoute: boolean = false): Promise<void> {
+async function emitRouteTypes(routesPath: string, outputDir: string, globalRoute = false): Promise<void> {
   const contents = await fs.promises.readFile(routesPath, "utf-8")
   const json = JSON.parse(contents)
 
@@ -1471,12 +1471,16 @@ declare global {
 // Re-export helper functions from litestar-vite-plugin
 // These work with the routes defined above
 export { getCsrfToken, csrfHeaders, csrfFetch } from "litestar-vite-plugin/helpers"
-${globalRoute ? `
+${
+  globalRoute
+    ? `
 // Register route() globally on window for Laravel/Ziggy-style usage
 if (typeof window !== "undefined") {
   window.route = route
 }
-` : ""}
+`
+    : ""
+}
 `
 
   await fs.promises.writeFile(outFile, `${banner}${body}`, "utf-8")
