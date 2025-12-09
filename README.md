@@ -38,6 +38,23 @@ litestar run --reload  # Vite dev server is proxied automatically
 
 Scaffold a frontend: `litestar assets init --template vue` (or `react`, `svelte`, `htmx`, `react-inertia`, `vue-inertia`, `angular`, `astro`, `nuxt`, `sveltekit`).
 
+## Development
+
+To contribute or run the development project:
+
+```bash
+# Install all dependencies and build packages
+make install && make build
+
+# Install frontend dependencies for an example
+uv run litestar --app-dir examples/vue-inertia assets install
+
+# Run the development server
+uv run litestar --app-dir examples/vue-inertia run
+```
+
+Replace `vue-inertia` with any other example: `vue`, `react`, `svelte`, `react-inertia`, `htmx`, `angular`, `astro`, `nuxt`, or `sveltekit`.
+
 ## Template / HTMX
 
 ```python
