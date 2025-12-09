@@ -1,6 +1,6 @@
 # Development Workflow for litestar-vite
 
-**Version**: 0.15.0-beta.1 | **Updated**: 2025-12-07
+**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-09
 
 This guide describes the standard development workflow for contributing to the `litestar-vite` project. It covers initial setup, daily development tasks, and the quality assurance process.
 
@@ -8,27 +8,30 @@ This guide describes the standard development workflow for contributing to the `
 
 All project tasks are managed through a `Makefile` and the `uv` Python package manager.
 
-1.  **Prerequisites**:
-    -   Python 3.10+
-    -   Node.js 20.19.0+ or 22.12.0+
-    -   `curl`
+1. **Prerequisites**:
+    - Python 3.10+
+    - Node.js 20.19.0+ or 22.12.0+
+    - `curl`
 
-2.  **Install `uv`**:
+2. **Install `uv`**:
     If you don't have `uv` installed, you can install it with:
+
     ```bash
     curl -LsSf https://astral.sh/uv/install.sh | sh
     ```
 
-3.  **Install Project Dependencies**:
+3. **Install Project Dependencies**:
     Run the `install` target from the `Makefile`. This is the only command you need to get started.
+
     ```bash
     make install
     ```
+
     This command will:
-    -   Create a Python virtual environment (`.venv/`).
-    -   Install all required Python dependencies using `uv`.
-    -   Install all required Node.js dependencies using `npm`.
-    -   Set up the `pre-commit` hooks.
+    - Create a Python virtual environment (`.venv/`).
+    - Install all required Python dependencies using `uv`.
+    - Install all required Node.js dependencies using `npm`.
+    - Set up the `pre-commit` hooks.
 
 ## 2. Daily Development
 
@@ -43,12 +46,14 @@ All project tasks are managed through a `Makefile` and the `uv` Python package m
 
 To work on an example application (like the `vue` one), run Litestar and let it manage Vite for you (single port by default):
 
--   **Run Litestar App (starts/proxies Vite)**:
+- **Run Litestar App (starts/proxies Vite)**:
+
     ```bash
     uv run litestar --app examples.vue.app:app run --reload
     ```
 
--   **Two-port option (start Vite yourself)**:
+- **Two-port option (start Vite yourself)**:
+
     ```bash
     uv run litestar --app examples.vue.app:app assets serve
     uv run litestar --app examples.vue.app:app run --reload
@@ -92,6 +97,7 @@ If any of the checks fail, the commit will be aborted. You must fix the reported
 For significant features, this project uses an AI agent system with specialized agents for different phases.
 
 See `AGENTS.md` and `CLAUDE.md` for detailed documentation on:
+
 - `/prd [feature]` - Create Product Requirements Documents
 - `/implement [slug]` - Implement features from PRDs
 - `/test [slug]` - Create comprehensive test suites
@@ -145,6 +151,7 @@ gh release create v0.15.0-alpha.1 --prerelease --title "v0.15.0-alpha.1"
 ```
 
 **Distribution:**
+
 - PyPI: Pre-release versions are automatically marked (users need `pip install --pre` or explicit version)
 - npm: Published with `next` tag (users install via `npm install litestar-vite-plugin@next`)
 

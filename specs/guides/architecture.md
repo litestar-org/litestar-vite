@@ -1,6 +1,6 @@
 # Architecture Guide for litestar-vite
 
-**Version**: 0.15.0-beta.1 | **Updated**: 2025-12-07
+**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-09
 
 This document outlines the architectural patterns and conventions used in the `litestar-vite` project.
 
@@ -27,16 +27,17 @@ The backend code is located in `src/py/litestar_vite/`.
 
 The `ViteConfig` class in `config.py` controls the integration behavior. It uses a modular structure with sub-configs:
 
-- **`PathConfig`**: File system paths (bundle_dir, resource_dir, public_dir, asset_url, ssr_output_dir)
+- **`PathConfig`**: File system paths (root, bundle_dir, resource_dir, public_dir, asset_url, ssr_output_dir, manifest_name, hot_file)
 - **`RuntimeConfig`**: Execution settings (dev_mode, proxy_mode, external_dev_server, http2, start_dev_server)
-- **`TypeGenConfig`**: Type generation settings (output, openapi_path, routes_path, routes_ts_path, page_props_path, generate_zod, generate_sdk, generate_routes, generate_page_props, watch_patterns)
-- **`InertiaConfig`**: Inertia.js settings (root_template, component_opt_keys, exclude_from_js_routes_key, redirect_unauthorized_to, redirect_404, extra_static_page_props, extra_session_page_props, spa_mode, app_selector, encrypt_history, type_gen). Note: Moved from `inertia.config` to main `config.py` in v0.15 for better integration.
+- **`TypeGenConfig`**: Type generation settings (output, openapi_path, routes_path, routes_ts_path, page_props_path, generate_zod, generate_sdk, generate_routes, generate_page_props, global_route, watch_patterns)
+- **`InertiaConfig`**: Inertia.js settings (root_template, component_opt_keys, exclude_from_js_routes_key, redirect_unauthorized_to, redirect_404, extra_static_page_props, extra_session_page_props, spa_mode, app_selector, encrypt_history, type_gen).
 - **`InertiaTypeGenConfig`**: Inertia type generation settings (include_default_auth, include_default_flash)
-- **`ViteConfig.mode`**: Serving mode - "spa", "template", "htmx", "hybrid", "ssr", "ssg", or "external"
 - **`SPAConfig`**: SPA transformation settings (inject_csrf, cache_transformed_html, app_selector, csrf_var_name)
+- **`LoggingConfig`**: Logging configuration (level, show_paths_absolute, suppress_npm_output, suppress_vite_banner, timestamps)
 - **`DeployConfig`**: CDN deployment settings (storage_backend, delete_orphaned, content_types, include_manifest)
 - **`ExternalDevServer`**: External dev server configuration (target, command, build_command, http2, enabled)
 - **`PaginationContainer`**: Protocol for pagination containers (items attribute)
+- **`ViteConfig.mode`**: Serving mode - "spa", "template", "htmx", "hybrid", "ssr", "ssg", or "external"
 
 Key `RuntimeConfig` options:
 
@@ -68,7 +69,7 @@ Python is the source of truth: The VitePlugin's `on_app_init()` method writes `.
 The backend is organized into specialized modules:
 
 1. **Configuration & Plugin**:
-    - `config.py`: `ViteConfig`, `SPAConfig`, and other configuration models
+    - `config.py`: `ViteConfig`, `SPAConfig`, `LoggingConfig`, and other configuration models
     - `plugin.py`: `VitePlugin` - main Litestar plugin registration
 
 2. **Asset Management**:
@@ -200,6 +201,8 @@ Key options (auto-populated from `.litestar.json` when available):
 - **`autoDetectIndex`**: Automatically detect `index.html` (default: `true`).
 - **`inertiaMode`**: Disable index auto-detection for Inertia apps (auto-detected from `.litestar.json`).
 - **`transformOnServe`**: Apply HTML transformations in dev mode (default: `true`).
+- **`types`**: Type generation configuration.
+- **`executor`**: JavaScript runtime executor.
 
 ### Framework Integrations
 
@@ -232,7 +235,7 @@ For SPA-style applications, the project provides comprehensive Inertia.js suppor
 #### Backend Components
 
 - **`InertiaPlugin`**: Registers the Inertia integration with Litestar. Includes BlockingPortal lifespan for async DeferredProp resolution in type encoders.
-- **`InertiaConfig`**: Configuration for Inertia integration (in `litestar_vite.config` as of v0.15)
+- **`InertiaConfig`**: Configuration for Inertia integration
 - **`InertiaResponse`**: Response class for rendering Inertia pages with automatic props flattening
 - **`InertiaRequest`**: Enhanced request class with Inertia-specific properties (InertiaDetails, InertiaHeaders)
 - **`InertiaMiddleware`**: Handles the Inertia protocol (headers, shared data)
@@ -319,6 +322,8 @@ The `examples/` directory contains working examples demonstrating various integr
 - **`react/`**: Basic React SPA
 - **`react-inertia/`**: React with Inertia.js
 - **`react-inertia-jinja/`**: React + Inertia with Jinja2 templates
+- **`react-router/`**: React with React Router
+- **`react-tanstack/`**: React with TanStack Router
 
 ### Vue Examples
 

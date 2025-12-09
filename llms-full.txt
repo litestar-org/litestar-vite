@@ -3,7 +3,7 @@
 > Integration layer connecting Litestar (Python) with Vite (Node.js).
 > Supports SPA, Template (Jinja), Inertia.js, and SSR workflows.
 
-Current Version: **v0.15.0-beta.1**
+Current Version: **v0.15.0-beta.2**
 Source: https://github.com/litestar-org/litestar-vite
 Docs: https://litestar-org.github.io/litestar-vite/latest/
 
@@ -29,8 +29,8 @@ from litestar_vite import ViteConfig, RuntimeConfig, PathConfig
 config = ViteConfig(
     mode="spa",           # "spa", "template", "htmx", "hybrid", "ssr", "external"
                           # Aliases: "ssg" -> "ssr", "inertia" -> "hybrid"
-    dev_mode=True,        # Enable HMR/Watch
-    base_url="/static/",  # CDN/Asset URL
+    dev_mode=True,        # Enable HMR/Watch (default: check env VITE_DEV_MODE)
+    base_url="/static/",  # CDN/Asset URL (default: env VITE_BASE_URL)
     paths=PathConfig(
         root=".",
         bundle_dir="public",
@@ -63,7 +63,8 @@ config = ViteConfig(
     types=True,           # Enable type generation (TypeGenConfig)
     inertia=True,         # Enable Inertia.js (InertiaConfig)
     spa=True,             # Enable SPA transformations (SPAConfig)
-    deploy=False          # Enable CDN deployment (DeployConfig)
+    deploy=False,         # Enable CDN deployment (DeployConfig)
+    logging=None          # Logging configuration (LoggingConfig)
 )
 ```
 
@@ -92,7 +93,7 @@ Runtime execution settings.
 from litestar_vite import RuntimeConfig, ExternalDevServer
 
 runtime = RuntimeConfig(
-    dev_mode=False,
+    dev_mode=False,     # Enable HMR/Watch (default: env VITE_DEV_MODE)
     proxy_mode="vite",  # "vite", "direct", "proxy", None
     external_dev_server=ExternalDevServer(
         target="http://localhost:4200",  # Angular CLI, etc.
@@ -139,6 +140,7 @@ types = TypeGenConfig(
     generate_sdk=True,
     generate_routes=True,
     generate_page_props=True,
+    global_route=False,       # Register route() globally on window
     watch_patterns=["**/routes.py", "**/handlers.py", "**/controllers/**/*.py"]
 )
 ```
@@ -165,7 +167,7 @@ from litestar_vite import DeployConfig
 
 deploy = DeployConfig(
     enabled=True,
-    storage_backend="gcs://bucket/path",  # fsspec URL
+    storage_backend="gcs://bucket/path",  # fsspec URL (env VITE_DEPLOY_STORAGE)
     storage_options={},  # Provider options (credentials, region)
     delete_orphaned=True,
     include_manifest=True,
@@ -343,8 +345,8 @@ export default defineConfig({
       input: ["src/main.ts"],
       assetUrl: "/static/",
       bundleDir: "public",
-      resourceDir: "resources",
-      publicDir: "public",
+      resourceDir: "src",       // Python: resource_dir
+      publicDir: "public",      // Python: public_dir
       hotFile: "public/hot",
       ssr: undefined,           // SSR entry point
       ssrOutDir: undefined,     // SSR output directory
@@ -352,20 +354,26 @@ export default defineConfig({
       detectTls: false,
       autoDetectIndex: true,
       inertiaMode: false,       // Auto-detected from .litestar.json
-      types: {
-        enabled: true,
-        output: "src/generated",
-        openapiPath: "src/generated/openapi.json",
-        routesPath: "src/generated/routes.json",
-        pagePropsPath: "src/generated/inertia-pages.json",
-        generateZod: false,
-        generateSdk: true,
-        debounce: 300
-      },
-      executor: undefined  // Auto-detected from LITESTAR_VITE_RUNTIME
+      types: "auto",            // "auto" | true | false | TypesConfig
+      executor: undefined       // Auto-detected from LITESTAR_VITE_RUNTIME
     })
   ]
 });
+```
+
+### TypesConfig Interface
+```typescript
+interface TypesConfig {
+  enabled?: boolean
+  output?: string          // Default: 'src/generated'
+  openapiPath?: string     // Default: 'openapi.json'
+  routesPath?: string      // Default: 'routes.json'
+  pagePropsPath?: string   // Default: 'inertia-pages.json'
+  generateZod?: boolean    // Default: false
+  generateSdk?: boolean    // Default: false (openapi-ts)
+  globalRoute?: boolean    // Default: false (window.route)
+  debounce?: number        // Default: 300ms
+}
 ```
 
 ### TypeScript Helpers
@@ -484,20 +492,20 @@ declare module "litestar-vite/inertia" {
 
 ### Available Templates for `litestar assets init`
 
+- `angular` - Angular with Vite
+- `angular-cli` - Angular CLI (external dev server)
+- `astro` - Astro SSG/SSR
+- `htmx` - HTMX with Jinja templates (jinja-htmx)
+- `nuxt` - Nuxt 3 SSR/SSG
 - `react` - React SPA
+- `react-inertia` - React with Inertia.js
 - `react-router` - React with React Router
 - `react-tanstack` - React with TanStack Router
-- `react-inertia` - React with Inertia.js
-- `vue` - Vue 3 SPA
-- `vue-inertia` - Vue 3 with Inertia.js
 - `svelte` - Svelte SPA
 - `svelte-inertia` - Svelte with Inertia.js
 - `sveltekit` - SvelteKit SSR/SSG
-- `nuxt` - Nuxt 3 SSR/SSG
-- `astro` - Astro SSG/SSR
-- `htmx` - HTMX with Jinja templates
-- `angular` - Angular with Vite
-- `angular-cli` - Angular CLI (external dev server)
+- `vue` - Vue 3 SPA
+- `vue-inertia` - Vue 3 with Inertia.js
 
 ## Environment Variables
 
@@ -513,6 +521,7 @@ declare module "litestar-vite/inertia" {
 | `VITE_BASE_URL` | Base URL for production assets | None |
 | `VITE_DEPLOY_STORAGE` | fsspec URL for deployment | None |
 | `VITE_DEPLOY_DELETE` | Delete orphaned remote files | `true` |
+| `LITESTAR_VITE_LOG_LEVEL` | Logging verbosity (quiet, normal, verbose) | `normal` |
 
 ## Bridge Configuration (`.litestar.json`)
 
@@ -540,9 +549,17 @@ The Python plugin writes `.litestar.json` on startup. The Vite plugin reads this
     "routesPath": "src/generated/routes.json",
     "pagePropsPath": "src/generated/inertia-pages.json",
     "generateZod": false,
-    "generateSdk": true
+    "generateSdk": true,
+    "globalRoute": false
   },
   "executor": "node",
+  "logging": {
+    "level": "normal",
+    "showPathsAbsolute": false,
+    "suppressNpmOutput": false,
+    "suppressViteBanner": false,
+    "timestamps": false
+  },
   "litestarVersion": "2.x.x"
 }
 ```
@@ -575,6 +592,7 @@ The Python plugin writes `.litestar.json` on startup. The Vite plugin reads this
    - Page props generation via `generate_page_props=True`.
    - `InertiaTypeGenConfig` for controlling default types.
    - Auto-generates `page-props.ts` with typed page components.
+   - `types="auto"` in `vite.config.ts` reads from `.litestar.json`.
 
 6. **Vite 7.x Support**:
    - Peer dependency now `^6.0.0 || ^7.0.0`.

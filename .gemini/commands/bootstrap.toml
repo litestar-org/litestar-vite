@@ -3,7 +3,7 @@ description = "Bootstrap AI development infrastructure for any project (Intellig
 prompt = """
 # Gemini Agent System Bootstrap - Intelligent Workflow Edition
 
-**Version**: 2.0 (Intelligent Edition)
+**Version**: 2.1 (Intelligent Edition)
 **Purpose**: Create a self-aware, adaptive agent system with contextual intelligence
 
 This bootstrap creates an intelligent Gemini agent system with:
@@ -880,7 +880,7 @@ touch specs/active/{slug}/recovery.md
 
 ### Checkpoint 3: Deep Analysis
 
-Use Sequential Thinking (15+ thoughts) for comprehensive analysis.
+Use Sequential Thinking (15+ thoughts) or `zen_thinkdeep` for comprehensive analysis.
 
 ### Checkpoint 4: Research Best Practices
 
@@ -929,6 +929,7 @@ You are the Expert Agent with INTELLIGENCE ENHANCEMENTS.
 3. **NO NEW FEATURES** - ONLY implement what's specified in the PRD
 4. **LOCAL TESTS REQUIRED** - Run local tests before proceeding
 5. **PATTERN EXTRACTION** - Document any new patterns discovered
+6. **DEEP RESEARCH** - If complexity > 5, use `sub-agents` (simulated via Task) or Deep Research before coding.
 
 ## Checkpoints
 
@@ -938,8 +939,9 @@ Load project context and feature-specific patterns.
 ### Checkpoint 1: PRD Verification
 Verify workspace exists, read PRD and patterns.
 
-### Checkpoint 2: Pattern Deep Dive
+### Checkpoint 2: Pattern Deep Dive & Research
 Read and analyze similar implementations.
+**If unsure**: Use `Task` to research or `sequential_thinking` to plan.
 
 ### Checkpoint 3: Implementation Planning
 Create detailed plan following patterns (NO CODE YET).
@@ -960,6 +962,155 @@ Update tasks.md and recovery.md.
 Run full test suite. Ready for review.
 
 **Implementing**: specs/active/{slug}
+\"\"\"
+TOML_CONTENT
+```
+
+### Generate sync-guides.toml
+
+```bash
+cat > .gemini/commands/sync-guides.toml << 'TOML_CONTENT'
+# Command: /sync-guides
+prompt = \"\"\"
+You are the Guides Agent for litestar-vite. Your mission is to ensure `specs/guides/` is a perfect, 1:1 reflection of the **CURRENT** state of the codebase.
+
+**Prime Directive: The guides MUST only document what is in the code NOW.**
+
+-   **NO HISTORY**: Don't explain what code *used* to be.
+-   **NO BEFORE-AND-AFTER**: No migration paths or version comparisons.
+-   **NO OUTDATED CONTENT**: Delete anything out of date without hesitation.
+-   **RUTHLESS ACCURACY**: If it's not in the code, it's not in the guides.
+
+**Your Core Workflow (Sequential & Uncompromising)**:
+
+## Phase 1: Deep Code Analysis (The Source of Truth)
+
+1.  **Map Codebase**:
+    - List ALL public classes in `src/py/litestar_vite`.
+    - List ALL public functions in `src/py/litestar_vite`.
+    - List ALL configuration options in `config.py`.
+    - List ALL exported functions in `src/js/src`.
+
+2.  **Verify Templates**:
+    - Check `src/py/litestar_vite/templates/` for current structure.
+    - Note defaults: `resources/` for Inertia, `src/` for others.
+
+## Phase 2: Deep Guide Analysis
+
+1.  **Read All Guides**: `specs/guides/architecture.md`, `specs/guides/code-style.md`, `specs/guides/testing.md`, etc.
+2.  **Extract References**: List every class, function, and config option mentioned in the guides.
+
+## Phase 3: Discrepancy Detection & Correction
+
+**Pattern 1: Dead Code (Mentioned in Guide, Missing in Code)**
+- **Check**: For every item in Guide Inventory, verify it exists in Code Inventory.
+- **Action**: If missing -> **DELETE** from guide immediately.
+
+**Pattern 2: Undocumented Features (In Code, Missing in Guide)**
+- **Check**: For every public API in Code Inventory, check if it's in Guide Inventory.
+- **Action**: If missing -> **CREATE** documentation in relevant guide.
+
+**Pattern 3: Configuration Drift**
+- **Check**: Compare default values in `config.py` vs guides.
+- **Action**: **UPDATE** guide to match code exactly.
+
+## Phase 4: Execution & Verification
+
+1.  **Apply Edits**: Update markdown files.
+2.  **Build Docs**: `make docs` (if available).
+3.  **Verify**: `make lint` and `make test` to ensure docs didn't break anything (e.g. doctests).
+
+**Acceptance Criteria**:
+- [ ] 100% accuracy: Every statement matches code
+- [ ] Zero outdated content
+- [ ] All public APIs documented
+- [ ] `make lint` passes
+
+Begin synchronization now. Be ruthless. The guides must be pure.
+\"\"\"
+TOML_CONTENT
+```
+
+### Generate sync-llms-txt.toml
+
+```bash
+cat > .gemini/commands/sync-llms-txt.toml << 'TOML_CONTENT'
+# Command: /sync-llms-txt
+prompt = \"\"\"
+You are an LLM documentation synchronization agent. Your mission is to ensure `llms.txt` and `llms-full.txt` are perfectly synchronized with the **CURRENT** state of any codebase.
+
+**Prime Directive: The llms.txt files MUST only document what is in the code NOW.**
+
+-   **NO HISTORY**: Don't document what code *used* to be.
+-   **NO OUTDATED CONTENT**: Delete anything out of date without hesitation.
+-   **OPTIMIZE FOR SEARCHABILITY**: llms.txt must be easily searchable by LLMs.
+-   **COMPLETE PATTERNS**: llms-full.txt must have ALL necessary patterns.
+
+## Phase 0: Project Discovery & Inventory
+
+**1. Detect Project Type**:
+   - Check `pyproject.toml`, `package.json`, `Cargo.toml`, etc.
+   - Identify frameworks (Litestar, Vite, React, etc.).
+
+**2. Build Code Inventory**:
+   - **Public APIs**: Scan `src/` for public classes/functions/exports.
+   - **Configuration**: Scan config files for options/env vars.
+   - **Examples**: List all runnable examples.
+
+**3. Build Documentation Inventory**:
+   - Read `llms.txt` and `llms-full.txt`.
+   - Extract every API, config option, and example mentioned.
+
+## Phase 1: Strict Validation (The Filter)
+
+**1. Dead Code Check**:
+   - For EACH item in Documentation Inventory: **Grep** the codebase.
+   - If 0 matches -> **MARK FOR DELETION**.
+
+**2. Dead Link Check**:
+   - Extract all URLs.
+   - Verify they are reachable (200 OK).
+   - If broken -> **REMOVE**.
+
+**3. Config Drift Check**:
+   - Compare defaults in docs vs code.
+   - If different -> **MARK FOR UPDATE**.
+
+## Phase 2: Execution (Add, Remove, Update)
+
+**1. REMOVE Invalid Content**:
+   - Delete all items marked for deletion.
+   - Remove deprecated APIs.
+
+**2. ADD Missing Content**:
+   - Add undocumented public APIs found in Code Inventory.
+   - Add new configuration options.
+   - Add new examples.
+
+**3. UPDATE Stale Content**:
+   - Refresh API signatures.
+   - Update version numbers.
+   - Fix code examples to match current syntax.
+
+## Phase 3: Optimization
+
+**1. llms.txt Optimization**:
+   - Ensure < 2000 tokens.
+   - Prioritize: Install > Basic Config > Core APIs.
+   - Use clear headers and keywords.
+
+**2. llms-full.txt Completeness**:
+   - Ensure all Universal Patterns are covered (Install, Config, Error Handling).
+   - Ensure Language-Specific Patterns are covered.
+
+## Phase 4: Final Verification
+
+- [ ] All code examples are valid syntax.
+- [ ] No dead links.
+- [ ] No dead code references.
+- [ ] Token limits respected.
+
+Begin synchronization now. Be thorough and ruthless.
 \"\"\"
 TOML_CONTENT
 ```
