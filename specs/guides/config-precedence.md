@@ -4,7 +4,7 @@ This guide explains how configuration flows between Python (Litestar) and TypeSc
 
 ## Architecture Overview
 
-**Version**: 0.15.0-beta.1
+**Version**: 0.15.0-beta.2
 
 ```
 ┌─────────────────────┐
@@ -57,9 +57,17 @@ When Litestar starts, it writes a `.litestar.json` file containing shared config
     "openapiPath": "src/generated/openapi.json",
     "routesPath": "src/generated/routes.json",
     "generateZod": true,
-    "generateSdk": true
+    "generateSdk": true,
+    "globalRoute": false
   },
   "executor": "node",
+  "logging": {
+    "level": "normal",
+    "showPathsAbsolute": false,
+    "suppressNpmOutput": false,
+    "suppressViteBanner": false,
+    "timestamps": false
+  },
   "litestarVersion": "2.15.0"
 }
 ```
@@ -85,6 +93,7 @@ These fields are meaningful to both Python and TypeScript:
 | SSR Enabled | `ssr_enabled` | `ssrEnabled` | SSR mode flag |
 | SSR Output Dir | `ssr_output_dir` | `ssrOutDir` | SSR build output |
 | Executor | `runtime.executor` | `executor` | Package manager command |
+| Logging | `logging` | `logging` | Logging configuration |
 
 ### Python-Only Fields
 

@@ -1,6 +1,6 @@
 # Code Style Guide for litestar-vite
 
-**Version**: 0.15.0-beta.1 | **Updated**: 2025-12-07
+**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-09
 
 This document defines the code style and quality standards for both the Python backend and TypeScript frontend. Consistency is enforced through automated tooling.
 

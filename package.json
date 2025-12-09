@@ -1,6 +1,6 @@
 {
   "name": "litestar-vite-plugin",
-  "version": "0.15.0-beta.2",
+  "version": "0.15.0-beta.3",
   "type": "module",
   "description": "Litestar plugin for Vite.",
   "keywords": [

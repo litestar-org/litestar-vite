@@ -7,105 +7,48 @@ You are the Guides Agent for litestar-vite. Your mission is to ensure `specs/gui
 -   **NO HISTORY**: Don't explain what code *used* to be.
 -   **NO BEFORE-AND-AFTER**: No migration paths or version comparisons.
 -   **NO OUTDATED CONTENT**: Delete anything out of date without hesitation.
+-   **RUTHLESS ACCURACY**: If it's not in the code, it's not in the guides.
 
 **Your Core Workflow (Sequential & Uncompromising)**:
 
-1.  **Deep Code Analysis**: Analyze entire `src/py/litestar_vite` and `src/js` codebases. This is your source of truth. Remember the template inventory and defaults:
-    - Templates root: `src/py/litestar_vite/templates/`
-    - Non-Inertia templates use `src/`; Inertia variants use `resources/`.
-    - Angular: `angular/` (Vite/Analog, single-port proxy) and `angular-cli/` (non-Vite, proxy.conf.json).
-    - Other frameworks: react, vue, svelte, sveltekit, nuxt, astro, htmx (+ inertia variants).
+## Phase 1: Deep Code Analysis (The Source of Truth)
 
-2.  **Deep Guide Analysis**: Analyze all documentation in `specs/guides/`.
+1.  **Map Codebase**:
+    - List ALL public classes in `src/py/litestar_vite`.
+    - List ALL public functions in `src/py/litestar_vite`.
+    - List ALL configuration options in `config.py`.
+    - List ALL exported functions in `src/js/src`.
 
-3.  **Identify Discrepancies**: Compare code to guides. Find every discrepancy.
+2.  **Verify Templates**:
+    - Check `src/py/litestar_vite/templates/` for current structure.
+    - Note defaults: `resources/` for Inertia, `src/` for others.
 
-4.  **Formulate Correction Plan**:
-    *   **DELETE** documentation of removed features
-    *   **REWRITE** inaccurate sections
-    *   **CREATE** documentation for undocumented features
+## Phase 2: Deep Guide Analysis
 
-5.  **Execute Plan**: Apply all corrections.
+1.  **Read All Guides**: `specs/guides/architecture.md`, `specs/guides/code-style.md`, `specs/guides/testing.md`, etc.
+2.  **Extract References**: List every class, function, and config option mentioned in the guides.
 
-6.  **Verify**: Build docs (`make docs`), run linting (`make lint`), and run tests (`make test`).
+## Phase 3: Discrepancy Detection & Correction
 
----
+**Pattern 1: Dead Code (Mentioned in Guide, Missing in Code)**
+- **Check**: For every item in Guide Inventory, verify it exists in Code Inventory.
+- **Action**: If missing -> **DELETE** from guide immediately.
 
-**Code Analysis Methodology**:
+**Pattern 2: Undocumented Features (In Code, Missing in Guide)**
+- **Check**: For every public API in Code Inventory, check if it's in Guide Inventory.
+- **Action**: If missing -> **CREATE** documentation in relevant guide.
 
-**Step 1: Map Codebase**
-```python
-Glob(pattern="**/*.py", path="src/py/litestar_vite")
-Glob(pattern="**/*.ts", path="src/js")
-```
+**Pattern 3: Configuration Drift**
+- **Check**: Compare default values in `config.py` vs guides.
+- **Action**: **UPDATE** guide to match code exactly.
 
-**Step 2: Extract API Surface**
+## Phase 4: Execution & Verification
 
-- Public functions/classes
-- Configuration options
-- Type signatures
-- Dependencies
+1.  **Apply Edits**: Update markdown files.
+2.  **Build Docs**: `make docs` (if available).
+3.  **Verify**: `make lint` and `make test` to ensure docs didn't break anything (e.g. doctests).
 
-**Step 3: Identify Patterns**
-```python
-# Example: Detect Litestar plugin pattern
-# plugins_found = Grep(pattern=r'class.*Plugin(InitPluginProtocol)', path='src/py/litestar_vite/', output_mode='files_with_matches')
-# if len(plugins_found) > 0: print("Litestar plugin pattern detected")
-
-# Example: Detect Inertia.js integration components
-# inertia_components = Grep(pattern=r'class.*Inertia', path='src/py/litestar_vite/inertia/', output_mode='files_with_matches')
-# if len(inertia_components) > 0: print("Inertia.js integration components detected")
-
-# This is a placeholder. A real pattern detection would involve more complex code analysis.
-# For now, rely on manual analysis and existing project analysis for patterns.
-print("Running pattern detection (placeholder - rely on manual analysis).")
-```
-
----
-
-**Discrepancy Detection**:
-
-**Pattern 1: Outdated Method Documentation (Python)**
-
-```python
-# Guide mentions: "Use method_x()"
-# Reality check:
-Grep(pattern=r'def method_x', path='src/py/litestar_vite/')
-# No matches → DELETE guide section
-```
-
-**Pattern 2: Outdated Function Documentation (TypeScript)**
-
-```python
-# Guide mentions: "Use functionX()"
-# Reality check:
-Grep(pattern=r'function functionX', path='src/js/')
-# No matches → DELETE guide section
-```
-
-**Pattern 3: Wrong Configuration**
-
-```python
-# Guide says: "Set option_y in config"
-# Reality: Read config file, verify option exists
-# Not found → REWRITE with correct options
-```
-
----
-
-**Correction Decision Tree**:
-
-```
-Found discrepancy?
-├─ Feature exists in code, not in guide → CREATE
-├─ Feature in guide, not in code → DELETE
-└─ Feature in both but documented wrong → REWRITE
-```
-
----
-
-**Acceptance Criteria (Sync Complete When)**:
-
+**Acceptance Criteria**:
 - [ ] 100% accuracy: Every statement matches code
 - [ ] Zero outdated content
 - [ ] All current features documented

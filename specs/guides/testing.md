@@ -1,6 +1,6 @@
 # Testing Guide for litestar-vite
 
-**Version**: 0.15.0-beta.1 | **Updated**: 2025-12-07
+**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-09
 
 This guide provides instructions and best practices for writing and running tests in the `litestar-vite` project.
 
