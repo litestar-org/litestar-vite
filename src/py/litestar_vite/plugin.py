@@ -589,7 +589,7 @@ class ViteProxyMiddleware(AbstractMiddleware):
     async def __call__(self, scope: "Scope", receive: "Receive", send: "Send") -> None:
         scope_dict = cast("dict[str, Any]", scope)
         path = scope_dict.get("path", "")
-        should = self._should_proxy(path)
+        should = self._should_proxy(path, scope)
         if _is_proxy_debug():
             console.print(f"[dim][vite-proxy] {path} → proxy={should}[/]")
         if should:
@@ -597,15 +597,26 @@ class ViteProxyMiddleware(AbstractMiddleware):
             return
         await self.app(scope, receive, send)
 
-    def _should_proxy(self, path: str) -> bool:
+    def _should_proxy(self, path: str, scope: "Scope") -> bool:
         # Litestar may hand us percent-encoded paths (e.g. /%40vite/client).
         try:
             from urllib.parse import unquote
         except ImportError:  # pragma: no cover - extremely small surface
-            return path.startswith(self._proxy_allow_prefixes)
+            decoded = path
+            matches_prefix = path.startswith(self._proxy_allow_prefixes)
+        else:
+            decoded = unquote(path)
+            matches_prefix = decoded.startswith(self._proxy_allow_prefixes) or path.startswith(
+                self._proxy_allow_prefixes
+            )
 
-        decoded = unquote(path)
-        return decoded.startswith(self._proxy_allow_prefixes) or path.startswith(self._proxy_allow_prefixes)
+        if not matches_prefix:
+            return False
+
+        # If it matches prefix, verify it's NOT a Litestar route
+        # This prevents shadowing routes when asset_url="/" (which makes allow list match everything)
+        app = scope.get("app")  # pyright: ignore[reportUnknownMemberType]
+        return not (app and is_litestar_route(path, app))
 
     async def _proxy_http(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         target_base_url = self._get_target_base_url()

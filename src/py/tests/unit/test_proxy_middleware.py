@@ -62,22 +62,23 @@ async def test_proxy_should_proxy_matches_vite_paths(hotfile: Path) -> None:
         return None
 
     middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile)
+    dummy_scope: Scope = {"type": "http", "path": "/", "headers": [], "app": None}  # type: ignore
 
     # Vite internal paths are always proxied
-    assert middleware._should_proxy("/@vite/client")
-    assert middleware._should_proxy("/node_modules/.vite/chunk.js")
-    assert middleware._should_proxy("/vite-hmr")
-    assert middleware._should_proxy("/@analogjs/vite-plugin-angular")
-    assert not middleware._should_proxy("/api/users")
+    assert middleware._should_proxy("/@vite/client", dummy_scope)
+    assert middleware._should_proxy("/node_modules/.vite/chunk.js", dummy_scope)
+    assert middleware._should_proxy("/vite-hmr", dummy_scope)
+    assert middleware._should_proxy("/@analogjs/vite-plugin-angular", dummy_scope)
+    assert not middleware._should_proxy("/api/users", dummy_scope)
 
     # Project paths (resource_dir) are proxied when configured
     middleware_with_src = ViteProxyMiddleware(noop, hotfile_path=hotfile, resource_dir=Path("src"))
-    assert middleware_with_src._should_proxy("/src/main.ts")
+    assert middleware_with_src._should_proxy("/src/main.ts", dummy_scope)
 
     # Custom resource dir
     middleware_with_resources = ViteProxyMiddleware(noop, hotfile_path=hotfile, resource_dir=Path("resources"))
-    assert middleware_with_resources._should_proxy("/resources/app.tsx")
-    assert not middleware_with_resources._should_proxy("/src/main.ts")  # /src not proxied without explicit config
+    assert middleware_with_resources._should_proxy("/resources/app.tsx", dummy_scope)
+    assert not middleware_with_resources._should_proxy("/src/main.ts", dummy_scope)
 
 
 @pytest.mark.anyio
@@ -118,3 +119,52 @@ async def test_proxy_response_includes_more_body_field(hotfile: Path) -> None:
     assert len(body_events) == 1
     assert "more_body" in body_events[0], "Response body must include 'more_body' field per ASGI spec"
     assert body_events[0]["more_body"] is False
+
+
+@pytest.mark.anyio
+async def test_proxy_respects_litestar_routes_when_asset_url_is_root(hotfile: Path) -> None:
+    """Test that when asset_url='/', Litestar routes are NOT proxied.
+
+    This ensures that routes like /schema, /api, etc. are handled by Litestar
+    even when the Vite proxy is configured to capture everything (asset_url='/').
+    """
+
+    async def noop(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    # Configure middleware with asset_url="/" (catch-all)
+    middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile, asset_url="/")
+
+    # Mock app structure for route detection
+    class MockRoute:
+        def __init__(self, path: str) -> None:
+            self.path = path
+
+    class MockState:
+        pass
+
+    class MockApp:
+        def __init__(self) -> None:
+            self.routes = [MockRoute("/schema"), MockRoute("/api/users")]
+            self.openapi_config = None
+            self.state = MockState()
+
+    mock_app = MockApp()
+    scope_with_app: Scope = {
+        "type": "http",
+        "path": "/",
+        "headers": [],
+        "app": mock_app,
+    }  # type: ignore
+
+    # 1. Registered Litestar route -> Should NOT proxy
+    assert not middleware._should_proxy("/schema", scope_with_app)
+    assert not middleware._should_proxy("/api/users", scope_with_app)
+
+    # 2. Non-existent route (presumed Vite asset) -> Should proxy
+    # Since asset_url="/", everything matches the prefix
+    assert middleware._should_proxy("/assets/main.js", scope_with_app)
+    assert middleware._should_proxy("/unknown-route", scope_with_app)
+
+    # 3. Vite internal paths -> Should proxy
+    assert middleware._should_proxy("/@vite/client", scope_with_app)
