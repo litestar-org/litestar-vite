@@ -7,6 +7,7 @@ delegated to @hey-api/openapi-ts; we keep only lightweight metadata here.
 
 import inspect
 import re
+from collections.abc import Generator
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
@@ -151,6 +152,26 @@ def _extract_path_params(path: str) -> dict[str, str]:
         params[param_name] = "string"
 
     return params
+
+
+def _iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRouteHandler], None, None]:
+    """Iterate over HTTP route handlers in an app.
+
+    Yields tuples of (http_route, route_handler) for each HTTP route handler,
+    filtering out non-HTTP routes (WebSocket, static, etc.).
+
+    Args:
+        app: The Litestar application.
+
+    Yields:
+        Tuples of (HTTPRoute, HTTPRouteHandler) for each route handler.
+    """
+    for route in app.routes:
+        if not hasattr(route, "route_handler_map"):
+            continue
+        http_route: "HTTPRoute" = route  # type: ignore[assignment]
+        for route_handler in http_route.route_handlers:
+            yield http_route, route_handler
 
 
 def _should_skip_param(
@@ -438,62 +459,55 @@ def extract_route_metadata(
     used_names: set[str] = set()
     op_lookup = _openapi_lookup(openapi_schema)
 
-    for route in app.routes:
-        if not isinstance(route, type(route)) or not hasattr(route, "route_handler_map"):
+    for http_route, route_handler in _iter_route_handlers(app):
+        # Get base route name
+        base_name = route_handler.name or route_handler.handler_name or str(route_handler)
+
+        # Extract methods first (needed for unique name generation)
+        methods = [method.upper() for method in route_handler.http_methods]
+
+        # Get full path
+        full_path = str(http_route.path)
+
+        # Make name unique
+        route_name = _make_unique_name(base_name, used_names, full_path, methods)
+        used_names.add(route_name)
+
+        # Apply filters
+        if only and not any(pattern in route_name or pattern in full_path for pattern in only):
+            continue
+        if exclude and any(pattern in route_name or pattern in full_path for pattern in exclude):
             continue
 
-        # Get the HTTP route
-        http_route: HTTPRoute = route  # type: ignore[assignment]
+        # Extract path parameters (override with OpenAPI if available)
+        params = _extract_path_params(full_path)
+        path_param_names = set(params.keys())
 
-        for route_handler in http_route.route_handlers:
-            # Get base route name
-            base_name = route_handler.name or route_handler.handler_name or str(route_handler)
+        # Extract query parameters (excludes path params, body, deps, system types)
+        query_params = _extract_query_params(route_handler, path_param_names)
 
-            # Extract methods first (needed for unique name generation)
-            methods = [method.upper() for method in route_handler.http_methods]
+        # Enhance with OpenAPI types when available
+        operation = op_lookup.get((_normalize_path(full_path), methods[0] if methods else ""))
+        _apply_openapi_params(operation, params, query_params)
 
-            # Get full path
-            full_path = str(http_route.path)
+        # Extract Inertia component (if present)
+        component = None
+        if hasattr(route_handler, "opt") and route_handler.opt:
+            component = route_handler.opt.get("component")
 
-            # Make name unique
-            route_name = _make_unique_name(base_name, used_names, full_path, methods)
-            used_names.add(route_name)
+        # Normalize path
+        normalized_path = _normalize_path(full_path)
 
-            # Apply filters
-            if only and not any(pattern in route_name or pattern in full_path for pattern in only):
-                continue
-            if exclude and any(pattern in route_name or pattern in full_path for pattern in exclude):
-                continue
+        metadata = RouteMetadata(
+            name=route_name,
+            path=normalized_path,
+            methods=methods,
+            params=params,
+            query_params=query_params,
+            component=component,
+        )
 
-            # Extract path parameters (override with OpenAPI if available)
-            params = _extract_path_params(full_path)
-            path_param_names = set(params.keys())
-
-            # Extract query parameters (excludes path params, body, deps, system types)
-            query_params = _extract_query_params(route_handler, path_param_names)
-
-            # Enhance with OpenAPI types when available
-            operation = op_lookup.get((_normalize_path(full_path), methods[0] if methods else ""))
-            _apply_openapi_params(operation, params, query_params)
-
-            # Extract Inertia component (if present)
-            component = None
-            if hasattr(route_handler, "opt") and route_handler.opt:
-                component = route_handler.opt.get("component")
-
-            # Normalize path
-            normalized_path = _normalize_path(full_path)
-
-            metadata = RouteMetadata(
-                name=route_name,
-                path=normalized_path,
-                methods=methods,
-                params=params,
-                query_params=query_params,
-                component=component,
-            )
-
-            routes_metadata.append(metadata)
+        routes_metadata.append(metadata)
 
     return routes_metadata
 
@@ -955,49 +969,43 @@ def extract_inertia_pages(
     """
     pages: list[InertiaPageMetadata] = []
 
-    for route in app.routes:
-        if not hasattr(route, "route_handler_map"):
+    for http_route, route_handler in _iter_route_handlers(app):
+        # Look for Inertia component in handler opts
+        component = None
+        if hasattr(route_handler, "opt") and route_handler.opt:
+            # Check common keys: "component", "page"
+            component = route_handler.opt.get("component") or route_handler.opt.get("page")
+
+        if not component:
             continue
 
-        http_route: "HTTPRoute" = route  # type: ignore[assignment]
+        # Get route info
+        full_path = str(http_route.path)
+        normalized_path = _normalize_path(full_path)
+        handler_name = route_handler.handler_name or route_handler.name
 
-        for route_handler in http_route.route_handlers:
-            # Look for Inertia component in handler opts
-            component = None
-            if hasattr(route_handler, "opt") and route_handler.opt:
-                # Check common keys: "component", "page"
-                component = route_handler.opt.get("component") or route_handler.opt.get("page")
+        # Get return type info
+        props_type = _get_return_type_name(route_handler)
 
-            if not component:
-                continue
+        # Get OpenAPI schema ref
+        # http_methods is a set, so use next(iter(...)) to get the first method
+        method = next(iter(route_handler.http_methods), "GET") if route_handler.http_methods else "GET"
+        schema_ref = _get_openapi_schema_ref(
+            route_handler,
+            openapi_schema,
+            normalized_path,
+            method=str(method),
+        )
 
-            # Get route info
-            full_path = str(http_route.path)
-            normalized_path = _normalize_path(full_path)
-            handler_name = route_handler.handler_name or route_handler.name
-
-            # Get return type info
-            props_type = _get_return_type_name(route_handler)
-
-            # Get OpenAPI schema ref
-            # http_methods is a set, so use next(iter(...)) to get the first method
-            method = next(iter(route_handler.http_methods), "GET") if route_handler.http_methods else "GET"
-            schema_ref = _get_openapi_schema_ref(
-                route_handler,
-                openapi_schema,
-                normalized_path,
-                method=str(method),
+        pages.append(
+            InertiaPageMetadata(
+                component=component,
+                route_path=normalized_path,
+                props_type=props_type,
+                schema_ref=schema_ref,
+                handler_name=handler_name,
             )
-
-            pages.append(
-                InertiaPageMetadata(
-                    component=component,
-                    route_path=normalized_path,
-                    props_type=props_type,
-                    schema_ref=schema_ref,
-                    handler_name=handler_name,
-                )
-            )
+        )
 
     return pages
 
