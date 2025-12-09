@@ -1,6 +1,6 @@
-=======================
+=========================
 Inertia Exception Handler
-=======================
+=========================
 
 Exception handling utilities for Inertia.js requests.
 

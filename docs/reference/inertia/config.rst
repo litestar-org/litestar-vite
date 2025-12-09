@@ -1,11 +1,11 @@
-====================
+=====================
 Inertia Configuration
-====================
+=====================
 
 Configuration classes for Inertia.js integration.
 
 Available Configuration Classes
---------------------------------
+-------------------------------
 
 InertiaConfig
     Main configuration for Inertia.js integration.
