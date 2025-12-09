@@ -68,11 +68,11 @@ API Integration
 ---------------
 
 Server-Side Data Fetching
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Astro pages can fetch data at build time or on-demand (SSR):
 
-.. code-block:: astro
+.. code-block:: jsx
 
     ---
     // src/pages/users/[id].astro
@@ -95,11 +95,11 @@ Astro pages can fetch data at build time or on-demand (SSR):
     </html>
 
 Static Site Generation (SSG)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Use ``getStaticPaths`` for static generation:
 
-.. code-block:: astro
+.. code-block:: jsx
 
     ---
     import type { User } from '../../generated/types.gen'
@@ -124,7 +124,7 @@ Client-Side Interactivity
 
 Add interactive islands with ``client:*`` directives:
 
-.. code-block:: astro
+.. code-block:: jsx
 
     ---
     // src/pages/index.astro
