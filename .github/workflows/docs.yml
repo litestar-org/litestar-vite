@@ -32,6 +32,17 @@ jobs:
       - name: Install litestar-vite package
         run: uv pip install -e .
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Build JS plugin
+        run: |
+          npm ci
+          npm run build
+
       - name: Install VHS
         run: |
           # Install VHS via go (more reliable than charm install script)

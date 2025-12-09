@@ -1,6 +1,6 @@
-==================
+===================
 HTML Transformation
-==================
+===================
 
 HTML transformation utilities for injecting scripts, metadata, and attributes
 into HTML documents.

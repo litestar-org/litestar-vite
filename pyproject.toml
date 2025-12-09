@@ -30,7 +30,7 @@ license = { text = "MIT" }
 name = "litestar-vite"
 readme = "README.md"
 requires-python = ">=3.10"
-version = "0.15.0-beta.1"
+version = "0.15.0-beta.2"
 
 [project.urls]
 Changelog = "https://litestar-org.github.io/litestar-vite/latest/changelog"
@@ -70,7 +70,7 @@ docs = [
     "sphinxcontrib-mermaid>=0.9.2",
     "sphinx-paramlinks>=0.6.0",
     "sphinx-togglebutton>=0.3.2",
-    "Pygments","vue-lexer",
+    "Pygments","vue-lexer","jsx-lexer",
     "litestar-sphinx-theme @ git+https://github.com/litestar-org/litestar-sphinx-theme.git@v3",
 ]
 linting = ["pre-commit>=3.4.0", "mypy>=1.5.1", "ruff>=0.0.287", "types-docutils", "slotscheck",  "pyright"]
@@ -94,7 +94,7 @@ test = [
 allow_dirty = true
 commit = false
 commit_args = "--no-verify"
-current_version = "0.15.0-beta.1"
+current_version = "0.15.0-beta.2"
 ignore_missing_files = false
 ignore_missing_version = false
 message = "chore(release): bump to `v{new_version}`"
