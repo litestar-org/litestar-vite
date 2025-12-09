@@ -49,14 +49,6 @@ Type "litestar --app app:app assets build"
 Enter
 Sleep 5s
 
-Type "# 'status' shows your integration at a glance"
-Enter
-Sleep 500ms
-
-Type "litestar --app app:app assets status"
-Enter
-Sleep 2s
-
 Type "# Same tools, unified interface!"
 Enter
-Sleep 2s
+Sleep 5s

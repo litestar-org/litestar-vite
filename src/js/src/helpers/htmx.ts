@@ -64,7 +64,7 @@ interface Ctx {
   [key: string]: unknown
 }
 
-const DEBUG = typeof process !== "undefined" && process.env?.NODE_ENV !== "production"
+let debug = typeof process !== "undefined" && process.env?.NODE_ENV !== "production"
 const cache = new Map<string, ((c: Ctx) => unknown) | null>()
 const memoStore = new WeakMap<Node, Record<string, unknown>>()
 
@@ -108,7 +108,7 @@ export function registerHtmxExtension(): void {
     },
   })
 
-  if (DEBUG) console.log("[litestar] htmx extension registered")
+  if (debug) console.log("[litestar] htmx extension registered")
 }
 
 // =============================================================================
@@ -548,8 +548,13 @@ function removeBetween(start: Node | null, end: Node): void {
 // Public API
 // =============================================================================
 
-export function setDebug(_on: boolean): void {
-  // Debug flag is const, this is a no-op placeholder
+/**
+ * Enable or disable debug logging for the HTMX extension.
+ *
+ * @param on - Whether to enable debug logging.
+ */
+export function setDebug(on: boolean): void {
+  debug = on
 }
 
 export function addDirective(dir: Dir): void {

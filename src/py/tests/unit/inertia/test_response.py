@@ -1534,11 +1534,11 @@ async def test_inertia_back_no_cookie_echo(
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:
-        # Send request with a cookie
+        # Send request with a cookie (set on client to avoid deprecation warning)
+        client.cookies.set("session_id", "secret_session_value")
         response = client.get(
             "/back",
             headers={InertiaHeaders.ENABLED.value: "true", "Referer": "/previous"},
-            cookies={"session_id": "secret_session_value"},
             follow_redirects=False,
         )
         # The response should NOT have Set-Cookie header echoing the session_id
@@ -1565,10 +1565,11 @@ async def test_inertia_external_redirect_no_cookie_echo(
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:
+        # Set cookie on client to avoid deprecation warning
+        client.cookies.set("auth_token", "secret_token")
         response = client.get(
             "/external",
             headers={InertiaHeaders.ENABLED.value: "true"},
-            cookies={"auth_token": "secret_token"},
             follow_redirects=False,
         )
         assert response.status_code == 409

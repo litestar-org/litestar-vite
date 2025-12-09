@@ -335,9 +335,9 @@ def _resolve_proxy_mode() -> "Literal['vite', 'direct', 'proxy'] | None":
     """Resolve proxy_mode from environment variable.
 
     Reads VITE_PROXY_MODE env var. Valid values:
-    - "vite" (default): Proxy to internal Vite server (whitelist - assets only)
+    - "vite" (default): Proxy to internal Vite server (allow list - assets only)
     - "direct": Expose Vite port directly (no proxy)
-    - "proxy" / "ssr": Proxy everything except Litestar routes (blacklist)
+    - "proxy" / "ssr": Proxy everything except Litestar routes (deny list)
     - "none": Disable proxy (for production)
 
     Returns:
@@ -428,9 +428,9 @@ class RuntimeConfig:
     Attributes:
         dev_mode: Enable development mode with HMR/watch.
         proxy_mode: Proxy handling mode:
-            - "vite" (default): Proxy Vite assets only (whitelist - SPA mode)
+            - "vite" (default): Proxy Vite assets only (allow list - SPA mode)
             - "direct": Expose Vite port directly (no proxy)
-            - "proxy" / "ssr": Proxy everything except Litestar routes (blacklist - SSR mode)
+            - "proxy" / "ssr": Proxy everything except Litestar routes (deny list - SSR mode)
             - None: No proxy (production mode)
         external_dev_server: Configuration for external dev server (used with proxy_mode="proxy").
         host: Vite dev server host.
@@ -487,7 +487,7 @@ class RuntimeConfig:
             self.external_dev_server = ExternalDevServer(target=self.external_dev_server)
 
         # Auto-set proxy_mode="proxy" when external_dev_server is configured
-        # External dev servers (Angular CLI, Next.js, etc.) need blacklist proxy mode
+        # External dev servers (Angular CLI, Next.js, etc.) need deny list proxy mode
         # Override default "vite" mode which only proxies Vite-specific routes
         if self.external_dev_server is not None and self.proxy_mode in {None, "vite"}:
             self.proxy_mode = "proxy"
@@ -794,7 +794,7 @@ class ViteConfig:
 
         Aliases:
         - 'ssg' → 'ssr': Static Site Generation uses the same proxy behavior as SSR.
-          Both use blacklist proxy in dev mode (forward non-API routes to framework's
+          Both use deny list proxy in dev mode (forward non-API routes to framework's
           dev server). SSG pre-renders at build time, SSR renders per-request, but
           their dev-time proxy behavior is identical.
 

@@ -400,10 +400,10 @@ def _pick_free_port() -> int:
         return sock.getsockname()[1]
 
 
-# Vite internal paths that should always be proxied to the dev server.
+# Vite internal paths that should always be proxied to the dev server (allow list).
 # Project-specific paths (resource_dir, bundle_dir, asset_url) are added dynamically
 # by _normalize_proxy_prefixes() based on ViteConfig.
-_PROXY_PATH_PREFIXES: tuple[str, ...] = (
+_PROXY_ALLOW_PREFIXES: tuple[str, ...] = (
     "/@vite",
     "/@id/",
     "/@fs/",
@@ -444,6 +444,86 @@ def _normalize_prefix(prefix: str) -> str:
     return prefix
 
 
+# Cache key for storing route prefixes in app.state
+_ROUTE_PREFIXES_CACHE_KEY = "_litestar_vite_route_prefixes"
+
+
+def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
+    """Build a cached list of Litestar route prefixes for the given app.
+
+    This function collects all registered route paths from the Litestar application
+    and caches them for efficient lookup. The cache is stored in app.state to ensure
+    it's automatically cleaned up when the app is garbage collected.
+
+    Includes:
+    - All registered Litestar route paths
+    - OpenAPI schema path (customizable via openapi_config.path)
+    - Common API prefixes as fallback (/api, /schema, /docs)
+
+    Args:
+        app: The Litestar application instance.
+
+    Returns:
+        A tuple of route prefix strings (without trailing slashes).
+    """
+    # Check for cached result in app.state
+    cached = getattr(app.state, _ROUTE_PREFIXES_CACHE_KEY, None)
+    if cached is not None:
+        return cached
+
+    prefixes: list[str] = []
+
+    # Add all registered route paths
+    for route in getattr(app, "routes", []):
+        path = getattr(route, "path", None)
+        if path:
+            # Normalize path to prefix (strip trailing slash)
+            prefix = path.rstrip("/")
+            if prefix:
+                prefixes.append(prefix)
+
+    # Add OpenAPI schema path (may be customized)
+    openapi_config = getattr(app, "openapi_config", None)
+    if openapi_config is not None:
+        schema_path = getattr(openapi_config, "path", "/schema")
+        if schema_path:
+            prefixes.append(schema_path.rstrip("/"))
+
+    # Add common API prefixes as fallback
+    prefixes.extend(["/api", "/schema", "/docs"])
+
+    # Remove duplicates and sort by length (longest first for proper matching)
+    unique_prefixes = sorted(set(prefixes), key=len, reverse=True)
+    result = tuple(unique_prefixes)
+
+    # Cache the result in app.state
+    setattr(app.state, _ROUTE_PREFIXES_CACHE_KEY, result)
+
+    if _is_proxy_debug():
+        console.print(f"[dim][route-detection] Cached prefixes: {result}[/]")
+
+    return result
+
+
+def is_litestar_route(path: str, app: "Litestar") -> bool:
+    """Check if a path matches a registered Litestar route.
+
+    This function determines if a request path should be handled by Litestar
+    rather than proxied to the Vite dev server or served as SPA content.
+
+    A path matches if it equals a registered prefix or starts with prefix + "/".
+
+    Args:
+        path: The request path to check (e.g., "/schema", "/api/users").
+        app: The Litestar application instance.
+
+    Returns:
+        True if the path matches a Litestar route, False otherwise.
+    """
+    excluded = get_litestar_route_prefixes(app)
+    return any(path == prefix or path.startswith(f"{prefix}/") for prefix in excluded)
+
+
 class ViteProxyMiddleware(AbstractMiddleware):
     """ASGI middleware to proxy Vite dev HTTP traffic to internal Vite server.
 
@@ -474,8 +554,8 @@ class ViteProxyMiddleware(AbstractMiddleware):
         self._cache_initialized = False
         self.asset_prefix = _normalize_prefix(asset_url) if asset_url else "/"
         self.http2 = http2
-        self._proxy_path_prefixes = _normalize_proxy_prefixes(
-            base_prefixes=_PROXY_PATH_PREFIXES,
+        self._proxy_allow_prefixes = _normalize_proxy_prefixes(
+            base_prefixes=_PROXY_ALLOW_PREFIXES,
             asset_url=asset_url,
             resource_dir=resource_dir,
             bundle_dir=bundle_dir,
@@ -522,10 +602,10 @@ class ViteProxyMiddleware(AbstractMiddleware):
         try:
             from urllib.parse import unquote
         except ImportError:  # pragma: no cover - extremely small surface
-            return path.startswith(self._proxy_path_prefixes)
+            return path.startswith(self._proxy_allow_prefixes)
 
         decoded = unquote(path)
-        return decoded.startswith(self._proxy_path_prefixes) or path.startswith(self._proxy_path_prefixes)
+        return decoded.startswith(self._proxy_allow_prefixes) or path.startswith(self._proxy_allow_prefixes)
 
     async def _proxy_http(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         target_base_url = self._get_target_base_url()
@@ -612,7 +692,7 @@ class ViteProxyMiddleware(AbstractMiddleware):
 
 
 class ExternalDevServerProxyMiddleware(AbstractMiddleware):
-    """ASGI middleware to proxy requests to an external dev server (blacklist mode).
+    """ASGI middleware to proxy requests to an external dev server (deny list mode).
 
     This middleware proxies all requests that don't match Litestar-registered routes
     to the target dev server. It supports two modes:
@@ -621,8 +701,8 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
     2. **Dynamic target**: Leave target as None and provide hotfile_path - the proxy reads
        the target URL from the Vite hotfile (for SSR frameworks like Astro, Nuxt, SvelteKit)
 
-    Unlike ViteProxyMiddleware (whitelist), this middleware:
-    - Uses blacklist approach: proxies everything EXCEPT Litestar routes
+    Unlike ViteProxyMiddleware (allow list), this middleware:
+    - Uses deny list approach: proxies everything EXCEPT Litestar routes
     - Supports both static and dynamic target URLs
     - Auto-excludes Litestar routes, static mounts, and schema paths
     """
@@ -655,7 +735,7 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
         self._cache_initialized = False
         self.http2 = http2
         self._litestar_app = litestar_app
-        self._excluded_prefixes: tuple[str, ...] | None = None
+        self._deny_prefixes: tuple[str, ...] | None = None
 
     def _get_target(self) -> str | None:
         """Get the proxy target URL with permanent caching.
@@ -687,63 +767,43 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
 
         return None
 
-    def _get_excluded_prefixes(self, scope: "Scope") -> tuple[str, ...]:
-        """Build list of path prefixes to exclude from proxying.
+    def _get_deny_prefixes(self, scope: "Scope") -> tuple[str, ...]:
+        """Build list of path prefixes to deny from proxying (deny list).
 
-        Automatically excludes:
-        - All registered Litestar routes
-        - Static file mounts
-        - OpenAPI/schema paths
+        Uses the shared get_litestar_route_prefixes() function for route detection.
+        Results are cached per middleware instance.
 
         Returns:
-            A tuple of excluded path prefixes.
+            A tuple of path prefixes that should NOT be proxied.
         """
-        if self._excluded_prefixes is not None:
-            return self._excluded_prefixes
-
-        prefixes: list[str] = []
+        if self._deny_prefixes is not None:
+            return self._deny_prefixes
 
         # Get Litestar app from scope if not provided during init
         app: "Litestar | None" = self._litestar_app or scope.get("app")  # pyright: ignore[reportUnknownMemberType]
         if app:
-            # Exclude all registered route paths
-            for route in getattr(app, "routes", []):
-                path = getattr(route, "path", None)
-                if path:
-                    # Normalize path to prefix
-                    prefix = path.rstrip("/")
-                    if prefix:
-                        prefixes.append(prefix)
-
-            # Exclude OpenAPI schema path
-            openapi_config = getattr(app, "openapi_config", None)
-            if openapi_config is not None:
-                schema_path = getattr(openapi_config, "path", "/schema")
-                if schema_path:
-                    prefixes.append(schema_path.rstrip("/"))
-
-        # Always exclude common API prefixes
-        prefixes.extend(["/api", "/schema", "/docs"])
-
-        # Remove duplicates and sort by length (longest first for proper matching)
-        unique_prefixes = sorted(set(prefixes), key=len, reverse=True)
-        self._excluded_prefixes = tuple(unique_prefixes)
+            self._deny_prefixes = get_litestar_route_prefixes(app)
+        else:
+            # Fallback to common prefixes if app not available
+            self._deny_prefixes = ("/api", "/schema", "/docs")
 
         if _is_proxy_debug():
-            console.print(f"[dim][external-proxy] Excluded prefixes: {self._excluded_prefixes}[/]")
+            console.print(f"[dim][external-proxy] Deny prefixes: {self._deny_prefixes}[/]")
 
-        return self._excluded_prefixes
+        return self._deny_prefixes
 
     def _should_proxy(self, path: str, scope: "Scope") -> bool:
         """Determine if the request should be proxied to the external server.
 
+        Returns True if the path does NOT match any Litestar route (deny list approach).
+
         Returns:
             True if the request should be proxied, else False.
         """
-        excluded = self._get_excluded_prefixes(scope)
+        deny_prefixes = self._get_deny_prefixes(scope)
 
-        # Check if path matches any excluded prefix
-        return all(not (path == prefix or path.startswith(f"{prefix}/")) for prefix in excluded)
+        # Check if path matches any deny list prefix
+        return all(not (path == prefix or path.startswith(f"{prefix}/")) for prefix in deny_prefixes)
 
     async def __call__(self, scope: "Scope", receive: "Receive", send: "Send") -> None:
         scope_dict = cast("dict[str, Any]", scope)
@@ -1750,7 +1810,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._configure_ssr_proxy(app_config, hotfile_path)
 
     def _configure_vite_proxy(self, app_config: "AppConfig", hotfile_path: Path) -> None:
-        """Configure Vite proxy mode (whitelist).
+        """Configure Vite proxy mode (allow list).
 
         Args:
             app_config: The Litestar application configuration.
@@ -1777,7 +1837,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         # in the consolidated startup banner when the dev server actually starts.
 
     def _configure_ssr_proxy(self, app_config: "AppConfig", hotfile_path: Path) -> None:
-        """Configure SSR proxy mode (blacklist).
+        """Configure SSR proxy mode (deny list).
 
         Args:
             app_config: The Litestar application configuration.
@@ -2064,9 +2124,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._export_types_sync(app)
 
         if self._config.is_dev_mode and self._config.runtime.start_dev_server:
-            if not app.debug:
-                _log_warn("Vite dev mode is enabled in production!")
-
             ext = self._config.runtime.external_dev_server
             is_external = isinstance(ext, ExternalDevServer) and ext.enabled
 

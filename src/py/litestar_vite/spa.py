@@ -9,6 +9,7 @@ In production, it serves the built index.html with async caching.
 HTML transformations are applied based on SPAConfig settings:
 - CSRF token injection (window.__LITESTAR_CSRF__)
 - Page data injection for Inertia.js (data-page attribute)
+- Asset URL transformation using Vite manifest (production only)
 
 Note:
     Route metadata is now generated as TypeScript (routes.ts) at build time.
@@ -24,9 +25,10 @@ import anyio
 import httpx
 import msgspec
 from litestar import Response, get
-from litestar.exceptions import ImproperlyConfiguredException
+from litestar.exceptions import ImproperlyConfiguredException, NotFoundException
 
-from litestar_vite.html_transform import inject_head_script, set_data_attribute
+from litestar_vite.html_transform import inject_head_script, set_data_attribute, transform_asset_urls
+from litestar_vite.plugin import is_litestar_route
 
 if TYPE_CHECKING:
     from litestar.connection import Request
@@ -79,6 +81,7 @@ class ViteSPAHandler:
         "_http_client",
         "_http_client_sync",
         "_initialized",
+        "_manifest",
         "_spa_config",
         "_vite_url",
     )
@@ -98,6 +101,7 @@ class ViteSPAHandler:
         self._http_client: "httpx.AsyncClient | None" = None
         self._http_client_sync: "httpx.Client | None" = None
         self._vite_url: "str | None" = None
+        self._manifest: "dict[str, Any]" = {}
 
     @property
     def is_initialized(self) -> bool:
@@ -110,6 +114,7 @@ class ViteSPAHandler:
         This method should be called during app startup to:
         - Initialize the HTTP client for dev mode proxying
         - Load and cache the index.html in production mode
+        - Load the Vite manifest for asset URL transformation
 
         Args:
             vite_url: Optional Vite server URL to use for proxying. If provided,
@@ -122,6 +127,8 @@ class ViteSPAHandler:
         if self._config.is_dev_mode and self._config.hot_reload:
             self._init_http_clients(vite_url)
         else:
+            # Load manifest for production asset URL transformation
+            await self._load_manifest_async()
             # Load and cache index.html for production
             await self._load_index_html_async()
 
@@ -133,6 +140,7 @@ class ViteSPAHandler:
         This method should be called during app startup to:
         - Initialize the HTTP client for dev mode proxying
         - Load and cache the index.html in production mode
+        - Load the Vite manifest for asset URL transformation
 
         This is the preferred initialization method for lifespan hooks
         since file I/O during startup is negligible.
@@ -148,6 +156,8 @@ class ViteSPAHandler:
         if self._config.is_dev_mode and self._config.hot_reload:
             self._init_http_clients(vite_url)
         else:
+            # Load manifest for production asset URL transformation
+            self._load_manifest_sync()
             # Load and cache index.html for production
             self._load_index_html_sync()
 
@@ -256,6 +266,10 @@ class ViteSPAHandler:
         Caches both string and bytes representations to avoid
         encoding overhead on each request.
 
+        In production mode, transforms source asset URLs (e.g., /resources/main.tsx)
+        to their hashed equivalents using the Vite manifest. This transformation
+        is done once at load time for optimal performance.
+
         Raises:
             ImproperlyConfiguredException: If index.html is not found.
         """
@@ -269,14 +283,25 @@ class ViteSPAHandler:
         if resolved_path is None:
             self._raise_index_not_found()
 
-        self._cached_bytes = await resolved_path.read_bytes()
-        self._cached_html = self._cached_bytes.decode("utf-8")
+        raw_bytes = await resolved_path.read_bytes()
+        html = raw_bytes.decode("utf-8")
+
+        # Transform asset URLs using manifest (production only)
+        # This is critical for library mode builds where Vite doesn't transform index.html
+        html = self._transform_asset_urls_in_html(html)
+
+        self._cached_html = html
+        self._cached_bytes = html.encode("utf-8")
 
     def _load_index_html_sync(self) -> None:
         """Synchronously load index.html from disk and cache it in memory.
 
         Caches both string and bytes representations to avoid
         encoding overhead on each request.
+
+        In production mode, transforms source asset URLs (e.g., /resources/main.tsx)
+        to their hashed equivalents using the Vite manifest. This transformation
+        is done once at load time for optimal performance.
 
         Raises:
             ImproperlyConfiguredException: If index.html is not found.
@@ -291,8 +316,15 @@ class ViteSPAHandler:
         if resolved_path is None:
             self._raise_index_not_found()
 
-        self._cached_bytes = resolved_path.read_bytes()
-        self._cached_html = self._cached_bytes.decode("utf-8")
+        raw_bytes = resolved_path.read_bytes()
+        html = raw_bytes.decode("utf-8")
+
+        # Transform asset URLs using manifest (production only)
+        # This is critical for library mode builds where Vite doesn't transform index.html
+        html = self._transform_asset_urls_in_html(html)
+
+        self._cached_html = html
+        self._cached_bytes = html.encode("utf-8")
 
     def _raise_index_not_found(self) -> NoReturn:
         """Raise an exception when index.html is not found.
@@ -308,6 +340,90 @@ class ViteSPAHandler:
             "Did you forget to build your assets?"
         )
         raise ImproperlyConfiguredException(msg)
+
+    def _get_manifest_path(self) -> Path:
+        """Get the path to the Vite manifest file.
+
+        Returns:
+            Absolute path to the manifest file.
+        """
+        bundle_dir = self._config.bundle_dir
+        if not bundle_dir.is_absolute():
+            bundle_dir = self._config.root_dir / bundle_dir
+        return bundle_dir / self._config.manifest_name
+
+    async def _load_manifest_async(self) -> None:
+        """Asynchronously load the Vite manifest for asset URL transformation.
+
+        The manifest is used to replace source asset paths (e.g., /resources/main.tsx)
+        with their hashed production equivalents (e.g., /static/assets/main-abc123.js).
+
+        Logs a warning if manifest not found in production mode (assets may not load).
+        """
+        manifest_path = anyio.Path(self._get_manifest_path())
+        try:
+            if await manifest_path.exists():
+                content = await manifest_path.read_bytes()
+                self._manifest = msgspec.json.decode(content)
+            else:
+                # In production mode, missing manifest is likely a build issue
+                logger.warning(
+                    "Vite manifest not found at %s. "
+                    "Asset URLs in index.html will not be transformed. "
+                    "Run 'litestar assets build' to generate the manifest.",
+                    manifest_path,
+                )
+        except OSError as exc:
+            logger.warning("Failed to read Vite manifest file: %s", exc)
+        except msgspec.DecodeError as exc:  # pyright: ignore[reportUnknownMemberType]
+            logger.warning("Failed to parse Vite manifest JSON: %s", exc)
+
+    def _load_manifest_sync(self) -> None:
+        """Synchronously load the Vite manifest for asset URL transformation.
+
+        The manifest is used to replace source asset paths (e.g., /resources/main.tsx)
+        with their hashed production equivalents (e.g., /static/assets/main-abc123.js).
+
+        Logs a warning if manifest not found in production mode (assets may not load).
+        """
+        manifest_path = self._get_manifest_path()
+        try:
+            if manifest_path.exists():
+                content = manifest_path.read_bytes()
+                self._manifest = msgspec.json.decode(content)
+            else:
+                # In production mode, missing manifest is likely a build issue
+                logger.warning(
+                    "Vite manifest not found at %s. "
+                    "Asset URLs in index.html will not be transformed. "
+                    "Run 'litestar assets build' to generate the manifest.",
+                    manifest_path,
+                )
+        except OSError as exc:
+            logger.warning("Failed to read Vite manifest file: %s", exc)
+        except msgspec.DecodeError as exc:  # pyright: ignore[reportUnknownMemberType]
+            logger.warning("Failed to parse Vite manifest JSON: %s", exc)
+
+    def _transform_asset_urls_in_html(self, html: str) -> str:
+        """Transform source asset URLs to production hashed URLs using manifest.
+
+        This is critical for production mode when using Vite's library mode
+        (input: ["resources/main.tsx"]) where Vite doesn't transform index.html.
+
+        Args:
+            html: The HTML content to transform.
+
+        Returns:
+            HTML with transformed asset URLs, or original if no manifest.
+        """
+        if not self._manifest:
+            return html
+        return transform_asset_urls(
+            html,
+            self._manifest,
+            asset_url=self._config.asset_url,
+            base_url=self._config.base_url,
+        )
 
     def _get_csrf_token(self, request: "Request[Any, Any, Any]") -> "str | None":
         """Extract CSRF token from the request scope.
@@ -578,6 +694,11 @@ class ViteSPAHandler:
     def create_route_handler(self) -> Any:
         """Create a Litestar route handler for the SPA.
 
+        The handler includes route exclusion logic to prevent the SPA catch-all
+        from shadowing Litestar-registered routes (e.g., ``/schema``, ``/api``).
+        When a request matches a Litestar route, NotFoundException is raised
+        to let the router handle it properly.
+
         Returns:
             A Litestar route handler that serves the SPA HTML.
 
@@ -600,7 +721,17 @@ class ViteSPAHandler:
                 include_in_schema=False,
             )
             async def spa_handler_dev(request: "Request[Any, Any, Any]") -> Response[str]:
-                """Serve the SPA HTML (dev mode - proxied from Vite)."""
+                """Serve the SPA HTML (dev mode - proxied from Vite).
+
+                Checks if the request path matches a Litestar route before serving.
+                If it does, raises NotFoundException to let the router handle it.
+                """
+                # Check if path is a Litestar route - if so, don't serve SPA
+                # This prevents the catch-all from shadowing /schema, /api, etc.
+                path = request.url.path
+                if path != "/" and is_litestar_route(path, request.app):
+                    raise NotFoundException(detail=f"Not an SPA route: {path}")
+
                 html = await get_html(request)
                 return Response(
                     content=html,
@@ -619,7 +750,17 @@ class ViteSPAHandler:
             cache=3600,  # Cache for 1 hour
         )
         async def spa_handler_prod(request: "Request[Any, Any, Any]") -> Response[bytes]:
-            """Serve the SPA HTML (production - cached)."""
+            """Serve the SPA HTML (production - cached).
+
+            Checks if the request path matches a Litestar route before serving.
+            If it does, raises NotFoundException to let the router handle it.
+            """
+            # Check if path is a Litestar route - if so, don't serve SPA
+            # This prevents the catch-all from shadowing /schema, /api, etc.
+            path = request.url.path
+            if path != "/" and is_litestar_route(path, request.app):
+                raise NotFoundException(detail=f"Not an SPA route: {path}")
+
             content = await get_bytes()
             return Response(content=content, status_code=200, media_type=_HTML_MEDIA_TYPE)
 

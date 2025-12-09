@@ -893,16 +893,35 @@ def clear_history(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
         connection.logger.warning(msg)
 
 
-def js_routes_script(js_routes: "Routes") -> "Markup":
-    @lru_cache
-    def _markup_safe_json_dumps(js_routes: "str") -> "Markup":
-        js = js_routes.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026").replace("'", "\\u0027")
-        return Markup(js)
+@lru_cache(maxsize=128)
+def _markup_safe_json_escape(js_routes: str) -> str:
+    """Escape JSON string for safe embedding in HTML script tags.
 
+    Caches results since the same route data is often rendered multiple times.
+
+    Args:
+        js_routes: JSON string to escape.
+
+    Returns:
+        Escaped string safe for HTML embedding.
+    """
+    return js_routes.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026").replace("'", "\\u0027")
+
+
+def js_routes_script(js_routes: "Routes") -> "Markup":
+    """Generate a script tag that injects routes into the global scope.
+
+    Args:
+        js_routes: Routes object with formatted routes.
+
+    Returns:
+        Markup containing the script tag.
+    """
+    escaped = _markup_safe_json_escape(js_routes.formatted_routes)
     return Markup(
         dedent(f"""
         <script type="module">
-        globalThis.routes = JSON.parse('{_markup_safe_json_dumps(js_routes.formatted_routes)}')
+        globalThis.routes = JSON.parse('{escaped}')
         </script>
         """),
     )

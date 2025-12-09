@@ -42,10 +42,10 @@ Key `RuntimeConfig` options:
 
 - **`dev_mode`**: Enable development mode with HMR/watch
 - **`proxy_mode`**: Proxy handling mode:
-  - "vite" (default): Proxy Vite assets only (whitelist - SPA mode)
-  - "direct": Expose Vite port directly (no proxy)
-  - "proxy": Proxy everything except Litestar routes (blacklist - SSR mode)
-  - None: No proxy (production mode)
+    - "vite" (default): Proxy Vite assets only (allow list - SPA mode)
+    - "direct": Expose Vite port directly (no proxy)
+    - "proxy": Proxy everything except Litestar routes (deny list - SSR mode)
+    - None: No proxy (production mode)
 - **`external_dev_server`**: External dev server config (string URL or `ExternalDevServer` with custom commands, http2 flag, enabled flag)
 - **`host`**, **`port`**, **`protocol`**: Vite dev server connection details
 - **`executor`**: JavaScript runtime (node, bun, deno, yarn, pnpm)
@@ -143,10 +143,10 @@ The helpers module provides utilities for working with Litestar routes and CSRF 
 
 - **CSRF Utilities**: `getCsrfToken()`, `csrfHeaders()`, `csrfFetch()` - Get CSRF token from `window.__LITESTAR_CSRF__` or meta tag.
 - **HTMX Utilities** (NEW in v0.15):
-  - `addDirective(name, handler)` - Register custom HTMX directives
-  - `registerHtmxExtension(name, extension)` - Register HTMX extensions
-  - `setHtmxDebug(enabled)` - Enable/disable HTMX debug mode
-  - `swapJson(target, json)` - Swap element content with JSON data
+    - `addDirective(name, handler)` - Register custom HTMX directives
+    - `registerHtmxExtension(name, extension)` - Register HTMX extensions
+    - `setHtmxDebug(enabled)` - Enable/disable HTMX debug mode
+    - `swapJson(target, json)` - Swap element content with JSON data
 
 Route metadata is now generated as TypeScript at build time (see Type-Safe Routing below). Runtime route helpers are deprecated in favor of the generated routes.ts file.
 
@@ -162,6 +162,7 @@ const url = route('users:get', { id: 123 });
 ```
 
 The generated file exports:
+
 - **`route(name, params)`**: Type-safe URL generator.
 - **`routes`**: Dictionary of route metadata.
 - **`RouteName`**: Union type of all available route names.
@@ -171,6 +172,7 @@ The generated file exports:
 This is the preferred routing method over the untyped runtime helpers.
 
 Configuration:
+
 - **Python**: `ViteConfig(types=TypeGenConfig(generate_routes=True, routes_ts_path=Path("src/generated/routes.ts")))`
 - **Vite Plugin**: Reads `routes.json` metadata and generates TypeScript at build time
 
@@ -327,6 +329,5 @@ The `examples/` directory contains working examples demonstrating various integr
 ### Templating & HTMX
 
 - **`jinja-htmx/`**: HTMX hypermedia integration with Jinja2 templates
-
 
 Each example includes its own `package.json`, Vite configuration, and demonstrates best practices for that particular stack.
