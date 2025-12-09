@@ -68,6 +68,19 @@ Meta-Frameworks
 
         Content-focused multi-framework SSG/SSR
 
+Real-World Example
+------------------
+
+.. grid:: 1
+    :gutter: 3
+
+    .. grid-item-card:: :octicon:`repo` Litestar Fullstack
+        :link: https://github.com/litestar-org/litestar-fullstack
+        :link-type: url
+
+        Production-ready fullstack application template using Litestar, Vite, and React.
+        Demonstrates authentication, team management, type-safe routing, and best practices.
+
 Quick Scaffold
 --------------
 
