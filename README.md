@@ -183,4 +183,5 @@ litestar assets generate-types  # one-off or CI
 
 - Docs: <https://litestar-org.github.io/litestar-vite/>
 - Examples: `examples/` (react, vue, svelte, react-inertia, vue-inertia, astro, nuxt, sveltekit, htmx)
+- Real-world example: [litestar-fullstack](https://github.com/litestar-org/litestar-fullstack) - Full-featured application using litestar-vite
 - Issues: <https://github.com/litestar-org/litestar-vite/issues/>
