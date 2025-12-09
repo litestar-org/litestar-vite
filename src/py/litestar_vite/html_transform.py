@@ -312,17 +312,29 @@ def transform_asset_urls(
     url_base = base_url or asset_url
 
     def _normalize_path(path: str) -> str:
-        """Normalize a path for manifest lookup by removing leading slash."""
+        """Normalize a path for manifest lookup by removing leading slash.
+
+        Returns:
+            The normalized path without leading slash.
+        """
         return path.lstrip("/")
 
     def _build_url(file_path: str) -> str:
-        """Build the full URL for an asset file."""
+        """Build the full URL for an asset file.
+
+        Returns:
+            The full URL combining base and file path.
+        """
         # Ensure url_base ends with / for proper joining
         base = url_base if url_base.endswith("/") else url_base + "/"
         return base + file_path
 
     def replace_script_src(match: re.Match[str]) -> str:
-        """Replace script src with manifest lookup."""
+        """Replace script src with manifest lookup.
+
+        Returns:
+            The transformed script tag with updated src, or original if not found.
+        """
         prefix = match.group(1)
         src = match.group(2)
         suffix = match.group(3)
@@ -335,7 +347,11 @@ def transform_asset_urls(
         return match.group(0)
 
     def replace_link_href(match: re.Match[str]) -> str:
-        """Replace link href with manifest lookup."""
+        """Replace link href with manifest lookup.
+
+        Returns:
+            The transformed link tag with updated href, or original if not found.
+        """
         prefix = match.group(1)
         href = match.group(2)
         suffix = match.group(3)
