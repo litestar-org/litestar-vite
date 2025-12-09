@@ -444,16 +444,16 @@ def _normalize_prefix(prefix: str) -> str:
     return prefix
 
 
-# Module-level cache for route prefixes per app (keyed by app id)
-_app_route_prefixes_cache: dict[int, tuple[str, ...]] = {}
+# Cache key for storing route prefixes in app.state
+_ROUTE_PREFIXES_CACHE_KEY = "_litestar_vite_route_prefixes"
 
 
 def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
     """Build a cached list of Litestar route prefixes for the given app.
 
     This function collects all registered route paths from the Litestar application
-    and caches them for efficient lookup. The cache is keyed by app object id and
-    persists for the lifetime of the app.
+    and caches them for efficient lookup. The cache is stored in app.state to ensure
+    it's automatically cleaned up when the app is garbage collected.
 
     Includes:
     - All registered Litestar route paths
@@ -466,9 +466,10 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
     Returns:
         A tuple of route prefix strings (without trailing slashes).
     """
-    app_id = id(app)
-    if app_id in _app_route_prefixes_cache:
-        return _app_route_prefixes_cache[app_id]
+    # Check for cached result in app.state
+    cached = getattr(app.state, _ROUTE_PREFIXES_CACHE_KEY, None)
+    if cached is not None:
+        return cached
 
     prefixes: list[str] = []
 
@@ -495,8 +496,8 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
     unique_prefixes = sorted(set(prefixes), key=len, reverse=True)
     result = tuple(unique_prefixes)
 
-    # Cache the result
-    _app_route_prefixes_cache[app_id] = result
+    # Cache the result in app.state
+    setattr(app.state, _ROUTE_PREFIXES_CACHE_KEY, result)
 
     if _is_proxy_debug():
         console.print(f"[dim][route-detection] Cached prefixes: {result}[/]")
