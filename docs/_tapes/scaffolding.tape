@@ -20,7 +20,7 @@ Hide
 Type "source .venv/bin/activate"
 Enter
 Sleep 500ms
-# Create a temporary demo directory
+Hide
 Type "cd /tmp && rm -rf litestar-demo && mkdir litestar-demo && cd litestar-demo"
 Enter
 Sleep 500ms
@@ -54,9 +54,6 @@ Enter
 Sleep 500ms
 Show
 
-Type "# Start with a basic Litestar app"
-Enter
-Sleep 500ms
 
 Type "cat app.py"
 Enter

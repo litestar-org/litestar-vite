@@ -30,8 +30,9 @@
  */
 
 import fs from "node:fs"
+import type { IncomingMessage, ServerResponse } from "node:http"
 import path from "node:path"
-import type { Plugin } from "vite"
+import type { Plugin, ViteDevServer } from "vite"
 
 import { createTypeGenerationPlugin } from "./shared/create-type-gen-plugin.js"
 
@@ -425,7 +426,7 @@ export default function litestarAstro(userConfig: LitestarAstroConfig = {}): Ast
 
         // Log proxied requests if verbose
         if (config.verbose) {
-          server.middlewares.use((req, _res, next) => {
+          server.middlewares.use((req: IncomingMessage, _res: ServerResponse, next: () => void) => {
             if (req.url?.startsWith(config.apiPrefix)) {
               logger.info(`Proxying: ${req.method} ${req.url} -> ${config.apiProxy}${req.url}`)
             }

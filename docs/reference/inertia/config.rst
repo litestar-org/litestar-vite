@@ -1,6 +1,6 @@
-====================
+=====================
 Inertia Configuration
-====================
+=====================
 
 Configuration classes for Inertia.js integration.
 

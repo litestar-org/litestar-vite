@@ -898,7 +898,7 @@ def test_get_litestar_route_prefixes_includes_openapi_config_path() -> None:
 
 def test_get_litestar_route_prefixes_caches_by_app() -> None:
     """Test that route prefixes are cached per app instance."""
-    from litestar_vite.plugin import _app_route_prefixes_cache, get_litestar_route_prefixes
+    from litestar_vite.plugin import _ROUTE_PREFIXES_CACHE_KEY, get_litestar_route_prefixes
 
     @get("/users")
     async def get_users() -> dict[str, str]:
@@ -907,12 +907,9 @@ def test_get_litestar_route_prefixes_caches_by_app() -> None:
     app1 = Litestar(route_handlers=[get_users])
     app2 = Litestar(route_handlers=[get_users])
 
-    # Clear cache before test
-    _app_route_prefixes_cache.clear()
-
-    # First call should populate cache
+    # First call should populate cache in app.state
     prefixes1 = get_litestar_route_prefixes(app1)
-    assert id(app1) in _app_route_prefixes_cache
+    assert hasattr(app1.state, _ROUTE_PREFIXES_CACHE_KEY)
 
     # Second call with same app should return cached result
     prefixes1_again = get_litestar_route_prefixes(app1)
@@ -920,9 +917,9 @@ def test_get_litestar_route_prefixes_caches_by_app() -> None:
 
     # Different app should have separate cache entry
     prefixes2 = get_litestar_route_prefixes(app2)
-    assert id(app2) in _app_route_prefixes_cache
+    assert hasattr(app2.state, _ROUTE_PREFIXES_CACHE_KEY)
     assert prefixes1 == prefixes2  # Same content
-    assert prefixes1 is not prefixes2  # Different objects
+    assert prefixes1 is not prefixes2  # Different objects (separate app instances)
 
 
 def test_get_litestar_route_prefixes_with_no_openapi() -> None:

@@ -79,7 +79,6 @@ Return partial HTML for HTMX swaps using ``HTMXTemplate``:
    :start-after: # [docs-start:htmx-fragment]
    :end-before: # [docs-end:htmx-fragment]
    :caption: Fragment endpoint with HTMXTemplate
-   :dedent: 4
 
 The ``HTMXTemplate`` response allows:
 
