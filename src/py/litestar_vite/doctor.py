@@ -21,6 +21,20 @@ if TYPE_CHECKING:
     from litestar_vite.config import ViteConfig
 
 
+# Compiled regex patterns for vite.config parsing (compiled once at module load)
+_VITE_CONFIG_PATTERNS: dict[str, re.Pattern[str]] = {
+    "asset_url": re.compile(r"""assetUrl\s*:\s*['"]([^'"]+)['"]"""),
+    "bundle_dir": re.compile(r"""bundleDir\s*:\s*['"]([^'"]+)['"]"""),
+    "hot_file": re.compile(r"""hotFile\s*:\s*['"]([^'"]+)['"]"""),
+    "types_enabled": re.compile(r"""types\s*:\s*{\s*enabled\s*:\s*(true|false)"""),
+    "types_output": re.compile(r"""output\s*:\s*['"]([^'"]+)['"]"""),
+    "types_openapi": re.compile(r"""openapiPath\s*:\s*['"]([^'"]+)['"]"""),
+    "types_routes": re.compile(r"""routesPath\s*:\s*['"]([^'"]+)['"]"""),
+    "types_generate_zod": re.compile(r"""generateZod\s*:\s*(true|false)"""),
+    "types_generate_sdk": re.compile(r"""generateSdk\s*:\s*(true|false)"""),
+}
+
+
 @dataclass
 class DoctorIssue:
     """Represents a detected configuration issue."""
@@ -116,23 +130,15 @@ class ViteDoctor:
                 return
 
     def _parse_vite_config(self, path: Path, content: str) -> ParsedViteConfig:
-        """Regex-based parsing of vite.config content."""
+        """Regex-based parsing of vite.config content.
+
+        Returns:
+            ParsedViteConfig instance with extracted values.
+        """
         parsed = ParsedViteConfig(path=path, content=content)
 
-        patterns = {
-            "asset_url": r"""assetUrl\s*:\s*['"]([^'"]+)['"]""",
-            "bundle_dir": r"""bundleDir\s*:\s*['"]([^'"]+)['"]""",
-            "hot_file": r"""hotFile\s*:\s*['"]([^'"]+)['"]""",
-            "types_enabled": r"""types\s*:\s*{\s*enabled\s*:\s*(true|false)""",
-            "types_output": r"""output\s*:\s*['"]([^'"]+)['"]""",
-            "types_openapi": r"""openapiPath\s*:\s*['"]([^'"]+)['"]""",
-            "types_routes": r"""routesPath\s*:\s*['"]([^'"]+)['"]""",
-            "types_generate_zod": r"""generateZod\s*:\s*(true|false)""",
-            "types_generate_sdk": r"""generateSdk\s*:\s*(true|false)""",
-        }
-
-        for key, pattern in patterns.items():
-            match = re.search(pattern, content)
+        for key, pattern in _VITE_CONFIG_PATTERNS.items():
+            match = pattern.search(content)
             if match:
                 val = match.group(1)
                 if key == "asset_url":
