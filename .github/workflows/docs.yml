@@ -72,6 +72,8 @@ jobs:
         env:
           # Disable Chrome sandbox for headless rendering
           VHS_NO_SANDBOX: "true"
+          # Bypass CI environment check - demos intentionally run dev commands
+          LITESTAR_BYPASS_ENV_CHECK: "1"
 
       - name: List generated files
         run: ls -la docs/_static/demos/ || echo "No demos generated"
