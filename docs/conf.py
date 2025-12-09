@@ -137,6 +137,10 @@ nitpick_ignore = [
     (PY_CLASS, "InertiaTypeGenConfig"),
     (PY_CLASS, "ScrollPropsConfig"),
     (PY_CLASS, "litestar_vite.inertia.types.ScrollPropsConfig"),
+    # Logging and markup types
+    (PY_CLASS, "LoggingConfig"),
+    (PY_CLASS, "litestar_vite.config.LoggingConfig"),
+    (PY_CLASS, "Markup"),
 ]
 nitpick_ignore_regex = [
     (PY_RE, r"litestar_vite.*\.T"),

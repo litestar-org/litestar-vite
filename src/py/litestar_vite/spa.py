@@ -695,7 +695,7 @@ class ViteSPAHandler:
         """Create a Litestar route handler for the SPA.
 
         The handler includes route exclusion logic to prevent the SPA catch-all
-        from shadowing Litestar-registered routes (e.g., /schema, /api/*).
+        from shadowing Litestar-registered routes (e.g., ``/schema``, ``/api``).
         When a request matches a Litestar route, NotFoundException is raised
         to let the router handle it properly.
 

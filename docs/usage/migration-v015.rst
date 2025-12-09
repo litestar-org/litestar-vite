@@ -376,11 +376,14 @@ If your user model has different required fields (e.g., ``uuid`` instead of ``id
        ),
    )
 
-   # Define your own User interface in TypeScript
+Then define your own User interface in TypeScript:
+
+.. code-block:: typescript
+
    declare module 'litestar-vite/inertia' {
      interface User {
-       uuid: string      // No id!
-       username: string  // No email!
+       uuid: string
+       username: string
      }
    }
 

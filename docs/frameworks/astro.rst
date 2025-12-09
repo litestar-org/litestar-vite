@@ -139,16 +139,15 @@ Add interactive islands with ``client:*`` directives:
       </body>
     </html>
 
-.. code-block:: typescript
+.. code-block:: tsx
 
     // src/components/Counter.tsx (React, Vue, Svelte, etc.)
     import { useState } from 'react'
-    import type { Summary } from '../generated/types.gen'
     import { route } from '../generated/routes'
 
     export default function Counter() {
       const [count, setCount] = useState(0)
-      const [summary, setSummary] = useState<Summary | null>(null)
+      const [summary, setSummary] = useState(null)
 
       async function loadSummary() {
         const res = await fetch(route('summary'))
