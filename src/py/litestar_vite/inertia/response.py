@@ -436,11 +436,19 @@ class InertiaResponse(Response[T]):
                 removal_in="3.0.0",
                 alternative="request.app",
             )
-        inertia_enabled = cast(
-            "bool",
-            getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False),
-        )
+        # Check if the client wants JSON explicitly via Accept header
+        # This allows API clients (Scalar, Postman, curl) to get raw JSON
+        # even when the route has a component parameter
+        accept_header = request.headers.get("accept", "")
+        prefers_json = "application/json" in accept_header and "text/html" not in accept_header
+
         is_inertia = cast("bool", getattr(request, "is_inertia", False))
+        route_has_component = cast("bool", getattr(request, "inertia_enabled", False))
+
+        # Only enable Inertia if:
+        # 1. Route has a component AND
+        # 2. Either the request is from Inertia client OR client doesn't explicitly prefer JSON
+        inertia_enabled = route_has_component and (is_inertia or not prefers_json)
         headers = {**headers, **self.headers} if headers is not None else self.headers
         cookies = self.cookies if cookies is None else itertools.chain(self.cookies, cookies)
         type_encoders = (

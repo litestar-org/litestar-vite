@@ -89,6 +89,101 @@ Non-Inertia Responses
    async def dashboard() -> dict:
        return {"stats": {...}}
 
+API Client Access (Content Negotiation)
+----------------------------------------
+
+Routes with ``component`` can also serve API clients (Scalar, Postman, curl) by
+sending ``Accept: application/json`` headers. This allows the same endpoint to
+work as both an Inertia page and a plain JSON API.
+
+.. code-block:: python
+
+   @get("/books", component="Books")
+   async def books() -> dict:
+       return {
+           "books": [
+               {"id": 1, "title": "Python Patterns"},
+               {"id": 2, "title": "Web APIs"},
+           ],
+           "total": 2,
+       }
+
+**Different clients, different responses:**
+
+.. tab-set::
+
+    .. tab-item:: Browser (Inertia)
+
+        .. code-block:: bash
+
+           # Inertia client request
+           curl -H "X-Inertia: true" http://localhost:8000/books
+
+        Returns Inertia JSON format:
+
+        .. code-block:: json
+
+           {
+             "component": "Books",
+             "props": {
+               "books": [...],
+               "total": 2
+             },
+             "url": "/books",
+             "version": "abc123"
+           }
+
+    .. tab-item:: API Client (JSON)
+
+        .. code-block:: bash
+
+           # API client with Accept header
+           curl -H "Accept: application/json" http://localhost:8000/books
+
+        Returns raw JSON:
+
+        .. code-block:: json
+
+           {
+             "books": [
+               {"id": 1, "title": "Python Patterns"},
+               {"id": 2, "title": "Web APIs"}
+             ],
+             "total": 2
+           }
+
+    .. tab-item:: Browser (First Load)
+
+        .. code-block:: bash
+
+           # Browser initial page load
+           curl http://localhost:8000/books
+
+        Returns rendered HTML with embedded Inertia data.
+
+**How it works:**
+
+1. Request includes ``Accept: application/json`` → Returns raw JSON
+2. Request includes ``X-Inertia: true`` → Returns Inertia protocol JSON
+3. Otherwise → Returns HTML page
+
+This is useful when:
+
+- Testing endpoints with Scalar/Swagger UI
+- Accessing from Postman or other API clients
+- Using curl for debugging
+- Building mobile apps that share backend with web app
+
+.. note::
+
+   If you need a pure API endpoint (no Inertia), omit the ``component`` parameter:
+
+   .. code-block:: python
+
+      @get("/api/books")  # No component = always JSON
+      async def api_books() -> list[Book]:
+          return Book.all()
+
 Pagination Containers
 ---------------------
 

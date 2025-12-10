@@ -174,6 +174,71 @@ async def test_default_route_response_no_component(
         assert response.content == b'{"thing":"value"}'
 
 
+async def test_component_with_accept_json_returns_raw_json(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that routes with component return raw JSON when Accept: application/json is sent.
+
+    This allows API clients (Scalar, Postman, curl) to access the same endpoint
+    that serves Inertia pages, and get back plain JSON instead of Inertia-wrapped responses.
+    """
+
+    @get("/books", component="Books")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"books": [{"id": 1, "title": "Test Book"}], "total": 1}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Request with Accept: application/json (like Scalar, Postman, curl)
+        response = client.get("/books", headers={"Accept": "application/json"})
+
+        # Should return raw JSON without Inertia wrapping
+        assert response.status_code == 200
+        assert response.headers.get("content-type") == "application/json"
+        # Should NOT have Inertia headers
+        assert InertiaHeaders.ENABLED.value not in response.headers
+        assert InertiaHeaders.VERSION.value not in response.headers
+
+        # Content should be raw JSON, not Inertia page format
+        data = response.json()
+        assert data == {"books": [{"id": 1, "title": "Test Book"}], "total": 1}
+        assert "component" not in data
+        assert "props" not in data
+
+
+async def test_component_without_accept_header_returns_inertia(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that routes with component still return Inertia responses when no Accept header is sent."""
+
+    @get("/books", component="Books")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"books": [{"id": 1, "title": "Test Book"}]}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Request without explicit Accept header (browser default behavior)
+        response = client.get("/books")
+
+        # Should return HTML with Inertia data embedded
+        assert response.status_code == 200
+        assert "text/html" in response.headers.get("content-type", "")
+
+
 async def test_component_inertia_version_mismatch_returns_409(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
