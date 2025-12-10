@@ -7,6 +7,7 @@ __all__ = (
     "InertiaHeaderType",
     "MergeStrategy",
     "PageProps",
+    "ScrollPagination",
     "ScrollPropsConfig",
     "to_camel_case",
     "to_inertia_dict",
@@ -126,6 +127,89 @@ class ScrollPropsConfig:
     previous_page: "int | None" = None
     next_page: "int | None" = None
     current_page: int = 1
+
+
+@dataclass
+class ScrollPagination(Generic[T]):
+    """Pagination container optimized for infinite scroll.
+
+    A generic pagination type that works seamlessly with Inertia's infinite
+    scroll feature. Can be constructed directly or created from any pagination
+    container using ``create_from()``.
+
+    Attributes:
+        items: The paginated items for the current page.
+        total: Total number of items across all pages.
+        limit: Maximum items per page (page size).
+        offset: Number of items skipped from the start.
+
+    Example::
+
+        from litestar_vite.inertia.types import ScrollPagination
+
+        # Direct construction
+        @get("/users", component="Users", infinite_scroll=True)
+        async def list_users() -> ScrollPagination[User]:
+            users = await fetch_users(limit=10, offset=0)
+            return ScrollPagination(items=users, total=100, limit=10, offset=0)
+
+        # From existing pagination
+        @get("/posts", component="Posts", infinite_scroll=True)
+        async def list_posts() -> ScrollPagination[Post]:
+            pagination = await repo.list_paginated(limit=10, offset=0)
+            return ScrollPagination.create_from(pagination)
+    """
+
+    items: list[T]
+    total: int
+    limit: int
+    offset: int
+
+    @classmethod
+    def create_from(cls, pagination: Any) -> "ScrollPagination[T]":
+        """Create from any pagination container (auto-detects type).
+
+        Supports OffsetPagination, ClassicPagination, and any custom pagination
+        class with standard pagination attributes.
+
+        Args:
+            pagination: Any pagination container with ``items`` attribute.
+
+        Returns:
+            A ScrollPagination instance with normalized offset-based metadata.
+
+        Example::
+
+            from litestar.pagination import OffsetPagination, ClassicPagination
+
+            # From OffsetPagination
+            offset_page = OffsetPagination(items=[...], limit=10, offset=20, total=100)
+            scroll = ScrollPagination.create_from(offset_page)
+
+            # From ClassicPagination
+            classic_page = ClassicPagination(items=[...], page_size=10, current_page=3, total_pages=10)
+            scroll = ScrollPagination.create_from(classic_page)
+        """
+        items = pagination.items
+
+        # Offset-style (OffsetPagination, etc.)
+        if hasattr(pagination, "offset") and hasattr(pagination, "limit"):
+            return cls(
+                items=items,
+                total=getattr(pagination, "total", len(items)),
+                limit=pagination.limit,
+                offset=pagination.offset,
+            )
+
+        # Classic-style (ClassicPagination, etc.)
+        if hasattr(pagination, "current_page") and hasattr(pagination, "page_size"):
+            page_size = pagination.page_size
+            offset = (pagination.current_page - 1) * page_size
+            total = getattr(pagination, "total_pages", 1) * page_size
+            return cls(items=items, total=total, limit=page_size, offset=offset)
+
+        # Fallback - just use items
+        return cls(items=items, total=len(items), limit=len(items), offset=0)
 
 
 @dataclass

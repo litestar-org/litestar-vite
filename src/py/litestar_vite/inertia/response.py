@@ -34,6 +34,7 @@ from litestar_vite.inertia.helpers import (
     is_pagination_container,
     js_routes_script,
     lazy_render,
+    pagination_to_dict,
     should_render,
 )
 from litestar_vite.inertia.plugin import InertiaPlugin
@@ -262,13 +263,19 @@ class InertiaResponse(Response[T]):
 
         for key, value in list(shared_props.items()):
             if is_pagination_container(value):
-                items, scroll = extract_pagination_scroll_props(value)
-                shared_props[key] = items
+                # Extract scroll_props for infinite scroll (v2 feature)
+                _, scroll = extract_pagination_scroll_props(value)
                 # Only use extracted scroll_props if:
                 # - Not explicitly provided AND
                 # - infinite_scroll is enabled on the route
                 if extracted_scroll_props is None and scroll is not None and infinite_scroll_enabled:
                     extracted_scroll_props = scroll
+
+                # Flatten pagination: items stay under the key, metadata becomes siblings
+                # e.g., {"users": Pagination(...)} -> {"users": [...], "total": 50, "limit": 10, ...}
+                pagination_dict = pagination_to_dict(value)
+                shared_props[key] = pagination_dict.pop("items")  # items under original key
+                shared_props.update(pagination_dict)  # metadata as siblings
 
         # Determine encrypt_history value (v2 feature)
         # Priority: response param > config default > False

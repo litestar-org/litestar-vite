@@ -1139,7 +1139,7 @@ async def test_pagination_container_default_key(
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
-    """Test that pagination containers use 'items' as default key."""
+    """Test that pagination containers flatten metadata as siblings with items under default key."""
     from dataclasses import dataclass
 
     @dataclass
@@ -1162,11 +1162,11 @@ async def test_pagination_container_default_key(
     ) as client:
         response = client.get("/users", headers={InertiaHeaders.ENABLED.value: "true"})
         data = response.json()
-        # Pagination should be unwrapped to just items under default "items" key
+        # Items under default "items" key, metadata flattened as siblings
         assert data["props"]["items"] == ["user1", "user2"]
-        assert "limit" not in data["props"]
-        assert "offset" not in data["props"]
-        assert "total" not in data["props"]
+        assert data["props"]["total"] == 2
+        assert data["props"]["limit"] == 10
+        assert data["props"]["offset"] == 0
 
 
 async def test_pagination_container_custom_key(
@@ -1174,7 +1174,7 @@ async def test_pagination_container_custom_key(
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
-    """Test that pagination containers use route's 'key' opt when provided."""
+    """Test that pagination containers use route's 'key' opt with metadata flattened as siblings."""
     from dataclasses import dataclass
 
     @dataclass
@@ -1197,8 +1197,12 @@ async def test_pagination_container_custom_key(
     ) as client:
         response = client.get("/users", headers={InertiaHeaders.ENABLED.value: "true"})
         data = response.json()
-        # Pagination should be unwrapped to just items under custom "users" key
+        # Items under custom "users" key, metadata flattened as siblings
         assert data["props"]["users"] == ["user1", "user2"]
+        assert data["props"]["total"] == 2
+        assert data["props"]["limit"] == 10
+        assert data["props"]["offset"] == 0
+        # Top-level "items" should not exist (custom key used)
         assert "items" not in data["props"]
 
 
@@ -1207,7 +1211,7 @@ async def test_pagination_in_dict_preserves_key(
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
-    """Test that pagination in dict uses dict key, not route key opt."""
+    """Test that pagination in dict uses dict key with metadata flattened as siblings."""
     from dataclasses import dataclass
 
     @dataclass
@@ -1230,9 +1234,11 @@ async def test_pagination_in_dict_preserves_key(
     ) as client:
         response = client.get("/users", headers={InertiaHeaders.ENABLED.value: "true"})
         data = response.json()
-        # Dict key "members" should be used, not route opt "key"
+        # Items under dict key "members", metadata flattened as siblings
         assert data["props"]["members"] == ["user1", "user2"]
-        assert "items" not in data["props"]
+        assert data["props"]["total"] == 2
+        assert data["props"]["limit"] == 10
+        assert data["props"]["offset"] == 0
         assert "ignored" not in data["props"]
 
 
@@ -1241,7 +1247,7 @@ async def test_pagination_with_infinite_scroll_opt(
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
-    """Test that infinite_scroll=True calculates scroll_props from pagination."""
+    """Test that infinite_scroll=True calculates scroll_props with metadata flattened as siblings."""
     from dataclasses import dataclass
 
     @dataclass
@@ -1265,13 +1271,51 @@ async def test_pagination_with_infinite_scroll_opt(
     ) as client:
         response = client.get("/posts", headers={InertiaHeaders.ENABLED.value: "true"})
         data = response.json()
-        # Items should be under custom key
+        # Items under custom key, metadata flattened as siblings
         assert data["props"]["posts"] == ["post1", "post2"]
+        assert data["props"]["total"] == 50
+        assert data["props"]["limit"] == 10
+        assert data["props"]["offset"] == 10
         # scroll_props should be calculated from pagination metadata
         assert "scrollProps" in data
         assert data["scrollProps"]["currentPage"] == 2  # offset=10, limit=10 -> page 2
         assert data["scrollProps"]["previousPage"] == 1
         assert data["scrollProps"]["nextPage"] == 3
+
+
+async def test_pagination_classic_style_metadata(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that ClassicPagination style metadata is flattened with camelCase keys."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class MockClassicPagination:
+        items: list[str]
+        page_size: int
+        current_page: int
+        total_pages: int
+
+    @get("/articles", component="Articles", key="articles")
+    async def handler(request: Request[Any, Any, Any]) -> MockClassicPagination:
+        return MockClassicPagination(items=["article1", "article2"], page_size=20, current_page=1, total_pages=5)
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/articles", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # Items under custom key, classic pagination metadata flattened as siblings (camelCase)
+        assert data["props"]["articles"] == ["article1", "article2"]
+        assert data["props"]["pageSize"] == 20
+        assert data["props"]["currentPage"] == 1
+        assert data["props"]["totalPages"] == 5
 
 
 # =====================================================

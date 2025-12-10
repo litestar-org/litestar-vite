@@ -339,3 +339,132 @@ async def test_partial_reload_with_partial_except(
         # These should be excluded
         assert "cache" not in props
         assert "settings" not in props
+
+
+# =====================================================
+# pagination_to_dict() Helper Tests
+# =====================================================
+
+
+def test_pagination_to_dict_offset_pagination() -> None:
+    """Test pagination_to_dict with OffsetPagination-style data."""
+    from dataclasses import dataclass
+
+    from litestar_vite.inertia.helpers import pagination_to_dict
+
+    @dataclass
+    class MockOffsetPagination:
+        items: list[str]
+        limit: int
+        offset: int
+        total: int
+
+    pagination = MockOffsetPagination(items=["a", "b", "c"], limit=10, offset=20, total=100)
+    result = pagination_to_dict(pagination)
+
+    assert result["items"] == ["a", "b", "c"]
+    assert result["total"] == 100
+    assert result["limit"] == 10
+    assert result["offset"] == 20
+
+
+def test_pagination_to_dict_classic_pagination() -> None:
+    """Test pagination_to_dict with ClassicPagination-style data."""
+    from dataclasses import dataclass
+
+    from litestar_vite.inertia.helpers import pagination_to_dict
+
+    @dataclass
+    class MockClassicPagination:
+        items: list[str]
+        page_size: int
+        current_page: int
+        total_pages: int
+
+    pagination = MockClassicPagination(items=["x", "y"], page_size=15, current_page=2, total_pages=10)
+    result = pagination_to_dict(pagination)
+
+    assert result["items"] == ["x", "y"]
+    # camelCase conversion
+    assert result["pageSize"] == 15
+    assert result["currentPage"] == 2
+    assert result["totalPages"] == 10
+
+
+def test_pagination_to_dict_custom_pagination() -> None:
+    """Test pagination_to_dict with custom pagination class having extra attributes."""
+    from dataclasses import dataclass
+
+    from litestar_vite.inertia.helpers import pagination_to_dict
+
+    @dataclass
+    class CustomPagination:
+        items: list[int]
+        total: int
+        has_more: bool
+        next_cursor: str | None
+
+    pagination = CustomPagination(items=[1, 2, 3], total=50, has_more=True, next_cursor="abc123")
+    result = pagination_to_dict(pagination)
+
+    assert result["items"] == [1, 2, 3]
+    assert result["total"] == 50
+    assert result["hasMore"] is True
+    assert result["nextCursor"] == "abc123"
+
+
+def test_pagination_to_dict_empty_items() -> None:
+    """Test pagination_to_dict with empty items list."""
+    from dataclasses import dataclass
+
+    from litestar_vite.inertia.helpers import pagination_to_dict
+
+    @dataclass
+    class MockPagination:
+        items: list[str]
+        limit: int
+        offset: int
+        total: int
+
+    pagination = MockPagination(items=[], limit=10, offset=0, total=0)
+    result = pagination_to_dict(pagination)
+
+    assert result["items"] == []
+    assert result["total"] == 0
+    assert result["limit"] == 10
+    assert result["offset"] == 0
+
+
+def test_pagination_to_dict_mixed_attributes() -> None:
+    """Test pagination_to_dict with mix of known pagination attributes."""
+    from dataclasses import dataclass
+
+    from litestar_vite.inertia.helpers import pagination_to_dict
+
+    @dataclass
+    class MixedPagination:
+        items: list[str]
+        total: int
+        limit: int
+        offset: int
+        page_size: int  # Both offset and classic style
+        current_page: int
+
+    # Has both offset and classic pagination attributes
+    pagination = MixedPagination(
+        items=["item1"],
+        total=100,
+        limit=10,
+        offset=0,
+        page_size=10,
+        current_page=1,
+    )
+    result = pagination_to_dict(pagination)
+
+    # All found attributes should be included
+    assert result["items"] == ["item1"]
+    assert result["total"] == 100
+    assert result["limit"] == 10
+    assert result["offset"] == 0
+    assert result["pageSize"] == 10
+    assert result["currentPage"] == 1

@@ -1035,3 +1035,62 @@ def extract_pagination_scroll_props(
 
     # Fallback - has items but we couldn't determine pagination metadata
     return items, None
+
+
+# Known pagination attribute mappings (snake_case -> camelCase)
+# This tuple is used by pagination_to_dict() to dynamically extract
+# pagination metadata from any pagination container class.
+PAGINATION_ATTRS: tuple[tuple[str, str], ...] = (
+    ("total", "total"),
+    ("limit", "limit"),
+    ("offset", "offset"),
+    ("page_size", "pageSize"),
+    ("current_page", "currentPage"),
+    ("total_pages", "totalPages"),
+    ("per_page", "perPage"),
+    ("last_page", "lastPage"),
+    ("has_more", "hasMore"),
+    ("has_next", "hasNext"),
+    ("has_previous", "hasPrevious"),
+    ("next_cursor", "nextCursor"),
+    ("previous_cursor", "previousCursor"),
+)
+
+
+def pagination_to_dict(value: "Any") -> dict[str, Any]:
+    """Convert a pagination container to a dict with items and all metadata.
+
+    Dynamically extracts known pagination attributes from any pagination
+    container class. This supports custom pagination implementations as
+    long as they have an ``items`` attribute and standard pagination metadata.
+
+    The function checks for common pagination attributes like ``total``,
+    ``limit``, ``offset`` (for offset pagination), ``page_size``, ``current_page``,
+    ``total_pages`` (for classic pagination), and cursor-based attributes.
+    Any found attributes are included in the result dict with camelCase keys.
+
+    Args:
+        value: A pagination container with ``items`` and metadata attributes.
+
+    Returns:
+        A dict with ``items`` and any found pagination metadata (camelCase keys).
+
+    Example::
+
+        from litestar.pagination import OffsetPagination
+
+        pagination = OffsetPagination(items=[1, 2, 3], limit=10, offset=0, total=50)
+        result = pagination_to_dict(pagination)
+        # result = {"items": [1, 2, 3], "total": 50, "limit": 10, "offset": 0}
+
+    Note:
+        This function is used internally by InertiaResponse to preserve
+        pagination metadata when returning pagination containers from routes.
+    """
+    result: dict[str, Any] = {"items": value.items}
+
+    for attr, camel_attr in PAGINATION_ATTRS:
+        if hasattr(value, attr):
+            result[camel_attr] = getattr(value, attr)
+
+    return result

@@ -205,3 +205,74 @@ def test_extract_pagination_with_typed_items() -> None:
     assert extracted_items[0].name == "Alice"
     assert scroll is not None
     assert scroll.current_page == 1
+
+
+# =====================================================
+# ScrollPagination Tests
+# =====================================================
+
+
+def test_scroll_pagination_direct_construction() -> None:
+    """Test ScrollPagination can be constructed directly."""
+    from litestar_vite.inertia.types import ScrollPagination
+
+    pagination: ScrollPagination[str] = ScrollPagination(
+        items=["a", "b", "c"],
+        total=100,
+        limit=10,
+        offset=20,
+    )
+
+    assert pagination.items == ["a", "b", "c"]
+    assert pagination.total == 100
+    assert pagination.limit == 10
+    assert pagination.offset == 20
+
+
+def test_scroll_pagination_create_from_offset() -> None:
+    """Test ScrollPagination.create_from with OffsetPagination-style data."""
+    from litestar_vite.inertia.types import ScrollPagination
+
+    offset_pagination = MockOffsetPagination(items=["x", "y"], limit=10, offset=30, total=50)
+    scroll: ScrollPagination[str] = ScrollPagination.create_from(offset_pagination)
+
+    assert scroll.items == ["x", "y"]
+    assert scroll.total == 50
+    assert scroll.limit == 10
+    assert scroll.offset == 30
+
+
+def test_scroll_pagination_create_from_classic() -> None:
+    """Test ScrollPagination.create_from with ClassicPagination-style data."""
+    from litestar_vite.inertia.types import ScrollPagination
+
+    classic_pagination = MockClassicPagination(items=["a", "b"], page_size=10, current_page=3, total_pages=5)
+    scroll: ScrollPagination[str] = ScrollPagination.create_from(classic_pagination)
+
+    assert scroll.items == ["a", "b"]
+    assert scroll.limit == 10
+    assert scroll.offset == 20  # (3-1) * 10 = 20
+    assert scroll.total == 50  # 5 * 10 = 50
+
+
+def test_scroll_pagination_is_pagination_container() -> None:
+    """Test ScrollPagination is recognized as a pagination container."""
+    from litestar_vite.inertia.types import ScrollPagination
+
+    pagination: ScrollPagination[str] = ScrollPagination(items=["a"], total=10, limit=5, offset=0)
+
+    assert is_pagination_container(pagination)
+
+
+def test_scroll_pagination_works_with_extract_scroll_props() -> None:
+    """Test ScrollPagination works with extract_pagination_scroll_props."""
+    from litestar_vite.inertia.types import ScrollPagination
+
+    pagination: ScrollPagination[str] = ScrollPagination(items=["a", "b"], total=50, limit=10, offset=20)
+    items, scroll = extract_pagination_scroll_props(pagination)
+
+    assert items == ["a", "b"]
+    assert scroll is not None
+    assert scroll.current_page == 3  # offset=20, limit=10 -> page 3
+    assert scroll.previous_page == 2
+    assert scroll.next_page == 4
