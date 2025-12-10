@@ -102,3 +102,141 @@ export async function resolvePageComponent<T>(path: string | string[], pages: Re
 
   throw new Error(`Page not found: ${path}`)
 }
+
+// ============================================================================
+// Pagination Types
+// ============================================================================
+
+/**
+ * Offset-based pagination props.
+ *
+ * Returned when a route returns Litestar's `OffsetPagination` type.
+ * Contains items plus metadata for offset/limit pagination.
+ *
+ * @example
+ * ```ts
+ * interface User { id: string; name: string }
+ * const { items, total, limit, offset } = props.users as OffsetPaginationProps<User>
+ * ```
+ */
+export interface OffsetPaginationProps<T> {
+  /** The paginated items for the current page */
+  items: T[]
+  /** Total number of items across all pages */
+  total: number
+  /** Maximum items per page (page size) */
+  limit: number
+  /** Number of items skipped (offset from start) */
+  offset: number
+}
+
+/**
+ * Classic page-based pagination props.
+ *
+ * Returned when a route returns Litestar's `ClassicPagination` type.
+ * Contains items plus metadata for page number pagination.
+ *
+ * @example
+ * ```ts
+ * interface Post { id: string; title: string }
+ * const { items, currentPage, totalPages, pageSize } = props.posts as ClassicPaginationProps<Post>
+ * ```
+ */
+export interface ClassicPaginationProps<T> {
+  /** The paginated items for the current page */
+  items: T[]
+  /** Current page number (1-indexed) */
+  currentPage: number
+  /** Total number of pages */
+  totalPages: number
+  /** Number of items per page */
+  pageSize: number
+}
+
+/**
+ * Cursor-based pagination props.
+ *
+ * Used for cursor/keyset pagination, commonly with infinite scroll.
+ * Contains items plus cursor tokens for navigation.
+ *
+ * @example
+ * ```ts
+ * interface Message { id: string; content: string }
+ * const { items, hasMore, nextCursor } = props.messages as CursorPaginationProps<Message>
+ * if (hasMore && nextCursor) {
+ *   // Fetch more with cursor
+ * }
+ * ```
+ */
+export interface CursorPaginationProps<T> {
+  /** The paginated items for the current page */
+  items: T[]
+  /** Total number of items (if known) */
+  total?: number
+  /** Whether more items exist after the current page */
+  hasMore?: boolean
+  /** Whether a next page exists */
+  hasNext?: boolean
+  /** Whether a previous page exists */
+  hasPrevious?: boolean
+  /** Cursor token for fetching the next page */
+  nextCursor?: string | null
+  /** Cursor token for fetching the previous page */
+  previousCursor?: string | null
+}
+
+/**
+ * Union type for any pagination props.
+ *
+ * Use when you need to handle multiple pagination styles.
+ *
+ * @example
+ * ```ts
+ * function renderPagination<T>(data: PaginationProps<T>) {
+ *   if ('offset' in data) {
+ *     // Handle offset pagination
+ *   } else if ('currentPage' in data) {
+ *     // Handle classic pagination
+ *   } else {
+ *     // Handle cursor pagination
+ *   }
+ * }
+ * ```
+ */
+export type PaginationProps<T> = OffsetPaginationProps<T> | ClassicPaginationProps<T> | CursorPaginationProps<T>
+
+// ============================================================================
+// Infinite Scroll Types (Inertia v2)
+// ============================================================================
+
+/**
+ * Scroll props configuration for Inertia v2 infinite scroll.
+ *
+ * Returned in the `scrollProps` field of an Inertia response when
+ * `infinite_scroll=True` is set on the route.
+ *
+ * @example
+ * ```ts
+ * // In your Inertia page component
+ * import { usePage } from '@inertiajs/vue3'
+ *
+ * const page = usePage()
+ * const scrollProps = page.props.scrollProps as ScrollProps
+ *
+ * function loadMore() {
+ *   if (scrollProps.nextPage) {
+ *     router.get(url, { [scrollProps.pageName]: scrollProps.nextPage })
+ *   }
+ * }
+ * ```
+ */
+export interface ScrollProps {
+  /** Query parameter name for page number (default: "page") */
+  pageName: string
+  /** Current page number */
+  currentPage: number
+  /** Previous page number, or null if on first page */
+  previousPage: number | null
+  /** Next page number, or null if on last page */
+  nextPage: number | null
+}
