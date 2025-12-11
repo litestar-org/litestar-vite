@@ -120,7 +120,6 @@ def inject_head_script(html: str, script: str, *, escape: bool = True) -> str:
     if not script:
         return html
 
-    # Escape the script content if needed
     if escape:
         script = _escape_script(script)
 
@@ -161,14 +160,12 @@ def inject_body_content(html: str, content: str, *, position: str = "end") -> st
         return html
 
     if position == "end":
-        # Inject before closing </body> tag
         body_end_match = _BODY_END_PATTERN.search(html)
         if body_end_match:
             pos = body_end_match.start()
             return html[:pos] + content + "\n" + html[pos:]
 
     elif position == "start":
-        # Inject after opening <body> tag
         body_start_match = _BODY_START_PATTERN.search(html)
         if body_start_match:
             pos = body_start_match.end()
@@ -205,7 +202,6 @@ def set_data_attribute(html: str, selector: str, attr: str, value: str) -> str:
     if not selector or not attr:
         return html
 
-    # Escape the value for HTML attribute
     escaped_value = _escape_attr(value)
     attr_pattern = _get_attr_pattern(attr)
 
@@ -215,12 +211,9 @@ def set_data_attribute(html: str, selector: str, attr: str, value: str) -> str:
         def replacer(match: re.Match[str]) -> str:
             opening = match.group(1)
             closing = match.group(2)
-            # Check if attribute already exists
             if attr_pattern.search(opening):
-                # Replace existing attribute
                 opening = attr_pattern.sub(f'{attr_name}="{escaped_val}"', opening)
             else:
-                # Add new attribute
                 opening = opening.rstrip() + f' {attr_name}="{escaped_val}"'
             return opening + closing
 

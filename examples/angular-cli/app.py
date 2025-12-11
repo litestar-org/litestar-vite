@@ -89,10 +89,10 @@ class LibraryController(Controller):
 # - Prod: mode="external" auto-serves bundle_dir as static files
 vite = VitePlugin(
     config=ViteConfig(
-        mode="external",  # Non-Vite framework: auto-serves bundle_dir in production
+        mode="external",
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, bundle_dir=dist_dir),
-        types=TypeGenConfig(),  # output defaults to "src/generated"
+        types=TypeGenConfig(),
         runtime=RuntimeConfig(
             external_dev_server=ExternalDevServer(
                 target="http://localhost:4200",

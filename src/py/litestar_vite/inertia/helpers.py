@@ -19,14 +19,14 @@ if TYPE_CHECKING:
 
     from litestar_vite.inertia.plugin import InertiaPlugin
     from litestar_vite.inertia.routes import Routes
-    from litestar_vite.inertia.types import ScrollPropsConfig
+
+from litestar_vite.inertia.types import ScrollPropsConfig
 
 T = TypeVar("T")
 T_ParamSpec = ParamSpec("T_ParamSpec")
 PropKeyT = TypeVar("PropKeyT", bound=str)
 StaticT = TypeVar("StaticT", bound=object)
 
-# Default group for deferred props
 DEFAULT_DEFERRED_GROUP = "default"
 
 
@@ -190,7 +190,6 @@ class PropFilter:
         Returns:
             True if the prop should be included, False otherwise.
         """
-        # Exclude takes precedence (v2 protocol behavior)
         if self.exclude is not None:
             return key not in self.exclude
         if self.include is not None:
@@ -303,22 +302,18 @@ class MergeProp(Generic[PropKeyT, T]):
 
     @property
     def key(self) -> "PropKeyT":
-        """The prop key."""
         return self._key
 
     @property
     def value(self) -> "T":
-        """The value to merge."""
         return self._value
 
     @property
     def strategy(self) -> "Literal['append', 'prepend', 'deep']":
-        """The merge strategy."""
         return self._strategy  # pyright: ignore[reportReturnType]
 
     @property
     def match_on(self) -> "list[str] | None":
-        """Keys to match items on during merge."""
         return self._match_on
 
 
@@ -403,8 +398,6 @@ def scroll_props(
                 ),
             )
     """
-    from litestar_vite.inertia.types import ScrollPropsConfig
-
     return ScrollPropsConfig(
         page_name=page_name,
         current_page=current_page,
@@ -420,7 +413,7 @@ def is_merge_prop(value: "Any") -> "TypeGuard[MergeProp[Any, Any]]":
         value: Any value to check
 
     Returns:
-        bool: True if value is a MergeProp
+        True if value is a MergeProp
     """
     return isinstance(value, MergeProp)
 
@@ -552,7 +545,7 @@ def is_lazy_prop(value: "Any") -> "TypeGuard[DeferredProp[Any, Any] | StaticProp
         value: Any value to check
 
     Returns:
-        bool: True if value is a deferred property
+        True if value is a deferred property
     """
     return isinstance(value, (DeferredProp, StaticProp))
 
@@ -564,7 +557,7 @@ def is_deferred_prop(value: "Any") -> "TypeGuard[DeferredProp[Any, Any]]":
         value: Any value to check
 
     Returns:
-        bool: True if value is a DeferredProp
+        True if value is a DeferredProp
     """
     return isinstance(value, DeferredProp)
 
@@ -656,7 +649,7 @@ def is_or_contains_lazy_prop(value: "Any") -> "bool":
         value: Any value to check
 
     Returns:
-        bool: True if value is or contains a deferred property
+        True if value is or contains a deferred property
     """
     if is_lazy_prop(value):
         return True
@@ -700,13 +693,25 @@ def lazy_render(
             },
         )
 
-    if isinstance(value, (list, tuple)):
-        filtered = [
-            lazy_render(v, partial_data, portal, partial_except)
-            for v in cast("Iterable[Any]", value)
-            if should_render(v, partial_data, partial_except)
-        ]
-        return cast("T", type(value)(filtered))  # pyright: ignore[reportUnknownArgumentType]
+    if isinstance(value, list):
+        return cast(
+            "T",
+            [
+                lazy_render(v, partial_data, portal, partial_except)
+                for v in cast("Iterable[Any]", value)
+                if should_render(v, partial_data, partial_except)
+            ],
+        )
+
+    if isinstance(value, tuple):
+        return cast(
+            "T",
+            tuple(
+                lazy_render(v, partial_data, portal, partial_except)
+                for v in cast("Iterable[Any]", value)
+                if should_render(v, partial_data, partial_except)
+            ),
+        )
 
     if is_lazy_prop(value) and should_render(value, partial_data, partial_except):
         return cast("T", value.render(portal))
@@ -729,7 +734,7 @@ def get_shared_props(
         partial_except: Optional set of keys to exclude (X-Inertia-Partial-Except, v2).
 
     Returns:
-        Dict[str, Any]: The shared props.
+        The shared props.
 
     Note:
         Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
@@ -744,9 +749,7 @@ def get_shared_props(
         shared_props = cast("dict[str,Any]", request.session.pop("_shared", {}))
         inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
 
-        # Handle shared props with key-based partial filtering
         for key, value in shared_props.items():
-            # Use key-based filtering for all props (v2 enhanced behavior)
             if not should_render(value, partial_data, partial_except, key=key):
                 continue
             if is_lazy_prop(value):
@@ -757,12 +760,10 @@ def get_shared_props(
         for message in cast("list[dict[str,Any]]", request.session.pop("_messages", [])):
             flash[message["category"]].append(message["message"])
 
-        # Static page props - also apply partial filtering
         for key, value in inertia_plugin.config.extra_static_page_props.items():
             if should_render(value, partial_data, partial_except, key=key):
                 props[key] = value
 
-        # Session props - also apply partial filtering
         for session_prop in inertia_plugin.config.extra_session_page_props:
             if (
                 session_prop not in props
@@ -946,14 +947,10 @@ def is_pagination_container(value: "Any") -> bool:
     if value is None:
         return False
 
-    # Must have items attribute
     if not hasattr(value, "items"):
         return False
 
-    # Check for OffsetPagination style (limit, offset, total)
     has_offset_style = all(hasattr(value, attr) for attr in ("limit", "offset", "total"))
-
-    # Check for ClassicPagination style (page_size, current_page, total_pages)
     has_classic_style = all(hasattr(value, attr) for attr in ("page_size", "current_page", "total_pages"))
 
     return has_offset_style or has_classic_style
@@ -985,23 +982,19 @@ def extract_pagination_scroll_props(
         # items = pagination.items
         # scroll = ScrollPropsConfig(current_page=3, previous_page=2, next_page=4)
     """
-    from litestar_vite.inertia.types import ScrollPropsConfig
-
     if not is_pagination_container(value):
         return value, None
 
     items = value.items
 
-    # OffsetPagination style (limit, offset, total)
     if hasattr(value, "limit") and hasattr(value, "offset") and hasattr(value, "total"):
         limit = value.limit
         offset = value.offset
         total = value.total
 
-        # Calculate page numbers from offset/limit
         if limit > 0:
             current_page = (offset // limit) + 1
-            total_pages = (total + limit - 1) // limit  # Ceiling division
+            total_pages = (total + limit - 1) // limit
         else:
             current_page = 1
             total_pages = 1
@@ -1017,7 +1010,6 @@ def extract_pagination_scroll_props(
         )
         return items, scroll_props
 
-    # ClassicPagination style (page_size, current_page, total_pages)
     if hasattr(value, "current_page") and hasattr(value, "total_pages"):
         current_page = value.current_page
         total_pages = value.total_pages
@@ -1033,7 +1025,6 @@ def extract_pagination_scroll_props(
         )
         return items, scroll_props
 
-    # Fallback - has items but we couldn't determine pagination metadata
     return items, None
 
 

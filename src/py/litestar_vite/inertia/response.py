@@ -42,7 +42,6 @@ from litestar_vite.inertia.types import InertiaHeaderType, PageProps, ScrollProp
 from litestar_vite.plugin import VitePlugin
 
 if TYPE_CHECKING:
-    from litestar.app import Litestar
     from litestar.background_tasks import BackgroundTask, BackgroundTasks
     from litestar.connection.base import AuthT, StateT, UserT
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
@@ -181,7 +180,6 @@ class InertiaResponse(Response[T]):
             A dictionary holding the template context
         """
         csrf_token = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
-        # Use to_dict() to convert snake_case to camelCase for Inertia.js protocol
         inertia_props = self.render(page_props.to_dict(), MediaType.JSON, get_serializer(type_encoders)).decode()
         return {
             **self.context,
@@ -215,7 +213,6 @@ class InertiaResponse(Response[T]):
         """
         shared_props = get_shared_props(request, partial_data=partial_data, partial_except=partial_except)
 
-        # Handle reset props (v2) - remove specified props from shared state
         for key in reset_keys:
             shared_props.pop(key, None)
 
@@ -233,59 +230,39 @@ class InertiaResponse(Response[T]):
                 for key, value in mapping_content.items():
                     shared_props[key] = value
             elif is_pagination_container(route_content):
-                # If returning OffsetPagination directly, use route's "key" opt or default to "items"
                 route_handler = request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
                 prop_key = (route_handler.opt.get("key", "items") if route_handler else "items") or "items"
                 shared_props[prop_key] = route_content
             else:
                 shared_props["content"] = route_content
 
-        # Extract deferred props metadata for v2 protocol
         deferred_props = extract_deferred_props(shared_props) or None
 
-        # Extract merge props metadata for v2 protocol
         merge_props_list, prepend_props_list, deep_merge_props_list, match_props_on = extract_merge_props(shared_props)
 
-        # Unwrap MergeProp values before putting them in shared_props
         for key, value in list(shared_props.items()):
             if is_merge_prop(value):
                 shared_props[key] = value.value
 
-        # Extract pagination containers - always unwrap items from OffsetPagination/ClassicPagination
-        # Only calculate scroll_props if:
-        # 1. Explicitly provided via scroll_props parameter, OR
-        # 2. Route has infinite_scroll=True opt value
         extracted_scroll_props: "ScrollPropsConfig | None" = self.scroll_props
 
-        # Check if route has infinite_scroll opt enabled
         route_handler = request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
         infinite_scroll_enabled = bool(route_handler and route_handler.opt.get("infinite_scroll", False))
 
         for key, value in list(shared_props.items()):
             if is_pagination_container(value):
-                # Extract scroll_props for infinite scroll (v2 feature)
                 _, scroll = extract_pagination_scroll_props(value)
-                # Only use extracted scroll_props if:
-                # - Not explicitly provided AND
-                # - infinite_scroll is enabled on the route
                 if extracted_scroll_props is None and scroll is not None and infinite_scroll_enabled:
                     extracted_scroll_props = scroll
 
-                # Flatten pagination: items stay under the key, metadata becomes siblings
-                # e.g., {"users": Pagination(...)} -> {"users": [...], "total": 50, "limit": 10, ...}
                 pagination_dict = pagination_to_dict(value)
                 shared_props[key] = pagination_dict.pop("items")  # items under original key
-                shared_props.update(pagination_dict)  # metadata as siblings
+                shared_props.update(pagination_dict)
 
-        # Determine encrypt_history value (v2 feature)
-        # Priority: response param > config default > False
         encrypt_history = self.encrypt_history
         if encrypt_history is None:
             encrypt_history = inertia_plugin.config.encrypt_history
 
-        # Check for session-based clear_history flag (v2 feature)
-        # This is set by clear_history() helper during logout flows
-        # The flag is consumed (popped) to ensure it only triggers once
         clear_history_flag = self.clear_history
         if not clear_history_flag:
             with contextlib.suppress(AttributeError, ImproperlyConfiguredException):
@@ -361,7 +338,7 @@ class InertiaResponse(Response[T]):
     ) -> bytes:
         """Render the page using SPA mode (HTML transformation instead of templates).
 
-        This method uses ViteSPAHandler to get the base HTML and injects
+        This method uses AppHandler to get the base HTML and injects
         the page props as a data-page attribute on the app element.
 
         Uses get_html_sync() for both dev and production modes to avoid
@@ -378,7 +355,7 @@ class InertiaResponse(Response[T]):
             The rendered HTML as bytes.
 
         Raises:
-            ImproperlyConfiguredException: If ViteSPAHandler is not available.
+            ImproperlyConfiguredException: If AppHandler is not available.
         """
         spa_handler = getattr(vite_plugin, "_spa_handler", None)
         if spa_handler is None:
@@ -388,16 +365,10 @@ class InertiaResponse(Response[T]):
             )
             raise ImproperlyConfiguredException(msg)
 
-        # Convert page props to dict using to_dict() for Inertia.js protocol
-        # (converts snake_case to camelCase)
         page_dict = page_props.to_dict()
 
-        # Get CSRF token for injection
         csrf_token = self._get_csrf_token(request)
 
-        # Use synchronous method for both dev and production modes
-        # In dev mode, this uses a sync HTTP client to avoid event loop deadlocks
-        # In production mode, this uses cached HTML
         html = spa_handler.get_html_sync(page_data=page_dict, csrf_token=csrf_token)
 
         return html.encode(self.encoding)
@@ -454,7 +425,6 @@ class InertiaResponse(Response[T]):
             {**type_encoders, **(self.response_type_encoders or {})} if type_encoders else self.response_type_encoders
         )
 
-        # Non-Inertia response path
         if not inertia_enabled:
             resolved_media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
             return ASGIResponse(
@@ -469,7 +439,6 @@ class InertiaResponse(Response[T]):
                 status_code=self.status_code or status_code,
             )
 
-        # Inertia response path - get request attributes
         is_partial_render = cast("bool", getattr(request, "is_partial_render", False))
         empty_set: set[str] = set()
         partial_keys = cast("set[str]", getattr(request, "partial_keys", empty_set))
@@ -478,8 +447,6 @@ class InertiaResponse(Response[T]):
 
         vite_plugin = request.app.plugins.get(VitePlugin)
         inertia_plugin = request.app.plugins.get(InertiaPlugin)
-        # Include X-Inertia-Version header per Inertia protocol
-        # Client uses this to detect version mismatches and trigger hard refresh
         headers.update(
             {
                 "Vary": "Accept",
@@ -487,16 +454,13 @@ class InertiaResponse(Response[T]):
             }
         )
 
-        # Determine partial filtering params for v2 protocol
         partial_data: "set[str] | None" = partial_keys if is_partial_render and partial_keys else None
         partial_except: "set[str] | None" = partial_except_keys if is_partial_render and partial_except_keys else None
 
-        # Build page props using helper method
         page_props = self._build_page_props(
             request, partial_data, partial_except, reset_keys, vite_plugin, inertia_plugin
         )
 
-        # JSON response for Inertia XHR requests
         if is_inertia:
             resolved_media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
             body = self.render(page_props.to_dict(), resolved_media_type, get_serializer(type_encoders))
@@ -512,11 +476,9 @@ class InertiaResponse(Response[T]):
                 status_code=self.status_code or status_code,
             )
 
-        # HTML response for initial page load
         resolved_media_type = self._determine_media_type(media_type or MediaType.HTML)
 
-        # Choose rendering method based on spa_mode configuration
-        if inertia_plugin.config.spa_mode:
+        if vite_plugin.config.mode == "hybrid":
             body = self._render_spa(request, page_props, vite_plugin, inertia_plugin)
         else:
             body = self._render_template(request, page_props, type_encoders, inertia_plugin)

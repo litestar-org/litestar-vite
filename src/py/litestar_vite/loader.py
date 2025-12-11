@@ -189,7 +189,6 @@ def render_routes(
     request = _get_request_from_context(context)
     app = request.app
 
-    # Generate routes JSON
     routes_data = generate_routes_json(
         app,
         only=only,
@@ -197,12 +196,10 @@ def render_routes(
         include_components=include_components,
     )
 
-    # Use Litestar's serializer to pick up any custom type encoders from the app
     type_encoders = app.type_encoders if isinstance(getattr(app, "type_encoders", None), dict) else None
     serializer = get_serializer(type_encoders)
     routes_json = encode_json(routes_data, serializer=serializer).decode("utf-8")
 
-    # Generate inline script tag
     script = dedent(f"""\
         <script type="text/javascript">
         (function() {{
@@ -497,7 +494,6 @@ class ViteAssetLoader:
         if isinstance(path, str):
             path = [path]
 
-        # Development mode - serve from Vite dev server
         if self._config.hot_reload and self._config.is_dev_mode:
             return "".join(
                 self._style_tag(self._vite_server_url(p))
@@ -509,7 +505,6 @@ class ViteAssetLoader:
                 for p in path
             )
 
-        # Production mode - use manifest
         missing = [p for p in path if p not in self._manifest]
         if missing:
             msg = "Cannot find %s in Vite manifest at %s. Did you forget to build your assets after an update?"
@@ -524,18 +519,15 @@ class ViteAssetLoader:
         asset_url_base = self._config.base_url or self._config.asset_url
 
         for manifest in manifest_entries.values():
-            # Add CSS files
             if "css" in manifest:
                 tags.extend(self._style_tag(urljoin(asset_url_base, css_path)) for css_path in manifest.get("css", []))
 
-            # Add imported dependencies
             if "imports" in manifest:
                 tags.extend(
                     self.generate_asset_tags(vendor_path, scripts_attrs=scripts_attrs)
                     for vendor_path in manifest.get("imports", [])
                 )
 
-            # Add the main file
             file_path = manifest.get("file", "")
             if file_path.endswith(".css"):
                 tags.append(self._style_tag(urljoin(asset_url_base, file_path)))
@@ -578,7 +570,8 @@ class ViteAssetLoader:
         if attrs is None:
             attrs = {}
         attrs_str = " ".join(f'{key}="{value}"' for key, value in attrs.items())
-        return f'<script {attrs_str} src="{src}"></script>'
+        attrs_prefix = f"{attrs_str} " if attrs_str else ""
+        return f'<script {attrs_prefix}src="{src}"></script>'
 
     @staticmethod
     def _style_tag(href: str) -> str:
