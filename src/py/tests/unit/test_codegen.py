@@ -595,3 +595,76 @@ def test_list_body_type() -> None:
 
     route_data = routes["routes"]["teams.bulk_add"]
     assert "queryParameters" not in route_data, f"list[Model] body should be excluded: {route_data}"
+
+
+def test_options_routes_excluded() -> None:
+    """OPTIONS-only routes should be excluded from generated routes."""
+    from litestar_vite.codegen import generate_routes_json
+
+    @get("/teams", name="teams.list", sync_to_thread=False)
+    def list_teams() -> list[dict[str, str]]:
+        return []
+
+    app = Litestar([list_teams])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    # Check that no OPTIONS-only routes are in the output
+    for name, route_data in routes["routes"].items():
+        methods = route_data.get("methods", [])
+        assert methods != ["OPTIONS"], f"OPTIONS-only route '{name}' should be excluded"
+
+
+def test_head_routes_excluded() -> None:
+    """HEAD-only routes should be excluded from generated routes."""
+    from litestar_vite.codegen import generate_routes_json
+
+    @get("/teams", name="teams.list", sync_to_thread=False)
+    def list_teams() -> list[dict[str, str]]:
+        return []
+
+    app = Litestar([list_teams])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    # Check that no HEAD-only routes are in the output
+    for name, route_data in routes["routes"].items():
+        methods = route_data.get("methods", [])
+        assert methods != ["HEAD"], f"HEAD-only route '{name}' should be excluded"
+
+
+def test_schema_ui_routes_excluded() -> None:
+    """Schema/Swagger UI routes like /schema/scalar should be excluded."""
+    from litestar_vite.codegen import generate_routes_json
+
+    @get("/teams", name="teams.list", sync_to_thread=False)
+    def list_teams() -> list[dict[str, str]]:
+        return []
+
+    app = Litestar([list_teams])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    # Check that schema UI routes are excluded (but openapi.json/yaml may exist)
+    for name, route_data in routes["routes"].items():
+        uri = route_data.get("uri", "")
+        if uri.startswith("/schema"):
+            # Only openapi.json and openapi.yaml routes should remain
+            assert "openapi.json" in uri or "openapi.yaml" in uri or "openapi.yml" in uri, (
+                f"Schema UI route '{name}' with uri '{uri}' should be excluded"
+            )
+
+
+def test_openapi_routes_use_simple_names() -> None:
+    """OpenAPI routes should use simple names like 'openapi.json' not hashed names."""
+    from litestar_vite.codegen import generate_routes_json
+
+    @get("/teams", name="teams.list", sync_to_thread=False)
+    def list_teams() -> list[dict[str, str]]:
+        return []
+
+    app = Litestar([list_teams])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    # Check for simple openapi.json name (not hashed like 1d39ee870e3e4b73a83c764025bd27d9_litestar_openapi_json)
+    for name in routes["routes"]:
+        if "openapi" in name.lower():
+            # Should be simple like "openapi.json" not a long hash
+            assert len(name) < 20, f"OpenAPI route name '{name}' should be simple, not hashed"

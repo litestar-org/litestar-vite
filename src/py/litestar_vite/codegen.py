@@ -5,20 +5,23 @@ This module extracts route metadata from a Litestar application and emits a
 delegated to @hey-api/openapi-ts; we keep only lightweight metadata here.
 """
 
-import inspect
+import contextlib
+import datetime
 import re
 from collections.abc import Generator
-from dataclasses import dataclass, field, is_dataclass
+from dataclasses import dataclass, field
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, get_args, get_origin
+from typing import TYPE_CHECKING, Any
 
 from litestar import Litestar
-from litestar._openapi.schema_generation import SchemaCreator
-from litestar._openapi.typescript_converter.schema_parsing import parse_schema
+from litestar._openapi.datastructures import OpenAPIContext  # pyright: ignore[reportPrivateUsage]
+from litestar._openapi.parameters import (
+    create_parameters_for_handler,  # pyright: ignore[reportPrivateUsage,reportPrivateImportUsage]
+)
+from litestar._openapi.typescript_converter.schema_parsing import parse_schema  # pyright: ignore[reportPrivateUsage]
 from litestar.handlers import HTTPRouteHandler
 from litestar.openapi.spec import Schema
 from litestar.openapi.spec.enums import OpenAPIType
-from litestar.typing import FieldDefinition
 
 if TYPE_CHECKING:
     from litestar.routes import HTTPRoute
@@ -34,35 +37,13 @@ __all__ = (
     "generate_routes_ts",
 )
 
-# Compiled regex patterns for path parsing (compiled once at module load)
 _PATH_PARAM_TYPE_PATTERN = re.compile(r"\{([^:}]+):[^}]+\}")
 _PATH_PARAM_EXTRACT_PATTERN = re.compile(r"\{([^:}]+)(?::([^}]+))?\}")
-
-# System types that should be excluded from query parameters
-# These are injected by Litestar, not from the request query string
-_SYSTEM_TYPE_NAMES = frozenset(
-    {
-        "Request",
-        "WebSocket",
-        "State",
-        "ASGIConnection",
-        "HTTPConnection",
-        "Scope",
-        "Receive",
-        "Send",
-    }
-)
-
-# Valid OpenAPI type values for validation
 _OPENAPI_TYPE_VALUES = frozenset(e.value for e in OpenAPIType)
 
 
 def _str_dict_factory() -> dict[str, str]:
-    """Factory function for empty string dict (typed for pyright).
-
-    Returns:
-        An empty dictionary with str keys and str values.
-    """
+    """Return an empty ``dict[str, str]`` (typed for pyright)."""
     return {}
 
 
@@ -87,133 +68,6 @@ class RouteMetadata:
     component: "str | None" = None
 
 
-def _is_system_type(annotation: Any) -> bool:
-    """Check if a type annotation is a Litestar system type.
-
-    System types are injected by Litestar (Request, State, etc.) and should
-    not be treated as query parameters.
-
-    Args:
-        annotation: Type annotation to check.
-
-    Returns:
-        True if it's a system type, False otherwise.
-    """
-    if annotation is None:
-        return False
-
-    # Check by class name (handles imports from different locations)
-    if inspect.isclass(annotation) and annotation.__name__ in _SYSTEM_TYPE_NAMES:
-        return True
-
-    # Check string representation for generic types
-    type_str = str(annotation)
-    return any(system_type in type_str for system_type in _SYSTEM_TYPE_NAMES)
-
-
-def _is_complex_class(cls: type) -> bool:
-    """Check if a class is a complex type (Struct, dataclass, attrs, Pydantic, TypedDict).
-
-    Args:
-        cls: The class to check.
-
-    Returns:
-        True if it's a complex type.
-    """
-    # Check for TypedDict (has __annotations__ and __total__)
-    if hasattr(cls, "__annotations__") and hasattr(cls, "__total__"):
-        return True
-
-    # Check for dataclass or attrs classes
-    if is_dataclass(cls) or hasattr(cls, "__attrs_attrs__"):  # pyright: ignore
-        return True
-
-    # Check for msgspec Struct
-    try:
-        from msgspec import Struct
-
-        if issubclass(cls, Struct):
-            return True
-    except (ImportError, TypeError):
-        pass
-
-    # Check for Pydantic BaseModel
-    try:
-        from pydantic import BaseModel
-
-        return issubclass(cls, BaseModel)
-    except (ImportError, TypeError):
-        return False
-
-
-def _is_complex_type(annotation: Any) -> bool:
-    """Check if annotation is a complex type (likely a request body parameter).
-
-    Complex types include:
-    - msgspec Struct
-    - dataclasses
-    - attrs classes
-    - Pydantic BaseModel
-    - TypedDict
-    - list[ComplexType] or dict[str, Any]
-
-    Args:
-        annotation: Type annotation to check.
-
-    Returns:
-        True if it's a complex type that's likely a body parameter.
-    """
-    if annotation is None:
-        return False
-
-    # Handle generic types (list[X], dict[X, Y])
-    origin = get_origin(annotation)
-    if origin is not None:
-        if origin is list:
-            args = get_args(annotation)
-            return _is_complex_type(args[0]) if args else False
-        # dict types are usually body params
-        return origin is dict
-
-    # Must be a class for further checks
-    if not inspect.isclass(annotation):
-        return False
-
-    return _is_complex_class(annotation)
-
-
-def _is_body_parameter(field_def: Any, http_methods: set[str]) -> bool:
-    """Detect if a parameter is likely a request body parameter.
-
-    Uses heuristics to identify body parameters:
-    1. HTTP method must support request bodies (POST/PUT/PATCH/DELETE)
-    2. Annotation is a complex type (Struct, dataclass, Pydantic, TypedDict)
-    3. Or has explicit Body() kwarg_definition
-
-    Args:
-        field_def: The FieldDefinition object from parsed signature.
-        http_methods: Set of HTTP methods for this handler.
-
-    Returns:
-        True if the parameter is likely a body parameter.
-    """
-    # Body params only for methods that support request bodies
-    if not http_methods & {"POST", "PUT", "PATCH", "DELETE"}:
-        return False
-
-    annotation = getattr(field_def, "annotation", None)
-    if annotation is None:
-        return False
-
-    # Check for complex types - these are almost always body parameters
-    if _is_complex_type(annotation):
-        return True
-
-    # Check for explicit Body() kwarg_definition
-    kwarg_def = getattr(field_def, "kwarg_definition", None)
-    return kwarg_def is not None and type(kwarg_def).__name__ == "BodyKwarg"
-
-
 def _normalize_path(path: str) -> str:
     """Normalize route path to use {param} syntax.
 
@@ -228,14 +82,10 @@ def _normalize_path(path: str) -> str:
     Returns:
         Path with normalized {param} syntax.
     """
-    # Handle empty or root paths
     if not path or path == "/":
         return path
 
-    # Use PurePosixPath for cross-platform compatibility
-    path_obj = PurePosixPath(path)
-
-    return _PATH_PARAM_TYPE_PATTERN.sub(r"{\1}", str(path_obj))
+    return _PATH_PARAM_TYPE_PATTERN.sub(r"{\1}", str(PurePosixPath(path)))
 
 
 def _extract_path_params(path: str) -> dict[str, str]:
@@ -247,15 +97,7 @@ def _extract_path_params(path: str) -> dict[str, str]:
     Returns:
         Dictionary mapping parameter names to TypeScript types.
     """
-    params: dict[str, str] = {}
-
-    # Extract parameter names from path using compiled pattern
-    for match in _PATH_PARAM_EXTRACT_PATTERN.finditer(path):
-        param_name = match.group(1)
-        # Keep type hinting minimal; detailed typing is handled by OpenAPI exports.
-        params[param_name] = "string"
-
-    return params
+    return {match.group(1): "string" for match in _PATH_PARAM_EXTRACT_PATTERN.finditer(path)}
 
 
 def _iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRouteHandler], None, None]:
@@ -271,170 +113,61 @@ def _iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRout
         Tuples of (HTTPRoute, HTTPRouteHandler) for each route handler.
     """
     for route in app.routes:
-        if not hasattr(route, "route_handler_map"):
-            continue
-        http_route: "HTTPRoute" = route  # type: ignore[assignment]
-        for route_handler in http_route.route_handlers:
-            yield http_route, route_handler
+        if hasattr(route, "route_handler_map"):
+            http_route: "HTTPRoute" = route  # type: ignore[assignment]
+            for route_handler in http_route.route_handlers:
+                yield http_route, route_handler
 
 
-def _ts_type_from_annotation(annotation: Any) -> str:
-    """Convert a Python type annotation to a TypeScript type string.
+def _extract_params_from_litestar(
+    handler: HTTPRouteHandler,
+    http_route: "HTTPRoute",
+    openapi_context: OpenAPIContext | None,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Extract path and query parameters using Litestar's native OpenAPI generation.
 
-    Uses Litestar's SchemaCreator to generate an OpenAPI schema from the annotation,
-    then converts it to TypeScript using parse_schema.
-
-    Args:
-        annotation: Python type annotation.
-
-    Returns:
-        TypeScript type string.
-    """
-    try:
-        schema_creator = SchemaCreator(generate_examples=False)
-        field_def = FieldDefinition.from_annotation(annotation)
-        schema = schema_creator.for_field_definition(field_def)
-        if not isinstance(schema, Schema):
-            return "any"
-        return parse_schema(schema).write()
-    except (TypeError, ValueError, KeyError, AttributeError):
-        return "any"
-
-
-def _process_field_definition(field_def: Any, param_name: str) -> "tuple[str, str] | None":
-    """Process a field definition and return the query param name and type.
-
-    Args:
-        field_def: The FieldDefinition object.
-        param_name: The parameter name.
-
-    Returns:
-        Tuple of (final_name, ts_type) or None if field should be skipped.
-    """
-    from litestar.params import ParameterKwarg
-
-    # Get the annotation from FieldDefinition
-    annotation = getattr(field_def, "annotation", None)
-    if annotation is None or _is_system_type(annotation):
-        return None
-
-    # Convert Python type to TypeScript type using Litestar's schema generation
-    ts_type = _ts_type_from_annotation(annotation)
-
-    # Check if optional (has default value)
-    default = getattr(field_def, "default", None)
-    is_empty = (
-        default is None
-        or (hasattr(default, "name") and default.name == "EMPTY")
-        or str(default) == "<_EmptyEnum.EMPTY: 0>"
-    )
-    is_optional = not is_empty
-
-    # Handle ParameterKwarg metadata for aliasing
-    final_name = param_name
-    kwarg_def = getattr(field_def, "kwarg_definition", None)
-    if isinstance(kwarg_def, ParameterKwarg):
-        query_alias = getattr(kwarg_def, "query", None)
-        if query_alias:
-            final_name = query_alias
-
-    if is_optional and "undefined" not in ts_type:
-        ts_type = f"{ts_type} | undefined"
-
-    return final_name, ts_type
-
-
-def _extract_query_params_heuristic(handler: HTTPRouteHandler, path_param_names: set[str]) -> dict[str, str]:
-    """Extract query params using heuristics (for schema-excluded endpoints).
-
-    Uses the subtraction approach with body parameter detection via _is_body_parameter().
-    This is used when no OpenAPI operation is available.
+    Uses Litestar's `create_parameters_for_handler` which correctly handles:
+    - Body parameter detection (DTOData, dataclass, Struct, etc.)
+    - Filter dependencies expansion
+    - Path vs query parameter classification
 
     Args:
         handler: The Litestar route handler.
-        path_param_names: Set of path parameter names.
+        http_route: The HTTP route containing path parameter definitions.
+        openapi_context: OpenAPI context for parameter generation.
 
     Returns:
-        Dictionary mapping query parameter names to TypeScript types.
+        Tuple of (path_params, query_params) dictionaries mapping names to TypeScript types.
     """
+    path_params: dict[str, str] = {}
     query_params: dict[str, str] = {}
-    http_methods = {m.upper() for m in handler.http_methods}
 
-    parsed_sig = getattr(handler, "parsed_fn_signature", None)
-    if parsed_sig is None:
-        return query_params
+    if openapi_context is None:
+        return path_params, query_params
 
-    # Get dependency names to exclude
-    dependency_names: set[str] = set()
     try:
-        resolved_deps = handler.resolve_dependencies()
-        dependency_names = set(resolved_deps.keys())
-    except (AttributeError, KeyError, TypeError, ValueError):
+        route_path_params = http_route.path_parameters
+        params = create_parameters_for_handler(openapi_context, handler, route_path_params)
+
+        for param in params:
+            schema_dict = param.schema.to_schema() if param.schema else None
+            ts_type = _ts_type_from_openapi(schema_dict or {}) if schema_dict else "any"
+
+            if not param.required and ts_type != "any" and "undefined" not in ts_type:
+                ts_type = f"{ts_type} | undefined"
+
+            match param.param_in:
+                case "path":
+                    path_params[param.name] = ts_type.replace(" | undefined", "")
+                case "query":
+                    query_params[param.name] = ts_type
+                case _:
+                    pass
+
+    except (AttributeError, TypeError, ValueError, KeyError):
         pass
 
-    parameters = getattr(parsed_sig, "parameters", {})
-    for param_name, field_def in parameters.items():
-        # Skip standard exclusions
-        if param_name in {"self", "cls", "return"}:
-            continue
-        if param_name in path_param_names:
-            continue
-        if param_name in dependency_names:
-            continue
-
-        # Skip system types
-        annotation = getattr(field_def, "annotation", None)
-        if _is_system_type(annotation):
-            continue
-
-        # Skip body parameters (the key fix!)
-        if _is_body_parameter(field_def, http_methods):
-            continue
-
-        # This is a query parameter
-        result = _process_field_definition(field_def, param_name)
-        if result is not None:
-            final_name, ts_type = result
-            query_params[final_name] = ts_type
-
-    return query_params
-
-
-def _extract_query_params(
-    handler: HTTPRouteHandler,
-    path_param_names: set[str],
-    operation: dict[str, Any] | None = None,
-) -> dict[str, str]:
-    """Extract query parameters from a route handler.
-
-    Strategy:
-    1. If OpenAPI operation is available, use it as authoritative source
-    2. Otherwise, use heuristics to detect and exclude body parameters
-
-    Args:
-        handler: The Litestar route handler.
-        path_param_names: Set of path parameter names (already extracted from path).
-        operation: Optional OpenAPI operation for this route.
-
-    Returns:
-        Dictionary mapping query parameter names to TypeScript types.
-    """
-    # Strategy 1: Use OpenAPI when available (authoritative)
-    if operation:
-        query_params: dict[str, str] = {}
-        for param in operation.get("parameters", []):
-            if param.get("in") == "query":
-                name = param.get("name")
-                if name:
-                    schema = param.get("schema", {})
-                    ts_type = _ts_type_from_openapi(schema)
-                    if not param.get("required", False) and ts_type != "any":
-                        ts_type = f"{ts_type} | undefined"
-                    query_params[name] = ts_type
-        return query_params
-
-    # Strategy 2: Heuristic approach for schema-excluded endpoints
-    return _extract_query_params_heuristic(handler, path_param_names)
+    return path_params, query_params
 
 
 def _dict_to_schema(d: dict[str, Any]) -> Schema:
@@ -449,7 +182,6 @@ def _dict_to_schema(d: dict[str, Any]) -> Schema:
     if not d:
         return Schema()
 
-    # Convert type string(s) to OpenAPIType enum(s)
     t = d.get("type")
     schema_type: "OpenAPIType | list[OpenAPIType] | None" = None
     if isinstance(t, str) and t in _OPENAPI_TYPE_VALUES:
@@ -457,8 +189,6 @@ def _dict_to_schema(d: dict[str, Any]) -> Schema:
     elif isinstance(t, list):
         schema_type = [OpenAPIType(x) for x in t if isinstance(x, str) and x in _OPENAPI_TYPE_VALUES] or None  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
 
-    # Handle nested schemas recursively
-    # pyright: ignore[reportUnknownArgumentType] - dict contents validated with isinstance
     one_of = [_dict_to_schema(s) for s in d.get("oneOf", []) if isinstance(s, dict)] or None  # pyright: ignore[reportUnknownArgumentType]
     any_of = [_dict_to_schema(s) for s in d.get("anyOf", []) if isinstance(s, dict)] or None  # pyright: ignore[reportUnknownArgumentType]
     all_of = [_dict_to_schema(s) for s in d.get("allOf", []) if isinstance(s, dict)] or None  # pyright: ignore[reportUnknownArgumentType]
@@ -490,59 +220,10 @@ def _ts_type_from_openapi(schema: dict[str, Any]) -> str:
         TypeScript type string.
     """
     try:
-        litestar_schema = _dict_to_schema(schema)
-        ts_element = parse_schema(litestar_schema)
+        ts_element = parse_schema(_dict_to_schema(schema))
         return ts_element.write()
     except (TypeError, ValueError, KeyError):
-        # Fallback for schemas that can't be converted
         return "any"
-
-
-def _openapi_lookup(openapi_schema: dict[str, Any] | None) -> dict[tuple[str, str], dict[str, Any]]:
-    """Build a lookup of (path, method) -> operation object from OpenAPI schema."""
-
-    if not openapi_schema:
-        return {}
-
-    paths = openapi_schema.get("paths", {})
-    lookup: dict[tuple[str, str], dict[str, Any]] = {}
-    for path, methods in paths.items():
-        if not isinstance(methods, dict):
-            continue
-        for method_obj, operation_obj in methods.items():  # pyright: ignore
-            if not isinstance(method_obj, str):
-                continue
-            method = method_obj
-            operation: dict[str, Any] = operation_obj or {}  # pyright: ignore
-
-            lower = method.lower()
-            if lower not in {"get", "post", "put", "patch", "delete", "head", "options"}:
-                continue
-
-            lookup[path, method.upper()] = operation
-    return lookup
-
-
-def _apply_openapi_path_params(
-    operation: dict[str, Any] | None,
-    params: dict[str, str],
-) -> None:
-    """Enhance path parameter types with OpenAPI schema information.
-
-    Args:
-        operation: OpenAPI operation object (may be None).
-        params: Path parameters dict to update in-place.
-    """
-    if not operation:
-        return
-
-    for param in operation.get("parameters", []):
-        if param.get("in") == "path":
-            name = param.get("name")
-            if name:
-                schema = param.get("schema", {})
-                ts_type = _ts_type_from_openapi(schema)
-                params[name] = ts_type or "string"
 
 
 def _make_unique_name(base_name: str, used_names: set[str], path: str, methods: list[str]) -> str:
@@ -560,22 +241,17 @@ def _make_unique_name(base_name: str, used_names: set[str], path: str, methods: 
     if base_name not in used_names:
         return base_name
 
-    # Generate a path-based suffix for deduplication
-    # /api/books/{book_id} -> api_books_book_id
     path_suffix = path.strip("/").replace("/", "_").replace("{", "").replace("}", "").replace("-", "_")
     method_suffix = methods[0].lower() if methods else ""
 
-    # Try path-based name
     candidate = f"{base_name}_{path_suffix}" if path_suffix else base_name
     if candidate not in used_names:
         return candidate
 
-    # Try with method suffix
     candidate = f"{base_name}_{path_suffix}_{method_suffix}" if path_suffix else f"{base_name}_{method_suffix}"
     if candidate not in used_names:
         return candidate
 
-    # Fall back to counter
     counter = 2
     while f"{candidate}_{counter}" in used_names:
         counter += 1
@@ -602,19 +278,36 @@ def extract_route_metadata(
     """
     routes_metadata: list[RouteMetadata] = []
     used_names: set[str] = set()
-    op_lookup = _openapi_lookup(openapi_schema)
+
+    openapi_context: OpenAPIContext | None = None
+    if app.openapi_config is not None:
+        with contextlib.suppress(AttributeError, TypeError, ValueError):
+            openapi_context = OpenAPIContext(
+                openapi_config=app.openapi_config,
+                plugins=app.plugins.openapi,
+            )
 
     for http_route, route_handler in _iter_route_handlers(app):
-        # Get base route name
         base_name = route_handler.name or route_handler.handler_name or str(route_handler)
-
-        # Extract methods first (needed for unique name generation)
         methods = [method.upper() for method in route_handler.http_methods]
 
-        # Get full path
+        if methods in (["OPTIONS"], ["HEAD"]):
+            continue
+
         full_path = str(http_route.path)
 
-        # Make name unique
+        if full_path.startswith("/schema"):
+            if "openapi.json" in full_path:
+                if "openapi.json" in used_names:
+                    continue
+                base_name = "openapi.json"
+            elif "openapi.yaml" in full_path or "openapi.yml" in full_path:
+                if "openapi.yaml" in used_names:
+                    continue
+                base_name = "openapi.yaml"
+            else:
+                continue
+
         route_name = _make_unique_name(base_name, used_names, full_path, methods)
         used_names.add(route_name)
 
@@ -623,27 +316,15 @@ def extract_route_metadata(
         if exclude and any(pattern in route_name or pattern in full_path for pattern in exclude):
             continue
 
-        # Extract path parameters (override with OpenAPI if available)
-        params = _extract_path_params(full_path)
-        path_param_names = set(params.keys())
+        params, query_params = _extract_params_from_litestar(route_handler, http_route, openapi_context)
 
-        # Get OpenAPI operation (for type enrichment)
+        if not params:
+            params = _extract_path_params(full_path)
+
         normalized_path = _normalize_path(full_path)
-        operation = op_lookup.get((normalized_path, methods[0] if methods else ""))
 
-        # Extract query parameters (uses OpenAPI when available, heuristics otherwise)
-        query_params = _extract_query_params(route_handler, path_param_names, operation)
-
-        # Enhance path param types with OpenAPI when available
-        _apply_openapi_path_params(operation, params)
-
-        # Extract Inertia component (if present)
-        component = None
-        if hasattr(route_handler, "opt") and route_handler.opt:
-            component = route_handler.opt.get("component")
-
-        # Normalize path
-        normalized_path = _normalize_path(full_path)
+        opt: dict[str, Any] = getattr(route_handler, "opt", {}) or {}
+        component = opt.get("component")
 
         metadata = RouteMetadata(
             name=route_name,
@@ -704,29 +385,24 @@ def generate_routes_json(
     return {"routes": routes_dict}
 
 
-# TypeScript type mapping
 _TS_TYPE_MAP: dict[str, str] = {
-    # OpenAPI types
     "string": "string",
     "integer": "number",
     "number": "number",
     "boolean": "boolean",
     "array": "unknown[]",
     "object": "Record<string, unknown>",
-    # Common formats
     "uuid": "string",
     "date": "string",
     "date-time": "string",
     "email": "string",
     "uri": "string",
     "url": "string",
-    # Python/Litestar path parameter types
     "int": "number",
     "float": "number",
     "str": "string",
     "bool": "boolean",
     "path": "string",
-    # Defaults
     "unknown": "unknown",
 }
 
@@ -740,11 +416,10 @@ def _ts_type_for_param(param_type: str) -> str:
     Returns:
         TypeScript type string.
     """
-    # Handle optional markers
     is_optional = "undefined" in param_type or param_type.endswith("?")
     clean_type = param_type.replace(" | undefined", "").replace("?", "").strip()
 
-    ts_type = _TS_TYPE_MAP.get(clean_type, "unknown")
+    ts_type = _TS_TYPE_MAP.get(clean_type) or clean_type or "string"
 
     if is_optional and "undefined" not in ts_type:
         return f"{ts_type} | undefined"
@@ -808,7 +483,6 @@ def generate_routes_ts(
     """
     routes_metadata = extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
 
-    # Build route data structures
     route_names: list[str] = []
     path_params_entries: list[str] = []
     query_params_entries: list[str] = []
@@ -818,19 +492,16 @@ def generate_routes_ts(
         route_name = route.name
         route_names.append(route_name)
 
-        # Build path params interface entry
         if route.params:
             param_fields: list[str] = []
             for param_name, param_type in route.params.items():
                 ts_type = _ts_type_for_param(param_type)
-                # Path params are always required
                 ts_type_clean = ts_type.replace(" | undefined", "")
                 param_fields.append(f"    {param_name}: {ts_type_clean};")
             path_params_entries.append(f"  '{route_name}': {{\n" + "\n".join(param_fields) + "\n  };")
         else:
             path_params_entries.append(f"  '{route_name}': Record<string, never>;")
 
-        # Build query params interface entry
         if route.query_params:
             query_param_fields: list[str] = []
             for param_name, param_type in route.query_params.items():
@@ -845,7 +516,6 @@ def generate_routes_ts(
         else:
             query_params_entries.append(f"  '{route_name}': Record<string, never>;")
 
-        # Build routes object entry
         methods_str = ", ".join(f"'{m}'" for m in route.methods)
         route_entry_lines = [
             f"  '{route_name}': {{",
@@ -863,7 +533,6 @@ def generate_routes_ts(
         route_entry_lines.append("  },")
         routes_entries.append("\n".join(route_entry_lines))
 
-    # Generate TypeScript content
     route_names_union = "\n  | ".join(f"'{name}'" for name in route_names) if route_names else "never"
 
     return f"""/**
@@ -993,11 +662,6 @@ export function getRoute<T extends RouteName>(name: T): (typeof routes)[T] {{
 """
 
 
-# =============================================================================
-# Inertia Page Props Generation
-# =============================================================================
-
-
 @dataclass
 class InertiaPageMetadata:
     """Metadata for an Inertia page component.
@@ -1029,8 +693,6 @@ def _get_return_type_name(handler: HTTPRouteHandler) -> "str | None":
     Returns:
         The type name string or None if untyped.
     """
-    # Get the return annotation from the handler
-    # handler.fn is a Ref that wraps the actual function
     handler_fn = handler.fn
     fn = handler_fn.value if hasattr(handler_fn, "value") else handler_fn  # pyright: ignore
     annotations = getattr(fn, "__annotations__", {})
@@ -1039,16 +701,13 @@ def _get_return_type_name(handler: HTTPRouteHandler) -> "str | None":
     if return_type is None:
         return None
 
-    # Handle string annotations
     if isinstance(return_type, str):
         return return_type
 
-    # Get the type name
     type_name = getattr(return_type, "__name__", None)
     if type_name:
         return type_name
 
-    # Handle generic types (e.g., dict[str, Any])
     origin = getattr(return_type, "__origin__", None)
     if origin is not None:
         return getattr(origin, "__name__", str(origin))
@@ -1080,16 +739,13 @@ def _get_openapi_schema_ref(
     path_item = paths.get(route_path, {})
     operation = path_item.get(method.lower(), {})
 
-    # Look for 200 response schema
     responses = operation.get("responses", {})
     success_response = responses.get("200", responses.get("2XX", {}))
     content = success_response.get("content", {})
 
-    # Check JSON content type
     json_content = content.get("application/json", {})
     schema = json_content.get("schema", {})
 
-    # Return $ref if it exists
     ref = schema.get("$ref")
     if ref:
         return ref
@@ -1117,25 +773,19 @@ def extract_inertia_pages(
     pages: list[InertiaPageMetadata] = []
 
     for http_route, route_handler in _iter_route_handlers(app):
-        # Look for Inertia component in handler opts
         component = None
         if hasattr(route_handler, "opt") and route_handler.opt:
-            # Check common keys: "component", "page"
             component = route_handler.opt.get("component") or route_handler.opt.get("page")
 
         if not component:
             continue
 
-        # Get route info
         full_path = str(http_route.path)
         normalized_path = _normalize_path(full_path)
         handler_name = route_handler.handler_name or route_handler.name
 
-        # Get return type info
         props_type = _get_return_type_name(route_handler)
 
-        # Get OpenAPI schema ref
-        # http_methods is a set, so use next(iter(...)) to get the first method
         method = next(iter(route_handler.http_methods), "GET") if route_handler.http_methods else "GET"
         schema_ref = _get_openapi_schema_ref(
             route_handler,
@@ -1198,13 +848,11 @@ def generate_inertia_pages_json(
 
         pages_dict[page.component] = page_data
 
-    # Shared props structure (built-in props always present)
     shared_props: dict[str, dict[str, Any]] = {
         "errors": {"type": "Record<string, string[]>", "optional": True},
         "csrf_token": {"type": "string", "optional": True},
     }
 
-    # Type generation config
     type_gen_config: dict[str, bool] = {
         "includeDefaultAuth": include_default_auth,
         "includeDefaultFlash": include_default_flash,
@@ -1214,5 +862,5 @@ def generate_inertia_pages_json(
         "pages": pages_dict,
         "sharedProps": shared_props,
         "typeGenConfig": type_gen_config,
-        "generatedAt": __import__("datetime").datetime.now(tz=__import__("datetime").timezone.utc).isoformat(),
+        "generatedAt": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
     }
