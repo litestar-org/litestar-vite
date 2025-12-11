@@ -785,6 +785,47 @@ class ViteConfig:
     authentication for asset requests. Set to False if you need to protect
     static assets with authentication.
     """
+    spa_path: "str | None" = None
+    """Path where the SPA handler serves index.html.
+
+    Controls where AppHandler registers its catch-all routes. Defaults to "/" (root).
+    When spa_path differs from asset_url, the SPA catch-all automatically excludes
+    asset_url paths to let the static files router handle them.
+
+    Common configurations:
+
+    1. SPA at root, assets at /web/ (default behavior with custom asset_url):
+       ViteConfig(
+           paths=PathConfig(asset_url="/web/"),
+           # spa_path=None defaults to "/", /web/ excluded from catch-all
+       )
+
+    2. SPA and assets both at /web/ (Angular --base-href /web/):
+       ViteConfig(
+           paths=PathConfig(asset_url="/web/"),
+           spa_path="/web/",  # Explicitly serve SPA at /web/
+       )
+
+    3. SPA at root, assets at /static/ (default):
+       ViteConfig()  # spa_path=None defaults to "/", /static/ excluded
+
+    4. SPA at both root AND /web/ (Angular --base-href /web/ with root redirect):
+       ViteConfig(
+           paths=PathConfig(asset_url="/web/"),
+           spa_path="/web/",
+           include_root_spa_paths=True,  # Also serve at / and /{path:path}
+       )
+    """
+    include_root_spa_paths: bool = False
+    """Also register SPA routes at root when spa_path is non-root.
+
+    When True and spa_path is set to a non-root path (e.g., "/web/"),
+    the SPA handler will also serve at "/" and "/{path:path}" in addition
+    to the spa_path routes.
+
+    This is useful for Angular apps with --base-href /web/ that also
+    want to serve the SPA from the root path for convenience.
+    """
 
     # Internal: resolved executor instance
     _executor_instance: "JSExecutor | None" = field(default=None, repr=False)
