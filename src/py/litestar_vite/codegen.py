@@ -8,15 +8,17 @@ delegated to @hey-api/openapi-ts; we keep only lightweight metadata here.
 import inspect
 import re
 from collections.abc import Generator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, is_dataclass
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, get_args, get_origin
 
 from litestar import Litestar
+from litestar._openapi.schema_generation import SchemaCreator
 from litestar._openapi.typescript_converter.schema_parsing import parse_schema
 from litestar.handlers import HTTPRouteHandler
 from litestar.openapi.spec import Schema
 from litestar.openapi.spec.enums import OpenAPIType
+from litestar.typing import FieldDefinition
 
 if TYPE_CHECKING:
     from litestar.routes import HTTPRoute
@@ -38,18 +40,16 @@ _PATH_PARAM_EXTRACT_PATTERN = re.compile(r"\{([^:}]+)(?::([^}]+))?\}")
 
 # System types that should be excluded from query parameters
 # These are injected by Litestar, not from the request query string
-_SYSTEM_TYPE_NAMES = frozenset(
-    {
-        "Request",
-        "WebSocket",
-        "State",
-        "ASGIConnection",
-        "HTTPConnection",
-        "Scope",
-        "Receive",
-        "Send",
-    }
-)
+_SYSTEM_TYPE_NAMES = frozenset({
+    "Request",
+    "WebSocket",
+    "State",
+    "ASGIConnection",
+    "HTTPConnection",
+    "Scope",
+    "Receive",
+    "Send",
+})
 
 # Valid OpenAPI type values for validation
 _OPENAPI_TYPE_VALUES = frozenset(e.value for e in OpenAPIType)
@@ -107,6 +107,109 @@ def _is_system_type(annotation: Any) -> bool:
     # Check string representation for generic types
     type_str = str(annotation)
     return any(system_type in type_str for system_type in _SYSTEM_TYPE_NAMES)
+
+
+def _is_complex_class(cls: type) -> bool:
+    """Check if a class is a complex type (Struct, dataclass, attrs, Pydantic, TypedDict).
+
+    Args:
+        cls: The class to check.
+
+    Returns:
+        True if it's a complex type.
+    """
+    # Check for TypedDict (has __annotations__ and __total__)
+    if hasattr(cls, "__annotations__") and hasattr(cls, "__total__"):
+        return True
+
+    # Check for dataclass or attrs classes
+    if is_dataclass(cls) or hasattr(cls, "__attrs_attrs__"):
+        return True
+
+    # Check for msgspec Struct
+    try:
+        from msgspec import Struct
+
+        if issubclass(cls, Struct):
+            return True
+    except (ImportError, TypeError):
+        pass
+
+    # Check for Pydantic BaseModel
+    try:
+        from pydantic import BaseModel
+
+        return issubclass(cls, BaseModel)
+    except (ImportError, TypeError):
+        return False
+
+
+def _is_complex_type(annotation: Any) -> bool:
+    """Check if annotation is a complex type (likely a request body parameter).
+
+    Complex types include:
+    - msgspec Struct
+    - dataclasses
+    - attrs classes
+    - Pydantic BaseModel
+    - TypedDict
+    - list[ComplexType] or dict[str, Any]
+
+    Args:
+        annotation: Type annotation to check.
+
+    Returns:
+        True if it's a complex type that's likely a body parameter.
+    """
+    if annotation is None:
+        return False
+
+    # Handle generic types (list[X], dict[X, Y])
+    origin = get_origin(annotation)
+    if origin is not None:
+        if origin is list:
+            args = get_args(annotation)
+            return _is_complex_type(args[0]) if args else False
+        # dict types are usually body params
+        return origin is dict
+
+    # Must be a class for further checks
+    if not inspect.isclass(annotation):
+        return False
+
+    return _is_complex_class(annotation)
+
+
+def _is_body_parameter(field_def: Any, http_methods: set[str]) -> bool:
+    """Detect if a parameter is likely a request body parameter.
+
+    Uses heuristics to identify body parameters:
+    1. HTTP method must support request bodies (POST/PUT/PATCH/DELETE)
+    2. Annotation is a complex type (Struct, dataclass, Pydantic, TypedDict)
+    3. Or has explicit Body() kwarg_definition
+
+    Args:
+        field_def: The FieldDefinition object from parsed signature.
+        http_methods: Set of HTTP methods for this handler.
+
+    Returns:
+        True if the parameter is likely a body parameter.
+    """
+    # Body params only for methods that support request bodies
+    if not http_methods & {"POST", "PUT", "PATCH", "DELETE"}:
+        return False
+
+    annotation = getattr(field_def, "annotation", None)
+    if annotation is None:
+        return False
+
+    # Check for complex types - these are almost always body parameters
+    if _is_complex_type(annotation):
+        return True
+
+    # Check for explicit Body() kwarg_definition
+    kwarg_def = getattr(field_def, "kwarg_definition", None)
+    return kwarg_def is not None and type(kwarg_def).__name__ == "BodyKwarg"
 
 
 def _normalize_path(path: str) -> str:
@@ -173,30 +276,27 @@ def _iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRout
             yield http_route, route_handler
 
 
-def _should_skip_param(
-    param_name: str,
-    path_param_names: set[str],
-    body_param_name: Any,
-    dependency_names: set[str],
-) -> bool:
-    """Check if a parameter should be skipped when extracting query params.
+def _ts_type_from_annotation(annotation: Any) -> str:
+    """Convert a Python type annotation to a TypeScript type string.
+
+    Uses Litestar's SchemaCreator to generate an OpenAPI schema from the annotation,
+    then converts it to TypeScript using parse_schema.
 
     Args:
-        param_name: The name of the parameter.
-        path_param_names: Set of path parameter names.
-        body_param_name: The name of the body parameter (if any).
-        dependency_names: Set of dependency parameter names.
+        annotation: Python type annotation.
 
     Returns:
-        True if the parameter should be skipped.
+        TypeScript type string.
     """
-    if param_name in {"self", "cls", "return"}:
-        return True
-    if param_name in path_param_names:
-        return True
-    if param_name == body_param_name:
-        return True
-    return param_name in dependency_names
+    try:
+        schema_creator = SchemaCreator(generate_examples=False)
+        field_def = FieldDefinition.from_annotation(annotation)
+        schema = schema_creator.for_field_definition(field_def)
+        if not isinstance(schema, Schema):
+            return "any"
+        return parse_schema(schema).write()
+    except (TypeError, ValueError, KeyError, AttributeError):
+        return "any"
 
 
 def _process_field_definition(field_def: Any, param_name: str) -> "tuple[str, str] | None":
@@ -216,8 +316,8 @@ def _process_field_definition(field_def: Any, param_name: str) -> "tuple[str, st
     if annotation is None or _is_system_type(annotation):
         return None
 
-    # Keep type inference minimal; OpenAPI handles detailed typing
-    ts_type = "unknown"
+    # Convert Python type to TypeScript type using Litestar's schema generation
+    ts_type = _ts_type_from_annotation(annotation)
 
     # Check if optional (has default value)
     default = getattr(field_def, "default", None)
@@ -242,31 +342,25 @@ def _process_field_definition(field_def: Any, param_name: str) -> "tuple[str, st
     return final_name, ts_type
 
 
-def _extract_query_params(handler: HTTPRouteHandler, path_param_names: set[str]) -> dict[str, str]:
-    """Extract query parameters and their types from a route handler.
+def _extract_query_params_heuristic(handler: HTTPRouteHandler, path_param_names: set[str]) -> dict[str, str]:
+    """Extract query params using heuristics (for schema-excluded endpoints).
 
-    Uses the subtraction approach: all handler parameters that are NOT path params,
-    body params, dependencies, or system types are considered query parameters.
+    Uses the subtraction approach with body parameter detection via _is_body_parameter().
+    This is used when no OpenAPI operation is available.
 
     Args:
         handler: The Litestar route handler.
-        path_param_names: Set of path parameter names (already extracted from path).
+        path_param_names: Set of path parameter names.
 
     Returns:
         Dictionary mapping query parameter names to TypeScript types.
     """
     query_params: dict[str, str] = {}
+    http_methods = {m.upper() for m in handler.http_methods}
 
-    # Get parsed signature - contains all handler parameters
     parsed_sig = getattr(handler, "parsed_fn_signature", None)
     if parsed_sig is None:
         return query_params
-
-    # Get the body parameter name (if any)
-    body_param_name = getattr(parsed_sig, "data", None)
-    body_name_attr = getattr(body_param_name, "name", None) if body_param_name is not None else None
-    if body_name_attr is not None:
-        body_param_name = body_name_attr
 
     # Get dependency names to exclude
     dependency_names: set[str] = set()
@@ -274,20 +368,71 @@ def _extract_query_params(handler: HTTPRouteHandler, path_param_names: set[str])
         resolved_deps = handler.resolve_dependencies()
         dependency_names = set(resolved_deps.keys())
     except (AttributeError, KeyError, TypeError, ValueError):
-        # Dependencies may not be resolvable in all contexts
         pass
 
     parameters = getattr(parsed_sig, "parameters", {})
     for param_name, field_def in parameters.items():
-        if _should_skip_param(param_name, path_param_names, body_param_name, dependency_names):
+        # Skip standard exclusions
+        if param_name in {"self", "cls", "return"}:
+            continue
+        if param_name in path_param_names:
+            continue
+        if param_name in dependency_names:
             continue
 
+        # Skip system types
+        annotation = getattr(field_def, "annotation", None)
+        if _is_system_type(annotation):
+            continue
+
+        # Skip body parameters (the key fix!)
+        if _is_body_parameter(field_def, http_methods):
+            continue
+
+        # This is a query parameter
         result = _process_field_definition(field_def, param_name)
         if result is not None:
             final_name, ts_type = result
             query_params[final_name] = ts_type
 
     return query_params
+
+
+def _extract_query_params(
+    handler: HTTPRouteHandler,
+    path_param_names: set[str],
+    operation: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    """Extract query parameters from a route handler.
+
+    Strategy:
+    1. If OpenAPI operation is available, use it as authoritative source
+    2. Otherwise, use heuristics to detect and exclude body parameters
+
+    Args:
+        handler: The Litestar route handler.
+        path_param_names: Set of path parameter names (already extracted from path).
+        operation: Optional OpenAPI operation for this route.
+
+    Returns:
+        Dictionary mapping query parameter names to TypeScript types.
+    """
+    # Strategy 1: Use OpenAPI when available (authoritative)
+    if operation:
+        query_params: dict[str, str] = {}
+        for param in operation.get("parameters", []):
+            if param.get("in") == "query":
+                name = param.get("name")
+                if name:
+                    schema = param.get("schema", {})
+                    ts_type = _ts_type_from_openapi(schema)
+                    if not param.get("required", False) and ts_type != "any":
+                        ts_type = f"{ts_type} | undefined"
+                    query_params[name] = ts_type
+        return query_params
+
+    # Strategy 2: Heuristic approach for schema-excluded endpoints
+    return _extract_query_params_heuristic(handler, path_param_names)
 
 
 def _dict_to_schema(d: dict[str, Any]) -> Schema:
@@ -376,25 +521,26 @@ def _openapi_lookup(openapi_schema: dict[str, Any] | None) -> dict[tuple[str, st
     return lookup
 
 
-def _apply_openapi_params(
+def _apply_openapi_path_params(
     operation: dict[str, Any] | None,
     params: dict[str, str],
-    query_params: dict[str, str],
 ) -> None:
+    """Enhance path parameter types with OpenAPI schema information.
+
+    Args:
+        operation: OpenAPI operation object (may be None).
+        params: Path parameters dict to update in-place.
+    """
     if not operation:
         return
 
     for param in operation.get("parameters", []):
-        name = param.get("name")
-        schema = param.get("schema", {})
-        ts_type = _ts_type_from_openapi(schema)
-
-        if param.get("in") == "path" and name:
-            params[name] = ts_type or "string"
-        elif param.get("in") == "query" and name:
-            if not param.get("required", False) and ts_type != "unknown":
-                ts_type = f"{ts_type} | undefined"
-            query_params[name] = ts_type or "unknown"
+        if param.get("in") == "path":
+            name = param.get("name")
+            if name:
+                schema = param.get("schema", {})
+                ts_type = _ts_type_from_openapi(schema)
+                params[name] = ts_type or "string"
 
 
 def _make_unique_name(base_name: str, used_names: set[str], path: str, methods: list[str]) -> str:
@@ -479,12 +625,15 @@ def extract_route_metadata(
         params = _extract_path_params(full_path)
         path_param_names = set(params.keys())
 
-        # Extract query parameters (excludes path params, body, deps, system types)
-        query_params = _extract_query_params(route_handler, path_param_names)
+        # Get OpenAPI operation (for type enrichment)
+        normalized_path = _normalize_path(full_path)
+        operation = op_lookup.get((normalized_path, methods[0] if methods else ""))
 
-        # Enhance with OpenAPI types when available
-        operation = op_lookup.get((_normalize_path(full_path), methods[0] if methods else ""))
-        _apply_openapi_params(operation, params, query_params)
+        # Extract query parameters (uses OpenAPI when available, heuristics otherwise)
+        query_params = _extract_query_params(route_handler, path_param_names, operation)
+
+        # Enhance path param types with OpenAPI when available
+        _apply_openapi_path_params(operation, params)
 
         # Extract Inertia component (if present)
         component = None
