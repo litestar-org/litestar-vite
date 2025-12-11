@@ -40,16 +40,18 @@ _PATH_PARAM_EXTRACT_PATTERN = re.compile(r"\{([^:}]+)(?::([^}]+))?\}")
 
 # System types that should be excluded from query parameters
 # These are injected by Litestar, not from the request query string
-_SYSTEM_TYPE_NAMES = frozenset({
-    "Request",
-    "WebSocket",
-    "State",
-    "ASGIConnection",
-    "HTTPConnection",
-    "Scope",
-    "Receive",
-    "Send",
-})
+_SYSTEM_TYPE_NAMES = frozenset(
+    {
+        "Request",
+        "WebSocket",
+        "State",
+        "ASGIConnection",
+        "HTTPConnection",
+        "Scope",
+        "Receive",
+        "Send",
+    }
+)
 
 # Valid OpenAPI type values for validation
 _OPENAPI_TYPE_VALUES = frozenset(e.value for e in OpenAPIType)
@@ -123,7 +125,7 @@ def _is_complex_class(cls: type) -> bool:
         return True
 
     # Check for dataclass or attrs classes
-    if is_dataclass(cls) or hasattr(cls, "__attrs_attrs__"):
+    if is_dataclass(cls) or hasattr(cls, "__attrs_attrs__"):  # pyright: ignore
         return True
 
     # Check for msgspec Struct
