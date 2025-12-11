@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 from abc import ABC, abstractmethod
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -44,6 +45,14 @@ class JSExecutor(ABC):
         """Execute a command and wait for it to finish."""
 
     def _resolve_executable(self) -> str:
+        """Return the executable path or raise if not found.
+
+        Returns:
+            Path to the resolved executable.
+
+        Raises:
+            ViteExecutableNotFoundError: If the binary cannot be located.
+        """
         if self.executable_path:
             return str(self.executable_path)
         path = shutil.which(self.bin_name)
@@ -70,13 +79,12 @@ class JSExecutor(ABC):
         if args and args[0] == "run" and len(args) >= 2:
             return [args[0], self.silent_flag, *args[1:]]
 
-        # For full commands like ['npm', 'run', 'dev'], insert --silent after 'run'
-        try:
+        if "run" in args:
             run_idx = args.index("run")
             return [*args[: run_idx + 1], self.silent_flag, *args[run_idx + 1 :]]
-        except ValueError:
-            # No 'run' in command, add silent flag at the end for install/other commands
-            return args
+
+        # No 'run' in command, append silent flag (e.g., install)
+        return [*args, self.silent_flag]
 
     @property
     def start_command(self) -> list[str]:
@@ -94,7 +102,7 @@ class CommandExecutor(JSExecutor):
 
     def install(self, cwd: Path) -> None:
         executable = self._resolve_executable()
-        command = ["install"] if Path("install").name == Path(executable).name else [executable, "install"]
+        command = [executable, "install"]
         process = subprocess.run(
             command,
             cwd=cwd,
@@ -106,9 +114,7 @@ class CommandExecutor(JSExecutor):
 
     def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
         executable = self._resolve_executable()
-        # Apply silent flag if enabled
         args = self._apply_silent_flag(args)
-        # Avoid double-prefixing the executable when callers pass it explicitly
         command = args if args and Path(args[0]).name == Path(executable).name else [executable, *args]
         # Use start_new_session=True on Unix to create a new process group.
         # This ensures all child processes (node, astro, nuxt, vite, etc.) can be
@@ -137,7 +143,6 @@ class CommandExecutor(JSExecutor):
 
     def execute(self, args: list[str], cwd: Path) -> None:
         executable = self._resolve_executable()
-        # Apply silent flag if enabled
         args = self._apply_silent_flag(args)
         command = args if args and Path(args[0]).name == Path(executable).name else [executable, *args]
         process = subprocess.run(
@@ -145,8 +150,8 @@ class CommandExecutor(JSExecutor):
             cwd=cwd,
             shell=platform.system() == "Windows",
             check=False,
-            stdin=subprocess.PIPE,  # Keep stdin open - Nitro exits when stdin is closed
-            stdout=None,  # inherit for live output
+            stdin=subprocess.PIPE,
+            stdout=None,
             stderr=subprocess.PIPE,
         )
         if process.returncode != 0:
@@ -215,15 +220,19 @@ class NodeenvExecutor(JSExecutor):
         self._detect_nodeenv = getattr(config, "detect_nodeenv", False) if config else False
 
     def _get_nodeenv_command(self) -> str:
-        """Get the nodeenv command."""
-        if Path(Path(sys.executable) / "nodeenv").exists():
-            return str(Path(Path(sys.executable) / "nodeenv"))
+        """Return the nodeenv executable to run.
+
+        Returns:
+            Absolute path to the nodeenv binary if present next to the Python
+            interpreter, otherwise the string ``"nodeenv"`` for PATH lookup.
+        """
+        candidate = Path(sys.executable).with_name("nodeenv")
+        if candidate.exists():
+            return str(candidate)
         return "nodeenv"
 
     def install_nodeenv(self, cwd: Path) -> None:
         """Install nodeenv."""
-        from importlib.util import find_spec
-
         if find_spec("nodeenv") is None:
             console.print("[yellow]Nodeenv not found. Skipping installation.[/]")
             return
@@ -252,22 +261,11 @@ class NodeenvExecutor(JSExecutor):
 
     def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
         npm_path = self._find_npm_in_venv()
-        # Apply silent flag if enabled
         args = self._apply_silent_flag(args)
         command = [npm_path, *args]
-        # Use start_new_session=True on Unix to create a new process group.
-        # This ensures all child processes (node, astro, nuxt, vite, etc.) can be
-        # terminated together using os.killpg() on the process group.
-        #
-        # stdin=subprocess.PIPE: Keep stdin open to prevent Node.js/Nitro from exiting.
-        # In headless CI environments, stdin is often closed or /dev/null. Node.js
-        # servers detect stdin EOF and exit gracefully to prevent zombie processes.
-        # Using PIPE creates an open file descriptor that the child sees as "waiting
-        # for input" - keeping the server alive. We never write to it; the buffer
-        # stays empty and the child blocks on read (which is desired for servers).
         kwargs: dict[str, Any] = {
             "cwd": cwd,
-            "stdin": subprocess.PIPE,  # Keep stdin open for headless CI compatibility
+            "stdin": subprocess.PIPE,
             "stdout": None,
             "stderr": None,
         }
@@ -281,7 +279,6 @@ class NodeenvExecutor(JSExecutor):
 
     def execute(self, args: list[str], cwd: Path) -> None:
         npm_path = self._find_npm_in_venv()
-        # Apply silent flag if enabled
         args = self._apply_silent_flag(args)
         command = [npm_path, *args]
         process = subprocess.run(
@@ -295,6 +292,12 @@ class NodeenvExecutor(JSExecutor):
             raise ViteExecutionError(command, process.returncode, process.stderr.decode())
 
     def _find_npm_in_venv(self) -> str:
+        """Locate npm within the active virtual environment or fall back to PATH.
+
+        Returns:
+            Path to ``npm`` inside the virtual environment when available, or
+            ``"npm"`` to defer to PATH resolution.
+        """
         venv_path = os.environ.get("VIRTUAL_ENV", sys.prefix)
         bin_dir = "Scripts" if platform.system() == "Windows" else "bin"
         npm_path = Path(venv_path) / bin_dir / "npm"

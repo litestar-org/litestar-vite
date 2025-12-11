@@ -11,7 +11,7 @@ from litestar.exceptions import ImproperlyConfiguredException
 from litestar.testing import AsyncTestClient
 
 from litestar_vite.config import ViteConfig
-from litestar_vite.spa import ViteSPAHandler
+from litestar_vite.handler import AppHandler
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
@@ -66,7 +66,7 @@ def spa_config_dev(temp_resource_dir: Path) -> ViteConfig:
 
 async def test_spa_handler_initialization(spa_config: ViteConfig) -> None:
     """Test SPA handler initialization."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
 
     assert handler._config == spa_config
     assert handler._cached_html is None
@@ -81,7 +81,7 @@ async def test_spa_handler_initialization(spa_config: ViteConfig) -> None:
 
 async def test_spa_handler_production_mode(spa_config: ViteConfig) -> None:
     """Test SPA handler serves cached HTML in production."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     @get("/")
@@ -108,7 +108,7 @@ async def test_spa_handler_production_mode(spa_config: ViteConfig) -> None:
 
 async def test_spa_handler_not_initialized_error(spa_config: ViteConfig) -> None:
     """Test that calling get_html before initialization raises error."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
 
     mock_request = Mock()
     with pytest.raises(ImproperlyConfiguredException, match="not initialized"):
@@ -130,7 +130,7 @@ async def test_spa_get_bytes_lazy_initialize(tmp_path: Path) -> None:
         paths=PathConfig(root=tmp_path, resource_dir=resource_dir, bundle_dir=tmp_path / "public"),
         runtime=RuntimeConfig(dev_mode=False),
     )
-    handler = ViteSPAHandler(config)
+    handler = AppHandler(config)
     # Simulate a worker that never ran initialize()
     handler._initialized = False
 
@@ -156,7 +156,7 @@ async def test_spa_handler_missing_index_html(tmp_path: Path, monkeypatch: pytes
         paths=PathConfig(resource_dir=resource_dir),
         runtime=RuntimeConfig(dev_mode=False),
     )
-    handler = ViteSPAHandler(config)
+    handler = AppHandler(config)
 
     with pytest.raises(ImproperlyConfiguredException, match=r"index\.html not found"):
         await handler.initialize_async()
@@ -164,7 +164,7 @@ async def test_spa_handler_missing_index_html(tmp_path: Path, monkeypatch: pytes
 
 async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "MockerFixture") -> None:
     """Test SPA handler proxies to Vite dev server in dev mode."""
-    handler = ViteSPAHandler(spa_config_dev)
+    handler = AppHandler(spa_config_dev)
 
     # Mock httpx.AsyncClient
     mock_response = Mock()
@@ -177,7 +177,7 @@ async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "M
 
     # Patch httpx.AsyncClient
     expected_url = "http://127.0.0.1:5173"
-    with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
+    with patch("litestar_vite.handler.httpx.AsyncClient", return_value=mock_client):
         # Pass explicit vite_url to avoid hotfile resolution picking up stale hotfiles
         await handler.initialize_async(vite_url=expected_url)
 
@@ -194,14 +194,14 @@ async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "M
 
 async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> None:
     """Test SPA handler handles dev server connection errors."""
-    handler = ViteSPAHandler(spa_config_dev)
+    handler = AppHandler(spa_config_dev)
 
     # Mock httpx.AsyncClient to raise an error
     mock_client = AsyncMock()
     mock_client.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
     mock_client.aclose = AsyncMock()
 
-    with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
+    with patch("litestar_vite.handler.httpx.AsyncClient", return_value=mock_client):
         # Pass explicit vite_url to avoid hotfile resolution
         await handler.initialize_async(vite_url="http://127.0.0.1:5173")
 
@@ -212,12 +212,12 @@ async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> N
 
 async def test_spa_handler_shutdown(spa_config_dev: ViteConfig) -> None:
     """Test SPA handler shutdown closes HTTP client."""
-    handler = ViteSPAHandler(spa_config_dev)
+    handler = AppHandler(spa_config_dev)
 
     mock_client = AsyncMock()
     mock_client.aclose = AsyncMock()
 
-    with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_client):
+    with patch("litestar_vite.handler.httpx.AsyncClient", return_value=mock_client):
         # Pass explicit vite_url to avoid hotfile resolution
         await handler.initialize_async(vite_url="http://127.0.0.1:5173")
 
@@ -231,7 +231,7 @@ async def test_spa_handler_shutdown(spa_config_dev: ViteConfig) -> None:
 
 async def test_spa_handler_create_route_handler(spa_config: ViteConfig) -> None:
     """Test creating a Litestar route handler from SPA handler."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()
@@ -244,7 +244,7 @@ async def test_spa_handler_create_route_handler(spa_config: ViteConfig) -> None:
 
 async def test_spa_handler_route_handler_integration(spa_config: ViteConfig) -> None:
     """Test SPA handler route handler in a Litestar app."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()
@@ -265,7 +265,7 @@ async def test_spa_handler_route_handler_integration(spa_config: ViteConfig) -> 
 
 async def test_spa_handler_caches_html(spa_config: ViteConfig, temp_resource_dir: Path) -> None:
     """Test that SPA handler caches HTML and doesn't reload on every request."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     # Get HTML first time
@@ -286,7 +286,7 @@ async def test_spa_handler_caches_html(spa_config: ViteConfig, temp_resource_dir
 
 async def test_spa_handler_double_initialization(spa_config: ViteConfig) -> None:
     """Test that double initialization is safe (idempotent)."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
 
     await handler.initialize_async()
     cached_html_1 = handler._cached_html
@@ -300,7 +300,7 @@ async def test_spa_handler_double_initialization(spa_config: ViteConfig) -> None
 
 async def test_spa_handler_fallback_load(spa_config: ViteConfig) -> None:
     """Test that handler can load HTML even if not pre-initialized."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     # Don't call initialize()
 
     handler._initialized = True  # Fake initialization to bypass check
@@ -347,7 +347,7 @@ async def test_spa_handler_transform_html_with_page_data(
     spa_config_with_transforms: ViteConfig,
 ) -> None:
     """Test that get_html injects page data."""
-    handler = ViteSPAHandler(spa_config_with_transforms)
+    handler = AppHandler(spa_config_with_transforms)
     await handler.initialize_async()
 
     page_data = {"component": "Home", "props": {"user": "test"}}
@@ -365,7 +365,7 @@ async def test_spa_handler_caches_transformed_html(
     spa_config_with_transforms: ViteConfig,
 ) -> None:
     """Test that transformed HTML is cached in production."""
-    handler = ViteSPAHandler(spa_config_with_transforms)
+    handler = AppHandler(spa_config_with_transforms)
     await handler.initialize_async()
 
     mock_request = Mock()
@@ -383,7 +383,7 @@ async def test_spa_handler_page_data_bypasses_cache(
     spa_config_with_transforms: ViteConfig,
 ) -> None:
     """Test that page_data bypasses transformed HTML cache."""
-    handler = ViteSPAHandler(spa_config_with_transforms)
+    handler = AppHandler(spa_config_with_transforms)
     await handler.initialize_async()
 
     mock_request = Mock()
@@ -406,7 +406,7 @@ async def test_spa_handler_get_html_sync(
     spa_config_with_transforms: ViteConfig,
 ) -> None:
     """Test the synchronous get_html_sync method."""
-    handler = ViteSPAHandler(spa_config_with_transforms)
+    handler = AppHandler(spa_config_with_transforms)
     await handler.initialize_async()
 
     # Should work synchronously
@@ -419,7 +419,7 @@ async def test_spa_handler_get_html_sync_with_page_data(
     spa_config_with_transforms: ViteConfig,
 ) -> None:
     """Test get_html_sync with page_data."""
-    handler = ViteSPAHandler(spa_config_with_transforms)
+    handler = AppHandler(spa_config_with_transforms)
     await handler.initialize_async()
 
     page_data = {"component": "Home", "props": {"message": "Hello"}}
@@ -434,7 +434,7 @@ async def test_spa_handler_get_html_sync_works_in_dev_mode(
     spa_config_dev: ViteConfig,
 ) -> None:
     """Test that get_html_sync works in dev mode with sync HTTP client."""
-    handler = ViteSPAHandler(spa_config_dev)
+    handler = AppHandler(spa_config_dev)
 
     # Mock both async and sync httpx clients for initialization
     mock_async_client = AsyncMock()
@@ -447,8 +447,8 @@ async def test_spa_handler_get_html_sync_works_in_dev_mode(
     mock_sync_client.get.return_value = mock_response
 
     with (
-        patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_async_client),
-        patch("litestar_vite.spa.httpx.Client", return_value=mock_sync_client),
+        patch("litestar_vite.handler.httpx.AsyncClient", return_value=mock_async_client),
+        patch("litestar_vite.handler.httpx.Client", return_value=mock_sync_client),
     ):
         # Pass explicit vite_url to avoid hotfile resolution
         await handler.initialize_async(vite_url="http://127.0.0.1:5173")
@@ -474,7 +474,7 @@ async def test_spa_handler_no_transform_when_spa_config_disabled(
         runtime=RuntimeConfig(dev_mode=False),
         spa=False,  # Transformations disabled
     )
-    handler = ViteSPAHandler(config)
+    handler = AppHandler(config)
     await handler.initialize_async()
 
     mock_request = Mock()
@@ -506,7 +506,7 @@ async def test_spa_handler_csrf_injection(
         ),
     )
 
-    handler = ViteSPAHandler(config)
+    handler = AppHandler(config)
     await handler.initialize_async()
 
     # Mock request with scope that has state
@@ -545,7 +545,7 @@ async def test_spa_handler_csrf_injection_sync(
         ),
     )
 
-    handler = ViteSPAHandler(config)
+    handler = AppHandler(config)
     await handler.initialize_async()
 
     # Sync method requires explicit CSRF token
@@ -572,7 +572,7 @@ async def test_spa_handler_route_exclusion_schema_path(spa_config: ViteConfig) -
 
     from litestar_vite.plugin import is_litestar_route
 
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()
@@ -604,7 +604,7 @@ async def test_spa_handler_route_exclusion_api_path(spa_config: ViteConfig) -> N
     then the SPA catch-all. The route exclusion in SPA handler prevents it from
     shadowing API routes.
     """
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     # Add real API routes BEFORE SPA handler
@@ -643,7 +643,7 @@ async def test_spa_handler_route_exclusion_api_path(spa_config: ViteConfig) -> N
 
 async def test_spa_handler_route_exclusion_deep_spa_link_allowed(spa_config: ViteConfig) -> None:
     """Test that deep SPA links like /users/123 still serve SPA content."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()
@@ -663,7 +663,7 @@ async def test_spa_handler_route_exclusion_deep_spa_link_allowed(spa_config: Vit
 
 async def test_spa_handler_route_exclusion_root_path_allowed(spa_config: ViteConfig) -> None:
     """Test that root path / always serves SPA content."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()
@@ -690,7 +690,7 @@ async def test_spa_handler_route_exclusion_custom_openapi_path(temp_resource_dir
         runtime=RuntimeConfig(dev_mode=False),
     )
 
-    handler = ViteSPAHandler(config)
+    handler = AppHandler(config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()
@@ -718,7 +718,7 @@ async def test_spa_handler_route_exclusion_custom_openapi_path(temp_resource_dir
 
 async def test_spa_handler_route_exclusion_dev_mode(spa_config_dev: ViteConfig) -> None:
     """Test route exclusion works in development mode."""
-    handler = ViteSPAHandler(spa_config_dev)
+    handler = AppHandler(spa_config_dev)
 
     # Mock httpx client for dev mode
     mock_response = Mock()
@@ -729,7 +729,7 @@ async def test_spa_handler_route_exclusion_dev_mode(spa_config_dev: ViteConfig) 
     mock_async_client.get = AsyncMock(return_value=mock_response)
     mock_async_client.aclose = AsyncMock()
 
-    with patch("litestar_vite.spa.httpx.AsyncClient", return_value=mock_async_client):
+    with patch("litestar_vite.handler.httpx.AsyncClient", return_value=mock_async_client):
         await handler.initialize_async(vite_url="http://127.0.0.1:5173")
 
         route = handler.create_route_handler()
@@ -755,7 +755,7 @@ async def test_spa_handler_route_exclusion_dev_mode(spa_config_dev: ViteConfig) 
 
 async def test_spa_handler_route_exclusion_multiple_api_versions(spa_config: ViteConfig) -> None:
     """Test route exclusion with multiple API versions."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()
@@ -784,7 +784,7 @@ async def test_spa_handler_route_exclusion_multiple_api_versions(spa_config: Vit
 
 async def test_spa_handler_route_exclusion_docs_path(spa_config: ViteConfig) -> None:
     """Test that /docs path is excluded from SPA handler."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()
@@ -807,7 +807,7 @@ async def test_spa_handler_route_exclusion_nested_schema_paths(spa_config: ViteC
     """Test that nested schema paths like /schema/openapi.json are excluded."""
     from litestar_vite.plugin import is_litestar_route
 
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()
@@ -832,7 +832,7 @@ async def test_spa_handler_route_exclusion_nested_schema_paths(spa_config: ViteC
 
 async def test_spa_handler_route_exclusion_with_query_params(spa_config: ViteConfig) -> None:
     """Test that route exclusion works with query parameters."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()
@@ -861,7 +861,7 @@ async def test_spa_handler_route_exclusion_production_mode(temp_resource_dir: Pa
         runtime=RuntimeConfig(dev_mode=False),
     )
 
-    handler = ViteSPAHandler(config)
+    handler = AppHandler(config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()
@@ -887,7 +887,7 @@ async def test_spa_handler_route_exclusion_production_mode(temp_resource_dir: Pa
 
 async def test_spa_handler_route_exclusion_with_trailing_slash(spa_config: ViteConfig) -> None:
     """Test route exclusion handles paths with trailing slashes."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()
@@ -908,7 +908,7 @@ async def test_spa_handler_route_exclusion_with_trailing_slash(spa_config: ViteC
 
 async def test_spa_handler_route_exclusion_similar_paths(spa_config: ViteConfig) -> None:
     """Test that route exclusion handles similar but different paths correctly."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()
@@ -935,7 +935,7 @@ async def test_spa_handler_route_exclusion_similar_paths(spa_config: ViteConfig)
 
 async def test_spa_handler_route_exclusion_empty_path_segments(spa_config: ViteConfig) -> None:
     """Test route exclusion with various path edge cases."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()
@@ -956,7 +956,7 @@ async def test_spa_handler_route_exclusion_empty_path_segments(spa_config: ViteC
 
 async def test_spa_handler_route_exclusion_no_false_positives(spa_config: ViteConfig) -> None:
     """Test that common SPA routes don't trigger false positive exclusions."""
-    handler = ViteSPAHandler(spa_config)
+    handler = AppHandler(spa_config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()

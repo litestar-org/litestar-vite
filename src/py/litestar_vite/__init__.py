@@ -40,6 +40,7 @@ from litestar_vite.config import (
     TypeGenConfig,
     ViteConfig,
 )
+from litestar_vite.handler import AppHandler
 from litestar_vite.html_transform import (
     inject_body_content,
     inject_head_script,
@@ -48,10 +49,10 @@ from litestar_vite.html_transform import (
 )
 from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.plugin import VitePlugin
-from litestar_vite.spa import ViteSPAHandler
 
 __all__ = (
     # Config components
+    "AppHandler",
     "DeployConfig",
     "ExternalDevServer",
     "InertiaConfig",
@@ -63,7 +64,6 @@ __all__ = (
     "ViteConfig",
     # Main exports
     "VitePlugin",
-    "ViteSPAHandler",
     # Codegen utilities
     "extract_route_metadata",
     "generate_routes_json",

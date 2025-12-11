@@ -1,6 +1,6 @@
 """SPA mode handler for Vite integration.
 
-This module provides the ViteSPAHandler class that manages serving
+This module provides the AppHandler class that manages serving
 the Single Page Application (SPA) HTML in both development and production modes.
 
 In dev mode, it proxies requests to the Vite dev server for HMR support.
@@ -32,6 +32,7 @@ from litestar_vite.plugin import is_litestar_route
 
 if TYPE_CHECKING:
     from litestar.connection import Request
+    from litestar.types import Guard  # pyright: ignore[reportUnknownVariableType]
 
     from litestar_vite.config import SPAConfig, ViteConfig
 
@@ -41,7 +42,7 @@ logger = logging.getLogger("litestar_vite")
 _HTML_MEDIA_TYPE = "text/html; charset=utf-8"
 
 
-class ViteSPAHandler:
+class AppHandler:
     """Handler for serving SPA HTML in both dev and production modes.
 
     This handler manages the serving of the index.html file for SPAs.
@@ -65,7 +66,7 @@ class ViteSPAHandler:
         config: The Vite configuration.
 
     Example:
-        handler = ViteSPAHandler(config)
+        handler = AppHandler(config)
         await handler.initialize()
         html = await handler.get_html(request)
 
@@ -127,9 +128,9 @@ class ViteSPAHandler:
         if self._config.is_dev_mode and self._config.hot_reload:
             self._init_http_clients(vite_url)
         else:
-            # Load manifest for production asset URL transformation
-            await self._load_manifest_async()
-            # Load and cache index.html for production
+            # Skip for external mode - external frameworks (Angular CLI, etc.) handle their own builds
+            if self._config.mode != "external":
+                await self._load_manifest_async()
             await self._load_index_html_async()
 
         self._initialized = True
@@ -156,9 +157,9 @@ class ViteSPAHandler:
         if self._config.is_dev_mode and self._config.hot_reload:
             self._init_http_clients(vite_url)
         else:
-            # Load manifest for production asset URL transformation
-            self._load_manifest_sync()
-            # Load and cache index.html for production
+            # Skip for external mode - external frameworks (Angular CLI, etc.) handle their own builds
+            if self._config.mode != "external":
+                self._load_manifest_sync()
             self._load_index_html_sync()
 
         self._initialized = True
@@ -173,7 +174,6 @@ class ViteSPAHandler:
         # The VitePlugin knows the correct URL because it selects the port
         self._vite_url = vite_url or self._resolve_vite_url()
 
-        # Create HTTP client for proxying to Vite server
         # Uses connection pooling for efficient reuse
         # HTTP/2 is controlled by config and requires the h2 package
         http2_enabled = self._config.http2
@@ -187,7 +187,6 @@ class ViteSPAHandler:
             timeout=httpx.Timeout(5.0),
             http2=http2_enabled,
         )
-        # Also create a synchronous client for use in sync contexts (e.g., Inertia response)
         self._http_client_sync = httpx.Client(
             timeout=httpx.Timeout(5.0),
         )
@@ -269,9 +268,6 @@ class ViteSPAHandler:
         In production mode, transforms source asset URLs (e.g., /resources/main.tsx)
         to their hashed equivalents using the Vite manifest. This transformation
         is done once at load time for optimal performance.
-
-        Raises:
-            ImproperlyConfiguredException: If index.html is not found.
         """
         resolved_path: anyio.Path | None = None
         for candidate in self._config.candidate_index_html_paths():
@@ -286,7 +282,6 @@ class ViteSPAHandler:
         raw_bytes = await resolved_path.read_bytes()
         html = raw_bytes.decode("utf-8")
 
-        # Transform asset URLs using manifest (production only)
         # This is critical for library mode builds where Vite doesn't transform index.html
         html = self._transform_asset_urls_in_html(html)
 
@@ -302,9 +297,6 @@ class ViteSPAHandler:
         In production mode, transforms source asset URLs (e.g., /resources/main.tsx)
         to their hashed equivalents using the Vite manifest. This transformation
         is done once at load time for optimal performance.
-
-        Raises:
-            ImproperlyConfiguredException: If index.html is not found.
         """
         resolved_path: Path | None = None
         for candidate in self._config.candidate_index_html_paths():
@@ -319,7 +311,6 @@ class ViteSPAHandler:
         raw_bytes = resolved_path.read_bytes()
         html = raw_bytes.decode("utf-8")
 
-        # Transform asset URLs using manifest (production only)
         # This is critical for library mode builds where Vite doesn't transform index.html
         html = self._transform_asset_urls_in_html(html)
 
@@ -466,13 +457,10 @@ class ViteSPAHandler:
             ImproperlyConfiguredException: If the handler is not initialized.
         """
         if not self._initialized:
-            msg = "ViteSPAHandler not initialized. Call initialize() during app startup."
+            msg = "AppHandler not initialized. Call initialize() during app startup."
             raise ImproperlyConfiguredException(msg)
 
-        # Check if transformations are needed
         needs_transform = self._spa_config is not None or page_data is not None
-
-        # Check if CSRF injection is enabled (per-request, cannot cache)
         needs_csrf = self._spa_config is not None and self._spa_config.inject_csrf
         csrf_token = self._get_csrf_token(request) if needs_csrf else None
 
@@ -499,11 +487,9 @@ class ViteSPAHandler:
         if page_data is not None or csrf_token is not None:
             return self._transform_html(base_html, page_data, csrf_token)
 
-        # Check if we can use cached transformed HTML (routes only, no page_data, no csrf)
         if self._spa_config is not None and self._spa_config.cache_transformed_html:
             if self._cached_transformed_html is not None:
                 return self._cached_transformed_html
-            # Transform and cache (routes only)
             self._cached_transformed_html = self._transform_html(base_html, None, None)
             return self._cached_transformed_html
 
@@ -536,13 +522,16 @@ class ViteSPAHandler:
             page_data: Optional page data to inject as data-page attribute.
             csrf_token: Optional CSRF token to inject.
 
+        Raises:
+            ImproperlyConfiguredException: If the handler is not initialized
+
         Returns:
             The HTML content as a string, optionally transformed.
         """
         if not self._initialized:
             # Lazy initialization fallback - lifespan may not have run properly
             logger.warning(
-                "ViteSPAHandler lazy init triggered - lifespan may not have run. "
+                "AppHandler lazy init triggered - lifespan may not have run. "
                 "Consider calling initialize_sync() explicitly during app startup."
             )
             self.initialize_sync()
@@ -563,7 +552,6 @@ class ViteSPAHandler:
 
         base_html = self._cached_html
 
-        # Check if transformations are needed
         needs_transform = self._spa_config is not None or page_data is not None
 
         if not needs_transform:
@@ -573,10 +561,8 @@ class ViteSPAHandler:
         if page_data is not None or csrf_token is not None:
             return self._transform_html(base_html, page_data, csrf_token)
 
-        # Check if we can use cached transformed HTML (routes only)
         if self._spa_config is not None and self._spa_config.cache_transformed_html:
             if self._cached_transformed_html is None:
-                # Transform and cache (routes only)
                 self._cached_transformed_html = self._transform_html(base_html, None, None)
             return self._cached_transformed_html
 
@@ -703,7 +689,7 @@ class ViteSPAHandler:
             A Litestar route handler that serves the SPA HTML.
 
         Example:
-            handler = ViteSPAHandler(config)
+            handler = AppHandler(config)
             spa_route = handler.create_route_handler()
             # Add spa_route to your Litestar app routes
         """
@@ -712,23 +698,80 @@ class ViteSPAHandler:
         get_bytes = self.get_bytes
         is_dev = self._config.is_dev_mode and self._config.hot_reload
 
+        opt: dict[str, Any] = {}
+        if self._config.exclude_static_from_auth:
+            opt["exclude_from_auth"] = True
+
+        guards: "list[Guard] | None" = list(self._config.guards) if self._config.guards else None  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType,reportUnknownArgumentType]
+
+        # Build paths based on spa_path
+        # spa_path controls where the SPA handler serves index.html (defaults to "/")
+        # asset_url controls where static files are served
+        #
+        # Common scenarios:
+        # 1. spa_path="/" (default) with asset_url="/web/" → SPA at /, exclude /web/ from catch-all
+        # 2. spa_path="/web/" with asset_url="/web/" → SPA and assets both at /web/ (Angular --base-href)
+        # 3. spa_path="/" (default) with asset_url="/static/" → SPA at /, exclude /static/ from catch-all
+        asset_url = self._config.asset_url
+        spa_path = self._config.spa_path
+
+        # spa_path defaults to "/" if not explicitly set
+        effective_spa_path = spa_path if spa_path is not None else "/"
+        include_root = self._config.include_root_spa_paths
+
+        # Build route paths
+        if effective_spa_path and effective_spa_path != "/":
+            base = effective_spa_path.rstrip("/")
+            paths: list[str] = [f"{base}/", f"{base}/{{path:path}}"]
+            # Optionally also serve at root (for Angular --base-href /web/ with root access)
+            if include_root:
+                paths.extend(["/", "/{path:path}"])
+        else:
+            paths = ["/", "/{path:path}"]
+
+        # Build asset_url prefix for exclusion check
+        # Needed when:
+        # 1. spa_path="/" but asset_url="/web/" (default case with custom asset_url)
+        # 2. spa_path="/web/" with include_root_spa_paths=True (root paths need to exclude /web/)
+        needs_exclusion = asset_url and asset_url != "/" and (effective_spa_path == "/" or include_root)
+        asset_prefix = asset_url.rstrip("/") if needs_exclusion else None
+
+        def _is_static_asset_path(request_path: str) -> bool:
+            """Check if path should be served by static files router, not SPA.
+
+            Returns:
+                True if path matches asset_url prefix and should skip SPA handling.
+            """
+            if asset_prefix is None:
+                return False
+            return request_path == asset_prefix or request_path.startswith(f"{asset_prefix}/")
+
         if is_dev:
             # Dev mode: proxy to Vite, no caching
             @get(
-                path=["/", "/{path:path}"],
+                path=paths,
                 name="vite_spa",
-                opt={"exclude_from_auth": True},
+                opt=opt,
                 include_in_schema=False,
+                guards=guards,
             )
             async def spa_handler_dev(request: "Request[Any, Any, Any]") -> Response[str]:
                 """Serve the SPA HTML (dev mode - proxied from Vite).
 
-                Checks if the request path matches a Litestar route before serving.
-                If it does, raises NotFoundException to let the router handle it.
+                Checks if the request path matches a static asset or Litestar route
+                before serving. If it does, raises NotFoundException to let the
+                appropriate router handle it.
+
+                Raises:
+                    NotFoundException: If the path matches a static asset or Litestar route.
+
+                Returns:
+                    The HTML response from the Vite dev server.
                 """
-                # Check if path is a Litestar route - if so, don't serve SPA
-                # This prevents the catch-all from shadowing /schema, /api, etc.
                 path = request.url.path
+                # Skip static asset paths (when spa_path="/" but asset_url="/web/")
+                if _is_static_asset_path(path):
+                    raise NotFoundException(detail=f"Static asset path: {path}")
                 if path != "/" and is_litestar_route(path, request.app):
                     raise NotFoundException(detail=f"Not an SPA route: {path}")
 
@@ -743,21 +786,30 @@ class ViteSPAHandler:
 
         # Production mode: serve cached bytes with cache headers
         @get(
-            path=["/", "/{path:path}"],
+            path=paths,
             name="vite_spa",
-            opt={"exclude_from_auth": True},
+            opt=opt,
             include_in_schema=False,
-            cache=3600,  # Cache for 1 hour
+            cache=3600,
+            guards=guards,
         )
         async def spa_handler_prod(request: "Request[Any, Any, Any]") -> Response[bytes]:
             """Serve the SPA HTML (production - cached).
 
-            Checks if the request path matches a Litestar route before serving.
-            If it does, raises NotFoundException to let the router handle it.
+            Checks if the request path matches a static asset or Litestar route
+            before serving. If it does, raises NotFoundException to let the
+            appropriate router handle it.
+
+            Raises:
+                NotFoundException: If the path matches a static asset or Litestar route.
+
+            Returns:
+                The HTML response as bytes.
             """
-            # Check if path is a Litestar route - if so, don't serve SPA
-            # This prevents the catch-all from shadowing /schema, /api, etc.
             path = request.url.path
+            # Skip static asset paths (when spa_path="/" but asset_url="/web/")
+            if _is_static_asset_path(path):
+                raise NotFoundException(detail=f"Static asset path: {path}")
             if path != "/" and is_litestar_route(path, request.app):
                 raise NotFoundException(detail=f"Not an SPA route: {path}")
 

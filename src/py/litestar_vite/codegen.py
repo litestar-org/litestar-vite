@@ -130,7 +130,6 @@ def _normalize_path(path: str) -> str:
     # Use PurePosixPath for cross-platform compatibility
     path_obj = PurePosixPath(path)
 
-    # Replace {param:type} with {param} using compiled pattern
     return _PATH_PARAM_TYPE_PATTERN.sub(r"{\1}", str(path_obj))
 
 
@@ -237,7 +236,6 @@ def _process_field_definition(field_def: Any, param_name: str) -> "tuple[str, st
         if query_alias:
             final_name = query_alias
 
-    # Add undefined to type if optional
     if is_optional and "undefined" not in ts_type:
         ts_type = f"{ts_type} | undefined"
 
@@ -279,7 +277,6 @@ def _extract_query_params(handler: HTTPRouteHandler, path_param_names: set[str])
         # Dependencies may not be resolvable in all contexts
         pass
 
-    # Iterate through all parameters
     parameters = getattr(parsed_sig, "parameters", {})
     for param_name, field_def in parameters.items():
         if _should_skip_param(param_name, path_param_names, body_param_name, dependency_names):
@@ -473,7 +470,6 @@ def extract_route_metadata(
         route_name = _make_unique_name(base_name, used_names, full_path, methods)
         used_names.add(route_name)
 
-        # Apply filters
         if only and not any(pattern in route_name or pattern in full_path for pattern in only):
             continue
         if exclude and any(pattern in route_name or pattern in full_path for pattern in exclude):

@@ -42,6 +42,18 @@ def test_executor_resolve_executable_custom_path() -> None:
     assert executor._resolve_executable() == "/custom/npm"
 
 
+def test_apply_silent_flag_inserts_after_run() -> None:
+    """Silent flag should be placed immediately after 'run'."""
+    executor = NodeExecutor(silent=True)
+    assert executor._apply_silent_flag(["run", "dev"]) == ["run", "--silent", "dev"]
+
+
+def test_apply_silent_flag_appends_when_no_run() -> None:
+    """Silent flag should be appended when no run subcommand is present."""
+    executor = NodeExecutor(silent=True)
+    assert executor._apply_silent_flag(["install"]) == ["install", "--silent"]
+
+
 @patch("subprocess.Popen")
 @patch("shutil.which")
 def test_executor_run_command(mock_which: Mock, mock_popen: Mock) -> None:

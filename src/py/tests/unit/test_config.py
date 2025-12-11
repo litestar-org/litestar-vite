@@ -483,7 +483,7 @@ def test_hybrid_mode_explicit() -> None:
 
     config = ViteConfig(
         mode="hybrid",
-        inertia=InertiaConfig(spa_mode=True),
+        inertia=InertiaConfig(),
     )
 
     assert config.mode == "hybrid"
@@ -492,12 +492,12 @@ def test_hybrid_mode_explicit() -> None:
     assert config.spa_config is not None
 
 
-def test_hybrid_mode_auto_detected_with_inertia_spa_mode() -> None:
-    """Test that hybrid mode is auto-detected when Inertia spa_mode=True."""
+def test_hybrid_mode_auto_detected_with_inertia() -> None:
+    """Test that hybrid mode is auto-detected when Inertia is enabled."""
     from litestar_vite.inertia import InertiaConfig
 
     config = ViteConfig(
-        inertia=InertiaConfig(spa_mode=True),
+        inertia=InertiaConfig(),
     )
 
     assert config.mode == "hybrid"
@@ -546,11 +546,11 @@ def test_hybrid_mode_validation_requires_index_html(tmp_path: Path) -> None:
     """Test that hybrid mode validation requires index.html in production."""
     from litestar_vite.inertia import InertiaConfig
 
-    # Empty directory - no index.html, but spa_mode=True forces hybrid
+    # Empty directory - no index.html
     config = ViteConfig(
         mode="hybrid",
         paths=PathConfig(resource_dir=tmp_path),
-        inertia=InertiaConfig(spa_mode=True),
+        inertia=InertiaConfig(),
     )
 
     with pytest.raises(ValueError, match=r"Hybrid mode requires index\.html"):
@@ -566,7 +566,7 @@ def test_hybrid_mode_validation_passes_in_dev_mode(tmp_path: Path) -> None:
         mode="hybrid",
         dev_mode=True,
         paths=PathConfig(resource_dir=tmp_path),
-        inertia=InertiaConfig(spa_mode=True),
+        inertia=InertiaConfig(),
     )
 
     # Should not raise

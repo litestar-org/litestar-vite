@@ -32,8 +32,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import anyio
-import httpx  # used in proxy middleware health and HTTP forwarding
-import websockets  # used in proxy middleware WS forwarding
+import httpx
+import websockets
 from litestar import Response
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 from litestar.connection import Request
@@ -46,6 +46,7 @@ from websockets.typing import Subprotocol
 
 from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, ExternalDevServer, TypeGenConfig, ViteConfig
 from litestar_vite.exceptions import ViteProcessError
+from litestar_vite.loader import ViteAssetLoader
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Iterator, Sequence
@@ -70,8 +71,7 @@ if TYPE_CHECKING:
     from websockets.typing import Subprotocol
 
     from litestar_vite.executor import JSExecutor
-    from litestar_vite.loader import ViteAssetLoader
-    from litestar_vite.spa import ViteSPAHandler
+    from litestar_vite.handler import AppHandler
 
 
 # Disconnect exceptions that should be silently ignored during WebSocket shutdown
@@ -106,10 +106,8 @@ def _write_if_changed(path: Path, content: bytes | str, encoding: str = "utf-8")
     """
     import hashlib
 
-    # Convert string to bytes if needed
     content_bytes = content.encode(encoding) if isinstance(content, str) else content
 
-    # Check if file exists and has same content
     if path.exists():
         try:
             existing_hash = hashlib.md5(path.read_bytes()).hexdigest()  # noqa: S324
@@ -117,9 +115,8 @@ def _write_if_changed(path: Path, content: bytes | str, encoding: str = "utf-8")
             if existing_hash == new_hash:
                 return False
         except OSError:
-            pass  # File read failed, proceed with write
+            pass
 
-    # Write the file
     path.parent.mkdir(parents=True, exist_ok=True)
     if isinstance(content, str):
         path.write_text(content, encoding=encoding)
@@ -249,7 +246,7 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
     external_target = external.target if external else None
     external_http2 = external.http2 if external else False
 
-    litestar_version = os.environ.get("LITESTAR_VERSION") or _resolve_litestar_version()
+    litestar_version = os.environ.get("LITESTAR_VERSION") or resolve_litestar_version()
 
     payload = {
         "assetUrl": config.asset_url,
@@ -314,7 +311,7 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
         config: The Vite configuration.
         asset_url_override: Optional asset URL to force (e.g., CDN base during build).
     """
-    litestar_version = os.environ.get("LITESTAR_VERSION") or _resolve_litestar_version()
+    litestar_version = os.environ.get("LITESTAR_VERSION") or resolve_litestar_version()
     asset_url = asset_url_override or config.asset_url
     base_url = config.base_url or asset_url
     if asset_url:
@@ -377,7 +374,7 @@ def set_app_environment(app: "Litestar") -> None:
             os.environ.setdefault("LITESTAR_OPENAPI_PATH", path)
 
 
-def _resolve_litestar_version() -> str:
+def resolve_litestar_version() -> str:
     """Safely resolve the installed Litestar version as a string."""
 
     try:
@@ -598,10 +595,9 @@ class ViteProxyMiddleware(AbstractMiddleware):
         await self.app(scope, receive, send)
 
     def _should_proxy(self, path: str, scope: "Scope") -> bool:
-        # Litestar may hand us percent-encoded paths (e.g. /%40vite/client).
         try:
             from urllib.parse import unquote
-        except ImportError:  # pragma: no cover - extremely small surface
+        except ImportError:  # pragma: no cover
             decoded = path
             matches_prefix = path.startswith(self._proxy_allow_prefixes)
         else:
@@ -613,8 +609,6 @@ class ViteProxyMiddleware(AbstractMiddleware):
         if not matches_prefix:
             return False
 
-        # If it matches prefix, verify it's NOT a Litestar route
-        # This prevents shadowing routes when asset_url="/" (which makes allow list match everything)
         app = scope.get("app")  # pyright: ignore[reportUnknownMemberType]
         return not (app and is_litestar_route(path, app))
 
@@ -653,9 +647,6 @@ class ViteProxyMiddleware(AbstractMiddleware):
             body += event.get("body", b"")
             more_body = event.get("more_body", False)
 
-        # Use HTTP/2 when enabled for better connection multiplexing
-        # Note: httpx handles the protocol negotiation automatically
-        # HTTP/2 requires the h2 package - gracefully fallback if not installed
         http2_enabled = self.http2
         if http2_enabled:
             try:
@@ -870,7 +861,6 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
             body += event.get("body", b"")
             more_body = event.get("more_body", False)
 
-        # Check for HTTP/2 support
         http2_enabled = self.http2
         if http2_enabled:
             try:
@@ -929,7 +919,7 @@ def _build_hmr_target_url(
 ) -> "str | None":
     """Build the target WebSocket URL for Vite HMR proxy.
 
-    Note: Vite's HMR WebSocket listens at {base}{hmr.path}, so we preserve
+    Vite's HMR WebSocket listens at {base}{hmr.path}, so we preserve
     the full path including the asset prefix (e.g., /static/vite-hmr).
 
     Returns:
@@ -958,7 +948,7 @@ def _build_hmr_target_url(
 def _extract_forward_headers(scope: dict[str, Any]) -> list[tuple[str, str]]:
     """Extract headers to forward, excluding WebSocket handshake headers.
 
-    Note: We exclude protocol-specific headers that websockets library handles itself.
+    Excludes protocol-specific headers that websockets library handles itself.
     The sec-websocket-protocol header is also excluded since we handle subprotocols separately.
 
     Returns:
@@ -1363,7 +1353,7 @@ class StaticFilesConfig:
     before_request: "BeforeRequestHookHandler | None" = None
     cache_control: "CacheControlHeader | None" = None
     exception_handlers: "ExceptionHandlersMap | None" = None
-    guards: "list[Guard] | None" = None
+    guards: "list[Guard] | None" = None  # pyright: ignore[reportUnknownVariableType]
     middleware: "Sequence[Middleware] | None" = None
     opt: "dict[str, Any] | None" = None
     security: "Sequence[SecurityRequirement] | None" = None
@@ -1600,7 +1590,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._vite_process = ViteProcess(executor=config.executor)
         self._static_files_config: dict[str, Any] = static_files_config.__dict__ if static_files_config else {}
         self._proxy_target: "str | None" = None
-        self._spa_handler: "ViteSPAHandler | None" = None
+        self._spa_handler: "AppHandler | None" = None
 
     @property
     def config(self) -> "ViteConfig":
@@ -1613,7 +1603,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
         Lazily initializes the loader if not already set.
         """
-        from litestar_vite.loader import ViteAssetLoader
 
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader.initialize_loader(config=self._config)
@@ -1647,7 +1636,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         hotfile_path = self._resolve_hotfile_path()
         hotfile_path.parent.mkdir(parents=True, exist_ok=True)
         hotfile_path.write_text(content, encoding="utf-8")
-        # Note: Hotfile written message removed - too verbose for normal output
 
     def _resolve_dev_command(self) -> "list[str]":
         """Resolve the command to run for the dev server.
@@ -1794,16 +1782,28 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         ) -> Response[bytes]:  # pragma: no cover - trivial
             return Response(status_code=404, content=b"")
 
-        base_config = {
+        # Static files router serves actual files only (JS, CSS, images)
+        # SPA fallback (serving index.html for client routes) is handled by AppHandler
+        opt: dict[str, Any] = {}
+        if self._config.exclude_static_from_auth:
+            opt["exclude_from_auth"] = True
+        # Merge with any user-provided opt from static_files_config
+        user_opt = self._static_files_config.get("opt", {})
+        if user_opt:
+            opt = {**opt, **user_opt}
+
+        base_config: dict[str, Any] = {
             "directories": (static_dirs if self._config.is_dev_mode else [bundle_dir]),
             "path": self._config.asset_url,
             "name": "vite",
             "html_mode": False,
             "include_in_schema": False,
-            "opt": {"exclude_from_auth": True},
+            "opt": opt,
             "exception_handlers": {NotFoundException: _static_not_found_handler},
         }
-        static_files_config: dict[str, Any] = {**base_config, **self._static_files_config}
+        # Merge user config but don't let them override 'opt' directly (we merge it above)
+        user_config = {k: v for k, v in self._static_files_config.items() if k != "opt"}
+        static_files_config: dict[str, Any] = {**base_config, **user_config}
         app_config.route_handlers.append(create_static_files_router(**static_files_config))
 
     def _configure_dev_proxy(self, app_config: "AppConfig") -> None:
@@ -1843,9 +1843,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         app_config.route_handlers.append(
             create_vite_hmr_handler(hotfile_path=hotfile_path, hmr_path=hmr_path, asset_url=self._config.asset_url)
         )
-        # Note: "Vite proxy enabled" message removed - it was printing during app init
-        # for ANY CLI command, not just when actually serving. The proxy info is shown
-        # in the consolidated startup banner when the dev server actually starts.
 
     def _configure_ssr_proxy(self, app_config: "AppConfig", hotfile_path: Path) -> None:
         """Configure SSR proxy mode (deny list).
@@ -1869,9 +1866,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         app_config.route_handlers.append(
             create_vite_hmr_handler(hotfile_path=hotfile_path, hmr_path=hmr_path, asset_url=self._config.asset_url)
         )
-        # Note: Proxy status messages removed - they were printing during app init
-        # for ANY CLI command. The proxy info is shown in the consolidated startup
-        # banner when the dev server actually starts.
 
     def on_app_init(self, app_config: "AppConfig") -> "AppConfig":
         """Configure the Litestar application for Vite.
@@ -1918,7 +1912,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._configure_jinja_callables(app_config)
 
         # Configure static file serving
-        if self._config.set_static_folders:
+        # Skip for external mode in dev (proxy handles everything from external dev server)
+        skip_static = self._config.mode == "external" and self._config.is_dev_mode
+        if self._config.set_static_folders and not skip_static:
             self._configure_static_files(app_config)
 
         # Add dev proxy middleware based on proxy_mode (skip non-serving CLI commands)
@@ -1926,28 +1922,19 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._configure_dev_proxy(app_config)
 
         # Add SPA catch-all route handler if spa_handler is enabled
-        # This applies to mode="spa", mode="ssr" (with built assets), and when spa_handler=True explicitly
-        if self._config.spa_handler and self._config.mode in {"spa", "ssr"}:
-            from litestar_vite.spa import ViteSPAHandler
+        # This applies to mode="spa", mode="ssr", mode="external" (in production), and when spa_handler=True explicitly
+        # External mode uses AppHandler for proper route exclusion (is_litestar_route check)
+        use_spa_handler = self._config.spa_handler and self._config.mode in {"spa", "ssr"}
+        use_spa_handler = use_spa_handler or (self._config.mode == "external" and not self._config.is_dev_mode)
+        if use_spa_handler:
+            from litestar_vite.handler import AppHandler
 
-            self._spa_handler = ViteSPAHandler(self._config)
+            self._spa_handler = AppHandler(self._config)
             app_config.route_handlers.append(self._spa_handler.create_route_handler())
         elif self._config.mode == "hybrid":
-            from litestar_vite.spa import ViteSPAHandler
+            from litestar_vite.handler import AppHandler
 
-            self._spa_handler = ViteSPAHandler(self._config)
-
-        # Auto-register static files for mode="external" in production
-        # This is for non-Vite frameworks like Angular CLI that have their own build system
-        if self._config.mode == "external" and not self._config.is_dev_mode:
-            bundle_dir = self._resolve_bundle_dir()
-            if bundle_dir.exists():
-                static_router = create_static_files_router(
-                    path="/",
-                    directories=[bundle_dir],
-                    html_mode=True,  # SPA fallback - serves index.html for non-file routes
-                )
-                app_config.route_handlers.append(static_router)
+            self._spa_handler = AppHandler(self._config)
 
         # Auto-register per-worker lifespan for SPA handler init, asset loader, env setup
         app_config.lifespan.append(self.lifespan)  # pyright: ignore[reportUnknownMemberType]
@@ -2083,7 +2070,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
             # Export routes JSON
             routes_data = generate_routes_json(app, include_components=True, openapi_schema=openapi_schema)
-            routes_data["litestar_version"] = _resolve_litestar_version()
+            routes_data["litestar_version"] = resolve_litestar_version()
             routes_content = msgspec.json.format(
                 msgspec.json.encode(routes_data),
                 indent=2,
@@ -2095,12 +2082,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 exported_files.append(_fmt_path(routes_path))
             else:
                 unchanged_files.append("routes.json")
-            # Note: routes.ts is generated by the Vite plugin from routes.json during build
 
-            # Log results - only log when files were actually exported
             if exported_files:
                 _log_success(f"Types exported → {', '.join(exported_files)}")
-            # Note: "Types unchanged" message removed - not important for normal output
         except (OSError, TypeError, ValueError, ImportError) as e:  # pragma: no cover
             _log_warn(f"Type export failed: {e}")
 
@@ -2232,13 +2216,6 @@ def _normalize_proxy_prefixes(
     bundle_dir: "Path | None" = None,
     root_dir: "Path | None" = None,
 ) -> tuple[str, ...]:
-    def _normalize_prefix(prefix: str) -> str:
-        if not prefix.startswith("/"):
-            prefix = f"/{prefix}"
-        if not prefix.endswith("/"):
-            prefix = f"{prefix}/"
-        return prefix
-
     prefixes: list[str] = list(base_prefixes)
 
     if asset_url:
@@ -2256,7 +2233,6 @@ def _normalize_proxy_prefixes(
     _add_path(resource_dir)
     _add_path(bundle_dir)
 
-    # Remove duplicates while preserving order
     seen: set[str] = set()
     unique: list[str] = []
     for p in prefixes:

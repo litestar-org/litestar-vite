@@ -1,14 +1,42 @@
 import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import msgspec
 from click import Choice, Context, group, option
 from click import Path as ClickPath
-from litestar.cli._utils import LitestarEnv, LitestarGroup  # pyright: ignore[reportPrivateImportUsage]
+from litestar.cli._utils import (  # pyright: ignore[reportPrivateImportUsage]
+    LitestarCLIException,
+    LitestarEnv,
+    LitestarGroup,
+    console,
+)
+from litestar.serialization import encode_json, get_serializer
+from rich.panel import Panel
+from rich.prompt import Confirm, Prompt
 
-from litestar_vite.config import DeployConfig, ExternalDevServer, ViteConfig
+from litestar_vite.codegen import generate_inertia_pages_json, generate_routes_json, generate_routes_ts
+from litestar_vite.config import (
+    DeployConfig,
+    ExternalDevServer,
+    InertiaConfig,
+    InertiaTypeGenConfig,
+    LoggingConfig,
+    TypeGenConfig,
+    ViteConfig,
+)
 from litestar_vite.deploy import ViteDeployer, format_bytes
-from litestar_vite.plugin import _resolve_litestar_version  # pyright: ignore[reportPrivateUsage]
+from litestar_vite.doctor import ViteDoctor
+from litestar_vite.exceptions import ViteExecutionError
+from litestar_vite.plugin import (
+    VitePlugin,
+    resolve_litestar_version,
+    set_environment,
+)
+from litestar_vite.scaffolding import TemplateContext, generate_project, get_available_templates
+from litestar_vite.scaffolding.templates import FrameworkType, get_template
 
 if TYPE_CHECKING:
     from litestar import Litestar
@@ -52,8 +80,6 @@ def _apply_cli_log_level(config: ViteConfig, *, verbose: bool = False, quiet: bo
         verbose: If True, set log level to "verbose".
         quiet: If True, set log level to "quiet" (takes precedence over verbose).
     """
-    from litestar_vite.config import LoggingConfig
-
     if quiet:
         config.logging = LoggingConfig(
             level="quiet",
@@ -62,7 +88,6 @@ def _apply_cli_log_level(config: ViteConfig, *, verbose: bool = False, quiet: bo
             suppress_vite_banner=config.logging_config.suppress_vite_banner,
             timestamps=config.logging_config.timestamps,
         )
-        # Reset executor to pick up new silent setting
         config.reset_executor()
     elif verbose:
         config.logging = LoggingConfig(
@@ -72,7 +97,6 @@ def _apply_cli_log_level(config: ViteConfig, *, verbose: bool = False, quiet: bo
             suppress_vite_banner=config.logging_config.suppress_vite_banner,
             timestamps=config.logging_config.timestamps,
         )
-        # Reset executor to pick up new silent setting
         config.reset_executor()
 
 
@@ -93,9 +117,6 @@ def _print_recommended_config(template_name: str, resource_dir: str, bundle_dir:
         resource_dir: The resource directory used.
         bundle_dir: The bundle directory used.
     """
-    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-    from rich.panel import Panel
-
     # Determine mode based on template
     spa_templates = {"react-router", "react-tanstack"}
     mode = "spa" if template_name in spa_templates else "template"
@@ -188,14 +209,14 @@ def _build_deploy_config(
 
 
 def _run_vite_build(config: ViteConfig, root_dir: Path, console: Any, no_build: bool) -> None:
-    """Run Vite build unless skipped."""
+    """Run Vite build unless skipped.
 
+    Raises:
+        SystemExit: If the build fails.
+    """
     if no_build:
         console.print("[dim]Skipping Vite build (--no-build).[/]")
         return
-
-    from litestar_vite.exceptions import ViteExecutionError
-    from litestar_vite.plugin import set_environment
 
     console.rule("[yellow]Starting Vite build process[/]", align="left")
     if config.set_environment:
@@ -214,10 +235,6 @@ def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: An
 
     Skips generation when type generation is disabled.
     """
-    import msgspec
-
-    from litestar_vite.config import InertiaConfig, TypeGenConfig
-
     types_config = config.types
     if not isinstance(types_config, TypeGenConfig):
         return
@@ -257,14 +274,6 @@ def _select_framework_template(
     Returns:
         Tuple of (template_name, framework_template).
     """
-    import sys
-
-    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-    from rich.prompt import Prompt
-
-    from litestar_vite.scaffolding import get_available_templates
-    from litestar_vite.scaffolding.templates import get_template
-
     if template is None and not no_prompt:
         available = get_available_templates()
         console.print("\n[bold]Available framework templates:[/]")
@@ -310,8 +319,6 @@ def _prompt_for_options(
     Returns:
         Tuple of (enable_ssr, tailwind, enable_types, generate_zod, generate_client).
     """
-    from rich.prompt import Confirm
-
     if enable_ssr is None:
         enable_ssr = (
             framework.has_ssr if no_prompt else Confirm.ask("Enable server-side rendering?", default=framework.has_ssr)
@@ -370,11 +377,6 @@ def vite_doctor(
     verbose: bool,
 ) -> None:
     """Diagnose and fix Vite configuration issues."""
-    import sys
-
-    from litestar_vite.doctor import ViteDoctor
-    from litestar_vite.plugin import VitePlugin
-
     if verbose:
         app.debug = True
 
@@ -522,16 +524,6 @@ def vite_init(
     no_install: "bool",
 ) -> None:
     """Initialize a new Vite project with framework templates."""
-    import sys
-    from pathlib import Path
-
-    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-    from rich.prompt import Confirm
-
-    from litestar_vite import VitePlugin
-    from litestar_vite.scaffolding import TemplateContext, generate_project
-    from litestar_vite.scaffolding.templates import FrameworkType
-
     if callable(ctx.obj):
         ctx.obj = ctx.obj()
     elif verbose:
@@ -548,12 +540,8 @@ def vite_init(
     asset_url = asset_url or config.asset_url
     vite_port = vite_port or config.port
     litestar_port = env.port or 8000
-
-    # Select framework template
     template, framework = _select_framework_template(template, no_prompt)
     console.print(f"\n[green]Using {framework.name} template[/]")
-
-    # Resolve paths now that framework defaults are known
     resource_path_str = str(resource_path or framework.resource_dir or config.resource_dir)
     bundle_path_str = str(bundle_path or config.bundle_dir)
     public_path_str = str(public_path or config.public_dir)
@@ -627,12 +615,6 @@ def vite_init(
 @option("--quiet", type=bool, help="Suppress non-essential output.", default=False, is_flag=True)
 def vite_install(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
     """Install frontend packages."""
-    from pathlib import Path
-
-    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-
-    from litestar_vite.plugin import VitePlugin
-
     if verbose:
         app.debug = True
 
@@ -663,13 +645,6 @@ def vite_build(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
     Raises:
         SystemExit: If the build fails.
     """
-    from pathlib import Path
-
-    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-
-    from litestar_vite.exceptions import ViteExecutionError
-    from litestar_vite.plugin import VitePlugin, set_environment
-
     if verbose:
         app.debug = True
 
@@ -686,8 +661,7 @@ def vite_build(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
 
     executor = plugin.config.executor
     try:
-        root_dir = Path(plugin.config.root_dir or Path.cwd())
-        # Check for external dev server build command
+        root_dir = plugin.config.root_dir or Path.cwd()
         ext = plugin.config.runtime.external_dev_server
         if isinstance(ext, ExternalDevServer) and ext.enabled:
             build_cmd = ext.build_command or executor.build_command
@@ -720,7 +694,7 @@ def vite_build(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
     is_flag=True,
     help="Enable verbose output. Install providers separately: gcsfs for gcs://, s3fs for s3://, adlfs for abfs://.",
 )
-def vite_deploy(  # noqa: PLR0915
+def vite_deploy(
     app: "Litestar",
     storage: "str | None",
     storage_option: "tuple[str, ...]",
@@ -730,13 +704,6 @@ def vite_deploy(  # noqa: PLR0915
     verbose: bool,
 ) -> None:
     """Build and deploy assets to CDN-backed storage."""
-    import sys
-    from pathlib import Path
-
-    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-
-    from litestar_vite.plugin import VitePlugin
-
     if verbose:
         app.debug = True
 
@@ -813,13 +780,6 @@ def vite_serve(app: "Litestar", verbose: "bool", quiet: "bool", production: "boo
 
     Use --production to force running the production server (serve_command).
     """
-    from pathlib import Path
-
-    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-
-    from litestar_vite.exceptions import ViteExecutionError
-    from litestar_vite.plugin import VitePlugin, set_environment
-
     if verbose:
         app.debug = True
 
@@ -830,10 +790,6 @@ def vite_serve(app: "Litestar", verbose: "bool", quiet: "bool", production: "boo
     if plugin.config.set_environment:
         set_environment(config=plugin.config)
 
-    # Use production server when:
-    # 1. --production flag is set, OR
-    # 2. dev_mode is False (production deployment)
-    # Note: SSR mode alone doesn't mean production - SSR apps also have dev servers
     use_production_server = production or not plugin.config.dev_mode
 
     if use_production_server:
@@ -851,7 +807,7 @@ def vite_serve(app: "Litestar", verbose: "bool", quiet: "bool", production: "boo
 
     if plugin.config.executor:
         try:
-            root_dir = Path(plugin.config.root_dir or Path.cwd())
+            root_dir = plugin.config.root_dir or Path.cwd()
             plugin.config.executor.execute(command_to_run, cwd=root_dir)
             console.print("[yellow]Server process stopped.[/]")
         except ViteExecutionError as e:
@@ -924,13 +880,6 @@ def export_routes(
     Raises:
         LitestarCLIException: If the output file cannot be written.
     """
-    import msgspec
-    from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
-
-    from litestar_vite.codegen import generate_routes_json, generate_routes_ts
-    from litestar_vite.config import TypeGenConfig
-    from litestar_vite.plugin import VitePlugin
-
     if verbose:
         app.debug = True
 
@@ -1007,10 +956,6 @@ def _export_openapi_schema(app: "Litestar", types_config: Any) -> None:
     Raises:
         LitestarCLIException: If export fails.
     """
-    import msgspec
-    from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
-    from litestar.serialization import encode_json, get_serializer
-
     console.print("[dim]1. Exporting OpenAPI schema...[/]")
     try:
         serializer = get_serializer(app.type_encoders)
@@ -1037,15 +982,10 @@ def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
     Raises:
         LitestarCLIException: If export fails.
     """
-    import msgspec
-    from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
-
-    from litestar_vite.codegen import generate_routes_json
-
     console.print("[dim]2. Exporting route metadata...[/]")
     try:
         routes_data = generate_routes_json(app, include_components=True)
-        routes_data["litestar_version"] = _resolve_litestar_version()
+        routes_data["litestar_version"] = resolve_litestar_version()
         routes_content = msgspec.json.format(
             msgspec.json.encode(routes_data),
             indent=2,
@@ -1053,7 +993,6 @@ def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
         types_config.routes_path.parent.mkdir(parents=True, exist_ok=True)
         types_config.routes_path.write_bytes(routes_content)
         console.print(f"[green]✓ Routes exported to {_relative_path(types_config.routes_path)}[/]")
-        # Note: routes.ts is generated by the Vite plugin from routes.json during vite build
     except OSError as e:
         msg = f"Failed to export routes: {e}"
         raise LitestarCLIException(msg) from e
@@ -1076,15 +1015,7 @@ def _export_inertia_pages_metadata(
     Raises:
         LitestarCLIException: If export fails.
     """
-    import msgspec
-    from litestar.cli._utils import LitestarCLIException, console  # pyright: ignore[reportPrivateImportUsage]
-
-    from litestar_vite.codegen import generate_inertia_pages_json
-    from litestar_vite.config import InertiaTypeGenConfig
-
     console.print("[dim]4. Exporting Inertia page props metadata...[/]")
-
-    # Get InertiaTypeGenConfig defaults
     inertia_type_gen = inertia_config.type_gen if hasattr(inertia_config, "type_gen") else None
     if inertia_type_gen is None:
         inertia_type_gen = InertiaTypeGenConfig()
@@ -1148,13 +1079,8 @@ def _run_openapi_ts(
         install_command: Command used to install JS dependencies.
         executor: The JS runtime executor (node, bun, deno, yarn, pnpm).
     """
-    import subprocess
-    from pathlib import Path
-
-    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-
     types_config = config.types
-    root_dir = Path(config.root_dir or Path.cwd())
+    root_dir = config.root_dir or Path.cwd()
     resource_dir = Path(config.resource_dir)
     if not resource_dir.is_absolute():
         resource_dir = root_dir / resource_dir
@@ -1165,7 +1091,6 @@ def _run_openapi_ts(
     pkg_cmd = _get_package_executor_cmd(executor, "@hey-api/openapi-ts")
 
     try:
-        # Check if @hey-api/openapi-ts is installed
         check_cmd = [*pkg_cmd, "--version"]
         subprocess.run(check_cmd, check=True, capture_output=True, cwd=root_dir)
 
@@ -1231,12 +1156,6 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
         app: The Litestar application instance.
         verbose: Whether to enable verbose output.
     """
-    import msgspec
-    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-
-    from litestar_vite.config import InertiaConfig, TypeGenConfig
-    from litestar_vite.plugin import VitePlugin
-
     if verbose:
         app.debug = True
 
@@ -1254,16 +1173,12 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     _export_openapi_schema(app, config.types)
     _export_routes_metadata(app, config.types)
     _run_openapi_ts(config, verbose, config.install_command, config.runtime.executor)
-
-    # Export Inertia page props if both Inertia and page_props generation are enabled
     if isinstance(config.inertia, InertiaConfig) and config.types.generate_page_props and config.types.page_props_path:
-        # Load OpenAPI schema for type references
         openapi_schema: dict[str, Any] | None = None
         try:
             if config.types.openapi_path and config.types.openapi_path.exists():
                 openapi_schema = msgspec.json.decode(config.types.openapi_path.read_bytes())
         except Exception:  # noqa: BLE001
-            # Non-fatal - page props can work without schema references
             if verbose:
                 console.print("[dim]! Could not load OpenAPI schema for type references[/]")
 
@@ -1277,9 +1192,6 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
 def vite_status(app: "Litestar") -> None:
     """Check the status of the Vite integration."""
     import httpx
-    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-
-    from litestar_vite.plugin import VitePlugin
 
     plugin = app.plugins.get(VitePlugin)
     config = plugin.config

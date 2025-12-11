@@ -35,6 +35,8 @@ logger = logging.getLogger("litestar_vite")
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from litestar.types import Guard  # pyright: ignore[reportUnknownVariableType]
+
     from litestar_vite.executor import JSExecutor
 
 __all__ = (
@@ -190,6 +192,11 @@ class InertiaConfig:
     This is the canonical configuration class for Inertia.js integration.
     Presence of an InertiaConfig instance indicates Inertia is enabled.
 
+    Note:
+        SPA mode (HTML transformation vs Jinja2 templates) is controlled by
+        ViteConfig.mode='hybrid'. The app_selector for data-page injection
+        is configured via SPAConfig.app_selector.
+
     Attributes:
         root_template: Name of the root template to use.
         component_opt_keys: Identifiers for getting inertia component from route opts.
@@ -198,8 +205,6 @@ class InertiaConfig:
         redirect_404: Path for 404 request redirects.
         extra_static_page_props: Static props added to every page response.
         extra_session_page_props: Session keys to include in page props.
-        spa_mode: Use SPA mode (HTML transformation) instead of Jinja2 templates.
-        app_selector: CSS selector for the app root element in SPA mode.
     """
 
     root_template: str = "index.html"
@@ -231,19 +236,6 @@ class InertiaConfig:
     """A dictionary of values to automatically add in to page props on every response."""
     extra_session_page_props: "set[str]" = field(default_factory=_empty_set_factory)
     """A set of session keys for which the value automatically be added (if it exists) to the response."""
-    spa_mode: bool = False
-    """Enable SPA mode to render without Jinja2 templates.
-
-    When True, InertiaResponse uses ViteSPAHandler and HTML transformation
-    to inject page data instead of rendering Jinja2 templates.
-    This allows template-less Inertia applications.
-    """
-    app_selector: str = "#app"
-    """CSS selector for the app root element.
-
-    Used in SPA mode to locate the element where data-page attribute
-    should be injected. Defaults to "#app".
-    """
     encrypt_history: bool = False
     """Enable browser history encryption globally (v2 feature).
 
@@ -730,8 +722,8 @@ class ViteConfig:
 
     - If mode is not explicitly set:
 
-      - If Inertia is enabled with spa_mode=True -> Hybrid mode
-      - If Inertia is enabled without spa_mode -> Template mode
+      - If Inertia is enabled and index.html exists -> Hybrid mode
+      - If Inertia is enabled without index.html -> Template mode
       - Checks for index.html in common locations -> SPA mode
       - Checks if Jinja2 template engine is configured -> Template mode
       - Otherwise defaults to SPA mode
@@ -768,6 +760,72 @@ class ViteConfig:
     dev_mode: bool = False
     base_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
     deploy: "DeployConfig | bool" = False
+    guards: "Sequence[Guard] | None" = None  # pyright: ignore[reportUnknownVariableType]
+    """Custom guards to apply to the SPA route handler.
+
+    When set, these guards will be applied to the AppHandler route that serves
+    the SPA index.html. This allows you to protect your SPA routes with
+    authentication, authorization, or other custom guards.
+
+    Example:
+        def auth_guard(request: Request, ...) -> None:
+            if not request.user.is_authenticated:
+                raise NotAuthorizedException()
+
+        ViteConfig(
+            mode="spa",
+            guards=[auth_guard],
+        )
+    """
+    exclude_static_from_auth: bool = True
+    """Exclude static file routes from authentication.
+
+    When True (default), static file routes are served with
+    opt={"exclude_from_auth": True}, which tells auth middleware to skip
+    authentication for asset requests. Set to False if you need to protect
+    static assets with authentication.
+    """
+    spa_path: "str | None" = None
+    """Path where the SPA handler serves index.html.
+
+    Controls where AppHandler registers its catch-all routes. Defaults to "/" (root).
+    When spa_path differs from asset_url, the SPA catch-all automatically excludes
+    asset_url paths to let the static files router handle them.
+
+    Common configurations:
+
+    1. SPA at root, assets at /web/ (default behavior with custom asset_url):
+       ViteConfig(
+           paths=PathConfig(asset_url="/web/"),
+           # spa_path=None defaults to "/", /web/ excluded from catch-all
+       )
+
+    2. SPA and assets both at /web/ (Angular --base-href /web/):
+       ViteConfig(
+           paths=PathConfig(asset_url="/web/"),
+           spa_path="/web/",  # Explicitly serve SPA at /web/
+       )
+
+    3. SPA at root, assets at /static/ (default):
+       ViteConfig()  # spa_path=None defaults to "/", /static/ excluded
+
+    4. SPA at both root AND /web/ (Angular --base-href /web/ with root redirect):
+       ViteConfig(
+           paths=PathConfig(asset_url="/web/"),
+           spa_path="/web/",
+           include_root_spa_paths=True,  # Also serve at / and /{path:path}
+       )
+    """
+    include_root_spa_paths: bool = False
+    """Also register SPA routes at root when spa_path is non-root.
+
+    When True and spa_path is set to a non-root path (e.g., "/web/"),
+    the SPA handler will also serve at "/" and "/{path:path}" in addition
+    to the spa_path routes.
+
+    This is useful for Angular apps with --base-href /web/ that also
+    want to serve the SPA from the root path for convenience.
+    """
 
     # Internal: resolved executor instance
     _executor_instance: "JSExecutor | None" = field(default=None, repr=False)
@@ -782,7 +840,7 @@ class ViteConfig:
         self._normalize_logging()
         self._apply_dev_mode_shortcut()
         self._auto_detect_mode()
-        self._sync_inertia_spa_mode()
+        self._auto_configure_inertia()
         self._apply_ssr_mode_defaults()
         self._normalize_deploy()
         self._ensure_spa_default()
@@ -863,15 +921,16 @@ class ViteConfig:
             self.mode = self._detect_mode()
             self._mode_auto_detected = True
 
-    def _sync_inertia_spa_mode(self) -> None:
-        """Sync InertiaConfig.spa_mode with detected mode.
+    def _auto_configure_inertia(self) -> None:
+        """Auto-configure settings when Inertia is enabled.
 
-        When mode='hybrid' is detected (from index.html presence),
-        set InertiaConfig.spa_mode=True so InertiaResponse uses
-        HTML transformation instead of Jinja templates.
+        When Inertia is configured, automatically enable CSRF token injection
+        in the SPA config, since Inertia forms need CSRF protection.
         """
-        if self.mode == "hybrid" and isinstance(self.inertia, InertiaConfig):
-            self.inertia.spa_mode = True
+        # Auto-enable CSRF injection for Inertia apps
+        # Inertia forms need CSRF tokens for POST/PUT/PATCH/DELETE requests
+        if isinstance(self.inertia, InertiaConfig) and isinstance(self.spa, SPAConfig) and not self.spa.inject_csrf:
+            self.spa = replace(self.spa, inject_csrf=True)
 
     def _apply_ssr_mode_defaults(self) -> None:
         """Apply intelligent defaults for mode='ssr'.
@@ -1017,7 +1076,7 @@ class ViteConfig:
         Detection order:
         1. If Inertia is enabled:
            a. Default to hybrid mode for SPA-style Inertia applications
-           b. Hybrid mode works with ViteSPAHandler + HTML transformation
+           b. Hybrid mode works with AppHandler + HTML transformation
            c. index.html is served by Vite dev server in dev mode or built assets in production
            Note: If using Jinja2 templates with Inertia, set mode="template" explicitly.
         2. Check for index.html in resource_dir, root_dir, or public_dir → SPA
