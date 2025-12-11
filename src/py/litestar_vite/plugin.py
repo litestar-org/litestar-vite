@@ -157,7 +157,6 @@ def _configure_proxy_logging() -> None:
             logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 
-# Configure proxy logging on module load
 _configure_proxy_logging()
 
 
@@ -257,17 +256,15 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
         "publicDir": str(config.public_dir),
         "manifest": config.manifest_name,
         "mode": config.mode,
-        # Dev server fields
         "proxyMode": config.proxy_mode,
         "port": config.port,
         "host": config.host,
         "externalTarget": external_target,
         "externalHttp2": external_http2,
-        # SSR fields
         "ssrEnabled": config.ssr_enabled,
         "ssrOutDir": ssr_out_dir_value,
         "types": {
-            "enabled": True,  # Presence of TypeGenConfig means enabled
+            "enabled": True,
             "output": str(types.output),
             "openapiPath": str(types.openapi_path),
             "routesPath": str(types.routes_path),
@@ -284,7 +281,6 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
             "includeManifest": deploy.include_manifest if deploy else None,
             "contentTypes": deploy.content_types if deploy else None,
         },
-        # Logging configuration
         "logging": {
             "level": config.logging_config.level,
             "showPathsAbsolute": config.logging_config.show_paths_absolute,
@@ -292,7 +288,6 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
             "suppressViteBanner": config.logging_config.suppress_vite_banner,
             "timestamps": config.logging_config.timestamps,
         },
-        # Executor for package commands (npx, bunx, etc.)
         "executor": config.runtime.executor,
         "litestarVersion": litestar_version,
     }
@@ -326,22 +321,16 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
     os.environ["LITESTAR_PORT"] = str(backend_port)
     os.environ.setdefault("APP_URL", f"http://{backend_host}:{backend_port}")
 
-    # VITE_ env for the JS side
     os.environ.setdefault("VITE_PROTOCOL", config.protocol)
     if config.proxy_mode is not None:
         os.environ.setdefault("VITE_PROXY_MODE", config.proxy_mode)
 
-    # If the Python side already picked a host/port (e.g., proxy mode with an auto-free port),
-    # surface them to the Vite process unless the user explicitly set them.
     os.environ.setdefault("VITE_HOST", config.host)
     os.environ.setdefault("VITE_PORT", str(config.port))
-    # Set framework-specific host/port env vars for SSR frameworks
-    # Nuxt/Nitro priority: NUXT_HOST > NITRO_HOST > HOST, NUXT_PORT > NITRO_PORT > PORT
     os.environ.setdefault("NUXT_HOST", config.host)
     os.environ.setdefault("NUXT_PORT", str(config.port))
     os.environ.setdefault("NITRO_HOST", config.host)
     os.environ.setdefault("NITRO_PORT", str(config.port))
-    # Generic HOST/PORT fallback (Nitro, Astro, etc.)
     os.environ.setdefault("HOST", config.host)
     os.environ.setdefault("PORT", str(config.port))
 
@@ -365,28 +354,19 @@ def set_app_environment(app: "Litestar") -> None:
     Args:
         app: The Litestar application instance.
     """
-    # Export OpenAPI schema path for Vite plugin health checks
     openapi_config = app.openapi_config
     if openapi_config is not None:
         path = getattr(openapi_config, "path", None)
         if isinstance(path, str) and path:
-            # The path attribute contains the schema endpoint path (default: "/schema")
             os.environ.setdefault("LITESTAR_OPENAPI_PATH", path)
 
 
 def resolve_litestar_version() -> str:
-    """Safely resolve the installed Litestar version as a string."""
-
+    """Return the installed Litestar version string."""
     try:
         return importlib.metadata.version("litestar")
     except importlib.metadata.PackageNotFoundError:
-        # Fallback to runtime constant if available
-        try:
-            from litestar import __version__
-
-            return getattr(__version__, "formatted", lambda: str(__version__))()
-        except (AttributeError, TypeError):  # pragma: no cover - extremely rare fallback
-            return "unknown"
+        return "unknown"
 
 
 def _pick_free_port() -> int:

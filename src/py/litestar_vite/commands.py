@@ -45,6 +45,7 @@ def init_vite(
 
     Raises:
         MissingDependencyError: If Jinja2 is not installed.
+        ValueError: If the specified framework template is not found.
     """
     if not JINJA_INSTALLED:
         raise MissingDependencyError(package="jinja2", install_package="jinja")
@@ -52,7 +53,6 @@ def init_vite(
     from litestar_vite.scaffolding import TemplateContext, generate_project
     from litestar_vite.scaffolding.templates import FrameworkType, get_template
 
-    # Get the framework template
     template = get_template(framework)
     if template is None:
         template = get_template(FrameworkType.REACT)
@@ -60,7 +60,6 @@ def init_vite(
         msg = f"Could not find template for framework: {framework}"
         raise ValueError(msg)
 
-    # Create template context
     context = TemplateContext(
         project_name=root_path.name or "my-project",
         framework=template,
@@ -77,5 +76,4 @@ def init_vite(
         enable_types=True,
     )
 
-    # Generate project files
     generate_project(root_path, context, overwrite=True)

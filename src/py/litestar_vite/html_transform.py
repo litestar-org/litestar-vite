@@ -1,13 +1,4 @@
-"""HTML transformation and injection utilities.
-
-This module provides utilities for transforming HTML documents to inject
-scripts, metadata, and attributes. It's used for SPA mode to inject:
-- Route metadata (window.__LITESTAR_ROUTES__)
-- Inertia.js page props (window.__INERTIA_PAGE__)
-- Data attributes on elements
-
-The implementation uses regex-based transformations for performance.
-"""
+"""HTML transformation and injection utilities for SPA output."""
 
 import json
 import re
@@ -26,13 +17,10 @@ _LINK_HREF_PATTERN = re.compile(r'(<link[^>]*\s+href\s*=\s*["\'])([^"\']+)(["\']
 
 @lru_cache(maxsize=128)
 def _get_id_selector_pattern(element_id: str) -> re.Pattern[str]:
-    """Get compiled regex pattern for ID selector (cached).
-
-    Args:
-        element_id: The element ID to match (without the # prefix).
+    """Return a compiled regex pattern for an ID selector.
 
     Returns:
-        Compiled regex pattern for matching elements with the given ID.
+        Pattern matching an element with the given ID.
     """
     return re.compile(
         rf'(<[a-zA-Z][a-zA-Z0-9]*\s+[^>]*id\s*=\s*["\']?{re.escape(element_id)}["\']?[^>]*)(>)',
@@ -42,26 +30,20 @@ def _get_id_selector_pattern(element_id: str) -> re.Pattern[str]:
 
 @lru_cache(maxsize=128)
 def _get_element_selector_pattern(element_name: str) -> re.Pattern[str]:
-    """Get compiled regex pattern for element selector (cached).
-
-    Args:
-        element_name: The HTML element name to match (e.g., "div", "span").
+    """Return a compiled regex pattern for an element selector.
 
     Returns:
-        Compiled regex pattern for matching elements with the given tag name.
+        Pattern matching elements with the given tag name.
     """
     return re.compile(rf"(<{re.escape(element_name)}[^>]*)(>)", re.IGNORECASE)
 
 
 @lru_cache(maxsize=128)
 def _get_attr_pattern(attr: str) -> re.Pattern[str]:
-    """Get compiled regex pattern for attribute matching (cached).
-
-    Args:
-        attr: The attribute name to match (e.g., "data-page", "id").
+    """Return a compiled regex pattern for an attribute.
 
     Returns:
-        Compiled regex pattern for matching the attribute with its value.
+        Pattern matching the attribute with its value.
     """
     return re.compile(rf'{re.escape(attr)}\s*=\s*["\'][^"\']*["\']', re.IGNORECASE)
 

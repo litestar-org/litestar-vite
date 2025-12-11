@@ -61,20 +61,7 @@ def _get_request_from_context(
 
 
 def _get_vite_plugin(context: "Mapping[str, Any]") -> "VitePlugin | None":
-    """Get the VitePlugin from the template context.
-
-    Args:
-        context: The template context.
-
-    Returns:
-        The VitePlugin instance, or None if not registered.
-
-    Raises:
-        ValueError: If 'request' is not found in the template context
-            (propagated from _get_request_from_context).
-        TypeError: If 'request' is not a Litestar Request object
-            (propagated from _get_request_from_context).
-    """
+    """Return the VitePlugin from the template context, if registered."""
     request = _get_request_from_context(context)  # raises ValueError, TypeError
     return request.app.plugins.get("VitePlugin")
 
@@ -241,6 +228,7 @@ class ViteAssetLoader:
         self._manifest_content: str = ""
         self._vite_base_path: "str | None" = None
         self._initialized: bool = False
+        self._is_hot_dev = self._config.hot_reload and self._config.is_dev_mode
 
     @classmethod
     def initialize_loader(cls, config: "ViteConfig") -> "ViteAssetLoader":
@@ -268,11 +256,7 @@ class ViteAssetLoader:
         if self._initialized:
             return
 
-        if self._config.hot_reload and self._config.is_dev_mode:
-            await self._load_hot_file_async()
-        else:
-            await self._load_manifest_async()
-
+        await (self._load_hot_file_async() if self._is_hot_dev else self._load_manifest_async())
         self._initialized = True
 
     def parse_manifest(self) -> None:
@@ -283,10 +267,7 @@ class ViteAssetLoader:
 
         Note: For async contexts, use `initialize()` instead.
         """
-        if self._config.hot_reload and self._config.is_dev_mode:
-            self._load_hot_file_sync()
-        else:
-            self._load_manifest_sync()
+        (self._load_hot_file_sync() if self._is_hot_dev else self._load_manifest_sync())
 
     # --- Internal file loading methods (consolidated sync/async) ---
 
@@ -426,7 +407,7 @@ class ViteAssetLoader:
         Raises:
             AssetNotFoundError: If the asset is not in the manifest.
         """
-        if self._config.hot_reload and self._config.is_dev_mode:
+        if self._is_hot_dev:
             return self._vite_server_url(path)
 
         if path not in self._manifest:
@@ -445,7 +426,7 @@ class ViteAssetLoader:
         Returns:
             Script tag HTML or empty string in production.
         """
-        if self._config.hot_reload and self._config.is_dev_mode:
+        if self._is_hot_dev:
             return self._script_tag(
                 self._vite_server_url("@vite/client"),
                 {"type": "module"},
@@ -460,7 +441,7 @@ class ViteAssetLoader:
         Returns:
             React refresh script HTML or empty string.
         """
-        if self._config.is_react and self._config.hot_reload and self._config.is_dev_mode:
+        if self._config.is_react and self._is_hot_dev:
             return dedent(f"""
                 <script type="module">
                 import RefreshRuntime from '{self._vite_server_url()}@react-refresh'
@@ -491,10 +472,9 @@ class ViteAssetLoader:
         """
         from litestar.exceptions import ImproperlyConfiguredException
 
-        if isinstance(path, str):
-            path = [path]
+        paths = [path] if isinstance(path, str) else list(path)
 
-        if self._config.hot_reload and self._config.is_dev_mode:
+        if self._is_hot_dev:
             return "".join(
                 self._style_tag(self._vite_server_url(p))
                 if p.endswith(".css")
@@ -502,16 +482,16 @@ class ViteAssetLoader:
                     self._vite_server_url(p),
                     {"type": "module", "async": "", "defer": ""},
                 )
-                for p in path
+                for p in paths
             )
 
-        missing = [p for p in path if p not in self._manifest]
+        missing = [p for p in paths if p not in self._manifest]
         if missing:
             msg = "Cannot find %s in Vite manifest at %s. Did you forget to build your assets after an update?"
             raise ImproperlyConfiguredException(msg, missing, self._get_manifest_path())
 
         tags: list[str] = []
-        manifest_entries = {p: self._manifest[p] for p in path if p}
+        manifest_entries = {p: self._manifest[p] for p in paths if p}
 
         if not scripts_attrs:
             scripts_attrs = {"type": "module", "async": "", "defer": ""}

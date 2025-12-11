@@ -58,11 +58,7 @@ class InertiaPlugin(InitPluginProtocol):
     __slots__ = ("_portal", "config")
 
     def __init__(self, config: "InertiaConfig") -> "None":
-        """Initialize ``Inertia``.
-
-        Args:
-            config: Inertia configuration.
-        """
+        """Initialize the plugin with Inertia configuration."""
         self.config = config
 
     @asynccontextmanager
@@ -82,7 +78,7 @@ class InertiaPlugin(InitPluginProtocol):
 
     @property
     def portal(self) -> "BlockingPortal":
-        """Get the portal."""
+        """Return the blocking portal used for deferred prop resolution."""
         return self._portal
 
     def on_app_init(self, app_config: "AppConfig") -> "AppConfig":

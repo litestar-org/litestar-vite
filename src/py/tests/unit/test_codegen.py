@@ -410,3 +410,261 @@ def test_ts_type_from_openapi_nullable_array() -> None:
     # oneOf with array and null (sorted alphabetically)
     schema: dict[str, Any] = {"oneOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]}
     assert _ts_type_from_openapi(schema) == "null | string[]"
+
+
+# ============================================================================
+# Body Parameter Detection Tests
+# ============================================================================
+
+
+def test_post_body_param_not_in_query_params() -> None:
+    """POST with body param should NOT show body in queryParameters."""
+    from dataclasses import dataclass
+
+    from litestar_vite.codegen import generate_routes_json
+
+    @dataclass
+    class TeamCreate:
+        name: str
+
+    @post("/teams", name="teams.add", sync_to_thread=False)
+    def add_team(data: TeamCreate) -> dict[str, str]:
+        return {}
+
+    app = Litestar([add_team])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    route_data = routes["routes"]["teams.add"]
+    assert "queryParameters" not in route_data, f"Body param should not appear in queryParameters: {route_data}"
+
+
+def test_post_body_and_query_params_separated() -> None:
+    """POST with both body and query params - only query params in queryParameters."""
+    from dataclasses import dataclass
+
+    from litestar_vite.codegen import generate_routes_json
+
+    @dataclass
+    class TeamCreate:
+        name: str
+
+    @post("/teams", name="teams.add", sync_to_thread=False)
+    def add_team(data: TeamCreate, notify: bool = False) -> dict[str, str]:
+        return {}
+
+    app = Litestar([add_team])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    route_data = routes["routes"]["teams.add"]
+    assert "queryParameters" in route_data, "Should have queryParameters"
+    assert "data" not in route_data["queryParameters"], "Body param 'data' should be excluded"
+    assert "notify" in route_data["queryParameters"], "Query param 'notify' should be included"
+    assert route_data["queryParameters"]["notify"] == "boolean | undefined"
+
+
+def test_put_body_param_excluded() -> None:
+    """PUT with body param handled correctly."""
+    from litestar import put
+    from msgspec import Struct
+
+    from litestar_vite.codegen import generate_routes_json
+
+    class TeamUpdate(Struct):
+        name: str
+
+    @put("/teams/{team_id:int}", name="teams.update", sync_to_thread=False)
+    def update_team(team_id: int, data: TeamUpdate) -> dict[str, str]:
+        return {}
+
+    app = Litestar([update_team])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    route_data = routes["routes"]["teams.update"]
+    assert "queryParameters" not in route_data, f"Body param should be excluded: {route_data}"
+    assert "parameters" in route_data
+    assert "team_id" in route_data["parameters"]
+
+
+def test_patch_body_param_excluded() -> None:
+    """PATCH with body param handled correctly."""
+    from litestar import patch
+    from msgspec import Struct
+
+    from litestar_vite.codegen import generate_routes_json
+
+    class TeamPatch(Struct):
+        name: str | None = None
+
+    @patch("/teams/{team_id:int}", name="teams.patch", sync_to_thread=False)
+    def patch_team(team_id: int, data: TeamPatch) -> dict[str, str]:
+        return {}
+
+    app = Litestar([patch_team])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    route_data = routes["routes"]["teams.patch"]
+    assert "queryParameters" not in route_data, f"Body param should be excluded: {route_data}"
+
+
+def test_get_no_body_params_possible() -> None:
+    """GET request - all non-path params are query params."""
+    from litestar_vite.codegen import generate_routes_json
+
+    @get("/teams", name="teams.list", sync_to_thread=False)
+    def list_teams(limit: int = 10, offset: int = 0) -> list[dict[str, str]]:
+        return []
+
+    app = Litestar([list_teams])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    route_data = routes["routes"]["teams.list"]
+    assert "queryParameters" in route_data
+    assert "limit" in route_data["queryParameters"]
+    assert "offset" in route_data["queryParameters"]
+    assert route_data["queryParameters"]["limit"] == "number | undefined"
+    assert route_data["queryParameters"]["offset"] == "number | undefined"
+
+
+def test_schema_excluded_endpoint_body_detection() -> None:
+    """Endpoint with include_in_schema=False uses heuristics to exclude body."""
+    from msgspec import Struct
+
+    from litestar_vite.codegen import generate_routes_json
+
+    class TeamCreate(Struct):
+        name: str
+
+    @post("/internal/teams", name="internal.teams.add", include_in_schema=False, sync_to_thread=False)
+    def add_internal_team(data: TeamCreate, notify: bool = False) -> dict[str, str]:
+        return {}
+
+    app = Litestar([add_internal_team])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    route_data = routes["routes"]["internal.teams.add"]
+    assert "queryParameters" in route_data, "Should have queryParameters with notify"
+    assert "data" not in route_data["queryParameters"], "Body param 'data' should be excluded via heuristics"
+    assert "notify" in route_data["queryParameters"], "Query param 'notify' should be included"
+    # Heuristic path should still produce proper types
+    assert route_data["queryParameters"]["notify"] == "boolean | undefined"
+
+
+def test_body_param_uses_data_convention() -> None:
+    """Litestar treats 'data' named params as body params.
+
+    Note: Litestar's OpenAPI generation only automatically detects body params
+    when the parameter is named 'data'. Custom names like 'payload' are treated
+    as query params unless explicitly annotated. This test verifies the 'data'
+    convention works correctly.
+    """
+    from msgspec import Struct
+
+    from litestar_vite.codegen import generate_routes_json
+
+    class TeamPayload(Struct):
+        name: str
+
+    @post("/teams", name="teams.add", sync_to_thread=False)
+    def add_team(data: TeamPayload, active: bool = True) -> dict[str, str]:
+        return {}
+
+    app = Litestar([add_team])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    route_data = routes["routes"]["teams.add"]
+    assert "queryParameters" in route_data
+    assert "data" not in route_data["queryParameters"], "Body param 'data' should be excluded"
+    assert "active" in route_data["queryParameters"]
+
+
+def test_list_body_type() -> None:
+    """list[Model] as body param handled correctly."""
+    from msgspec import Struct
+
+    from litestar_vite.codegen import generate_routes_json
+
+    class TeamCreate(Struct):
+        name: str
+
+    @post("/teams/bulk", name="teams.bulk_add", sync_to_thread=False)
+    def bulk_add_teams(data: list[TeamCreate]) -> dict[str, str]:
+        return {}
+
+    app = Litestar([bulk_add_teams])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    route_data = routes["routes"]["teams.bulk_add"]
+    assert "queryParameters" not in route_data, f"list[Model] body should be excluded: {route_data}"
+
+
+def test_options_routes_excluded() -> None:
+    """OPTIONS-only routes should be excluded from generated routes."""
+    from litestar_vite.codegen import generate_routes_json
+
+    @get("/teams", name="teams.list", sync_to_thread=False)
+    def list_teams() -> list[dict[str, str]]:
+        return []
+
+    app = Litestar([list_teams])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    # Check that no OPTIONS-only routes are in the output
+    for name, route_data in routes["routes"].items():
+        methods = route_data.get("methods", [])
+        assert methods != ["OPTIONS"], f"OPTIONS-only route '{name}' should be excluded"
+
+
+def test_head_routes_excluded() -> None:
+    """HEAD-only routes should be excluded from generated routes."""
+    from litestar_vite.codegen import generate_routes_json
+
+    @get("/teams", name="teams.list", sync_to_thread=False)
+    def list_teams() -> list[dict[str, str]]:
+        return []
+
+    app = Litestar([list_teams])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    # Check that no HEAD-only routes are in the output
+    for name, route_data in routes["routes"].items():
+        methods = route_data.get("methods", [])
+        assert methods != ["HEAD"], f"HEAD-only route '{name}' should be excluded"
+
+
+def test_schema_ui_routes_excluded() -> None:
+    """Schema/Swagger UI routes like /schema/scalar should be excluded."""
+    from litestar_vite.codegen import generate_routes_json
+
+    @get("/teams", name="teams.list", sync_to_thread=False)
+    def list_teams() -> list[dict[str, str]]:
+        return []
+
+    app = Litestar([list_teams])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    # Check that schema UI routes are excluded (but openapi.json/yaml may exist)
+    for name, route_data in routes["routes"].items():
+        uri = route_data.get("uri", "")
+        if uri.startswith("/schema"):
+            # Only openapi.json and openapi.yaml routes should remain
+            assert "openapi.json" in uri or "openapi.yaml" in uri or "openapi.yml" in uri, (
+                f"Schema UI route '{name}' with uri '{uri}' should be excluded"
+            )
+
+
+def test_openapi_routes_use_simple_names() -> None:
+    """OpenAPI routes should use simple names like 'openapi.json' not hashed names."""
+    from litestar_vite.codegen import generate_routes_json
+
+    @get("/teams", name="teams.list", sync_to_thread=False)
+    def list_teams() -> list[dict[str, str]]:
+        return []
+
+    app = Litestar([list_teams])
+    routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
+
+    # Check for simple openapi.json name (not hashed like 1d39ee870e3e4b73a83c764025bd27d9_litestar_openapi_json)
+    for name in routes["routes"]:
+        if "openapi" in name.lower():
+            # Should be simple like "openapi.json" not a long hash
+            assert len(name) < 20, f"OpenAPI route name '{name}' should be simple, not hashed"
