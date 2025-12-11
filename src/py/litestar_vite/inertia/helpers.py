@@ -14,14 +14,12 @@ from litestar.utils.scope.state import ScopeState
 from markupsafe import Markup
 from typing_extensions import ParamSpec
 
+from litestar_vite.inertia.types import ScrollPropsConfig
+
 if TYPE_CHECKING:
     from litestar.connection import ASGIConnection
 
     from litestar_vite.inertia.plugin import InertiaPlugin
-    from litestar_vite.inertia.routes import Routes
-
-from litestar_vite.inertia.types import ScrollPropsConfig
-
 T = TypeVar("T")
 T_ParamSpec = ParamSpec("T_ParamSpec")
 PropKeyT = TypeVar("PropKeyT", bound=str)
@@ -59,7 +57,7 @@ def lazy(
     key: str,
     value_or_callable: "T | Callable[..., Coroutine[Any, Any, None]] | Callable[..., T] | Callable[..., T | Coroutine[Any, Any, T]] | None" = None,
 ) -> "StaticProp[str, None] | StaticProp[str, T] | DeferredProp[str, T] | DeferredProp[str, None]":
-    """Create a lazy prop that is only included during partial reloads.
+    """Create a lazy prop only included during partial reloads.
 
     Lazy props are excluded from the initial page load and only sent when
     explicitly requested via partial reload (X-Inertia-Partial-Data header).
@@ -182,14 +180,7 @@ class PropFilter:
     exclude: "set[str] | None" = None
 
     def should_include(self, key: str) -> bool:
-        """Check if a prop key should be included.
-
-        Args:
-            key: The prop key to check.
-
-        Returns:
-            True if the prop should be included, False otherwise.
-        """
+        """Return True when a prop key should be included."""
         if self.exclude is not None:
             return key not in self.exclude
         if self.include is not None:
@@ -909,16 +900,18 @@ def _markup_safe_json_escape(js_routes: str) -> str:
     return js_routes.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026").replace("'", "\\u0027")
 
 
-def js_routes_script(js_routes: "Routes") -> "Markup":
+def js_routes_script(js_routes: "Mapping[str, str]") -> "Markup":
     """Generate a script tag that injects routes into the global scope.
 
     Args:
-        js_routes: Routes object with formatted routes.
+        js_routes: Mapping of route names to paths.
 
     Returns:
         Markup containing the script tag.
     """
-    escaped = _markup_safe_json_escape(js_routes.formatted_routes)
+    from litestar.serialization import encode_json
+
+    escaped = _markup_safe_json_escape(encode_json(js_routes).decode("utf-8"))
     return Markup(
         dedent(f"""
         <script type="module">

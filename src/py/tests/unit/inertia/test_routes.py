@@ -3,7 +3,7 @@ from tests.test_app.app import app
 
 
 def test_route_export() -> None:
-    routes = generate_js_routes(app=app)
+    generate_js_routes(app=app)
     test_1 = {"POST", "OPTIONS"}
     test_2 = {"POST", "OPTIONS", "HEAD"}
     test_3 = {"HEAD"}
@@ -12,7 +12,6 @@ def test_route_export() -> None:
     assert len(test_2.difference(EXCLUDED_METHODS)) == 1
     assert len(test_3.difference(EXCLUDED_METHODS)) == 0
     assert test_4.isdisjoint(EXCLUDED_METHODS)
-    routes = generate_js_routes(app=app)
-    json_response = routes.formatted_routes
+    json_response = generate_js_routes(app=app)
     assert json_response
-    assert routes is not None
+    assert "openapi.yaml" not in json_response.values()

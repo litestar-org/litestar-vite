@@ -51,20 +51,7 @@ T = TypeVar("T")
 
 
 def _get_redirect_url(request: "Request[Any, Any, Any]", url: str | None) -> str:
-    """Get a validated redirect URL, ensuring same-origin to prevent open redirect attacks.
-
-    This function validates that a redirect URL is safe to use by checking:
-    1. Relative URLs (no scheme/netloc) are always allowed
-    2. Absolute URLs must be same-origin (matching netloc)
-    3. URL schemes must be http or https
-
-    Args:
-        request: The request object for base URL comparison.
-        url: The URL to validate (e.g., Referer header or redirect_to parameter).
-
-    Returns:
-        The validated URL, or base_url if validation fails or URL is invalid.
-    """
+    """Return a safe redirect URL, falling back to base_url when invalid."""
     base_url = str(request.base_url)
 
     if not url:

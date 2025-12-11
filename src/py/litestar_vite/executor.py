@@ -18,8 +18,28 @@ from litestar.cli._utils import console
 
 from litestar_vite.exceptions import ViteExecutableNotFoundError, ViteExecutionError
 
-# Windows-only constant for creating new process groups
 _CREATE_NEW_PROCESS_GROUP: int = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
+
+def _popen_server_kwargs(cwd: Path) -> dict[str, Any]:
+    """Return Popen kwargs that keep server processes alive and grouped.
+
+    Returns:
+        Keyword arguments for ``subprocess.Popen`` suitable for long-lived dev servers.
+    """
+    kwargs: dict[str, Any] = {
+        "cwd": cwd,
+        "stdin": subprocess.PIPE,
+        "stdout": None,
+        "stderr": None,
+    }
+    if platform.system() == "Windows":
+        kwargs["shell"] = True
+        kwargs["creationflags"] = _CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["shell"] = False
+        kwargs["start_new_session"] = True
+    return kwargs
 
 
 class JSExecutor(ABC):
@@ -75,7 +95,6 @@ class JSExecutor(ABC):
         if not self.silent or not self.silent_flag:
             return args
 
-        # For npm-style commands like ['run', 'dev'], insert --silent after 'run'
         if args and args[0] == "run" and len(args) >= 2:
             return [args[0], self.silent_flag, *args[1:]]
 
@@ -83,7 +102,6 @@ class JSExecutor(ABC):
             run_idx = args.index("run")
             return [*args[: run_idx + 1], self.silent_flag, *args[run_idx + 1 :]]
 
-        # No 'run' in command, append silent flag (e.g., install)
         return [*args, self.silent_flag]
 
     @property
@@ -116,30 +134,7 @@ class CommandExecutor(JSExecutor):
         executable = self._resolve_executable()
         args = self._apply_silent_flag(args)
         command = args if args and Path(args[0]).name == Path(executable).name else [executable, *args]
-        # Use start_new_session=True on Unix to create a new process group.
-        # This ensures all child processes (node, astro, nuxt, vite, etc.) can be
-        # terminated together using os.killpg() on the process group.
-        # On Windows, use CREATE_NEW_PROCESS_GROUP flag.
-        #
-        # stdin=subprocess.PIPE: Keep stdin open to prevent Node.js/Nitro from exiting.
-        # In headless CI environments, stdin is often closed or /dev/null. Node.js
-        # servers detect stdin EOF and exit gracefully to prevent zombie processes.
-        # Using PIPE creates an open file descriptor that the child sees as "waiting
-        # for input" - keeping the server alive. We never write to it; the buffer
-        # stays empty and the child blocks on read (which is desired for servers).
-        kwargs: dict[str, Any] = {
-            "cwd": cwd,
-            "stdin": subprocess.PIPE,  # Keep stdin open for headless CI compatibility
-            "stdout": None,  # inherit for live output
-            "stderr": None,
-        }
-        if platform.system() == "Windows":
-            kwargs["shell"] = True
-            kwargs["creationflags"] = _CREATE_NEW_PROCESS_GROUP
-        else:
-            kwargs["shell"] = False
-            kwargs["start_new_session"] = True
-        return subprocess.Popen(command, **kwargs)
+        return subprocess.Popen(command, **_popen_server_kwargs(cwd))
 
     def execute(self, args: list[str], cwd: Path) -> None:
         executable = self._resolve_executable()
@@ -178,10 +173,6 @@ class DenoExecutor(CommandExecutor):
     silent_flag: ClassVar[str] = ""  # Deno doesn't have an npm-style silent flag
 
     def install(self, cwd: Path) -> None:
-        # Deno doesn't strictly have an "install" command for deps in the same way,
-        # but it caches them. Often 'deno cache' or just running the task is enough.
-        # For compatibility, we might not do anything, or run 'deno install' if using local deps.
-        # Deno 1.45+ supports 'deno install' for caching.
         pass
 
 
@@ -216,7 +207,6 @@ class NodeenvExecutor(JSExecutor):
         """
         super().__init__(None, silent=silent)
         self.config = config
-        # Extract detect_nodeenv flag - works with both old and new config (opt-in default)
         self._detect_nodeenv = getattr(config, "detect_nodeenv", False) if config else False
 
     def _get_nodeenv_command(self) -> str:
@@ -232,7 +222,7 @@ class NodeenvExecutor(JSExecutor):
         return "nodeenv"
 
     def install_nodeenv(self, cwd: Path) -> None:
-        """Install nodeenv."""
+        """Install nodeenv when available in the environment."""
         if find_spec("nodeenv") is None:
             console.print("[yellow]Nodeenv not found. Skipping installation.[/]")
             return
@@ -247,14 +237,6 @@ class NodeenvExecutor(JSExecutor):
         if self._detect_nodeenv:
             self.install_nodeenv(cwd)
 
-        # After nodeenv install, we use the npm in the virtualenv
-        # This logic mirrors the existing logic where it just runs the install command
-        # But we need to make sure we use the *correct* npm
-        # The current logic in cli.py just runs `config.install_command` which defaults to `npm install`
-        # Assuming `npm` is now in the path because nodeenv was installed into VIRTUAL_ENV
-
-        # For robustness, we should try to find npm in the VIRTUAL_ENV/bin or Scripts
-
         npm_path = self._find_npm_in_venv()
         command = [npm_path, "install"]
         subprocess.run(command, cwd=cwd, check=True)
@@ -263,19 +245,7 @@ class NodeenvExecutor(JSExecutor):
         npm_path = self._find_npm_in_venv()
         args = self._apply_silent_flag(args)
         command = [npm_path, *args]
-        kwargs: dict[str, Any] = {
-            "cwd": cwd,
-            "stdin": subprocess.PIPE,
-            "stdout": None,
-            "stderr": None,
-        }
-        if platform.system() == "Windows":
-            kwargs["shell"] = True
-            kwargs["creationflags"] = _CREATE_NEW_PROCESS_GROUP
-        else:
-            kwargs["shell"] = False
-            kwargs["start_new_session"] = True
-        return subprocess.Popen(command, **kwargs)
+        return subprocess.Popen(command, **_popen_server_kwargs(cwd))
 
     def execute(self, args: list[str], cwd: Path) -> None:
         npm_path = self._find_npm_in_venv()

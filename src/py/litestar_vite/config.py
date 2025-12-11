@@ -87,20 +87,12 @@ FSSPEC_INSTALLED = bool(find_spec("fsspec"))
 
 
 def _empty_dict_factory() -> dict[str, Any]:
-    """Factory for empty dict with proper type annotation.
-
-    Returns:
-        An empty dictionary for storing page props.
-    """
+    """Return an empty ``dict[str, Any]``."""
     return {}
 
 
 def _empty_set_factory() -> set[str]:
-    """Factory for empty set with proper type annotation.
-
-    Returns:
-        An empty set for storing session property keys.
-    """
+    """Return an empty ``set[str]``."""
     return set()
 
 
@@ -128,11 +120,7 @@ def _default_content_types() -> dict[str, str]:
 
 
 def _default_storage_options() -> dict[str, Any]:
-    """Factory for empty storage options dict.
-
-    Returns:
-        An empty dictionary for storage provider options.
-    """
+    """Return an empty storage options dictionary."""
     return cast("dict[str, Any]", {})
 
 

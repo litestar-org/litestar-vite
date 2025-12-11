@@ -13,15 +13,14 @@ from litestar.connection.base import (
 
 from litestar_vite.inertia._utils import InertiaHeaders
 
-__all__ = ("InertiaDetails", "InertiaHeaders", "InertiaRequest")
-
-# Default component opt keys if InertiaPlugin is not available
-_DEFAULT_COMPONENT_OPT_KEYS: "tuple[str, ...]" = ("component", "page")
-
 if TYPE_CHECKING:
     from litestar.types import Receive, Scope, Send
 
     from litestar_vite.inertia.plugin import InertiaPlugin
+
+__all__ = ("InertiaDetails", "InertiaHeaders", "InertiaRequest")
+
+_DEFAULT_COMPONENT_OPT_KEYS: "tuple[str, ...]" = ("component", "page")
 
 
 class InertiaDetails:
@@ -49,25 +48,7 @@ class InertiaDetails:
         return None
 
     def _get_route_component(self) -> "str | None":
-        """Get the route component.
-
-        Checks for keys defined in ``InertiaConfig.component_opt_keys`` within
-        the route handler configuration. Returns the first key found.
-
-        Returns:
-            The route component name, or None if not set.
-
-        Example:
-            Both of these are equivalent::
-
-                @get("/", component="Home")
-                @get("/", page="Home")
-
-            With custom keys configured::
-
-                InertiaConfig(component_opt_keys=("view", "component", "page"))
-                @get("/", view="Home")  # Also works
-        """
+        """Return the route component from handler opts if present."""
         rh = self.request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
         if rh:
             component_opt_keys: "tuple[str, ...]" = _DEFAULT_COMPONENT_OPT_KEYS
@@ -83,145 +64,72 @@ class InertiaDetails:
         return None
 
     def __bool__(self) -> bool:
-        """Check if request is sent by an Inertia client.
-
-        Returns:
-            True if the request is sent by an Inertia client, False otherwise.
-        """
+        """Return True when the request is sent by an Inertia client."""
         return self._get_header_value(InertiaHeaders.ENABLED) == "true"
 
     @cached_property
     def route_component(self) -> "str | None":
-        """Get the route component.
-
-        Returns:
-            The route component.
-        """
+        """Return the route component name."""
         return self._get_route_component()
 
     @cached_property
     def partial_component(self) -> "str | None":
-        """Get the partial component.
-
-        Returns:
-            The partial component.
-        """
+        """Return the partial component name from headers."""
         return self._get_header_value(InertiaHeaders.PARTIAL_COMPONENT)
 
     @cached_property
     def partial_data(self) -> "str | None":
-        """Get the partial data (props to include).
-
-        Returns:
-            The partial data.
-        """
+        """Return partial-data keys requested by the client."""
         return self._get_header_value(InertiaHeaders.PARTIAL_DATA)
 
     @cached_property
     def partial_except(self) -> "str | None":
-        """Get the partial except data (props to exclude).
-
-        v2 feature: X-Inertia-Partial-Except header.
-        Takes precedence over partial_data if both are present.
-
-        Returns:
-            The partial except data.
-        """
+        """Return partial-except keys requested by the client."""
         return self._get_header_value(InertiaHeaders.PARTIAL_EXCEPT)
 
     @cached_property
     def reset_props(self) -> "str | None":
-        """Get props to reset on navigation.
-
-        v2 feature: X-Inertia-Reset header.
-
-        Returns:
-            Comma-separated props to reset.
-        """
+        """Return comma-separated props to reset on navigation."""
         return self._get_header_value(InertiaHeaders.RESET)
 
     @cached_property
     def error_bag(self) -> "str | None":
-        """Get the error bag name.
-
-        v2 feature: X-Inertia-Error-Bag header.
-        Used for scoped validation errors.
-
-        Returns:
-            The error bag name.
-        """
+        """Return the error bag name for scoped validation errors."""
         return self._get_header_value(InertiaHeaders.ERROR_BAG)
 
     @cached_property
     def merge_intent(self) -> "str | None":
-        """Get the infinite scroll merge intent.
-
-        v2 feature: X-Inertia-Infinite-Scroll-Merge-Intent header.
-
-        Returns:
-            'append' or 'prepend' for infinite scroll merging.
-        """
+        """Return infinite-scroll merge intent (append/prepend)."""
         return self._get_header_value(InertiaHeaders.INFINITE_SCROLL_MERGE_INTENT)
 
     @cached_property
     def version(self) -> "str | None":
-        """Get the Inertia asset version from the client.
-
-        The client sends this header so the server can detect version mismatches
-        and trigger a hard refresh when assets have changed.
-
-        Returns:
-            The version string sent by the client, or None if not present.
-        """
+        """Return the Inertia asset version sent by the client."""
         return self._get_header_value(InertiaHeaders.VERSION)
 
     @cached_property
     def referer(self) -> "str | None":
-        """Get the referer.
-
-        Returns:
-            The referer.
-        """
+        """Return the referer value if present."""
         return self._get_header_value(InertiaHeaders.REFERER)
 
     @cached_property
     def is_partial_render(self) -> bool:
-        """Check if the request is a partial render.
-
-        Returns:
-            True if the request is a partial render, False otherwise.
-        """
+        """Return True when the request is a partial render."""
         return bool(self.partial_component == self.route_component and (self.partial_data or self.partial_except))
 
     @cached_property
     def partial_keys(self) -> list[str]:
-        """Get the partial keys (props to include).
-
-        Returns:
-            The partial keys.
-        """
+        """Return parsed partial-data keys."""
         return self.partial_data.split(",") if self.partial_data is not None else []
 
     @cached_property
     def partial_except_keys(self) -> list[str]:
-        """Get the partial except keys (props to exclude).
-
-        v2 feature: Takes precedence over partial_keys if both present.
-
-        Returns:
-            The partial except keys.
-        """
+        """Return parsed partial-except keys (takes precedence over partial_keys)."""
         return self.partial_except.split(",") if self.partial_except is not None else []
 
     @cached_property
     def reset_keys(self) -> list[str]:
-        """Get the props to reset on navigation.
-
-        v2 feature.
-
-        Returns:
-            The reset keys.
-        """
+        """Return parsed reset keys from headers."""
         return self.reset_props.split(",") if self.reset_props is not None else []
 
 

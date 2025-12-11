@@ -128,10 +128,7 @@ class AppHandler:
         if self._config.is_dev_mode and self._config.hot_reload:
             self._init_http_clients(vite_url)
         else:
-            # Skip for external mode - external frameworks (Angular CLI, etc.) handle their own builds
-            if self._config.mode != "external":
-                await self._load_manifest_async()
-            await self._load_index_html_async()
+            await self._load_production_assets_async()
 
         self._initialized = True
 
@@ -157,10 +154,7 @@ class AppHandler:
         if self._config.is_dev_mode and self._config.hot_reload:
             self._init_http_clients(vite_url)
         else:
-            # Skip for external mode - external frameworks (Angular CLI, etc.) handle their own builds
-            if self._config.mode != "external":
-                self._load_manifest_sync()
-            self._load_index_html_sync()
+            self._load_production_assets_sync()
 
         self._initialized = True
 
@@ -170,12 +164,8 @@ class AppHandler:
         Args:
             vite_url: Optional Vite server URL to use for proxying.
         """
-        # Use provided URL if available (from VitePlugin), otherwise resolve from hotfile
-        # The VitePlugin knows the correct URL because it selects the port
         self._vite_url = vite_url or self._resolve_vite_url()
 
-        # Uses connection pooling for efficient reuse
-        # HTTP/2 is controlled by config and requires the h2 package
         http2_enabled = self._config.http2
         if http2_enabled:
             try:
@@ -206,6 +196,18 @@ class AppHandler:
             with suppress(RuntimeError):
                 self._http_client_sync.close()
             self._http_client_sync = None
+
+    def _load_production_assets_sync(self) -> None:
+        """Load manifest and index.html synchronously in production modes."""
+        if self._config.mode != "external":
+            self._load_manifest_sync()
+        self._load_index_html_sync()
+
+    async def _load_production_assets_async(self) -> None:
+        """Load manifest and index.html asynchronously in production modes."""
+        if self._config.mode != "external":
+            await self._load_manifest_async()
+        await self._load_index_html_async()
 
     def _transform_html(
         self,
