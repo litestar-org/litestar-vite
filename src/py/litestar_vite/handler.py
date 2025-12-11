@@ -704,6 +704,25 @@ class AppHandler:
 
         guards: "list[Guard] | None" = list(self._config.guards) if self._config.guards else None  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType,reportUnknownArgumentType]
 
+        # Build asset_url prefix for exclusion check
+        # When asset_url is set (e.g., "/web/"), requests to /web/xxx should go to static files router
+        asset_url = self._config.asset_url
+        asset_prefix = asset_url.rstrip("/") if asset_url and asset_url != "/" else None
+
+        def _is_static_asset_path(path: str) -> bool:
+            """Check if path should be served by static files router, not SPA.
+
+            Args:
+                path: The request path to check.
+
+            Returns:
+                True if the path matches the asset_url prefix and should be
+                handled by the static files router instead of the SPA handler.
+            """
+            if asset_prefix is None:
+                return False
+            return path == asset_prefix or path.startswith(f"{asset_prefix}/")
+
         if is_dev:
             # Dev mode: proxy to Vite, no caching
             @get(
@@ -716,12 +735,21 @@ class AppHandler:
             async def spa_handler_dev(request: "Request[Any, Any, Any]") -> Response[str]:
                 """Serve the SPA HTML (dev mode - proxied from Vite).
 
-                Checks if the request path matches a Litestar route before serving.
-                If it does, raises NotFoundException to let the router handle it.
+                Checks if the request path matches a Litestar route or static asset
+                before serving. If it does, raises NotFoundException to let the
+                appropriate router handle it.
+
+                Raises:
+                    NotFoundException: If the path matches a Litestar route or static asset.
+
+                Returns:
+                    The HTML response from the Vite dev server.
                 """
-                # Check if path is a Litestar route - if so, don't serve SPA
-                # This prevents the catch-all from shadowing /schema, /api, etc.
                 path = request.url.path
+                # Skip static asset paths - let static files router handle them
+                if _is_static_asset_path(path):
+                    raise NotFoundException(detail=f"Static asset path: {path}")
+                # Skip Litestar routes - let the router handle them
                 if path != "/" and is_litestar_route(path, request.app):
                     raise NotFoundException(detail=f"Not an SPA route: {path}")
 
@@ -740,18 +768,27 @@ class AppHandler:
             name="vite_spa",
             opt=opt,
             include_in_schema=False,
-            cache=3600,  # Cache for 1 hour
+            cache=3600,
             guards=guards,
         )
         async def spa_handler_prod(request: "Request[Any, Any, Any]") -> Response[bytes]:
             """Serve the SPA HTML (production - cached).
 
-            Checks if the request path matches a Litestar route before serving.
-            If it does, raises NotFoundException to let the router handle it.
+            Checks if the request path matches a Litestar route or static asset
+            before serving. If it does, raises NotFoundException to let the
+            appropriate router handle it.
+
+            Raises:
+                NotFoundException: If the path matches a Litestar route or static asset.
+
+            Returns:
+                The HTML response as bytes.
             """
-            # Check if path is a Litestar route - if so, don't serve SPA
-            # This prevents the catch-all from shadowing /schema, /api, etc.
             path = request.url.path
+            # Skip static asset paths - let static files router handle them
+            if _is_static_asset_path(path):
+                raise NotFoundException(detail=f"Static asset path: {path}")
+            # Skip Litestar routes - let the router handle them
             if path != "/" and is_litestar_route(path, request.app):
                 raise NotFoundException(detail=f"Not an SPA route: {path}")
 
