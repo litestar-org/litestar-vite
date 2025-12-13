@@ -898,10 +898,16 @@ class ViteConfig:
         except (OSError, UnicodeDecodeError, SerializationException):  # pragma: no cover - defensive
             return
 
-        deps = payload.get("dependencies") or {}
-        dev_deps = payload.get("devDependencies") or {}
-        if not isinstance(deps, dict) or not isinstance(dev_deps, dict):
-            return
+        deps_any = payload.get("dependencies")
+        dev_deps_any = payload.get("devDependencies")
+
+        deps: dict[str, Any] = {}
+        dev_deps: dict[str, Any] = {}
+
+        if isinstance(deps_any, dict):
+            deps = cast("dict[str, Any]", deps_any)
+        if isinstance(dev_deps_any, dict):
+            dev_deps = cast("dict[str, Any]", dev_deps_any)
 
         if "@vitejs/plugin-react" in deps or "@vitejs/plugin-react" in dev_deps:
             self.runtime.is_react = True
