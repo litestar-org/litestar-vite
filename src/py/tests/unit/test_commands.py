@@ -1,10 +1,10 @@
 """Tests for litestar_vite.commands module."""
 
-import json
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+from litestar.serialization import decode_json
 
 pytestmark = pytest.mark.anyio
 
@@ -262,7 +262,7 @@ def test_scaffolding_generate_project_angular_cli_skips_vite_base(tmp_path: Path
 
     generate_project(tmp_path, context)
 
-    package_json = json.loads((tmp_path / "package.json").read_text())
+    package_json = decode_json((tmp_path / "package.json").read_text())
     dev_deps = package_json.get("devDependencies", {})
 
     assert "litestar-vite-plugin" not in dev_deps

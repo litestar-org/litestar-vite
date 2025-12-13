@@ -6,12 +6,14 @@ DeployConfig is defined in litestar_vite.config and passed into ViteDeployer.
 
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportMissingTypeStubs=false
 
-import json
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, cast
+
+from litestar.exceptions import SerializationException
+from litestar.serialization import decode_json
 
 from litestar_vite.config import DeployConfig as _DeployConfig
 from litestar_vite.exceptions import MissingDependencyError
@@ -315,8 +317,8 @@ class ViteDeployer:
         """
 
         try:
-            manifest_data: Any = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+            manifest_data: Any = decode_json(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, SerializationException):
             return set[str]()
 
         paths: set[str] = set()

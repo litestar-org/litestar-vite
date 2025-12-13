@@ -76,7 +76,7 @@ async def test_is_inertia_true(
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
 ) -> None:
-    import json
+    from litestar.serialization import decode_json
 
     @get("/")
     async def handler(request: InertiaRequest[Any, Any, Any]) -> bool:
@@ -90,7 +90,7 @@ async def test_is_inertia_true(
         stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
-        data = json.loads(response.text)
+        data = decode_json(response.text)
         assert data["component"] is None
         assert data["url"] == "/"
         assert "version" in data  # version is a hash, not a fixed value
@@ -287,7 +287,7 @@ async def test_page_kwarg_returns_correct_component(
     The component name set via 'page' should be retrievable via
     request.inertia.route_component.
     """
-    import json
+    from litestar.serialization import decode_json
 
     @get("/dashboard", page="Dashboard")
     async def handler(request: InertiaRequest[Any, Any, Any]) -> str:
@@ -302,7 +302,7 @@ async def test_page_kwarg_returns_correct_component(
     ) as client:
         # When Inertia header is sent, it returns JSON with component
         response = client.get("/dashboard", headers={InertiaHeaders.ENABLED.value: "true"})
-        data = json.loads(response.text)
+        data = decode_json(response.text)
         assert data["component"] == "Dashboard"
 
 
@@ -315,7 +315,7 @@ async def test_page_opt_dict_works(
 
     Using the opt dictionary directly should also work with 'page' key.
     """
-    import json
+    from litestar.serialization import decode_json
 
     @get("/profile", opt={"page": "UserProfile"})
     async def handler(request: InertiaRequest[Any, Any, Any]) -> str:
@@ -330,7 +330,7 @@ async def test_page_opt_dict_works(
     ) as client:
         # When Inertia header is sent, it returns JSON with component
         response = client.get("/profile", headers={InertiaHeaders.ENABLED.value: "true"})
-        data = json.loads(response.text)
+        data = decode_json(response.text)
         assert data["component"] == "UserProfile"
 
 
@@ -344,7 +344,7 @@ async def test_component_kwarg_still_works(
     The original 'component' kwarg must continue to work to ensure
     backward compatibility with existing code.
     """
-    import json
+    from litestar.serialization import decode_json
 
     @get("/about", component="About")
     async def handler(request: InertiaRequest[Any, Any, Any]) -> str:
@@ -359,7 +359,7 @@ async def test_component_kwarg_still_works(
     ) as client:
         # When Inertia header is sent, it returns JSON with component
         response = client.get("/about", headers={InertiaHeaders.ENABLED.value: "true"})
-        data = json.loads(response.text)
+        data = decode_json(response.text)
         assert data["component"] == "About"
 
 
@@ -373,7 +373,7 @@ async def test_component_takes_precedence(
     When both 'component' and 'page' are specified, 'component' should win
     because it appears first in the default component_opt_keys tuple.
     """
-    import json
+    from litestar.serialization import decode_json
 
     @get("/conflict", component="ComponentWins", page="PageLoses")
     async def handler(request: InertiaRequest[Any, Any, Any]) -> str:
@@ -388,7 +388,7 @@ async def test_component_takes_precedence(
     ) as client:
         # When Inertia header is sent, it returns JSON with component
         response = client.get("/conflict", headers={InertiaHeaders.ENABLED.value: "true"})
-        data = json.loads(response.text)
+        data = decode_json(response.text)
         assert data["component"] == "ComponentWins"
 
 
@@ -402,7 +402,7 @@ async def test_page_kwarg_with_inertia_header(
     When the X-Inertia header is present, the response should be JSON
     with the page component, not HTML.
     """
-    import json
+    from litestar.serialization import decode_json
 
     @get("/", page="Home")
     async def handler(request: InertiaRequest[Any, Any, Any]) -> dict[str, str]:
@@ -416,7 +416,7 @@ async def test_page_kwarg_with_inertia_header(
         stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
-        data = json.loads(response.text)
+        data = decode_json(response.text)
         assert data["component"] == "Home"
         assert data["url"] == "/"
         assert data["props"]["message"] == "Hello"
@@ -471,10 +471,10 @@ async def test_page_with_empty_string_value(
         stores={"sessions": MemoryStore()},
     ) as client:
         # With Inertia header, should return JSON
-        import json
+        from litestar.serialization import decode_json
 
         response = client.get("/empty", headers={InertiaHeaders.ENABLED.value: "true"})
-        data = json.loads(response.text)
+        data = decode_json(response.text)
         # Empty page should fallback to component
         assert data["component"] == "Fallback"
 
@@ -514,7 +514,7 @@ async def test_page_with_special_characters(
 
     Component names with special characters should be handled correctly.
     """
-    import json
+    from litestar.serialization import decode_json
 
     @get("/special", page="Admin/Users/Index")
     async def handler(request: InertiaRequest[Any, Any, Any]) -> dict[str, str]:
@@ -528,5 +528,5 @@ async def test_page_with_special_characters(
         stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get("/special", headers={InertiaHeaders.ENABLED.value: "true"})
-        data = json.loads(response.text)
+        data = decode_json(response.text)
         assert data["component"] == "Admin/Users/Index"

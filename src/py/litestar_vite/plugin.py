@@ -19,7 +19,6 @@ Example::
 """
 
 import importlib.metadata
-import json
 import logging
 import os
 import signal
@@ -281,7 +280,11 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
         "litestarVersion": litestar_version,
     }
 
-    path.write_text(json.dumps(payload, indent=2))
+    # Use Litestar's serializer for consistent JSON output across the project.
+    import msgspec
+    from litestar.serialization import encode_json
+
+    path.write_bytes(msgspec.json.format(encode_json(payload), indent=2))
     return str(path)
 
 
@@ -2031,6 +2034,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._export_routes_json_sync(
                 msgspec=msgspec,
                 types_config=types_config,
+                encode_json=encode_json,
                 routes_data=routes_data,
                 exported_files=exported_files,
                 unchanged_files=unchanged_files,
@@ -2091,11 +2095,12 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         *,
         msgspec: Any,
         types_config: "TypeGenConfig",
+        encode_json: Any,
         routes_data: dict[str, Any],
         exported_files: list[str],
         unchanged_files: list[str],
     ) -> None:
-        routes_content = msgspec.json.format(msgspec.json.encode(routes_data), indent=2)
+        routes_content = msgspec.json.format(encode_json(routes_data), indent=2)
         routes_path = types_config.routes_path
         if routes_path is None:
             routes_path = types_config.output / "routes.json"

@@ -23,9 +23,9 @@ from typing import TYPE_CHECKING, Any, NoReturn
 
 import anyio
 import httpx
-import msgspec
 from litestar import Response, get
-from litestar.exceptions import ImproperlyConfiguredException, NotFoundException
+from litestar.exceptions import ImproperlyConfiguredException, NotFoundException, SerializationException
+from litestar.serialization import decode_json, encode_json
 
 from litestar_vite.html_transform import inject_head_script, set_data_attribute, transform_asset_urls
 from litestar_vite.plugin import is_litestar_route
@@ -221,7 +221,7 @@ class AppHandler:
         - Injects CSRF token as a global JavaScript variable
         - Injects page data as a data attribute on the app element
 
-        Uses msgspec for fast JSON serialization.
+        Uses Litestar's JSON serialization.
 
         Note:
             Route metadata is now generated as TypeScript (routes.ts) at build time
@@ -239,7 +239,7 @@ class AppHandler:
             # SPA transformations disabled, return as-is
             # But still inject page_data if provided
             if page_data is not None:
-                json_data = msgspec.json.encode(page_data).decode("utf-8")
+                json_data = encode_json(page_data).decode("utf-8")
                 html = set_data_attribute(html, "#app", "data-page", json_data)
             return html
 
@@ -251,7 +251,7 @@ class AppHandler:
 
         # Inject page data as data-page attribute if provided
         if page_data is not None:
-            json_data = msgspec.json.encode(page_data).decode("utf-8")
+            json_data = encode_json(page_data).decode("utf-8")
             html = set_data_attribute(
                 html,
                 self._spa_config.app_selector,
@@ -357,7 +357,7 @@ class AppHandler:
         try:
             if await manifest_path.exists():
                 content = await manifest_path.read_bytes()
-                self._manifest = msgspec.json.decode(content)
+                self._manifest = decode_json(content)
             else:
                 # In production mode, missing manifest is likely a build issue
                 logger.warning(
@@ -368,7 +368,7 @@ class AppHandler:
                 )
         except OSError as exc:
             logger.warning("Failed to read Vite manifest file: %s", exc)
-        except msgspec.DecodeError as exc:  # pyright: ignore[reportUnknownMemberType]
+        except SerializationException as exc:
             logger.warning("Failed to parse Vite manifest JSON: %s", exc)
 
     def _load_manifest_sync(self) -> None:
@@ -383,7 +383,7 @@ class AppHandler:
         try:
             if manifest_path.exists():
                 content = manifest_path.read_bytes()
-                self._manifest = msgspec.json.decode(content)
+                self._manifest = decode_json(content)
             else:
                 # In production mode, missing manifest is likely a build issue
                 logger.warning(
@@ -394,7 +394,7 @@ class AppHandler:
                 )
         except OSError as exc:
             logger.warning("Failed to read Vite manifest file: %s", exc)
-        except msgspec.DecodeError as exc:  # pyright: ignore[reportUnknownMemberType]
+        except SerializationException as exc:
             logger.warning("Failed to parse Vite manifest JSON: %s", exc)
 
     def _transform_asset_urls_in_html(self, html: str) -> str:

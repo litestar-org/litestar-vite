@@ -2,9 +2,8 @@
 
 from pathlib import Path
 
-import msgspec
 from litestar import Litestar, get
-from litestar.serialization import encode_json, get_serializer
+from litestar.serialization import decode_json, encode_json, get_serializer
 
 from litestar_vite.codegen import generate_routes_json
 from litestar_vite.config import TypeGenConfig, ViteConfig
@@ -44,13 +43,12 @@ def test_export_routes_integration(tmp_path: Path) -> None:
 
     # Write to file
     output_path = tmp_path / "routes.json"
-    content = msgspec.json.format(msgspec.json.encode(routes_data), indent=2)
-    output_path.write_bytes(content)
+    output_path.write_bytes(encode_json(routes_data))
 
     assert output_path.exists()
 
     # Verify content
-    loaded = msgspec.json.decode(output_path.read_bytes())
+    loaded = decode_json(output_path.read_bytes())
     assert "routes" in loaded
     routes = loaded["routes"]
 
@@ -80,13 +78,12 @@ def test_export_schema_integration(tmp_path: Path) -> None:
     # Write to file
     output_path = tmp_path / "schema.json"
     serializer = get_serializer(app.type_encoders)
-    content = msgspec.json.format(encode_json(schema, serializer=serializer), indent=2)
-    output_path.write_bytes(content)
+    output_path.write_bytes(encode_json(schema, serializer=serializer))
 
     assert output_path.exists()
 
     # Verify it's valid JSON
-    loaded = msgspec.json.decode(output_path.read_bytes())
+    loaded = decode_json(output_path.read_bytes())
     assert "openapi" in loaded or "info" in loaded
 
 

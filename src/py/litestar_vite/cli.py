@@ -13,7 +13,8 @@ from litestar.cli._utils import (  # pyright: ignore[reportPrivateImportUsage]
     LitestarGroup,
     console,
 )
-from litestar.serialization import encode_json, get_serializer
+from litestar.exceptions import SerializationException
+from litestar.serialization import decode_json, encode_json, get_serializer
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
@@ -249,9 +250,9 @@ def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: An
         openapi_schema: dict[str, Any] | None = None
         try:
             if types_config.openapi_path and types_config.openapi_path.exists():
-                openapi_schema = msgspec.json.decode(types_config.openapi_path.read_bytes())
-        except Exception:  # noqa: BLE001, S110
-            pass  # Non-fatal - page props can work without schema references
+                openapi_schema = decode_json(types_config.openapi_path.read_bytes())
+        except (OSError, SerializationException):  # Non-fatal - page props can work without schema references
+            pass
 
         _export_inertia_pages_metadata(app, types_config, config.inertia, openapi_schema)
 
@@ -944,7 +945,7 @@ def export_routes(
 
         try:
             content = msgspec.json.format(
-                msgspec.json.encode(routes_data),
+                encode_json(routes_data),
                 indent=2,
             )
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -997,7 +998,7 @@ def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
         routes_data = generate_routes_json(app, include_components=True)
         routes_data["litestar_version"] = resolve_litestar_version()
         routes_content = msgspec.json.format(
-            msgspec.json.encode(routes_data),
+            encode_json(routes_data),
             indent=2,
         )
         types_config.routes_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1039,7 +1040,7 @@ def _export_inertia_pages_metadata(
             types_config=types_config,
         )
         pages_content = msgspec.json.format(
-            msgspec.json.encode(pages_data),
+            encode_json(pages_data),
             indent=2,
         )
         types_config.page_props_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1188,7 +1189,7 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
         openapi_schema: dict[str, Any] | None = None
         try:
             if config.types.openapi_path and config.types.openapi_path.exists():
-                openapi_schema = msgspec.json.decode(config.types.openapi_path.read_bytes())
+                openapi_schema = decode_json(config.types.openapi_path.read_bytes())
         except Exception:  # noqa: BLE001
             if verbose:
                 console.print("[dim]! Could not load OpenAPI schema for type references[/]")

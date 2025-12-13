@@ -1,9 +1,10 @@
 """HTML transformation and injection utilities for SPA output."""
 
-import json
 import re
 from functools import lru_cache
 from typing import Any
+
+from litestar.serialization import encode_json
 
 # Compiled regex patterns for HTML transformations (case-insensitive)
 # These are compiled once at module load for better performance
@@ -306,7 +307,7 @@ def inject_json_script(html: str, var_name: str, data: dict[str, Any]) -> str:
     Example:
         html = inject_json_script(html, "__ROUTES__", {"home": "/", "about": "/about"})
     """
-    json_data = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    json_data = encode_json(data).decode("utf-8")
     script = f"window.{var_name} = {json_data};"
     return inject_head_script(html, script, escape=False)
 

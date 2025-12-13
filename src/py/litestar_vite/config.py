@@ -25,11 +25,13 @@ Example usage::
 
 import logging
 import os
-import json
 from dataclasses import dataclass, field, replace
 from importlib.util import find_spec
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkable
+
+from litestar.exceptions import SerializationException
+from litestar.serialization import decode_json
 
 logger = logging.getLogger("litestar_vite")
 
@@ -892,8 +894,8 @@ class ViteConfig:
             return
 
         try:
-            payload = json.loads(package_json.read_text(encoding="utf-8"))
-        except Exception:  # pragma: no cover - defensive
+            payload = decode_json(package_json.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, SerializationException):  # pragma: no cover - defensive
             return
 
         deps = payload.get("dependencies") or {}
