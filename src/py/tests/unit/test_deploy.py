@@ -7,8 +7,8 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     pytest.skip("fsspec not installed", allow_module_level=True)
 
-from litestar_vite.config import ViteConfig
-from litestar_vite.deploy import DeployConfig, FileInfo, ViteDeployer
+from litestar_vite.config import DeployConfig, ViteConfig
+from litestar_vite.deploy import FileInfo, ViteDeployer
 
 
 def test_deploy_config_env_fallback(monkeypatch: pytest.MonkeyPatch) -> None:

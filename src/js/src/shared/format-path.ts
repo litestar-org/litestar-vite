@@ -39,15 +39,3 @@ export function formatPath(absolutePath: string, root?: string): string {
     return absolutePath
   }
 }
-
-/**
- * Format multiple paths, joining them with a separator.
- *
- * @param paths - Array of absolute paths to format
- * @param root - The project root directory (defaults to process.cwd())
- * @param separator - Separator between paths (defaults to ", ")
- * @returns Formatted paths joined by separator
- */
-export function formatPaths(paths: string[], root?: string, separator = ", "): string {
-  return paths.map((p) => formatPath(p, root)).join(separator)
-}

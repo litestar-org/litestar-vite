@@ -52,9 +52,6 @@ InertiaConfig Reference
    * - ``component_opt_keys``
      - ``tuple[str, ...]``
      - Route decorator keys for component names. Default: ``("component", "page")``
-   * - ``exclude_from_js_routes_key``
-     - ``str``
-     - Route opt key to exclude from JS routes. Default: ``"exclude_from_routes"``
    * - ``redirect_unauthorized_to``
      - ``str | None``
      - URL for unauthorized (401/403) redirects. Default: ``None``
@@ -67,12 +64,6 @@ InertiaConfig Reference
    * - ``extra_session_page_props``
      - ``set[str]``
      - Session keys to include in page props. Default: ``set()``
-   * - ``spa_mode``
-     - ``bool``
-     - Use SPA mode without Jinja2 templates. Default: ``False``
-   * - ``app_selector``
-     - ``str``
-     - CSS selector for app root element. Default: ``"#app"``
    * - ``encrypt_history``
      - ``bool``
      - Enable history encryption globally. Default: ``False``
@@ -99,21 +90,6 @@ The ``component_opt_keys`` parameter controls which decorator keys specify the c
 
    @get("/", view="Home")  # Now works
    async def home() -> dict: ...
-
-SPA Mode
---------
-
-SPA mode uses HTML transformation instead of Jinja2 templates:
-
-.. code-block:: python
-
-   ViteConfig(
-       mode="hybrid",  # Auto-detected when inertia=True
-       inertia=InertiaConfig(spa_mode=True),
-   )
-
-In SPA mode, the ``index.html`` from your Vite project is used directly,
-with page props injected via the ``data-page`` attribute.
 
 Static Page Props
 -----------------
@@ -172,7 +148,7 @@ You can extend these via TypeScript module augmentation:
 .. code-block:: typescript
 
    // Standard auth (95% of users) - extend defaults
-   declare module 'litestar-vite/inertia' {
+   declare module 'litestar-vite-plugin/inertia' {
      interface User {
        avatarUrl?: string
        roles: Role[]
@@ -196,7 +172,7 @@ Then define your own User interface in TypeScript:
 .. code-block:: typescript
 
    // Custom auth (5% of users) - define from scratch
-   declare module 'litestar-vite/inertia' {
+   declare module 'litestar-vite-plugin/inertia' {
      interface User {
        uuid: string      // No id!
        username: string  // No email!

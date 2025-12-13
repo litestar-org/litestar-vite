@@ -20,7 +20,7 @@
  *       apiProxy: 'http://localhost:8000',
  *       types: {
  *         enabled: true,
- *         output: 'src/lib/api',
+ *         output: 'src/lib/generated',
  *       },
  *     }),
  *     sveltekit(),  // SvelteKit plugin comes after
@@ -35,8 +35,8 @@ import fs from "node:fs"
 import path from "node:path"
 import colors from "picocolors"
 import type { Plugin } from "vite"
-
-import { createTypeGenerationPlugin } from "./shared/create-type-gen-plugin.js"
+import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema.js"
+import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
 
 /**
  * Configuration for TypeScript type generation in SvelteKit.
@@ -51,9 +51,9 @@ export interface SvelteKitTypesConfig {
 
   /**
    * Path to output generated TypeScript types.
-   * Recommended to use SvelteKit's $lib alias path.
+   * Relative to the SvelteKit project root.
    *
-   * @default 'src/lib/api'
+   * @default 'src/lib/generated'
    */
   output?: string
 
@@ -72,6 +72,13 @@ export interface SvelteKitTypesConfig {
   routesPath?: string
 
   /**
+   * Path where Inertia page props metadata is exported by Litestar.
+   *
+   * @default 'inertia-pages.json'
+   */
+  pagePropsPath?: string
+
+  /**
    * Generate Zod schemas in addition to TypeScript types.
    *
    * @default false
@@ -84,6 +91,27 @@ export interface SvelteKitTypesConfig {
    * @default true
    */
   generateSdk?: boolean
+
+  /**
+   * Generate typed routes.ts from routes.json metadata.
+   *
+   * @default true
+   */
+  generateRoutes?: boolean
+
+  /**
+   * Generate Inertia page props types from inertia-pages.json metadata.
+   *
+   * @default true
+   */
+  generatePageProps?: boolean
+
+  /**
+   * Register route() globally on window object.
+   *
+   * @default false
+   */
+  globalRoute?: boolean
 
   /**
    * Debounce time in milliseconds for type regeneration.
@@ -154,6 +182,8 @@ interface ResolvedConfig {
   port?: number
   /** JavaScript runtime executor for package commands */
   executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
+  /** Whether .litestar.json was found */
+  hasPythonConfig: boolean
 }
 
 /**
@@ -162,21 +192,12 @@ interface ResolvedConfig {
 /**
  * Types configuration from Python runtime config.
  */
-interface PythonTypesConfig {
-  enabled?: boolean
-  output?: string
-  openapiPath?: string
-  routesPath?: string
-  generateZod?: boolean
-  generateSdk?: boolean
-}
-
 function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
-  const runtimeConfigPath = process.env.LITESTAR_VITE_CONFIG_PATH
   let hotFile: string | undefined
   let proxyMode: "vite" | "direct" | "proxy" | null = "vite"
   let port: number | undefined
-  let pythonTypesConfig: PythonTypesConfig | undefined
+  let pythonTypesConfig: BridgeTypesConfig | undefined
+  let hasPythonConfig = false
 
   // Read port from VITE_PORT environment variable (set by Python)
   const envPort = process.env.VITE_PORT
@@ -189,31 +210,16 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
 
   let pythonExecutor: "node" | "bun" | "deno" | "yarn" | "pnpm" | undefined
 
-  if (runtimeConfigPath && fs.existsSync(runtimeConfigPath)) {
-    try {
-      const json = JSON.parse(fs.readFileSync(runtimeConfigPath, "utf-8")) as {
-        bundleDir?: string
-        hotFile?: string
-        proxyMode?: "vite" | "direct" | "proxy" | null
-        port?: number
-        executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
-        types?: PythonTypesConfig | null
-      }
-      const bundleDir = json.bundleDir ?? "public"
-      const hot = json.hotFile ?? "hot"
-      hotFile = path.resolve(process.cwd(), bundleDir, hot)
-      proxyMode = json.proxyMode ?? "vite"
-      // Runtime config port takes precedence over VITE_PORT env
-      if (json.port !== undefined) {
-        port = json.port
-      }
-      pythonExecutor = json.executor
-      // Read types config from Python
-      if (json.types) {
-        pythonTypesConfig = json.types
-      }
-    } catch {
-      hotFile = undefined
+  const runtime = readBridgeConfig()
+  if (runtime) {
+    hasPythonConfig = true
+    const hot = runtime.hotFile
+    hotFile = path.isAbsolute(hot) ? hot : path.resolve(process.cwd(), runtime.bundleDir, hot)
+    proxyMode = runtime.proxyMode
+    port = runtime.port
+    pythonExecutor = runtime.executor
+    if (runtime.types) {
+      pythonTypesConfig = runtime.types
     }
   }
 
@@ -224,33 +230,45 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
     // Explicit `types: true` in Vite config - use Python config if available, else defaults
     typesConfig = {
       enabled: true,
-      output: pythonTypesConfig?.output ?? "src/lib/api",
+      output: pythonTypesConfig?.output ?? "src/lib/generated",
       openapiPath: pythonTypesConfig?.openapiPath ?? "openapi.json",
       routesPath: pythonTypesConfig?.routesPath ?? "routes.json",
+      pagePropsPath: pythonTypesConfig?.pagePropsPath ?? "inertia-pages.json",
       generateZod: pythonTypesConfig?.generateZod ?? false,
       generateSdk: pythonTypesConfig?.generateSdk ?? true,
+      generateRoutes: pythonTypesConfig?.generateRoutes ?? true,
+      generatePageProps: pythonTypesConfig?.generatePageProps ?? true,
+      globalRoute: pythonTypesConfig?.globalRoute ?? false,
       debounce: 300,
     }
   } else if (typeof config.types === "object" && config.types !== null) {
     // Explicit types object in Vite config - merge with Python config
     typesConfig = {
       enabled: config.types.enabled ?? true,
-      output: config.types.output ?? pythonTypesConfig?.output ?? "src/lib/api",
+      output: config.types.output ?? pythonTypesConfig?.output ?? "src/lib/generated",
       openapiPath: config.types.openapiPath ?? pythonTypesConfig?.openapiPath ?? "openapi.json",
       routesPath: config.types.routesPath ?? pythonTypesConfig?.routesPath ?? "routes.json",
+      pagePropsPath: config.types.pagePropsPath ?? pythonTypesConfig?.pagePropsPath ?? "inertia-pages.json",
       generateZod: config.types.generateZod ?? pythonTypesConfig?.generateZod ?? false,
       generateSdk: config.types.generateSdk ?? pythonTypesConfig?.generateSdk ?? true,
+      generateRoutes: config.types.generateRoutes ?? pythonTypesConfig?.generateRoutes ?? true,
+      generatePageProps: config.types.generatePageProps ?? pythonTypesConfig?.generatePageProps ?? true,
+      globalRoute: config.types.globalRoute ?? pythonTypesConfig?.globalRoute ?? false,
       debounce: config.types.debounce ?? 300,
     }
   } else if (config.types !== false && pythonTypesConfig?.enabled) {
     // No explicit Vite config but Python has types enabled - use Python config
     typesConfig = {
       enabled: true,
-      output: pythonTypesConfig.output ?? "src/lib/api",
+      output: pythonTypesConfig.output ?? "src/lib/generated",
       openapiPath: pythonTypesConfig.openapiPath ?? "openapi.json",
       routesPath: pythonTypesConfig.routesPath ?? "routes.json",
+      pagePropsPath: pythonTypesConfig.pagePropsPath ?? "inertia-pages.json",
       generateZod: pythonTypesConfig.generateZod ?? false,
       generateSdk: pythonTypesConfig.generateSdk ?? true,
+      generateRoutes: pythonTypesConfig.generateRoutes ?? true,
+      generatePageProps: pythonTypesConfig.generatePageProps ?? true,
+      globalRoute: pythonTypesConfig.globalRoute ?? false,
       debounce: 300,
     }
   }
@@ -264,6 +282,7 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
     proxyMode,
     port,
     executor: config.executor ?? pythonExecutor,
+    hasPythonConfig,
   }
 }
 
@@ -290,7 +309,7 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
  *       apiPrefix: '/api',
  *       types: {
  *         enabled: true,
- *         output: 'src/lib/api',
+ *         output: 'src/lib/generated',
  *         generateZod: true,
  *       },
  *     }),
@@ -303,8 +322,8 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
  * ```typescript
  * // src/routes/users/[id]/+page.ts
  * import type { PageLoad } from './$types';
- * import type { User } from '$lib/api/types.gen';
- * import { route } from '$lib/api/routes';
+ * import type { User } from '$lib/generated/api/types.gen';
+ * import { route } from '$lib/generated/routes';
  *
  * export const load: PageLoad = async ({ params, fetch }) => {
  *   const response = await fetch(route('users.show', { id: params.id }));
@@ -403,11 +422,12 @@ export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): Plu
   // Type generation plugin (if enabled)
   if (config.types !== false && config.types.enabled) {
     plugins.push(
-      createTypeGenerationPlugin(config.types, {
-        frameworkName: "litestar-sveltekit",
+      createLitestarTypeGenPlugin(config.types, {
         pluginName: "litestar-sveltekit-types",
-        clientPlugin: "@hey-api/client-fetch",
+        frameworkName: "litestar-sveltekit",
+        sdkClientPlugin: "@hey-api/client-fetch",
         executor: config.executor,
+        hasPythonConfig: config.hasPythonConfig,
       }),
     )
   }

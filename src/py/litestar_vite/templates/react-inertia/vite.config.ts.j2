@@ -5,8 +5,11 @@ import litestar from "litestar-vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 {% endif %}
 
+{% if enable_ssr %}
+export default defineConfig(({ ssrBuild }) => ({
+{% else %}
 export default defineConfig({
-  publicDir: "{{ public_dir }}",
+{% endif %}
   server: {
     host: "0.0.0.0",
     port: Number(process.env.VITE_PORT || "{{ vite_port }}"),
@@ -22,6 +25,9 @@ export default defineConfig({
     react(),
     litestar({
       input: ["{{ resource_dir }}/main.tsx"],
+{% if enable_ssr %}
+      ssr: "{{ resource_dir }}/ssr.tsx",
+{% endif %}
 {% if enable_types %}
       types: {
         enabled: true,
@@ -30,9 +36,24 @@ export default defineConfig({
 {% endif %}
     }),
   ],
+{% if enable_ssr %}
+  build: {
+    rollupOptions: {
+      output: ssrBuild
+        ? {
+            entryFileNames: "ssr.js",
+          }
+        : undefined,
+    },
+  },
+{% endif %}
   resolve: {
     alias: {
       "@": "/{{ resource_dir }}",
     },
   },
+{% if enable_ssr %}
+}));
+{% else %}
 });
+{% endif %}

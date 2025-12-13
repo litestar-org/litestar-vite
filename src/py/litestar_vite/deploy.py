@@ -1,23 +1,24 @@
 """Vite CDN deployment utilities.
 
-The canonical DeployConfig is defined in litestar_vite.config.
-This module re-exports it for backwards compatibility.
+Provides a deployer for publishing built Vite assets to any fsspec backend.
+DeployConfig is defined in litestar_vite.config and passed into ViteDeployer.
 """
 
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportMissingTypeStubs=false
 
-import json
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, cast
 
-from litestar_vite.config import DeployConfig
+from litestar.exceptions import SerializationException
+from litestar.serialization import decode_json
+
+from litestar_vite.config import DeployConfig as _DeployConfig
 from litestar_vite.exceptions import MissingDependencyError
 
-# Re-export for backwards compatibility
-__all__ = ("DeployConfig", "FileInfo", "SyncPlan", "SyncResult", "ViteDeployer", "format_bytes")
+__all__ = ("FileInfo", "SyncPlan", "SyncResult", "ViteDeployer", "format_bytes")
 
 AbstractFileSystem = Any
 
@@ -61,8 +62,8 @@ def _import_fsspec(storage_backend: "str | None") -> tuple[Any, Callable[..., tu
         msg = "fsspec"
         raise MissingDependencyError(msg, install_package=_suggest_install_extra(storage_backend))
 
-    import fsspec  # pyright: ignore[reportMissingTypeStubs]
-    from fsspec.core import url_to_fs  # pyright: ignore[reportMissingTypeStubs]
+    import fsspec  # pyright: ignore
+    from fsspec.core import url_to_fs  # pyright: ignore
 
     return fsspec, url_to_fs
 
@@ -103,7 +104,7 @@ class ViteDeployer:
         *,
         bundle_dir: Path,
         manifest_name: str,
-        deploy_config: DeployConfig,
+        deploy_config: _DeployConfig,
         fs: "AbstractFileSystem | None" = None,
         remote_path: str | None = None,
     ) -> None:
@@ -309,11 +310,15 @@ class ViteDeployer:
         return filesystem, remote_path or resolved_str
 
     def _paths_from_manifest(self, manifest_path: Path) -> set[str]:
-        """Extract file paths referenced by manifest.json."""
+        """Extract file paths referenced by manifest.json.
+
+        Returns:
+            Set of file paths.
+        """
 
         try:
-            manifest_data: Any = json.loads(manifest_path.read_text())
-        except json.JSONDecodeError:
+            manifest_data: Any = decode_json(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, SerializationException):
             return set[str]()
 
         paths: set[str] = set()

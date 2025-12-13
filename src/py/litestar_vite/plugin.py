@@ -19,7 +19,6 @@ Example::
 """
 
 import importlib.metadata
-import json
 import logging
 import os
 import signal
@@ -35,13 +34,13 @@ import anyio
 import httpx
 import websockets
 from litestar import Response
-from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 from litestar.connection import Request
 from litestar.enums import ScopeType
 from litestar.exceptions import NotFoundException, WebSocketDisconnect
 from litestar.middleware import AbstractMiddleware, DefineMiddleware
 from litestar.plugins import CLIPlugin, InitPluginProtocol
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
+from rich.console import Console
 from websockets.typing import Subprotocol
 
 from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, ExternalDevServer, TypeGenConfig, ViteConfig
@@ -80,6 +79,8 @@ _TICK = "[bold green]✓[/]"
 _INFO = "[cyan]•[/]"
 _WARN = "[yellow]![/]"
 _FAIL = "[red]x[/]"
+
+console = Console()
 
 
 def _fmt_path(path: Path) -> str:
@@ -234,33 +235,24 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
     root = config.root_dir or Path.cwd()
     path = Path(root) / ".litestar.json"
     types = config.types if isinstance(config.types, TypeGenConfig) else None
-    deploy = config.deploy_config
     resource_dir = config.resource_dir
     resource_dir_value = str(resource_dir)
     bundle_dir_value = str(config.bundle_dir)
     ssr_out_dir_value = str(config.ssr_output_dir) if config.ssr_output_dir else None
 
-    # Extract external dev server info
-    external = config.external_dev_server
-    external_target = external.target if external else None
-    external_http2 = external.http2 if external else False
-
     litestar_version = os.environ.get("LITESTAR_VERSION") or resolve_litestar_version()
 
     payload = {
         "assetUrl": config.asset_url,
-        "baseUrl": config.base_url,
         "bundleDir": bundle_dir_value,
         "hotFile": config.hot_file,
         "resourceDir": resource_dir_value,
-        "publicDir": str(config.public_dir),
+        "staticDir": str(config.static_dir),
         "manifest": config.manifest_name,
         "mode": config.mode,
         "proxyMode": config.proxy_mode,
         "port": config.port,
         "host": config.host,
-        "externalTarget": external_target,
-        "externalHttp2": external_http2,
         "ssrEnabled": config.ssr_enabled,
         "ssrOutDir": ssr_out_dir_value,
         "types": {
@@ -268,19 +260,15 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
             "output": str(types.output),
             "openapiPath": str(types.openapi_path),
             "routesPath": str(types.routes_path),
-            "pagePropsPath": str(types.page_props_path) if types.page_props_path else None,
+            "pagePropsPath": str(types.page_props_path),
             "generateZod": types.generate_zod,
             "generateSdk": types.generate_sdk,
+            "generateRoutes": types.generate_routes,
+            "generatePageProps": types.generate_page_props,
             "globalRoute": types.global_route,
         }
         if types
         else None,
-        "deploy": {
-            "storageBackend": deploy.storage_backend if deploy else None,
-            "deleteOrphaned": deploy.delete_orphaned if deploy else None,
-            "includeManifest": deploy.include_manifest if deploy else None,
-            "contentTypes": deploy.content_types if deploy else None,
-        },
         "logging": {
             "level": config.logging_config.level,
             "showPathsAbsolute": config.logging_config.show_paths_absolute,
@@ -292,7 +280,11 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
         "litestarVersion": litestar_version,
     }
 
-    path.write_text(json.dumps(payload, indent=2))
+    # Use Litestar's serializer for consistent JSON output across the project.
+    import msgspec
+    from litestar.serialization import encode_json
+
+    path.write_bytes(msgspec.json.format(encode_json(payload), indent=2))
     return str(path)
 
 
@@ -1749,13 +1741,13 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if not resource_dir.is_absolute():
             resource_dir = self._config.root_dir / resource_dir
 
-        public_dir = Path(self._config.public_dir)
-        if not public_dir.is_absolute():
-            public_dir = self._config.root_dir / public_dir
+        static_dir = Path(self._config.static_dir)
+        if not static_dir.is_absolute():
+            static_dir = self._config.root_dir / static_dir
 
         static_dirs = [bundle_dir, resource_dir]
-        if public_dir.exists() and public_dir != bundle_dir:
-            static_dirs.append(public_dir)
+        if static_dir.exists() and static_dir != bundle_dir:
+            static_dirs.append(static_dir)
 
         def _static_not_found_handler(
             _request: Request[Any, Any, Any], _exc: NotFoundException
@@ -2005,13 +1997,14 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
         if not isinstance(self._config.types, TypeGenConfig):
             return
+        types_config = self._config.types
 
         try:
             import msgspec
             from litestar._openapi.plugin import OpenAPIPlugin
             from litestar.serialization import encode_json, get_serializer
 
-            from litestar_vite.codegen import generate_routes_json
+            from litestar_vite.codegen import generate_routes_json, generate_routes_ts
 
             # Note: "Exporting type metadata" message removed - the success message is sufficient
 
@@ -2019,54 +2012,118 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             # (accessing openapi_schema property directly raises when not configured)
             openapi_plugin = next((p for p in app.plugins._plugins if isinstance(p, OpenAPIPlugin)), None)  # pyright: ignore[reportPrivateUsage]
             has_openapi = openapi_plugin is not None and openapi_plugin._openapi_config is not None  # pyright: ignore[reportPrivateUsage]
-            openapi_schema: "dict[str, Any] | None" = None
 
             # Track which files were actually written (changed)
             exported_files: list[str] = []
             unchanged_files: list[str] = []
 
-            if has_openapi:
-                try:
-                    serializer = get_serializer(
-                        app.type_encoders if isinstance(getattr(app, "type_encoders", None), dict) else None
-                    )
-                    schema_dict = app.openapi_schema.to_schema()
-                    openapi_schema = schema_dict
-                    schema_content = msgspec.json.format(
-                        encode_json(schema_dict, serializer=serializer),
-                        indent=2,
-                    )
-                    openapi_path = self._config.types.openapi_path
-                    if openapi_path is None:
-                        openapi_path = self._config.types.output / "openapi.json"
-                    if _write_if_changed(openapi_path, schema_content):
-                        exported_files.append(f"openapi: {_fmt_path(openapi_path)}")
-                    else:
-                        unchanged_files.append("openapi.json")
-                except (TypeError, ValueError, OSError, AttributeError) as exc:  # pragma: no cover
-                    console.print(f"[yellow]! OpenAPI export skipped: {exc}[/]")
-            else:
-                console.print("[yellow]! OpenAPI schema not available; skipping openapi.json export[/]")
+            openapi_schema = self._export_openapi_schema_sync(
+                app=app,
+                has_openapi=has_openapi,
+                types_config=types_config,
+                msgspec=msgspec,
+                encode_json=encode_json,
+                get_serializer=get_serializer,
+                exported_files=exported_files,
+                unchanged_files=unchanged_files,
+            )
 
             # Export routes JSON
             routes_data = generate_routes_json(app, include_components=True, openapi_schema=openapi_schema)
             routes_data["litestar_version"] = resolve_litestar_version()
-            routes_content = msgspec.json.format(
-                msgspec.json.encode(routes_data),
-                indent=2,
+            self._export_routes_json_sync(
+                msgspec=msgspec,
+                types_config=types_config,
+                encode_json=encode_json,
+                routes_data=routes_data,
+                exported_files=exported_files,
+                unchanged_files=unchanged_files,
             )
-            routes_path = self._config.types.routes_path
-            if routes_path is None:
-                routes_path = self._config.types.output / "routes.json"
-            if _write_if_changed(routes_path, routes_content):
-                exported_files.append(_fmt_path(routes_path))
-            else:
-                unchanged_files.append("routes.json")
+
+            # Export typed routes TypeScript
+            if types_config.generate_routes:
+                routes_ts_content = generate_routes_ts(app, openapi_schema=openapi_schema)
+                self._export_routes_ts_sync(
+                    types_config=types_config,
+                    routes_ts_content=routes_ts_content,
+                    exported_files=exported_files,
+                    unchanged_files=unchanged_files,
+                )
 
             if exported_files:
                 _log_success(f"Types exported → {', '.join(exported_files)}")
         except (OSError, TypeError, ValueError, ImportError) as e:  # pragma: no cover
             _log_warn(f"Type export failed: {e}")
+
+    def _export_openapi_schema_sync(
+        self,
+        *,
+        app: "Litestar",
+        has_openapi: bool,
+        types_config: "TypeGenConfig",
+        msgspec: Any,
+        encode_json: Any,
+        get_serializer: Any,
+        exported_files: list[str],
+        unchanged_files: list[str],
+    ) -> "dict[str, Any] | None":
+        if not has_openapi:
+            console.print("[yellow]! OpenAPI schema not available; skipping openapi.json export[/]")
+            return None
+
+        try:
+            serializer = get_serializer(
+                app.type_encoders if isinstance(getattr(app, "type_encoders", None), dict) else None
+            )
+            schema_dict = app.openapi_schema.to_schema()
+            schema_content = msgspec.json.format(encode_json(schema_dict, serializer=serializer), indent=2)
+            openapi_path = types_config.openapi_path
+            if openapi_path is None:
+                openapi_path = types_config.output / "openapi.json"
+            if _write_if_changed(openapi_path, schema_content):
+                exported_files.append(f"openapi: {_fmt_path(openapi_path)}")
+            else:
+                unchanged_files.append("openapi.json")
+        except (TypeError, ValueError, OSError, AttributeError) as exc:  # pragma: no cover
+            console.print(f"[yellow]! OpenAPI export skipped: {exc}[/]")
+        else:
+            return schema_dict
+        return None
+
+    def _export_routes_json_sync(
+        self,
+        *,
+        msgspec: Any,
+        types_config: "TypeGenConfig",
+        encode_json: Any,
+        routes_data: dict[str, Any],
+        exported_files: list[str],
+        unchanged_files: list[str],
+    ) -> None:
+        routes_content = msgspec.json.format(encode_json(routes_data), indent=2)
+        routes_path = types_config.routes_path
+        if routes_path is None:
+            routes_path = types_config.output / "routes.json"
+        if _write_if_changed(routes_path, routes_content):
+            exported_files.append(_fmt_path(routes_path))
+        else:
+            unchanged_files.append("routes.json")
+
+    def _export_routes_ts_sync(
+        self,
+        *,
+        types_config: "TypeGenConfig",
+        routes_ts_content: str,
+        exported_files: list[str],
+        unchanged_files: list[str],
+    ) -> None:
+        routes_ts_path = types_config.routes_ts_path
+        if routes_ts_path is None:
+            routes_ts_path = types_config.output / "routes.ts"
+        if _write_if_changed(routes_ts_path, routes_ts_content):
+            exported_files.append(_fmt_path(routes_ts_path))
+        else:
+            unchanged_files.append("routes.ts")
 
     @contextmanager
     def server_lifespan(self, app: "Litestar") -> "Iterator[None]":
@@ -2174,7 +2231,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
         # Warn if no built assets in production (skip for SSR mode since Node serves frontend)
         # Check both mode='ssr' and proxy_mode in case user is using proxy mode directly
-        is_ssr_mode = self._config.mode == "ssr" or self._config.proxy_mode in {"proxy", "ssr"}
+        is_ssr_mode = self._config.mode == "ssr" or self._config.proxy_mode == "proxy"
         if not self._config.is_dev_mode and not self._config.has_built_assets() and not is_ssr_mode:
             _log_warn(
                 "Vite dev server is disabled (dev_mode=False) but no index.html was found. "

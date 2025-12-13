@@ -1,25 +1,16 @@
 /**
  * Inertia.js helpers for Litestar applications.
  *
- * This module re-exports common helpers from litestar-vite-plugin/helpers
- * and adds Inertia-specific utilities.
+ * This module provides Inertia-specific runtime utilities.
+ * For CSRF utilities, import from `litestar-vite-plugin/helpers`.
  *
  * For type-safe routing, import from your generated routes file:
  * ```ts
- * import { route, routes, type RouteName } from '@/generated/routes'
+ * import { route, routeDefinitions, type RouteName } from '@/generated/routes'
  * ```
  *
  * @module
  */
-
-// Re-export all helpers from the main helpers module
-// Note: Using package path instead of relative import to ensure proper build output structure
-export {
-  csrfFetch,
-  csrfHeaders,
-  // CSRF utilities
-  getCsrfToken,
-} from "litestar-vite-plugin/helpers"
 
 /**
  * Unwrap page props that may have content nested under "content" key.

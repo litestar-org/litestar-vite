@@ -1,6 +1,6 @@
 /* biome-ignore-all lint/suspicious/noTemplateCurlyInString: Testing ${expr} template syntax intentionally */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { addDirective, swapJson } from "../../src/helpers/htmx"
+import { addDirective, registerHtmxExtension, swapJson } from "../../src/helpers/htmx"
 
 describe("htmx extension", () => {
   let container: HTMLElement
@@ -113,6 +113,25 @@ describe("htmx extension", () => {
         container.innerHTML = '<div :class="className"></div>'
         swapJson(container, { className: "foo bar" })
         expect(container.querySelector("div")?.getAttribute("class")).toBe("foo bar")
+      })
+    })
+
+    describe("@event binding", () => {
+      it("uses the latest context after subsequent swaps", () => {
+        container.innerHTML = '<button @click="onClick(id)"></button>'
+
+        const first = vi.fn()
+        swapJson(container, { id: 1, onClick: first })
+
+        ;(container.querySelector("button") as HTMLButtonElement).click()
+        expect(first).toHaveBeenCalledWith(1)
+
+        const second = vi.fn()
+        swapJson(container, { id: 2, onClick: second })
+
+        ;(container.querySelector("button") as HTMLButtonElement).click()
+        expect(second).toHaveBeenCalledWith(2)
+        expect(first).toHaveBeenCalledTimes(1)
       })
     })
 
@@ -384,6 +403,65 @@ describe("htmx extension", () => {
         expect(sections[0].querySelectorAll("p").length).toBe(2)
         expect(sections[1].querySelectorAll("p").length).toBe(1)
       })
+    })
+  })
+
+  describe("registerHtmxExtension", () => {
+    it("does not auto-register on module import", async () => {
+      vi.resetModules()
+      const defineExtension = vi.fn()
+      ;(window as unknown as Record<string, unknown>).htmx = { defineExtension, process: vi.fn() }
+
+      await import("../../src/helpers/htmx")
+
+      expect(defineExtension).not.toHaveBeenCalled()
+    })
+
+    it("registers extension and injects CSRF header", () => {
+      const defineExtension = vi.fn()
+      ;(window as unknown as Record<string, unknown>).__LITESTAR_CSRF__ = "csrf-token"
+      ;(window as unknown as Record<string, unknown>).htmx = { defineExtension, process: vi.fn() }
+
+      registerHtmxExtension()
+
+      expect(defineExtension).toHaveBeenCalledTimes(1)
+      const ext = defineExtension.mock.calls[0]?.[1] as { onEvent?: (name: string, evt: CustomEvent) => void }
+
+      const detail = { headers: {} as Record<string, string> }
+      const evt = new CustomEvent("htmx:configRequest", { detail })
+      ext.onEvent?.("htmx:configRequest", evt)
+
+      expect(detail.headers["X-CSRF-Token"]).toBe("csrf-token")
+    })
+
+    it("does not throw if event detail is missing/invalid", () => {
+      const defineExtension = vi.fn()
+      ;(window as unknown as Record<string, unknown>).__LITESTAR_CSRF__ = "csrf-token"
+      ;(window as unknown as Record<string, unknown>).htmx = { defineExtension, process: vi.fn() }
+
+      registerHtmxExtension()
+
+      const ext = defineExtension.mock.calls[0]?.[1] as { onEvent?: (name: string, evt: CustomEvent) => void }
+      const evt = new CustomEvent("htmx:configRequest")
+      expect(() => ext.onEvent?.("htmx:configRequest", evt)).not.toThrow()
+    })
+
+    it('handleSwap("json") parses JSON and runs swapJson', () => {
+      const defineExtension = vi.fn()
+      ;(window as unknown as Record<string, unknown>).htmx = { defineExtension, process: vi.fn() }
+
+      registerHtmxExtension()
+
+      const ext = defineExtension.mock.calls[0]?.[1] as {
+        handleSwap?: (swapStyle: string, target: Element, fragment: DocumentFragment | Element) => Element[]
+      }
+
+      container.innerHTML = "<p>${title}</p>"
+      const frag = document.createElement("div")
+      frag.textContent = JSON.stringify({ title: "Hello from HTMX" })
+
+      ext.handleSwap?.("json", container, frag)
+      expect(container.innerHTML).toBe("<p>Hello from HTMX</p>")
     })
   })
 

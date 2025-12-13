@@ -53,6 +53,29 @@ vi.mock("picocolors", () => ({
   },
 }))
 
+const baseRuntimeConfig = {
+  assetUrl: "/static",
+  bundleDir: "public",
+  resourceDir: "resources",
+  staticDir: "public",
+  hotFile: "hot",
+  manifest: "manifest.json",
+  mode: "spa",
+  proxyMode: "vite",
+  host: "localhost",
+  port: 5173,
+  ssrEnabled: false,
+  ssrOutDir: null,
+  types: null,
+  executor: "node",
+  logging: null,
+  litestarVersion: "2.18.0",
+} as const
+
+function runtimeConfig(overrides: Record<string, unknown> = {}): string {
+  return JSON.stringify({ ...baseRuntimeConfig, ...overrides })
+}
+
 describe("litestar-astro integration", () => {
   const originalEnv = { ...process.env }
 
@@ -184,7 +207,7 @@ describe("litestar-astro integration", () => {
       process.env.LITESTAR_VITE_CONFIG_PATH = "/tmp/vite-config.json"
       ;(fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true)
       ;(fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({
+        runtimeConfig({
           bundleDir: "dist",
           hotFile: "hot",
           proxyMode: "vite",
@@ -247,27 +270,7 @@ describe("litestar-astro integration", () => {
       ;(fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true)
       ;(fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue("invalid json {")
 
-      const integration = litestarAstro()
-
-      const updateConfig = vi.fn()
-      const mockLogger = {
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn(),
-        label: "test",
-      }
-
-      // Should not throw
-      await integration.hooks["astro:config:setup"]?.({
-        config: {},
-        command: "dev",
-        isRestart: false,
-        updateConfig,
-        logger: mockLogger,
-      })
-
-      expect(updateConfig).toHaveBeenCalled()
+      expect(() => litestarAstro()).toThrowError(/invalid \.litestar\.json/)
     })
 
     it("skips type generation plugin setup during build command", async () => {
@@ -302,7 +305,7 @@ describe("litestar-astro integration", () => {
       process.env.LITESTAR_VITE_CONFIG_PATH = "/tmp/vite-config.json"
       ;(fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true)
       ;(fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({
+        runtimeConfig({
           bundleDir: "public",
           hotFile: "hot",
           proxyMode: "vite",

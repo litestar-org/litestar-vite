@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom"
-import { route } from "@/generated/routes"
-import routesJson from "./generated/routes.json"
+import { route, routeDefinitions } from "@/generated/routes"
 
 type Book = {
   id: number
@@ -18,8 +17,9 @@ type Summary = {
   featured: Book
 }
 
-const serverRoutes = routesJson.routes
-type RouteName = keyof typeof serverRoutes
+type RouteName = keyof typeof routeDefinitions
+type RouteDefinition = (typeof routeDefinitions)[RouteName]
+const routeEntries = Object.entries(routeDefinitions) as [RouteName, RouteDefinition][]
 
 // Shared data hook
 function useLibraryData() {
@@ -129,22 +129,16 @@ function AppLayout() {
             <div>route("summary") → {route("summary")}</div>
             <div>route("books") → {route("books")}</div>
             <div>
-              route("book_detail", {"{ book_id: 42 }"}) → {route("book_detail", { book_id: 42 })}
+              {'route("book_detail", { book_id: 42 })'} → {route("book_detail", { book_id: 42 })}
             </div>
           </div>
         </details>
         <details className="mt-2">
-          <summary className="cursor-pointer">Server Routes (window.serverRoutes / window.__LITESTAR_ROUTES__)</summary>
-          <pre className="mt-2 max-h-48 overflow-auto rounded bg-slate-100 p-2">
-            {JSON.stringify(window.serverRoutes ?? window.__LITESTAR_ROUTES__ ?? "Not available", null, 2)}
-          </pre>
-        </details>
-        <details className="mt-2">
-          <summary className="cursor-pointer">Typed route names (from generated routes.json)</summary>
+          <summary className="cursor-pointer">Route definitions (from generated routes.ts)</summary>
           <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
-            {Object.keys(serverRoutes).map((name) => (
+            {routeEntries.map(([name, def]) => (
               <span key={name} className="font-mono text-slate-600">
-                {name as RouteName} → {serverRoutes[name as RouteName].uri}
+                {name} → {def.path}
               </span>
             ))}
           </div>

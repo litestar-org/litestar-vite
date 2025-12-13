@@ -19,7 +19,7 @@
  *       apiProxy: 'http://localhost:8000',
  *       types: {
  *         enabled: true,
- *         output: 'src/generated/api',
+ *         output: 'src/generated',
  *       },
  *     }),
  *   ],
@@ -33,8 +33,8 @@ import fs from "node:fs"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import path from "node:path"
 import type { Plugin, ViteDevServer } from "vite"
-
-import { createTypeGenerationPlugin } from "./shared/create-type-gen-plugin.js"
+import { readBridgeConfig } from "./shared/bridge-schema.js"
+import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
 
 /**
  * Astro integration interface.
@@ -108,7 +108,7 @@ export interface AstroTypesConfig {
    * Path to output generated TypeScript types.
    * Relative to the Astro project root.
    *
-   * @default 'src/types/api'
+   * @default 'src/generated'
    */
   output?: string
 
@@ -127,6 +127,13 @@ export interface AstroTypesConfig {
   routesPath?: string
 
   /**
+   * Path where Inertia page props metadata is exported by Litestar.
+   *
+   * @default 'inertia-pages.json'
+   */
+  pagePropsPath?: string
+
+  /**
    * Generate Zod schemas in addition to TypeScript types.
    *
    * @default false
@@ -139,6 +146,27 @@ export interface AstroTypesConfig {
    * @default true
    */
   generateSdk?: boolean
+
+  /**
+   * Generate typed routes.ts from routes.json metadata.
+   *
+   * @default true
+   */
+  generateRoutes?: boolean
+
+  /**
+   * Generate Inertia page props types from inertia-pages.json metadata.
+   *
+   * @default true
+   */
+  generatePageProps?: boolean
+
+  /**
+   * Register route() globally on window object.
+   *
+   * @default false
+   */
+  globalRoute?: boolean
 
   /**
    * Debounce time in milliseconds for type regeneration.
@@ -199,16 +227,22 @@ interface ResolvedLitestarAstroConfig {
   proxyMode: "vite" | "direct" | "proxy" | null
   /** Port for Vite dev server (from VITE_PORT env or runtime config) */
   port?: number
+  /** JavaScript runtime executor for package commands */
+  executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
+  /** Whether .litestar.json was found */
+  hasPythonConfig: boolean
 }
 
 /**
  * Resolve configuration with defaults.
  */
 function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroConfig {
-  const runtimeConfigPath = process.env.LITESTAR_VITE_CONFIG_PATH
   let hotFile: string | undefined
   let proxyMode: "vite" | "direct" | "proxy" | null = "vite"
   let port: number | undefined
+  let pythonTypesConfig: NonNullable<ReturnType<typeof readBridgeConfig>>["types"] | undefined
+  let pythonExecutor: "node" | "bun" | "deno" | "yarn" | "pnpm" | undefined
+  let hasPythonConfig = false
 
   // Read port from VITE_PORT environment variable (set by Python)
   const envPort = process.env.VITE_PORT
@@ -219,24 +253,16 @@ function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroC
     }
   }
 
-  if (runtimeConfigPath && fs.existsSync(runtimeConfigPath)) {
-    try {
-      const json = JSON.parse(fs.readFileSync(runtimeConfigPath, "utf-8")) as {
-        bundleDir?: string
-        hotFile?: string
-        proxyMode?: "vite" | "direct" | "proxy" | null
-        port?: number
-      }
-      const bundleDir = json.bundleDir ?? "public"
-      const hot = json.hotFile ?? "hot"
-      hotFile = path.resolve(process.cwd(), bundleDir, hot)
-      proxyMode = json.proxyMode ?? "vite"
-      // Runtime config port takes precedence over VITE_PORT env
-      if (json.port !== undefined) {
-        port = json.port
-      }
-    } catch {
-      hotFile = undefined
+  const runtime = readBridgeConfig()
+  if (runtime) {
+    hasPythonConfig = true
+    const hot = runtime.hotFile
+    hotFile = path.isAbsolute(hot) ? hot : path.resolve(process.cwd(), runtime.bundleDir, hot)
+    proxyMode = runtime.proxyMode
+    port = runtime.port
+    pythonExecutor = runtime.executor
+    if (runtime.types) {
+      pythonTypesConfig = runtime.types
     }
   }
 
@@ -246,22 +272,44 @@ function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroC
   if (config.types === true) {
     typesConfig = {
       enabled: true,
-      output: "src/types/api",
-      openapiPath: "openapi.json",
-      routesPath: "routes.json",
-      generateZod: false,
-      generateSdk: true,
+      output: pythonTypesConfig?.output ?? "src/generated",
+      openapiPath: pythonTypesConfig?.openapiPath ?? "openapi.json",
+      routesPath: pythonTypesConfig?.routesPath ?? "routes.json",
+      pagePropsPath: pythonTypesConfig?.pagePropsPath ?? "inertia-pages.json",
+      generateZod: pythonTypesConfig?.generateZod ?? false,
+      generateSdk: pythonTypesConfig?.generateSdk ?? true,
+      generateRoutes: pythonTypesConfig?.generateRoutes ?? true,
+      generatePageProps: pythonTypesConfig?.generatePageProps ?? true,
+      globalRoute: pythonTypesConfig?.globalRoute ?? false,
       debounce: 300,
     }
   } else if (typeof config.types === "object" && config.types !== null) {
     typesConfig = {
       enabled: config.types.enabled ?? true,
-      output: config.types.output ?? "src/types/api",
-      openapiPath: config.types.openapiPath ?? "openapi.json",
-      routesPath: config.types.routesPath ?? "routes.json",
-      generateZod: config.types.generateZod ?? false,
-      generateSdk: config.types.generateSdk ?? true,
+      output: config.types.output ?? pythonTypesConfig?.output ?? "src/generated",
+      openapiPath: config.types.openapiPath ?? pythonTypesConfig?.openapiPath ?? "openapi.json",
+      routesPath: config.types.routesPath ?? pythonTypesConfig?.routesPath ?? "routes.json",
+      pagePropsPath: config.types.pagePropsPath ?? pythonTypesConfig?.pagePropsPath ?? "inertia-pages.json",
+      generateZod: config.types.generateZod ?? pythonTypesConfig?.generateZod ?? false,
+      generateSdk: config.types.generateSdk ?? pythonTypesConfig?.generateSdk ?? true,
+      generateRoutes: config.types.generateRoutes ?? pythonTypesConfig?.generateRoutes ?? true,
+      generatePageProps: config.types.generatePageProps ?? pythonTypesConfig?.generatePageProps ?? true,
+      globalRoute: config.types.globalRoute ?? pythonTypesConfig?.globalRoute ?? false,
       debounce: config.types.debounce ?? 300,
+    }
+  } else if (config.types !== false && pythonTypesConfig?.enabled) {
+    typesConfig = {
+      enabled: true,
+      output: pythonTypesConfig.output ?? "src/generated",
+      openapiPath: pythonTypesConfig.openapiPath ?? "openapi.json",
+      routesPath: pythonTypesConfig.routesPath ?? "routes.json",
+      pagePropsPath: pythonTypesConfig.pagePropsPath ?? "inertia-pages.json",
+      generateZod: pythonTypesConfig.generateZod ?? false,
+      generateSdk: pythonTypesConfig.generateSdk ?? true,
+      generateRoutes: pythonTypesConfig.generateRoutes ?? true,
+      generatePageProps: pythonTypesConfig.generatePageProps ?? true,
+      globalRoute: pythonTypesConfig.globalRoute ?? false,
+      debounce: 300,
     }
   }
 
@@ -273,6 +321,8 @@ function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroC
     hotFile,
     proxyMode,
     port,
+    executor: pythonExecutor,
+    hasPythonConfig,
   }
 }
 
@@ -343,7 +393,7 @@ function createProxyPlugin(config: ResolvedLitestarAstroConfig): Plugin {
  * // src/pages/users/[id].astro
  * ---
  * import type { User } from '../generated/api/types.gen';
- * import { route } from '../generated/api/routes';
+ * import { route } from '../generated/routes';
  *
  * const { id } = Astro.params;
  * const response = await fetch(route('users.show', { id }));
@@ -382,10 +432,12 @@ export default function litestarAstro(userConfig: LitestarAstroConfig = {}): Ast
         // Add type generation plugin if enabled
         if (config.types !== false && config.types.enabled) {
           plugins.push(
-            createTypeGenerationPlugin(config.types, {
-              frameworkName: "litestar-astro",
+            createLitestarTypeGenPlugin(config.types, {
               pluginName: "litestar-astro-types",
-              clientPlugin: "@hey-api/client-fetch",
+              frameworkName: "litestar-astro",
+              sdkClientPlugin: "@hey-api/client-fetch",
+              executor: config.executor,
+              hasPythonConfig: config.hasPythonConfig,
             }),
           )
         }

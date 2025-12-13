@@ -1,52 +1,7 @@
-import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
-import IndexPage from "./routes/index";
-import BooksPage from "./routes/books";
-
-function Navigation() {
-  const location = useLocation();
-  const isHome = location.pathname === "/";
-  const isBooks = location.pathname === "/books";
-
-  return (
-    <nav className="nav">
-      <Link to="/" className={isHome ? "active" : ""}>
-        Home
-      </Link>
-      <Link to="/books" className={isBooks ? "active" : ""}>
-        Books
-      </Link>
-    </nav>
-  );
-}
+import { BrowserRouter } from "react-router-dom";
 
 function App() {
-  return (
-    <BrowserRouter>
-      <div className="app">
-        <header>
-          <p className="brand">Litestar + Vite</p>
-          <h1>{{ project_name }}</h1>
-          <Navigation />
-        </header>
-
-        <main>
-          <Routes>
-            <Route path="/" element={<IndexPage />} />
-            <Route path="/books" element={<BooksPage />} />
-          </Routes>
-        </main>
-
-        <footer>
-          <details>
-            <summary>Server Routes (injected via window.serverRoutes / window.__LITESTAR_ROUTES__)</summary>
-            <pre>
-              {JSON.stringify(window.serverRoutes ?? window.__LITESTAR_ROUTES__ ?? "Not available", null, 2)}
-            </pre>
-          </details>
-        </footer>
-      </div>
-    </BrowserRouter>
-  );
+  return <BrowserRouter />;
 }
 
 export default App;

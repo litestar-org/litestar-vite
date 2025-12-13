@@ -1,10 +1,10 @@
 """Tests for litestar_vite.commands module."""
 
-import json
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+from litestar.serialization import decode_json
 
 pytestmark = pytest.mark.anyio
 
@@ -25,7 +25,7 @@ def test_init_vite_creates_project(tmp_path: Path) -> None:
         root_path=tmp_path,
         resource_path=Path("src"),
         asset_url="/static/",
-        public_path=Path("public"),
+        static_path=Path("public"),
         bundle_path=Path("dist"),
         enable_ssr=False,
         vite_port=5173,
@@ -51,7 +51,7 @@ def test_init_vite_with_framework(tmp_path: Path) -> None:
         root_path=tmp_path,
         resource_path=Path("src"),
         asset_url="/static/",
-        public_path=Path("public"),
+        static_path=Path("public"),
         bundle_path=Path("dist"),
         enable_ssr=False,
         vite_port=5173,
@@ -81,7 +81,7 @@ def test_init_vite_error_when_jinja_missing(tmp_path: Path) -> None:
             root_path=tmp_path,
             resource_path=Path("resources"),
             asset_url="/static/",
-            public_path=Path("public"),
+            static_path=Path("public"),
             bundle_path=Path("dist"),
             enable_ssr=False,
             vite_port=5173,
@@ -262,7 +262,7 @@ def test_scaffolding_generate_project_angular_cli_skips_vite_base(tmp_path: Path
 
     generate_project(tmp_path, context)
 
-    package_json = json.loads((tmp_path / "package.json").read_text())
+    package_json = decode_json((tmp_path / "package.json").read_text())
     dev_deps = package_json.get("devDependencies", {})
 
     assert "litestar-vite-plugin" not in dev_deps

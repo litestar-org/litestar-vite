@@ -1,7 +1,6 @@
 <script lang="ts">
 import { onMount } from "svelte"
-import { route } from "@/generated/routes"
-import routesJson from "./generated/routes.json"
+import { route, routeDefinitions } from "@/generated/routes"
 
 type Book = {
   id: number
@@ -30,7 +29,7 @@ onMount(async () => {
 })
 
 const featured = $derived(summary?.featured)
-const serverRoutes = routesJson.routes
+const routeEntries = Object.entries(routeDefinitions)
 </script>
 
 <main class="mx-auto max-w-5xl space-y-6 px-4 py-10">
@@ -94,11 +93,11 @@ const serverRoutes = routesJson.routes
       </div>
     </details>
     <details class="mt-2">
-      <summary class="cursor-pointer">Server Routes (from generated routes.json)</summary>
+      <summary class="cursor-pointer">Route definitions (from generated routes.ts)</summary>
       <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
-        {#each Object.entries(serverRoutes) as [name, routeData]}
+        {#each routeEntries as [name, def]}
           <span class="font-mono text-slate-600">
-            {name} → {routeData.uri}
+            {name} → {def.path}
           </span>
         {/each}
       </div>

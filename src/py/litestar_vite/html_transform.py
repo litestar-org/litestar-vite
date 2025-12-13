@@ -1,9 +1,10 @@
 """HTML transformation and injection utilities for SPA output."""
 
-import json
 import re
 from functools import lru_cache
 from typing import Any
+
+from litestar.serialization import encode_json
 
 # Compiled regex patterns for HTML transformations (case-insensitive)
 # These are compiled once at module load for better performance
@@ -46,6 +47,19 @@ def _get_attr_pattern(attr: str) -> re.Pattern[str]:
         Pattern matching the attribute with its value.
     """
     return re.compile(rf'{re.escape(attr)}\s*=\s*["\'][^"\']*["\']', re.IGNORECASE)
+
+
+@lru_cache(maxsize=128)
+def _get_id_element_with_content_pattern(element_id: str) -> re.Pattern[str]:
+    """Return a compiled regex pattern to match an element by ID and capture its inner HTML.
+
+    The pattern matches: <tag ... id="element_id" ...> ... </tag>
+    and captures the opening tag, the inner content, and the closing tag.
+    """
+    return re.compile(
+        rf"(<(?P<tag>[a-zA-Z0-9]+)(?P<attrs>[^>]*\bid=[\"']{re.escape(element_id)}[\"'][^>]*)>)(?P<inner>.*?)(</(?P=tag)\s*>)",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
 
 
 def _escape_script(script: str) -> str:
@@ -121,6 +135,36 @@ def inject_head_script(html: str, script: str, *, escape: bool = True) -> str:
 
     # No closing tags found - append at the end
     return html + "\n" + script_tag
+
+
+def inject_head_html(html: str, content: str) -> str:
+    """Inject raw HTML into the ``<head>`` section.
+
+    This is used for Inertia SSR, where the SSR server returns an array of HTML strings
+    (typically ``<title>``, ``<meta>``, etc.) that must be placed in the final HTML response.
+
+    Args:
+        html: The HTML document.
+        content: Raw HTML to inject. This is inserted as-is.
+
+    Returns:
+        The HTML with the content injected before ``</head>`` when present.
+        Falls back to injecting before ``</html>`` or appending at the end.
+    """
+    if not content:
+        return html
+
+    head_end_match = _HEAD_END_PATTERN.search(html)
+    if head_end_match:
+        pos = head_end_match.start()
+        return html[:pos] + content + "\n" + html[pos:]
+
+    html_end_match = _HTML_END_PATTERN.search(html)
+    if html_end_match:
+        pos = html_end_match.start()
+        return html[:pos] + content + "\n" + html[pos:]
+
+    return html + "\n" + content
 
 
 def inject_body_content(html: str, content: str, *, position: str = "end") -> str:
@@ -213,6 +257,32 @@ def set_data_attribute(html: str, selector: str, attr: str, value: str) -> str:
     return pattern.sub(make_replacer(attr, escaped_value), html, count=1)
 
 
+def set_element_inner_html(html: str, selector: str, content: str) -> str:
+    """Replace the inner HTML of an element matching the selector.
+
+    Supports only simple ID selectors (``#app``). This is intentionally limited to avoid
+    the overhead and edge cases of a full HTML parser.
+
+    Args:
+        html: The HTML document.
+        selector: The selector (only ``#id`` supported).
+        content: The raw HTML to set as the element's innerHTML.
+
+    Returns:
+        Updated HTML. If no matching element is found, returns the original HTML.
+    """
+    if not selector or not selector.startswith("#"):
+        return html
+
+    element_id = selector[1:]
+    pattern = _get_id_element_with_content_pattern(element_id)
+
+    def replacer(match: re.Match[str]) -> str:
+        return match.group(1) + content + match.group(5)
+
+    return pattern.sub(replacer, html, count=1)
+
+
 def inject_json_script(html: str, var_name: str, data: dict[str, Any]) -> str:
     """Inject a script that sets a global JavaScript variable to JSON data.
 
@@ -237,7 +307,7 @@ def inject_json_script(html: str, var_name: str, data: dict[str, Any]) -> str:
     Example:
         html = inject_json_script(html, "__ROUTES__", {"home": "/", "about": "/about"})
     """
-    json_data = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    json_data = encode_json(data).decode("utf-8")
     script = f"window.{var_name} = {json_data};"
     return inject_head_script(html, script, escape=False)
 

@@ -5,8 +5,7 @@ import pytest
 from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.template.config import TemplateConfig
 
-from litestar_vite.config import ViteConfig
-from litestar_vite.inertia.config import InertiaConfig
+from litestar_vite.config import InertiaConfig, ViteConfig
 from litestar_vite.inertia.plugin import InertiaPlugin
 from litestar_vite.plugin import VitePlugin
 

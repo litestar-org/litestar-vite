@@ -7,9 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 from litestar.serialization import encode_json
-from rich.console import Group
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.syntax import Syntax
@@ -19,6 +18,8 @@ from litestar_vite.config import TypeGenConfig
 
 if TYPE_CHECKING:
     from litestar_vite.config import ViteConfig
+
+console = Console()
 
 
 # Compiled regex patterns for vite.config parsing (compiled once at module load)

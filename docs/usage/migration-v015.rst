@@ -356,7 +356,7 @@ New type generation options for Inertia page props:
 .. code-block:: typescript
 
    // Extend via module augmentation
-   declare module 'litestar-vite/inertia' {
+   declare module 'litestar-vite-plugin/inertia' {
      interface User {
        avatarUrl?: string | null
        roles: Role[]
@@ -380,7 +380,7 @@ Then define your own User interface in TypeScript:
 
 .. code-block:: typescript
 
-   declare module 'litestar-vite/inertia' {
+   declare module 'litestar-vite-plugin/inertia' {
      interface User {
        uuid: string
        username: string
@@ -410,6 +410,12 @@ New options for type generation:
    * - ``routes_ts_path``
      - ``Path | None``
      - Path for typed routes TypeScript file
+   * - ``fallback_type``
+     - ``Literal["unknown", "any"]``
+     - Fallback value type for untyped dict/list in Inertia page props (default: ``unknown``)
+   * - ``type_import_paths``
+     - ``dict[str, str]``
+     - Map props type names to TypeScript import paths for schemas excluded from OpenAPI
 
 **Example:**
 
@@ -445,7 +451,8 @@ New TypeScript utilities in ``litestar-vite-plugin``:
    addDirective('my-directive', (element) => { ... })
 
    // Register HTMX extension
-   registerHtmxExtension('my-extension', { ... })
+   // Note: Registration is explicit (no auto-registration)
+   registerHtmxExtension()
 
    // Enable HTMX debug mode
    setHtmxDebug(true)

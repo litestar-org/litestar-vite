@@ -104,7 +104,7 @@ See it in Action
 
         Quickly scaffold a new project with your preferred frontend framework:
 
-        .. image:: /_static/demos/scaffolding.gif
+        .. image:: _static/demos/scaffolding.gif
            :alt: Project scaffolding demo
            :align: center
            :width: 100%
@@ -115,7 +115,7 @@ See it in Action
 
         Experience instant feedback during development with HMR:
 
-        .. image:: /_static/demos/hmr.gif
+        .. image:: _static/demos/hmr.gif
            :alt: HMR demo
            :align: center
            :width: 100%

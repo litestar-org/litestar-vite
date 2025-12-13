@@ -62,7 +62,7 @@ Use TypeScript module augmentation to extend types:
    :caption: src/types/shared-props.ts
 
    // Extend the User interface
-   declare module "litestar-vite/inertia" {
+   declare module "litestar-vite-plugin/inertia" {
      interface User {
        avatarUrl?: string | null;
        roles: string[];
@@ -71,7 +71,7 @@ Use TypeScript module augmentation to extend types:
    }
 
    // Extend SharedProps for share() data
-   declare module "litestar-vite/inertia" {
+   declare module "litestar-vite-plugin/inertia" {
      interface SharedProps {
        auth: AuthData;
        locale: string;
@@ -137,7 +137,7 @@ Then define your own types:
 .. code-block:: typescript
 
    // Define custom User from scratch
-   declare module "litestar-vite/inertia" {
+   declare module "litestar-vite-plugin/inertia" {
      interface User {
        uuid: string;         // No id!
        username: string;     // No email!

@@ -27,9 +27,9 @@ The backend code is located in `src/py/litestar_vite/`.
 
 The `ViteConfig` class in `config.py` controls the integration behavior. It uses a modular structure with sub-configs:
 
-- **`PathConfig`**: File system paths (root, bundle_dir, resource_dir, public_dir, asset_url, ssr_output_dir, manifest_name, hot_file)
+- **`PathConfig`**: File system paths (root, bundle_dir, resource_dir, static_dir, asset_url, ssr_output_dir, manifest_name, hot_file)
 - **`RuntimeConfig`**: Execution settings (dev_mode, proxy_mode, external_dev_server, http2, start_dev_server)
-- **`TypeGenConfig`**: Type generation settings (output, openapi_path, routes_path, routes_ts_path, page_props_path, generate_zod, generate_sdk, generate_routes, generate_page_props, global_route, watch_patterns)
+- **`TypeGenConfig`**: Type generation settings (output, openapi_path, routes_path, routes_ts_path, page_props_path, generate_zod, generate_sdk, generate_routes, generate_page_props, global_route, fallback_type, type_import_paths, watch_patterns)
 - **`InertiaConfig`**: Inertia.js settings (root_template, component_opt_keys, exclude_from_js_routes_key, redirect_unauthorized_to, redirect_404, extra_static_page_props, extra_session_page_props, spa_mode, app_selector, encrypt_history, type_gen).
 - **`InertiaTypeGenConfig`**: Inertia type generation settings (include_default_auth, include_default_flash)
 - **`SPAConfig`**: SPA transformation settings (inject_csrf, cache_transformed_html, app_selector, csrf_var_name)
@@ -62,7 +62,7 @@ Key `RuntimeConfig` options:
 - **`csp_nonce`**: Content Security Policy nonce for inline scripts
 - **`spa_handler`**: Auto-register catch-all SPA route when mode="spa" (default: True)
 
-Python is the source of truth: The VitePlugin's `on_app_init()` method writes `.litestar.json` containing `assetUrl`, `bundleDir`, `resourceDir`, `publicDir`, `manifest`, `ssrOutDir`, `mode`, `proxyMode`, `host`, `port`, `ssrEnabled`, `executor`, type generation paths, and Litestar version. The JS plugin reads this file automatically - only `input` is required in `vite.config.ts`. Override only when you intentionally diverge from Python config.
+Python is the source of truth: The VitePlugin's `on_app_init()` method writes `.litestar.json` containing `assetUrl`, `bundleDir`, `resourceDir`, `staticDir`, `manifest`, `ssrOutDir`, `mode`, `proxyMode`, `host`, `port`, `ssrEnabled`, `executor`, type generation paths, and Litestar version. The JS plugin reads this file automatically - only `input` is required in `vite.config.ts`. Override only when you intentionally diverge from Python config.
 
 ### Core Modules
 

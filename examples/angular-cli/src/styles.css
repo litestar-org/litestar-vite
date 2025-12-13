@@ -2,9 +2,9 @@
 @config "../tailwind.config.js";
 
 :root {
-  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  line-height: 1.5;
-  color: #0f172a;
-  background: #f8fafc;
-  min-height: 100vh;
+  font-family: "Inter", "SF Pro Text", system-ui, -apple-system, sans-serif;
+  color: #202235;
+  background-color: #f8fafc;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }

@@ -69,6 +69,15 @@ Key features:
 - ``hx-ext="litestar"`` - Enables the Litestar HTMX extension for JSON templating
 - ``csrf_token`` - CSRF protection for forms and HTMX requests
 
+Frontend Entry Point
+--------------------
+
+The Litestar HTMX extension must be registered explicitly from your Vite entry file:
+
+.. literalinclude:: /../examples/jinja-htmx/resources/main.js
+   :language: javascript
+   :caption: resources/main.js
+
 HTMX Fragments
 --------------
 

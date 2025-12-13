@@ -19,7 +19,4 @@ PaginationContainer
     Configuration for paginated response structures.
     Customizes field names for data, current page, per page, etc.
 
-.. automodule:: litestar_vite.inertia.config
-    :members:
-    :show-inheritance:
-    :noindex:
+Full configuration reference: :doc:`/reference/config`

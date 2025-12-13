@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { Head } from "@inertiajs/vue3"
+import { Head, Link } from "@inertiajs/vue3"
+import { route, routeDefinitions } from "@/generated/routes"
+
+const routeEntries = Object.entries(routeDefinitions)
 
 type Book = {
   id: number
@@ -24,100 +27,45 @@ defineProps<{
 
 <template>
   <Head title="Books" />
-  <div class="app">
-    <header class="hero">
-      <p class="eyebrow">Litestar + Vite</p>
-      <h1>Books (Vue + Inertia)</h1>
-      <p class="lede">Shared backend; this view uses server-provided props.</p>
+  <main class="mx-auto max-w-5xl space-y-6 px-4 py-10">
+    <header class="space-y-2">
+      <p class="font-semibold text-[#edb641] text-sm uppercase tracking-[0.14em]">Litestar · Vite</p>
+      <h1 class="font-semibold text-3xl text-[#202235]">Library (Vue + Inertia)</h1>
+      <p class="max-w-3xl text-slate-600">{{ summary.headline }}</p>
+      <nav class="flex gap-4">
+        <!-- Using type-safe route() helper like Laravel's Ziggy -->
+        <Link :href="route('index')" class="rounded-full bg-slate-100 px-4 py-2 font-semibold text-slate-600 text-sm transition hover:bg-slate-200">
+          Home
+        </Link>
+        <span class="rounded-full bg-white px-4 py-2 font-semibold text-[#202235] text-sm shadow">Books ({{ summary.total_books }})</span>
+      </nav>
     </header>
 
-    <section class="panel">
-      <h2>{{ summary.headline }}</h2>
-      <p class="muted">Total books: {{ summary.total_books }}</p>
-      <article class="card">
-        <h3>{{ summary.featured.title }}</h3>
-        <p class="muted">{{ summary.featured.author }} • {{ summary.featured.year }}</p>
-        <p class="chips">{{ summary.featured.tags.join(" · ") }}</p>
+    <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Books">
+      <article v-for="book in books" :key="book.id" class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+        <h3 class="font-semibold text-[#202235] text-lg">{{ book.title }}</h3>
+        <p class="mt-1 text-slate-600">{{ book.author }} • {{ book.year }}</p>
+        <p class="mt-1 text-[#202235] text-sm">{{ book.tags.join(" · ") }}</p>
       </article>
     </section>
 
-    <section class="grid" aria-label="Books">
-      <article v-for="book in books" :key="book.id" class="card">
-        <h3>{{ book.title }}</h3>
-        <p class="muted">{{ book.author }} • {{ book.year }}</p>
-        <p class="chips">{{ book.tags.join(" · ") }}</p>
-      </article>
-    </section>
-  </div>
+    <footer class="border-slate-200 border-t pt-8 text-slate-400 text-xs">
+      <p>Data provided by Inertia.js props from the server. No client-side fetch required.</p>
+      <details class="mt-2">
+        <summary class="cursor-pointer">Type-safe route() helper usage</summary>
+        <div class="mt-2 space-y-1 rounded bg-slate-100 p-2 font-mono">
+          <div>route("index") → {{ route("index") }}</div>
+          <div>route("books_page") → {{ route("books_page") }}</div>
+        </div>
+      </details>
+      <details class="mt-2">
+        <summary class="cursor-pointer">Route definitions (from generated routes.ts)</summary>
+        <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
+          <span v-for="[name, def] in routeEntries" :key="name" class="font-mono text-slate-600">
+            {{ name }} → {{ def.path }}
+          </span>
+        </div>
+      </details>
+    </footer>
+  </main>
 </template>
-
-<style scoped>
-:global(body) {
-  margin: 0;
-  font-family: "Inter", "SF Pro Text", system-ui, -apple-system, sans-serif;
-  background: #f8fafc;
-  color: #0f172a;
-}
-
-.app {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 2.5rem 1.5rem 3rem;
-}
-
-.hero {
-  display: grid;
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.eyebrow {
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-weight: 600;
-  color: #22c55e;
-  font-size: 0.85rem;
-}
-
-.hero h1 {
-  margin: 0;
-  font-size: 2.1rem;
-}
-
-.lede {
-  margin: 0;
-  color: #475569;
-}
-
-.panel {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 18px;
-  padding: 1.5rem;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
-  margin-bottom: 1rem;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1rem;
-}
-
-.card {
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  padding: 1rem 1.25rem;
-  background: linear-gradient(180deg, #fff, #f8fafc);
-}
-
-.muted {
-  color: #64748b;
-  margin: 0.15rem 0 0.35rem;
-}
-
-.chips {
-  font-size: 0.95rem;
-  color: #0f172a;
-}
-</style>

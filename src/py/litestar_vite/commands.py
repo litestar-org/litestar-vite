@@ -20,7 +20,7 @@ def init_vite(
     root_path: "Path",
     resource_path: "Path",
     asset_url: "str",
-    public_path: "Path",
+    static_path: "Path",
     bundle_path: "Path",
     enable_ssr: "bool",
     vite_port: int,
@@ -35,7 +35,7 @@ def init_vite(
         root_path: Root directory for the Vite project.
         resource_path: Directory containing source files.
         asset_url: Base URL for serving assets.
-        public_path: Directory for static files.
+        static_path: Directory for static (unprocessed) frontend assets.
         bundle_path: Output directory for built files.
         enable_ssr: Enable server-side rendering.
         vite_port: Port for Vite dev server.
@@ -70,7 +70,7 @@ def init_vite(
         asset_url=asset_url,
         resource_dir=str(resource_path),
         bundle_dir=str(bundle_path),
-        public_dir=str(public_path),
+        static_dir=str(static_path),
         enable_ssr=enable_ssr,
         enable_inertia=template.inertia_compatible and "inertia" in framework,
         enable_types=True,

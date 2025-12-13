@@ -53,10 +53,18 @@ Type "head -30 resources/generated/api/sdk.gen.ts"
 Enter
 Sleep 3s
 
-Type "# Routes are also exported for type-safe navigation"
+Type "# Page props are typed too (Inertia + HTMX helpers)"
 Enter
 Sleep 500ms
 
-Type "head -20 resources/generated/routes.json"
+Type "head -30 resources/generated/page-props.ts"
+Enter
+Sleep 3s
+
+Type "# Routes are exported for type-safe navigation"
+Enter
+Sleep 500ms
+
+Type "head -20 resources/generated/routes.ts"
 Enter
 Sleep 2s

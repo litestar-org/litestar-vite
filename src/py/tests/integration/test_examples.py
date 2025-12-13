@@ -242,12 +242,11 @@ def test_example_proxy_mode_config(
     )
 
     if is_ssr:
-        # SSR frameworks should use "proxy" mode (or "ssr" which resolves to "proxy")
-        # for deny list-style proxying that forwards everything except Litestar routes
+        # SSR frameworks should use "proxy" mode for deny list-style proxying that forwards everything except Litestar routes
         assert config.proxy_mode == "proxy", (
-            f"{example_name}: SSR framework should use proxy_mode='ssr' or 'proxy'. "
+            f"{example_name}: SSR framework should use proxy_mode='proxy'. "
             f"Got proxy_mode='{config.proxy_mode}'. "
-            f"Set runtime=RuntimeConfig(proxy_mode='ssr') in ViteConfig."
+            f"Set runtime=RuntimeConfig(proxy_mode='proxy') in ViteConfig."
         )
 
     # Angular CLI example uses "proxy" mode with static target

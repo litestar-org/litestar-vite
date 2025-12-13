@@ -13,7 +13,8 @@ from litestar.cli._utils import (  # pyright: ignore[reportPrivateImportUsage]
     LitestarGroup,
     console,
 )
-from litestar.serialization import encode_json, get_serializer
+from litestar.exceptions import SerializationException
+from litestar.serialization import decode_json, encode_json, get_serializer
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
@@ -249,9 +250,9 @@ def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: An
         openapi_schema: dict[str, Any] | None = None
         try:
             if types_config.openapi_path and types_config.openapi_path.exists():
-                openapi_schema = msgspec.json.decode(types_config.openapi_path.read_bytes())
-        except Exception:  # noqa: BLE001, S110
-            pass  # Non-fatal - page props can work without schema references
+                openapi_schema = decode_json(types_config.openapi_path.read_bytes())
+        except (OSError, SerializationException):  # Non-fatal - page props can work without schema references
+            pass
 
         _export_inertia_pages_metadata(app, types_config, config.inertia, openapi_schema)
 
@@ -429,9 +430,9 @@ def vite_doctor(
     required=False,
 )
 @option(
-    "--public-path",
+    "--static-path",
     type=ClickPath(dir_okay=True, file_okay=False, path_type=Path),
-    help="The optional path to your public/static JS assets.  If this were a standalone Vue or React app, this would point to your `public/` folder.",
+    help="The optional path to your static (unprocessed) frontend assets. If this were a standalone Vite app, this would point to your `public/` folder.",
     default=None,
     required=False,
 )
@@ -445,11 +446,21 @@ def vite_doctor(
 )
 @option(
     "--enable-ssr",
-    type=bool,
-    help="Enable SSR Support.",
+    "enable_ssr",
+    flag_value=True,
+    default=None,
     required=False,
     show_default=False,
-    is_flag=True,
+    help="Enable SSR support.",
+)
+@option(
+    "--disable-ssr",
+    "enable_ssr",
+    flag_value=False,
+    default=None,
+    required=False,
+    show_default=False,
+    help="Disable SSR support.",
 )
 @option(
     "--tailwind",
@@ -513,7 +524,7 @@ def vite_init(
     frontend_dir: str,
     bundle_path: "Path | None",
     resource_path: "Path | None",
-    public_path: "Path | None",
+    static_path: "Path | None",
     tailwind: "bool",
     enable_types: "bool",
     generate_zod: "bool",
@@ -544,11 +555,11 @@ def vite_init(
     console.print(f"\n[green]Using {framework.name} template[/]")
     resource_path_str = str(resource_path or framework.resource_dir or config.resource_dir)
     bundle_path_str = str(bundle_path or config.bundle_dir)
-    public_path_str = str(public_path or config.public_dir)
+    static_path_str = str(static_path or config.static_dir)
 
     # Check for existing files
     if (
-        any((root_path / p).exists() for p in [resource_path_str, bundle_path_str, public_path_str])
+        any((root_path / p).exists() for p in [resource_path_str, bundle_path_str, static_path_str])
         and not any(
             [overwrite, no_prompt],
         )
@@ -579,7 +590,7 @@ def vite_init(
         asset_url=asset_url,
         resource_dir=resource_path_str,
         bundle_dir=bundle_path_str,
-        public_dir=public_path_str,
+        static_dir=static_path_str,
         base_dir=frontend_dir,
         enable_ssr=enable_ssr,
         enable_inertia=is_inertia,
@@ -934,7 +945,7 @@ def export_routes(
 
         try:
             content = msgspec.json.format(
-                msgspec.json.encode(routes_data),
+                encode_json(routes_data),
                 indent=2,
             )
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -987,7 +998,7 @@ def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
         routes_data = generate_routes_json(app, include_components=True)
         routes_data["litestar_version"] = resolve_litestar_version()
         routes_content = msgspec.json.format(
-            msgspec.json.encode(routes_data),
+            encode_json(routes_data),
             indent=2,
         )
         types_config.routes_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1026,9 +1037,10 @@ def _export_inertia_pages_metadata(
             openapi_schema=openapi_schema,
             include_default_auth=inertia_type_gen.include_default_auth,
             include_default_flash=inertia_type_gen.include_default_flash,
+            types_config=types_config,
         )
         pages_content = msgspec.json.format(
-            msgspec.json.encode(pages_data),
+            encode_json(pages_data),
             indent=2,
         )
         types_config.page_props_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1177,7 +1189,7 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
         openapi_schema: dict[str, Any] | None = None
         try:
             if config.types.openapi_path and config.types.openapi_path.exists():
-                openapi_schema = msgspec.json.decode(config.types.openapi_path.read_bytes())
+                openapi_schema = decode_json(config.types.openapi_path.read_bytes())
         except Exception:  # noqa: BLE001
             if verbose:
                 console.print("[dim]! Could not load OpenAPI schema for type references[/]")

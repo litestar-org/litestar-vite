@@ -383,12 +383,12 @@ async def test_static_prop_render() -> None:
     prop_static_2 = StaticProp(key="static", value=1)
     assert prop_static_2.render() == 1
 
-    class TestClass:
+    class RenderableObject:
         def __str__(self) -> str:
             return "test_class_result"
 
-    prop_static_3 = StaticProp(key="static", value=TestClass())
-    assert isinstance(prop_static_3.render(), TestClass)
+    prop_static_3 = StaticProp(key="static", value=RenderableObject())
+    assert isinstance(prop_static_3.render(), RenderableObject)
 
     prop_static_4 = lazy("static", None)
     assert prop_static_4.render() is None
@@ -837,7 +837,7 @@ async def test_encrypt_history_config_default(
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
     """Test that InertiaConfig.encrypt_history sets the default."""
-    from litestar_vite.inertia.config import InertiaConfig
+    from litestar_vite.config import InertiaConfig
     from litestar_vite.inertia.plugin import InertiaPlugin
 
     # Create plugin with encrypt_history enabled globally
@@ -866,7 +866,7 @@ async def test_encrypt_history_response_overrides_config(
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
     """Test that response-level encrypt_history overrides config default."""
-    from litestar_vite.inertia.config import InertiaConfig
+    from litestar_vite.config import InertiaConfig
     from litestar_vite.inertia.plugin import InertiaPlugin
     from litestar_vite.inertia.response import InertiaResponse
 

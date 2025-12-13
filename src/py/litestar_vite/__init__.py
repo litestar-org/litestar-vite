@@ -30,48 +30,32 @@ For more advanced configuration:
 """
 
 from litestar_vite import inertia
-from litestar_vite.codegen import RouteMetadata, extract_route_metadata, generate_routes_json
 from litestar_vite.config import (
     DeployConfig,
     ExternalDevServer,
     InertiaConfig,
+    InertiaSSRConfig,
     PathConfig,
     RuntimeConfig,
     TypeGenConfig,
     ViteConfig,
-)
-from litestar_vite.handler import AppHandler
-from litestar_vite.html_transform import (
-    inject_body_content,
-    inject_head_script,
-    inject_json_script,
-    set_data_attribute,
 )
 from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.plugin import VitePlugin
 
 __all__ = (
     # Config components
-    "AppHandler",
     "DeployConfig",
     "ExternalDevServer",
     "InertiaConfig",
+    "InertiaSSRConfig",
     "PathConfig",
-    "RouteMetadata",
     "RuntimeConfig",
     "TypeGenConfig",
     "ViteAssetLoader",
     "ViteConfig",
     # Main exports
     "VitePlugin",
-    # Codegen utilities
-    "extract_route_metadata",
-    "generate_routes_json",
     # Submodule
     "inertia",
-    # HTML transformation utilities
-    "inject_body_content",
-    "inject_head_script",
-    "inject_json_script",
-    "set_data_attribute",
 )

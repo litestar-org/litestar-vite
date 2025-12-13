@@ -11,9 +11,4 @@ export default defineConfig({
       input: ["resources/main.tsx"],
     }),
   ],
-  resolve: {
-    alias: {
-      "@": "/resources",
-    },
-  },
 })

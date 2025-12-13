@@ -240,27 +240,38 @@ class ExampleServer:
 
         Kills any remaining processes using the port.
         """
+        ports_to_free: list[int] = []
+
         vite_port = EXAMPLE_PORTS.get(self.example_name)
-        if vite_port is None:
+        if vite_port is not None:
+            ports_to_free.append(vite_port)
+
+        # External examples proxy to a separate dev server port (e.g. Angular CLI 4200)
+        external_target_port = EXTERNAL_TARGET_PORTS.get(self.example_name)
+        if external_target_port is not None:
+            ports_to_free.append(external_target_port)
+
+        if not ports_to_free:
             return
 
         try:
-            result = subprocess.run(
-                ["lsof", "-t", "-i", f":{vite_port}"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.stdout.strip():
-                for pid_str in result.stdout.strip().split("\n"):
-                    try:
-                        pid = int(pid_str.strip())
-                        os.kill(pid, signal.SIGKILL)
-                        logger.warning("Killed orphaned process %d using port %d", pid, vite_port)
-                    except (ValueError, ProcessLookupError, PermissionError):
-                        pass
-                # Wait for port to be released
-                time.sleep(0.3)
+            for port in ports_to_free:
+                result = subprocess.run(
+                    ["lsof", "-t", "-i", f":{port}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.stdout.strip():
+                    for pid_str in result.stdout.strip().split("\n"):
+                        try:
+                            pid = int(pid_str.strip())
+                            os.kill(pid, signal.SIGKILL)
+                            logger.warning("Killed orphaned process %d using port %d", pid, port)
+                        except (ValueError, ProcessLookupError, PermissionError):
+                            pass
+                    # Wait for port to be released
+                    time.sleep(0.3)
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
 
@@ -397,7 +408,11 @@ class ExampleServer:
         # - The homepage (/) is proxied to the SSR dev server
         # - The SSR dev server takes time to start and returns 500 initially
         # - API routes (/api/*) are handled directly by Litestar without proxy
-        if self._dev_mode and (self.example_name in SSR_EXAMPLES or self.example_name in SSG_EXAMPLES):
+        if self._dev_mode and (
+            self.example_name in SSR_EXAMPLES
+            or self.example_name in SSG_EXAMPLES
+            or self.example_name in EXTERNAL_EXAMPLES
+        ):
             self._verify_http_ready(port=self.litestar_port, timeout=timeout, health_path="/api/summary")
         else:
             self._verify_http_ready(port=self.litestar_port, timeout=timeout)
@@ -502,9 +517,14 @@ class ExampleServer:
         """
         import httpx
 
+        # Leave a small buffer so we raise our own TimeoutError with captured logs
+        # before pytest-timeout interrupts the test mid-sleep.
+        timeout = max(timeout - 5.0, 1.0)
+
         start = time.monotonic()
         base_url = f"http://127.0.0.1:{self.litestar_port}"
         last_status = None
+        last_error = None
 
         while time.monotonic() - start < timeout:
             self._check_processes_alive()
@@ -519,13 +539,25 @@ class ExampleServer:
                 # 5xx status (500, 502, 503) means dev server is still building
                 logger.debug("Proxy building: %s returned %d", base_url, response.status_code)
             except httpx.RequestError as e:
+                last_error = str(e)
                 logger.debug("Proxy request error: %s", e)
             time.sleep(0.5)
 
-        raise TimeoutError(
-            f"Proxy health check failed for {base_url}. "
-            f"Last status: {last_status}. External dev server may still be building."
-        )
+        msg = f"Proxy health check failed for {base_url}."
+        if last_status is not None:
+            msg += f" Last status: {last_status}."
+        if last_error:
+            msg += f" Last error: {last_error}."
+
+        # Include captured server output for debugging
+        if self._captures:
+            for i, capture in enumerate(self._captures):
+                output = capture.get_output()
+                if output:
+                    lines = output.split("\n")[-30:]
+                    msg += f"\n\n=== Server output (capture {i + 1}) ===\n{chr(10).join(lines)}"
+
+        raise TimeoutError(msg)
 
     def stop(self) -> None:
         """Terminate all child processes."""

@@ -65,26 +65,29 @@ TypeGenConfig Reference
      - ``False``
      - Generate Zod schemas for runtime validation
    * - ``generate_sdk``
-     - ``False``
+     - ``True``
      - Generate API client SDK via hey-api (fetch-based)
    * - ``generate_routes``
      - ``True``
      - Generate typed routes.ts file
    * - ``generate_page_props``
-     - ``False``
-     - Generate Inertia page props types (enable when using Inertia)
+     - ``True``
+     - Generate Inertia page props types (effective only when Inertia is enabled)
    * - ``page_props_path``
      - ``{output}/inertia-pages.json``
      - Path for page props metadata
-   * - ``include_default_auth``
-     - ``True``
-     - Include default `User` and `AuthData` interfaces in generated page props types
-   * - ``include_default_flash``
-     - ``True``
-     - Include default `FlashMessages` interface in generated page props types
+   * - ``fallback_type``
+     - ``unknown``
+     - Fallback value type for untyped dict/list in page props (``unknown`` or ``any``)
+   * - ``type_import_paths``
+     - ``{}``
+     - Map schema/type names to TypeScript import paths for props types excluded from OpenAPI
    * - ``watch_patterns``
      - See below
      - File patterns to watch for regeneration
+
+Default Inertia shared-props types (``User``, ``AuthData``, ``FlashMessages``) are controlled by
+``InertiaTypeGenConfig`` under ``InertiaConfig.type_gen``.
 
 Default watch patterns:
 
@@ -196,16 +199,29 @@ The generated ``routes.ts`` provides Ziggy-style type-safe routing:
     // Generated types
     export type RouteName = "home" | "api:summary" | "api:books" | "api:books.detail";
 
-    export interface RouteParams {
-      "api:books.detail": { book_id: string | number };
-      // ... other routes with params
+    export interface RoutePathParams {
+      "api:books.detail": { book_id: number };
+      "home": Record<string, never>;
+      // ... other routes
     }
 
-    // Type-safe route function
-    export function route<T extends RouteName>(
-      name: T,
-      params?: RouteParams[T]
-    ): string;
+    export interface RouteQueryParams {
+      "api:books.detail": Record<string, never>;
+      "home": Record<string, never>;
+      // ... other routes
+    }
+
+    type EmptyParams = Record<string, never>
+    type MergeParams<A, B> =
+      A extends EmptyParams ? (B extends EmptyParams ? EmptyParams : B) : B extends EmptyParams ? A : A & B
+
+    export type RouteParams<T extends RouteName> =
+      MergeParams<RoutePathParams[T], RouteQueryParams[T]>;
+
+    // Type-safe route function (params required only when needed)
+    export function route<T extends RoutesWithoutRequiredParams>(name: T): string;
+    export function route<T extends RoutesWithoutRequiredParams>(name: T, params?: RouteParams<T>): string;
+    export function route<T extends RoutesWithRequiredParams>(name: T, params: RouteParams<T>): string;
 
     // Usage
     route("home");                                  // "/"

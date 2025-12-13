@@ -12,7 +12,6 @@ Key features:
 """
 
 import hashlib
-import json
 from functools import cached_property
 from pathlib import Path
 from textwrap import dedent
@@ -21,6 +20,8 @@ from urllib.parse import urljoin
 
 import anyio
 import markupsafe
+from litestar.exceptions import SerializationException
+from litestar.serialization import decode_json
 
 from litestar_vite.exceptions import AssetNotFoundError, ManifestNotFoundError
 
@@ -288,7 +289,10 @@ class ViteAssetLoader:
         Returns:
             Path to the Vite hot file used for dev server URL discovery.
         """
-        return self._config.bundle_dir / self._config.hot_file
+        bundle_dir = self._config.bundle_dir
+        if not bundle_dir.is_absolute():
+            bundle_dir = self._config.root_dir / bundle_dir
+        return bundle_dir / self._config.hot_file
 
     async def _load_manifest_async(self) -> None:
         """Asynchronously load and parse the Vite manifest file.
@@ -301,10 +305,10 @@ class ViteAssetLoader:
             if await manifest_path.exists():
                 content = await manifest_path.read_text()
                 self._manifest_content = content
-                self._manifest = json.loads(content)
+                self._manifest = decode_json(content)
             else:
                 self._manifest = {}
-        except Exception as exc:
+        except (OSError, UnicodeDecodeError, SerializationException) as exc:
             raise ManifestNotFoundError(str(manifest_path)) from exc
 
     def _load_manifest_sync(self) -> None:
@@ -317,10 +321,10 @@ class ViteAssetLoader:
         try:
             if manifest_path.exists():
                 self._manifest_content = manifest_path.read_text()
-                self._manifest = json.loads(self._manifest_content)
+                self._manifest = decode_json(self._manifest_content)
             else:
                 self._manifest = {}
-        except Exception as exc:
+        except (OSError, UnicodeDecodeError, SerializationException) as exc:
             raise ManifestNotFoundError(str(manifest_path)) from exc
 
     async def _load_hot_file_async(self) -> None:

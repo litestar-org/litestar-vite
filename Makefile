@@ -1,4 +1,5 @@
 SHELL := /bin/bash
+.SHELLFLAGS := -eu -o pipefail -c
 
 # =============================================================================
 # Configuration and Environment Variables
@@ -139,6 +140,7 @@ pre-release:                                       ## Start a pre-release: make 
 clean:                                              ## Cleanup temporary build artifacts
 	@echo "${INFO} Cleaning working directory... 🧹"
 	@rm -rf pytest_cache .ruff_cache .hypothesis build/ -rf dist/ .eggs/ .coverage coverage.xml coverage.json htmlcov/ .pytest_cache tests/.pytest_cache tests/**/.pytest_cache .mypy_cache .unasyncd_cache/ .auto_pytabs_cache node_modules docs-build coverage >/dev/null 2>&1
+	@rm -f .litestar*.json >/dev/null 2>&1 || true
 	@find . -name '*.egg-info' -exec rm -rf {} + >/dev/null 2>&1
 	@find . -type f -name '*.egg' -exec rm -f {} + >/dev/null 2>&1
 	@find . -name '*.pyc' -exec rm -f {} + >/dev/null 2>&1
@@ -178,7 +180,7 @@ test:                                              ## Run the tests
 .PHONY: coverage
 coverage:                                          ## Run tests with coverage report
 	@echo "${INFO} Running tests with coverage... 📊"
-	@uv run pytest --cov -n auto --quiet
+	@uv run pytest --cov=src/py/litestar_vite -n 2 --quiet
 	@uv run coverage html >/dev/null 2>&1
 	@uv run coverage xml >/dev/null 2>&1
 	@echo "${OK} Coverage report generated ✨"
@@ -221,7 +223,7 @@ type-check: mypy pyright                           ## Run all type checking
 .PHONY: pre-commit
 pre-commit:                                        ## Run pre-commit hooks
 	@echo "${INFO} Running pre-commit checks... 🔎"
-	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" uv run pre-commit run --color=always --all-files
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" uv run pre-commit run --color=never --all-files
 	@echo "${OK} Pre-commit checks passed ✨"
 
 .PHONY: slotscheck

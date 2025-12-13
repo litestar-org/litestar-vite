@@ -1,8 +1,7 @@
-==============
 SPA Handler
-==============
+===========
 
-The ViteSPAHandler manages serving Single Page Applications in both development
+The :class:`~litestar_vite.handler.AppHandler` manages serving Single Page Applications in both development
 and production modes.
 
 Features
@@ -15,7 +14,7 @@ Features
 - Async and sync initialization support
 - HTML transformation utilities
 
-.. automodule:: litestar_vite.spa
+.. automodule:: litestar_vite.handler
     :members:
     :show-inheritance:
     :inherited-members:

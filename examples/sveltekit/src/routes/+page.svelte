@@ -1,6 +1,5 @@
 <script lang="ts">
-import { route } from "$lib/generated/routes"
-import routesJson from "$lib/generated/routes.json"
+import { route, routeDefinitions } from "$lib/generated/routes"
 import { onMount } from "svelte"
 
 type Book = {
@@ -30,7 +29,7 @@ onMount(async () => {
 })
 
 const featured = $derived(summary?.featured)
-const serverRoutes = routesJson.routes
+const routeEntries = Object.entries(routeDefinitions)
 </script>
 
 <svelte:head>
@@ -94,15 +93,15 @@ const serverRoutes = routesJson.routes
       <div class="mt-2 space-y-1 rounded bg-slate-100 p-2 font-mono">
         <div>route("summary") → {route("summary")}</div>
         <div>route("books") → {route("books")}</div>
-        <div>route("book_detail", {"{ book_id: 42 }"}) → {route("book_detail", { book_id: 42 })}</div>
+        <div>route("book_detail", {'{'} book_id: 42 {'}'}) → {route("book_detail", { book_id: 42 })}</div>
       </div>
     </details>
     <details class="mt-2">
-      <summary class="cursor-pointer">Server Routes (from generated routes.json)</summary>
+      <summary class="cursor-pointer">Route definitions (from generated routes.ts)</summary>
       <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
-        {#each Object.entries(serverRoutes) as [name, routeData]}
+        {#each routeEntries as [name, def]}
           <span class="font-mono text-slate-600">
-            {name} → {routeData.uri}
+            {name} → {def.path}
           </span>
         {/each}
       </div>

@@ -188,18 +188,18 @@ def test_vite_plugin_app_init_static_directories_configuration(tmp_path: Path) -
     """Test static directories configuration in app initialization."""
     bundle_dir = tmp_path / "dist"
     resource_dir = tmp_path / "src"
-    public_dir = tmp_path / "public"
+    static_dir = tmp_path / "public"
 
     # Create directories
     bundle_dir.mkdir()
     resource_dir.mkdir()
-    public_dir.mkdir()
+    static_dir.mkdir()
 
     config = ViteConfig(
         paths=PathConfig(
             bundle_dir=bundle_dir,
             resource_dir=resource_dir,
-            public_dir=public_dir,
+            static_dir=static_dir,
         ),
         runtime=RuntimeConfig(set_static_folders=True, dev_mode=True),
     )
@@ -1100,7 +1100,13 @@ def test_is_litestar_route_with_root_path() -> None:
 
 
 def test_is_litestar_route_cache_performance() -> None:
-    """Test that route detection is fast due to caching."""
+    """Test that route detection uses a cached prefix list.
+
+    Note:
+        Coverage and CI environments can significantly slow down runtime, so we
+        avoid asserting wall-clock timing here and instead assert correctness of
+        the caching behavior.
+    """
     from litestar_vite.plugin import get_litestar_route_prefixes, is_litestar_route
 
     @get("/api/users")
@@ -1110,16 +1116,16 @@ def test_is_litestar_route_cache_performance() -> None:
     app = Litestar(route_handlers=[get_users])
 
     # Prime the cache
-    get_litestar_route_prefixes(app)
+    prefixes_before = get_litestar_route_prefixes(app)
+    assert is_litestar_route("/api/users", app) is True
 
-    # Measure performance of subsequent calls
-    start = time.time()
-    for _ in range(1000):
-        is_litestar_route("/users/123", app)
-    elapsed = time.time() - start
+    # Mutate the app routes so a recompute would change the prefixes.
+    # The cached value should continue to be used.
+    app.routes.clear()
 
-    # Should complete very quickly (< 12ms for 1000 iterations)
-    assert elapsed < 0.012, f"Route detection too slow: {elapsed}s for 1000 iterations"
+    prefixes_after = get_litestar_route_prefixes(app)
+    assert prefixes_after == prefixes_before
+    assert is_litestar_route("/api/users", app) is True
 
 
 def test_get_litestar_route_prefixes_with_empty_app() -> None:

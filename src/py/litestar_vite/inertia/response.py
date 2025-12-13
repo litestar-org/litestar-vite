@@ -1,6 +1,7 @@
 import contextlib
 import itertools
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from mimetypes import guess_type
 from pathlib import PurePath
 from typing import (
@@ -11,6 +12,7 @@ from typing import (
 )
 from urllib.parse import quote, urlparse
 
+import httpx
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
@@ -18,11 +20,11 @@ from litestar.response import Redirect
 from litestar.response.base import ASGIResponse
 from litestar.serialization import get_serializer
 from litestar.status_codes import HTTP_200_OK, HTTP_303_SEE_OTHER, HTTP_307_TEMPORARY_REDIRECT, HTTP_409_CONFLICT
-from litestar.utils.deprecation import warn_deprecation
 from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
 from litestar.utils.scope.state import ScopeState
 
+from litestar_vite.html_transform import inject_head_html, set_element_inner_html
 from litestar_vite.inertia._utils import get_headers
 from litestar_vite.inertia.helpers import (
     extract_deferred_props,
@@ -32,7 +34,6 @@ from litestar_vite.inertia.helpers import (
     is_merge_prop,
     is_or_contains_lazy_prop,
     is_pagination_container,
-    js_routes_script,
     lazy_render,
     pagination_to_dict,
     should_render,
@@ -42,12 +43,96 @@ from litestar_vite.inertia.types import InertiaHeaderType, PageProps, ScrollProp
 from litestar_vite.plugin import VitePlugin
 
 if TYPE_CHECKING:
+    from anyio.from_thread import BlockingPortal
     from litestar.background_tasks import BackgroundTask, BackgroundTasks
     from litestar.connection.base import AuthT, StateT, UserT
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
 
 
 T = TypeVar("T")
+
+
+@dataclass(frozen=True)
+class _InertiaSSRResult:
+    head: list[str]
+    body: str
+
+
+def _parse_inertia_ssr_payload(payload: Any, url: str) -> _InertiaSSRResult:
+    if not isinstance(payload, dict):
+        msg = f"Inertia SSR server at {url!r} returned unexpected payload type: {type(payload)!r}."
+        raise ImproperlyConfiguredException(msg)
+
+    payload_dict = cast("dict[str, Any]", payload)
+
+    body = payload_dict.get("body")
+    if not isinstance(body, str):
+        msg = f"Inertia SSR server at {url!r} returned invalid 'body' (expected string)."
+        raise ImproperlyConfiguredException(msg)
+
+    head_raw: Any = payload_dict.get("head", [])
+    if head_raw is None:
+        head_raw = []
+    if not isinstance(head_raw, list):
+        msg = f"Inertia SSR server at {url!r} returned invalid 'head' (expected list[str])."
+        raise ImproperlyConfiguredException(msg)
+
+    head_list = cast("list[Any]", head_raw)
+    if any(not isinstance(item, str) for item in head_list):
+        msg = f"Inertia SSR server at {url!r} returned invalid 'head' (expected list[str])."
+        raise ImproperlyConfiguredException(msg)
+
+    return _InertiaSSRResult(head=cast("list[str]", head_list), body=body)
+
+
+def _render_inertia_ssr_sync(
+    page: dict[str, Any],
+    url: str,
+    *,
+    timeout_seconds: float,
+    portal: "BlockingPortal",
+) -> _InertiaSSRResult:
+    """Call the Inertia SSR server and return head/body HTML.
+
+    The official Inertia SSR server listens on ``/render`` and expects the raw
+    page object as JSON. It returns JSON with at least a ``body`` field, and
+    optionally ``head`` (list of strings).
+
+    Raises:
+        ImproperlyConfiguredException: If the SSR server is unreachable,
+            returns an error status, or returns invalid payload.
+
+    Returns:
+        An _InertiaSSRResult with head and body HTML.
+    """
+    # This is intentionally implemented via the app's BlockingPortal to avoid
+    # blocking the event loop thread with synchronous I/O.
+    return portal.call(_render_inertia_ssr, page, url, timeout_seconds)
+
+
+async def _render_inertia_ssr(page: dict[str, Any], url: str, timeout_seconds: float) -> _InertiaSSRResult:
+    """Call the Inertia SSR server asynchronously and return head/body HTML."""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=page, timeout=timeout_seconds)
+            response.raise_for_status()
+    except httpx.RequestError as exc:
+        msg = (
+            f"Inertia SSR is enabled but the SSR server is not reachable at {url!r}. "
+            "Start the SSR server (Node) or disable InertiaConfig.ssr."
+        )
+        raise ImproperlyConfiguredException(msg) from exc
+    except httpx.HTTPStatusError as exc:
+        msg = f"Inertia SSR server at {url!r} returned HTTP {exc.response.status_code}. Check the SSR server logs."
+        raise ImproperlyConfiguredException(msg) from exc
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        msg = f"Inertia SSR server at {url!r} returned invalid JSON. Check the SSR server logs."
+        raise ImproperlyConfiguredException(msg) from exc
+
+    return _parse_inertia_ssr_payload(payload, url)
 
 
 def _get_redirect_url(request: "Request[Any, Any, Any]", url: str | None) -> str:
@@ -171,7 +256,6 @@ class InertiaResponse(Response[T]):
         return {
             **self.context,
             "inertia": inertia_props,
-            "js_routes": js_routes_script(request.app.state.js_routes),
             "request": request,
             "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
         }
@@ -354,6 +438,29 @@ class InertiaResponse(Response[T]):
 
         page_dict = page_props.to_dict()
 
+        ssr_config = inertia_plugin.config.ssr_config
+        if ssr_config is not None:
+            ssr_payload = _render_inertia_ssr_sync(
+                page_dict,
+                ssr_config.url,
+                timeout_seconds=ssr_config.timeout,
+                portal=inertia_plugin.portal,
+            )
+
+            csrf_token = self._get_csrf_token(request)
+            html = spa_handler.get_html_sync(page_data=page_dict, csrf_token=csrf_token)
+
+            selector = "#app"
+            spa_config = getattr(spa_handler, "_spa_config", None)
+            if spa_config is not None:
+                selector = cast("str", getattr(spa_config, "app_selector", selector))
+
+            html = set_element_inner_html(html, selector, ssr_payload.body)
+            if ssr_payload.head:
+                html = inject_head_html(html, "\n".join(ssr_payload.head))
+
+            return html.encode(self.encoding)
+
         csrf_token = self._get_csrf_token(request)
 
         html = spa_handler.get_html_sync(page_data=page_dict, csrf_token=csrf_token)
@@ -393,14 +500,6 @@ class InertiaResponse(Response[T]):
         status_code: "int | None" = None,
         type_encoders: "TypeEncodersMap | None" = None,
     ) -> "ASGIResponse":
-        if app is not None:
-            warn_deprecation(
-                version="2.1",
-                deprecated_name="app",
-                kind="parameter",
-                removal_in="3.0.0",
-                alternative="request.app",
-            )
         inertia_enabled = cast(
             "bool",
             getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False),

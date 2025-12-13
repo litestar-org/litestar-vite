@@ -12,6 +12,7 @@ from litestar_vite.codegen import (
     extract_inertia_pages,
     generate_inertia_pages_json,
 )
+from litestar_vite.config import TypeGenConfig
 
 # =============================================================================
 # Test Models
@@ -271,6 +272,8 @@ def test_extract_inertia_pages_captures_return_type() -> None:
 
     assert len(pages) == 1
     assert pages[0].props_type == "BookProps"
+    assert pages[0].ts_type == "BookProps"
+    assert pages[0].custom_types == ["BookProps"]
 
 
 def test_extract_inertia_pages_captures_handler_name() -> None:
@@ -343,6 +346,23 @@ def test_generate_inertia_pages_json_with_props_type() -> None:
 
     page = result["pages"]["Books"]
     assert page.get("propsType") == "BookProps"
+    assert page.get("tsType") == "BookProps"
+    assert page.get("customTypes") == ["BookProps"]
+
+
+def test_generate_inertia_pages_json_includes_types_config_hints() -> None:
+    """Test that TypeGenConfig hints are included when provided."""
+
+    @get("/books", opt={"component": "Books"}, sync_to_thread=False)
+    def books() -> BookProps:
+        return BookProps(title="Test", author="Author")
+
+    app = Litestar([books])
+    types_config = TypeGenConfig(type_import_paths={"OffsetPagination": "@/types/pagination"}, fallback_type="any")
+    result = generate_inertia_pages_json(app, types_config=types_config)
+
+    assert result.get("typeImportPaths") == {"OffsetPagination": "@/types/pagination"}
+    assert result.get("fallbackType") == "any"
 
 
 def test_generate_inertia_pages_json_shared_props() -> None:
@@ -452,6 +472,8 @@ def test_inertia_page_metadata_defaults() -> None:
     assert page.component == "Test"
     assert page.route_path == "/test"
     assert page.props_type is None
+    assert page.ts_type is None
+    assert page.custom_types == []
     assert page.schema_ref is None
     assert page.handler_name is None
 
@@ -462,6 +484,8 @@ def test_inertia_page_metadata_full() -> None:
         component="Dashboard/Index",
         route_path="/dashboard",
         props_type="DashboardProps",
+        ts_type="DashboardProps",
+        custom_types=["DashboardProps"],
         schema_ref="#/components/schemas/DashboardProps",
         handler_name="dashboard_index",
     )
@@ -469,5 +493,7 @@ def test_inertia_page_metadata_full() -> None:
     assert page.component == "Dashboard/Index"
     assert page.route_path == "/dashboard"
     assert page.props_type == "DashboardProps"
+    assert page.ts_type == "DashboardProps"
+    assert page.custom_types == ["DashboardProps"]
     assert page.schema_ref == "#/components/schemas/DashboardProps"
     assert page.handler_name == "dashboard_index"

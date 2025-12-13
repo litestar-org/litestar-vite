@@ -51,7 +51,6 @@ Root Template
    </head>
    <body>
        <div id="app" data-page="{{ inertia }}"></div>
-       {{ js_routes }}
    </body>
    </html>
 
