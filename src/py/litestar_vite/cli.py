@@ -235,6 +235,9 @@ def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: An
     """Export OpenAPI schema, routes, and Inertia page props prior to running a build.
 
     Skips generation when type generation is disabled.
+
+    Raises:
+        LitestarCLIException: If export fails.
     """
     types_config = config.types
     if not isinstance(types_config, TypeGenConfig):
@@ -243,6 +246,18 @@ def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: An
     console.print("[dim]Preparing OpenAPI schema and routes...[/]")
     _export_openapi_schema(app, types_config)
     _export_routes_metadata(app, types_config)
+
+    if types_config.generate_routes:
+        console.print("[dim]3. Exporting typed routes...[/]")
+        try:
+            routes_ts_content = generate_routes_ts(app)
+            routes_ts_path = types_config.routes_ts_path or (types_config.output / "routes.ts")
+            routes_ts_path.parent.mkdir(parents=True, exist_ok=True)
+            routes_ts_path.write_text(routes_ts_content, encoding="utf-8")
+            console.print(f"[green]✓ Typed routes exported to {_relative_path(routes_ts_path)}[/]")
+        except OSError as exc:  # pragma: no cover
+            msg = f"Failed to export typed routes: {exc}"
+            raise LitestarCLIException(msg) from exc
 
     # Export Inertia page props if both Inertia and page_props generation are enabled
     if isinstance(config.inertia, InertiaConfig) and types_config.generate_page_props and types_config.page_props_path:
@@ -673,6 +688,9 @@ def vite_build(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
     executor = plugin.config.executor
     try:
         root_dir = plugin.config.root_dir or Path.cwd()
+        if not (Path(root_dir) / "node_modules").exists():
+            console.print("[dim]Installing frontend dependencies (node_modules missing)...[/]")
+            executor.install(Path(root_dir))
         ext = plugin.config.runtime.external_dev_server
         if isinstance(ext, ExternalDevServer) and ext.enabled:
             build_cmd = ext.build_command or executor.build_command
