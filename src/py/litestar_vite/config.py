@@ -25,6 +25,7 @@ Example usage::
 
 import logging
 import os
+import json
 from dataclasses import dataclass, field, replace
 from importlib.util import find_spec
 from pathlib import Path
@@ -867,11 +868,41 @@ class ViteConfig:
         self._apply_dev_mode_shortcut()
         self._auto_detect_mode()
         self._auto_configure_inertia()
+        self._auto_detect_react()
         self._apply_ssr_mode_defaults()
         self._normalize_deploy()
         self._ensure_spa_default()
         self._auto_enable_dev_mode()
         self._warn_missing_assets()
+
+    def _auto_detect_react(self) -> None:
+        """Enable React Fast Refresh automatically for React templates.
+
+        When serving HTML outside Vite's native index.html pipeline (template/hybrid modes),
+        @vitejs/plugin-react requires the React preamble to be injected into the HTML.
+        The asset loader handles this when `runtime.is_react` is enabled.
+
+        We auto-enable it when `@vitejs/plugin-react` is present in the project's package.json.
+        """
+        if self.runtime.is_react:
+            return
+
+        package_json = self.root_dir / "package.json"
+        if not package_json.exists():
+            return
+
+        try:
+            payload = json.loads(package_json.read_text(encoding="utf-8"))
+        except Exception:  # pragma: no cover - defensive
+            return
+
+        deps = payload.get("dependencies") or {}
+        dev_deps = payload.get("devDependencies") or {}
+        if not isinstance(deps, dict) or not isinstance(dev_deps, dict):
+            return
+
+        if "@vitejs/plugin-react" in deps or "@vitejs/plugin-react" in dev_deps:
+            self.runtime.is_react = True
 
     def _normalize_mode(self) -> None:
         """Normalize mode aliases.

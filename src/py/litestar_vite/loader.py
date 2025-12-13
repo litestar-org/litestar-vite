@@ -288,7 +288,10 @@ class ViteAssetLoader:
         Returns:
             Path to the Vite hot file used for dev server URL discovery.
         """
-        return self._config.bundle_dir / self._config.hot_file
+        bundle_dir = self._config.bundle_dir
+        if not bundle_dir.is_absolute():
+            bundle_dir = self._config.root_dir / bundle_dir
+        return bundle_dir / self._config.hot_file
 
     async def _load_manifest_async(self) -> None:
         """Asynchronously load and parse the Vite manifest file.
