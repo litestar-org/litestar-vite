@@ -140,12 +140,26 @@ export interface FlashMessages {}
 `
   }
 
-  // Build SharedProps with defaults
-  const sharedPropsContent =
-    includeDefaultAuth || includeDefaultFlash
-      ? `  auth?: AuthData
-  flash?: FlashMessages`
-      : ""
+  const defaultGeneratedSharedProps: InertiaPagePropsJson["sharedProps"] = {
+    errors: { type: "Record<string, string[]>", optional: true },
+    csrf_token: { type: "string", optional: true },
+    ...(includeDefaultAuth || includeDefaultFlash
+      ? {
+          auth: { type: "AuthData", optional: true },
+          flash: { type: "FlashMessages", optional: true },
+        }
+      : {}),
+  }
+
+  const generatedSharedProps = Object.keys(json.sharedProps ?? {}).length > 0 ? json.sharedProps : defaultGeneratedSharedProps
+
+  const generatedSharedPropLines = Object.entries(generatedSharedProps)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, def]) => {
+      const optional = def.optional ? "?" : ""
+      const safeKey = /^[$A-Z_][0-9A-Z_$]*$/i.test(key) ? key : JSON.stringify(key)
+      return `  ${safeKey}${optional}: ${def.type}`
+    })
 
   // Build page props entries
   const pageEntries: string[] = []
@@ -163,8 +177,7 @@ ${userTypes}${authTypes}${flashTypes}/**
  * Includes built-in props + static config props.
  */
 export interface GeneratedSharedProps {
-  errors?: Record<string, string[]>
-  csrf_token?: string
+${generatedSharedPropLines.join("\n")}
 }
 
 /**
@@ -185,7 +198,6 @@ export interface GeneratedSharedProps {
  * }
  */
 export interface SharedProps {
-${sharedPropsContent}
 }
 
 /** Full shared props = generated + user-defined */
@@ -254,6 +266,8 @@ describe("Page Props Type Generation", () => {
 
       expect(output).toContain("export interface GeneratedSharedProps")
       expect(output).toContain("errors?: Record<string, string[]>")
+      expect(output).toContain("auth?: AuthData")
+      expect(output).toContain("flash?: FlashMessages")
       expect(output).toContain("csrf_token?: string")
     })
 
@@ -426,8 +440,8 @@ describe("Page Props Type Generation", () => {
     })
   })
 
-  describe("SharedProps Content", () => {
-    it("includes auth and flash in SharedProps when both are enabled", () => {
+  describe("Shared Props Metadata", () => {
+    it("keeps SharedProps empty (module augmentation)", () => {
       const json: InertiaPagePropsJson = {
         pages: {},
         sharedProps: {},
@@ -436,37 +450,23 @@ describe("Page Props Type Generation", () => {
       }
 
       const output = generatePagePropsOutput(json)
-
-      expect(output).toContain("auth?: AuthData")
-      expect(output).toContain("flash?: FlashMessages")
-    })
-
-    it("includes auth in SharedProps when only auth is enabled", () => {
-      const json: InertiaPagePropsJson = {
-        pages: {},
-        sharedProps: {},
-        typeGenConfig: { includeDefaultAuth: true, includeDefaultFlash: false },
-        generatedAt: new Date().toISOString(),
-      }
-
-      const output = generatePagePropsOutput(json)
-
-      expect(output).toContain("auth?: AuthData")
-      expect(output).toContain("flash?: FlashMessages")
-    })
-
-    it("has empty SharedProps content when both are disabled", () => {
-      const json: InertiaPagePropsJson = {
-        pages: {},
-        sharedProps: {},
-        typeGenConfig: { includeDefaultAuth: false, includeDefaultFlash: false },
-        generatedAt: new Date().toISOString(),
-      }
-
-      const output = generatePagePropsOutput(json)
-
-      // Should have empty SharedProps interface (just opening and closing brace)
       expect(output).toMatch(/export interface SharedProps \{\s*\}/)
+    })
+
+    it("renders configured sharedProps into GeneratedSharedProps", () => {
+      const json: InertiaPagePropsJson = {
+        pages: {},
+        sharedProps: {
+          locale: { type: "string", optional: true },
+          currentTeam: { type: "Team", optional: true },
+        },
+        typeGenConfig: { includeDefaultAuth: true, includeDefaultFlash: true },
+        generatedAt: new Date().toISOString(),
+      }
+
+      const output = generatePagePropsOutput(json)
+      expect(output).toContain("locale?: string")
+      expect(output).toContain("currentTeam?: Team")
     })
   })
 

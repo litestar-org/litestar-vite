@@ -373,19 +373,20 @@ def _resolve_proxy_mode() -> "Literal['vite', 'direct', 'proxy'] | None":
         The resolved proxy mode, or None if disabled.
     """
     env_value = os.getenv("VITE_PROXY_MODE")
-    if env_value is None:
-        return "vite"
-    env_value = env_value.strip().lower()
-    if env_value == "none":
-        return None
-    if env_value == "direct":
-        return "direct"
-    if env_value == "proxy":
-        return "proxy"
-    if env_value == "vite":
-        return "vite"
-    msg = f"Invalid VITE_PROXY_MODE: {env_value!r}. Expected one of: vite, direct, proxy, none"
-    raise ValueError(msg)
+    match env_value.strip().lower() if env_value is not None else None:
+        case None:
+            return "vite"
+        case "none":
+            return None
+        case "direct":
+            return "direct"
+        case "proxy":
+            return "proxy"
+        case "vite":
+            return "vite"
+        case _:
+            msg = f"Invalid VITE_PROXY_MODE: {env_value!r}. Expected one of: vite, direct, proxy, none"
+            raise ValueError(msg)
 
 
 @dataclass
@@ -721,9 +722,24 @@ def _get_default_log_level() -> "Literal['quiet', 'normal', 'verbose']":
         The log level from environment or "normal" default.
     """
     env_level = os.getenv("LITESTAR_VITE_LOG_LEVEL", "").lower()
-    if env_level in {"quiet", "normal", "verbose"}:
-        return env_level  # type: ignore[return-value]
-    return "normal"
+    match env_level:
+        case "quiet" | "normal" | "verbose":
+            return env_level
+        case _:
+            return "normal"
+
+
+def _to_root_path(root_dir: Path, path: Path) -> Path:
+    """Resolve a path relative to the configured root directory.
+
+    Args:
+        root_dir: Application root directory.
+        path: Path to resolve.
+
+    Returns:
+        Absolute path rooted at ``root_dir`` when ``path`` is relative, otherwise ``path`` unchanged.
+    """
+    return path if path.is_absolute() else (root_dir / path)
 
 
 @dataclass
@@ -1039,9 +1055,7 @@ class ViteConfig:
 
     def _resolve_type_paths(self, types: TypeGenConfig) -> None:
         """Resolve type generation paths relative to the configured root."""
-
-        def _to_root(p: Path) -> Path:
-            return p if p.is_absolute() else (self.paths.root / p)
+        root_dir = self.root_dir
 
         default_rel = Path("src/generated")
         default_openapi = default_rel / "openapi.json"
@@ -1062,14 +1076,22 @@ class ViteConfig:
         ):
             types.routes_ts_path = types.output / "routes.ts"
 
-        types.output = _to_root(types.output)
+        types.output = _to_root_path(root_dir, types.output)
         # After __post_init__, these are guaranteed to be Path (not None)
         # The type is Path | None to allow None as input, but __post_init__ computes defaults
-        types.openapi_path = _to_root(types.openapi_path) if types.openapi_path else types.output / "openapi.json"
-        types.routes_path = _to_root(types.routes_path) if types.routes_path else types.output / "routes.json"
-        types.routes_ts_path = _to_root(types.routes_ts_path) if types.routes_ts_path else types.output / "routes.ts"
+        types.openapi_path = (
+            _to_root_path(root_dir, types.openapi_path) if types.openapi_path else types.output / "openapi.json"
+        )
+        types.routes_path = (
+            _to_root_path(root_dir, types.routes_path) if types.routes_path else types.output / "routes.json"
+        )
+        types.routes_ts_path = (
+            _to_root_path(root_dir, types.routes_ts_path) if types.routes_ts_path else types.output / "routes.ts"
+        )
         types.page_props_path = (
-            _to_root(types.page_props_path) if types.page_props_path else types.output / "inertia-pages.json"
+            _to_root_path(root_dir, types.page_props_path)
+            if types.page_props_path
+            else types.output / "inertia-pages.json"
         )
 
     def _ensure_spa_default(self) -> None:

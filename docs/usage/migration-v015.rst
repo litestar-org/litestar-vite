@@ -75,7 +75,7 @@ Commands are now under the ``assets`` group:
 - ``litestar assets build`` - Build assets
 - ``litestar assets serve`` - Serve assets
 - ``litestar assets generate-types`` - Generate TypeScript types
-- ``litestar assets doctor`` - Diagnose configuration issues
+- ``litestar assets doctor`` - Diagnose configuration issues (use ``--show-config`` to print effective configs, ``--fix`` to apply safe auto-fixes; restarting the app rewrites ``.litestar.json`` when ``runtime.set_environment=True``)
 - ``litestar assets deploy`` - Deploy assets to CDN
 - ``litestar assets status`` - Check Vite integration status
 

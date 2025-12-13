@@ -270,6 +270,20 @@ def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: An
             pass
 
         _export_inertia_pages_metadata(app, types_config, config.inertia, openapi_schema)
+        # `generate_inertia_pages_json()` may register and merge additional component schemas for
+        # page-props types (e.g. template/SPA handlers excluded from OpenAPI paths). Persist the
+        # augmented OpenAPI document so `openapi-ts` can emit these types.
+        if openapi_schema is not None and types_config.openapi_path is not None:
+            try:
+                schema_content = msgspec.json.format(
+                    encode_json(openapi_schema),
+                    indent=2,
+                )
+                types_config.openapi_path.parent.mkdir(parents=True, exist_ok=True)
+                types_config.openapi_path.write_bytes(schema_content)
+            except OSError as exc:  # pragma: no cover
+                msg = f"Failed to update OpenAPI schema: {exc}"
+                raise LitestarCLIException(msg) from exc
 
 
 @group(cls=LitestarGroup, name="assets")
@@ -368,7 +382,7 @@ def _prompt_for_options(
 @option(
     "--check",
     is_flag=True,
-    help="Exit with non-zero status if issues found (for CI).",
+    help="Exit with non-zero status if errors are found (for CI).",
 )
 @option(
     "--fix",
@@ -385,12 +399,24 @@ def _prompt_for_options(
     is_flag=True,
     help="Enable verbose output.",
 )
+@option(
+    "--show-config",
+    is_flag=True,
+    help="Print .litestar.json and extracted litestar({ ... }) config block.",
+)
+@option(
+    "--runtime-checks",
+    is_flag=True,
+    help="Run runtime-state checks (Vite reachable / hotfile presence).",
+)
 def vite_doctor(
     app: "Litestar",
     check: bool,
     fix: bool,
     no_prompt: bool,
     verbose: bool,
+    show_config: bool,
+    runtime_checks: bool,
 ) -> None:
     """Diagnose and fix Vite configuration issues."""
     if verbose:
@@ -399,7 +425,7 @@ def vite_doctor(
     plugin = app.plugins.get(VitePlugin)
     doctor = ViteDoctor(plugin.config, verbose=verbose)
 
-    success = doctor.run(fix=fix, no_prompt=no_prompt)
+    success = doctor.run(fix=fix, no_prompt=no_prompt, show_config=show_config, runtime_checks=runtime_checks)
 
     if check and not success:
         sys.exit(1)
@@ -1055,6 +1081,7 @@ def _export_inertia_pages_metadata(
             openapi_schema=openapi_schema,
             include_default_auth=inertia_type_gen.include_default_auth,
             include_default_flash=inertia_type_gen.include_default_flash,
+            inertia_config=inertia_config,
             types_config=types_config,
         )
         pages_content = msgspec.json.format(
@@ -1084,15 +1111,17 @@ def _get_package_executor_cmd(executor: "str | None", package: str) -> "list[str
     Returns:
         Command list for subprocess.run.
     """
-    if executor == "bun":
-        return ["bunx", package]
-    if executor == "deno":
-        return ["deno", "run", "-A", f"npm:{package}"]
-    if executor == "yarn":
-        return ["yarn", "dlx", package]
-    if executor == "pnpm":
-        return ["pnpm", "dlx", package]
-    return ["npx", package]
+    match executor:
+        case "bun":
+            return ["bunx", package]
+        case "deno":
+            return ["deno", "run", "-A", f"npm:{package}"]
+        case "yarn":
+            return ["yarn", "dlx", package]
+        case "pnpm":
+            return ["pnpm", "dlx", package]
+        case _:
+            return ["npx", package]
 
 
 def _run_openapi_ts(

@@ -34,7 +34,6 @@ import anyio
 import httpx
 import websockets
 from litestar import Response
-from litestar.connection import Request
 from litestar.enums import ScopeType
 from litestar.exceptions import NotFoundException, WebSocketDisconnect
 from litestar.middleware import AbstractMiddleware, DefineMiddleware
@@ -53,6 +52,7 @@ if TYPE_CHECKING:
     from click import Group
     from litestar import Litestar
     from litestar.config.app import AppConfig
+    from litestar.connection import Request
     from litestar.datastructures import CacheControlHeader
     from litestar.openapi.spec import SecurityRequirement
     from litestar.types import (
@@ -491,6 +491,34 @@ def is_litestar_route(path: str, app: "Litestar") -> bool:
     """
     excluded = get_litestar_route_prefixes(app)
     return any(path == prefix or path.startswith(f"{prefix}/") for prefix in excluded)
+
+
+def _static_not_found_handler(
+    _request: "Request[Any, Any, Any]",
+    _exc: NotFoundException,
+) -> Response[bytes]:  # pragma: no cover - trivial
+    """Return an empty 404 response for static files routing misses."""
+    return Response(status_code=404, content=b"")
+
+
+def _vite_not_found_handler(request: "Request[Any, Any, Any]", exc: NotFoundException) -> Response[Any]:
+    """Return a consistent 404 response for missing static assets / routes.
+
+    Inertia requests are delegated to the Inertia exception handler to support
+    redirect_404 configuration.
+
+    Args:
+        request: Incoming request.
+        exc: NotFound exception raised by routing.
+
+    Returns:
+        Response instance for the 404.
+    """
+    if request.headers.get("x-inertia", "").lower() == "true":
+        from litestar_vite.inertia.exception_handler import exception_to_http_response
+
+        return exception_to_http_response(request, exc)
+    return Response(status_code=404, content=b"")
 
 
 class ViteProxyMiddleware(AbstractMiddleware):
@@ -1749,11 +1777,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if static_dir.exists() and static_dir != bundle_dir:
             static_dirs.append(static_dir)
 
-        def _static_not_found_handler(
-            _request: Request[Any, Any, Any], _exc: NotFoundException
-        ) -> Response[bytes]:  # pragma: no cover - trivial
-            return Response(status_code=404, content=b"")
-
         # Static files router serves actual files only (JS, CSS, images)
         # SPA fallback (serving index.html for client routes) is handled by AppHandler
         opt: dict[str, Any] = {}
@@ -1858,20 +1881,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         # Provide a consistent 404 response for missing static assets / routes (e.g., Vite HMR/static lookups)
         handlers: ExceptionHandlersMap = cast("ExceptionHandlersMap", app_config.exception_handlers or {})  # pyright: ignore
         if NotFoundException not in handlers:
-
-            def _vite_not_found_handler(
-                request: LitestarRequest[Any, Any, Any], exc: NotFoundException
-            ) -> Response[Any]:
-                # Check if this is an Inertia request by looking for X-Inertia header
-                # Inertia requests should be handled by the Inertia exception handler
-                # which supports redirect_404 configuration
-                is_inertia_request = request.headers.get("x-inertia", "").lower() == "true"
-                if is_inertia_request:
-                    from litestar_vite.inertia.exception_handler import exception_to_http_response
-
-                    return exception_to_http_response(request, exc)
-                return Response(status_code=404, content=b"")
-
             handlers[NotFoundException] = _vite_not_found_handler
             app_config.exception_handlers = handlers  # pyright: ignore[reportUnknownMemberType]
 

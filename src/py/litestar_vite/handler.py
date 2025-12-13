@@ -19,7 +19,7 @@ Note:
 import logging
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 import anyio
 import httpx
@@ -40,6 +40,113 @@ logger = logging.getLogger("litestar_vite")
 
 # Pre-encoded content type header for production responses
 _HTML_MEDIA_TYPE = "text/html; charset=utf-8"
+
+
+def _is_static_asset_path(request_path: str, asset_prefix: str | None) -> bool:
+    """Check if a request path targets static assets rather than SPA routes.
+
+    Args:
+        request_path: Incoming request path.
+        asset_prefix: Normalized asset URL prefix (e.g., ``/static``) or None.
+
+    Returns:
+        True when ``request_path`` matches the asset prefix (or a descendant path), otherwise False.
+    """
+    if not asset_prefix:
+        return False
+    return request_path == asset_prefix or request_path.startswith(f"{asset_prefix}/")
+
+
+def _get_route_opt(request: "Request[Any, Any, Any]") -> "dict[str, Any] | None":
+    """Return the current route handler opt dict when available."""
+    route_handler = request.scope["route_handler"]  # pyright: ignore[reportUnknownMemberType]
+    return cast("dict[str, Any] | None", getattr(route_handler, "opt", None))
+
+
+def _get_route_asset_prefix(request: "Request[Any, Any, Any]") -> str | None:
+    """Get the static asset prefix for the current SPA route handler."""
+    opt = _get_route_opt(request)
+    if opt is None:
+        return None
+    asset_prefix = opt.get("_vite_asset_prefix")
+    if isinstance(asset_prefix, str) and asset_prefix:
+        return asset_prefix
+    return None
+
+
+def _get_spa_handler_from_request(request: "Request[Any, Any, Any]") -> "AppHandler":
+    """Resolve the AppHandler instance for the current request.
+
+    This is stored on the SPA route handler's ``opt`` when the route is created.
+
+    Args:
+        request: Incoming request.
+
+    Returns:
+        The configured AppHandler.
+
+    Raises:
+        ImproperlyConfiguredException: If the SPA handler is not available on the route metadata.
+    """
+    opt = _get_route_opt(request)
+    handler = opt.get("_vite_spa_handler") if opt is not None else None
+    if isinstance(handler, AppHandler):
+        return handler
+    msg = "SPA handler is not available for this route. Ensure AppHandler.create_route_handler() was used."
+    raise ImproperlyConfiguredException(msg)
+    return None
+
+
+async def _spa_handler_dev(request: "Request[Any, Any, Any]") -> Response[str]:
+    """Serve the SPA HTML (dev mode - proxied from Vite).
+
+    Checks if the request path matches a static asset or Litestar route before serving.
+
+    Raises:
+        NotFoundException: If the path matches a static asset or Litestar route.
+
+    Returns:
+        The HTML response from the Vite dev server.
+    """
+    path = request.url.path
+    asset_prefix = _get_route_asset_prefix(request)
+    if _is_static_asset_path(path, asset_prefix):
+        raise NotFoundException(detail=f"Static asset path: {path}")
+    if path != "/" and is_litestar_route(path, request.app):
+        raise NotFoundException(detail=f"Not an SPA route: {path}")
+
+    spa_handler = _get_spa_handler_from_request(request)
+    html = await spa_handler.get_html(request)
+    return Response(
+        content=html,
+        status_code=200,
+        media_type="text/html",
+    )
+
+
+async def _spa_handler_prod(request: "Request[Any, Any, Any]") -> Response[bytes]:
+    """Serve the SPA HTML (production - cached).
+
+    Raises:
+        NotFoundException: If the path matches a static asset or Litestar route.
+
+    Returns:
+        HTML bytes response from the cached SPA handler.
+    """
+    path = request.url.path
+    asset_prefix = _get_route_asset_prefix(request)
+    if _is_static_asset_path(path, asset_prefix):
+        raise NotFoundException(detail=f"Static asset path: {path}")
+    if path != "/" and is_litestar_route(path, request.app):
+        raise NotFoundException(detail=f"Not an SPA route: {path}")
+
+    spa_handler = _get_spa_handler_from_request(request)
+    body = await spa_handler.get_bytes()
+    return Response(
+        content=body,
+        status_code=200,
+        media_type=_HTML_MEDIA_TYPE,
+    )
 
 
 class AppHandler:
@@ -695,14 +802,12 @@ class AppHandler:
             spa_route = handler.create_route_handler()
             # Add spa_route to your Litestar app routes
         """
-        # Capture references for the closure (avoids self lookup in hot path)
-        get_html = self.get_html
-        get_bytes = self.get_bytes
         is_dev = self._config.is_dev_mode and self._config.hot_reload
 
         opt: dict[str, Any] = {}
         if self._config.exclude_static_from_auth:
             opt["exclude_from_auth"] = True
+        opt["_vite_spa_handler"] = self
 
         guards: "list[Guard] | None" = list(self._config.guards) if self._config.guards else None  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType,reportUnknownArgumentType]
 
@@ -737,85 +842,24 @@ class AppHandler:
         # 2. spa_path="/web/" with include_root_spa_paths=True (root paths need to exclude /web/)
         needs_exclusion = asset_url and asset_url != "/" and (effective_spa_path == "/" or include_root)
         asset_prefix = asset_url.rstrip("/") if needs_exclusion else None
-
-        def _is_static_asset_path(request_path: str) -> bool:
-            """Check if path should be served by static files router, not SPA.
-
-            Returns:
-                True if path matches asset_url prefix and should skip SPA handling.
-            """
-            if asset_prefix is None:
-                return False
-            return request_path == asset_prefix or request_path.startswith(f"{asset_prefix}/")
+        if asset_prefix:
+            opt["_vite_asset_prefix"] = asset_prefix
 
         if is_dev:
-            # Dev mode: proxy to Vite, no caching
-            @get(
+            return get(
                 path=paths,
                 name="vite_spa",
                 opt=opt,
                 include_in_schema=False,
                 guards=guards,
-            )
-            async def spa_handler_dev(request: "Request[Any, Any, Any]") -> Response[str]:
-                """Serve the SPA HTML (dev mode - proxied from Vite).
-
-                Checks if the request path matches a static asset or Litestar route
-                before serving. If it does, raises NotFoundException to let the
-                appropriate router handle it.
-
-                Raises:
-                    NotFoundException: If the path matches a static asset or Litestar route.
-
-                Returns:
-                    The HTML response from the Vite dev server.
-                """
-                path = request.url.path
-                # Skip static asset paths (when spa_path="/" but asset_url="/web/")
-                if _is_static_asset_path(path):
-                    raise NotFoundException(detail=f"Static asset path: {path}")
-                if path != "/" and is_litestar_route(path, request.app):
-                    raise NotFoundException(detail=f"Not an SPA route: {path}")
-
-                html = await get_html(request)
-                return Response(
-                    content=html,
-                    status_code=200,
-                    media_type="text/html",
-                )
-
-            return spa_handler_dev
+            )(_spa_handler_dev)
 
         # Production mode: serve cached bytes with cache headers
-        @get(
+        return get(
             path=paths,
             name="vite_spa",
             opt=opt,
             include_in_schema=False,
             cache=3600,
             guards=guards,
-        )
-        async def spa_handler_prod(request: "Request[Any, Any, Any]") -> Response[bytes]:
-            """Serve the SPA HTML (production - cached).
-
-            Checks if the request path matches a static asset or Litestar route
-            before serving. If it does, raises NotFoundException to let the
-            appropriate router handle it.
-
-            Raises:
-                NotFoundException: If the path matches a static asset or Litestar route.
-
-            Returns:
-                The HTML response as bytes.
-            """
-            path = request.url.path
-            # Skip static asset paths (when spa_path="/" but asset_url="/web/")
-            if _is_static_asset_path(path):
-                raise NotFoundException(detail=f"Static asset path: {path}")
-            if path != "/" and is_litestar_route(path, request.app):
-                raise NotFoundException(detail=f"Not an SPA route: {path}")
-
-            content = await get_bytes()
-            return Response(content=content, status_code=200, media_type=_HTML_MEDIA_TYPE)
-
-        return spa_handler_prod
+        )(_spa_handler_prod)

@@ -95,7 +95,10 @@ vite = VitePlugin(
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources"),
         inertia=InertiaConfig(root_template="index.html"),  # Auto-registers Inertia
-        types=TypeGenConfig(output=Path("resources/generated"), generate_zod=True),
+        types=TypeGenConfig(
+            output=Path("resources/generated"),
+            generate_zod=True,
+        ),
         # Fixed port for E2E tests - can be removed for local dev or customized for production
         runtime=RuntimeConfig(port=5012),
     )

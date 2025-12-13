@@ -1,7 +1,7 @@
 """HTML transformation and injection utilities for SPA output."""
 
 import re
-from functools import lru_cache
+from functools import lru_cache, partial
 from typing import Any
 
 from litestar.serialization import encode_json
@@ -94,6 +94,46 @@ def _escape_attr(value: str) -> str:
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
+
+
+def _set_attribute_replacer(
+    match: re.Match[str],
+    *,
+    attr_pattern: re.Pattern[str],
+    attr_name: str,
+    escaped_val: str,
+) -> str:
+    """Replace or add an attribute on an opening tag match.
+
+    Args:
+        match: Regex match capturing the opening portion and closing delimiter.
+        attr_pattern: Compiled pattern that matches the attribute assignment.
+        attr_name: Attribute name to set.
+        escaped_val: Escaped attribute value.
+
+    Returns:
+        Updated tag string with ``attr_name`` set to ``escaped_val``.
+    """
+    opening = match.group(1)
+    closing = match.group(2)
+    if attr_pattern.search(opening):
+        opening = attr_pattern.sub(f'{attr_name}="{escaped_val}"', opening)
+    else:
+        opening = opening.rstrip() + f' {attr_name}="{escaped_val}"'
+    return opening + closing
+
+
+def _set_inner_html_replacer(match: re.Match[str], *, content: str) -> str:
+    """Replace inner HTML for an ID-targeted element match.
+
+    Args:
+        match: Regex match from ``_get_id_element_with_content_pattern``.
+        content: Raw HTML to inject as the element's inner HTML.
+
+    Returns:
+        Updated HTML fragment with replaced inner content.
+    """
+    return match.group(1) + content + match.group(5)
 
 
 def inject_head_script(html: str, script: str, *, escape: bool = True) -> str:
@@ -230,31 +270,18 @@ def set_data_attribute(html: str, selector: str, attr: str, value: str) -> str:
 
     escaped_value = _escape_attr(value)
     attr_pattern = _get_attr_pattern(attr)
-
-    def make_replacer(attr_name: str, escaped_val: str) -> Any:
-        """Create a replacer function for regex substitution."""
-
-        def replacer(match: re.Match[str]) -> str:
-            opening = match.group(1)
-            closing = match.group(2)
-            if attr_pattern.search(opening):
-                opening = attr_pattern.sub(f'{attr_name}="{escaped_val}"', opening)
-            else:
-                opening = opening.rstrip() + f' {attr_name}="{escaped_val}"'
-            return opening + closing
-
-        return replacer
+    replacer = partial(_set_attribute_replacer, attr_pattern=attr_pattern, attr_name=attr, escaped_val=escaped_value)
 
     # Handle ID selector (#id)
     if selector.startswith("#"):
         element_id = selector[1:]
         pattern = _get_id_selector_pattern(element_id)
-        return pattern.sub(make_replacer(attr, escaped_value), html, count=1)
+        return pattern.sub(replacer, html, count=1)
 
     # Handle element selector (e.g., "div")
     element_name = selector.lower()
     pattern = _get_element_selector_pattern(element_name)
-    return pattern.sub(make_replacer(attr, escaped_value), html, count=1)
+    return pattern.sub(replacer, html, count=1)
 
 
 def set_element_inner_html(html: str, selector: str, content: str) -> str:
@@ -276,10 +303,7 @@ def set_element_inner_html(html: str, selector: str, content: str) -> str:
 
     element_id = selector[1:]
     pattern = _get_id_element_with_content_pattern(element_id)
-
-    def replacer(match: re.Match[str]) -> str:
-        return match.group(1) + content + match.group(5)
-
+    replacer = partial(_set_inner_html_replacer, content=content)
     return pattern.sub(replacer, html, count=1)
 
 
