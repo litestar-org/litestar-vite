@@ -107,7 +107,7 @@ Best Practices
 
 .. code-block:: typescript
 
-   declare module "litestar-vite/inertia" {
+   declare module "litestar-vite-plugin/inertia" {
      interface User {
        avatarUrl?: string;
        teams: Team[];

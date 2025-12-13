@@ -429,9 +429,9 @@ def vite_doctor(
     required=False,
 )
 @option(
-    "--public-path",
+    "--static-path",
     type=ClickPath(dir_okay=True, file_okay=False, path_type=Path),
-    help="The optional path to your public/static JS assets.  If this were a standalone Vue or React app, this would point to your `public/` folder.",
+    help="The optional path to your static (unprocessed) frontend assets. If this were a standalone Vite app, this would point to your `public/` folder.",
     default=None,
     required=False,
 )
@@ -445,11 +445,21 @@ def vite_doctor(
 )
 @option(
     "--enable-ssr",
-    type=bool,
-    help="Enable SSR Support.",
+    "enable_ssr",
+    flag_value=True,
+    default=None,
     required=False,
     show_default=False,
-    is_flag=True,
+    help="Enable SSR support.",
+)
+@option(
+    "--disable-ssr",
+    "enable_ssr",
+    flag_value=False,
+    default=None,
+    required=False,
+    show_default=False,
+    help="Disable SSR support.",
 )
 @option(
     "--tailwind",
@@ -513,7 +523,7 @@ def vite_init(
     frontend_dir: str,
     bundle_path: "Path | None",
     resource_path: "Path | None",
-    public_path: "Path | None",
+    static_path: "Path | None",
     tailwind: "bool",
     enable_types: "bool",
     generate_zod: "bool",
@@ -544,11 +554,11 @@ def vite_init(
     console.print(f"\n[green]Using {framework.name} template[/]")
     resource_path_str = str(resource_path or framework.resource_dir or config.resource_dir)
     bundle_path_str = str(bundle_path or config.bundle_dir)
-    public_path_str = str(public_path or config.public_dir)
+    static_path_str = str(static_path or config.static_dir)
 
     # Check for existing files
     if (
-        any((root_path / p).exists() for p in [resource_path_str, bundle_path_str, public_path_str])
+        any((root_path / p).exists() for p in [resource_path_str, bundle_path_str, static_path_str])
         and not any(
             [overwrite, no_prompt],
         )
@@ -579,7 +589,7 @@ def vite_init(
         asset_url=asset_url,
         resource_dir=resource_path_str,
         bundle_dir=bundle_path_str,
-        public_dir=public_path_str,
+        static_dir=static_path_str,
         base_dir=frontend_dir,
         enable_ssr=enable_ssr,
         enable_inertia=is_inertia,
@@ -1026,6 +1036,7 @@ def _export_inertia_pages_metadata(
             openapi_schema=openapi_schema,
             include_default_auth=inertia_type_gen.include_default_auth,
             include_default_flash=inertia_type_gen.include_default_flash,
+            types_config=types_config,
         )
         pages_content = msgspec.json.format(
             msgspec.json.encode(pages_data),

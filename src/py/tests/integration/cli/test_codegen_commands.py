@@ -159,7 +159,7 @@ def test_export_routes_typescript_integration(tmp_path: Path) -> None:
     # Verify content structure
     content = output_path.read_text()
     assert "export type RouteName =" in content
-    assert "export const routes = {" in content
+    assert "export const routeDefinitions = {" in content
     assert "export function route<" in content
     assert "'list_users'" in content
     assert "'get_user'" in content

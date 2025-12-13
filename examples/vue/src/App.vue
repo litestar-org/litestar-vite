@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue"
-import { route } from "@/generated/routes"
-import routesJson from "./generated/routes.json"
+import { route, routeDefinitions } from "@/generated/routes"
 
 type Book = {
   id: number
@@ -23,7 +22,7 @@ const books = ref<Book[]>([])
 const view = ref<"overview" | "books">("overview")
 
 const featured = computed(() => summary.value?.featured)
-const serverRoutes = routesJson.routes
+const routeEntries = Object.entries(routeDefinitions)
 
 onMounted(async () => {
   // Using type-safe route() helper instead of hardcoded strings
@@ -91,10 +90,10 @@ onMounted(async () => {
         </div>
       </details>
       <details class="mt-2">
-        <summary class="cursor-pointer">Server Routes (from generated routes.json)</summary>
+        <summary class="cursor-pointer">Route definitions (from generated routes.ts)</summary>
         <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
-          <span v-for="(routeData, name) in serverRoutes" :key="name" class="font-mono text-slate-600">
-            {{ name }} → {{ routeData.uri }}
+          <span v-for="[name, def] in routeEntries" :key="name" class="font-mono text-slate-600">
+            {{ name }} → {{ def.path }}
           </span>
         </div>
       </details>

@@ -41,7 +41,7 @@
     "indentWidth": 2,
     "lineWidth": 180,
     "lineEnding": "lf",
-    "includes": ["**", "!**/node_modules", "!**/dist", "!**/out", "!**/.next", "!**/public", "!**/src/py"]
+    "includes": ["**/*", "!**/node_modules/**", "!**/dist/**", "!**/out/**", "!**/.next/**", "!**/public/**", "!**/src/py/**"]
   },
   "linter": {
     "enabled": true,
@@ -72,7 +72,7 @@
         "noUselessElse": "error"
       }
     },
-    "includes": ["**", "!**/node_modules", "!**/dist", "!**/out", "!**/.next", "!**/public"]
+    "includes": ["**/*", "!**/node_modules/**", "!**/dist/**", "!**/out/**", "!**/.next/**", "!**/public/**"]
   },
   "javascript": {
     "formatter": {
@@ -82,6 +82,6 @@
     }
   },
   "files": {
-    "includes": ["**", "!**/node_modules", "!**/dist", "!**/CHANGELOG.md", "!**/package-lock.json", "!**/pnpm-lock.yaml", "!**/.venv", "!**/out", "!**/src/py"]
+    "includes": ["**/*", "!**/node_modules/**", "!**/dist/**", "!**/CHANGELOG.md", "!**/package-lock.json", "!**/pnpm-lock.yaml", "!**/.venv/**", "!**/out/**", "!**/src/py/**"]
   }
 }

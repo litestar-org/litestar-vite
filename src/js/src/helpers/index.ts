@@ -20,7 +20,7 @@
  *
  * For type-safe routing, import from your generated routes file:
  * ```ts
- * import { route, routes, type RouteName } from '@/generated/routes'
+ * import { route, routeDefinitions, type RouteName } from '@/generated/routes'
  *
  * // Type-safe URL generation
  * const url = route('user_detail', { user_id: 123 })  // Compile-time checked!

@@ -1,23 +1,15 @@
-/// <reference path="./globals.d.ts" />
-
-import { exec } from "node:child_process"
 import fs from "node:fs"
 import type { AddressInfo } from "node:net"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { promisify } from "node:util"
 import colors from "picocolors"
 import { loadEnv, type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer } from "vite"
 import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-reload"
 
-import { resolveInstallHint, resolvePackageExecutor } from "./install-hint.js"
 import { checkBackendAvailability, type LitestarMeta, loadLitestarMeta } from "./litestar-meta.js"
-import { debounce } from "./shared/debounce.js"
-import { emitRouteTypes } from "./shared/emit-route-types.js"
-import { formatPath } from "./shared/format-path.js"
+import { type BridgeSchema, readBridgeConfig } from "./shared/bridge-schema.js"
 import { createLogger } from "./shared/logger.js"
-
-const execAsync = promisify(exec)
+import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
 
 /**
  * Configuration for TypeScript type generation.
@@ -75,6 +67,22 @@ export interface TypesConfig {
    */
   generateSdk?: boolean
   /**
+   * Generate typed routes.ts from routes.json metadata.
+   *
+   * Mirrors Python TypeGenConfig.generate_routes.
+   *
+   * @default true
+   */
+  generateRoutes?: boolean
+  /**
+   * Generate Inertia page props types from inertia-pages.json metadata.
+   *
+   * Mirrors Python TypeGenConfig.generate_page_props.
+   *
+   * @default true
+   */
+  generatePageProps?: boolean
+  /**
    * Register route() function globally on window object.
    *
    * When true, the generated routes.ts will include code that registers
@@ -112,12 +120,17 @@ export interface PluginConfig {
    */
   bundleDir?: string
   /**
-   * Vite's public directory for static, unprocessed assets.
-   * Mirrors Vite's `publicDir` option.
+   * Directory for static, unprocessed assets.
    *
-   * @default 'public'
+   * This maps to Vite's `publicDir` option, but is named `staticDir` in this
+   * plugin to avoid confusion with Litestar's `bundleDir` (often `public`).
+   *
+   * Note: The Litestar plugin defaults this to `${resourceDir}/public` to avoid
+   * Vite's `publicDir` colliding with Litestar's `bundleDir`.
+   *
+   * @default `${resourceDir}/public`
    */
-  publicDir?: string
+  staticDir?: string
   /**
    * Litestar's public assets directory.  These are the assets that Vite will serve when developing.
    *
@@ -140,7 +153,7 @@ export interface PluginConfig {
   /**
    * The directory where the SSR bundle should be written.
    *
-   * @default '${bundleDir}/bootstrap/ssr'
+   * @default `${resourceDir}/bootstrap/ssr`
    */
   ssrOutDir?: string
 
@@ -258,75 +271,7 @@ interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "e
   hasPythonConfig: boolean
 }
 
-/**
- * Bridge schema for `.litestar.json` - the shared configuration contract
- * between Python (Litestar) and TypeScript (Vite plugin).
- *
- * Python writes this file on startup; TypeScript reads it as defaults.
- * Field names use camelCase (JavaScript convention) and match exactly
- * between the JSON file and this TypeScript interface.
- *
- * Precedence: vite.config.ts > .litestar.json > hardcoded defaults
- */
-export interface BridgeSchema {
-  // Path configuration
-  assetUrl: string
-  bundleDir: string
-  resourceDir: string
-  publicDir: string
-  hotFile: string
-  manifest: string
-
-  // Runtime configuration
-  mode: "spa" | "inertia" | "ssr" | "hybrid"
-  proxyMode: "vite_proxy" | "vite_direct" | "external_proxy"
-  host: string
-  port: number
-  protocol: "http" | "https"
-
-  // SSR configuration
-  ssrEnabled: boolean
-  ssrOutDir: string | null
-
-  // Type generation configuration
-  types: {
-    enabled: boolean
-    output: string
-    openapiPath: string
-    routesPath: string
-    pagePropsPath?: string
-    generateZod: boolean
-    generateSdk: boolean
-    globalRoute: boolean
-  } | null
-
-  // Package executor
-  executor: "node" | "bun" | "deno" | "yarn" | "pnpm"
-
-  // Logging configuration
-  logging: {
-    level: "quiet" | "normal" | "verbose"
-    showPathsAbsolute: boolean
-    suppressNpmOutput: boolean
-    suppressViteBanner: boolean
-    timestamps: boolean
-  } | null
-
-  // Metadata
-  litestarVersion: string
-}
-
-/**
- * Python defaults read from `.litestar.json`.
- * Uses Partial<BridgeSchema> since values may be missing in older versions
- * or standalone JS configurations.
- */
-interface PythonDefaults extends Partial<BridgeSchema> {
-  // Legacy/additional fields that may appear
-  baseUrl?: string
-  externalTarget?: string | null
-  externalHttp2?: boolean
-}
+// Bridge schema is defined in ./shared/bridge-schema.ts
 
 // Note: We intentionally avoid exporting Vite types to prevent version conflicts.
 // The plugin returns Plugin[] internally but uses `any[]` in the public API to avoid
@@ -354,7 +299,15 @@ export default function litestar(config: string | string[] | PluginConfig): any[
 
   // Add type generation plugin if enabled
   if (pluginConfig.types !== false && pluginConfig.types.enabled) {
-    plugins.push(resolveTypeGenerationPlugin(pluginConfig.types, pluginConfig.executor, pluginConfig.hasPythonConfig))
+    plugins.push(
+      createLitestarTypeGenPlugin(pluginConfig.types, {
+        pluginName: "litestar-vite-types",
+        frameworkName: "litestar-vite",
+        sdkClientPlugin: "@hey-api/client-axios",
+        executor: pluginConfig.executor,
+        hasPythonConfig: pluginConfig.hasPythonConfig,
+      }),
+    )
   }
 
   return plugins
@@ -379,7 +332,7 @@ async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: ResolvedPl
   const possiblePaths = [
     path.join(root, "index.html"),
     path.join(root, pluginConfig.resourceDir.replace(/^\//, ""), "index.html"), // Ensure resourceDir path is relative to root
-    path.join(root, pluginConfig.publicDir.replace(/^\//, ""), "index.html"),
+    path.join(root, pluginConfig.staticDir.replace(/^\//, ""), "index.html"),
     path.join(root, pluginConfig.bundleDir.replace(/^\//, ""), "index.html"),
   ]
   // console.log("Checking paths:", possiblePaths); // Debug log
@@ -423,7 +376,6 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
   let litestarMeta: LitestarMeta = {}
   let shuttingDown = false
   const pythonDefaults = loadPythonDefaults()
-  const proxyMode = pythonDefaults?.proxyMode ?? "vite_proxy"
   const logger = createLogger(pythonDefaults?.logging)
   const defaultAliases: Record<string, string> = {
     "@": `/${pluginConfig.resourceDir.replace(/^\/+/, "").replace(/\/+$/, "")}/`,
@@ -473,7 +425,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
 
       return {
         base: userConfig.base ?? (command === "build" ? resolveBase(pluginConfig, assetUrl) : devBase),
-        publicDir: userConfig.publicDir ?? pluginConfig.publicDir ?? false,
+        publicDir: userConfig.publicDir ?? pluginConfig.staticDir ?? false,
         clearScreen: false,
         build: {
           manifest: userConfig.build?.manifest ?? (ssr ? false : "manifest.json"),
@@ -625,11 +577,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
         const isAddressInfo = (x: string | AddressInfo | null | undefined): x is AddressInfo => typeof x === "object"
         if (isAddressInfo(address)) {
           viteDevServerUrl = userConfig.server?.origin ? (userConfig.server.origin as DevServerUrl) : resolveDevServerUrl(address, server.config, userConfig)
-          // Only write hotfile for Vite modes (not external_proxy)
-          if (proxyMode !== "external_proxy") {
-            fs.mkdirSync(path.dirname(pluginConfig.hotFile), { recursive: true })
-            fs.writeFileSync(pluginConfig.hotFile, viteDevServerUrl)
-          }
+          fs.mkdirSync(path.dirname(pluginConfig.hotFile), { recursive: true })
+          fs.writeFileSync(pluginConfig.hotFile, viteDevServerUrl)
 
           // Check backend availability and log status
           setTimeout(async () => {
@@ -708,8 +657,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
         }
       })
 
-      // Clean up hot file (only for Vite modes)
-      if (!exitHandlersBound && proxyMode !== "external_proxy") {
+      // Clean up hot file on exit
+      if (!exitHandlersBound) {
         const clean = () => {
           if (pluginConfig.hotFile && fs.existsSync(pluginConfig.hotFile)) {
             // Check hotFile exists
@@ -805,32 +754,14 @@ function ensureCommandShouldRunInEnvironment(command: "build" | "serve", env: Re
   }
 }
 
-function loadPythonDefaults(): PythonDefaults | null {
-  // Avoid noisy warnings during automated tests
+function loadPythonDefaults(): BridgeSchema | null {
   const isTestEnv = Boolean(process.env.VITEST || process.env.VITE_TEST || process.env.NODE_ENV === "test")
-
-  // Try explicit env var first, then fall back to .litestar.json in cwd
-  let configPath = process.env.LITESTAR_VITE_CONFIG_PATH
-  if (!configPath) {
-    // Check for .litestar.json in current directory as fallback
-    const defaultPath = path.join(process.cwd(), ".litestar.json")
-    if (fs.existsSync(defaultPath)) {
-      configPath = defaultPath
-    } else {
-      warnMissingRuntimeConfig("env", isTestEnv)
-      return null
-    }
-  }
-  if (!fs.existsSync(configPath)) {
-    warnMissingRuntimeConfig("file", isTestEnv)
+  const defaults = readBridgeConfig()
+  if (!defaults) {
+    warnMissingRuntimeConfig("env", isTestEnv)
     return null
   }
-  try {
-    const data = JSON.parse(fs.readFileSync(configPath, "utf8")) as PythonDefaults
-    return data
-  } catch {
-    return null
-  }
+  return defaults
 }
 
 /**
@@ -914,11 +845,11 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     }
   }
 
-  if (typeof resolvedConfig.publicDir === "string") {
-    resolvedConfig.publicDir = resolvedConfig.publicDir.trim().replace(/^\/+/, "").replace(/\/+$/, "")
+  if (typeof resolvedConfig.staticDir === "string") {
+    resolvedConfig.staticDir = resolvedConfig.staticDir.trim().replace(/^\/+/, "").replace(/\/+$/, "")
 
-    if (resolvedConfig.publicDir === "") {
-      throw new Error("litestar-vite-plugin: publicDir must be a subdirectory. E.g. 'public'.")
+    if (resolvedConfig.staticDir === "") {
+      throw new Error("litestar-vite-plugin: staticDir must be a subdirectory. E.g. 'src/public'.")
     }
   }
 
@@ -952,6 +883,8 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
       pagePropsPath: "src/generated/inertia-pages.json",
       generateZod: false,
       generateSdk: false,
+      generateRoutes: true,
+      generatePageProps: true,
       globalRoute: false,
       debounce: 300,
     }
@@ -963,10 +896,12 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
         output: pythonDefaults.types.output,
         openapiPath: pythonDefaults.types.openapiPath,
         routesPath: pythonDefaults.types.routesPath,
-        pagePropsPath: pythonDefaults.types.pagePropsPath ?? path.join(pythonDefaults.types.output, "inertia-pages.json"),
+        pagePropsPath: pythonDefaults.types.pagePropsPath,
         generateZod: pythonDefaults.types.generateZod,
         generateSdk: pythonDefaults.types.generateSdk,
-        globalRoute: pythonDefaults.types.globalRoute ?? false,
+        generateRoutes: pythonDefaults.types.generateRoutes,
+        generatePageProps: pythonDefaults.types.generatePageProps,
+        globalRoute: pythonDefaults.types.globalRoute,
         debounce: 300,
       }
     }
@@ -986,6 +921,8 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
         resolvedConfig.types.pagePropsPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "inertia-pages.json") : "src/generated/inertia-pages.json"),
       generateZod: resolvedConfig.types.generateZod ?? false,
       generateSdk: resolvedConfig.types.generateSdk ?? false,
+      generateRoutes: resolvedConfig.types.generateRoutes ?? true,
+      generatePageProps: resolvedConfig.types.generatePageProps ?? true,
       globalRoute: resolvedConfig.types.globalRoute ?? false,
       debounce: resolvedConfig.types.debounce ?? 300,
     }
@@ -1005,14 +942,16 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   // Auto-detect Inertia mode from .litestar.json if not explicitly set
   const inertiaMode = resolvedConfig.inertiaMode ?? pythonDefaults?.mode === "inertia"
 
+  const effectiveResourceDir = resolvedConfig.resourceDir ?? pythonDefaults?.resourceDir ?? "src"
+
   const result: ResolvedPluginConfig = {
     input: resolvedConfig.input,
     assetUrl: normalizeAssetUrl(resolvedConfig.assetUrl ?? pythonDefaults?.assetUrl ?? "/static/"),
-    resourceDir: resolvedConfig.resourceDir ?? pythonDefaults?.resourceDir ?? "src",
+    resourceDir: effectiveResourceDir,
     bundleDir: resolvedConfig.bundleDir ?? pythonDefaults?.bundleDir ?? "public",
-    publicDir: resolvedConfig.publicDir ?? pythonDefaults?.publicDir ?? "public",
+    staticDir: resolvedConfig.staticDir ?? pythonDefaults?.staticDir ?? path.join(effectiveResourceDir, "public"),
     ssr: resolvedConfig.ssr ?? resolvedConfig.input,
-    ssrOutDir: resolvedConfig.ssrOutDir ?? pythonDefaults?.ssrOutDir ?? path.join(resolvedConfig.resourceDir ?? pythonDefaults?.resourceDir ?? "src", "bootstrap/ssr"),
+    ssrOutDir: resolvedConfig.ssrOutDir ?? pythonDefaults?.ssrOutDir ?? path.join(effectiveResourceDir, "bootstrap/ssr"),
     refresh: resolvedConfig.refresh ?? false,
     hotFile: resolvedConfig.hotFile ?? path.join(resolvedConfig.bundleDir ?? "public", "hot"),
     detectTls: resolvedConfig.detectTls ?? false,
@@ -1042,7 +981,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
  * @param pythonDefaults - The defaults read from .litestar.json (if present)
  * @param userConfig - The original user config from vite.config.ts
  */
-function validateAgainstPythonDefaults(resolved: ResolvedPluginConfig, pythonDefaults: PythonDefaults | null, userConfig: PluginConfig): void {
+function validateAgainstPythonDefaults(resolved: ResolvedPluginConfig, pythonDefaults: BridgeSchema | null, userConfig: PluginConfig): void {
   if (!pythonDefaults) return
 
   const warnings: string[] = []
@@ -1067,8 +1006,8 @@ function validateAgainstPythonDefaults(resolved: ResolvedPluginConfig, pythonDef
     warnings.push(`resourceDir: vite.config.ts="${resolved.resourceDir}" differs from Python="${pythonDefaults.resourceDir}"`)
   }
 
-  if (userConfig.publicDir !== undefined && hasPythonValue(pythonDefaults.publicDir) && resolved.publicDir !== pythonDefaults.publicDir) {
-    warnings.push(`publicDir: vite.config.ts="${resolved.publicDir}" differs from Python="${pythonDefaults.publicDir}"`)
+  if (userConfig.staticDir !== undefined && hasPythonValue(pythonDefaults.staticDir) && resolved.staticDir !== pythonDefaults.staticDir) {
+    warnings.push(`staticDir: vite.config.ts="${resolved.staticDir}" differs from Python="${pythonDefaults.staticDir}"`)
   }
 
   if (pythonDefaults.ssrEnabled && userConfig.ssrOutDir !== undefined && hasPythonValue(pythonDefaults.ssrOutDir) && resolved.ssrOutDir !== pythonDefaults.ssrOutDir) {
@@ -1165,445 +1104,6 @@ function resolveFullReloadConfig({ refresh: config }: ResolvedPluginConfig): Plu
 
     return plugin
   })
-}
-
-/**
- * Configuration for Inertia page props type generation.
- */
-interface InertiaPagePropsJson {
-  pages: Record<
-    string,
-    {
-      route: string
-      propsType?: string
-      schemaRef?: string
-      handler?: string
-    }
-  >
-  sharedProps: Record<string, { type: string; optional?: boolean }>
-  typeGenConfig: {
-    includeDefaultAuth: boolean
-    includeDefaultFlash: boolean
-  }
-  generatedAt: string
-}
-
-/**
- * Generate page-props.ts from inertia-pages.json metadata.
- */
-async function emitPagePropsTypes(pagesPath: string, outputDir: string): Promise<void> {
-  const contents = await fs.promises.readFile(pagesPath, "utf-8")
-  const json: InertiaPagePropsJson = JSON.parse(contents)
-
-  const outDir = path.resolve(process.cwd(), outputDir)
-  await fs.promises.mkdir(outDir, { recursive: true })
-  const outFile = path.join(outDir, "page-props.ts")
-
-  const { includeDefaultAuth, includeDefaultFlash } = json.typeGenConfig
-
-  // Build default types based on config
-  let userTypes = ""
-  let authTypes = ""
-  let flashTypes = ""
-
-  if (includeDefaultAuth) {
-    userTypes = `/**
- * Default User interface - minimal baseline for common auth patterns.
- * Users extend this via module augmentation with their full user model.
- *
- * @example
- * declare module 'litestar-vite/inertia' {
- *   interface User {
- *     avatarUrl?: string | null
- *     roles: Role[]
- *     teams: Team[]
- *   }
- * }
- */
-export interface User {
-  id: string
-  email: string
-  name?: string | null
-}
-
-`
-    authTypes = `/**
- * Default AuthData interface - mirrors Laravel Jetstream pattern.
- * isAuthenticated + optional user is the universal pattern.
- */
-export interface AuthData {
-  isAuthenticated: boolean
-  user?: User
-}
-
-`
-  } else {
-    // Empty interfaces for user extension
-    userTypes = `/**
- * User interface - define via module augmentation.
- * Default auth types are disabled.
- *
- * @example
- * declare module 'litestar-vite/inertia' {
- *   interface User {
- *     uuid: string
- *     username: string
- *   }
- * }
- */
-export interface User {}
-
-`
-    authTypes = `/**
- * AuthData interface - define via module augmentation.
- * Default auth types are disabled.
- */
-export interface AuthData {}
-
-`
-  }
-
-  if (includeDefaultFlash) {
-    flashTypes = `/**
- * Default FlashMessages interface - category to messages mapping.
- * Standard categories: success, error, info, warning.
- */
-export interface FlashMessages {
-  [category: string]: string[]
-}
-
-`
-  } else {
-    flashTypes = `/**
- * FlashMessages interface - define via module augmentation.
- * Default flash types are disabled.
- */
-export interface FlashMessages {}
-
-`
-  }
-
-  // Build SharedProps with defaults
-  const sharedPropsContent =
-    includeDefaultAuth || includeDefaultFlash
-      ? `  auth?: AuthData
-  flash?: FlashMessages`
-      : ""
-
-  // Build page props entries
-  const pageEntries: string[] = []
-  for (const [component, data] of Object.entries(json.pages)) {
-    const propsType = data.propsType ? data.propsType : "Record<string, unknown>"
-    pageEntries.push(`  "${component}": ${propsType} & FullSharedProps`)
-  }
-
-  const body = `// AUTO-GENERATED by litestar-vite. Do not edit.
-/* eslint-disable */
-
-${userTypes}${authTypes}${flashTypes}/**
- * Generated shared props (always present).
- * Includes built-in props + static config props.
- */
-export interface GeneratedSharedProps {
-  errors?: Record<string, string[]>
-  csrf_token?: string
-}
-
-/**
- * User-defined shared props for dynamic share() calls in guards/middleware.
- * Extend this interface via module augmentation.
- *
- * @example
- * declare module 'litestar-vite/inertia' {
- *   interface User {
- *     avatarUrl?: string | null
- *     roles: Role[]
- *     teams: Team[]
- *   }
- *   interface SharedProps {
- *     locale?: string
- *     currentTeam?: CurrentTeam
- *   }
- * }
- */
-export interface SharedProps {
-${sharedPropsContent}
-}
-
-/** Full shared props = generated + user-defined */
-export type FullSharedProps = GeneratedSharedProps & SharedProps
-
-/** Page props mapped by component name */
-export interface PageProps {
-${pageEntries.join("\n")}
-}
-
-/** Component name union type */
-export type ComponentName = keyof PageProps
-
-/** Type-safe props for a specific component */
-export type InertiaPageProps<C extends ComponentName> = PageProps[C]
-
-/** Get props type for a specific page component */
-export type PagePropsFor<C extends ComponentName> = PageProps[C]
-
-// Re-export for module augmentation
-declare module "litestar-vite/inertia" {
-  export { User, AuthData, FlashMessages, SharedProps, GeneratedSharedProps, FullSharedProps, PageProps, ComponentName, InertiaPageProps, PagePropsFor }
-}
-`
-
-  await fs.promises.writeFile(outFile, body, "utf-8")
-}
-
-/**
- * Type generation plugin for Litestar.
- *
- * This plugin watches the OpenAPI schema and routes JSON files exported by Litestar.
- * When these files change (e.g., after Python server reload), it runs @hey-api/openapi-ts
- * to generate TypeScript types and notifies HMR clients.
- *
- * Flow:
- * 1. Litestar exports openapi.json and routes.json on startup (via server_lifespan hook)
- * 2. This plugin detects file changes via Vite's handleHotUpdate
- * 3. Runs @hey-api/openapi-ts to generate TypeScript types (using configured executor)
- * 4. Sends HMR event to notify client
- */
-function resolveTypeGenerationPlugin(typesConfig: Required<TypesConfig>, executor?: string, hasPythonConfig?: boolean): Plugin {
-  let lastTypesHash: string | null = null
-  let lastRoutesHash: string | null = null
-  let lastPagePropsHash: string | null = null
-  let server: ViteDevServer | null = null
-  let isGenerating = false
-  let resolvedConfig: ResolvedConfig | null = null
-  let chosenConfigPath: string | null = null
-
-  /**
-   * Run @hey-api/openapi-ts to generate TypeScript types from the OpenAPI schema.
-   */
-  async function runTypeGeneration(): Promise<boolean> {
-    if (isGenerating) {
-      return false
-    }
-
-    isGenerating = true
-    const startTime = Date.now()
-
-    try {
-      const projectRoot = resolvedConfig?.root ?? process.cwd()
-      const openapiPath = path.resolve(projectRoot, typesConfig.openapiPath)
-      const routesPath = path.resolve(projectRoot, typesConfig.routesPath)
-      const pagePropsPath = path.resolve(projectRoot, typesConfig.pagePropsPath)
-
-      let generated = false
-
-      // Prefer user config if present (deterministic order)
-      const candidates = [path.resolve(projectRoot, "openapi-ts.config.ts"), path.resolve(projectRoot, "hey-api.config.ts"), path.resolve(projectRoot, ".hey-api.config.ts")]
-      const configPath = candidates.find((p) => fs.existsSync(p)) || null
-      chosenConfigPath = configPath
-
-      // Skip openapi-ts if SDK generation is disabled and no custom config exists
-      // (e.g., HTMX apps that only need routes.ts, not API client types)
-      const shouldRunOpenApiTs = configPath || typesConfig.generateSdk
-
-      if (fs.existsSync(openapiPath) && shouldRunOpenApiTs) {
-        resolvedConfig?.logger.info(`${colors.cyan("•")} Generating TypeScript types...`)
-        if (resolvedConfig && configPath) {
-          const relConfigPath = formatPath(configPath, resolvedConfig.root)
-          resolvedConfig.logger.info(`${colors.cyan("•")} openapi-ts config: ${relConfigPath}`)
-        }
-
-        // Output API client to a subdirectory to avoid deleting routes.ts and other files
-        // openapi-ts clears its output directory, so we isolate it
-        const sdkOutput = path.join(typesConfig.output, "api")
-
-        let args: string[]
-        if (configPath) {
-          // openapi-ts CLI (v0.88+) expects --file/-f for config path
-          args = ["@hey-api/openapi-ts", "--file", configPath]
-        } else {
-          args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", sdkOutput]
-
-          const plugins = ["@hey-api/typescript", "@hey-api/schemas"]
-          if (typesConfig.generateSdk) {
-            plugins.push("@hey-api/sdk", "@hey-api/client-axios")
-          }
-          if (typesConfig.generateZod) {
-            plugins.push("zod")
-          }
-
-          if (plugins.length) {
-            args.push("--plugins", ...plugins)
-          }
-        }
-
-        if (typesConfig.generateZod) {
-          try {
-            // eslint-disable-next-line import/no-dynamic-require, @typescript-eslint/no-var-requires
-            require.resolve("zod", { paths: [process.cwd()] })
-          } catch {
-            resolvedConfig?.logger.warn(`${colors.yellow("!")} zod not installed - run: ${resolveInstallHint()} zod`)
-          }
-        }
-
-        await execAsync(resolvePackageExecutor(args.join(" "), executor), {
-          cwd: projectRoot,
-        })
-
-        generated = true
-      }
-
-      // Always try to emit routes types when routes metadata is present
-      if (fs.existsSync(routesPath)) {
-        await emitRouteTypes(routesPath, typesConfig.output, { globalRoute: typesConfig.globalRoute ?? false })
-        generated = true
-      }
-
-      // Emit Inertia page props types when metadata is present
-      if (fs.existsSync(pagePropsPath)) {
-        await emitPagePropsTypes(pagePropsPath, typesConfig.output)
-        generated = true
-      }
-
-      if (generated && resolvedConfig) {
-        const duration = Date.now() - startTime
-        resolvedConfig.logger.info(`${colors.green("✓")} TypeScript artifacts updated ${colors.dim(`(${duration}ms)`)}`)
-      }
-
-      // Notify HMR clients that types have been updated
-      if (generated && server) {
-        server.ws.send({
-          type: "custom",
-          event: "litestar:types-updated",
-          data: {
-            output: typesConfig.output,
-            timestamp: Date.now(),
-          },
-        })
-      }
-
-      return true
-    } catch (error) {
-      if (resolvedConfig) {
-        const message = error instanceof Error ? error.message : String(error)
-        // Don't show error if @hey-api/openapi-ts is not installed - just warn once
-        if (message.includes("not found") || message.includes("ENOENT")) {
-          const zodHint = typesConfig.generateZod ? " zod" : ""
-          resolvedConfig.logger.warn(
-            `${colors.cyan("litestar-vite")} ${colors.yellow("@hey-api/openapi-ts not installed")} - run: ${resolveInstallHint()} -D @hey-api/openapi-ts${zodHint}`,
-          )
-        } else {
-          resolvedConfig.logger.error(`${colors.cyan("litestar-vite")} ${colors.red("type generation failed:")} ${message}`)
-        }
-      }
-      return false
-    } finally {
-      isGenerating = false
-    }
-  }
-
-  // Create debounced version
-  const debouncedRunTypeGeneration = debounce(runTypeGeneration, typesConfig.debounce)
-
-  return {
-    name: "litestar-vite-types",
-    enforce: "pre",
-
-    configResolved(config) {
-      resolvedConfig = config
-    },
-
-    configureServer(devServer) {
-      server = devServer
-
-      // Log that we're watching for schema changes
-      if (typesConfig.enabled) {
-        const root = resolvedConfig?.root ?? process.cwd()
-        // Use relative paths for cleaner output - just show filenames since they're usually in generated/
-        const openapiRel = path.basename(typesConfig.openapiPath)
-        const routesRel = path.basename(typesConfig.routesPath)
-        resolvedConfig?.logger.info(`${colors.cyan("•")} Watching: ${colors.yellow(openapiRel)}, ${colors.yellow(routesRel)}`)
-        if (chosenConfigPath) {
-          const relConfigPath = formatPath(chosenConfigPath, root)
-          resolvedConfig?.logger.info(`${colors.cyan("•")} openapi-ts config: ${colors.yellow(relConfigPath)}`)
-        }
-      }
-    },
-
-    async buildStart() {
-      // Validate configuration - warn if types enabled without proper backend setup
-      if (typesConfig.enabled && !hasPythonConfig) {
-        const projectRoot = resolvedConfig?.root ?? process.cwd()
-        const openapiPath = path.resolve(projectRoot, typesConfig.openapiPath)
-
-        if (!fs.existsSync(openapiPath)) {
-          // Types enabled but no .litestar.json and no openapi.json - likely misconfigured
-          this.warn(
-            "Type generation is enabled but .litestar.json was not found.\n" +
-              "The Litestar backend generates this file on startup.\n\n" +
-              "Solutions:\n" +
-              `  1. Start the backend first: ${colors.cyan("litestar run")}\n` +
-              `  2. Use integrated dev: ${colors.cyan("litestar assets serve")}\n` +
-              `  3. Disable types: ${colors.cyan("litestar({ input: [...], types: false })")}\n`,
-          )
-        }
-      }
-
-      // Run type generation at build start if enabled and openapi.json or routes.json exists
-      if (typesConfig.enabled) {
-        const projectRoot = resolvedConfig?.root ?? process.cwd()
-        const openapiPath = path.resolve(projectRoot, typesConfig.openapiPath)
-        const routesPath = path.resolve(projectRoot, typesConfig.routesPath)
-        if (fs.existsSync(openapiPath) || fs.existsSync(routesPath)) {
-          await runTypeGeneration()
-        }
-      }
-    },
-
-    async handleHotUpdate({ file }) {
-      if (!typesConfig.enabled) {
-        return
-      }
-
-      const root = resolvedConfig?.root ?? process.cwd()
-      const relativePath = path.relative(root, file)
-      const openapiPath = typesConfig.openapiPath.replace(/^\.\//, "")
-      const routesPath = typesConfig.routesPath.replace(/^\.\//, "")
-      const pagePropsPath = typesConfig.pagePropsPath.replace(/^\.\//, "")
-
-      // Check if the changed file is our OpenAPI schema, routes, or page props metadata
-      const isOpenapi = relativePath === openapiPath || file.endsWith(openapiPath)
-      const isRoutes = relativePath === routesPath || file.endsWith(routesPath)
-      const isPageProps = relativePath === pagePropsPath || file.endsWith(pagePropsPath)
-
-      if (isOpenapi || isRoutes || isPageProps) {
-        if (resolvedConfig) {
-          resolvedConfig.logger.info(`${colors.cyan("litestar-vite")} ${colors.dim("schema changed:")} ${colors.yellow(relativePath)}`)
-        }
-        const newHash = await getFileMtime(file)
-        if (isOpenapi) {
-          if (lastTypesHash === newHash) return
-          lastTypesHash = newHash
-        } else if (isRoutes) {
-          if (lastRoutesHash === newHash) return
-          lastRoutesHash = newHash
-        } else if (isPageProps) {
-          if (lastPagePropsHash === newHash) return
-          lastPagePropsHash = newHash
-        }
-        debouncedRunTypeGeneration()
-      }
-    },
-  }
-}
-
-/**
- * Get the modification time of a file as a string for change detection.
- * Using mtime is faster than hashing file contents since it doesn't require reading the file.
- */
-async function getFileMtime(filePath: string): Promise<string> {
-  const stat = await fs.promises.stat(filePath)
-  return stat.mtimeMs.toString()
 }
 
 /**

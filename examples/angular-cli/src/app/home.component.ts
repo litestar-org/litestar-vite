@@ -1,6 +1,8 @@
 import { HttpClient } from "@angular/common/http"
 import { Component, computed, inject, type OnInit, signal } from "@angular/core"
 
+import { route, routeDefinitions } from "../generated/routes"
+
 type Book = {
   id: number
   title: string
@@ -15,9 +17,9 @@ type Summary = {
   total_books: number
   featured: Book
 }
-
-type RouteInfo = { uri: string; methods?: string[] }
-type RoutesData = { routes: Record<string, RouteInfo> }
+type RouteName = keyof typeof routeDefinitions
+type RouteDefinition = (typeof routeDefinitions)[RouteName]
+type RouteEntry = [RouteName, RouteDefinition]
 
 @Component({
   selector: "app-home",
@@ -25,7 +27,7 @@ type RoutesData = { routes: Record<string, RouteInfo> }
   template: `
     <main class="mx-auto max-w-5xl space-y-6 px-4 py-10">
       <header class="space-y-2">
-        <p class="font-semibold text-[#edb641] text-sm uppercase tracking-[0.14em]">Litestar · Angular CLI</p>
+        <p class="font-semibold text-[#edb641] text-sm uppercase tracking-[0.14em]">Litestar · Vite</p>
         <h1 class="font-semibold text-3xl text-[#202235]">Library (Angular CLI)</h1>
         <p class="max-w-3xl text-slate-600">Same API, different frontend. Angular 21 with zoneless signals via Angular CLI.</p>
         <nav class="inline-flex gap-2 rounded-full bg-slate-100 p-1 shadow-sm" aria-label="Views">
@@ -84,11 +86,11 @@ type RoutesData = { routes: Record<string, RouteInfo> }
 
       <footer class="border-slate-200 border-t pt-8 text-slate-400 text-xs">
         <details>
-          <summary class="cursor-pointer">Server Routes (from generated routes.json)</summary>
+          <summary class="cursor-pointer">Route definitions (from generated routes.ts)</summary>
           <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
             @for (entry of routeEntries(); track entry[0]) {
               <span class="font-mono text-slate-600">
-                {{ entry[0] }} → {{ entry[1].uri }}
+                {{ entry[0] }} → {{ entry[1].path }}
               </span>
             }
           </div>
@@ -104,20 +106,14 @@ export class HomeComponent implements OnInit {
   summary = signal<Summary | null>(null)
   books = signal<Book[]>([])
   view = signal<"overview" | "books">("overview")
-  routes = signal<RoutesData | null>(null)
 
   // Computed signals
   featured = computed(() => this.summary()?.featured)
-  routeEntries = computed(() => {
-    const r = this.routes()
-    return r ? (Object.entries(r.routes) as [string, RouteInfo][]) : []
-  })
+  routeEntries = computed(() => Object.entries(routeDefinitions) as RouteEntry[])
 
   ngOnInit() {
     // Fetch data on init
-    this.http.get<Summary>("/api/summary").subscribe((data) => this.summary.set(data))
-    this.http.get<Book[]>("/api/books").subscribe((data) => this.books.set(data))
-    // Load routes from generated file (Angular CLI serves from root, not /static/)
-    this.http.get<RoutesData>("/src/generated/routes.json").subscribe((data) => this.routes.set(data))
+    this.http.get<Summary>(route("summary")).subscribe((data) => this.summary.set(data))
+    this.http.get<Book[]>(route("books")).subscribe((data) => this.books.set(data))
   }
 }

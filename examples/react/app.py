@@ -83,7 +83,7 @@ class LibraryController(Controller):
 # [docs-start:spa-vite-config]
 # VitePlugin with mode="spa" automatically:
 # - Registers catch-all route for index.html
-# - Injects route metadata as window.__LITESTAR_ROUTES__ for client-side routing
+# - Generates typed route helpers (routes.ts) when types are enabled
 vite = VitePlugin(
     config=ViteConfig(
         mode="spa",

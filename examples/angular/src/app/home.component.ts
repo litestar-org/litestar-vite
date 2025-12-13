@@ -1,6 +1,8 @@
 import { HttpClient } from "@angular/common/http"
 import { Component, computed, inject, type OnInit, signal } from "@angular/core"
 
+import { route, routeDefinitions } from "../generated/routes"
+
 type Book = {
   id: number
   title: string
@@ -15,9 +17,9 @@ type Summary = {
   total_books: number
   featured: Book
 }
-
-type RouteInfo = { uri: string; methods?: string[] }
-type RoutesData = { routes: Record<string, RouteInfo> }
+type RouteName = keyof typeof routeDefinitions
+type RouteDefinition = (typeof routeDefinitions)[RouteName]
+type RouteEntry = [RouteName, RouteDefinition]
 
 @Component({
   selector: "app-home",
@@ -57,7 +59,7 @@ type RoutesData = { routes: Record<string, RouteInfo> }
           @if (featured()) {
             <h2 class="font-semibold text-[#202235] text-xl">{{ summary()?.headline }}</h2>
             <p class="text-slate-600">Featured book</p>
-            <article class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4">
+            <article class="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4">
               <h3 class="font-semibold text-[#202235] text-lg">{{ featured()!.title }}</h3>
               <p class="mt-1 text-slate-600">{{ featured()!.author }} • {{ featured()!.year }}</p>
               <p class="mt-1 text-[#202235] text-sm">{{ featured()!.tags.join(' · ') }}</p>
@@ -70,7 +72,7 @@ type RoutesData = { routes: Record<string, RouteInfo> }
         <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Books">
           @if (books().length > 0) {
             @for (book of books(); track book.id) {
-              <article class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+              <article class="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4 shadow-sm">
                 <h3 class="font-semibold text-[#202235] text-lg">{{ book.title }}</h3>
                 <p class="mt-1 text-slate-600">{{ book.author }} • {{ book.year }}</p>
                 <p class="mt-1 text-[#202235] text-sm">{{ book.tags.join(' · ') }}</p>
@@ -84,11 +86,11 @@ type RoutesData = { routes: Record<string, RouteInfo> }
 
       <footer class="border-slate-200 border-t pt-8 text-slate-400 text-xs">
         <details>
-          <summary class="cursor-pointer">Server Routes (from generated routes.json)</summary>
+          <summary class="cursor-pointer">Route definitions (from generated routes.ts)</summary>
           <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
             @for (entry of routeEntries(); track entry[0]) {
               <span class="font-mono text-slate-600">
-                {{ entry[0] }} → {{ entry[1].uri }}
+                {{ entry[0] }} → {{ entry[1].path }}
               </span>
             }
           </div>
@@ -104,20 +106,14 @@ export class HomeComponent implements OnInit {
   summary = signal<Summary | null>(null)
   books = signal<Book[]>([])
   view = signal<"overview" | "books">("overview")
-  routes = signal<RoutesData | null>(null)
 
   // Computed signals
   featured = computed(() => this.summary()?.featured)
-  routeEntries = computed(() => {
-    const r = this.routes()
-    return r ? (Object.entries(r.routes) as [string, RouteInfo][]) : []
-  })
+  routeEntries = computed(() => Object.entries(routeDefinitions) as RouteEntry[])
 
   ngOnInit() {
     // Fetch data on init
-    this.http.get<Summary>("/api/summary").subscribe((data) => this.summary.set(data))
-    this.http.get<Book[]>("/api/books").subscribe((data) => this.books.set(data))
-    // Load routes from generated file
-    this.http.get<RoutesData>("/static/src/generated/routes.json").subscribe((data) => this.routes.set(data))
+    this.http.get<Summary>(route("summary")).subscribe((data) => this.summary.set(data))
+    this.http.get<Book[]>(route("books")).subscribe((data) => this.books.set(data))
   }
 }

@@ -66,6 +66,12 @@ TypeGenConfig Reference
    * - ``generate_page_props``
      - ``bool``
      - Generate page props types. Default: ``True``
+   * - ``fallback_type``
+     - ``Literal["unknown", "any"]``
+     - Fallback value type for untyped dict/list in page props. Default: ``unknown``
+   * - ``type_import_paths``
+     - ``dict[str, str]``
+     - Map schema/type names to TypeScript import paths for props types excluded from OpenAPI. Default: ``{}``
    * - ``global_route``
      - ``bool``
      - Register ``route()`` globally on ``window``. Default: ``False``
@@ -94,17 +100,29 @@ The ``routes.ts`` file provides type-safe route handling:
    // Generated types
    export type RouteName = "home" | "dashboard" | "user-profile" | ...;
 
-   export interface RouteParams {
-     "user-profile": { userId: string | number };
-     "post-show": { postId: string | number };
+   export interface RoutePathParams {
+     "user-profile": { userId: number };
+     "home": Record<string, never>;
      // ...
    }
 
-   // Type-safe route function
-   export function route<T extends RouteName>(
-     name: T,
-     params?: RouteParams[T]
-   ): string;
+   export interface RouteQueryParams {
+     "user-profile": Record<string, never>;
+     "home": Record<string, never>;
+     // ...
+   }
+
+   type EmptyParams = Record<string, never>
+   type MergeParams<A, B> =
+     A extends EmptyParams ? (B extends EmptyParams ? EmptyParams : B) : B extends EmptyParams ? A : A & B
+
+   export type RouteParams<T extends RouteName> =
+     MergeParams<RoutePathParams[T], RouteQueryParams[T]>;
+
+   // Type-safe route function (params required only when needed)
+   export function route<T extends RoutesWithoutRequiredParams>(name: T): string;
+   export function route<T extends RoutesWithoutRequiredParams>(name: T, params?: RouteParams<T>): string;
+   export function route<T extends RoutesWithRequiredParams>(name: T, params: RouteParams<T>): string;
 
    // Usage
    route("home");                           // "/"
@@ -121,17 +139,21 @@ The Vite plugin reads this metadata to generate ``page-props.ts``:
    {
      "pages": {
        "Dashboard": {
-         "props": {
-           "userCount": { "type": "integer" },
-           "stats": { "type": "object" }
-         }
-       },
-       "Users/Index": {
-         "props": {
-           "users": { "type": "array" }
-         }
+         "route": "/dashboard",
+         "tsType": "DashboardProps",
+         "schemaRef": "#/components/schemas/DashboardProps",
+         "customTypes": ["DashboardProps"]
        }
-     }
+     },
+     "typeImportPaths": {
+       "InternalProps": "@/types/internal"
+     },
+     "fallbackType": "unknown",
+     "typeGenConfig": {
+       "includeDefaultAuth": true,
+       "includeDefaultFlash": true
+     },
+     "generatedAt": "2025-12-11T00:00:00Z"
    }
 
 Vite Plugin Configuration

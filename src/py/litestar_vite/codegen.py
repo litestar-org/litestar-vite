@@ -8,23 +8,35 @@ delegated to @hey-api/openapi-ts; we keep only lightweight metadata here.
 import contextlib
 import datetime
 import re
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from litestar import Litestar
-from litestar._openapi.datastructures import OpenAPIContext  # pyright: ignore[reportPrivateUsage]
+from litestar._openapi.datastructures import (  # pyright: ignore[reportPrivateUsage]
+    OpenAPIContext,
+    _get_normalized_schema_key,  # pyright: ignore[reportPrivateUsage]
+)
 from litestar._openapi.parameters import (
     create_parameters_for_handler,  # pyright: ignore[reportPrivateUsage,reportPrivateImportUsage]
 )
+from litestar._openapi.schema_generation import SchemaCreator  # pyright: ignore[reportPrivateUsage]
 from litestar._openapi.typescript_converter.schema_parsing import parse_schema  # pyright: ignore[reportPrivateUsage]
 from litestar.handlers import HTTPRouteHandler
-from litestar.openapi.spec import Schema
+from litestar.openapi.spec import Reference, Schema
 from litestar.openapi.spec.enums import OpenAPIType
+from litestar.response import Response as LitestarResponse
+from litestar.response import Template
+from litestar.response.base import ASGIResponse
+from litestar.types.builtin_types import NoneType
+from litestar.typing import FieldDefinition
 
 if TYPE_CHECKING:
+    from litestar.dto import AbstractDTO
     from litestar.routes import HTTPRoute
+
+    from litestar_vite.config import TypeGenConfig
 
 
 __all__ = (
@@ -224,6 +236,64 @@ def _ts_type_from_openapi(schema: dict[str, Any]) -> str:
         return ts_element.write()
     except (TypeError, ValueError, KeyError):
         return "any"
+
+
+_PYTHON_TO_TS_SIMPLE: dict[str, str] = {
+    "str": "string",
+    "int": "number",
+    "float": "number",
+    "bool": "boolean",
+    "None": "null",
+    "Any": "any",
+}
+
+_PYTHON_TO_TS_SIMPLE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(rf"\b{re.escape(py)}\b"), ts) for py, ts in _PYTHON_TO_TS_SIMPLE.items()
+)
+_LIST_GENERIC_PATTERN = re.compile(r"\blist\[(.+?)\]")
+_DICT_GENERIC_PATTERN = re.compile(r"\bdict\[(.+?),\s*(.+?)\]")
+_DICT_PATTERN = re.compile(r"\bdict\b")
+_GENERIC_BRACKETS_PATTERN = re.compile(r"\[([^\[\]]+)\]")
+_TS_IDENTIFIER_PATTERN = re.compile(r"\b([A-Z][a-zA-Z0-9]*)\b")
+
+
+def _python_type_to_typescript(py_type: str, *, fallback: str = "unknown") -> tuple[str, list[str]]:
+    """Best-effort conversion of a Python type annotation string to TypeScript.
+
+    This is used only as a last-resort fallback when Litestar's schema pipeline
+    is unavailable (e.g., OpenAPI disabled) or the annotation is a forward-ref string.
+
+    Args:
+        py_type: Python type string (e.g., "dict[str, Team]", "list[User]").
+        fallback: Value type for untyped containers ("unknown" or "any").
+
+    Returns:
+        Tuple of (typescript_type, list_of_custom_types_to_import).
+    """
+    if not py_type:
+        return f"Record<string, {fallback}>", []
+
+    ts_type = py_type.replace("List[", "list[").replace("Dict[", "dict[")
+
+    # list[T] -> Array<T>
+    ts_type = _LIST_GENERIC_PATTERN.sub(r"Array<\1>", ts_type)
+
+    # dict[K, V] -> Record<K, V>; dict -> Record<string, fallback>
+    ts_type = _DICT_GENERIC_PATTERN.sub(r"Record<\1, \2>", ts_type)
+    ts_type = _DICT_PATTERN.sub(f"Record<string, {fallback}>", ts_type)
+
+    # Map scalar builtins
+    for pattern, ts in _PYTHON_TO_TS_SIMPLE_PATTERNS:
+        ts_type = pattern.sub(ts, ts_type)
+
+    # Convert remaining generic syntax: Type[T] -> Type<T>
+    ts_type = _GENERIC_BRACKETS_PATTERN.sub(r"<\1>", ts_type)
+
+    identifiers = _TS_IDENTIFIER_PATTERN.findall(ts_type)
+    ts_builtins = {"Record", "Array", "string", "number", "boolean", "null", "unknown", "any", "never"}
+    custom_types = sorted({t for t in identifiers if t not in ts_builtins})
+
+    return ts_type, custom_types
 
 
 def _make_unique_name(base_name: str, used_names: set[str], path: str, methods: list[str]) -> str:
@@ -522,12 +592,11 @@ def generate_routes_ts(
             f"    path: '{_escape_ts_string(route.path)}',",
             f"    methods: [{methods_str}] as const,",
         ]
-        if route.params:
-            param_names_str = ", ".join(f"'{p}'" for p in route.params)
-            route_entry_lines.append(f"    pathParams: [{param_names_str}] as const,")
-        if route.query_params:
-            query_names_str = ", ".join(f"'{p}'" for p in route.query_params)
-            route_entry_lines.append(f"    queryParams: [{query_names_str}] as const,")
+        param_names_str = ", ".join(f"'{p}'" for p in route.params) if route.params else ""
+        route_entry_lines.append(f"    pathParams: [{param_names_str}] as const,")
+
+        query_names_str = ", ".join(f"'{p}'" for p in route.query_params) if route.query_params else ""
+        route_entry_lines.append(f"    queryParams: [{query_names_str}] as const,")
         if route.component:
             route_entry_lines.append(f"    component: '{_escape_ts_string(route.component)}',")
         route_entry_lines.append("  },")
@@ -535,16 +604,12 @@ def generate_routes_ts(
 
     route_names_union = "\n  | ".join(f"'{name}'" for name in route_names) if route_names else "never"
 
-    return f"""/**
- * Auto-generated route definitions for litestar-vite.
- * DO NOT EDIT - regenerated on server restart and file changes.
- *
- * @generated
- */
+    return f"""// AUTO-GENERATED by litestar-vite. Do not edit.
+/* eslint-disable */
 
 // API base URL - only needed for separate dev servers
 // Set VITE_API_URL=http://localhost:8000 when running Vite separately
-const API_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ?? '';
+const API_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) ?? '';
 
 /** All available route names */
 export type RouteName =
@@ -560,14 +625,17 @@ export interface RouteQueryParams {{
 {chr(10).join(query_params_entries)}
 }}
 
+type EmptyParams = Record<string, never>
+type MergeParams<A, B> =
+  A extends EmptyParams ? (B extends EmptyParams ? EmptyParams : B) : B extends EmptyParams ? A : A & B
+
 /** Combined parameters (path + query) */
-export type RouteParams<T extends RouteName> =
-  RoutePathParams[T] & RouteQueryParams[T];
+export type RouteParams<T extends RouteName> = MergeParams<RoutePathParams[T], RouteQueryParams[T]>
 
 /** Route metadata */
-export const routes = {{
+export const routeDefinitions = {{
 {chr(10).join(routes_entries)}
-}} as const;
+}} as const
 
 /** Check if path params are required for a route */
 type HasRequiredPathParams<T extends RouteName> =
@@ -614,30 +682,30 @@ export function route<T extends RouteName>(
   name: T,
   params?: RouteParams<T>,
 ): string {{
-  const def = routes[name];
-  let url = def.path;
+  const def = routeDefinitions[name];
+  let url: string = def.path;
 
   // Replace path parameters
-  if (params && 'pathParams' in def) {{
+  if (params) {{
     for (const param of def.pathParams) {{
       const value = (params as Record<string, unknown>)[param];
       if (value !== undefined) {{
-        url = url.replace(`{{${{param}}}}`, String(value));
+        url = url.replace("{{" + param + "}}", String(value));
       }}
     }}
   }}
 
   // Add query parameters
-  if (params && 'queryParams' in def) {{
+  if (params) {{
     const queryParts: string[] = [];
     for (const param of def.queryParams) {{
       const value = (params as Record<string, unknown>)[param];
       if (value !== undefined) {{
-        queryParts.push(`${{encodeURIComponent(param)}}=${{encodeURIComponent(String(value))}}`);
+        queryParts.push(encodeURIComponent(param) + "=" + encodeURIComponent(String(value)));
       }}
     }}
     if (queryParts.length > 0) {{
-      url += '?' + queryParts.join('&');
+      url += "?" + queryParts.join("&");
     }}
   }}
 
@@ -647,17 +715,17 @@ export function route<T extends RouteName>(
 
 /** Check if a route exists */
 export function hasRoute(name: string): name is RouteName {{
-  return name in routes;
+  return name in routeDefinitions;
 }}
 
 /** Get all route names */
 export function getRouteNames(): RouteName[] {{
-  return Object.keys(routes) as RouteName[];
+  return Object.keys(routeDefinitions) as RouteName[];
 }}
 
 /** Get route metadata */
-export function getRoute<T extends RouteName>(name: T): (typeof routes)[T] {{
-  return routes[name];
+export function getRoute<T extends RouteName>(name: T): (typeof routeDefinitions)[T] {{
+  return routeDefinitions[name];
 }}
 """
 
@@ -670,6 +738,8 @@ class InertiaPageMetadata:
         component: Inertia component name (e.g., "Home", "Books/Index").
         route_path: Route path for this page.
         props_type: TypeScript type name for page props (from OpenAPI).
+        ts_type: Canonical schema/type name for props derived from Litestar's schema pipeline.
+        custom_types: Referenced schema/type names used within props that may need importing.
         schema_ref: OpenAPI schema $ref if available.
         handler_name: Python handler function name.
     """
@@ -677,6 +747,8 @@ class InertiaPageMetadata:
     component: str
     route_path: str
     props_type: "str | None" = None
+    ts_type: "str | None" = None
+    custom_types: list[str] = field(default_factory=lambda: cast("list[str]", []))
     schema_ref: "str | None" = None
     handler_name: "str | None" = None
 
@@ -713,6 +785,102 @@ def _get_return_type_name(handler: HTTPRouteHandler) -> "str | None":
         return getattr(origin, "__name__", str(origin))
 
     return str(return_type)
+
+
+def _schema_name_from_ref(ref: str) -> str:
+    """Extract schema component name from an OpenAPI $ref.
+
+    Returns:
+        Schema name string.
+    """
+    return ref.rsplit("/", maxsplit=1)[-1]
+
+
+def _collect_ref_names(schema_dict: Any) -> set[str]:
+    """Collect component schema names referenced by $ref within an OpenAPI schema dict.
+
+    Returns:
+        Set of schema names referenced.
+    """
+    names: set[str] = set()
+
+    def _visit(obj: Any) -> None:
+        if isinstance(obj, dict):
+            mapping = cast("dict[str, Any]", obj)
+            ref_value = mapping.get("$ref")
+            if isinstance(ref_value, str) and ref_value.startswith("#/components/schemas/"):
+                names.add(_schema_name_from_ref(ref_value))
+            for v in mapping.values():
+                _visit(v)
+        elif isinstance(obj, list):
+            for v in cast("list[Any]", obj):
+                _visit(v)
+
+    _visit(schema_dict)
+    return names
+
+
+def _resolve_page_props_field_definition(
+    handler: HTTPRouteHandler,
+    schema_creator: SchemaCreator,
+) -> tuple[FieldDefinition | None, Schema | Reference | None]:
+    """Resolve the FieldDefinition and schema result for a handler's Inertia props.
+
+    Mirrors Litestar's response schema generation to ensure consistent schema registration.
+
+    Returns:
+        Tuple of (FieldDefinition or None, Schema or Reference or None).
+    """
+    field_definition = handler.parsed_fn_signature.return_type
+
+    if field_definition.is_subclass_of((NoneType, ASGIResponse)):
+        return None, None
+
+    handler_any = cast("Any", handler)
+    resolve_return_dto = cast("Callable[[], type[AbstractDTO[Any]] | None]", handler_any.resolve_return_dto)
+    dto = resolve_return_dto()
+    if dto is not None:
+        result = dto.create_openapi_schema(
+            field_definition=field_definition,
+            handler_id=handler.handler_id,
+            schema_creator=schema_creator,
+        )
+        return field_definition, result
+
+    if field_definition.is_subclass_of(Template):
+        resolved_field = FieldDefinition.from_annotation(str)
+    elif field_definition.is_subclass_of(LitestarResponse):
+        resolved_field = (
+            field_definition.inner_types[0] if field_definition.inner_types else FieldDefinition.from_annotation(Any)
+        )
+    else:
+        resolved_field = field_definition
+
+    return resolved_field, schema_creator.for_field_definition(resolved_field)
+
+
+def _build_schema_name_map(schema_registry: Any) -> dict[tuple[str, ...], str]:
+    """Build a mapping of schema registry keys to final component names.
+
+    Uses the same shortening and de-duplication logic as SchemaRegistry.generate_components_schemas().
+
+    Returns:
+        Mapping of schema keys to component names.
+    """
+    name_map: dict[tuple[str, ...], str] = {}
+    model_name_groups = getattr(schema_registry, "_model_name_groups", {})
+
+    for name, group in model_name_groups.items():
+        if len(group) == 1:
+            name_map[group[0].key] = name
+            continue
+
+        full_keys = [registered_schema.key for registered_schema in group]
+        names = ["_".join(k) for k in schema_registry.remove_common_prefix(full_keys)]
+        for name_, registered_schema in zip(names, group, strict=False):
+            name_map[registered_schema.key] = name_
+
+    return name_map
 
 
 def _get_openapi_schema_ref(
@@ -753,10 +921,137 @@ def _get_openapi_schema_ref(
     return None
 
 
+def _try_create_openapi_context(app: "Litestar") -> tuple[OpenAPIContext | None, SchemaCreator | None]:
+    """Create OpenAPIContext and SchemaCreator if available.
+
+    This mirrors Litestar's internal OpenAPI setup but is tolerant of missing
+    configuration or internal API changes.
+
+    Returns:
+        Tuple of (OpenAPIContext or None, SchemaCreator or None).
+    """
+    if app.openapi_config is None:
+        return None, None
+
+    with contextlib.suppress(AttributeError, TypeError, ValueError):
+        openapi_context = OpenAPIContext(
+            openapi_config=app.openapi_config,
+            plugins=app.plugins.openapi,
+        )
+        return openapi_context, SchemaCreator.from_openapi_context(openapi_context)
+
+    return None, None
+
+
+def _extract_inertia_component(handler: HTTPRouteHandler) -> str | None:
+    """Resolve the Inertia component name from handler options.
+
+    Returns:
+        Component name string or None if not set.
+    """
+    opt = handler.opt or {}
+    component = opt.get("component") or opt.get("page")
+    return component if isinstance(component, str) and component else None
+
+
+def _infer_inertia_props_type(
+    component: str,
+    handler: HTTPRouteHandler,
+    schema_creator: SchemaCreator | None,
+    page_schema_keys: dict[str, tuple[str, ...]],
+    page_schema_dicts: dict[str, dict[str, Any]],
+    *,
+    fallback_type: str,
+) -> str | None:
+    """Infer a page's props type and collect schema sources for later resolution.
+
+    Returns:
+        TypeScript type string or None if untyped.
+    """
+    if schema_creator is not None:
+        field_def, schema_result = _resolve_page_props_field_definition(handler, schema_creator)
+        if field_def is not None and isinstance(schema_result, Reference):
+            page_schema_keys[component] = _get_normalized_schema_key(field_def)
+            return None
+        if isinstance(schema_result, Schema):
+            schema_dict = schema_result.to_schema()
+            page_schema_dicts[component] = schema_dict
+            return _ts_type_from_openapi(schema_dict)
+        return None
+
+    raw_type = _get_return_type_name(handler)
+    if not raw_type:
+        return None
+    props_type, _ = _python_type_to_typescript(raw_type, fallback=fallback_type)
+    return props_type
+
+
+def _openapi_components_schemas(openapi_schema: dict[str, Any] | None) -> dict[str, Any]:
+    """Extract OpenAPI components.schemas dict as a concrete mapping."""
+    if not isinstance(openapi_schema, dict):
+        return {}
+    schema_dict = openapi_schema
+    components = schema_dict.get("components")
+    if not isinstance(components, dict):
+        return {}
+    components_dict = cast("dict[str, Any]", components)
+    schemas = components_dict.get("schemas")
+    if not isinstance(schemas, dict):
+        return {}
+    return cast("dict[str, Any]", schemas)
+
+
+def _finalize_inertia_pages(
+    pages: list[InertiaPageMetadata],
+    *,
+    openapi_schema: dict[str, Any] | None,
+    openapi_context: OpenAPIContext,
+    page_schema_keys: dict[str, tuple[str, ...]],
+    page_schema_dicts: dict[str, dict[str, Any]],
+) -> None:
+    """Finalize page type names and custom type references from the schema registry."""
+    openapi_context.schema_registry.generate_components_schemas()
+    name_map = _build_schema_name_map(openapi_context.schema_registry)
+    openapi_components = _openapi_components_schemas(openapi_schema)
+
+    for page in pages:
+        schema_key = page_schema_keys.get(page.component)
+
+        schema_name: str | None = None
+        if page.schema_ref:
+            schema_name = _schema_name_from_ref(page.schema_ref)
+        elif schema_key:
+            schema_name = name_map.get(schema_key)
+
+        if schema_name:
+            page.ts_type = schema_name
+            page.props_type = schema_name
+
+        custom_types: set[str] = set()
+        if page.ts_type:
+            custom_types.add(page.ts_type)
+
+        if page.schema_ref:
+            openapi_schema_dict = openapi_components.get(page.ts_type or "")
+            if isinstance(openapi_schema_dict, dict):
+                custom_types.update(_collect_ref_names(openapi_schema_dict))
+        else:
+            page_schema_dict = page_schema_dicts.get(page.component)
+            if isinstance(page_schema_dict, dict):
+                custom_types.update(_collect_ref_names(page_schema_dict))
+            elif schema_key:
+                registered = openapi_context.schema_registry._schema_key_map.get(schema_key)  # pyright: ignore[reportPrivateUsage]
+                if registered:
+                    custom_types.update(_collect_ref_names(registered.schema.to_schema()))
+
+        page.custom_types = sorted(custom_types)
+
+
 def extract_inertia_pages(
     app: "Litestar",
     *,
     openapi_schema: dict[str, Any] | None = None,
+    fallback_type: "str" = "unknown",
 ) -> list[InertiaPageMetadata]:
     """Extract Inertia page metadata from a Litestar application.
 
@@ -766,25 +1061,35 @@ def extract_inertia_pages(
     Args:
         app: Litestar application instance.
         openapi_schema: Optional OpenAPI schema for enhanced type info.
+        fallback_type: Fallback value type for untyped containers in props.
+            Use "unknown" (default) for strictness or "any" for permissiveness.
 
     Returns:
         List of InertiaPageMetadata objects.
     """
     pages: list[InertiaPageMetadata] = []
 
-    for http_route, route_handler in _iter_route_handlers(app):
-        component = None
-        if hasattr(route_handler, "opt") and route_handler.opt:
-            component = route_handler.opt.get("component") or route_handler.opt.get("page")
+    openapi_context, schema_creator = _try_create_openapi_context(app)
 
+    page_schema_keys: dict[str, tuple[str, ...]] = {}
+    page_schema_dicts: dict[str, dict[str, Any]] = {}
+
+    for http_route, route_handler in _iter_route_handlers(app):
+        component = _extract_inertia_component(route_handler)
         if not component:
             continue
 
-        full_path = str(http_route.path)
-        normalized_path = _normalize_path(full_path)
+        normalized_path = _normalize_path(str(http_route.path))
         handler_name = route_handler.handler_name or route_handler.name
 
-        props_type = _get_return_type_name(route_handler)
+        props_type = _infer_inertia_props_type(
+            component,
+            route_handler,
+            schema_creator,
+            page_schema_keys,
+            page_schema_dicts,
+            fallback_type=fallback_type,
+        )
 
         method = next(iter(route_handler.http_methods), "GET") if route_handler.http_methods else "GET"
         schema_ref = _get_openapi_schema_ref(
@@ -804,6 +1109,15 @@ def extract_inertia_pages(
             )
         )
 
+    if openapi_context is not None and schema_creator is not None:
+        _finalize_inertia_pages(
+            pages,
+            openapi_schema=openapi_schema,
+            openapi_context=openapi_context,
+            page_schema_keys=page_schema_keys,
+            page_schema_dicts=page_schema_dicts,
+        )
+
     return pages
 
 
@@ -813,6 +1127,7 @@ def generate_inertia_pages_json(
     openapi_schema: dict[str, Any] | None = None,
     include_default_auth: bool = True,
     include_default_flash: bool = True,
+    types_config: "TypeGenConfig | None" = None,
 ) -> dict[str, Any]:
     """Generate Inertia pages metadata JSON.
 
@@ -824,11 +1139,16 @@ def generate_inertia_pages_json(
         openapi_schema: Optional OpenAPI schema for enhanced type info.
         include_default_auth: Include default User/AuthData types.
         include_default_flash: Include default FlashMessages type.
+        types_config: Optional TypeGenConfig to include import and fallback hints.
 
     Returns:
         Dictionary with pages metadata for JSON export.
     """
-    pages_metadata = extract_inertia_pages(app, openapi_schema=openapi_schema)
+    pages_metadata = extract_inertia_pages(
+        app,
+        openapi_schema=openapi_schema,
+        fallback_type=types_config.fallback_type if types_config is not None else "unknown",
+    )
 
     pages_dict: dict[str, dict[str, Any]] = {}
 
@@ -839,6 +1159,10 @@ def generate_inertia_pages_json(
 
         if page.props_type:
             page_data["propsType"] = page.props_type
+        if page.ts_type:
+            page_data["tsType"] = page.ts_type
+        if page.custom_types:
+            page_data["customTypes"] = page.custom_types
 
         if page.schema_ref:
             page_data["schemaRef"] = page.schema_ref
@@ -858,9 +1182,15 @@ def generate_inertia_pages_json(
         "includeDefaultFlash": include_default_flash,
     }
 
-    return {
+    root: dict[str, Any] = {
         "pages": pages_dict,
         "sharedProps": shared_props,
         "typeGenConfig": type_gen_config,
         "generatedAt": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
     }
+
+    if types_config is not None:
+        root["typeImportPaths"] = types_config.type_import_paths
+        root["fallbackType"] = types_config.fallback_type
+
+    return root

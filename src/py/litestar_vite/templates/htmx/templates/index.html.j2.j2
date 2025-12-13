@@ -1,14 +1,8 @@
 {% raw %}{% extends "base.html.j2" %}{% endraw %}
 
 {% raw %}{% block content %}{% endraw %}
-<main class="app" x-data="{ count: 0 }">
+<main class="app">
   <h1>{{ "{{ project_name }}" }}</h1>
-  <p>HTMX + Alpine.js + Litestar</p>
-  <div class="card">
-    <button @click="count++">
-      count is <span x-text="count"></span>
-    </button>
-  </div>
   <div class="card">
     <button hx-get="/api/hello" hx-target="#greeting" hx-swap="innerHTML">
       Load Greeting from API

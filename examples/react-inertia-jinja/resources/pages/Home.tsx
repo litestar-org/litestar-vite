@@ -1,5 +1,9 @@
 import { Head, Link } from "@inertiajs/react"
-import { route } from "@/generated/routes"
+import { route, routeDefinitions } from "@/generated/routes"
+
+type RouteName = keyof typeof routeDefinitions
+type RouteDefinition = (typeof routeDefinitions)[RouteName]
+const routeEntries = Object.entries(routeDefinitions) as [RouteName, RouteDefinition][]
 
 interface Props {
   message?: string
@@ -27,6 +31,26 @@ export default function Home({ message }: Props) {
             View Books
           </Link>
         </nav>
+
+        <footer className="border-slate-200 border-t pt-8 text-slate-400 text-xs">
+          <details>
+            <summary className="cursor-pointer">Type-safe route() helper usage</summary>
+            <div className="mt-2 space-y-1 rounded bg-slate-100 p-2 font-mono">
+              <div>route("index") → {route("index")}</div>
+              <div>route("books_page") → {route("books_page")}</div>
+            </div>
+          </details>
+          <details className="mt-2">
+            <summary className="cursor-pointer">Route definitions (from generated routes.ts)</summary>
+            <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
+              {routeEntries.map(([name, def]) => (
+                <span key={name} className="font-mono text-slate-600">
+                  {name} → {def.path}
+                </span>
+              ))}
+            </div>
+          </details>
+        </footer>
       </main>
     </>
   )

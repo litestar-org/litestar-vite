@@ -13,7 +13,24 @@ describe("litestar-meta runtime config fallback", () => {
   const makeTempRuntimeConfig = (version: string): string => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "litevite-"))
     const cfgPath = path.join(dir, ".litestar.json")
-    const payload = { litestarVersion: version }
+    const payload = {
+      assetUrl: "/static",
+      bundleDir: "public",
+      resourceDir: "resources",
+      staticDir: "public",
+      hotFile: "hot",
+      manifest: "manifest.json",
+      mode: "spa",
+      proxyMode: "vite",
+      host: "localhost",
+      port: 5173,
+      ssrEnabled: false,
+      ssrOutDir: null,
+      types: null,
+      executor: "node",
+      logging: null,
+      litestarVersion: version,
+    }
     fs.writeFileSync(cfgPath, JSON.stringify(payload), "utf8")
     return cfgPath
   }

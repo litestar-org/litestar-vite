@@ -20,7 +20,7 @@ from litestar_vite.executor import (
 def test_default_vite_config() -> None:
     config = ViteConfig()
     assert isinstance(config.bundle_dir, Path)
-    assert isinstance(config.public_dir, Path)
+    assert isinstance(config.static_dir, Path)
     assert config.ssr_output_dir is None
     assert isinstance(config.resource_dir, Path)
     assert isinstance(config.root_dir, (Path, PosixPath))
@@ -116,13 +116,13 @@ def test_proxy_mode_respects_direct_env(monkeypatch: pytest.MonkeyPatch) -> None
     assert config.proxy_mode == "direct"
 
 
-def test_proxy_mode_respects_vite_direct_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test VITE_PROXY_MODE=vite_direct is recognized (backwards compat)."""
-    monkeypatch.setenv("VITE_PROXY_MODE", "vite_direct")
+def test_proxy_mode_respects_none_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test VITE_PROXY_MODE=none disables proxy."""
+    monkeypatch.setenv("VITE_PROXY_MODE", "none")
 
     config = RuntimeConfig()
 
-    assert config.proxy_mode == "direct"
+    assert config.proxy_mode is None
 
 
 def test_proxy_mode_respects_proxy_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -134,13 +134,12 @@ def test_proxy_mode_respects_proxy_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.proxy_mode == "proxy"
 
 
-def test_proxy_mode_ssr_alias(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test VITE_PROXY_MODE=ssr maps to proxy."""
-    monkeypatch.setenv("VITE_PROXY_MODE", "ssr")
-
-    config = RuntimeConfig()
-
-    assert config.proxy_mode == "proxy"
+@pytest.mark.parametrize("value", ["vite_direct", "ssr", "external_proxy", "external", "disabled", "off", ""])
+def test_proxy_mode_invalid_env_raises(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    """Test legacy/invalid VITE_PROXY_MODE values raise (no compatibility aliases)."""
+    monkeypatch.setenv("VITE_PROXY_MODE", value)
+    with pytest.raises(ValueError, match="VITE_PROXY_MODE"):
+        RuntimeConfig()
 
 
 # ============================================================================

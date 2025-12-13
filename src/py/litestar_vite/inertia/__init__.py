@@ -1,5 +1,5 @@
+from litestar_vite.config import InertiaConfig
 from litestar_vite.inertia import helpers
-from litestar_vite.inertia.config import InertiaConfig
 from litestar_vite.inertia.exception_handler import create_inertia_exception_response, exception_to_http_response
 from litestar_vite.inertia.helpers import (
     PropFilter,
@@ -11,7 +11,6 @@ from litestar_vite.inertia.helpers import (
     extract_merge_props,
     flash,
     get_shared_props,
-    js_routes_script,
     lazy,
     merge,
     only,
@@ -27,8 +26,6 @@ from litestar_vite.inertia.response import (
     InertiaRedirect,
     InertiaResponse,
 )
-
-from .routes import generate_js_routes
 
 __all__ = (
     "InertiaBack",
@@ -51,10 +48,8 @@ __all__ = (
     "extract_deferred_props",
     "extract_merge_props",
     "flash",
-    "generate_js_routes",
     "get_shared_props",
     "helpers",
-    "js_routes_script",
     "lazy",
     "merge",
     "only",

@@ -52,6 +52,20 @@ interface HtmxExtension {
   handleSwap?: (swapStyle: string, target: Element, fragment: DocumentFragment | Element) => Element[]
 }
 
+type HtmxHeaders = Record<string, string> | Headers
+
+interface HtmxConfigRequestEventDetail {
+  headers?: HtmxHeaders
+}
+
+function getHeadersFromConfigRequestEvent(evt: CustomEvent): HtmxHeaders | null {
+  const detail = evt.detail as unknown
+  if (!detail || typeof detail !== "object") return null
+  const { headers } = detail as HtmxConfigRequestEventDetail
+  if (!headers || typeof headers !== "object") return null
+  return headers
+}
+
 /** Template context - inherits from data via prototype for direct access */
 interface Ctx {
   $data: unknown
@@ -64,9 +78,19 @@ interface Ctx {
   [key: string]: unknown
 }
 
-let debug = typeof process !== "undefined" && process.env?.NODE_ENV !== "production"
+let debug = false
 const cache = new Map<string, ((c: Ctx) => unknown) | null>()
 const memoStore = new WeakMap<Node, Record<string, unknown>>()
+const registeredHtmxInstances = new WeakSet<object>()
+
+function runtime(node: Node): Record<string, unknown> {
+  let store = memoStore.get(node)
+  if (!store) {
+    store = {}
+    memoStore.set(node, store)
+  }
+  return store
+}
 
 // =============================================================================
 // Registration
@@ -74,12 +98,19 @@ const memoStore = new WeakMap<Node, Record<string, unknown>>()
 
 export function registerHtmxExtension(): void {
   if (typeof window === "undefined" || !window.htmx) return
+  const htmx = window.htmx as unknown as object
+  if (registeredHtmxInstances.has(htmx)) return
+  registeredHtmxInstances.add(htmx)
 
   window.htmx.defineExtension("litestar", {
     onEvent(name, evt) {
       if (name === "htmx:configRequest") {
         const token = getCsrfToken()
-        if (token) (evt.detail as { headers: Record<string, string> }).headers["X-CSRF-Token"] = token
+        const headers = getHeadersFromConfigRequestEvent(evt)
+        if (token && headers) {
+          if (headers instanceof Headers) headers.set("X-CSRF-Token", token)
+          else headers["X-CSRF-Token"] = token
+        }
       }
       return true
     },
@@ -231,12 +262,25 @@ const directives: Dir[] = [
       const name = a.name.slice(1)
       const g = expr(a.value)
       if (!g) return null
-      let bound = false
       return (ctx, el) => {
-        if (!bound) {
-          bound = true
-          el.addEventListener(name, (e) => g({ ...ctx, $event: e }))
-        }
+        const store = runtime(el)
+        const ctxKey = `__litestar_ctx:${name}`
+        const boundKey = `__litestar_bound:${name}`
+
+        // Always keep the latest context for the handler
+        store[ctxKey] = ctx
+
+        // Bind the DOM listener only once per element+event
+        if (store[boundKey]) return
+        store[boundKey] = true
+
+        el.addEventListener(name, (e) => {
+          const current = memoStore.get(el)?.[ctxKey] as Ctx | undefined
+          if (!current) return
+          const eventCtx = Object.create(current) as Ctx
+          eventCtx.$event = e
+          g(eventCtx)
+        })
       }
     },
   },
@@ -480,11 +524,7 @@ function compileTextExpr(t: string): ((c: Ctx) => unknown) | null {
 // =============================================================================
 
 function memo<T>(node: Node, key: string, fn: () => T): T {
-  let store = memoStore.get(node)
-  if (!store) {
-    store = {}
-    memoStore.set(node, store)
-  }
+  const store = runtime(node)
   if (!(key in store)) {
     store[key] = fn()
   }
@@ -562,4 +602,3 @@ export function addDirective(dir: Dir): void {
 }
 
 // Auto-register
-if (typeof window !== "undefined" && window.htmx) registerHtmxExtension()

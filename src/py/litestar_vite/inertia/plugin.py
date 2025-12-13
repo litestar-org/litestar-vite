@@ -11,15 +11,7 @@ if TYPE_CHECKING:
     from litestar import Litestar
     from litestar.config.app import AppConfig
 
-    from litestar_vite.inertia.config import InertiaConfig
-
-
-def set_js_routes(app: "Litestar") -> "None":
-    """Generate the route structure of the application on startup."""
-    from litestar_vite.inertia.routes import generate_js_routes
-
-    js_routes = generate_js_routes(app)
-    app.state.js_routes = js_routes
+    from litestar_vite.config import InertiaConfig
 
 
 class InertiaPlugin(InitPluginProtocol):
@@ -126,7 +118,6 @@ class InertiaPlugin(InitPluginProtocol):
         app_config.request_class = InertiaRequest
         app_config.response_class = InertiaResponse
         app_config.middleware.append(InertiaMiddleware)
-        app_config.on_startup.append(set_js_routes)
         app_config.signature_types.extend([InertiaRequest, InertiaResponse, InertiaBack, StaticProp, DeferredProp])
         app_config.type_encoders = {
             StaticProp: lambda val: val.render(),

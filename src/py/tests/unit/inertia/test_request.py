@@ -182,12 +182,12 @@ def test_to_inertia_dict() -> None:
     from litestar_vite.inertia.types import to_inertia_dict
 
     @dataclass
-    class TestProps:
+    class Props:
         snake_case: str
         another_field: int
         optional_field: str | None = None
 
-    obj = TestProps(snake_case="value", another_field=42)
+    obj = Props(snake_case="value", another_field=42)
     result = to_inertia_dict(obj)
 
     assert result == {"snakeCase": "value", "anotherField": 42}
@@ -201,11 +201,11 @@ def test_to_inertia_dict_with_required_fields() -> None:
     from litestar_vite.inertia.types import to_inertia_dict
 
     @dataclass
-    class TestProps:
+    class PropsWithRequiredField:
         required_field: str | None
         optional_field: str | None = None
 
-    obj = TestProps(required_field=None)
+    obj = PropsWithRequiredField(required_field=None)
     result = to_inertia_dict(obj, required_fields={"required_field"})
 
     assert result == {"requiredField": None}

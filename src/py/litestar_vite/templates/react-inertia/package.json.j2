@@ -1,0 +1,46 @@
+{
+  "name": "{{ project_name }}",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+{% if enable_ssr %}
+    "build": "vite build{% if use_typescript %} && tsc -b --noEmit{% endif %} && vite build --ssr {{ resource_dir }}/ssr.tsx",
+{% else %}
+    "build": "vite build{% if use_typescript %} && tsc -b --noEmit{% endif %}",
+{% endif %}
+    "preview": "vite preview",
+{% if enable_ssr %}
+    "serve": "NODE_ENV=production node {{ resource_dir }}/bootstrap/ssr/ssr.js",
+{% else %}
+    "serve": "vite preview",
+{% endif %}
+    "watch": "npm run serve"{% if generate_client %},
+    "generate-types": "openapi-ts"{% endif %}
+  },
+  "dependencies": {
+{%- for dep in dependencies %}
+    "{{ dep }}": "latest"{% if not loop.last or generate_zod or generate_client %},{% endif %}
+{%- endfor %}
+{%- if generate_client %}
+    "axios": "^1.13.2"{% if generate_zod %},{% endif %}
+{%- endif %}
+{%- if generate_zod %}
+    "zod": "^4.1.13"
+{%- endif %}
+  },
+  "devDependencies": {
+{%- for dep in dev_dependencies %}
+    "{{ dep }}": "latest",
+{%- endfor %}
+{%- if use_tailwind %}
+    "@tailwindcss/vite": "^4.1.17",
+    "tailwindcss": "^4.1.17",
+{%- endif %}
+{%- if generate_client %}
+    "@hey-api/openapi-ts": "^0.88.0",
+{%- endif %}
+    "litestar-vite-plugin": "latest",
+    "vite": "^7.2.6"
+  }
+}

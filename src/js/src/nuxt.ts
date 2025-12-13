@@ -17,7 +17,7 @@
  *     apiPrefix: '/api',
  *     types: {
  *       enabled: true,
- *       output: 'types/api',
+ *       output: 'generated',
  *     },
  *   },
  * });
@@ -30,8 +30,8 @@ import fs from "node:fs"
 import path from "node:path"
 import colors from "picocolors"
 import type { Plugin } from "vite"
-
-import { createTypeGenerationPlugin } from "./shared/create-type-gen-plugin.js"
+import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema.js"
+import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
 
 /**
  * Normalize a host address for use in URLs.
@@ -65,7 +65,7 @@ export interface NuxtTypesConfig {
    * Path to output generated TypeScript types.
    * Relative to the Nuxt project root.
    *
-   * @default 'types/api'
+   * @default 'generated'
    */
   output?: string
 
@@ -84,6 +84,13 @@ export interface NuxtTypesConfig {
   routesPath?: string
 
   /**
+   * Path where Inertia page props metadata is exported by Litestar.
+   *
+   * @default 'inertia-pages.json'
+   */
+  pagePropsPath?: string
+
+  /**
    * Generate Zod schemas in addition to TypeScript types.
    *
    * @default false
@@ -96,6 +103,27 @@ export interface NuxtTypesConfig {
    * @default true
    */
   generateSdk?: boolean
+
+  /**
+   * Generate typed routes.ts from routes.json metadata.
+   *
+   * @default true
+   */
+  generateRoutes?: boolean
+
+  /**
+   * Generate Inertia page props types from inertia-pages.json metadata.
+   *
+   * @default true
+   */
+  generatePageProps?: boolean
+
+  /**
+   * Register route() globally on window object.
+   *
+   * @default false
+   */
+  globalRoute?: boolean
 
   /**
    * Debounce time in milliseconds for type regeneration.
@@ -166,16 +194,19 @@ interface ResolvedNuxtConfig {
   devPort?: number
   /** JavaScript runtime executor for package commands */
   executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
+  /** Whether .litestar.json was found */
+  hasPythonConfig: boolean
 }
 
 /**
  * Resolve configuration with defaults.
  */
 function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
-  const runtimeConfigPath = process.env.LITESTAR_VITE_CONFIG_PATH
   let hotFile: string | undefined
   let proxyMode: "vite" | "direct" | "proxy" | null = "vite"
   let devPort: number | undefined
+  let pythonTypesConfig: BridgeTypesConfig | undefined
+  let hasPythonConfig = false
 
   // Read port from VITE_PORT environment variable (set by Python)
   const envPort = process.env.VITE_PORT
@@ -188,26 +219,16 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
 
   let pythonExecutor: "node" | "bun" | "deno" | "yarn" | "pnpm" | undefined
 
-  if (runtimeConfigPath && fs.existsSync(runtimeConfigPath)) {
-    try {
-      const json = JSON.parse(fs.readFileSync(runtimeConfigPath, "utf-8")) as {
-        bundleDir?: string
-        hotFile?: string
-        proxyMode?: "vite" | "direct" | "proxy" | null
-        port?: number
-        executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
-      }
-      const bundleDir = json.bundleDir ?? "public"
-      const hot = json.hotFile ?? "hot"
-      hotFile = path.resolve(process.cwd(), bundleDir, hot)
-      proxyMode = json.proxyMode ?? "vite"
-      // Runtime config port is the preferred dev server port
-      if (json.port !== undefined) {
-        devPort = json.port
-      }
-      pythonExecutor = json.executor
-    } catch {
-      hotFile = undefined
+  const runtime = readBridgeConfig()
+  if (runtime) {
+    hasPythonConfig = true
+    const hot = runtime.hotFile
+    hotFile = path.isAbsolute(hot) ? hot : path.resolve(process.cwd(), runtime.bundleDir, hot)
+    proxyMode = runtime.proxyMode
+    devPort = runtime.port
+    pythonExecutor = runtime.executor
+    if (runtime.types) {
+      pythonTypesConfig = runtime.types
     }
   }
 
@@ -216,22 +237,44 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
   if (config.types === true) {
     typesConfig = {
       enabled: true,
-      output: "types/api",
-      openapiPath: "openapi.json",
-      routesPath: "routes.json",
-      generateZod: false,
-      generateSdk: true,
+      output: pythonTypesConfig?.output ?? "generated",
+      openapiPath: pythonTypesConfig?.openapiPath ?? "openapi.json",
+      routesPath: pythonTypesConfig?.routesPath ?? "routes.json",
+      pagePropsPath: pythonTypesConfig?.pagePropsPath ?? "inertia-pages.json",
+      generateZod: pythonTypesConfig?.generateZod ?? false,
+      generateSdk: pythonTypesConfig?.generateSdk ?? true,
+      generateRoutes: pythonTypesConfig?.generateRoutes ?? true,
+      generatePageProps: pythonTypesConfig?.generatePageProps ?? true,
+      globalRoute: pythonTypesConfig?.globalRoute ?? false,
       debounce: 300,
     }
   } else if (typeof config.types === "object" && config.types !== null) {
     typesConfig = {
       enabled: config.types.enabled ?? true,
-      output: config.types.output ?? "types/api",
-      openapiPath: config.types.openapiPath ?? "openapi.json",
-      routesPath: config.types.routesPath ?? "routes.json",
-      generateZod: config.types.generateZod ?? false,
-      generateSdk: config.types.generateSdk ?? true,
+      output: config.types.output ?? pythonTypesConfig?.output ?? "generated",
+      openapiPath: config.types.openapiPath ?? pythonTypesConfig?.openapiPath ?? "openapi.json",
+      routesPath: config.types.routesPath ?? pythonTypesConfig?.routesPath ?? "routes.json",
+      pagePropsPath: config.types.pagePropsPath ?? pythonTypesConfig?.pagePropsPath ?? "inertia-pages.json",
+      generateZod: config.types.generateZod ?? pythonTypesConfig?.generateZod ?? false,
+      generateSdk: config.types.generateSdk ?? pythonTypesConfig?.generateSdk ?? true,
+      generateRoutes: config.types.generateRoutes ?? pythonTypesConfig?.generateRoutes ?? true,
+      generatePageProps: config.types.generatePageProps ?? pythonTypesConfig?.generatePageProps ?? true,
+      globalRoute: config.types.globalRoute ?? pythonTypesConfig?.globalRoute ?? false,
       debounce: config.types.debounce ?? 300,
+    }
+  } else if (config.types !== false && pythonTypesConfig?.enabled) {
+    typesConfig = {
+      enabled: true,
+      output: pythonTypesConfig.output ?? "generated",
+      openapiPath: pythonTypesConfig.openapiPath ?? "openapi.json",
+      routesPath: pythonTypesConfig.routesPath ?? "routes.json",
+      pagePropsPath: pythonTypesConfig.pagePropsPath ?? "inertia-pages.json",
+      generateZod: pythonTypesConfig.generateZod ?? false,
+      generateSdk: pythonTypesConfig.generateSdk ?? true,
+      generateRoutes: pythonTypesConfig.generateRoutes ?? true,
+      generatePageProps: pythonTypesConfig.generatePageProps ?? true,
+      globalRoute: pythonTypesConfig.globalRoute ?? false,
+      debounce: 300,
     }
   }
 
@@ -244,6 +287,7 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
     proxyMode,
     devPort,
     executor: config.executor ?? pythonExecutor,
+    hasPythonConfig,
   }
 }
 
@@ -346,48 +390,28 @@ function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
   }
 }
 
-/**
- * Litestar Vite plugins for Nuxt.
- *
- * This function returns an array of Vite plugins that can be added to Nuxt's
- * vite configuration. For the full Nuxt module experience, use the module
- * directly in your nuxt.config.ts.
- *
- * @param userConfig - Configuration options
- * @returns Array of Vite plugins
- *
- * @example Using as Vite plugins in nuxt.config.ts
- * ```typescript
- * import { litestarPlugins } from 'litestar-vite-plugin/nuxt';
- *
- * export default defineNuxtConfig({
- *   vite: {
- *     plugins: [
- *       ...litestarPlugins({
- *         apiProxy: 'http://localhost:8000',
- *         types: true,
- *       }),
- *     ],
- *   },
- * });
- * ```
- */
-export function litestarPlugins(userConfig: LitestarNuxtConfig = {}): Plugin[] {
-  const config = resolveConfig(userConfig)
+/** Internal helper to build Nuxt-side Vite plugins. */
+function litestarPluginsFromResolved(config: ResolvedNuxtConfig): Plugin[] {
   const plugins: Plugin[] = [createProxyPlugin(config)]
 
   if (config.types !== false && config.types.enabled) {
     plugins.push(
-      createTypeGenerationPlugin(config.types, {
-        frameworkName: "litestar-nuxt",
+      createLitestarTypeGenPlugin(config.types, {
         pluginName: "litestar-nuxt-types",
-        clientPlugin: "@hey-api/client-nuxt",
+        frameworkName: "litestar-nuxt",
+        sdkClientPlugin: "@hey-api/client-nuxt",
         executor: config.executor,
+        hasPythonConfig: config.hasPythonConfig,
       }),
     )
   }
 
   return plugins
+}
+
+/** Internal helper to build Nuxt-side Vite plugins. */
+function _litestarPlugins(userConfig: LitestarNuxtConfig = {}): Plugin[] {
+  return litestarPluginsFromResolved(resolveConfig(userConfig))
 }
 
 /**
@@ -405,7 +429,7 @@ export function litestarPlugins(userConfig: LitestarNuxtConfig = {}): Plugin[] {
  *     apiPrefix: '/api',
  *     types: {
  *       enabled: true,
- *       output: 'types/api',
+ *       output: 'generated',
  *     },
  *   },
  * });
@@ -414,8 +438,8 @@ export function litestarPlugins(userConfig: LitestarNuxtConfig = {}): Plugin[] {
  * @example Using generated types in a composable
  * ```typescript
  * // composables/useApi.ts
- * import type { User } from '~/types/api/types.gen';
- * import { route } from '~/types/api/routes';
+ * import type { User } from '~/generated/api/types.gen';
+ * import { route } from '~/generated/routes';
  *
  * export async function useUser(id: string) {
  *   const { data } = await useFetch<User>(route('users.show', { id }));
@@ -466,7 +490,7 @@ function litestarNuxtModule(userOptions: LitestarNuxtConfig, nuxt: NuxtContext):
   const nuxtConfigOptions = (nuxt.options as Record<string, unknown>).litestar as LitestarNuxtConfig | undefined
   const mergedOptions = { ...nuxtConfigOptions, ...userOptions }
   const config = resolveConfig(mergedOptions)
-  const plugins = litestarPlugins(config)
+  const plugins = litestarPluginsFromResolved(config)
 
   // Add plugins to Nuxt's Vite config
   nuxt.options.vite = nuxt.options.vite || {}

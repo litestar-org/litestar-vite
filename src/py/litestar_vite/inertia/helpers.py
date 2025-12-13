@@ -3,15 +3,12 @@ from collections import defaultdict
 from collections.abc import Callable, Coroutine, Generator, Iterable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
-from functools import lru_cache
-from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Generic, Literal, TypeGuard, TypeVar, cast, overload
 
 from anyio.from_thread import BlockingPortal, start_blocking_portal
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.utils.empty import value_or_default
 from litestar.utils.scope.state import ScopeState
-from markupsafe import Markup
 from typing_extensions import ParamSpec
 
 from litestar_vite.inertia.types import ScrollPropsConfig
@@ -469,7 +466,7 @@ class StaticProp(Generic[PropKeyT, StaticT]):
     def key(self) -> "PropKeyT":
         return self._key
 
-    def render(self, portal: "BlockingPortal | None" = None) -> "StaticT":
+    def render(self, portal: "BlockingPortal | None" = None) -> "StaticT":  # pyright: ignore
         return self._result
 
 
@@ -883,42 +880,6 @@ def clear_history(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
     except (AttributeError, ImproperlyConfiguredException):
         msg = "Unable to set clear_history flag. A valid session was not found for this request."
         connection.logger.warning(msg)
-
-
-@lru_cache(maxsize=128)
-def _markup_safe_json_escape(js_routes: str) -> str:
-    """Escape JSON string for safe embedding in HTML script tags.
-
-    Caches results since the same route data is often rendered multiple times.
-
-    Args:
-        js_routes: JSON string to escape.
-
-    Returns:
-        Escaped string safe for HTML embedding.
-    """
-    return js_routes.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026").replace("'", "\\u0027")
-
-
-def js_routes_script(js_routes: "Mapping[str, str]") -> "Markup":
-    """Generate a script tag that injects routes into the global scope.
-
-    Args:
-        js_routes: Mapping of route names to paths.
-
-    Returns:
-        Markup containing the script tag.
-    """
-    from litestar.serialization import encode_json
-
-    escaped = _markup_safe_json_escape(encode_json(js_routes).decode("utf-8"))
-    return Markup(
-        dedent(f"""
-        <script type="module">
-        globalThis.routes = JSON.parse('{escaped}')
-        </script>
-        """),
-    )
 
 
 def is_pagination_container(value: "Any") -> bool:

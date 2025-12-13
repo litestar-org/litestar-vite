@@ -1,58 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
 
 export const Route = createFileRoute("/books")({
   component: BooksPage,
 });
 
-type Book = {
-  id: number;
-  title: string;
-  author: string;
-  year: number;
-  tags: string[];
-};
-
 function BooksPage() {
-  const [books, setBooks] = useState<Book[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/books")
-      .then((res) => res.json())
-      .then((data) => {
-        setBooks(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
-
-  if (loading) {
-    return <div className="loading">Loading...</div>;
-  }
-
-  if (books.length === 0) {
-    return (
-      <section className="card">
-        <h2>Books</h2>
-        <p className="hint">
-          Add an API endpoint at <code>/api/books</code> to see data here.
-        </p>
-      </section>
-    );
-  }
-
-  return (
-    <section className="books-grid">
-      {books.map((book) => (
-        <article key={book.id} className="card">
-          <h3>{book.title}</h3>
-          <p>
-            {book.author} &bull; {book.year}
-          </p>
-          <p className="tags">{book.tags.join(" · ")}</p>
-        </article>
-      ))}
-    </section>
-  );
+  return <main></main>;
 }

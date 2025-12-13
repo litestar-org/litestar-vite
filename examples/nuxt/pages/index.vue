@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // Import type-safe route helper from generated routes
-import { route } from "~/generated/routes"
+import { route, routeDefinitions } from "~/generated/routes"
+
+const routeEntries = Object.entries(routeDefinitions)
 
 type Book = {
   id: number
@@ -84,6 +86,14 @@ const view = ref<"overview" | "books">("overview")
           <div>route("summary") → {{ route("summary") }}</div>
           <div>route("books") → {{ route("books") }}</div>
           <div>route("book_detail", { book_id: 42 }) → {{ route("book_detail", { book_id: 42 }) }}</div>
+        </div>
+      </details>
+      <details class="mt-2">
+        <summary class="cursor-pointer">Route definitions (from generated routes.ts)</summary>
+        <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
+          <span v-for="[name, def] in routeEntries" :key="name" class="font-mono text-slate-600">
+            {{ name }} → {{ def.path }}
+          </span>
         </div>
       </details>
     </footer>

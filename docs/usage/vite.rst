@@ -233,7 +233,7 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
    * - `resource_dir`
      - `Path | str`
      - TypeScript/JavaScript source directory. Defaults to `"src"` (use `"resources"` for Inertia templates).
-   * - `public_dir`
+   * - `static_dir`
      - `Path | str`
      - Static public assets directory (served as-is by Vite). Defaults to `"public"`.
    * - `manifest_name`
@@ -358,9 +358,9 @@ For standalone Vite usage (without Litestar), you can specify paths explicitly:
    * - `resourceDir`
      - `string`
      - The directory for source assets. Defaults to `'resources'`.
-   * - `publicDir`
+   * - `staticDir`
      - `string`
-     - Vite's public directory for static assets. Defaults to `'public'`.
+     - Directory for static, unprocessed assets (maps to Vite's `publicDir`). Defaults to `'${resourceDir}/public'`.
    * - `hotFile`
      - `string`
      - The path to the "hot" file. Defaults to `'${bundleDir}/hot'`.

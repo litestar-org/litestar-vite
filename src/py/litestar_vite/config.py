@@ -45,6 +45,7 @@ __all__ = (
     "DeployConfig",
     "ExternalDevServer",
     "InertiaConfig",
+    "InertiaSSRConfig",
     "InertiaTypeGenConfig",
     "LoggingConfig",
     "PaginationContainer",
@@ -174,6 +175,25 @@ class DeployConfig:
 
 
 @dataclass
+class InertiaSSRConfig:
+    """Server-side rendering settings for Inertia.js.
+
+    Inertia SSR runs a separate Node server that renders the initial HTML for an
+    Inertia page object. Litestar sends the page payload to the SSR server (by
+    default at ``http://127.0.0.1:13714/render``) and injects the returned head
+    tags and body markup into the HTML response.
+
+    Notes:
+        - This is *not* Litestar-Vite's ``mode="ssr"`` (Astro/Nuxt/SvelteKit proxy mode).
+        - When enabled, failures to contact the SSR server are treated as errors (no silent fallback).
+    """
+
+    enabled: bool = True
+    url: str = "http://127.0.0.1:13714/render"
+    timeout: float = 2.0
+
+
+@dataclass
 class InertiaConfig:
     """Configuration for InertiaJS support.
 
@@ -188,7 +208,6 @@ class InertiaConfig:
     Attributes:
         root_template: Name of the root template to use.
         component_opt_keys: Identifiers for getting inertia component from route opts.
-        exclude_from_js_routes_key: Identifier to exclude route from generated routes.
         redirect_unauthorized_to: Path for unauthorized request redirects.
         redirect_404: Path for 404 request redirects.
         extra_static_page_props: Static props added to every page response.
@@ -214,8 +233,6 @@ class InertiaConfig:
         # Custom keys:
         InertiaConfig(component_opt_keys=("view", "component", "page"))
     """
-    exclude_from_js_routes_key: str = "exclude_from_routes"
-    """An identifier to use on routes to exclude a route from the generated routes typescript file."""
     redirect_unauthorized_to: "str | None" = None
     """Optionally supply a path where unauthorized requests should redirect."""
     redirect_404: "str | None" = None
@@ -245,6 +262,32 @@ class InertiaConfig:
     to disable default User/AuthData interfaces for non-standard user models.
     """
 
+    ssr: "InertiaSSRConfig | bool | None" = None
+    """Enable server-side rendering (SSR) for Inertia responses.
+
+    When enabled, full-page HTML responses will be pre-rendered by a Node SSR server
+    and injected into the SPA HTML before returning to the client.
+
+    Supports:
+        - True: enable with defaults -> ``InertiaSSRConfig()``
+        - False/None: disabled -> ``None``
+        - InertiaSSRConfig: use as-is
+    """
+
+    def __post_init__(self) -> None:
+        """Normalize optional sub-configs."""
+        if self.ssr is True:
+            self.ssr = InertiaSSRConfig()
+        elif self.ssr is False:
+            self.ssr = None
+
+    @property
+    def ssr_config(self) -> "InertiaSSRConfig | None":
+        """Return the SSR config when enabled, otherwise None."""
+        if isinstance(self.ssr, InertiaSSRConfig) and self.ssr.enabled:
+            return self.ssr
+        return None
+
 
 @dataclass
 class InertiaTypeGenConfig:
@@ -267,7 +310,7 @@ class InertiaTypeGenConfig:
             ViteConfig(inertia=InertiaConfig())
 
             # TypeScript: extend User interface
-            declare module 'litestar-vite/inertia' {
+            declare module 'litestar-vite-plugin/inertia' {
                 interface User {
                     avatarUrl?: string
                     roles: Role[]
@@ -282,7 +325,7 @@ class InertiaTypeGenConfig:
             ))
 
             # TypeScript: define your custom User
-            declare module 'litestar-vite/inertia' {
+            declare module 'litestar-vite-plugin/inertia' {
                 interface User {
                     uuid: string  // No id!
                     username: string  // No email!
@@ -317,22 +360,29 @@ def _resolve_proxy_mode() -> "Literal['vite', 'direct', 'proxy'] | None":
     Reads VITE_PROXY_MODE env var. Valid values:
     - "vite" (default): Proxy to internal Vite server (allow list - assets only)
     - "direct": Expose Vite port directly (no proxy)
-    - "proxy" / "ssr": Proxy everything except Litestar routes (deny list)
+    - "proxy": Proxy everything except Litestar routes (deny list)
     - "none": Disable proxy (for production)
+
+    Raises:
+        ValueError: If an invalid value is provided.
 
     Returns:
         The resolved proxy mode, or None if disabled.
     """
-    env_value = os.getenv("VITE_PROXY_MODE", "vite").lower()
-    if env_value in {"none", "disabled", "off"}:
-        return None
-    if env_value in {"vite_direct", "direct"}:
-        return "direct"
-    if env_value in {"external_proxy", "proxy", "ssr", "external"}:
-        return "proxy"
-    if env_value in {"vite_proxy", "vite"}:
+    env_value = os.getenv("VITE_PROXY_MODE")
+    if env_value is None:
         return "vite"
-    return "vite"
+    env_value = env_value.strip().lower()
+    if env_value == "none":
+        return None
+    if env_value == "direct":
+        return "direct"
+    if env_value == "proxy":
+        return "proxy"
+    if env_value == "vite":
+        return "vite"
+    msg = f"Invalid VITE_PROXY_MODE: {env_value!r}. Expected one of: vite, direct, proxy, none"
+    raise ValueError(msg)
 
 
 @dataclass
@@ -343,7 +393,7 @@ class PathConfig:
         root: The root directory of the project. Defaults to current working directory.
         bundle_dir: Location of compiled assets and manifest.json.
         resource_dir: TypeScript/JavaScript source directory (equivalent to ./src in Vue/React).
-        public_dir: Static public assets directory (served as-is by Vite).
+        static_dir: Static public assets directory (served as-is by Vite).
         manifest_name: Name of the Vite manifest file.
         hot_file: Name of the hot file indicating dev server URL.
         asset_url: Base URL for static asset references (prepended to Vite output).
@@ -353,7 +403,7 @@ class PathConfig:
     root: "str | Path" = field(default_factory=Path.cwd)
     bundle_dir: "str | Path" = field(default_factory=lambda: Path("public"))
     resource_dir: "str | Path" = field(default_factory=lambda: Path("src"))
-    public_dir: "str | Path" = field(default_factory=lambda: Path("public"))
+    static_dir: "str | Path" = field(default_factory=lambda: Path("public"))
     manifest_name: str = "manifest.json"
     hot_file: str = "hot"
     asset_url: str = field(default_factory=lambda: os.getenv("ASSET_URL", "/static/"))
@@ -367,10 +417,25 @@ class PathConfig:
             object.__setattr__(self, "bundle_dir", Path(self.bundle_dir))
         if isinstance(self.resource_dir, str):
             object.__setattr__(self, "resource_dir", Path(self.resource_dir))
-        if isinstance(self.public_dir, str):
-            object.__setattr__(self, "public_dir", Path(self.public_dir))
+        if isinstance(self.static_dir, str):
+            object.__setattr__(self, "static_dir", Path(self.static_dir))
         if isinstance(self.ssr_output_dir, str):
             object.__setattr__(self, "ssr_output_dir", Path(self.ssr_output_dir))
+
+        # Avoid Vite's `publicDir` (input) colliding with `outDir` (output).
+        #
+        # We treat `bundle_dir` as the build output directory. By default both
+        # `bundle_dir` and `static_dir` were set to "public", which makes Vite
+        # warn and effectively disables public asset copying.
+        #
+        # Default behavior: keep build output at "public", and use
+        # "<resource_dir>/public" for Vite's public assets.
+        if (
+            isinstance(self.bundle_dir, Path)
+            and isinstance(self.static_dir, Path)
+            and self.static_dir == self.bundle_dir
+        ):
+            object.__setattr__(self, "static_dir", Path(self.resource_dir) / "public")
 
 
 @dataclass
@@ -410,7 +475,7 @@ class RuntimeConfig:
         proxy_mode: Proxy handling mode:
             - "vite" (default): Proxy Vite assets only (allow list - SPA mode)
             - "direct": Expose Vite port directly (no proxy)
-            - "proxy" / "ssr": Proxy everything except Litestar routes (deny list - SSR mode)
+            - "proxy": Proxy everything except Litestar routes (deny list - SSR mode)
             - None: No proxy (production mode)
         external_dev_server: Configuration for external dev server (used with proxy_mode="proxy").
         host: Vite dev server host.
@@ -435,7 +500,7 @@ class RuntimeConfig:
     """
 
     dev_mode: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)
-    proxy_mode: "Literal['vite', 'direct', 'proxy', 'ssr'] | None" = field(default_factory=_resolve_proxy_mode)
+    proxy_mode: "Literal['vite', 'direct', 'proxy'] | None" = field(default_factory=_resolve_proxy_mode)
     external_dev_server: "ExternalDevServer | str | None" = None
     host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "127.0.0.1"))
     port: int = field(default_factory=lambda: int(os.getenv("VITE_PORT", "5173")))
@@ -458,10 +523,6 @@ class RuntimeConfig:
     start_dev_server: bool = True
 
     def __post_init__(self) -> None:
-        # Normalize proxy_mode: "ssr" is an alias for "proxy"
-        if self.proxy_mode == "ssr":
-            self.proxy_mode = "proxy"
-
         # Normalize external_dev_server: string → ExternalDevServer
         if isinstance(self.external_dev_server, str):
             self.external_dev_server = ExternalDevServer(target=self.external_dev_server)
@@ -553,6 +614,10 @@ class TypeGenConfig:
         global_route: Register route() function globally on window object.
             When True, adds ``window.route = route`` to generated routes.ts,
             providing Laravel/Ziggy-style global access without imports.
+        fallback_type: Fallback value type for untyped containers in generated Inertia props.
+            Controls whether untyped dict/list become `unknown` (default) or `any`.
+        type_import_paths: Map schema/type names to TypeScript import paths for props types
+            that are not present in OpenAPI (e.g., internal/excluded schemas).
     """
 
     output: Path = field(default_factory=lambda: Path("src/generated"))
@@ -579,6 +644,12 @@ class TypeGenConfig:
         // declare const route: typeof import('@/generated/routes').route
 
     Default is False to encourage explicit imports for better tree-shaking.
+    """
+    fallback_type: "Literal['unknown', 'any']" = "unknown"
+    type_import_paths: dict[str, str] = field(default_factory=lambda: cast("dict[str, str]", {}))
+    """Map schema/type names to TypeScript import paths for Inertia props.
+
+    Use this for prop types that are not present in OpenAPI (e.g., internal schemas).
     """
     page_props_path: "Path | None" = field(default=None)  # Computed in __post_init__ if None
     """Path to export page props metadata JSON.
@@ -749,21 +820,10 @@ class ViteConfig:
     base_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
     deploy: "DeployConfig | bool" = False
     guards: "Sequence[Guard] | None" = None  # pyright: ignore[reportUnknownVariableType]
-    """Custom guards to apply to the SPA route handler.
+    """Custom guards for the SPA catch-all route.
 
-    When set, these guards will be applied to the AppHandler route that serves
-    the SPA index.html. This allows you to protect your SPA routes with
-    authentication, authorization, or other custom guards.
-
-    Example:
-        def auth_guard(request: Request, ...) -> None:
-            if not request.user.is_authenticated:
-                raise NotAuthorizedException()
-
-        ViteConfig(
-            mode="spa",
-            guards=[auth_guard],
-        )
+    When set, these guards are applied to the SPA handler route that serves the
+    SPA index.html (mode="spa"/"ssr" with spa_handler=True).
     """
     exclude_static_from_auth: bool = True
     """Exclude static file routes from authentication.
@@ -776,33 +836,11 @@ class ViteConfig:
     spa_path: "str | None" = None
     """Path where the SPA handler serves index.html.
 
-    Controls where AppHandler registers its catch-all routes. Defaults to "/" (root).
-    When spa_path differs from asset_url, the SPA catch-all automatically excludes
-    asset_url paths to let the static files router handle them.
+    Controls where AppHandler registers its catch-all routes.
 
-    Common configurations:
-
-    1. SPA at root, assets at /web/ (default behavior with custom asset_url):
-       ViteConfig(
-           paths=PathConfig(asset_url="/web/"),
-           # spa_path=None defaults to "/", /web/ excluded from catch-all
-       )
-
-    2. SPA and assets both at /web/ (Angular --base-href /web/):
-       ViteConfig(
-           paths=PathConfig(asset_url="/web/"),
-           spa_path="/web/",  # Explicitly serve SPA at /web/
-       )
-
-    3. SPA at root, assets at /static/ (default):
-       ViteConfig()  # spa_path=None defaults to "/", /static/ excluded
-
-    4. SPA at both root AND /web/ (Angular --base-href /web/ with root redirect):
-       ViteConfig(
-           paths=PathConfig(asset_url="/web/"),
-           spa_path="/web/",
-           include_root_spa_paths=True,  # Also serve at / and /{path:path}
-       )
+    - Default: "/" (root)
+    - Non-root (e.g. "/web/"): optionally set `include_root_spa_paths=True` to
+      also serve at "/" and "/{path:path}".
     """
     include_root_spa_paths: bool = False
     """Also register SPA routes at root when spa_path is non-root.
@@ -1067,7 +1105,7 @@ class ViteConfig:
            b. Hybrid mode works with AppHandler + HTML transformation
            c. index.html is served by Vite dev server in dev mode or built assets in production
            Note: If using Jinja2 templates with Inertia, set mode="template" explicitly.
-        2. Check for index.html in resource_dir, root_dir, or public_dir → SPA
+        2. Check for index.html in resource_dir, root_dir, or static_dir → SPA
         3. Check if Jinja2 is installed and likely to be used → Template
         4. Default to SPA
 
@@ -1193,10 +1231,10 @@ class ViteConfig:
         return self.paths.resource_dir if isinstance(self.paths.resource_dir, Path) else Path(self.paths.resource_dir)
 
     @property
-    def public_dir(self) -> Path:
-        """Get public directory path."""
+    def static_dir(self) -> Path:
+        """Get static directory path."""
         # __post_init__ normalizes strings to Path
-        return self.paths.public_dir if isinstance(self.paths.public_dir, Path) else Path(self.paths.public_dir)
+        return self.paths.static_dir if isinstance(self.paths.static_dir, Path) else Path(self.paths.static_dir)
 
     @property
     def root_dir(self) -> Path:
@@ -1237,19 +1275,19 @@ class ViteConfig:
         1. bundle_dir/index.html (for production static builds like Astro/Nuxt/SvelteKit)
         2. resource_dir/index.html
         3. root_dir/index.html
-        4. public_dir/index.html
+        4. static_dir/index.html
         """
 
         bundle_dir = self._resolve_to_root(self.bundle_dir)
         resource_dir = self._resolve_to_root(self.resource_dir)
-        public_dir = self._resolve_to_root(self.public_dir)
+        static_dir = self._resolve_to_root(self.static_dir)
         root_dir = self.root_dir
 
         candidates = [
             bundle_dir / "index.html",
             resource_dir / "index.html",
             root_dir / "index.html",
-            public_dir / "index.html",
+            static_dir / "index.html",
         ]
 
         unique: list[Path] = []
@@ -1372,8 +1410,8 @@ class ViteConfig:
         return self.runtime.detect_nodeenv
 
     @property
-    def proxy_mode(self) -> "Literal['vite', 'direct', 'proxy', 'ssr'] | None":
-        """Get proxy mode. Note: 'ssr' is normalized to 'proxy' at runtime."""
+    def proxy_mode(self) -> "Literal['vite', 'direct', 'proxy'] | None":
+        """Get proxy mode."""
         return self.runtime.proxy_mode
 
     @property

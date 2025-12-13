@@ -7,7 +7,7 @@ This directory contains example applications demonstrating litestar-vite integra
 - `dev` – start Vite dev server
 - `build` – type-check (where applicable) + Vite build
 - `preview`/`serve` – preview built assets
-- `generate-types` – run @hey-api/openapi-ts using the example’s `hey-api.config.ts`
+- `generate-types` – run @hey-api/openapi-ts using the example's `openapi-ts.config.ts`
 
 Type generation defaults:
 
@@ -186,10 +186,10 @@ All examples must implement this exact UI structure:
 ```html
 <footer class="border-slate-200 border-t pt-8 text-slate-400 text-xs">
   <details>
-    <summary class="cursor-pointer">Server Routes (from generated routes.json)</summary>
+    <summary class="cursor-pointer">Route definitions (from generated routes.ts)</summary>
     <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
       <!-- For each route -->
-      <span class="font-mono text-slate-600">{name} → {uri}</span>
+      <span class="font-mono text-slate-600">{name} → {path}</span>
     </div>
   </details>
 </footer>

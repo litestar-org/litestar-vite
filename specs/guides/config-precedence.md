@@ -42,7 +42,7 @@ When Litestar starts, it writes a `.litestar.json` file containing shared config
   "assetUrl": "/static/",
   "bundleDir": "public/static",
   "resourceDir": "resources",
-  "publicDir": "public",
+  "staticDir": "public",
   "hotFile": "hot",
   "manifest": "manifest.json",
   "mode": "spa",
@@ -83,7 +83,7 @@ These fields are meaningful to both Python and TypeScript:
 | Asset URL | `asset_url` | `assetUrl` | Base URL for assets |
 | Bundle Directory | `bundle_dir` | `bundleDir` | Build output directory |
 | Resource Directory | `resource_dir` | `resourceDir` | Source assets directory |
-| Public Directory | `public_dir` | `publicDir` | Static assets directory |
+| Static Directory | `static_dir` | `staticDir` | Static assets directory |
 | Hot File | `hot_file` | `hotFile` | Dev server URL file |
 | Manifest Name | `manifest_name` | `manifest` | Build manifest filename |
 | Mode | `mode` | `mode` | Operation mode |

@@ -29,6 +29,9 @@ const originalEnv = process.env
 beforeEach(() => {
   vi.resetModules()
   process.env = { ...originalEnv }
+  // Ensure tests don't accidentally pick up a real repository `.litestar.json`.
+  // If the env var is set but the file doesn't exist, the plugin treats bridge config as absent.
+  process.env.LITESTAR_VITE_CONFIG_PATH = path.join(process.cwd(), ".vitest-missing-litestar.json")
   vi.clearAllMocks()
   vi.spyOn(fs.promises, "access").mockRestore()
   vi.spyOn(fs.promises, "readFile").mockRestore()
@@ -101,10 +104,74 @@ describe("litestar-vite-plugin", () => {
     vi.resetAllMocks()
   })
 
+  const baseTypesConfig = {
+    enabled: true,
+    output: "types/api",
+    openapiPath: "openapi.json",
+    routesPath: "routes.json",
+    pagePropsPath: "page-props.json",
+    generateZod: false,
+    generateSdk: true,
+    generateRoutes: true,
+    generatePageProps: true,
+    globalRoute: false,
+  } as const
+
+  const baseLoggingConfig = {
+    level: "normal",
+    showPathsAbsolute: false,
+    suppressNpmOutput: true,
+    suppressViteBanner: false,
+    timestamps: false,
+  } as const
+
+  const baseRuntimeConfig = {
+    assetUrl: "/static",
+    bundleDir: "public",
+    resourceDir: "resources",
+    staticDir: "public",
+    hotFile: "hot",
+    manifest: "manifest.json",
+    mode: "spa",
+    proxyMode: "vite",
+    host: "localhost",
+    port: 5173,
+    ssrEnabled: false,
+    ssrOutDir: null,
+    types: null,
+    executor: "node",
+    logging: null,
+    litestarVersion: "2.18.0",
+  } as const
+
   const createRuntimeConfig = (data: Record<string, unknown>): string => {
     const tmpDir = fs.mkdtempSync(path.join(process.cwd(), "vitest-litestar-"))
     const configPath = path.join(tmpDir, ".litestar.json")
-    fs.writeFileSync(configPath, JSON.stringify(data), "utf-8")
+    const merged: Record<string, unknown> = { ...baseRuntimeConfig, ...data }
+
+    const typesOverride = data.types
+    if (typesOverride !== undefined) {
+      if (typesOverride === null) {
+        merged.types = null
+      } else if (typeof typesOverride === "object" && typesOverride !== null && !Array.isArray(typesOverride)) {
+        merged.types = { ...baseTypesConfig, ...(typesOverride as Record<string, unknown>) }
+      } else {
+        merged.types = typesOverride
+      }
+    }
+
+    const loggingOverride = data.logging
+    if (loggingOverride !== undefined) {
+      if (loggingOverride === null) {
+        merged.logging = null
+      } else if (typeof loggingOverride === "object" && loggingOverride !== null && !Array.isArray(loggingOverride)) {
+        merged.logging = { ...baseLoggingConfig, ...(loggingOverride as Record<string, unknown>) }
+      } else {
+        merged.logging = loggingOverride
+      }
+    }
+
+    fs.writeFileSync(configPath, JSON.stringify(merged), "utf-8")
     process.env.LITESTAR_VITE_CONFIG_PATH = configPath
     return configPath
   }
@@ -171,9 +238,9 @@ describe("litestar-vite-plugin", () => {
     expect(ssrConfig.build?.rollupOptions?.input).toBe("resources/js/ssr.ts")
   })
 
-  it("uses publicDir from python defaults when provided", () => {
+  it("uses Vite publicDir from python staticDir when provided", () => {
     const configPath = createRuntimeConfig({
-      publicDir: "python-public",
+      staticDir: "python-public",
     })
 
     try {
@@ -186,9 +253,9 @@ describe("litestar-vite-plugin", () => {
     }
   })
 
-  it("prefers user publicDir over python defaults", () => {
+  it("prefers Vite publicDir over python staticDir", () => {
     const configPath = createRuntimeConfig({
-      publicDir: "python-public",
+      staticDir: "python-public",
     })
 
     try {

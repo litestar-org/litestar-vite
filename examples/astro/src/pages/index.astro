@@ -33,7 +33,13 @@ import Layout from "../layouts/Layout.astro"
     <footer class="border-slate-200 border-t pt-8 text-slate-400 text-xs">
       <details>
         <summary class="cursor-pointer">Type-safe route() helper usage</summary>
-        <div id="routes-list" class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
+        <div id="route-usage" class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
+          <span class="text-slate-600">Loading...</span>
+        </div>
+      </details>
+      <details class="mt-2">
+        <summary class="cursor-pointer">Route definitions (from generated routes.ts)</summary>
+        <div id="route-definitions" class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
           <span class="text-slate-600">Loading...</span>
         </div>
       </details>
@@ -43,13 +49,14 @@ import Layout from "../layouts/Layout.astro"
 
 <script>
   // Import type-safe route helper
-  import { route } from "../generated/routes"
+  import { route, routeDefinitions } from "../generated/routes"
 
   const tabButtons = document.querySelectorAll('[data-view]') as NodeListOf<HTMLButtonElement>
   const overview = document.getElementById('overview') as HTMLElement
   const books = document.getElementById('books') as HTMLElement
   const booksTab = document.getElementById('books-tab') as HTMLButtonElement
-  const routesList = document.getElementById('routes-list') as HTMLElement
+  const routeUsage = document.getElementById('route-usage') as HTMLElement
+  const routeDefinitionsList = document.getElementById('route-definitions') as HTMLElement
 
   interface Book {
     id: number
@@ -103,13 +110,18 @@ import Layout from "../layouts/Layout.astro"
       .join('')
 
     // Show type-safe route() helper usage in footer
-    routesList.innerHTML = `
+    routeUsage.innerHTML = `
       <div class="col-span-full space-y-1 rounded bg-slate-100 p-2 font-mono">
         <div>route("summary") → ${route("summary")}</div>
         <div>route("books") → ${route("books")}</div>
         <div>route("book_detail", { book_id: 42 }) → ${route("book_detail", { book_id: 42 })}</div>
       </div>
     `
+
+    // Show route definitions (compile-time metadata)
+    routeDefinitionsList.innerHTML = Object.entries(routeDefinitions)
+      .map(([name, def]) => `<span class="font-mono text-slate-600">${name} → ${def.path}</span>`)
+      .join("")
 
     showView('overview')
   }

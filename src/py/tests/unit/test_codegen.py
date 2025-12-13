@@ -79,7 +79,7 @@ def test_generate_routes_ts_basic_route() -> None:
     # Check it's a valid TypeScript file structure
     assert "export type RouteName =" in ts_content
     assert "export function route<" in ts_content
-    assert "export const routes = {" in ts_content
+    assert "export const routeDefinitions = {" in ts_content
 
 
 def test_generate_routes_ts_with_path_params() -> None:
@@ -146,7 +146,7 @@ def test_generate_routes_ts_empty_routes() -> None:
 
     # Should still produce valid TypeScript structure
     assert "export type RouteName =" in ts_content
-    assert "export const routes = {" in ts_content
+    assert "export const routeDefinitions = {" in ts_content
     # The RouteName type should be 'never' when no routes
     # Check that the file is syntactically complete
     assert ts_content.count("{") == ts_content.count("}")
@@ -301,11 +301,11 @@ def test_generate_routes_ts_is_valid_typescript() -> None:
     ts_content = generate_routes_ts(app)
 
     # Basic structural checks
-    assert ts_content.startswith("/**")  # Starts with doc comment
+    assert ts_content.startswith("// AUTO-GENERATED")  # Starts with generated marker
     assert "export type RouteName" in ts_content
     assert "export interface RoutePathParams" in ts_content
     assert "export interface RouteQueryParams" in ts_content
-    assert "export const routes = {" in ts_content
+    assert "export const routeDefinitions = {" in ts_content
     assert "export function route<" in ts_content
 
     # Balanced braces
