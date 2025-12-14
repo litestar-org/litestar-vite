@@ -263,11 +263,11 @@ def test_backward_compatibility_plugin_api_unchanged() -> None:
     plugin = VitePlugin(config=config)
 
     # Public API should be unchanged
-    assert hasattr(plugin, "config")
-    assert hasattr(plugin, "asset_loader")
-    assert hasattr(plugin, "on_app_init")
-    assert hasattr(plugin, "on_cli_init")
-    assert hasattr(plugin, "server_lifespan")
+    assert plugin.config is config
+    assert plugin.asset_loader is not None
+    assert callable(plugin.on_app_init)
+    assert callable(plugin.on_cli_init)
+    assert plugin.server_lifespan is not None
 
 
 # =====================================================
@@ -386,7 +386,6 @@ def test_edge_case_asset_loader_independence_from_jinja() -> None:
     loader = ViteAssetLoader.initialize_loader(config=config)
     assert loader is not None
     # The loader should have a config even if it's not exactly the same instance
-    assert hasattr(loader, "_config")
     assert loader._config is not None
 
 
@@ -476,10 +475,7 @@ def test_production_docker_container_scenario_without_jinja() -> None:
 
     # Typical production configuration
     config = ViteConfig(
-        paths=PathConfig(
-            bundle_dir=Path("/app/public"),
-            resource_dir=Path("/app/resources"),
-        ),
+        paths=PathConfig(bundle_dir=Path("/app/public"), resource_dir=Path("/app/resources")),
         runtime=RuntimeConfig(dev_mode=False),  # Production setting
     )
 
@@ -498,10 +494,7 @@ def test_production_kubernetes_deployment_scenario() -> None:
 
     # Kubernetes-style configuration with read-only filesystem considerations
     config = ViteConfig(
-        paths=PathConfig(
-            bundle_dir=Path("/app/static"),
-            resource_dir=Path("/app/src"),
-        ),
+        paths=PathConfig(bundle_dir=Path("/app/static"), resource_dir=Path("/app/src")),
         runtime=RuntimeConfig(dev_mode=False),
     )
 

@@ -14,10 +14,7 @@ def test_parse_manifest_when_file_exists(tmp_path: Path) -> None:
     manifest = bundle_dir / "manifest.json"
     manifest.write_text('{"main.js": {"file": "assets/main.123456.js"}}')
 
-    config = ViteConfig(
-        paths=PathConfig(bundle_dir=bundle_dir),
-        runtime=RuntimeConfig(dev_mode=False),
-    )
+    config = ViteConfig(paths=PathConfig(bundle_dir=bundle_dir), runtime=RuntimeConfig(dev_mode=False))
     loader = ViteAssetLoader.initialize_loader(config=config)
 
     assert loader._manifest == {"main.js": {"file": "assets/main.123456.js"}}
@@ -27,10 +24,7 @@ def test_parse_manifest_when_file_not_exists(tmp_path: Path) -> None:
     bundle_dir = tmp_path / "public"
     # Do not create directory or file
 
-    config = ViteConfig(
-        paths=PathConfig(bundle_dir=bundle_dir),
-        runtime=RuntimeConfig(dev_mode=False),
-    )
+    config = ViteConfig(paths=PathConfig(bundle_dir=bundle_dir), runtime=RuntimeConfig(dev_mode=False))
 
     # Should not raise
     loader = ViteAssetLoader.initialize_loader(config=config)
@@ -43,20 +37,14 @@ def test_parse_manifest_hot_reload_mode(tmp_path: Path) -> None:
     hot_file = bundle_dir / "hot"
     hot_file.write_text("http://localhost:3000")
 
-    config = ViteConfig(
-        paths=PathConfig(bundle_dir=bundle_dir),
-        runtime=RuntimeConfig(dev_mode=True),
-    )
+    config = ViteConfig(paths=PathConfig(bundle_dir=bundle_dir), runtime=RuntimeConfig(dev_mode=True))
     loader = ViteAssetLoader.initialize_loader(config=config)
 
     assert loader._vite_base_path == "http://localhost:3000"
 
 
 def test_generate_asset_tags_prod_mode() -> None:
-    config = ViteConfig(
-        paths=PathConfig(asset_url="/static/"),
-        runtime=RuntimeConfig(dev_mode=False),
-    )
+    config = ViteConfig(paths=PathConfig(asset_url="/static/"), runtime=RuntimeConfig(dev_mode=False))
     loader = ViteAssetLoader(config)
     loader._manifest = {
         "main.js": {"file": "assets/main.js", "css": ["assets/main.css"]},
@@ -94,8 +82,7 @@ def test_get_static_asset_dev_mode() -> None:
 
 def test_get_static_asset_prod_mode_found() -> None:
     config = ViteConfig(
-        paths=PathConfig(bundle_dir=Path("tests/fixtures"), asset_url="/static/"),
-        runtime=RuntimeConfig(dev_mode=False),
+        paths=PathConfig(bundle_dir=Path("tests/fixtures"), asset_url="/static/"), runtime=RuntimeConfig(dev_mode=False)
     )
     loader = ViteAssetLoader(config)
     # Mock manifest
@@ -131,10 +118,7 @@ async def test_async_initialization(tmp_path: Path) -> None:
     manifest = bundle_dir / "manifest.json"
     manifest.write_text('{"main.js": {"file": "assets/main.123456.js"}}')
 
-    config = ViteConfig(
-        paths=PathConfig(bundle_dir=bundle_dir),
-        runtime=RuntimeConfig(dev_mode=False),
-    )
+    config = ViteConfig(paths=PathConfig(bundle_dir=bundle_dir), runtime=RuntimeConfig(dev_mode=False))
     loader = ViteAssetLoader(config)
     await loader.initialize()
 
@@ -150,10 +134,7 @@ async def test_async_initialization_dev_mode(tmp_path: Path) -> None:
     hot_file = bundle_dir / "hot"
     hot_file.write_text("http://localhost:3000")
 
-    config = ViteConfig(
-        paths=PathConfig(bundle_dir=bundle_dir),
-        runtime=RuntimeConfig(dev_mode=True),
-    )
+    config = ViteConfig(paths=PathConfig(bundle_dir=bundle_dir), runtime=RuntimeConfig(dev_mode=True))
     loader = ViteAssetLoader(config)
     await loader.initialize()
 

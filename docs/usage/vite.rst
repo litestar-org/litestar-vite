@@ -389,6 +389,46 @@ For standalone Vite usage (without Litestar), you can specify paths explicitly:
      - `string`
      - JavaScript runtime: `"node"`, `"bun"`, `"deno"`, `"yarn"`, or `"pnpm"`. Auto-detected from Python config.
 
+Diagnostics (`litestar assets doctor`)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When something feels “off” (HMR not connecting, types not generating, manifest missing), run:
+
+.. code-block:: bash
+
+    litestar assets doctor
+
+For a full config dump (including ``.litestar.json`` and the extracted ``litestar({ ... })`` block), add:
+
+.. code-block:: bash
+
+    litestar assets doctor --show-config
+
+To attempt safe auto-fixes (writes backups next to the edited files):
+
+.. code-block:: bash
+
+    litestar assets doctor --fix
+
+Runtime-state checks are opt-in (useful when you expect Vite to already be running):
+
+.. code-block:: bash
+
+    litestar assets doctor --runtime-checks
+
+What it checks (high level):
+
+- Your ``vite.config.*`` contains a ``litestar({ ... })`` plugin config
+- ``.litestar.json`` exists/is valid/is in sync with Python (when ``runtime.set_environment=True``)
+- Python vs explicit Vite plugin overrides (``assetUrl``, ``bundleDir``, ``resourceDir``, ``staticDir``, ``hotFile``, typegen flags)
+- Core paths exist (``resource_dir``, ``static_dir``) and entrypoint ``input`` files exist
+- Dev/production artifacts (manifest in prod; hotfile/Vite reachability only with ``--runtime-checks``)
+- Environment variables that override runtime (``VITE_PORT``, ``VITE_HOST``, ``VITE_PROXY_MODE``, ``VITE_BASE_URL``)
+
+.. note::
+    When ``runtime.set_environment=True`` (the default), Litestar writes ``.litestar.json`` on startup. If Doctor reports a stale/mismatched
+    bridge file, simply restarting your app (``litestar run``) will overwrite it; deleting the file is not required.
+
 Template Integration
 ~~~~~~~~~~~~~~~~~~~~
 

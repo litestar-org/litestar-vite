@@ -66,23 +66,25 @@ def lazy(
         The value is computed eagerly but only sent during partial reloads.
         Use when the value is cheap to compute but you want to reduce initial payload.
 
-        >>> lazy("user_count", len(users))  # Computed now, sent on partial reload
+        >>> lazy("user_count", len(users))
 
     **2. Callable (bandwidth + CPU optimization)**:
         The callable is only invoked during partial reloads.
         Use when the value is expensive to compute.
 
-        >>> lazy("permissions", lambda: Permission.all())  # Computed on partial reload
+        >>> lazy("permissions", lambda: Permission.all())
 
     .. warning:: **False Lazy Pitfall**
 
-        Be careful not to accidentally call the function when passing it:
+        Be careful not to accidentally call the function when passing it.
 
-        >>> # WRONG: expensive_fn() is called immediately, defeating lazy behavior
-        >>> lazy("data", expensive_fn())
-        >>>
-        >>> # CORRECT: Pass the function reference, not the result
-        >>> lazy("data", expensive_fn)
+        Wrong::
+
+            lazy("data", expensive_fn())
+
+        Correct::
+
+            lazy("data", expensive_fn)
 
         This is a Python evaluation order issue, not a framework limitation.
 
@@ -101,15 +103,13 @@ def lazy(
 
         @get("/dashboard", component="Dashboard")
         async def dashboard() -> InertiaResponse:
-            return InertiaResponse({
-                "user": current_user,  # Always sent
-                # Static lazy: computed now, sent only on partial reload
+            props = {
+                "user": current_user,
                 "user_count": lazy("user_count", 42),
-                # Callable lazy: computed only when requested
                 "permissions": lazy("permissions", lambda: Permission.all()),
-                # Async callable lazy
                 "notifications": lazy("notifications", fetch_notifications),
-            })
+            }
+            return InertiaResponse(props)
 
     See Also:
         - :func:`defer`: For v2 grouped deferred props loaded after page render
@@ -121,16 +121,11 @@ def lazy(
     if not callable(value_or_callable):
         return StaticProp[str, T](key=key, value=value_or_callable)
 
-    return DeferredProp[str, T](
-        key=key,
-        value=cast("Callable[..., T | Coroutine[Any, Any, T]]", value_or_callable),
-    )
+    return DeferredProp[str, T](key=key, value=cast("Callable[..., T | Coroutine[Any, Any, T]]", value_or_callable))
 
 
 def defer(
-    key: str,
-    callback: "Callable[..., T | Coroutine[Any, Any, T]]",
-    group: str = DEFAULT_DEFERRED_GROUP,
+    key: str, callback: "Callable[..., T | Coroutine[Any, Any, T]]", group: str = DEFAULT_DEFERRED_GROUP
 ) -> "DeferredProp[str, T]":
     """Create a deferred prop with optional grouping (v2 feature).
 
@@ -147,18 +142,12 @@ def defer(
 
     Example::
 
-        # Basic deferred prop
         defer("permissions", lambda: Permission.all())
 
-        # Grouped deferred props (fetched together)
         defer("teams", lambda: Team.all(), group="attributes")
         defer("projects", lambda: Project.all(), group="attributes")
     """
-    return DeferredProp[str, T](
-        key=key,
-        value=callback,
-        group=group,
-    )
+    return DeferredProp[str, T](key=key, value=callback, group=group)
 
 
 @dataclass
@@ -177,7 +166,11 @@ class PropFilter:
     exclude: "set[str] | None" = None
 
     def should_include(self, key: str) -> bool:
-        """Return True when a prop key should be included."""
+        """Return True when a prop key should be included.
+
+        Returns:
+            True if the prop key should be included, otherwise False.
+        """
         if self.exclude is not None:
             return key not in self.exclude
         if self.include is not None:
@@ -206,12 +199,11 @@ def only(*keys: str) -> PropFilter:
             request: InertiaRequest,
             user_service: UserService,
         ) -> InertiaResponse:
-            # Only send "users" prop during partial reload
             return InertiaResponse(
                 {
                     "users": user_service.list(),
-                    "teams": team_service.list(),  # Not sent if filtered
-                    "stats": stats_service.get(),  # Not sent if filtered
+                    "teams": team_service.list(),
+                    "stats": stats_service.get(),
                 },
                 prop_filter=only("users"),
             )
@@ -244,12 +236,11 @@ def except_(*keys: str) -> PropFilter:
             request: InertiaRequest,
             user_service: UserService,
         ) -> InertiaResponse:
-            # Send all props except "stats" during partial reload
             return InertiaResponse(
                 {
                     "users": user_service.list(),
                     "teams": team_service.list(),
-                    "stats": expensive_stats(),  # Excluded if filtered
+                    "stats": expensive_stats(),
                 },
                 prop_filter=except_("stats"),
             )
@@ -335,26 +326,19 @@ def merge(
 
     Example::
 
-        # Append new items to existing list
         merge("posts", new_posts)
 
-        # Prepend new messages
         merge("messages", new_messages, strategy="prepend")
 
-        # Deep merge nested data
         merge("user_data", updates, strategy="deep")
 
-        # Match on ID to update existing items
         merge("posts", updated_posts, match_on="id")
     """
     return MergeProp[str, T](key=key, value=value, strategy=strategy, match_on=match_on)
 
 
 def scroll_props(
-    page_name: str = "page",
-    current_page: int = 1,
-    previous_page: "int | None" = None,
-    next_page: "int | None" = None,
+    page_name: str = "page", current_page: int = 1, previous_page: "int | None" = None, next_page: "int | None" = None
 ) -> "ScrollPropsConfig":
     """Create scroll props configuration for infinite scroll (v2 feature).
 
@@ -387,10 +371,7 @@ def scroll_props(
             )
     """
     return ScrollPropsConfig(
-        page_name=page_name,
-        current_page=current_page,
-        previous_page=previous_page,
-        next_page=next_page,
+        page_name=page_name, current_page=current_page, previous_page=previous_page, next_page=next_page
     )
 
 
@@ -423,17 +404,20 @@ def extract_merge_props(props: "dict[str, Any]") -> "tuple[list[str], list[str],
     Example::
 
         props = {
-            "users": [...],  # regular prop
-            "posts": merge("posts", new_posts),  # append
+            "users": [...],
+            "posts": merge("posts", new_posts),
             "messages": merge("messages", new_msgs, strategy="prepend"),
             "data": merge("data", updates, strategy="deep"),
             "items": merge("items", items, match_on="id"),
         }
         merge_props, prepend_props, deep_merge_props, match_props_on = extract_merge_props(props)
-        # merge_props = ["posts", "items"]
-        # prepend_props = ["messages"]
-        # deep_merge_props = ["data"]
-        # match_props_on = {"items": ["id"]}
+
+        The returned values then contain:
+
+        - merge_props: ["posts", "items"]
+        - prepend_props: ["messages"]
+        - deep_merge_props: ["data"]
+        - match_props_on: {"items": ["id"]}
     """
     merge_list: "list[str]" = []
     prepend_list: "list[str]" = []
@@ -442,12 +426,15 @@ def extract_merge_props(props: "dict[str, Any]") -> "tuple[list[str], list[str],
 
     for key, value in props.items():
         if is_merge_prop(value):
-            if value.strategy == "append":
-                merge_list.append(key)
-            elif value.strategy == "prepend":
-                prepend_list.append(key)
-            elif value.strategy == "deep":
-                deep_merge_list.append(key)
+            match value.strategy:
+                case "append":
+                    merge_list.append(key)
+                case "prepend":
+                    prepend_list.append(key)
+                case "deep":
+                    deep_merge_list.append(key)
+                case _:
+                    pass
 
             if value.match_on:
                 match_on_dict[key] = value.match_on
@@ -487,7 +474,11 @@ class DeferredProp(Generic[PropKeyT, T]):
 
     @property
     def group(self) -> str:
-        """The deferred group this prop belongs to."""
+        """The deferred group this prop belongs to.
+
+        Returns:
+            The deferred group name.
+        """
         return self._group
 
     @property
@@ -504,9 +495,7 @@ class DeferredProp(Generic[PropKeyT, T]):
             yield portal
 
     @staticmethod
-    def _is_awaitable(
-        v: "Callable[..., T | Coroutine[Any, Any, T]]",
-    ) -> "TypeGuard[Coroutine[Any, Any, T]]":
+    def _is_awaitable(v: "Callable[..., T | Coroutine[Any, Any, T]]") -> "TypeGuard[Coroutine[Any, Any, T]]":
         return inspect.iscoroutinefunction(v)
 
     def render(self, portal: "BlockingPortal | None" = None) -> "T | None":
@@ -566,13 +555,14 @@ def extract_deferred_props(props: "dict[str, Any]") -> "dict[str, list[str]]":
     Example::
 
         props = {
-            "users": [...],  # regular prop
+            "users": [...],
             "teams": defer("teams", get_teams, group="attributes"),
             "projects": defer("projects", get_projects, group="attributes"),
-            "permissions": defer("permissions", get_permissions),  # default group
+            "permissions": defer("permissions", get_permissions),
         }
         result = extract_deferred_props(props)
-        # {"default": ["permissions"], "attributes": ["teams", "projects"]}
+
+        The result is {"default": ["permissions"], "attributes": ["teams", "projects"]}.
     """
     groups: "dict[str, list[str]]" = {}
 
@@ -606,27 +596,19 @@ def should_render(
     Returns:
         bool: True if value should be rendered
     """
-    # Handle lazy props (original behavior)
     if is_lazy_prop(value):
-        # v2: partial_except takes precedence - exclude these props
         if partial_except:
             return value.key not in partial_except
-        # Original behavior: only include if in partial_data
         if partial_data:
             return value.key in partial_data
-        # No filtering specified, don't render lazy props on initial load
         return False
 
-    # Handle key-based filtering for all props (v2 enhanced behavior)
     if key is not None:
-        # v2: partial_except takes precedence - exclude these props
         if partial_except:
             return key not in partial_except
-        # Only include if in partial_data (for partial reloads)
         if partial_data:
             return key in partial_data
 
-    # Default: render all non-lazy props
     return True
 
 
@@ -770,11 +752,7 @@ def get_shared_props(
     return props
 
 
-def share(
-    connection: "ASGIConnection[Any, Any, Any, Any]",
-    key: "str",
-    value: "Any",
-) -> "None":
+def share(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", value: "Any") -> "None":
     """Share a value in the session.
 
     Args:
@@ -789,11 +767,7 @@ def share(
         connection.logger.warning(msg)
 
 
-def error(
-    connection: "ASGIConnection[Any, Any, Any, Any]",
-    key: "str",
-    message: "str",
-) -> "None":
+def error(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", message: "str") -> "None":
     """Set an error message in the session.
 
     Args:
@@ -808,11 +782,7 @@ def error(
         connection.logger.warning(msg)
 
 
-def flash(
-    connection: "ASGIConnection[Any, Any, Any, Any]",
-    message: "str",
-    category: "str" = "info",
-) -> "None":
+def flash(connection: "ASGIConnection[Any, Any, Any, Any]", message: "str", category: "str" = "info") -> "None":
     """Add a flash message to the session.
 
     Flash messages are stored in the session and passed to the frontend
@@ -835,7 +805,6 @@ def flash(
 
         @post("/create")
         async def create_item(request: Request) -> InertiaResponse:
-            # ... create item ...
             flash(request, "Item created successfully!", "success")
             return InertiaResponse(...)
     """
@@ -871,8 +840,8 @@ def clear_history(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
 
         @post("/logout")
         async def logout(request: Request) -> InertiaRedirect:
-            request.session.clear()  # Clear session data
-            clear_history(request)   # Clear encrypted history
+            request.session.clear()
+            clear_history(request)
             return InertiaRedirect(request, redirect_to="/login")
     """
     try:
@@ -901,19 +870,18 @@ def is_pagination_container(value: "Any") -> bool:
     if value is None:
         return False
 
-    if not hasattr(value, "items"):
+    try:
+        _ = value.items
+    except AttributeError:
         return False
 
-    has_offset_style = all(hasattr(value, attr) for attr in ("limit", "offset", "total"))
-    has_classic_style = all(hasattr(value, attr) for attr in ("page_size", "current_page", "total_pages"))
+    has_offset_style = _has_offset_pagination_attrs(value)
+    has_classic_style = _has_classic_pagination_attrs(value)
 
     return has_offset_style or has_classic_style
 
 
-def extract_pagination_scroll_props(
-    value: "Any",
-    page_param: str = "page",
-) -> "tuple[Any, ScrollPropsConfig | None]":
+def extract_pagination_scroll_props(value: "Any", page_param: str = "page") -> "tuple[Any, ScrollPropsConfig | None]":
     """Extract items and scroll props from a pagination container.
 
     For OffsetPagination, calculates page numbers from limit/offset/total.
@@ -929,62 +897,33 @@ def extract_pagination_scroll_props(
 
     Example::
 
-        # OffsetPagination with limit=10, offset=20, total=50
-        # → current_page=3, previous_page=2, next_page=4
-
         items, scroll = extract_pagination_scroll_props(pagination)
-        # items = pagination.items
-        # scroll = ScrollPropsConfig(current_page=3, previous_page=2, next_page=4)
+
+        For OffsetPagination with limit=10, offset=20, total=50 the resulting scroll
+        props are: ScrollPropsConfig(current_page=3, previous_page=2, next_page=4).
     """
     if not is_pagination_container(value):
         return value, None
 
     items = value.items
 
-    if hasattr(value, "limit") and hasattr(value, "offset") and hasattr(value, "total"):
-        limit = value.limit
-        offset = value.offset
-        total = value.total
-
-        if limit > 0:
-            current_page = (offset // limit) + 1
-            total_pages = (total + limit - 1) // limit
-        else:
-            current_page = 1
-            total_pages = 1
-
-        previous_page = current_page - 1 if current_page > 1 else None
-        next_page = current_page + 1 if current_page < total_pages else None
-
+    if meta := _extract_offset_pagination_meta(value):
+        current_page, previous_page, next_page = meta
         scroll_props = ScrollPropsConfig(
-            page_name=page_param,
-            current_page=current_page,
-            previous_page=previous_page,
-            next_page=next_page,
+            page_name=page_param, current_page=current_page, previous_page=previous_page, next_page=next_page
         )
         return items, scroll_props
 
-    if hasattr(value, "current_page") and hasattr(value, "total_pages"):
-        current_page = value.current_page
-        total_pages = value.total_pages
-
-        previous_page = current_page - 1 if current_page > 1 else None
-        next_page = current_page + 1 if current_page < total_pages else None
-
+    if meta := _extract_classic_pagination_meta(value):
+        current_page, previous_page, next_page = meta
         scroll_props = ScrollPropsConfig(
-            page_name=page_param,
-            current_page=current_page,
-            previous_page=previous_page,
-            next_page=next_page,
+            page_name=page_param, current_page=current_page, previous_page=previous_page, next_page=next_page
         )
         return items, scroll_props
 
     return items, None
 
 
-# Known pagination attribute mappings (snake_case -> camelCase)
-# This tuple is used by pagination_to_dict() to dynamically extract
-# pagination metadata from any pagination container class.
 PAGINATION_ATTRS: tuple[tuple[str, str], ...] = (
     ("total", "total"),
     ("limit", "limit"),
@@ -1026,7 +965,8 @@ def pagination_to_dict(value: "Any") -> dict[str, Any]:
 
         pagination = OffsetPagination(items=[1, 2, 3], limit=10, offset=0, total=50)
         result = pagination_to_dict(pagination)
-        # result = {"items": [1, 2, 3], "total": 50, "limit": 10, "offset": 0}
+
+        The result contains {"items": [1, 2, 3], "total": 50, "limit": 10, "offset": 0}.
 
     Note:
         This function is used internally by InertiaResponse to preserve
@@ -1035,7 +975,69 @@ def pagination_to_dict(value: "Any") -> dict[str, Any]:
     result: dict[str, Any] = {"items": value.items}
 
     for attr, camel_attr in PAGINATION_ATTRS:
-        if hasattr(value, attr):
-            result[camel_attr] = getattr(value, attr)
+        try:
+            attr_value = value.__getattribute__(attr)
+        except AttributeError:
+            continue
+        result[camel_attr] = attr_value
 
     return result
+
+
+def _has_offset_pagination_attrs(value: Any) -> bool:
+    try:
+        _ = value.limit
+        _ = value.offset
+        _ = value.total
+    except AttributeError:
+        return False
+    return True
+
+
+def _has_classic_pagination_attrs(value: Any) -> bool:
+    try:
+        _ = value.current_page
+        _ = value.total_pages
+    except AttributeError:
+        return False
+    return True
+
+
+def _extract_offset_pagination_meta(value: Any) -> tuple[int, int | None, int | None] | None:
+    try:
+        limit = value.limit
+        offset = value.offset
+        total = value.total
+    except AttributeError:
+        return None
+
+    if not (isinstance(limit, int) and isinstance(offset, int) and isinstance(total, int)):
+        return None
+
+    if limit > 0:
+        current_page = (offset // limit) + 1
+        total_pages = (total + limit - 1) // limit
+    else:
+        current_page = 1
+        total_pages = 1
+
+    previous_page = current_page - 1 if current_page > 1 else None
+    next_page = current_page + 1 if current_page < total_pages else None
+
+    return current_page, previous_page, next_page
+
+
+def _extract_classic_pagination_meta(value: Any) -> tuple[int, int | None, int | None] | None:
+    try:
+        current_page = value.current_page
+        total_pages = value.total_pages
+    except AttributeError:
+        return None
+
+    if not (isinstance(current_page, int) and isinstance(total_pages, int)):
+        return None
+
+    previous_page = current_page - 1 if current_page > 1 else None
+    next_page = current_page + 1 if current_page < total_pages else None
+
+    return current_page, previous_page, next_page

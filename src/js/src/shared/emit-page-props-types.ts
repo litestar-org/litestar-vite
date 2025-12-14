@@ -121,12 +121,26 @@ export interface FlashMessages {}
 `
   }
 
-  // Build SharedProps with defaults
-  const sharedPropsContent =
-    includeDefaultAuth || includeDefaultFlash
-      ? `  auth?: AuthData
-  flash?: FlashMessages`
-      : ""
+  const defaultGeneratedSharedProps: InertiaPagePropsJson["sharedProps"] = {
+    errors: { type: "Record<string, string[]>", optional: true },
+    csrf_token: { type: "string", optional: true },
+    ...(includeDefaultAuth || includeDefaultFlash
+      ? {
+          auth: { type: "AuthData", optional: true },
+          flash: { type: "FlashMessages", optional: true },
+        }
+      : {}),
+  }
+
+  const generatedSharedProps = Object.keys(json.sharedProps ?? {}).length > 0 ? json.sharedProps : defaultGeneratedSharedProps
+
+  const generatedSharedPropLines = Object.entries(generatedSharedProps)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, def]) => {
+      const optional = def.optional ? "?" : ""
+      const safeKey = /^[$A-Z_][0-9A-Z_$]*$/i.test(key) ? key : JSON.stringify(key)
+      return `  ${safeKey}${optional}: ${def.type}`
+    })
 
   // Collect custom types from metadata
   const allCustomTypes = new Set<string>()
@@ -136,6 +150,57 @@ export interface FlashMessages {}
     }
     for (const t of data.customTypes ?? []) {
       allCustomTypes.add(t)
+    }
+  }
+
+  const builtinTypes = new Set<string>([
+    "any",
+    "unknown",
+    "never",
+    "void",
+    "undefined",
+    "null",
+    "boolean",
+    "string",
+    "number",
+    "bigint",
+    "symbol",
+    "object",
+    "Record",
+    "Partial",
+    "Required",
+    "Readonly",
+    "Pick",
+    "Omit",
+    "Exclude",
+    "Extract",
+    "NonNullable",
+    "Parameters",
+    "ReturnType",
+    "InstanceType",
+    "Uppercase",
+    "Lowercase",
+    "Capitalize",
+    "Uncapitalize",
+    "Promise",
+    "Array",
+    "Map",
+    "Set",
+    "WeakMap",
+    "WeakSet",
+    "Date",
+    "RegExp",
+    "User",
+    "AuthData",
+    "FlashMessages",
+  ])
+
+  for (const def of Object.values(generatedSharedProps)) {
+    for (const match of def.type.matchAll(/\b[A-Za-z_][A-Za-z0-9_]*\b/g)) {
+      const name = match[0]
+      if (!builtinTypes.has(name)) {
+        allCustomTypes.add(name)
+      }
     }
   }
 
@@ -203,8 +268,7 @@ ${importStatement}${userTypes}${authTypes}${flashTypes}/**
  * Includes built-in props + static config props.
  */
 export interface GeneratedSharedProps {
-  errors?: Record<string, string[]>
-  csrf_token?: string
+${generatedSharedPropLines.join("\n")}
 }
 
 /**
@@ -225,7 +289,6 @@ export interface GeneratedSharedProps {
  * }
  */
 export interface SharedProps {
-${sharedPropsContent}
 }
 
 /** Full shared props = generated + user-defined */

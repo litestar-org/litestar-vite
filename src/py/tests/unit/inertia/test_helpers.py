@@ -9,12 +9,7 @@ from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client
 
 from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
-from litestar_vite.inertia.helpers import (
-    clear_history,
-    lazy,
-    scroll_props,
-    should_render,
-)
+from litestar_vite.inertia.helpers import clear_history, lazy, scroll_props, should_render
 from litestar_vite.inertia.response import InertiaResponse
 from litestar_vite.plugin import VitePlugin
 
@@ -25,12 +20,7 @@ from litestar_vite.plugin import VitePlugin
 
 def test_scroll_props_helper_creates_config() -> None:
     """Test scroll_props() helper creates correct ScrollPropsConfig."""
-    config = scroll_props(
-        page_name="page",
-        current_page=2,
-        previous_page=1,
-        next_page=3,
-    )
+    config = scroll_props(page_name="page", current_page=2, previous_page=1, next_page=3)
 
     assert config.page_name == "page"
     assert config.current_page == 2
@@ -50,12 +40,7 @@ def test_scroll_props_helper_defaults() -> None:
 
 def test_scroll_props_helper_custom_page_name() -> None:
     """Test scroll_props() with custom page parameter name."""
-    config = scroll_props(
-        page_name="offset",
-        current_page=10,
-        previous_page=9,
-        next_page=11,
-    )
+    config = scroll_props(page_name="offset", current_page=10, previous_page=9, next_page=11)
 
     assert config.page_name == "offset"
     assert config.current_page == 10
@@ -63,11 +48,7 @@ def test_scroll_props_helper_custom_page_name() -> None:
 
 def test_scroll_props_helper_first_page() -> None:
     """Test scroll_props() for first page (no previous)."""
-    config = scroll_props(
-        current_page=1,
-        previous_page=None,
-        next_page=2,
-    )
+    config = scroll_props(current_page=1, previous_page=None, next_page=2)
 
     assert config.current_page == 1
     assert config.previous_page is None
@@ -76,11 +57,7 @@ def test_scroll_props_helper_first_page() -> None:
 
 def test_scroll_props_helper_last_page() -> None:
     """Test scroll_props() for last page (no next)."""
-    config = scroll_props(
-        current_page=10,
-        previous_page=9,
-        next_page=None,
-    )
+    config = scroll_props(current_page=10, previous_page=9, next_page=None)
 
     assert config.current_page == 10
     assert config.previous_page == 9
@@ -202,15 +179,7 @@ def test_should_render_with_key_partial_except() -> None:
 def test_should_render_with_key_partial_except_precedence() -> None:
     """Test that partial_except takes precedence over partial_data with key."""
     # partial_except takes precedence - exclude even if in partial_data
-    assert (
-        should_render(
-            "value",
-            partial_data={"field1"},
-            partial_except={"field1"},
-            key="field1",
-        )
-        is False
-    )
+    assert should_render("value", partial_data={"field1"}, partial_except={"field1"}, key="field1") is False
 
 
 def test_should_render_lazy_prop_with_key() -> None:
@@ -451,14 +420,7 @@ def test_pagination_to_dict_mixed_attributes() -> None:
         current_page: int
 
     # Has both offset and classic pagination attributes
-    pagination = MixedPagination(
-        items=["item1"],
-        total=100,
-        limit=10,
-        offset=0,
-        page_size=10,
-        current_page=1,
-    )
+    pagination = MixedPagination(items=["item1"], total=100, limit=10, offset=0, page_size=10, current_page=1)
     result = pagination_to_dict(pagination)
 
     # All found attributes should be included

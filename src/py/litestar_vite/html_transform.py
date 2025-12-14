@@ -1,13 +1,14 @@
-"""HTML transformation and injection utilities for SPA output."""
+"""HTML transformation and injection utilities for SPA output.
+
+Regex patterns are compiled once at import time for performance.
+"""
 
 import re
-from functools import lru_cache
+from functools import lru_cache, partial
 from typing import Any
 
 from litestar.serialization import encode_json
 
-# Compiled regex patterns for HTML transformations (case-insensitive)
-# These are compiled once at module load for better performance
 _HEAD_END_PATTERN = re.compile(r"</head\s*>", re.IGNORECASE)
 _BODY_END_PATTERN = re.compile(r"</body\s*>", re.IGNORECASE)
 _BODY_START_PATTERN = re.compile(r"<body[^>]*>", re.IGNORECASE)
@@ -24,8 +25,7 @@ def _get_id_selector_pattern(element_id: str) -> re.Pattern[str]:
         Pattern matching an element with the given ID.
     """
     return re.compile(
-        rf'(<[a-zA-Z][a-zA-Z0-9]*\s+[^>]*id\s*=\s*["\']?{re.escape(element_id)}["\']?[^>]*)(>)',
-        re.IGNORECASE,
+        rf'(<[a-zA-Z][a-zA-Z0-9]*\s+[^>]*id\s*=\s*["\']?{re.escape(element_id)}["\']?[^>]*)(>)', re.IGNORECASE
     )
 
 
@@ -55,6 +55,9 @@ def _get_id_element_with_content_pattern(element_id: str) -> re.Pattern[str]:
 
     The pattern matches: <tag ... id="element_id" ...> ... </tag>
     and captures the opening tag, the inner content, and the closing tag.
+
+    Returns:
+        Pattern matching an element with the given ID, capturing its inner HTML.
     """
     return re.compile(
         rf"(<(?P<tag>[a-zA-Z0-9]+)(?P<attrs>[^>]*\bid=[\"']{re.escape(element_id)}[\"'][^>]*)>)(?P<inner>.*?)(</(?P=tag)\s*>)",
@@ -96,6 +99,42 @@ def _escape_attr(value: str) -> str:
     )
 
 
+def _set_attribute_replacer(
+    match: re.Match[str], *, attr_pattern: re.Pattern[str], attr_name: str, escaped_val: str
+) -> str:
+    """Replace or add an attribute on an opening tag match.
+
+    Args:
+        match: Regex match capturing the opening portion and closing delimiter.
+        attr_pattern: Compiled pattern that matches the attribute assignment.
+        attr_name: Attribute name to set.
+        escaped_val: Escaped attribute value.
+
+    Returns:
+        Updated tag string with ``attr_name`` set to ``escaped_val``.
+    """
+    opening = match.group(1)
+    closing = match.group(2)
+    if attr_pattern.search(opening):
+        opening = attr_pattern.sub(f'{attr_name}="{escaped_val}"', opening)
+    else:
+        opening = opening.rstrip() + f' {attr_name}="{escaped_val}"'
+    return opening + closing
+
+
+def _set_inner_html_replacer(match: re.Match[str], *, content: str) -> str:
+    """Replace inner HTML for an ID-targeted element match.
+
+    Args:
+        match: Regex match from ``_get_id_element_with_content_pattern``.
+        content: Raw HTML to inject as the element's inner HTML.
+
+    Returns:
+        Updated HTML fragment with replaced inner content.
+    """
+    return match.group(1) + content + match.group(5)
+
+
 def inject_head_script(html: str, script: str, *, escape: bool = True) -> str:
     """Inject a script tag before the closing </head> tag.
 
@@ -121,19 +160,16 @@ def inject_head_script(html: str, script: str, *, escape: bool = True) -> str:
 
     script_tag = f"<script>{script}</script>\n"
 
-    # Try to find </head> tag (handles whitespace variations)
     head_end_match = _HEAD_END_PATTERN.search(html)
     if head_end_match:
         pos = head_end_match.start()
         return html[:pos] + script_tag + html[pos:]
 
-    # Fallback: inject before </html>
     html_end_match = _HTML_END_PATTERN.search(html)
     if html_end_match:
         pos = html_end_match.start()
         return html[:pos] + script_tag + html[pos:]
 
-    # No closing tags found - append at the end
     return html + "\n" + script_tag
 
 
@@ -197,7 +233,6 @@ def inject_body_content(html: str, content: str, *, position: str = "end") -> st
             pos = body_start_match.end()
             return html[:pos] + "\n" + content + html[pos:]
 
-    # No body tag found - return as-is
     return html
 
 
@@ -230,31 +265,16 @@ def set_data_attribute(html: str, selector: str, attr: str, value: str) -> str:
 
     escaped_value = _escape_attr(value)
     attr_pattern = _get_attr_pattern(attr)
+    replacer = partial(_set_attribute_replacer, attr_pattern=attr_pattern, attr_name=attr, escaped_val=escaped_value)
 
-    def make_replacer(attr_name: str, escaped_val: str) -> Any:
-        """Create a replacer function for regex substitution."""
-
-        def replacer(match: re.Match[str]) -> str:
-            opening = match.group(1)
-            closing = match.group(2)
-            if attr_pattern.search(opening):
-                opening = attr_pattern.sub(f'{attr_name}="{escaped_val}"', opening)
-            else:
-                opening = opening.rstrip() + f' {attr_name}="{escaped_val}"'
-            return opening + closing
-
-        return replacer
-
-    # Handle ID selector (#id)
     if selector.startswith("#"):
         element_id = selector[1:]
         pattern = _get_id_selector_pattern(element_id)
-        return pattern.sub(make_replacer(attr, escaped_value), html, count=1)
+        return pattern.sub(replacer, html, count=1)
 
-    # Handle element selector (e.g., "div")
     element_name = selector.lower()
     pattern = _get_element_selector_pattern(element_name)
-    return pattern.sub(make_replacer(attr, escaped_value), html, count=1)
+    return pattern.sub(replacer, html, count=1)
 
 
 def set_element_inner_html(html: str, selector: str, content: str) -> str:
@@ -276,10 +296,7 @@ def set_element_inner_html(html: str, selector: str, content: str) -> str:
 
     element_id = selector[1:]
     pattern = _get_id_element_with_content_pattern(element_id)
-
-    def replacer(match: re.Match[str]) -> str:
-        return match.group(1) + content + match.group(5)
-
+    replacer = partial(_set_inner_html_replacer, content=content)
     return pattern.sub(replacer, html, count=1)
 
 
@@ -313,10 +330,7 @@ def inject_json_script(html: str, var_name: str, data: dict[str, Any]) -> str:
 
 
 def transform_asset_urls(
-    html: str,
-    manifest: dict[str, Any],
-    asset_url: str = "/static/",
-    base_url: str | None = None,
+    html: str, manifest: dict[str, Any], asset_url: str = "/static/", base_url: str | None = None
 ) -> str:
     """Transform asset URLs in HTML based on Vite manifest.
 
@@ -370,7 +384,6 @@ def transform_asset_urls(
         Returns:
             The full URL combining base and file path.
         """
-        # Ensure url_base ends with / for proper joining
         base = url_base if url_base.endswith("/") else url_base + "/"
         return base + file_path
 
@@ -404,13 +417,10 @@ def transform_asset_urls(
         normalized = _normalize_path(href)
         if normalized in manifest:
             entry = manifest[normalized]
-            # CSS files have their path directly in "file"
             new_href = _build_url(entry.get("file", href))
             return prefix + new_href + suffix
         return match.group(0)
 
-    # Transform script src attributes
     html = _SCRIPT_SRC_PATTERN.sub(replace_script_src, html)
 
-    # Transform link href attributes (for CSS)
     return _LINK_HREF_PATTERN.sub(replace_link_href, html)

@@ -17,9 +17,4 @@ Supported frameworks:
 from litestar_vite.scaffolding.generator import TemplateContext, generate_project
 from litestar_vite.scaffolding.templates import FrameworkTemplate, get_available_templates
 
-__all__ = [
-    "FrameworkTemplate",
-    "TemplateContext",
-    "generate_project",
-    "get_available_templates",
-]
+__all__ = ["FrameworkTemplate", "TemplateContext", "generate_project", "get_available_templates"]

@@ -177,11 +177,7 @@ html_css_files = ["style.css"]
 html_show_sourcelink = True
 html_title = "Litestar Vite"
 html_favicon = "_static/favicon.ico"
-html_context = {
-    "source_type": "github",
-    "source_user": "litestar-org",
-    "source_repo": project.replace("_", "-"),
-}
+html_context = {"source_type": "github", "source_user": "litestar-org", "source_repo": project.replace("_", "-")}
 
 brand_colors = {
     "--brand-primary": {"rgb": "245, 0, 87", "hex": "#f50057"},

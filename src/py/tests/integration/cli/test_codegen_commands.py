@@ -26,17 +26,11 @@ def test_export_routes_integration(tmp_path: Path) -> None:
         return {}
 
     config = ViteConfig(
-        types=TypeGenConfig(
-            openapi_path=tmp_path / "openapi.json",
-            routes_path=tmp_path / "routes.json",
-        ),
+        types=TypeGenConfig(openapi_path=tmp_path / "openapi.json", routes_path=tmp_path / "routes.json")
     )
     plugin = VitePlugin(config=config)
 
-    app = Litestar(
-        route_handlers=[list_users_handler, get_user_handler, dashboard_handler],
-        plugins=[plugin],
-    )
+    app = Litestar(route_handlers=[list_users_handler, get_user_handler, dashboard_handler], plugins=[plugin])
 
     # Generate routes
     routes_data = generate_routes_json(app, include_components=True)
@@ -63,11 +57,7 @@ def test_export_schema_integration(tmp_path: Path) -> None:
     def test_handler() -> dict[str, str]:
         return {}
 
-    config = ViteConfig(
-        types=TypeGenConfig(
-            openapi_path=tmp_path / "openapi.json",
-        ),
-    )
+    config = ViteConfig(types=TypeGenConfig(openapi_path=tmp_path / "openapi.json"))
     plugin = VitePlugin(config=config)
 
     app = Litestar(route_handlers=[test_handler], plugins=[plugin])
@@ -131,18 +121,10 @@ def test_export_routes_typescript_integration(tmp_path: Path) -> None:
     def dashboard_handler() -> dict[str, str]:
         return {}
 
-    config = ViteConfig(
-        types=TypeGenConfig(
-            generate_routes=True,
-            routes_ts_path=tmp_path / "routes.ts",
-        ),
-    )
+    config = ViteConfig(types=TypeGenConfig(generate_routes=True, routes_ts_path=tmp_path / "routes.ts"))
     plugin = VitePlugin(config=config)
 
-    app = Litestar(
-        route_handlers=[list_users_handler, get_user_handler, dashboard_handler],
-        plugins=[plugin],
-    )
+    app = Litestar(route_handlers=[list_users_handler, get_user_handler, dashboard_handler], plugins=[plugin])
 
     # Generate TypeScript routes
     ts_content = generate_routes_ts(app, openapi_schema=app.openapi_schema.to_schema())
@@ -174,10 +156,7 @@ def test_typescript_routes_with_config(tmp_path: Path) -> None:
         return "test"
 
     config = ViteConfig(
-        types=TypeGenConfig(
-            generate_routes=True,
-            routes_ts_path=tmp_path / "src" / "generated" / "routes.ts",
-        ),
+        types=TypeGenConfig(generate_routes=True, routes_ts_path=tmp_path / "src" / "generated" / "routes.ts")
     )
     plugin = VitePlugin(config=config)
 

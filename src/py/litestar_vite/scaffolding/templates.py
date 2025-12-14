@@ -31,7 +31,6 @@ class FrameworkType(str, Enum):
     ANGULAR_CLI = "angular-cli"
 
 
-# Type alias for the factory function to satisfy pyright
 _ListStrFactory: Callable[[], list[str]] = _str_list_factory
 
 
@@ -68,7 +67,6 @@ class FrameworkTemplate:
     resource_dir: str = "resources"
 
 
-# Template registry
 FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
     FrameworkType.REACT: FrameworkTemplate(
         name="React",
@@ -76,12 +74,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         description="React 18+ with TypeScript and Vite",
         vite_plugin="@vitejs/plugin-react",
         dependencies=["react", "react-dom"],
-        dev_dependencies=[
-            "@vitejs/plugin-react",
-            "@types/react",
-            "@types/react-dom",
-            "typescript",
-        ],
+        dev_dependencies=["@vitejs/plugin-react", "@types/react", "@types/react-dom", "typescript"],
         files=[
             "vite.config.ts",
             "tsconfig.json",
@@ -102,12 +95,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         description="React 18+ with React Router for SPA routing",
         vite_plugin="@vitejs/plugin-react",
         dependencies=["react", "react-dom", "react-router-dom"],
-        dev_dependencies=[
-            "@vitejs/plugin-react",
-            "@types/react",
-            "@types/react-dom",
-            "typescript",
-        ],
+        dev_dependencies=["@vitejs/plugin-react", "@types/react", "@types/react-dom", "typescript"],
         files=[
             "vite.config.ts",
             "tsconfig.json",
@@ -127,12 +115,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         type=FrameworkType.REACT_TANSTACK,
         description="React 18+ with TanStack Router (file-based), Zod, and API client",
         vite_plugin="@vitejs/plugin-react",
-        dependencies=[
-            "react",
-            "react-dom",
-            "@tanstack/react-router",
-            "zod",
-        ],
+        dependencies=["react", "react-dom", "@tanstack/react-router", "zod"],
         dev_dependencies=[
             "@vitejs/plugin-react",
             "@tanstack/router-plugin",
@@ -165,13 +148,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         description="React 18+ with Inertia.js for server-side routing",
         vite_plugin="@vitejs/plugin-react",
         dependencies=["react", "react-dom", "@inertiajs/react"],
-        dev_dependencies=[
-            "@vitejs/plugin-react",
-            "@types/react",
-            "@types/react-dom",
-            "typescript",
-            "vite",
-        ],
+        dev_dependencies=["@vitejs/plugin-react", "@types/react", "@types/react-dom", "typescript", "vite"],
         files=[
             "vite.config.ts",
             "tsconfig.json",
@@ -193,11 +170,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         description="Vue 3 with Composition API and TypeScript",
         vite_plugin="@vitejs/plugin-vue",
         dependencies=["vue"],
-        dev_dependencies=[
-            "@vitejs/plugin-vue",
-            "vue-tsc",
-            "typescript",
-        ],
+        dev_dependencies=["@vitejs/plugin-vue", "vue-tsc", "typescript"],
         files=[
             "vite.config.ts",
             "tsconfig.json",
@@ -219,11 +192,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         description="Vue 3 with Inertia.js for server-side routing",
         vite_plugin="@vitejs/plugin-vue",
         dependencies=["vue", "@inertiajs/vue3"],
-        dev_dependencies=[
-            "@vitejs/plugin-vue",
-            "vue-tsc",
-            "typescript",
-        ],
+        dev_dependencies=["@vitejs/plugin-vue", "vue-tsc", "typescript"],
         files=[
             "vite.config.ts",
             "tsconfig.json",
@@ -246,12 +215,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         description="Svelte 5 with runes and TypeScript",
         vite_plugin="@sveltejs/vite-plugin-svelte",
         dependencies=["svelte"],
-        dev_dependencies=[
-            "@sveltejs/vite-plugin-svelte",
-            "svelte-check",
-            "typescript",
-            "tslib",
-        ],
+        dev_dependencies=["@sveltejs/vite-plugin-svelte", "svelte-check", "typescript", "tslib"],
         files=[
             "vite.config.ts",
             "svelte.config.js",
@@ -273,12 +237,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         description="Svelte 5 with Inertia.js for server-side routing",
         vite_plugin="@sveltejs/vite-plugin-svelte",
         dependencies=["svelte", "@inertiajs/svelte"],
-        dev_dependencies=[
-            "@sveltejs/vite-plugin-svelte",
-            "svelte-check",
-            "typescript",
-            "tslib",
-        ],
+        dev_dependencies=["@sveltejs/vite-plugin-svelte", "svelte-check", "typescript", "tslib"],
         files=[
             "vite.config.ts",
             "svelte.config.js",
@@ -326,19 +285,10 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         name="Nuxt 3",
         type=FrameworkType.NUXT,
         description="Nuxt 3 with Litestar API backend",
-        vite_plugin=None,  # Nuxt has its own module system
+        vite_plugin=None,
         dependencies=["nuxt", "vue"],
-        dev_dependencies=[
-            "typescript",
-            "vue-tsc",
-            "litestar-vite-plugin",
-        ],
-        files=[
-            "nuxt.config.ts",
-            "app.vue",
-            "pages/index.vue",
-            "composables/useApi.ts",
-        ],
+        dev_dependencies=["typescript", "vue-tsc", "litestar-vite-plugin"],
+        files=["nuxt.config.ts", "app.vue", "pages/index.vue", "composables/useApi.ts"],
         uses_typescript=True,
         has_ssr=True,
         inertia_compatible=False,
@@ -349,16 +299,8 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         description="Astro with Litestar API backend",
         vite_plugin="litestar-vite-plugin/astro",
         dependencies=["astro"],
-        dev_dependencies=[
-            "typescript",
-            "litestar-vite-plugin",
-        ],
-        files=[
-            "astro.config.mjs",
-            "src/pages/index.astro",
-            "src/layouts/Layout.astro",
-            "src/styles/global.css",
-        ],
+        dev_dependencies=["typescript", "litestar-vite-plugin"],
+        files=["astro.config.mjs", "src/pages/index.astro", "src/layouts/Layout.astro", "src/styles/global.css"],
         uses_typescript=True,
         has_ssr=True,
         inertia_compatible=False,
@@ -370,14 +312,9 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         vite_plugin=None,
         dependencies=["htmx.org"],
         dev_dependencies=["typescript"],
-        files=[
-            "vite.config.ts",
-            "resources/main.js",
-            "templates/base.html.j2",
-            "templates/index.html.j2",
-        ],
+        files=["vite.config.ts", "resources/main.js", "templates/base.html.j2", "templates/index.html.j2"],
         uses_typescript=False,
-        has_ssr=False,  # Server-rendered
+        has_ssr=False,
         inertia_compatible=False,
         resource_dir="resources",
     ),
@@ -492,10 +429,8 @@ def get_template(framework_type: "FrameworkType | str") -> "FrameworkTemplate | 
     Returns:
         The FrameworkTemplate if found, None otherwise.
     """
-    # If already a FrameworkType enum, use it directly
     if isinstance(framework_type, FrameworkType):
         return FRAMEWORK_TEMPLATES.get(framework_type)
-    # Otherwise, try to convert the string to FrameworkType
     try:
         return FRAMEWORK_TEMPLATES.get(FrameworkType(framework_type))
     except ValueError:

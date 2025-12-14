@@ -1,24 +1,33 @@
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from litestar_vite.config import TypeGenConfig, ViteConfig
+from litestar_vite.config import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig
 from litestar_vite.doctor import ViteDoctor
 
 if TYPE_CHECKING:
     pass
 
 
+def _prepare_frontend_dirs(root: Path) -> None:
+    (root / "src").mkdir(parents=True, exist_ok=True)
+    (root / "src" / "public").mkdir(parents=True, exist_ok=True)
+
+
 @pytest.fixture
 def vite_config() -> ViteConfig:
     return ViteConfig(
-        paths=MagicMock(
+        mode="spa",
+        runtime=RuntimeConfig(dev_mode=False, set_environment=False, proxy_mode="vite", host="127.0.0.1", port=5173),
+        paths=PathConfig(
             root=Path("/app"),
             bundle_dir=Path("public"),
-            hot_file="hot",
+            resource_dir=Path("src"),
+            static_dir=Path("public"),
             asset_url="/static/",
+            hot_file="hot",
         ),
         types=TypeGenConfig(
             output=Path("src/generated"),
@@ -37,6 +46,7 @@ def doctor(vite_config: ViteConfig) -> ViteDoctor:
 
 def test_doctor_detect_base_mismatch(doctor: ViteDoctor, tmp_path: Path) -> None:
     doctor.config.paths.root = tmp_path
+    _prepare_frontend_dirs(tmp_path)
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({
         base: '/wrong/',
@@ -56,6 +66,7 @@ def test_doctor_detect_base_mismatch(doctor: ViteDoctor, tmp_path: Path) -> None
 
 def test_doctor_detect_missing_hotfile(doctor: ViteDoctor, tmp_path: Path) -> None:
     doctor.config.paths.root = tmp_path
+    _prepare_frontend_dirs(tmp_path)
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({
         plugins: [...litestar({
@@ -77,6 +88,7 @@ def test_doctor_detect_missing_hotfile(doctor: ViteDoctor, tmp_path: Path) -> No
 
 def test_doctor_detect_typegen_mismatch(doctor: ViteDoctor, tmp_path: Path) -> None:
     doctor.config.paths.root = tmp_path
+    _prepare_frontend_dirs(tmp_path)
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({
         plugins: [...litestar({
@@ -97,6 +109,7 @@ def test_doctor_detect_typegen_mismatch(doctor: ViteDoctor, tmp_path: Path) -> N
 
 def test_doctor_detect_typegen_flags_mismatch(doctor: ViteDoctor, tmp_path: Path) -> None:
     doctor.config.paths.root = tmp_path
+    _prepare_frontend_dirs(tmp_path)
     # Python config: generate_zod=True, generate_sdk=False
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({
@@ -118,6 +131,7 @@ def test_doctor_detect_typegen_flags_mismatch(doctor: ViteDoctor, tmp_path: Path
 
 def test_doctor_no_issues(doctor: ViteDoctor, tmp_path: Path) -> None:
     doctor.config.paths.root = tmp_path
+    _prepare_frontend_dirs(tmp_path)
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({
         plugins: [litestar({
@@ -153,6 +167,7 @@ def test_doctor_no_issues(doctor: ViteDoctor, tmp_path: Path) -> None:
 
 def test_doctor_type_paths_mismatch(doctor: ViteDoctor, tmp_path: Path) -> None:
     doctor.config.paths.root = tmp_path
+    _prepare_frontend_dirs(tmp_path)
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({
         plugins: [litestar({
@@ -180,6 +195,7 @@ def test_doctor_type_paths_mismatch(doctor: ViteDoctor, tmp_path: Path) -> None:
 
 def test_doctor_manifest_missing(doctor: ViteDoctor, tmp_path: Path) -> None:
     doctor.config.paths.root = tmp_path
+    _prepare_frontend_dirs(tmp_path)
     doctor.config.paths.bundle_dir = Path(tmp_path / "public")
     doctor.config.runtime.dev_mode = False
     (tmp_path / "vite.config.ts").write_text("""
@@ -194,10 +210,7 @@ def test_doctor_manifest_missing(doctor: ViteDoctor, tmp_path: Path) -> None:
     cfg_path = tmp_path / "vite.config.ts"
     cfg_path.write_text(cfg_path.read_text().replace("REPLACE_ME", str(tmp_path / "public")))
 
-    with (
-        patch.object(doctor, "_check_dist_files"),
-        patch.object(doctor, "_check_node_modules"),
-    ):
+    with patch.object(doctor, "_check_dist_files"), patch.object(doctor, "_check_node_modules"):
         doctor.run(fix=False)
 
     assert any(i.check == "Manifest Missing" for i in doctor.issues)
@@ -205,9 +218,10 @@ def test_doctor_manifest_missing(doctor: ViteDoctor, tmp_path: Path) -> None:
 
 def test_doctor_hotfile_missing(doctor: ViteDoctor, tmp_path: Path) -> None:
     doctor.config.paths.root = tmp_path
+    _prepare_frontend_dirs(tmp_path)
     doctor.config.paths.bundle_dir = Path(tmp_path / "public")
     doctor.config.runtime.dev_mode = True
-    doctor.config.runtime.proxy_mode = "vite"
+    doctor.config.runtime.proxy_mode = "proxy"
     (tmp_path / "public").mkdir(parents=True, exist_ok=True)
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({
@@ -225,13 +239,14 @@ def test_doctor_hotfile_missing(doctor: ViteDoctor, tmp_path: Path) -> None:
         patch.object(doctor, "_check_node_modules"),
         patch.object(doctor, "_check_vite_server_reachable"),
     ):
-        doctor.run(fix=False)
+        doctor.run(fix=False, runtime_checks=True)
 
     assert any(i.check == "Hotfile Missing" for i in doctor.issues)
 
 
 def test_doctor_env_mismatch(doctor: ViteDoctor, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     doctor.config.paths.root = tmp_path
+    _prepare_frontend_dirs(tmp_path)
     doctor.config.runtime.port = 5174
     monkeypatch.setenv("VITE_PORT", "9999")
     (tmp_path / "vite.config.ts").write_text("""
@@ -252,3 +267,40 @@ def test_doctor_env_mismatch(doctor: ViteDoctor, tmp_path: Path, monkeypatch: py
         doctor.run(fix=False)
 
     assert any(i.check == "Env / Config Mismatch" for i in doctor.issues)
+
+
+def test_doctor_can_write_bridge_file(tmp_path: Path) -> None:
+    config = ViteConfig(
+        mode="spa",
+        runtime=RuntimeConfig(dev_mode=False, set_environment=True, proxy_mode="vite", host="127.0.0.1", port=5173),
+        paths=PathConfig(
+            root=tmp_path,
+            bundle_dir=Path("public"),
+            resource_dir=Path("src"),
+            static_dir=Path("public"),
+            asset_url="/static/",
+            hot_file="hot",
+        ),
+        types=False,
+    )
+    doctor = ViteDoctor(config=config)
+    _prepare_frontend_dirs(tmp_path)
+    (tmp_path / "src" / "main.ts").write_text("export {}")
+    (tmp_path / "vite.config.ts").write_text("""
+    export default defineConfig({
+        plugins: [litestar({ input: ['src/main.ts'] })]
+    })
+    """)
+
+    with (
+        patch.object(doctor, "_check_dist_files"),
+        patch.object(doctor, "_check_node_modules"),
+        patch.object(doctor, "_check_manifest_presence"),
+        patch.object(doctor, "_check_typegen_artifacts"),
+        patch.object(doctor, "_check_env_alignment"),
+        patch.object(doctor, "_check_vite_server_reachable"),
+    ):
+        ok = doctor.run(fix=True, no_prompt=True)
+
+    assert ok is True
+    assert (tmp_path / ".litestar.json").exists()

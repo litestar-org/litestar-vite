@@ -148,11 +148,7 @@ def test_scaffolding_template_context_to_dict() -> None:
     assert framework is not None
 
     context = TemplateContext(
-        project_name="test-project",
-        framework=framework,
-        use_typescript=True,
-        vite_port=5173,
-        litestar_port=8000,
+        project_name="test-project", framework=framework, use_typescript=True, vite_port=5173, litestar_port=8000
     )
 
     context_dict = context.to_dict()
@@ -170,11 +166,7 @@ def test_scaffolding_generate_project(tmp_path: Path) -> None:
     assert framework is not None
 
     context = TemplateContext(
-        project_name="test-project",
-        framework=framework,
-        use_typescript=True,
-        vite_port=5173,
-        litestar_port=8000,
+        project_name="test-project", framework=framework, use_typescript=True, vite_port=5173, litestar_port=8000
     )
 
     generated = generate_project(tmp_path, context)

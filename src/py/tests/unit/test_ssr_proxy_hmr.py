@@ -35,12 +35,7 @@ async def test_ssr_proxy_uses_hmr_target_when_available(hotfile: Path, hmr_hotfi
 
     # Mock WebSocket
     socket = MagicMock(spec=WebSocket)
-    socket.scope = {
-        "type": "websocket",
-        "path": "/_nuxt/",
-        "query_string": b"",
-        "headers": [],
-    }
+    socket.scope = {"type": "websocket", "path": "/_nuxt/", "query_string": b"", "headers": []}
     socket.accept = AsyncMock()
     socket.close = AsyncMock()
     # Raise WebSocketDisconnect(code=1000) to simulate client disconnect and stop the loop
@@ -74,12 +69,7 @@ async def test_ssr_proxy_falls_back_to_main_target_when_hmr_missing(hotfile: Pat
 
     # Mock WebSocket
     socket = MagicMock(spec=WebSocket)
-    socket.scope = {
-        "type": "websocket",
-        "path": "/_nuxt/",
-        "query_string": b"",
-        "headers": [],
-    }
+    socket.scope = {"type": "websocket", "path": "/_nuxt/", "query_string": b"", "headers": []}
     socket.accept = AsyncMock()
     socket.close = AsyncMock()
     socket.receive_text = AsyncMock(side_effect=WebSocketDisconnect(code=1000, detail="Client disconnected"))

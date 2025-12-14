@@ -100,12 +100,7 @@ def _cleanup_processes_after_session() -> Generator[None, None, None]:
     # Kill any orphaned processes on our fixed ports
     for port in EXAMPLE_PORTS.values():
         try:
-            result = subprocess.run(
-                ["lsof", "-t", "-i", f":{port}"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
+            result = subprocess.run(["lsof", "-t", "-i", f":{port}"], capture_output=True, text=True, timeout=5)
             if result.stdout.strip():
                 for pid_str in result.stdout.strip().split("\n"):
                     try:

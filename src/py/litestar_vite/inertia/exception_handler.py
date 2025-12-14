@@ -34,6 +34,7 @@ from litestar.status_codes import (
 )
 
 from litestar_vite.inertia.helpers import error
+from litestar_vite.inertia.request import InertiaRequest
 from litestar_vite.inertia.response import InertiaBack, InertiaRedirect, InertiaResponse
 
 if TYPE_CHECKING:
@@ -56,6 +57,12 @@ class _HTTPConflictException(HTTPException):
 def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "Exception") -> "Response[Any]":
     """Handler for all exceptions subclassed from HTTPException.
 
+    Inertia detection:
+
+    - For InertiaRequest instances, uses the request's derived flags (route component + headers).
+    - For plain Request instances (e.g., before routing/when middleware didn't run), falls back
+      to checking the ``X-Inertia`` header.
+
     Args:
         request: The request object.
         exc: The exception to handle.
@@ -63,20 +70,15 @@ def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "E
     Returns:
         The response object.
     """
-    # Check if this is an Inertia request by:
-    # 1. InertiaRequest.inertia_enabled (route has component)
-    # 2. InertiaRequest.is_inertia (X-Inertia header present)
-    # 3. Direct header check (fallback for 404s before routing when request isn't InertiaRequest)
     is_inertia_header = request.headers.get("x-inertia", "").lower() == "true"
-    inertia_enabled = (
-        getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False) or is_inertia_header
-    )
+    if isinstance(request, InertiaRequest):
+        inertia_enabled = request.inertia_enabled or request.is_inertia or is_inertia_header
+    else:
+        inertia_enabled = is_inertia_header
 
     if not inertia_enabled:
-        # If it's already an HTTPException, use it directly with its original status code
         if isinstance(exc, HTTPException):
             return cast("Response[Any]", create_exception_response(request, exc))
-        # Convert repository/domain exceptions to appropriate HTTP exceptions
         if isinstance(exc, NotFoundError):
             http_exc = NotFoundException
         elif isinstance(exc, (RepositoryError, ConflictError)):
@@ -108,11 +110,18 @@ def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", 
     Returns:
         The response object, either an InertiaResponse, InertiaRedirect, or InertiaBack.
     """
-    is_inertia = getattr(request, "is_inertia", False)
-    status_code = getattr(exc, "status_code", HTTP_500_INTERNAL_SERVER_ERROR)
+    is_inertia_header = request.headers.get("x-inertia", "").lower() == "true"
+    is_inertia = request.is_inertia if isinstance(request, InertiaRequest) else is_inertia_header
+
+    status_code = exc.status_code if isinstance(exc, HTTPException) else HTTP_500_INTERNAL_SERVER_ERROR
     preferred_type = MediaType.HTML if not is_inertia else MediaType.JSON
-    detail = getattr(exc, "detail", "") or ""
-    extras: Any = getattr(exc, "extra", None)
+    detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+    extras: Any = None
+    if isinstance(exc, HTTPException):
+        try:
+            extras = exc.extra  # pyright: ignore[reportUnknownMemberType]
+        except AttributeError:
+            extras = None
     content: dict[str, Any] = {"status_code": status_code, "message": detail}
 
     inertia_plugin: "InertiaPlugin | None"
@@ -147,11 +156,7 @@ def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", 
         return InertiaBack(request)
 
     if inertia_plugin is None:
-        return InertiaResponse[Any](
-            media_type=preferred_type,
-            content=content,
-            status_code=status_code,
-        )
+        return InertiaResponse[Any](media_type=preferred_type, content=content, status_code=status_code)
 
     if (status_code == HTTP_401_UNAUTHORIZED or isinstance(exc, NotAuthorizedException)) and (
         inertia_plugin.config.redirect_unauthorized_to is not None
@@ -164,8 +169,4 @@ def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", 
     ):
         return InertiaRedirect(request, redirect_to=inertia_plugin.config.redirect_404)
 
-    return InertiaResponse[Any](
-        media_type=preferred_type,
-        content=content,
-        status_code=status_code,
-    )
+    return InertiaResponse[Any](media_type=preferred_type, content=content, status_code=status_code)

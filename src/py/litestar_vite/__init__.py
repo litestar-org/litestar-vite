@@ -44,7 +44,6 @@ from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.plugin import VitePlugin
 
 __all__ = (
-    # Config components
     "DeployConfig",
     "ExternalDevServer",
     "InertiaConfig",
@@ -54,8 +53,6 @@ __all__ = (
     "TypeGenConfig",
     "ViteAssetLoader",
     "ViteConfig",
-    # Main exports
     "VitePlugin",
-    # Submodule
     "inertia",
 )

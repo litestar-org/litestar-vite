@@ -196,11 +196,7 @@ def test_vite_plugin_app_init_static_directories_configuration(tmp_path: Path) -
     static_dir.mkdir()
 
     config = ViteConfig(
-        paths=PathConfig(
-            bundle_dir=bundle_dir,
-            resource_dir=resource_dir,
-            static_dir=static_dir,
-        ),
+        paths=PathConfig(bundle_dir=bundle_dir, resource_dir=resource_dir, static_dir=static_dir),
         runtime=RuntimeConfig(set_static_folders=True, dev_mode=True),
     )
     plugin = VitePlugin(config=config)
@@ -232,8 +228,7 @@ def test_vite_plugin_app_init_production_mode_static_config(tmp_path: Path) -> N
     bundle_dir.mkdir()
 
     config = ViteConfig(
-        paths=PathConfig(bundle_dir=bundle_dir),
-        runtime=RuntimeConfig(set_static_folders=True, dev_mode=False),
+        paths=PathConfig(bundle_dir=bundle_dir), runtime=RuntimeConfig(set_static_folders=True, dev_mode=False)
     )
     plugin = VitePlugin(config=config)
     app_config = AppConfig()
@@ -252,9 +247,7 @@ def test_vite_plugin_app_init_production_mode_static_config(tmp_path: Path) -> N
 
 def test_vite_plugin_lifespan_in_production_without_start_dev_server() -> None:
     """Test server lifespan when dev server is disabled."""
-    config = ViteConfig(
-        runtime=RuntimeConfig(dev_mode=False, start_dev_server=False),
-    )
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=False, start_dev_server=False))
     plugin = VitePlugin(config=config)
     plugin._config.types = False
     app = Mock(spec=Litestar)
@@ -267,7 +260,7 @@ def test_vite_plugin_lifespan_in_production_without_start_dev_server() -> None:
 def test_vite_plugin_lifespan_in_production_mode() -> None:
     """Test server lifespan in production mode."""
     config = ViteConfig(
-        runtime=RuntimeConfig(dev_mode=False),  # Production mode
+        runtime=RuntimeConfig(dev_mode=False)  # Production mode
     )
     plugin = VitePlugin(config=config)
     plugin._config.types = False
@@ -281,9 +274,7 @@ def test_vite_plugin_lifespan_in_production_mode() -> None:
 @patch("litestar_vite.plugin.set_environment")
 def test_vite_plugin_lifespan_with_environment_setup(mock_set_env: Mock) -> None:
     """Test server lifespan with environment variable setup."""
-    config = ViteConfig(
-        runtime=RuntimeConfig(set_environment=True, dev_mode=False, start_dev_server=False),
-    )
+    config = ViteConfig(runtime=RuntimeConfig(set_environment=True, dev_mode=False, start_dev_server=False))
     plugin = VitePlugin(config=config)
     plugin._config.types = False
     app = Mock(spec=Litestar)
@@ -320,7 +311,7 @@ def test_vite_plugin_lifespan_with_watch_mode(mock_console: Mock) -> None:
     config = ViteConfig(
         runtime=RuntimeConfig(
             dev_mode=True, proxy_mode="proxy", external_dev_server="http://localhost:4200"
-        ),  # Watch mode without HMR
+        )  # Watch mode without HMR
     )
     plugin = VitePlugin(config=config)
     plugin._config.types = False
@@ -782,10 +773,10 @@ def test_vite_plugin_optional_backwards_compatibility_without_jinja() -> None:
     plugin = VitePlugin()
 
     # Standard plugin usage pattern
-    assert hasattr(plugin, "_config")
-    assert hasattr(plugin, "asset_loader")
-    assert hasattr(plugin, "on_app_init")
-    assert hasattr(plugin, "server_lifespan")
+    assert plugin._config is not None
+    assert plugin.asset_loader is not None
+    assert callable(plugin.on_app_init)
+    assert plugin.server_lifespan is not None
 
     # Should work with minimal configuration
     app = Litestar(plugins=[plugin])
@@ -884,8 +875,7 @@ def test_get_litestar_route_prefixes_includes_openapi_config_path() -> None:
 
     # Custom OpenAPI schema path
     app = Litestar(
-        route_handlers=[hello],
-        openapi_config=OpenAPIConfig(title="Test API", version="1.0.0", path="/custom-schema"),
+        route_handlers=[hello], openapi_config=OpenAPIConfig(title="Test API", version="1.0.0", path="/custom-schema")
     )
 
     prefixes = get_litestar_route_prefixes(app)
@@ -898,7 +888,7 @@ def test_get_litestar_route_prefixes_includes_openapi_config_path() -> None:
 
 def test_get_litestar_route_prefixes_caches_by_app() -> None:
     """Test that route prefixes are cached per app instance."""
-    from litestar_vite.plugin import _ROUTE_PREFIXES_CACHE_KEY, get_litestar_route_prefixes
+    from litestar_vite.plugin import get_litestar_route_prefixes
 
     @get("/users")
     async def get_users() -> dict[str, str]:
@@ -909,7 +899,6 @@ def test_get_litestar_route_prefixes_caches_by_app() -> None:
 
     # First call should populate cache in app.state
     prefixes1 = get_litestar_route_prefixes(app1)
-    assert hasattr(app1.state, _ROUTE_PREFIXES_CACHE_KEY)
 
     # Second call with same app should return cached result
     prefixes1_again = get_litestar_route_prefixes(app1)
@@ -917,7 +906,6 @@ def test_get_litestar_route_prefixes_caches_by_app() -> None:
 
     # Different app should have separate cache entry
     prefixes2 = get_litestar_route_prefixes(app2)
-    assert hasattr(app2.state, _ROUTE_PREFIXES_CACHE_KEY)
     assert prefixes1 == prefixes2  # Same content
     assert prefixes1 is not prefixes2  # Different objects (separate app instances)
 
@@ -1044,8 +1032,7 @@ def test_is_litestar_route_with_schema_path() -> None:
         return {"message": "hello"}
 
     app = Litestar(
-        route_handlers=[hello],
-        openapi_config=OpenAPIConfig(title="Test API", version="1.0.0", path="/schema"),
+        route_handlers=[hello], openapi_config=OpenAPIConfig(title="Test API", version="1.0.0", path="/schema")
     )
 
     # Should match schema path

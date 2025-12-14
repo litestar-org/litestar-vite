@@ -26,11 +26,7 @@ async def test_vite_proxy_respects_litestar_routes_with_root_asset_url(test_asse
         return {"status": "ok"}
 
     # Configure Vite with root asset_url
-    vite_config = ViteConfig(
-        mode="spa",
-        dev_mode=True,
-        paths=PathConfig(root=test_asset_root, asset_url="/"),
-    )
+    vite_config = ViteConfig(mode="spa", dev_mode=True, paths=PathConfig(root=test_asset_root, asset_url="/"))
 
     plugin = VitePlugin(config=vite_config)
 

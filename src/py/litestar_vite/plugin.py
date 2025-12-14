@@ -7,6 +7,7 @@ The plugin handles:
 - Jinja2 template callable registration
 - Vite dev server process management
 - Async asset loader initialization
+- Development proxies for Vite HTTP and HMR WebSockets (with hop-by-hop header filtering)
 
 Example::
 
@@ -28,13 +29,12 @@ import threading
 from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import anyio
 import httpx
 import websockets
 from litestar import Response
-from litestar.connection import Request
 from litestar.enums import ScopeType
 from litestar.exceptions import NotFoundException, WebSocketDisconnect
 from litestar.middleware import AbstractMiddleware, DefineMiddleware
@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from click import Group
     from litestar import Litestar
     from litestar.config.app import AppConfig
+    from litestar.connection import Request
     from litestar.datastructures import CacheControlHeader
     from litestar.openapi.spec import SecurityRequirement
     from litestar.types import (
@@ -69,11 +70,9 @@ if TYPE_CHECKING:
     )
     from websockets.typing import Subprotocol
 
+    from litestar_vite._handler import AppHandler
     from litestar_vite.executor import JSExecutor
-    from litestar_vite.handler import AppHandler
 
-
-# Disconnect exceptions that should be silently ignored during WebSocket shutdown
 _DISCONNECT_EXCEPTIONS = (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed)
 _TICK = "[bold green]✓[/]"
 _INFO = "[cyan]•[/]"
@@ -84,7 +83,11 @@ console = Console()
 
 
 def _fmt_path(path: Path) -> str:
-    """Return a path relative to CWD when possible to keep logs short."""
+    """Return a path relative to CWD when possible to keep logs short.
+
+    Returns:
+        The relative path string when possible, otherwise the absolute path string.
+    """
     try:
         return str(path.relative_to(Path.cwd()))
     except ValueError:
@@ -126,7 +129,6 @@ def _write_if_changed(path: Path, content: bytes | str, encoding: str = "utf-8")
     return True
 
 
-# Cache debug flag check to avoid repeated os.environ lookups
 _vite_proxy_debug: bool | None = None
 
 
@@ -184,6 +186,9 @@ def _is_non_serving_assets_cli() -> bool:
 
     This suppresses dev-proxy setup/logging for commands like `assets build`
     where only a Vite build is performed and no proxy should be initialized.
+
+    Returns:
+        True when the current process is running a non-serving `litestar assets ...` command, otherwise False.
     """
 
     argv_str = " ".join(sys.argv)
@@ -227,9 +232,11 @@ def _log_fail(message: str) -> None:
 def _write_runtime_config_file(config: ViteConfig) -> str:
     """Write a JSON handoff file for the Vite plugin and return its path.
 
+    The runtime config file is read by the JS plugin. We serialize with Litestar's JSON encoder for
+    consistency and format output deterministically for easier debugging.
+
     Returns:
         The path to the written config file.
-
     """
 
     root = config.root_dir or Path.cwd()
@@ -280,7 +287,6 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
         "litestarVersion": litestar_version,
     }
 
-    # Use Litestar's serializer for consistent JSON output across the project.
     import msgspec
     from litestar.serialization import encode_json
 
@@ -347,14 +353,16 @@ def set_app_environment(app: "Litestar") -> None:
         app: The Litestar application instance.
     """
     openapi_config = app.openapi_config
-    if openapi_config is not None:
-        path = getattr(openapi_config, "path", None)
-        if isinstance(path, str) and path:
-            os.environ.setdefault("LITESTAR_OPENAPI_PATH", path)
+    if openapi_config is not None and isinstance(openapi_config.path, str) and openapi_config.path:
+        os.environ.setdefault("LITESTAR_OPENAPI_PATH", openapi_config.path)
 
 
 def resolve_litestar_version() -> str:
-    """Return the installed Litestar version string."""
+    """Return the installed Litestar version string.
+
+    Returns:
+        The installed Litestar version, or "unknown" when unavailable.
+    """
     try:
         return importlib.metadata.version("litestar")
     except importlib.metadata.PackageNotFoundError:
@@ -369,9 +377,6 @@ def _pick_free_port() -> int:
         return sock.getsockname()[1]
 
 
-# Vite internal paths that should always be proxied to the dev server (allow list).
-# Project-specific paths (resource_dir, bundle_dir, asset_url) are added dynamically
-# by _normalize_proxy_prefixes() based on ViteConfig.
 _PROXY_ALLOW_PREFIXES: tuple[str, ...] = (
     "/@vite",
     "/@id/",
@@ -385,24 +390,18 @@ _PROXY_ALLOW_PREFIXES: tuple[str, ...] = (
     "/@analogjs/",
 )
 
-# Hop-by-hop headers that must not be forwarded by proxies (RFC 2616 §13.5.1)
-# These headers are connection-specific and forwarding them causes protocol errors.
-# We also exclude content-length and content-encoding because httpx automatically
-# decompresses responses (gzip/brotli), making the original values invalid.
-_HOP_BY_HOP_HEADERS = frozenset(
-    {
-        "connection",
-        "keep-alive",
-        "proxy-authenticate",
-        "proxy-authorization",
-        "te",
-        "trailers",
-        "transfer-encoding",
-        "upgrade",
-        "content-length",
-        "content-encoding",
-    }
-)
+_HOP_BY_HOP_HEADERS = frozenset({
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailers",
+    "transfer-encoding",
+    "upgrade",
+    "content-length",
+    "content-encoding",
+})
 
 
 def _normalize_prefix(prefix: str) -> str:
@@ -413,8 +412,8 @@ def _normalize_prefix(prefix: str) -> str:
     return prefix
 
 
-# Cache key for storing route prefixes in app.state
-_ROUTE_PREFIXES_CACHE_KEY = "_litestar_vite_route_prefixes"
+class _RoutePrefixesState(Protocol):
+    litestar_vite_route_prefixes: tuple[str, ...]
 
 
 def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
@@ -435,38 +434,30 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
     Returns:
         A tuple of route prefix strings (without trailing slashes).
     """
-    # Check for cached result in app.state
-    cached = getattr(app.state, _ROUTE_PREFIXES_CACHE_KEY, None)
-    if cached is not None:
-        return cached
+    state = cast("_RoutePrefixesState", app.state)
+    try:
+        return state.litestar_vite_route_prefixes
+    except AttributeError:
+        pass
 
     prefixes: list[str] = []
+    for route in app.routes:
+        prefix = route.path.rstrip("/")
+        if prefix:
+            prefixes.append(prefix)
 
-    # Add all registered route paths
-    for route in getattr(app, "routes", []):
-        path = getattr(route, "path", None)
-        if path:
-            # Normalize path to prefix (strip trailing slash)
-            prefix = path.rstrip("/")
-            if prefix:
-                prefixes.append(prefix)
-
-    # Add OpenAPI schema path (may be customized)
-    openapi_config = getattr(app, "openapi_config", None)
+    openapi_config = app.openapi_config
     if openapi_config is not None:
-        schema_path = getattr(openapi_config, "path", "/schema")
+        schema_path = openapi_config.path
         if schema_path:
             prefixes.append(schema_path.rstrip("/"))
 
-    # Add common API prefixes as fallback
     prefixes.extend(["/api", "/schema", "/docs"])
 
-    # Remove duplicates and sort by length (longest first for proper matching)
     unique_prefixes = sorted(set(prefixes), key=len, reverse=True)
     result = tuple(unique_prefixes)
 
-    # Cache the result in app.state
-    setattr(app.state, _ROUTE_PREFIXES_CACHE_KEY, result)
+    state.litestar_vite_route_prefixes = result
 
     if _is_proxy_debug():
         console.print(f"[dim][route-detection] Cached prefixes: {result}[/]")
@@ -493,6 +484,37 @@ def is_litestar_route(path: str, app: "Litestar") -> bool:
     return any(path == prefix or path.startswith(f"{prefix}/") for prefix in excluded)
 
 
+def _static_not_found_handler(
+    _request: "Request[Any, Any, Any]", _exc: NotFoundException
+) -> Response[bytes]:  # pragma: no cover - trivial
+    """Return an empty 404 response for static files routing misses.
+
+    Returns:
+        An empty 404 response.
+    """
+    return Response(status_code=404, content=b"")
+
+
+def _vite_not_found_handler(request: "Request[Any, Any, Any]", exc: NotFoundException) -> Response[Any]:
+    """Return a consistent 404 response for missing static assets / routes.
+
+    Inertia requests are delegated to the Inertia exception handler to support
+    redirect_404 configuration.
+
+    Args:
+        request: Incoming request.
+        exc: NotFound exception raised by routing.
+
+    Returns:
+        Response instance for the 404.
+    """
+    if request.headers.get("x-inertia", "").lower() == "true":
+        from litestar_vite.inertia.exception_handler import exception_to_http_response
+
+        return exception_to_http_response(request, exc)
+    return Response(status_code=404, content=b"")
+
+
 class ViteProxyMiddleware(AbstractMiddleware):
     """ASGI middleware to proxy Vite dev HTTP traffic to internal Vite server.
 
@@ -504,7 +526,6 @@ class ViteProxyMiddleware(AbstractMiddleware):
     ensuring it always connects to the correct Vite server even if the port changes.
     """
 
-    # Only handle HTTP requests - WebSocket HMR is handled by a dedicated route handler
     scopes = {ScopeType.HTTP}
 
     def __init__(
@@ -585,16 +606,15 @@ class ViteProxyMiddleware(AbstractMiddleware):
         return not (app and is_litestar_route(path, app))
 
     async def _proxy_http(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        """Proxy a single HTTP request to the Vite dev server.
+
+        The upstream response is buffered inside the httpx client context manager and only sent
+        after the context exits. This avoids ASGI errors when httpx raises during cleanup after the
+        response has started.
+        """
         target_base_url = self._get_target_base_url()
         if target_base_url is None:
-            # Hotfile not found - Vite server not running
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 503,
-                    "headers": [(b"content-type", b"text/plain")],
-                }
-            )
+            await send({"type": "http.response.start", "status": 503, "headers": [(b"content-type", b"text/plain")]})
             await send({"type": "http.response.body", "body": b"Vite dev server not running", "more_body": False})
             return
 
@@ -626,10 +646,6 @@ class ViteProxyMiddleware(AbstractMiddleware):
             except ImportError:
                 http2_enabled = False
 
-        # Initialize response variables with error defaults.
-        # We capture the response data inside the context manager, then send OUTSIDE.
-        # This prevents "Exception caught after response started" errors caused by
-        # httpx AsyncClient.__aexit__ cleanup exceptions occurring after ASGI response is sent.
         response_status = 502
         response_headers: list[tuple[bytes, bytes]] = [(b"content-type", b"text/plain")]
         response_body = b"Bad gateway"
@@ -638,9 +654,7 @@ class ViteProxyMiddleware(AbstractMiddleware):
         try:
             async with httpx.AsyncClient(http2=http2_enabled) as client:
                 upstream_resp = await client.request(method, url, headers=headers, content=body, timeout=10.0)
-                # Capture response data while connection is still open
                 response_status = upstream_resp.status_code
-                # Filter out hop-by-hop headers that must not be forwarded
                 response_headers = [
                     (k.encode(), v.encode())
                     for k, v in upstream_resp.headers.items()
@@ -650,18 +664,9 @@ class ViteProxyMiddleware(AbstractMiddleware):
                 got_full_body = True
         except Exception as exc:  # pragma: no cover - catch all cleanup errors
             if not got_full_body:
-                # Real upstream failure - use error response
                 response_body = f"Upstream error: {exc}".encode()
-            # If got_full_body=True, this is a cleanup error - keep the successful response
 
-        # Send response OUTSIDE context manager - httpx cleanup is complete
-        await send(
-            {
-                "type": "http.response.start",
-                "status": response_status,
-                "headers": response_headers,
-            }
-        )
+        await send({"type": "http.response.start", "status": response_status, "headers": response_headers})
         await send({"type": "http.response.body", "body": response_body, "more_body": False})
 
 
@@ -745,7 +750,8 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
         """Build list of path prefixes to deny from proxying (deny list).
 
         Uses the shared get_litestar_route_prefixes() function for route detection.
-        Results are cached per middleware instance.
+        Results are cached per middleware instance. If the Litestar app cannot be resolved (not
+        provided during init and missing from the scope), falls back to common API prefixes.
 
         Returns:
             A tuple of path prefixes that should NOT be proxied.
@@ -753,12 +759,10 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
         if self._deny_prefixes is not None:
             return self._deny_prefixes
 
-        # Get Litestar app from scope if not provided during init
         app: "Litestar | None" = self._litestar_app or scope.get("app")  # pyright: ignore[reportUnknownMemberType]
         if app:
             self._deny_prefixes = get_litestar_route_prefixes(app)
         else:
-            # Fallback to common prefixes if app not available
             self._deny_prefixes = ("/api", "/schema", "/docs")
 
         if _is_proxy_debug():
@@ -775,8 +779,6 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
             True if the request should be proxied, else False.
         """
         deny_prefixes = self._get_deny_prefixes(scope)
-
-        # Check if path matches any deny list prefix
         return all(not (path == prefix or path.startswith(f"{prefix}/")) for prefix in deny_prefixes)
 
     async def __call__(self, scope: "Scope", receive: "Receive", send: "Send") -> None:
@@ -794,17 +796,15 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
         await self.app(scope, receive, send)
 
     async def _proxy_request(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
-        """Proxy the HTTP request to the external dev server."""
+        """Proxy the HTTP request to the external dev server.
+
+        The upstream response is buffered inside the httpx client context manager and only sent
+        after the context exits. This avoids ASGI errors when httpx raises during cleanup after the
+        response has started.
+        """
         target = self._get_target()
         if target is None:
-            # No target available - dev server not running
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 503,
-                    "headers": [(b"content-type", b"text/plain")],
-                }
-            )
+            await send({"type": "http.response.start", "status": 503, "headers": [(b"content-type", b"text/plain")]})
             await send({"type": "http.response.body", "body": b"Dev server not running", "more_body": False})
             return
 
@@ -816,14 +816,12 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
         if query_string:
             url = f"{url}?{query_string}"
 
-        # Build headers, filtering out hop-by-hop headers
         headers = [
             (k.decode(), v.decode())
             for k, v in scope.get("headers", [])
             if k.lower() not in {b"host", b"connection", b"keep-alive"}
         ]
 
-        # Read request body
         body = b""
         more_body = True
         while more_body:
@@ -840,10 +838,6 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
             except ImportError:
                 http2_enabled = False
 
-        # Initialize response variables with error defaults.
-        # We capture the response data inside the context manager, then send OUTSIDE.
-        # This prevents "Exception caught after response started" errors caused by
-        # httpx AsyncClient.__aexit__ cleanup exceptions occurring after ASGI response is sent.
         response_status = 502
         response_headers: list[tuple[bytes, bytes]] = [(b"content-type", b"text/plain")]
         response_body = b"Bad gateway"
@@ -852,9 +846,7 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
         try:
             async with httpx.AsyncClient(http2=http2_enabled, timeout=30.0) as client:
                 upstream_resp = await client.request(method, url, headers=headers, content=body)
-                # Capture response data while connection is still open
                 response_status = upstream_resp.status_code
-                # Filter out hop-by-hop headers that must not be forwarded
                 response_headers = [
                     (k.encode(), v.encode())
                     for k, v in upstream_resp.headers.items()
@@ -863,32 +855,17 @@ class ExternalDevServerProxyMiddleware(AbstractMiddleware):
                 response_body = upstream_resp.content
                 got_full_body = True
         except httpx.ConnectError:
-            # Dev server not reachable - 503 Service Unavailable
             response_status = 503
             response_body = f"Dev server not running at {target}".encode()
-        except Exception as exc:  # pragma: no cover - catch all cleanup errors
+        except httpx.HTTPError as exc:  # pragma: no cover
             if not got_full_body:
-                # Real upstream failure - use error response
                 response_body = f"Upstream error: {exc}".encode()
-            # If got_full_body=True, this is a cleanup error - keep the successful response
 
-        # Send response OUTSIDE context manager - httpx cleanup is complete
-        await send(
-            {
-                "type": "http.response.start",
-                "status": response_status,
-                "headers": response_headers,
-            }
-        )
+        await send({"type": "http.response.start", "status": response_status, "headers": response_headers})
         await send({"type": "http.response.body", "body": response_body, "more_body": False})
 
 
-def _build_hmr_target_url(
-    hotfile_path: Path,
-    scope: dict[str, Any],
-    hmr_path: str,
-    asset_url: str,
-) -> "str | None":
+def _build_hmr_target_url(hotfile_path: Path, scope: dict[str, Any], hmr_path: str, asset_url: str) -> "str | None":
     """Build the target WebSocket URL for Vite HMR proxy.
 
     Vite's HMR WebSocket listens at {base}{hmr.path}, so we preserve
@@ -903,7 +880,6 @@ def _build_hmr_target_url(
         return None
 
     ws_url = vite_url.replace("http://", "ws://").replace("https://", "wss://")
-    # Use the original path as-is - Vite expects the full path including base
     original_path = scope.get("path", hmr_path)
     query_string = scope.get("query_string", b"").decode()
 
@@ -946,15 +922,11 @@ def _extract_subprotocols(scope: dict[str, Any]) -> list[str]:
     """
     for key, value in scope.get("headers", []):
         if key.lower() == b"sec-websocket-protocol":
-            # Subprotocols are comma-separated
             return [p.strip() for p in value.decode().split(",")]
     return []
 
 
-async def _run_websocket_proxy(
-    socket: Any,
-    upstream: Any,
-) -> None:
+async def _run_websocket_proxy(socket: Any, upstream: Any) -> None:
     """Run bidirectional WebSocket proxy between client and upstream.
 
     Args:
@@ -993,11 +965,7 @@ async def _run_websocket_proxy(
         tg.start_soon(upstream_to_client)
 
 
-def create_vite_hmr_handler(
-    hotfile_path: Path,
-    hmr_path: str = "/static/vite-hmr",
-    asset_url: str = "/static/",
-) -> Any:
+def create_vite_hmr_handler(hotfile_path: Path, hmr_path: str = "/static/vite-hmr", asset_url: str = "/static/") -> Any:
     """Create a WebSocket route handler for Vite HMR proxy.
 
     This handler proxies WebSocket connections from the browser to the Vite
@@ -1015,7 +983,11 @@ def create_vite_hmr_handler(
 
     @websocket(path=hmr_path, opt={"exclude_from_auth": True})
     async def vite_hmr_proxy(socket: "WebSocket[Any, Any, Any]") -> None:
-        """Proxy WebSocket messages between browser and Vite dev server."""
+        """Proxy WebSocket messages between browser and Vite dev server.
+
+        Raises:
+            BaseException: Re-raises unexpected exceptions to allow the ASGI server to log them.
+        """
         scope_dict = dict(socket.scope)
         target = _build_hmr_target_url(hotfile_path, scope_dict, hmr_path, asset_url)
         if target is None:
@@ -1030,10 +1002,7 @@ def create_vite_hmr_handler(
 
         try:
             async with websockets.connect(
-                target,
-                additional_headers=headers,
-                open_timeout=10,
-                subprotocols=typed_subprotocols or None,
+                target, additional_headers=headers, open_timeout=10, subprotocols=typed_subprotocols or None
             ) as upstream:
                 if _is_proxy_debug():
                     console.print("[dim][vite-hmr] ✓ Connected[/]")
@@ -1049,15 +1018,20 @@ def create_vite_hmr_handler(
             with suppress(anyio.ClosedResourceError, WebSocketDisconnect):
                 await socket.close(code=1011, reason="Vite HMR connection failed")
         except WebSocketDisconnect:
-            pass  # Normal client disconnect
+            pass
         except BaseException as exc:
-            if hasattr(exc, "exceptions"):
-                non_disconnect = [
-                    err for err in getattr(exc, "exceptions", []) if not isinstance(err, _DISCONNECT_EXCEPTIONS)
-                ]
-                if non_disconnect:
+            exceptions: list[BaseException] | tuple[BaseException, ...] | None
+            try:
+                exceptions = cast("list[BaseException] | tuple[BaseException, ...]", exc.exceptions)  # type: ignore[attr-defined]
+            except AttributeError:
+                exceptions = None
+
+            if exceptions is not None:
+                if any(not isinstance(err, _DISCONNECT_EXCEPTIONS) for err in exceptions):
                     raise
-            elif not isinstance(exc, _DISCONNECT_EXCEPTIONS):
+                return
+
+            if not isinstance(exc, _DISCONNECT_EXCEPTIONS):
                 raise
 
     return vite_hmr_proxy
@@ -1127,13 +1101,14 @@ def _create_target_url_getter(
 
 
 def _create_hmr_target_getter(
-    hotfile_path: "Path | None",
-    cached_hmr_target: list["str | None"],
+    hotfile_path: "Path | None", cached_hmr_target: list["str | None"]
 ) -> "Callable[[], str | None]":
     """Create a function that returns the HMR target URL from hotfile with permanent caching.
 
     The hotfile is read once and cached for the lifetime of the server.
     Server restart refreshes the cache automatically.
+
+    The JS side writes HMR URLs to a sibling file at ``<hotfile>.hmr``.
 
     Returns:
         A callable that returns the HMR target URL or None if unavailable.
@@ -1147,7 +1122,6 @@ def _create_hmr_target_getter(
         if cache_initialized[0]:
             return cached_hmr_target[0].rstrip("/") if cached_hmr_target[0] else None
 
-        # JS writes to `${config.hotFile}.hmr`
         hmr_path = Path(f"{hotfile_path}.hmr")
         try:
             url = hmr_path.read_text(encoding="utf-8").strip()
@@ -1165,10 +1139,7 @@ def _create_hmr_target_getter(
 
 
 async def _handle_ssr_websocket_proxy(
-    socket: Any,
-    ws_url: str,
-    headers: list[tuple[str, str]],
-    typed_subprotocols: "list[Subprotocol]",
+    socket: Any, ws_url: str, headers: list[tuple[str, str]], typed_subprotocols: "list[Subprotocol]"
 ) -> None:
     """Handle the WebSocket proxy connection to SSR framework.
 
@@ -1196,13 +1167,11 @@ async def _handle_ssr_websocket_proxy(
         with suppress(anyio.ClosedResourceError, WebSocketDisconnect):
             await socket.close(code=1011, reason="SSR HMR connection failed")
     except (WebSocketDisconnect, websockets.ConnectionClosed, anyio.ClosedResourceError):
-        pass  # Normal disconnect/close
+        pass
 
 
 def create_ssr_proxy_controller(
-    target: "str | None" = None,
-    hotfile_path: "Path | None" = None,
-    http2: bool = True,
+    target: "str | None" = None, hotfile_path: "Path | None" = None, http2: bool = True
 ) -> type:
     """Create a Controller that proxies to an SSR framework dev server.
 
@@ -1355,15 +1324,12 @@ class ViteProcess:
         self._lock = threading.Lock()
         self._executor = executor
 
-        # Track this instance for signal handler cleanup
         ViteProcess._instances.append(self)
 
-        # Register signal handlers once (class-level)
         if not ViteProcess._signals_registered:
             self._register_signal_handlers()
             ViteProcess._signals_registered = True
 
-            # Also register atexit as fallback
             import atexit
 
             atexit.register(ViteProcess._cleanup_all_instances)
@@ -1376,21 +1342,17 @@ class ViteProcess:
                 original = signal.signal(sig, cls._signal_handler)
                 cls._original_handlers[sig] = original
             except (OSError, ValueError):
-                # Signal registration can fail in certain environments
                 pass
 
     @classmethod
     def _signal_handler(cls, signum: int, frame: Any) -> None:
         """Handle termination signals by stopping all Vite processes first."""
-        # Stop all tracked ViteProcess instances
         cls._cleanup_all_instances()
 
-        # Chain to the original handler
         original = cls._original_handlers.get(signum, signal.SIG_DFL)
         if callable(original) and original not in {signal.SIG_IGN, signal.SIG_DFL}:
             original(signum, frame)
         elif original == signal.SIG_DFL:
-            # Restore default and re-raise
             signal.signal(signum, signal.SIG_DFL)
             os.kill(os.getpid(), signum)
 
@@ -1408,6 +1370,9 @@ class ViteProcess:
             command: The command to run (e.g., ["npm", "run", "dev"]).
             cwd: The working directory for the process.
 
+        If the process exits immediately, this method captures stdout/stderr and raises a
+        ViteProcessError with diagnostic details.
+
         Raises:
             ViteProcessError: If the process fails to start.
         """
@@ -1421,7 +1386,6 @@ class ViteProcess:
 
                 if cwd:
                     self.process = self._executor.run(command, cwd)
-                    # If the process exited immediately, surface stdout/stderr for debugging
                     if self.process and self.process.poll() is not None:
                         stdout, stderr = self.process.communicate()
                         out_str = stdout.decode(errors="ignore") if stdout else ""
@@ -1436,11 +1400,7 @@ class ViteProcess:
                         )
                         msg = f"Vite process failed to start (exit {self.process.returncode})"
                         raise ViteProcessError(  # noqa: TRY301
-                            msg,
-                            command=command,
-                            exit_code=self.process.returncode,
-                            stderr=err_str,
-                            stdout=out_str,
+                            msg, command=command, exit_code=self.process.returncode, stderr=err_str, stdout=out_str
                         )
         except Exception as e:
             if isinstance(e, ViteProcessError):
@@ -1470,25 +1430,27 @@ class ViteProcess:
             raise ViteProcessError(msg) from e
 
     def _terminate_process_group(self, timeout: float) -> None:
-        """Terminate the process group, waiting and killing if needed."""
+        """Terminate the process group, waiting and killing if needed.
+
+        When available, uses process group termination to ensure all child processes are stopped
+        (e.g., Vite spawning Node/SSR framework processes). The process is started with
+        ``start_new_session=True`` so the process id is the group id.
+        """
         if not self.process or self.process.poll() is not None:
             return
-        # On Unix, kill the entire process group to ensure all children die.
-        # The process was started with start_new_session=True so the pid IS the pgid.
         pid = self.process.pid
-        # isinstance check needed for tests where pid may be a Mock object
-        if hasattr(os, "killpg") and hasattr(signal, "SIGTERM") and isinstance(pid, int):  # pyright: ignore[reportUnnecessaryIsInstance]
-            with suppress(ProcessLookupError):
-                os.killpg(pid, signal.SIGTERM)
-        elif hasattr(signal, "SIGTERM"):
+        try:
+            os.killpg(pid, signal.SIGTERM)
+        except AttributeError:
             self.process.terminate()
+        except ProcessLookupError:
+            pass
         try:
             self.process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             self._force_kill_process_group()
             self.process.wait(timeout=1.0)
         finally:
-            # Clear reference so atexit cleanup doesn't try to stop again
             self.process = None
 
     def _force_kill_process_group(self) -> None:
@@ -1496,12 +1458,12 @@ class ViteProcess:
         if not self.process:
             return
         pid = self.process.pid
-        # isinstance check needed for tests where pid may be a Mock object
-        if hasattr(os, "killpg") and hasattr(signal, "SIGKILL") and isinstance(pid, int):  # pyright: ignore[reportUnnecessaryIsInstance]
-            with suppress(ProcessLookupError):
-                os.killpg(pid, signal.SIGKILL)
-        elif hasattr(signal, "SIGKILL"):
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except AttributeError:
             self.process.kill()
+        except ProcessLookupError:
+            pass
 
     def _atexit_stop(self) -> None:
         """Best-effort stop on interpreter exit."""
@@ -1531,14 +1493,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         )
     """
 
-    __slots__ = (
-        "_asset_loader",
-        "_config",
-        "_proxy_target",
-        "_spa_handler",
-        "_static_files_config",
-        "_vite_process",
-    )
+    __slots__ = ("_asset_loader", "_config", "_proxy_target", "_spa_handler", "_static_files_config", "_vite_process")
 
     def __init__(
         self,
@@ -1566,7 +1521,11 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
     @property
     def config(self) -> "ViteConfig":
-        """Get the Vite configuration."""
+        """Get the Vite configuration.
+
+        Returns:
+            The ViteConfig instance.
+        """
         return self._config
 
     @property
@@ -1574,11 +1533,23 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """Get the asset loader instance.
 
         Lazily initializes the loader if not already set.
+
+        Returns:
+            The ViteAssetLoader instance.
         """
 
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader.initialize_loader(config=self._config)
         return self._asset_loader
+
+    @property
+    def spa_handler(self) -> "AppHandler | None":
+        """Return the configured SPA handler when SPA mode is enabled.
+
+        Returns:
+            The AppHandler instance, or None when SPA mode is disabled/not configured.
+        """
+        return self._spa_handler
 
     def _resolve_bundle_dir(self) -> Path:
         """Resolve the bundle directory to an absolute path.
@@ -1644,33 +1615,21 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         - SSR framework writes hotfile with actual URL when ready
         - Proxy discovers target from hotfile at request time
         """
-        # Skip if not in dev mode
         if not self._config.is_dev_mode:
             return
 
-        # Skip if proxy disabled
         if self._config.proxy_mode is None:
             return
 
-        # For all proxy modes, pick a free port if not explicitly set
-        # This ensures JS integrations know what port to use
-        # Only pick a port if:
-        # 1. VITE_PORT env var is not already set, AND
-        # 2. We haven't already picked a port (check if port != default 5173)
         if os.getenv("VITE_PORT") is None and self._config.runtime.port == 5173:
             self._config.runtime.port = _pick_free_port()
 
-        # For 'vite' mode, set proxy target directly (internal Vite server)
         if self._config.proxy_mode == "vite":
-            # Skip if proxy target already set
             if self._proxy_target is not None:
                 return
-            # Force loopback for internal dev server unless explicitly overridden
             if os.getenv("VITE_ALLOW_REMOTE", "False") not in TRUE_VALUES:
                 self._config.runtime.host = "127.0.0.1"
             self._proxy_target = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
-        # For 'proxy'/'ssr' modes, target is discovered from hotfile at request time
-        # The SSR framework (Nuxt/Astro/SvelteKit) writes the hotfile when ready
 
     def _configure_inertia(self, app_config: "AppConfig") -> "AppConfig":
         """Configure Inertia.js by registering an InertiaPlugin instance.
@@ -1686,8 +1645,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """
         from litestar_vite.inertia.plugin import InertiaPlugin
 
-        # Create and register InertiaPlugin - it handles all the configuration
-        # in its own on_app_init method
         inertia_plugin = InertiaPlugin(config=self._config.inertia)  # type: ignore[arg-type]
         app_config.plugins.append(inertia_plugin)
 
@@ -1711,12 +1668,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """
         from litestar.contrib.jinja import JinjaTemplateEngine
 
-        from litestar_vite.loader import (
-            render_asset_tag,
-            render_hmr_client,
-            render_routes,
-            render_static_asset,
-        )
+        from litestar_vite.loader import render_asset_tag, render_hmr_client, render_routes, render_static_asset
 
         template_config = app_config.template_config  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
         if template_config and isinstance(
@@ -1731,6 +1683,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
     def _configure_static_files(self, app_config: "AppConfig") -> None:
         """Configure static file serving for Vite assets.
+
+        The static files router serves real files (JS, CSS, images). SPA fallback (serving
+        index.html for client-side routes) is handled by the AppHandler.
 
         Args:
             app_config: The Litestar application configuration.
@@ -1749,17 +1704,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if static_dir.exists() and static_dir != bundle_dir:
             static_dirs.append(static_dir)
 
-        def _static_not_found_handler(
-            _request: Request[Any, Any, Any], _exc: NotFoundException
-        ) -> Response[bytes]:  # pragma: no cover - trivial
-            return Response(status_code=404, content=b"")
-
-        # Static files router serves actual files only (JS, CSS, images)
-        # SPA fallback (serving index.html for client routes) is handled by AppHandler
         opt: dict[str, Any] = {}
         if self._config.exclude_static_from_auth:
             opt["exclude_from_auth"] = True
-        # Merge with any user-provided opt from static_files_config
         user_opt = self._static_files_config.get("opt", {})
         if user_opt:
             opt = {**opt, **user_opt}
@@ -1773,7 +1720,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             "opt": opt,
             "exception_handlers": {NotFoundException: _static_not_found_handler},
         }
-        # Merge user config but don't let them override 'opt' directly (we merge it above)
         user_config = {k: v for k, v in self._static_files_config.items() if k != "opt"}
         static_files_config: dict[str, Any] = {**base_config, **user_config}
         app_config.route_handlers.append(create_static_files_router(**static_files_config))
@@ -1842,6 +1788,15 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
     def on_app_init(self, app_config: "AppConfig") -> "AppConfig":
         """Configure the Litestar application for Vite.
 
+        This method wires up supporting configuration for dev/prod operation:
+
+        - Adds types used by generated handlers to the signature namespace.
+        - Ensures a consistent NotFound handler for asset/proxy lookups.
+        - Registers optional Inertia and Jinja integrations.
+        - Configures static file routing when enabled.
+        - Configures dev proxy middleware based on proxy_mode.
+        - Creates/initializes the SPA handler where applicable and registers lifespans.
+
         Args:
             app_config: The Litestar application configuration.
 
@@ -1851,64 +1806,39 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         from litestar import Response
         from litestar.connection import Request as LitestarRequest
 
-        # Add Response and Request to signature namespace for SSR proxy handler type hints
         app_config.signature_namespace["Response"] = Response
         app_config.signature_namespace["Request"] = LitestarRequest
 
-        # Provide a consistent 404 response for missing static assets / routes (e.g., Vite HMR/static lookups)
         handlers: ExceptionHandlersMap = cast("ExceptionHandlersMap", app_config.exception_handlers or {})  # pyright: ignore
         if NotFoundException not in handlers:
-
-            def _vite_not_found_handler(
-                request: LitestarRequest[Any, Any, Any], exc: NotFoundException
-            ) -> Response[Any]:
-                # Check if this is an Inertia request by looking for X-Inertia header
-                # Inertia requests should be handled by the Inertia exception handler
-                # which supports redirect_404 configuration
-                is_inertia_request = request.headers.get("x-inertia", "").lower() == "true"
-                if is_inertia_request:
-                    from litestar_vite.inertia.exception_handler import exception_to_http_response
-
-                    return exception_to_http_response(request, exc)
-                return Response(status_code=404, content=b"")
-
             handlers[NotFoundException] = _vite_not_found_handler
             app_config.exception_handlers = handlers  # pyright: ignore[reportUnknownMemberType]
 
-        # Auto-register Inertia if config is provided
         if self._config.inertia is not None:
             app_config = self._configure_inertia(app_config)
 
-        # Register Jinja2 template callables if applicable
         if JINJA_INSTALLED and self._config.mode in {"template", "htmx"}:
             self._configure_jinja_callables(app_config)
 
-        # Configure static file serving
-        # Skip for external mode in dev (proxy handles everything from external dev server)
         skip_static = self._config.mode == "external" and self._config.is_dev_mode
         if self._config.set_static_folders and not skip_static:
             self._configure_static_files(app_config)
 
-        # Add dev proxy middleware based on proxy_mode (skip non-serving CLI commands)
         if self._config.is_dev_mode and self._config.proxy_mode is not None and not _is_non_serving_assets_cli():
             self._configure_dev_proxy(app_config)
 
-        # Add SPA catch-all route handler if spa_handler is enabled
-        # This applies to mode="spa", mode="ssr", mode="external" (in production), and when spa_handler=True explicitly
-        # External mode uses AppHandler for proper route exclusion (is_litestar_route check)
         use_spa_handler = self._config.spa_handler and self._config.mode in {"spa", "ssr"}
         use_spa_handler = use_spa_handler or (self._config.mode == "external" and not self._config.is_dev_mode)
         if use_spa_handler:
-            from litestar_vite.handler import AppHandler
+            from litestar_vite._handler import AppHandler
 
             self._spa_handler = AppHandler(self._config)
             app_config.route_handlers.append(self._spa_handler.create_route_handler())
         elif self._config.mode == "hybrid":
-            from litestar_vite.handler import AppHandler
+            from litestar_vite._handler import AppHandler
 
             self._spa_handler = AppHandler(self._config)
 
-        # Auto-register per-worker lifespan for SPA handler init, asset loader, env setup
         app_config.lifespan.append(self.lifespan)  # pyright: ignore[reportUnknownMemberType]
 
         return app_config
@@ -1933,12 +1863,11 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
     def _run_health_check(self) -> None:
         """Run the appropriate health check based on proxy mode."""
-        if self._config.proxy_mode == "proxy":
-            # SSR framework health check via hotfile
-            self._check_ssr_health(self._resolve_hotfile_path())
-        else:
-            # Standard Vite dev server health check
-            self._check_health()
+        match self._config.proxy_mode:
+            case "proxy":
+                self._check_ssr_health(self._resolve_hotfile_path())
+            case _:
+                self._check_health()
 
     def _check_ssr_health(self, hotfile_path: Path, timeout: float = 10.0) -> bool:
         """Wait for SSR framework to be ready via hotfile.
@@ -1964,18 +1893,16 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                     url = hotfile_path.read_text(encoding="utf-8").strip()
                     if url:
                         last_url = url
-                        # Try a quick HTTP request to verify server is actually up
                         resp = httpx.get(url, timeout=0.5, follow_redirects=True)
-                        # Any non-5xx response means server is up (even 404 is fine)
                         if resp.status_code < 500:
                             _log_success(f"SSR server ready at {url}")
                             return True
                 except OSError:
-                    pass  # Hotfile read error, keep polling
+                    pass
                 except httpx.HTTPError:
-                    pass  # Server not ready yet, keep polling
+                    pass
 
-            time.sleep(0.1)  # Poll every 100ms
+            time.sleep(0.1)
 
         if last_url:
             _log_fail(f"SSR server at {last_url} did not respond within {timeout}s")
@@ -2006,14 +1933,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
             from litestar_vite.codegen import generate_routes_json, generate_routes_ts
 
-            # Note: "Exporting type metadata" message removed - the success message is sufficient
-
-            # Check if OpenAPI is configured by looking at the plugins registry
-            # (accessing openapi_schema property directly raises when not configured)
             openapi_plugin = next((p for p in app.plugins._plugins if isinstance(p, OpenAPIPlugin)), None)  # pyright: ignore[reportPrivateUsage]
             has_openapi = openapi_plugin is not None and openapi_plugin._openapi_config is not None  # pyright: ignore[reportPrivateUsage]
 
-            # Track which files were actually written (changed)
             exported_files: list[str] = []
             unchanged_files: list[str] = []
 
@@ -2028,7 +1950,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 unchanged_files=unchanged_files,
             )
 
-            # Export routes JSON
             routes_data = generate_routes_json(app, include_components=True, openapi_schema=openapi_schema)
             routes_data["litestar_version"] = resolve_litestar_version()
             self._export_routes_json_sync(
@@ -2040,7 +1961,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 unchanged_files=unchanged_files,
             )
 
-            # Export typed routes TypeScript
             if types_config.generate_routes:
                 routes_ts_content = generate_routes_ts(app, openapi_schema=openapi_schema)
                 self._export_routes_ts_sync(
@@ -2072,11 +1992,16 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             return None
 
         try:
-            serializer = get_serializer(
-                app.type_encoders if isinstance(getattr(app, "type_encoders", None), dict) else None
-            )
+            encoders: Any
+            try:
+                encoders = app.type_encoders  # pyright: ignore[reportUnknownMemberType]
+            except AttributeError:
+                encoders = None
+
+            serializer = get_serializer(encoders if isinstance(encoders, dict) else None)
             schema_dict = app.openapi_schema.to_schema()
             schema_content = msgspec.json.format(encode_json(schema_dict, serializer=serializer), indent=2)
+
             openapi_path = types_config.openapi_path
             if openapi_path is None:
                 openapi_path = types_config.output / "openapi.json"
@@ -2137,13 +2062,15 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         Note: SPA handler and asset loader initialization happens in the per-worker
         `lifespan` method, which is auto-registered in `on_app_init`.
 
+        Hotfile behavior: the hotfile is written before starting the dev server to ensure proxy
+        middleware and SPA handlers can resolve a target URL immediately on first request.
+
         Args:
             app: The Litestar application instance.
 
         Yields:
             None
         """
-        # Ensure proxy target is set BEFORE environment variables (port selection)
         if self._config.is_dev_mode:
             self._ensure_proxy_target()
 
@@ -2152,27 +2079,16 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             set_app_environment(app)
             _log_info("Applied Vite environment variables")
 
-        # Export types on startup (when enabled)
         self._export_types_sync(app)
 
         if self._config.is_dev_mode and self._config.runtime.start_dev_server:
             ext = self._config.runtime.external_dev_server
             is_external = isinstance(ext, ExternalDevServer) and ext.enabled
 
-            # Determine command (logs the command type)
             command_to_run = self._resolve_dev_command()
-            # Note: Proxy target message removed - shown in consolidated banner
-
-            # Write hotfile BEFORE starting dev server to avoid race conditions.
-            # The proxy controller/SPA handler reads the hotfile on first request - if it
-            # doesn't exist yet, behavior varies: SSR proxy caches None forever (returning 503),
-            # while SPA handler falls back to config. By writing upfront, we ensure consistent
-            # behavior and immediate proxy availability for all modes.
             if is_external and isinstance(ext, ExternalDevServer) and ext.target:
-                # External dev server with static target - write target URL to hotfile
                 self._write_hotfile(ext.target)
             elif not is_external:
-                # Internal Vite/SSR server - write computed target URL to hotfile
                 target_url = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
                 self._write_hotfile(target_url)
 
@@ -2180,7 +2096,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 self._vite_process.start(command_to_run, self._config.root_dir)
                 _log_success("Dev server process started")
                 if self._config.health_check and not is_external:
-                    # Only run Vite-specific health check for non-external servers
                     self._run_health_check()
                 yield
             finally:
@@ -2210,27 +2125,18 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """
         from litestar_vite.loader import ViteAssetLoader
 
-        # Set environment variables for this worker (no logging - server_lifespan logs once)
-        # Environment variables are process-local, so each worker needs them
         if self._config.set_environment:
             set_environment(config=self._config)
             set_app_environment(app)
 
-        # Initialize asset loader asynchronously
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader(config=self._config)
         await self._asset_loader.initialize()
 
-        # Initialize SPA handler if enabled (check is_initialized to avoid double-init)
         if self._spa_handler is not None and not self._spa_handler.is_initialized:
-            # Pass the proxy target URL to avoid stale hotfile issues
-            # The VitePlugin knows the correct URL because it selects the port
-            # Use sync initialization - file I/O during startup is negligible
             self._spa_handler.initialize_sync(vite_url=self._proxy_target)
             _log_success("SPA handler initialized")
 
-        # Warn if no built assets in production (skip for SSR mode since Node serves frontend)
-        # Check both mode='ssr' and proxy_mode in case user is using proxy mode directly
         is_ssr_mode = self._config.mode == "ssr" or self._config.proxy_mode == "proxy"
         if not self._config.is_dev_mode and not self._config.has_built_assets() and not is_ssr_mode:
             _log_warn(
@@ -2241,7 +2147,6 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         try:
             yield
         finally:
-            # Shutdown SPA handler (async because AsyncClient.aclose is async)
             if self._spa_handler is not None:
                 await self._spa_handler.shutdown_async()
 

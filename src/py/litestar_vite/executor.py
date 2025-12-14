@@ -12,13 +12,30 @@ import sys
 from abc import ABC, abstractmethod
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Protocol, runtime_checkable
 
 from litestar.cli._utils import console
 
 from litestar_vite.exceptions import ViteExecutableNotFoundError, ViteExecutionError
 
-_CREATE_NEW_PROCESS_GROUP: int = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
+def _windows_create_new_process_group_flag() -> int:
+    """Return the Windows-only process creation flag for new process groups.
+
+    When available, ``subprocess.CREATE_NEW_PROCESS_GROUP`` is used as ``creationflags`` for long-lived dev servers.
+    This improves process lifecycle management on Windows (notably console signal / Ctrl+C behavior). On non-Windows
+    platforms the constant is not defined, so this returns ``0``.
+
+    Returns:
+        The ``creationflags`` value to start a new process group on Windows, otherwise ``0``.
+    """
+    try:
+        return subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+    except AttributeError:
+        return 0
+
+
+_create_new_process_group = _windows_create_new_process_group_flag()
 
 
 def _popen_server_kwargs(cwd: Path) -> dict[str, Any]:
@@ -27,15 +44,10 @@ def _popen_server_kwargs(cwd: Path) -> dict[str, Any]:
     Returns:
         Keyword arguments for ``subprocess.Popen`` suitable for long-lived dev servers.
     """
-    kwargs: dict[str, Any] = {
-        "cwd": cwd,
-        "stdin": subprocess.PIPE,
-        "stdout": None,
-        "stderr": None,
-    }
+    kwargs: dict[str, Any] = {"cwd": cwd, "stdin": subprocess.PIPE, "stdout": None, "stderr": None}
     if platform.system() == "Windows":
         kwargs["shell"] = True
-        kwargs["creationflags"] = _CREATE_NEW_PROCESS_GROUP
+        kwargs["creationflags"] = _create_new_process_group
     else:
         kwargs["shell"] = False
         kwargs["start_new_session"] = True
@@ -43,10 +55,14 @@ def _popen_server_kwargs(cwd: Path) -> dict[str, Any]:
 
 
 class JSExecutor(ABC):
-    """Abstract base class for Javascript executors."""
+    """Abstract base class for Javascript executors.
+
+    The default ``silent_flag`` matches npm-style CLIs (``--silent``). Executors that do not support a silent flag
+    (e.g., Deno) override it with an empty string.
+    """
 
     bin_name: ClassVar[str]
-    silent_flag: ClassVar[str] = "--silent"  # Default silent flag for npm-style executors
+    silent_flag: ClassVar[str] = "--silent"
 
     def __init__(self, executable_path: "Path | str | None" = None, *, silent: bool = False) -> None:
         self.executable_path = executable_path
@@ -106,12 +122,20 @@ class JSExecutor(ABC):
 
     @property
     def start_command(self) -> list[str]:
-        """Get the default command to start the dev server (e.g., npm run start)."""
+        """Get the default command to start the dev server (e.g., npm run start).
+
+        Returns:
+            The argv list used to start the dev server.
+        """
         return [self.bin_name, "run", "start"]
 
     @property
     def build_command(self) -> list[str]:
-        """Get the default command to build for production (e.g., npm run build)."""
+        """Get the default command to build for production (e.g., npm run build).
+
+        Returns:
+            The argv list used to build production assets.
+        """
         return [self.bin_name, "run", "build"]
 
 
@@ -121,12 +145,7 @@ class CommandExecutor(JSExecutor):
     def install(self, cwd: Path) -> None:
         executable = self._resolve_executable()
         command = [executable, "install"]
-        process = subprocess.run(
-            command,
-            cwd=cwd,
-            shell=platform.system() == "Windows",
-            check=False,
-        )
+        process = subprocess.run(command, cwd=cwd, shell=platform.system() == "Windows", check=False)
         if process.returncode != 0:
             raise ViteExecutionError(command, process.returncode, "package install failed")
 
@@ -170,7 +189,7 @@ class DenoExecutor(CommandExecutor):
     """Deno executor."""
 
     bin_name = "deno"
-    silent_flag: ClassVar[str] = ""  # Deno doesn't have an npm-style silent flag
+    silent_flag: ClassVar[str] = ""
 
     def install(self, cwd: Path) -> None:
         pass
@@ -197,6 +216,10 @@ class NodeenvExecutor(JSExecutor):
 
     bin_name = "nodeenv"
 
+    @runtime_checkable
+    class _SupportsDetectNodeenv(Protocol):
+        detect_nodeenv: bool
+
     def __init__(self, config: Any = None, *, silent: bool = False) -> None:
         """Initialize NodeenvExecutor.
 
@@ -207,7 +230,7 @@ class NodeenvExecutor(JSExecutor):
         """
         super().__init__(None, silent=silent)
         self.config = config
-        self._detect_nodeenv = getattr(config, "detect_nodeenv", False) if config else False
+        self._detect_nodeenv = bool(config.detect_nodeenv) if isinstance(config, self._SupportsDetectNodeenv) else False
 
     def _get_nodeenv_command(self) -> str:
         """Return the nodeenv executable to run.
@@ -252,11 +275,7 @@ class NodeenvExecutor(JSExecutor):
         args = self._apply_silent_flag(args)
         command = [npm_path, *args]
         process = subprocess.run(
-            command,
-            cwd=cwd,
-            shell=platform.system() == "Windows",
-            check=False,
-            capture_output=True,
+            command, cwd=cwd, shell=platform.system() == "Windows", check=False, capture_output=True
         )
         if process.returncode != 0:
             raise ViteExecutionError(command, process.returncode, process.stderr.decode())
@@ -276,14 +295,22 @@ class NodeenvExecutor(JSExecutor):
 
         if npm_path.exists():
             return str(npm_path)
-        return "npm"  # Fallback to system npm
+        return "npm"
 
     @property
     def start_command(self) -> list[str]:
-        """Get the default command to start the dev server using nodeenv npm."""
+        """Get the default command to start the dev server using nodeenv npm.
+
+        Returns:
+            The argv list used to start the dev server.
+        """
         return [self._find_npm_in_venv(), "run", "start"]
 
     @property
     def build_command(self) -> list[str]:
-        """Get the default command to build for production using nodeenv npm."""
+        """Get the default command to build for production using nodeenv npm.
+
+        Returns:
+            The argv list used to build production assets.
+        """
         return [self._find_npm_in_venv(), "run", "build"]

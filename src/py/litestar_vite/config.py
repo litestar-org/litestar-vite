@@ -91,12 +91,20 @@ FSSPEC_INSTALLED = bool(find_spec("fsspec"))
 
 
 def _empty_dict_factory() -> dict[str, Any]:
-    """Return an empty ``dict[str, Any]``."""
+    """Return an empty ``dict[str, Any]``.
+
+    Returns:
+        An empty dictionary.
+    """
     return {}
 
 
 def _empty_set_factory() -> set[str]:
-    """Return an empty ``set[str]``."""
+    """Return an empty ``set[str]``.
+
+    Returns:
+        An empty set.
+    """
     return set()
 
 
@@ -124,8 +132,12 @@ def _default_content_types() -> dict[str, str]:
 
 
 def _default_storage_options() -> dict[str, Any]:
-    """Return an empty storage options dictionary."""
-    return cast("dict[str, Any]", {})
+    """Return an empty storage options dictionary.
+
+    Returns:
+        An empty dictionary.
+    """
+    return {}
 
 
 @dataclass
@@ -286,7 +298,11 @@ class InertiaConfig:
 
     @property
     def ssr_config(self) -> "InertiaSSRConfig | None":
-        """Return the SSR config when enabled, otherwise None."""
+        """Return the SSR config when enabled, otherwise None.
+
+        Returns:
+            The resolved SSR config when enabled, otherwise None.
+        """
         if isinstance(self.ssr, InertiaSSRConfig) and self.ssr.enabled:
             return self.ssr
         return None
@@ -373,19 +389,20 @@ def _resolve_proxy_mode() -> "Literal['vite', 'direct', 'proxy'] | None":
         The resolved proxy mode, or None if disabled.
     """
     env_value = os.getenv("VITE_PROXY_MODE")
-    if env_value is None:
-        return "vite"
-    env_value = env_value.strip().lower()
-    if env_value == "none":
-        return None
-    if env_value == "direct":
-        return "direct"
-    if env_value == "proxy":
-        return "proxy"
-    if env_value == "vite":
-        return "vite"
-    msg = f"Invalid VITE_PROXY_MODE: {env_value!r}. Expected one of: vite, direct, proxy, none"
-    raise ValueError(msg)
+    match env_value.strip().lower() if env_value is not None else None:
+        case None:
+            return "vite"
+        case "none":
+            return None
+        case "direct":
+            return "direct"
+        case "proxy":
+            return "proxy"
+        case "vite":
+            return "vite"
+        case _:
+            msg = f"Invalid VITE_PROXY_MODE: {env_value!r}. Expected one of: vite, direct, proxy, none"
+            raise ValueError(msg)
 
 
 @dataclass
@@ -413,7 +430,14 @@ class PathConfig:
     ssr_output_dir: "str | Path | None" = None
 
     def __post_init__(self) -> None:
-        """Normalize path types to Path objects."""
+        """Normalize path types to Path objects.
+
+        This also adjusts defaults to prevent Vite's ``publicDir`` (input) from
+        colliding with ``outDir`` (output). ``bundle_dir`` is treated as the build
+        output directory. When ``static_dir`` equals ``bundle_dir``, Vite may warn
+        and effectively disable public asset copying, so ``static_dir`` defaults to
+        ``<resource_dir>/public`` in that case.
+        """
         if isinstance(self.root, str):
             object.__setattr__(self, "root", Path(self.root))
         if isinstance(self.bundle_dir, str):
@@ -425,14 +449,6 @@ class PathConfig:
         if isinstance(self.ssr_output_dir, str):
             object.__setattr__(self, "ssr_output_dir", Path(self.ssr_output_dir))
 
-        # Avoid Vite's `publicDir` (input) colliding with `outDir` (output).
-        #
-        # We treat `bundle_dir` as the build output directory. By default both
-        # `bundle_dir` and `static_dir` were set to "public", which makes Vite
-        # warn and effectively disables public asset copying.
-        #
-        # Default behavior: keep build output at "public", and use
-        # "<resource_dir>/public" for Vite's public assets.
         if (
             isinstance(self.bundle_dir, Path)
             and isinstance(self.static_dir, Path)
@@ -526,23 +542,16 @@ class RuntimeConfig:
     start_dev_server: bool = True
 
     def __post_init__(self) -> None:
-        # Normalize external_dev_server: string → ExternalDevServer
+        """Normalize runtime settings and apply derived defaults."""
         if isinstance(self.external_dev_server, str):
             self.external_dev_server = ExternalDevServer(target=self.external_dev_server)
 
-        # Auto-set proxy_mode="proxy" when external_dev_server is configured
-        # External dev servers (Angular CLI, Next.js, etc.) need deny list proxy mode
-        # Override default "vite" mode which only proxies Vite-specific routes
         if self.external_dev_server is not None and self.proxy_mode in {None, "vite"}:
             self.proxy_mode = "proxy"
-
-        # Note: proxy mode no longer requires external_dev_server - it can read
-        # the target URL from the hotfile for SSR frameworks using Vite internally
 
         if self.executor is None:
             self.executor = "node"
 
-        # Set default commands based on executor if not explicitly provided
         executor_commands = {
             "node": {
                 "run": ["npm", "run", "dev"],
@@ -624,9 +633,9 @@ class TypeGenConfig:
     """
 
     output: Path = field(default_factory=lambda: Path("src/generated"))
-    openapi_path: "Path | None" = field(default=None)  # Computed in __post_init__ if None
-    routes_path: "Path | None" = field(default=None)  # Computed in __post_init__ if None
-    routes_ts_path: "Path | None" = field(default=None)  # Computed in __post_init__ if None
+    openapi_path: "Path | None" = field(default=None)
+    routes_path: "Path | None" = field(default=None)
+    routes_ts_path: "Path | None" = field(default=None)
     generate_zod: bool = False
     generate_sdk: bool = True
     generate_routes: bool = True
@@ -654,7 +663,7 @@ class TypeGenConfig:
 
     Use this for prop types that are not present in OpenAPI (e.g., internal schemas).
     """
-    page_props_path: "Path | None" = field(default=None)  # Computed in __post_init__ if None
+    page_props_path: "Path | None" = field(default=None)
     """Path to export page props metadata JSON.
 
     The Vite plugin reads this file to generate page-props.ts.
@@ -668,7 +677,6 @@ class TypeGenConfig:
         """Normalize path types and compute defaults based on output directory."""
         if isinstance(self.output, str):
             self.output = Path(self.output)
-        # Compute defaults relative to output directory if not explicitly set
         if self.openapi_path is None:
             self.openapi_path = self.output / "openapi.json"
         elif isinstance(self.openapi_path, str):
@@ -721,9 +729,24 @@ def _get_default_log_level() -> "Literal['quiet', 'normal', 'verbose']":
         The log level from environment or "normal" default.
     """
     env_level = os.getenv("LITESTAR_VITE_LOG_LEVEL", "").lower()
-    if env_level in {"quiet", "normal", "verbose"}:
-        return env_level  # type: ignore[return-value]
-    return "normal"
+    match env_level:
+        case "quiet" | "normal" | "verbose":
+            return env_level
+        case _:
+            return "normal"
+
+
+def _to_root_path(root_dir: Path, path: Path) -> Path:
+    """Resolve a path relative to the configured root directory.
+
+    Args:
+        root_dir: Application root directory.
+        path: Path to resolve.
+
+    Returns:
+        Absolute path rooted at ``root_dir`` when ``path`` is relative, otherwise ``path`` unchanged.
+    """
+    return path if path.is_absolute() else (root_dir / path)
 
 
 @dataclass
@@ -856,7 +879,6 @@ class ViteConfig:
     want to serve the SPA from the root path for convenience.
     """
 
-    # Internal: resolved executor instance
     _executor_instance: "JSExecutor | None" = field(default=None, repr=False)
     _mode_auto_detected: bool = field(default=False, repr=False)
 
@@ -943,7 +965,6 @@ class ViteConfig:
         elif self.types is False or self.types is None:
             self.types = None
             return
-        # TypeGenConfig instance - resolve paths
         self._resolve_type_paths(self.types)
 
     def _normalize_inertia(self) -> None:
@@ -958,12 +979,10 @@ class ViteConfig:
             self.inertia = InertiaConfig()
         elif self.inertia is False:
             self.inertia = None
-        # InertiaConfig instance is used as-is
 
     def _normalize_spa_flag(self) -> None:
         if self.spa is True:
             self.spa = SPAConfig()
-        # spa=False left as-is; spa=None handled later
 
     def _normalize_logging(self) -> None:
         """Normalize logging configuration.
@@ -975,7 +994,6 @@ class ViteConfig:
         """
         if self.logging is True or self.logging is None or self.logging is False:
             self.logging = LoggingConfig()
-        # LoggingConfig instance is used as-is
 
     def _apply_dev_mode_shortcut(self) -> None:
         if self.dev_mode:
@@ -992,8 +1010,6 @@ class ViteConfig:
         When Inertia is configured, automatically enable CSRF token injection
         in the SPA config, since Inertia forms need CSRF protection.
         """
-        # Auto-enable CSRF injection for Inertia apps
-        # Inertia forms need CSRF tokens for POST/PUT/PATCH/DELETE requests
         if isinstance(self.inertia, InertiaConfig) and isinstance(self.spa, SPAConfig) and not self.spa.inject_csrf:
             self.spa = replace(self.spa, inject_csrf=True)
 
@@ -1014,18 +1030,12 @@ class ViteConfig:
             return
 
         if self.runtime.dev_mode:
-            # Dev mode: proxy to framework dev server (Astro/Nuxt/SvelteKit)
-            # Only override proxy_mode if user didn't explicitly set it via env var
             env_proxy = os.getenv("VITE_PROXY_MODE")
             if env_proxy is None:
                 self.runtime.proxy_mode = "proxy"
-            # Disable SPA handler to avoid route conflicts with SSR proxy controller
             self.runtime.spa_handler = False
         else:
-            # Production mode: no proxy needed
             self.runtime.proxy_mode = None
-            # Auto-detect: if built assets exist (SSG), enable SPA handler to serve them
-            # Otherwise (true SSR), assume external Node server handles HTML
             if self.has_built_assets():
                 self.runtime.spa_handler = True
             else:
@@ -1038,17 +1048,19 @@ class ViteConfig:
             self.deploy = DeployConfig(enabled=False)
 
     def _resolve_type_paths(self, types: TypeGenConfig) -> None:
-        """Resolve type generation paths relative to the configured root."""
+        """Resolve type generation paths relative to the configured root.
 
-        def _to_root(p: Path) -> Path:
-            return p if p.is_absolute() else (self.paths.root / p)
+        Args:
+            types: Type generation configuration to mutate.
+
+        """
+        root_dir = self.root_dir
 
         default_rel = Path("src/generated")
         default_openapi = default_rel / "openapi.json"
         default_routes = default_rel / "routes.json"
         default_page_props = default_rel / "inertia-pages.json"
 
-        # If user only set output, cascade defaults under that output
         if types.openapi_path == default_openapi and types.output != default_rel:
             types.openapi_path = types.output / "openapi.json"
         if types.routes_path == default_routes and types.output != default_rel:
@@ -1056,20 +1068,25 @@ class ViteConfig:
         if types.page_props_path == default_page_props and types.output != default_rel:
             types.page_props_path = types.output / "inertia-pages.json"
 
-        # Set default routes_ts_path if not specified
         if types.routes_ts_path is None or (
             types.routes_ts_path == default_rel / "routes.ts" and types.output != default_rel
         ):
             types.routes_ts_path = types.output / "routes.ts"
 
-        types.output = _to_root(types.output)
-        # After __post_init__, these are guaranteed to be Path (not None)
-        # The type is Path | None to allow None as input, but __post_init__ computes defaults
-        types.openapi_path = _to_root(types.openapi_path) if types.openapi_path else types.output / "openapi.json"
-        types.routes_path = _to_root(types.routes_path) if types.routes_path else types.output / "routes.json"
-        types.routes_ts_path = _to_root(types.routes_ts_path) if types.routes_ts_path else types.output / "routes.ts"
+        types.output = _to_root_path(root_dir, types.output)
+        types.openapi_path = (
+            _to_root_path(root_dir, types.openapi_path) if types.openapi_path else types.output / "openapi.json"
+        )
+        types.routes_path = (
+            _to_root_path(root_dir, types.routes_path) if types.routes_path else types.output / "routes.json"
+        )
+        types.routes_ts_path = (
+            _to_root_path(root_dir, types.routes_ts_path) if types.routes_ts_path else types.output / "routes.ts"
+        )
         types.page_props_path = (
-            _to_root(types.page_props_path) if types.page_props_path else types.output / "inertia-pages.json"
+            _to_root_path(root_dir, types.page_props_path)
+            if types.page_props_path
+            else types.output / "inertia-pages.json"
         )
 
     def _ensure_spa_default(self) -> None:
@@ -1079,7 +1096,6 @@ class ViteConfig:
             self.spa = False
 
     def _auto_enable_dev_mode(self) -> None:
-        # Only auto-enable when mode was auto-detected (user didn't force spa/template)
         if not self._mode_auto_detected:
             return
 
@@ -1103,8 +1119,6 @@ class ViteConfig:
         if self.has_built_assets():
             return
 
-        # Skip warning for CLI commands that don't serve the app
-        # These commands just need the config but don't need built assets
         cli_commands_skip_warning = {
             "install",
             "build",
@@ -1120,8 +1134,6 @@ class ViteConfig:
         if any(f"assets {cmd}" in argv_str for cmd in cli_commands_skip_warning):
             return
 
-        # Skip warning when using external dev server (e.g., Angular CLI, Next.js)
-        # These don't use Vite's manifest but have their own build system
         if self.runtime.external_dev_server is not None:
             return
 
@@ -1151,25 +1163,17 @@ class ViteConfig:
         Returns:
             The detected mode.
         """
-        # Check if Inertia is enabled (presence of config = enabled)
         inertia_enabled = isinstance(self.inertia, InertiaConfig)
 
         if inertia_enabled:
-            # Default to hybrid mode for Inertia applications
-            # This works for both dev mode (Vite dev server) and production (built assets)
-            # Users who want Jinja2 templates should set mode="template" explicitly
             return "hybrid"
 
-        # Check for index.html in expected locations (SPA indicator)
         if any(path.exists() for path in self.candidate_index_html_paths()):
             return "spa"
 
-        # If Jinja2 is installed, default to template mode
-        # (User may be using Jinja templates for server-rendered pages)
         if JINJA_INSTALLED:
             return "template"
 
-        # Default to SPA
         return "spa"
 
     def validate_mode(self) -> None:
@@ -1179,7 +1183,6 @@ class ViteConfig:
             ValueError: If the configuration is invalid for the selected mode.
         """
         if self.mode == "spa":
-            # SPA mode validation
             index_candidates = self.candidate_index_html_paths()
             if not self.runtime.dev_mode and not any(path.exists() for path in index_candidates):
                 joined_paths = ", ".join(str(path) for path in index_candidates)
@@ -1191,7 +1194,6 @@ class ViteConfig:
                 raise ValueError(msg)
 
         elif self.mode == "hybrid":
-            # Hybrid mode validation - needs index.html like SPA mode
             index_candidates = self.candidate_index_html_paths()
             if not self.runtime.dev_mode and not any(path.exists() for path in index_candidates):
                 joined_paths = ", ".join(str(path) for path in index_candidates)
@@ -1203,7 +1205,6 @@ class ViteConfig:
                 raise ValueError(msg)
 
         elif self.mode in {"template", "htmx"}:
-            # Template mode should have Jinja2 available
             if not JINJA_INSTALLED:
                 msg = (
                     f"{self.mode} mode requires Jinja2 to be installed. "
@@ -1213,7 +1214,11 @@ class ViteConfig:
 
     @property
     def executor(self) -> "JSExecutor":
-        """Get the JavaScript executor instance."""
+        """Get the JavaScript executor instance.
+
+        Returns:
+            The configured JavaScript executor.
+        """
         if self._executor_instance is None:
             self._executor_instance = self._create_executor()
         return self._executor_instance
@@ -1251,49 +1256,71 @@ class ViteConfig:
             return YarnExecutor(silent=silent)
         if executor_type == "pnpm":
             return PnpmExecutor(silent=silent)
-        # Default to node
         if self.runtime.detect_nodeenv:
             return NodeenvExecutor(self, silent=silent)
         return NodeExecutor(silent=silent)
 
-    # Convenience properties for backward compatibility and ease of use
     @property
     def bundle_dir(self) -> Path:
-        """Get bundle directory path."""
-        # __post_init__ normalizes strings to Path
+        """Get bundle directory path.
+
+        Returns:
+            The configured bundle directory path.
+        """
         return self.paths.bundle_dir if isinstance(self.paths.bundle_dir, Path) else Path(self.paths.bundle_dir)
 
     @property
     def resource_dir(self) -> Path:
-        """Get resource directory path."""
-        # __post_init__ normalizes strings to Path
+        """Get resource directory path.
+
+        Returns:
+            The configured resource directory path.
+        """
         return self.paths.resource_dir if isinstance(self.paths.resource_dir, Path) else Path(self.paths.resource_dir)
 
     @property
     def static_dir(self) -> Path:
-        """Get static directory path."""
-        # __post_init__ normalizes strings to Path
+        """Get static directory path.
+
+        Returns:
+            The configured static directory path.
+        """
         return self.paths.static_dir if isinstance(self.paths.static_dir, Path) else Path(self.paths.static_dir)
 
     @property
     def root_dir(self) -> Path:
-        """Get root directory path."""
-        # __post_init__ normalizes strings to Path
+        """Get root directory path.
+
+        Returns:
+            The configured project root directory path.
+        """
         return self.paths.root if isinstance(self.paths.root, Path) else Path(self.paths.root)
 
     @property
     def manifest_name(self) -> str:
-        """Get manifest file name."""
+        """Get manifest file name.
+
+        Returns:
+            The configured Vite manifest filename.
+        """
         return self.paths.manifest_name
 
     @property
     def hot_file(self) -> str:
-        """Get hot file name."""
+        """Get hot file name.
+
+        Returns:
+            The configured hotfile filename.
+        """
         return self.paths.hot_file
 
     @property
     def asset_url(self) -> str:
-        """Get asset URL."""
+        """Get asset URL.
+
+        Returns:
+            The configured asset URL prefix.
+        """
         return self.paths.asset_url
 
     def _resolve_to_root(self, path: Path) -> Path:
@@ -1315,6 +1342,9 @@ class ViteConfig:
         2. resource_dir/index.html
         3. root_dir/index.html
         4. static_dir/index.html
+
+        Returns:
+            A de-duplicated list of candidate index.html paths, ordered by preference.
         """
 
         bundle_dir = self._resolve_to_root(self.bundle_dir)
@@ -1353,23 +1383,33 @@ class ViteConfig:
         manifest_path = bundle_path / self.manifest_name
         index_path = bundle_path / "index.html"
 
-        # Check for Vite manifest (primary indicator of built assets)
-        # or index.html in the bundle output directory
         return manifest_path.exists() or index_path.exists()
 
     @property
     def host(self) -> str:
-        """Get dev server host."""
+        """Get dev server host.
+
+        Returns:
+            The configured Vite dev server host.
+        """
         return self.runtime.host
 
     @property
     def port(self) -> int:
-        """Get dev server port."""
+        """Get dev server port.
+
+        Returns:
+            The configured Vite dev server port.
+        """
         return self.runtime.port
 
     @property
     def protocol(self) -> str:
-        """Get dev server protocol."""
+        """Get dev server protocol.
+
+        Returns:
+            The configured Vite dev server protocol.
+        """
         return self.runtime.protocol
 
     @property
@@ -1378,32 +1418,55 @@ class ViteConfig:
 
         HMR requires dev_mode=True AND a Vite-based mode (vite, direct, or proxy/ssr).
         All modes support HMR since even SSR frameworks use Vite internally.
+
+        Returns:
+            True if hot reload is enabled, otherwise False.
         """
         return self.runtime.dev_mode and self.runtime.proxy_mode in {"vite", "direct", "proxy"}
 
     @property
     def is_dev_mode(self) -> bool:
-        """Check if dev mode is enabled."""
+        """Check if dev mode is enabled.
+
+        Returns:
+            True if dev mode is enabled, otherwise False.
+        """
         return self.runtime.dev_mode
 
     @property
     def is_react(self) -> bool:
-        """Check if React mode is enabled."""
+        """Check if React mode is enabled.
+
+        Returns:
+            True if React mode is enabled, otherwise False.
+        """
         return self.runtime.is_react
 
     @property
     def ssr_enabled(self) -> bool:
-        """Check if SSR is enabled."""
+        """Check if SSR is enabled.
+
+        Returns:
+            True if SSR is enabled, otherwise False.
+        """
         return self.runtime.ssr_enabled
 
     @property
     def run_command(self) -> list[str]:
-        """Get the run command."""
+        """Get the run command.
+
+        Returns:
+            The argv list used to start the Vite dev server.
+        """
         return self.runtime.run_command or ["npm", "run", "dev"]
 
     @property
     def build_command(self) -> list[str]:
-        """Get the build command."""
+        """Get the build command.
+
+        Returns:
+            The argv list used to build production assets.
+        """
         return self.runtime.build_command or ["npm", "run", "build"]
 
     @property
@@ -1411,6 +1474,9 @@ class ViteConfig:
         """Get the watch command for building frontend in watch mode.
 
         Used by `litestar assets serve` when hot_reload is disabled.
+
+        Returns:
+            The command argv list used for watch builds.
         """
         return self.runtime.build_watch_command or ["npm", "run", "build", "--", "--watch"]
 
@@ -1420,60 +1486,102 @@ class ViteConfig:
 
         Used by `litestar assets serve --production` for SSR frameworks.
         Returns None if not configured.
+
+        Returns:
+            The command argv list used to serve production assets, or None if not configured.
         """
         return self.runtime.serve_command
 
     @property
     def install_command(self) -> list[str]:
-        """Get the install command."""
+        """Get the install command.
+
+        Returns:
+            The argv list used to install frontend dependencies.
+        """
         return self.runtime.install_command or ["npm", "install"]
 
     @property
     def health_check(self) -> bool:
-        """Check if health check is enabled."""
+        """Check if health check is enabled.
+
+        Returns:
+            True if health checks are enabled, otherwise False.
+        """
         return self.runtime.health_check
 
     @property
     def set_environment(self) -> bool:
-        """Check if environment should be set."""
+        """Check if environment should be set.
+
+        Returns:
+            True if Vite environment variables should be set, otherwise False.
+        """
         return self.runtime.set_environment
 
     @property
     def set_static_folders(self) -> bool:
-        """Check if static folders should be configured."""
+        """Check if static folders should be configured.
+
+        Returns:
+            True if static folders should be configured, otherwise False.
+        """
         return self.runtime.set_static_folders
 
     @property
     def detect_nodeenv(self) -> bool:
-        """Check if nodeenv detection is enabled."""
+        """Check if nodeenv detection is enabled.
+
+        Returns:
+            True if nodeenv detection is enabled, otherwise False.
+        """
         return self.runtime.detect_nodeenv
 
     @property
     def proxy_mode(self) -> "Literal['vite', 'direct', 'proxy'] | None":
-        """Get proxy mode."""
+        """Get proxy mode.
+
+        Returns:
+            The configured proxy mode, or None if proxying is disabled.
+        """
         return self.runtime.proxy_mode
 
     @property
     def external_dev_server(self) -> "ExternalDevServer | None":
-        """Get external dev server config."""
+        """Get external dev server config.
+
+        Returns:
+            External dev server configuration, or None if not configured.
+        """
         if isinstance(self.runtime.external_dev_server, ExternalDevServer):
             return self.runtime.external_dev_server
         return None
 
     @property
     def spa_handler(self) -> bool:
-        """Check if SPA handler auto-registration is enabled."""
+        """Check if SPA handler auto-registration is enabled.
+
+        Returns:
+            True if the SPA handler should be auto-registered, otherwise False.
+        """
         return self.runtime.spa_handler
 
     @property
     def http2(self) -> bool:
-        """Check if HTTP/2 is enabled for proxy connections."""
+        """Check if HTTP/2 is enabled for proxy connections.
+
+        Returns:
+            True if HTTP/2 is enabled for proxy connections, otherwise False.
+        """
         return self.runtime.http2
 
     @property
     def ssr_output_dir(self) -> "Path | None":
-        """Get SSR output directory."""
-        # __post_init__ normalizes strings to Path
+        """Get SSR output directory.
+
+        Returns:
+            The configured SSR output directory, or None if not configured.
+        """
         if self.paths.ssr_output_dir is None:
             return None
         return (
@@ -1511,7 +1619,6 @@ class ViteConfig:
         Returns:
             LoggingConfig instance (always available after normalization).
         """
-        # After _normalize_logging(), self.logging is always LoggingConfig
         if isinstance(self.logging, LoggingConfig):
             return self.logging
         return LoggingConfig()

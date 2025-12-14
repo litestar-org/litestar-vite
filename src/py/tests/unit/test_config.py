@@ -2,19 +2,8 @@ from pathlib import Path, PosixPath
 
 import pytest
 
-from litestar_vite.config import (
-    ExternalDevServer,
-    PathConfig,
-    RuntimeConfig,
-    SPAConfig,
-    TypeGenConfig,
-    ViteConfig,
-)
-from litestar_vite.executor import (
-    BunExecutor,
-    NodeenvExecutor,
-    NodeExecutor,
-)
+from litestar_vite.config import ExternalDevServer, PathConfig, RuntimeConfig, SPAConfig, TypeGenConfig, ViteConfig
+from litestar_vite.executor import BunExecutor, NodeenvExecutor, NodeExecutor
 
 
 def test_default_vite_config() -> None:
@@ -47,10 +36,7 @@ def test_config_health_check_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_config_custom_health_check() -> None:
-    config = ViteConfig(
-        runtime=RuntimeConfig(health_check=True),
-        base_url="https://cdn.example.com/",
-    )
+    config = ViteConfig(runtime=RuntimeConfig(health_check=True), base_url="https://cdn.example.com/")
     assert config.health_check is True
     assert config.base_url == "https://cdn.example.com/"
 
@@ -59,10 +45,7 @@ def test_new_config_structure() -> None:
     """Test the new nested config structure."""
     config = ViteConfig(
         mode="spa",
-        paths=PathConfig(
-            bundle_dir=Path("/app/dist"),
-            resource_dir=Path("/app/src"),
-        ),
+        paths=PathConfig(bundle_dir=Path("/app/dist"), resource_dir=Path("/app/src")),
         runtime=RuntimeConfig(
             dev_mode=True,
             proxy_mode="vite",  # Use new field
@@ -158,11 +141,7 @@ def test_external_dev_server_defaults() -> None:
 
 def test_external_dev_server_custom_values() -> None:
     """Test ExternalDevServer with custom values."""
-    ext = ExternalDevServer(
-        target="http://localhost:3000",
-        http2=True,
-        enabled=False,
-    )
+    ext = ExternalDevServer(target="http://localhost:3000", http2=True, enabled=False)
 
     assert ext.target == "http://localhost:3000"
     assert ext.http2 is True
@@ -171,10 +150,7 @@ def test_external_dev_server_custom_values() -> None:
 
 def test_runtime_config_external_dev_server_string_normalization() -> None:
     """Test external_dev_server string is normalized to ExternalDevServer."""
-    config = RuntimeConfig(
-        proxy_mode="proxy",
-        external_dev_server="http://localhost:3000",
-    )
+    config = RuntimeConfig(proxy_mode="proxy", external_dev_server="http://localhost:3000")
 
     assert isinstance(config.external_dev_server, ExternalDevServer)
     assert config.external_dev_server.target == "http://localhost:3000"
@@ -183,10 +159,7 @@ def test_runtime_config_external_dev_server_string_normalization() -> None:
 def test_runtime_config_external_dev_server_object() -> None:
     """Test external_dev_server can be passed as object."""
     ext = ExternalDevServer(target="http://localhost:4200", http2=True)
-    config = RuntimeConfig(
-        proxy_mode="proxy",
-        external_dev_server=ext,
-    )
+    config = RuntimeConfig(proxy_mode="proxy", external_dev_server=ext)
 
     assert config.external_dev_server is ext
     assert isinstance(config.external_dev_server, ExternalDevServer)
@@ -205,9 +178,7 @@ def test_vite_config_proxy_mode() -> None:
     """Test ViteConfig with proxy mode."""
     config = ViteConfig(
         runtime=RuntimeConfig(
-            dev_mode=True,
-            proxy_mode="proxy",
-            external_dev_server=ExternalDevServer(target="http://localhost:4200"),
+            dev_mode=True, proxy_mode="proxy", external_dev_server=ExternalDevServer(target="http://localhost:4200")
         )
     )
 
@@ -220,24 +191,14 @@ def test_vite_config_proxy_mode() -> None:
 
 def test_hot_reload_derived_from_vite_mode() -> None:
     """Test hot_reload is True for vite mode."""
-    config = ViteConfig(
-        runtime=RuntimeConfig(
-            dev_mode=True,
-            proxy_mode="vite",
-        )
-    )
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode="vite"))
 
     assert config.hot_reload is True
 
 
 def test_hot_reload_derived_from_direct_mode() -> None:
     """Test hot_reload is True for direct mode."""
-    config = ViteConfig(
-        runtime=RuntimeConfig(
-            dev_mode=True,
-            proxy_mode="direct",
-        )
-    )
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode="direct"))
 
     assert config.hot_reload is True
 
@@ -245,11 +206,7 @@ def test_hot_reload_derived_from_direct_mode() -> None:
 def test_hot_reload_enabled_for_proxy_mode() -> None:
     """Test hot_reload is True for proxy mode (SSR frameworks use Vite internally)."""
     config = ViteConfig(
-        runtime=RuntimeConfig(
-            dev_mode=True,
-            proxy_mode="proxy",
-            external_dev_server="http://localhost:4200",
-        )
+        runtime=RuntimeConfig(dev_mode=True, proxy_mode="proxy", external_dev_server="http://localhost:4200")
     )
 
     # HMR is now supported in proxy mode since SSR frameworks use Vite internally
@@ -292,11 +249,7 @@ def test_validate_mode_spa_missing_index_html(tmp_path: Path) -> None:
     resource_dir = tmp_path / "resources"
     resource_dir.mkdir()
 
-    config = ViteConfig(
-        mode="spa",
-        paths=PathConfig(resource_dir=resource_dir),
-        dev_mode=False,
-    )
+    config = ViteConfig(mode="spa", paths=PathConfig(resource_dir=resource_dir), dev_mode=False)
 
     with pytest.raises(ValueError, match=r"SPA mode requires index\.html"):
         config.validate_mode()
@@ -308,7 +261,7 @@ def test_type_paths_resolve_relative_and_cascade(tmp_path: Path) -> None:
     config = ViteConfig(
         paths=PathConfig(root=root),
         types=TypeGenConfig(
-            output=Path("src/generated/types"),  # only output overridden
+            output=Path("src/generated/types")  # only output overridden
         ),
     )
 
@@ -339,11 +292,7 @@ def test_validate_mode_spa_dev_mode_allows_missing_index(tmp_path: Path) -> None
     resource_dir = tmp_path / "resources"
     resource_dir.mkdir()
 
-    config = ViteConfig(
-        mode="spa",
-        paths=PathConfig(resource_dir=resource_dir),
-        dev_mode=True,
-    )
+    config = ViteConfig(mode="spa", paths=PathConfig(resource_dir=resource_dir), dev_mode=True)
 
     # Should not raise
     config.validate_mode()
@@ -392,10 +341,7 @@ def test_spa_config_defaults() -> None:
 def test_spa_config_custom_values() -> None:
     """Test SPAConfig with custom values."""
     spa_config = SPAConfig(
-        inject_csrf=False,
-        csrf_var_name="CSRF_TOKEN",
-        app_selector="#root",
-        cache_transformed_html=False,
+        inject_csrf=False, csrf_var_name="CSRF_TOKEN", app_selector="#root", cache_transformed_html=False
     )
 
     assert spa_config.inject_csrf is False
@@ -424,10 +370,7 @@ def test_vite_config_spa_false() -> None:
 
 def test_vite_config_spa_explicit_config() -> None:
     """Test spa can be set to an explicit SPAConfig."""
-    spa_config = SPAConfig(
-        csrf_var_name="__CUSTOM_CSRF__",
-        app_selector="#custom-app",
-    )
+    spa_config = SPAConfig(csrf_var_name="__CUSTOM_CSRF__", app_selector="#custom-app")
     config = ViteConfig(spa=spa_config)
 
     assert config.spa is spa_config
@@ -443,10 +386,7 @@ def test_vite_config_spa_auto_enabled_for_spa_mode(tmp_path: Path) -> None:
     (resource_dir / "index.html").write_text("<html></html>")
 
     # Don't explicitly set spa - it should be auto-enabled for mode="spa"
-    config = ViteConfig(
-        mode="spa",
-        paths=PathConfig(resource_dir=resource_dir),
-    )
+    config = ViteConfig(mode="spa", paths=PathConfig(resource_dir=resource_dir))
 
     assert isinstance(config.spa, SPAConfig)
     assert config.spa_config is not None
@@ -480,10 +420,7 @@ def test_hybrid_mode_explicit() -> None:
     """Test that mode='hybrid' can be explicitly set."""
     from litestar_vite.inertia import InertiaConfig
 
-    config = ViteConfig(
-        mode="hybrid",
-        inertia=InertiaConfig(),
-    )
+    config = ViteConfig(mode="hybrid", inertia=InertiaConfig())
 
     assert config.mode == "hybrid"
     # Hybrid mode should auto-enable SPAConfig like spa mode
@@ -495,9 +432,7 @@ def test_hybrid_mode_auto_detected_with_inertia() -> None:
     """Test that hybrid mode is auto-detected when Inertia is enabled."""
     from litestar_vite.inertia import InertiaConfig
 
-    config = ViteConfig(
-        inertia=InertiaConfig(),
-    )
+    config = ViteConfig(inertia=InertiaConfig())
 
     assert config.mode == "hybrid"
     assert config._mode_auto_detected is True
@@ -532,10 +467,7 @@ def test_hybrid_mode_auto_detected_when_inertia_enabled(tmp_path: Path) -> None:
     from litestar_vite.inertia import InertiaConfig
 
     # Empty directory - no index.html (doesn't matter, defaults to hybrid)
-    config = ViteConfig(
-        paths=PathConfig(resource_dir=tmp_path),
-        inertia=InertiaConfig(),
-    )
+    config = ViteConfig(paths=PathConfig(resource_dir=tmp_path), inertia=InertiaConfig())
 
     assert config.mode == "hybrid"
     assert config._mode_auto_detected is True
@@ -546,11 +478,7 @@ def test_hybrid_mode_validation_requires_index_html(tmp_path: Path) -> None:
     from litestar_vite.inertia import InertiaConfig
 
     # Empty directory - no index.html
-    config = ViteConfig(
-        mode="hybrid",
-        paths=PathConfig(resource_dir=tmp_path),
-        inertia=InertiaConfig(),
-    )
+    config = ViteConfig(mode="hybrid", paths=PathConfig(resource_dir=tmp_path), inertia=InertiaConfig())
 
     with pytest.raises(ValueError, match=r"Hybrid mode requires index\.html"):
         config.validate_mode()
@@ -561,12 +489,7 @@ def test_hybrid_mode_validation_passes_in_dev_mode(tmp_path: Path) -> None:
     from litestar_vite.inertia import InertiaConfig
 
     # Empty directory - no index.html, but dev_mode=True
-    config = ViteConfig(
-        mode="hybrid",
-        dev_mode=True,
-        paths=PathConfig(resource_dir=tmp_path),
-        inertia=InertiaConfig(),
-    )
+    config = ViteConfig(mode="hybrid", dev_mode=True, paths=PathConfig(resource_dir=tmp_path), inertia=InertiaConfig())
 
     # Should not raise
     config.validate_mode()
@@ -596,18 +519,12 @@ def test_inertia_presence_means_enabled(tmp_path: Path) -> None:
 
     # Passing InertiaConfig instance means enabled
     # Defaults to hybrid mode regardless of index.html presence
-    config = ViteConfig(
-        paths=PathConfig(resource_dir=tmp_path),
-        inertia=InertiaConfig(),
-    )
+    config = ViteConfig(paths=PathConfig(resource_dir=tmp_path), inertia=InertiaConfig())
     assert isinstance(config.inertia, InertiaConfig)
     assert config.mode == "hybrid"  # InertiaConfig present → hybrid
 
     # Passing True enables with defaults
-    config2 = ViteConfig(
-        paths=PathConfig(resource_dir=tmp_path),
-        inertia=True,
-    )
+    config2 = ViteConfig(paths=PathConfig(resource_dir=tmp_path), inertia=True)
     assert isinstance(config2.inertia, InertiaConfig)
     assert config2.mode == "hybrid"
 

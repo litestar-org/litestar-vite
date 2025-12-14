@@ -102,6 +102,9 @@ def get_template_dir() -> Path:
 def render_template(template_path: Path, context: dict[str, Any]) -> str:
     """Render a Jinja2 template with the given context.
 
+    Templates are rendered with autoescaping disabled because the output is code
+    and configuration files, not HTML.
+
     Args:
         template_path: Path to the template file.
         context: Dictionary of template variables.
@@ -112,7 +115,6 @@ def render_template(template_path: Path, context: dict[str, Any]) -> str:
     from jinja2 import Environment, FileSystemLoader
 
     template_dir = template_path.parent
-    # autoescape=False is intentional - we're generating code files, not HTML
     env = Environment(
         loader=FileSystemLoader(str(template_dir)),
         keep_trailing_newline=True,
@@ -132,6 +134,14 @@ def _process_templates(
     skip_paths: "set[Path] | None" = None,
 ) -> list[Path]:
     """Process templates from a directory and generate output files.
+
+    This function rewrites template paths so frameworks can customize the output
+    directory layout:
+
+    - ``resources/`` templates are rewritten to the configured ``resource_dir``.
+    - ``public/`` templates can be relocated via ``static_dir`` in the context.
+
+    SSR entrypoints under ``resources/`` are only generated when SSR is enabled.
 
     Args:
         template_dir: Directory containing template files.
@@ -156,7 +166,6 @@ def _process_templates(
         if relative_path in skip_paths:
             continue
 
-        # SSR entrypoints are only generated when SSR is enabled for the template.
         if (
             not enable_ssr
             and relative_path.parts
@@ -165,11 +174,9 @@ def _process_templates(
         ):
             continue
 
-        # Rewrite resources/ paths to use configured resource_dir
         if relative_path.parts and relative_path.parts[0] == "resources":
             relative_path = Path(resource_dir, *relative_path.parts[1:])
 
-        # Allow relocating Vite's public (static assets) directory when scaffolding
         if relative_path.parts and relative_path.parts[0] == "public":
             relative_path = Path(context_dict.get("static_dir", "public"), *relative_path.parts[1:])
 
@@ -185,12 +192,7 @@ def _process_templates(
     return generated_files
 
 
-def generate_project(
-    output_dir: Path,
-    context: TemplateContext,
-    *,
-    overwrite: bool = False,
-) -> list[Path]:
+def generate_project(output_dir: Path, context: TemplateContext, *, overwrite: bool = False) -> list[Path]:
     """Generate project files from templates.
 
     Args:
@@ -209,7 +211,6 @@ def generate_project(
     context_dict = context.to_dict()
     generated_files: list[Path] = []
 
-    # Collect framework overrides to skip in base templates
     framework_overrides: set[Path] = set()
     if framework_dir.exists():
         framework_overrides = {
@@ -219,7 +220,6 @@ def generate_project(
     actual_output_dir = output_dir / context.base_dir if context.base_dir not in {"", "."} else output_dir
     actual_output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Process base templates (shared across frameworks) when Vite-based
     if context.framework.uses_vite and base_dir.exists():
         generated_files.extend(
             _process_templates(
@@ -232,7 +232,6 @@ def generate_project(
             )
         )
 
-    # Process framework-specific templates
     if framework_dir.exists():
         generated_files.extend(
             _process_templates(
@@ -242,7 +241,6 @@ def generate_project(
     else:
         console.print(f"[dim]No framework templates for {context.framework.type.value}, using base templates[/]")
 
-    # Add TailwindCSS addon if requested
     if context.use_tailwind:
         tailwind_dir = template_dir / "addons" / "tailwindcss"
         if tailwind_dir.exists():
@@ -255,11 +253,7 @@ def generate_project(
     return generated_files
 
 
-def _render_and_write(
-    template_path: Path,
-    output_path: Path,
-    context: dict[str, Any],
-) -> None:
+def _render_and_write(template_path: Path, output_path: Path, context: dict[str, Any]) -> None:
     """Render a template and write to output file.
 
     Args:
@@ -269,10 +263,8 @@ def _render_and_write(
     """
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
-    # Ensure parent directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Render and write
     content = render_template(template_path, context)
     output_path.write_text(content, encoding="utf-8")
     console.print(f"[green]Created {output_path}[/]")

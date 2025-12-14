@@ -20,12 +20,7 @@ from litestar_vite.inertia.helpers import (
 from litestar_vite.inertia.middleware import InertiaMiddleware
 from litestar_vite.inertia.plugin import InertiaPlugin
 from litestar_vite.inertia.request import InertiaDetails, InertiaHeaders, InertiaRequest
-from litestar_vite.inertia.response import (
-    InertiaBack,
-    InertiaExternalRedirect,
-    InertiaRedirect,
-    InertiaResponse,
-)
+from litestar_vite.inertia.response import InertiaBack, InertiaExternalRedirect, InertiaRedirect, InertiaResponse
 
 __all__ = (
     "InertiaBack",

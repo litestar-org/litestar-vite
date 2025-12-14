@@ -76,7 +76,7 @@ EXAMPLE_PORTS: dict[str, int] = {
 # These are the ports where external dev servers (not Vite) actually listen
 # For angular-cli: Angular CLI uses port 4200 by default, not the Litestar proxy port
 EXTERNAL_TARGET_PORTS: dict[str, int] = {
-    "angular-cli": 4200,  # Angular CLI always uses port 4200
+    "angular-cli": 4200  # Angular CLI always uses port 4200
 }
 
 RUNNING_PROCS: list[subprocess.Popen[bytes]] = []
@@ -192,9 +192,7 @@ class OutputCapture:
             elapsed = time.monotonic() - start
             if elapsed > 10 and current_lines == last_line_count and int(elapsed) % 10 == 0:
                 logger.warning(
-                    "Waiting for port... %.0fs elapsed, %d lines captured, no new output",
-                    elapsed,
-                    current_lines,
+                    "Waiting for port... %.0fs elapsed, %d lines captured, no new output", elapsed, current_lines
                 )
             last_line_count = current_lines
 
@@ -256,12 +254,7 @@ class ExampleServer:
 
         try:
             for port in ports_to_free:
-                result = subprocess.run(
-                    ["lsof", "-t", "-i", f":{port}"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
+                result = subprocess.run(["lsof", "-t", "-i", f":{port}"], capture_output=True, text=True, timeout=5)
                 if result.stdout.strip():
                     for pid_str in result.stdout.strip().split("\n"):
                         try:
@@ -294,9 +287,7 @@ class ExampleServer:
         # The plugin auto-starts Vite dev server via start_dev_server=True
         self.litestar_port = find_free_port()
         litestar_proc, litestar_capture = self._spawn_with_capture(
-            self._litestar_run_command(self.litestar_port),
-            env=env,
-            patterns=[LITESTAR_PORT_PATTERN],
+            self._litestar_run_command(self.litestar_port), env=env, patterns=[LITESTAR_PORT_PATTERN]
         )
         self._processes.append(litestar_proc)
         self._captures.append(litestar_capture)
@@ -334,9 +325,7 @@ class ExampleServer:
         # Start Litestar backend on a free port (serves static files in production)
         self.litestar_port = find_free_port()
         litestar_proc, litestar_capture = self._spawn_with_capture(
-            self._litestar_run_command(self.litestar_port),
-            env=env,
-            patterns=[LITESTAR_PORT_PATTERN],
+            self._litestar_run_command(self.litestar_port), env=env, patterns=[LITESTAR_PORT_PATTERN]
         )
         self._processes.append(litestar_proc)
         self._captures.append(litestar_capture)
@@ -364,9 +353,7 @@ class ExampleServer:
             ssr_env["HOST"] = "127.0.0.1"
             ssr_patterns = [VITE_PORT_PATTERN, NUXT_PORT_PATTERN, LISTENING_PORT_PATTERN]
             ssr_proc, ssr_capture = self._spawn_with_capture(
-                self._assets_serve_production_command(),
-                env=ssr_env,
-                patterns=ssr_patterns,
+                self._assets_serve_production_command(), env=ssr_env, patterns=ssr_patterns
             )
             self._processes.append(ssr_proc)
             self._captures.append(ssr_capture)
@@ -395,11 +382,7 @@ class ExampleServer:
         if self.vite_port is None:
             raise ValueError(f"No port configured for example: {self.example_name}")
 
-        logger.info(
-            "Waiting for servers: Vite port=%d, Litestar port=%d",
-            self.vite_port,
-            self.litestar_port,
-        )
+        logger.info("Waiting for servers: Vite port=%d, Litestar port=%d", self.vite_port, self.litestar_port)
 
         start = time.monotonic()
 
@@ -575,15 +558,7 @@ class ExampleServer:
         Returns:
             Command arguments list for subprocess.
         """
-        return [
-            sys.executable,
-            "-m",
-            "litestar",
-            "--app-dir",
-            str(self.example_dir),
-            "assets",
-            "serve",
-        ]
+        return [sys.executable, "-m", "litestar", "--app-dir", str(self.example_dir), "assets", "serve"]
 
     def _assets_install_command(self) -> list[str]:
         """Command to install frontend deps: `litestar assets install`.
@@ -591,15 +566,7 @@ class ExampleServer:
         Returns:
                Command arguments list for subprocess.
         """
-        return [
-            sys.executable,
-            "-m",
-            "litestar",
-            "--app-dir",
-            str(self.example_dir),
-            "assets",
-            "install",
-        ]
+        return [sys.executable, "-m", "litestar", "--app-dir", str(self.example_dir), "assets", "install"]
 
     def _assets_serve_production_command(self) -> list[str]:
         """Command to start production Node server: `litestar assets serve --production`.
@@ -607,16 +574,7 @@ class ExampleServer:
         Returns:
             Command arguments list for subprocess.
         """
-        return [
-            sys.executable,
-            "-m",
-            "litestar",
-            "--app-dir",
-            str(self.example_dir),
-            "assets",
-            "serve",
-            "--production",
-        ]
+        return [sys.executable, "-m", "litestar", "--app-dir", str(self.example_dir), "assets", "serve", "--production"]
 
     def _assets_build_command(self) -> list[str]:
         """Command to build frontend assets: `litestar assets build`.
@@ -624,15 +582,7 @@ class ExampleServer:
         Returns:
             Command arguments list for subprocess.
         """
-        return [
-            sys.executable,
-            "-m",
-            "litestar",
-            "--app-dir",
-            str(self.example_dir),
-            "assets",
-            "build",
-        ]
+        return [sys.executable, "-m", "litestar", "--app-dir", str(self.example_dir), "assets", "build"]
 
     def _litestar_run_command(self, port: int) -> list[str]:
         """Command to start Litestar backend: `litestar run --port <port>`.
@@ -643,16 +593,7 @@ class ExampleServer:
         Returns:
             Command arguments list for subprocess.
         """
-        return [
-            sys.executable,
-            "-m",
-            "litestar",
-            "--app-dir",
-            str(self.example_dir),
-            "run",
-            "--port",
-            str(port),
-        ]
+        return [sys.executable, "-m", "litestar", "--app-dir", str(self.example_dir), "run", "--port", str(port)]
 
     # ---------------------------- helpers ---------------------------- #
     def _base_env(self, dev_mode: bool) -> dict[str, str]:
@@ -677,25 +618,23 @@ class ExampleServer:
         # Also remove PORT which some frameworks use as fallback
         env.pop("PORT", None)
 
-        env.update(
-            {
-                "VITE_DEV_MODE": "true" if dev_mode else "false",
-                "HOST": "127.0.0.1",
-                # npm cache to avoid permission issues
-                "npm_config_cache": str(Path.home() / ".cache" / "npm"),
-                # Bypass CI environment check in Vite plugin for E2E tests
-                # We intentionally test dev mode in CI to validate the full experience
-                "LITESTAR_BYPASS_ENV_CHECK": "1",
-                # Force unbuffered output for reliable port detection in CI
-                "PYTHONUNBUFFERED": "1",
-                # Disable interactive features that might buffer output
-                "CI": "true",
-                # Force color output to be consistent with expected patterns
-                "FORCE_COLOR": "1",
-                # Node.js: force immediate stdout flushing
-                "NODE_OPTIONS": "--no-warnings",
-            }
-        )
+        env.update({
+            "VITE_DEV_MODE": "true" if dev_mode else "false",
+            "HOST": "127.0.0.1",
+            # npm cache to avoid permission issues
+            "npm_config_cache": str(Path.home() / ".cache" / "npm"),
+            # Bypass CI environment check in Vite plugin for E2E tests
+            # We intentionally test dev mode in CI to validate the full experience
+            "LITESTAR_BYPASS_ENV_CHECK": "1",
+            # Force unbuffered output for reliable port detection in CI
+            "PYTHONUNBUFFERED": "1",
+            # Disable interactive features that might buffer output
+            "CI": "true",
+            # Force color output to be consistent with expected patterns
+            "FORCE_COLOR": "1",
+            # Node.js: force immediate stdout flushing
+            "NODE_OPTIONS": "--no-warnings",
+        })
         return env
 
     def _run(self, cmd: list[str], cwd: Path, env: dict[str, str]) -> None:
@@ -752,10 +691,7 @@ class ExampleServer:
         INSTALLED_EXAMPLES.add(self.example_name)
 
     def _spawn_with_capture(
-        self,
-        cmd: list[str],
-        env: dict[str, str],
-        patterns: list[re.Pattern[str]],
+        self, cmd: list[str], env: dict[str, str], patterns: list[re.Pattern[str]]
     ) -> tuple[subprocess.Popen[bytes], OutputCapture]:
         """Spawn a process and capture its output to extract port.
 

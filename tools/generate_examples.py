@@ -27,38 +27,10 @@ class Example(TypedDict):
 
 def main() -> None:
     examples: list[Example] = [
-        {
-            "name": "react",
-            "framework": "react",
-            "config": {
-                "enable_types": True,
-                "use_tailwind": True,
-            },
-        },
-        {
-            "name": "vue-inertia",
-            "framework": "vue-inertia",
-            "config": {
-                "enable_types": True,
-                "use_tailwind": True,
-            },
-        },
-        {
-            "name": "svelte",
-            "framework": "svelte",
-            "config": {
-                "enable_types": True,
-                "use_tailwind": True,
-            },
-        },
-        {
-            "name": "sveltekit",
-            "framework": "sveltekit",
-            "config": {
-                "enable_types": True,
-                "use_tailwind": True,
-            },
-        },
+        {"name": "react", "framework": "react", "config": {"enable_types": True, "use_tailwind": True}},
+        {"name": "vue-inertia", "framework": "vue-inertia", "config": {"enable_types": True, "use_tailwind": True}},
+        {"name": "svelte", "framework": "svelte", "config": {"enable_types": True, "use_tailwind": True}},
+        {"name": "sveltekit", "framework": "sveltekit", "config": {"enable_types": True, "use_tailwind": True}},
         {
             "name": "template-htmx",
             "framework": "htmx",
@@ -68,22 +40,11 @@ def main() -> None:
                 "use_typescript": False,
             },
         },
-        {
-            "name": "astro",
-            "framework": "astro",
-            "config": {
-                "enable_types": True,
-                "use_tailwind": True,
-            },
-        },
+        {"name": "astro", "framework": "astro", "config": {"enable_types": True, "use_tailwind": True}},
         {
             "name": "fullstack-typed",
             "framework": "react-inertia",
-            "config": {
-                "enable_types": True,
-                "use_tailwind": True,
-                "enable_ssr": True,
-            },
+            "config": {"enable_types": True, "use_tailwind": True, "enable_ssr": True},
         },
     ]
 
