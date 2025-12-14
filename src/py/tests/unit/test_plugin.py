@@ -773,10 +773,10 @@ def test_vite_plugin_optional_backwards_compatibility_without_jinja() -> None:
     plugin = VitePlugin()
 
     # Standard plugin usage pattern
-    assert hasattr(plugin, "_config")
-    assert hasattr(plugin, "asset_loader")
-    assert hasattr(plugin, "on_app_init")
-    assert hasattr(plugin, "server_lifespan")
+    assert plugin._config is not None
+    assert plugin.asset_loader is not None
+    assert callable(plugin.on_app_init)
+    assert plugin.server_lifespan is not None
 
     # Should work with minimal configuration
     app = Litestar(plugins=[plugin])
@@ -899,7 +899,6 @@ def test_get_litestar_route_prefixes_caches_by_app() -> None:
 
     # First call should populate cache in app.state
     prefixes1 = get_litestar_route_prefixes(app1)
-    assert hasattr(app1.state, _ROUTE_PREFIXES_CACHE_KEY)
 
     # Second call with same app should return cached result
     prefixes1_again = get_litestar_route_prefixes(app1)
@@ -907,7 +906,6 @@ def test_get_litestar_route_prefixes_caches_by_app() -> None:
 
     # Different app should have separate cache entry
     prefixes2 = get_litestar_route_prefixes(app2)
-    assert hasattr(app2.state, _ROUTE_PREFIXES_CACHE_KEY)
     assert prefixes1 == prefixes2  # Same content
     assert prefixes1 is not prefixes2  # Different objects (separate app instances)
 

@@ -61,7 +61,7 @@ def _get_request_from_context(context: "Mapping[str, Any]") -> "Request[Any, Any
 
 def _get_vite_plugin(context: "Mapping[str, Any]") -> "VitePlugin | None":
     """Return the VitePlugin from the template context, if registered."""
-    request = _get_request_from_context(context)  # raises ValueError, TypeError
+    request = _get_request_from_context(context)
     return request.app.plugins.get("VitePlugin")
 
 
@@ -104,7 +104,7 @@ def render_asset_tag(
     Example:
         In a Jinja2 template:
         {{ vite_asset("src/main.ts") }}
-        {{ vite_asset("src/components/UserProfile.tsx") }}  # For partials
+        {{ vite_asset("src/components/UserProfile.tsx") }}
     """
     vite_plugin = _get_vite_plugin(context)
     if vite_plugin is None:
@@ -174,8 +174,7 @@ def render_routes(
 
     routes_data = generate_routes_json(app, only=only, exclude=exclude, include_components=include_components)
 
-    type_encoders = app.type_encoders if isinstance(getattr(app, "type_encoders", None), dict) else None
-    serializer = get_serializer(type_encoders)
+    serializer = get_serializer(app.type_encoders)
     routes_json = encode_json(routes_data, serializer=serializer).decode("utf-8")
 
     script = dedent(f"""\

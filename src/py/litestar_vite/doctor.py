@@ -1,11 +1,15 @@
-"""Vite Doctor - Diagnostic Tool."""
+"""Vite Doctor - Diagnostic Tool.
+
+This module provides a best-effort diagnostic utility that checks Litestar ↔ Vite configuration alignment.
+Regex patterns used for vite.config parsing are compiled at import time to avoid repeated compilation overhead.
+"""
 
 import os
 import re
 import socket
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from litestar.serialization import decode_json, encode_json
 from rich.console import Console, Group
@@ -27,7 +31,6 @@ def _str_list_factory() -> list[str]:
     return []
 
 
-# Compiled regex patterns for vite.config parsing (compiled once at module load)
 _VITE_CONFIG_PATTERNS: dict[str, re.Pattern[str]] = {
     "asset_url": re.compile(r"""assetUrl\s*:\s*['"]([^'"]+)['"]"""),
     "bundle_dir": re.compile(r"""bundleDir\s*:\s*['"]([^'"]+)['"]"""),
@@ -120,7 +123,7 @@ def _rel_to_root(path: Path | None, root: Path) -> str:
         return str(path.resolve().relative_to(root.resolve()))
     except ValueError:
         parts = path.resolve().parts
-        return "/".join(parts[-3:])  # fallback: last 3 components
+        return "/".join(parts[-3:])
 
 
 @dataclass
@@ -128,7 +131,7 @@ class DoctorIssue:
     """Represents a detected configuration issue."""
 
     check: str
-    severity: str  # "error" or "warning"
+    severity: Literal["error", "warning"]
     message: str
     fix_hint: str
     auto_fixable: bool = False
@@ -149,7 +152,7 @@ class ParsedViteConfig:
     static_dir: str | None = None
     hot_file: str | None = None
     inertia_mode: bool | None = None
-    types_setting: str | bool | None = None  # "auto", True/False, or None (unset)
+    types_setting: Literal["auto"] | bool | None = None
     inputs: list[str] = field(default_factory=_str_list_factory)
     types_enabled: bool | None = None
     types_output: str | None = None
@@ -176,10 +179,12 @@ class ViteDoctor:
     ) -> bool:
         """Run diagnostics and optionally fix issues.
 
+        When ``fix=True``, auto-fixable issues may be applied and the checks will be run again to produce an accurate
+        final status.
+
         Returns:
             True if healthy (after fixes), False if issues remain.
         """
-        # Reset state for repeatable runs
         self.issues = []
         self.vite_config_path = None
         self.parsed_config = None
@@ -218,7 +223,6 @@ class ViteDoctor:
         self._check_typegen_artifacts()
         self._check_env_alignment()
 
-        # Runtime / environment checks
         self._check_node_modules()
         if runtime_checks:
             self._check_hotfile_presence()
@@ -240,7 +244,6 @@ class ViteDoctor:
             fixed = self._apply_fixes(no_prompt)
             if not fixed:
                 return False
-            # Re-run checks after applying fixes for an accurate exit status
             return self.run(fix=False, no_prompt=no_prompt, show_config=show_config)
 
         return not errors
@@ -277,12 +280,14 @@ class ViteDoctor:
     def _parse_vite_config(self, path: Path, content: str) -> ParsedViteConfig:
         """Regex-based parsing of vite.config content.
 
+        Parsing is restricted to the ``litestar({ ... })`` config block when present to reduce false positives.
+        Inputs and type settings are parsed best-effort to allow slightly different formatting styles.
+
         Returns:
             ParsedViteConfig instance with extracted values.
         """
         parsed = ParsedViteConfig(path=path, content=content, inputs=[])
 
-        # Restrict parsing to litestar({ ... }) config to avoid false positives.
         config_source = content
         match = _LITESTAR_CONFIG_START.search(content)
         if match:
@@ -294,7 +299,6 @@ class ViteDoctor:
                 parsed.has_litestar_config = True
                 config_source = block
 
-        # Parse inputs (best-effort)
         input_single = re.search(r"""input\s*:\s*['"]([^'"]+)['"]""", config_source)
         if input_single:
             parsed.inputs.append(input_single.group(1))
@@ -302,7 +306,6 @@ class ViteDoctor:
         if input_array:
             parsed.inputs.extend(re.findall(r"""['"]([^'"]+)['"]""", input_array.group(1)))
 
-        # Parse types setting mode (auto/bool/object)
         if re.search(r"""types\s*:\s*['"]auto['"]""", config_source):
             parsed.types_setting = "auto"
         else:
@@ -549,7 +552,6 @@ class ViteDoctor:
         py_url = self.config.asset_url
         js_url = self.parsed_config.asset_url
 
-        # Normalize for comparison (strip trailing slashes)
         py_norm = py_url.rstrip("/")
         js_norm = (js_url or "").rstrip("/")
 
@@ -566,20 +568,14 @@ class ViteDoctor:
             )
 
     def _check_hot_file(self) -> None:
-        """Check if Python hot_file matches JS hotFile."""
+        """Check if Python hot_file matches JS hotFile.
+
+        Litestar's Python config stores ``hot_file`` as a filename (default ``hot``), while the JS plugin commonly
+        uses a full path defaulting to ``${bundleDir}/hot``. This check only warns when JS explicitly sets ``hotFile``
+        to a value that diverges from the Python expectation.
+        """
         if not self.parsed_config:
             return
-
-        # Python config stores just the filename usually, but plugin constructs full path
-        # We need to check expectation. The JS plugin expects full path usually or relative to bundle.
-        # Actually, Litestar config.hot_file is a filename (default "hot").
-        # JS plugin config.hotFile defaults to `${bundleDir}/hot`.
-
-        # If the user has a custom hotFile in JS, we should check if it aligns.
-        # This check is tricky because of defaults.
-        # Let's check if it's explicitly set in JS and differs from what we expect.
-
-        # For now, simple check: if hotFile is set in JS, is it consistent with bundle_dir + hot_file?
         expected_hot = f"{self.config.bundle_dir}/{self.config.hot_file}".replace("//", "/")
         js_hot = self.parsed_config.hot_file
 
@@ -732,18 +728,20 @@ class ViteDoctor:
             )
 
     def _check_typegen_paths(self) -> None:
-        """Check type generation paths."""
+        """Check type generation paths when TypeGen is enabled on both sides.
+
+        Only compares OpenAPI and routes output paths when the corresponding JS settings are explicitly present to
+        avoid warning on JS defaults that may differ in representation (absolute vs relative).
+        """
         if not self.parsed_config:
             return
 
-        # Only check if types are enabled in Python config (presence of TypeGenConfig = enabled)
         if not isinstance(self.config.types, TypeGenConfig):
             return
 
         if self.parsed_config.types_enabled:
             root = self.config.root_dir or Path.cwd()
 
-            # Check openapi path (only if user set it in JS). Normalize to relative-to-root for fair compare.
             py_openapi_path = self.config.types.openapi_path
             if py_openapi_path is None:
                 py_openapi_path = self.config.types.output / "openapi.json"
@@ -765,7 +763,6 @@ class ViteDoctor:
                     )
                 )
 
-            # Check routes path (only if user set it in JS). Normalize to relative-to-root for fair compare.
             py_routes_path = self.config.types.routes_path
             if py_routes_path is None:
                 py_routes_path = self.config.types.output / "routes.json"
@@ -788,7 +785,10 @@ class ViteDoctor:
                 )
 
     def _check_typegen_flags(self) -> None:
-        """Check type generation flags."""
+        """Check TypeGen flags when enabled on both sides.
+
+        Only compares flags that are explicitly set in JS to avoid warning on JS defaults.
+        """
         if not self.parsed_config:
             return
 
@@ -796,7 +796,6 @@ class ViteDoctor:
             return
 
         if self.parsed_config.types_enabled:
-            # Check generateZod (only if set in JS)
             py_zod = self.config.types.generate_zod
             js_zod = self.parsed_config.types_generate_zod
 
@@ -812,7 +811,6 @@ class ViteDoctor:
                     )
                 )
 
-            # Check generateSdk (only if set in JS)
             py_sdk = self.config.types.generate_sdk
             js_sdk = self.parsed_config.types_generate_sdk
 
@@ -829,21 +827,12 @@ class ViteDoctor:
                 )
 
     def _check_plugin_spread(self) -> None:
-        """Check if the plugin is correctly spread in the config."""
-        if not self.parsed_config:
-            return
+        """No-op check kept for backwards compatibility.
 
-        # Check for litestar() usage without spread
-        # Matches: plugins: [ ..., litestar({ ... }) ] (without ...)
-        # We look for 'litestar(' that is NOT preceded by '...'
-
-        # Simplified check: find "litestar(" and check preceding chars
-        content = self.parsed_config.content
-
-        # Find all occurrences of litestar(
-        # Vite plugin arrays accept nested arrays, so lack of spread is allowed.
-        # We keep this check disabled to avoid false positives.
-        _ = content
+        This check is intentionally disabled because Vite plugin arrays allow nested arrays; reliably detecting
+        missing spread introduces false positives.
+        """
+        return
 
     def _check_dist_files(self) -> None:
         """Verify JS plugin dist files exist."""

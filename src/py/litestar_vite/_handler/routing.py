@@ -1,6 +1,6 @@
 """SPA route handlers and routing helpers."""
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from litestar import Response
 from litestar.exceptions import ImproperlyConfiguredException, NotFoundException
@@ -12,6 +12,18 @@ if TYPE_CHECKING:
 
 
 _HTML_MEDIA_TYPE = "text/html; charset=utf-8"
+
+
+@runtime_checkable
+class _HasOpt(Protocol):
+    opt: dict[str, Any] | None
+
+
+@runtime_checkable
+class _SpaHandler(Protocol):
+    async def get_html(self, request: Any) -> str: ...
+
+    async def get_bytes(self) -> bytes: ...
 
 
 def is_static_asset_path(request_path: str, asset_prefix: str | None) -> bool:
@@ -31,8 +43,10 @@ def is_static_asset_path(request_path: str, asset_prefix: str | None) -> bool:
 
 def get_route_opt(request: "Request[Any, Any, Any]") -> "dict[str, Any] | None":
     """Return the current route handler opt dict when available."""
-    route_handler = request.scope["route_handler"]  # pyright: ignore[reportUnknownMemberType]
-    return cast("dict[str, Any] | None", getattr(route_handler, "opt", None))
+    route_handler = request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
+    if isinstance(route_handler, _HasOpt):
+        return route_handler.opt
+    return None
 
 
 def get_route_asset_prefix(request: "Request[Any, Any, Any]") -> str | None:
@@ -46,7 +60,7 @@ def get_route_asset_prefix(request: "Request[Any, Any, Any]") -> str | None:
     return None
 
 
-def get_spa_handler_from_request(request: "Request[Any, Any, Any]") -> Any:
+def get_spa_handler_from_request(request: "Request[Any, Any, Any]") -> _SpaHandler:
     """Resolve the SPA handler instance for the current request.
 
     This is stored on the SPA route handler's ``opt`` when the route is created.
@@ -62,7 +76,7 @@ def get_spa_handler_from_request(request: "Request[Any, Any, Any]") -> Any:
     """
     opt = get_route_opt(request)
     handler = opt.get("_vite_spa_handler") if opt is not None else None
-    if handler is not None and hasattr(handler, "get_html") and hasattr(handler, "get_bytes"):
+    if isinstance(handler, _SpaHandler):
         return handler
     msg = "SPA handler is not available for this route. Ensure AppHandler.create_route_handler() was used."
     raise ImproperlyConfiguredException(msg)

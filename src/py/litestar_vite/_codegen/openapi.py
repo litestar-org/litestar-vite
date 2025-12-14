@@ -70,7 +70,7 @@ def try_create_openapi_context(app: "Litestar") -> tuple[OpenAPIContext | None, 
     Returns:
         Tuple of (OpenAPIContext or None, SchemaCreator or None).
     """
-    openapi_config = getattr(app, "openapi_config", None)
+    openapi_config = app.openapi_config
     if openapi_config is None:
         return None, None
 
@@ -131,7 +131,12 @@ def build_schema_name_map(schema_registry: Any) -> dict[tuple[str, ...], str]:
         Mapping of schema keys to component names.
     """
     name_map: dict[tuple[str, ...], str] = {}
-    model_name_groups = getattr(schema_registry, "_model_name_groups", {})
+    try:
+        model_name_groups = schema_registry._model_name_groups
+    except AttributeError:
+        model_name_groups = {}
+    if not isinstance(model_name_groups, dict):
+        return name_map
 
     for name, group in model_name_groups.items():
         if len(group) == 1:
@@ -170,8 +175,9 @@ def resolve_page_props_field_definition(
     if field_definition.is_subclass_of((NoneType, ASGIResponse)):
         return None, None
 
-    handler_any = cast("Any", handler)
-    resolve_return_dto = cast("Any", getattr(handler_any, "resolve_return_dto", None))
+    resolve_return_dto: Any = None
+    with contextlib.suppress(AttributeError):
+        resolve_return_dto = cast("Any", handler).resolve_return_dto
     dto = resolve_return_dto() if callable(resolve_return_dto) else None
     if dto is not None:
         dto_t = cast("type[AbstractDTO[Any]]", dto)

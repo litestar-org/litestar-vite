@@ -67,10 +67,10 @@ def load_app_from_example(example_name: str) -> Litestar:
     except Exception as e:
         pytest.fail(f"Failed to load {example_name}/app.py: {e}")
 
-    if not hasattr(module, "app"):
+    try:
+        return module.app
+    except AttributeError:
         pytest.fail(f"Example {example_name} has no 'app' attribute")
-
-    return module.app
 
 
 def get_vite_plugin(app: Litestar) -> VitePlugin | None:

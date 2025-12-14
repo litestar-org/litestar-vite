@@ -2,8 +2,14 @@
 
 import time
 from collections.abc import Iterable
+from typing import Protocol, runtime_checkable
 
 import httpx
+
+
+@runtime_checkable
+class _Pollable(Protocol):
+    def poll(self) -> int | None: ...
 
 
 def wait_for_http(
@@ -32,8 +38,10 @@ def wait_for_http(
     while time.monotonic() - start < timeout:
         if processes:
             for proc in processes:
-                if hasattr(proc, "poll") and proc.poll() is not None:
-                    raise RuntimeError(f"Process exited with code {proc.poll()} before {url} became ready")
+                if isinstance(proc, _Pollable):
+                    exit_code = proc.poll()
+                    if exit_code is not None:
+                        raise RuntimeError(f"Process exited with code {exit_code} before {url} became ready")
         try:
             response = httpx.get(url, timeout=5.0)
             if response.status_code in expected_statuses:

@@ -19,7 +19,7 @@ Note:
 import logging
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NoReturn, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 import anyio
 import httpx
@@ -38,8 +38,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("litestar_vite")
 
-# Pre-encoded content type header for production responses
 _HTML_MEDIA_TYPE = "text/html; charset=utf-8"
+
+
+@runtime_checkable
+class _HasOpt(Protocol):
+    opt: dict[str, Any] | None
 
 
 def _is_static_asset_path(request_path: str, asset_prefix: str | None) -> bool:
@@ -59,8 +63,10 @@ def _is_static_asset_path(request_path: str, asset_prefix: str | None) -> bool:
 
 def _get_route_opt(request: "Request[Any, Any, Any]") -> "dict[str, Any] | None":
     """Return the current route handler opt dict when available."""
-    route_handler = request.scope["route_handler"]  # pyright: ignore[reportUnknownMemberType]
-    return cast("dict[str, Any] | None", getattr(route_handler, "opt", None))
+    route_handler = request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
+    if isinstance(route_handler, _HasOpt):
+        return route_handler.opt
+    return None
 
 
 def _get_route_asset_prefix(request: "Request[Any, Any, Any]") -> str | None:
@@ -94,7 +100,6 @@ def _get_spa_handler_from_request(request: "Request[Any, Any, Any]") -> "AppHand
         return handler
     msg = "SPA handler is not available for this route. Ensure AppHandler.create_route_handler() was used."
     raise ImproperlyConfiguredException(msg)
-    return None
 
 
 async def _spa_handler_dev(request: "Request[Any, Any, Any]") -> Response[str]:

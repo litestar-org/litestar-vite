@@ -4,7 +4,7 @@ import contextlib
 import re
 from collections.abc import Generator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from litestar import Litestar
 from litestar._openapi.datastructures import OpenAPIContext  # pyright: ignore[reportPrivateUsage]
@@ -12,12 +12,9 @@ from litestar._openapi.parameters import (  # pyright: ignore[reportPrivateUsage
     create_parameters_for_handler,
 )
 from litestar.handlers import HTTPRouteHandler
+from litestar.routes import HTTPRoute
 
 from litestar_vite._codegen.ts import normalize_path, ts_type_from_openapi
-
-if TYPE_CHECKING:
-    from litestar.routes import HTTPRoute
-
 
 _PATH_PARAM_EXTRACT_PATTERN = re.compile(r"\{([^:}]+)(?::([^}]+))?\}")
 
@@ -47,10 +44,9 @@ def _extract_path_params(path: str) -> dict[str, str]:
 def _iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRouteHandler], None, None]:
     """Iterate over HTTP route handlers in an app."""
     for route in app.routes:
-        if hasattr(route, "route_handler_map"):
-            http_route: "HTTPRoute" = route  # type: ignore[assignment]
-            for route_handler in http_route.route_handlers:
-                yield http_route, route_handler
+        if isinstance(route, HTTPRoute):
+            for route_handler in route.route_handlers:
+                yield route, route_handler
 
 
 def _extract_params_from_litestar(
@@ -168,7 +164,7 @@ def extract_route_metadata(
 
         normalized_path = normalize_path(full_path)
 
-        opt: dict[str, Any] = getattr(route_handler, "opt", {}) or {}
+        opt: dict[str, Any] = route_handler.opt or {}
         component = opt.get("component")
 
         routes_metadata.append(

@@ -12,7 +12,7 @@ import sys
 from abc import ABC, abstractmethod
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Protocol, runtime_checkable
 
 from litestar.cli._utils import console
 
@@ -38,10 +38,14 @@ def _popen_server_kwargs(cwd: Path) -> dict[str, Any]:
 
 
 class JSExecutor(ABC):
-    """Abstract base class for Javascript executors."""
+    """Abstract base class for Javascript executors.
+
+    The default ``silent_flag`` matches npm-style CLIs (``--silent``). Executors that do not support a silent flag
+    (e.g., Deno) override it with an empty string.
+    """
 
     bin_name: ClassVar[str]
-    silent_flag: ClassVar[str] = "--silent"  # Default silent flag for npm-style executors
+    silent_flag: ClassVar[str] = "--silent"
 
     def __init__(self, executable_path: "Path | str | None" = None, *, silent: bool = False) -> None:
         self.executable_path = executable_path
@@ -187,6 +191,10 @@ class NodeenvExecutor(JSExecutor):
 
     bin_name = "nodeenv"
 
+    @runtime_checkable
+    class _SupportsDetectNodeenv(Protocol):
+        detect_nodeenv: bool
+
     def __init__(self, config: Any = None, *, silent: bool = False) -> None:
         """Initialize NodeenvExecutor.
 
@@ -197,7 +205,7 @@ class NodeenvExecutor(JSExecutor):
         """
         super().__init__(None, silent=silent)
         self.config = config
-        self._detect_nodeenv = getattr(config, "detect_nodeenv", False) if config else False
+        self._detect_nodeenv = bool(config.detect_nodeenv) if isinstance(config, self._SupportsDetectNodeenv) else False
 
     def _get_nodeenv_command(self) -> str:
         """Return the nodeenv executable to run.

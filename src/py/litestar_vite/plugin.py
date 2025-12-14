@@ -1420,11 +1420,12 @@ class ViteProcess:
         if not self.process or self.process.poll() is not None:
             return
         pid = self.process.pid
-        if hasattr(os, "killpg") and hasattr(signal, "SIGTERM") and isinstance(pid, int):  # pyright: ignore[reportUnnecessaryIsInstance]
-            with suppress(ProcessLookupError):
-                os.killpg(pid, signal.SIGTERM)
-        elif hasattr(signal, "SIGTERM"):
+        try:
+            os.killpg(pid, signal.SIGTERM)
+        except AttributeError:
             self.process.terminate()
+        except ProcessLookupError:
+            pass
         try:
             self.process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -1438,11 +1439,12 @@ class ViteProcess:
         if not self.process:
             return
         pid = self.process.pid
-        if hasattr(os, "killpg") and hasattr(signal, "SIGKILL") and isinstance(pid, int):  # pyright: ignore[reportUnnecessaryIsInstance]
-            with suppress(ProcessLookupError):
-                os.killpg(pid, signal.SIGKILL)
-        elif hasattr(signal, "SIGKILL"):
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except AttributeError:
             self.process.kill()
+        except ProcessLookupError:
+            pass
 
     def _atexit_stop(self) -> None:
         """Best-effort stop on interpreter exit."""

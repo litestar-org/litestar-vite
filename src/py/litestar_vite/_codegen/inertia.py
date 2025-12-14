@@ -1,6 +1,7 @@
 """Inertia page-props metadata extraction and export."""
 
 import datetime
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -9,6 +10,7 @@ from litestar._openapi.datastructures import _get_normalized_schema_key  # pyrig
 from litestar.handlers import HTTPRouteHandler
 from litestar.openapi.spec import Reference, Schema
 from litestar.response.base import ASGIResponse
+from litestar.routes import HTTPRoute
 from litestar.types.builtin_types import NoneType
 from litestar.typing import FieldDefinition
 
@@ -24,7 +26,6 @@ from litestar_vite._codegen.ts import collect_ref_names, normalize_path, python_
 
 if TYPE_CHECKING:
     from litestar import Litestar
-    from litestar.routes import HTTPRoute
 
     from litestar_vite.config import InertiaConfig, TypeGenConfig
 
@@ -53,9 +54,9 @@ def _get_return_type_name(handler: HTTPRouteHandler) -> "str | None":
     if field_definition.is_subclass_of(excluded_types):
         return None
 
-    fn = getattr(handler, "fn", None)
-    if fn is not None:
-        return_annotation = getattr(fn, "__annotations__", {}).get("return")
+    fn = handler.fn
+    with suppress(AttributeError):
+        return_annotation = fn.__annotations__.get("return")
         if isinstance(return_annotation, str) and return_annotation:
             return return_annotation
 
@@ -64,7 +65,9 @@ def _get_return_type_name(handler: HTTPRouteHandler) -> "str | None":
         return raw
     if isinstance(raw, type):
         return raw.__name__
-    origin = getattr(field_definition, "origin", None)
+    origin: Any = None
+    with suppress(AttributeError):
+        origin = field_definition.origin
     if isinstance(origin, type):
         return origin.__name__
     return str(raw)
@@ -234,11 +237,10 @@ def _iter_route_handlers(app: "Litestar") -> "list[tuple[HTTPRoute, HTTPRouteHan
     Returns:
         A list of (http_route, route_handler) tuples.
     """
-    handlers: list[tuple["HTTPRoute", HTTPRouteHandler]] = []
+    handlers: list[tuple[HTTPRoute, HTTPRouteHandler]] = []
     for route in app.routes:
-        if hasattr(route, "route_handler_map"):
-            http_route: "HTTPRoute" = route  # type: ignore[assignment]
-            handlers.extend((http_route, route_handler) for route_handler in http_route.route_handlers)
+        if isinstance(route, HTTPRoute):
+            handlers.extend((route, route_handler) for route_handler in route.route_handlers)
     return handlers
 
 
