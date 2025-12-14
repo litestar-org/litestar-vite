@@ -40,7 +40,7 @@ if jinja_available:
     app = Litestar(plugins=[VitePlugin(config=ViteConfig())], template_config=template_config)
 else:
     app = Litestar(plugins=[VitePlugin(config=ViteConfig())])
-    """,
+    """
     )
     app_file = create_app_file("command_test_app.py", content=app_file_content)
     result = runner.invoke(root_command, ["--app", f"{app_file.stem}:app", "assets"])
@@ -52,10 +52,7 @@ else:
 
 
 def test_init_command_no_prompt(
-    runner: CliRunner,
-    create_app_file: CreateAppFileFixture,
-    root_command: LitestarGroup,
-    tmp_project_dir: Path,
+    runner: CliRunner, create_app_file: CreateAppFileFixture, root_command: LitestarGroup, tmp_project_dir: Path
 ) -> None:
     template_dir = Path(Path(__file__).parent.parent / "templates")
     app_file_content = textwrap.dedent(
@@ -83,7 +80,7 @@ template_config = TemplateConfig(engine=JinjaTemplateEngine(directory='{template
 vite = VitePlugin(config=ViteConfig())
 
 app = Litestar(plugins=[vite], template_config=template_config)
-    """,
+    """
     )
     app_file = create_app_file("command_test_app.py", content=app_file_content)
     result = runner.invoke(
@@ -112,10 +109,7 @@ app = Litestar(plugins=[vite], template_config=template_config)
 
 
 def test_init_install_build(
-    runner: CliRunner,
-    create_app_file: CreateAppFileFixture,
-    root_command: LitestarGroup,
-    tmp_project_dir: Path,
+    runner: CliRunner, create_app_file: CreateAppFileFixture, root_command: LitestarGroup, tmp_project_dir: Path
 ) -> None:
     app_file_content = textwrap.dedent(
         """
@@ -131,7 +125,7 @@ template_config = TemplateConfig(engine=JinjaTemplateEngine(directory='{template
 vite = VitePlugin(config=ViteConfig())
 
 app = Litestar(plugins=[vite], template_config=template_config)
-    """,
+    """
     )
     app_file = create_app_file("command_test_app.py", content=app_file_content)
     _ = runner.invoke(root_command, ["--app", f"{app_file.stem}:app", "assets", "init", "--no-prompt"])

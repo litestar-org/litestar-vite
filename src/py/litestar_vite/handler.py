@@ -117,11 +117,7 @@ async def _spa_handler_dev(request: "Request[Any, Any, Any]") -> Response[str]:
 
     spa_handler = _get_spa_handler_from_request(request)
     html = await spa_handler.get_html(request)
-    return Response(
-        content=html,
-        status_code=200,
-        media_type="text/html",
-    )
+    return Response(content=html, status_code=200, media_type="text/html")
 
 
 async def _spa_handler_prod(request: "Request[Any, Any, Any]") -> Response[bytes]:
@@ -142,11 +138,7 @@ async def _spa_handler_prod(request: "Request[Any, Any, Any]") -> Response[bytes
 
     spa_handler = _get_spa_handler_from_request(request)
     body = await spa_handler.get_bytes()
-    return Response(
-        content=body,
-        status_code=200,
-        media_type=_HTML_MEDIA_TYPE,
-    )
+    return Response(content=body, status_code=200, media_type=_HTML_MEDIA_TYPE)
 
 
 class AppHandler:
@@ -280,13 +272,8 @@ class AppHandler:
             except ImportError:
                 http2_enabled = False
 
-        self._http_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(5.0),
-            http2=http2_enabled,
-        )
-        self._http_client_sync = httpx.Client(
-            timeout=httpx.Timeout(5.0),
-        )
+        self._http_client = httpx.AsyncClient(timeout=httpx.Timeout(5.0), http2=http2_enabled)
+        self._http_client_sync = httpx.Client(timeout=httpx.Timeout(5.0))
 
     async def shutdown_async(self) -> None:
         """Shutdown the handler asynchronously.
@@ -317,10 +304,7 @@ class AppHandler:
         await self._load_index_html_async()
 
     def _transform_html(
-        self,
-        html: str,
-        page_data: "dict[str, Any] | None" = None,
-        csrf_token: "str | None" = None,
+        self, html: str, page_data: "dict[str, Any] | None" = None, csrf_token: "str | None" = None
     ) -> str:
         """Transform HTML by injecting CSRF token and/or page data.
 
@@ -359,12 +343,7 @@ class AppHandler:
         # Inject page data as data-page attribute if provided
         if page_data is not None:
             json_data = encode_json(page_data).decode("utf-8")
-            html = set_data_attribute(
-                html,
-                self._spa_config.app_selector,
-                "data-page",
-                json_data,
-            )
+            html = set_data_attribute(html, self._spa_config.app_selector, "data-page", json_data)
 
         return html
 
@@ -519,10 +498,7 @@ class AppHandler:
         if not self._manifest:
             return html
         return transform_asset_urls(
-            html,
-            self._manifest,
-            asset_url=self._config.asset_url,
-            base_url=self._config.base_url,
+            html, self._manifest, asset_url=self._config.asset_url, base_url=self._config.base_url
         )
 
     def _get_csrf_token(self, request: "Request[Any, Any, Any]") -> "str | None":
@@ -539,12 +515,7 @@ class AppHandler:
 
         return value_or_default(ScopeState.from_scope(request.scope).csrf_token, None)
 
-    async def get_html(
-        self,
-        request: "Request[Any, Any, Any]",
-        *,
-        page_data: "dict[str, Any] | None" = None,
-    ) -> str:
+    async def get_html(self, request: "Request[Any, Any, Any]", *, page_data: "dict[str, Any] | None" = None) -> str:
         """Get the HTML for the SPA with optional transformations.
 
         In dev mode, proxies the request to the Vite dev server and applies
@@ -605,12 +576,7 @@ class AppHandler:
         # Caching disabled, transform fresh
         return self._transform_html(base_html, None, None)
 
-    def get_html_sync(
-        self,
-        *,
-        page_data: "dict[str, Any] | None" = None,
-        csrf_token: "str | None" = None,
-    ) -> str:
+    def get_html_sync(self, *, page_data: "dict[str, Any] | None" = None, csrf_token: "str | None" = None) -> str:
         """Get the HTML for the SPA synchronously.
 
         This method is for use in synchronous contexts where async is not
@@ -846,20 +812,9 @@ class AppHandler:
             opt["_vite_asset_prefix"] = asset_prefix
 
         if is_dev:
-            return get(
-                path=paths,
-                name="vite_spa",
-                opt=opt,
-                include_in_schema=False,
-                guards=guards,
-            )(_spa_handler_dev)
+            return get(path=paths, name="vite_spa", opt=opt, include_in_schema=False, guards=guards)(_spa_handler_dev)
 
         # Production mode: serve cached bytes with cache headers
-        return get(
-            path=paths,
-            name="vite_spa",
-            opt=opt,
-            include_in_schema=False,
-            cache=3600,
-            guards=guards,
-        )(_spa_handler_prod)
+        return get(path=paths, name="vite_spa", opt=opt, include_in_schema=False, cache=3600, guards=guards)(
+            _spa_handler_prod
+        )

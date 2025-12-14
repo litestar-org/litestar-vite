@@ -34,9 +34,7 @@ if TYPE_CHECKING:
     from litestar_vite.plugin import VitePlugin
 
 
-def _get_request_from_context(
-    context: "Mapping[str, Any]",
-) -> "Request[Any, Any, Any]":
+def _get_request_from_context(context: "Mapping[str, Any]") -> "Request[Any, Any, Any]":
     """Get the request from the template context.
 
     Args:
@@ -87,10 +85,7 @@ def render_hmr_client(context: "Mapping[str, Any]", /) -> "markupsafe.Markup":
 
 
 def render_asset_tag(
-    context: "Mapping[str, Any]",
-    /,
-    path: "str | list[str]",
-    scripts_attrs: "dict[str, str] | None" = None,
+    context: "Mapping[str, Any]", /, path: "str | list[str]", scripts_attrs: "dict[str, str] | None" = None
 ) -> "markupsafe.Markup":
     """Render asset tags for the specified path(s).
 
@@ -177,12 +172,7 @@ def render_routes(
     request = _get_request_from_context(context)
     app = request.app
 
-    routes_data = generate_routes_json(
-        app,
-        only=only,
-        exclude=exclude,
-        include_components=include_components,
-    )
+    routes_data = generate_routes_json(app, only=only, exclude=exclude, include_components=include_components)
 
     type_encoders = app.type_encoders if isinstance(getattr(app, "type_encoders", None), dict) else None
     serializer = get_serializer(type_encoders)
@@ -383,9 +373,7 @@ class ViteAssetLoader:
         return markupsafe.Markup(f"{self.generate_react_hmr_tags()}{self.generate_ws_client_tags()}")
 
     def render_asset_tag(
-        self,
-        path: "str | list[str]",
-        scripts_attrs: "dict[str, str] | None" = None,
+        self, path: "str | list[str]", scripts_attrs: "dict[str, str] | None" = None
     ) -> "markupsafe.Markup":
         """Render asset tags for the specified path(s).
 
@@ -417,10 +405,7 @@ class ViteAssetLoader:
         if path not in self._manifest:
             raise AssetNotFoundError(path, str(self._get_manifest_path()))
 
-        return urljoin(
-            self._config.base_url or self._config.asset_url,
-            self._manifest[path]["file"],
-        )
+        return urljoin(self._config.base_url or self._config.asset_url, self._manifest[path]["file"])
 
     def generate_ws_client_tags(self) -> str:
         """Generate the Vite HMR client script tag.
@@ -431,10 +416,7 @@ class ViteAssetLoader:
             Script tag HTML or empty string in production.
         """
         if self._is_hot_dev:
-            return self._script_tag(
-                self._vite_server_url("@vite/client"),
-                {"type": "module"},
-            )
+            return self._script_tag(self._vite_server_url("@vite/client"), {"type": "module"})
         return ""
 
     def generate_react_hmr_tags(self) -> str:
@@ -457,11 +439,7 @@ class ViteAssetLoader:
                 """)
         return ""
 
-    def generate_asset_tags(
-        self,
-        path: "str | list[str]",
-        scripts_attrs: "dict[str, str] | None" = None,
-    ) -> str:
+    def generate_asset_tags(self, path: "str | list[str]", scripts_attrs: "dict[str, str] | None" = None) -> str:
         """Generate all asset tags for the specified file(s).
 
         Args:
@@ -482,10 +460,7 @@ class ViteAssetLoader:
             return "".join(
                 self._style_tag(self._vite_server_url(p))
                 if p.endswith(".css")
-                else self._script_tag(
-                    self._vite_server_url(p),
-                    {"type": "module", "async": "", "defer": ""},
-                )
+                else self._script_tag(self._vite_server_url(p), {"type": "module", "async": "", "defer": ""})
                 for p in paths
             )
 
@@ -516,12 +491,7 @@ class ViteAssetLoader:
             if file_path.endswith(".css"):
                 tags.append(self._style_tag(urljoin(asset_url_base, file_path)))
             else:
-                tags.append(
-                    self._script_tag(
-                        urljoin(asset_url_base, file_path),
-                        attrs=scripts_attrs,
-                    )
-                )
+                tags.append(self._script_tag(urljoin(asset_url_base, file_path), attrs=scripts_attrs))
 
         return "".join(tags)
 
@@ -535,10 +505,7 @@ class ViteAssetLoader:
             Full URL to the asset on the dev server.
         """
         base_path = self._vite_base_path or f"{self._config.protocol}://{self._config.host}:{self._config.port}"
-        return urljoin(
-            base_path,
-            urljoin(self._config.asset_url, path if path is not None else ""),
-        )
+        return urljoin(base_path, urljoin(self._config.asset_url, path if path is not None else ""))
 
     @staticmethod
     def _script_tag(src: str, attrs: "dict[str, str] | None" = None) -> str:

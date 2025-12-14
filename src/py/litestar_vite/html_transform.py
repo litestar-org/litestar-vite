@@ -24,8 +24,7 @@ def _get_id_selector_pattern(element_id: str) -> re.Pattern[str]:
         Pattern matching an element with the given ID.
     """
     return re.compile(
-        rf'(<[a-zA-Z][a-zA-Z0-9]*\s+[^>]*id\s*=\s*["\']?{re.escape(element_id)}["\']?[^>]*)(>)',
-        re.IGNORECASE,
+        rf'(<[a-zA-Z][a-zA-Z0-9]*\s+[^>]*id\s*=\s*["\']?{re.escape(element_id)}["\']?[^>]*)(>)', re.IGNORECASE
     )
 
 
@@ -97,11 +96,7 @@ def _escape_attr(value: str) -> str:
 
 
 def _set_attribute_replacer(
-    match: re.Match[str],
-    *,
-    attr_pattern: re.Pattern[str],
-    attr_name: str,
-    escaped_val: str,
+    match: re.Match[str], *, attr_pattern: re.Pattern[str], attr_name: str, escaped_val: str
 ) -> str:
     """Replace or add an attribute on an opening tag match.
 
@@ -337,10 +332,7 @@ def inject_json_script(html: str, var_name: str, data: dict[str, Any]) -> str:
 
 
 def transform_asset_urls(
-    html: str,
-    manifest: dict[str, Any],
-    asset_url: str = "/static/",
-    base_url: str | None = None,
+    html: str, manifest: dict[str, Any], asset_url: str = "/static/", base_url: str | None = None
 ) -> str:
     """Transform asset URLs in HTML based on Vite manifest.
 

@@ -70,10 +70,7 @@ def _get_book(book_id: int) -> Book:
 def _get_summary() -> Summary:
     """Build summary data."""
     return Summary(
-        app="litestar-vite library",
-        headline="One backend, many frontends",
-        total_books=len(BOOKS),
-        featured=BOOKS[0],
+        app="litestar-vite library", headline="One backend, many frontends", total_books=len(BOOKS), featured=BOOKS[0]
     )
 
 
@@ -107,8 +104,4 @@ vite = VitePlugin(
     )
 )
 
-app = Litestar(
-    route_handlers=[LibraryController],
-    plugins=[vite],
-    debug=True,
-)
+app = Litestar(route_handlers=[LibraryController], plugins=[vite], debug=True)

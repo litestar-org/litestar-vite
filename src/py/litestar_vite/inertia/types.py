@@ -1,6 +1,12 @@
+"""Inertia protocol types and serialization helpers.
+
+This module defines the Python-side data structures for the Inertia.js protocol and provides
+helpers to serialize dataclass instances into the camelCase shape expected by the client.
+"""
+
 import re
-from dataclasses import dataclass, field
-from typing import Any, Generic, Literal, TypedDict, TypeVar
+from dataclasses import dataclass, field, fields, is_dataclass
+from typing import Any, Generic, Literal, TypedDict, TypeVar, cast
 
 __all__ = (
     "DeferredPropsConfig",
@@ -16,10 +22,8 @@ __all__ = (
 
 T = TypeVar("T")
 
-# Merge strategy type for props
 MergeStrategy = Literal["append", "prepend", "deep"]
 
-# Compiled regex for snake_case to camelCase conversion
 _SNAKE_CASE_PATTERN = re.compile(r"_([a-z])")
 
 
@@ -41,6 +45,10 @@ def to_camel_case(snake_str: str) -> str:
     return _SNAKE_CASE_PATTERN.sub(lambda m: m.group(1).upper(), snake_str)
 
 
+def _is_dataclass_instance(value: Any) -> bool:
+    return is_dataclass(value) and not isinstance(value, type)
+
+
 def _convert_value(value: Any) -> Any:
     """Recursively convert a value for Inertia.js protocol.
 
@@ -50,8 +58,7 @@ def _convert_value(value: Any) -> Any:
     Returns:
         The converted value.
     """
-    if hasattr(value, "__dataclass_fields__"):
-        # Recursively convert nested dataclasses
+    if _is_dataclass_instance(value):
         return to_inertia_dict(value)
     if isinstance(value, dict):
         return {k: _convert_value(v) for k, v in value.items()}  # pyright: ignore[reportUnknownVariableType]
@@ -75,25 +82,19 @@ def to_inertia_dict(obj: Any, required_fields: "set[str] | None" = None) -> dict
         in Python 3.10/3.11 that fails when processing dict[str, list[str]] types.
         See: https://github.com/python/cpython/issues/103000
     """
-    if not hasattr(obj, "__dataclass_fields__"):
-        return obj
+    if not _is_dataclass_instance(obj):
+        return cast("dict[str, Any]", obj)
 
     required_fields = required_fields or set()
     result: dict[str, Any] = {}
 
-    # Iterate through dataclass fields directly instead of using asdict()
-    for field_name in obj.__dataclass_fields__:
+    for dc_field in fields(obj):
+        field_name = dc_field.name
         value = getattr(obj, field_name)
-
-        # Skip None values for optional fields (Inertia doesn't need them)
-        # But keep required fields even if None
         if value is None and field_name not in required_fields:
             continue
 
-        # Convert the value (handles nested dataclasses, dicts, lists)
         value = _convert_value(value)
-
-        # Convert key to camelCase
         camel_key = to_camel_case(field_name)
         result[camel_key] = value
 
@@ -113,9 +114,7 @@ class DeferredPropsConfig:
     This allows for faster initial page loads by deferring non-critical data.
     """
 
-    # Group name for the deferred props
     group: str = "default"
-    # Props to load in this deferred group
     props: list[str] = field(default_factory=_str_list_factory)
 
 
@@ -147,13 +146,15 @@ class ScrollPagination(Generic[T]):
 
         from litestar_vite.inertia.types import ScrollPagination
 
-        # Direct construction
+        Direct construction::
+
         @get("/users", component="Users", infinite_scroll=True)
         async def list_users() -> ScrollPagination[User]:
             users = await fetch_users(limit=10, offset=0)
             return ScrollPagination(items=users, total=100, limit=10, offset=0)
 
-        # From existing pagination
+        From an existing pagination container::
+
         @get("/posts", component="Posts", infinite_scroll=True)
         async def list_posts() -> ScrollPagination[Post]:
             pagination = await repo.list_paginated(limit=10, offset=0)
@@ -182,34 +183,62 @@ class ScrollPagination(Generic[T]):
 
             from litestar.pagination import OffsetPagination, ClassicPagination
 
-            # From OffsetPagination
+            From OffsetPagination::
+
             offset_page = OffsetPagination(items=[...], limit=10, offset=20, total=100)
             scroll = ScrollPagination.create_from(offset_page)
 
-            # From ClassicPagination
+            From ClassicPagination::
+
             classic_page = ClassicPagination(items=[...], page_size=10, current_page=3, total_pages=10)
             scroll = ScrollPagination.create_from(classic_page)
         """
         items = pagination.items
-
-        # Offset-style (OffsetPagination, etc.)
-        if hasattr(pagination, "offset") and hasattr(pagination, "limit"):
-            return cls(
-                items=items,
-                total=getattr(pagination, "total", len(items)),
-                limit=pagination.limit,
-                offset=pagination.offset,
-            )
-
-        # Classic-style (ClassicPagination, etc.)
-        if hasattr(pagination, "current_page") and hasattr(pagination, "page_size"):
-            page_size = pagination.page_size
-            offset = (pagination.current_page - 1) * page_size
-            total = getattr(pagination, "total_pages", 1) * page_size
-            return cls(items=items, total=total, limit=page_size, offset=offset)
-
-        # Fallback - just use items
+        if meta := _extract_offset_pagination(pagination, items):
+            total, limit, offset = meta
+            return cls(items=items, total=total, limit=limit, offset=offset)
+        if meta := _extract_classic_pagination(pagination, items):
+            total, limit, offset = meta
+            return cls(items=items, total=total, limit=limit, offset=offset)
         return cls(items=items, total=len(items), limit=len(items), offset=0)
+
+
+def _extract_offset_pagination(pagination: Any, items: list[Any]) -> tuple[int, int, int] | None:
+    try:
+        limit = pagination.limit
+        offset = pagination.offset
+    except AttributeError:
+        return None
+
+    try:
+        total = pagination.total
+    except AttributeError:
+        total = len(items)
+
+    if not (isinstance(limit, int) and isinstance(offset, int) and isinstance(total, int)):
+        return None
+
+    return total, limit, offset
+
+
+def _extract_classic_pagination(pagination: Any, items: list[Any]) -> tuple[int, int, int] | None:
+    try:
+        page_size = pagination.page_size
+        current_page = pagination.current_page
+    except AttributeError:
+        return None
+
+    try:
+        total_pages = pagination.total_pages
+    except AttributeError:
+        total_pages = 1
+
+    if not (isinstance(page_size, int) and isinstance(current_page, int) and isinstance(total_pages, int)):
+        return None
+
+    offset = (current_page - 1) * page_size
+    total = total_pages * page_size
+    return total, page_size, offset
 
 
 @dataclass
@@ -242,25 +271,20 @@ class PageProps(Generic[T]):
     version: str
     props: dict[str, Any]
 
-    # v2 features - history encryption
     encrypt_history: bool = False
     clear_history: bool = False
 
-    # v2 features - merge props
     merge_props: "list[str] | None" = None
     prepend_props: "list[str] | None" = None
     deep_merge_props: "list[str] | None" = None
     match_props_on: "dict[str, list[str]] | None" = None
 
-    # v2 features - deferred/lazy loading
     deferred_props: "dict[str, list[str]] | None" = None
 
-    # v2 features - infinite scroll
     scroll_props: "ScrollPropsConfig | None" = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to Inertia.js protocol format with camelCase keys."""
-        # These fields are always required by the Inertia.js protocol
         return to_inertia_dict(self, required_fields={"component", "url", "version", "props"})
 
 
@@ -279,6 +303,6 @@ class InertiaHeaderType(TypedDict, total=False):
     location: "str | None"
     partial_data: "str | None"
     partial_component: "str | None"
-    partial_except: "str | None"  # v2
-    reset: "str | None"  # v2
-    error_bag: "str | None"  # v2
+    partial_except: "str | None"
+    reset: "str | None"
+    error_bag: "str | None"

@@ -67,10 +67,7 @@ def test_collect_local_files_without_manifest(tmp_path: Path) -> None:
 
 
 def test_compute_diff_detects_new_and_deleted() -> None:
-    local = {
-        "a.js": FileInfo(path="a.js", size=10, mtime=0.0),
-        "b.js": FileInfo(path="b.js", size=20, mtime=0.0),
-    }
+    local = {"a.js": FileInfo(path="a.js", size=10, mtime=0.0), "b.js": FileInfo(path="b.js", size=20, mtime=0.0)}
     remote = {"b.js": FileInfo(path="b.js", size=10, mtime=0.0), "c.js": FileInfo(path="c.js", size=5, mtime=0.0)}
 
     plan = ViteDeployer.compute_diff(local, remote, delete_orphaned=True)

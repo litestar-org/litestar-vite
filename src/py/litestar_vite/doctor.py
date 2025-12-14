@@ -172,12 +172,7 @@ class ViteDoctor:
         self.bridge_config: dict[str, Any] | None = None
 
     def run(
-        self,
-        fix: bool = False,
-        no_prompt: bool = False,
-        *,
-        show_config: bool = False,
-        runtime_checks: bool = False,
+        self, fix: bool = False, no_prompt: bool = False, *, show_config: bool = False, runtime_checks: bool = False
     ) -> bool:
         """Run diagnostics and optionally fix issues.
 
@@ -1133,12 +1128,7 @@ class ViteDoctor:
 
         for issue in self.issues:
             severity_style = "red" if issue.severity == "error" else "yellow"
-            table.add_row(
-                f"[{severity_style}]{issue.severity.upper()}[/]",
-                issue.check,
-                issue.message,
-                issue.fix_hint,
-            )
+            table.add_row(f"[{severity_style}]{issue.severity.upper()}[/]", issue.check, issue.message, issue.fix_hint)
 
         console.print(table)
 

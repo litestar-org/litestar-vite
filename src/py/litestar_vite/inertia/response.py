@@ -4,12 +4,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from mimetypes import guess_type
 from pathlib import PurePath
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    TypeVar,
-    cast,
-)
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 from urllib.parse import quote, urlparse
 
 import httpx
@@ -39,6 +34,7 @@ from litestar_vite.inertia.helpers import (
     should_render,
 )
 from litestar_vite.inertia.plugin import InertiaPlugin
+from litestar_vite.inertia.request import InertiaDetails, InertiaRequest
 from litestar_vite.inertia.types import InertiaHeaderType, PageProps, ScrollPropsConfig
 from litestar_vite.plugin import VitePlugin
 
@@ -56,6 +52,48 @@ T = TypeVar("T")
 class _InertiaSSRResult:
     head: list[str]
     body: str
+
+
+@dataclass(frozen=True)
+class _InertiaRequestInfo:
+    inertia_enabled: bool
+    is_inertia: bool
+    is_partial_render: bool
+    partial_keys: set[str]
+    partial_except_keys: set[str]
+    reset_keys: set[str]
+
+
+def _get_inertia_request_info(request: "Request[Any, Any, Any]") -> _InertiaRequestInfo:
+    """Return Inertia request state for both InertiaRequest and plain Request.
+
+    InertiaResponse is typically used together with InertiaMiddleware, which wraps
+    incoming requests in :class:`~litestar_vite.inertia.request.InertiaRequest`.
+
+    This helper preserves compatibility with plain :class:`litestar.Request` by
+    falling back to header parsing via :class:`~litestar_vite.inertia.request.InertiaDetails`.
+    """
+    if isinstance(request, InertiaRequest):
+        is_inertia = request.is_inertia
+        return _InertiaRequestInfo(
+            inertia_enabled=bool(request.inertia_enabled or is_inertia),
+            is_inertia=is_inertia,
+            is_partial_render=request.is_partial_render,
+            partial_keys=request.partial_keys,
+            partial_except_keys=request.partial_except_keys,
+            reset_keys=request.reset_keys,
+        )
+
+    details = InertiaDetails(request)
+    is_inertia = bool(details)
+    return _InertiaRequestInfo(
+        inertia_enabled=bool(details.route_component is not None or is_inertia),
+        is_inertia=is_inertia,
+        is_partial_render=details.is_partial_render,
+        partial_keys=set(details.partial_keys),
+        partial_except_keys=set(details.partial_except_keys),
+        reset_keys=set(details.reset_keys),
+    )
 
 
 def _parse_inertia_ssr_payload(payload: Any, url: str) -> _InertiaSSRResult:
@@ -86,17 +124,16 @@ def _parse_inertia_ssr_payload(payload: Any, url: str) -> _InertiaSSRResult:
 
 
 def _render_inertia_ssr_sync(
-    page: dict[str, Any],
-    url: str,
-    *,
-    timeout_seconds: float,
-    portal: "BlockingPortal",
+    page: dict[str, Any], url: str, *, timeout_seconds: float, portal: "BlockingPortal"
 ) -> _InertiaSSRResult:
     """Call the Inertia SSR server and return head/body HTML.
 
     The official Inertia SSR server listens on ``/render`` and expects the raw
     page object as JSON. It returns JSON with at least a ``body`` field, and
     optionally ``head`` (list of strings).
+
+    This function uses the application's :class:`~anyio.from_thread.BlockingPortal`
+    to call the async HTTP client without blocking the event loop thread.
 
     Raises:
         ImproperlyConfiguredException: If the SSR server is unreachable,
@@ -105,8 +142,6 @@ def _render_inertia_ssr_sync(
     Returns:
         An _InertiaSSRResult with head and body HTML.
     """
-    # This is intentionally implemented via the app's BlockingPortal to avoid
-    # blocking the event loop thread with synchronous I/O.
     return portal.call(_render_inertia_ssr, page, url, timeout_seconds)
 
 
@@ -428,7 +463,7 @@ class InertiaResponse(Response[T]):
         Raises:
             ImproperlyConfiguredException: If AppHandler is not available.
         """
-        spa_handler = getattr(vite_plugin, "_spa_handler", None)
+        spa_handler = vite_plugin._spa_handler
         if spa_handler is None:
             msg = (
                 "SPA mode requires VitePlugin with mode='spa' or mode='hybrid'. "
@@ -441,19 +476,16 @@ class InertiaResponse(Response[T]):
         ssr_config = inertia_plugin.config.ssr_config
         if ssr_config is not None:
             ssr_payload = _render_inertia_ssr_sync(
-                page_dict,
-                ssr_config.url,
-                timeout_seconds=ssr_config.timeout,
-                portal=inertia_plugin.portal,
+                page_dict, ssr_config.url, timeout_seconds=ssr_config.timeout, portal=inertia_plugin.portal
             )
 
             csrf_token = self._get_csrf_token(request)
             html = spa_handler.get_html_sync(page_data=page_dict, csrf_token=csrf_token)
 
             selector = "#app"
-            spa_config = getattr(spa_handler, "_spa_config", None)
+            spa_config = spa_handler._spa_config  # pyright: ignore
             if spa_config is not None:
-                selector = cast("str", getattr(spa_config, "app_selector", selector))
+                selector = spa_config.app_selector
 
             html = set_element_inner_html(html, selector, ssr_payload.body)
             if ssr_payload.head:
@@ -500,18 +532,14 @@ class InertiaResponse(Response[T]):
         status_code: "int | None" = None,
         type_encoders: "TypeEncodersMap | None" = None,
     ) -> "ASGIResponse":
-        inertia_enabled = cast(
-            "bool",
-            getattr(request, "inertia_enabled", False) or getattr(request, "is_inertia", False),
-        )
-        is_inertia = cast("bool", getattr(request, "is_inertia", False))
+        inertia_info = _get_inertia_request_info(cast("Request[Any, Any, Any]", request))
         headers = {**headers, **self.headers} if headers is not None else self.headers
         cookies = self.cookies if cookies is None else itertools.chain(self.cookies, cookies)
         type_encoders = (
             {**type_encoders, **(self.response_type_encoders or {})} if type_encoders else self.response_type_encoders
         )
 
-        if not inertia_enabled:
+        if not inertia_info.inertia_enabled:
             resolved_media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
             return ASGIResponse(
                 background=self.background or background,
@@ -525,29 +553,27 @@ class InertiaResponse(Response[T]):
                 status_code=self.status_code or status_code,
             )
 
-        is_partial_render = cast("bool", getattr(request, "is_partial_render", False))
-        empty_set: set[str] = set()
-        partial_keys = cast("set[str]", getattr(request, "partial_keys", empty_set))
-        partial_except_keys = cast("set[str]", getattr(request, "partial_except_keys", empty_set))
-        reset_keys = cast("set[str]", getattr(request, "reset_keys", empty_set))
-
         vite_plugin = request.app.plugins.get(VitePlugin)
         inertia_plugin = request.app.plugins.get(InertiaPlugin)
-        headers.update(
-            {
-                "Vary": "Accept",
-                **get_headers(InertiaHeaderType(enabled=True, version=vite_plugin.asset_loader.version_id)),
-            }
-        )
+        headers.update({
+            "Vary": "Accept",
+            **get_headers(InertiaHeaderType(enabled=True, version=vite_plugin.asset_loader.version_id)),
+        })
 
-        partial_data: "set[str] | None" = partial_keys if is_partial_render and partial_keys else None
-        partial_except: "set[str] | None" = partial_except_keys if is_partial_render and partial_except_keys else None
+        partial_data: "set[str] | None" = (
+            inertia_info.partial_keys if inertia_info.is_partial_render and inertia_info.partial_keys else None
+        )
+        partial_except: "set[str] | None" = (
+            inertia_info.partial_except_keys
+            if inertia_info.is_partial_render and inertia_info.partial_except_keys
+            else None
+        )
 
         page_props = self._build_page_props(
-            request, partial_data, partial_except, reset_keys, vite_plugin, inertia_plugin
+            request, partial_data, partial_except, inertia_info.reset_keys, vite_plugin, inertia_plugin
         )
 
-        if is_inertia:
+        if inertia_info.is_inertia:
             resolved_media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
             body = self.render(page_props.to_dict(), resolved_media_type, get_serializer(type_encoders))
             return ASGIResponse(  # pyright: ignore[reportUnknownMemberType]
@@ -595,12 +621,7 @@ class InertiaExternalRedirect(Response[Any]):
         cookie leakage in redirect responses.
     """
 
-    def __init__(
-        self,
-        request: "Request[Any, Any, Any]",
-        redirect_to: "str",
-        **kwargs: "Any",
-    ) -> None:
+    def __init__(self, request: "Request[Any, Any, Any]", redirect_to: "str", **kwargs: "Any") -> None:
         """Initialize external redirect with 409 status and X-Inertia-Location header.
 
         Args:
@@ -627,12 +648,7 @@ class InertiaRedirect(Redirect):
         cookie leakage in redirect responses.
     """
 
-    def __init__(
-        self,
-        request: "Request[Any, Any, Any]",
-        redirect_to: "str",
-        **kwargs: "Any",
-    ) -> None:
+    def __init__(self, request: "Request[Any, Any, Any]", redirect_to: "str", **kwargs: "Any") -> None:
         """Initialize redirect with safe URL validation.
 
         Args:
@@ -660,11 +676,7 @@ class InertiaBack(Redirect):
         cookie leakage in redirect responses.
     """
 
-    def __init__(
-        self,
-        request: "Request[Any, Any, Any]",
-        **kwargs: "Any",
-    ) -> None:
+    def __init__(self, request: "Request[Any, Any, Any]", **kwargs: "Any") -> None:
         """Initialize back redirect with safe URL validation.
 
         Args:

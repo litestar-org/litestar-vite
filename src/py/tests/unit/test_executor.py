@@ -7,12 +7,7 @@ import pytest
 
 from litestar_vite.config import RuntimeConfig, ViteConfig
 from litestar_vite.exceptions import ViteExecutableNotFoundError, ViteExecutionError
-from litestar_vite.executor import (
-    BunExecutor,
-    DenoExecutor,
-    NodeenvExecutor,
-    NodeExecutor,
-)
+from litestar_vite.executor import BunExecutor, DenoExecutor, NodeenvExecutor, NodeExecutor
 
 # =====================================================
 # Executor Base Tests (NodeExecutor, BunExecutor, etc.)

@@ -210,10 +210,7 @@ def test_doctor_manifest_missing(doctor: ViteDoctor, tmp_path: Path) -> None:
     cfg_path = tmp_path / "vite.config.ts"
     cfg_path.write_text(cfg_path.read_text().replace("REPLACE_ME", str(tmp_path / "public")))
 
-    with (
-        patch.object(doctor, "_check_dist_files"),
-        patch.object(doctor, "_check_node_modules"),
-    ):
+    with patch.object(doctor, "_check_dist_files"), patch.object(doctor, "_check_node_modules"):
         doctor.run(fix=False)
 
     assert any(i.check == "Manifest Missing" for i in doctor.issues)

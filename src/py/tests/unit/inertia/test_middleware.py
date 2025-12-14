@@ -31,8 +31,7 @@ async def test_version_mismatch_returns_409_with_location_header(
         stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get(
-            "/",
-            headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: "wrong-version"},
+            "/", headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: "wrong-version"}
         )
         # Per Inertia protocol: version mismatch returns 409 Conflict
         assert response.status_code == 409
@@ -65,8 +64,7 @@ async def test_version_match_proceeds_normally(
 
         # Now make a request with the correct version
         response = client.get(
-            "/",
-            headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: current_version},
+            "/", headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: current_version}
         )
         # Should return 200 OK with normal Inertia response
         assert response.status_code == 200
@@ -146,8 +144,7 @@ async def test_version_mismatch_on_different_path(
         stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get(
-            "/about",
-            headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: "stale-version"},
+            "/about", headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: "stale-version"}
         )
         # Should redirect to the requested path
         assert response.status_code == 409
@@ -173,8 +170,7 @@ async def test_version_mismatch_preserves_query_string(
         stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get(
-            "/search?q=test",
-            headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: "old"},
+            "/search?q=test", headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: "old"}
         )
         assert response.status_code == 409
         # URL should include query parameters

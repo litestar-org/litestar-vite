@@ -45,9 +45,7 @@ def spa_config(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Vite
     monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
 
     return ViteConfig(
-        mode="spa",
-        paths=PathConfig(resource_dir=temp_resource_dir),
-        runtime=RuntimeConfig(dev_mode=False),
+        mode="spa", paths=PathConfig(resource_dir=temp_resource_dir), runtime=RuntimeConfig(dev_mode=False)
     )
 
 
@@ -151,11 +149,7 @@ async def test_spa_handler_missing_index_html(tmp_path: Path, monkeypatch: pytes
     resource_dir.mkdir()
     # No index.html created
 
-    config = ViteConfig(
-        mode="spa",
-        paths=PathConfig(resource_dir=resource_dir),
-        runtime=RuntimeConfig(dev_mode=False),
-    )
+    config = ViteConfig(mode="spa", paths=PathConfig(resource_dir=resource_dir), runtime=RuntimeConfig(dev_mode=False))
     handler = AppHandler(config)
 
     with pytest.raises(ImproperlyConfiguredException, match=r"index\.html not found"):
@@ -343,9 +337,7 @@ def spa_config_with_transforms(temp_resource_dir: Path, monkeypatch: pytest.Monk
     )
 
 
-async def test_spa_handler_transform_html_with_page_data(
-    spa_config_with_transforms: ViteConfig,
-) -> None:
+async def test_spa_handler_transform_html_with_page_data(spa_config_with_transforms: ViteConfig) -> None:
     """Test that get_html injects page data."""
     handler = AppHandler(spa_config_with_transforms)
     await handler.initialize_async()
@@ -361,9 +353,7 @@ async def test_spa_handler_transform_html_with_page_data(
     assert "test" in html
 
 
-async def test_spa_handler_caches_transformed_html(
-    spa_config_with_transforms: ViteConfig,
-) -> None:
+async def test_spa_handler_caches_transformed_html(spa_config_with_transforms: ViteConfig) -> None:
     """Test that transformed HTML is cached in production."""
     handler = AppHandler(spa_config_with_transforms)
     await handler.initialize_async()
@@ -379,9 +369,7 @@ async def test_spa_handler_caches_transformed_html(
     assert html1 == html2
 
 
-async def test_spa_handler_page_data_bypasses_cache(
-    spa_config_with_transforms: ViteConfig,
-) -> None:
+async def test_spa_handler_page_data_bypasses_cache(spa_config_with_transforms: ViteConfig) -> None:
     """Test that page_data bypasses transformed HTML cache."""
     handler = AppHandler(spa_config_with_transforms)
     await handler.initialize_async()
@@ -402,9 +390,7 @@ async def test_spa_handler_page_data_bypasses_cache(
     assert "About" not in html_cached
 
 
-async def test_spa_handler_get_html_sync(
-    spa_config_with_transforms: ViteConfig,
-) -> None:
+async def test_spa_handler_get_html_sync(spa_config_with_transforms: ViteConfig) -> None:
     """Test the synchronous get_html_sync method."""
     handler = AppHandler(spa_config_with_transforms)
     await handler.initialize_async()
@@ -415,9 +401,7 @@ async def test_spa_handler_get_html_sync(
     assert "Test SPA" in html
 
 
-async def test_spa_handler_get_html_sync_with_page_data(
-    spa_config_with_transforms: ViteConfig,
-) -> None:
+async def test_spa_handler_get_html_sync_with_page_data(spa_config_with_transforms: ViteConfig) -> None:
     """Test get_html_sync with page_data."""
     handler = AppHandler(spa_config_with_transforms)
     await handler.initialize_async()
@@ -430,9 +414,7 @@ async def test_spa_handler_get_html_sync_with_page_data(
     assert "Home" in html
 
 
-async def test_spa_handler_get_html_sync_works_in_dev_mode(
-    spa_config_dev: ViteConfig,
-) -> None:
+async def test_spa_handler_get_html_sync_works_in_dev_mode(spa_config_dev: ViteConfig) -> None:
     """Test that get_html_sync works in dev mode with sync HTTP client."""
     handler = AppHandler(spa_config_dev)
 
@@ -459,8 +441,7 @@ async def test_spa_handler_get_html_sync_works_in_dev_mode(
 
 
 async def test_spa_handler_no_transform_when_spa_config_disabled(
-    temp_resource_dir: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Test that HTML is not transformed when spa=False."""
     from litestar_vite.config import PathConfig, RuntimeConfig
@@ -486,10 +467,7 @@ async def test_spa_handler_no_transform_when_spa_config_disabled(
     assert "Test SPA" in html
 
 
-async def test_spa_handler_csrf_injection(
-    temp_resource_dir: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_spa_handler_csrf_injection(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test CSRF token injection into HTML."""
     from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
 
@@ -500,10 +478,7 @@ async def test_spa_handler_csrf_injection(
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
         runtime=RuntimeConfig(dev_mode=False),
-        spa=SPAConfig(
-            inject_csrf=True,
-            csrf_var_name="__LITESTAR_CSRF__",
-        ),
+        spa=SPAConfig(inject_csrf=True, csrf_var_name="__LITESTAR_CSRF__"),
     )
 
     handler = AppHandler(config)
@@ -525,10 +500,7 @@ async def test_spa_handler_csrf_injection(
     assert "Test SPA" in html
 
 
-async def test_spa_handler_csrf_injection_sync(
-    temp_resource_dir: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_spa_handler_csrf_injection_sync(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test CSRF token injection with get_html_sync."""
     from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
 
@@ -539,10 +511,7 @@ async def test_spa_handler_csrf_injection_sync(
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
         runtime=RuntimeConfig(dev_mode=False),
-        spa=SPAConfig(
-            inject_csrf=True,
-            csrf_var_name="__LITESTAR_CSRF__",
-        ),
+        spa=SPAConfig(inject_csrf=True, csrf_var_name="__LITESTAR_CSRF__"),
     )
 
     handler = AppHandler(config)
@@ -685,9 +654,7 @@ async def test_spa_handler_route_exclusion_custom_openapi_path(temp_resource_dir
     from litestar_vite.plugin import is_litestar_route
 
     config = ViteConfig(
-        mode="spa",
-        paths=PathConfig(resource_dir=temp_resource_dir),
-        runtime=RuntimeConfig(dev_mode=False),
+        mode="spa", paths=PathConfig(resource_dir=temp_resource_dir), runtime=RuntimeConfig(dev_mode=False)
     )
 
     handler = AppHandler(config)
@@ -697,8 +664,7 @@ async def test_spa_handler_route_exclusion_custom_openapi_path(temp_resource_dir
 
     # Custom schema path - OpenAPI will automatically register this
     app = Litestar(
-        route_handlers=[route],
-        openapi_config=OpenAPIConfig(title="Test", version="1.0.0", path="/custom-schema"),
+        route_handlers=[route], openapi_config=OpenAPIConfig(title="Test", version="1.0.0", path="/custom-schema")
     )
 
     # Verify route detection identifies custom schema path
@@ -856,9 +822,7 @@ async def test_spa_handler_route_exclusion_production_mode(temp_resource_dir: Pa
     from litestar_vite.config import PathConfig, RuntimeConfig
 
     config = ViteConfig(
-        mode="spa",
-        paths=PathConfig(resource_dir=temp_resource_dir),
-        runtime=RuntimeConfig(dev_mode=False),
+        mode="spa", paths=PathConfig(resource_dir=temp_resource_dir), runtime=RuntimeConfig(dev_mode=False)
     )
 
     handler = AppHandler(config)

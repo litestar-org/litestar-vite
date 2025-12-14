@@ -25,6 +25,7 @@ from litestar_vite._codegen.ts import collect_ref_names, normalize_path, python_
 if TYPE_CHECKING:
     from litestar import Litestar
     from litestar.routes import HTTPRoute
+
     from litestar_vite.config import InertiaConfig, TypeGenConfig
 
 
@@ -70,10 +71,7 @@ def _get_return_type_name(handler: HTTPRouteHandler) -> "str | None":
 
 
 def _get_openapi_schema_ref(
-    handler: HTTPRouteHandler,
-    openapi_schema: dict[str, Any] | None,
-    route_path: str,
-    method: str = "GET",
+    handler: HTTPRouteHandler, openapi_schema: dict[str, Any] | None, route_path: str, method: str = "GET"
 ) -> "str | None":
     if not openapi_schema:
         return None
@@ -180,10 +178,7 @@ def _finalize_inertia_pages(
 
 
 def extract_inertia_pages(
-    app: "Litestar",
-    *,
-    openapi_schema: dict[str, Any] | None = None,
-    fallback_type: "str" = "unknown",
+    app: "Litestar", *, openapi_schema: dict[str, Any] | None = None, fallback_type: "str" = "unknown"
 ) -> list[InertiaPageMetadata]:
     pages: list[InertiaPageMetadata] = []
 
@@ -210,12 +205,7 @@ def extract_inertia_pages(
         )
 
         method = next(iter(route_handler.http_methods), "GET") if route_handler.http_methods else "GET"
-        schema_ref = _get_openapi_schema_ref(
-            route_handler,
-            openapi_schema,
-            normalized_path,
-            method=str(method),
-        )
+        schema_ref = _get_openapi_schema_ref(route_handler, openapi_schema, normalized_path, method=str(method))
 
         pages.append(
             InertiaPageMetadata(
@@ -248,8 +238,7 @@ def _iter_route_handlers(app: "Litestar") -> "list[tuple[HTTPRoute, HTTPRouteHan
     for route in app.routes:
         if hasattr(route, "route_handler_map"):
             http_route: "HTTPRoute" = route  # type: ignore[assignment]
-            for route_handler in http_route.route_handlers:
-                handlers.append((http_route, route_handler))
+            handlers.extend((http_route, route_handler) for route_handler in http_route.route_handlers)
     return handlers
 
 
@@ -280,23 +269,7 @@ def _ts_type_from_value(value: Any, *, fallback_ts_type: str) -> str:
 def _should_register_value_schema(value: Any) -> bool:
     if value is None:
         return False
-    return not isinstance(
-        value,
-        (
-            bool,
-            str,
-            int,
-            float,
-            bytes,
-            bytearray,
-            Path,
-            list,
-            tuple,
-            set,
-            frozenset,
-            dict,
-        ),
-    )
+    return not isinstance(value, (bool, str, int, float, bytes, bytearray, Path, list, tuple, set, frozenset, dict))
 
 
 def _build_inertia_shared_props(
@@ -346,7 +319,12 @@ def _build_inertia_shared_props(
             continue
         shared_props.setdefault(key, {"type": fallback_ts_type, "optional": True})
 
-    if not (openapi_support.context and openapi_support.schema_creator and isinstance(openapi_schema, dict) and shared_schema_keys):
+    if not (
+        openapi_support.context
+        and openapi_support.schema_creator
+        and isinstance(openapi_schema, dict)
+        and shared_schema_keys
+    ):
         return shared_props
 
     generated_components = openapi_support.context.schema_registry.generate_components_schemas()
@@ -404,10 +382,7 @@ def generate_inertia_pages_json(
     root: dict[str, Any] = {
         "pages": pages_dict,
         "sharedProps": shared_props,
-        "typeGenConfig": {
-            "includeDefaultAuth": include_default_auth,
-            "includeDefaultFlash": include_default_flash,
-        },
+        "typeGenConfig": {"includeDefaultAuth": include_default_auth, "includeDefaultFlash": include_default_flash},
         "generatedAt": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
     }
 

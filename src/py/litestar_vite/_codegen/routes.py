@@ -54,9 +54,7 @@ def _iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRout
 
 
 def _extract_params_from_litestar(
-    handler: HTTPRouteHandler,
-    http_route: "HTTPRoute",
-    openapi_context: OpenAPIContext | None,
+    handler: HTTPRouteHandler, http_route: "HTTPRoute", openapi_context: OpenAPIContext | None
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Extract path and query parameters using Litestar's native OpenAPI generation."""
     path_params: dict[str, str] = {}
@@ -132,10 +130,7 @@ def extract_route_metadata(
     openapi_context: OpenAPIContext | None = None
     if app.openapi_config is not None:
         with contextlib.suppress(AttributeError, TypeError, ValueError):
-            openapi_context = OpenAPIContext(
-                openapi_config=app.openapi_config,
-                plugins=app.plugins.openapi,
-            )
+            openapi_context = OpenAPIContext(openapi_config=app.openapi_config, plugins=app.plugins.openapi)
 
     for http_route, route_handler in _iter_route_handlers(app):
         base_name = route_handler.name or route_handler.handler_name or str(route_handler)
@@ -204,10 +199,7 @@ def generate_routes_json(
     routes_dict: dict[str, Any] = {}
 
     for route in routes_metadata:
-        route_data: dict[str, Any] = {
-            "uri": route.path,
-            "methods": route.methods,
-        }
+        route_data: dict[str, Any] = {"uri": route.path, "methods": route.methods}
 
         if route.params:
             route_data["parameters"] = list(route.params.keys())
@@ -453,4 +445,3 @@ export function getRoute<T extends RouteName>(name: T): (typeof routeDefinitions
   return routeDefinitions[name];
 }}
 """
-

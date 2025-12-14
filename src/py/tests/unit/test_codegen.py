@@ -123,10 +123,7 @@ def test_generate_routes_ts_with_query_params() -> None:
     """Test TypeScript route generation with query parameters."""
 
     @get("/search", name="search", sync_to_thread=False)
-    def search(
-        q: str,
-        limit: Annotated[int | None, Parameter(default=10)] = None,
-    ) -> list[str]:
+    def search(q: str, limit: Annotated[int | None, Parameter(default=10)] = None) -> list[str]:
         return []
 
     app = Litestar([search])

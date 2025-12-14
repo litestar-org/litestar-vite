@@ -40,13 +40,7 @@ class InertiaMiddleware(AbstractMiddleware):
         super().__init__(app)
         self.app = app
 
-    async def __call__(
-        self,
-        scope: "Scope",
-        receive: "Receive",
-        send: "Send",
-    ) -> None:
-        # Use InertiaRequest to properly detect Inertia XHR requests
+    async def __call__(self, scope: "Scope", receive: "Receive", send: "Send") -> None:
         request: InertiaRequest[Any, Any, Any] = InertiaRequest(scope=scope)
         redirect = redirect_on_asset_version_mismatch(request)
         if redirect is not None:

@@ -8,7 +8,12 @@ isolated here to make the public module easier to navigate and maintain.
 """
 
 from litestar_vite._codegen.inertia import InertiaPageMetadata, extract_inertia_pages, generate_inertia_pages_json
-from litestar_vite._codegen.routes import RouteMetadata, extract_route_metadata, generate_routes_json, generate_routes_ts
+from litestar_vite._codegen.routes import (
+    RouteMetadata,
+    extract_route_metadata,
+    generate_routes_json,
+    generate_routes_ts,
+)
 
 __all__ = (
     "InertiaPageMetadata",

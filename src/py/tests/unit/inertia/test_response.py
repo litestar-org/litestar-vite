@@ -31,10 +31,7 @@ from litestar_vite.inertia.helpers import (
     share,
     should_render,
 )
-from litestar_vite.inertia.response import (
-    InertiaBack,
-    InertiaExternalRedirect,
-)
+from litestar_vite.inertia.response import InertiaBack, InertiaExternalRedirect
 from litestar_vite.plugin import VitePlugin
 
 
@@ -99,11 +96,7 @@ async def test_component_inertia_flash_header_enabled(
     with create_test_client(
         route_handlers=[handler],
         template_config=template_config,
-        plugins=[
-            inertia_plugin,
-            vite_plugin,
-            FlashPlugin(config=FlashConfig(template_config=template_config)),
-        ],
+        plugins=[inertia_plugin, vite_plugin, FlashPlugin(config=FlashConfig(template_config=template_config))],
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:
@@ -133,11 +126,7 @@ async def test_component_inertia_shared_flash_header_enabled(
     with create_test_client(
         route_handlers=[handler],
         template_config=template_config,
-        plugins=[
-            inertia_plugin,
-            vite_plugin,
-            FlashPlugin(config=FlashConfig(template_config=template_config)),
-        ],
+        plugins=[inertia_plugin, vite_plugin, FlashPlugin(config=FlashConfig(template_config=template_config))],
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:
@@ -193,8 +182,7 @@ async def test_component_inertia_version_mismatch_returns_409(
         stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get(
-            "/",
-            headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: "wrong"},
+            "/", headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: "wrong"}
         )
         # Per Inertia protocol: version mismatch returns 409 with X-Inertia-Location
         assert response.status_code == 409
@@ -268,11 +256,7 @@ async def test_inertia_external_redirect(
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:
-        response = client.get(
-            "/external",
-            headers={InertiaHeaders.ENABLED.value: "true"},
-            follow_redirects=False,
-        )
+        response = client.get("/external", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=False)
         assert response.status_code == 409
         assert response.headers.get("X-Inertia-Location") == "/external"
 
@@ -294,9 +278,7 @@ async def test_inertia_back(
         stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get(
-            "/back",
-            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "/previous"},
-            follow_redirects=False,
+            "/back", headers={InertiaHeaders.ENABLED.value: "true", "Referer": "/previous"}, follow_redirects=False
         )
         assert response.status_code == 307
         assert response.headers.get("location") == "/previous"
@@ -439,35 +421,20 @@ async def test_filter_deferred_props() -> None:
     data = {
         "static": "value",
         "deferred": lazy("deferred", "deferred_value"),
-        "nested": {
-            "nested_deferred": lazy("nested_deferred", "nested_deferred_value"),
-        },
+        "nested": {"nested_deferred": lazy("nested_deferred", "nested_deferred_value")},
         "list": [lazy("list_deferred", "list_deferred_value")],
     }
 
     # No partial data, all deferred props should not be rendered
     standard_response = lazy_render(data)
-    assert standard_response == {
-        "static": "value",
-        "nested": {},
-        "list": [],
-    }
+    assert standard_response == {"static": "value", "nested": {}, "list": []}
 
     # Partial data, only specified deferred props should be rendered
     partial_response_deferred = lazy_render(data, partial_data={"deferred"})
-    assert partial_response_deferred == {
-        "static": "value",
-        "deferred": "deferred_value",
-        "nested": {},
-        "list": [],
-    }
+    assert partial_response_deferred == {"static": "value", "deferred": "deferred_value", "nested": {}, "list": []}
 
     partial_response_list = lazy_render(data, partial_data={"list_deferred"})
-    assert partial_response_list == {
-        "static": "value",
-        "nested": {},
-        "list": ["list_deferred_value"],
-    }
+    assert partial_response_list == {"static": "value", "nested": {}, "list": ["list_deferred_value"]}
 
     partial_response_multiple = lazy_render(data, partial_data={"nested_deferred", "list_deferred"})
     assert partial_response_multiple == {
@@ -702,24 +669,15 @@ async def test_should_render_with_partial_except() -> None:
 
 async def test_lazy_render_with_partial_except() -> None:
     """Test lazy_render with v2 partial_except parameter."""
-    data = {
-        "static": "value",
-        "deferred1": lazy("deferred1", "val1"),
-        "deferred2": lazy("deferred2", "val2"),
-    }
+    data = {"static": "value", "deferred1": lazy("deferred1", "val1"), "deferred2": lazy("deferred2", "val2")}
 
     # partial_except - render all except specified
     result = lazy_render(data, partial_except={"deferred1"})
-    assert result == {
-        "static": "value",
-        "deferred2": "val2",
-    }
+    assert result == {"static": "value", "deferred2": "val2"}
 
     # Multiple exclusions
     result2 = lazy_render(data, partial_except={"deferred1", "deferred2"})
-    assert result2 == {
-        "static": "value",
-    }
+    assert result2 == {"static": "value"}
 
 
 # =====================================================
@@ -997,8 +955,7 @@ async def test_scroll_props_first_page(
     @get("/items", component="Items")
     async def handler(request: Request[Any, Any, Any]) -> InertiaResponse[dict[str, list[int]]]:
         return InertiaResponse(
-            {"items": [1, 2, 3]},
-            scroll_props=scroll_props(current_page=1, previous_page=None, next_page=2),
+            {"items": [1, 2, 3]}, scroll_props=scroll_props(current_page=1, previous_page=None, next_page=2)
         )
 
     with create_test_client(
@@ -1029,8 +986,7 @@ async def test_scroll_props_last_page(
     @get("/items", component="Items")
     async def handler(request: Request[Any, Any, Any]) -> InertiaResponse[dict[str, list[int]]]:
         return InertiaResponse(
-            {"items": [91, 92, 93]},
-            scroll_props=scroll_props(current_page=10, previous_page=9, next_page=None),
+            {"items": [91, 92, 93]}, scroll_props=scroll_props(current_page=10, previous_page=9, next_page=None)
         )
 
     with create_test_client(
@@ -1373,10 +1329,7 @@ async def test_inertia_back_allows_same_origin_referer(
         # Same-origin Referer should be allowed
         response = client.get(
             "/back",
-            headers={
-                InertiaHeaders.ENABLED.value: "true",
-                "Referer": "http://testserver.local/previous-page",
-            },
+            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "http://testserver.local/previous-page"},
             follow_redirects=False,
         )
         assert response.status_code == 307
@@ -1403,9 +1356,7 @@ async def test_inertia_back_allows_relative_referer(
     ) as client:
         # Relative URLs should be allowed (they're safe)
         response = client.get(
-            "/back",
-            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "/previous-page"},
-            follow_redirects=False,
+            "/back", headers={InertiaHeaders.ENABLED.value: "true", "Referer": "/previous-page"}, follow_redirects=False
         )
         assert response.status_code == 307
         assert response.headers.get("location") == "/previous-page"
@@ -1488,11 +1439,7 @@ async def test_inertia_back_missing_referer_uses_base_url(
         stores={"sessions": MemoryStore()},
     ) as client:
         # No Referer header - should use base URL
-        response = client.get(
-            "/back",
-            headers={InertiaHeaders.ENABLED.value: "true"},
-            follow_redirects=False,
-        )
+        response = client.get("/back", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=False)
         assert response.status_code == 307
         assert response.headers.get("location") == "http://testserver.local/"
 
@@ -1517,11 +1464,7 @@ async def test_inertia_redirect_rejects_cross_origin_url(
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:
-        response = client.get(
-            "/redirect",
-            headers={InertiaHeaders.ENABLED.value: "true"},
-            follow_redirects=False,
-        )
+        response = client.get("/redirect", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=False)
         assert response.status_code == 307
         # Should redirect to base URL, not evil.com
         assert response.headers.get("location") == "http://testserver.local/"
@@ -1546,11 +1489,7 @@ async def test_inertia_redirect_allows_relative_url(
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:
-        response = client.get(
-            "/redirect",
-            headers={InertiaHeaders.ENABLED.value: "true"},
-            follow_redirects=False,
-        )
+        response = client.get("/redirect", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=False)
         assert response.status_code == 307
         assert response.headers.get("location") == "/dashboard"
 
@@ -1581,9 +1520,7 @@ async def test_inertia_back_no_cookie_echo(
         # Send request with a cookie (set on client to avoid deprecation warning)
         client.cookies.set("session_id", "secret_session_value")
         response = client.get(
-            "/back",
-            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "/previous"},
-            follow_redirects=False,
+            "/back", headers={InertiaHeaders.ENABLED.value: "true", "Referer": "/previous"}, follow_redirects=False
         )
         # The response should NOT have Set-Cookie header echoing the session_id
         set_cookie_headers = response.headers.get_list("set-cookie")
@@ -1611,11 +1548,7 @@ async def test_inertia_external_redirect_no_cookie_echo(
     ) as client:
         # Set cookie on client to avoid deprecation warning
         client.cookies.set("auth_token", "secret_token")
-        response = client.get(
-            "/external",
-            headers={InertiaHeaders.ENABLED.value: "true"},
-            follow_redirects=False,
-        )
+        response = client.get("/external", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=False)
         assert response.status_code == 409
         # The response should NOT have Set-Cookie header echoing the auth_token
         set_cookie_headers = response.headers.get_list("set-cookie")

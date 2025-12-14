@@ -98,7 +98,7 @@ def create_app_file(tmp_project_dir: Path, request: FixtureRequest) -> CreateApp
                 lambda: _purge_module(
                     [directory, _path_to_dotted_path(tmp_app_file.relative_to(Path.cwd()))],  # type: ignore[list-item]
                     tmp_app_file,
-                ),
+                )
             )
         else:
             request.addfinalizer(tmp_app_file.unlink)
@@ -137,7 +137,7 @@ def mock_confirm_ask(mocker: MockerFixture) -> "Generator[MagicMock, None, None]
     params=[
         pytest.param((APP_DEFAULT_CONFIG_FILE_CONTENT, "app"), id="app_obj"),
         pytest.param((APP_BASIC_NO_ROUTES_FILE_CONTENT, "app"), id="app_obj"),
-    ],
+    ]
 )
 def _app_file_content(request: FixtureRequest) -> tuple[str, str]:  # pyright: ignore[reportUnusedFunction]
     return cast("tuple[str, str]", request.param)

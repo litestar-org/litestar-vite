@@ -82,12 +82,7 @@ def get_vite_plugin(app: Litestar) -> VitePlugin | None:
 
 
 @pytest.mark.parametrize("example_name,has_spa,has_inertia,is_ssr", EXAMPLES)
-def test_example_app_loads(
-    example_name: str,
-    has_spa: bool,
-    has_inertia: bool,
-    is_ssr: bool,
-) -> None:
+def test_example_app_loads(example_name: str, has_spa: bool, has_inertia: bool, is_ssr: bool) -> None:
     """Test that example app can be loaded and has valid structure."""
     app = load_app_from_example(example_name)
 
@@ -104,12 +99,7 @@ def test_example_app_loads(
 
 
 @pytest.mark.parametrize("example_name,has_spa,has_inertia,is_ssr", EXAMPLES)
-def test_example_config_mode(
-    example_name: str,
-    has_spa: bool,
-    has_inertia: bool,
-    is_ssr: bool,
-) -> None:
+def test_example_config_mode(example_name: str, has_spa: bool, has_inertia: bool, is_ssr: bool) -> None:
     """Test that example has correct mode configuration."""
     app = load_app_from_example(example_name)
     vite_plugin = get_vite_plugin(app)
@@ -133,12 +123,7 @@ def test_example_config_mode(
 
 
 @pytest.mark.parametrize("example_name,has_spa,has_inertia,is_ssr", EXAMPLES)
-def test_example_paths_config(
-    example_name: str,
-    has_spa: bool,
-    has_inertia: bool,
-    is_ssr: bool,
-) -> None:
+def test_example_paths_config(example_name: str, has_spa: bool, has_inertia: bool, is_ssr: bool) -> None:
     """Test that example has valid paths configuration."""
     app = load_app_from_example(example_name)
     vite_plugin = get_vite_plugin(app)
@@ -160,12 +145,7 @@ def test_example_paths_config(
 
 
 @pytest.mark.parametrize("example_name,has_spa,has_inertia,is_ssr", EXAMPLES)
-def test_example_api_endpoints(
-    example_name: str,
-    has_spa: bool,
-    has_inertia: bool,
-    is_ssr: bool,
-) -> None:
+def test_example_api_endpoints(example_name: str, has_spa: bool, has_inertia: bool, is_ssr: bool) -> None:
     """Test that example API endpoints work (for examples that have them)."""
     app = load_app_from_example(example_name)
 
@@ -203,12 +183,7 @@ def test_example_api_endpoints(
 
 
 @pytest.mark.parametrize("example_name,has_spa,has_inertia,is_ssr", EXAMPLES)
-def test_example_dev_mode_config(
-    example_name: str,
-    has_spa: bool,
-    has_inertia: bool,
-    is_ssr: bool,
-) -> None:
+def test_example_dev_mode_config(example_name: str, has_spa: bool, has_inertia: bool, is_ssr: bool) -> None:
     """Test that example has appropriate dev_mode configuration."""
     app = load_app_from_example(example_name)
     vite_plugin = get_vite_plugin(app)
@@ -222,12 +197,7 @@ def test_example_dev_mode_config(
 
 
 @pytest.mark.parametrize("example_name,has_spa,has_inertia,is_ssr", EXAMPLES)
-def test_example_proxy_mode_config(
-    example_name: str,
-    has_spa: bool,
-    has_inertia: bool,
-    is_ssr: bool,
-) -> None:
+def test_example_proxy_mode_config(example_name: str, has_spa: bool, has_inertia: bool, is_ssr: bool) -> None:
     """Test that example has correct proxy_mode configuration."""
     app = load_app_from_example(example_name)
     vite_plugin = get_vite_plugin(app)

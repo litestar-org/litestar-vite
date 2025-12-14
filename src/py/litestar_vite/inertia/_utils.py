@@ -11,25 +11,24 @@ class InertiaHeaders(str, Enum):
     """Enum for Inertia Headers.
 
     See: https://inertiajs.com/the-protocol
+
+    This includes both core protocol headers and v2 extensions (partial excludes, reset, error bags,
+    and infinite scroll merge intent).
     """
 
-    # Core headers
     ENABLED = "X-Inertia"
     VERSION = "X-Inertia-Version"
     LOCATION = "X-Inertia-Location"
     REFERER = "Referer"
 
-    # Partial reload headers
     PARTIAL_DATA = "X-Inertia-Partial-Data"
     PARTIAL_COMPONENT = "X-Inertia-Partial-Component"
-    PARTIAL_EXCEPT = "X-Inertia-Partial-Except"  # v2: Props to exclude from partial
+    PARTIAL_EXCEPT = "X-Inertia-Partial-Except"
 
-    # v2 features
-    RESET = "X-Inertia-Reset"  # Props to reset on navigation
-    ERROR_BAG = "X-Inertia-Error-Bag"  # Validation error bag name
+    RESET = "X-Inertia-Reset"
+    ERROR_BAG = "X-Inertia-Error-Bag"
 
-    # Infinite scroll (v2)
-    INFINITE_SCROLL_MERGE_INTENT = "X-Inertia-Infinite-Scroll-Merge-Intent"  # append/prepend
+    INFINITE_SCROLL_MERGE_INTENT = "X-Inertia-Infinite-Scroll-Merge-Intent"
 
 
 def get_enabled_header(enabled: bool = True) -> "dict[str, Any]":

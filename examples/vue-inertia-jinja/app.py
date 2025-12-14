@@ -58,10 +58,7 @@ def _get_book(book_id: int) -> Book:
 def _get_summary() -> Summary:
     """Build summary data."""
     return Summary(
-        app="litestar-vite library",
-        headline="One backend, many frontends",
-        total_books=len(BOOKS),
-        featured=BOOKS[0],
+        app="litestar-vite library", headline="One backend, many frontends", total_books=len(BOOKS), featured=BOOKS[0]
     )
 
 
@@ -99,10 +96,7 @@ vite = VitePlugin(
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources"),
         inertia=InertiaConfig(root_template="index.html"),  # Auto-registers Inertia
-        types=TypeGenConfig(
-            output=Path("resources/generated"),
-            generate_zod=True,
-        ),
+        types=TypeGenConfig(output=Path("resources/generated"), generate_zod=True),
         # Fixed port for E2E tests - can be removed for local dev or customized for production
         runtime=RuntimeConfig(port=5013),
     )

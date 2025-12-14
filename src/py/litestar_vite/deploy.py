@@ -35,14 +35,7 @@ def _suggest_install_extra(storage_backend: "str | None") -> str:
     if not storage_backend:
         return "fsspec"
     scheme = storage_backend.split("://", 1)[0]
-    mapping = {
-        "gcs": "gcsfs",
-        "s3": "s3fs",
-        "abfs": "adlfs",
-        "az": "adlfs",
-        "sftp": "fsspec",
-        "ftp": "fsspec",
-    }
+    mapping = {"gcs": "gcsfs", "s3": "s3fs", "abfs": "adlfs", "az": "adlfs", "sftp": "fsspec", "ftp": "fsspec"}
     return mapping.get(scheme, "fsspec")
 
 
@@ -165,10 +158,7 @@ class ViteDeployer:
         index_html = self.bundle_dir / "index.html"
         if index_html.exists():
             stat = index_html.stat()
-            files.setdefault(
-                "index.html",
-                FileInfo(path="index.html", size=stat.st_size, mtime=stat.st_mtime),
-            )
+            files.setdefault("index.html", FileInfo(path="index.html", size=stat.st_size, mtime=stat.st_mtime))
 
         return files
 
@@ -194,9 +184,7 @@ class ViteDeployer:
                 continue
             rel_path = self._relative_remote_path(name, base)
             remote_files[rel_path] = FileInfo(
-                path=rel_path,
-                size=int(entry.get("size", 0)),
-                mtime=float(entry.get("mtime", 0.0)),
+                path=rel_path, size=int(entry.get("size", 0)), mtime=float(entry.get("mtime", 0.0))
             )
         return remote_files
 
@@ -226,12 +214,7 @@ class ViteDeployer:
 
         return SyncPlan(to_upload=to_upload, to_delete=to_delete)
 
-    def sync(
-        self,
-        *,
-        dry_run: bool = False,
-        on_progress: Callable[[str, str], None] | None = None,
-    ) -> SyncResult:
+    def sync(self, *, dry_run: bool = False, on_progress: Callable[[str, str], None] | None = None) -> SyncResult:
         """Sync local bundle to remote storage.
 
         Args:
@@ -293,9 +276,7 @@ class ViteDeployer:
     # Internal helpers
     # ------------------------------------------------------------------ #
     def _init_filesystem(
-        self,
-        fs: "AbstractFileSystem | None",
-        remote_path: str | None,
+        self, fs: "AbstractFileSystem | None", remote_path: str | None
     ) -> "tuple[AbstractFileSystem, str]":
         if fs is not None and remote_path is not None:
             return fs, remote_path

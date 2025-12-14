@@ -2,13 +2,8 @@
 
 from dataclasses import dataclass
 
-from litestar_vite.inertia.helpers import (
-    extract_pagination_scroll_props,
-    is_pagination_container,
-)
-from litestar_vite.inertia.types import (
-    to_camel_case,
-)
+from litestar_vite.inertia.helpers import extract_pagination_scroll_props, is_pagination_container
+from litestar_vite.inertia.types import to_camel_case
 
 
 def test_to_camel_case_simple() -> None:
@@ -216,12 +211,7 @@ def test_scroll_pagination_direct_construction() -> None:
     """Test ScrollPagination can be constructed directly."""
     from litestar_vite.inertia.types import ScrollPagination
 
-    pagination: ScrollPagination[str] = ScrollPagination(
-        items=["a", "b", "c"],
-        total=100,
-        limit=10,
-        offset=20,
-    )
+    pagination: ScrollPagination[str] = ScrollPagination(items=["a", "b", "c"], total=100, limit=10, offset=20)
 
     assert pagination.items == ["a", "b", "c"]
     assert pagination.total == 100

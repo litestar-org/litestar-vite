@@ -88,11 +88,7 @@ async def spa_handler_dev(request: "Request[Any, Any, Any]") -> Response[str]:
 
     spa_handler = get_spa_handler_from_request(request)
     html = await spa_handler.get_html(request)
-    return Response(
-        content=html,
-        status_code=200,
-        media_type="text/html",
-    )
+    return Response(content=html, status_code=200, media_type="text/html")
 
 
 async def spa_handler_prod(request: "Request[Any, Any, Any]") -> Response[bytes]:
@@ -113,8 +109,4 @@ async def spa_handler_prod(request: "Request[Any, Any, Any]") -> Response[bytes]
 
     spa_handler = get_spa_handler_from_request(request)
     body = await spa_handler.get_bytes()
-    return Response(
-        content=body,
-        status_code=200,
-        media_type=_HTML_MEDIA_TYPE,
-    )
+    return Response(content=body, status_code=200, media_type=_HTML_MEDIA_TYPE)

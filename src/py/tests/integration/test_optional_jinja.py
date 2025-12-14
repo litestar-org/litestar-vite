@@ -476,10 +476,7 @@ def test_production_docker_container_scenario_without_jinja() -> None:
 
     # Typical production configuration
     config = ViteConfig(
-        paths=PathConfig(
-            bundle_dir=Path("/app/public"),
-            resource_dir=Path("/app/resources"),
-        ),
+        paths=PathConfig(bundle_dir=Path("/app/public"), resource_dir=Path("/app/resources")),
         runtime=RuntimeConfig(dev_mode=False),  # Production setting
     )
 
@@ -498,10 +495,7 @@ def test_production_kubernetes_deployment_scenario() -> None:
 
     # Kubernetes-style configuration with read-only filesystem considerations
     config = ViteConfig(
-        paths=PathConfig(
-            bundle_dir=Path("/app/static"),
-            resource_dir=Path("/app/src"),
-        ),
+        paths=PathConfig(bundle_dir=Path("/app/static"), resource_dir=Path("/app/src")),
         runtime=RuntimeConfig(dev_mode=False),
     )
 

@@ -54,10 +54,7 @@ def _get_book(book_id: int) -> Book:
 def _get_summary() -> Summary:
     """Build summary data."""
     return Summary(
-        app="litestar-vite library",
-        headline="One backend, many frontends",
-        total_books=len(BOOKS),
-        featured=BOOKS[0],
+        app="litestar-vite library", headline="One backend, many frontends", total_books=len(BOOKS), featured=BOOKS[0]
     )
 
 
@@ -83,15 +80,8 @@ class LibraryController(Controller):
 # Fixed port for E2E tests - can be removed for local dev or customized for production
 vite = VitePlugin(
     config=ViteConfig(
-        dev_mode=DEV_MODE,
-        paths=PathConfig(root=here),
-        types=TypeGenConfig(),
-        runtime=RuntimeConfig(port=5031),
+        dev_mode=DEV_MODE, paths=PathConfig(root=here), types=TypeGenConfig(), runtime=RuntimeConfig(port=5031)
     )
 )
 
-app = Litestar(
-    route_handlers=[LibraryController],
-    plugins=[vite],
-    debug=True,
-)
+app = Litestar(route_handlers=[LibraryController], plugins=[vite], debug=True)

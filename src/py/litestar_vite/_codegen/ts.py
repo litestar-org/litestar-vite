@@ -179,5 +179,5 @@ def _ts_literal(value: Any) -> str:
         return str(value)
     if isinstance(value, str):
         escaped = value.replace("\\\\", "\\\\\\\\").replace('"', '\\"')
-        return f'\"{escaped}\"'
+        return f'"{escaped}"'
     return "any"

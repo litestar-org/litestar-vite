@@ -2,12 +2,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from litestar.types import (
-    HTTPRequestEvent,
-    Receive,
-    Scope,
-    Send,
-)
+from litestar.types import HTTPRequestEvent, Receive, Scope, Send
 
 from litestar_vite.plugin import ViteProxyMiddleware
 
@@ -150,12 +145,7 @@ async def test_proxy_respects_litestar_routes_when_asset_url_is_root(hotfile: Pa
             self.state = MockState()
 
     mock_app = MockApp()
-    scope_with_app: Scope = {
-        "type": "http",
-        "path": "/",
-        "headers": [],
-        "app": mock_app,
-    }  # type: ignore
+    scope_with_app: Scope = {"type": "http", "path": "/", "headers": [], "app": mock_app}  # type: ignore
 
     # 1. Registered Litestar route -> Should NOT proxy
     assert not middleware._should_proxy("/schema", scope_with_app)

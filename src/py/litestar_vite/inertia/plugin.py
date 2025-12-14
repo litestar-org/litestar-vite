@@ -100,8 +100,7 @@ class InertiaPlugin(InitPluginProtocol):
 
         for mw in app_config.middleware:
             if isinstance(mw, DefineMiddleware) and is_class_and_subclass(
-                mw.middleware,
-                (MiddlewareWrapper, SessionMiddleware),
+                mw.middleware, (MiddlewareWrapper, SessionMiddleware)
             ):
                 break
         else:
@@ -110,10 +109,7 @@ class InertiaPlugin(InitPluginProtocol):
         from litestar.exceptions import HTTPException
 
         app_config.exception_handlers.update(  # pyright: ignore[reportUnknownMemberType]
-            {
-                Exception: exception_to_http_response,
-                HTTPException: exception_to_http_response,
-            }
+            {Exception: exception_to_http_response, HTTPException: exception_to_http_response}
         )
         app_config.request_class = InertiaRequest
         app_config.response_class = InertiaResponse

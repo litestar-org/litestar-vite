@@ -64,9 +64,6 @@ def template_config(test_app_path: Path) -> Generator[TemplateConfig[JinjaTempla
 def vite_config(test_app_path: Path) -> Generator[ViteConfig, None, None]:
     # Mock the ViteConfig with necessary attributes for testing
     yield ViteConfig(
-        paths=PathConfig(
-            bundle_dir=test_app_path / "public",
-            resource_dir=test_app_path / "resources",
-        ),
+        paths=PathConfig(bundle_dir=test_app_path / "public", resource_dir=test_app_path / "resources"),
         runtime=RuntimeConfig(dev_mode=True),
     )

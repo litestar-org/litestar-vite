@@ -405,11 +405,7 @@ def test_generate_inertia_pages_json_type_gen_config_custom() -> None:
         return {}
 
     app = Litestar([home])
-    result = generate_inertia_pages_json(
-        app,
-        include_default_auth=False,
-        include_default_flash=False,
-    )
+    result = generate_inertia_pages_json(app, include_default_auth=False, include_default_flash=False)
 
     config = result["typeGenConfig"]
     assert config["includeDefaultAuth"] is False
@@ -464,10 +460,7 @@ def test_generate_inertia_pages_json_generated_at_is_iso() -> None:
 
 def test_inertia_page_metadata_defaults() -> None:
     """Test InertiaPageMetadata default values."""
-    page = InertiaPageMetadata(
-        component="Test",
-        route_path="/test",
-    )
+    page = InertiaPageMetadata(component="Test", route_path="/test")
 
     assert page.component == "Test"
     assert page.route_path == "/test"

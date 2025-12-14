@@ -27,12 +27,7 @@ def _popen_server_kwargs(cwd: Path) -> dict[str, Any]:
     Returns:
         Keyword arguments for ``subprocess.Popen`` suitable for long-lived dev servers.
     """
-    kwargs: dict[str, Any] = {
-        "cwd": cwd,
-        "stdin": subprocess.PIPE,
-        "stdout": None,
-        "stderr": None,
-    }
+    kwargs: dict[str, Any] = {"cwd": cwd, "stdin": subprocess.PIPE, "stdout": None, "stderr": None}
     if platform.system() == "Windows":
         kwargs["shell"] = True
         kwargs["creationflags"] = _CREATE_NEW_PROCESS_GROUP
@@ -121,12 +116,7 @@ class CommandExecutor(JSExecutor):
     def install(self, cwd: Path) -> None:
         executable = self._resolve_executable()
         command = [executable, "install"]
-        process = subprocess.run(
-            command,
-            cwd=cwd,
-            shell=platform.system() == "Windows",
-            check=False,
-        )
+        process = subprocess.run(command, cwd=cwd, shell=platform.system() == "Windows", check=False)
         if process.returncode != 0:
             raise ViteExecutionError(command, process.returncode, "package install failed")
 
@@ -252,11 +242,7 @@ class NodeenvExecutor(JSExecutor):
         args = self._apply_silent_flag(args)
         command = [npm_path, *args]
         process = subprocess.run(
-            command,
-            cwd=cwd,
-            shell=platform.system() == "Windows",
-            check=False,
-            capture_output=True,
+            command, cwd=cwd, shell=platform.system() == "Windows", check=False, capture_output=True
         )
         if process.returncode != 0:
             raise ViteExecutionError(command, process.returncode, process.stderr.decode())

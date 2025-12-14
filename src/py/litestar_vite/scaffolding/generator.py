@@ -185,12 +185,7 @@ def _process_templates(
     return generated_files
 
 
-def generate_project(
-    output_dir: Path,
-    context: TemplateContext,
-    *,
-    overwrite: bool = False,
-) -> list[Path]:
+def generate_project(output_dir: Path, context: TemplateContext, *, overwrite: bool = False) -> list[Path]:
     """Generate project files from templates.
 
     Args:
@@ -255,11 +250,7 @@ def generate_project(
     return generated_files
 
 
-def _render_and_write(
-    template_path: Path,
-    output_path: Path,
-    context: dict[str, Any],
-) -> None:
+def _render_and_write(template_path: Path, output_path: Path, context: dict[str, Any]) -> None:
     """Render a template and write to output file.
 
     Args:

@@ -111,13 +111,8 @@ class AppHandler:
             except ImportError:
                 http2_enabled = False
 
-        self._http_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(5.0),
-            http2=http2_enabled,
-        )
-        self._http_client_sync = httpx.Client(
-            timeout=httpx.Timeout(5.0),
-        )
+        self._http_client = httpx.AsyncClient(timeout=httpx.Timeout(5.0), http2=http2_enabled)
+        self._http_client_sync = httpx.Client(timeout=httpx.Timeout(5.0))
 
     async def shutdown_async(self) -> None:
         """Shutdown the handler asynchronously."""
@@ -143,10 +138,7 @@ class AppHandler:
         await self._load_index_html_async()
 
     def _transform_html(
-        self,
-        html: str,
-        page_data: "dict[str, Any] | None" = None,
-        csrf_token: "str | None" = None,
+        self, html: str, page_data: "dict[str, Any] | None" = None, csrf_token: "str | None" = None
     ) -> str:
         """Transform HTML by injecting CSRF token and/or page data.
 
@@ -165,12 +157,7 @@ class AppHandler:
 
         if page_data is not None:
             json_data = encode_json(page_data).decode("utf-8")
-            html = set_data_attribute(
-                html,
-                self._spa_config.app_selector,
-                "data-page",
-                json_data,
-            )
+            html = set_data_attribute(html, self._spa_config.app_selector, "data-page", json_data)
 
         return html
 
@@ -273,10 +260,7 @@ class AppHandler:
         if not self._manifest:
             return html
         return transform_asset_urls(
-            html,
-            self._manifest,
-            asset_url=self._config.asset_url,
-            base_url=self._config.base_url,
+            html, self._manifest, asset_url=self._config.asset_url, base_url=self._config.base_url
         )
 
     def _get_csrf_token(self, request: "Request[Any, Any, Any]") -> "str | None":
@@ -286,12 +270,7 @@ class AppHandler:
 
         return value_or_default(ScopeState.from_scope(request.scope).csrf_token, None)
 
-    async def get_html(
-        self,
-        request: "Request[Any, Any, Any]",
-        *,
-        page_data: "dict[str, Any] | None" = None,
-    ) -> str:
+    async def get_html(self, request: "Request[Any, Any, Any]", *, page_data: "dict[str, Any] | None" = None) -> str:
         """Get the HTML for the SPA with optional transformations."""
         if not self._initialized:
             msg = "AppHandler not initialized. Call initialize() during app startup."
@@ -326,12 +305,7 @@ class AppHandler:
 
         return self._transform_html(base_html, None, None)
 
-    def get_html_sync(
-        self,
-        *,
-        page_data: "dict[str, Any] | None" = None,
-        csrf_token: "str | None" = None,
-    ) -> str:
+    def get_html_sync(self, *, page_data: "dict[str, Any] | None" = None, csrf_token: "str | None" = None) -> str:
         """Get the HTML for the SPA synchronously."""
         if not self._initialized:
             logger.warning(
@@ -455,19 +429,8 @@ class AppHandler:
             opt["_vite_asset_prefix"] = asset_prefix
 
         if is_dev:
-            return get(
-                path=paths,
-                name="vite_spa",
-                opt=opt,
-                include_in_schema=False,
-                guards=guards,
-            )(spa_handler_dev)
+            return get(path=paths, name="vite_spa", opt=opt, include_in_schema=False, guards=guards)(spa_handler_dev)
 
-        return get(
-            path=paths,
-            name="vite_spa",
-            opt=opt,
-            include_in_schema=False,
-            cache=3600,
-            guards=guards,
-        )(spa_handler_prod)
+        return get(path=paths, name="vite_spa", opt=opt, include_in_schema=False, cache=3600, guards=guards)(
+            spa_handler_prod
+        )

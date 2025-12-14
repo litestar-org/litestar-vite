@@ -3,13 +3,7 @@ from typing import TYPE_CHECKING, cast
 from urllib.parse import unquote
 
 from litestar import Request
-from litestar.connection.base import (
-    AuthT,
-    StateT,
-    UserT,
-    empty_receive,
-    empty_send,
-)
+from litestar.connection.base import AuthT, StateT, UserT, empty_receive, empty_send
 
 from litestar_vite.inertia._utils import InertiaHeaders
 

@@ -9,9 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from litestar._openapi.datastructures import (  # pyright: ignore[reportPrivateUsage]
-    OpenAPIContext,
-)
+from litestar._openapi.datastructures import OpenAPIContext  # pyright: ignore[reportPrivateUsage]
 from litestar._openapi.schema_generation import SchemaCreator  # pyright: ignore[reportPrivateUsage]
 from litestar.handlers import HTTPRouteHandler
 from litestar.openapi.spec import Reference, Schema
@@ -99,7 +97,9 @@ def openapi_components_schemas(openapi_schema: dict[str, Any] | None) -> dict[st
     return cast("dict[str, Any]", schemas)
 
 
-def merge_generated_components_into_openapi(openapi_schema: dict[str, Any], generated_components: dict[str, Schema]) -> None:
+def merge_generated_components_into_openapi(
+    openapi_schema: dict[str, Any], generated_components: dict[str, Schema]
+) -> None:
     """Merge generated component schemas into an OpenAPI document."""
     components_any = openapi_schema.get("components")
     if not isinstance(components_any, dict):
@@ -152,8 +152,7 @@ def schema_name_from_ref(ref: str) -> str:
 
 
 def resolve_page_props_field_definition(
-    handler: HTTPRouteHandler,
-    schema_creator: SchemaCreator,
+    handler: HTTPRouteHandler, schema_creator: SchemaCreator
 ) -> tuple[FieldDefinition | None, Schema | Reference | None]:
     """Resolve FieldDefinition and schema result for a handler's response.
 
@@ -177,9 +176,7 @@ def resolve_page_props_field_definition(
     if dto is not None:
         dto_t = cast("type[AbstractDTO[Any]]", dto)
         result = dto_t.create_openapi_schema(
-            field_definition=field_definition,
-            handler_id=handler.handler_id,
-            schema_creator=schema_creator,
+            field_definition=field_definition, handler_id=handler.handler_id, schema_creator=schema_creator
         )
         return field_definition, result
 
