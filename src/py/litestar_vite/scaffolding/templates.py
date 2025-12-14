@@ -31,7 +31,6 @@ class FrameworkType(str, Enum):
     ANGULAR_CLI = "angular-cli"
 
 
-# Type alias for the factory function to satisfy pyright
 _ListStrFactory: Callable[[], list[str]] = _str_list_factory
 
 
@@ -68,7 +67,6 @@ class FrameworkTemplate:
     resource_dir: str = "resources"
 
 
-# Template registry
 FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
     FrameworkType.REACT: FrameworkTemplate(
         name="React",
@@ -287,7 +285,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         name="Nuxt 3",
         type=FrameworkType.NUXT,
         description="Nuxt 3 with Litestar API backend",
-        vite_plugin=None,  # Nuxt has its own module system
+        vite_plugin=None,
         dependencies=["nuxt", "vue"],
         dev_dependencies=["typescript", "vue-tsc", "litestar-vite-plugin"],
         files=["nuxt.config.ts", "app.vue", "pages/index.vue", "composables/useApi.ts"],
@@ -316,7 +314,7 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         dev_dependencies=["typescript"],
         files=["vite.config.ts", "resources/main.js", "templates/base.html.j2", "templates/index.html.j2"],
         uses_typescript=False,
-        has_ssr=False,  # Server-rendered
+        has_ssr=False,
         inertia_compatible=False,
         resource_dir="resources",
     ),
@@ -431,10 +429,8 @@ def get_template(framework_type: "FrameworkType | str") -> "FrameworkTemplate | 
     Returns:
         The FrameworkTemplate if found, None otherwise.
     """
-    # If already a FrameworkType enum, use it directly
     if isinstance(framework_type, FrameworkType):
         return FRAMEWORK_TEMPLATES.get(framework_type)
-    # Otherwise, try to convert the string to FrameworkType
     try:
         return FRAMEWORK_TEMPLATES.get(FrameworkType(framework_type))
     except ValueError:

@@ -72,6 +72,9 @@ def _get_inertia_request_info(request: "Request[Any, Any, Any]") -> _InertiaRequ
 
     This helper preserves compatibility with plain :class:`litestar.Request` by
     falling back to header parsing via :class:`~litestar_vite.inertia.request.InertiaDetails`.
+
+    Returns:
+        Aggregated Inertia-related request flags and partial-render metadata.
     """
     if isinstance(request, InertiaRequest):
         is_inertia = request.is_inertia
@@ -135,10 +138,6 @@ def _render_inertia_ssr_sync(
     This function uses the application's :class:`~anyio.from_thread.BlockingPortal`
     to call the async HTTP client without blocking the event loop thread.
 
-    Raises:
-        ImproperlyConfiguredException: If the SSR server is unreachable,
-            returns an error status, or returns invalid payload.
-
     Returns:
         An _InertiaSSRResult with head and body HTML.
     """
@@ -146,7 +145,15 @@ def _render_inertia_ssr_sync(
 
 
 async def _render_inertia_ssr(page: dict[str, Any], url: str, timeout_seconds: float) -> _InertiaSSRResult:
-    """Call the Inertia SSR server asynchronously and return head/body HTML."""
+    """Call the Inertia SSR server asynchronously and return head/body HTML.
+
+    Raises:
+        ImproperlyConfiguredException: If the SSR server is unreachable,
+            returns an error status, or returns invalid payload.
+
+    Returns:
+        An _InertiaSSRResult with head and body HTML.
+    """
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(url, json=page, timeout=timeout_seconds)
@@ -171,7 +178,15 @@ async def _render_inertia_ssr(page: dict[str, Any], url: str, timeout_seconds: f
 
 
 def _get_redirect_url(request: "Request[Any, Any, Any]", url: str | None) -> str:
-    """Return a safe redirect URL, falling back to base_url when invalid."""
+    """Return a safe redirect URL, falling back to base_url when invalid.
+
+    Args:
+        request: The request object.
+        url: Candidate redirect URL.
+
+    Returns:
+        A safe redirect URL (same-origin absolute, or relative), otherwise the request base URL.
+    """
     base_url = str(request.base_url)
 
     if not url:
@@ -362,7 +377,7 @@ class InertiaResponse(Response[T]):
                     extracted_scroll_props = scroll
 
                 pagination_dict = pagination_to_dict(value)
-                shared_props[key] = pagination_dict.pop("items")  # items under original key
+                shared_props[key] = pagination_dict.pop("items")
                 shared_props.update(pagination_dict)
 
         encrypt_history = self.encrypt_history
@@ -463,7 +478,7 @@ class InertiaResponse(Response[T]):
         Raises:
             ImproperlyConfiguredException: If AppHandler is not available.
         """
-        spa_handler = vite_plugin._spa_handler
+        spa_handler = vite_plugin.spa_handler
         if spa_handler is None:
             msg = (
                 "SPA mode requires VitePlugin with mode='spa' or mode='hybrid'. "

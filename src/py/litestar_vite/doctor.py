@@ -27,7 +27,11 @@ console = Console()
 
 
 def _str_list_factory() -> list[str]:
-    """Return an empty ``list[str]`` (typed for pyright)."""
+    """Return an empty ``list[str]`` (typed for pyright).
+
+    Returns:
+        An empty list.
+    """
     return []
 
 
@@ -1122,7 +1126,11 @@ class ViteDoctor:
         console.print(table)
 
     def _apply_fixes(self, no_prompt: bool) -> bool:
-        """Apply auto-fixes."""
+        """Apply auto-fixes.
+
+        Returns:
+            True if fixes were applied, otherwise False.
+        """
         if not self.parsed_config:
             return False
 

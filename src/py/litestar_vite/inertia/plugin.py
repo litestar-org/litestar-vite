@@ -70,7 +70,11 @@ class InertiaPlugin(InitPluginProtocol):
 
     @property
     def portal(self) -> "BlockingPortal":
-        """Return the blocking portal used for deferred prop resolution."""
+        """Return the blocking portal used for deferred prop resolution.
+
+        Returns:
+            The BlockingPortal instance.
+        """
         return self._portal
 
     def on_app_init(self, app_config: "AppConfig") -> "AppConfig":

@@ -7,7 +7,7 @@ the codegen logic can remain stable and easier to reason about.
 import contextlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from litestar._openapi.datastructures import OpenAPIContext  # pyright: ignore[reportPrivateUsage]
 from litestar._openapi.schema_generation import SchemaCreator  # pyright: ignore[reportPrivateUsage]
@@ -22,6 +22,10 @@ from litestar.typing import FieldDefinition
 if TYPE_CHECKING:
     from litestar import Litestar
     from litestar.dto import AbstractDTO
+
+
+class _SchemaRegistryEntry(Protocol):
+    key: tuple[str, ...]
 
 
 @dataclass(slots=True)
@@ -54,7 +58,11 @@ class OpenAPISupport:
 
     @property
     def enabled(self) -> bool:
-        """Whether OpenAPI support is available."""
+        """Whether OpenAPI support is available.
+
+        Returns:
+            True if OpenAPI support is available, otherwise False.
+        """
         return self.context is not None and self.schema_creator is not None
 
 
@@ -85,7 +93,11 @@ def try_create_openapi_context(app: "Litestar") -> tuple[OpenAPIContext | None, 
 
 
 def openapi_components_schemas(openapi_schema: dict[str, Any] | None) -> dict[str, Any]:
-    """Extract OpenAPI components.schemas dict as a concrete mapping."""
+    """Extract OpenAPI components.schemas dict as a concrete mapping.
+
+    Returns:
+        The components.schemas mapping, or an empty dict if unavailable.
+    """
     if not isinstance(openapi_schema, dict):
         return {}
     components = openapi_schema.get("components")
@@ -138,22 +150,36 @@ def build_schema_name_map(schema_registry: Any) -> dict[tuple[str, ...], str]:
     if not isinstance(model_name_groups, dict):
         return name_map
 
-    for name, group in model_name_groups.items():
+    groups_dict = cast("dict[str, Any]", model_name_groups)
+    for name, group_any in groups_dict.items():
+        group = cast("list[Any]", group_any)
         if len(group) == 1:
-            name_map[group[0].key] = name
+            registered_schema: _SchemaRegistryEntry = group[0]
+            name_map[registered_schema.key] = name
             continue
 
-        full_keys = [registered_schema.key for registered_schema in group]
-        names = ["_".join(k) for k in schema_registry.remove_common_prefix(full_keys)]
-        for name_, registered_schema in zip(names, group, strict=False):
-            name_map[registered_schema.key] = name_
+        full_keys: list[tuple[str, ...]] = []
+        for registered_schema_any in group:
+            entry_key: _SchemaRegistryEntry = registered_schema_any
+            full_keys.append(entry_key.key)
+
+        shortened_keys: list[tuple[str, ...]] = list(schema_registry.remove_common_prefix(full_keys))
+        names = ["_".join(k) for k in shortened_keys]
+
+        for name_, registered_schema_any in zip(names, group, strict=False):
+            entry_name: _SchemaRegistryEntry = registered_schema_any
+            name_map[entry_name.key] = name_
 
     return name_map
 
 
 def schema_name_from_ref(ref: str) -> str:
-    """Return the OpenAPI component name from a schema $ref string."""
-    return ref.split("/")[-1]
+    """Return the OpenAPI component name from a schema $ref string.
+
+    Returns:
+        The schema name part of the reference.
+    """
+    return ref.rsplit("/", maxsplit=1)[-1]
 
 
 def resolve_page_props_field_definition(
@@ -199,5 +225,9 @@ def resolve_page_props_field_definition(
 
 
 def to_root_path(root_dir: Path, path: Path) -> Path:
-    """Resolve a path relative to ``root_dir`` when it is not absolute."""
+    """Resolve a path relative to ``root_dir`` when it is not absolute.
+
+    Returns:
+        Absolute path.
+    """
     return path if path.is_absolute() else (root_dir / path)

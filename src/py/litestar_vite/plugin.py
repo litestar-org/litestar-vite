@@ -29,7 +29,7 @@ import threading
 from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import anyio
 import httpx
@@ -70,8 +70,8 @@ if TYPE_CHECKING:
     )
     from websockets.typing import Subprotocol
 
+    from litestar_vite._handler import AppHandler
     from litestar_vite.executor import JSExecutor
-    from litestar_vite.handler import AppHandler
 
 _DISCONNECT_EXCEPTIONS = (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed)
 _TICK = "[bold green]✓[/]"
@@ -83,7 +83,11 @@ console = Console()
 
 
 def _fmt_path(path: Path) -> str:
-    """Return a path relative to CWD when possible to keep logs short."""
+    """Return a path relative to CWD when possible to keep logs short.
+
+    Returns:
+        The relative path string when possible, otherwise the absolute path string.
+    """
     try:
         return str(path.relative_to(Path.cwd()))
     except ValueError:
@@ -182,6 +186,9 @@ def _is_non_serving_assets_cli() -> bool:
 
     This suppresses dev-proxy setup/logging for commands like `assets build`
     where only a Vite build is performed and no proxy should be initialized.
+
+    Returns:
+        True when the current process is running a non-serving `litestar assets ...` command, otherwise False.
     """
 
     argv_str = " ".join(sys.argv)
@@ -351,7 +358,11 @@ def set_app_environment(app: "Litestar") -> None:
 
 
 def resolve_litestar_version() -> str:
-    """Return the installed Litestar version string."""
+    """Return the installed Litestar version string.
+
+    Returns:
+        The installed Litestar version, or "unknown" when unavailable.
+    """
     try:
         return importlib.metadata.version("litestar")
     except importlib.metadata.PackageNotFoundError:
@@ -401,7 +412,8 @@ def _normalize_prefix(prefix: str) -> str:
     return prefix
 
 
-_ROUTE_PREFIXES_CACHE_KEY = "_litestar_vite_route_prefixes"
+class _RoutePrefixesState(Protocol):
+    litestar_vite_route_prefixes: tuple[str, ...]
 
 
 def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
@@ -422,27 +434,22 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
     Returns:
         A tuple of route prefix strings (without trailing slashes).
     """
-    cached = getattr(app.state, _ROUTE_PREFIXES_CACHE_KEY, None)
-    if cached is not None:
-        return cached
+    state = cast("_RoutePrefixesState", app.state)
+    try:
+        return state.litestar_vite_route_prefixes
+    except AttributeError:
+        pass
 
     prefixes: list[str] = []
-
-    from litestar.routes import BaseRoute
-
     for route in app.routes:
-        if not isinstance(route, BaseRoute):
-            continue
-        path = route.path
-        if isinstance(path, str) and path:
-            prefix = path.rstrip("/")
-            if prefix:
-                prefixes.append(prefix)
+        prefix = route.path.rstrip("/")
+        if prefix:
+            prefixes.append(prefix)
 
     openapi_config = app.openapi_config
     if openapi_config is not None:
         schema_path = openapi_config.path
-        if isinstance(schema_path, str) and schema_path:
+        if schema_path:
             prefixes.append(schema_path.rstrip("/"))
 
     prefixes.extend(["/api", "/schema", "/docs"])
@@ -450,7 +457,7 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
     unique_prefixes = sorted(set(prefixes), key=len, reverse=True)
     result = tuple(unique_prefixes)
 
-    setattr(app.state, _ROUTE_PREFIXES_CACHE_KEY, result)
+    state.litestar_vite_route_prefixes = result
 
     if _is_proxy_debug():
         console.print(f"[dim][route-detection] Cached prefixes: {result}[/]")
@@ -480,7 +487,11 @@ def is_litestar_route(path: str, app: "Litestar") -> bool:
 def _static_not_found_handler(
     _request: "Request[Any, Any, Any]", _exc: NotFoundException
 ) -> Response[bytes]:  # pragma: no cover - trivial
-    """Return an empty 404 response for static files routing misses."""
+    """Return an empty 404 response for static files routing misses.
+
+    Returns:
+        An empty 404 response.
+    """
     return Response(status_code=404, content=b"")
 
 
@@ -972,7 +983,11 @@ def create_vite_hmr_handler(hotfile_path: Path, hmr_path: str = "/static/vite-hm
 
     @websocket(path=hmr_path, opt={"exclude_from_auth": True})
     async def vite_hmr_proxy(socket: "WebSocket[Any, Any, Any]") -> None:
-        """Proxy WebSocket messages between browser and Vite dev server."""
+        """Proxy WebSocket messages between browser and Vite dev server.
+
+        Raises:
+            BaseException: Re-raises unexpected exceptions to allow the ASGI server to log them.
+        """
         scope_dict = dict(socket.scope)
         target = _build_hmr_target_url(hotfile_path, scope_dict, hmr_path, asset_url)
         if target is None:
@@ -1005,14 +1020,18 @@ def create_vite_hmr_handler(hotfile_path: Path, hmr_path: str = "/static/vite-hm
         except WebSocketDisconnect:
             pass
         except BaseException as exc:
+            exceptions: list[BaseException] | tuple[BaseException, ...] | None
             try:
-                exceptions = exc.exceptions  # type: ignore[attr-defined]
+                exceptions = cast("list[BaseException] | tuple[BaseException, ...]", exc.exceptions)  # type: ignore[attr-defined]
             except AttributeError:
                 exceptions = None
-            if isinstance(exceptions, (list, tuple)):
+
+            if exceptions is not None:
                 if any(not isinstance(err, _DISCONNECT_EXCEPTIONS) for err in exceptions):
                     raise
-            elif not isinstance(exc, _DISCONNECT_EXCEPTIONS):
+                return
+
+            if not isinstance(exc, _DISCONNECT_EXCEPTIONS):
                 raise
 
     return vite_hmr_proxy
@@ -1502,7 +1521,11 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
     @property
     def config(self) -> "ViteConfig":
-        """Get the Vite configuration."""
+        """Get the Vite configuration.
+
+        Returns:
+            The ViteConfig instance.
+        """
         return self._config
 
     @property
@@ -1510,11 +1533,23 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         """Get the asset loader instance.
 
         Lazily initializes the loader if not already set.
+
+        Returns:
+            The ViteAssetLoader instance.
         """
 
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader.initialize_loader(config=self._config)
         return self._asset_loader
+
+    @property
+    def spa_handler(self) -> "AppHandler | None":
+        """Return the configured SPA handler when SPA mode is enabled.
+
+        Returns:
+            The AppHandler instance, or None when SPA mode is disabled/not configured.
+        """
+        return self._spa_handler
 
     def _resolve_bundle_dir(self) -> Path:
         """Resolve the bundle directory to an absolute path.
@@ -1795,12 +1830,12 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         use_spa_handler = self._config.spa_handler and self._config.mode in {"spa", "ssr"}
         use_spa_handler = use_spa_handler or (self._config.mode == "external" and not self._config.is_dev_mode)
         if use_spa_handler:
-            from litestar_vite.handler import AppHandler
+            from litestar_vite._handler import AppHandler
 
             self._spa_handler = AppHandler(self._config)
             app_config.route_handlers.append(self._spa_handler.create_route_handler())
         elif self._config.mode == "hybrid":
-            from litestar_vite.handler import AppHandler
+            from litestar_vite._handler import AppHandler
 
             self._spa_handler = AppHandler(self._config)
 

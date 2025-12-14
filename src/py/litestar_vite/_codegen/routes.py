@@ -20,7 +20,11 @@ _PATH_PARAM_EXTRACT_PATTERN = re.compile(r"\{([^:}]+)(?::([^}]+))?\}")
 
 
 def _str_dict_factory() -> dict[str, str]:
-    """Return an empty ``dict[str, str]`` (typed for pyright)."""
+    """Return an empty ``dict[str, str]`` (typed for pyright).
+
+    Returns:
+        An empty dictionary.
+    """
     return {}
 
 
@@ -37,12 +41,26 @@ class RouteMetadata:
 
 
 def _extract_path_params(path: str) -> dict[str, str]:
-    """Extract path parameters and their types from a route."""
+    """Extract path parameters and their types from a route.
+
+    Args:
+        path: The route path template.
+
+    Returns:
+        Mapping of parameter name to TypeScript type.
+    """
     return {match.group(1): "string" for match in _PATH_PARAM_EXTRACT_PATTERN.finditer(path)}
 
 
 def _iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRouteHandler], None, None]:
-    """Iterate over HTTP route handlers in an app."""
+    """Iterate over HTTP route handlers in an app.
+
+    Args:
+        app: The Litestar application.
+
+    Yields:
+        Tuples of (HTTPRoute, HTTPRouteHandler).
+    """
     for route in app.routes:
         if isinstance(route, HTTPRoute):
             for route_handler in route.route_handlers:
@@ -52,7 +70,16 @@ def _iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRout
 def _extract_params_from_litestar(
     handler: HTTPRouteHandler, http_route: "HTTPRoute", openapi_context: OpenAPIContext | None
 ) -> tuple[dict[str, str], dict[str, str]]:
-    """Extract path and query parameters using Litestar's native OpenAPI generation."""
+    """Extract path and query parameters using Litestar's native OpenAPI generation.
+
+    Args:
+        handler: The route handler.
+        http_route: The HTTP route.
+        openapi_context: The OpenAPI context, if available.
+
+    Returns:
+        A tuple of (path_params, query_params) maps.
+    """
     path_params: dict[str, str] = {}
     query_params: dict[str, str] = {}
 
@@ -85,7 +112,11 @@ def _extract_params_from_litestar(
 
 
 def _make_unique_name(base_name: str, used_names: set[str], path: str, methods: list[str]) -> str:
-    """Generate a unique route name, avoiding collisions."""
+    """Generate a unique route name, avoiding collisions.
+
+    Returns:
+        A unique route name.
+    """
     if base_name not in used_names:
         return base_name
 
@@ -119,6 +150,9 @@ def extract_route_metadata(
         ``openapi_schema`` is accepted for API compatibility and future enrichment,
         but parameter typing is currently derived from Litestar's OpenAPI parameter
         generation, not the exported schema document.
+
+    Returns:
+        A list of RouteMetadata objects.
     """
     routes_metadata: list[RouteMetadata] = []
     used_names: set[str] = set()
@@ -189,7 +223,11 @@ def generate_routes_json(
     include_components: bool = False,
     openapi_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Generate Ziggy-compatible routes JSON."""
+    """Generate Ziggy-compatible routes JSON.
+
+    Returns:
+        A Ziggy-compatible routes payload as a dictionary.
+    """
     routes_metadata = extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
 
     routes_dict: dict[str, Any] = {}
@@ -235,7 +273,11 @@ _TS_TYPE_MAP: dict[str, str] = {
 
 
 def _ts_type_for_param(param_type: str) -> str:
-    """Map a parameter type string to TypeScript type."""
+    """Map a parameter type string to TypeScript type.
+
+    Returns:
+        The TypeScript type for the parameter.
+    """
     is_optional = "undefined" in param_type or param_type.endswith("?")
     clean_type = param_type.replace(" | undefined", "").replace("?", "").strip()
 
@@ -247,12 +289,20 @@ def _ts_type_for_param(param_type: str) -> str:
 
 
 def _is_type_required(param_type: str) -> bool:
-    """Check if a parameter type indicates a required field."""
+    """Check if a parameter type indicates a required field.
+
+    Returns:
+        True if the parameter is required, otherwise False.
+    """
     return "undefined" not in param_type and not param_type.endswith("?")
 
 
 def _escape_ts_string(s: str) -> str:
-    """Escape a string for use in TypeScript string literals."""
+    """Escape a string for use in TypeScript string literals.
+
+    Returns:
+        The escaped string.
+    """
     return s.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"')
 
 
@@ -263,7 +313,11 @@ def generate_routes_ts(
     exclude: "list[str] | None" = None,
     openapi_schema: dict[str, Any] | None = None,
 ) -> str:
-    """Generate typed routes TypeScript file (Ziggy-style)."""
+    """Generate typed routes TypeScript file (Ziggy-style).
+
+    Returns:
+        The generated TypeScript source.
+    """
     routes_metadata = extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
 
     route_names: list[str] = []

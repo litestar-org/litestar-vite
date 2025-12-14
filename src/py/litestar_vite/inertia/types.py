@@ -102,7 +102,11 @@ def to_inertia_dict(obj: Any, required_fields: "set[str] | None" = None) -> dict
 
 
 def _str_list_factory() -> list[str]:
-    """Factory function for empty string list (typed for pyright)."""
+    """Factory function for empty string list (typed for pyright).
+
+    Returns:
+        An empty list.
+    """
     return []
 
 
@@ -284,7 +288,11 @@ class PageProps(Generic[T]):
     scroll_props: "ScrollPropsConfig | None" = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to Inertia.js protocol format with camelCase keys."""
+        """Convert to Inertia.js protocol format with camelCase keys.
+
+        Returns:
+            The Inertia protocol dictionary.
+        """
         return to_inertia_dict(self, required_fields={"component", "url", "version", "props"})
 
 

@@ -888,7 +888,7 @@ def test_get_litestar_route_prefixes_includes_openapi_config_path() -> None:
 
 def test_get_litestar_route_prefixes_caches_by_app() -> None:
     """Test that route prefixes are cached per app instance."""
-    from litestar_vite.plugin import _ROUTE_PREFIXES_CACHE_KEY, get_litestar_route_prefixes
+    from litestar_vite.plugin import get_litestar_route_prefixes
 
     @get("/users")
     async def get_users() -> dict[str, str]:

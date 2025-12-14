@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from textwrap import dedent
 from typing import TYPE_CHECKING, Any
 
 import msgspec
@@ -97,7 +98,11 @@ def _apply_cli_log_level(config: ViteConfig, *, verbose: bool = False, quiet: bo
 
 
 def _relative_path(path: Path) -> str:
-    """Return path relative to CWD when possible."""
+    """Return path relative to CWD when possible.
+
+    Returns:
+        The relative path string when possible, otherwise the absolute path string.
+    """
 
     try:
         return str(path.relative_to(Path.cwd()))
@@ -116,22 +121,27 @@ def _print_recommended_config(template_name: str, resource_dir: str, bundle_dir:
     spa_templates = {"react-router", "react-tanstack"}
     mode = "spa" if template_name in spa_templates else "template"
 
-    config_snippet = f"""from pathlib import Path
-from litestar_vite import ViteConfig, PathConfig
+    config_snippet = dedent(
+        f"""\
+        from pathlib import Path
+        from litestar_vite import ViteConfig, PathConfig
 
-vite_config = ViteConfig(
-    mode="{mode}",
-    dev_mode=True,  # Set to False in production
-    types=True,     # Enable TypeScript type generation
-    paths=PathConfig(
-        root=Path(__file__).parent,
-        resource_dir="{resource_dir}",
-        bundle_dir="{bundle_dir}",
-    ),
-)"""
+        vite_config = ViteConfig(
+            mode="{mode}",
+            dev_mode=True,
+            types=True,
+            paths=PathConfig(
+                root=Path(__file__).parent,
+                resource_dir="{resource_dir}",
+                bundle_dir="{bundle_dir}",
+            ),
+        )
+        """
+    )
 
     console.print("\n[bold cyan]Recommended ViteConfig:[/]")
     console.print(Panel(config_snippet, title="app.py", border_style="dim"))
+    console.print("[dim]Note: set dev_mode=False in production; set types=False to disable TypeScript generation.[/]")
 
 
 def _coerce_option_value(value: str) -> object:
@@ -257,7 +267,7 @@ def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: An
         try:
             if types_config.openapi_path and types_config.openapi_path.exists():
                 openapi_schema = decode_json(types_config.openapi_path.read_bytes())
-        except (OSError, SerializationException):  # Non-fatal - page props can work without schema references
+        except (OSError, SerializationException):
             pass
 
         _export_inertia_pages_metadata(app, types_config, config.inertia, openapi_schema)
@@ -285,6 +295,9 @@ def _select_framework_template(template: "str | None", no_prompt: bool) -> "tupl
 
     Returns:
         Tuple of (template_name, framework_template).
+
+    Notes:
+        When ``no_prompt=True`` and no template is provided, defaults to the ``react`` template.
     """
     if template is None and not no_prompt:
         available = get_available_templates()
@@ -296,7 +309,7 @@ def _select_framework_template(template: "str | None", no_prompt: bool) -> "tupl
             "\nSelect a framework template", choices=[t.type.value for t in available], default="react"
         )
     elif template is None:
-        template = "react"  # Default when --no-prompt
+        template = "react"
 
     framework = get_template(template)
     if framework is None:

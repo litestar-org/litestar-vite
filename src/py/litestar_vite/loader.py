@@ -60,7 +60,11 @@ def _get_request_from_context(context: "Mapping[str, Any]") -> "Request[Any, Any
 
 
 def _get_vite_plugin(context: "Mapping[str, Any]") -> "VitePlugin | None":
-    """Return the VitePlugin from the template context, if registered."""
+    """Return the VitePlugin from the template context, if registered.
+
+    Returns:
+        The VitePlugin instance, or None if not registered.
+    """
     request = _get_request_from_context(context)
     return request.app.plugins.get("VitePlugin")
 
@@ -259,8 +263,6 @@ class ViteAssetLoader:
         """
         (self._load_hot_file_sync() if self._is_hot_dev else self._load_manifest_sync())
 
-    # --- Internal file loading methods (consolidated sync/async) ---
-
     def _get_manifest_path(self) -> Path:
         """Get the path to the manifest file.
 
@@ -328,8 +330,6 @@ class ViteAssetLoader:
         if hot_file_path.exists():
             self._vite_base_path = hot_file_path.read_text()
 
-    # --- Properties ---
-
     @property
     def manifest_content(self) -> str:
         """Get the raw manifest content.
@@ -360,8 +360,6 @@ class ViteAssetLoader:
         if self._manifest_content:
             return hashlib.sha256(self._manifest_content.encode("utf-8")).hexdigest()
         return "1.0"
-
-    # --- HTML generation methods ---
 
     def render_hmr_client(self) -> "markupsafe.Markup":
         """Render the HMR client script tags.

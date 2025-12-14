@@ -65,7 +65,11 @@ class AppHandler:
 
     @property
     def is_initialized(self) -> bool:
-        """Whether the handler has been initialized."""
+        """Whether the handler has been initialized.
+
+        Returns:
+            True when initialized, otherwise False.
+        """
         return self._initialized
 
     async def initialize_async(self, vite_url: "str | None" = None) -> None:
@@ -162,7 +166,11 @@ class AppHandler:
         return html
 
     async def _load_index_html_async(self) -> None:
-        """Load and cache index.html asynchronously."""
+        """Load and cache index.html asynchronously.
+
+        Raises:
+            ImproperlyConfiguredException: If index.html cannot be located.
+        """
         resolved_path: Path | None = None
         for candidate in self._config.candidate_index_html_paths():
             candidate_path = Path(candidate)
@@ -181,7 +189,11 @@ class AppHandler:
         self._cached_bytes = html.encode("utf-8")
 
     def _load_index_html_sync(self) -> None:
-        """Load and cache index.html synchronously."""
+        """Load and cache index.html synchronously.
+
+        Raises:
+            ImproperlyConfiguredException: If index.html cannot be located.
+        """
         resolved_path: Path | None = None
         for candidate in self._config.candidate_index_html_paths():
             candidate_path = Path(candidate)
@@ -200,7 +212,11 @@ class AppHandler:
         self._cached_bytes = html.encode("utf-8")
 
     def _raise_index_not_found(self) -> NoReturn:
-        """Raise an exception when index.html is not found."""
+        """Raise an exception when index.html is not found.
+
+        Raises:
+            ImproperlyConfiguredException: Always raised.
+        """
         joined_paths = ", ".join(str(path) for path in self._config.candidate_index_html_paths())
         msg = (
             "index.html not found. "
@@ -211,7 +227,11 @@ class AppHandler:
         raise ImproperlyConfiguredException(msg)
 
     def _get_manifest_path(self) -> Path:
-        """Get the path to the Vite manifest file."""
+        """Get the path to the Vite manifest file.
+
+        Returns:
+            Absolute path to the manifest file location.
+        """
         bundle_dir = self._config.bundle_dir
         if not bundle_dir.is_absolute():
             bundle_dir = self._config.root_dir / bundle_dir
@@ -256,7 +276,14 @@ class AppHandler:
             logger.warning("Failed to parse Vite manifest JSON: %s", exc)
 
     def _transform_asset_urls_in_html(self, html: str) -> str:
-        """Transform source asset URLs to production hashed URLs using manifest."""
+        """Transform source asset URLs to production hashed URLs using manifest.
+
+        Args:
+            html: The HTML to transform.
+
+        Returns:
+            The transformed HTML (or original HTML when no manifest is loaded).
+        """
         if not self._manifest:
             return html
         return transform_asset_urls(
@@ -264,14 +291,32 @@ class AppHandler:
         )
 
     def _get_csrf_token(self, request: "Request[Any, Any, Any]") -> "str | None":
-        """Extract CSRF token from the request scope."""
+        """Extract CSRF token from the request scope.
+
+        Args:
+            request: Incoming request.
+
+        Returns:
+            The CSRF token, or None if not present.
+        """
         from litestar.utils.empty import value_or_default
         from litestar.utils.scope.state import ScopeState
 
         return value_or_default(ScopeState.from_scope(request.scope).csrf_token, None)
 
     async def get_html(self, request: "Request[Any, Any, Any]", *, page_data: "dict[str, Any] | None" = None) -> str:
-        """Get the HTML for the SPA with optional transformations."""
+        """Get the HTML for the SPA with optional transformations.
+
+        Args:
+            request: Incoming request.
+            page_data: Optional page data to inject (e.g., Inertia page props).
+
+        Returns:
+            The rendered HTML.
+
+        Raises:
+            ImproperlyConfiguredException: If the handler is not initialized.
+        """
         if not self._initialized:
             msg = "AppHandler not initialized. Call initialize() during app startup."
             raise ImproperlyConfiguredException(msg)
@@ -306,7 +351,18 @@ class AppHandler:
         return self._transform_html(base_html, None, None)
 
     def get_html_sync(self, *, page_data: "dict[str, Any] | None" = None, csrf_token: "str | None" = None) -> str:
-        """Get the HTML for the SPA synchronously."""
+        """Get the HTML for the SPA synchronously.
+
+        Args:
+            page_data: Optional page data to inject (e.g., Inertia page props).
+            csrf_token: Optional CSRF token to inject.
+
+        Returns:
+            The rendered HTML.
+
+        Raises:
+            ImproperlyConfiguredException: If dev-mode HTTP clients are not initialized or Vite URL is unresolved.
+        """
         if not self._initialized:
             logger.warning(
                 "AppHandler lazy init triggered - lifespan may not have run. "
@@ -328,7 +384,14 @@ class AppHandler:
         return self._transform_html(base_html, page_data, csrf_token)
 
     async def get_bytes(self) -> bytes:
-        """Get cached index.html bytes (production)."""
+        """Get cached index.html bytes (production).
+
+        Returns:
+            Cached HTML bytes.
+
+        Raises:
+            ImproperlyConfiguredException: If index.html cannot be located.
+        """
         if not self._initialized:
             logger.warning(
                 "AppHandler lazy init triggered - lifespan may not have run. "
@@ -342,7 +405,17 @@ class AppHandler:
         return self._cached_bytes or b""
 
     async def _proxy_to_dev_server(self, request: "Request[Any, Any, Any]") -> str:
-        """Proxy request to Vite dev server and return HTML."""
+        """Proxy request to Vite dev server and return HTML.
+
+        Args:
+            request: Incoming request.
+
+        Returns:
+            HTML from the Vite dev server.
+
+        Raises:
+            ImproperlyConfiguredException: If the dev server cannot be reached or proxying is not configured.
+        """
         if self._http_client is None:
             msg = "HTTP client not initialized. Ensure initialize_async() was called for dev mode."
             raise ImproperlyConfiguredException(msg)
@@ -363,7 +436,14 @@ class AppHandler:
             return response.text
 
     def _proxy_to_dev_server_sync(self) -> str:
-        """Proxy request to Vite dev server synchronously."""
+        """Proxy request to Vite dev server synchronously.
+
+        Returns:
+            HTML from the Vite dev server.
+
+        Raises:
+            ImproperlyConfiguredException: If the dev server cannot be reached or proxying is not configured.
+        """
         if self._http_client_sync is None:
             msg = "HTTP client not initialized. Ensure initialize_sync() was called for dev mode."
             raise ImproperlyConfiguredException(msg)
@@ -384,7 +464,11 @@ class AppHandler:
             return response.text
 
     def _resolve_vite_url(self) -> str:
-        """Resolve the Vite server URL from hotfile or config."""
+        """Resolve the Vite server URL from hotfile or config.
+
+        Returns:
+            The base Vite URL without a trailing slash.
+        """
         hotfile = self._config.bundle_dir / self._config.hot_file
         if not hotfile.is_absolute():
             hotfile = self._config.root_dir / hotfile
@@ -400,7 +484,11 @@ class AppHandler:
         return f"{self._config.protocol}://{self._config.host}:{self._config.port}"
 
     def create_route_handler(self) -> Any:
-        """Create a Litestar route handler for the SPA."""
+        """Create a Litestar route handler for the SPA.
+
+        Returns:
+            A Litestar route handler suitable for registering on an application.
+        """
         is_dev = self._config.is_dev_mode and self._config.hot_reload
 
         opt: dict[str, Any] = {}

@@ -12,7 +12,11 @@ if TYPE_CHECKING:
 
 
 def redirect_on_asset_version_mismatch(request: "InertiaRequest[Any, Any, Any]") -> "InertiaExternalRedirect | None":
-    """Return redirect response when client and server asset versions differ."""
+    """Return redirect response when client and server asset versions differ.
+
+    Returns:
+        An InertiaExternalRedirect when versions differ, otherwise None.
+    """
     if not request.is_inertia:
         return None
 

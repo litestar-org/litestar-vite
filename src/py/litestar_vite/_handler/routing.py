@@ -1,6 +1,7 @@
 """SPA route handlers and routing helpers."""
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from contextlib import suppress
+from typing import TYPE_CHECKING, Any, cast
 
 from litestar import Response
 from litestar.exceptions import ImproperlyConfiguredException, NotFoundException
@@ -12,18 +13,6 @@ if TYPE_CHECKING:
 
 
 _HTML_MEDIA_TYPE = "text/html; charset=utf-8"
-
-
-@runtime_checkable
-class _HasOpt(Protocol):
-    opt: dict[str, Any] | None
-
-
-@runtime_checkable
-class _SpaHandler(Protocol):
-    async def get_html(self, request: Any) -> str: ...
-
-    async def get_bytes(self) -> bytes: ...
 
 
 def is_static_asset_path(request_path: str, asset_prefix: str | None) -> bool:
@@ -42,15 +31,24 @@ def is_static_asset_path(request_path: str, asset_prefix: str | None) -> bool:
 
 
 def get_route_opt(request: "Request[Any, Any, Any]") -> "dict[str, Any] | None":
-    """Return the current route handler opt dict when available."""
+    """Return the current route handler opt dict when available.
+
+    Returns:
+        The route handler ``opt`` mapping, or None if unavailable.
+    """
     route_handler = request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
-    if isinstance(route_handler, _HasOpt):
-        return route_handler.opt
-    return None
+    with suppress(AttributeError):
+        opt_any = cast("Any", route_handler).opt
+        return cast("dict[str, Any] | None", opt_any)
+    return None  # pragma: no cover
 
 
 def get_route_asset_prefix(request: "Request[Any, Any, Any]") -> str | None:
-    """Get the static asset prefix for the current SPA route handler."""
+    """Get the static asset prefix for the current SPA route handler.
+
+    Returns:
+        The asset URL prefix for this SPA route, or None if not configured.
+    """
     opt = get_route_opt(request)
     if opt is None:
         return None
@@ -60,7 +58,7 @@ def get_route_asset_prefix(request: "Request[Any, Any, Any]") -> str | None:
     return None
 
 
-def get_spa_handler_from_request(request: "Request[Any, Any, Any]") -> _SpaHandler:
+def get_spa_handler_from_request(request: "Request[Any, Any, Any]") -> Any:
     """Resolve the SPA handler instance for the current request.
 
     This is stored on the SPA route handler's ``opt`` when the route is created.
@@ -76,8 +74,14 @@ def get_spa_handler_from_request(request: "Request[Any, Any, Any]") -> _SpaHandl
     """
     opt = get_route_opt(request)
     handler = opt.get("_vite_spa_handler") if opt is not None else None
-    if isinstance(handler, _SpaHandler):
-        return handler
+    if handler is not None:
+        try:
+            _ = handler.get_html
+            _ = handler.get_bytes
+        except AttributeError:
+            pass
+        else:
+            return handler
     msg = "SPA handler is not available for this route. Ensure AppHandler.create_route_handler() was used."
     raise ImproperlyConfiguredException(msg)
 

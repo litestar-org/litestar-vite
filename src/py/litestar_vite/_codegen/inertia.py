@@ -31,7 +31,11 @@ if TYPE_CHECKING:
 
 
 def _str_list_factory() -> list[str]:
-    """Return an empty ``list[str]`` (typed for pyright)."""
+    """Return an empty ``list[str]`` (typed for pyright).
+
+    Returns:
+        An empty list.
+    """
     return []
 
 
@@ -283,7 +287,11 @@ def _build_inertia_shared_props(
     inertia_config: "InertiaConfig | None",
     types_config: "TypeGenConfig | None",
 ) -> dict[str, dict[str, Any]]:
-    """Build shared props metadata (built-ins + configured props)."""
+    """Build shared props metadata (built-ins + configured props).
+
+    Returns:
+        Mapping of shared prop name to metadata payload.
+    """
     fallback_ts_type = _fallback_ts_type(types_config)
 
     shared_props: dict[str, dict[str, Any]] = {
@@ -350,7 +358,11 @@ def generate_inertia_pages_json(
     inertia_config: "InertiaConfig | None" = None,
     types_config: "TypeGenConfig | None" = None,
 ) -> dict[str, Any]:
-    """Generate Inertia pages metadata JSON."""
+    """Generate Inertia pages metadata JSON.
+
+    Returns:
+        An Inertia pages metadata payload as a dictionary.
+    """
     pages_metadata = extract_inertia_pages(
         app,
         openapi_schema=openapi_schema,

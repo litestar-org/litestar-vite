@@ -1,4 +1,7 @@
-"""HTML transformation and injection utilities for SPA output."""
+"""HTML transformation and injection utilities for SPA output.
+
+Regex patterns are compiled once at import time for performance.
+"""
 
 import re
 from functools import lru_cache, partial
@@ -6,8 +9,6 @@ from typing import Any
 
 from litestar.serialization import encode_json
 
-# Compiled regex patterns for HTML transformations (case-insensitive)
-# These are compiled once at module load for better performance
 _HEAD_END_PATTERN = re.compile(r"</head\s*>", re.IGNORECASE)
 _BODY_END_PATTERN = re.compile(r"</body\s*>", re.IGNORECASE)
 _BODY_START_PATTERN = re.compile(r"<body[^>]*>", re.IGNORECASE)
@@ -54,6 +55,9 @@ def _get_id_element_with_content_pattern(element_id: str) -> re.Pattern[str]:
 
     The pattern matches: <tag ... id="element_id" ...> ... </tag>
     and captures the opening tag, the inner content, and the closing tag.
+
+    Returns:
+        Pattern matching an element with the given ID, capturing its inner HTML.
     """
     return re.compile(
         rf"(<(?P<tag>[a-zA-Z0-9]+)(?P<attrs>[^>]*\bid=[\"']{re.escape(element_id)}[\"'][^>]*)>)(?P<inner>.*?)(</(?P=tag)\s*>)",
@@ -156,19 +160,16 @@ def inject_head_script(html: str, script: str, *, escape: bool = True) -> str:
 
     script_tag = f"<script>{script}</script>\n"
 
-    # Try to find </head> tag (handles whitespace variations)
     head_end_match = _HEAD_END_PATTERN.search(html)
     if head_end_match:
         pos = head_end_match.start()
         return html[:pos] + script_tag + html[pos:]
 
-    # Fallback: inject before </html>
     html_end_match = _HTML_END_PATTERN.search(html)
     if html_end_match:
         pos = html_end_match.start()
         return html[:pos] + script_tag + html[pos:]
 
-    # No closing tags found - append at the end
     return html + "\n" + script_tag
 
 
@@ -232,7 +233,6 @@ def inject_body_content(html: str, content: str, *, position: str = "end") -> st
             pos = body_start_match.end()
             return html[:pos] + "\n" + content + html[pos:]
 
-    # No body tag found - return as-is
     return html
 
 
@@ -267,13 +267,11 @@ def set_data_attribute(html: str, selector: str, attr: str, value: str) -> str:
     attr_pattern = _get_attr_pattern(attr)
     replacer = partial(_set_attribute_replacer, attr_pattern=attr_pattern, attr_name=attr, escaped_val=escaped_value)
 
-    # Handle ID selector (#id)
     if selector.startswith("#"):
         element_id = selector[1:]
         pattern = _get_id_selector_pattern(element_id)
         return pattern.sub(replacer, html, count=1)
 
-    # Handle element selector (e.g., "div")
     element_name = selector.lower()
     pattern = _get_element_selector_pattern(element_name)
     return pattern.sub(replacer, html, count=1)
@@ -386,7 +384,6 @@ def transform_asset_urls(
         Returns:
             The full URL combining base and file path.
         """
-        # Ensure url_base ends with / for proper joining
         base = url_base if url_base.endswith("/") else url_base + "/"
         return base + file_path
 
@@ -420,13 +417,10 @@ def transform_asset_urls(
         normalized = _normalize_path(href)
         if normalized in manifest:
             entry = manifest[normalized]
-            # CSS files have their path directly in "file"
             new_href = _build_url(entry.get("file", href))
             return prefix + new_href + suffix
         return match.group(0)
 
-    # Transform script src attributes
     html = _SCRIPT_SRC_PATTERN.sub(replace_script_src, html)
 
-    # Transform link href attributes (for CSS)
     return _LINK_HREF_PATTERN.sub(replace_link_href, html)

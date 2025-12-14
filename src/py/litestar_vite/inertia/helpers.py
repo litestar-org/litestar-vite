@@ -166,7 +166,11 @@ class PropFilter:
     exclude: "set[str] | None" = None
 
     def should_include(self, key: str) -> bool:
-        """Return True when a prop key should be included."""
+        """Return True when a prop key should be included.
+
+        Returns:
+            True if the prop key should be included, otherwise False.
+        """
         if self.exclude is not None:
             return key not in self.exclude
         if self.include is not None:
@@ -470,7 +474,11 @@ class DeferredProp(Generic[PropKeyT, T]):
 
     @property
     def group(self) -> str:
-        """The deferred group this prop belongs to."""
+        """The deferred group this prop belongs to.
+
+        Returns:
+            The deferred group name.
+        """
         return self._group
 
     @property
@@ -966,11 +974,12 @@ def pagination_to_dict(value: "Any") -> dict[str, Any]:
     """
     result: dict[str, Any] = {"items": value.items}
 
-    sentinel = object()
     for attr, camel_attr in PAGINATION_ATTRS:
-        attr_value = getattr(value, attr, sentinel)
-        if attr_value is not sentinel:
-            result[camel_attr] = attr_value
+        try:
+            attr_value = value.__getattribute__(attr)
+        except AttributeError:
+            continue
+        result[camel_attr] = attr_value
 
     return result
 
