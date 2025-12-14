@@ -58,9 +58,10 @@ def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "E
     """Handler for all exceptions subclassed from HTTPException.
 
     Inertia detection:
+
     - For InertiaRequest instances, uses the request's derived flags (route component + headers).
-    - For plain Request instances (e.g., before routing/when middleware didn't run), falls back to
-      checking the ``X-Inertia`` header.
+    - For plain Request instances (e.g., before routing/when middleware didn't run), falls back
+      to checking the ``X-Inertia`` header.
 
     Args:
         request: The request object.

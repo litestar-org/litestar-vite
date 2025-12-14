@@ -1,6 +1,6 @@
 """Public code generation API.
 
-The internal implementation lives in :mod:`litestar_vite._codegen`.
+The internal implementation lives in ``litestar_vite._codegen``.
 
 This module provides a stable import surface for:
 
