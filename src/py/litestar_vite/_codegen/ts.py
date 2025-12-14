@@ -6,6 +6,24 @@ from typing import Any, cast
 
 _PATH_PARAM_TYPE_PATTERN = re.compile(r"\{([^:}]+):[^}]+\}")
 
+_OPENAPI_STRING_FORMAT_TO_TS_ALIAS: dict[str, str] = {
+    "uuid": "UUID",
+    "date-time": "DateTime",
+    "date": "DateOnly",
+    "time": "TimeOnly",
+    "duration": "Duration",
+    "email": "Email",
+    "idn-email": "Email",
+    "uri": "URI",
+    "url": "URI",
+    "iri": "URI",
+    "iri-reference": "URI",
+    "uri-reference": "URI",
+    "uri-template": "URI",
+    "ipv4": "IPv4",
+    "ipv6": "IPv6",
+}
+
 
 def normalize_path(path: str) -> str:
     """Normalize route path to use {param} syntax.
@@ -36,8 +54,10 @@ def ts_type_from_openapi(schema_dict: dict[str, Any]) -> str:
     if isinstance(ref, str) and ref:
         return ref.split("/")[-1]
 
-    if "anyOf" in schema_dict:
-        return "any"
+    if "anyOf" in schema_dict and isinstance(schema_dict["anyOf"], list) and schema_dict["anyOf"]:
+        schemas = cast("list[Any]", schema_dict["anyOf"])
+        union = {_ts_type_from_subschema(s) for s in schemas}
+        return _join_union(union)
 
     result = "any"
     match schema_dict:
@@ -52,7 +72,7 @@ def ts_type_from_openapi(schema_dict: dict[str, Any]) -> str:
             result = _join_union(union)
         case {"allOf": all_of} if isinstance(all_of, list) and all_of:
             schemas = cast("list[Any]", all_of)
-            parts = [_ts_type_from_subschema(s) for s in schemas]
+            parts = [_wrap_union_for_intersection(_ts_type_from_subschema(s)) for s in schemas]
             parts = [p for p in parts if p and p != "any"]
             result = " & ".join(parts) if parts else "any"
         case {"type": list()}:
@@ -142,10 +162,14 @@ def _ts_type_from_openapi_type_entry(type_name: str, schema_dict: dict[str, Any]
     }
 
     result = primitive_types.get(type_name, "any")
+    if type_name == "string":
+        fmt = schema_dict.get("format")
+        if isinstance(fmt, str) and fmt:
+            result = _OPENAPI_STRING_FORMAT_TO_TS_ALIAS.get(fmt, result)
     if type_name == "array":
         items = schema_dict.get("items")
         item_type = _ts_type_from_subschema(items) if isinstance(items, dict) else "unknown"
-        result = f"{item_type}[]"
+        result = f"{_wrap_for_array(item_type)}[]"
     elif type_name == "object":
         properties = schema_dict.get("properties")
         if not isinstance(properties, dict) or not properties:
@@ -165,6 +189,29 @@ def _ts_type_from_openapi_type_entry(type_name: str, schema_dict: dict[str, Any]
             result = "\n".join(lines)
 
     return result
+
+
+def _wrap_for_array(type_expr: str) -> str:
+    expr = type_expr.strip()
+    if not expr:
+        return "unknown"
+    if expr.startswith("(") and expr.endswith(")"):
+        return expr
+    # Parenthesize unions/intersections so `(A | B)[]` / `(A & B)[]` is emitted correctly.
+    if " | " in expr or (" & " in expr and not expr.startswith("{")):
+        return f"({expr})"
+    return expr
+
+
+def _wrap_union_for_intersection(type_expr: str) -> str:
+    expr = type_expr.strip()
+    if not expr:
+        return "any"
+    if expr.startswith("(") and expr.endswith(")"):
+        return expr
+    if " | " in expr:
+        return f"({expr})"
+    return expr
 
 
 def _join_union(types: set[str]) -> str:

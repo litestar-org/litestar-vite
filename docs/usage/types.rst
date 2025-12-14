@@ -196,6 +196,11 @@ The generated ``routes.ts`` provides Ziggy-style type-safe routing:
 
 .. code-block:: typescript
 
+    // If OpenAPI schemas include a `format`, `routes.ts` also emits semantic aliases
+    // and uses them in route parameter types (aliases are plain primitives, no runtime parsing).
+    export type UUID = string;
+    export type DateTime = string;
+
     // Generated types
     export type RouteName = "home" | "api:summary" | "api:books" | "api:books.detail";
 
@@ -227,6 +232,11 @@ The generated ``routes.ts`` provides Ziggy-style type-safe routing:
     route("home");                                  // "/"
     route("api:books.detail", { book_id: 123 });   // "/api/books/123"
     route("api:books.detail");                     // TypeScript Error!
+
+.. note::
+
+   For URL generation, route params never require ``null`` values. Optionality is represented by optional
+   query parameters (``?:``) and omission, matching how ``route()`` serializes values.
 
 Auto-Regeneration
 -----------------

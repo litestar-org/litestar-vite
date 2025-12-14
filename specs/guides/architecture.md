@@ -168,6 +168,7 @@ The generated file exports:
 - **`routes`**: Dictionary of route metadata.
 - **`RouteName`**: Union type of all available route names.
 - **`RouteParams`**: Typed parameter interfaces for each route.
+- **Semantic aliases**: When OpenAPI includes `format` (e.g. `uuid`, `date-time`), generated TS includes lightweight aliases (e.g. `type UUID = string`) and uses them in param types.
 - **CSRF Helpers**: Re-exports `getCsrfToken`, `csrfHeaders`, `csrfFetch` for convenience.
 
 This is the preferred routing method over the untyped runtime helpers.
