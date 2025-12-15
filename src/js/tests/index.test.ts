@@ -892,6 +892,51 @@ describe("litestar-vite-plugin", () => {
       expect(mockNext).not.toHaveBeenCalled()
     })
 
+    it("serves placeholder when mode is 'hybrid' in .litestar.json (inertiaMode auto-detected)", async () => {
+      // When Python sets mode="inertia", it's normalized to "hybrid" in .litestar.json
+      // The plugin should detect this and serve placeholder instead of user's index.html
+      const appUrl = "http://test.app:8000"
+      process.env.APP_URL = appUrl
+      const configPath = createRuntimeConfig({ mode: "hybrid" })
+
+      try {
+        await setupServer() // No explicit inertiaMode - should auto-detect from .litestar.json
+        mockFs(rootIndexPath) // index.html exists
+
+        await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
+
+        // Should serve placeholder, NOT the user's index.html
+        expect(mockRes.statusCode).toBe(200)
+        expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+        expect(mockRes.end).toHaveBeenCalledWith(actualPlaceholderContent.replace(/{{ APP_URL }}/g, appUrl))
+        expect(mockNext).not.toHaveBeenCalled()
+      } finally {
+        cleanupRuntimeConfig(configPath)
+      }
+    })
+
+    it("serves placeholder when mode is 'inertia' in .litestar.json", async () => {
+      // Direct "inertia" mode should also trigger placeholder serving
+      const appUrl = "http://test.app:8000"
+      process.env.APP_URL = appUrl
+      const configPath = createRuntimeConfig({ mode: "inertia" })
+
+      try {
+        await setupServer()
+        mockFs(rootIndexPath) // index.html exists
+
+        await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
+
+        // Should serve placeholder, NOT the user's index.html
+        expect(mockRes.statusCode).toBe(200)
+        expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+        expect(mockRes.end).toHaveBeenCalledWith(actualPlaceholderContent.replace(/{{ APP_URL }}/g, appUrl))
+        expect(mockNext).not.toHaveBeenCalled()
+      } finally {
+        cleanupRuntimeConfig(configPath)
+      }
+    })
+
     it("handles errors during index.html reading", async () => {
       await setupServer()
       mockFs(rootIndexPath) // Access mock allows finding the path
