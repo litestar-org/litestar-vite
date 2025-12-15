@@ -1,6 +1,6 @@
 # Quality Gates for litestar-vite
-# Version: 0.15.0-beta.1
-# Updated: 2025-12-07
+# Version: 0.15.0-beta.2
+# Updated: 2025-12-14
 
 implementation_gates:
   - name: local_tests_pass
@@ -58,13 +58,6 @@ documentation_gates:
         path: "tests/"
         severity: "error"
         message: "Use function-based pytest instead of class-based tests"
-        known_violations:
-          - "src/py/tests/unit/inertia/test_request.py"
-          - "src/py/tests/unit/inertia/test_response.py"
-          - "src/py/tests/unit/test_plugin.py"
-          - "src/py/tests/integration/test_optional_jinja.py"
-          - "src/py/tests/unit/test_commands.py"
-          - "src/py/tests/unit/test_executor.py"
 
       - pattern: "hasattr\\(|getattr("
         severity: "warning"
@@ -79,8 +72,8 @@ documentation_gates:
   - name: recent_patterns_documented
     patterns_to_capture:
       - "Props flattening in InertiaResponse._build_page_props()"
-      - "ViteSPAHandler.is_initialized property for init checks"
-      - "ViteSPAHandler.get_html_sync() for sync contexts"
+      - "AppHandler.is_initialized property for init checks"
+      - "AppHandler.get_html_sync() for sync contexts"
       - "HTTP/2 support with h2 package fallback (RuntimeConfig.http2)"
       - "External dev server config (ExternalDevServer)"
       - "Port auto-selection for proxy modes"

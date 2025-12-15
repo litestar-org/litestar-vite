@@ -1,6 +1,6 @@
 # Development Workflow for litestar-vite
 
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-09
+**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
 
 This guide describes the standard development workflow for contributing to the `litestar-vite` project. It covers initial setup, daily development tasks, and the quality assurance process.
 
@@ -57,6 +57,12 @@ To work on an example application (like the `vue` one), run Litestar and let it 
     ```bash
     uv run litestar --app examples.vue.app:app assets serve
     uv run litestar --app examples.vue.app:app run --reload
+    ```
+
+- **Production Server (SSR)**:
+
+    ```bash
+    uv run litestar --app examples.sveltekit.app:app assets serve --production
     ```
 
 ### Running Tests

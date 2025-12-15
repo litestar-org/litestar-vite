@@ -45,17 +45,14 @@ You are the Guides Agent for litestar-vite. Your mission is to ensure `specs/gui
 ## Phase 4: Execution & Verification
 
 1.  **Apply Edits**: Update markdown files.
-2.  **Build Docs**: `make docs` (if available).
-3.  **Verify**: `make lint` and `make test` to ensure docs didn't break anything (e.g. doctests).
+2.  **Verify**: Run `make lint` **ONLY** at the very end of the entire process. Do not run it after every file change.
 
 **Acceptance Criteria**:
 - [ ] 100% accuracy: Every statement matches code
 - [ ] Zero outdated content
 - [ ] All current features documented
 - [ ] Examples work
-- [ ] `make docs` succeeds
-- [ ] `make lint` passes
-- [ ] `make test` passes
+- [ ] `make lint` passes (run once at the end)
 
 Begin synchronization now. Be ruthless. The guides must be pure.
 """

@@ -1,7 +1,7 @@
 # Litestar Vite
 > Seamless Litestar ↔ Vite integration for SPA, Template, and Inertia.js apps.
 
-Current Version: **v0.15.0-rc.1**
+Current Version: **v0.15.0-beta.2**
 Documentation: [litestar-org.github.io/litestar-vite/latest/](https://litestar-org.github.io/litestar-vite/latest/)
 
 ## Quick Start
@@ -37,7 +37,7 @@ ViteConfig(
     mode="spa",           # spa, template, hybrid, ssr, external
     dev_mode=True,        # Enable HMR/Watch (env: VITE_DEV_MODE)
     paths=PathConfig(...),# root, bundle_dir, resource_dir, etc.
-    runtime=RuntimeConfig(...), # port, host, proxy_mode, executor
+    runtime=RuntimeConfig(...), # port, host, proxy_mode, executor, http2
     types=True,           # Enable type generation (TypeGenConfig)
     inertia=True,         # Enable Inertia.js (InertiaConfig)
     spa=True,             # Enable SPA transformations
@@ -71,3 +71,9 @@ import { getCsrfToken, csrfFetch } from "litestar-vite-plugin/helpers";
 import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
 import { route } from "@/generated/routes"; // Generated types
 ```
+
+## Source Map
+- **Guides**: `specs/guides/` (Architecture, Testing, Workflow)
+- **Python Code**: `src/py/litestar_vite/`
+- **TypeScript Code**: `src/js/src/`
+- **Examples**: `examples/`
