@@ -940,7 +940,8 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   }
 
   // Auto-detect Inertia mode from .litestar.json if not explicitly set
-  const inertiaMode = resolvedConfig.inertiaMode ?? pythonDefaults?.mode === "inertia"
+  // Check for both "hybrid" and "inertia" since Python normalizes "inertia" -> "hybrid"
+  const inertiaMode = resolvedConfig.inertiaMode ?? (pythonDefaults?.mode === "hybrid" || pythonDefaults?.mode === "inertia")
 
   const effectiveResourceDir = resolvedConfig.resourceDir ?? pythonDefaults?.resourceDir ?? "src"
 
