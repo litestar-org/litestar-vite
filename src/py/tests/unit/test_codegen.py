@@ -6,6 +6,18 @@ from uuid import UUID
 from litestar import Litestar, get, post
 from litestar.params import Parameter
 
+from litestar_vite._codegen.routes import (  # pyright: ignore[reportPrivateUsage]
+    _extract_path_params,
+    _make_unique_name,
+    extract_route_metadata,
+)
+from litestar_vite._codegen.ts import (  # pyright: ignore[reportPrivateUsage]
+    _join_union,
+    _ts_literal,
+    _wrap_for_array,
+    collect_ref_names,
+    python_type_to_typescript,
+)
 from litestar_vite.codegen import (
     _escape_ts_string,
     _is_type_required,
@@ -115,8 +127,9 @@ def test_generate_routes_ts_with_uuid_param() -> None:
     # Use OpenAPI schema to get proper type inference
     ts_content = generate_routes_ts(app, openapi_schema=app.openapi_schema.to_schema())
 
-    # Check UUID type maps to string (UUID format is represented as string in TypeScript)
-    assert "item_id: string" in ts_content
+    # Check UUID format is preserved as a semantic alias in TypeScript.
+    assert "export type UUID = string;" in ts_content
+    assert "item_id: UUID" in ts_content
 
 
 def test_generate_routes_ts_with_query_params() -> None:
@@ -327,6 +340,11 @@ def test_ts_type_from_openapi_single_types() -> None:
     assert "{" in result  # Empty interface
 
 
+def test_ts_type_from_openapi_ref() -> None:
+    """Test schema $ref resolution emits the component name."""
+    assert _ts_type_from_openapi({"$ref": "#/components/schemas/User"}) == "User"
+
+
 def test_ts_type_from_openapi_list_types() -> None:
     """Test OpenAPI 3.1 list types (nullable)."""
     # Litestar sorts union types alphabetically
@@ -347,10 +365,8 @@ def test_ts_type_from_openapi_one_of() -> None:
 
 def test_ts_type_from_openapi_any_of() -> None:
     """Test anyOf compositions."""
-    # Litestar doesn't have special anyOf handling, returns 'any'
     schema = {"anyOf": [{"type": "string"}, {"type": "integer"}]}
-    result = _ts_type_from_openapi(schema)
-    assert result == "any"  # anyOf not specially handled by parse_schema
+    assert _ts_type_from_openapi(schema) == "number | string"
 
 
 def test_ts_type_from_openapi_all_of() -> None:
@@ -358,6 +374,12 @@ def test_ts_type_from_openapi_all_of() -> None:
     schema = {"allOf": [{"type": "object"}, {"type": "object"}]}
     result = _ts_type_from_openapi(schema)
     assert "&" in result  # Intersection type
+
+
+def test_ts_type_from_openapi_all_of_wraps_union_parts() -> None:
+    """Test allOf wraps unions so TS precedence is correct."""
+    schema = {"allOf": [{"anyOf": [{"type": "string"}, {"type": "integer"}]}, {"type": "string"}]}
+    assert _ts_type_from_openapi(schema) == "(number | string) & string"
 
 
 def test_ts_type_from_openapi_enum() -> None:
@@ -377,6 +399,17 @@ def test_ts_type_from_openapi_const() -> None:
     assert _ts_type_from_openapi({"const": False}) == "any"
 
 
+def test_ts_literal_helper() -> None:
+    """Test literal helper covers common primitives and fallbacks."""
+    assert _ts_literal(None) == "null"
+    assert _ts_literal(True) == "true"
+    assert _ts_literal(False) == "false"
+    assert _ts_literal(1) == "1"
+    assert _ts_literal(1.5) == "1.5"
+    assert _ts_literal("x") == '"x"'
+    assert _ts_literal({"a": 1}) == "any"
+
+
 def test_ts_type_from_openapi_array() -> None:
     """Test array types."""
     assert _ts_type_from_openapi({"type": "array", "items": {"type": "string"}}) == "string[]"
@@ -385,6 +418,9 @@ def test_ts_type_from_openapi_array() -> None:
     # Nested arrays
     schema = {"type": "array", "items": {"type": "array", "items": {"type": "number"}}}
     assert _ts_type_from_openapi(schema) == "number[][]"
+    # Arrays of unions must be parenthesized
+    schema = {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}}
+    assert _ts_type_from_openapi(schema) == "(number | string)[]"
 
 
 def test_ts_type_from_openapi_format_only() -> None:
@@ -392,6 +428,36 @@ def test_ts_type_from_openapi_format_only() -> None:
     # Format without type returns 'any' per Litestar's behavior
     assert _ts_type_from_openapi({"format": "uuid"}) == "any"
     assert _ts_type_from_openapi({"format": "date-time"}) == "any"
+
+
+def test_ts_type_from_openapi_string_formats() -> None:
+    """Test OpenAPI string formats map to semantic aliases."""
+    assert _ts_type_from_openapi({"type": "string", "format": "uuid"}) == "UUID"
+    assert _ts_type_from_openapi({"type": "string", "format": "date-time"}) == "DateTime"
+    assert _ts_type_from_openapi({"type": "string", "format": "date"}) == "DateOnly"
+    assert _ts_type_from_openapi({"type": "string", "format": "time"}) == "TimeOnly"
+    assert _ts_type_from_openapi({"type": "string", "format": "duration"}) == "Duration"
+    assert _ts_type_from_openapi({"type": "string", "format": "email"}) == "Email"
+    assert _ts_type_from_openapi({"type": "string", "format": "uri"}) == "URI"
+    assert _ts_type_from_openapi({"type": "string", "format": "url"}) == "URI"
+    assert _ts_type_from_openapi({"type": "string", "format": "ipv4"}) == "IPv4"
+    assert _ts_type_from_openapi({"type": "string", "format": "ipv6"}) == "IPv6"
+    assert _ts_type_from_openapi({"type": "string", "format": "unknown-format"}) == "string"
+
+
+def test_generate_routes_ts_query_params_do_not_emit_null() -> None:
+    """Test generated URL param types never include `null`."""
+
+    @get("/search-null", name="search_null", sync_to_thread=False)
+    def search_null(q: str | None = None) -> list[str]:
+        return []
+
+    app = Litestar([search_null])
+    ts_content = generate_routes_ts(app, openapi_schema=app.openapi_schema.to_schema())
+
+    assert "q?: string" in ts_content
+    assert "q?: string | null" not in ts_content
+    assert "q?: null" not in ts_content
 
 
 def test_ts_type_from_openapi_edge_cases() -> None:
@@ -407,6 +473,84 @@ def test_ts_type_from_openapi_nullable_array() -> None:
     # oneOf with array and null (sorted alphabetically)
     schema: dict[str, Any] = {"oneOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]}
     assert _ts_type_from_openapi(schema) == "null | string[]"
+
+
+def test_ts_type_from_openapi_object_properties_required() -> None:
+    """Test object properties generate correct optional markers."""
+    schema: dict[str, Any] = {
+        "type": "object",
+        "properties": {"a": {"type": "string"}, "b": {"type": "integer"}},
+        "required": ["a"],
+    }
+    result = _ts_type_from_openapi(schema)
+    assert "a: string;" in result
+    assert "b?: number;" in result
+
+
+def test_python_type_to_typescript_basic_mappings() -> None:
+    """Test conversion of Python type strings to TypeScript."""
+    assert python_type_to_typescript("", fallback="unknown") == ("unknown", False)
+    assert python_type_to_typescript("str") == ("string", False)
+    assert python_type_to_typescript("int") == ("number", False)
+    ts_type, optional = python_type_to_typescript("typing.Optional[int]")
+    assert optional is True
+    assert ts_type == "Optional[int]"
+    assert python_type_to_typescript("None") == ("null", True)
+    assert python_type_to_typescript("Dict") == ("Record<string, unknown>", False)
+    assert python_type_to_typescript("List", fallback="Foo") == ("Foo[]", False)
+
+
+def test_collect_ref_names_nested() -> None:
+    """Test collection of referenced schema names."""
+    schema: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "user": {"$ref": "#/components/schemas/User"},
+            "tags": {"type": "array", "items": {"$ref": "#/components/schemas/Tag"}},
+        },
+        "anyOf": [{"$ref": "#/components/schemas/A"}, {"type": "null"}],
+    }
+    assert collect_ref_names(schema) == {"User", "Tag", "A"}
+
+
+def test_ts_helpers_union_and_array_wrapping() -> None:
+    """Test union join and array wrap helpers."""
+    assert _join_union(set()) == "any"
+    assert _join_union({"string"}) == "string"
+    assert _wrap_for_array("") == "unknown"
+    assert _wrap_for_array("number | string") == "(number | string)"
+
+
+def test_routes_helpers_make_unique_name_and_extract_path_params() -> None:
+    """Test helper behaviors for route name collisions and path param extraction."""
+    used = {"users"}
+    assert _make_unique_name("users", used, "/users/{id:int}", ["GET"]).startswith("users_users_id:int")
+    assert _extract_path_params("/users/{id:int}/posts/{slug:path}") == {"id": "string", "slug": "string"}
+
+
+def test_extract_route_metadata_falls_back_when_openapi_disabled() -> None:
+    """Test route metadata extraction uses path parsing when OpenAPI is disabled."""
+
+    @get("/users/{id:int}", name="user_detail", sync_to_thread=False)
+    def user_detail(id: int) -> dict[str, int]:
+        return {"id": id}
+
+    app = Litestar([user_detail], openapi_config=None)
+    routes = extract_route_metadata(app)
+    route = next(r for r in routes if r.name == "user_detail")
+    assert route.params == {"id": "string"}
+
+
+def test_generate_routes_ts_no_semantic_alias_block_when_unused() -> None:
+    """Test generated routes.ts does not include alias preamble when no formats are used."""
+
+    @get("/users/{id:int}", name="user_by_id", sync_to_thread=False)
+    def user_by_id(id: int) -> dict[str, int]:
+        return {"id": id}
+
+    app = Litestar([user_by_id])
+    ts_content = generate_routes_ts(app, openapi_schema=app.openapi_schema.to_schema())
+    assert "Semantic string aliases derived from OpenAPI `format`." not in ts_content
 
 
 # ============================================================================

@@ -4,7 +4,7 @@ This guide explains how configuration flows between Python (Litestar) and TypeSc
 
 ## Architecture Overview
 
-**Version**: 0.15.0-beta.2
+**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
 
 ```
 ┌─────────────────────┐
@@ -56,9 +56,15 @@ When Litestar starts, it writes a `.litestar.json` file containing shared config
     "output": "src/generated",
     "openapiPath": "src/generated/openapi.json",
     "routesPath": "src/generated/routes.json",
+    "routesTsPath": "src/generated/routes.ts",
+    "pagePropsPath": "src/generated/inertia-pages.json",
     "generateZod": true,
     "generateSdk": true,
-    "globalRoute": false
+    "generateRoutes": true,
+    "generatePageProps": true,
+    "globalRoute": false,
+    "fallbackType": "unknown",
+    "typeImportPaths": {}
   },
   "executor": "node",
   "logging": {
@@ -101,12 +107,14 @@ These are configured in Python and not exposed to TypeScript:
 
 - `DeployConfig` - CDN deployment settings (storage_backend, delete_orphaned, include_manifest, content_types)
 - `SPAConfig` - Single-page app settings (inject_csrf, cache_transformed_html, csrf_var_name, app_selector)
-- `InertiaConfig` - Inertia.js integration settings (root_template, component_opt_keys, spa_mode, encrypt_history, type_gen)
+- `InertiaConfig` - Inertia.js integration settings (root_template, component_opt_keys, encrypt_history, type_gen)
 - `InertiaTypeGenConfig` - Inertia type generation (include_default_auth, include_default_flash)
+- `InertiaSSRConfig` - Inertia SSR settings (enabled, url, timeout)
 - `RuntimeConfig.run_command`, `build_command`, `serve_command`, `install_command`, etc.
 - `RuntimeConfig.http2`, `start_dev_server`, `health_check`, `detect_nodeenv`, `set_environment`, `set_static_folders`, `csp_nonce`, `spa_handler`
 - `ExternalDevServer` - External dev server config (target, command, build_command, http2, enabled)
 - `PaginationContainer` - Protocol for pagination unwrapping
+- `ViteConfig` fields: `guards`, `exclude_static_from_auth`, `spa_path`, `include_root_spa_paths`
 
 ### TypeScript-Only Fields
 

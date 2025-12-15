@@ -1,6 +1,6 @@
 # Testing Guide for litestar-vite
 
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-09
+**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
 
 This guide provides instructions and best practices for writing and running tests in the `litestar-vite` project.
 
@@ -192,9 +192,8 @@ def start_dev_mode_wrong():
 ```
 src/py/tests/e2e/
 ├── __init__.py
-├── conftest.py           # Server fixtures with proper cleanup
-├── server_manager.py     # ExampleServer class using litestar CLI
-├── port_allocator.py     # Unique port assignment per example
+├── conftest.py           # Server fixtures with caching and process cleanup
+├── server_manager.py     # ExampleServer class using litestar CLI and port management
 ├── health_check.py       # HTTP polling utilities
 ├── assertions.py         # HTML/API validation helpers
 ├── test_dev_mode.py      # Dev mode tests for all examples

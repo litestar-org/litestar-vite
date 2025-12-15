@@ -1,6 +1,6 @@
 # Architecture Guide for litestar-vite
 
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-09
+**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
 
 This document outlines the architectural patterns and conventions used in the `litestar-vite` project.
 
@@ -30,14 +30,20 @@ The `ViteConfig` class in `config.py` controls the integration behavior. It uses
 - **`PathConfig`**: File system paths (root, bundle_dir, resource_dir, static_dir, asset_url, ssr_output_dir, manifest_name, hot_file)
 - **`RuntimeConfig`**: Execution settings (dev_mode, proxy_mode, external_dev_server, http2, start_dev_server)
 - **`TypeGenConfig`**: Type generation settings (output, openapi_path, routes_path, routes_ts_path, page_props_path, generate_zod, generate_sdk, generate_routes, generate_page_props, global_route, fallback_type, type_import_paths, watch_patterns)
-- **`InertiaConfig`**: Inertia.js settings (root_template, component_opt_keys, exclude_from_js_routes_key, redirect_unauthorized_to, redirect_404, extra_static_page_props, extra_session_page_props, spa_mode, app_selector, encrypt_history, type_gen).
+- **`InertiaConfig`**: Inertia.js settings (root_template, component_opt_keys, redirect_unauthorized_to, redirect_404, extra_static_page_props, extra_session_page_props, encrypt_history, type_gen, ssr).
 - **`InertiaTypeGenConfig`**: Inertia type generation settings (include_default_auth, include_default_flash)
+- **`InertiaSSRConfig`**: Inertia Server-Side Rendering settings (enabled, url, timeout)
 - **`SPAConfig`**: SPA transformation settings (inject_csrf, cache_transformed_html, app_selector, csrf_var_name)
 - **`LoggingConfig`**: Logging configuration (level, show_paths_absolute, suppress_npm_output, suppress_vite_banner, timestamps)
 - **`DeployConfig`**: CDN deployment settings (storage_backend, delete_orphaned, content_types, include_manifest)
 - **`ExternalDevServer`**: External dev server configuration (target, command, build_command, http2, enabled)
-- **`PaginationContainer`**: Protocol for pagination containers (items attribute)
-- **`ViteConfig.mode`**: Serving mode - "spa", "template", "htmx", "hybrid", "ssr", "ssg", or "external"
+- **`PaginationContainer`**: Protocol for pagination containers (must implement `items` attribute)
+- **`ViteConfig`**: Root configuration. Key fields include:
+    - **`mode`**: Serving mode - "spa", "template", "htmx", "hybrid", "ssr", "ssg", or "external"
+    - **`guards`**: Custom guards for the SPA catch-all route
+    - **`exclude_static_from_auth`**: Exclude static file routes from authentication (default: True)
+    - **`spa_path`**: Path where the SPA handler serves index.html (default: "/")
+    - **`include_root_spa_paths`**: Register SPA routes at root even when spa_path is non-root (default: False)
 
 Key `RuntimeConfig` options:
 
@@ -77,9 +83,9 @@ The backend is organized into specialized modules:
     - `deploy.py`: CDN deployment utilities using fsspec backends
 
 3. **SPA Support**:
-    - `spa.py`: `ViteSPAHandler` - serves SPA index.html in dev/production modes with both async and sync HTTP client support
+    - `handler.py` (exposes `AppHandler`): Serves SPA index.html in dev/production modes with both async and sync HTTP client support.
     - `html_transform.py`: HTML transformation functions (`inject_head_script`, `inject_body_content`, `inject_json_script`, `set_data_attribute`)
-    - Key features: `is_initialized` property, `get_html()` for async contexts, `get_html_sync()` for sync contexts, cached HTML in production with `SPAConfig.cache_transformed_html`
+    - Key features: `is_initialized` property, `get_html(request)` for async contexts, `get_html_sync()` for sync contexts, cached HTML in production with `SPAConfig.cache_transformed_html`
 
 4. **CLI & Tooling**:
     - `cli.py`: CLI entry points for Vite integration
@@ -98,8 +104,8 @@ The backend is organized into specialized modules:
     - `request.py`: `InertiaRequest` - enhanced request class with InertiaDetails/InertiaHeaders
     - `response.py`: `InertiaResponse` - Inertia page responses with props flattening
     - `routes.py`: `generate_js_routes` - route metadata generation for TypeScript
-    - `helpers.py`: Helper functions (`share`, `lazy`, `defer`, `merge`, `error`, `flash`, `scroll_props`, redirects)
-    - `exception_handler.py`: Exception handling for Inertia requests
+    - `helpers.py`: Helper functions (`share`, `lazy`, `defer`, `merge`, `error`, `flash`, `only`, `except_`, `clear_history`, `scroll_props`, `get_shared_props`, `extract_deferred_props`, `extract_merge_props`)
+    - `exception_handler.py`: Exception handling for Inertia requests (`exception_to_http_response`, `create_inertia_exception_response`)
     - `_utils.py`: Internal utilities
 
 ## Frontend Architecture (TypeScript/Vite)
@@ -113,7 +119,6 @@ src/js/src/
 ├── index.ts              # Main Vite plugin entry point
 ├── install-hint.ts       # Package manager detection utilities
 ├── litestar-meta.ts      # Runtime config loading from .litestar.json
-├── globals.d.ts          # TypeScript global type definitions
 ├── dev-server-index.html # Dev server fallback HTML template
 ├── astro.ts              # Astro integration
 ├── nuxt.ts               # Nuxt module integration
@@ -121,8 +126,7 @@ src/js/src/
 ├── helpers/              # Frontend helper utilities
 │   ├── index.ts          # Barrel export
 │   ├── csrf.ts           # CSRF token utilities (getCsrfToken, csrfHeaders, csrfFetch)
-│   ├── htmx.ts           # HTMX utilities (addDirective, registerHtmxExtension, setHtmxDebug, swapJson)
-│   └── routes.ts         # Route generation and matching (DEPRECATED - use generated routes.ts)
+│   └── htmx.ts           # HTMX utilities (addDirective, registerHtmxExtension, setHtmxDebug, swapJson)
 ├── shared/               # Shared utilities across modules
 │   ├── index.ts          # Barrel export
 │   └── debounce.ts       # Type-safe debounce utility
@@ -168,6 +172,7 @@ The generated file exports:
 - **`routes`**: Dictionary of route metadata.
 - **`RouteName`**: Union type of all available route names.
 - **`RouteParams`**: Typed parameter interfaces for each route.
+- **Semantic aliases**: When OpenAPI includes `format` (e.g. `uuid`, `date-time`), generated TS includes lightweight aliases (e.g. `type UUID = string`) and uses them in param types.
 - **CSRF Helpers**: Re-exports `getCsrfToken`, `csrfHeaders`, `csrfFetch` for convenience.
 
 This is the preferred routing method over the untyped runtime helpers.
@@ -245,6 +250,7 @@ For SPA-style applications, the project provides comprehensive Inertia.js suppor
 #### Frontend Helpers
 
 - **`resolvePageComponent`**: Dynamic page component resolution for code-splitting
+- **`unwrapPageProps`**: Utility to unwrap Litestar's `content` prop from Inertia page props
 - **Re-exports**: Provides type-safe access to Inertia adapter functions
 
 #### Helper Functions
@@ -264,7 +270,6 @@ For SPA-style applications, the project provides comprehensive Inertia.js suppor
 - **`get_shared_props`**: Retrieve shared props from request state
 - **`extract_deferred_props`**: Extract deferred props from a dict
 - **`extract_merge_props`**: Extract merge props from a dict
-- **`js_routes_script`**: Generate inline script tag for route metadata (deprecated, use generated routes.ts)
 - **`create_inertia_exception_response`**: Create Inertia error responses
 - **`exception_to_http_response`**: Convert exceptions to HTTP responses
 
@@ -322,8 +327,6 @@ The `examples/` directory contains working examples demonstrating various integr
 - **`react/`**: Basic React SPA
 - **`react-inertia/`**: React with Inertia.js
 - **`react-inertia-jinja/`**: React + Inertia with Jinja2 templates
-- **`react-router/`**: React with React Router
-- **`react-tanstack/`**: React with TanStack Router
 
 ### Vue Examples
 

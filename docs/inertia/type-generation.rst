@@ -97,6 +97,11 @@ The ``routes.ts`` file provides type-safe route handling:
 
 .. code-block:: typescript
 
+   // If OpenAPI schemas include a `format`, `routes.ts` also emits semantic aliases
+   // and uses them in route parameter types (aliases are plain primitives, no runtime parsing).
+   export type UUID = string;
+   export type DateTime = string;
+
    // Generated types
    export type RouteName = "home" | "dashboard" | "user-profile" | ...;
 
@@ -128,6 +133,11 @@ The ``routes.ts`` file provides type-safe route handling:
    route("home");                           // "/"
    route("user-profile", { userId: 123 });  // "/users/123"
    route("user-profile");                   // TS Error: missing params
+
+.. note::
+
+   For URL generation, route params never require ``null`` values. Optionality is represented by optional
+   query parameters (``?:``) and omission, matching how ``route()`` serializes values.
 
 Generated inertia-pages.json
 ----------------------------

@@ -1,6 +1,6 @@
 # Code Style Guide for litestar-vite
 
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-09
+**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
 
 This document defines the code style and quality standards for both the Python backend and TypeScript frontend. Consistency is enforced through automated tooling.
 
@@ -79,7 +79,7 @@ The pre-commit hooks automatically run Biome. To run it manually:
 
 ```bash
 # Format and lint all relevant files
-npx biome check --apply .
+npx biome check --write .
 ```
 
 ## Pre-Commit Hooks
