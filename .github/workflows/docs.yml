@@ -79,7 +79,7 @@ jobs:
         run: ls -la docs/_static/demos/ || echo "No demos generated"
 
       - name: Upload demos artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: demo-gifs
           path: docs/_static/demos/
