@@ -39,9 +39,35 @@
     "./nuxt": {
       "types": "./dist/js/nuxt.d.ts",
       "import": "./dist/js/nuxt.js"
+    },
+    "./inertia": {
+      "types": "./dist/js/inertia-types.d.ts",
+      "import": "./dist/js/inertia-types.js"
     }
   },
   "types": "./dist/js/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "helpers": [
+        "./dist/js/helpers/index.d.ts"
+      ],
+      "inertia-helpers": [
+        "./dist/js/inertia-helpers/index.d.ts"
+      ],
+      "astro": [
+        "./dist/js/astro.d.ts"
+      ],
+      "sveltekit": [
+        "./dist/js/sveltekit.d.ts"
+      ],
+      "nuxt": [
+        "./dist/js/nuxt.d.ts"
+      ],
+      "inertia": [
+        "./dist/js/inertia-types.d.ts"
+      ]
+    }
+  },
   "files": [
     "dist/js/**/*",
     "tools/clean.js"
@@ -56,7 +82,7 @@
     "build-plugin-esm": "esbuild src/js/src/index.ts --platform=node --format=esm --outfile=dist/js/index.js && esbuild src/js/src/install-hint.ts --platform=node --format=esm --outfile=dist/js/install-hint.js && esbuild src/js/src/litestar-meta.ts --platform=node --format=esm --outfile=dist/js/litestar-meta.js && mkdir -p dist/js/shared && esbuild src/js/src/shared/bridge-schema.ts src/js/src/shared/debounce.ts src/js/src/shared/format-path.ts src/js/src/shared/logger.ts src/js/src/shared/emit-page-props-types.ts src/js/src/shared/typegen-plugin.ts --platform=node --format=esm --outdir=dist/js/shared",
     "build-helpers": "rm -rf dist/js/helpers && tsc --project src/js/tsconfig.helpers.json",
     "build-inertia-helpers": "rm -rf dist/js/inertia-helpers && tsc --project src/js/tsconfig.inertia-helpers.json",
-    "build-integrations": "esbuild src/js/src/astro.ts src/js/src/sveltekit.ts src/js/src/nuxt.ts --platform=node --format=esm --outdir=dist/js",
+    "build-integrations": "esbuild src/js/src/astro.ts src/js/src/sveltekit.ts src/js/src/nuxt.ts src/js/src/inertia-types.ts --platform=node --format=esm --outdir=dist/js",
     "lint": "biome check --vcs-enabled=false src/js/src src/js/tests",
     "test": "vitest --config ./src/js/vitest.config.ts run"
   },

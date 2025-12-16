@@ -209,7 +209,7 @@ export interface FlashMessages {}
   const availableApiTypes = new Set<string>()
   if (fs.existsSync(apiTypesPath)) {
     const content = await fs.promises.readFile(apiTypesPath, "utf-8")
-    for (const match of content.matchAll(/export (?:type|interface|enum|class) (\\w+)/g)) {
+    for (const match of content.matchAll(/export (?:type|interface|enum|class) (\w+)/g)) {
       if (match[1]) {
         availableApiTypes.add(match[1])
       }
@@ -234,7 +234,13 @@ export interface FlashMessages {}
 
   if (unresolvedTypes.length > 0) {
     // eslint-disable-next-line no-console
-    console.warn(`litestar-vite: unresolved Inertia props types: ${unresolvedTypes.join(", ")}. Add them to TypeGenConfig.type_import_paths or include them in OpenAPI.`)
+    console.warn(
+      `litestar-vite: Unresolved Inertia props types: ${unresolvedTypes.join(", ")}.\n` +
+        "  To fix:\n" +
+        "  1. Add to OpenAPI by including in route return types\n" +
+        "  2. Or configure TypeGenConfig.type_import_paths:\n" +
+        `     types=TypeGenConfig(type_import_paths={"${unresolvedTypes[0]}": "@/types/custom"})`,
+    )
   }
 
   let importStatement = ""
@@ -291,8 +297,9 @@ ${generatedSharedPropLines.join("\n")}
 export interface SharedProps {
 }
 
-/** Full shared props = generated + user-defined */
-export type FullSharedProps = GeneratedSharedProps & SharedProps
+/** Full shared props = generated + user-defined.
+ * Includes index signature for compatibility with Inertia's usePage<T>(). */
+export type FullSharedProps = GeneratedSharedProps & SharedProps & { [key: string]: unknown }
 
 /** Page props mapped by component name */
 export interface PageProps {
@@ -315,4 +322,43 @@ declare module "litestar-vite-plugin/inertia" {
 `
 
   await fs.promises.writeFile(outFile, body, "utf-8")
+
+  // Generate user stub file if it doesn't exist (one-time generation)
+  const userStubFile = path.join(outDir, "page-props.user.ts")
+  if (!fs.existsSync(userStubFile)) {
+    const userStub = `/**
+ * User-defined type overrides for Inertia page props.
+ * This file is generated ONCE and never overwritten - edit freely!
+ *
+ * Use module augmentation to extend generated types:
+ */
+
+declare module "litestar-vite-plugin/inertia" {
+  // Example: Add fields to the User interface
+  // interface User {
+  //   avatarUrl?: string | null
+  //   roles: string[]
+  //   teams: Team[]
+  // }
+
+  // Example: Add session-based shared props
+  // interface SharedProps {
+  //   currentTeam?: {
+  //     teamId: string
+  //     teamName: string
+  //   }
+  //   locale?: string
+  // }
+}
+
+// Export custom types that can be used in page props
+// export interface CurrentTeam {
+//   teamId: string
+//   teamName: string
+// }
+
+export {}
+`
+    await fs.promises.writeFile(userStubFile, userStub, "utf-8")
+  }
 }

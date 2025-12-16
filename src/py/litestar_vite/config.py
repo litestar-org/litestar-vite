@@ -254,8 +254,19 @@ class InertiaConfig:
     """Optionally supply a path where 404 requests should redirect."""
     extra_static_page_props: "dict[str, Any]" = field(default_factory=_empty_dict_factory)
     """A dictionary of values to automatically add in to page props on every response."""
-    extra_session_page_props: "set[str]" = field(default_factory=_empty_set_factory)
-    """A set of session keys for which the value automatically be added (if it exists) to the response."""
+    extra_session_page_props: "set[str] | dict[str, type]" = field(default_factory=_empty_set_factory)
+    """Session props to include in page responses.
+
+    Can be either:
+    - A set of session key names (types will be 'unknown')
+    - A dict mapping session keys to Python types (auto-registered with OpenAPI)
+
+    Example with types (recommended):
+        extra_session_page_props={"currentTeam": TeamDetail}
+
+    Example without types (legacy):
+        extra_session_page_props={"currentTeam"}
+    """
     encrypt_history: bool = False
     """Enable browser history encryption globally (v2 feature).
 
@@ -622,10 +633,9 @@ class TypeGenConfig:
         generate_page_props: Generate Inertia page props TypeScript file.
             Auto-enabled when both types and inertia are configured.
         page_props_path: Path to export page props metadata (JSON format).
-        watch_patterns: File patterns to watch for type regeneration.
         global_route: Register route() function globally on window object.
             When True, adds ``window.route = route`` to generated routes.ts,
-            providing Laravel/Ziggy-style global access without imports.
+            providing global access without imports.
         fallback_type: Fallback value type for untyped containers in generated Inertia props.
             Controls whether untyped dict/list become `unknown` (default) or `any`.
         type_import_paths: Map schema/type names to TypeScript import paths for props types
@@ -669,9 +679,6 @@ class TypeGenConfig:
     The Vite plugin reads this file to generate page-props.ts.
     Defaults to output / "inertia-pages.json".
     """
-    watch_patterns: list[str] = field(
-        default_factory=lambda: ["**/routes.py", "**/handlers.py", "**/controllers/**/*.py"]
-    )
 
     def __post_init__(self) -> None:
         """Normalize path types and compute defaults based on output directory."""
