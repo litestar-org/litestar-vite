@@ -933,6 +933,30 @@ def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
         raise LitestarCLIException(msg) from e
 
 
+def _export_routes_typescript(app: "Litestar", types_config: Any) -> None:
+    """Export typed routes TypeScript file (Ziggy-style).
+
+    Args:
+        app: The Litestar application instance.
+        types_config: The TypeGenConfig instance.
+
+    Raises:
+        LitestarCLIException: If export fails.
+    """
+    if not types_config.generate_routes:
+        return
+
+    console.print("[dim]   Generating typed routes.ts...[/]")
+    try:
+        ts_content = generate_routes_ts(app)
+        types_config.routes_ts_path.parent.mkdir(parents=True, exist_ok=True)
+        types_config.routes_ts_path.write_text(ts_content)
+        console.print(f"[green]✓ Typed routes generated at {_relative_path(types_config.routes_ts_path)}[/]")
+    except OSError as e:
+        msg = f"Failed to generate typed routes: {e}"
+        raise LitestarCLIException(msg) from e
+
+
 def _export_inertia_pages_metadata(
     app: "Litestar", types_config: Any, inertia_config: Any, openapi_schema: "dict[str, Any] | None" = None
 ) -> None:
@@ -1091,6 +1115,7 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
 
     _export_openapi_schema(app, config.types)
     _export_routes_metadata(app, config.types)
+    _export_routes_typescript(app, config.types)
     _run_openapi_ts(config, verbose, config.install_command, config.runtime.executor)
     if isinstance(config.inertia, InertiaConfig) and config.types.generate_page_props and config.types.page_props_path:
         openapi_schema: dict[str, Any] | None = None
