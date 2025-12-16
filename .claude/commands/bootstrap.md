@@ -1,6 +1,6 @@
 ---
 description: Bootstrap AI development infrastructure for any project (Intelligent Edition)
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, mcp__sequential-thinking__sequentialthinking, mcp__zen__planner, mcp__zen__thinkdeep
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, mcp__sequential-thinking__sequentialthinking, mcp__pal__planner, mcp__pal__thinkdeep
 ---
 
 # Project Bootstrap Command - Intelligent Edition
@@ -395,7 +395,7 @@ cat > .claude/mcp-strategy.md << 'EOF'
 ## Tool Selection by Task Type
 
 ### Complex Architectural Decisions
-1. **Primary**: mcp__zen__thinkdeep
+1. **Primary**: mcp__pal__thinkdeep
 2. **Fallback**: mcp__sequential-thinking__sequentialthinking
 
 ### Library Documentation Lookup
@@ -403,15 +403,15 @@ cat > .claude/mcp-strategy.md << 'EOF'
 2. **Fallback**: WebSearch
 
 ### Multi-Phase Planning
-1. **Primary**: mcp__zen__planner
+1. **Primary**: mcp__pal__planner
 2. **Fallback**: Manual structured thinking
 
 ### Code Analysis
-1. **Primary**: mcp__zen__analyze
+1. **Primary**: mcp__pal__analyze
 2. **Fallback**: Manual code review
 
 ### Debugging
-1. **Primary**: mcp__zen__debug
+1. **Primary**: mcp__pal__debug
 2. **Fallback**: Manual investigation
 
 ## Complexity-Based Selection
@@ -913,10 +913,10 @@ mcp__sequential-thinking__sequentialthinking(
 
 ### Zen Tools
 
-- `mcp__zen__planner` - Multi-phase planning
-- `mcp__zen__thinkdeep` - Deep analysis
-- `mcp__zen__analyze` - Code analysis
-- `mcp__zen__debug` - Debugging
+- `mcp__pal__planner` - Multi-phase planning
+- `mcp__pal__thinkdeep` - Deep analysis
+- `mcp__pal__analyze` - Code analysis
+- `mcp__pal__debug` - Debugging
 
 ---
 
@@ -948,7 +948,7 @@ Location: `specs/guides/patterns/`
 ```markdown
 ---
 description: Create a PRD with pattern learning and adaptive complexity
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs, mcp__sequential-thinking__sequentialthinking, mcp__zen__planner
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs, mcp__sequential-thinking__sequentialthinking, mcp__pal__planner
 ---
 
 # Intelligent PRD Creation Workflow
@@ -1138,8 +1138,8 @@ Next: Run `/implement {slug}`
 ---
 name: expert
 description: Implementation specialist with pattern compliance. Use for implementing features from PRDs.
-tools: Read, Write, Edit, Glob, Grep, Bash, Task, WebSearch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs, mcp__zen__thinkdeep, mcp__zen__debug
-model: sonnet
+tools: Read, Write, Edit, Glob, Grep, Bash, Task, WebSearch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs, mcp__pal__thinkdeep, mcp__pal__debug
+model: opus
 ---
 
 # Expert Agent (Intelligent Edition)

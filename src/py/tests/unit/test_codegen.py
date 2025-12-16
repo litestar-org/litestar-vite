@@ -159,7 +159,9 @@ def test_generate_routes_ts_empty_routes() -> None:
     assert "export const routeDefinitions = {" in ts_content
     # The RouteName type should be 'never' when no routes
     # Check that the file is syntactically complete
-    assert ts_content.count("{") == ts_content.count("}")
+    # Note: We don't check brace balance because regex literals like /\{([^}]+)\}/
+    # contain unbalanced braces in the source code (this is valid JS/TS)
+    assert "export function route<" in ts_content
 
 
 def test_generate_routes_ts_multiple_methods() -> None:
@@ -318,8 +320,9 @@ def test_generate_routes_ts_is_valid_typescript() -> None:
     assert "export const routeDefinitions = {" in ts_content
     assert "export function route<" in ts_content
 
-    # Balanced braces
-    assert ts_content.count("{") == ts_content.count("}")
+    # Note: We don't check brace balance because regex literals like /\{([^}]+)\}/
+    # contain unbalanced braces in the source code (this is valid JS/TS).
+    # The real validation is done by TypeScript compilation via npm run build.
     assert ts_content.count("(") == ts_content.count(")")
     assert ts_content.count("[") == ts_content.count("]")
 

@@ -474,12 +474,12 @@ export function route<T extends RouteName>(
   const def = routeDefinitions[name];
   let url: string = def.path;
 
-  // Replace path parameters
+  // Replace path parameters (use replaceAll to handle multiple occurrences)
   if (params) {{
     for (const param of def.pathParams) {{
       const value = (params as Record<string, unknown>)[param];
       if (value !== undefined) {{
-        url = url.replace("{{" + param + "}}", String(value));
+        url = url.replaceAll("{{" + param + "}}", String(value));
       }}
     }}
   }}
@@ -516,6 +516,125 @@ export function getRouteNames(): RouteName[] {{
 export function getRoute<T extends RouteName>(name: T): (typeof routeDefinitions)[T] {{
   return routeDefinitions[name];
 }}
+
+// ============================================================================
+// Route Matching Helpers
+// ============================================================================
+
+/** Cache for compiled route patterns */
+const patternCache = new Map<string, RegExp>();
+
+/**
+ * Compile a route path pattern to a regex for URL matching.
+ * Results are cached for performance.
+ */
+function compilePattern(path: string): RegExp {{
+  const cached = patternCache.get(path);
+  if (cached) return cached;
+
+  // Escape special regex characters except {{ }}
+  let pattern = path.replace(/[.*+?^$|()\\[\\]]/g, '\\\\$&');
+  // Replace {{param}} or {{param:type}} with matchers
+  pattern = pattern.replace(/\\{{([^}}]+)\\}}/g, (_match, paramSpec: string) => {{
+    const paramType = paramSpec.includes(':') ? paramSpec.split(':')[1] : 'str';
+    switch (paramType) {{
+      case 'uuid':
+        return '[0-9a-f]{{8}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{12}}';
+      case 'path':
+        return '.*';
+      case 'int':
+        return '\\\\d+';
+      default:
+        return '[^/]+';
+    }}
+  }});
+  const regex = new RegExp(`^${{pattern}}$`, 'i');
+  patternCache.set(path, regex);
+  return regex;
+}}
+
+/**
+ * Convert a URL to its corresponding route name.
+ *
+ * @param url - URL or path to match (query strings and hashes are stripped)
+ * @returns The matching route name, or null if no match found
+ *
+ * @example
+ * toRoute('/api/books')        // 'books'
+ * toRoute('/api/books/123')    // 'book_detail'
+ * toRoute('/unknown')          // null
+ */
+export function toRoute(url: string): RouteName | null {{
+  // Strip query string and hash
+  const path = url.split('?')[0].split('#')[0];
+  // Normalize: remove trailing slash except for root
+  const normalized = path === '/' ? path : path.replace(/\\/$/, '');
+
+  for (const [name, def] of Object.entries(routeDefinitions)) {{
+    if (compilePattern(def.path).test(normalized)) {{
+      return name as RouteName;
+    }}
+  }}
+  return null;
+}}
+
+/**
+ * Get the current route name based on the browser URL.
+ * Returns null in SSR/non-browser environments.
+ *
+ * @returns Current route name, or null if no match or not in browser
+ *
+ * @example
+ * // On page /api/books/123
+ * currentRoute()  // 'book_detail'
+ */
+export function currentRoute(): RouteName | null {{
+  if (typeof window === 'undefined') return null;
+  return toRoute(window.location.pathname);
+}}
+
+/**
+ * Check if a URL matches a route name or pattern.
+ * Supports wildcard patterns with `*` to match multiple routes.
+ *
+ * @param url - URL or path to check
+ * @param pattern - Route name or pattern (e.g., 'books', 'book_*', '*_detail')
+ * @returns True if the URL matches the route pattern
+ *
+ * @example
+ * isRoute('/api/books', 'books')           // true
+ * isRoute('/api/books/123', 'book_*')      // true (wildcard)
+ */
+export function isRoute(url: string, pattern: string): boolean {{
+  const routeName = toRoute(url);
+  if (!routeName) return false;
+  // Escape special regex chars (except *), then convert * to .*
+  const escaped = pattern.replace(/[.+?^$|()\\[\\]{{}}]/g, '\\\\$&');
+  const regex = new RegExp(`^${{escaped.replace(/\\*/g, '.*')}}$`);
+  return regex.test(routeName);
+}}
+
+/**
+ * Check if the current browser URL matches a route name or pattern.
+ * Supports wildcard patterns with `*` to match multiple routes.
+ * Returns false in SSR/non-browser environments.
+ *
+ * @param pattern - Route name or pattern (e.g., 'books', 'book_*', '*_page')
+ * @returns True if current URL matches the route pattern
+ *
+ * @example
+ * // On page /books
+ * isCurrentRoute('books_page')  // true
+ * isCurrentRoute('*_page')      // true (wildcard)
+ */
+export function isCurrentRoute(pattern: string): boolean {{
+  const current = currentRoute();
+  if (!current) return false;
+  // Escape special regex chars (except *), then convert * to .*
+  const escaped = pattern.replace(/[.+?^$|()\\[\\]{{}}]/g, '\\\\$&');
+  const regex = new RegExp(`^${{escaped.replace(/\\*/g, '.*')}}$`);
+  return regex.test(current);
+}}
 """
 
 
@@ -530,7 +649,5 @@ def _render_semantic_aliases(aliases: set[str]) -> str:
     lines: list[str] = ["/** Semantic string aliases derived from OpenAPI `format`. */"]
     for alias in sorted(aliases):
         doc, base = _TS_SEMANTIC_ALIASES[alias]
-        lines.append(f"/** {doc} */")
-        lines.append(f"export type {alias} = {base};")
-        lines.append("")
+        lines.extend((f"/** {doc} */", f"export type {alias} = {base};", ""))
     return "\n".join(lines).rstrip()
