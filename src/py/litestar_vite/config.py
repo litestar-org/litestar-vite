@@ -147,19 +147,19 @@ class DeployConfig:
     Attributes:
         enabled: Enable deployment features.
         storage_backend: fsspec URL for the target location (e.g., ``gcs://bucket/path``).
-        asset_url: Public URL prefix where deployed assets will be served (e.g., ``https://cdn.example.com/assets/``).
-            When set and deployment is enabled, this value is used as the effective ``ViteConfig.asset_url`` in
-            non-dev mode so production builds and HTML transformations reference the deployed location.
         storage_options: Provider options forwarded to ``fsspec`` (credentials, region, etc.).
+        asset_url: Public URL prefix where deployed assets will be served (e.g., ``https://cdn.example.com/assets/``).
+            When set and deployment is enabled, this value is written to ``.litestar.json`` as ``deployAssetUrl`` and
+            used by the Vite plugin as the ``base`` during ``vite build``. It does not replace ``PathConfig.asset_url``.
         delete_orphaned: Remove remote files not present in the local bundle.
         include_manifest: Upload ``manifest.json`` alongside assets.
         content_types: Optional content-type overrides keyed by file extension.
     """
 
-    enabled: bool = False
+    enabled: bool = True
     storage_backend: "str | None" = field(default_factory=lambda: os.getenv("VITE_DEPLOY_STORAGE"))
-    asset_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_DEPLOY_ASSET_URL"))
     storage_options: dict[str, Any] = field(default_factory=_default_storage_options)
+    asset_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_DEPLOY_ASSET_URL"))
     delete_orphaned: bool = field(default_factory=lambda: os.getenv("VITE_DEPLOY_DELETE", "true") in TRUE_VALUES)
     include_manifest: bool = True
     content_types: dict[str, str] = field(default_factory=_default_content_types)
@@ -177,16 +177,16 @@ class DeployConfig:
     def with_overrides(
         self,
         storage_backend: "str | None" = None,
-        asset_url: "str | None" = None,
         storage_options: "dict[str, Any] | None" = None,
+        asset_url: "str | None" = None,
         delete_orphaned: "bool | None" = None,
     ) -> "DeployConfig":
         """Return a copy with overrides applied.
 
         Args:
             storage_backend: Override for the storage URL.
-            asset_url: Override for the public asset URL.
             storage_options: Override for backend options.
+            asset_url: Override for the public asset URL.
             delete_orphaned: Override deletion behaviour.
 
         Returns:
@@ -195,8 +195,8 @@ class DeployConfig:
         return replace(
             self,
             storage_backend=storage_backend or self.storage_backend,
-            asset_url=asset_url or self.asset_url,
             storage_options=storage_options or self.storage_options,
+            asset_url=asset_url or self.asset_url,
             delete_orphaned=self.delete_orphaned if delete_orphaned is None else delete_orphaned,
         )
 
@@ -1345,9 +1345,6 @@ class ViteConfig:
         Returns:
             The configured asset URL prefix.
         """
-        deploy = self.deploy_config
-        if not self.is_dev_mode and deploy is not None and deploy.asset_url:
-            return deploy.asset_url
         return self.paths.asset_url
 
     def _resolve_to_root(self, path: Path) -> Path:

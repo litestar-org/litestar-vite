@@ -548,6 +548,9 @@ Deployment has two distinct concepts:
 
 Do **not** set ``asset_url`` to an ``s3://`` URL. Browsers can only fetch ``http(s)`` URLs.
 
+``DeployConfig.asset_url`` is written to ``.litestar.json`` as ``deployAssetUrl`` and used by the Vite plugin as the ``base`` during
+``vite build``. If Litestar serves HTML (template/hybrid/AppHandler transforms), also set ``PathConfig.asset_url`` to the same public URL.
+
 .. code-block:: python
 
     from litestar_vite import DeployConfig, ViteConfig, VitePlugin
@@ -555,7 +558,6 @@ Do **not** set ``asset_url`` to an ``s3://`` URL. Browsers can only fetch ``http
     VitePlugin(
         config=ViteConfig(
             deploy=DeployConfig(
-                enabled=True,
                 storage_backend="s3://bucket/assets",
                 asset_url="https://cdn.example.com/assets/",
             )

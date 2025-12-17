@@ -318,9 +318,14 @@ def test_validate_mode_spa_dev_mode_allows_missing_index(tmp_path: Path) -> None
 
 
 def test_asset_url_uses_deploy_asset_url_in_production() -> None:
-    config = ViteConfig(deploy=DeployConfig(enabled=True, asset_url="https://cdn.example.com/assets/"), dev_mode=False)
+    config = ViteConfig(
+        deploy=DeployConfig(enabled=True, asset_url="https://cdn.example.com/assets/"),
+        dev_mode=False,
+        paths=PathConfig(asset_url="https://runtime.example.com/static/"),
+    )
 
-    assert config.asset_url == "https://cdn.example.com/assets/"
+    # Deploy asset_url should not change runtime asset_url; it's used for build-time base via `.litestar.json`.
+    assert config.asset_url == "https://runtime.example.com/static/"
 
 
 def test_asset_url_ignores_deploy_asset_url_in_dev_mode() -> None:
