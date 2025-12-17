@@ -12,7 +12,7 @@
 import fs from "node:fs"
 import path from "node:path"
 
-export type BridgeMode = "spa" | "template" | "htmx" | "hybrid" | "inertia" | "ssr" | "ssg" | "external"
+export type BridgeMode = "spa" | "template" | "htmx" | "hybrid" | "inertia" | "framework" | "ssr" | "ssg" | "external"
 export type BridgeProxyMode = "vite" | "direct" | "proxy" | null
 export type BridgeExecutor = "node" | "bun" | "deno" | "yarn" | "pnpm"
 
@@ -31,6 +31,7 @@ export interface BridgeTypesConfig {
 
 export interface BridgeSchema {
   assetUrl: string
+  deployAssetUrl: string | null
   bundleDir: string
   resourceDir: string
   staticDir: string
@@ -42,7 +43,6 @@ export interface BridgeSchema {
   host: string
   port: number
 
-  ssrEnabled: boolean
   ssrOutDir: string | null
 
   types: BridgeTypesConfig | null
@@ -62,6 +62,7 @@ export interface BridgeSchema {
 
 const allowedTopLevelKeys: ReadonlySet<string> = new Set([
   "assetUrl",
+  "deployAssetUrl",
   "bundleDir",
   "resourceDir",
   "staticDir",
@@ -71,7 +72,6 @@ const allowedTopLevelKeys: ReadonlySet<string> = new Set([
   "proxyMode",
   "host",
   "port",
-  "ssrEnabled",
   "ssrOutDir",
   "types",
   "executor",
@@ -79,7 +79,7 @@ const allowedTopLevelKeys: ReadonlySet<string> = new Set([
   "litestarVersion",
 ])
 
-const allowedModes: ReadonlySet<string> = new Set(["spa", "template", "htmx", "hybrid", "inertia", "ssr", "ssg", "external"])
+const allowedModes: ReadonlySet<string> = new Set(["spa", "template", "htmx", "hybrid", "inertia", "framework", "ssr", "ssg", "external"])
 const allowedProxyModes: ReadonlySet<string> = new Set(["vite", "direct", "proxy"])
 const allowedExecutors: ReadonlySet<string> = new Set(["node", "bun", "deno", "yarn", "pnpm"])
 const allowedLogLevels: ReadonlySet<string> = new Set(["quiet", "normal", "verbose"])
@@ -192,6 +192,7 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
   }
 
   const assetUrl = assertString(obj, "assetUrl")
+  const deployAssetUrl = assertNullableString(obj, "deployAssetUrl")
   const bundleDir = assertString(obj, "bundleDir")
   const resourceDir = assertString(obj, "resourceDir")
   const staticDir = assertString(obj, "staticDir")
@@ -203,7 +204,6 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
   const host = assertString(obj, "host")
   const port = assertNumber(obj, "port")
 
-  const ssrEnabled = assertBoolean(obj, "ssrEnabled")
   const ssrOutDir = assertNullableString(obj, "ssrOutDir")
 
   const types = parseTypesConfig(obj.types)
@@ -213,6 +213,7 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
 
   return {
     assetUrl,
+    deployAssetUrl,
     bundleDir,
     resourceDir,
     staticDir,
@@ -222,7 +223,6 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
     proxyMode,
     host,
     port,
-    ssrEnabled,
     ssrOutDir,
     types,
     executor,

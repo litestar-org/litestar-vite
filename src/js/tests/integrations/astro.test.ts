@@ -55,6 +55,7 @@ vi.mock("picocolors", () => ({
 
 const baseRuntimeConfig = {
   assetUrl: "/static",
+  deployAssetUrl: null,
   bundleDir: "public",
   resourceDir: "resources",
   staticDir: "public",
@@ -64,7 +65,6 @@ const baseRuntimeConfig = {
   proxyMode: "vite",
   host: "localhost",
   port: 5173,
-  ssrEnabled: false,
   ssrOutDir: null,
   types: null,
   executor: "node",

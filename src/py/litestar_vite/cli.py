@@ -220,8 +220,8 @@ def _run_vite_build(config: ViteConfig, root_dir: Path, console: Any, no_build: 
 
     console.rule("[yellow]Starting Vite build process[/]", align="left")
     if config.set_environment:
-        set_environment(config=config, asset_url_override=config.base_url or config.asset_url)
-    os.environ["VITE_BASE_URL"] = config.base_url or config.asset_url or "/"
+        set_environment(config=config, asset_url_override=config.asset_url)
+    os.environ.setdefault("VITE_BASE_URL", config.base_url or "/")
     try:
         config.executor.execute(config.build_command, cwd=root_dir)
         console.print("[bold green]✓ Build complete[/]")
@@ -282,7 +282,7 @@ def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: An
     if types_config.generate_routes:
         console.print("[dim]3. Exporting typed routes...[/]")
         try:
-            routes_ts_content = generate_routes_ts(app)
+            routes_ts_content = generate_routes_ts(app, global_route=types_config.global_route)
             routes_ts_path = types_config.routes_ts_path or (types_config.output / "routes.ts")
             routes_ts_path.parent.mkdir(parents=True, exist_ok=True)
             routes_ts_path.write_text(routes_ts_content, encoding="utf-8")
@@ -763,7 +763,7 @@ def vite_deploy(
 
 @vite_group.command(
     name="serve",
-    help="Serve frontend assets. For SSR frameworks (mode='ssr'), runs production Node server. Otherwise runs Vite dev server.",
+    help="Serve frontend assets. For meta-frameworks (mode='framework'; aliases: 'ssr'/'ssg'), runs production Node server. Otherwise runs Vite dev server.",
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 @option("--quiet", type=bool, help="Suppress non-essential output.", default=False, is_flag=True)
@@ -874,7 +874,8 @@ def export_routes(
 
         console.rule(f"[yellow]Exporting typed routes to {output}[/]", align="left")
 
-        routes_ts_content = generate_routes_ts(app, only=only_list, exclude=exclude_list)
+        global_route = bool(isinstance(config.types, TypeGenConfig) and config.types.global_route)
+        routes_ts_content = generate_routes_ts(app, only=only_list, exclude=exclude_list, global_route=global_route)
 
         try:
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -970,7 +971,7 @@ def _export_routes_typescript(app: "Litestar", types_config: Any) -> None:
 
     console.print("[dim]   Generating typed routes.ts...[/]")
     try:
-        ts_content = generate_routes_ts(app)
+        ts_content = generate_routes_ts(app, global_route=types_config.global_route)
         types_config.routes_ts_path.parent.mkdir(parents=True, exist_ok=True)
         types_config.routes_ts_path.write_text(ts_content)
         console.print(f"[green]✓ Typed routes generated at {_relative_path(types_config.routes_ts_path)}[/]")
@@ -1196,11 +1197,13 @@ def vite_status(app: "Litestar") -> None:
     console.print(f"Assets URL: {config.asset_url}")
     console.print(f"Base URL: {config.base_url}")
 
-    manifest_path = Path(f"{config.bundle_dir}/{config.manifest_name}")
-    if manifest_path.exists():
-        console.print(f"[green]✓ Manifest found at {manifest_path}[/]")
+    manifest_candidates = config.candidate_manifest_paths()
+    found_manifest = next((path for path in manifest_candidates if path.exists()), None)
+    if found_manifest is not None:
+        console.print(f"[green]✓ Manifest found at {found_manifest}[/]")
     else:
-        console.print(f"[red]✗ Manifest not found at {manifest_path}[/]")
+        manifest_locations = " or ".join(str(path) for path in manifest_candidates)
+        console.print(f"[red]✗ Manifest not found at {manifest_locations}[/]")
 
     if config.dev_mode:
         url = f"{config.protocol}://{config.host}:{config.port}"

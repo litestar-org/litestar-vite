@@ -6,7 +6,6 @@ the codegen logic can remain stable and easier to reason about.
 
 import contextlib
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from litestar._openapi.datastructures import OpenAPIContext  # pyright: ignore[reportPrivateUsage]
@@ -222,12 +221,3 @@ def resolve_page_props_field_definition(
         resolved_field = field_definition
 
     return resolved_field, schema_creator.for_field_definition(resolved_field)
-
-
-def to_root_path(root_dir: Path, path: Path) -> Path:
-    """Resolve a path relative to ``root_dir`` when it is not absolute.
-
-    Returns:
-        Absolute path.
-    """
-    return path if path.is_absolute() else (root_dir / path)

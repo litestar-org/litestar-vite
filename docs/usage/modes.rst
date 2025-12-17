@@ -99,12 +99,12 @@ The Hybrid mode is designed for Inertia.js applications that combine server-side
         )
     )
 
-SSR Mode
---------
+Framework Mode
+--------------
 
-The Server-Side Rendering (SSR) mode is for meta-frameworks like Nuxt, SvelteKit, or Astro that render on the server.
+Framework mode is for meta-frameworks like Nuxt, SvelteKit, or Astro that render on the server.
 
-**Alias:** ``ssg`` mode is an alias for ``ssr`` (legacy compatibility)
+**Aliases:** ``ssr`` and ``ssg`` are aliases for ``framework`` mode.
 
 **Key Features:**
 
@@ -118,10 +118,9 @@ The Server-Side Rendering (SSR) mode is for meta-frameworks like Nuxt, SvelteKit
 
     VitePlugin(
         config=ViteConfig(
-            mode="ssr",  # Or "ssg" (alias)
+            mode="framework",  # Or aliases: "ssr" / "ssg"
             dev_mode=True,
             runtime=RuntimeConfig(
-                ssr_enabled=True,
                 proxy_mode="proxy",
             ),
         )
@@ -174,6 +173,6 @@ For backward compatibility and semantic clarity, some modes have aliases:
    * - ``hybrid``
      - ``inertia``
      - Both refer to Inertia.js integration
-   * - ``ssr``
-     - ``ssg``
-     - Legacy name for SSR mode (Static Site Generation)
+   * - ``framework``
+     - ``ssr`` / ``ssg``
+     - Aliases for framework proxy mode

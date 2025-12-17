@@ -8,13 +8,13 @@ DeployConfig is defined in litestar_vite.config and passed into ViteDeployer.
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, cast
 
 from litestar.exceptions import SerializationException
 from litestar.serialization import decode_json
 
+from litestar_vite.config import FSSPEC_INSTALLED
 from litestar_vite.config import DeployConfig as _DeployConfig
 from litestar_vite.exceptions import MissingDependencyError
 
@@ -51,7 +51,7 @@ def _import_fsspec(storage_backend: "str | None") -> tuple[Any, Callable[..., tu
     Raises:
         MissingDependencyError: If fsspec is not installed.
     """
-    if find_spec("fsspec") is None:
+    if not FSSPEC_INSTALLED:
         msg = "fsspec"
         raise MissingDependencyError(msg, install_package=_suggest_install_extra(storage_backend))
 
@@ -110,7 +110,18 @@ class ViteDeployer:
             raise ValueError(msg)
 
         self.bundle_dir = bundle_dir
-        self.manifest_path = bundle_dir / manifest_name
+        manifest_rel = Path(manifest_name)
+        manifest_path = bundle_dir / manifest_rel
+        if (
+            not manifest_path.exists()
+            and not manifest_rel.is_absolute()
+            and (not manifest_rel.parts or manifest_rel.parts[0] != ".vite")
+        ):
+            vite_manifest = bundle_dir / ".vite" / manifest_rel
+            if vite_manifest.exists():
+                manifest_path = vite_manifest
+
+        self.manifest_path = manifest_path
         self.config = deploy_config
         self._fs, self.remote_path = self._init_filesystem(fs, remote_path)
 

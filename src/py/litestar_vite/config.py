@@ -147,6 +147,9 @@ class DeployConfig:
     Attributes:
         enabled: Enable deployment features.
         storage_backend: fsspec URL for the target location (e.g., ``gcs://bucket/path``).
+        asset_url: Public URL prefix where deployed assets will be served (e.g., ``https://cdn.example.com/assets/``).
+            When set and deployment is enabled, this value is used as the effective ``ViteConfig.asset_url`` in
+            non-dev mode so production builds and HTML transformations reference the deployed location.
         storage_options: Provider options forwarded to ``fsspec`` (credentials, region, etc.).
         delete_orphaned: Remove remote files not present in the local bundle.
         include_manifest: Upload ``manifest.json`` alongside assets.
@@ -155,6 +158,7 @@ class DeployConfig:
 
     enabled: bool = False
     storage_backend: "str | None" = field(default_factory=lambda: os.getenv("VITE_DEPLOY_STORAGE"))
+    asset_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_DEPLOY_ASSET_URL"))
     storage_options: dict[str, Any] = field(default_factory=_default_storage_options)
     delete_orphaned: bool = field(default_factory=lambda: os.getenv("VITE_DEPLOY_DELETE", "true") in TRUE_VALUES)
     include_manifest: bool = True
@@ -164,10 +168,16 @@ class DeployConfig:
         """Apply environment fallbacks."""
         if self.storage_backend is None:
             self.storage_backend = os.getenv("VITE_DEPLOY_STORAGE")
+        if self.asset_url is None:
+            self.asset_url = os.getenv("VITE_DEPLOY_ASSET_URL")
+
+        if self.asset_url and self.asset_url != "/" and not self.asset_url.endswith("/"):
+            self.asset_url = f"{self.asset_url}/"
 
     def with_overrides(
         self,
         storage_backend: "str | None" = None,
+        asset_url: "str | None" = None,
         storage_options: "dict[str, Any] | None" = None,
         delete_orphaned: "bool | None" = None,
     ) -> "DeployConfig":
@@ -175,6 +185,7 @@ class DeployConfig:
 
         Args:
             storage_backend: Override for the storage URL.
+            asset_url: Override for the public asset URL.
             storage_options: Override for backend options.
             delete_orphaned: Override deletion behaviour.
 
@@ -184,6 +195,7 @@ class DeployConfig:
         return replace(
             self,
             storage_backend=storage_backend or self.storage_backend,
+            asset_url=asset_url or self.asset_url,
             storage_options=storage_options or self.storage_options,
             delete_orphaned=self.delete_orphaned if delete_orphaned is None else delete_orphaned,
         )
@@ -199,7 +211,7 @@ class InertiaSSRConfig:
     tags and body markup into the HTML response.
 
     Notes:
-        - This is *not* Litestar-Vite's ``mode="ssr"`` (Astro/Nuxt/SvelteKit proxy mode).
+        - This is *not* Litestar-Vite's framework proxy mode (``mode="framework"``; aliases: ``mode="ssr"`` / ``mode="ssg"``).
         - When enabled, failures to contact the SSR server are treated as errors (no silent fallback).
     """
 
@@ -467,6 +479,10 @@ class PathConfig:
         ):
             object.__setattr__(self, "static_dir", Path(self.resource_dir) / "public")
 
+        asset_url = self.asset_url
+        if asset_url and asset_url != "/" and not asset_url.endswith("/"):
+            object.__setattr__(self, "asset_url", f"{asset_url}/")
+
 
 @dataclass
 class ExternalDevServer:
@@ -505,7 +521,7 @@ class RuntimeConfig:
         proxy_mode: Proxy handling mode:
             - "vite" (default): Proxy Vite assets only (allow list - SPA mode)
             - "direct": Expose Vite port directly (no proxy)
-            - "proxy": Proxy everything except Litestar routes (deny list - SSR mode)
+            - "proxy": Proxy everything except Litestar routes (deny list - framework mode)
             - None: No proxy (production mode)
         external_dev_server: Configuration for external dev server (used with proxy_mode="proxy").
         host: Vite dev server host.
@@ -518,7 +534,6 @@ class RuntimeConfig:
         serve_command: Custom command to run production server (for SSR frameworks).
         install_command: Custom command to install dependencies.
         is_react: Enable React Fast Refresh support.
-        ssr_enabled: Enable Server-Side Rendering.
         health_check: Enable health check for dev server startup.
         detect_nodeenv: Detect and use nodeenv in virtualenv (opt-in).
         set_environment: Set Vite environment variables from config.
@@ -542,7 +557,6 @@ class RuntimeConfig:
     serve_command: "list[str] | None" = None
     install_command: "list[str] | None" = None
     is_react: bool = False
-    ssr_enabled: bool = False
     health_check: bool = field(default_factory=lambda: os.getenv("VITE_HEALTH_CHECK", "False") in TRUE_VALUES)
     detect_nodeenv: bool = False
     set_environment: bool = True
@@ -828,7 +842,7 @@ class ViteConfig:
     - Explicit mode parameter overrides auto-detection
 
     Attributes:
-        mode: Serving mode - "spa", "template", "htmx", "hybrid", "ssr", "ssg", or "external".
+        mode: Serving mode - "spa", "template", "htmx", "hybrid", "framework", "ssr", "ssg", or "external".
             Auto-detected if not set. Use "external" for non-Vite frameworks (Angular CLI, etc.)
             that have their own build system - auto-serves bundle_dir in production.
         paths: File system paths configuration.
@@ -838,11 +852,11 @@ class ViteConfig:
         spa: SPA transformation settings (True enables with defaults, False disables).
         logging: Logging configuration (True enables with defaults, None uses defaults).
         dev_mode: Convenience shortcut for runtime.dev_mode.
-        base_url: Base URL for production assets (CDN support).
+        base_url: Base URL for the app entry point.
         deploy: Deployment configuration for CDN publishing.
     """
 
-    mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'inertia', 'ssr', 'ssg', 'external'] | None" = None
+    mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'inertia', 'framework', 'ssr', 'ssg', 'external'] | None" = None
     paths: PathConfig = field(default_factory=PathConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     types: "TypeGenConfig | bool | None" = None
@@ -856,7 +870,7 @@ class ViteConfig:
     """Custom guards for the SPA catch-all route.
 
     When set, these guards are applied to the SPA handler route that serves the
-    SPA index.html (mode="spa"/"ssr" with spa_handler=True).
+    SPA index.html (mode="spa"/"framework" with spa_handler=True).
     """
     exclude_static_from_auth: bool = True
     """Exclude static file routes from authentication.
@@ -900,7 +914,7 @@ class ViteConfig:
         self._auto_detect_mode()
         self._auto_configure_inertia()
         self._auto_detect_react()
-        self._apply_ssr_mode_defaults()
+        self._apply_framework_mode_defaults()
         self._normalize_deploy()
         self._ensure_spa_default()
         self._auto_enable_dev_mode()
@@ -945,17 +959,20 @@ class ViteConfig:
         """Normalize mode aliases.
 
         Aliases:
-        - 'ssg' → 'ssr': Static Site Generation uses the same proxy behavior as SSR.
-          Both use deny list proxy in dev mode (forward non-API routes to framework's
-          dev server). SSG pre-renders at build time, SSR renders per-request, but
-          their dev-time proxy behavior is identical.
+        - 'framework': Canonical name for meta-framework integration mode (Astro/Nuxt/SvelteKit, etc.)
+          that uses dev-time proxying to a frontend dev server and optional SSR/SSG output handling.
+
+        - 'ssr' / 'ssg' → 'framework': Aliases for framework proxy mode.
+          Static Site Generation (SSG) uses the same dev-time proxy behavior as SSR:
+          forward non-API routes to the framework dev server. SSG pre-renders at build time,
+          SSR renders per-request, but their dev-time proxy behavior is identical.
 
         - 'inertia' → 'hybrid': Inertia.js apps without Jinja templates use hybrid mode.
           This is clearer terminology since "hybrid" refers to the SPA-with-server-routing
           pattern that Inertia implements.
         """
-        if self.mode == "ssg":
-            self.mode = "ssr"
+        if self.mode in {"ssr", "ssg"}:
+            self.mode = "framework"
         elif self.mode == "inertia":
             self.mode = "hybrid"
 
@@ -1020,10 +1037,10 @@ class ViteConfig:
         if isinstance(self.inertia, InertiaConfig) and isinstance(self.spa, SPAConfig) and not self.spa.inject_csrf:
             self.spa = replace(self.spa, inject_csrf=True)
 
-    def _apply_ssr_mode_defaults(self) -> None:
-        """Apply intelligent defaults for mode='ssr'.
+    def _apply_framework_mode_defaults(self) -> None:
+        """Apply intelligent defaults for framework proxy mode.
 
-        When mode='ssr' is set, automatically configure proxy_mode and spa_handler
+        When mode='framework' is set, automatically configure proxy_mode and spa_handler
         based on dev_mode and whether built assets exist:
 
         - Dev mode: proxy_mode='proxy', spa_handler=False
@@ -1033,7 +1050,7 @@ class ViteConfig:
         - Prod mode without built assets: proxy_mode=None, spa_handler=False
           (True SSR - Node server handles HTML, Litestar only serves API)
         """
-        if self.mode != "ssr":
+        if self.mode != "framework":
             return
 
         if self.runtime.dev_mode:
@@ -1144,14 +1161,14 @@ class ViteConfig:
         if self.runtime.external_dev_server is not None:
             return
 
-        bundle_path = self._resolve_to_root(self.bundle_dir)
-        manifest_path = bundle_path / ".vite" / self.manifest_name
+        candidates = self.candidate_manifest_paths()
+        manifest_locations = " or ".join(str(path) for path in candidates)
         logger.warning(
             "Vite manifest not found at %s. "
             "Run 'litestar assets build' (or 'npm run build') to build assets, "
             "or set dev_mode=True for development. "
             "Assets will not load correctly without built files or a running Vite dev server.",
-            manifest_path,
+            manifest_locations,
         )
 
     def _detect_mode(self) -> Literal["spa", "template", "htmx", "hybrid"]:
@@ -1328,6 +1345,9 @@ class ViteConfig:
         Returns:
             The configured asset URL prefix.
         """
+        deploy = self.deploy_config
+        if not self.is_dev_mode and deploy is not None and deploy.asset_url:
+            return deploy.asset_url
         return self.paths.asset_url
 
     def _resolve_to_root(self, path: Path) -> Path:
@@ -1375,11 +1395,49 @@ class ViteConfig:
             unique.append(path)
         return unique
 
+    def candidate_manifest_paths(self) -> list[Path]:
+        """Return possible manifest.json locations in the bundle directory.
+
+        Some meta-frameworks emit the manifest under a ``.vite/`` subdirectory
+        (e.g. ``<bundle_dir>/.vite/manifest.json``), while plain Vite builds may
+        write it directly to ``<bundle_dir>/manifest.json``.
+
+        Returns:
+            A de-duplicated list of candidate manifest paths, ordered by preference.
+        """
+        bundle_path = self._resolve_to_root(self.bundle_dir)
+        manifest_rel = Path(self.manifest_name)
+
+        candidates: list[Path] = [bundle_path / manifest_rel]
+        if not manifest_rel.is_absolute() and (not manifest_rel.parts or manifest_rel.parts[0] != ".vite"):
+            candidates.append(bundle_path / ".vite" / manifest_rel)
+
+        unique: list[Path] = []
+        seen: set[Path] = set()
+        for path in candidates:
+            if path in seen:
+                continue
+            seen.add(path)
+            unique.append(path)
+        return unique
+
+    def resolve_manifest_path(self) -> Path:
+        """Resolve the most likely manifest path.
+
+        Returns:
+            The first existing manifest path, or the highest-priority candidate when none exist.
+        """
+        candidates = self.candidate_manifest_paths()
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return candidates[0]
+
     def has_built_assets(self) -> bool:
         """Check if production assets exist in the bundle directory.
 
         Returns:
-            True if manifest.json or built index.html exists in bundle_dir.
+            True if a manifest or built index.html exists in bundle_dir.
 
         Note:
             This method checks the bundle_dir (output directory) for built artifacts,
@@ -1387,10 +1445,9 @@ class ViteConfig:
             does not indicate built assets exist.
         """
         bundle_path = self._resolve_to_root(self.bundle_dir)
-        manifest_path = bundle_path / self.manifest_name
         index_path = bundle_path / "index.html"
 
-        return manifest_path.exists() or index_path.exists()
+        return any(path.exists() for path in self.candidate_manifest_paths()) or index_path.exists()
 
     @property
     def host(self) -> str:
@@ -1423,7 +1480,7 @@ class ViteConfig:
     def hot_reload(self) -> bool:
         """Check if hot reload is enabled (derived from dev_mode and proxy_mode).
 
-        HMR requires dev_mode=True AND a Vite-based mode (vite, direct, or proxy/ssr).
+        HMR requires dev_mode=True AND a Vite-based proxy mode (vite, direct, or proxy).
         All modes support HMR since even SSR frameworks use Vite internally.
 
         Returns:
@@ -1448,15 +1505,6 @@ class ViteConfig:
             True if React mode is enabled, otherwise False.
         """
         return self.runtime.is_react
-
-    @property
-    def ssr_enabled(self) -> bool:
-        """Check if SSR is enabled.
-
-        Returns:
-            True if SSR is enabled, otherwise False.
-        """
-        return self.runtime.ssr_enabled
 
     @property
     def run_command(self) -> list[str]:
@@ -1581,6 +1629,15 @@ class ViteConfig:
             True if HTTP/2 is enabled for proxy connections, otherwise False.
         """
         return self.runtime.http2
+
+    @property
+    def csp_nonce(self) -> "str | None":
+        """Return the CSP nonce used for injected inline scripts.
+
+        Returns:
+            CSP nonce string when configured, otherwise None.
+        """
+        return self.runtime.csp_nonce
 
     @property
     def ssr_output_dir(self) -> "Path | None":

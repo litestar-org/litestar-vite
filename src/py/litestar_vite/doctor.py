@@ -421,8 +421,10 @@ class ViteDoctor:
             A dictionary representing the expected bridge configuration.
         """
         types = self.config.types if isinstance(self.config.types, TypeGenConfig) else None
+        deploy = self.config.deploy_config
         return {
             "assetUrl": self.config.asset_url,
+            "deployAssetUrl": deploy.asset_url if deploy is not None and deploy.asset_url else None,
             "bundleDir": str(self.config.bundle_dir),
             "hotFile": self.config.hot_file,
             "resourceDir": str(self.config.resource_dir),
@@ -432,7 +434,6 @@ class ViteDoctor:
             "proxyMode": self.config.proxy_mode,
             "port": self.config.port,
             "host": self.config.host,
-            "ssrEnabled": self.config.ssr_enabled,
             "ssrOutDir": str(self.config.ssr_output_dir) if self.config.ssr_output_dir else None,
             "types": (
                 {
@@ -965,13 +966,14 @@ class ViteDoctor:
         if self.config.is_dev_mode:
             return
 
-        manifest_path = self._resolve_to_root(self.config.bundle_dir) / self.config.manifest_name
-        if not manifest_path.exists():
+        candidates = self.config.candidate_manifest_paths()
+        if not any(path.exists() for path in candidates):
+            manifest_locations = " or ".join(str(path) for path in candidates)
             self.issues.append(
                 DoctorIssue(
                     check="Manifest Missing",
                     severity="warning",
-                    message=f"Manifest not found at {manifest_path} (expected in production; ok during dev)",
+                    message=f"Manifest not found at {manifest_locations} (expected in production; ok during dev)",
                     fix_hint="Run `litestar assets build` before starting in production",
                     auto_fixable=False,
                 )
@@ -1019,8 +1021,9 @@ class ViteDoctor:
             "VITE_HOST": self.config.host,
             "VITE_PROXY_MODE": self.config.proxy_mode,
             "VITE_PROTOCOL": self.config.protocol,
-            "VITE_BASE_URL": self.config.base_url or self.config.asset_url,
         }
+        if self.config.base_url:
+            comparisons["VITE_BASE_URL"] = self.config.base_url
 
         for key, expected in comparisons.items():
             actual = os.getenv(key)
@@ -1060,7 +1063,6 @@ class ViteDoctor:
             "dev_mode": self.config.is_dev_mode,
             "host": self.config.host,
             "port": self.config.port,
-            "ssr_enabled": self.config.ssr_enabled,
             "executor": self.config.runtime.executor,
             "set_environment": self.config.set_environment,
             "types_enabled": isinstance(self.config.types, TypeGenConfig),

@@ -15,6 +15,7 @@ describe("litestar-meta runtime config fallback", () => {
     const cfgPath = path.join(dir, ".litestar.json")
     const payload = {
       assetUrl: "/static",
+      deployAssetUrl: null,
       bundleDir: "public",
       resourceDir: "resources",
       staticDir: "public",
@@ -24,7 +25,6 @@ describe("litestar-meta runtime config fallback", () => {
       proxyMode: "vite",
       host: "localhost",
       port: 5173,
-      ssrEnabled: false,
       ssrOutDir: null,
       types: null,
       executor: "node",

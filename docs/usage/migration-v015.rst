@@ -120,8 +120,8 @@ v0.15 introduces mode aliases for convenience:
      - ``"hybrid"``
      - Inertia.js SPA with server-side routing
    * - ``"ssg"``
-     - ``"ssr"``
-     - Static Site Generation (same proxy behavior as SSR)
+     - ``"framework"``
+     - Static Site Generation (alias for framework mode)
 
 **Recommended usage:**
 
@@ -130,8 +130,8 @@ v0.15 introduces mode aliases for convenience:
    # For Inertia.js applications
    ViteConfig(mode="inertia")
 
-   # For SSG frameworks (Astro, etc.)
-   ViteConfig(mode="ssg")
+   # For meta-frameworks (Astro, etc.)
+   ViteConfig(mode="framework")  # or aliases: "ssr" / "ssg"
 
 New Features
 ============
@@ -687,17 +687,17 @@ Error about unknown mode when using old mode names.
 
 **Solution:**
 
-v0.15 supports these modes: ``spa``, ``template``, ``htmx``, ``hybrid``, ``ssr``, ``external``.
+v0.15 supports these modes: ``spa``, ``template``, ``htmx``, ``hybrid``, ``framework``, ``external``.
 
-You can also use aliases: ``inertia`` (for ``hybrid``) and ``ssg`` (for ``ssr``).
+You can also use aliases: ``inertia`` (for ``hybrid``) and ``ssr`` / ``ssg`` (for ``framework``).
 
 .. code-block:: python
 
    # Recommended for Inertia.js
    ViteConfig(mode="inertia")
 
-   # Recommended for SSG frameworks
-   ViteConfig(mode="ssg")
+   # Recommended for meta-frameworks
+   ViteConfig(mode="framework")
 
 Upgrade Checklist
 =================

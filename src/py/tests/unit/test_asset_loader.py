@@ -20,6 +20,18 @@ def test_parse_manifest_when_file_exists(tmp_path: Path) -> None:
     assert loader._manifest == {"main.js": {"file": "assets/main.123456.js"}}
 
 
+def test_parse_manifest_when_file_exists_in_vite_dir(tmp_path: Path) -> None:
+    bundle_dir = tmp_path / "public"
+    (bundle_dir / ".vite").mkdir(parents=True)
+    manifest = bundle_dir / ".vite" / "manifest.json"
+    manifest.write_text('{"main.js": {"file": "assets/main.123456.js"}}')
+
+    config = ViteConfig(paths=PathConfig(bundle_dir=bundle_dir), runtime=RuntimeConfig(dev_mode=False))
+    loader = ViteAssetLoader.initialize_loader(config=config)
+
+    assert loader._manifest == {"main.js": {"file": "assets/main.123456.js"}}
+
+
 def test_parse_manifest_when_file_not_exists(tmp_path: Path) -> None:
     bundle_dir = tmp_path / "public"
     # Do not create directory or file
@@ -80,6 +92,14 @@ def test_get_static_asset_dev_mode() -> None:
     assert loader.get_static_asset("test.png") == "http://127.0.0.1:5173/static/test.png"
 
 
+def test_react_hmr_preamble_includes_csp_nonce() -> None:
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, is_react=True, csp_nonce="abc123"))
+    loader = ViteAssetLoader(config)
+    tags = loader.generate_react_hmr_tags()
+
+    assert 'nonce="abc123"' in tags
+
+
 def test_get_static_asset_prod_mode_found() -> None:
     config = ViteConfig(
         paths=PathConfig(bundle_dir=Path("tests/fixtures"), asset_url="/static/"), runtime=RuntimeConfig(dev_mode=False)
@@ -98,15 +118,15 @@ def test_get_static_asset_prod_mode_not_found() -> None:
         loader.get_static_asset("missing.png")
 
 
-def test_get_static_asset_with_base_url() -> None:
+def test_get_static_asset_with_absolute_asset_url() -> None:
     config = ViteConfig(
-        paths=PathConfig(asset_url="/static/"),
+        paths=PathConfig(asset_url="https://cdn.example.com/"),
         runtime=RuntimeConfig(dev_mode=False),
-        base_url="https://cdn.example.com/",
+        base_url="https://app.example.com/",
     )
     loader = ViteAssetLoader(config)
     loader._manifest = {"test.png": {"file": "assets/test.hash.png"}}
-    # base_url overrides asset_url for the base part
+    # Production assets are resolved from asset_url
     assert loader.get_static_asset("test.png") == "https://cdn.example.com/assets/test.hash.png"
 
 
@@ -116,6 +136,22 @@ async def test_async_initialization(tmp_path: Path) -> None:
     bundle_dir = tmp_path / "public"
     bundle_dir.mkdir()
     manifest = bundle_dir / "manifest.json"
+    manifest.write_text('{"main.js": {"file": "assets/main.123456.js"}}')
+
+    config = ViteConfig(paths=PathConfig(bundle_dir=bundle_dir), runtime=RuntimeConfig(dev_mode=False))
+    loader = ViteAssetLoader(config)
+    await loader.initialize()
+
+    assert loader._manifest == {"main.js": {"file": "assets/main.123456.js"}}
+    assert loader._initialized is True
+
+
+@pytest.mark.anyio
+async def test_async_initialization_manifest_in_vite_dir(tmp_path: Path) -> None:
+    """Async initialization should resolve bundle_dir/.vite/manifest.json."""
+    bundle_dir = tmp_path / "public"
+    (bundle_dir / ".vite").mkdir(parents=True)
+    manifest = bundle_dir / ".vite" / "manifest.json"
     manifest.write_text('{"main.js": {"file": "assets/main.123456.js"}}')
 
     config = ViteConfig(paths=PathConfig(bundle_dir=bundle_dir), runtime=RuntimeConfig(dev_mode=False))

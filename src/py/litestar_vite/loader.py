@@ -12,6 +12,7 @@ Key features:
 """
 
 import hashlib
+import html
 from functools import cached_property
 from pathlib import Path
 from textwrap import dedent
@@ -269,10 +270,7 @@ class ViteAssetLoader:
         Returns:
             Absolute path to the Vite manifest file.
         """
-        bundle_dir = self._config.bundle_dir
-        if not bundle_dir.is_absolute():
-            bundle_dir = self._config.root_dir / bundle_dir
-        return bundle_dir / self._config.manifest_name
+        return self._config.resolve_manifest_path()
 
     def _get_hot_file_path(self) -> Path:
         """Get the path to the hot file.
@@ -402,7 +400,7 @@ class ViteAssetLoader:
         if path not in self._manifest:
             raise AssetNotFoundError(path, str(self._get_manifest_path()))
 
-        return urljoin(self._config.base_url or self._config.asset_url, self._manifest[path]["file"])
+        return urljoin(self._config.asset_url, self._manifest[path]["file"])
 
     def generate_ws_client_tags(self) -> str:
         """Generate the Vite HMR client script tag.
@@ -425,8 +423,10 @@ class ViteAssetLoader:
             React refresh script HTML or empty string.
         """
         if self._config.is_react and self._is_hot_dev:
+            nonce = self._config.csp_nonce
+            nonce_attr = f' nonce="{html.escape(nonce, quote=True)}"' if nonce else ""
             return dedent(f"""
-                <script type="module">
+                <script type="module"{nonce_attr}>
                 import RefreshRuntime from '{self._vite_server_url()}@react-refresh'
                 RefreshRuntime.injectIntoGlobalHook(window)
                 window.$RefreshReg$ = () => {{}}
@@ -472,7 +472,7 @@ class ViteAssetLoader:
         if not scripts_attrs:
             scripts_attrs = {"type": "module", "async": "", "defer": ""}
 
-        asset_url_base = self._config.base_url or self._config.asset_url
+        asset_url_base = self._config.asset_url
 
         for manifest in manifest_entries.values():
             if "css" in manifest:

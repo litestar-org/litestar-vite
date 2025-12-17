@@ -2,7 +2,15 @@ from pathlib import Path, PosixPath
 
 import pytest
 
-from litestar_vite.config import ExternalDevServer, PathConfig, RuntimeConfig, SPAConfig, TypeGenConfig, ViteConfig
+from litestar_vite.config import (
+    DeployConfig,
+    ExternalDevServer,
+    PathConfig,
+    RuntimeConfig,
+    SPAConfig,
+    TypeGenConfig,
+    ViteConfig,
+)
 from litestar_vite.executor import BunExecutor, NodeenvExecutor, NodeExecutor
 
 
@@ -287,6 +295,17 @@ def test_dev_mode_not_auto_enabled_when_mode_explicit(tmp_path: Path, monkeypatc
     assert config.runtime.dev_mode is False
 
 
+def test_has_built_assets_detects_manifest_in_vite_dir(tmp_path: Path) -> None:
+    """Built-asset detection should include bundle_dir/.vite/manifest.json."""
+    bundle_dir = tmp_path / "dist"
+    (bundle_dir / ".vite").mkdir(parents=True)
+    (bundle_dir / ".vite" / "manifest.json").write_text('{"entry":{"file":"assets/main.js"}}')
+
+    config = ViteConfig(mode="spa", dev_mode=False, paths=PathConfig(bundle_dir=bundle_dir))
+
+    assert config.has_built_assets() is True
+
+
 def test_validate_mode_spa_dev_mode_allows_missing_index(tmp_path: Path) -> None:
     """Test validation passes for SPA mode in dev mode even without index.html."""
     resource_dir = tmp_path / "resources"
@@ -296,6 +315,19 @@ def test_validate_mode_spa_dev_mode_allows_missing_index(tmp_path: Path) -> None
 
     # Should not raise
     config.validate_mode()
+
+
+def test_asset_url_uses_deploy_asset_url_in_production() -> None:
+    config = ViteConfig(deploy=DeployConfig(enabled=True, asset_url="https://cdn.example.com/assets/"), dev_mode=False)
+
+    assert config.asset_url == "https://cdn.example.com/assets/"
+
+
+def test_asset_url_ignores_deploy_asset_url_in_dev_mode() -> None:
+    config = ViteConfig(deploy=DeployConfig(enabled=True, asset_url="https://cdn.example.com/assets/"), dev_mode=True)
+
+    # Dev mode should keep the normal asset_url (default /static/)
+    assert config.asset_url == "/static/"
 
 
 def test_validate_mode_template_requires_jinja(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -541,11 +573,11 @@ def test_inertia_presence_means_enabled(tmp_path: Path) -> None:
 # ============================================================================
 
 
-def test_mode_alias_ssg_to_ssr() -> None:
-    """Test that mode='ssg' is normalized to 'ssr'."""
+def test_mode_alias_ssg_to_framework() -> None:
+    """Test that mode='ssg' is normalized to 'framework'."""
     config = ViteConfig(mode="ssg")
 
-    assert config.mode == "ssr"
+    assert config.mode == "framework"
 
 
 def test_mode_alias_inertia_to_hybrid() -> None:

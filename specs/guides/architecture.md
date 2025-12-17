@@ -39,7 +39,7 @@ The `ViteConfig` class in `config.py` controls the integration behavior. It uses
 - **`ExternalDevServer`**: External dev server configuration (target, command, build_command, http2, enabled)
 - **`PaginationContainer`**: Protocol for pagination containers (must implement `items` attribute)
 - **`ViteConfig`**: Root configuration. Key fields include:
-    - **`mode`**: Serving mode - "spa", "template", "htmx", "hybrid", "ssr", "ssg", or "external"
+    - **`mode`**: Serving mode - "spa", "template", "htmx", "hybrid", "framework", "ssr", "ssg", or "external"
     - **`guards`**: Custom guards for the SPA catch-all route
     - **`exclude_static_from_auth`**: Exclude static file routes from authentication (default: True)
     - **`spa_path`**: Path where the SPA handler serves index.html (default: "/")
@@ -51,7 +51,7 @@ Key `RuntimeConfig` options:
 - **`proxy_mode`**: Proxy handling mode:
     - "vite" (default): Proxy Vite assets only (allow list - SPA mode)
     - "direct": Expose Vite port directly (no proxy)
-    - "proxy": Proxy everything except Litestar routes (deny list - SSR mode)
+    - "proxy": Proxy everything except Litestar routes (deny list - framework mode)
     - None: No proxy (production mode)
 - **`external_dev_server`**: External dev server config (string URL or `ExternalDevServer` with custom commands, http2 flag, enabled flag)
 - **`host`**, **`port`**, **`protocol`**: Vite dev server connection details
@@ -60,7 +60,7 @@ Key `RuntimeConfig` options:
 - **`http2`**: Enable HTTP/2 for proxy HTTP connections (better multiplexing, requires `h2` package). WebSocket traffic (HMR) uses a separate connection and is unaffected. Default: True.
 - **`start_dev_server`**: Auto-start dev server process (default: True). Set to False to manage the dev server manually.
 - **`is_react`**: Enable React Fast Refresh
-- **`ssr_enabled`**: Enable Server-Side Rendering
+    - Framework integration is controlled by `mode="framework"` (aliases: `mode="ssr"` / `mode="ssg"`).
 - **`health_check`**: Enable health check for dev server startup
 - **`detect_nodeenv`**: Detect and use nodeenv in virtualenv (opt-in)
 - **`set_environment`**: Set Vite environment variables from config (default: True)
@@ -68,7 +68,7 @@ Key `RuntimeConfig` options:
 - **`csp_nonce`**: Content Security Policy nonce for inline scripts
 - **`spa_handler`**: Auto-register catch-all SPA route when mode="spa" (default: True)
 
-Python is the source of truth: The VitePlugin's `on_app_init()` method writes `.litestar.json` containing `assetUrl`, `bundleDir`, `resourceDir`, `staticDir`, `manifest`, `ssrOutDir`, `mode`, `proxyMode`, `host`, `port`, `ssrEnabled`, `executor`, type generation paths, and Litestar version. The JS plugin reads this file automatically - only `input` is required in `vite.config.ts`. Override only when you intentionally diverge from Python config.
+Python is the source of truth: The VitePlugin's `on_app_init()` method writes `.litestar.json` containing `assetUrl`, `bundleDir`, `resourceDir`, `staticDir`, `manifest`, `ssrOutDir`, `mode`, `proxyMode`, `host`, `port`, `executor`, type generation paths, and Litestar version. The JS plugin reads this file automatically - only `input` is required in `vite.config.ts`. Override only when you intentionally diverge from Python config.
 
 ### Core Modules
 
