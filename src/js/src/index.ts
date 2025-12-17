@@ -269,9 +269,11 @@ interface RefreshConfig {
  * Note: `executor` remains optional - undefined means auto-detect from env
  * Note: `inertiaMode` is resolved to boolean (auto-detected from .litestar.json mode)
  */
-interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor" | "inertiaMode"> {
+interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor" | "inertiaMode" | "deployAssetUrl"> {
   types: Required<TypesConfig> | false
   executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
+  /** Optional asset URL to use for production builds (overrides assetUrl during build) */
+  deployAssetUrl?: string
   /** Whether in Inertia mode (backend serves HTML, not Vite) */
   inertiaMode: boolean
   /** Whether .litestar.json was found (used for validation warnings) */
