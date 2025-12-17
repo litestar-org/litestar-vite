@@ -125,7 +125,7 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
                         port=5173,
                         dev_mode=True,
                     ),
-                    mode="spa",  # or "template", "htmx", "hybrid", "ssr", "external"
+                    mode="spa",  # or "template", "htmx", "hybrid", "framework", "external"
                 )
             )
         ]
@@ -142,7 +142,7 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - Description
    * - `mode`
      - `str | None`
-     - Operation mode: `"spa"`, `"template"`, `"htmx"`, `"hybrid"`, `"ssr"`, `"ssg"`, or `"external"`. Auto-detected if not set.
+     - Operation mode: `"spa"`, `"template"`, `"htmx"`, `"hybrid"`, `"framework"`, `"ssr"`, `"ssg"`, or `"external"`. Auto-detected if not set.
    * - `paths`
      - `PathConfig`
      - File system paths configuration.
@@ -163,7 +163,7 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - Shortcut for `runtime.dev_mode`. Defaults to `False`.
    * - `base_url`
      - `str | None`
-     - Base URL for production assets (CDN support). Reads from `VITE_BASE_URL` env var.
+     - Public base URL where the frontend entry point is served (e.g. ``https://app.example.com/``). This does not affect asset URLs. Reads from ``VITE_BASE_URL``.
    * - `deploy`
      - `DeployConfig | bool`
      - Deployment configuration for CDN publishing.
@@ -244,7 +244,7 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - Name of the hot file indicating dev server URL. Defaults to `"hot"`.
    * - `asset_url`
      - `str`
-     - Base URL for static asset references. Defaults to `"/static/"` or `ASSET_URL` env var.
+     - Base URL for static asset references in both dev and production. Can be a path (``/static/``) or an absolute URL (CDN/object storage). Defaults to ``/static/`` or ``ASSET_URL``.
    * - `ssr_output_dir`
      - `Path | str | None`
      - SSR output directory. Defaults to `None`.
@@ -263,7 +263,7 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - Enable development mode with HMR/watch. Reads from `VITE_DEV_MODE` env var.
    * - `proxy_mode`
      - `str | None`
-     - Proxy handling mode: `"vite"` (default, whitelist - proxies Vite assets only), `"direct"` (expose Vite port directly, no proxy), `"proxy"` (blacklist - proxies everything except Litestar routes, used for SSR frameworks), or `None` (disabled, production mode). Note: `"ssr"` is normalized to `"proxy"` internally.
+     - Proxy handling mode: `"vite"` (default, whitelist - proxies Vite assets only), `"direct"` (expose Vite port directly, no proxy), `"proxy"` (blacklist - proxies everything except Litestar routes, used for meta-frameworks), or `None` (disabled, production mode).
    * - `external_dev_server`
      - `ExternalDevServer | str | None`
      - Configuration for external dev servers (Angular CLI, Next.js, etc.). Can be a string URL (e.g., `"http://localhost:4200"`) or an `ExternalDevServer` object with `target`, `command`, `build_command`, `http2`, and `enabled` fields. When set, automatically switches `proxy_mode` to `"proxy"` if not explicitly configured.
@@ -282,9 +282,6 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
    * - `is_react`
      - `bool`
      - Enable React Fast Refresh support. Defaults to `False`.
-   * - `ssr_enabled`
-     - `bool`
-     - Enable Server-Side Rendering. Defaults to `False`.
    * - `http2`
      - `bool`
      - Enable HTTP/2 for proxy HTTP requests (better connection multiplexing). WebSocket/HMR uses a separate connection. Requires `h2` package. Defaults to `True`.
@@ -540,5 +537,31 @@ Build your assets for production using the CLI:
     litestar assets build
 
 This command bundles and optimizes all assets, generates a manifest file, and outputs the files to the configured `bundle_dir`.
+
+Deploying Assets (`litestar assets deploy`)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Deployment has two distinct concepts:
+
+- **Where files are synced to** (fsspec target): ``DeployConfig.storage_backend`` (e.g. ``s3://bucket/assets``)
+- **What URLs the browser should use** (public URL): ``DeployConfig.asset_url`` (e.g. ``https://cdn.example.com/assets/``)
+
+Do **not** set ``asset_url`` to an ``s3://`` URL. Browsers can only fetch ``http(s)`` URLs.
+
+``DeployConfig.asset_url`` is written to ``.litestar.json`` as ``deployAssetUrl`` and used by the Vite plugin as the ``base`` during
+``vite build``. If Litestar serves HTML (template/hybrid/AppHandler transforms), also set ``PathConfig.asset_url`` to the same public URL.
+
+.. code-block:: python
+
+    from litestar_vite import DeployConfig, ViteConfig, VitePlugin
+
+    VitePlugin(
+        config=ViteConfig(
+            deploy=DeployConfig(
+                storage_backend="s3://bucket/assets",
+                asset_url="https://cdn.example.com/assets/",
+            )
+        )
+    )
 
 For more information about Inertia integration, refer to the :doc:`Inertia </usage/inertia>` documentation.

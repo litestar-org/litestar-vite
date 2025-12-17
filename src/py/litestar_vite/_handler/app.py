@@ -157,7 +157,7 @@ class AppHandler:
 
         if self._spa_config.inject_csrf and csrf_token:
             script = f'window.{self._spa_config.csrf_var_name} = "{csrf_token}";'
-            html = inject_head_script(html, script, escape=False)
+            html = inject_head_script(html, script, escape=False, nonce=self._config.csp_nonce)
 
         if page_data is not None:
             json_data = encode_json(page_data).decode("utf-8")
@@ -286,9 +286,7 @@ class AppHandler:
         """
         if not self._manifest:
             return html
-        return transform_asset_urls(
-            html, self._manifest, asset_url=self._config.asset_url, base_url=self._config.base_url
-        )
+        return transform_asset_urls(html, self._manifest, asset_url=self._config.asset_url, base_url=None)
 
     def _get_csrf_token(self, request: "Request[Any, Any, Any]") -> "str | None":
         """Extract CSRF token from the request scope.

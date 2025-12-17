@@ -1,6 +1,7 @@
 """Inertia page-props metadata extraction and export."""
 
 import datetime
+import re
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,6 +30,9 @@ if TYPE_CHECKING:
 
     from litestar_vite.config import InertiaConfig, TypeGenConfig
 
+# Compiled regex for splitting TypeScript type strings on union/intersection operators
+_TYPE_OPERATOR_RE = re.compile(r"(\s*[|&]\s*)")
+
 
 def _str_list_factory() -> list[str]:
     """Return an empty ``list[str]`` (typed for pyright).
@@ -37,6 +41,80 @@ def _str_list_factory() -> list[str]:
         An empty list.
     """
     return []
+
+
+def _normalize_type_name(type_name: str, openapi_schemas: set[str]) -> str:
+    """Strip module prefix from mangled type names.
+
+    Always converts 'app_lib_schema_NoProps' -> 'NoProps' because:
+    1. If 'NoProps' exists in OpenAPI, it will be imported correctly
+    2. If 'NoProps' doesn't exist, the error message is clearer for users
+       (they can add it to OpenAPI or configure type_import_paths)
+
+    The mangled name 'app_lib_schema_NoProps' will NEVER work - it doesn't
+    exist anywhere. The short name is always preferable.
+
+    Args:
+        type_name: The potentially mangled type name.
+        openapi_schemas: Set of available OpenAPI schema names.
+
+    Returns:
+        The normalized (unmangled) type name.
+    """
+    if type_name in openapi_schemas:
+        return type_name
+
+    # Check if this looks like a mangled module path (contains underscores)
+    if "_" not in type_name:
+        return type_name
+
+    # Try progressively shorter suffixes to find the class name
+    parts = type_name.split("_")
+    for i in range(len(parts)):
+        short_name = "_".join(parts[i:])
+        # Prefer OpenAPI match, but if we get to the last part, use it anyway
+        if short_name in openapi_schemas:
+            return short_name
+
+    # Use the last part as the class name (e.g., 'NoProps' from 'app_lib_schema_NoProps')
+    # This is always better than the mangled name for error messages
+    return parts[-1] if parts else type_name
+
+
+def _normalize_type_string(type_string: str, openapi_schemas: set[str]) -> str:
+    """Normalize all type names within a TypeScript type string.
+
+    Handles union types like 'any | app_lib_schema_NoProps' by parsing the
+    string and normalizing each type name individually.
+
+    Args:
+        type_string: A TypeScript type string (may contain unions, intersections).
+        openapi_schemas: Set of available OpenAPI schema names.
+
+    Returns:
+        The type string with all type names normalized.
+    """
+    # Primitives and special types that should not be normalized
+    skip_types = {"any", "unknown", "null", "undefined", "void", "never", "string", "number", "boolean", "object"}
+
+    # Split on | and & while preserving whitespace
+    tokens = _TYPE_OPERATOR_RE.split(type_string)
+    result_parts: list[str] = []
+
+    for token in tokens:
+        stripped = token.strip()
+        # Keep operators and whitespace as-is
+        if stripped in {"|", "&", ""} or stripped in skip_types or stripped == "{}":
+            result_parts.append(token)
+        # Normalize type names
+        else:
+            normalized = _normalize_type_name(stripped, openapi_schemas)
+            # Preserve original whitespace around the type
+            prefix = token[: len(token) - len(token.lstrip())]
+            suffix = token[len(token.rstrip()) :]
+            result_parts.append(prefix + normalized + suffix)
+
+    return "".join(result_parts)
 
 
 @dataclass
@@ -146,6 +224,10 @@ def _finalize_inertia_pages(
     name_map = build_schema_name_map(context.schema_registry)
     openapi_components = openapi_components_schemas(openapi_support.openapi_schema)
 
+    # Build set of available OpenAPI schema names for type normalization
+    openapi_schema_names: set[str] = set(openapi_components.keys())
+    openapi_schema_names.update(generated_components.keys())
+
     if openapi_support.openapi_schema is not None:
         merge_generated_components_into_openapi(openapi_support.openapi_schema, generated_components)
 
@@ -159,8 +241,14 @@ def _finalize_inertia_pages(
             schema_name = name_map.get(schema_key)
 
         if schema_name:
-            page.ts_type = schema_name
-            page.props_type = schema_name
+            # Normalize mangled type names (e.g., 'app_lib_schema_NoProps' -> 'NoProps')
+            normalized_name = _normalize_type_name(schema_name, openapi_schema_names)
+            page.ts_type = normalized_name
+            page.props_type = normalized_name
+        elif page.props_type:
+            # Normalize type names in union/intersection type strings
+            # (e.g., 'any | app_lib_schema_NoProps' -> 'any | NoProps')
+            page.props_type = _normalize_type_string(page.props_type, openapi_schema_names)
 
         custom_types: set[str] = set()
         if page.ts_type:
@@ -181,7 +269,8 @@ def _finalize_inertia_pages(
                 if registered:
                     custom_types.update(collect_ref_names(registered.schema.to_schema()))
 
-        page.custom_types = sorted(custom_types)
+        # Normalize all custom type names
+        page.custom_types = sorted(_normalize_type_name(t, openapi_schema_names) for t in custom_types)
 
 
 def extract_inertia_pages(
@@ -278,6 +367,44 @@ def _should_register_value_schema(value: Any) -> bool:
     return not isinstance(value, (bool, str, int, float, bytes, bytearray, Path, list, tuple, set, frozenset, dict))
 
 
+def _process_session_props(
+    session_props: "set[str] | dict[str, type]",
+    shared_props: dict[str, dict[str, Any]],
+    shared_schema_keys: dict[str, tuple[str, ...]],
+    openapi_support: OpenAPISupport,
+    fallback_ts_type: str,
+) -> None:
+    """Process session props and add them to shared_props.
+
+    Handles both set[str] (legacy) and dict[str, type] (new typed) formats.
+    """
+    if isinstance(session_props, dict):
+        # New behavior: dict maps prop names to Python types
+        for key, prop_type_class in session_props.items():
+            if not key:
+                continue
+            # Register the type with OpenAPI if possible
+            if openapi_support.enabled and openapi_support.schema_creator:
+                try:
+                    field_def = FieldDefinition.from_annotation(prop_type_class)
+                    schema_result = openapi_support.schema_creator.for_field_definition(field_def)
+                    if isinstance(schema_result, Reference):
+                        shared_schema_keys[key] = _get_normalized_schema_key(field_def)
+                    type_name = prop_type_class.__name__ if hasattr(prop_type_class, "__name__") else fallback_ts_type
+                    shared_props.setdefault(key, {"type": type_name, "optional": True})
+                except (AttributeError, TypeError, ValueError):  # pragma: no cover - defensive
+                    shared_props.setdefault(key, {"type": fallback_ts_type, "optional": True})
+            else:
+                type_name = prop_type_class.__name__ if hasattr(prop_type_class, "__name__") else fallback_ts_type
+                shared_props.setdefault(key, {"type": type_name, "optional": True})
+    else:
+        # Legacy behavior: set of prop names (types are unknown)
+        for key in session_props:
+            if not key:
+                continue
+            shared_props.setdefault(key, {"type": fallback_ts_type, "optional": True})
+
+
 def _build_inertia_shared_props(
     app: "Litestar",
     *,
@@ -324,10 +451,10 @@ def _build_inertia_shared_props(
             except (AttributeError, TypeError, ValueError):  # pragma: no cover - defensive
                 pass
 
-    for key in inertia_config.extra_session_page_props:
-        if not key:
-            continue
-        shared_props.setdefault(key, {"type": fallback_ts_type, "optional": True})
+    # Handle session props - can be set[str] or dict[str, type]
+    _process_session_props(
+        inertia_config.extra_session_page_props, shared_props, shared_schema_keys, openapi_support, fallback_ts_type
+    )
 
     if not (
         openapi_support.context

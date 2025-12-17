@@ -30,6 +30,14 @@ def test_inject_head_script_basic() -> None:
     assert result.index("</head>") > result.index("<script>console.log('test');</script>")
 
 
+def test_inject_head_script_with_nonce() -> None:
+    html = "<html><head></head><body></body></html>"
+    script = "console.log('nonce');"
+    result = inject_head_script(html, script, nonce="abc123")
+
+    assert "<script nonce=\"abc123\">console.log('nonce');</script>" in result
+
+
 def test_inject_head_script_with_escape() -> None:
     """Test script injection with escaping.</test>"""
     html = "<html><head></head><body></body></html>"

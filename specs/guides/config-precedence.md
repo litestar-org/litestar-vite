@@ -49,7 +49,6 @@ When Litestar starts, it writes a `.litestar.json` file containing shared config
   "proxyMode": "vite_proxy",
   "port": 5173,
   "host": "127.0.0.1",
-  "ssrEnabled": false,
   "ssrOutDir": null,
   "types": {
     "enabled": true,
@@ -96,7 +95,6 @@ These fields are meaningful to both Python and TypeScript:
 | Proxy Mode | `proxy_mode` | `proxyMode` | Dev proxy configuration |
 | Host | `host` | `host` | Dev server host |
 | Port | `port` | `port` | Dev server port |
-| SSR Enabled | `ssr_enabled` | `ssrEnabled` | SSR mode flag |
 | SSR Output Dir | `ssr_output_dir` | `ssrOutDir` | SSR build output |
 | Executor | `runtime.executor` | `executor` | Package manager command |
 | Logging | `logging` | `logging` | Logging configuration |

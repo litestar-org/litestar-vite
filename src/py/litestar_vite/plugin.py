@@ -229,7 +229,7 @@ def _log_fail(message: str) -> None:
     console.print(f"{_FAIL} {message}")
 
 
-def _write_runtime_config_file(config: ViteConfig) -> str:
+def _write_runtime_config_file(config: ViteConfig, *, asset_url_override: str | None = None) -> str:
     """Write a JSON handoff file for the Vite plugin and return its path.
 
     The runtime config file is read by the JS plugin. We serialize with Litestar's JSON encoder for
@@ -249,8 +249,14 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
 
     litestar_version = os.environ.get("LITESTAR_VERSION") or resolve_litestar_version()
 
+    deploy_asset_url = None
+    deploy = config.deploy_config
+    if deploy is not None and deploy.asset_url:
+        deploy_asset_url = deploy.asset_url
+
     payload = {
         "assetUrl": config.asset_url,
+        "deployAssetUrl": deploy_asset_url,
         "bundleDir": bundle_dir_value,
         "hotFile": config.hot_file,
         "resourceDir": resource_dir_value,
@@ -260,7 +266,6 @@ def _write_runtime_config_file(config: ViteConfig) -> str:
         "proxyMode": config.proxy_mode,
         "port": config.port,
         "host": config.host,
-        "ssrEnabled": config.ssr_enabled,
         "ssrOutDir": ssr_out_dir_value,
         "types": {
             "enabled": True,
@@ -306,11 +311,10 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
     """
     litestar_version = os.environ.get("LITESTAR_VERSION") or resolve_litestar_version()
     asset_url = asset_url_override or config.asset_url
-    base_url = config.base_url or asset_url
     if asset_url:
         os.environ.setdefault("ASSET_URL", asset_url)
-    if base_url:
-        os.environ.setdefault("VITE_BASE_URL", base_url)
+    if config.base_url:
+        os.environ.setdefault("VITE_BASE_URL", config.base_url)
     os.environ.setdefault("VITE_ALLOW_REMOTE", str(True))
 
     backend_host = os.environ.get("LITESTAR_HOST") or "127.0.0.1"
@@ -339,7 +343,7 @@ def set_environment(config: ViteConfig, asset_url_override: str | None = None) -
     if config.is_dev_mode:
         os.environ.setdefault("VITE_DEV_MODE", str(config.is_dev_mode))
 
-    config_path = _write_runtime_config_file(config)
+    config_path = _write_runtime_config_file(config, asset_url_override=asset_url_override)
     os.environ["LITESTAR_VITE_CONFIG_PATH"] = config_path
 
 
@@ -1827,7 +1831,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._config.is_dev_mode and self._config.proxy_mode is not None and not _is_non_serving_assets_cli():
             self._configure_dev_proxy(app_config)
 
-        use_spa_handler = self._config.spa_handler and self._config.mode in {"spa", "ssr"}
+        use_spa_handler = self._config.spa_handler and self._config.mode in {"spa", "framework"}
         use_spa_handler = use_spa_handler or (self._config.mode == "external" and not self._config.is_dev_mode)
         if use_spa_handler:
             from litestar_vite._handler import AppHandler
@@ -1962,7 +1966,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             )
 
             if types_config.generate_routes:
-                routes_ts_content = generate_routes_ts(app, openapi_schema=openapi_schema)
+                routes_ts_content = generate_routes_ts(
+                    app, openapi_schema=openapi_schema, global_route=types_config.global_route
+                )
                 self._export_routes_ts_sync(
                     types_config=types_config,
                     routes_ts_content=routes_ts_content,
@@ -2137,7 +2143,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._spa_handler.initialize_sync(vite_url=self._proxy_target)
             _log_success("SPA handler initialized")
 
-        is_ssr_mode = self._config.mode == "ssr" or self._config.proxy_mode == "proxy"
+        is_ssr_mode = self._config.mode == "framework" or self._config.proxy_mode == "proxy"
         if not self._config.is_dev_mode and not self._config.has_built_assets() and not is_ssr_mode:
             _log_warn(
                 "Vite dev server is disabled (dev_mode=False) but no index.html was found. "

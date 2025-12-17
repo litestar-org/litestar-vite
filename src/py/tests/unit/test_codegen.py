@@ -94,6 +94,17 @@ def test_generate_routes_ts_basic_route() -> None:
     assert "export const routeDefinitions = {" in ts_content
 
 
+def test_generate_routes_ts_global_route_registers_window() -> None:
+    @get("/users", name="list_users", sync_to_thread=False)
+    def list_users() -> list[str]:
+        return ["user1", "user2"]
+
+    app = Litestar([list_users])
+    ts_content = generate_routes_ts(app, global_route=True)
+
+    assert "(window as any).route = route;" in ts_content
+
+
 def test_generate_routes_ts_with_path_params() -> None:
     """Test TypeScript route generation with path parameters."""
 

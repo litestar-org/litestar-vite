@@ -135,13 +135,14 @@ def _set_inner_html_replacer(match: re.Match[str], *, content: str) -> str:
     return match.group(1) + content + match.group(5)
 
 
-def inject_head_script(html: str, script: str, *, escape: bool = True) -> str:
+def inject_head_script(html: str, script: str, *, escape: bool = True, nonce: str | None = None) -> str:
     """Inject a script tag before the closing </head> tag.
 
     Args:
         html: The HTML document.
         script: The JavaScript code to inject (without <script> tags).
         escape: Whether to escape the script content. Default True.
+        nonce: Optional CSP nonce to add to the injected ``<script>`` tag.
 
     Returns:
         The HTML with the injected script. If ``</head>`` is not found,
@@ -158,7 +159,8 @@ def inject_head_script(html: str, script: str, *, escape: bool = True) -> str:
     if escape:
         script = _escape_script(script)
 
-    script_tag = f"<script>{script}</script>\n"
+    nonce_attr = f' nonce="{_escape_attr(nonce)}"' if nonce else ""
+    script_tag = f"<script{nonce_attr}>{script}</script>\n"
 
     head_end_match = _HEAD_END_PATTERN.search(html)
     if head_end_match:
@@ -300,7 +302,7 @@ def set_element_inner_html(html: str, selector: str, content: str) -> str:
     return pattern.sub(replacer, html, count=1)
 
 
-def inject_json_script(html: str, var_name: str, data: dict[str, Any]) -> str:
+def inject_json_script(html: str, var_name: str, data: dict[str, Any], *, nonce: str | None = None) -> str:
     """Inject a script that sets a global JavaScript variable to JSON data.
 
     This is a convenience function for injecting structured data into the page.
@@ -311,6 +313,7 @@ def inject_json_script(html: str, var_name: str, data: dict[str, Any]) -> str:
         html: The HTML document.
         var_name: The global variable name (e.g., "__LITESTAR_ROUTES__").
         data: The data to serialize as JSON.
+        nonce: Optional CSP nonce to add to the injected ``<script>`` tag.
 
     Returns:
         The HTML with the injected script in the ``<head>`` section. Falls back
@@ -326,7 +329,7 @@ def inject_json_script(html: str, var_name: str, data: dict[str, Any]) -> str:
     """
     json_data = encode_json(data).decode("utf-8")
     script = f"window.{var_name} = {json_data};"
-    return inject_head_script(html, script, escape=False)
+    return inject_head_script(html, script, escape=False, nonce=nonce)
 
 
 def transform_asset_urls(

@@ -1,18 +1,92 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { resolveInstallHint, resolvePackageExecutor } from "../src/install-hint"
+import { detectExecutor, resolveInstallHint, resolvePackageExecutor } from "../src/install-hint"
+
+// Mock fs module
+vi.mock("node:fs", () => ({
+  default: {
+    existsSync: vi.fn(() => false),
+    readFileSync: vi.fn(() => "{}"),
+  },
+  existsSync: vi.fn(() => false),
+  readFileSync: vi.fn(() => "{}"),
+}))
+
+import fs from "node:fs"
 
 describe("install-hint", () => {
   const originalEnv = { ...process.env }
 
   beforeEach(() => {
     vi.resetModules()
+    vi.mocked(fs.existsSync).mockReturnValue(false)
+    vi.mocked(fs.readFileSync).mockReturnValue("{}")
     process.env = { ...originalEnv }
     process.env.LITESTAR_VITE_RUNTIME = undefined
     process.env.LITESTAR_VITE_INSTALL_CMD = undefined
+    process.env.LITESTAR_VITE_CONFIG_PATH = undefined
   })
 
   afterEach(() => {
     process.env = originalEnv
+    vi.clearAllMocks()
+  })
+
+  describe("detectExecutor", () => {
+    it("returns node by default when no lockfiles exist", () => {
+      expect(detectExecutor()).toBe("node")
+    })
+
+    it("returns bun when bun.lockb exists", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes("bun.lockb"))
+
+      expect(detectExecutor()).toBe("bun")
+    })
+
+    it("returns bun when bun.lock exists", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes("bun.lock") && !String(p).includes("bun.lockb"))
+
+      expect(detectExecutor()).toBe("bun")
+    })
+
+    it("returns pnpm when pnpm-lock.yaml exists", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes("pnpm-lock.yaml"))
+
+      expect(detectExecutor()).toBe("pnpm")
+    })
+
+    it("returns yarn when yarn.lock exists", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes("yarn.lock"))
+
+      expect(detectExecutor()).toBe("yarn")
+    })
+
+    it("returns deno when deno.lock exists", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes("deno.lock"))
+
+      expect(detectExecutor()).toBe("deno")
+    })
+
+    it("reads executor from .litestar.json", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes(".litestar.json"))
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ executor: "bun" }))
+
+      expect(detectExecutor()).toBe("bun")
+    })
+
+    it("prioritizes env var over .litestar.json", () => {
+      process.env.LITESTAR_VITE_RUNTIME = "pnpm"
+      vi.mocked(fs.existsSync).mockReturnValue(true)
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ executor: "bun" }))
+
+      expect(detectExecutor()).toBe("pnpm")
+    })
+
+    it("prioritizes .litestar.json over lockfiles", () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true)
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ executor: "yarn" }))
+
+      expect(detectExecutor()).toBe("yarn")
+    })
   })
 
   describe("resolveInstallHint", () => {
@@ -117,6 +191,23 @@ describe("install-hint", () => {
 
       expect(hint).toBe("npm install -D @hey-api/openapi-ts")
     })
+
+    it("detects bun from lockfile when no env var set", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes("bun.lockb"))
+
+      const hint = resolveInstallHint()
+
+      expect(hint).toBe("bun add -d @hey-api/openapi-ts")
+    })
+
+    it("reads from .litestar.json when available", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes(".litestar.json"))
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ executor: "pnpm" }))
+
+      const hint = resolveInstallHint()
+
+      expect(hint).toBe("pnpm add -D @hey-api/openapi-ts")
+    })
   })
 
   describe("resolvePackageExecutor", () => {
@@ -182,14 +273,13 @@ describe("install-hint", () => {
       expect(executor).toBe("pnpm dlx @hey-api/openapi-ts")
     })
 
-    it("uses env var when executor is empty string", () => {
-      process.env.LITESTAR_VITE_RUNTIME = "pnpm"
+    it("uses detected executor when executor is empty string", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes("pnpm-lock.yaml"))
 
       const executor = resolvePackageExecutor("@hey-api/openapi-ts", "")
 
-      // Empty string is falsy in the ?? operator, so it falls back to env var
-      // But then .toLowerCase() is called on "", so it defaults to npx
-      expect(executor).toBe("npx @hey-api/openapi-ts")
+      // Empty string triggers lockfile detection
+      expect(executor).toBe("pnpm dlx @hey-api/openapi-ts")
     })
 
     it("handles unknown runtime as npx", () => {
@@ -218,6 +308,23 @@ describe("install-hint", () => {
       const executor = resolvePackageExecutor("@hey-api/openapi-ts", "node")
 
       expect(executor).toBe("npx @hey-api/openapi-ts")
+    })
+
+    it("detects bun from lockfile when no env var set", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes("bun.lockb"))
+
+      const executor = resolvePackageExecutor("@hey-api/openapi-ts")
+
+      expect(executor).toBe("bunx @hey-api/openapi-ts")
+    })
+
+    it("reads from .litestar.json when available", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes(".litestar.json"))
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ executor: "yarn" }))
+
+      const executor = resolvePackageExecutor("@hey-api/openapi-ts")
+
+      expect(executor).toBe("yarn dlx @hey-api/openapi-ts")
     })
   })
 })

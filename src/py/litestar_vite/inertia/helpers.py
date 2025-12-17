@@ -9,7 +9,6 @@ from anyio.from_thread import BlockingPortal, start_blocking_portal
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.utils.empty import value_or_default
 from litestar.utils.scope.state import ScopeState
-from typing_extensions import ParamSpec
 
 from litestar_vite.inertia.types import ScrollPropsConfig
 
@@ -18,7 +17,6 @@ if TYPE_CHECKING:
 
     from litestar_vite.inertia.plugin import InertiaPlugin
 T = TypeVar("T")
-T_ParamSpec = ParamSpec("T_ParamSpec")
 PropKeyT = TypeVar("PropKeyT", bound=str)
 StaticT = TypeVar("StaticT", bound=object)
 

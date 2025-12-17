@@ -41,7 +41,7 @@ Backend Setup
 
 Key points:
 
-- ``mode="ssr"`` enables server-side rendering mode
+- ``mode="framework"`` enables meta-framework integration mode (aliases: ``mode="ssr"`` / ``mode="ssg"``)
 - ``ExternalDevServer`` delegates dev server to Astro
 - ``TypeGenConfig`` enables type generation for Astro
 
@@ -199,7 +199,7 @@ For production:
 
 2. Serve the built site:
 
-   - **SSR mode**: ``litestar assets serve --production`` runs the Astro server
+   - **Framework SSR**: ``litestar assets serve --production`` runs the Astro server
    - **Static mode**: Serve ``dist/`` via Litestar's static files handler
 
 Rendering Modes

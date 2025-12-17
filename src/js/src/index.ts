@@ -114,6 +114,13 @@ export interface PluginConfig {
    */
   assetUrl?: string
   /**
+   * Optional asset URL to use only during production builds.
+   *
+   * This is typically derived from Python DeployConfig.asset_url and written into `.litestar.json`
+   * as `deployAssetUrl`. It is only used when `command === "build"`.
+   */
+  deployAssetUrl?: string
+  /**
    * The public directory where all compiled/bundled assets should be written.
    *
    * @default 'public/dist'
@@ -262,9 +269,11 @@ interface RefreshConfig {
  * Note: `executor` remains optional - undefined means auto-detect from env
  * Note: `inertiaMode` is resolved to boolean (auto-detected from .litestar.json mode)
  */
-interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor" | "inertiaMode"> {
+interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor" | "inertiaMode" | "deployAssetUrl"> {
   types: Required<TypesConfig> | false
   executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
+  /** Optional asset URL to use for production builds (overrides assetUrl during build) */
+  deployAssetUrl?: string
   /** Whether in Inertia mode (backend serves HTML, not Vite) */
   inertiaMode: boolean
   /** Whether .litestar.json was found (used for validation warnings) */
@@ -388,7 +397,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       userConfig = config
       const ssr = !!userConfig.build?.ssr
       const env = loadEnv(mode, userConfig.envDir || process.cwd(), "")
-      const assetUrl = normalizeAssetUrl(env.ASSET_URL || pluginConfig.assetUrl)
+      const runtimeAssetUrl = normalizeAssetUrl(env.ASSET_URL || pluginConfig.assetUrl)
+      const buildAssetUrl = pluginConfig.deployAssetUrl ?? runtimeAssetUrl
       const serverConfig = command === "serve" ? (resolveDevelopmentEnvironmentServerConfig(pluginConfig.detectTls) ?? resolveEnvironmentServerConfig(env)) : undefined
 
       const withProxyErrorSilencer = (proxyConfig: Record<string, any> | undefined) => {
@@ -424,7 +434,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       ensureCommandShouldRunInEnvironment(command, env, mode)
 
       return {
-        base: userConfig.base ?? (command === "build" ? resolveBase(pluginConfig, assetUrl) : devBase),
+        base: userConfig.base ?? (command === "build" ? resolveBase(pluginConfig, buildAssetUrl) : devBase),
         publicDir: userConfig.publicDir ?? pluginConfig.staticDir ?? false,
         clearScreen: false,
         build: {
@@ -945,9 +955,12 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
 
   const effectiveResourceDir = resolvedConfig.resourceDir ?? pythonDefaults?.resourceDir ?? "src"
 
+  const deployAssetUrlRaw = resolvedConfig.deployAssetUrl ?? pythonDefaults?.deployAssetUrl ?? undefined
+
   const result: ResolvedPluginConfig = {
     input: resolvedConfig.input,
     assetUrl: normalizeAssetUrl(resolvedConfig.assetUrl ?? pythonDefaults?.assetUrl ?? "/static/"),
+    deployAssetUrl: typeof deployAssetUrlRaw === "string" ? normalizeAssetUrl(deployAssetUrlRaw) : undefined,
     resourceDir: effectiveResourceDir,
     bundleDir: resolvedConfig.bundleDir ?? pythonDefaults?.bundleDir ?? "public",
     staticDir: resolvedConfig.staticDir ?? pythonDefaults?.staticDir ?? path.join(effectiveResourceDir, "public"),
@@ -1011,7 +1024,8 @@ function validateAgainstPythonDefaults(resolved: ResolvedPluginConfig, pythonDef
     warnings.push(`staticDir: vite.config.ts="${resolved.staticDir}" differs from Python="${pythonDefaults.staticDir}"`)
   }
 
-  if (pythonDefaults.ssrEnabled && userConfig.ssrOutDir !== undefined && hasPythonValue(pythonDefaults.ssrOutDir) && resolved.ssrOutDir !== pythonDefaults.ssrOutDir) {
+  const frameworkMode = pythonDefaults.mode === "framework" || pythonDefaults.mode === "ssr" || pythonDefaults.mode === "ssg"
+  if (frameworkMode && userConfig.ssrOutDir !== undefined && hasPythonValue(pythonDefaults.ssrOutDir) && resolved.ssrOutDir !== pythonDefaults.ssrOutDir) {
     warnings.push(`ssrOutDir: vite.config.ts="${resolved.ssrOutDir}" differs from Python="${pythonDefaults.ssrOutDir}"`)
   }
 

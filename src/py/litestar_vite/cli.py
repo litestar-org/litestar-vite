@@ -220,8 +220,8 @@ def _run_vite_build(config: ViteConfig, root_dir: Path, console: Any, no_build: 
 
     console.rule("[yellow]Starting Vite build process[/]", align="left")
     if config.set_environment:
-        set_environment(config=config, asset_url_override=config.base_url or config.asset_url)
-    os.environ["VITE_BASE_URL"] = config.base_url or config.asset_url or "/"
+        set_environment(config=config, asset_url_override=config.asset_url)
+    os.environ.setdefault("VITE_BASE_URL", config.base_url or "/")
     try:
         config.executor.execute(config.build_command, cwd=root_dir)
         console.print("[bold green]✓ Build complete[/]")
@@ -247,13 +247,42 @@ def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: An
         return
 
     console.print("[dim]Preparing OpenAPI schema and routes...[/]")
-    _export_openapi_schema(app, types_config)
+
+    # For Inertia apps, pre-generate pages metadata to register session prop types
+    # in the OpenAPI schema BEFORE exporting it
+    openapi_schema: dict[str, Any] | None = None
+    if isinstance(config.inertia, InertiaConfig) and types_config.generate_page_props and types_config.openapi_path:
+        try:
+            serializer = get_serializer(app.type_encoders)
+            openapi_schema = app.openapi_schema.to_schema()
+            # Pre-generate inertia pages to register session prop types in schema
+            inertia_type_gen = config.inertia.type_gen or InertiaTypeGenConfig()
+            _ = generate_inertia_pages_json(
+                app,
+                openapi_schema=openapi_schema,
+                include_default_auth=inertia_type_gen.include_default_auth,
+                include_default_flash=inertia_type_gen.include_default_flash,
+                inertia_config=config.inertia,
+                types_config=types_config,
+            )
+            # Export the modified schema (now includes session prop types)
+            console.print("[dim]1. Exporting OpenAPI schema...[/]")
+            schema_content = msgspec.json.format(encode_json(openapi_schema, serializer=serializer), indent=2)
+            types_config.openapi_path.parent.mkdir(parents=True, exist_ok=True)
+            types_config.openapi_path.write_bytes(schema_content)
+            console.print(f"[green]✓ Schema exported to {_relative_path(types_config.openapi_path)}[/]")
+        except (OSError, SerializationException) as exc:
+            console.print(f"[dim]! Could not pre-process OpenAPI schema: {exc}[/]")
+            _export_openapi_schema(app, types_config)
+    else:
+        _export_openapi_schema(app, types_config)
+
     _export_routes_metadata(app, types_config)
 
     if types_config.generate_routes:
         console.print("[dim]3. Exporting typed routes...[/]")
         try:
-            routes_ts_content = generate_routes_ts(app)
+            routes_ts_content = generate_routes_ts(app, global_route=types_config.global_route)
             routes_ts_path = types_config.routes_ts_path or (types_config.output / "routes.ts")
             routes_ts_path.parent.mkdir(parents=True, exist_ok=True)
             routes_ts_path.write_text(routes_ts_content, encoding="utf-8")
@@ -262,23 +291,16 @@ def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: An
             msg = f"Failed to export typed routes: {exc}"
             raise LitestarCLIException(msg) from exc
 
+    # Export Inertia pages metadata (schema already has types registered)
     if isinstance(config.inertia, InertiaConfig) and types_config.generate_page_props and types_config.page_props_path:
-        openapi_schema: dict[str, Any] | None = None
-        try:
-            if types_config.openapi_path and types_config.openapi_path.exists():
-                openapi_schema = decode_json(types_config.openapi_path.read_bytes())
-        except (OSError, SerializationException):
-            pass
+        if openapi_schema is None:
+            try:
+                if types_config.openapi_path and types_config.openapi_path.exists():
+                    openapi_schema = decode_json(types_config.openapi_path.read_bytes())
+            except (OSError, SerializationException):
+                pass
 
         _export_inertia_pages_metadata(app, types_config, config.inertia, openapi_schema)
-        if openapi_schema is not None and types_config.openapi_path is not None:
-            try:
-                schema_content = msgspec.json.format(encode_json(openapi_schema), indent=2)
-                types_config.openapi_path.parent.mkdir(parents=True, exist_ok=True)
-                types_config.openapi_path.write_bytes(schema_content)
-            except OSError as exc:  # pragma: no cover
-                msg = f"Failed to update OpenAPI schema: {exc}"
-                raise LitestarCLIException(msg) from exc
 
 
 @group(cls=LitestarGroup, name="assets")
@@ -741,7 +763,7 @@ def vite_deploy(
 
 @vite_group.command(
     name="serve",
-    help="Serve frontend assets. For SSR frameworks (mode='ssr'), runs production Node server. Otherwise runs Vite dev server.",
+    help="Serve frontend assets. For meta-frameworks (mode='framework'; aliases: 'ssr'/'ssg'), runs production Node server. Otherwise runs Vite dev server.",
 )
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 @option("--quiet", type=bool, help="Suppress non-essential output.", default=False, is_flag=True)
@@ -852,7 +874,8 @@ def export_routes(
 
         console.rule(f"[yellow]Exporting typed routes to {output}[/]", align="left")
 
-        routes_ts_content = generate_routes_ts(app, only=only_list, exclude=exclude_list)
+        global_route = bool(isinstance(config.types, TypeGenConfig) and config.types.global_route)
+        routes_ts_content = generate_routes_ts(app, only=only_list, exclude=exclude_list, global_route=global_route)
 
         try:
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -948,7 +971,7 @@ def _export_routes_typescript(app: "Litestar", types_config: Any) -> None:
 
     console.print("[dim]   Generating typed routes.ts...[/]")
     try:
-        ts_content = generate_routes_ts(app)
+        ts_content = generate_routes_ts(app, global_route=types_config.global_route)
         types_config.routes_ts_path.parent.mkdir(parents=True, exist_ok=True)
         types_config.routes_ts_path.write_text(ts_content)
         console.print(f"[green]✓ Typed routes generated at {_relative_path(types_config.routes_ts_path)}[/]")
@@ -1113,18 +1136,49 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
 
     console.rule("[yellow]Generating TypeScript types[/]", align="left")
 
-    _export_openapi_schema(app, config.types)
+    # For Inertia apps, we need to build the page metadata FIRST
+    # so that session prop types get registered in OpenAPI before export
+    openapi_schema: dict[str, Any] | None = None
+    if isinstance(config.inertia, InertiaConfig) and config.types.generate_page_props and config.types.openapi_path:
+        try:
+            serializer = get_serializer(app.type_encoders)
+            openapi_schema = app.openapi_schema.to_schema()
+            # Pre-generate inertia pages to register session prop types in schema
+            inertia_type_gen = config.inertia.type_gen or InertiaTypeGenConfig()
+            _ = generate_inertia_pages_json(
+                app,
+                openapi_schema=openapi_schema,
+                include_default_auth=inertia_type_gen.include_default_auth,
+                include_default_flash=inertia_type_gen.include_default_flash,
+                inertia_config=config.inertia,
+                types_config=config.types,
+            )
+            # Export the modified schema (now includes session prop types)
+            console.print("[dim]1. Exporting OpenAPI schema...[/]")
+            schema_content = msgspec.json.format(encode_json(openapi_schema, serializer=serializer), indent=2)
+            config.types.openapi_path.parent.mkdir(parents=True, exist_ok=True)
+            config.types.openapi_path.write_bytes(schema_content)
+            console.print(f"[green]✓ Schema exported to {_relative_path(config.types.openapi_path)}[/]")
+        except (OSError, SerializationException) as exc:
+            if verbose:
+                console.print(f"[dim]! Could not pre-process OpenAPI schema: {exc}[/]")
+            _export_openapi_schema(app, config.types)
+    else:
+        _export_openapi_schema(app, config.types)
+
     _export_routes_metadata(app, config.types)
     _export_routes_typescript(app, config.types)
     _run_openapi_ts(config, verbose, config.install_command, config.runtime.executor)
+
+    # Now export the Inertia pages metadata (schema already has types registered)
     if isinstance(config.inertia, InertiaConfig) and config.types.generate_page_props and config.types.page_props_path:
-        openapi_schema: dict[str, Any] | None = None
-        try:
-            if config.types.openapi_path and config.types.openapi_path.exists():
-                openapi_schema = decode_json(config.types.openapi_path.read_bytes())
-        except (OSError, SerializationException):
-            if verbose:
-                console.print("[dim]! Could not load OpenAPI schema for type references[/]")
+        if openapi_schema is None:
+            try:
+                if config.types.openapi_path and config.types.openapi_path.exists():
+                    openapi_schema = decode_json(config.types.openapi_path.read_bytes())
+            except (OSError, SerializationException):
+                if verbose:
+                    console.print("[dim]! Could not load OpenAPI schema for type references[/]")
 
         _export_inertia_pages_metadata(app, config.types, config.inertia, openapi_schema)
 
@@ -1143,11 +1197,13 @@ def vite_status(app: "Litestar") -> None:
     console.print(f"Assets URL: {config.asset_url}")
     console.print(f"Base URL: {config.base_url}")
 
-    manifest_path = Path(f"{config.bundle_dir}/{config.manifest_name}")
-    if manifest_path.exists():
-        console.print(f"[green]✓ Manifest found at {manifest_path}[/]")
+    manifest_candidates = config.candidate_manifest_paths()
+    found_manifest = next((path for path in manifest_candidates if path.exists()), None)
+    if found_manifest is not None:
+        console.print(f"[green]✓ Manifest found at {found_manifest}[/]")
     else:
-        console.print(f"[red]✗ Manifest not found at {manifest_path}[/]")
+        manifest_locations = " or ".join(str(path) for path in manifest_candidates)
+        console.print(f"[red]✗ Manifest not found at {manifest_locations}[/]")
 
     if config.dev_mode:
         url = f"{config.protocol}://{config.host}:{config.port}"

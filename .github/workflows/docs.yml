@@ -43,9 +43,14 @@ jobs:
           npm ci
           npm run build
 
+      - name: Install Go (for VHS)
+        uses: actions/setup-go@v6
+        with:
+          go-version: ">=1.24.0"
+          check-latest: true
+
       - name: Install VHS
         run: |
-          # Install VHS via go (more reliable than charm install script)
           go install github.com/charmbracelet/vhs@latest
           echo "$HOME/go/bin" >> $GITHUB_PATH
 

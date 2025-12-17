@@ -41,7 +41,7 @@ Backend Setup
 
 Key points:
 
-- ``mode="ssr"`` enables server-side rendering mode
+- ``mode="framework"`` enables meta-framework integration mode (aliases: ``mode="ssr"`` / ``mode="ssg"``)
 - ``ExternalDevServer`` delegates dev server to Nuxt
 - ``TypeGenConfig`` enables type generation for Nuxt composables
 

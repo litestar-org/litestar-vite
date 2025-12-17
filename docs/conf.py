@@ -84,6 +84,7 @@ nitpick_ignore = [
     (PY_CLASS, "litestar.template.config.EngineType"),
     # Litestar base types
     (PY_CLASS, "ASGIConnection"),
+    (PY_CLASS, "BaseRouteHandler"),
     (PY_CLASS, "UserT"),
     (PY_CLASS, "AuthT"),
     (PY_CLASS, "StateT"),

@@ -81,6 +81,6 @@ documentation_gates:
       - "HTMX helper utilities (addDirective, registerHtmxExtension, setHtmxDebug, swapJson)"
       - "SPAConfig.cache_transformed_html option"
       - "RuntimeConfig.start_dev_server option"
-      - "Mode aliases: ssg->ssr, inertia->hybrid"
+      - "Mode aliases: ssr/ssg->framework, inertia->hybrid"
       - "Inertia v2 features: defer(), clear_history(), encrypt_history"
       - "PaginationContainer protocol for scroll regions"
