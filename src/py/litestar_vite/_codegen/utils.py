@@ -116,7 +116,6 @@ def encode_deterministic_json(data: dict[str, Any], *, indent: int = 2) -> bytes
         Formatted JSON bytes with sorted keys.
     """
     import msgspec
-
     from litestar.serialization import encode_json
 
     sorted_data = _deep_sort_dict(data)

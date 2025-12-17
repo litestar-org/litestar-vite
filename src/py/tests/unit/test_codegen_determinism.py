@@ -16,11 +16,7 @@ from litestar_vite._codegen.utils import (
     strip_timestamp_for_comparison,
     write_if_changed,
 )
-from litestar_vite.codegen import (
-    generate_inertia_pages_json,
-    generate_routes_json,
-    generate_routes_ts,
-)
+from litestar_vite.codegen import generate_inertia_pages_json, generate_routes_json, generate_routes_ts
 
 
 def test_deep_sort_dict_simple() -> None:
@@ -359,11 +355,7 @@ def test_inertia_json_with_timestamp_comparison() -> None:
         content2 = encode_deterministic_json(data2)
 
         # Write with timestamp comparison - should detect no change
-        result = write_if_changed(
-            path,
-            content2,
-            normalize_for_comparison=strip_timestamp_for_comparison,
-        )
+        result = write_if_changed(path, content2, normalize_for_comparison=strip_timestamp_for_comparison)
 
         # Should NOT write because content (minus timestamp) is identical
         assert result is False
