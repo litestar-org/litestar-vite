@@ -19,7 +19,14 @@ from litestar.serialization import decode_json, encode_json, get_serializer
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
-from litestar_vite.codegen import generate_inertia_pages_json, generate_routes_json, generate_routes_ts
+from litestar_vite.codegen import (
+    encode_deterministic_json,
+    generate_inertia_pages_json,
+    generate_routes_json,
+    generate_routes_ts,
+    strip_timestamp_for_comparison,
+    write_if_changed,
+)
 from litestar_vite.config import (
     DeployConfig,
     ExternalDevServer,
@@ -878,9 +885,9 @@ def export_routes(
         routes_ts_content = generate_routes_ts(app, only=only_list, exclude=exclude_list, global_route=global_route)
 
         try:
-            output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_text(routes_ts_content, encoding="utf-8")
-            console.print(f"[green]✓ Typed routes exported to {output}[/]")
+            changed = write_if_changed(output, routes_ts_content)
+            status = "updated" if changed else "unchanged"
+            console.print(f"[green]✓ Typed routes exported to {output}[/] [dim]({status})[/]")
         except OSError as e:  # pragma: no cover
             msg = f"Failed to write routes to path {output}"
             raise LitestarCLIException(msg) from e
@@ -900,10 +907,10 @@ def export_routes(
         )
 
         try:
-            content = msgspec.json.format(encode_json(routes_data), indent=2)
-            output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_bytes(content)
-            console.print(f"[green]✓ Routes exported to {output}[/]")
+            content = encode_deterministic_json(routes_data)
+            changed = write_if_changed(output, content)
+            status = "updated" if changed else "unchanged"
+            console.print(f"[green]✓ Routes exported to {output}[/] [dim]({status})[/]")
             console.print(f"[dim]  {len(routes_data.get('routes', {}))} routes exported[/]")
         except OSError as e:  # pragma: no cover
             msg = f"Failed to write routes to path {output}"
@@ -925,9 +932,9 @@ def _export_openapi_schema(app: "Litestar", types_config: Any) -> None:
         serializer = get_serializer(app.type_encoders)
         schema_dict = app.openapi_schema.to_schema()
         schema_content = msgspec.json.format(encode_json(schema_dict, serializer=serializer), indent=2)
-        types_config.openapi_path.parent.mkdir(parents=True, exist_ok=True)
-        types_config.openapi_path.write_bytes(schema_content)
-        console.print(f"[green]✓ Schema exported to {_relative_path(types_config.openapi_path)}[/]")
+        changed = write_if_changed(types_config.openapi_path, schema_content)
+        status = "updated" if changed else "unchanged"
+        console.print(f"[green]✓ Schema exported to {_relative_path(types_config.openapi_path)}[/] [dim]({status})[/]")
     except OSError as e:
         msg = f"Failed to export OpenAPI schema: {e}"
         raise LitestarCLIException(msg) from e
@@ -947,10 +954,10 @@ def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
     try:
         routes_data = generate_routes_json(app, include_components=True)
         routes_data["litestar_version"] = resolve_litestar_version()
-        routes_content = msgspec.json.format(encode_json(routes_data), indent=2)
-        types_config.routes_path.parent.mkdir(parents=True, exist_ok=True)
-        types_config.routes_path.write_bytes(routes_content)
-        console.print(f"[green]✓ Routes exported to {_relative_path(types_config.routes_path)}[/]")
+        routes_content = encode_deterministic_json(routes_data)
+        changed = write_if_changed(types_config.routes_path, routes_content)
+        status = "updated" if changed else "unchanged"
+        console.print(f"[green]✓ Routes exported to {_relative_path(types_config.routes_path)}[/] [dim]({status})[/]")
     except OSError as e:
         msg = f"Failed to export routes: {e}"
         raise LitestarCLIException(msg) from e
@@ -972,9 +979,11 @@ def _export_routes_typescript(app: "Litestar", types_config: Any) -> None:
     console.print("[dim]   Generating typed routes.ts...[/]")
     try:
         ts_content = generate_routes_ts(app, global_route=types_config.global_route)
-        types_config.routes_ts_path.parent.mkdir(parents=True, exist_ok=True)
-        types_config.routes_ts_path.write_text(ts_content)
-        console.print(f"[green]✓ Typed routes generated at {_relative_path(types_config.routes_ts_path)}[/]")
+        changed = write_if_changed(types_config.routes_ts_path, ts_content)
+        status = "updated" if changed else "unchanged"
+        console.print(
+            f"[green]✓ Typed routes generated at {_relative_path(types_config.routes_ts_path)}[/] [dim]({status})[/]"
+        )
     except OSError as e:
         msg = f"Failed to generate typed routes: {e}"
         raise LitestarCLIException(msg) from e
@@ -1008,11 +1017,16 @@ def _export_inertia_pages_metadata(
             inertia_config=inertia_config,
             types_config=types_config,
         )
-        pages_content = msgspec.json.format(encode_json(pages_data), indent=2)
-        types_config.page_props_path.parent.mkdir(parents=True, exist_ok=True)
-        types_config.page_props_path.write_bytes(pages_content)
+        pages_content = encode_deterministic_json(pages_data)
+        # Use timestamp-aware comparison: ignore generatedAt field when comparing
+        changed = write_if_changed(
+            types_config.page_props_path, pages_content, normalize_for_comparison=strip_timestamp_for_comparison
+        )
         num_pages = len(pages_data.get("pages", {}))
-        console.print(f"[green]✓ Page props exported to {_relative_path(types_config.page_props_path)}[/]")
+        status = "updated" if changed else "unchanged"
+        console.print(
+            f"[green]✓ Page props exported to {_relative_path(types_config.page_props_path)}[/] [dim]({status})[/]"
+        )
         console.print(f"[dim]  {num_pages} Inertia page(s) found[/]")
     except OSError as e:
         msg = f"Failed to export Inertia page props: {e}"

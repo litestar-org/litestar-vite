@@ -240,22 +240,31 @@ def generate_routes_json(
 ) -> dict[str, Any]:
     """Generate Ziggy-compatible routes JSON.
 
+    The output is deterministic: routes are sorted by name to produce
+    byte-identical output for the same input data.
+
     Returns:
-        A Ziggy-compatible routes payload as a dictionary.
+        A Ziggy-compatible routes payload as a dictionary with sorted keys.
     """
     routes_metadata = extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
 
+    # Sort routes by name for deterministic output
+    sorted_routes = sorted(routes_metadata, key=lambda r: r.name)
+
     routes_dict: dict[str, Any] = {}
 
-    for route in routes_metadata:
+    for route in sorted_routes:
         route_data: dict[str, Any] = {"uri": route.path, "methods": route.methods}
 
         if route.params:
-            route_data["parameters"] = list(route.params.keys())
-            route_data["parameterTypes"] = route.params
+            # Sort params dict for deterministic output
+            sorted_params = dict(sorted(route.params.items()))
+            route_data["parameters"] = list(sorted_params.keys())
+            route_data["parameterTypes"] = sorted_params
 
         if route.query_params:
-            route_data["queryParameters"] = route.query_params
+            # Sort query params for deterministic output
+            route_data["queryParameters"] = dict(sorted(route.query_params.items()))
 
         if include_components and route.component:
             route_data["component"] = route.component
@@ -331,10 +340,16 @@ def generate_routes_ts(
 ) -> str:
     """Generate typed routes TypeScript file (Ziggy-style).
 
+    The output is deterministic: routes are sorted by name to produce
+    byte-identical output for the same input data.
+
     Returns:
         The generated TypeScript source.
     """
     routes_metadata = extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
+
+    # Sort routes by name for deterministic output
+    sorted_routes = sorted(routes_metadata, key=lambda r: r.name)
 
     route_names: list[str] = []
     path_params_entries: list[str] = []
@@ -342,13 +357,17 @@ def generate_routes_ts(
     routes_entries: list[str] = []
     used_aliases: set[str] = set()
 
-    for route in routes_metadata:
+    for route in sorted_routes:
         route_name = route.name
         route_names.append(route_name)
 
-        if route.params:
+        # Sort params for deterministic output
+        sorted_params = dict(sorted(route.params.items())) if route.params else {}
+        sorted_query_params = dict(sorted(route.query_params.items())) if route.query_params else {}
+
+        if sorted_params:
             param_fields: list[str] = []
-            for param_name, param_type in route.params.items():
+            for param_name, param_type in sorted_params.items():
                 ts_type = _ts_type_for_param(param_type)
                 ts_type_clean = ts_type.replace(" | undefined", "")
                 used_aliases.update(_collect_semantic_aliases(ts_type_clean))
@@ -357,9 +376,9 @@ def generate_routes_ts(
         else:
             path_params_entries.append(f"  '{route_name}': Record<string, never>;")
 
-        if route.query_params:
+        if sorted_query_params:
             query_param_fields: list[str] = []
-            for param_name, param_type in route.query_params.items():
+            for param_name, param_type in sorted_query_params.items():
                 ts_type = _ts_type_for_param(param_type)
                 is_required = _is_type_required(param_type)
                 ts_type_clean = ts_type.replace(" | undefined", "")
@@ -372,16 +391,16 @@ def generate_routes_ts(
         else:
             query_params_entries.append(f"  '{route_name}': Record<string, never>;")
 
-        methods_str = ", ".join(f"'{m}'" for m in route.methods)
+        methods_str = ", ".join(f"'{m}'" for m in sorted(route.methods))
         route_entry_lines = [
             f"  '{route_name}': {{",
             f"    path: '{_escape_ts_string(route.path)}',",
             f"    methods: [{methods_str}] as const,",
         ]
-        param_names_str = ", ".join(f"'{p}'" for p in route.params) if route.params else ""
+        param_names_str = ", ".join(f"'{p}'" for p in sorted_params) if sorted_params else ""
         route_entry_lines.append(f"    pathParams: [{param_names_str}] as const,")
 
-        query_names_str = ", ".join(f"'{p}'" for p in route.query_params) if route.query_params else ""
+        query_names_str = ", ".join(f"'{p}'" for p in sorted_query_params) if sorted_query_params else ""
         route_entry_lines.append(f"    queryParams: [{query_names_str}] as const,")
         if route.component:
             route_entry_lines.append(f"    component: '{_escape_ts_string(route.component)}',")

@@ -27,13 +27,17 @@ from litestar_vite._codegen.routes import (  # noqa: F401
 from litestar_vite._codegen.ts import (
     ts_type_from_openapi as _ts_type_from_openapi,  # noqa: F401  # pyright: ignore[reportUnusedImport]
 )
+from litestar_vite._codegen.utils import encode_deterministic_json, strip_timestamp_for_comparison, write_if_changed
 
 __all__ = (
     "InertiaPageMetadata",
     "RouteMetadata",
+    "encode_deterministic_json",
     "extract_inertia_pages",
     "extract_route_metadata",
     "generate_inertia_pages_json",
     "generate_routes_json",
     "generate_routes_ts",
+    "strip_timestamp_for_comparison",
+    "write_if_changed",
 )

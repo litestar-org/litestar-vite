@@ -487,8 +487,11 @@ def generate_inertia_pages_json(
 ) -> dict[str, Any]:
     """Generate Inertia pages metadata JSON.
 
+    The output is deterministic: all dict keys are sorted alphabetically
+    to produce byte-identical output for the same input data.
+
     Returns:
-        An Inertia pages metadata payload as a dictionary.
+        An Inertia pages metadata payload as a dictionary with sorted keys.
     """
     pages_metadata = extract_inertia_pages(
         app,
@@ -520,15 +523,19 @@ def generate_inertia_pages_json(
         types_config=types_config,
     )
 
+    # Sort all dict keys for deterministic output
+    # Pages sorted by component name, shared props sorted by prop name
+    sorted_pages = dict(sorted(pages_dict.items()))
+    sorted_shared_props = dict(sorted(shared_props.items()))
+
     root: dict[str, Any] = {
-        "pages": pages_dict,
-        "sharedProps": shared_props,
-        "typeGenConfig": {"includeDefaultAuth": include_default_auth, "includeDefaultFlash": include_default_flash},
+        "fallbackType": types_config.fallback_type if types_config is not None else None,
         "generatedAt": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
+        "pages": sorted_pages,
+        "sharedProps": sorted_shared_props,
+        "typeGenConfig": {"includeDefaultAuth": include_default_auth, "includeDefaultFlash": include_default_flash},
+        "typeImportPaths": types_config.type_import_paths if types_config is not None else None,
     }
 
-    if types_config is not None:
-        root["typeImportPaths"] = types_config.type_import_paths
-        root["fallbackType"] = types_config.fallback_type
-
-    return root
+    # Remove None values for cleaner output
+    return {k: v for k, v in root.items() if v is not None}

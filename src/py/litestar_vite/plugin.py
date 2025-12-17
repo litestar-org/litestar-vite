@@ -295,7 +295,10 @@ def _write_runtime_config_file(config: ViteConfig, *, asset_url_override: str | 
     import msgspec
     from litestar.serialization import encode_json
 
-    path.write_bytes(msgspec.json.format(encode_json(payload), indent=2))
+    from litestar_vite._codegen.utils import write_if_changed
+
+    content = msgspec.json.format(encode_json(payload), indent=2)
+    write_if_changed(path, content)
     return str(path)
 
 
