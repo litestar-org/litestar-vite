@@ -73,6 +73,15 @@ class JSExecutor(ABC):
         """Install dependencies."""
 
     @abstractmethod
+    def update(self, cwd: Path, *, latest: bool = False) -> None:
+        """Update dependencies.
+
+        Args:
+            cwd: The working directory.
+            latest: If True, update to latest versions (ignoring semver constraints where supported).
+        """
+
+    @abstractmethod
     def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
         """Run a command."""
 
@@ -142,12 +151,25 @@ class JSExecutor(ABC):
 class CommandExecutor(JSExecutor):
     """Generic command executor."""
 
+    # Subclasses override to customize update behavior
+    update_command: ClassVar[str] = "update"
+    update_latest_flag: ClassVar[str] = "--latest"
+
     def install(self, cwd: Path) -> None:
         executable = self._resolve_executable()
         command = [executable, "install"]
         process = subprocess.run(command, cwd=cwd, shell=platform.system() == "Windows", check=False)
         if process.returncode != 0:
             raise ViteExecutionError(command, process.returncode, "package install failed")
+
+    def update(self, cwd: Path, *, latest: bool = False) -> None:
+        executable = self._resolve_executable()
+        command = [executable, self.update_command]
+        if latest and self.update_latest_flag:
+            command.append(self.update_latest_flag)
+        process = subprocess.run(command, cwd=cwd, shell=platform.system() == "Windows", check=False)
+        if process.returncode != 0:
+            raise ViteExecutionError(command, process.returncode, "package update failed")
 
     def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
         executable = self._resolve_executable()
@@ -177,6 +199,8 @@ class NodeExecutor(CommandExecutor):
     """Node.js executor."""
 
     bin_name = "npm"
+    # npm doesn't have --latest; use --save to update package.json
+    update_latest_flag: ClassVar[str] = "--save"
 
 
 class BunExecutor(CommandExecutor):
@@ -190,15 +214,22 @@ class DenoExecutor(CommandExecutor):
 
     bin_name = "deno"
     silent_flag: ClassVar[str] = ""
+    update_latest_flag: ClassVar[str] = ""
 
     def install(self, cwd: Path) -> None:
         pass
+
+    def update(self, cwd: Path, *, latest: bool = False) -> None:
+        """Deno doesn't have traditional package management."""
+        del cwd, latest  # unused
 
 
 class YarnExecutor(CommandExecutor):
     """Yarn executor."""
 
     bin_name = "yarn"
+    # yarn uses "upgrade" command (not "update")
+    update_command: ClassVar[str] = "upgrade"
 
 
 class PnpmExecutor(CommandExecutor):
@@ -263,6 +294,15 @@ class NodeenvExecutor(JSExecutor):
         npm_path = self._find_npm_in_venv()
         command = [npm_path, "install"]
         subprocess.run(command, cwd=cwd, check=True)
+
+    def update(self, cwd: Path, *, latest: bool = False) -> None:
+        npm_path = self._find_npm_in_venv()
+        command = [npm_path, "update"]
+        if latest:
+            command.append("--save")
+        process = subprocess.run(command, cwd=cwd, shell=platform.system() == "Windows", check=False)
+        if process.returncode != 0:
+            raise ViteExecutionError(command, process.returncode, "package update failed")
 
     def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
         npm_path = self._find_npm_in_venv()

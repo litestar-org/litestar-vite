@@ -576,6 +576,46 @@ def vite_install(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
         console.print("[red]Executor not configured.[/]")
 
 
+@vite_group.command(name="update", help="Update frontend packages.")
+@option(
+    "--latest", type=bool, help="Update to latest versions (ignoring semver constraints).", default=False, is_flag=True
+)
+@option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
+@option("--quiet", type=bool, help="Suppress non-essential output.", default=False, is_flag=True)
+def vite_update(app: "Litestar", latest: "bool", verbose: "bool", quiet: "bool") -> None:
+    """Update frontend packages.
+
+    By default, updates packages within their semver constraints defined in package.json.
+    Use --latest to update to the newest versions available.
+
+    Raises:
+        SystemExit: If the update fails.
+    """
+    if verbose:
+        app.debug = True
+
+    plugin = app.plugins.get(VitePlugin)
+
+    _apply_cli_log_level(plugin.config, verbose=verbose, quiet=quiet)
+
+    if not quiet:
+        if latest:
+            console.rule("[yellow]Updating packages to latest versions[/]", align="left")
+        else:
+            console.rule("[yellow]Updating packages[/]", align="left")
+
+    if plugin.config.executor:
+        root_dir = Path(plugin.config.root_dir or Path.cwd())
+        try:
+            plugin.config.executor.update(root_dir, latest=latest)
+            console.print("[bold green]✓ Packages updated[/]")
+        except ViteExecutionError as e:
+            console.print(f"[bold red]✗ Package update failed: {e!s}[/]")
+            raise SystemExit(1) from None
+    else:
+        console.print("[red]Executor not configured.[/]")
+
+
 @vite_group.command(name="build", help="Building frontend assets with Vite.")
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 @option("--quiet", type=bool, help="Suppress non-essential output.", default=False, is_flag=True)
@@ -937,6 +977,40 @@ def _run_openapi_ts(
         console.print(f"[yellow]! Package executor not found - ensure {runtime_name} is installed[/]")
 
 
+def _run_emit_page_props(config: Any, verbose: bool, executor: "str | None" = None) -> None:
+    """Generate page-props.ts from inertia-pages.json.
+
+    Args:
+        config: The ViteConfig instance (with .types resolved).
+        verbose: Whether to show verbose output.
+        executor: The JS runtime executor (node, bun, deno, yarn, pnpm).
+    """
+    types_config = config.types
+    root_dir = config.root_dir or Path.cwd()
+
+    page_props_path = types_config.page_props_path
+    if page_props_path is None or not page_props_path.exists():
+        if verbose:
+            console.print("[dim]Skipping page-props.ts generation (no inertia-pages.json)[/]")
+        return
+
+    console.print("[dim]4. Generating page-props.ts...[/]")
+
+    pkg_cmd = _get_package_executor_cmd(executor, "emit-page-props")
+
+    try:
+        emit_cmd = [*pkg_cmd, str(page_props_path), str(types_config.output)]
+        subprocess.run(emit_cmd, check=True, cwd=root_dir)
+        console.print(f"[green]✓ page-props.ts generated in {types_config.output}[/]")
+    except subprocess.CalledProcessError as e:
+        console.print("[yellow]! emit-page-props failed[/]")
+        if verbose:
+            console.print(f"[dim]Error: {e!s}[/]")
+    except FileNotFoundError:
+        runtime_name = executor or "Node.js"
+        console.print(f"[yellow]! Package executor not found - ensure {runtime_name} is installed[/]")
+
+
 @vite_group.command(name="generate-types", help="Generate TypeScript types from OpenAPI schema and routes.")
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 def generate_types(app: "Litestar", verbose: "bool") -> None:
@@ -948,12 +1022,14 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     This command:
     1. Exports OpenAPI schema, routes, and page props metadata
     2. Runs @hey-api/openapi-ts to generate TypeScript types
+    3. Generates page-props.ts from inertia-pages.json (if Inertia is enabled)
 
     Args:
         app: The Litestar application instance.
         verbose: Whether to enable verbose output.
     """
     from litestar_vite.codegen import export_integration_assets
+    from litestar_vite.config import InertiaConfig
 
     if verbose:
         app.debug = True
@@ -987,6 +1063,10 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
 
     # Run @hey-api/openapi-ts to generate TypeScript types
     _run_openapi_ts(config, verbose, config.install_command, config.runtime.executor)
+
+    # Generate page-props.ts from inertia-pages.json (if Inertia is enabled)
+    if isinstance(config.inertia, InertiaConfig) and config.types.generate_page_props:
+        _run_emit_page_props(config, verbose, config.runtime.executor)
 
 
 @vite_group.command(name="status", help="Check the status of the Vite integration.")

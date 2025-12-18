@@ -7,7 +7,7 @@ import pytest
 
 from litestar_vite.config import RuntimeConfig, ViteConfig
 from litestar_vite.exceptions import ViteExecutableNotFoundError, ViteExecutionError
-from litestar_vite.executor import BunExecutor, DenoExecutor, NodeenvExecutor, NodeExecutor
+from litestar_vite.executor import BunExecutor, DenoExecutor, NodeenvExecutor, NodeExecutor, PnpmExecutor, YarnExecutor
 
 # =====================================================
 # Executor Base Tests (NodeExecutor, BunExecutor, etc.)
@@ -130,6 +130,106 @@ def test_executor_deno_install_no_op() -> None:
 
 
 # =====================================================
+# Update Command Tests
+# =====================================================
+
+
+@patch("subprocess.run")
+@patch("shutil.which")
+def test_executor_update_command(mock_which: Mock, mock_run: Mock) -> None:
+    """Test executor update command runs correctly."""
+    mock_which.return_value = "/usr/bin/npm"
+    mock_run.return_value = Mock(returncode=0)
+    executor = NodeExecutor()
+
+    executor.update(Path("/tmp"))
+
+    mock_run.assert_called_once()
+    args, _ = mock_run.call_args
+    assert args[0] == ["/usr/bin/npm", "update"]
+
+
+@patch("subprocess.run")
+@patch("shutil.which")
+def test_executor_update_latest_npm(mock_which: Mock, mock_run: Mock) -> None:
+    """Test NodeExecutor update with --latest uses --save flag."""
+    mock_which.return_value = "/usr/bin/npm"
+    mock_run.return_value = Mock(returncode=0)
+    executor = NodeExecutor()
+
+    executor.update(Path("/tmp"), latest=True)
+
+    mock_run.assert_called_once()
+    args, _ = mock_run.call_args
+    assert args[0] == ["/usr/bin/npm", "update", "--save"]
+
+
+@patch("subprocess.run")
+@patch("shutil.which")
+def test_executor_update_latest_yarn(mock_which: Mock, mock_run: Mock) -> None:
+    """Test YarnExecutor update with --latest uses yarn upgrade --latest."""
+    mock_which.return_value = "/usr/bin/yarn"
+    mock_run.return_value = Mock(returncode=0)
+    executor = YarnExecutor()
+
+    executor.update(Path("/tmp"), latest=True)
+
+    mock_run.assert_called_once()
+    args, _ = mock_run.call_args
+    assert args[0] == ["/usr/bin/yarn", "upgrade", "--latest"]
+
+
+@patch("subprocess.run")
+@patch("shutil.which")
+def test_executor_update_latest_pnpm(mock_which: Mock, mock_run: Mock) -> None:
+    """Test PnpmExecutor update with --latest uses pnpm update --latest."""
+    mock_which.return_value = "/usr/bin/pnpm"
+    mock_run.return_value = Mock(returncode=0)
+    executor = PnpmExecutor()
+
+    executor.update(Path("/tmp"), latest=True)
+
+    mock_run.assert_called_once()
+    args, _ = mock_run.call_args
+    assert args[0] == ["/usr/bin/pnpm", "update", "--latest"]
+
+
+@patch("subprocess.run")
+@patch("shutil.which")
+def test_executor_update_latest_bun(mock_which: Mock, mock_run: Mock) -> None:
+    """Test BunExecutor update with --latest uses bun update --latest."""
+    mock_which.return_value = "/usr/bin/bun"
+    mock_run.return_value = Mock(returncode=0)
+    executor = BunExecutor()
+
+    executor.update(Path("/tmp"), latest=True)
+
+    mock_run.assert_called_once()
+    args, _ = mock_run.call_args
+    assert args[0] == ["/usr/bin/bun", "update", "--latest"]
+
+
+def test_executor_deno_update_no_op() -> None:
+    """Test DenoExecutor update is a no-op."""
+    executor = DenoExecutor()
+    # Should not raise error
+    executor.update(Path("/tmp"))
+    executor.update(Path("/tmp"), latest=True)
+
+
+@patch("subprocess.run")
+@patch("shutil.which")
+def test_executor_update_failure(mock_which: Mock, mock_run: Mock) -> None:
+    """Test executor update command raises on failure."""
+    mock_which.return_value = "/usr/bin/npm"
+    mock_run.return_value = Mock(returncode=1)
+    executor = NodeExecutor()
+
+    with pytest.raises(ViteExecutionError):
+        executor.update(Path("/tmp"))
+
+
+# =====================================================
 # NodeenvExecutor Tests
 # =====================================================
 
@@ -221,3 +321,35 @@ def test_nodeenv_executor_execute_failure(mock_run: Mock, mock_find: Mock) -> No
 
     with pytest.raises(ViteExecutionError):
         executor.execute(["build"], Path("/tmp"))
+
+
+@patch("litestar_vite.executor.NodeenvExecutor._find_npm_in_venv")
+@patch("subprocess.run")
+def test_nodeenv_executor_update(mock_run: Mock, mock_find: Mock) -> None:
+    """Test NodeenvExecutor update command."""
+    config = ViteConfig()
+    executor = NodeenvExecutor(config)
+    mock_find.return_value = "/venv/bin/npm"
+    mock_run.return_value = Mock(returncode=0)
+
+    executor.update(Path("/tmp"))
+
+    mock_run.assert_called_once()
+    args, _ = mock_run.call_args
+    assert args[0] == ["/venv/bin/npm", "update"]
+
+
+@patch("litestar_vite.executor.NodeenvExecutor._find_npm_in_venv")
+@patch("subprocess.run")
+def test_nodeenv_executor_update_latest(mock_run: Mock, mock_find: Mock) -> None:
+    """Test NodeenvExecutor update command with --latest."""
+    config = ViteConfig()
+    executor = NodeenvExecutor(config)
+    mock_find.return_value = "/venv/bin/npm"
+    mock_run.return_value = Mock(returncode=0)
+
+    executor.update(Path("/tmp"), latest=True)
+
+    mock_run.assert_called_once()
+    args, _ = mock_run.call_args
+    assert args[0] == ["/venv/bin/npm", "update", "--save"]

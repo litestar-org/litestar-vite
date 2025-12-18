@@ -276,6 +276,29 @@ def test_extract_inertia_pages_captures_return_type() -> None:
     assert pages[0].custom_types == ["BookProps"]
 
 
+def test_extract_inertia_pages_union_type_with_any() -> None:
+    """Test that union types with Any preserve the specific type."""
+
+    @get("/reset", opt={"component": "auth/reset-password"}, sync_to_thread=False)
+    def reset_password() -> "Any | BookProps":
+        return BookProps(title="Test", author="Author")
+
+    app = Litestar([reset_password])
+    pages = extract_inertia_pages(app)
+
+    assert len(pages) == 1
+    # The union type should preserve the BookProps type
+    # Either as "any | BookProps" or with BookProps in custom_types
+    page = pages[0]
+    # Check that BookProps is preserved somewhere in the type info
+    has_book_props = (
+        (page.props_type and "BookProps" in page.props_type)
+        or (page.ts_type and "BookProps" in page.ts_type)
+        or "BookProps" in page.custom_types
+    )
+    assert has_book_props, f"BookProps should be preserved in union type. Got: props_type={page.props_type}, ts_type={page.ts_type}, custom_types={page.custom_types}"
+
+
 def test_extract_inertia_pages_captures_handler_name() -> None:
     """Test that handler name is captured (uses function name, not route name)."""
 
