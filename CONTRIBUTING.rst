@@ -5,7 +5,7 @@ Setting up the environment
 --------------------------
 
 1. Run ``make install-uv`` to install `uv <https://docs.astral.sh/uv/>`_ if not already installed
-1. Run ``make install`` to install all dependencies and pre-commit hooks
+2. Run ``make install`` to install all dependencies and pre-commit hooks
 
 Code contributions
 ------------------
