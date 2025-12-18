@@ -316,7 +316,7 @@ def test_generate_inertia_pages_json_basic() -> None:
     assert "pages" in result
     assert "sharedProps" in result
     assert "typeGenConfig" in result
-    assert "generatedAt" in result
+    # Note: generatedAt was removed for deterministic builds (PR #162 follow-up)
 
 
 def test_generate_inertia_pages_json_pages_structure() -> None:
@@ -437,20 +437,8 @@ def test_generate_inertia_pages_json_empty_app() -> None:
     assert "typeGenConfig" in result
 
 
-def test_generate_inertia_pages_json_generated_at_is_iso() -> None:
-    """Test that generatedAt is valid ISO format."""
-
-    @get("/", opt={"component": "Home"}, sync_to_thread=False)
-    def home() -> dict[str, str]:
-        return {}
-
-    app = Litestar([home])
-    result = generate_inertia_pages_json(app)
-
-    # Should be ISO format with timezone
-    generated_at = result["generatedAt"]
-    assert "T" in generated_at  # ISO format has T separator
-    assert "+" in generated_at or "Z" in generated_at  # Has timezone
+# Note: test_generate_inertia_pages_json_generated_at_is_iso was removed
+# because generatedAt timestamp was removed for deterministic builds.
 
 
 # =============================================================================

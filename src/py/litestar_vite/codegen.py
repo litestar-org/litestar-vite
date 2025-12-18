@@ -4,10 +4,12 @@ The internal implementation lives in ``litestar_vite._codegen``.
 
 This module provides a stable import surface for:
 
+- Unified asset export (``export_integration_assets``)
 - Route metadata export (``routes.json`` + Ziggy-compatible TS)
 - Inertia page props metadata export
 """
 
+from litestar_vite._codegen.export import ExportResult, export_integration_assets
 from litestar_vite._codegen.inertia import (  # noqa: F401
     InertiaPageMetadata,
     _get_openapi_schema_ref,  # pyright: ignore[reportPrivateUsage,reportUnusedImport]
@@ -30,9 +32,11 @@ from litestar_vite._codegen.ts import (
 from litestar_vite._codegen.utils import encode_deterministic_json, strip_timestamp_for_comparison, write_if_changed
 
 __all__ = (
+    "ExportResult",
     "InertiaPageMetadata",
     "RouteMetadata",
     "encode_deterministic_json",
+    "export_integration_assets",
     "extract_inertia_pages",
     "extract_route_metadata",
     "generate_inertia_pages_json",

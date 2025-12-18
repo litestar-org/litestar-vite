@@ -101,7 +101,9 @@ def write_if_changed(
     return True
 
 
-def encode_deterministic_json(data: dict[str, Any], *, indent: int = 2) -> bytes:
+def encode_deterministic_json(
+    data: dict[str, Any], *, indent: int = 2, serializer: Callable[[Any], bytes] | None = None
+) -> bytes:
     """Encode JSON with sorted keys for deterministic output.
 
     This is a wrapper that ensures all nested dict keys are sorted
@@ -111,6 +113,8 @@ def encode_deterministic_json(data: dict[str, Any], *, indent: int = 2) -> bytes
     Args:
         data: Dictionary to encode.
         indent: Indentation level for formatting.
+        serializer: Optional custom serializer function. If not provided,
+            uses litestar's default encode_json.
 
     Returns:
         Formatted JSON bytes with sorted keys.
@@ -119,4 +123,6 @@ def encode_deterministic_json(data: dict[str, Any], *, indent: int = 2) -> bytes
     from litestar.serialization import encode_json
 
     sorted_data = _deep_sort_dict(data)
+    if serializer is not None:
+        return msgspec.json.format(serializer(sorted_data), indent=indent)
     return msgspec.json.format(encode_json(sorted_data), indent=indent)

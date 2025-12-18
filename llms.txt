@@ -26,7 +26,7 @@ app = Litestar(plugins=[VitePlugin(config=ViteConfig(dev_mode=True))])
 ```
 
 ## Core Features
-- **Modes**: `spa`, `template` (Jinja/HTMX), `hybrid` (Inertia), `ssr` (Astro/Nuxt/SvelteKit), `external`.
+- **Modes**: `spa`, `template` (Jinja/HTMX), `hybrid` (Inertia), `framework` (Astro/Nuxt/SvelteKit), `external`.
 - **Inertia.js**: Protocol v2, SSR, deferred props, history encryption, flash messages.
 - **Type Safety**: Generates TypeScript routes, props, and OpenAPI schemas.
 - **Asset Management**: Unified `litestar assets` CLI for dev/build/deploy.
@@ -34,7 +34,7 @@ app = Litestar(plugins=[VitePlugin(config=ViteConfig(dev_mode=True))])
 ## Configuration (ViteConfig)
 ```python
 ViteConfig(
-    mode="spa",           # spa, template, hybrid, ssr, external
+    mode="spa",           # spa, template, hybrid, framework, external
     dev_mode=True,        # Enable HMR/Watch (env: VITE_DEV_MODE)
     paths=PathConfig(...),# root, bundle_dir, resource_dir, etc.
     runtime=RuntimeConfig(...), # port, host, proxy_mode, executor, http2

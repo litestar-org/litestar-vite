@@ -102,8 +102,7 @@ your Vite project is used directly:
 .. code-block:: python
 
    ViteConfig(
-       mode="hybrid",  # Auto-detected with inertia=True
-       inertia=InertiaConfig(spa_mode=True),
+       inertia=InertiaConfig(),
    )
 
 Your ``index.html`` (in ``resource_dir``):

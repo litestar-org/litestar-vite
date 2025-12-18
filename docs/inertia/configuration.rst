@@ -62,7 +62,7 @@ InertiaConfig Reference
      - ``dict[str, Any]``
      - Props shared with every page. Default: ``{}``
    * - ``extra_session_page_props``
-     - ``set[str]``
+     - ``set[str] | dict[str, type]``
      - Session keys to include in page props. Default: ``set()``
    * - ``encrypt_history``
      - ``bool``

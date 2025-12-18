@@ -40,7 +40,7 @@ The `ViteConfig` class in `config.py` controls the integration behavior. It uses
 
 - **`PathConfig`**: File system paths (root, bundle_dir, resource_dir, static_dir, asset_url, ssr_output_dir, manifest_name, hot_file)
 - **`RuntimeConfig`**: Execution settings (dev_mode, proxy_mode, external_dev_server, http2, start_dev_server)
-- **`TypeGenConfig`**: Type generation settings (output, openapi_path, routes_path, routes_ts_path, page_props_path, generate_zod, generate_sdk, generate_routes, generate_page_props, global_route, fallback_type, type_import_paths, watch_patterns)
+- **`TypeGenConfig`**: Type generation settings (output, openapi_path, routes_path, routes_ts_path, page_props_path, generate_zod, generate_sdk, generate_routes, generate_page_props, global_route, fallback_type, type_import_paths)
 - **`InertiaConfig`**: Inertia.js settings (root_template, component_opt_keys, redirect_unauthorized_to, redirect_404, extra_static_page_props, extra_session_page_props, encrypt_history, type_gen, ssr).
 - **`InertiaTypeGenConfig`**: Inertia type generation settings (include_default_auth, include_default_flash)
 - **`InertiaSSRConfig`**: Inertia Server-Side Rendering settings (enabled, url, timeout)
@@ -50,7 +50,7 @@ The `ViteConfig` class in `config.py` controls the integration behavior. It uses
 - **`ExternalDevServer`**: External dev server configuration (target, command, build_command, http2, enabled)
 - **`PaginationContainer`**: Protocol for pagination containers (must implement `items` attribute)
 - **`ViteConfig`**: Root configuration. Key fields include:
-    - **`mode`**: Serving mode - "spa", "template", "htmx", "hybrid", "ssr", "ssg", or "external"
+    - **`mode`**: Serving mode - "spa", "template", "htmx", "hybrid", "framework", "ssr", "ssg", or "external"
     - **`guards`**: Custom guards for the SPA catch-all route
     - **`exclude_static_from_auth`**: Exclude static file routes from authentication (default: True)
     - **`spa_path`**: Path where the SPA handler serves index.html (default: "/")
@@ -62,7 +62,7 @@ Key `RuntimeConfig` options:
 - **`proxy_mode`**: Proxy handling mode:
     - "vite" (default): Proxy Vite assets only (allow list - SPA mode)
     - "direct": Expose Vite port directly (no proxy)
-    - "proxy": Proxy everything except Litestar routes (deny list - SSR mode)
+    - "proxy": Proxy everything except Litestar routes (deny list - framework mode)
     - None: No proxy (production mode)
 - **`external_dev_server`**: External dev server config (string URL or `ExternalDevServer` with custom commands, http2 flag, enabled flag)
 - **`host`**, **`port`**, **`protocol`**: Vite dev server connection details
@@ -71,7 +71,7 @@ Key `RuntimeConfig` options:
 - **`http2`**: Enable HTTP/2 for proxy HTTP connections (better multiplexing, requires `h2` package). WebSocket traffic (HMR) uses a separate connection and is unaffected. Default: True.
 - **`start_dev_server`**: Auto-start dev server process (default: True). Set to False to manage the dev server manually.
 - **`is_react`**: Enable React Fast Refresh
-- **`ssr_enabled`**: Enable Server-Side Rendering
+    - Framework integration is controlled by `mode="framework"` (aliases: `mode="ssr"` / `mode="ssg"`).
 - **`health_check`**: Enable health check for dev server startup
 - **`detect_nodeenv`**: Detect and use nodeenv in virtualenv (opt-in)
 - **`set_environment`**: Set Vite environment variables from config (default: True)
@@ -79,7 +79,7 @@ Key `RuntimeConfig` options:
 - **`csp_nonce`**: Content Security Policy nonce for inline scripts
 - **`spa_handler`**: Auto-register catch-all SPA route when mode="spa" (default: True)
 
-Python is the source of truth: The VitePlugin's `on_app_init()` method writes `.litestar.json` containing `assetUrl`, `bundleDir`, `resourceDir`, `staticDir`, `manifest`, `ssrOutDir`, `mode`, `proxyMode`, `host`, `port`, `ssrEnabled`, `executor`, type generation paths, and Litestar version. The JS plugin reads this file automatically - only `input` is required in `vite.config.ts`. Override only when you intentionally diverge from Python config.
+Python is the source of truth: The VitePlugin's `on_app_init()` method writes `.litestar.json` containing `assetUrl`, `bundleDir`, `resourceDir`, `staticDir`, `manifest`, `ssrOutDir`, `mode`, `proxyMode`, `host`, `port`, `executor`, type generation paths, and Litestar version. The JS plugin reads this file automatically - only `input` is required in `vite.config.ts`. Override only when you intentionally diverge from Python config.
 
 ### Core Modules
 
@@ -94,9 +94,9 @@ The backend is organized into specialized modules:
     - `deploy.py`: CDN deployment utilities using fsspec backends
 
 3. **SPA Support**:
-    - `spa.py`: `ViteSPAHandler` - serves SPA index.html in dev/production modes with both async and sync HTTP client support
+    - `handler.py` (exposes `AppHandler`): Serves SPA index.html in dev/production modes with both async and sync HTTP client support.
     - `html_transform.py`: HTML transformation functions (`inject_head_script`, `inject_body_content`, `inject_json_script`, `set_data_attribute`)
-    - Key features: `is_initialized` property, `get_html()` for async contexts, `get_html_sync()` for sync contexts, cached HTML in production with `SPAConfig.cache_transformed_html`
+    - Key features: `is_initialized` property, `get_html(request)` for async contexts, `get_html_sync()` for sync contexts, cached HTML in production with `SPAConfig.cache_transformed_html`
 
 4. **CLI & Tooling**:
     - `cli.py`: CLI entry points for Vite integration
@@ -137,10 +137,13 @@ src/js/src/
 ├── helpers/              # Frontend helper utilities
 │   ├── index.ts          # Barrel export
 │   ├── csrf.ts           # CSRF token utilities (getCsrfToken, csrfHeaders, csrfFetch)
-│   └── htmx.ts           # HTMX utilities (addDirective, registerHtmxExtension, setHtmxDebug, swapJson)
+│   ├── htmx.ts           # HTMX utilities (addDirective, registerHtmxExtension, setHtmxDebug, swapJson)
+│   └── routes.ts         # Runtime route helpers (legacy)
 ├── shared/               # Shared utilities across modules
-│   ├── index.ts          # Barrel export
-│   └── debounce.ts       # Type-safe debounce utility
+│   ├── bridge-schema.ts  # Bridge file type definitions
+│   ├── debounce.ts       # Type-safe debounce utility
+│   ├── logger.ts         # Logging utility
+│   └── typegen-plugin.ts # Type generation plugin
 └── inertia-helpers/      # Inertia.js specific helpers
     └── index.ts          # resolvePageComponent + re-exports
 ```
@@ -498,7 +501,6 @@ These fields are meaningful to both Python and TypeScript:
 | Proxy Mode | `proxy_mode` | `proxyMode` | Dev proxy configuration |
 | Host | `host` | `host` | Dev server host |
 | Port | `port` | `port` | Dev server port |
-| SSR Enabled | `ssr_enabled` | `ssrEnabled` | SSR mode flag |
 | SSR Output Dir | `ssr_output_dir` | `ssrOutDir` | SSR build output |
 | Executor | `runtime.executor` | `executor` | Package manager command |
 | Logging | `logging` | `logging` | Logging configuration |
@@ -529,6 +531,27 @@ These are configured in `vite.config.ts` only:
 - `transformOnServe` - HTML transforms in dev
 - `types.debounce` - File watch debounce
 - Vite-specific plugins, aliases, etc.
+
+## Naming Convention
+
+- **JSON/TypeScript**: `camelCase` (JavaScript convention)
+- **Python**: `snake_case` (Python convention)
+
+The bridge file uses camelCase since it's primarily consumed by JavaScript.
+
+## Configuration Validation
+
+The TypeScript plugin validates configuration against Python defaults and warns on mismatches:
+
+```
+[litestar-vite] Configuration mismatch detected:
+  • bundleDir: vite.config.ts="dist" differs from Python="public"
+
+Precedence: vite.config.ts > .litestar.json > defaults
+See: https://docs.litestar.dev/vite/config-precedence
+```
+
+This helps catch configuration drift between Python and TypeScript.
 
 ## Best Practices
 
@@ -729,14 +752,14 @@ Root configuration object passed to `VitePlugin`.
 from litestar_vite import ViteConfig, RuntimeConfig, PathConfig, LoggingConfig
 
 config = ViteConfig(
-    mode="spa",           # "spa", "template", "htmx", "hybrid", "ssr", "external"
+    mode="spa",           # "spa", "template", "htmx", "hybrid", "framework", "ssr", "external"
     dev_mode=True,        # Enable HMR/Watch (default: check env VITE_DEV_MODE)
     base_url="/static/",  # CDN/Asset URL (default: env VITE_BASE_URL)
     paths=PathConfig(
         root=".",
         bundle_dir="public",
         resource_dir="src",
-        public_dir="public",
+        static_dir="public",
         manifest_name="manifest.json",
         hot_file="hot",
         asset_url="/static/",
@@ -750,7 +773,6 @@ config = ViteConfig(
         proxy_mode="vite",     # "vite" (allowlist), "proxy" (blocklist), "direct", None
         external_dev_server=None,  # ExternalDevServer config
         is_react=False,
-        ssr_enabled=False,
         health_check=False,
         detect_nodeenv=False,
         set_environment=True,

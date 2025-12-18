@@ -43,6 +43,7 @@ from litestar.static_files import create_static_files_router  # pyright: ignore[
 from rich.console import Console
 from websockets.typing import Subprotocol
 
+from litestar_vite._codegen.utils import write_if_changed as _write_if_changed
 from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, ExternalDevServer, TypeGenConfig, ViteConfig
 from litestar_vite.exceptions import ViteProcessError
 from litestar_vite.loader import ViteAssetLoader
@@ -80,53 +81,6 @@ _WARN = "[yellow]![/]"
 _FAIL = "[red]x[/]"
 
 console = Console()
-
-
-def _fmt_path(path: Path) -> str:
-    """Return a path relative to CWD when possible to keep logs short.
-
-    Returns:
-        The relative path string when possible, otherwise the absolute path string.
-    """
-    try:
-        return str(path.relative_to(Path.cwd()))
-    except ValueError:
-        return str(path)
-
-
-def _write_if_changed(path: Path, content: bytes | str, encoding: str = "utf-8") -> bool:
-    """Write content to file only if it differs from the existing content.
-
-    Uses hash comparison to avoid unnecessary writes that would trigger
-    file watchers and unnecessary rebuilds.
-
-    Args:
-        path: The file path to write to.
-        content: The content to write (bytes or str).
-        encoding: Encoding for string content.
-
-    Returns:
-        True if file was written (content changed), False if skipped (unchanged).
-    """
-    import hashlib
-
-    content_bytes = content.encode(encoding) if isinstance(content, str) else content
-
-    if path.exists():
-        try:
-            existing_hash = hashlib.md5(path.read_bytes()).hexdigest()  # noqa: S324
-            new_hash = hashlib.md5(content_bytes).hexdigest()  # noqa: S324
-            if existing_hash == new_hash:
-                return False
-        except OSError:
-            pass
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if isinstance(content, str):
-        path.write_text(content, encoding=encoding)
-    else:
-        path.write_bytes(content)
-    return True
 
 
 _vite_proxy_debug: bool | None = None
@@ -295,10 +249,8 @@ def _write_runtime_config_file(config: ViteConfig, *, asset_url_override: str | 
     import msgspec
     from litestar.serialization import encode_json
 
-    from litestar_vite._codegen.utils import write_if_changed
-
     content = msgspec.json.format(encode_json(payload), indent=2)
-    write_if_changed(path, content)
+    _write_if_changed(path, content)
     return str(path)
 
 
@@ -1920,144 +1872,25 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
     def _export_types_sync(self, app: "Litestar") -> None:
         """Export type metadata synchronously on startup.
 
-        This exports OpenAPI schema, route metadata (JSON), and typed routes (TypeScript)
-        when type generation is enabled. The Vite plugin watches these files and triggers
-        @hey-api/openapi-ts when they change.
+        This exports OpenAPI schema, route metadata (JSON), typed routes (TypeScript),
+        and Inertia pages metadata when type generation is enabled. The Vite plugin
+        watches these files and triggers @hey-api/openapi-ts when they change.
+
+        Uses the shared `export_integration_assets` function to guarantee
+        byte-identical output between CLI and plugin.
 
         Args:
             app: The Litestar application instance.
         """
-        from litestar_vite.config import TypeGenConfig
-
-        if not isinstance(self._config.types, TypeGenConfig):
-            return
-        types_config = self._config.types
+        from litestar_vite.codegen import export_integration_assets
 
         try:
-            import msgspec
-            from litestar._openapi.plugin import OpenAPIPlugin
-            from litestar.serialization import encode_json, get_serializer
+            result = export_integration_assets(app, self._config)
 
-            from litestar_vite.codegen import generate_routes_json, generate_routes_ts
-
-            openapi_plugin = next((p for p in app.plugins._plugins if isinstance(p, OpenAPIPlugin)), None)  # pyright: ignore[reportPrivateUsage]
-            has_openapi = openapi_plugin is not None and openapi_plugin._openapi_config is not None  # pyright: ignore[reportPrivateUsage]
-
-            exported_files: list[str] = []
-            unchanged_files: list[str] = []
-
-            openapi_schema = self._export_openapi_schema_sync(
-                app=app,
-                has_openapi=has_openapi,
-                types_config=types_config,
-                msgspec=msgspec,
-                encode_json=encode_json,
-                get_serializer=get_serializer,
-                exported_files=exported_files,
-                unchanged_files=unchanged_files,
-            )
-
-            routes_data = generate_routes_json(app, include_components=True, openapi_schema=openapi_schema)
-            routes_data["litestar_version"] = resolve_litestar_version()
-            self._export_routes_json_sync(
-                msgspec=msgspec,
-                types_config=types_config,
-                encode_json=encode_json,
-                routes_data=routes_data,
-                exported_files=exported_files,
-                unchanged_files=unchanged_files,
-            )
-
-            if types_config.generate_routes:
-                routes_ts_content = generate_routes_ts(
-                    app, openapi_schema=openapi_schema, global_route=types_config.global_route
-                )
-                self._export_routes_ts_sync(
-                    types_config=types_config,
-                    routes_ts_content=routes_ts_content,
-                    exported_files=exported_files,
-                    unchanged_files=unchanged_files,
-                )
-
-            if exported_files:
-                _log_success(f"Types exported → {', '.join(exported_files)}")
+            if result.exported_files:
+                _log_success(f"Types exported → {', '.join(result.exported_files)}")
         except (OSError, TypeError, ValueError, ImportError) as e:  # pragma: no cover
             _log_warn(f"Type export failed: {e}")
-
-    def _export_openapi_schema_sync(
-        self,
-        *,
-        app: "Litestar",
-        has_openapi: bool,
-        types_config: "TypeGenConfig",
-        msgspec: Any,
-        encode_json: Any,
-        get_serializer: Any,
-        exported_files: list[str],
-        unchanged_files: list[str],
-    ) -> "dict[str, Any] | None":
-        if not has_openapi:
-            console.print("[yellow]! OpenAPI schema not available; skipping openapi.json export[/]")
-            return None
-
-        try:
-            encoders: Any
-            try:
-                encoders = app.type_encoders  # pyright: ignore[reportUnknownMemberType]
-            except AttributeError:
-                encoders = None
-
-            serializer = get_serializer(encoders if isinstance(encoders, dict) else None)
-            schema_dict = app.openapi_schema.to_schema()
-            schema_content = msgspec.json.format(encode_json(schema_dict, serializer=serializer), indent=2)
-
-            openapi_path = types_config.openapi_path
-            if openapi_path is None:
-                openapi_path = types_config.output / "openapi.json"
-            if _write_if_changed(openapi_path, schema_content):
-                exported_files.append(f"openapi: {_fmt_path(openapi_path)}")
-            else:
-                unchanged_files.append("openapi.json")
-        except (TypeError, ValueError, OSError, AttributeError) as exc:  # pragma: no cover
-            console.print(f"[yellow]! OpenAPI export skipped: {exc}[/]")
-        else:
-            return schema_dict
-        return None
-
-    def _export_routes_json_sync(
-        self,
-        *,
-        msgspec: Any,
-        types_config: "TypeGenConfig",
-        encode_json: Any,
-        routes_data: dict[str, Any],
-        exported_files: list[str],
-        unchanged_files: list[str],
-    ) -> None:
-        routes_content = msgspec.json.format(encode_json(routes_data), indent=2)
-        routes_path = types_config.routes_path
-        if routes_path is None:
-            routes_path = types_config.output / "routes.json"
-        if _write_if_changed(routes_path, routes_content):
-            exported_files.append(_fmt_path(routes_path))
-        else:
-            unchanged_files.append("routes.json")
-
-    def _export_routes_ts_sync(
-        self,
-        *,
-        types_config: "TypeGenConfig",
-        routes_ts_content: str,
-        exported_files: list[str],
-        unchanged_files: list[str],
-    ) -> None:
-        routes_ts_path = types_config.routes_ts_path
-        if routes_ts_path is None:
-            routes_ts_path = types_config.output / "routes.ts"
-        if _write_if_changed(routes_ts_path, routes_ts_content):
-            exported_files.append(_fmt_path(routes_ts_path))
-        else:
-            unchanged_files.append("routes.ts")
 
     @contextmanager
     def server_lifespan(self, app: "Litestar") -> "Iterator[None]":

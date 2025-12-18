@@ -1,6 +1,5 @@
 """Inertia page-props metadata extraction and export."""
 
-import datetime
 import re
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -530,7 +529,6 @@ def generate_inertia_pages_json(
 
     root: dict[str, Any] = {
         "fallbackType": types_config.fallback_type if types_config is not None else None,
-        "generatedAt": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
         "pages": sorted_pages,
         "sharedProps": sorted_shared_props,
         "typeGenConfig": {"includeDefaultAuth": include_default_auth, "includeDefaultFlash": include_default_flash},
