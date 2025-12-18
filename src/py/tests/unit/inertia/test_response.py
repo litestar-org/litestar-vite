@@ -1733,3 +1733,192 @@ async def test_get_relative_url_helper() -> None:
 
     result_none = _get_relative_url(mock_request_none)
     assert result_none == "/home"
+
+
+# =====================================================
+# SSR Client Lifecycle Tests (Performance Optimizations)
+# =====================================================
+
+
+async def test_inertia_plugin_ssr_client_lifecycle() -> None:
+    """Test that SSR client is created in lifespan and properly closed on shutdown."""
+    import httpx
+    from litestar import Litestar
+    from litestar.middleware.session.server_side import ServerSideSessionConfig
+    from litestar.stores.memory import MemoryStore
+
+    from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig, ViteConfig
+    from litestar_vite.inertia.plugin import InertiaPlugin
+    from litestar_vite.plugin import VitePlugin
+
+    # Create plugins
+    inertia_config = InertiaConfig(root_template="index.html.j2")
+    inertia_plugin = InertiaPlugin(config=inertia_config)
+
+    vite_config = ViteConfig(paths=PathConfig(), runtime=RuntimeConfig(dev_mode=True))
+    vite_plugin = VitePlugin(config=vite_config)
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    # Before app init, ssr_client should be None
+    assert inertia_plugin.ssr_client is None
+
+    Litestar(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    )
+
+    # After app init but before startup, ssr_client might not be set yet
+    # (depends on when lifespan runs)
+
+    # Use test client to run the lifespan
+    from litestar.testing import create_test_client
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ):
+        # During app lifespan, ssr_client should be initialized
+        assert inertia_plugin.ssr_client is not None
+        assert isinstance(inertia_plugin.ssr_client, httpx.AsyncClient)
+
+        # Client should not be closed while app is running
+        assert not inertia_plugin.ssr_client.is_closed
+
+    # After app shutdown, ssr_client should be None (cleaned up)
+    assert inertia_plugin.ssr_client is None
+
+
+async def test_inertia_plugin_ssr_client_is_async_client() -> None:
+    """Test that SSR client is a properly configured httpx.AsyncClient."""
+    import httpx
+    from litestar.middleware.session.server_side import ServerSideSessionConfig
+    from litestar.stores.memory import MemoryStore
+    from litestar.testing import create_test_client
+
+    from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig, ViteConfig
+    from litestar_vite.inertia.plugin import InertiaPlugin
+    from litestar_vite.plugin import VitePlugin
+
+    inertia_config = InertiaConfig(root_template="index.html.j2")
+    inertia_plugin = InertiaPlugin(config=inertia_config)
+
+    vite_config = ViteConfig(paths=PathConfig(), runtime=RuntimeConfig(dev_mode=True))
+    vite_plugin = VitePlugin(config=vite_config)
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ):
+        # Verify client is configured as httpx.AsyncClient
+        ssr_client = inertia_plugin.ssr_client
+        assert ssr_client is not None
+        assert isinstance(ssr_client, httpx.AsyncClient)
+
+        # Verify timeout is configured (default 10s)
+        assert ssr_client.timeout is not None
+
+        # Verify client is not closed
+        assert not ssr_client.is_closed
+
+
+async def test_ssr_client_shared_across_requests(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that the same SSR client instance is used across multiple requests."""
+    import httpx
+    from litestar.middleware.session.server_side import ServerSideSessionConfig
+    from litestar.stores.memory import MemoryStore
+    from litestar.testing import create_test_client
+
+    # Track client references across requests
+    clients_seen: "list[httpx.AsyncClient | None]" = []
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        # Get the plugin from app
+        plugin = request.app.plugins.get(InertiaPlugin)
+        clients_seen.append(plugin.ssr_client)
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Make multiple requests
+        for _ in range(3):
+            response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+            assert response.status_code == 200
+
+    # All requests should have seen the same client instance
+    assert len(clients_seen) == 3
+    assert clients_seen[0] is not None
+    assert all(c is clients_seen[0] for c in clients_seen)
+
+
+async def test_deferred_prop_uses_plugin_portal() -> None:
+    """Test that DeferredProp uses the plugin's portal for async resolution."""
+    import asyncio
+
+    from litestar.middleware.session.server_side import ServerSideSessionConfig
+    from litestar.stores.memory import MemoryStore
+    from litestar.testing import create_test_client
+
+    from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig, ViteConfig
+    from litestar_vite.inertia.plugin import InertiaPlugin
+    from litestar_vite.plugin import VitePlugin
+
+    inertia_config = InertiaConfig(root_template="index.html.j2")
+    inertia_plugin = InertiaPlugin(config=inertia_config)
+
+    vite_config = ViteConfig(paths=PathConfig(), runtime=RuntimeConfig(dev_mode=True))
+    vite_plugin = VitePlugin(config=vite_config)
+
+    async def async_prop_callback() -> str:
+        # This would normally require portal access to run from sync context
+        await asyncio.sleep(0.001)
+        return "async_value"
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"static_data": "value", "async_prop": defer("async_prop", async_prop_callback)}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Verify portal is available during request
+        assert inertia_plugin.portal is not None
+
+        # Request with partial data to trigger deferred prop resolution
+        response = client.get(
+            "/",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_DATA.value: "async_prop",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # The async prop should have been resolved
+        assert data["props"]["async_prop"] == "async_value"

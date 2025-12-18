@@ -931,7 +931,7 @@ def _run_openapi_ts(
     if not resource_dir.is_absolute():
         resource_dir = root_dir / resource_dir
 
-    console.print("[dim]3. Running @hey-api/openapi-ts...[/]")
+    console.print("[cyan]•[/] Running @hey-api/openapi-ts...")
 
     install_cmd = install_command or ["npm", "install"]
     pkg_cmd = _get_package_executor_cmd(executor, "@hey-api/openapi-ts")
@@ -994,7 +994,7 @@ def _run_emit_page_props(config: Any, verbose: bool, executor: "str | None" = No
             console.print("[dim]Skipping page-props.ts generation (no inertia-pages.json)[/]")
         return
 
-    console.print("[dim]4. Generating page-props.ts...[/]")
+    console.print("[cyan]•[/] Generating page-props.ts...")
 
     pkg_cmd = _get_package_executor_cmd(executor, "emit-page-props")
 

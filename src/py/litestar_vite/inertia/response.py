@@ -127,7 +127,12 @@ def _parse_inertia_ssr_payload(payload: Any, url: str) -> _InertiaSSRResult:
 
 
 def _render_inertia_ssr_sync(
-    page: dict[str, Any], url: str, *, timeout_seconds: float, portal: "BlockingPortal"
+    page: dict[str, Any],
+    url: str,
+    *,
+    timeout_seconds: float,
+    portal: "BlockingPortal",
+    client: "httpx.AsyncClient | None" = None,
 ) -> _InertiaSSRResult:
     """Call the Inertia SSR server and return head/body HTML.
 
@@ -138,14 +143,30 @@ def _render_inertia_ssr_sync(
     This function uses the application's :class:`~anyio.from_thread.BlockingPortal`
     to call the async HTTP client without blocking the event loop thread.
 
+    Args:
+        page: The page object to send to the SSR server.
+        url: The SSR server URL.
+        timeout_seconds: Request timeout in seconds.
+        portal: BlockingPortal for sync-to-async bridging.
+        client: Optional shared httpx.AsyncClient for connection pooling.
+
     Returns:
         An _InertiaSSRResult with head and body HTML.
     """
-    return portal.call(_render_inertia_ssr, page, url, timeout_seconds)
+    return portal.call(_render_inertia_ssr, page, url, timeout_seconds, client)
 
 
-async def _render_inertia_ssr(page: dict[str, Any], url: str, timeout_seconds: float) -> _InertiaSSRResult:
+async def _render_inertia_ssr(
+    page: dict[str, Any], url: str, timeout_seconds: float, client: "httpx.AsyncClient | None" = None
+) -> _InertiaSSRResult:
     """Call the Inertia SSR server asynchronously and return head/body HTML.
+
+    Args:
+        page: The page object to send to the SSR server.
+        url: The SSR server URL (typically http://localhost:13714/render).
+        timeout_seconds: Request timeout in seconds.
+        client: Optional shared httpx.AsyncClient for connection pooling.
+            If None, creates a new client per request (slower).
 
     Raises:
         ImproperlyConfiguredException: If the SSR server is unreachable,
@@ -154,19 +175,54 @@ async def _render_inertia_ssr(page: dict[str, Any], url: str, timeout_seconds: f
     Returns:
         An _InertiaSSRResult with head and body HTML.
     """
-    try:
-        async with httpx.AsyncClient() as client:
+    return await _do_ssr_request(page, url, timeout_seconds, client)
+
+
+async def _do_ssr_request(
+    page: dict[str, Any], url: str, timeout_seconds: float, client: "httpx.AsyncClient | None"
+) -> _InertiaSSRResult:
+    """Execute the SSR request with optional client reuse.
+
+    Args:
+        page: The page object to send to the SSR server.
+        url: The SSR server URL.
+        timeout_seconds: Request timeout in seconds.
+        client: Optional shared httpx.AsyncClient.
+
+    Returns:
+        An _InertiaSSRResult with head and body HTML.
+    """
+    response: "httpx.Response"
+
+    if client is not None:
+        # Use shared client for connection pooling benefits
+        try:
             response = await client.post(url, json=page, timeout=timeout_seconds)
             response.raise_for_status()
-    except httpx.RequestError as exc:
-        msg = (
-            f"Inertia SSR is enabled but the SSR server is not reachable at {url!r}. "
-            "Start the SSR server (Node) or disable InertiaConfig.ssr."
-        )
-        raise ImproperlyConfiguredException(msg) from exc
-    except httpx.HTTPStatusError as exc:
-        msg = f"Inertia SSR server at {url!r} returned HTTP {exc.response.status_code}. Check the SSR server logs."
-        raise ImproperlyConfiguredException(msg) from exc
+        except httpx.RequestError as exc:
+            msg = (
+                f"Inertia SSR is enabled but the SSR server is not reachable at {url!r}. "
+                "Start the SSR server (Node) or disable InertiaConfig.ssr."
+            )
+            raise ImproperlyConfiguredException(msg) from exc
+        except httpx.HTTPStatusError as exc:
+            msg = f"Inertia SSR server at {url!r} returned HTTP {exc.response.status_code}. Check the SSR server logs."
+            raise ImproperlyConfiguredException(msg) from exc
+    else:
+        # Fallback: create a new client per request (graceful degradation)
+        try:
+            async with httpx.AsyncClient() as fallback_client:
+                response = await fallback_client.post(url, json=page, timeout=timeout_seconds)
+                response.raise_for_status()
+        except httpx.RequestError as exc:
+            msg = (
+                f"Inertia SSR is enabled but the SSR server is not reachable at {url!r}. "
+                "Start the SSR server (Node) or disable InertiaConfig.ssr."
+            )
+            raise ImproperlyConfiguredException(msg) from exc
+        except httpx.HTTPStatusError as exc:
+            msg = f"Inertia SSR server at {url!r} returned HTTP {exc.response.status_code}. Check the SSR server logs."
+            raise ImproperlyConfiguredException(msg) from exc
 
     try:
         payload = response.json()
@@ -519,7 +575,11 @@ class InertiaResponse(Response[T]):
         ssr_config = inertia_plugin.config.ssr_config
         if ssr_config is not None:
             ssr_payload = _render_inertia_ssr_sync(
-                page_dict, ssr_config.url, timeout_seconds=ssr_config.timeout, portal=inertia_plugin.portal
+                page_dict,
+                ssr_config.url,
+                timeout_seconds=ssr_config.timeout,
+                portal=inertia_plugin.portal,
+                client=inertia_plugin.ssr_client,
             )
 
             csrf_token = self._get_csrf_token(request)
