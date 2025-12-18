@@ -3,6 +3,7 @@
 __all__ = (
     "configure_proxy_logging",
     "console",
+    "create_proxy_client",
     "get_litestar_route_prefixes",
     "infer_port_from_argv",
     "is_litestar_route",
@@ -35,6 +36,7 @@ from litestar_vite.codegen import write_if_changed as _write_if_changed
 from litestar_vite.config import InertiaConfig, TypeGenConfig
 
 if TYPE_CHECKING:
+    import httpx
     from litestar import Litestar, Response
     from litestar.connection import Request
     from litestar.exceptions import NotFoundException
@@ -81,6 +83,59 @@ def configure_proxy_logging() -> None:
 
 
 configure_proxy_logging()
+
+
+# Cache HTTP/2 availability check result
+_h2_available: bool | None = None
+
+
+def _check_h2_available() -> bool:
+    """Check if the h2 package is installed for HTTP/2 support.
+
+    Returns:
+        True if h2 is installed, False otherwise.
+    """
+    global _h2_available  # noqa: PLW0603
+    if _h2_available is None:
+        try:
+            import h2  # noqa: F401  # pyright: ignore[reportMissingImports,reportUnusedImport]
+
+            _h2_available = True
+        except ImportError:
+            _h2_available = False
+    return _h2_available
+
+
+def create_proxy_client(
+    http2: bool = True,
+    timeout: float = 30.0,
+    max_keepalive: int = 20,
+    max_connections: int = 40,
+    keepalive_expiry: float = 60.0,
+) -> "httpx.AsyncClient":
+    """Create an httpx.AsyncClient with connection pooling for proxy use.
+
+    This factory function creates a shared HTTP client with optimized settings
+    for proxying requests to Vite dev servers or SSR frameworks. The client
+    uses connection pooling for better performance.
+
+    Args:
+        http2: Enable HTTP/2 support (requires h2 package).
+        timeout: Request timeout in seconds.
+        max_keepalive: Maximum number of keep-alive connections per host.
+        max_connections: Maximum total concurrent connections.
+        keepalive_expiry: Idle timeout before closing keep-alive connections.
+
+    Returns:
+        A configured httpx.AsyncClient with connection pooling.
+    """
+    import httpx
+
+    http2_enabled = http2 and _check_h2_available()
+    limits = httpx.Limits(
+        max_keepalive_connections=max_keepalive, max_connections=max_connections, keepalive_expiry=keepalive_expiry
+    )
+    return httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(timeout), http2=http2_enabled)
 
 
 def infer_port_from_argv() -> str | None:

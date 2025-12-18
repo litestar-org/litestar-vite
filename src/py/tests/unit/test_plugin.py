@@ -1140,3 +1140,94 @@ def test_get_litestar_route_prefixes_with_empty_app() -> None:
     assert "/api" in prefixes
     assert "/schema" in prefixes
     assert "/docs" in prefixes
+
+
+# =====================================================
+# VitePlugin Proxy Client Lifecycle Tests
+# =====================================================
+
+
+def test_vite_plugin_proxy_client_none_on_init() -> None:
+    """Test that proxy_client is None immediately after plugin initialization."""
+    plugin = VitePlugin()
+
+    assert plugin._proxy_client is None
+    assert plugin.proxy_client is None
+
+
+async def test_vite_plugin_proxy_client_created_in_dev_mode_with_vite_proxy() -> None:
+    """Test that proxy_client is created during lifespan in dev mode with vite proxy."""
+    import httpx
+
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True), mode="spa")
+    # Manually set proxy_mode to vite for test
+    config.runtime.proxy_mode = "vite"
+    plugin = VitePlugin(config=config)
+
+    # Before lifespan, proxy_client is None
+    assert plugin.proxy_client is None
+
+    # Create a minimal app for lifespan
+    app = Litestar(route_handlers=[])
+
+    # Run the lifespan context manager
+    async with plugin.lifespan(app):
+        # During lifespan, proxy_client should be created
+        assert plugin.proxy_client is not None
+        assert isinstance(plugin.proxy_client, httpx.AsyncClient)
+
+    # After lifespan, proxy_client should be closed and set to None
+    assert plugin.proxy_client is None
+
+
+async def test_vite_plugin_proxy_client_created_in_dev_mode_with_ssr_proxy() -> None:
+    """Test that proxy_client is created during lifespan in dev mode with SSR proxy."""
+    import httpx
+
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True), mode="framework")
+    # Manually set proxy_mode to proxy for test
+    config.runtime.proxy_mode = "proxy"
+    plugin = VitePlugin(config=config)
+
+    # Before lifespan, proxy_client is None
+    assert plugin.proxy_client is None
+
+    # Create a minimal app for lifespan
+    app = Litestar(route_handlers=[])
+
+    # Run the lifespan context manager
+    async with plugin.lifespan(app):
+        # During lifespan, proxy_client should be created
+        assert plugin.proxy_client is not None
+        assert isinstance(plugin.proxy_client, httpx.AsyncClient)
+
+    # After lifespan, proxy_client should be closed and set to None
+    assert plugin.proxy_client is None
+
+
+async def test_vite_plugin_proxy_client_none_in_production_mode() -> None:
+    """Test that proxy_client remains None in production mode."""
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=False), mode="spa")
+    plugin = VitePlugin(config=config)
+
+    # Create a minimal app for lifespan
+    app = Litestar(route_handlers=[])
+
+    # Run the lifespan context manager
+    async with plugin.lifespan(app):
+        # In production mode, proxy_client should remain None
+        assert plugin.proxy_client is None
+
+
+async def test_vite_plugin_proxy_client_none_when_no_proxy_mode() -> None:
+    """Test that proxy_client remains None when proxy_mode is None."""
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode=None), mode="template")
+    plugin = VitePlugin(config=config)
+
+    # Create a minimal app for lifespan
+    app = Litestar(route_handlers=[])
+
+    # Run the lifespan context manager
+    async with plugin.lifespan(app):
+        # Without proxy_mode, proxy_client should remain None
+        assert plugin.proxy_client is None

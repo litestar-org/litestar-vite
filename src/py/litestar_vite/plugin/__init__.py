@@ -36,6 +36,7 @@ from litestar_vite.plugin._process import ViteProcess
 from litestar_vite.plugin._proxy import ViteProxyMiddleware, create_ssr_proxy_controller, create_vite_hmr_handler
 from litestar_vite.plugin._static import StaticFilesConfig
 from litestar_vite.plugin._utils import (
+    create_proxy_client,
     get_litestar_route_prefixes,
     is_litestar_route,
     is_non_serving_assets_cli,
@@ -85,7 +86,15 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         )
     """
 
-    __slots__ = ("_asset_loader", "_config", "_proxy_target", "_spa_handler", "_static_files_config", "_vite_process")
+    __slots__ = (
+        "_asset_loader",
+        "_config",
+        "_proxy_client",
+        "_proxy_target",
+        "_spa_handler",
+        "_static_files_config",
+        "_vite_process",
+    )
 
     def __init__(
         self,
@@ -109,6 +118,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._vite_process = ViteProcess(executor=config.executor)
         self._static_files_config: dict[str, Any] = static_files_config.__dict__ if static_files_config else {}
         self._proxy_target: "str | None" = None
+        self._proxy_client: "httpx.AsyncClient | None" = None
         self._spa_handler: "AppHandler | None" = None
 
     @property
@@ -142,6 +152,18 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             The AppHandler instance, or None when SPA mode is disabled/not configured.
         """
         return self._spa_handler
+
+    @property
+    def proxy_client(self) -> "httpx.AsyncClient | None":
+        """Return the shared httpx.AsyncClient for proxy requests.
+
+        The client is initialized during app lifespan (dev mode only) and provides
+        connection pooling, TLS session reuse, and HTTP/2 multiplexing benefits.
+
+        Returns:
+            The shared AsyncClient instance, or None if not initialized or not in dev mode.
+        """
+        return self._proxy_client
 
     def _resolve_bundle_dir(self) -> Path:
         """Resolve the bundle directory to an absolute path.
@@ -347,6 +369,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 bundle_dir=self._config.bundle_dir,
                 root_dir=self._config.root_dir,
                 http2=self._config.http2,
+                plugin=self,
             )
         )
         hmr_path = f"{self._config.asset_url.rstrip('/')}/vite-hmr"
@@ -370,6 +393,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 target=static_target,
                 hotfile_path=hotfile_path if static_target is None else None,
                 http2=external.http2 if external else True,
+                plugin=self,
             )
         )
         hmr_path = f"{self._config.asset_url.rstrip('/')}/vite-hmr"
@@ -585,6 +609,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
         This is auto-registered in `on_app_init` and handles per-worker initialization:
         - Environment variable setup (silently - each worker needs process-local env vars)
+        - Shared proxy client initialization (dev mode only, for ViteProxyMiddleware/SSRProxyController)
         - Asset loader initialization
         - SPA handler initialization
         - Route metadata injection
@@ -604,6 +629,11 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             set_environment(config=self._config)
             set_app_environment(app)
 
+        # Initialize shared proxy client for ViteProxyMiddleware/SSRProxyController
+        # Uses connection pooling for better performance (HTTP/2 multiplexing, TLS reuse)
+        if self._config.is_dev_mode and self._config.proxy_mode is not None:
+            self._proxy_client = create_proxy_client(http2=self._config.http2)
+
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader(config=self._config)
         await self._asset_loader.initialize()
@@ -622,6 +652,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         try:
             yield
         finally:
+            if self._proxy_client is not None:
+                await self._proxy_client.aclose()
+                self._proxy_client = None
             if self._spa_handler is not None:
                 await self._spa_handler.shutdown_async()
 

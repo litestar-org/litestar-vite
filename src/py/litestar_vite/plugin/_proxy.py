@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from litestar.types import ASGIApp, Receive, Scope, Send
     from websockets.typing import Subprotocol
 
+    from litestar_vite.plugin import VitePlugin
+
 _DISCONNECT_EXCEPTIONS = (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed)
 
 _PROXY_ALLOW_PREFIXES: tuple[str, ...] = (
@@ -49,6 +51,18 @@ _HOP_BY_HOP_HEADERS = frozenset({
 })
 
 
+def _extract_proxy_response(upstream_resp: "httpx.Response") -> tuple[int, list[tuple[bytes, bytes]], bytes]:
+    """Extract status, headers, and body from an httpx response for proxying.
+
+    Returns:
+        A tuple of (status_code, headers, body).
+    """
+    headers = [
+        (k.encode(), v.encode()) for k, v in upstream_resp.headers.items() if k.lower() not in _HOP_BY_HOP_HEADERS
+    ]
+    return upstream_resp.status_code, headers, upstream_resp.content
+
+
 class ViteProxyMiddleware(AbstractMiddleware):
     """ASGI middleware to proxy Vite dev HTTP traffic to internal Vite server.
 
@@ -71,6 +85,7 @@ class ViteProxyMiddleware(AbstractMiddleware):
         bundle_dir: "Path | None" = None,
         root_dir: "Path | None" = None,
         http2: bool = True,
+        plugin: "VitePlugin | None" = None,
     ) -> None:
         super().__init__(app)
         self.hotfile_path = hotfile_path
@@ -78,6 +93,7 @@ class ViteProxyMiddleware(AbstractMiddleware):
         self._cache_initialized = False
         self.asset_prefix = normalize_prefix(asset_url) if asset_url else "/"
         self.http2 = http2
+        self._plugin = plugin
         self._proxy_allow_prefixes = normalize_proxy_prefixes(
             base_prefixes=_PROXY_ALLOW_PREFIXES,
             asset_url=asset_url,
@@ -173,29 +189,29 @@ class ViteProxyMiddleware(AbstractMiddleware):
             body += event.get("body", b"")
             more_body = event.get("more_body", False)
 
-        http2_enabled = self.http2
-        if http2_enabled:
-            try:
-                import h2  # noqa: F401  # pyright: ignore[reportMissingImports,reportUnusedImport]
-            except ImportError:
-                http2_enabled = False
-
         response_status = 502
         response_headers: list[tuple[bytes, bytes]] = [(b"content-type", b"text/plain")]
         response_body = b"Bad gateway"
         got_full_body = False
 
+        # Use shared client from plugin when available (connection pooling)
+        client = self._plugin.proxy_client if self._plugin is not None else None
+
         try:
-            async with httpx.AsyncClient(http2=http2_enabled) as client:
+            if client is not None:
+                # Use shared client (connection pooling, HTTP/2 multiplexing)
                 upstream_resp = await client.request(method, url, headers=headers, content=body, timeout=10.0)
-                response_status = upstream_resp.status_code
-                response_headers = [
-                    (k.encode(), v.encode())
-                    for k, v in upstream_resp.headers.items()
-                    if k.lower() not in _HOP_BY_HOP_HEADERS
-                ]
-                response_body = upstream_resp.content
+                response_status, response_headers, response_body = _extract_proxy_response(upstream_resp)
                 got_full_body = True
+            else:
+                # Fallback: per-request client (graceful degradation)
+                http2_enabled = check_http2_support(self.http2)
+                async with httpx.AsyncClient(http2=http2_enabled) as fallback_client:
+                    upstream_resp = await fallback_client.request(
+                        method, url, headers=headers, content=body, timeout=10.0
+                    )
+                    response_status, response_headers, response_body = _extract_proxy_response(upstream_resp)
+                    got_full_body = True
         except Exception as exc:  # noqa: BLE001  # pragma: no cover - catch all cleanup errors
             if not got_full_body:
                 response_body = f"Upstream error: {exc}".encode()
@@ -510,7 +526,10 @@ async def _handle_ssr_websocket_proxy(
 
 
 def create_ssr_proxy_controller(
-    target: "str | None" = None, hotfile_path: "Path | None" = None, http2: bool = True
+    target: "str | None" = None,
+    hotfile_path: "Path | None" = None,
+    http2: bool = True,
+    plugin: "VitePlugin | None" = None,
 ) -> type:
     """Create a Controller that proxies to an SSR framework dev server.
 
@@ -521,6 +540,7 @@ def create_ssr_proxy_controller(
         target: Static target URL to proxy to. If None, uses hotfile for dynamic discovery.
         hotfile_path: Path to the hotfile for dynamic target discovery.
         http2: Enable HTTP/2 for proxy connections.
+        plugin: Optional VitePlugin reference for accessing shared proxy client.
 
     Returns:
         A Litestar Controller class with HTTP and WebSocket handlers for SSR proxy.
@@ -570,21 +590,36 @@ def create_ssr_proxy_controller(
                 (k, v) for k, v in request.headers.items() if k.lower() not in {"host", "connection", "keep-alive"}
             ]
             body = await request.body()
-            http2_enabled = check_http2_support(http2)
 
-            async with httpx.AsyncClient(http2=http2_enabled, timeout=30.0) as client:
-                try:
+            # Use shared client from plugin when available (connection pooling)
+            client = plugin.proxy_client if plugin is not None else None
+
+            try:
+                if client is not None:
+                    # Use shared client (connection pooling, HTTP/2 multiplexing)
                     upstream_resp = await client.request(
-                        request.method, url, headers=headers_to_forward, content=body, follow_redirects=False
+                        request.method,
+                        url,
+                        headers=headers_to_forward,
+                        content=body,
+                        follow_redirects=False,
+                        timeout=30.0,
                     )
-                except httpx.ConnectError:
-                    return Response(
-                        content=f"SSR dev server not running at {target_url}".encode(),
-                        status_code=503,
-                        media_type="text/plain",
-                    )
-                except httpx.HTTPError as exc:
-                    return Response(content=str(exc).encode(), status_code=502, media_type="text/plain")
+                else:
+                    # Fallback: per-request client (graceful degradation)
+                    http2_enabled = check_http2_support(http2)
+                    async with httpx.AsyncClient(http2=http2_enabled, timeout=30.0) as fallback_client:
+                        upstream_resp = await fallback_client.request(
+                            request.method, url, headers=headers_to_forward, content=body, follow_redirects=False
+                        )
+            except httpx.ConnectError:
+                return Response(
+                    content=f"SSR dev server not running at {target_url}".encode(),
+                    status_code=503,
+                    media_type="text/plain",
+                )
+            except httpx.HTTPError as exc:
+                return Response(content=str(exc).encode(), status_code=502, media_type="text/plain")
 
             return Response(
                 content=upstream_resp.content,
