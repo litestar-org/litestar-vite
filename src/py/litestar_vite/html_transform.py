@@ -91,7 +91,8 @@ def _escape_attr(value: str) -> str:
         The escaped value safe for use in HTML attribute values.
     """
     return (
-        value.replace("&", "&amp;")
+        value
+        .replace("&", "&amp;")
         .replace('"', "&quot;")
         .replace("'", "&#39;")
         .replace("<", "&lt;")
