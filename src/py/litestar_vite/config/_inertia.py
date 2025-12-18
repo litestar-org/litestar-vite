@@ -119,6 +119,23 @@ class InertiaConfig:
         - InertiaSSRConfig: use as-is
     """
 
+    use_script_element: bool = False
+    """Use a script element instead of data-page attribute for page data.
+
+    When True, embeds page data in a ``<script type="application/json" id="app_page">``
+    element instead of a ``data-page`` attribute on the app element.
+
+    Benefits:
+        - ~37% payload reduction for large pages (no HTML entity escaping)
+        - Better performance for pages with complex props
+
+    Requirements:
+        - Client must also enable: ``createInertiaApp({ useScriptElementForInitialPage: true })``
+        - Requires Inertia.js v2.3+
+
+    Disabled by default for compatibility with existing Inertia clients.
+    """
+
     def __post_init__(self) -> None:
         """Normalize optional sub-configs."""
         if self.ssr is True:

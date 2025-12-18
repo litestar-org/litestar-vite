@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 from rich.console import Console
 
 from litestar_vite.codegen import write_if_changed as _write_if_changed
-from litestar_vite.config import TypeGenConfig
+from litestar_vite.config import InertiaConfig, TypeGenConfig
 
 if TYPE_CHECKING:
     from litestar import Litestar, Response
@@ -208,10 +208,8 @@ def write_runtime_config_file(config: "ViteConfig", *, asset_url_override: str |
             "suppressViteBanner": config.logging_config.suppress_vite_banner,
             "timestamps": config.logging_config.timestamps,
         },
-        "spa": {
-            "useScriptElement": config.spa_config.use_script_element,
-        }
-        if config.spa_config
+        "spa": {"useScriptElement": config.inertia.use_script_element}
+        if isinstance(config.inertia, InertiaConfig)
         else None,
         "executor": config.runtime.executor,
         "litestarVersion": litestar_version,

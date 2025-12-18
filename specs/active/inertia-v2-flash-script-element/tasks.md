@@ -50,7 +50,8 @@
   - If `use_script_element`: use `inject_page_script()`
   - Otherwise: use existing `set_data_attribute()`
 - [x] Pass nonce from `self._config.csp_nonce`
-- [ ] Add integration test for script element mode
+- [x] Add integration test for script element mode
+- [x] Add tests for legacy data-page attribute mode (`use_script_element=False`)
 
 ## Phase 4: Documentation
 - [ ] Add note about Inertia v2.3+ compatibility
@@ -59,9 +60,10 @@
 - [ ] Document client-side `useScriptElementForInitialPage` requirement
 
 ## Phase 5: Quality Gate
-- [ ] All tests pass (`make test`)
-- [ ] Linting clean (`make lint`)
-- [ ] Type checking passes (`make type-check`)
+- [x] All tests pass (`make test`)
+- [x] Linting clean (`make lint`)
+- [x] Type checking passes (`make type-check`)
+- [x] Rebuild JavaScript plugin (`npm run build`)
 - [ ] Coverage maintained at 90%+
 - [ ] Archive workspace
 

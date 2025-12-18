@@ -9,6 +9,7 @@
     {{ vite('resources/main.ts') }}
   </head>
   <body>
-    <div id="app" data-page='{{ inertia | safe }}'></div>
+    <div id="app"></div>
+    <script type="application/json" id="app_page">{{ inertia | safe }}</script>
   </body>
 </html>

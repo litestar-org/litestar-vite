@@ -72,8 +72,8 @@ async def test_component_inertia_header_enabled(
         assert data["component"] == "Home"
         assert data["url"] == "/"
         assert "version" in data  # version is a hash, not a fixed value
-        # v2.3+ protocol: empty flash is null (not included in response)
-        assert "flash" not in data
+        # v2.3+ protocol: flash at top-level (always {} when empty for router.flash() support)
+        assert data["flash"] == {}
         # Flash should NOT be in props anymore
         assert "flash" not in data["props"]
         assert data["props"]["errors"] == {}

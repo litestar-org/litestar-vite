@@ -303,7 +303,7 @@ def set_element_inner_html(html: str, selector: str, content: str) -> str:
 
 
 def inject_page_script(html: str, json_data: str, *, nonce: str | None = None, script_id: str = "app_page") -> str:
-    """Inject page data as a JSON script element before ``</body>``.
+    r"""Inject page data as a JSON script element before ``</body>``.
 
     This is an Inertia.js v2.3+ optimization that embeds page data in a
     ``<script type="application/json">`` element instead of a ``data-page`` attribute.

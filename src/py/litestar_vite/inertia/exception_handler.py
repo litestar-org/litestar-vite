@@ -16,7 +16,6 @@ from litestar.exceptions.responses import (
     create_debug_response,  # pyright: ignore[reportUnknownVariableType]
     create_exception_response,  # pyright: ignore[reportUnknownVariableType]
 )
-from litestar_vite.inertia.helpers import flash
 from litestar.repository.exceptions import (
     ConflictError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
     NotFoundError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
@@ -33,7 +32,7 @@ from litestar.status_codes import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
-from litestar_vite.inertia.helpers import error
+from litestar_vite.inertia.helpers import error, flash
 from litestar_vite.inertia.request import InertiaRequest
 from litestar_vite.inertia.response import InertiaBack, InertiaRedirect, InertiaResponse
 

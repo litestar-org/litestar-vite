@@ -19,7 +19,11 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def temp_resource_dir(tmp_path: Path) -> Path:
-    """Create a temporary resource directory with index.html."""
+    """Create a temporary resource directory with index.html.
+
+    Returns:
+        Temporary resource directory path.
+    """
     resource_dir = tmp_path / "resources"
     resource_dir.mkdir()
     index_html = resource_dir / "index.html"
@@ -314,11 +318,13 @@ async def test_spa_handler_fallback_load(spa_config: ViteConfig) -> None:
 
 
 @pytest.fixture
-def spa_config_with_transforms(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> ViteConfig:
-    """Create a ViteConfig with SPA transformations enabled.
+def spa_config_for_caching(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> ViteConfig:
+    """Create a ViteConfig for testing SPA caching behavior.
 
-    Note: inject_csrf is disabled for tests that don't mock the request scope,
-    as CSRF token extraction requires a real request with ScopeState.
+    Note: No InertiaConfig to avoid auto-enabling CSRF which breaks mock requests.
+
+    Returns:
+        ViteConfig: Configured for SPA with transformations enabled.
     """
     from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
 
@@ -330,16 +336,35 @@ def spa_config_with_transforms(temp_resource_dir: Path, monkeypatch: pytest.Monk
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
         runtime=RuntimeConfig(dev_mode=False),
-        spa=SPAConfig(
-            inject_csrf=False,  # Disable for tests that don't mock request scope
-            app_selector="#app",
-        ),
+        spa=SPAConfig(inject_csrf=False, app_selector="#app"),
     )
 
 
-async def test_spa_handler_transform_html_with_page_data(spa_config_with_transforms: ViteConfig) -> None:
-    """Test that get_html injects page data."""
-    handler = AppHandler(spa_config_with_transforms)
+@pytest.fixture
+def spa_config_with_script_element(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> ViteConfig:
+    """Create a ViteConfig with Inertia script element mode enabled.
+
+    Note: InertiaConfig auto-enables CSRF, so these tests pass page_data which
+    bypasses the CSRF check path.
+    """
+    from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig, SPAConfig
+
+    # Clear environment variables
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    return ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(app_selector="#app"),  # CSRF auto-enabled by InertiaConfig
+        inertia=InertiaConfig(use_script_element=True),  # v2.3+ optimization
+    )
+
+
+async def test_spa_handler_transform_html_with_page_data(spa_config_with_script_element: ViteConfig) -> None:
+    """Test that get_html injects page data as script element."""
+    handler = AppHandler(spa_config_with_script_element)
     await handler.initialize_async()
 
     page_data = {"component": "Home", "props": {"user": "test"}}
@@ -347,15 +372,15 @@ async def test_spa_handler_transform_html_with_page_data(spa_config_with_transfo
     mock_request = Mock()
     html = await handler.get_html(mock_request, page_data=page_data)
 
-    # Default is use_script_element=True - page data injected as script element
+    # use_script_element=True - page data injected as script element
     assert '<script type="application/json" id="app_page">' in html
     assert "Home" in html
     assert "test" in html
 
 
-async def test_spa_handler_caches_transformed_html(spa_config_with_transforms: ViteConfig) -> None:
+async def test_spa_handler_caches_transformed_html(spa_config_for_caching: ViteConfig) -> None:
     """Test that transformed HTML is cached in production."""
-    handler = AppHandler(spa_config_with_transforms)
+    handler = AppHandler(spa_config_for_caching)
     await handler.initialize_async()
 
     mock_request = Mock()
@@ -369,9 +394,9 @@ async def test_spa_handler_caches_transformed_html(spa_config_with_transforms: V
     assert html1 == html2
 
 
-async def test_spa_handler_page_data_bypasses_cache(spa_config_with_transforms: ViteConfig) -> None:
+async def test_spa_handler_page_data_bypasses_cache(spa_config_for_caching: ViteConfig) -> None:
     """Test that page_data bypasses transformed HTML cache."""
-    handler = AppHandler(spa_config_with_transforms)
+    handler = AppHandler(spa_config_for_caching)
     await handler.initialize_async()
 
     mock_request = Mock()
@@ -390,9 +415,9 @@ async def test_spa_handler_page_data_bypasses_cache(spa_config_with_transforms: 
     assert "About" not in html_cached
 
 
-async def test_spa_handler_get_html_sync(spa_config_with_transforms: ViteConfig) -> None:
+async def test_spa_handler_get_html_sync(spa_config_for_caching: ViteConfig) -> None:
     """Test the synchronous get_html_sync method."""
-    handler = AppHandler(spa_config_with_transforms)
+    handler = AppHandler(spa_config_for_caching)
     await handler.initialize_async()
 
     # Should work synchronously
@@ -401,24 +426,28 @@ async def test_spa_handler_get_html_sync(spa_config_with_transforms: ViteConfig)
     assert "Test SPA" in html
 
 
-async def test_spa_handler_get_html_sync_with_page_data(spa_config_with_transforms: ViteConfig) -> None:
-    """Test get_html_sync with page_data."""
-    handler = AppHandler(spa_config_with_transforms)
+async def test_spa_handler_get_html_sync_with_page_data(spa_config_with_script_element: ViteConfig) -> None:
+    """Test get_html_sync with page_data using script element."""
+    handler = AppHandler(spa_config_with_script_element)
     await handler.initialize_async()
 
     page_data = {"component": "Home", "props": {"message": "Hello"}}
 
     html = handler.get_html_sync(page_data=page_data)
 
-    # Default is use_script_element=True - page data injected as script element
+    # use_script_element=True - page data injected as script element
     assert '<script type="application/json" id="app_page">' in html
     assert "Home" in html
 
 
 @pytest.fixture
 def spa_config_with_data_page_attr(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> ViteConfig:
-    """Create a ViteConfig with legacy data-page attribute mode (use_script_element=False)."""
-    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
+    """Create a ViteConfig with legacy data-page attribute mode (use_script_element=False).
+
+    Returns:
+        ViteConfig: Configured for SPA with data-page attribute mode.
+    """
+    from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig, SPAConfig
 
     monkeypatch.delenv("VITE_DEV_MODE", raising=False)
     monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
@@ -427,11 +456,8 @@ def spa_config_with_data_page_attr(temp_resource_dir: Path, monkeypatch: pytest.
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
         runtime=RuntimeConfig(dev_mode=False),
-        spa=SPAConfig(
-            inject_csrf=False,
-            app_selector="#app",
-            use_script_element=False,  # Legacy mode: use data-page attribute
-        ),
+        spa=SPAConfig(inject_csrf=False, app_selector="#app"),
+        inertia=InertiaConfig(use_script_element=False),  # Legacy mode: use data-page attribute (default)
     )
 
 

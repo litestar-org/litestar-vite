@@ -413,9 +413,8 @@ class InertiaResponse(Response[T]):
 
         # v2.3+ protocol: Extract flash to top level (not in props)
         # This prevents flash from persisting in browser history state
-        flash_data: "dict[str, list[str]] | None" = shared_props.pop("flash", None)
-        if flash_data == {}:
-            flash_data = None
+        # Always send {} for empty flash to support router.flash((current) => ({ ...current }))
+        flash_data: "dict[str, list[str]]" = shared_props.pop("flash", None) or {}
 
         return PageProps[T](
             component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]

@@ -18,6 +18,7 @@ from litestar import get
 from litestar.exceptions import ImproperlyConfiguredException, SerializationException
 from litestar.serialization import decode_json, encode_json
 
+from litestar_vite.config import InertiaConfig
 from litestar_vite.handler._routing import spa_handler_dev, spa_handler_prod
 from litestar_vite.html_transform import (
     inject_head_script,
@@ -167,7 +168,10 @@ class AppHandler:
 
         if page_data is not None:
             json_data = encode_json(page_data).decode("utf-8")
-            if self._spa_config.use_script_element:
+            # Check InertiaConfig for use_script_element (Inertia-specific setting)
+            inertia = self._config.inertia
+            use_script_element = isinstance(inertia, InertiaConfig) and inertia.use_script_element
+            if use_script_element:
                 # v2.3+ Inertia protocol: Use script element for better performance (~37% smaller)
                 html = inject_page_script(html, json_data, nonce=self._config.csp_nonce)
             else:
@@ -177,16 +181,12 @@ class AppHandler:
         return html
 
     async def _load_index_html_async(self) -> None:
-        """Load and cache index.html asynchronously.
-
-        Raises:
-            ImproperlyConfiguredException: If index.html cannot be located.
-        """
+        """Load and cache index.html asynchronously."""
         resolved_path: Path | None = None
         for candidate in self._config.candidate_index_html_paths():
-            candidate_path = Path(candidate)
-            if candidate_path.exists():
-                resolved_path = candidate_path
+            candidate_path = anyio.Path(candidate)
+            if await candidate_path.exists():
+                resolved_path = candidate
                 break
 
         if resolved_path is None:
@@ -200,11 +200,7 @@ class AppHandler:
         self._cached_bytes = html.encode("utf-8")
 
     def _load_index_html_sync(self) -> None:
-        """Load and cache index.html synchronously.
-
-        Raises:
-            ImproperlyConfiguredException: If index.html cannot be located.
-        """
+        """Load and cache index.html synchronously."""
         resolved_path: Path | None = None
         for candidate in self._config.candidate_index_html_paths():
             candidate_path = Path(candidate)
@@ -427,9 +423,6 @@ class AppHandler:
 
         Returns:
             The rendered HTML.
-
-        Raises:
-            ImproperlyConfiguredException: If dev-mode HTTP clients are not initialized or Vite URL is unresolved.
         """
         if not self._initialized:
             logger.warning(
@@ -457,10 +450,7 @@ class AppHandler:
         """Get cached index.html bytes (production).
 
         Returns:
-            Cached HTML bytes.
-
-        Raises:
-            ImproperlyConfiguredException: If index.html cannot be located.
+            Cached HTML bytes. .
         """
         if not self._initialized:
             logger.warning(
