@@ -1,6 +1,6 @@
 # Development Workflow for litestar-vite
 
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
+**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-18
 
 This guide describes the standard development workflow for contributing to the `litestar-vite` project. It covers initial setup, daily development tasks, and the quality assurance process.
 

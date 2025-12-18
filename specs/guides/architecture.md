@@ -1,6 +1,6 @@
 # Architecture Guide for litestar-vite
 
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
+**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-18
 
 This document outlines the architectural patterns and conventions used in the `litestar-vite` project.
 
