@@ -17,6 +17,18 @@ from litestar_vite.plugin import StaticFilesConfig, VitePlugin, ViteProcess
 pytestmark = pytest.mark.anyio
 
 
+@pytest.fixture(autouse=True)
+def cleanup_vite_process_instances() -> None:
+    """Clear ViteProcess instances after each test to prevent atexit cleanup errors.
+
+    ViteProcess tracks all instances for signal handling and cleanup. When tests
+    create instances with mock processes, these would fail during atexit cleanup.
+    """
+    yield
+    # Clear instances after each test to prevent mock cleanup errors
+    ViteProcess._instances.clear()
+
+
 # =====================================================
 # VitePlugin Core Functionality Tests
 # =====================================================
