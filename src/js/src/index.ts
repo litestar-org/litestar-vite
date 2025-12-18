@@ -590,12 +590,22 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           fs.writeFileSync(pluginConfig.hotFile, viteDevServerUrl)
 
           // Check backend availability and log status
+          // Delay to allow Litestar to start when launched together via `litestar assets serve`
           setTimeout(async () => {
             // Skip banner in quiet mode
             if (logger.config.level === "quiet") return
 
             const litestarVersion = litestarMeta.litestarVersion ?? process.env.LITESTAR_VERSION ?? "unknown"
-            const backendStatus = await checkBackendAvailability(appUrl)
+
+            // Retry backend check a few times when started together with Litestar
+            let backendStatus = await checkBackendAvailability(appUrl)
+            if (!backendStatus.available) {
+              // Wait a bit and retry - Litestar may still be starting
+              for (let i = 0; i < 3 && !backendStatus.available; i++) {
+                await new Promise((resolve) => setTimeout(resolve, 500))
+                backendStatus = await checkBackendAvailability(appUrl)
+              }
+            }
 
             // Combined LITESTAR + VITE banner (replaces separate Vite banner)
             resolvedConfig.logger.info(`\n  ${colors.red(`${colors.bold("LITESTAR")} ${litestarVersion}`)}`)
@@ -694,25 +704,6 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       // This allows serving index.html at "/" while using a different base for assets
       server.middlewares.use(async (req, res, next) => {
         const indexPath = await findIndexHtmlPath(server, pluginConfig)
-
-        // In Inertia mode, ALWAYS serve the placeholder for "/" and "/index.html"
-        // The backend (Litestar) should serve the real HTML with Inertia data.
-        // Users who accidentally navigate to the Vite port will see helpful guidance.
-        // NOTE: We still let Vite see index.html (via findIndexHtmlPath) so it registers @vite/client
-        if (pluginConfig.inertiaMode && (req.url === "/" || req.url === "/index.html")) {
-          try {
-            const placeholderPath = path.join(dirname(), "dev-server-index.html")
-            const placeholderContent = await fs.promises.readFile(placeholderPath, "utf-8")
-            res.statusCode = 200
-            res.setHeader("Content-Type", "text/html")
-            res.end(placeholderContent.replace(/{{ APP_URL }}/g, appUrl))
-          } catch (e) {
-            resolvedConfig.logger.error(`Error serving placeholder index.html: ${e instanceof Error ? e.message : e}`)
-            res.statusCode = 404
-            res.end("Not Found (Error loading placeholder)")
-          }
-          return
-        }
 
         // Serve index.html at root "/" even when base is "/static/"
         // This prevents Vite from redirecting "/" to "/static/"

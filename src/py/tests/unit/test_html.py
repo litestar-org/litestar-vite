@@ -461,9 +461,7 @@ def test_inject_vite_dev_scripts_transforms_entry_point_urls() -> None:
     </body>
     </html>
     """
-    result = inject_vite_dev_scripts(
-        html, "http://localhost:5173", asset_url="/static/", resource_dir="resources"
-    )
+    result = inject_vite_dev_scripts(html, "http://localhost:5173", asset_url="/static/", resource_dir="resources")
 
     # Entry point URL should be transformed to include /static/ prefix
     assert 'src="/static/resources/main.tsx"' in result
@@ -483,9 +481,7 @@ def test_inject_vite_dev_scripts_does_not_double_prefix() -> None:
     </body>
     </html>
     """
-    result = inject_vite_dev_scripts(
-        html, "", asset_url="/static/", resource_dir="resources"
-    )
+    result = inject_vite_dev_scripts(html, "", asset_url="/static/", resource_dir="resources")
 
     # Should NOT have double prefix
     assert "/static/static/" not in result
@@ -521,9 +517,7 @@ def test_inject_vite_dev_scripts_multiple_entry_points() -> None:
     </body>
     </html>
     """
-    result = inject_vite_dev_scripts(
-        html, "", asset_url="/static/", resource_dir="resources"
-    )
+    result = inject_vite_dev_scripts(html, "", asset_url="/static/", resource_dir="resources")
 
     # Both resources/ scripts should be transformed
     assert 'src="/static/resources/main.tsx"' in result

@@ -892,9 +892,9 @@ describe("litestar-vite-plugin", () => {
       expect(mockNext).not.toHaveBeenCalled()
     })
 
-    it("serves placeholder when mode is 'hybrid' in .litestar.json (inertiaMode auto-detected)", async () => {
+    it("serves real index.html when mode is 'hybrid' in .litestar.json (inertiaMode auto-detected)", async () => {
       // When Python sets mode="inertia", it's normalized to "hybrid" in .litestar.json
-      // The plugin should detect this and serve placeholder instead of user's index.html
+      // The plugin should serve the real index.html (transformed by Vite) for hybrid mode
       const appUrl = "http://test.app:8000"
       process.env.APP_URL = appUrl
       const configPath = createRuntimeConfig({ mode: "hybrid" })
@@ -902,21 +902,23 @@ describe("litestar-vite-plugin", () => {
       try {
         await setupServer() // No explicit inertiaMode - should auto-detect from .litestar.json
         mockFs(rootIndexPath) // index.html exists
+        vi.spyOn(fs.promises, "readFile").mockResolvedValue("<html>hybrid</html>")
 
         await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
 
-        // Should serve placeholder, NOT the user's index.html
+        // Should serve real transformed index.html in hybrid mode
         expect(mockRes.statusCode).toBe(200)
         expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
-        expect(mockRes.end).toHaveBeenCalledWith(actualPlaceholderContent.replace(/{{ APP_URL }}/g, appUrl))
+        expect(mockServer.transformIndexHtml).toHaveBeenCalledWith("/", "<html>hybrid</html>", "/")
+        expect(mockRes.end).toHaveBeenCalledWith("<html>transformed <html>hybrid</html></html>")
         expect(mockNext).not.toHaveBeenCalled()
       } finally {
         cleanupRuntimeConfig(configPath)
       }
     })
 
-    it("serves placeholder when mode is 'inertia' in .litestar.json", async () => {
-      // Direct "inertia" mode should also trigger placeholder serving
+    it("serves real index.html when mode is 'inertia' in .litestar.json", async () => {
+      // In inertia mode, serve the real index.html (transformed by Vite)
       const appUrl = "http://test.app:8000"
       process.env.APP_URL = appUrl
       const configPath = createRuntimeConfig({ mode: "inertia" })
@@ -924,13 +926,15 @@ describe("litestar-vite-plugin", () => {
       try {
         await setupServer()
         mockFs(rootIndexPath) // index.html exists
+        vi.spyOn(fs.promises, "readFile").mockResolvedValue("<html>inertia</html>")
 
         await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
 
-        // Should serve placeholder, NOT the user's index.html
+        // Should serve real transformed index.html in inertia mode
         expect(mockRes.statusCode).toBe(200)
         expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
-        expect(mockRes.end).toHaveBeenCalledWith(actualPlaceholderContent.replace(/{{ APP_URL }}/g, appUrl))
+        expect(mockServer.transformIndexHtml).toHaveBeenCalledWith("/", "<html>inertia</html>", "/")
+        expect(mockRes.end).toHaveBeenCalledWith("<html>transformed <html>inertia</html></html>")
         expect(mockNext).not.toHaveBeenCalled()
       } finally {
         cleanupRuntimeConfig(configPath)
