@@ -296,7 +296,32 @@ def test_extract_inertia_pages_union_type_with_any() -> None:
         or (page.ts_type and "BookProps" in page.ts_type)
         or "BookProps" in page.custom_types
     )
-    assert has_book_props, f"BookProps should be preserved in union type. Got: props_type={page.props_type}, ts_type={page.ts_type}, custom_types={page.custom_types}"
+    assert has_book_props, (
+        f"BookProps should be preserved in union type. Got: props_type={page.props_type}, ts_type={page.ts_type}, custom_types={page.custom_types}"
+    )
+
+
+def test_extract_inertia_pages_filters_redirect_from_union() -> None:
+    """Test that response types (like Redirect) are filtered from union types."""
+    from litestar.response import Redirect
+
+    @get("/login", opt={"component": "auth/login"}, sync_to_thread=False)
+    def show_login() -> Redirect | BookProps:
+        return BookProps(title="Test", author="Author")
+
+    app = Litestar([show_login])
+    pages = extract_inertia_pages(app)
+
+    assert len(pages) == 1
+    page = pages[0]
+    # The Redirect type should be filtered out, leaving only BookProps
+    # The type should NOT contain "any" from the redirect being converted
+    assert page.ts_type == "BookProps" or (page.props_type and "BookProps" in page.props_type)
+    # Ensure "any" is not in the type (would indicate Redirect wasn't filtered)
+    if page.ts_type:
+        assert "any" not in page.ts_type.lower(), (
+            f"Redirect should be filtered, not converted to any. Got: {page.ts_type}"
+        )
 
 
 def test_extract_inertia_pages_captures_handler_name() -> None:

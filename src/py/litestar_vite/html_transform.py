@@ -332,6 +332,62 @@ def inject_json_script(html: str, var_name: str, data: dict[str, Any], *, nonce:
     return inject_head_script(html, script, escape=False, nonce=nonce)
 
 
+def inject_vite_dev_scripts(html: str, vite_url: str, *, is_react: bool = False, csp_nonce: str | None = None) -> str:
+    """Inject Vite dev server scripts for HMR support.
+
+    This function injects the necessary scripts for Vite's Hot Module Replacement
+    (HMR) to work when serving HTML from the backend (e.g., in hybrid/Inertia mode).
+    The scripts are injected into the ``<head>`` section.
+
+    For React apps, a preamble script is injected before the Vite client to
+    enable React Fast Refresh.
+
+    Args:
+        html: The HTML document.
+        vite_url: The Vite dev server URL (e.g., "http://localhost:5173").
+        is_react: Whether to inject the React Fast Refresh preamble.
+        csp_nonce: Optional CSP nonce to add to injected ``<script>`` tags.
+
+    Returns:
+        The HTML with Vite dev scripts injected. Scripts are inserted before
+        ``</head>`` when present, otherwise before ``</html>`` or at the end.
+
+    Example:
+        html = inject_vite_dev_scripts(html, "http://localhost:5173", is_react=True)
+    """
+    if not vite_url:
+        return html
+
+    vite_url = vite_url.rstrip("/")
+    nonce_attr = f' nonce="{_escape_attr(csp_nonce)}"' if csp_nonce else ""
+
+    scripts: list[str] = []
+
+    if is_react:
+        react_preamble = f"""import RefreshRuntime from '{vite_url}/@react-refresh'
+RefreshRuntime.injectIntoGlobalHook(window)
+window.$RefreshReg$ = () => {{}}
+window.$RefreshSig$ = () => (type) => type
+window.__vite_plugin_react_preamble_installed__ = true"""
+        scripts.append(f'<script type="module"{nonce_attr}>{react_preamble}</script>')
+
+    scripts.append(f'<script type="module" src="{vite_url}/@vite/client"{nonce_attr}></script>')
+
+    script_content = "\n".join(scripts) + "\n"
+
+    head_end_match = _HEAD_END_PATTERN.search(html)
+    if head_end_match:
+        pos = head_end_match.start()
+        return html[:pos] + script_content + html[pos:]
+
+    html_end_match = _HTML_END_PATTERN.search(html)
+    if html_end_match:
+        pos = html_end_match.start()
+        return html[:pos] + script_content + html[pos:]
+
+    return html + "\n" + script_content
+
+
 def transform_asset_urls(
     html: str, manifest: dict[str, Any], asset_url: str = "/static/", base_url: str | None = None
 ) -> str:

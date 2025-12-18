@@ -42,6 +42,27 @@ def str_list_factory() -> list[str]:
     return []
 
 
+def _pick_inertia_method(http_methods: "set[Any] | frozenset[Any] | None") -> str:
+    """Pick a deterministic HTTP method for Inertia page props inference.
+
+    Inertia pages are typically loaded via GET requests, so we prefer GET.
+    For determinism, we sort remaining methods alphabetically.
+
+    Args:
+        http_methods: Set of HTTP methods from the route handler.
+
+    Returns:
+        The selected HTTP method string.
+    """
+    if not http_methods:
+        return "GET"
+    # Prefer GET for Inertia page loads
+    if "GET" in http_methods:
+        return "GET"
+    # Fallback to alphabetically first method for determinism
+    return sorted(http_methods)[0]
+
+
 def normalize_type_name(type_name: str, openapi_schemas: set[str]) -> str:
     """Strip module prefix from mangled type names.
 
@@ -273,11 +294,28 @@ def finalize_inertia_pages(
 
 
 def extract_inertia_pages(
-    app: "Litestar", *, openapi_schema: dict[str, Any] | None = None, fallback_type: "str" = "unknown"
+    app: "Litestar",
+    *,
+    openapi_schema: dict[str, Any] | None = None,
+    fallback_type: "str" = "unknown",
+    openapi_support: OpenAPISupport | None = None,
 ) -> list[InertiaPageMetadata]:
+    """Extract Inertia page metadata from an application.
+
+    Args:
+        app: Litestar application instance.
+        openapi_schema: Optional OpenAPI schema dict.
+        fallback_type: TypeScript fallback type for unknown types.
+        openapi_support: Optional shared OpenAPISupport instance. If not provided,
+            a new one will be created. Sharing improves determinism and performance.
+
+    Returns:
+        List of InertiaPageMetadata for each discovered page.
+    """
     pages: list[InertiaPageMetadata] = []
 
-    openapi_support = OpenAPISupport.from_app(app, openapi_schema)
+    if openapi_support is None:
+        openapi_support = OpenAPISupport.from_app(app, openapi_schema)
 
     page_schema_keys: dict[str, tuple[str, ...]] = {}
     page_schema_dicts: dict[str, dict[str, Any]] = {}
@@ -299,7 +337,7 @@ def extract_inertia_pages(
             fallback_type=fallback_type,
         )
 
-        method = next(iter(route_handler.http_methods), "GET") if route_handler.http_methods else "GET"
+        method = _pick_inertia_method(route_handler.http_methods)
         schema_ref = get_openapi_schema_ref(route_handler, openapi_schema, normalized_path, method=str(method))
 
         pages.append(
@@ -412,8 +450,19 @@ def build_inertia_shared_props(
     include_default_flash: bool,
     inertia_config: "InertiaConfig | None",
     types_config: "TypeGenConfig | None",
+    openapi_support: OpenAPISupport | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Build shared props metadata (built-ins + configured props).
+
+    Args:
+        app: Litestar application instance.
+        openapi_schema: Optional OpenAPI schema dict.
+        include_default_auth: Include default auth shared prop.
+        include_default_flash: Include default flash shared prop.
+        inertia_config: Optional Inertia configuration.
+        types_config: Optional type generation configuration.
+        openapi_support: Optional shared OpenAPISupport instance. If not provided,
+            a new one will be created. Sharing improves determinism and performance.
 
     Returns:
         Mapping of shared prop name to metadata payload.
@@ -432,7 +481,8 @@ def build_inertia_shared_props(
     if inertia_config is None:
         return shared_props
 
-    openapi_support = OpenAPISupport.from_app(app, openapi_schema)
+    if openapi_support is None:
+        openapi_support = OpenAPISupport.from_app(app, openapi_schema)
     shared_schema_keys: dict[str, tuple[str, ...]] = {}
 
     for key, value in inertia_config.extra_static_page_props.items():
@@ -489,13 +539,23 @@ def generate_inertia_pages_json(
     The output is deterministic: all dict keys are sorted alphabetically
     to produce byte-identical output for the same input data.
 
+    A single OpenAPISupport instance is shared across both page extraction and
+    shared props building to ensure consistent schema registration and naming.
+    This eliminates non-determinism from split schema registries.
+
     Returns:
         An Inertia pages metadata payload as a dictionary with sorted keys.
     """
+    # Create a single OpenAPISupport instance to share across the entire pipeline.
+    # This ensures consistent schema registration and prevents "split-brain" issues
+    # where separate registries could produce different schema names.
+    openapi_support = OpenAPISupport.from_app(app, openapi_schema)
+
     pages_metadata = extract_inertia_pages(
         app,
         openapi_schema=openapi_schema,
         fallback_type=types_config.fallback_type if types_config is not None else "unknown",
+        openapi_support=openapi_support,
     )
 
     pages_dict: dict[str, dict[str, Any]] = {}
@@ -520,6 +580,7 @@ def generate_inertia_pages_json(
         include_default_flash=include_default_flash,
         inertia_config=inertia_config,
         types_config=types_config,
+        openapi_support=openapi_support,
     )
 
     # Sort all dict keys for deterministic output

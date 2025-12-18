@@ -19,7 +19,12 @@ from litestar.exceptions import ImproperlyConfiguredException, SerializationExce
 from litestar.serialization import decode_json, encode_json
 
 from litestar_vite.handler._routing import spa_handler_dev, spa_handler_prod
-from litestar_vite.html_transform import inject_head_script, set_data_attribute, transform_asset_urls
+from litestar_vite.html_transform import (
+    inject_head_script,
+    inject_vite_dev_scripts,
+    set_data_attribute,
+    transform_asset_urls,
+)
 
 if TYPE_CHECKING:
     from litestar.connection import Request
@@ -302,6 +307,62 @@ class AppHandler:
 
         return value_or_default(ScopeState.from_scope(request.scope).csrf_token, None)
 
+    def _is_hybrid_dev_mode(self) -> bool:
+        """Check if running in hybrid dev mode.
+
+        In hybrid mode (Inertia without templates), the backend should serve HTML
+        directly from the filesystem rather than proxying to Vite, because Vite
+        returns a placeholder page in Inertia mode.
+
+        Returns:
+            True if in hybrid dev mode with hot_reload enabled.
+        """
+        return self._config.is_dev_mode and self._config.hot_reload and self._config.mode == "hybrid"
+
+    async def _get_hybrid_dev_html_async(self) -> str:
+        """Get HTML for hybrid dev mode by reading local file and injecting Vite scripts.
+
+        Returns:
+            The HTML with Vite dev scripts injected.
+        """
+        resolved_path: Path | None = None
+        for candidate in self._config.candidate_index_html_paths():
+            candidate_path = Path(candidate)
+            if candidate_path.exists():
+                resolved_path = candidate_path
+                break
+
+        if resolved_path is None:
+            self._raise_index_not_found()
+
+        raw_bytes = await anyio.Path(resolved_path).read_bytes()
+        html = raw_bytes.decode("utf-8")
+
+        vite_url = self._vite_url or self._resolve_vite_url()
+        return inject_vite_dev_scripts(html, vite_url, is_react=self._config.is_react, csp_nonce=self._config.csp_nonce)
+
+    def _get_hybrid_dev_html_sync(self) -> str:
+        """Get HTML for hybrid dev mode synchronously.
+
+        Returns:
+            The HTML with Vite dev scripts injected.
+        """
+        resolved_path: Path | None = None
+        for candidate in self._config.candidate_index_html_paths():
+            candidate_path = Path(candidate)
+            if candidate_path.exists():
+                resolved_path = candidate_path
+                break
+
+        if resolved_path is None:
+            self._raise_index_not_found()
+
+        raw_bytes = resolved_path.read_bytes()
+        html = raw_bytes.decode("utf-8")
+
+        vite_url = self._vite_url or self._resolve_vite_url()
+        return inject_vite_dev_scripts(html, vite_url, is_react=self._config.is_react, csp_nonce=self._config.csp_nonce)
+
     async def get_html(self, request: "Request[Any, Any, Any]", *, page_data: "dict[str, Any] | None" = None) -> str:
         """Get the HTML for the SPA with optional transformations.
 
@@ -324,7 +385,10 @@ class AppHandler:
         csrf_token = self._get_csrf_token(request) if needs_csrf else None
 
         if self._config.is_dev_mode and self._config.hot_reload:
-            html = await self._proxy_to_dev_server(request)
+            if self._is_hybrid_dev_mode():
+                html = await self._get_hybrid_dev_html_async()
+            else:
+                html = await self._proxy_to_dev_server(request)
             if needs_transform:
                 html = self._transform_html(html, page_data, csrf_token)
             return html
@@ -371,11 +435,13 @@ class AppHandler:
         needs_transform = self._spa_config is not None or page_data is not None
         if not needs_transform:
             if self._config.is_dev_mode and self._config.hot_reload:
+                if self._is_hybrid_dev_mode():
+                    return self._get_hybrid_dev_html_sync()
                 return self._proxy_to_dev_server_sync()
             return self._cached_html or ""
 
         if self._config.is_dev_mode and self._config.hot_reload:
-            html = self._proxy_to_dev_server_sync()
+            html = self._get_hybrid_dev_html_sync() if self._is_hybrid_dev_mode() else self._proxy_to_dev_server_sync()
             return self._transform_html(html, page_data, csrf_token)
 
         base_html = self._cached_html or ""
