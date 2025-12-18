@@ -3,6 +3,7 @@
 import gc
 import sys
 import time
+from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -18,7 +19,7 @@ pytestmark = pytest.mark.anyio
 
 
 @pytest.fixture(autouse=True)
-def cleanup_vite_process_instances() -> None:
+def cleanup_vite_process_instances() -> Generator[None, None, None]:
     """Clear ViteProcess instances after each test to prevent atexit cleanup errors.
 
     ViteProcess tracks all instances for signal handling and cleanup. When tests

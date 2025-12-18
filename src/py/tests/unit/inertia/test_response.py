@@ -1667,29 +1667,32 @@ async def test_inertia_response_preserves_array_style_query_params(
         assert "ids=" in data["url"]
 
 
-async def test_inertia_initial_page_load_preserves_query_params(
-    inertia_plugin: InertiaPlugin,
-    vite_plugin: VitePlugin,
-    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
-) -> None:
-    """Test that query parameters are preserved in initial HTML page load (data-page attribute)."""
+async def test_get_relative_url_helper() -> None:
+    """Test the _get_relative_url helper function directly."""
+    from unittest.mock import MagicMock
 
-    @get("/reports", component="Reports")
-    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
-        return {"data": "value"}
+    from litestar_vite.inertia.response import _get_relative_url
 
-    with create_test_client(
-        route_handlers=[handler],
-        plugins=[inertia_plugin, vite_plugin],
-        template_config=template_config,
-        middleware=[ServerSideSessionConfig().middleware],
-        stores={"sessions": MemoryStore()},
-    ) as client:
-        # Initial page load (no X-Inertia header)
-        response = client.get("/reports?filter=active")
-        html = response.text
-        # The data-page attribute should contain URL with query params
-        assert "data-page" in html
-        # Extract and verify the JSON in data-page contains correct URL
-        # The URL in the page object should include query parameters
-        assert "filter=active" in html or "filter%3Dactive" in html
+    # Mock request with query string
+    mock_request = MagicMock()
+    mock_request.url.path = "/reports"
+    mock_request.url.query = "status=active&page=2"
+
+    result = _get_relative_url(mock_request)
+    assert result == "/reports?status=active&page=2"
+
+    # Mock request without query string
+    mock_request_no_query = MagicMock()
+    mock_request_no_query.url.path = "/dashboard"
+    mock_request_no_query.url.query = ""
+
+    result_no_query = _get_relative_url(mock_request_no_query)
+    assert result_no_query == "/dashboard"
+
+    # Mock request with None query
+    mock_request_none = MagicMock()
+    mock_request_none.url.path = "/home"
+    mock_request_none.url.query = None
+
+    result_none = _get_relative_url(mock_request_none)
+    assert result_none == "/home"
