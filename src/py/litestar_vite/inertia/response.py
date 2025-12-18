@@ -207,6 +207,28 @@ def _get_redirect_url(request: "Request[Any, Any, Any]", url: str | None) -> str
     return url
 
 
+def _get_relative_url(request: "Request[Any, Any, Any]") -> str:
+    """Return the relative URL including query string for Inertia page props.
+
+    The Inertia.js protocol requires the ``url`` property to include query parameters
+    so that page state (e.g., filters, pagination) is preserved on refresh.
+
+    This matches the behavior of other Inertia adapters:
+    - Laravel: Uses ``fullUrl()`` minus scheme/host
+    - Rails: Uses ``request.fullpath``
+    - Django: Uses ``request.get_full_path()``
+
+    Args:
+        request: The request object.
+
+    Returns:
+        The path with query string if present, e.g., ``/reports?page=1&status=active``.
+    """
+    path = request.url.path
+    query = request.url.query
+    return f"{path}?{query}" if query else path
+
+
 class InertiaResponse(Response[T]):
     """Inertia Response"""
 
@@ -393,7 +415,7 @@ class InertiaResponse(Response[T]):
             component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
             props=shared_props,  # pyright: ignore[reportArgumentType]
             version=vite_plugin.asset_loader.version_id,
-            url=request.url.path,
+            url=_get_relative_url(request),
             encrypt_history=encrypt_history,
             clear_history=clear_history_flag,
             deferred_props=deferred_props,

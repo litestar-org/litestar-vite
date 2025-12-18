@@ -664,8 +664,7 @@ export function isCurrentRoute(pattern: string): boolean {{
   const regex = new RegExp(`^${{escaped.replace(/\\*/g, '.*')}}$`);
   return regex.test(current);
 }}
-{global_route_snippet}
-"""
+{global_route_snippet}"""
 
 
 def collect_semantic_aliases(type_expr: str) -> set[str]:

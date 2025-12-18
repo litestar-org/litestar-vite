@@ -1554,3 +1554,142 @@ async def test_inertia_external_redirect_no_cookie_echo(
         set_cookie_headers = response.headers.get_list("set-cookie")
         token_cookie_echoed = any("auth_token=secret_token" in c for c in set_cookie_headers)
         assert not token_cookie_echoed, "Request cookies should not be echoed in response"
+
+
+# =====================================================
+# Query Parameter Preservation Tests (Inertia Protocol)
+# =====================================================
+
+
+async def test_inertia_response_preserves_query_params(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that query parameters are preserved in page props URL.
+
+    Per Inertia.js protocol, the URL in page props must include query parameters
+    so that page state (filters, pagination, etc.) is preserved on refresh.
+    See: https://inertiajs.com/the-protocol
+    """
+
+    @get("/reports", component="Reports")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/reports?status=active&page=2", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # URL must include query parameters
+        assert data["url"] == "/reports?status=active&page=2"
+
+
+async def test_inertia_response_url_without_query_params(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that URLs without query parameters work unchanged."""
+
+    @get("/dashboard", component="Dashboard")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/dashboard", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # URL without query params should be just the path
+        assert data["url"] == "/dashboard"
+
+
+async def test_inertia_response_preserves_special_chars_in_query(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that special characters in query parameters are preserved."""
+
+    @get("/search", component="Search")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"results": []}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # URL-encoded special characters
+        response = client.get(
+            "/search?q=hello%20world&filter=name%3Dtest", headers={InertiaHeaders.ENABLED.value: "true"}
+        )
+        data = response.json()
+        # Query string should be preserved (URL-decoded by server)
+        assert "q=" in data["url"]
+        assert "/search?" in data["url"]
+
+
+async def test_inertia_response_preserves_array_style_query_params(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that array-style query parameters are preserved."""
+
+    @get("/items", component="Items")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"items": []}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/items?ids=1&ids=2&ids=3", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # Multiple same-named params should be preserved
+        assert data["url"].startswith("/items?")
+        assert "ids=" in data["url"]
+
+
+async def test_inertia_initial_page_load_preserves_query_params(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that query parameters are preserved in initial HTML page load (data-page attribute)."""
+
+    @get("/reports", component="Reports")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Initial page load (no X-Inertia header)
+        response = client.get("/reports?filter=active")
+        html = response.text
+        # The data-page attribute should contain URL with query params
+        assert "data-page" in html
+        # Extract and verify the JSON in data-page contains correct URL
+        # The URL in the page object should include query parameters
+        assert "filter=active" in html or "filter%3Dactive" in html

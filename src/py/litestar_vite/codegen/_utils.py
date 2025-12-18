@@ -71,7 +71,15 @@ def write_if_changed(
     Returns:
         True if file was written (content changed), False if skipped (unchanged).
     """
-    content_bytes = content.encode(encoding) if isinstance(content, str) else content
+    # Ensure trailing newline for POSIX compliance
+    if isinstance(content, str):
+        if not content.endswith("\n"):
+            content += "\n"
+        content_bytes = content.encode(encoding)
+    else:
+        if not content.endswith(b"\n"):
+            content += b"\n"
+        content_bytes = content
 
     if path.exists():
         try:
@@ -124,5 +132,10 @@ def encode_deterministic_json(
 
     sorted_data = deep_sort_dict(data)
     if serializer is not None:
-        return msgspec.json.format(serializer(sorted_data), indent=indent)
-    return msgspec.json.format(encode_json(sorted_data), indent=indent)
+        content = msgspec.json.format(serializer(sorted_data), indent=indent)
+    else:
+        content = msgspec.json.format(encode_json(sorted_data), indent=indent)
+    # Ensure trailing newline for POSIX compliance
+    if not content.endswith(b"\n"):
+        content += b"\n"
+    return content
