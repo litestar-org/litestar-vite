@@ -347,6 +347,7 @@ class AppHandler:
             asset_url=self._config.asset_url,
             is_react=self._config.is_react,
             csp_nonce=self._config.csp_nonce,
+            resource_dir=str(self._config.resource_dir),
         )
 
     def _get_hybrid_dev_html_sync(self) -> str:
@@ -375,6 +376,7 @@ class AppHandler:
             asset_url=self._config.asset_url,
             is_react=self._config.is_react,
             csp_nonce=self._config.csp_nonce,
+            resource_dir=str(self._config.resource_dir),
         )
 
     async def get_html(self, request: "Request[Any, Any, Any]", *, page_data: "dict[str, Any] | None" = None) -> str:

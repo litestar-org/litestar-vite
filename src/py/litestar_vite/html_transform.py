@@ -382,7 +382,13 @@ def inject_json_script(html: str, var_name: str, data: dict[str, Any], *, nonce:
 
 
 def inject_vite_dev_scripts(
-    html: str, vite_url: str, *, asset_url: str = "/static/", is_react: bool = False, csp_nonce: str | None = None
+    html: str,
+    vite_url: str,
+    *,
+    asset_url: str = "/static/",
+    is_react: bool = False,
+    csp_nonce: str | None = None,
+    resource_dir: str | None = None,
 ) -> str:
     """Inject Vite dev server scripts for HMR support.
 
@@ -397,6 +403,10 @@ def inject_vite_dev_scripts(
     routes them through Litestar's proxy middleware, which forwards to Vite
     with the correct base path handling.
 
+    When ``resource_dir`` is provided, entry point script URLs are also transformed
+    to include the asset URL prefix (e.g., ``/resources/main.tsx`` becomes
+    ``/static/resources/main.tsx``).
+
     Args:
         html: The HTML document.
         vite_url: The Vite dev server URL (kept for backward compatibility, unused).
@@ -404,6 +414,9 @@ def inject_vite_dev_scripts(
             at ``{asset_url}@vite/client`` etc.
         is_react: Whether to inject the React Fast Refresh preamble.
         csp_nonce: Optional CSP nonce to add to injected ``<script>`` tags.
+        resource_dir: Optional resource directory name (e.g., "resources", "src").
+            When provided, script sources starting with ``/{resource_dir}/`` are
+            prefixed with ``asset_url``.
 
     Returns:
         The HTML with Vite dev scripts injected. Scripts are inserted before
@@ -416,6 +429,21 @@ def inject_vite_dev_scripts(
     # This ensures proper base path handling (Vite expects /static/@vite/client, not /@vite/client)
     base = asset_url.rstrip("/")
     nonce_attr = f' nonce="{_escape_attr(csp_nonce)}"' if csp_nonce else ""
+
+    # Transform entry point script URLs to include the asset URL prefix
+    # This ensures /resources/main.tsx becomes /static/resources/main.tsx
+    if resource_dir:
+        resource_prefix = f"/{resource_dir.strip('/')}/"
+
+        def transform_entry_script(match: re.Match[str]) -> str:
+            prefix = match.group(1)
+            src = match.group(2)
+            suffix = match.group(3)
+            if src.startswith(resource_prefix) and not src.startswith(base):
+                return prefix + base + src + suffix
+            return match.group(0)
+
+        html = _SCRIPT_SRC_PATTERN.sub(transform_entry_script, html)
 
     scripts: list[str] = []
 

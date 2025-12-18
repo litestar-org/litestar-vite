@@ -7,6 +7,7 @@ from litestar_vite.html_transform import (
     inject_head_script,
     inject_json_script,
     inject_page_script,
+    inject_vite_dev_scripts,
     set_data_attribute,
 )
 
@@ -414,3 +415,133 @@ def test_inject_page_script_vs_data_attribute_escaping() -> None:
     assert "&quot;" in attr_result
     assert "&lt;" in attr_result
     assert "&gt;" in attr_result
+
+
+def test_inject_vite_dev_scripts_basic() -> None:
+    """Test basic Vite dev scripts injection."""
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head><title>Test</title></head>
+    <body><div id="app"></div></body>
+    </html>
+    """
+    result = inject_vite_dev_scripts(html, "http://localhost:5173", asset_url="/static/")
+
+    assert '<script type="module" src="/static/@vite/client"></script>' in result
+
+
+def test_inject_vite_dev_scripts_with_react() -> None:
+    """Test Vite dev scripts with React Fast Refresh preamble."""
+    html = "<html><head></head><body></body></html>"
+    result = inject_vite_dev_scripts(html, "", asset_url="/static/", is_react=True)
+
+    assert "RefreshRuntime" in result
+    assert "@react-refresh" in result
+    assert "__vite_plugin_react_preamble_installed__" in result
+
+
+def test_inject_vite_dev_scripts_with_nonce() -> None:
+    """Test Vite dev scripts with CSP nonce."""
+    html = "<html><head></head><body></body></html>"
+    result = inject_vite_dev_scripts(html, "", asset_url="/static/", csp_nonce="abc123")
+
+    assert 'nonce="abc123"' in result
+
+
+def test_inject_vite_dev_scripts_transforms_entry_point_urls() -> None:
+    """Test that entry point script URLs are transformed when resource_dir is provided."""
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head><title>Test</title></head>
+    <body>
+        <div id="app"></div>
+        <script type="module" src="/resources/main.tsx"></script>
+    </body>
+    </html>
+    """
+    result = inject_vite_dev_scripts(
+        html, "http://localhost:5173", asset_url="/static/", resource_dir="resources"
+    )
+
+    # Entry point URL should be transformed to include /static/ prefix
+    assert 'src="/static/resources/main.tsx"' in result
+    # Original URL should not be present
+    assert 'src="/resources/main.tsx"' not in result
+    # Vite client should also be injected
+    assert '<script type="module" src="/static/@vite/client"></script>' in result
+
+
+def test_inject_vite_dev_scripts_does_not_double_prefix() -> None:
+    """Test that already-prefixed URLs are not double-prefixed."""
+    html = """
+    <html>
+    <head></head>
+    <body>
+        <script type="module" src="/static/resources/main.tsx"></script>
+    </body>
+    </html>
+    """
+    result = inject_vite_dev_scripts(
+        html, "", asset_url="/static/", resource_dir="resources"
+    )
+
+    # Should NOT have double prefix
+    assert "/static/static/" not in result
+    # Original prefixed URL should be preserved
+    assert 'src="/static/resources/main.tsx"' in result
+
+
+def test_inject_vite_dev_scripts_no_resource_dir() -> None:
+    """Test that entry point URLs are not transformed without resource_dir."""
+    html = """
+    <html>
+    <head></head>
+    <body>
+        <script type="module" src="/resources/main.tsx"></script>
+    </body>
+    </html>
+    """
+    result = inject_vite_dev_scripts(html, "", asset_url="/static/", resource_dir=None)
+
+    # Without resource_dir, the URL should remain unchanged
+    assert 'src="/resources/main.tsx"' in result
+
+
+def test_inject_vite_dev_scripts_multiple_entry_points() -> None:
+    """Test transformation of multiple entry point scripts."""
+    html = """
+    <html>
+    <head></head>
+    <body>
+        <script type="module" src="/resources/main.tsx"></script>
+        <script type="module" src="/resources/vendor.ts"></script>
+        <script src="/other/external.js"></script>
+    </body>
+    </html>
+    """
+    result = inject_vite_dev_scripts(
+        html, "", asset_url="/static/", resource_dir="resources"
+    )
+
+    # Both resources/ scripts should be transformed
+    assert 'src="/static/resources/main.tsx"' in result
+    assert 'src="/static/resources/vendor.ts"' in result
+    # Non-matching script should remain unchanged
+    assert 'src="/other/external.js"' in result
+
+
+def test_inject_vite_dev_scripts_src_subdir() -> None:
+    """Test with 'src' as resource_dir."""
+    html = """
+    <html>
+    <head></head>
+    <body>
+        <script type="module" src="/src/main.tsx"></script>
+    </body>
+    </html>
+    """
+    result = inject_vite_dev_scripts(html, "", asset_url="/static/", resource_dir="src")
+
+    assert 'src="/static/src/main.tsx"' in result
