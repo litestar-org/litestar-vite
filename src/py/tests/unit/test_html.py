@@ -6,6 +6,7 @@ from litestar_vite.html_transform import (
     inject_body_content,
     inject_head_script,
     inject_json_script,
+    inject_page_script,
     set_data_attribute,
 )
 
@@ -306,3 +307,110 @@ def test_escape_attr_helper() -> None:
     assert "&quot;" in escaped
     assert "&amp;" in escaped
     assert "<script>" not in escaped
+
+
+def test_inject_page_script_basic() -> None:
+    """Test basic page script injection before </body>."""
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head><title>Test</title></head>
+    <body>
+        <div id="app"></div>
+    </body>
+    </html>
+    """
+    json_data = '{"component":"Home","props":{}}'
+    result = inject_page_script(html, json_data)
+
+    assert '<script type="application/json" id="app_page">' in result
+    assert '{"component":"Home","props":{}}' in result
+    assert result.index("</script>") < result.index("</body>")
+
+
+def test_inject_page_script_with_nonce() -> None:
+    """Test page script injection with CSP nonce."""
+    html = "<html><head></head><body></body></html>"
+    json_data = '{"component":"Test"}'
+    result = inject_page_script(html, json_data, nonce="abc123")
+
+    assert '<script type="application/json" id="app_page" nonce="abc123">' in result
+
+
+def test_inject_page_script_escapes_closing_tags() -> None:
+    """Test that </script> sequences in JSON are escaped to prevent XSS."""
+    html = "<html><head></head><body></body></html>"
+    # Malicious JSON that tries to break out of script tag
+    json_data = '{"content":"</script><script>alert(1)</script>"}'
+    result = inject_page_script(html, json_data)
+
+    # Should escape </ to <\/ to prevent premature tag closure
+    assert r"<\/script>" in result
+    # Should NOT have unescaped </script> in the JSON content
+    # (other than the closing tag of our script element)
+    assert result.count("</script>") == 1  # Only the legitimate closing tag
+
+
+def test_inject_page_script_empty_json() -> None:
+    """Test that empty JSON returns unchanged HTML."""
+    html = "<html><head></head><body></body></html>"
+    result = inject_page_script(html, "")
+
+    assert result == html
+
+
+def test_inject_page_script_no_body() -> None:
+    """Test fallback when no </body> tag exists."""
+    html = "<html><head></head></html>"
+    json_data = '{"component":"Test"}'
+    result = inject_page_script(html, json_data)
+
+    # Should still inject the script (appended at end)
+    assert '<script type="application/json" id="app_page">' in result
+
+
+def test_inject_page_script_custom_id() -> None:
+    """Test page script with custom ID."""
+    html = "<html><head></head><body></body></html>"
+    json_data = '{"data":"test"}'
+    result = inject_page_script(html, json_data, script_id="custom_page")
+
+    assert '<script type="application/json" id="custom_page">' in result
+
+
+def test_inject_page_script_large_payload() -> None:
+    """Test script injection with large JSON payload."""
+    html = "<html><head></head><body></body></html>"
+    # Create a large JSON payload
+    large_data = '{"items":' + str(list(range(1000))) + "}"
+    result = inject_page_script(html, large_data)
+
+    assert '<script type="application/json" id="app_page">' in result
+    assert "[0, 1, 2, 3" in result
+
+
+def test_inject_page_script_vs_data_attribute_escaping() -> None:
+    """Test that script element avoids the heavy escaping needed for data attributes.
+
+    This is the key performance benefit - script elements don't need HTML entity escaping.
+    """
+    html_with_script = "<html><body></body></html>"
+    html_with_attr = '<html><body><div id="app"></div></body></html>'
+    json_data = '{"message":"Hello <World> & \\"Friends\\""}'
+
+    # Script element: JSON is mostly unchanged (only </ escaping)
+    script_result = inject_page_script(html_with_script, json_data)
+
+    # Data attribute: requires full HTML entity escaping
+    attr_result = set_data_attribute(html_with_attr, "#app", "data-page", json_data)
+
+    # Script element preserves quotes and angle brackets
+    assert '"Hello <World>' in script_result or r'"Hello <World>' in script_result
+    assert "&quot;" not in script_result
+    assert "&lt;" not in script_result
+    assert "&gt;" not in script_result
+
+    # Data attribute must escape everything
+    assert "&quot;" in attr_result
+    assert "&lt;" in attr_result
+    assert "&gt;" in attr_result

@@ -347,8 +347,8 @@ async def test_spa_handler_transform_html_with_page_data(spa_config_with_transfo
     mock_request = Mock()
     html = await handler.get_html(mock_request, page_data=page_data)
 
-    # Should contain the injected page data as data-page attribute
-    assert 'data-page="' in html
+    # Default is use_script_element=True - page data injected as script element
+    assert '<script type="application/json" id="app_page">' in html
     assert "Home" in html
     assert "test" in html
 
@@ -410,8 +410,59 @@ async def test_spa_handler_get_html_sync_with_page_data(spa_config_with_transfor
 
     html = handler.get_html_sync(page_data=page_data)
 
-    assert 'data-page="' in html
+    # Default is use_script_element=True - page data injected as script element
+    assert '<script type="application/json" id="app_page">' in html
     assert "Home" in html
+
+
+@pytest.fixture
+def spa_config_with_data_page_attr(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> ViteConfig:
+    """Create a ViteConfig with legacy data-page attribute mode (use_script_element=False)."""
+    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    return ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(
+            inject_csrf=False,
+            app_selector="#app",
+            use_script_element=False,  # Legacy mode: use data-page attribute
+        ),
+    )
+
+
+async def test_spa_handler_legacy_data_page_attribute(spa_config_with_data_page_attr: ViteConfig) -> None:
+    """Test that page data is injected as data-page attribute when use_script_element=False."""
+    handler = AppHandler(spa_config_with_data_page_attr)
+    await handler.initialize_async()
+
+    page_data = {"component": "Home", "props": {"user": "test"}}
+
+    mock_request = Mock()
+    html = await handler.get_html(mock_request, page_data=page_data)
+
+    # Legacy mode: page data injected as data-page attribute
+    assert 'data-page="' in html
+    assert '<script type="application/json" id="app_page">' not in html
+    assert "Home" in html
+
+
+async def test_spa_handler_legacy_data_page_sync(spa_config_with_data_page_attr: ViteConfig) -> None:
+    """Test get_html_sync with legacy data-page attribute mode."""
+    handler = AppHandler(spa_config_with_data_page_attr)
+    await handler.initialize_async()
+
+    page_data = {"component": "About", "props": {"message": "Hello"}}
+
+    html = handler.get_html_sync(page_data=page_data)
+
+    # Legacy mode: page data injected as data-page attribute
+    assert 'data-page="' in html
+    assert "About" in html
 
 
 async def test_spa_handler_get_html_sync_works_in_dev_mode(spa_config_dev: ViteConfig) -> None:

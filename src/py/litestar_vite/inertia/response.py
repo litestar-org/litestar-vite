@@ -411,6 +411,12 @@ class InertiaResponse(Response[T]):
             with contextlib.suppress(AttributeError, ImproperlyConfiguredException):
                 clear_history_flag = request.session.pop("_inertia_clear_history", False)  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
 
+        # v2.3+ protocol: Extract flash to top level (not in props)
+        # This prevents flash from persisting in browser history state
+        flash_data: "dict[str, list[str]] | None" = shared_props.pop("flash", None)
+        if flash_data == {}:
+            flash_data = None
+
         return PageProps[T](
             component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
             props=shared_props,  # pyright: ignore[reportArgumentType]
@@ -424,6 +430,7 @@ class InertiaResponse(Response[T]):
             deep_merge_props=deep_merge_props_list or None,
             match_props_on=match_props_on or None,
             scroll_props=extracted_scroll_props,
+            flash=flash_data,
         )
 
     def _render_template(

@@ -16,7 +16,7 @@ from litestar.exceptions.responses import (
     create_debug_response,  # pyright: ignore[reportUnknownVariableType]
     create_exception_response,  # pyright: ignore[reportUnknownVariableType]
 )
-from litestar.plugins.flash import flash
+from litestar_vite.inertia.helpers import flash
 from litestar.repository.exceptions import (
     ConflictError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
     NotFoundError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]

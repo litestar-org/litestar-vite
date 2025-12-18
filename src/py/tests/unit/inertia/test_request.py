@@ -94,7 +94,9 @@ async def test_is_inertia_true(
         assert data["component"] is None
         assert data["url"] == "/"
         assert "version" in data  # version is a hash, not a fixed value
-        assert data["props"]["flash"] == {}
+        # v2.3+ protocol: flash is at top-level, not in props
+        assert "flash" not in data["props"]
+        assert data.get("flash") is None  # Empty flash becomes null
         assert data["props"]["errors"] == {}
         assert data["props"]["content"] is True
 

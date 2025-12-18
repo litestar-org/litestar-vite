@@ -21,6 +21,7 @@ from litestar.serialization import decode_json, encode_json
 from litestar_vite.handler._routing import spa_handler_dev, spa_handler_prod
 from litestar_vite.html_transform import (
     inject_head_script,
+    inject_page_script,
     inject_vite_dev_scripts,
     set_data_attribute,
     transform_asset_urls,
@@ -166,7 +167,12 @@ class AppHandler:
 
         if page_data is not None:
             json_data = encode_json(page_data).decode("utf-8")
-            html = set_data_attribute(html, self._spa_config.app_selector, "data-page", json_data)
+            if self._spa_config.use_script_element:
+                # v2.3+ Inertia protocol: Use script element for better performance (~37% smaller)
+                html = inject_page_script(html, json_data, nonce=self._config.csp_nonce)
+            else:
+                # Legacy: Use data-page attribute
+                html = set_data_attribute(html, self._spa_config.app_selector, "data-page", json_data)
 
         return html
 

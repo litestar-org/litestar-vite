@@ -5,11 +5,6 @@ from typing import Any
 from litestar import Request, get
 from litestar.exceptions import NotAuthorizedException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
-from litestar.plugins.flash import (  # pyright: ignore[reportUnknownVariableType]  # pyright: ignore[reportUnknownVariableType]
-    FlashConfig,
-    FlashPlugin,
-    flash,
-)
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
@@ -22,6 +17,7 @@ from litestar_vite.inertia.helpers import (
     defer,
     extract_deferred_props,
     extract_merge_props,
+    flash,
     is_lazy_prop,
     is_merge_prop,
     is_or_contains_lazy_prop,
@@ -76,7 +72,10 @@ async def test_component_inertia_header_enabled(
         assert data["component"] == "Home"
         assert data["url"] == "/"
         assert "version" in data  # version is a hash, not a fixed value
-        assert data["props"]["flash"] == {}
+        # v2.3+ protocol: empty flash is null (not included in response)
+        assert "flash" not in data
+        # Flash should NOT be in props anymore
+        assert "flash" not in data["props"]
         assert data["props"]["errors"] == {}
         assert data["props"]["csrf_token"] == ""
         assert data["props"]["thing"] == "value"
@@ -96,7 +95,7 @@ async def test_component_inertia_flash_header_enabled(
     with create_test_client(
         route_handlers=[handler],
         template_config=template_config,
-        plugins=[inertia_plugin, vite_plugin, FlashPlugin(config=FlashConfig(template_config=template_config))],
+        plugins=[inertia_plugin, vite_plugin],
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:
@@ -105,7 +104,9 @@ async def test_component_inertia_flash_header_enabled(
         assert data["component"] == "Home"
         assert data["url"] == "/"
         assert "version" in data  # version is a hash, not a fixed value
-        assert data["props"]["flash"] == {"info": ["a flash message"]}
+        # v2.3+ protocol: flash is now top-level, NOT in props
+        assert data["flash"] == {"info": ["a flash message"]}
+        assert "flash" not in data["props"]
         assert data["props"]["errors"] == {}
         assert data["props"]["csrf_token"] == ""
         assert data["props"]["thing"] == "value"
@@ -126,7 +127,7 @@ async def test_component_inertia_shared_flash_header_enabled(
     with create_test_client(
         route_handlers=[handler],
         template_config=template_config,
-        plugins=[inertia_plugin, vite_plugin, FlashPlugin(config=FlashConfig(template_config=template_config))],
+        plugins=[inertia_plugin, vite_plugin],
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:
@@ -136,11 +137,47 @@ async def test_component_inertia_shared_flash_header_enabled(
         assert data["url"] == "/"
         assert "version" in data  # version is a hash, not a fixed value
         assert data["props"]["auth"] == {"user": "nobody"}
-        assert data["props"]["flash"] == {"info": ["a flash message"]}
+        # v2.3+ protocol: flash is now top-level, NOT in props
+        assert data["flash"] == {"info": ["a flash message"]}
+        assert "flash" not in data["props"]
         assert data["props"]["errors"] == {}
         assert data["props"]["csrf_token"] == ""
         assert data["props"]["thing"] == "value"
         assert "content" not in data["props"]
+
+
+async def test_component_inertia_multiple_flash_categories(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that multiple flash categories work correctly with v2.3+ protocol."""
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        flash(request, "Success message", "success")
+        flash(request, "Error message", "error")
+        flash(request, "Another error", "error")
+        flash(request, "Warning message", "warning")
+        return {"thing": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # v2.3+ protocol: flash is at top level with multiple categories
+        assert data["flash"] == {
+            "success": ["Success message"],
+            "error": ["Error message", "Another error"],
+            "warning": ["Warning message"],
+        }
+        # Flash should NOT be in props
+        assert "flash" not in data["props"]
 
 
 async def test_default_route_response_no_component(

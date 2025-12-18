@@ -23,12 +23,19 @@ class SPAConfig:
         csrf_var_name: Global variable name for CSRF token (e.g., window.__LITESTAR_CSRF__).
         app_selector: CSS selector for the app root element (used for data attributes).
         cache_transformed_html: Cache transformed HTML in production; disabled when inject_csrf=True because CSRF tokens are per-request.
+        use_script_element: Use a script element instead of data-page attribute for Inertia page data.
+            Embeds page data in a ``<script type="application/json" id="app_page">`` element
+            instead of a ``data-page`` attribute. This provides ~37% payload reduction for
+            large pages by avoiding HTML entity escaping. Enabled by default for performance.
+            Requires client-side configuration: ``createInertiaApp({ useScriptElementForInitialPage: true })``.
+            Set to False for backward compatibility with older Inertia clients.
     """
 
     inject_csrf: bool = True
     csrf_var_name: str = "__LITESTAR_CSRF__"
     app_selector: str = "#app"
     cache_transformed_html: bool = True
+    use_script_element: bool = True
 
 
 def get_default_log_level() -> "Literal['quiet', 'normal', 'verbose']":

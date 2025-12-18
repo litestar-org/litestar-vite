@@ -302,6 +302,54 @@ def set_element_inner_html(html: str, selector: str, content: str) -> str:
     return pattern.sub(replacer, html, count=1)
 
 
+def inject_page_script(html: str, json_data: str, *, nonce: str | None = None, script_id: str = "app_page") -> str:
+    """Inject page data as a JSON script element before ``</body>``.
+
+    This is an Inertia.js v2.3+ optimization that embeds page data in a
+    ``<script type="application/json">`` element instead of a ``data-page`` attribute.
+    This provides ~37% payload reduction for large pages by avoiding HTML entity escaping.
+
+    The script element is inserted before ``</body>`` with:
+    - ``type="application/json"`` (non-executable, just data)
+    - ``id="app_page"`` (Inertia's expected ID for useScriptElementForInitialPage)
+    - Optional ``nonce`` for CSP compliance
+
+    Args:
+        html: The HTML document.
+        json_data: Pre-serialized JSON string (page props).
+        nonce: Optional CSP nonce to add to the script element.
+        script_id: The script element ID (default "app_page" per Inertia protocol).
+
+    Returns:
+        The HTML with the script element injected before ``</body>``.
+        Falls back to appending at the end if no ``</body>`` tag is found.
+
+    Note:
+        The JSON content is escaped to prevent XSS via ``</script>`` injection.
+        Sequences like ``</`` are replaced with ``<\\/`` (escaped forward slash)
+        which is valid JSON and prevents HTML parser issues.
+
+    Example:
+        html = inject_page_script(html, '{"component":"Home","props":{}}')
+    """
+    if not json_data:
+        return html
+
+    # Escape sequences that could break out of script element
+    # Replace </ with <\/ to prevent premature tag closure (XSS prevention)
+    escaped_json = json_data.replace("</", r"<\/")
+
+    nonce_attr = f' nonce="{_escape_attr(nonce)}"' if nonce else ""
+    script_tag = f'<script type="application/json" id="{script_id}"{nonce_attr}>{escaped_json}</script>\n'
+
+    body_end_match = _BODY_END_PATTERN.search(html)
+    if body_end_match:
+        pos = body_end_match.start()
+        return html[:pos] + script_tag + html[pos:]
+
+    return html + "\n" + script_tag
+
+
 def inject_json_script(html: str, var_name: str, data: dict[str, Any], *, nonce: str | None = None) -> str:
     """Inject a script that sets a global JavaScript variable to JSON data.
 

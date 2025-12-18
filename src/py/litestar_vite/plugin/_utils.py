@@ -208,6 +208,11 @@ def write_runtime_config_file(config: "ViteConfig", *, asset_url_override: str |
             "suppressViteBanner": config.logging_config.suppress_vite_banner,
             "timestamps": config.logging_config.timestamps,
         },
+        "spa": {
+            "useScriptElement": config.spa_config.use_script_element,
+        }
+        if config.spa_config
+        else None,
         "executor": config.runtime.executor,
         "litestarVersion": litestar_version,
     }
