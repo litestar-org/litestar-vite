@@ -1,6 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
 
+import { writeIfChanged } from "./write-if-changed.js"
+
 interface InertiaPagePropsJson {
   pages: Record<
     string,
@@ -25,8 +27,10 @@ interface InertiaPagePropsJson {
 
 /**
  * Generate `page-props.ts` from `inertia-pages.json` metadata.
+ *
+ * @returns true if file was changed, false if unchanged
  */
-export async function emitPagePropsTypes(pagesPath: string, outputDir: string): Promise<void> {
+export async function emitPagePropsTypes(pagesPath: string, outputDir: string): Promise<boolean> {
   const contents = await fs.promises.readFile(pagesPath, "utf-8")
   const json: InertiaPagePropsJson = JSON.parse(contents)
 
@@ -319,7 +323,7 @@ export type InertiaPageProps<C extends ComponentName> = PageProps[C]
 export type PagePropsFor<C extends ComponentName> = PageProps[C]
 `
 
-  await fs.promises.writeFile(outFile, body, "utf-8")
+  const result = await writeIfChanged(outFile, body, { encoding: "utf-8" })
 
   // Generate user stub file if it doesn't exist (one-time generation)
   const userStubFile = path.join(outDir, "page-props.user.ts")
@@ -366,4 +370,6 @@ export {}
 `
     await fs.promises.writeFile(userStubFile, userStub, "utf-8")
   }
+
+  return result.changed
 }

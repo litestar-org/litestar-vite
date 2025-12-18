@@ -10,6 +10,7 @@ import { resolveInstallHint, resolvePackageExecutor } from "../install-hint.js"
 import { debounce } from "./debounce.js"
 import { emitPagePropsTypes } from "./emit-page-props-types.js"
 import { formatPath } from "./format-path.js"
+import { shouldRunOpenApiTs, updateOpenApiTsCache } from "./typegen-cache.js"
 
 const execAsync = promisify(exec)
 const nodeRequire = createRequire(import.meta.url)
@@ -85,51 +86,74 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
       _chosenConfigPath = configPath
 
       // Skip openapi-ts if SDK generation is disabled and no custom config exists
-      const shouldRunOpenApiTs = configPath || typesConfig.generateSdk
+      const shouldGenerateSdk = configPath || typesConfig.generateSdk
 
-      if (fs.existsSync(openapiPath) && shouldRunOpenApiTs) {
-        resolvedConfig?.logger.info(`${colors.cyan("•")} Generating TypeScript types...`)
-        if (resolvedConfig && configPath) {
-          const relConfigPath = formatPath(configPath, resolvedConfig.root)
-          resolvedConfig.logger.info(`${colors.cyan("•")} openapi-ts config: ${colors.yellow(relConfigPath)}`)
+      if (fs.existsSync(openapiPath) && shouldGenerateSdk) {
+        // Build options for cache key
+        const plugins = ["@hey-api/typescript", "@hey-api/schemas"]
+        if (typesConfig.generateSdk) {
+          plugins.push("@hey-api/sdk", sdkClientPlugin)
         }
-
-        // openapi-ts clears its output directory, so we isolate it from our own artifacts.
-        const sdkOutput = path.join(typesConfig.output, "api")
-
-        let args: string[]
-        if (configPath) {
-          args = ["@hey-api/openapi-ts", "--file", configPath]
-        } else {
-          args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", sdkOutput]
-
-          const plugins = ["@hey-api/typescript", "@hey-api/schemas"]
-          if (typesConfig.generateSdk) {
-            plugins.push("@hey-api/sdk", sdkClientPlugin)
-          }
-          if (typesConfig.generateZod) {
-            plugins.push("zod")
-          }
-          if (plugins.length) {
-            args.push("--plugins", ...plugins)
-          }
-        }
-
         if (typesConfig.generateZod) {
-          try {
-            nodeRequire.resolve("zod", { paths: [projectRoot] })
-          } catch {
-            resolvedConfig?.logger.warn(`${colors.yellow("!")} zod not installed - run: ${resolveInstallHint()} zod`)
-          }
+          plugins.push("zod")
         }
 
-        await execAsync(resolvePackageExecutor(args.join(" "), executor), { cwd: projectRoot })
-        generated = true
+        const cacheOptions = {
+          generateSdk: typesConfig.generateSdk,
+          generateZod: typesConfig.generateZod,
+          plugins,
+        }
+
+        // Check input cache to skip generation if inputs unchanged
+        const shouldRun = await shouldRunOpenApiTs(openapiPath, configPath, cacheOptions)
+
+        if (shouldRun) {
+          resolvedConfig?.logger.info(`${colors.cyan("•")} Generating TypeScript types...`)
+          if (resolvedConfig && configPath) {
+            const relConfigPath = formatPath(configPath, resolvedConfig.root)
+            resolvedConfig.logger.info(`${colors.cyan("•")} openapi-ts config: ${colors.yellow(relConfigPath)}`)
+          }
+
+          // openapi-ts clears its output directory, so we isolate it from our own artifacts.
+          const sdkOutput = path.join(typesConfig.output, "api")
+
+          let args: string[]
+          if (configPath) {
+            args = ["@hey-api/openapi-ts", "--file", configPath]
+          } else {
+            args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", sdkOutput]
+
+            if (plugins.length) {
+              args.push("--plugins", ...plugins)
+            }
+          }
+
+          if (typesConfig.generateZod) {
+            try {
+              nodeRequire.resolve("zod", { paths: [projectRoot] })
+            } catch {
+              resolvedConfig?.logger.warn(`${colors.yellow("!")} zod not installed - run: ${resolveInstallHint()} zod`)
+            }
+          }
+
+          await execAsync(resolvePackageExecutor(args.join(" "), executor), { cwd: projectRoot })
+
+          // Update cache after successful generation
+          await updateOpenApiTsCache(openapiPath, configPath, cacheOptions)
+          generated = true
+        } else {
+          // Inputs unchanged - skip generation
+          resolvedConfig?.logger.info(`${colors.cyan("•")} TypeScript types ${colors.dim("(unchanged)")}`)
+        }
       }
 
       if (typesConfig.generatePageProps && fs.existsSync(pagePropsPath)) {
-        await emitPagePropsTypes(pagePropsPath, typesConfig.output)
-        generated = true
+        const changed = await emitPagePropsTypes(pagePropsPath, typesConfig.output)
+        if (changed) {
+          generated = true
+        } else if (resolvedConfig) {
+          resolvedConfig.logger.info(`${colors.cyan("•")} Page props types ${colors.dim("(unchanged)")}`)
+        }
       }
 
       if (generated && resolvedConfig) {
