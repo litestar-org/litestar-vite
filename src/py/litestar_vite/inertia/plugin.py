@@ -63,6 +63,8 @@ class InertiaPlugin(InitPluginProtocol):
     def __init__(self, config: "InertiaConfig") -> "None":
         """Initialize the plugin with Inertia configuration."""
         self.config = config
+        self._ssr_client: "httpx.AsyncClient | None" = None
+        self._portal: "BlockingPortal | None" = None  # pyright: ignore[reportInvalidTypeForm]
 
     @asynccontextmanager
     async def lifespan(self, app: "Litestar") -> "AsyncGenerator[None, None]":
@@ -95,7 +97,7 @@ class InertiaPlugin(InitPluginProtocol):
                 yield
         finally:
             await self._ssr_client.aclose()
-            del self._ssr_client  # Remove attribute to signal client is closed
+            self._ssr_client = None  # Reset to signal client is closed
 
     @property
     def portal(self) -> "BlockingPortal":
@@ -103,7 +105,13 @@ class InertiaPlugin(InitPluginProtocol):
 
         Returns:
             The BlockingPortal instance.
+
+        Raises:
+            RuntimeError: If accessed before app lifespan is active.
         """
+        if self._portal is None:
+            msg = "BlockingPortal not available. Ensure app lifespan is active."
+            raise RuntimeError(msg)
         return self._portal
 
     @property
@@ -116,7 +124,7 @@ class InertiaPlugin(InitPluginProtocol):
         Returns:
             The shared AsyncClient instance, or None if not initialized.
         """
-        return getattr(self, "_ssr_client", None)
+        return self._ssr_client
 
     def on_app_init(self, app_config: "AppConfig") -> "AppConfig":
         """Configure application for use with Vite.
