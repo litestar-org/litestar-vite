@@ -21,6 +21,53 @@ if TYPE_CHECKING:
     from sphinx.environment import BuildEnvironment
 
 
+# Mapping from private module paths to their public re-export paths
+# This allows classes defined in _private.py modules to be documented
+# under their public API paths without __module__ hacks in source code.
+PRIVATE_TO_PUBLIC_MODULE_MAP: dict[str, str] = {
+    # config package private modules → public config module
+    "litestar_vite.config._deploy": "litestar_vite.config",
+    "litestar_vite.config._inertia": "litestar_vite.config",
+    "litestar_vite.config._paths": "litestar_vite.config",
+    "litestar_vite.config._runtime": "litestar_vite.config",
+    "litestar_vite.config._spa": "litestar_vite.config",
+    "litestar_vite.config._types": "litestar_vite.config",
+    "litestar_vite.config._constants": "litestar_vite.config",
+    # codegen package private modules → public codegen module
+    "litestar_vite.codegen._export": "litestar_vite.codegen",
+    "litestar_vite.codegen._inertia": "litestar_vite.codegen",
+    "litestar_vite.codegen._openapi": "litestar_vite.codegen",
+    "litestar_vite.codegen._routes": "litestar_vite.codegen",
+    "litestar_vite.codegen._ts": "litestar_vite.codegen",
+    "litestar_vite.codegen._utils": "litestar_vite.codegen",
+    # handler package private modules → public handler module
+    "litestar_vite.handler._app": "litestar_vite.handler",
+    "litestar_vite.handler._routing": "litestar_vite.handler",
+    # plugin package private modules → public plugin module
+    "litestar_vite.plugin._process": "litestar_vite.plugin",
+    "litestar_vite.plugin._proxy": "litestar_vite.plugin",
+    "litestar_vite.plugin._static": "litestar_vite.plugin",
+    "litestar_vite.plugin._utils": "litestar_vite.plugin",
+}
+
+
+def remap_private_module_path(target: str) -> str | None:
+    """Remap a private module path to its public equivalent.
+
+    For example:
+        litestar_vite.config._deploy.DeployConfig → litestar_vite.config.DeployConfig
+
+    Returns:
+        the remapped path, or None if no remapping applies.
+    """
+    for private_prefix, public_module in PRIVATE_TO_PUBLIC_MODULE_MAP.items():
+        if target.startswith(private_prefix + "."):
+            # Extract the class/function name after the private module
+            name = target[len(private_prefix) + 1 :]
+            return f"{public_module}.{name}"
+    return None
+
+
 @cache
 def _get_module_ast(source_file: str) -> ast.AST | ast.Module:
     return ast.parse(Path(source_file).read_text(encoding="utf-8"))
@@ -58,6 +105,21 @@ def on_warn_missing_reference(app: Sphinx, domain: str, node: Node) -> bool | No
     attributes = node.attributes  # pyright: ignore[reportAttributeAccessIssue]
     target = attributes["reftarget"]
 
+    # Remap private module paths to public paths for nitpick checking
+    # e.g., litestar_vite.config._deploy.DeployConfig → litestar_vite.config.DeployConfig
+    remapped_target = remap_private_module_path(target)
+    if remapped_target:
+        # If the remapped public path is in nitpick_ignore, suppress the warning
+        nitpick_ignore = getattr(app.config, "nitpick_ignore", [])
+        for _ignore_type, ignore_target in nitpick_ignore:
+            if ignore_target == remapped_target:
+                return True
+        # Also check just the class name (without module path)
+        class_name = remapped_target.rsplit(".", 1)[-1]
+        for _ignore_type, ignore_target in nitpick_ignore:
+            if ignore_target == class_name:
+                return True
+
     # Add common built-in types and classes that Sphinx sometimes fails to resolve
     builtin_types = {
         "Path",  # from pathlib
@@ -66,6 +128,7 @@ def on_warn_missing_reference(app: Sphinx, domain: str, node: Node) -> bool | No
         "P",  # Generic type parameter
         "T",  # Generic type parameter
         "EngineType",
+        "ViteConfig",  # litestar_vite.config.ViteConfig
     }
 
     if target in builtin_types:
