@@ -1,16 +1,9 @@
-import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
-import {
-  computePagePropsHash,
-  shouldRegeneratePageProps,
-  shouldRunOpenApiTs,
-  updateOpenApiTsCache,
-  updatePagePropsCache,
-} from "../../src/shared/typegen-cache"
+import { computePagePropsHash, shouldRegeneratePageProps, shouldRunOpenApiTs, updateOpenApiTsCache, updatePagePropsCache } from "../../src/shared/typegen-cache"
 
 describe("typegen-cache", () => {
   let tmpDir: string

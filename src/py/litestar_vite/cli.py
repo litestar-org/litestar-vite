@@ -184,8 +184,12 @@ def _build_deploy_config(
     return deploy_config
 
 
-def _run_vite_build(config: ViteConfig, root_dir: Path, console: Any, no_build: bool) -> None:
+def _run_vite_build(
+    config: ViteConfig, root_dir: Path, console: Any, no_build: bool, app: "Litestar | None" = None
+) -> None:
     """Run Vite build unless skipped.
+
+    If app is provided, exports schema/routes before building.
 
     Raises:
         SystemExit: If the build fails.
@@ -193,6 +197,10 @@ def _run_vite_build(config: ViteConfig, root_dir: Path, console: Any, no_build: 
     if no_build:
         console.print("[dim]Skipping Vite build (--no-build).[/]")
         return
+
+    # Export schema/routes if app is provided
+    if app is not None:
+        _generate_schema_and_routes(app, config, console)
 
     console.rule("[yellow]Starting Vite build process[/]", align="left")
     if config.set_environment:
@@ -701,8 +709,9 @@ def vite_deploy(
 
     root_dir = Path(config.root_dir or Path.cwd())
     bundle_dir = config.bundle_dir
+
     try:
-        _run_vite_build(config, root_dir, console, no_build)
+        _run_vite_build(config, root_dir, console, no_build, app=app)
     except SystemExit as exc:
         console.print(f"[red]{exc}[/]")
         sys.exit(1)
@@ -914,101 +923,43 @@ def _get_package_executor_cmd(executor: "str | None", package: str) -> "list[str
             return ["npx", package]
 
 
-def _run_openapi_ts(
-    config: Any, verbose: bool, install_command: "list[str] | None" = None, executor: "str | None" = None
-) -> None:
-    """Run @hey-api/openapi-ts to generate TypeScript types.
+def _invoke_typegen_cli(config: Any, verbose: bool) -> None:
+    """Invoke the unified TypeScript type generation CLI.
+
+    This is the single entry point for TypeScript type generation, used by
+    `litestar assets generate-types`. It calls `litestar-vite-typegen` which
+    handles both @hey-api/openapi-ts and page-props.ts generation.
 
     Args:
         config: The ViteConfig instance (with .types resolved).
         verbose: Whether to show verbose output.
-        install_command: Command used to install JS dependencies.
-        executor: The JS runtime executor (node, bun, deno, yarn, pnpm).
+
+    Raises:
+        LitestarCLIException: If type generation fails.
     """
-    types_config = config.types
     root_dir = config.root_dir or Path.cwd()
-    resource_dir = Path(config.resource_dir)
-    if not resource_dir.is_absolute():
-        resource_dir = root_dir / resource_dir
+    executor = config.runtime.executor
 
-    console.print("[cyan]•[/] Running @hey-api/openapi-ts...")
+    # Build the command to run the unified TypeScript CLI
+    pkg_cmd = _get_package_executor_cmd(executor, "litestar-vite-typegen")
+    cmd = [*pkg_cmd]
 
-    install_cmd = install_command or ["npm", "install"]
-    pkg_cmd = _get_package_executor_cmd(executor, "@hey-api/openapi-ts")
+    if verbose:
+        cmd.append("--verbose")
 
     try:
-        check_cmd = [*pkg_cmd, "--version"]
-        subprocess.run(check_cmd, check=True, capture_output=True, cwd=root_dir)
-
-        candidate_configs = [
-            resource_dir / "openapi-ts.config.ts",
-            resource_dir / "hey-api.config.ts",
-            root_dir / "openapi-ts.config.ts",
-            root_dir / "hey-api.config.ts",
-        ]
-        config_path = next((p for p in candidate_configs if p.exists()), None)
-
-        if config_path is not None:
-            openapi_cmd = [*pkg_cmd, "--file", str(config_path)]
-        else:
-            openapi_cmd = [*pkg_cmd, "-i", str(types_config.openapi_path), "-o", str(types_config.output)]
-
-            plugins: list[str] = ["@hey-api/typescript", "@hey-api/schemas"]
-            if types_config.generate_sdk:
-                plugins.extend(["@hey-api/sdk"])
-            if types_config.generate_zod:
-                plugins.append("zod")
-
-            if plugins:
-                openapi_cmd.extend(["--plugins", *plugins])
-
-        subprocess.run(openapi_cmd, check=True, cwd=root_dir)
-        console.print(f"[green]✓ Types generated in {types_config.output}[/]")
-    except subprocess.CalledProcessError as e:
-        console.print("[yellow]! @hey-api/openapi-ts failed - install it with:[/]")
-        extra = ["@hey-api/openapi-ts"]
-        if types_config.generate_zod:
-            extra.append("zod")
-        console.print(f"[dim]  {' '.join([*install_cmd, '-D', *extra])}[/]")
-        if verbose:
-            console.print(f"[dim]Error: {e!s}[/]")
+        # Run the CLI, letting stdout/stderr pass through to the terminal
+        result = subprocess.run(cmd, cwd=root_dir, check=False)
+        if result.returncode != 0:
+            msg = "TypeScript type generation failed"
+            raise LitestarCLIException(msg)
     except FileNotFoundError:
         runtime_name = executor or "Node.js"
-        console.print(f"[yellow]! Package executor not found - ensure {runtime_name} is installed[/]")
-
-
-def _run_emit_page_props(config: Any, verbose: bool, executor: "str | None" = None) -> None:
-    """Generate page-props.ts from inertia-pages.json.
-
-    Args:
-        config: The ViteConfig instance (with .types resolved).
-        verbose: Whether to show verbose output.
-        executor: The JS runtime executor (node, bun, deno, yarn, pnpm).
-    """
-    types_config = config.types
-    root_dir = config.root_dir or Path.cwd()
-
-    page_props_path = types_config.page_props_path
-    if page_props_path is None or not page_props_path.exists():
-        if verbose:
-            console.print("[dim]Skipping page-props.ts generation (no inertia-pages.json)[/]")
-        return
-
-    console.print("[cyan]•[/] Generating page-props.ts...")
-
-    pkg_cmd = _get_package_executor_cmd(executor, "emit-page-props")
-
-    try:
-        emit_cmd = [*pkg_cmd, str(page_props_path), str(types_config.output)]
-        subprocess.run(emit_cmd, check=True, cwd=root_dir)
-        console.print(f"[green]✓ page-props.ts generated in {types_config.output}[/]")
-    except subprocess.CalledProcessError as e:
-        console.print("[yellow]! emit-page-props failed[/]")
-        if verbose:
-            console.print(f"[dim]Error: {e!s}[/]")
-    except FileNotFoundError:
-        runtime_name = executor or "Node.js"
-        console.print(f"[yellow]! Package executor not found - ensure {runtime_name} is installed[/]")
+        console.print(
+            f"[yellow]! litestar-vite-typegen not found - ensure {runtime_name} and litestar-vite-plugin are installed[/]"
+        )
+        msg = f"Package executor not found - ensure {runtime_name} is installed"
+        raise LitestarCLIException(msg) from None
 
 
 @vite_group.command(name="generate-types", help="Generate TypeScript types from OpenAPI schema and routes.")
@@ -1016,20 +967,20 @@ def _run_emit_page_props(config: Any, verbose: bool, executor: "str | None" = No
 def generate_types(app: "Litestar", verbose: "bool") -> None:
     """Generate TypeScript types from OpenAPI schema and routes.
 
-    Uses the shared `export_integration_assets` function to guarantee
-    byte-identical output between CLI and Plugin.
+    Uses the unified TypeScript CLI (litestar-vite-typegen) to ensure
+    identical output between CLI, dev server, and build commands.
 
     This command:
     1. Exports OpenAPI schema, routes, and page props metadata
-    2. Runs @hey-api/openapi-ts to generate TypeScript types
-    3. Generates page-props.ts from inertia-pages.json (if Inertia is enabled)
+    2. Invokes the unified TypeScript CLI which handles:
+       - @hey-api/openapi-ts for API types
+       - page-props.ts for Inertia page props (if enabled)
 
     Args:
         app: The Litestar application instance.
         verbose: Whether to enable verbose output.
     """
     from litestar_vite.codegen import export_integration_assets
-    from litestar_vite.config import InertiaConfig
 
     if verbose:
         app.debug = True
@@ -1061,12 +1012,9 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
         console.print(f"[red]✗ Failed to export type metadata: {exc}[/]")
         return
 
-    # Run @hey-api/openapi-ts to generate TypeScript types
-    _run_openapi_ts(config, verbose, config.install_command, config.runtime.executor)
-
-    # Generate page-props.ts from inertia-pages.json (if Inertia is enabled)
-    if isinstance(config.inertia, InertiaConfig) and config.types.generate_page_props:
-        _run_emit_page_props(config, verbose, config.runtime.executor)
+    # Invoke the unified TypeScript type generation CLI
+    # This handles both @hey-api/openapi-ts and page-props.ts generation
+    _invoke_typegen_cli(config, verbose)
 
 
 @vite_group.command(name="status", help="Check the status of the Vite integration.")

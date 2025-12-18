@@ -302,6 +302,9 @@ def extract_inertia_pages(
 ) -> list[InertiaPageMetadata]:
     """Extract Inertia page metadata from an application.
 
+    When multiple handlers map to the same component, GET handlers are preferred
+    since Inertia pages are typically loaded via GET requests.
+
     Args:
         app: Litestar application instance.
         openapi_schema: Optional OpenAPI schema dict.
@@ -312,7 +315,9 @@ def extract_inertia_pages(
     Returns:
         List of InertiaPageMetadata for each discovered page.
     """
-    pages: list[InertiaPageMetadata] = []
+    # Track seen components: component -> (metadata, is_get_handler)
+    # When multiple handlers map to the same component, prefer GET handlers
+    seen_components: dict[str, tuple[InertiaPageMetadata, bool]] = {}
 
     if openapi_support is None:
         openapi_support = OpenAPISupport.from_app(app, openapi_schema)
@@ -327,6 +332,7 @@ def extract_inertia_pages(
 
         normalized_path = normalize_path(str(http_route.path))
         handler_name = route_handler.handler_name or route_handler.name
+        is_get_handler = "GET" in (route_handler.http_methods or set())
 
         props_type = infer_inertia_props_type(
             component,
@@ -340,15 +346,24 @@ def extract_inertia_pages(
         method = _pick_inertia_method(route_handler.http_methods)
         schema_ref = get_openapi_schema_ref(route_handler, openapi_schema, normalized_path, method=str(method))
 
-        pages.append(
-            InertiaPageMetadata(
-                component=component,
-                route_path=normalized_path,
-                props_type=props_type,
-                schema_ref=schema_ref,
-                handler_name=handler_name,
-            )
+        page_metadata = InertiaPageMetadata(
+            component=component,
+            route_path=normalized_path,
+            props_type=props_type,
+            schema_ref=schema_ref,
+            handler_name=handler_name,
         )
+
+        # Prefer GET handlers when multiple handlers map to the same component
+        existing = seen_components.get(component)
+        if existing is None:
+            seen_components[component] = (page_metadata, is_get_handler)
+        elif is_get_handler and not existing[1]:
+            # New handler is GET, existing is not - prefer the GET handler
+            seen_components[component] = (page_metadata, is_get_handler)
+        # Otherwise keep existing (it's either GET or we prefer first-seen for determinism)
+
+    pages = [entry[0] for entry in seen_components.values()]
 
     if openapi_support.enabled:
         finalize_inertia_pages(
@@ -364,14 +379,18 @@ def extract_inertia_pages(
 def iter_route_handlers(app: "Litestar") -> "list[tuple[HTTPRoute, HTTPRouteHandler]]":
     """Iterate over HTTP route handlers in an app.
 
+    Returns a deterministically sorted list to ensure consistent output
+    across multiple runs. Handlers are sorted by (route_path, handler_name).
+
     Returns:
-        A list of (http_route, route_handler) tuples.
+        A list of (http_route, route_handler) tuples, sorted for determinism.
     """
     handlers: list[tuple[HTTPRoute, HTTPRouteHandler]] = []
     for route in app.routes:
         if isinstance(route, HTTPRoute):
             handlers.extend((route, route_handler) for route_handler in route.route_handlers)
-    return handlers
+    # Sort by route path, then handler name for deterministic ordering
+    return sorted(handlers, key=lambda x: (str(x[0].path), x[1].handler_name or x[1].name or ""))
 
 
 def get_fallback_ts_type(types_config: "TypeGenConfig | None") -> str:

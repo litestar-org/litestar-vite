@@ -326,11 +326,10 @@ export default function litestar(config: string | string[] | PluginConfig): any[
  * Resolve the index.html path to use for the Vite server.
  */
 async function findIndexHtmlPath(server: ViteDevServer, pluginConfig: ResolvedPluginConfig): Promise<string | null> {
-  // In Inertia mode, never auto-detect index.html - the backend serves all HTML
-  // Users should access the app through Litestar, not Vite directly
-  if (pluginConfig.inertiaMode) {
-    return null
-  }
+  // NOTE: We no longer return null for inertiaMode here.
+  // Vite needs to see an index.html to register internal virtual modules like @vite/client.
+  // The middleware below handles serving the placeholder for inertiaMode instead.
+  // See: https://github.com/vitejs/vite/discussions/2418
 
   if (!pluginConfig.autoDetectIndex) {
     return null
@@ -696,6 +695,25 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       server.middlewares.use(async (req, res, next) => {
         const indexPath = await findIndexHtmlPath(server, pluginConfig)
 
+        // In Inertia mode, ALWAYS serve the placeholder for "/" and "/index.html"
+        // The backend (Litestar) should serve the real HTML with Inertia data.
+        // Users who accidentally navigate to the Vite port will see helpful guidance.
+        // NOTE: We still let Vite see index.html (via findIndexHtmlPath) so it registers @vite/client
+        if (pluginConfig.inertiaMode && (req.url === "/" || req.url === "/index.html")) {
+          try {
+            const placeholderPath = path.join(dirname(), "dev-server-index.html")
+            const placeholderContent = await fs.promises.readFile(placeholderPath, "utf-8")
+            res.statusCode = 200
+            res.setHeader("Content-Type", "text/html")
+            res.end(placeholderContent.replace(/{{ APP_URL }}/g, appUrl))
+          } catch (e) {
+            resolvedConfig.logger.error(`Error serving placeholder index.html: ${e instanceof Error ? e.message : e}`)
+            res.statusCode = 404
+            res.end("Not Found (Error loading placeholder)")
+          }
+          return
+        }
+
         // Serve index.html at root "/" even when base is "/static/"
         // This prevents Vite from redirecting "/" to "/static/"
         if (indexPath && (req.url === "/" || req.url === "/index.html")) {
@@ -717,8 +735,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
         }
 
         // Serve placeholder for "/" or "/index.html" when no index.html exists
-        // This is especially useful for hybrid/inertia mode where the backend serves the SPA
-        // Users who accidentally navigate to the Vite port will see helpful guidance
+        // This is useful for modes where there's no index.html at all
         if (!indexPath && (req.url === "/" || req.url === "/index.html")) {
           try {
             const placeholderPath = path.join(dirname(), "dev-server-index.html")

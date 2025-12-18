@@ -18,6 +18,32 @@ from litestar_vite.codegen._ts import normalize_path, ts_type_from_openapi
 
 _PATH_PARAM_EXTRACT_PATTERN = re.compile(r"\{([^:}]+)(?::([^}]+))?\}")
 
+# HTTP methods in priority order for Inertia router integration
+_HTTP_METHOD_PRIORITY = ["GET", "POST", "PUT", "PATCH", "DELETE"]
+
+
+def pick_primary_method(methods: list[str]) -> str:
+    """Pick the primary HTTP method for Inertia router integration.
+
+    When a route supports multiple HTTP methods, this picks the most
+    appropriate one for use with Inertia's router.visit() and form.submit().
+
+    Args:
+        methods: List of HTTP methods (e.g., ["GET", "HEAD", "OPTIONS"]).
+
+    Returns:
+        The primary method in lowercase (e.g., "get", "post").
+    """
+    for preferred in _HTTP_METHOD_PRIORITY:
+        if preferred in methods:
+            return preferred.lower()
+    # Fallback to first non-HEAD/OPTIONS method, or "get" if none
+    for method in methods:
+        if method not in {"HEAD", "OPTIONS"}:
+            return method.lower()
+    return "get"
+
+
 _TS_SEMANTIC_ALIASES: dict[str, tuple[str, str]] = {
     "UUID": ("UUID v4 string", "string"),
     "DateTime": ("RFC 3339 date-time string", "string"),
@@ -47,6 +73,7 @@ class RouteMetadata:
     name: str
     path: str
     methods: list[str]
+    method: str  # Primary method for Inertia router (lowercase)
     params: dict[str, str] = field(default_factory=str_dict_factory)
     query_params: dict[str, str] = field(default_factory=str_dict_factory)
     component: "str | None" = None
@@ -67,16 +94,22 @@ def extract_path_params(path: str) -> dict[str, str]:
 def iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRouteHandler], None, None]:
     """Iterate over HTTP route handlers in an app.
 
+    Returns handlers in deterministic order, sorted by (route_path, handler_name)
+    to ensure consistent output across multiple runs.
+
     Args:
         app: The Litestar application.
 
     Yields:
-        Tuples of (HTTPRoute, HTTPRouteHandler).
+        Tuples of (HTTPRoute, HTTPRouteHandler), sorted for determinism.
     """
+    handlers: list[tuple[HTTPRoute, HTTPRouteHandler]] = []
     for route in app.routes:
         if isinstance(route, HTTPRoute):
-            for route_handler in route.route_handlers:
-                yield route, route_handler
+            handlers.extend((route, route_handler) for route_handler in route.route_handlers)
+    # Sort by route path, then handler name for deterministic ordering
+    handlers.sort(key=lambda x: (str(x[0].path), x[1].handler_name or x[1].name or ""))
+    yield from handlers
 
 
 def extract_params_from_litestar(
@@ -221,6 +254,7 @@ def extract_route_metadata(
                 name=route_name,
                 path=normalized_path,
                 methods=methods,
+                method=pick_primary_method(methods),
                 params=params,
                 query_params=query_params,
                 component=cast("str | None", component),
@@ -254,7 +288,7 @@ def generate_routes_json(
     routes_dict: dict[str, Any] = {}
 
     for route in sorted_routes:
-        route_data: dict[str, Any] = {"uri": route.path, "methods": route.methods}
+        route_data: dict[str, Any] = {"uri": route.path, "methods": route.methods, "method": route.method}
 
         if route.params:
             # Sort params dict for deterministic output
@@ -396,6 +430,7 @@ def generate_routes_ts(
             f"  '{route_name}': {{",
             f"    path: '{escape_ts_string(route.path)}',",
             f"    methods: [{methods_str}] as const,",
+            f"    method: '{route.method}',",
         ]
         param_names_str = ", ".join(f"'{p}'" for p in sorted_params) if sorted_params else ""
         route_entry_lines.append(f"    pathParams: [{param_names_str}] as const,")
@@ -486,6 +521,9 @@ type RoutesWithoutRequiredParams = Exclude<RouteName, RoutesWithRequiredParams>;
  * route('books')                              // '/api/books'
  * route('book_detail', {{ book_id: 123 }})      // '/api/books/123'
  * route('search', {{ q: 'test', limit: 5 }})    // '/api/search?q=test&limit=5'
+ *
+ * // Access HTTP method from route definition when needed:
+ * routeDefinitions.login.method               // 'post'
  */
 export function route<T extends RoutesWithoutRequiredParams>(name: T): string;
 export function route<T extends RoutesWithoutRequiredParams>(

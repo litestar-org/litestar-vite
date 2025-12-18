@@ -341,7 +341,13 @@ class AppHandler:
         html = raw_bytes.decode("utf-8")
 
         vite_url = self._vite_url or self._resolve_vite_url()
-        return inject_vite_dev_scripts(html, vite_url, is_react=self._config.is_react, csp_nonce=self._config.csp_nonce)
+        return inject_vite_dev_scripts(
+            html,
+            vite_url,
+            asset_url=self._config.asset_url,
+            is_react=self._config.is_react,
+            csp_nonce=self._config.csp_nonce,
+        )
 
     def _get_hybrid_dev_html_sync(self) -> str:
         """Get HTML for hybrid dev mode synchronously.
@@ -363,7 +369,13 @@ class AppHandler:
         html = raw_bytes.decode("utf-8")
 
         vite_url = self._vite_url or self._resolve_vite_url()
-        return inject_vite_dev_scripts(html, vite_url, is_react=self._config.is_react, csp_nonce=self._config.csp_nonce)
+        return inject_vite_dev_scripts(
+            html,
+            vite_url,
+            asset_url=self._config.asset_url,
+            is_react=self._config.is_react,
+            csp_nonce=self._config.csp_nonce,
+        )
 
     async def get_html(self, request: "Request[Any, Any, Any]", *, page_data: "dict[str, Any] | None" = None) -> str:
         """Get the HTML for the SPA with optional transformations.

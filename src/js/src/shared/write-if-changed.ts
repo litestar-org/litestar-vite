@@ -15,11 +15,7 @@ export interface WriteResult {
  * @param options - Write options
  * @returns WriteResult indicating whether file was changed
  */
-export async function writeIfChanged(
-  filePath: string,
-  content: string,
-  options?: { encoding?: BufferEncoding }
-): Promise<WriteResult> {
+export async function writeIfChanged(filePath: string, content: string, options?: { encoding?: BufferEncoding }): Promise<WriteResult> {
   const encoding = options?.encoding ?? "utf-8"
   const newBuffer = Buffer.from(content, encoding)
 

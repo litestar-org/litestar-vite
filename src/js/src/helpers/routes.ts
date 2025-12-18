@@ -32,6 +32,7 @@
 export interface RouteDefinition {
   path: string
   methods: readonly string[]
+  method: string
   pathParams: readonly string[]
   queryParams: readonly string[]
   component?: string

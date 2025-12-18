@@ -381,7 +381,9 @@ def inject_json_script(html: str, var_name: str, data: dict[str, Any], *, nonce:
     return inject_head_script(html, script, escape=False, nonce=nonce)
 
 
-def inject_vite_dev_scripts(html: str, vite_url: str, *, is_react: bool = False, csp_nonce: str | None = None) -> str:
+def inject_vite_dev_scripts(
+    html: str, vite_url: str, *, asset_url: str = "/static/", is_react: bool = False, csp_nonce: str | None = None
+) -> str:
     """Inject Vite dev server scripts for HMR support.
 
     This function injects the necessary scripts for Vite's Hot Module Replacement
@@ -391,9 +393,15 @@ def inject_vite_dev_scripts(html: str, vite_url: str, *, is_react: bool = False,
     For React apps, a preamble script is injected before the Vite client to
     enable React Fast Refresh.
 
+    Scripts are injected as relative URLs using the ``asset_url`` prefix. This
+    routes them through Litestar's proxy middleware, which forwards to Vite
+    with the correct base path handling.
+
     Args:
         html: The HTML document.
-        vite_url: The Vite dev server URL (e.g., "http://localhost:5173").
+        vite_url: The Vite dev server URL (kept for backward compatibility, unused).
+        asset_url: The asset URL prefix (e.g., "/static/"). Scripts are served
+            at ``{asset_url}@vite/client`` etc.
         is_react: Whether to inject the React Fast Refresh preamble.
         csp_nonce: Optional CSP nonce to add to injected ``<script>`` tags.
 
@@ -402,25 +410,24 @@ def inject_vite_dev_scripts(html: str, vite_url: str, *, is_react: bool = False,
         ``</head>`` when present, otherwise before ``</html>`` or at the end.
 
     Example:
-        html = inject_vite_dev_scripts(html, "http://localhost:5173", is_react=True)
+        html = inject_vite_dev_scripts(html, "", asset_url="/static/", is_react=True)
     """
-    if not vite_url:
-        return html
-
-    vite_url = vite_url.rstrip("/")
+    # Use relative URLs with asset_url prefix so requests go through Litestar's proxy
+    # This ensures proper base path handling (Vite expects /static/@vite/client, not /@vite/client)
+    base = asset_url.rstrip("/")
     nonce_attr = f' nonce="{_escape_attr(csp_nonce)}"' if csp_nonce else ""
 
     scripts: list[str] = []
 
     if is_react:
-        react_preamble = f"""import RefreshRuntime from '{vite_url}/@react-refresh'
+        react_preamble = f"""import RefreshRuntime from '{base}/@react-refresh'
 RefreshRuntime.injectIntoGlobalHook(window)
 window.$RefreshReg$ = () => {{}}
 window.$RefreshSig$ = () => (type) => type
 window.__vite_plugin_react_preamble_installed__ = true"""
         scripts.append(f'<script type="module"{nonce_attr}>{react_preamble}</script>')
 
-    scripts.append(f'<script type="module" src="{vite_url}/@vite/client"{nonce_attr}></script>')
+    scripts.append(f'<script type="module" src="{base}/@vite/client"{nonce_attr}></script>')
 
     script_content = "\n".join(scripts) + "\n"
 

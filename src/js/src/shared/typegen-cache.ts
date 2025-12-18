@@ -71,7 +71,7 @@ function hashObject(obj: object): string {
 export async function shouldRunOpenApiTs(
   openapiPath: string,
   configPath: string | null,
-  options: { generateSdk: boolean; generateZod: boolean; plugins: string[] }
+  options: { generateSdk: boolean; generateZod: boolean; plugins: string[] },
 ): Promise<boolean> {
   const cache = await loadCache()
   const inputHash = await hashFile(openapiPath)
@@ -81,12 +81,7 @@ export async function shouldRunOpenApiTs(
   const cacheKey = "openapi-ts"
   const entry = cache[cacheKey]
 
-  if (
-    entry &&
-    entry.inputHash === inputHash &&
-    entry.configHash === configHash &&
-    entry.optionsHash === optionsHash
-  ) {
+  if (entry && entry.inputHash === inputHash && entry.configHash === configHash && entry.optionsHash === optionsHash) {
     return false // Skip - inputs unchanged
   }
 
@@ -104,7 +99,7 @@ export async function shouldRunOpenApiTs(
 export async function updateOpenApiTsCache(
   openapiPath: string,
   configPath: string | null,
-  options: { generateSdk: boolean; generateZod: boolean; plugins: string[] }
+  options: { generateSdk: boolean; generateZod: boolean; plugins: string[] },
 ): Promise<void> {
   const cache = await loadCache()
   cache["openapi-ts"] = {
