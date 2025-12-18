@@ -10,43 +10,43 @@ from pathlib import Path
 
 from litestar import Litestar, get, post
 
-from litestar_vite._codegen.utils import (
-    _deep_sort_dict,
+from litestar_vite.codegen import generate_inertia_pages_json, generate_routes_json, generate_routes_ts
+from litestar_vite.codegen._utils import (
+    deep_sort_dict,
     encode_deterministic_json,
     strip_timestamp_for_comparison,
     write_if_changed,
 )
-from litestar_vite.codegen import generate_inertia_pages_json, generate_routes_json, generate_routes_ts
 
 
-def test_deep_sort_dict_simple() -> None:
+def testdeep_sort_dict_simple() -> None:
     """Test deep sorting of a simple dictionary."""
     unsorted = {"z": 1, "a": 2, "m": 3}
-    result = _deep_sort_dict(unsorted)
+    result = deep_sort_dict(unsorted)
     assert list(result.keys()) == ["a", "m", "z"]
 
 
-def test_deep_sort_dict_nested() -> None:
+def testdeep_sort_dict_nested() -> None:
     """Test deep sorting of nested dictionaries."""
     unsorted = {"outer": {"z": 1, "a": 2}, "inner": {"b": 3, "c": 4}}
-    result = _deep_sort_dict(unsorted)
+    result = deep_sort_dict(unsorted)
     assert list(result.keys()) == ["inner", "outer"]
     assert list(result["outer"].keys()) == ["a", "z"]
     assert list(result["inner"].keys()) == ["b", "c"]
 
 
-def test_deep_sort_dict_with_lists() -> None:
+def testdeep_sort_dict_with_lists() -> None:
     """Test that lists are preserved but their dict elements are sorted."""
     unsorted = {"items": [{"z": 1, "a": 2}, {"y": 3, "b": 4}]}
-    result = _deep_sort_dict(unsorted)
+    result = deep_sort_dict(unsorted)
     assert list(result["items"][0].keys()) == ["a", "z"]
     assert list(result["items"][1].keys()) == ["b", "y"]
 
 
-def test_deep_sort_dict_preserves_primitives() -> None:
+def testdeep_sort_dict_preserves_primitives() -> None:
     """Test that primitive values are preserved."""
     data = {"str": "hello", "int": 42, "float": 3.14, "bool": True, "none": None}
-    result = _deep_sort_dict(data)
+    result = deep_sort_dict(data)
     assert result == {"bool": True, "float": 3.14, "int": 42, "none": None, "str": "hello"}
 
 

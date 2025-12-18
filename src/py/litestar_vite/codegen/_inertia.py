@@ -14,7 +14,7 @@ from litestar.routes import HTTPRoute
 from litestar.types.builtin_types import NoneType
 from litestar.typing import FieldDefinition
 
-from litestar_vite._codegen.openapi import (
+from litestar_vite.codegen._openapi import (
     OpenAPISupport,
     build_schema_name_map,
     merge_generated_components_into_openapi,
@@ -22,7 +22,7 @@ from litestar_vite._codegen.openapi import (
     resolve_page_props_field_definition,
     schema_name_from_ref,
 )
-from litestar_vite._codegen.ts import collect_ref_names, normalize_path, python_type_to_typescript, ts_type_from_openapi
+from litestar_vite.codegen._ts import collect_ref_names, normalize_path, python_type_to_typescript, ts_type_from_openapi
 
 if TYPE_CHECKING:
     from litestar import Litestar
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 _TYPE_OPERATOR_RE = re.compile(r"(\s*[|&]\s*)")
 
 
-def _str_list_factory() -> list[str]:
+def str_list_factory() -> list[str]:
     """Return an empty ``list[str]`` (typed for pyright).
 
     Returns:
@@ -42,7 +42,7 @@ def _str_list_factory() -> list[str]:
     return []
 
 
-def _normalize_type_name(type_name: str, openapi_schemas: set[str]) -> str:
+def normalize_type_name(type_name: str, openapi_schemas: set[str]) -> str:
     """Strip module prefix from mangled type names.
 
     Always converts 'app_lib_schema_NoProps' -> 'NoProps' because:
@@ -80,7 +80,7 @@ def _normalize_type_name(type_name: str, openapi_schemas: set[str]) -> str:
     return parts[-1] if parts else type_name
 
 
-def _normalize_type_string(type_string: str, openapi_schemas: set[str]) -> str:
+def normalize_type_string(type_string: str, openapi_schemas: set[str]) -> str:
     """Normalize all type names within a TypeScript type string.
 
     Handles union types like 'any | app_lib_schema_NoProps' by parsing the
@@ -107,7 +107,7 @@ def _normalize_type_string(type_string: str, openapi_schemas: set[str]) -> str:
             result_parts.append(token)
         # Normalize type names
         else:
-            normalized = _normalize_type_name(stripped, openapi_schemas)
+            normalized = normalize_type_name(stripped, openapi_schemas)
             # Preserve original whitespace around the type
             prefix = token[: len(token) - len(token.lstrip())]
             suffix = token[len(token.rstrip()) :]
@@ -126,10 +126,10 @@ class InertiaPageMetadata:
     schema_ref: str | None = None
     handler_name: str | None = None
     ts_type: str | None = None
-    custom_types: list[str] = field(default_factory=_str_list_factory)
+    custom_types: list[str] = field(default_factory=str_list_factory)
 
 
-def _get_return_type_name(handler: HTTPRouteHandler) -> "str | None":
+def get_return_type_name(handler: HTTPRouteHandler) -> "str | None":
     field_definition = handler.parsed_fn_signature.return_type
     excluded_types: tuple[type[Any], ...] = (NoneType, ASGIResponse)
     if field_definition.is_subclass_of(excluded_types):
@@ -154,7 +154,7 @@ def _get_return_type_name(handler: HTTPRouteHandler) -> "str | None":
     return str(raw)
 
 
-def _get_openapi_schema_ref(
+def get_openapi_schema_ref(
     handler: HTTPRouteHandler, openapi_schema: dict[str, Any] | None, route_path: str, method: str = "GET"
 ) -> "str | None":
     if not openapi_schema:
@@ -175,13 +175,13 @@ def _get_openapi_schema_ref(
     return cast("str | None", ref) if ref else None
 
 
-def _extract_inertia_component(handler: HTTPRouteHandler) -> str | None:
+def extract_inertia_component(handler: HTTPRouteHandler) -> str | None:
     opt = handler.opt or {}
     component = opt.get("component") or opt.get("page")
     return component if isinstance(component, str) and component else None
 
 
-def _infer_inertia_props_type(
+def infer_inertia_props_type(
     component: str,
     handler: HTTPRouteHandler,
     schema_creator: Any,
@@ -201,14 +201,14 @@ def _infer_inertia_props_type(
             return ts_type_from_openapi(schema_dict)
         return None
 
-    raw_type = _get_return_type_name(handler)
+    raw_type = get_return_type_name(handler)
     if not raw_type:
         return None
     props_type, _ = python_type_to_typescript(raw_type, fallback=fallback_type)
     return props_type
 
 
-def _finalize_inertia_pages(
+def finalize_inertia_pages(
     pages: list[InertiaPageMetadata],
     *,
     openapi_support: OpenAPISupport,
@@ -241,13 +241,13 @@ def _finalize_inertia_pages(
 
         if schema_name:
             # Normalize mangled type names (e.g., 'app_lib_schema_NoProps' -> 'NoProps')
-            normalized_name = _normalize_type_name(schema_name, openapi_schema_names)
+            normalized_name = normalize_type_name(schema_name, openapi_schema_names)
             page.ts_type = normalized_name
             page.props_type = normalized_name
         elif page.props_type:
             # Normalize type names in union/intersection type strings
             # (e.g., 'any | app_lib_schema_NoProps' -> 'any | NoProps')
-            page.props_type = _normalize_type_string(page.props_type, openapi_schema_names)
+            page.props_type = normalize_type_string(page.props_type, openapi_schema_names)
 
         custom_types: set[str] = set()
         if page.ts_type:
@@ -269,7 +269,7 @@ def _finalize_inertia_pages(
                     custom_types.update(collect_ref_names(registered.schema.to_schema()))
 
         # Normalize all custom type names
-        page.custom_types = sorted(_normalize_type_name(t, openapi_schema_names) for t in custom_types)
+        page.custom_types = sorted(normalize_type_name(t, openapi_schema_names) for t in custom_types)
 
 
 def extract_inertia_pages(
@@ -282,15 +282,15 @@ def extract_inertia_pages(
     page_schema_keys: dict[str, tuple[str, ...]] = {}
     page_schema_dicts: dict[str, dict[str, Any]] = {}
 
-    for http_route, route_handler in _iter_route_handlers(app):
-        component = _extract_inertia_component(route_handler)
+    for http_route, route_handler in iter_route_handlers(app):
+        component = extract_inertia_component(route_handler)
         if not component:
             continue
 
         normalized_path = normalize_path(str(http_route.path))
         handler_name = route_handler.handler_name or route_handler.name
 
-        props_type = _infer_inertia_props_type(
+        props_type = infer_inertia_props_type(
             component,
             route_handler,
             openapi_support.schema_creator,
@@ -300,7 +300,7 @@ def extract_inertia_pages(
         )
 
         method = next(iter(route_handler.http_methods), "GET") if route_handler.http_methods else "GET"
-        schema_ref = _get_openapi_schema_ref(route_handler, openapi_schema, normalized_path, method=str(method))
+        schema_ref = get_openapi_schema_ref(route_handler, openapi_schema, normalized_path, method=str(method))
 
         pages.append(
             InertiaPageMetadata(
@@ -313,7 +313,7 @@ def extract_inertia_pages(
         )
 
     if openapi_support.enabled:
-        _finalize_inertia_pages(
+        finalize_inertia_pages(
             pages,
             openapi_support=openapi_support,
             page_schema_keys=page_schema_keys,
@@ -323,7 +323,7 @@ def extract_inertia_pages(
     return pages
 
 
-def _iter_route_handlers(app: "Litestar") -> "list[tuple[HTTPRoute, HTTPRouteHandler]]":
+def iter_route_handlers(app: "Litestar") -> "list[tuple[HTTPRoute, HTTPRouteHandler]]":
     """Iterate over HTTP route handlers in an app.
 
     Returns:
@@ -336,12 +336,12 @@ def _iter_route_handlers(app: "Litestar") -> "list[tuple[HTTPRoute, HTTPRouteHan
     return handlers
 
 
-def _fallback_ts_type(types_config: "TypeGenConfig | None") -> str:
+def get_fallback_ts_type(types_config: "TypeGenConfig | None") -> str:
     fallback_type = types_config.fallback_type if types_config is not None else "unknown"
     return "any" if fallback_type == "any" else "unknown"
 
 
-def _ts_type_from_value(value: Any, *, fallback_ts_type: str) -> str:
+def ts_type_from_value(value: Any, *, fallback_ts_type: str) -> str:
     ts_type = fallback_ts_type
     if value is None:
         ts_type = "null"
@@ -360,13 +360,13 @@ def _ts_type_from_value(value: Any, *, fallback_ts_type: str) -> str:
     return ts_type
 
 
-def _should_register_value_schema(value: Any) -> bool:
+def should_register_value_schema(value: Any) -> bool:
     if value is None:
         return False
     return not isinstance(value, (bool, str, int, float, bytes, bytearray, Path, list, tuple, set, frozenset, dict))
 
 
-def _process_session_props(
+def process_session_props(
     session_props: "set[str] | dict[str, type]",
     shared_props: dict[str, dict[str, Any]],
     shared_schema_keys: dict[str, tuple[str, ...]],
@@ -404,7 +404,7 @@ def _process_session_props(
             shared_props.setdefault(key, {"type": fallback_ts_type, "optional": True})
 
 
-def _build_inertia_shared_props(
+def build_inertia_shared_props(
     app: "Litestar",
     *,
     openapi_schema: dict[str, Any] | None,
@@ -418,7 +418,7 @@ def _build_inertia_shared_props(
     Returns:
         Mapping of shared prop name to metadata payload.
     """
-    fallback_ts_type = _fallback_ts_type(types_config)
+    fallback_ts_type = get_fallback_ts_type(types_config)
 
     shared_props: dict[str, dict[str, Any]] = {
         "errors": {"type": "Record<string, string[]>", "optional": True},
@@ -439,9 +439,9 @@ def _build_inertia_shared_props(
         if not key:
             continue
 
-        shared_props[key] = {"type": _ts_type_from_value(value, fallback_ts_type=fallback_ts_type), "optional": True}
+        shared_props[key] = {"type": ts_type_from_value(value, fallback_ts_type=fallback_ts_type), "optional": True}
 
-        if openapi_support.enabled and isinstance(openapi_schema, dict) and _should_register_value_schema(value):
+        if openapi_support.enabled and isinstance(openapi_schema, dict) and should_register_value_schema(value):
             try:
                 field_def = FieldDefinition.from_annotation(value.__class__)
                 schema_result = openapi_support.schema_creator.for_field_definition(field_def)  # type: ignore[union-attr]
@@ -451,7 +451,7 @@ def _build_inertia_shared_props(
                 pass
 
     # Handle session props - can be set[str] or dict[str, type]
-    _process_session_props(
+    process_session_props(
         inertia_config.extra_session_page_props, shared_props, shared_schema_keys, openapi_support, fallback_ts_type
     )
 
@@ -513,7 +513,7 @@ def generate_inertia_pages_json(
             page_data["handler"] = page.handler_name
         pages_dict[page.component] = page_data
 
-    shared_props = _build_inertia_shared_props(
+    shared_props = build_inertia_shared_props(
         app,
         openapi_schema=openapi_schema,
         include_default_auth=include_default_auth,

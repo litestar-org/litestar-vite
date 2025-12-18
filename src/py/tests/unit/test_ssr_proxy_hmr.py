@@ -42,7 +42,7 @@ async def test_ssr_proxy_uses_hmr_target_when_available(hotfile: Path, hmr_hotfi
     socket.receive_text = AsyncMock(side_effect=WebSocketDisconnect(code=1000, detail="Client disconnected"))
 
     # Mock websockets.connect
-    with patch("litestar_vite.plugin.websockets.connect") as mock_connect:
+    with patch("litestar_vite.plugin._proxy.websockets.connect") as mock_connect:
         mock_connect.return_value.__aenter__.return_value = AsyncMock()
 
         # Call ws_proxy
@@ -75,7 +75,7 @@ async def test_ssr_proxy_falls_back_to_main_target_when_hmr_missing(hotfile: Pat
     socket.receive_text = AsyncMock(side_effect=WebSocketDisconnect(code=1000, detail="Client disconnected"))
 
     # Mock websockets.connect
-    with patch("litestar_vite.plugin.websockets.connect") as mock_connect:
+    with patch("litestar_vite.plugin._proxy.websockets.connect") as mock_connect:
         mock_connect.return_value.__aenter__.return_value = AsyncMock()
 
         # Call ws_proxy

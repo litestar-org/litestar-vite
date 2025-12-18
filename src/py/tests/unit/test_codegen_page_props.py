@@ -7,10 +7,10 @@ from litestar import Litestar, get
 
 from litestar_vite.codegen import (
     InertiaPageMetadata,
-    _get_openapi_schema_ref,
-    _get_return_type_name,
     extract_inertia_pages,
     generate_inertia_pages_json,
+    get_openapi_schema_ref,
+    get_return_type_name,
 )
 from litestar_vite.config import TypeGenConfig
 
@@ -35,11 +35,11 @@ class UserProps:
 
 
 # =============================================================================
-# Tests for _get_return_type_name
+# Tests for get_return_type_name
 # =============================================================================
 
 
-def test_get_return_type_name_with_typed_dict() -> None:
+def testget_return_type_name_with_typed_dict() -> None:
     """Test return type extraction for TypedDict."""
 
     @get("/books", sync_to_thread=False)
@@ -48,11 +48,11 @@ def test_get_return_type_name_with_typed_dict() -> None:
 
     app = Litestar([get_books])
     handler = app.routes[0].route_handlers[0]  # type: ignore[union-attr]
-    result = _get_return_type_name(handler)
+    result = get_return_type_name(handler)
     assert result == "BookProps"
 
 
-def test_get_return_type_name_with_dataclass() -> None:
+def testget_return_type_name_with_dataclass() -> None:
     """Test return type extraction for dataclass."""
 
     @get("/users", sync_to_thread=False)
@@ -61,11 +61,11 @@ def test_get_return_type_name_with_dataclass() -> None:
 
     app = Litestar([get_users])
     handler = app.routes[0].route_handlers[0]  # type: ignore[union-attr]
-    result = _get_return_type_name(handler)
+    result = get_return_type_name(handler)
     assert result == "UserProps"
 
 
-def test_get_return_type_name_with_dict() -> None:
+def testget_return_type_name_with_dict() -> None:
     """Test return type extraction for dict type."""
 
     @get("/data", sync_to_thread=False)
@@ -74,11 +74,11 @@ def test_get_return_type_name_with_dict() -> None:
 
     app = Litestar([get_data])
     handler = app.routes[0].route_handlers[0]  # type: ignore[union-attr]
-    result = _get_return_type_name(handler)
+    result = get_return_type_name(handler)
     assert result == "dict"
 
 
-def test_get_return_type_name_with_list() -> None:
+def testget_return_type_name_with_list() -> None:
     """Test return type extraction for list type."""
 
     @get("/items", sync_to_thread=False)
@@ -87,11 +87,11 @@ def test_get_return_type_name_with_list() -> None:
 
     app = Litestar([get_items])
     handler = app.routes[0].route_handlers[0]  # type: ignore[union-attr]
-    result = _get_return_type_name(handler)
+    result = get_return_type_name(handler)
     assert result == "list"
 
 
-def test_get_return_type_name_none_return() -> None:
+def testget_return_type_name_none_return() -> None:
     """Test return type extraction for None return type returns None."""
 
     @get("/none", sync_to_thread=False)
@@ -100,12 +100,12 @@ def test_get_return_type_name_none_return() -> None:
 
     app = Litestar([none_handler])
     handler = app.routes[0].route_handlers[0]  # type: ignore[union-attr]
-    result = _get_return_type_name(handler)
+    result = get_return_type_name(handler)
     # None has no __name__ attribute, so returns None
     assert result is None
 
 
-def test_get_return_type_name_with_string_annotation() -> None:
+def testget_return_type_name_with_string_annotation() -> None:
     """Test return type extraction for forward reference string annotation."""
 
     @get("/forward", sync_to_thread=False)
@@ -114,16 +114,16 @@ def test_get_return_type_name_with_string_annotation() -> None:
 
     app = Litestar([forward_ref])
     handler = app.routes[0].route_handlers[0]  # type: ignore[union-attr]
-    result = _get_return_type_name(handler)
+    result = get_return_type_name(handler)
     assert result == "dict[str, str]"
 
 
 # =============================================================================
-# Tests for _get_openapi_schema_ref
+# Tests for get_openapi_schema_ref
 # =============================================================================
 
 
-def test_get_openapi_schema_ref_with_valid_ref() -> None:
+def testget_openapi_schema_ref_with_valid_ref() -> None:
     """Test schema ref extraction when ref exists."""
 
     @get("/books", sync_to_thread=False)
@@ -134,14 +134,14 @@ def test_get_openapi_schema_ref_with_valid_ref() -> None:
     openapi = app.openapi_schema.to_schema()
 
     handler = app.routes[0].route_handlers[0]  # type: ignore[union-attr]
-    result = _get_openapi_schema_ref(handler, openapi, "/books", "GET")
+    result = get_openapi_schema_ref(handler, openapi, "/books", "GET")
 
     # Should return a schema ref if one exists (depends on Litestar's OpenAPI generation)
     # The ref may or may not exist depending on how Litestar generates the schema
     assert result is None or result.startswith("#/components/schemas/")
 
 
-def test_get_openapi_schema_ref_no_schema() -> None:
+def testget_openapi_schema_ref_no_schema() -> None:
     """Test schema ref extraction with no OpenAPI schema."""
 
     @get("/test", sync_to_thread=False)
@@ -150,11 +150,11 @@ def test_get_openapi_schema_ref_no_schema() -> None:
 
     app = Litestar([test_handler])
     handler = app.routes[0].route_handlers[0]  # type: ignore[union-attr]
-    result = _get_openapi_schema_ref(handler, None, "/test", "GET")
+    result = get_openapi_schema_ref(handler, None, "/test", "GET")
     assert result is None
 
 
-def test_get_openapi_schema_ref_missing_path() -> None:
+def testget_openapi_schema_ref_missing_path() -> None:
     """Test schema ref extraction when path doesn't exist."""
 
     @get("/test", sync_to_thread=False)
@@ -165,7 +165,7 @@ def test_get_openapi_schema_ref_missing_path() -> None:
     openapi = app.openapi_schema.to_schema()
 
     handler = app.routes[0].route_handlers[0]  # type: ignore[union-attr]
-    result = _get_openapi_schema_ref(handler, openapi, "/nonexistent", "GET")
+    result = get_openapi_schema_ref(handler, openapi, "/nonexistent", "GET")
     assert result is None
 
 

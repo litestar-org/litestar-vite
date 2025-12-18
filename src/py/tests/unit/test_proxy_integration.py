@@ -5,8 +5,8 @@ import httpx
 import pytest
 from litestar.types import Receive, Scope, Send
 
-from litestar_vite import plugin
 from litestar_vite.plugin import ViteProxyMiddleware
+from litestar_vite.plugin import _proxy as proxy_module
 
 pytestmark = pytest.mark.anyio
 
@@ -32,7 +32,7 @@ async def test_proxy_http_forwarding(monkeypatch: pytest.MonkeyPatch, hotfile: P
             kwargs["transport"] = transport
             super().__init__(*args, **kwargs)
 
-    monkeypatch.setattr(plugin.httpx, "AsyncClient", MockAsyncClient)
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", MockAsyncClient)
 
     sent: list[dict[str, object]] = []
 

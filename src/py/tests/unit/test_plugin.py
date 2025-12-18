@@ -286,7 +286,7 @@ def test_vite_plugin_lifespan_with_environment_setup(mock_set_env: Mock) -> None
     mock_set_env.assert_called_once_with(config=config)
 
 
-@patch("litestar_vite.plugin.console")
+@patch("litestar_vite.plugin._utils.console")
 def test_vite_plugin_lifespan_with_vite_process_management(mock_console: Mock) -> None:
     """Test server lifespan with Vite process management."""
     config = ViteConfig(runtime=RuntimeConfig(dev_mode=True))
@@ -305,7 +305,7 @@ def test_vite_plugin_lifespan_with_vite_process_management(mock_console: Mock) -
             mock_stop.assert_called_once()
 
 
-@patch("litestar_vite.plugin.console")
+@patch("litestar_vite.plugin._utils.console")
 def test_vite_plugin_lifespan_with_watch_mode(mock_console: Mock) -> None:
     """Test server lifespan with watch mode (no HMR)."""
     config = ViteConfig(
@@ -377,7 +377,7 @@ def test_vite_process_start_already_running() -> None:
     executor.run.assert_not_called()
 
 
-@patch("litestar_vite.plugin.console")
+@patch("litestar_vite.plugin._utils.console")
 def test_vite_process_start_failure(mock_console: Mock) -> None:
     """Test Vite process start failure."""
     executor = Mock()
@@ -445,7 +445,7 @@ def test_vite_process_stop_force_kill(mock_killpg: Mock) -> None:
 
 
 @patch("litestar_vite.plugin.os.killpg")
-@patch("litestar_vite.plugin.console")
+@patch("litestar_vite.plugin._utils.console")
 def test_vite_process_stop_failure(mock_console: Mock, mock_killpg: Mock) -> None:
     """Test process stop failure handling."""
     mock_process = Mock()

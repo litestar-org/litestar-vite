@@ -12,11 +12,8 @@ from litestar_vite.exceptions import MissingDependencyError
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from litestar import Litestar
-
 
 def init_vite(
-    app: "Litestar",
     root_path: "Path",
     resource_path: "Path",
     asset_url: "str",
@@ -24,14 +21,12 @@ def init_vite(
     bundle_path: "Path",
     enable_ssr: "bool",
     vite_port: int,
-    hot_file: "Path",
     litestar_port: int,
     framework: str = "react",
 ) -> None:
     """Initialize a new Vite project using the scaffolding system.
 
     Args:
-        app: The Litestar application instance.
         root_path: Root directory for the Vite project.
         resource_path: Directory containing source files.
         asset_url: Base URL for serving assets.
@@ -39,7 +34,6 @@ def init_vite(
         bundle_path: Output directory for built files.
         enable_ssr: Enable server-side rendering.
         vite_port: Port for Vite dev server.
-        hot_file: Path to hot reload manifest.
         litestar_port: Port for Litestar server.
         framework: Framework template to use (default: react).
 

@@ -7,7 +7,6 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-from litestar import Litestar
 from litestar.config.app import AppConfig
 from litestar.template.config import TemplateConfig
 
@@ -34,14 +33,11 @@ def test_optional_jinja_missing_dependency_error_creation() -> None:
 @patch("litestar_vite.commands.JINJA_INSTALLED", False)
 def test_optional_jinja_init_vite_without_jinja_raises_clear_error(tmp_path: Path) -> None:
     """Test init_vite raises clear error when Jinja is missing."""
-    app = Mock(spec=Litestar)
-
     # This should raise MissingDependencyError with helpful message
     with pytest.raises(MissingDependencyError, match="Package 'jinja2' is not installed but required"):
         from litestar_vite.commands import init_vite
 
         init_vite(
-            app=app,
             root_path=tmp_path,
             resource_path=tmp_path / "resources",
             asset_url="/assets/",
@@ -49,7 +45,6 @@ def test_optional_jinja_init_vite_without_jinja_raises_clear_error(tmp_path: Pat
             bundle_path=tmp_path / "dist",
             enable_ssr=False,
             vite_port=5173,
-            hot_file=tmp_path / "hot",
             litestar_port=8000,
         )
 
@@ -110,9 +105,7 @@ def test_optional_jinja_cli_without_jinja_shows_helpful_error(tmp_path: Path) ->
     with pytest.raises(MissingDependencyError) as exc_info:
         from litestar_vite.commands import init_vite
 
-        app = Mock(spec=Litestar)
         init_vite(
-            app=app,
             root_path=tmp_path,
             resource_path=tmp_path / "resources",
             asset_url="/assets/",
@@ -120,7 +113,6 @@ def test_optional_jinja_cli_without_jinja_shows_helpful_error(tmp_path: Path) ->
             bundle_path=tmp_path / "dist",
             enable_ssr=False,
             vite_port=5173,
-            hot_file=tmp_path / "hot",
             litestar_port=8000,
         )
 

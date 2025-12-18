@@ -36,7 +36,7 @@ class ExportResult:
     """The OpenAPI schema dict (for downstream use)."""
 
 
-def _fmt_path(path: Path) -> str:
+def fmt_path(path: Path) -> str:
     """Format path for display, using relative path when possible."""
     try:
         return str(path.relative_to(Path.cwd()))
@@ -70,7 +70,7 @@ def export_integration_assets(
     from litestar._openapi.plugin import OpenAPIPlugin
     from litestar.serialization import encode_json, get_serializer
 
-    from litestar_vite._codegen.inertia import generate_inertia_pages_json
+    from litestar_vite.codegen._inertia import generate_inertia_pages_json
     from litestar_vite.config import InertiaConfig, InertiaTypeGenConfig, TypeGenConfig
 
     result = ExportResult()
@@ -116,14 +116,14 @@ def export_integration_assets(
     result.openapi_schema = schema_dict
 
     # Step 2: Export openapi.json
-    _export_openapi(schema_dict=schema_dict, types_config=types_config, serializer=serializer, result=result)
+    export_openapi(schema_dict=schema_dict, types_config=types_config, serializer=serializer, result=result)
 
     # Step 3: Export routes.json (always pass openapi_schema for consistency)
-    _export_routes_json(app=app, types_config=types_config, openapi_schema=schema_dict, result=result)
+    export_routes_json(app=app, types_config=types_config, openapi_schema=schema_dict, result=result)
 
     # Step 4: Export routes.ts (if enabled)
     if types_config.generate_routes:
-        _export_routes_ts(app=app, types_config=types_config, openapi_schema=schema_dict, result=result)
+        export_routes_ts(app=app, types_config=types_config, openapi_schema=schema_dict, result=result)
 
     # Step 5: Export inertia-pages.json (if enabled)
     if (
@@ -132,12 +132,12 @@ def export_integration_assets(
         and types_config.page_props_path
         and inertia_pages_data is not None
     ):
-        _export_inertia_pages(pages_data=inertia_pages_data, types_config=types_config, result=result)
+        export_inertia_pages(pages_data=inertia_pages_data, types_config=types_config, result=result)
 
     return result
 
 
-def _export_openapi(
+def export_openapi(
     *,
     schema_dict: "dict[str, Any]",
     types_config: "TypeGenConfig",
@@ -145,7 +145,7 @@ def _export_openapi(
     result: ExportResult,
 ) -> None:
     """Export OpenAPI schema to file."""
-    from litestar_vite._codegen.utils import encode_deterministic_json, write_if_changed
+    from litestar_vite.codegen._utils import encode_deterministic_json, write_if_changed
 
     openapi_path = types_config.openapi_path
     if openapi_path is None:
@@ -154,17 +154,17 @@ def _export_openapi(
     schema_content = encode_deterministic_json(schema_dict, serializer=serializer)
 
     if write_if_changed(openapi_path, schema_content):
-        result.exported_files.append(f"openapi: {_fmt_path(openapi_path)}")
+        result.exported_files.append(f"openapi: {fmt_path(openapi_path)}")
     else:
         result.unchanged_files.append("openapi.json")
 
 
-def _export_routes_json(
+def export_routes_json(
     *, app: "Litestar", types_config: "TypeGenConfig", openapi_schema: "dict[str, Any]", result: ExportResult
 ) -> None:
     """Export routes metadata to JSON file."""
-    from litestar_vite._codegen.routes import generate_routes_json
-    from litestar_vite._codegen.utils import encode_deterministic_json, write_if_changed
+    from litestar_vite.codegen._routes import generate_routes_json
+    from litestar_vite.codegen._utils import encode_deterministic_json, write_if_changed
 
     try:
         from litestar import __version__ as _version
@@ -184,17 +184,17 @@ def _export_routes_json(
     routes_content = encode_deterministic_json(routes_data)
 
     if write_if_changed(routes_path, routes_content):
-        result.exported_files.append(_fmt_path(routes_path))
+        result.exported_files.append(fmt_path(routes_path))
     else:
         result.unchanged_files.append("routes.json")
 
 
-def _export_routes_ts(
+def export_routes_ts(
     *, app: "Litestar", types_config: "TypeGenConfig", openapi_schema: "dict[str, Any]", result: ExportResult
 ) -> None:
     """Export typed routes TypeScript file."""
-    from litestar_vite._codegen.routes import generate_routes_ts
-    from litestar_vite._codegen.utils import write_if_changed
+    from litestar_vite.codegen._routes import generate_routes_ts
+    from litestar_vite.codegen._utils import write_if_changed
 
     routes_ts_path = types_config.routes_ts_path
     if routes_ts_path is None:
@@ -204,14 +204,14 @@ def _export_routes_ts(
     routes_ts_content = generate_routes_ts(app, openapi_schema=openapi_schema, global_route=types_config.global_route)
 
     if write_if_changed(routes_ts_path, routes_ts_content):
-        result.exported_files.append(_fmt_path(routes_ts_path))
+        result.exported_files.append(fmt_path(routes_ts_path))
     else:
         result.unchanged_files.append("routes.ts")
 
 
-def _export_inertia_pages(*, pages_data: "dict[str, Any]", types_config: "TypeGenConfig", result: ExportResult) -> None:
+def export_inertia_pages(*, pages_data: "dict[str, Any]", types_config: "TypeGenConfig", result: ExportResult) -> None:
     """Export Inertia pages metadata to JSON file."""
-    from litestar_vite._codegen.utils import encode_deterministic_json, write_if_changed
+    from litestar_vite.codegen._utils import encode_deterministic_json, write_if_changed
 
     page_props_path = types_config.page_props_path
     if page_props_path is None:
@@ -220,6 +220,6 @@ def _export_inertia_pages(*, pages_data: "dict[str, Any]", types_config: "TypeGe
     pages_content = encode_deterministic_json(pages_data)
 
     if write_if_changed(page_props_path, pages_content):
-        result.exported_files.append(_fmt_path(page_props_path))
+        result.exported_files.append(fmt_path(page_props_path))
     else:
         result.unchanged_files.append("inertia-pages.json")

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-def _deep_sort_dict(obj: Any) -> Any:
+def deep_sort_dict(obj: Any) -> Any:
     """Recursively sort all dictionary keys for deterministic JSON output.
 
     Args:
@@ -18,9 +18,9 @@ def _deep_sort_dict(obj: Any) -> Any:
     """
     if isinstance(obj, dict):
         # pyright: ignore - intentionally working with Any types for generic dict sorting
-        return {k: _deep_sort_dict(v) for k, v in sorted(obj.items())}  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
+        return {k: deep_sort_dict(v) for k, v in sorted(obj.items())}  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
     if isinstance(obj, list):
-        return [_deep_sort_dict(item) for item in obj]  # pyright: ignore[reportUnknownVariableType]
+        return [deep_sort_dict(item) for item in obj]  # pyright: ignore[reportUnknownVariableType]
     return obj
 
 
@@ -122,7 +122,7 @@ def encode_deterministic_json(
     import msgspec
     from litestar.serialization import encode_json
 
-    sorted_data = _deep_sort_dict(data)
+    sorted_data = deep_sort_dict(data)
     if serializer is not None:
         return msgspec.json.format(serializer(sorted_data), indent=indent)
     return msgspec.json.format(encode_json(sorted_data), indent=indent)

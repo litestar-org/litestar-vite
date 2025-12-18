@@ -18,7 +18,7 @@ from litestar import get
 from litestar.exceptions import ImproperlyConfiguredException, SerializationException
 from litestar.serialization import decode_json, encode_json
 
-from litestar_vite._handler.routing import spa_handler_dev, spa_handler_prod
+from litestar_vite.handler._routing import spa_handler_dev, spa_handler_prod
 from litestar_vite.html_transform import inject_head_script, set_data_attribute, transform_asset_urls
 
 if TYPE_CHECKING:
