@@ -430,3 +430,183 @@ def test_pagination_to_dict_mixed_attributes() -> None:
     assert result["offset"] == 0
     assert result["pageSize"] == 10
     assert result["currentPage"] == 1
+
+
+# =====================================================
+# flash() Helper Tests (GitHub #164)
+# =====================================================
+
+
+async def test_flash_returns_true_with_session(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test flash() returns True when session is available."""
+    from litestar_vite.inertia.helpers import flash
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        result = flash(request, "Test message", "success")
+        return {"flash_result": result}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # flash should have succeeded
+        assert data["props"]["flash_result"] is True
+        # Message should be in flash
+        assert data["flash"] == {"success": ["Test message"]}
+
+
+def test_flash_returns_false_when_session_access_fails() -> None:
+    """Test flash() returns False when session access fails (GitHub #164).
+
+    This simulates the scenario where session middleware is configured but
+    the session itself is not accessible (e.g., for unauthenticated users
+    on their first request before a session is created).
+    """
+    from unittest.mock import MagicMock
+
+    from litestar.exceptions import ImproperlyConfiguredException
+
+    from litestar_vite.inertia.helpers import flash
+
+    # Create a mock connection where session access raises an exception
+    mock_connection = MagicMock()
+    mock_connection.session.setdefault.side_effect = ImproperlyConfiguredException("No session")
+    mock_connection.logger = MagicMock()
+
+    result = flash(mock_connection, "Test message", "error")
+
+    # flash should have failed and returned False
+    assert result is False
+    # Should log at debug level (not warning)
+    mock_connection.logger.debug.assert_called_once()
+
+
+def test_flash_returns_false_when_session_setdefault_raises_attribute_error() -> None:
+    """Test flash() returns False when session.setdefault raises AttributeError."""
+    from unittest.mock import MagicMock
+
+    from litestar_vite.inertia.helpers import flash
+
+    # Create a mock connection where session.setdefault raises AttributeError
+    mock_connection = MagicMock()
+    mock_connection.session.setdefault.side_effect = AttributeError("session attribute error")
+    mock_connection.logger = MagicMock()
+
+    result = flash(mock_connection, "Test message", "error")
+
+    # flash should have failed and returned False
+    assert result is False
+    # Should log at debug level
+    mock_connection.logger.debug.assert_called_once()
+
+
+# =====================================================
+# share() Helper Tests (GitHub #164)
+# =====================================================
+
+
+async def test_share_returns_true_with_session(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test share() returns True when session is available."""
+    from litestar_vite.inertia.helpers import share
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        result = share(request, "user", {"name": "Alice"})
+        return {"share_result": result}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # share should have succeeded
+        assert data["props"]["share_result"] is True
+        # Shared value should be in props
+        assert data["props"]["user"] == {"name": "Alice"}
+
+
+def test_share_returns_false_when_session_fails() -> None:
+    """Test share() returns False when session access fails."""
+    from unittest.mock import MagicMock
+
+    from litestar.exceptions import ImproperlyConfiguredException
+
+    from litestar_vite.inertia.helpers import share
+
+    mock_connection = MagicMock()
+    mock_connection.session.setdefault.side_effect = ImproperlyConfiguredException("No session")
+    mock_connection.logger = MagicMock()
+
+    result = share(mock_connection, "key", "value")
+
+    assert result is False
+    mock_connection.logger.debug.assert_called_once()
+
+
+# =====================================================
+# error() Helper Tests (GitHub #164)
+# =====================================================
+
+
+async def test_error_returns_true_with_session(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test error() returns True when session is available."""
+    from litestar_vite.inertia.helpers import error
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        result = error(request, "email", "Invalid email format")
+        return {"error_result": result}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # error should have succeeded
+        assert data["props"]["error_result"] is True
+        # Error should be in props.errors
+        assert data["props"]["errors"]["email"] == "Invalid email format"
+
+
+def test_error_returns_false_when_session_fails() -> None:
+    """Test error() returns False when session access fails."""
+    from unittest.mock import MagicMock
+
+    from litestar.exceptions import ImproperlyConfiguredException
+
+    from litestar_vite.inertia.helpers import error
+
+    mock_connection = MagicMock()
+    mock_connection.session.setdefault.side_effect = ImproperlyConfiguredException("No session")
+    mock_connection.logger = MagicMock()
+
+    result = error(mock_connection, "field", "Error message")
+
+    assert result is False
+    mock_connection.logger.debug.assert_called_once()

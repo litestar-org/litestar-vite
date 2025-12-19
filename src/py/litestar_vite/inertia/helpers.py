@@ -750,37 +750,57 @@ def get_shared_props(
     return props
 
 
-def share(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", value: "Any") -> "None":
+def share(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", value: "Any") -> "bool":
     """Share a value in the session.
+
+    Shared values are included in the props of every Inertia response for
+    the current request. This is useful for data that should be available
+    to all components (e.g., authenticated user, permissions, settings).
 
     Args:
         connection: The ASGI connection.
         key: The key to store the value under.
         value: The value to store.
+
+    Returns:
+        True if the value was successfully shared, False otherwise.
     """
     try:
         connection.session.setdefault("_shared", {}).update({key: value})
     except (AttributeError, ImproperlyConfiguredException):
-        msg = "Unable to set `share` session state.  A valid session was not found for this request."
-        connection.logger.warning(msg)
+        msg = "Unable to share value: session not accessible (user may be unauthenticated)."
+        connection.logger.debug(msg)
+        return False
+    else:
+        return True
 
 
-def error(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", message: "str") -> "None":
+def error(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", message: "str") -> "bool":
     """Set an error message in the session.
+
+    Error messages are included in the ``errors`` prop of Inertia responses,
+    typically used for form validation errors. The key usually corresponds
+    to a form field name.
 
     Args:
         connection: The ASGI connection.
-        key: The key to store the error under.
+        key: The key to store the error under (usually a field name).
         message: The error message.
+
+    Returns:
+        True if the error was successfully stored, False otherwise.
     """
     try:
         connection.session.setdefault("_errors", {}).update({key: message})
     except (AttributeError, ImproperlyConfiguredException):
-        msg = "Unable to set `error` session state.  A valid session was not found for this request."
-        connection.logger.warning(msg)
+        msg = "Unable to set error: session not accessible (user may be unauthenticated)."
+        connection.logger.debug(msg)
+        return False
+    else:
+        return True
 
 
-def flash(connection: "ASGIConnection[Any, Any, Any, Any]", message: "str", category: "str" = "info") -> "None":
+def flash(connection: "ASGIConnection[Any, Any, Any, Any]", message: "str", category: "str" = "info") -> "bool":
     """Add a flash message to the session.
 
     Flash messages are stored in the session and passed to the frontend
@@ -797,6 +817,9 @@ def flash(connection: "ASGIConnection[Any, Any, Any, Any]", message: "str", cate
         category: The message category (e.g., "success", "error", "warning", "info").
                   Defaults to "info".
 
+    Returns:
+        True if the flash message was successfully stored, False otherwise.
+
     Example::
 
         from litestar_vite.inertia import flash
@@ -810,8 +833,11 @@ def flash(connection: "ASGIConnection[Any, Any, Any, Any]", message: "str", cate
         messages = connection.session.setdefault("_messages", [])
         messages.append({"category": category, "message": message})
     except (AttributeError, ImproperlyConfiguredException):
-        msg = "Unable to set flash message. A valid session was not found for this request."
-        connection.logger.warning(msg)
+        msg = "Unable to flash message: session not accessible (user may be unauthenticated)."
+        connection.logger.debug(msg)
+        return False
+    else:
+        return True
 
 
 def clear_history(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:

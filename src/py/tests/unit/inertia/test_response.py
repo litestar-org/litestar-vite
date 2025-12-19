@@ -254,6 +254,155 @@ async def test_unauthenticated_redirect(
         assert response.url.path == "/login"
 
 
+async def test_unauthenticated_redirect_with_query_param_fallback(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that unauthorized redirect includes error query param when flash fails (GitHub #164).
+
+    When flash() fails due to session not being accessible, the exception handler
+    should fall back to passing the error message via query parameter.
+    """
+    from unittest.mock import patch
+
+    @get("/protected", component="Protected")
+    async def protected_handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        raise NotAuthorizedException(detail="Authentication required")
+
+    @get("/login", component="Login")
+    async def login_handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"page": "login"}
+
+    inertia_plugin.config.redirect_unauthorized_to = "/login"
+
+    with create_test_client(
+        route_handlers=[protected_handler, login_handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Mock flash() to return False (simulating session failure)
+        with patch("litestar_vite.inertia.exception_handler.flash", return_value=False):
+            response = client.get("/protected", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=False)
+            # Should redirect with query param fallback
+            assert response.status_code == 307 or response.status_code == 302
+            location = response.headers.get("location", "")
+            assert "/login" in location
+            assert "error=" in location
+            # URL-encoded message
+            assert "Authentication%20required" in location or "Authentication+required" in location
+
+
+async def test_unauthenticated_redirect_no_query_param_when_flash_succeeds(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that unauthorized redirect does NOT include query param when flash succeeds.
+
+    When session is available and flash() succeeds, the error message should be
+    in the flash, not the query string.
+    """
+
+    @get("/protected", component="Protected")
+    async def protected_handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        raise NotAuthorizedException(detail="Authentication required")
+
+    @get("/login", component="Login")
+    async def login_handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"page": "login"}
+
+    inertia_plugin.config.redirect_unauthorized_to = "/login"
+
+    with create_test_client(
+        route_handlers=[protected_handler, login_handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/protected", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=False)
+        # Should redirect without query param (flash succeeded)
+        assert response.status_code == 307 or response.status_code == 302
+        location = response.headers.get("location", "")
+        assert location == "/login"  # No query params
+        assert "error=" not in location
+
+
+async def test_unauthenticated_redirect_query_param_with_special_chars(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that error messages with special characters are properly URL-encoded."""
+    from unittest.mock import patch
+
+    @get("/protected", component="Protected")
+    async def protected_handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        raise NotAuthorizedException(detail="Access denied: user 'test@example.com' not authorized!")
+
+    @get("/login", component="Login")
+    async def login_handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"page": "login"}
+
+    inertia_plugin.config.redirect_unauthorized_to = "/login"
+
+    with create_test_client(
+        route_handlers=[protected_handler, login_handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Mock flash() to return False (simulating session failure)
+        with patch("litestar_vite.inertia.exception_handler.flash", return_value=False):
+            response = client.get("/protected", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=False)
+            location = response.headers.get("location", "")
+            assert "error=" in location
+            # Special chars should be URL-encoded (@ becomes %40)
+            assert "@" not in location.split("error=")[1] if "error=" in location else True
+
+
+async def test_unauthenticated_redirect_preserves_existing_query_params(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that error query param is appended to existing query params."""
+    from unittest.mock import patch
+
+    @get("/protected", component="Protected")
+    async def protected_handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        raise NotAuthorizedException(detail="Auth required")
+
+    @get("/login", component="Login")
+    async def login_handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"page": "login"}
+
+    # Redirect URL has existing query params
+    inertia_plugin.config.redirect_unauthorized_to = "/login?redirect=/dashboard"
+
+    with create_test_client(
+        route_handlers=[protected_handler, login_handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Mock flash() to return False (simulating session failure)
+        with patch("litestar_vite.inertia.exception_handler.flash", return_value=False):
+            response = client.get("/protected", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=False)
+            location = response.headers.get("location", "")
+            # Should have both original and new query params
+            assert "redirect=" in location
+            assert "error=" in location
+            # Properly joined with &
+            assert "?" in location
+            assert "&" in location
+
+
 async def test_404_redirect(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
