@@ -27,6 +27,15 @@ MergeStrategy = Literal["append", "prepend", "deep"]
 _SNAKE_CASE_PATTERN = re.compile(r"_([a-z])")
 
 
+def _empty_flash_factory() -> "dict[str, list[str]]":
+    """Return an empty flash dict with proper type annotation.
+
+    Returns:
+        Empty dict[str, list[str]] for flash messages.
+    """
+    return {}
+
+
 def to_camel_case(snake_str: str) -> str:
     """Convert snake_case string to camelCase.
 
@@ -268,6 +277,8 @@ class PageProps(Generic[T]):
         match_props_on: Keys for matching items during merge (v2).
         deferred_props: Configuration for lazy-loaded props (v2).
         scroll_props: Configuration for infinite scroll (v2).
+        flash: Flash messages as top-level property (v2.3+). Unlike props, flash
+            messages are NOT persisted in browser history state.
     """
 
     component: str
@@ -286,6 +297,11 @@ class PageProps(Generic[T]):
     deferred_props: "dict[str, list[str]] | None" = None
 
     scroll_props: "ScrollPropsConfig | None" = None
+
+    # v2.3+ protocol: Flash messages at top level (not in props)
+    # This prevents flash from persisting in browser history state
+    # Always send {} for empty flash to support router.flash((current) => ({ ...current }))
+    flash: "dict[str, list[str]]" = field(default_factory=_empty_flash_factory)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to Inertia.js protocol format with camelCase keys.

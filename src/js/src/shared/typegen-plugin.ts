@@ -1,18 +1,22 @@
-import { exec } from "node:child_process"
+/**
+ * Unified Litestar type generation Vite plugin.
+ *
+ * This is a thin wrapper around typegen-core.ts that adds:
+ * - Vite plugin lifecycle hooks
+ * - File watching with debounce
+ * - Caching for HMR efficiency
+ * - WebSocket notifications
+ */
 import fs from "node:fs"
-import { createRequire } from "node:module"
 import path from "node:path"
-import { promisify } from "node:util"
 import colors from "picocolors"
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite"
 
-import { resolveInstallHint, resolvePackageExecutor } from "../install-hint.js"
 import { debounce } from "./debounce.js"
 import { emitPagePropsTypes } from "./emit-page-props-types.js"
 import { formatPath } from "./format-path.js"
-
-const execAsync = promisify(exec)
-const nodeRequire = createRequire(import.meta.url)
+import { shouldRunOpenApiTs, updateOpenApiTsCache } from "./typegen-cache.js"
+import { buildHeyApiPlugins, findOpenApiTsConfig, runHeyApiGeneration, type TypeGenCoreConfig, type TypeGenLogger } from "./typegen-core.js"
 
 export interface RequiredTypeGenConfig {
   enabled: boolean
@@ -62,9 +66,22 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
   let server: ViteDevServer | null = null
   let isGenerating = false
   let resolvedConfig: ResolvedConfig | null = null
-  let _chosenConfigPath: string | null = null
 
-  async function runTypeGeneration(): Promise<boolean> {
+  /**
+   * Create a logger that uses Vite's logger.
+   */
+  function createViteLogger(): TypeGenLogger {
+    return {
+      info: (message: string) => resolvedConfig?.logger.info(`${colors.cyan("•")} ${message}`),
+      warn: (message: string) => resolvedConfig?.logger.warn(`${colors.yellow("!")} ${message}`),
+      error: (message: string) => resolvedConfig?.logger.error(`${colors.red("✗")} ${message}`),
+    }
+  }
+
+  /**
+   * Run type generation with caching for HMR efficiency.
+   */
+  async function runTypeGenerationWithCache(): Promise<boolean> {
     if (isGenerating) {
       return false
     }
@@ -74,62 +91,82 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
 
     try {
       const projectRoot = resolvedConfig?.root ?? process.cwd()
-      const openapiPath = path.resolve(projectRoot, typesConfig.openapiPath)
-      const pagePropsPath = path.resolve(projectRoot, typesConfig.pagePropsPath)
+      const absoluteOpenapiPath = path.resolve(projectRoot, typesConfig.openapiPath)
+      const absolutePagePropsPath = path.resolve(projectRoot, typesConfig.pagePropsPath)
 
       let generated = false
+      const logger = createViteLogger()
 
-      // Prefer user config if present (deterministic order)
-      const candidates = [path.resolve(projectRoot, "openapi-ts.config.ts"), path.resolve(projectRoot, "hey-api.config.ts"), path.resolve(projectRoot, ".hey-api.config.ts")]
-      const configPath = candidates.find((p) => fs.existsSync(p)) || null
-      _chosenConfigPath = configPath
+      // Find user config
+      const configPath = findOpenApiTsConfig(projectRoot)
+      const shouldGenerateSdk = configPath || typesConfig.generateSdk
 
-      // Skip openapi-ts if SDK generation is disabled and no custom config exists
-      const shouldRunOpenApiTs = configPath || typesConfig.generateSdk
+      // Generate OpenAPI types (with caching)
+      if (fs.existsSync(absoluteOpenapiPath) && shouldGenerateSdk) {
+        const plugins = buildHeyApiPlugins({
+          generateSdk: typesConfig.generateSdk,
+          generateZod: typesConfig.generateZod,
+          sdkClientPlugin,
+        })
 
-      if (fs.existsSync(openapiPath) && shouldRunOpenApiTs) {
-        resolvedConfig?.logger.info(`${colors.cyan("•")} Generating TypeScript types...`)
-        if (resolvedConfig && configPath) {
-          const relConfigPath = formatPath(configPath, resolvedConfig.root)
-          resolvedConfig.logger.info(`${colors.cyan("•")} openapi-ts config: ${colors.yellow(relConfigPath)}`)
+        const cacheOptions = {
+          generateSdk: typesConfig.generateSdk,
+          generateZod: typesConfig.generateZod,
+          plugins,
         }
 
-        // openapi-ts clears its output directory, so we isolate it from our own artifacts.
-        const sdkOutput = path.join(typesConfig.output, "api")
+        // Check cache to skip generation if inputs unchanged
+        const shouldRun = await shouldRunOpenApiTs(absoluteOpenapiPath, configPath, cacheOptions)
 
-        let args: string[]
-        if (configPath) {
-          args = ["@hey-api/openapi-ts", "--file", configPath]
-        } else {
-          args = ["@hey-api/openapi-ts", "-i", typesConfig.openapiPath, "-o", sdkOutput]
+        if (shouldRun) {
+          logger.info("Generating TypeScript types...")
+          if (configPath && resolvedConfig) {
+            const relConfigPath = formatPath(configPath, resolvedConfig.root)
+            logger.info(`openapi-ts config: ${colors.yellow(relConfigPath)}`)
+          }
 
-          const plugins = ["@hey-api/typescript", "@hey-api/schemas"]
-          if (typesConfig.generateSdk) {
-            plugins.push("@hey-api/sdk", sdkClientPlugin)
+          const coreConfig: TypeGenCoreConfig = {
+            projectRoot,
+            openapiPath: typesConfig.openapiPath,
+            output: typesConfig.output,
+            pagePropsPath: typesConfig.pagePropsPath,
+            generateSdk: typesConfig.generateSdk,
+            generateZod: typesConfig.generateZod,
+            generatePageProps: false, // Handle separately below
+            sdkClientPlugin,
+            executor,
           }
-          if (typesConfig.generateZod) {
-            plugins.push("zod")
-          }
-          if (plugins.length) {
-            args.push("--plugins", ...plugins)
-          }
-        }
 
-        if (typesConfig.generateZod) {
           try {
-            nodeRequire.resolve("zod", { paths: [projectRoot] })
-          } catch {
-            resolvedConfig?.logger.warn(`${colors.yellow("!")} zod not installed - run: ${resolveInstallHint()} zod`)
+            await runHeyApiGeneration(coreConfig, configPath, plugins, logger)
+            await updateOpenApiTsCache(absoluteOpenapiPath, configPath, cacheOptions)
+            generated = true
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            if (message.includes("not found") || message.includes("ENOENT")) {
+              logger.warn("@hey-api/openapi-ts not installed")
+            } else {
+              logger.error(`Type generation failed: ${message}`)
+            }
           }
+        } else {
+          resolvedConfig?.logger.info(`${colors.cyan("•")} TypeScript types ${colors.dim("(unchanged)")}`)
         }
-
-        await execAsync(resolvePackageExecutor(args.join(" "), executor), { cwd: projectRoot })
-        generated = true
       }
 
-      if (typesConfig.generatePageProps && fs.existsSync(pagePropsPath)) {
-        await emitPagePropsTypes(pagePropsPath, typesConfig.output)
-        generated = true
+      // Generate page props types (uses its own caching via emitPagePropsTypes)
+      if (typesConfig.generatePageProps && fs.existsSync(absolutePagePropsPath)) {
+        try {
+          const changed = await emitPagePropsTypes(absolutePagePropsPath, typesConfig.output)
+          if (changed) {
+            generated = true
+          } else {
+            resolvedConfig?.logger.info(`${colors.cyan("•")} Page props types ${colors.dim("(unchanged)")}`)
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          logger.error(`Page props generation failed: ${message}`)
+        }
       }
 
       if (generated && resolvedConfig) {
@@ -151,23 +188,14 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
       return true
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      if (resolvedConfig) {
-        if (message.includes("not found") || message.includes("ENOENT")) {
-          const zodHint = typesConfig.generateZod ? " zod" : ""
-          resolvedConfig.logger.warn(
-            `${colors.cyan("litestar-vite")} ${colors.yellow("@hey-api/openapi-ts not installed")} - run: ${resolveInstallHint()} -D @hey-api/openapi-ts${zodHint}`,
-          )
-        } else {
-          resolvedConfig.logger.error(`${colors.cyan("litestar-vite")} ${colors.red("type generation failed:")} ${message}`)
-        }
-      }
+      resolvedConfig?.logger.error(`${colors.cyan("litestar-vite")} ${colors.red("type generation failed:")} ${message}`)
       return false
     } finally {
       isGenerating = false
     }
   }
 
-  const debouncedRunTypeGeneration = debounce(runTypeGeneration, typesConfig.debounce)
+  const debouncedRunTypeGeneration = debounce(runTypeGenerationWithCache, typesConfig.debounce)
 
   return {
     name: pluginName,
@@ -208,7 +236,7 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
         const hasOpenapi = fs.existsSync(openapiPath)
         const hasPageProps = typesConfig.generatePageProps && fs.existsSync(pagePropsPath)
         if (hasOpenapi || hasPageProps) {
-          await runTypeGeneration()
+          await runTypeGenerationWithCache()
         }
       }
     },

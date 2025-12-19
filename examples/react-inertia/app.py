@@ -64,12 +64,20 @@ class LibraryController(Controller):
 
     @get("/", component="Home")
     async def index(self) -> Message:
-        """Serve the home page."""
+        """Serve the home page.
+
+        Returns:
+            The result.
+        """
         return Message(message="Welcome to React Inertia!")
 
     @get("/books", component="Books")
     async def books_page(self) -> dict[str, object]:
-        """Books list page."""
+        """Books list page.
+
+        Returns:
+            The result.
+        """
         return {"summary": _get_summary(), "books": BOOKS}
 
     @get("/api/summary")
@@ -90,8 +98,9 @@ vite = VitePlugin(
         # mode="hybrid" is auto-detected from Inertia + index.html presence
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources"),
-        inertia=InertiaConfig(root_template="index.html"),  # Auto-registers Inertia
-        types=TypeGenConfig(output=Path("resources/generated"), generate_zod=True),
+        # v2.3+ optimization: use_script_element for ~37% smaller page data (requires client config too)
+        inertia=InertiaConfig(root_template="index.html", use_script_element=True),
+        types=TypeGenConfig(output=Path("resources/generated")),
         # Fixed port for E2E tests - can be removed for local dev or customized for production
         runtime=RuntimeConfig(port=5002),
     )

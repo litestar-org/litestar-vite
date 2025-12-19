@@ -3,6 +3,7 @@
 import gc
 import sys
 import time
+from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -15,6 +16,21 @@ from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
 from litestar_vite.plugin import StaticFilesConfig, VitePlugin, ViteProcess
 
 pytestmark = pytest.mark.anyio
+
+
+@pytest.fixture(autouse=True)
+def cleanup_vite_process_instances() -> Generator[None, None, None]:
+    """Clear ViteProcess instances after each test to prevent atexit cleanup errors.
+
+    ViteProcess tracks all instances for signal handling and cleanup. When tests
+    create instances with mock processes, these would fail during atexit cleanup.
+
+    Returns:
+        The result.
+    """
+    yield
+    # Clear instances after each test to prevent mock cleanup errors
+    ViteProcess._instances.clear()
 
 
 # =====================================================
@@ -286,7 +302,7 @@ def test_vite_plugin_lifespan_with_environment_setup(mock_set_env: Mock) -> None
     mock_set_env.assert_called_once_with(config=config)
 
 
-@patch("litestar_vite.plugin.console")
+@patch("litestar_vite.plugin._utils.console")
 def test_vite_plugin_lifespan_with_vite_process_management(mock_console: Mock) -> None:
     """Test server lifespan with Vite process management."""
     config = ViteConfig(runtime=RuntimeConfig(dev_mode=True))
@@ -305,7 +321,7 @@ def test_vite_plugin_lifespan_with_vite_process_management(mock_console: Mock) -
             mock_stop.assert_called_once()
 
 
-@patch("litestar_vite.plugin.console")
+@patch("litestar_vite.plugin._utils.console")
 def test_vite_plugin_lifespan_with_watch_mode(mock_console: Mock) -> None:
     """Test server lifespan with watch mode (no HMR)."""
     config = ViteConfig(
@@ -377,7 +393,7 @@ def test_vite_process_start_already_running() -> None:
     executor.run.assert_not_called()
 
 
-@patch("litestar_vite.plugin.console")
+@patch("litestar_vite.plugin._utils.console")
 def test_vite_process_start_failure(mock_console: Mock) -> None:
     """Test Vite process start failure."""
     executor = Mock()
@@ -445,7 +461,7 @@ def test_vite_process_stop_force_kill(mock_killpg: Mock) -> None:
 
 
 @patch("litestar_vite.plugin.os.killpg")
-@patch("litestar_vite.plugin.console")
+@patch("litestar_vite.plugin._utils.console")
 def test_vite_process_stop_failure(mock_console: Mock, mock_killpg: Mock) -> None:
     """Test process stop failure handling."""
     mock_process = Mock()
@@ -1127,3 +1143,94 @@ def test_get_litestar_route_prefixes_with_empty_app() -> None:
     assert "/api" in prefixes
     assert "/schema" in prefixes
     assert "/docs" in prefixes
+
+
+# =====================================================
+# VitePlugin Proxy Client Lifecycle Tests
+# =====================================================
+
+
+def test_vite_plugin_proxy_client_none_on_init() -> None:
+    """Test that proxy_client is None immediately after plugin initialization."""
+    plugin = VitePlugin()
+
+    assert plugin._proxy_client is None
+    assert plugin.proxy_client is None
+
+
+async def test_vite_plugin_proxy_client_created_in_dev_mode_with_vite_proxy() -> None:
+    """Test that proxy_client is created during lifespan in dev mode with vite proxy."""
+    import httpx
+
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True), mode="spa")
+    # Manually set proxy_mode to vite for test
+    config.runtime.proxy_mode = "vite"
+    plugin = VitePlugin(config=config)
+
+    # Before lifespan, proxy_client is None
+    assert plugin.proxy_client is None
+
+    # Create a minimal app for lifespan
+    app = Litestar(route_handlers=[])
+
+    # Run the lifespan context manager
+    async with plugin.lifespan(app):
+        # During lifespan, proxy_client should be created
+        assert plugin.proxy_client is not None
+        assert isinstance(plugin.proxy_client, httpx.AsyncClient)
+
+    # After lifespan, proxy_client should be closed and set to None
+    assert plugin.proxy_client is None
+
+
+async def test_vite_plugin_proxy_client_created_in_dev_mode_with_ssr_proxy() -> None:
+    """Test that proxy_client is created during lifespan in dev mode with SSR proxy."""
+    import httpx
+
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True), mode="framework")
+    # Manually set proxy_mode to proxy for test
+    config.runtime.proxy_mode = "proxy"
+    plugin = VitePlugin(config=config)
+
+    # Before lifespan, proxy_client is None
+    assert plugin.proxy_client is None
+
+    # Create a minimal app for lifespan
+    app = Litestar(route_handlers=[])
+
+    # Run the lifespan context manager
+    async with plugin.lifespan(app):
+        # During lifespan, proxy_client should be created
+        assert plugin.proxy_client is not None
+        assert isinstance(plugin.proxy_client, httpx.AsyncClient)
+
+    # After lifespan, proxy_client should be closed and set to None
+    assert plugin.proxy_client is None
+
+
+async def test_vite_plugin_proxy_client_none_in_production_mode() -> None:
+    """Test that proxy_client remains None in production mode."""
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=False), mode="spa")
+    plugin = VitePlugin(config=config)
+
+    # Create a minimal app for lifespan
+    app = Litestar(route_handlers=[])
+
+    # Run the lifespan context manager
+    async with plugin.lifespan(app):
+        # In production mode, proxy_client should remain None
+        assert plugin.proxy_client is None
+
+
+async def test_vite_plugin_proxy_client_none_when_no_proxy_mode() -> None:
+    """Test that proxy_client remains None when proxy_mode is None."""
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode=None), mode="template")
+    plugin = VitePlugin(config=config)
+
+    # Create a minimal app for lifespan
+    app = Litestar(route_handlers=[])
+
+    # Run the lifespan context manager
+    async with plugin.lifespan(app):
+        # Without proxy_mode, proxy_client should remain None
+        assert plugin.proxy_client is None

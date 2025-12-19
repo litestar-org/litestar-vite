@@ -5,11 +5,6 @@ from typing import Any
 from litestar import Request, get
 from litestar.exceptions import NotAuthorizedException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
-from litestar.plugins.flash import (  # pyright: ignore[reportUnknownVariableType]  # pyright: ignore[reportUnknownVariableType]
-    FlashConfig,
-    FlashPlugin,
-    flash,
-)
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
@@ -22,6 +17,7 @@ from litestar_vite.inertia.helpers import (
     defer,
     extract_deferred_props,
     extract_merge_props,
+    flash,
     is_lazy_prop,
     is_merge_prop,
     is_or_contains_lazy_prop,
@@ -76,7 +72,10 @@ async def test_component_inertia_header_enabled(
         assert data["component"] == "Home"
         assert data["url"] == "/"
         assert "version" in data  # version is a hash, not a fixed value
-        assert data["props"]["flash"] == {}
+        # v2.3+ protocol: flash at top-level (always {} when empty for router.flash() support)
+        assert data["flash"] == {}
+        # Flash should NOT be in props anymore
+        assert "flash" not in data["props"]
         assert data["props"]["errors"] == {}
         assert data["props"]["csrf_token"] == ""
         assert data["props"]["thing"] == "value"
@@ -96,7 +95,7 @@ async def test_component_inertia_flash_header_enabled(
     with create_test_client(
         route_handlers=[handler],
         template_config=template_config,
-        plugins=[inertia_plugin, vite_plugin, FlashPlugin(config=FlashConfig(template_config=template_config))],
+        plugins=[inertia_plugin, vite_plugin],
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:
@@ -105,7 +104,9 @@ async def test_component_inertia_flash_header_enabled(
         assert data["component"] == "Home"
         assert data["url"] == "/"
         assert "version" in data  # version is a hash, not a fixed value
-        assert data["props"]["flash"] == {"info": ["a flash message"]}
+        # v2.3+ protocol: flash is now top-level, NOT in props
+        assert data["flash"] == {"info": ["a flash message"]}
+        assert "flash" not in data["props"]
         assert data["props"]["errors"] == {}
         assert data["props"]["csrf_token"] == ""
         assert data["props"]["thing"] == "value"
@@ -126,7 +127,7 @@ async def test_component_inertia_shared_flash_header_enabled(
     with create_test_client(
         route_handlers=[handler],
         template_config=template_config,
-        plugins=[inertia_plugin, vite_plugin, FlashPlugin(config=FlashConfig(template_config=template_config))],
+        plugins=[inertia_plugin, vite_plugin],
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:
@@ -136,11 +137,47 @@ async def test_component_inertia_shared_flash_header_enabled(
         assert data["url"] == "/"
         assert "version" in data  # version is a hash, not a fixed value
         assert data["props"]["auth"] == {"user": "nobody"}
-        assert data["props"]["flash"] == {"info": ["a flash message"]}
+        # v2.3+ protocol: flash is now top-level, NOT in props
+        assert data["flash"] == {"info": ["a flash message"]}
+        assert "flash" not in data["props"]
         assert data["props"]["errors"] == {}
         assert data["props"]["csrf_token"] == ""
         assert data["props"]["thing"] == "value"
         assert "content" not in data["props"]
+
+
+async def test_component_inertia_multiple_flash_categories(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that multiple flash categories work correctly with v2.3+ protocol."""
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        flash(request, "Success message", "success")
+        flash(request, "Error message", "error")
+        flash(request, "Another error", "error")
+        flash(request, "Warning message", "warning")
+        return {"thing": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # v2.3+ protocol: flash is at top level with multiple categories
+        assert data["flash"] == {
+            "success": ["Success message"],
+            "error": ["Error message", "Another error"],
+            "warning": ["Warning message"],
+        }
+        # Flash should NOT be in props
+        assert "flash" not in data["props"]
 
 
 async def test_default_route_response_no_component(
@@ -1554,3 +1591,334 @@ async def test_inertia_external_redirect_no_cookie_echo(
         set_cookie_headers = response.headers.get_list("set-cookie")
         token_cookie_echoed = any("auth_token=secret_token" in c for c in set_cookie_headers)
         assert not token_cookie_echoed, "Request cookies should not be echoed in response"
+
+
+# =====================================================
+# Query Parameter Preservation Tests (Inertia Protocol)
+# =====================================================
+
+
+async def test_inertia_response_preserves_query_params(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that query parameters are preserved in page props URL.
+
+    Per Inertia.js protocol, the URL in page props must include query parameters
+    so that page state (filters, pagination, etc.) is preserved on refresh.
+    See: https://inertiajs.com/the-protocol
+    """
+
+    @get("/reports", component="Reports")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/reports?status=active&page=2", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # URL must include query parameters
+        assert data["url"] == "/reports?status=active&page=2"
+
+
+async def test_inertia_response_url_without_query_params(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that URLs without query parameters work unchanged."""
+
+    @get("/dashboard", component="Dashboard")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/dashboard", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # URL without query params should be just the path
+        assert data["url"] == "/dashboard"
+
+
+async def test_inertia_response_preserves_special_chars_in_query(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that special characters in query parameters are preserved."""
+
+    @get("/search", component="Search")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"results": []}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # URL-encoded special characters
+        response = client.get(
+            "/search?q=hello%20world&filter=name%3Dtest", headers={InertiaHeaders.ENABLED.value: "true"}
+        )
+        data = response.json()
+        # Query string should be preserved (URL-decoded by server)
+        assert "q=" in data["url"]
+        assert "/search?" in data["url"]
+
+
+async def test_inertia_response_preserves_array_style_query_params(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that array-style query parameters are preserved."""
+
+    @get("/items", component="Items")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"items": []}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/items?ids=1&ids=2&ids=3", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        # Multiple same-named params should be preserved
+        assert data["url"].startswith("/items?")
+        assert "ids=" in data["url"]
+
+
+async def test_get_relative_url_helper() -> None:
+    """Test the _get_relative_url helper function directly."""
+    from unittest.mock import MagicMock
+
+    from litestar_vite.inertia.response import _get_relative_url
+
+    # Mock request with query string
+    mock_request = MagicMock()
+    mock_request.url.path = "/reports"
+    mock_request.url.query = "status=active&page=2"
+
+    result = _get_relative_url(mock_request)
+    assert result == "/reports?status=active&page=2"
+
+    # Mock request without query string
+    mock_request_no_query = MagicMock()
+    mock_request_no_query.url.path = "/dashboard"
+    mock_request_no_query.url.query = ""
+
+    result_no_query = _get_relative_url(mock_request_no_query)
+    assert result_no_query == "/dashboard"
+
+    # Mock request with None query
+    mock_request_none = MagicMock()
+    mock_request_none.url.path = "/home"
+    mock_request_none.url.query = None
+
+    result_none = _get_relative_url(mock_request_none)
+    assert result_none == "/home"
+
+
+# =====================================================
+# SSR Client Lifecycle Tests (Performance Optimizations)
+# =====================================================
+
+
+async def test_inertia_plugin_ssr_client_lifecycle() -> None:
+    """Test that SSR client is created in lifespan and properly closed on shutdown."""
+    import httpx
+    from litestar import Litestar
+    from litestar.middleware.session.server_side import ServerSideSessionConfig
+    from litestar.stores.memory import MemoryStore
+
+    from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig, ViteConfig
+    from litestar_vite.inertia.plugin import InertiaPlugin
+    from litestar_vite.plugin import VitePlugin
+
+    # Create plugins
+    inertia_config = InertiaConfig(root_template="index.html.j2")
+    inertia_plugin = InertiaPlugin(config=inertia_config)
+
+    vite_config = ViteConfig(paths=PathConfig(), runtime=RuntimeConfig(dev_mode=True))
+    vite_plugin = VitePlugin(config=vite_config)
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    # Before app init, ssr_client should be None
+    assert inertia_plugin.ssr_client is None
+
+    Litestar(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    )
+
+    # After app init but before startup, ssr_client might not be set yet
+    # (depends on when lifespan runs)
+
+    # Use test client to run the lifespan
+    from litestar.testing import create_test_client
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ):
+        # During app lifespan, ssr_client should be initialized
+        assert inertia_plugin.ssr_client is not None
+        assert isinstance(inertia_plugin.ssr_client, httpx.AsyncClient)
+
+        # Client should not be closed while app is running
+        assert not inertia_plugin.ssr_client.is_closed
+
+    # After app shutdown, ssr_client should be None (cleaned up)
+    assert inertia_plugin.ssr_client is None
+
+
+async def test_inertia_plugin_ssr_client_is_async_client() -> None:
+    """Test that SSR client is a properly configured httpx.AsyncClient."""
+    import httpx
+    from litestar.middleware.session.server_side import ServerSideSessionConfig
+    from litestar.stores.memory import MemoryStore
+    from litestar.testing import create_test_client
+
+    from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig, ViteConfig
+    from litestar_vite.inertia.plugin import InertiaPlugin
+    from litestar_vite.plugin import VitePlugin
+
+    inertia_config = InertiaConfig(root_template="index.html.j2")
+    inertia_plugin = InertiaPlugin(config=inertia_config)
+
+    vite_config = ViteConfig(paths=PathConfig(), runtime=RuntimeConfig(dev_mode=True))
+    vite_plugin = VitePlugin(config=vite_config)
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ):
+        # Verify client is configured as httpx.AsyncClient
+        ssr_client = inertia_plugin.ssr_client
+        assert ssr_client is not None
+        assert isinstance(ssr_client, httpx.AsyncClient)
+
+        # Verify timeout is configured (default 10s)
+        assert ssr_client.timeout is not None
+
+        # Verify client is not closed
+        assert not ssr_client.is_closed
+
+
+async def test_ssr_client_shared_across_requests(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that the same SSR client instance is used across multiple requests."""
+    import httpx
+    from litestar.middleware.session.server_side import ServerSideSessionConfig
+    from litestar.stores.memory import MemoryStore
+    from litestar.testing import create_test_client
+
+    # Track client references across requests
+    clients_seen: "list[httpx.AsyncClient | None]" = []
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        # Get the plugin from app
+        plugin = request.app.plugins.get(InertiaPlugin)
+        clients_seen.append(plugin.ssr_client)
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Make multiple requests
+        for _ in range(3):
+            response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+            assert response.status_code == 200
+
+    # All requests should have seen the same client instance
+    assert len(clients_seen) == 3
+    assert clients_seen[0] is not None
+    assert all(c is clients_seen[0] for c in clients_seen)
+
+
+async def test_deferred_prop_uses_plugin_portal() -> None:
+    """Test that DeferredProp uses the plugin's portal for async resolution."""
+    import asyncio
+
+    from litestar.middleware.session.server_side import ServerSideSessionConfig
+    from litestar.stores.memory import MemoryStore
+    from litestar.testing import create_test_client
+
+    from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig, ViteConfig
+    from litestar_vite.inertia.plugin import InertiaPlugin
+    from litestar_vite.plugin import VitePlugin
+
+    inertia_config = InertiaConfig(root_template="index.html.j2")
+    inertia_plugin = InertiaPlugin(config=inertia_config)
+
+    vite_config = ViteConfig(paths=PathConfig(), runtime=RuntimeConfig(dev_mode=True))
+    vite_plugin = VitePlugin(config=vite_config)
+
+    async def async_prop_callback() -> str:
+        # This would normally require portal access to run from sync context
+        await asyncio.sleep(0.001)
+        return "async_value"
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"static_data": "value", "async_prop": defer("async_prop", async_prop_callback)}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Verify portal is available during request
+        assert inertia_plugin.portal is not None
+
+        # Request with partial data to trigger deferred prop resolution
+        response = client.get(
+            "/",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_DATA.value: "async_prop",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # The async prop should have been resolved
+        assert data["props"]["async_prop"] == "async_value"

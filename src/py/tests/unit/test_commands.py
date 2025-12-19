@@ -1,7 +1,7 @@
 """Tests for litestar_vite.commands module."""
 
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 from litestar.serialization import decode_json
@@ -18,10 +18,7 @@ def test_init_vite_creates_project(tmp_path: Path) -> None:
     """Test that init_vite creates a project with the new scaffolding system."""
     from litestar_vite.commands import init_vite
 
-    app = Mock()
-
     init_vite(
-        app=app,
         root_path=tmp_path,
         resource_path=Path("src"),
         asset_url="/static/",
@@ -29,7 +26,6 @@ def test_init_vite_creates_project(tmp_path: Path) -> None:
         bundle_path=Path("dist"),
         enable_ssr=False,
         vite_port=5173,
-        hot_file=Path("hot"),
         litestar_port=8000,
     )
 
@@ -44,10 +40,7 @@ def test_init_vite_with_framework(tmp_path: Path) -> None:
     """Test init_vite with different framework templates."""
     from litestar_vite.commands import init_vite
 
-    app = Mock()
-
     init_vite(
-        app=app,
         root_path=tmp_path,
         resource_path=Path("src"),
         asset_url="/static/",
@@ -55,7 +48,6 @@ def test_init_vite_with_framework(tmp_path: Path) -> None:
         bundle_path=Path("dist"),
         enable_ssr=False,
         vite_port=5173,
-        hot_file=Path("hot"),
         litestar_port=8000,
         framework="vue",
     )
@@ -71,13 +63,10 @@ def test_init_vite_error_when_jinja_missing(tmp_path: Path) -> None:
     """Test init_vite raises appropriate error when Jinja is missing."""
     from litestar_vite.exceptions import MissingDependencyError
 
-    app = Mock()
-
     with pytest.raises(MissingDependencyError) as exc_info:
         from litestar_vite.commands import init_vite
 
         init_vite(
-            app=app,
             root_path=tmp_path,
             resource_path=Path("resources"),
             asset_url="/static/",
@@ -85,7 +74,6 @@ def test_init_vite_error_when_jinja_missing(tmp_path: Path) -> None:
             bundle_path=Path("dist"),
             enable_ssr=False,
             vite_port=5173,
-            hot_file=Path("hot"),
             litestar_port=8000,
         )
 

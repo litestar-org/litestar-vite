@@ -29,6 +29,11 @@ export interface BridgeTypesConfig {
   globalRoute: boolean
 }
 
+export interface BridgeSpaConfig {
+  /** Use script element instead of data-page attribute for Inertia page data */
+  useScriptElement: boolean
+}
+
 export interface BridgeSchema {
   assetUrl: string
   deployAssetUrl: string | null
@@ -46,6 +51,8 @@ export interface BridgeSchema {
   ssrOutDir: string | null
 
   types: BridgeTypesConfig | null
+
+  spa: BridgeSpaConfig | null
 
   executor: BridgeExecutor
 
@@ -74,6 +81,7 @@ const allowedTopLevelKeys: ReadonlySet<string> = new Set([
   "port",
   "ssrOutDir",
   "types",
+  "spa",
   "executor",
   "logging",
   "litestarVersion",
@@ -182,6 +190,15 @@ function parseLogging(value: unknown): BridgeSchema["logging"] {
   return { level, showPathsAbsolute, suppressNpmOutput, suppressViteBanner, timestamps }
 }
 
+function parseSpaConfig(value: unknown): BridgeSpaConfig | null {
+  if (value === null || value === undefined) return null
+  const obj = assertObject(value, "spa")
+
+  const useScriptElement = assertBoolean(obj, "useScriptElement")
+
+  return { useScriptElement }
+}
+
 export function parseBridgeSchema(value: unknown): BridgeSchema {
   const obj = assertObject(value, "root")
 
@@ -207,6 +224,7 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
   const ssrOutDir = assertNullableString(obj, "ssrOutDir")
 
   const types = parseTypesConfig(obj.types)
+  const spa = parseSpaConfig(obj.spa)
   const executor = assertEnum<BridgeExecutor>(obj.executor, "executor", allowedExecutors)
   const logging = parseLogging(obj.logging)
   const litestarVersion = assertString(obj, "litestarVersion")
@@ -225,6 +243,7 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
     port,
     ssrOutDir,
     types,
+    spa,
     executor,
     logging,
     litestarVersion,

@@ -14,9 +14,35 @@ from litestar._openapi.parameters import (  # pyright: ignore[reportPrivateUsage
 from litestar.handlers import HTTPRouteHandler
 from litestar.routes import HTTPRoute
 
-from litestar_vite._codegen.ts import normalize_path, ts_type_from_openapi
+from litestar_vite.codegen._ts import normalize_path, ts_type_from_openapi
 
 _PATH_PARAM_EXTRACT_PATTERN = re.compile(r"\{([^:}]+)(?::([^}]+))?\}")
+
+# HTTP methods in priority order for Inertia router integration
+_HTTP_METHOD_PRIORITY = ["GET", "POST", "PUT", "PATCH", "DELETE"]
+
+
+def pick_primary_method(methods: list[str]) -> str:
+    """Pick the primary HTTP method for Inertia router integration.
+
+    When a route supports multiple HTTP methods, this picks the most
+    appropriate one for use with Inertia's router.visit() and form.submit().
+
+    Args:
+        methods: List of HTTP methods (e.g., ["GET", "HEAD", "OPTIONS"]).
+
+    Returns:
+        The primary method in lowercase (e.g., "get", "post").
+    """
+    for preferred in _HTTP_METHOD_PRIORITY:
+        if preferred in methods:
+            return preferred.lower()
+    # Fallback to first non-HEAD/OPTIONS method, or "get" if none
+    for method in methods:
+        if method not in {"HEAD", "OPTIONS"}:
+            return method.lower()
+    return "get"
+
 
 _TS_SEMANTIC_ALIASES: dict[str, tuple[str, str]] = {
     "UUID": ("UUID v4 string", "string"),
@@ -31,7 +57,7 @@ _TS_SEMANTIC_ALIASES: dict[str, tuple[str, str]] = {
 }
 
 
-def _str_dict_factory() -> dict[str, str]:
+def str_dict_factory() -> dict[str, str]:
     """Return an empty ``dict[str, str]`` (typed for pyright).
 
     Returns:
@@ -47,12 +73,13 @@ class RouteMetadata:
     name: str
     path: str
     methods: list[str]
-    params: dict[str, str] = field(default_factory=_str_dict_factory)
-    query_params: dict[str, str] = field(default_factory=_str_dict_factory)
+    method: str  # Primary method for Inertia router (lowercase)
+    params: dict[str, str] = field(default_factory=str_dict_factory)
+    query_params: dict[str, str] = field(default_factory=str_dict_factory)
     component: "str | None" = None
 
 
-def _extract_path_params(path: str) -> dict[str, str]:
+def extract_path_params(path: str) -> dict[str, str]:
     """Extract path parameters and their types from a route.
 
     Args:
@@ -64,22 +91,28 @@ def _extract_path_params(path: str) -> dict[str, str]:
     return {match.group(1): "string" for match in _PATH_PARAM_EXTRACT_PATTERN.finditer(path)}
 
 
-def _iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRouteHandler], None, None]:
+def iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRouteHandler], None, None]:
     """Iterate over HTTP route handlers in an app.
+
+    Returns handlers in deterministic order, sorted by (route_path, handler_name)
+    to ensure consistent output across multiple runs.
 
     Args:
         app: The Litestar application.
 
     Yields:
-        Tuples of (HTTPRoute, HTTPRouteHandler).
+        Tuples of (HTTPRoute, HTTPRouteHandler), sorted for determinism.
     """
+    handlers: list[tuple[HTTPRoute, HTTPRouteHandler]] = []
     for route in app.routes:
         if isinstance(route, HTTPRoute):
-            for route_handler in route.route_handlers:
-                yield route, route_handler
+            handlers.extend((route, route_handler) for route_handler in route.route_handlers)
+    # Sort by route path, then handler name for deterministic ordering
+    handlers.sort(key=lambda x: (str(x[0].path), x[1].handler_name or x[1].name or ""))
+    yield from handlers
 
 
-def _extract_params_from_litestar(
+def extract_params_from_litestar(
     handler: HTTPRouteHandler, http_route: "HTTPRoute", openapi_context: OpenAPIContext | None
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Extract path and query parameters using Litestar's native OpenAPI generation.
@@ -126,7 +159,7 @@ def _extract_params_from_litestar(
     return path_params, query_params
 
 
-def _make_unique_name(base_name: str, used_names: set[str], path: str, methods: list[str]) -> str:
+def make_unique_name(base_name: str, used_names: set[str], path: str, methods: list[str]) -> str:
     """Generate a unique route name, avoiding collisions.
 
     Returns:
@@ -177,7 +210,7 @@ def extract_route_metadata(
         with contextlib.suppress(AttributeError, TypeError, ValueError):
             openapi_context = OpenAPIContext(openapi_config=app.openapi_config, plugins=app.plugins.openapi)
 
-    for http_route, route_handler in _iter_route_handlers(app):
+    for http_route, route_handler in iter_route_handlers(app):
         base_name = route_handler.name or route_handler.handler_name or str(route_handler)
         methods = [method.upper() for method in route_handler.http_methods]
 
@@ -198,7 +231,7 @@ def extract_route_metadata(
             else:
                 continue
 
-        route_name = _make_unique_name(base_name, used_names, full_path, methods)
+        route_name = make_unique_name(base_name, used_names, full_path, methods)
         used_names.add(route_name)
 
         if only and not any(pattern in route_name or pattern in full_path for pattern in only):
@@ -206,10 +239,10 @@ def extract_route_metadata(
         if exclude and any(pattern in route_name or pattern in full_path for pattern in exclude):
             continue
 
-        params, query_params = _extract_params_from_litestar(route_handler, http_route, openapi_context)
+        params, query_params = extract_params_from_litestar(route_handler, http_route, openapi_context)
 
         if not params:
-            params = _extract_path_params(full_path)
+            params = extract_path_params(full_path)
 
         normalized_path = normalize_path(full_path)
 
@@ -221,6 +254,7 @@ def extract_route_metadata(
                 name=route_name,
                 path=normalized_path,
                 methods=methods,
+                method=pick_primary_method(methods),
                 params=params,
                 query_params=query_params,
                 component=cast("str | None", component),
@@ -254,7 +288,7 @@ def generate_routes_json(
     routes_dict: dict[str, Any] = {}
 
     for route in sorted_routes:
-        route_data: dict[str, Any] = {"uri": route.path, "methods": route.methods}
+        route_data: dict[str, Any] = {"uri": route.path, "methods": route.methods, "method": route.method}
 
         if route.params:
             # Sort params dict for deterministic output
@@ -296,7 +330,7 @@ _TS_TYPE_MAP: dict[str, str] = {
 }
 
 
-def _ts_type_for_param(param_type: str) -> str:
+def ts_type_for_param(param_type: str) -> str:
     """Map a parameter type string to TypeScript type.
 
     Returns:
@@ -312,7 +346,7 @@ def _ts_type_for_param(param_type: str) -> str:
     return ts_type
 
 
-def _is_type_required(param_type: str) -> bool:
+def is_type_required(param_type: str) -> bool:
     """Check if a parameter type indicates a required field.
 
     Returns:
@@ -321,7 +355,7 @@ def _is_type_required(param_type: str) -> bool:
     return "undefined" not in param_type and not param_type.endswith("?")
 
 
-def _escape_ts_string(s: str) -> str:
+def escape_ts_string(s: str) -> str:
     """Escape a string for use in TypeScript string literals.
 
     Returns:
@@ -368,9 +402,9 @@ def generate_routes_ts(
         if sorted_params:
             param_fields: list[str] = []
             for param_name, param_type in sorted_params.items():
-                ts_type = _ts_type_for_param(param_type)
+                ts_type = ts_type_for_param(param_type)
                 ts_type_clean = ts_type.replace(" | undefined", "")
-                used_aliases.update(_collect_semantic_aliases(ts_type_clean))
+                used_aliases.update(collect_semantic_aliases(ts_type_clean))
                 param_fields.append(f"    {param_name}: {ts_type_clean};")
             path_params_entries.append(f"  '{route_name}': {{\n" + "\n".join(param_fields) + "\n  };")
         else:
@@ -379,10 +413,10 @@ def generate_routes_ts(
         if sorted_query_params:
             query_param_fields: list[str] = []
             for param_name, param_type in sorted_query_params.items():
-                ts_type = _ts_type_for_param(param_type)
-                is_required = _is_type_required(param_type)
+                ts_type = ts_type_for_param(param_type)
+                is_required = is_type_required(param_type)
                 ts_type_clean = ts_type.replace(" | undefined", "")
-                used_aliases.update(_collect_semantic_aliases(ts_type_clean))
+                used_aliases.update(collect_semantic_aliases(ts_type_clean))
                 if is_required:
                     query_param_fields.append(f"    {param_name}: {ts_type_clean};")
                 else:
@@ -394,8 +428,9 @@ def generate_routes_ts(
         methods_str = ", ".join(f"'{m}'" for m in sorted(route.methods))
         route_entry_lines = [
             f"  '{route_name}': {{",
-            f"    path: '{_escape_ts_string(route.path)}',",
+            f"    path: '{escape_ts_string(route.path)}',",
             f"    methods: [{methods_str}] as const,",
+            f"    method: '{route.method}',",
         ]
         param_names_str = ", ".join(f"'{p}'" for p in sorted_params) if sorted_params else ""
         route_entry_lines.append(f"    pathParams: [{param_names_str}] as const,")
@@ -403,13 +438,13 @@ def generate_routes_ts(
         query_names_str = ", ".join(f"'{p}'" for p in sorted_query_params) if sorted_query_params else ""
         route_entry_lines.append(f"    queryParams: [{query_names_str}] as const,")
         if route.component:
-            route_entry_lines.append(f"    component: '{_escape_ts_string(route.component)}',")
+            route_entry_lines.append(f"    component: '{escape_ts_string(route.component)}',")
         route_entry_lines.append("  },")
         routes_entries.append("\n".join(route_entry_lines))
 
     route_names_union = "\n  | ".join(f"'{name}'" for name in route_names) if route_names else "never"
 
-    alias_block = _render_semantic_aliases(used_aliases)
+    alias_block = render_semantic_aliases(used_aliases)
     alias_preamble = f"{alias_block}\n\n" if alias_block else ""
 
     global_route_snippet = ""
@@ -486,6 +521,9 @@ type RoutesWithoutRequiredParams = Exclude<RouteName, RoutesWithRequiredParams>;
  * route('books')                              // '/api/books'
  * route('book_detail', {{ book_id: 123 }})      // '/api/books/123'
  * route('search', {{ q: 'test', limit: 5 }})    // '/api/search?q=test&limit=5'
+ *
+ * // Access HTTP method from route definition when needed:
+ * routeDefinitions.login.method               // 'post'
  */
 export function route<T extends RoutesWithoutRequiredParams>(name: T): string;
 export function route<T extends RoutesWithoutRequiredParams>(
@@ -664,15 +702,14 @@ export function isCurrentRoute(pattern: string): boolean {{
   const regex = new RegExp(`^${{escaped.replace(/\\*/g, '.*')}}$`);
   return regex.test(current);
 }}
-{global_route_snippet}
-"""
+{global_route_snippet}"""
 
 
-def _collect_semantic_aliases(type_expr: str) -> set[str]:
+def collect_semantic_aliases(type_expr: str) -> set[str]:
     return {alias for alias in _TS_SEMANTIC_ALIASES if alias in type_expr}
 
 
-def _render_semantic_aliases(aliases: set[str]) -> str:
+def render_semantic_aliases(aliases: set[str]) -> str:
     if not aliases:
         return ""
 

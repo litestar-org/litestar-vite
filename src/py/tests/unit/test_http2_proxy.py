@@ -8,15 +8,19 @@ import httpx
 import pytest
 from litestar.types import Receive, Scope, Send
 
-from litestar_vite import plugin
 from litestar_vite.plugin import ViteProxyMiddleware
+from litestar_vite.plugin import _proxy as proxy_module
 
 pytestmark = pytest.mark.anyio
 
 
 @pytest.fixture
 def hotfile(tmp_path: Path) -> Path:
-    """Create a hotfile with a test Vite server URL."""
+    """Create a hotfile with a test Vite server URL.
+
+    Returns:
+        The fixture value.
+    """
     hotfile_path = tmp_path / "hot"
     hotfile_path.write_text("http://upstream")
     return hotfile_path
@@ -37,7 +41,7 @@ async def test_proxy_uses_http2_by_default(monkeypatch: pytest.MonkeyPatch, hotf
             kwargs.pop("http2", None)
             super().__init__(*args, **kwargs)
 
-    monkeypatch.setattr(plugin.httpx, "AsyncClient", MockAsyncClient)
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", MockAsyncClient)
 
     # Mock h2 as available
     mock_h2 = MagicMock()
@@ -83,7 +87,7 @@ async def test_proxy_falls_back_when_h2_not_installed(monkeypatch: pytest.Monkey
             kwargs.pop("http2", None)
             super().__init__(*args, **kwargs)
 
-    monkeypatch.setattr(plugin.httpx, "AsyncClient", MockAsyncClient)
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", MockAsyncClient)
 
     # Mock h2 as NOT available by making import fail
     import builtins
@@ -138,7 +142,7 @@ async def test_proxy_respects_http2_false_config(monkeypatch: pytest.MonkeyPatch
             kwargs.pop("http2", None)
             super().__init__(*args, **kwargs)
 
-    monkeypatch.setattr(plugin.httpx, "AsyncClient", MockAsyncClient)
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", MockAsyncClient)
 
     sent: list[dict[str, object]] = []
 

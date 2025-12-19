@@ -74,7 +74,11 @@ def load_app_from_example(example_name: str) -> Litestar:
 
 
 def get_vite_plugin(app: Litestar) -> VitePlugin | None:
-    """Extract VitePlugin from a Litestar app."""
+    """Extract VitePlugin from a Litestar app.
+
+    Returns:
+        The vite plugin.
+    """
     for plugin in app.plugins:
         if isinstance(plugin, VitePlugin):
             return plugin

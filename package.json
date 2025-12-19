@@ -15,6 +15,8 @@
   },
   "license": "MIT",
   "author": "Litestar",
+  "main": "./dist/js/index.js",
+  "module": "./dist/js/index.js",
   "exports": {
     ".": {
       "types": "./dist/js/index.d.ts",
@@ -73,13 +75,14 @@
     "tools/clean.js"
   ],
   "bin": {
-    "clean-orphaned-assets": "tools/clean.js"
+    "clean-orphaned-assets": "tools/clean.js",
+    "litestar-vite-typegen": "dist/js/typegen-cli.js"
   },
   "scripts": {
     "build": "npm run build-plugin && npm run build-helpers && npm run build-inertia-helpers && npm run build-integrations",
     "build-plugin": "rm -rf dist/js && npm run build-plugin-types && npm run build-plugin-esm && cp src/js/src/dev-server-index.html dist/js/",
     "build-plugin-types": "tsc --project src/js/tsconfig.json --emitDeclarationOnly",
-    "build-plugin-esm": "esbuild src/js/src/index.ts --platform=node --format=esm --outfile=dist/js/index.js && esbuild src/js/src/install-hint.ts --platform=node --format=esm --outfile=dist/js/install-hint.js && esbuild src/js/src/litestar-meta.ts --platform=node --format=esm --outfile=dist/js/litestar-meta.js && mkdir -p dist/js/shared && esbuild src/js/src/shared/bridge-schema.ts src/js/src/shared/debounce.ts src/js/src/shared/format-path.ts src/js/src/shared/logger.ts src/js/src/shared/emit-page-props-types.ts src/js/src/shared/typegen-plugin.ts --platform=node --format=esm --outdir=dist/js/shared",
+    "build-plugin-esm": "esbuild src/js/src/index.ts --platform=node --format=esm --outfile=dist/js/index.js && esbuild src/js/src/install-hint.ts --platform=node --format=esm --outfile=dist/js/install-hint.js && esbuild src/js/src/litestar-meta.ts --platform=node --format=esm --outfile=dist/js/litestar-meta.js && esbuild src/js/src/typegen-cli.ts --platform=node --format=esm --outfile=dist/js/typegen-cli.js --banner:js='#!/usr/bin/env node' && mkdir -p dist/js/shared && esbuild src/js/src/shared/bridge-schema.ts src/js/src/shared/debounce.ts src/js/src/shared/format-path.ts src/js/src/shared/logger.ts src/js/src/shared/emit-page-props-types.ts src/js/src/shared/typegen-plugin.ts src/js/src/shared/typegen-core.ts src/js/src/shared/write-if-changed.ts src/js/src/shared/typegen-cache.ts --platform=node --format=esm --outdir=dist/js/shared",
     "build-helpers": "rm -rf dist/js/helpers && tsc --project src/js/tsconfig.helpers.json",
     "build-inertia-helpers": "rm -rf dist/js/inertia-helpers && tsc --project src/js/tsconfig.inertia-helpers.json",
     "build-integrations": "esbuild src/js/src/astro.ts src/js/src/sveltekit.ts src/js/src/nuxt.ts src/js/src/inertia-types.ts --platform=node --format=esm --outdir=dist/js",

@@ -75,9 +75,6 @@ TypeGenConfig Reference
    * - ``global_route``
      - ``bool``
      - Register ``route()`` globally on ``window``. Default: ``False``
-   * - ``watch_patterns``
-     - ``list[str]``
-     - Patterns to watch for regeneration
 
 Generating Types
 ----------------

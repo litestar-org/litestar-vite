@@ -181,12 +181,64 @@ def schema_name_from_ref(ref: str) -> str:
     return ref.rsplit("/", maxsplit=1)[-1]
 
 
+def _filter_response_types_from_union(field_definition: FieldDefinition) -> FieldDefinition | None:
+    """Filter out ASGIResponse subtypes from a union type.
+
+    For union types like `InertiaRedirect | NoProps`, this filters out the response
+    types (InertiaRedirect) and returns only the props types (NoProps).
+
+    Args:
+        field_definition: The field definition to filter.
+
+    Returns:
+        Filtered FieldDefinition with response types removed, or None if all types are responses.
+    """
+    # Not a union - return as-is (caller handles response type check)
+    if not field_definition.is_union:
+        return field_definition
+
+    # Filter inner types, keeping only non-response types
+    # IMPORTANT: Check order matters! LitestarResponse is a subclass of ASGIResponse,
+    # so we must check LitestarResponse FIRST to extract inner types before the
+    # general ASGIResponse check skips it entirely.
+    props_types: list[type] = []
+    for inner in field_definition.inner_types:
+        # Skip None types
+        if inner.is_subclass_of(NoneType):
+            continue
+        # For LitestarResponse[T], extract T as the props type
+        if inner.is_subclass_of(LitestarResponse):
+            if inner.inner_types:
+                props_types.append(inner.inner_types[0].annotation)
+            continue
+        # Skip other ASGIResponse subtypes (Redirect, etc.)
+        if inner.is_subclass_of(ASGIResponse):
+            continue
+        props_types.append(inner.annotation)
+
+    if not props_types:
+        return None
+    if len(props_types) == 1:
+        return FieldDefinition.from_annotation(props_types[0])
+
+    # Sort types by qualified name for deterministic union construction
+    # This prevents cache key inconsistencies from type ordering
+    props_types.sort(key=lambda t: getattr(t, "__qualname__", str(t)))
+
+    # Rebuild union type
+    from typing import Union
+
+    union_type = Union[tuple(props_types)]  # type: ignore[valid-type] # noqa: UP007
+    return FieldDefinition.from_annotation(union_type)
+
+
 def resolve_page_props_field_definition(
     handler: HTTPRouteHandler, schema_creator: SchemaCreator
 ) -> tuple[FieldDefinition | None, Schema | Reference | None]:
     """Resolve FieldDefinition and schema result for a handler's response.
 
     Mirrors Litestar's response schema generation to ensure consistent schema registration.
+    Filters out ASGIResponse subtypes from union types.
 
     Args:
         handler: HTTP route handler.
@@ -195,7 +247,12 @@ def resolve_page_props_field_definition(
     Returns:
         Tuple of (FieldDefinition or None, Schema/Reference or None).
     """
-    field_definition = handler.parsed_fn_signature.return_type
+    original_field = handler.parsed_fn_signature.return_type
+
+    # Filter response types from unions (e.g., InertiaRedirect | NoProps -> NoProps)
+    field_definition = _filter_response_types_from_union(original_field)
+    if field_definition is None:
+        return None, None
 
     if field_definition.is_subclass_of((NoneType, ASGIResponse)):
         return None, None

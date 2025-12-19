@@ -1,79 +1,33 @@
 # Litestar Vite
-> Seamless Litestar ↔ Vite integration for SPA, Template, and Inertia.js apps.
 
-Current Version: **v0.15.0-beta.2**
-Documentation: [litestar-org.github.io/litestar-vite/latest/](https://litestar-org.github.io/litestar-vite/latest/)
+Seamless integration between Litestar and Vite with Inertia.js support.
 
 ## Quick Start
 
-### Installation
 ```bash
-# 1. Install Python package
 pip install litestar-vite
-# Optional extras: [jinja], [http2], [nodeenv]
-
-# 2. Install frontend dependencies
-litestar assets install
+make install       # Install dependencies
+litestar assets serve  # Start development server
 ```
 
-### Basic Usage (SPA)
-```python
-from litestar import Litestar
-from litestar_vite import VitePlugin, ViteConfig
+## Key Concepts
 
-# Auto-detects index.html -> SPA mode
-app = Litestar(plugins=[VitePlugin(config=ViteConfig(dev_mode=True))])
-```
+- **Hybrid Architecture**: Python backend (Litestar) + TypeScript frontend (Vite).
+- **Modes**:
+  - `spa`: Single Page App (default).
+  - `hybrid`: Inertia.js (v2 protocol).
+  - `template`: Server-side templates (Jinja2) + Vite assets.
+  - `framework`: Meta-frameworks (Astro, Nuxt, SvelteKit) via proxy.
+- **Configuration**: `vite.config.ts` > `.litestar.json` (auto-generated) > Defaults.
+- **CLI**: Always use `litestar assets [serve|build|install]` to manage the frontend.
 
-## Core Features
-- **Modes**: `spa`, `template` (Jinja/HTMX), `hybrid` (Inertia), `ssr` (Astro/Nuxt/SvelteKit), `external`.
-- **Inertia.js**: Protocol v2, SSR, deferred props, history encryption, flash messages.
-- **Type Safety**: Generates TypeScript routes, props, and OpenAPI schemas.
-- **Asset Management**: Unified `litestar assets` CLI for dev/build/deploy.
+## Documentation
 
-## Configuration (ViteConfig)
-```python
-ViteConfig(
-    mode="spa",           # spa, template, hybrid, ssr, external
-    dev_mode=True,        # Enable HMR/Watch (env: VITE_DEV_MODE)
-    paths=PathConfig(...),# root, bundle_dir, resource_dir, etc.
-    runtime=RuntimeConfig(...), # port, host, proxy_mode, executor, http2
-    types=True,           # Enable type generation (TypeGenConfig)
-    inertia=True,         # Enable Inertia.js (InertiaConfig)
-    spa=True,             # Enable SPA transformations
-    deploy=False,         # Enable CDN deployment (DeployConfig)
-    logging=None,         # Logging config
-)
-```
+See `llms-full.txt` for comprehensive guides, API reference, and architectural details.
 
-## CLI Commands
-*Use `litestar assets` instead of direct npm/node commands.*
+## Project Structure
 
-- `litestar assets install`: Install frontend deps.
-- `litestar assets serve`: Run dev server (or watch mode).
-- `litestar assets build`: Build for production.
-- `litestar assets init`: Scaffold new frontend.
-- `litestar assets doctor`: Diagnose configuration.
-- `litestar assets generate-types`: Generate TS types.
-- `litestar assets deploy`: Upload assets to object storage.
-- `litestar assets status`: Check status.
-
-## Inertia Helpers (Python)
-```python
-from litestar_vite.inertia import share, lazy, defer, merge, flash, error
-# share(req, key, val), lazy(key, val), defer(key, cb, group)
-# merge(key, val), flash(req, cat, msg), error(req, key, msg)
-```
-
-## TypeScript Helpers
-```typescript
-import { getCsrfToken, csrfFetch } from "litestar-vite-plugin/helpers";
-import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
-import { route } from "@/generated/routes"; // Generated types
-```
-
-## Source Map
-- **Guides**: `specs/guides/` (Architecture, Testing, Workflow)
-- **Python Code**: `src/py/litestar_vite/`
-- **TypeScript Code**: `src/js/src/`
-- **Examples**: `examples/`
+- `src/py/litestar_vite/`: Python backend code (Plugin, Config, Loader).
+- `src/js/src/`: TypeScript frontend code (Vite plugin, Helpers).
+- `specs/guides/`: detailed architecture and usage guides.
+- `examples/`: Working examples for React, Vue, Svelte, Astro, Nuxt, etc.

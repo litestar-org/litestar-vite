@@ -893,8 +893,8 @@ describe("litestar-vite-plugin", () => {
     })
 
     it("serves placeholder when mode is 'hybrid' in .litestar.json (inertiaMode auto-detected)", async () => {
-      // When Python sets mode="inertia", it's normalized to "hybrid" in .litestar.json
-      // The plugin should detect this and serve placeholder instead of user's index.html
+      // When Python sets mode="inertia", it's normalized to "hybrid" in .litestar.json.
+      // In inertia mode, the Vite dev server should always show the placeholder page.
       const appUrl = "http://test.app:8000"
       process.env.APP_URL = appUrl
       const configPath = createRuntimeConfig({ mode: "hybrid" })
@@ -905,9 +905,10 @@ describe("litestar-vite-plugin", () => {
 
         await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
 
-        // Should serve placeholder, NOT the user's index.html
+        // Should serve placeholder even if index.html exists
         expect(mockRes.statusCode).toBe(200)
         expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+        expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
         expect(mockRes.end).toHaveBeenCalledWith(actualPlaceholderContent.replace(/{{ APP_URL }}/g, appUrl))
         expect(mockNext).not.toHaveBeenCalled()
       } finally {
@@ -916,7 +917,7 @@ describe("litestar-vite-plugin", () => {
     })
 
     it("serves placeholder when mode is 'inertia' in .litestar.json", async () => {
-      // Direct "inertia" mode should also trigger placeholder serving
+      // In inertia mode, the Vite dev server should always show the placeholder page.
       const appUrl = "http://test.app:8000"
       process.env.APP_URL = appUrl
       const configPath = createRuntimeConfig({ mode: "inertia" })
@@ -927,9 +928,31 @@ describe("litestar-vite-plugin", () => {
 
         await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
 
-        // Should serve placeholder, NOT the user's index.html
+        // Should serve placeholder even if index.html exists
         expect(mockRes.statusCode).toBe(200)
         expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+        expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+        expect(mockRes.end).toHaveBeenCalledWith(actualPlaceholderContent.replace(/{{ APP_URL }}/g, appUrl))
+        expect(mockNext).not.toHaveBeenCalled()
+      } finally {
+        cleanupRuntimeConfig(configPath)
+      }
+    })
+
+    it("serves placeholder for /index.html when inertia mode is enabled, even if index exists", async () => {
+      const appUrl = "http://test.app:8000"
+      process.env.APP_URL = appUrl
+      const configPath = createRuntimeConfig({ mode: "inertia" })
+
+      try {
+        await setupServer()
+        mockFs(rootIndexPath) // index.html exists
+
+        await mockMiddleware({ url: "/index.html", originalUrl: "/index.html" }, mockRes, mockNext)
+
+        expect(mockRes.statusCode).toBe(200)
+        expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+        expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
         expect(mockRes.end).toHaveBeenCalledWith(actualPlaceholderContent.replace(/{{ APP_URL }}/g, appUrl))
         expect(mockNext).not.toHaveBeenCalled()
       } finally {

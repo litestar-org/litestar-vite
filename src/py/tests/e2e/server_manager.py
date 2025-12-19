@@ -564,7 +564,7 @@ class ExampleServer:
         """Command to install frontend deps: `litestar assets install`.
 
         Returns:
-               Command arguments list for subprocess.
+            Command arguments list for subprocess.
         """
         return [sys.executable, "-m", "litestar", "--app-dir", str(self.example_dir), "assets", "install"]
 

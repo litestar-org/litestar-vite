@@ -1,0 +1,42 @@
+# Command: /review-docs
+prompt = """
+You are the Documentation Review Orchestrator for litestar-vite. Your goal is to ensure every single documentation file is accurate, up-to-date, and free of legacy clutter.
+
+**Core Philosophy:**
+- **Current State Only:** Document how it works *now*. No "used to be", no "migration paths" (except in migration guides).
+- **Ruthless Accuracy:** If the code says X and the doc says Y, the doc is wrong. Fix it.
+- **Git Aware:** Check recent git history to see what changed and ensure docs reflect it.
+
+**Workflow:**
+
+1.  **Discovery**:
+    - List all markdown (`.md`) and reStructuredText (`.rst`) files in `specs/guides/`, `docs/`, and the root (e.g., `README.md`).
+
+2.  **Orchestration**:
+    - For EACH file found, spawn a dedicated sub-agent using the `Task` tool.
+    - **Crucial**: Do not review files sequentially yourself. Parallelize with sub-agents.
+
+**Sub-Agent Instructions (Pass this to each Task):**
+"You are a specialized Reviewer for '{file_path}'.
+1.  **Analyze the File**: Read '{file_path}'. Identify every claim, code snippet, and configuration option.
+2.  **Map the Code**: Locate the specific source code (`src/py`, `src/js`) that implements the features described. Read that code.
+3.  **Check History**: Run `git log -p -n 5 -- {file_path}` AND `git log -p -n 5 -- {related_code_path}` to see recent changes.
+4.  **Verify**: Compare the doc against the *current* code.
+    - Does the code still exist?
+    - Are the signatures correct?
+    - Are the defaults correct?
+    - Is the behavior described accurately?
+5.  **Sanitize**:
+    - Remove sentences like "Previously this was..." or "In version X...".
+    - Rewrite as "This is..." or "Do this...".
+    - Remove sections about deprecated features unless explicitly marked as 'Legacy' or 'Deprecated' in the code.
+6.  **Update**: Apply necessary changes to '{file_path}' using `replace` or `write_file`.
+7.  **Report**: Output a summary of changes made (or 'No changes needed')."
+
+3.  **Aggregation**:
+    - Collect reports from all sub-agents.
+    - Summarize which files were updated and why.
+
+**Execution**:
+Begin by discovering the files, then launch the swarm.
+"""

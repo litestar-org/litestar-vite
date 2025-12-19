@@ -8,7 +8,8 @@
     "start": "ng serve --proxy-config proxy.conf.json",
     "build": "ng build",
     "serve": "npx serve dist/{{ project_name }}/browser",
-    "watch": "npm run serve"
+    "watch": "npm run serve",
+    "update": "npm update"
   },
   "dependencies": {
 {%- for dep in dependencies %}

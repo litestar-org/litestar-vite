@@ -137,6 +137,7 @@ Framework-specific expertise in `.claude/skills/`:
 | `/sync-llms-txt` | Sync LLM documentation |
 | `/update-templates` | Audit framework templates |
 | `/bootstrap` | Bootstrap new project setup |
+| `/review-docs` | Comprehensive documentation review |
 
 ---
 

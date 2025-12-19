@@ -10,43 +10,43 @@ from pathlib import Path
 
 from litestar import Litestar, get, post
 
-from litestar_vite._codegen.utils import (
-    _deep_sort_dict,
+from litestar_vite.codegen import generate_inertia_pages_json, generate_routes_json, generate_routes_ts
+from litestar_vite.codegen._utils import (
+    deep_sort_dict,
     encode_deterministic_json,
     strip_timestamp_for_comparison,
     write_if_changed,
 )
-from litestar_vite.codegen import generate_inertia_pages_json, generate_routes_json, generate_routes_ts
 
 
-def test_deep_sort_dict_simple() -> None:
+def testdeep_sort_dict_simple() -> None:
     """Test deep sorting of a simple dictionary."""
     unsorted = {"z": 1, "a": 2, "m": 3}
-    result = _deep_sort_dict(unsorted)
+    result = deep_sort_dict(unsorted)
     assert list(result.keys()) == ["a", "m", "z"]
 
 
-def test_deep_sort_dict_nested() -> None:
+def testdeep_sort_dict_nested() -> None:
     """Test deep sorting of nested dictionaries."""
     unsorted = {"outer": {"z": 1, "a": 2}, "inner": {"b": 3, "c": 4}}
-    result = _deep_sort_dict(unsorted)
+    result = deep_sort_dict(unsorted)
     assert list(result.keys()) == ["inner", "outer"]
     assert list(result["outer"].keys()) == ["a", "z"]
     assert list(result["inner"].keys()) == ["b", "c"]
 
 
-def test_deep_sort_dict_with_lists() -> None:
+def testdeep_sort_dict_with_lists() -> None:
     """Test that lists are preserved but their dict elements are sorted."""
     unsorted = {"items": [{"z": 1, "a": 2}, {"y": 3, "b": 4}]}
-    result = _deep_sort_dict(unsorted)
+    result = deep_sort_dict(unsorted)
     assert list(result["items"][0].keys()) == ["a", "z"]
     assert list(result["items"][1].keys()) == ["b", "y"]
 
 
-def test_deep_sort_dict_preserves_primitives() -> None:
+def testdeep_sort_dict_preserves_primitives() -> None:
     """Test that primitive values are preserved."""
     data = {"str": "hello", "int": 42, "float": 3.14, "bool": True, "none": None}
-    result = _deep_sort_dict(data)
+    result = deep_sort_dict(data)
     assert result == {"bool": True, "float": 3.14, "int": 42, "none": None, "str": "hello"}
 
 
@@ -74,7 +74,7 @@ def test_strip_timestamp_handles_invalid_json() -> None:
 
 
 def test_write_if_changed_creates_new_file() -> None:
-    """Test that write_if_changed creates a new file."""
+    """Test that write_if_changed creates a new file with trailing newline."""
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "test.json"
         content = b'{"test": "data"}'
@@ -83,7 +83,8 @@ def test_write_if_changed_creates_new_file() -> None:
 
         assert result is True
         assert path.exists()
-        assert path.read_bytes() == content
+        # write_if_changed ensures trailing newline for POSIX compliance
+        assert path.read_bytes() == content + b"\n"
 
 
 def test_write_if_changed_skips_identical_content() -> None:
@@ -91,12 +92,13 @@ def test_write_if_changed_skips_identical_content() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "test.json"
         content = b'{"test": "data"}'
+        content_with_newline = content + b"\n"
 
-        # First write
-        path.write_bytes(content)
+        # First write (with trailing newline as write_if_changed adds it)
+        path.write_bytes(content_with_newline)
         original_stat = path.stat()
 
-        # Second write with same content
+        # Second write with same content (will also have newline added)
         result = write_if_changed(path, content)
 
         assert result is False
@@ -116,7 +118,8 @@ def test_write_if_changed_updates_different_content() -> None:
         result = write_if_changed(path, content2)
 
         assert result is True
-        assert path.read_bytes() == content2
+        # write_if_changed ensures trailing newline for POSIX compliance
+        assert path.read_bytes() == content2 + b"\n"
 
 
 def test_write_if_changed_with_normalize_callback() -> None:
@@ -163,7 +166,8 @@ def test_write_if_changed_handles_string_content() -> None:
         result = write_if_changed(path, content)
 
         assert result is True
-        assert path.read_text() == content
+        # write_if_changed ensures trailing newline for POSIX compliance
+        assert path.read_text() == content + "\n"
 
 
 def test_encode_deterministic_json_produces_sorted_output() -> None:

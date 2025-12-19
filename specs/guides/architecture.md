@@ -1,6 +1,6 @@
 # Architecture Guide for litestar-vite
 
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
+**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-18
 
 This document outlines the architectural patterns and conventions used in the `litestar-vite` project.
 
@@ -29,7 +29,7 @@ The `ViteConfig` class in `config.py` controls the integration behavior. It uses
 
 - **`PathConfig`**: File system paths (root, bundle_dir, resource_dir, static_dir, asset_url, ssr_output_dir, manifest_name, hot_file)
 - **`RuntimeConfig`**: Execution settings (dev_mode, proxy_mode, external_dev_server, http2, start_dev_server)
-- **`TypeGenConfig`**: Type generation settings (output, openapi_path, routes_path, routes_ts_path, page_props_path, generate_zod, generate_sdk, generate_routes, generate_page_props, global_route, fallback_type, type_import_paths, watch_patterns)
+- **`TypeGenConfig`**: Type generation settings (output, openapi_path, routes_path, routes_ts_path, page_props_path, generate_zod, generate_sdk, generate_routes, generate_page_props, global_route, fallback_type, type_import_paths)
 - **`InertiaConfig`**: Inertia.js settings (root_template, component_opt_keys, redirect_unauthorized_to, redirect_404, extra_static_page_props, extra_session_page_props, encrypt_history, type_gen, ssr).
 - **`InertiaTypeGenConfig`**: Inertia type generation settings (include_default_auth, include_default_flash)
 - **`InertiaSSRConfig`**: Inertia Server-Side Rendering settings (enabled, url, timeout)
@@ -126,10 +126,13 @@ src/js/src/
 ├── helpers/              # Frontend helper utilities
 │   ├── index.ts          # Barrel export
 │   ├── csrf.ts           # CSRF token utilities (getCsrfToken, csrfHeaders, csrfFetch)
-│   └── htmx.ts           # HTMX utilities (addDirective, registerHtmxExtension, setHtmxDebug, swapJson)
+│   ├── htmx.ts           # HTMX utilities (addDirective, registerHtmxExtension, setHtmxDebug, swapJson)
+│   └── routes.ts         # Runtime route helpers (legacy)
 ├── shared/               # Shared utilities across modules
-│   ├── index.ts          # Barrel export
-│   └── debounce.ts       # Type-safe debounce utility
+│   ├── bridge-schema.ts  # Bridge file type definitions
+│   ├── debounce.ts       # Type-safe debounce utility
+│   ├── logger.ts         # Logging utility
+│   └── typegen-plugin.ts # Type generation plugin
 └── inertia-helpers/      # Inertia.js specific helpers
     └── index.ts          # resolvePageComponent + re-exports
 ```

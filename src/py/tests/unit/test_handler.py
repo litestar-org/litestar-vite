@@ -19,7 +19,11 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def temp_resource_dir(tmp_path: Path) -> Path:
-    """Create a temporary resource directory with index.html."""
+    """Create a temporary resource directory with index.html.
+
+    Returns:
+        Temporary resource directory path.
+    """
     resource_dir = tmp_path / "resources"
     resource_dir.mkdir()
     index_html = resource_dir / "index.html"
@@ -36,8 +40,37 @@ def temp_resource_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def temp_resource_dir_with_entry(tmp_path: Path) -> Path:
+    """Create a temporary resource directory with an entry point script.
+
+    Returns:
+        The fixture value.
+    """
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    index_html = resource_dir / "index.html"
+    index_html.write_text(
+        """
+        <!DOCTYPE html>
+        <html>
+        <head><title>Test SPA</title></head>
+        <body>
+          <div id="app"></div>
+          <script type="module" src="/resources/main.tsx"></script>
+        </body>
+        </html>
+        """
+    )
+    return resource_dir
+
+
+@pytest.fixture
 def spa_config(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> ViteConfig:
-    """Create a ViteConfig for SPA mode."""
+    """Create a ViteConfig for SPA mode.
+
+    Returns:
+        The fixture value.
+    """
     from litestar_vite.config import PathConfig, RuntimeConfig
 
     # Clear environment variables that might affect config
@@ -51,12 +84,34 @@ def spa_config(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Vite
 
 @pytest.fixture
 def spa_config_dev(temp_resource_dir: Path) -> ViteConfig:
-    """Create a ViteConfig for SPA mode in development."""
+    """Create a ViteConfig for SPA mode in development.
+
+    Returns:
+        The fixture value.
+    """
     from litestar_vite.config import PathConfig, RuntimeConfig
 
     return ViteConfig(
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
+        dev_mode=True,
+        runtime=RuntimeConfig(dev_mode=True),
+    )
+
+
+@pytest.fixture
+def hybrid_config_dev(temp_resource_dir_with_entry: Path) -> ViteConfig:
+    """Create a ViteConfig for hybrid (Inertia) mode in development.
+
+    Returns:
+        The fixture value.
+    """
+    from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig
+
+    return ViteConfig(
+        mode="hybrid",
+        inertia=InertiaConfig(),
+        paths=PathConfig(resource_dir=temp_resource_dir_with_entry),
         dev_mode=True,
         runtime=RuntimeConfig(dev_mode=True),
     )
@@ -171,7 +226,7 @@ async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "M
 
     # Patch httpx.AsyncClient
     expected_url = "http://127.0.0.1:5173"
-    with patch("litestar_vite._handler.app.httpx.AsyncClient", return_value=mock_client):
+    with patch("litestar_vite.handler._app.httpx.AsyncClient", return_value=mock_client):
         # Pass explicit vite_url to avoid hotfile resolution picking up stale hotfiles
         await handler.initialize_async(vite_url=expected_url)
 
@@ -186,6 +241,29 @@ async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "M
         mock_client.get.assert_called_once_with(f"{expected_url}/", follow_redirects=True)
 
 
+async def test_hybrid_dev_mode_uses_local_index_and_injects_vite(hybrid_config_dev: ViteConfig) -> None:
+    """Hybrid mode should serve local index.html and use Vite HTML transforms."""
+    handler = AppHandler(hybrid_config_dev)
+    await handler.initialize_async(vite_url="http://127.0.0.1:5173")
+
+    mock_request = Mock()
+    proxy_mock = AsyncMock()
+    transform_mock = AsyncMock(
+        return_value='<html><script src="/static/@vite/client"></script>'
+        '<script type="module" src="/static/resources/main.tsx"></script></html>'
+    )
+    with (
+        patch.object(AppHandler, "_proxy_to_dev_server", proxy_mock),
+        patch.object(AppHandler, "_transform_html_with_vite", transform_mock),
+    ):
+        html = await handler.get_html(mock_request, page_data={"component": "Home", "props": {}, "url": "/landing"})
+
+    assert "/static/@vite/client" in html
+    assert "/static/resources/main.tsx" in html
+    proxy_mock.assert_not_called()
+    transform_mock.assert_called_once()
+
+
 async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> None:
     """Test SPA handler handles dev server connection errors."""
     handler = AppHandler(spa_config_dev)
@@ -195,7 +273,7 @@ async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> N
     mock_client.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
     mock_client.aclose = AsyncMock()
 
-    with patch("litestar_vite._handler.app.httpx.AsyncClient", return_value=mock_client):
+    with patch("litestar_vite.handler._app.httpx.AsyncClient", return_value=mock_client):
         # Pass explicit vite_url to avoid hotfile resolution
         await handler.initialize_async(vite_url="http://127.0.0.1:5173")
 
@@ -211,7 +289,7 @@ async def test_spa_handler_shutdown(spa_config_dev: ViteConfig) -> None:
     mock_client = AsyncMock()
     mock_client.aclose = AsyncMock()
 
-    with patch("litestar_vite._handler.app.httpx.AsyncClient", return_value=mock_client):
+    with patch("litestar_vite.handler._app.httpx.AsyncClient", return_value=mock_client):
         # Pass explicit vite_url to avoid hotfile resolution
         await handler.initialize_async(vite_url="http://127.0.0.1:5173")
 
@@ -314,11 +392,13 @@ async def test_spa_handler_fallback_load(spa_config: ViteConfig) -> None:
 
 
 @pytest.fixture
-def spa_config_with_transforms(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> ViteConfig:
-    """Create a ViteConfig with SPA transformations enabled.
+def spa_config_for_caching(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> ViteConfig:
+    """Create a ViteConfig for testing SPA caching behavior.
 
-    Note: inject_csrf is disabled for tests that don't mock the request scope,
-    as CSRF token extraction requires a real request with ScopeState.
+    Note: No InertiaConfig to avoid auto-enabling CSRF which breaks mock requests.
+
+    Returns:
+        ViteConfig: Configured for SPA with transformations enabled.
     """
     from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
 
@@ -330,16 +410,38 @@ def spa_config_with_transforms(temp_resource_dir: Path, monkeypatch: pytest.Monk
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
         runtime=RuntimeConfig(dev_mode=False),
-        spa=SPAConfig(
-            inject_csrf=False,  # Disable for tests that don't mock request scope
-            app_selector="#app",
-        ),
+        spa=SPAConfig(inject_csrf=False, app_selector="#app"),
     )
 
 
-async def test_spa_handler_transform_html_with_page_data(spa_config_with_transforms: ViteConfig) -> None:
-    """Test that get_html injects page data."""
-    handler = AppHandler(spa_config_with_transforms)
+@pytest.fixture
+def spa_config_with_script_element(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> ViteConfig:
+    """Create a ViteConfig with Inertia script element mode enabled.
+
+    Note: InertiaConfig auto-enables CSRF, so these tests pass page_data which
+    bypasses the CSRF check path.
+
+    Returns:
+        The fixture value.
+    """
+    from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig, SPAConfig
+
+    # Clear environment variables
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    return ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(app_selector="#app"),  # CSRF auto-enabled by InertiaConfig
+        inertia=InertiaConfig(use_script_element=True),  # v2.3+ optimization
+    )
+
+
+async def test_spa_handler_transform_html_with_page_data(spa_config_with_script_element: ViteConfig) -> None:
+    """Test that get_html injects page data as script element."""
+    handler = AppHandler(spa_config_with_script_element)
     await handler.initialize_async()
 
     page_data = {"component": "Home", "props": {"user": "test"}}
@@ -347,15 +449,15 @@ async def test_spa_handler_transform_html_with_page_data(spa_config_with_transfo
     mock_request = Mock()
     html = await handler.get_html(mock_request, page_data=page_data)
 
-    # Should contain the injected page data as data-page attribute
-    assert 'data-page="' in html
+    # use_script_element=True - page data injected as script element
+    assert '<script type="application/json" id="app_page">' in html
     assert "Home" in html
     assert "test" in html
 
 
-async def test_spa_handler_caches_transformed_html(spa_config_with_transforms: ViteConfig) -> None:
+async def test_spa_handler_caches_transformed_html(spa_config_for_caching: ViteConfig) -> None:
     """Test that transformed HTML is cached in production."""
-    handler = AppHandler(spa_config_with_transforms)
+    handler = AppHandler(spa_config_for_caching)
     await handler.initialize_async()
 
     mock_request = Mock()
@@ -369,9 +471,9 @@ async def test_spa_handler_caches_transformed_html(spa_config_with_transforms: V
     assert html1 == html2
 
 
-async def test_spa_handler_page_data_bypasses_cache(spa_config_with_transforms: ViteConfig) -> None:
+async def test_spa_handler_page_data_bypasses_cache(spa_config_for_caching: ViteConfig) -> None:
     """Test that page_data bypasses transformed HTML cache."""
-    handler = AppHandler(spa_config_with_transforms)
+    handler = AppHandler(spa_config_for_caching)
     await handler.initialize_async()
 
     mock_request = Mock()
@@ -390,9 +492,9 @@ async def test_spa_handler_page_data_bypasses_cache(spa_config_with_transforms: 
     assert "About" not in html_cached
 
 
-async def test_spa_handler_get_html_sync(spa_config_with_transforms: ViteConfig) -> None:
+async def test_spa_handler_get_html_sync(spa_config_for_caching: ViteConfig) -> None:
     """Test the synchronous get_html_sync method."""
-    handler = AppHandler(spa_config_with_transforms)
+    handler = AppHandler(spa_config_for_caching)
     await handler.initialize_async()
 
     # Should work synchronously
@@ -401,17 +503,69 @@ async def test_spa_handler_get_html_sync(spa_config_with_transforms: ViteConfig)
     assert "Test SPA" in html
 
 
-async def test_spa_handler_get_html_sync_with_page_data(spa_config_with_transforms: ViteConfig) -> None:
-    """Test get_html_sync with page_data."""
-    handler = AppHandler(spa_config_with_transforms)
+async def test_spa_handler_get_html_sync_with_page_data(spa_config_with_script_element: ViteConfig) -> None:
+    """Test get_html_sync with page_data using script element."""
+    handler = AppHandler(spa_config_with_script_element)
     await handler.initialize_async()
 
     page_data = {"component": "Home", "props": {"message": "Hello"}}
 
     html = handler.get_html_sync(page_data=page_data)
 
-    assert 'data-page="' in html
+    # use_script_element=True - page data injected as script element
+    assert '<script type="application/json" id="app_page">' in html
     assert "Home" in html
+
+
+@pytest.fixture
+def spa_config_with_data_page_attr(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> ViteConfig:
+    """Create a ViteConfig with legacy data-page attribute mode (use_script_element=False).
+
+    Returns:
+        ViteConfig: Configured for SPA with data-page attribute mode.
+    """
+    from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig, SPAConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    return ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(inject_csrf=False, app_selector="#app"),
+        inertia=InertiaConfig(use_script_element=False),  # Legacy mode: use data-page attribute (default)
+    )
+
+
+async def test_spa_handler_legacy_data_page_attribute(spa_config_with_data_page_attr: ViteConfig) -> None:
+    """Test that page data is injected as data-page attribute when use_script_element=False."""
+    handler = AppHandler(spa_config_with_data_page_attr)
+    await handler.initialize_async()
+
+    page_data = {"component": "Home", "props": {"user": "test"}}
+
+    mock_request = Mock()
+    html = await handler.get_html(mock_request, page_data=page_data)
+
+    # Legacy mode: page data injected as data-page attribute
+    assert 'data-page="' in html
+    assert '<script type="application/json" id="app_page">' not in html
+    assert "Home" in html
+
+
+async def test_spa_handler_legacy_data_page_sync(spa_config_with_data_page_attr: ViteConfig) -> None:
+    """Test get_html_sync with legacy data-page attribute mode."""
+    handler = AppHandler(spa_config_with_data_page_attr)
+    await handler.initialize_async()
+
+    page_data = {"component": "About", "props": {"message": "Hello"}}
+
+    html = handler.get_html_sync(page_data=page_data)
+
+    # Legacy mode: page data injected as data-page attribute
+    assert 'data-page="' in html
+    assert "About" in html
 
 
 async def test_spa_handler_get_html_sync_works_in_dev_mode(spa_config_dev: ViteConfig) -> None:
@@ -429,8 +583,8 @@ async def test_spa_handler_get_html_sync_works_in_dev_mode(spa_config_dev: ViteC
     mock_sync_client.get.return_value = mock_response
 
     with (
-        patch("litestar_vite._handler.app.httpx.AsyncClient", return_value=mock_async_client),
-        patch("litestar_vite._handler.app.httpx.Client", return_value=mock_sync_client),
+        patch("litestar_vite.handler._app.httpx.AsyncClient", return_value=mock_async_client),
+        patch("litestar_vite.handler._app.httpx.Client", return_value=mock_sync_client),
     ):
         # Pass explicit vite_url to avoid hotfile resolution
         await handler.initialize_async(vite_url="http://127.0.0.1:5173")
@@ -695,7 +849,7 @@ async def test_spa_handler_route_exclusion_dev_mode(spa_config_dev: ViteConfig) 
     mock_async_client.get = AsyncMock(return_value=mock_response)
     mock_async_client.aclose = AsyncMock()
 
-    with patch("litestar_vite._handler.app.httpx.AsyncClient", return_value=mock_async_client):
+    with patch("litestar_vite.handler._app.httpx.AsyncClient", return_value=mock_async_client):
         await handler.initialize_async(vite_url="http://127.0.0.1:5173")
 
         route = handler.create_route_handler()

@@ -5,7 +5,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 ## Features
 
 - One-port dev: proxies Vite HTTP + WS/HMR through Litestar by default; switch to two-port with `VITE_PROXY_MODE=direct`.
-- SSR framework support: use `proxy_mode="ssr"` for Astro, Nuxt, SvelteKit - proxies everything except your API routes.
+- SSR framework support: use `mode="ssr"` for Astro, Nuxt, SvelteKit - proxies everything except your API routes.
 - Production assets: reads Vite manifest from `public/manifest.json` (configurable) and serves under `asset_url`.
 - Type-safe frontends: optional OpenAPI/routes export + `@hey-api/openapi-ts` via the Vite plugin.
 - Inertia support: v2 protocol with session middleware and optional SPA mode.
@@ -103,13 +103,13 @@ app = Litestar(
 
 ## Meta-frameworks (Astro, Nuxt, SvelteKit)
 
-Use `proxy_mode="ssr"` to proxy non-API routes to the framework's dev server:
+Use `mode="ssr"` (or `mode="framework"`) to proxy non-API routes to the framework's dev server:
 
 ```python
 import os
 from pathlib import Path
 from litestar import Litestar
-from litestar_vite import VitePlugin, ViteConfig, PathConfig, RuntimeConfig
+from litestar_vite import VitePlugin, ViteConfig, PathConfig
 
 here = Path(__file__).parent
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
@@ -117,9 +117,9 @@ DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
 app = Litestar(
     plugins=[
         VitePlugin(config=ViteConfig(
+            mode="ssr",
             dev_mode=DEV_MODE,
             paths=PathConfig(root=here),
-            runtime=RuntimeConfig(proxy_mode="ssr"),
         ))
     ],
 )

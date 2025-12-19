@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-def _deep_sort_dict(obj: Any) -> Any:
+def deep_sort_dict(obj: Any) -> Any:
     """Recursively sort all dictionary keys for deterministic JSON output.
 
     Args:
@@ -18,9 +18,9 @@ def _deep_sort_dict(obj: Any) -> Any:
     """
     if isinstance(obj, dict):
         # pyright: ignore - intentionally working with Any types for generic dict sorting
-        return {k: _deep_sort_dict(v) for k, v in sorted(obj.items())}  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
+        return {k: deep_sort_dict(v) for k, v in sorted(obj.items())}  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
     if isinstance(obj, list):
-        return [_deep_sort_dict(item) for item in obj]  # pyright: ignore[reportUnknownVariableType]
+        return [deep_sort_dict(item) for item in obj]  # pyright: ignore[reportUnknownVariableType]
     return obj
 
 
@@ -71,7 +71,15 @@ def write_if_changed(
     Returns:
         True if file was written (content changed), False if skipped (unchanged).
     """
-    content_bytes = content.encode(encoding) if isinstance(content, str) else content
+    # Ensure trailing newline for POSIX compliance
+    if isinstance(content, str):
+        if not content.endswith("\n"):
+            content += "\n"
+        content_bytes = content.encode(encoding)
+    else:
+        if not content.endswith(b"\n"):
+            content += b"\n"
+        content_bytes = content
 
     if path.exists():
         try:
@@ -101,7 +109,9 @@ def write_if_changed(
     return True
 
 
-def encode_deterministic_json(data: dict[str, Any], *, indent: int = 2) -> bytes:
+def encode_deterministic_json(
+    data: dict[str, Any], *, indent: int = 2, serializer: Callable[[Any], bytes] | None = None
+) -> bytes:
     """Encode JSON with sorted keys for deterministic output.
 
     This is a wrapper that ensures all nested dict keys are sorted
@@ -111,6 +121,8 @@ def encode_deterministic_json(data: dict[str, Any], *, indent: int = 2) -> bytes
     Args:
         data: Dictionary to encode.
         indent: Indentation level for formatting.
+        serializer: Optional custom serializer function. If not provided,
+            uses litestar's default encode_json.
 
     Returns:
         Formatted JSON bytes with sorted keys.
@@ -118,5 +130,12 @@ def encode_deterministic_json(data: dict[str, Any], *, indent: int = 2) -> bytes
     import msgspec
     from litestar.serialization import encode_json
 
-    sorted_data = _deep_sort_dict(data)
-    return msgspec.json.format(encode_json(sorted_data), indent=indent)
+    sorted_data = deep_sort_dict(data)
+    if serializer is not None:
+        content = msgspec.json.format(serializer(sorted_data), indent=indent)
+    else:
+        content = msgspec.json.format(encode_json(sorted_data), indent=indent)
+    # Ensure trailing newline for POSIX compliance
+    if not content.endswith(b"\n"):
+        content += b"\n"
+    return content

@@ -18,8 +18,15 @@ from litestar import get
 from litestar.exceptions import ImproperlyConfiguredException, SerializationException
 from litestar.serialization import decode_json, encode_json
 
-from litestar_vite._handler.routing import spa_handler_dev, spa_handler_prod
-from litestar_vite.html_transform import inject_head_script, set_data_attribute, transform_asset_urls
+from litestar_vite.config import InertiaConfig
+from litestar_vite.handler._routing import spa_handler_dev, spa_handler_prod
+from litestar_vite.html_transform import (
+    inject_head_script,
+    inject_page_script,
+    inject_vite_dev_scripts,
+    set_data_attribute,
+    transform_asset_urls,
+)
 
 if TYPE_CHECKING:
     from litestar.connection import Request
@@ -161,21 +168,25 @@ class AppHandler:
 
         if page_data is not None:
             json_data = encode_json(page_data).decode("utf-8")
-            html = set_data_attribute(html, self._spa_config.app_selector, "data-page", json_data)
+            # Check InertiaConfig for use_script_element (Inertia-specific setting)
+            inertia = self._config.inertia
+            use_script_element = isinstance(inertia, InertiaConfig) and inertia.use_script_element
+            if use_script_element:
+                # v2.3+ Inertia protocol: Use script element for better performance (~37% smaller)
+                html = inject_page_script(html, json_data, nonce=self._config.csp_nonce)
+            else:
+                # Legacy: Use data-page attribute
+                html = set_data_attribute(html, self._spa_config.app_selector, "data-page", json_data)
 
         return html
 
     async def _load_index_html_async(self) -> None:
-        """Load and cache index.html asynchronously.
-
-        Raises:
-            ImproperlyConfiguredException: If index.html cannot be located.
-        """
+        """Load and cache index.html asynchronously."""
         resolved_path: Path | None = None
         for candidate in self._config.candidate_index_html_paths():
-            candidate_path = Path(candidate)
-            if candidate_path.exists():
-                resolved_path = candidate_path
+            candidate_path = anyio.Path(candidate)
+            if await candidate_path.exists():
+                resolved_path = candidate
                 break
 
         if resolved_path is None:
@@ -189,11 +200,7 @@ class AppHandler:
         self._cached_bytes = html.encode("utf-8")
 
     def _load_index_html_sync(self) -> None:
-        """Load and cache index.html synchronously.
-
-        Raises:
-            ImproperlyConfiguredException: If index.html cannot be located.
-        """
+        """Load and cache index.html synchronously."""
         resolved_path: Path | None = None
         for candidate in self._config.candidate_index_html_paths():
             candidate_path = Path(candidate)
@@ -288,6 +295,90 @@ class AppHandler:
             return html
         return transform_asset_urls(html, self._manifest, asset_url=self._config.asset_url, base_url=None)
 
+    def _inject_dev_scripts(self, html: str) -> str:
+        """Inject Vite dev scripts for hybrid mode HTML served by Litestar.
+
+        Returns:
+            The HTML with Vite dev scripts injected.
+        """
+        resource_dir = self._config.resource_dir
+        try:
+            resource_dir_str = str(resource_dir.relative_to(self._config.root_dir))
+        except ValueError:
+            resource_dir_str = resource_dir.name
+        return inject_vite_dev_scripts(
+            html,
+            "",
+            asset_url=self._config.asset_url,
+            is_react=self._config.is_react,
+            csp_nonce=self._config.csp_nonce,
+            resource_dir=resource_dir_str,
+        )
+
+    async def _transform_html_with_vite(self, html: str, url: str) -> str:
+        """Transform HTML using the Vite dev server pipeline.
+
+        Returns:
+            The transformed HTML.
+        """
+        if self._http_client is None or self._vite_url is None:
+            msg = "HTTP client not initialized. Ensure initialize_async() was called for dev mode."
+            raise ImproperlyConfiguredException(msg)
+        endpoint = f"{self._vite_url.rstrip('/')}/__litestar__/transform-index"
+        response = await self._http_client.post(endpoint, json={"url": url, "html": html}, timeout=5.0)
+        response.raise_for_status()
+        return response.text
+
+    def _transform_html_with_vite_sync(self, html: str, url: str) -> str:
+        """Transform HTML using the Vite dev server pipeline (sync).
+
+        Returns:
+            The transformed HTML.
+        """
+        if self._http_client_sync is None or self._vite_url is None:
+            msg = "HTTP client not initialized. Ensure initialize_sync() was called for dev mode."
+            raise ImproperlyConfiguredException(msg)
+        endpoint = f"{self._vite_url.rstrip('/')}/__litestar__/transform-index"
+        response = self._http_client_sync.post(endpoint, json={"url": url, "html": html}, timeout=5.0)
+        response.raise_for_status()
+        return response.text
+
+    async def _get_dev_html(self, request: "Request[Any, Any, Any]") -> str:
+        """Resolve dev HTML for SPA or hybrid modes.
+
+        Returns:
+            The HTML to serve in development.
+        """
+        if self._config.mode == "hybrid":
+            if self._cached_html is None:
+                await self._load_index_html_async()
+            base_html = self._cached_html or ""
+            request_url = request.url.path or "/"
+            try:
+                return await self._transform_html_with_vite(base_html, request_url)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Falling back to manual Vite script injection: %s", exc)
+                return self._inject_dev_scripts(base_html)
+        return await self._proxy_to_dev_server(request)
+
+    def _get_dev_html_sync(self, page_url: str | None = None) -> str:
+        """Resolve dev HTML synchronously for SPA or hybrid modes.
+
+        Returns:
+            The HTML to serve in development.
+        """
+        if self._config.mode == "hybrid":
+            if self._cached_html is None:
+                self._load_index_html_sync()
+            base_html = self._cached_html or ""
+            request_url = page_url or "/"
+            try:
+                return self._transform_html_with_vite_sync(base_html, request_url)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Falling back to manual Vite script injection: %s", exc)
+                return self._inject_dev_scripts(base_html)
+        return self._proxy_to_dev_server_sync()
+
     def _get_csrf_token(self, request: "Request[Any, Any, Any]") -> "str | None":
         """Extract CSRF token from the request scope.
 
@@ -324,7 +415,7 @@ class AppHandler:
         csrf_token = self._get_csrf_token(request) if needs_csrf else None
 
         if self._config.is_dev_mode and self._config.hot_reload:
-            html = await self._proxy_to_dev_server(request)
+            html = await self._get_dev_html(request)
             if needs_transform:
                 html = self._transform_html(html, page_data, csrf_token)
             return html
@@ -357,9 +448,6 @@ class AppHandler:
 
         Returns:
             The rendered HTML.
-
-        Raises:
-            ImproperlyConfiguredException: If dev-mode HTTP clients are not initialized or Vite URL is unresolved.
         """
         if not self._initialized:
             logger.warning(
@@ -371,11 +459,16 @@ class AppHandler:
         needs_transform = self._spa_config is not None or page_data is not None
         if not needs_transform:
             if self._config.is_dev_mode and self._config.hot_reload:
-                return self._proxy_to_dev_server_sync()
+                return self._get_dev_html_sync()
             return self._cached_html or ""
 
         if self._config.is_dev_mode and self._config.hot_reload:
-            html = self._proxy_to_dev_server_sync()
+            page_url = None
+            if page_data is not None:
+                url_value = page_data.get("url")
+                if isinstance(url_value, str) and url_value:
+                    page_url = url_value
+            html = self._get_dev_html_sync(page_url)
             return self._transform_html(html, page_data, csrf_token)
 
         base_html = self._cached_html or ""
@@ -385,10 +478,7 @@ class AppHandler:
         """Get cached index.html bytes (production).
 
         Returns:
-            Cached HTML bytes.
-
-        Raises:
-            ImproperlyConfiguredException: If index.html cannot be located.
+            Cached HTML bytes. .
         """
         if not self._initialized:
             logger.warning(

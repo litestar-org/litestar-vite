@@ -6,70 +6,61 @@ from uuid import UUID
 from litestar import Litestar, get, post
 from litestar.params import Parameter
 
-from litestar_vite._codegen.routes import (  # pyright: ignore[reportPrivateUsage]
-    _extract_path_params,
-    _make_unique_name,
-    extract_route_metadata,
-)
-from litestar_vite._codegen.ts import (  # pyright: ignore[reportPrivateUsage]
-    _join_union,
-    _ts_literal,
-    _wrap_for_array,
+from litestar_vite.codegen import escape_ts_string, generate_routes_ts, is_type_required, ts_type_for_param
+from litestar_vite.codegen._routes import extract_path_params, extract_route_metadata, make_unique_name
+from litestar_vite.codegen._ts import (
     collect_ref_names,
+    join_union,
     python_type_to_typescript,
-)
-from litestar_vite.codegen import (
-    _escape_ts_string,
-    _is_type_required,
-    _ts_type_for_param,
-    _ts_type_from_openapi,
-    generate_routes_ts,
+    ts_literal,
+    ts_type_from_openapi,
+    wrap_for_array,
 )
 
 
-def test_ts_type_for_param_basic_types() -> None:
+def testts_type_for_param_basic_types() -> None:
     """Test TypeScript type mapping for basic types."""
-    assert _ts_type_for_param("string") == "string"
-    assert _ts_type_for_param("integer") == "number"
-    assert _ts_type_for_param("number") == "number"
-    assert _ts_type_for_param("boolean") == "boolean"
-    assert _ts_type_for_param("int") == "number"
-    assert _ts_type_for_param("float") == "number"
-    assert _ts_type_for_param("str") == "string"
-    assert _ts_type_for_param("bool") == "boolean"
+    assert ts_type_for_param("string") == "string"
+    assert ts_type_for_param("integer") == "number"
+    assert ts_type_for_param("number") == "number"
+    assert ts_type_for_param("boolean") == "boolean"
+    assert ts_type_for_param("int") == "number"
+    assert ts_type_for_param("float") == "number"
+    assert ts_type_for_param("str") == "string"
+    assert ts_type_for_param("bool") == "boolean"
 
 
-def test_ts_type_for_param_special_formats() -> None:
+def testts_type_for_param_special_formats() -> None:
     """Test TypeScript type mapping for special formats."""
-    assert _ts_type_for_param("uuid") == "string"
-    assert _ts_type_for_param("date") == "string"
-    assert _ts_type_for_param("date-time") == "string"
-    assert _ts_type_for_param("email") == "string"
-    assert _ts_type_for_param("uri") == "string"
-    assert _ts_type_for_param("path") == "string"
+    assert ts_type_for_param("uuid") == "string"
+    assert ts_type_for_param("date") == "string"
+    assert ts_type_for_param("date-time") == "string"
+    assert ts_type_for_param("email") == "string"
+    assert ts_type_for_param("uri") == "string"
+    assert ts_type_for_param("path") == "string"
 
 
-def test_ts_type_for_param_optional_handling() -> None:
+def testts_type_for_param_optional_handling() -> None:
     """Test TypeScript type mapping handles optional markers."""
-    assert _ts_type_for_param("string | undefined") == "string | undefined"
-    assert _ts_type_for_param("integer?") == "number | undefined"
-    assert _ts_type_for_param("unknown") == "unknown"
+    assert ts_type_for_param("string | undefined") == "string | undefined"
+    assert ts_type_for_param("integer?") == "number | undefined"
+    assert ts_type_for_param("unknown") == "unknown"
 
 
-def test_is_type_required() -> None:
+def testis_type_required() -> None:
     """Test required type detection."""
-    assert _is_type_required("string") is True
-    assert _is_type_required("integer") is True
-    assert _is_type_required("string | undefined") is False
-    assert _is_type_required("integer?") is False
+    assert is_type_required("string") is True
+    assert is_type_required("integer") is True
+    assert is_type_required("string | undefined") is False
+    assert is_type_required("integer?") is False
 
 
-def test_escape_ts_string() -> None:
+def testescape_ts_string() -> None:
     """Test TypeScript string escaping."""
-    assert _escape_ts_string("simple") == "simple"
-    assert _escape_ts_string("with'quote") == "with\\'quote"
-    assert _escape_ts_string('with"double') == 'with\\"double'
-    assert _escape_ts_string("with\\backslash") == "with\\\\backslash"
+    assert escape_ts_string("simple") == "simple"
+    assert escape_ts_string("with'quote") == "with\\'quote"
+    assert escape_ts_string('with"double') == 'with\\"double'
+    assert escape_ts_string("with\\backslash") == "with\\\\backslash"
 
 
 def test_generate_routes_ts_basic_route() -> None:
@@ -338,125 +329,125 @@ def test_generate_routes_ts_is_valid_typescript() -> None:
     assert ts_content.count("[") == ts_content.count("]")
 
 
-# Tests for _ts_type_from_openapi (OpenAPI 3.1 compatibility)
+# Tests for ts_type_from_openapi (OpenAPI 3.1 compatibility)
 # Note: These tests use Litestar's typescript_converter which sorts union types alphabetically
 
 
-def test_ts_type_from_openapi_single_types() -> None:
+def testts_type_from_openapi_single_types() -> None:
     """Test basic single type mapping."""
-    assert _ts_type_from_openapi({"type": "string"}) == "string"
-    assert _ts_type_from_openapi({"type": "integer"}) == "number"
-    assert _ts_type_from_openapi({"type": "number"}) == "number"
-    assert _ts_type_from_openapi({"type": "boolean"}) == "boolean"
-    assert _ts_type_from_openapi({"type": "null"}) == "null"
+    assert ts_type_from_openapi({"type": "string"}) == "string"
+    assert ts_type_from_openapi({"type": "integer"}) == "number"
+    assert ts_type_from_openapi({"type": "number"}) == "number"
+    assert ts_type_from_openapi({"type": "boolean"}) == "boolean"
+    assert ts_type_from_openapi({"type": "null"}) == "null"
     # Object without properties returns empty interface
-    result = _ts_type_from_openapi({"type": "object"})
+    result = ts_type_from_openapi({"type": "object"})
     assert "{" in result  # Empty interface
 
 
-def test_ts_type_from_openapi_ref() -> None:
+def testts_type_from_openapi_ref() -> None:
     """Test schema $ref resolution emits the component name."""
-    assert _ts_type_from_openapi({"$ref": "#/components/schemas/User"}) == "User"
+    assert ts_type_from_openapi({"$ref": "#/components/schemas/User"}) == "User"
 
 
-def test_ts_type_from_openapi_list_types() -> None:
+def testts_type_from_openapi_list_types() -> None:
     """Test OpenAPI 3.1 list types (nullable)."""
     # Litestar sorts union types alphabetically
-    assert _ts_type_from_openapi({"type": ["integer", "null"]}) == "null | number"
-    assert _ts_type_from_openapi({"type": ["string", "null"]}) == "null | string"
-    assert _ts_type_from_openapi({"type": ["null", "boolean"]}) == "boolean | null"
-    assert _ts_type_from_openapi({"type": ["number", "null"]}) == "null | number"
+    assert ts_type_from_openapi({"type": ["integer", "null"]}) == "null | number"
+    assert ts_type_from_openapi({"type": ["string", "null"]}) == "null | string"
+    assert ts_type_from_openapi({"type": ["null", "boolean"]}) == "boolean | null"
+    assert ts_type_from_openapi({"type": ["number", "null"]}) == "null | number"
 
 
-def test_ts_type_from_openapi_one_of() -> None:
+def testts_type_from_openapi_one_of() -> None:
     """Test oneOf compositions (Litestar's nullable pattern)."""
     schema = {"oneOf": [{"type": "integer"}, {"type": "null"}]}
-    assert _ts_type_from_openapi(schema) == "null | number"
+    assert ts_type_from_openapi(schema) == "null | number"
 
     schema = {"oneOf": [{"type": "string"}, {"type": "integer"}]}
-    assert _ts_type_from_openapi(schema) == "number | string"
+    assert ts_type_from_openapi(schema) == "number | string"
 
 
-def test_ts_type_from_openapi_any_of() -> None:
+def testts_type_from_openapi_any_of() -> None:
     """Test anyOf compositions."""
     schema = {"anyOf": [{"type": "string"}, {"type": "integer"}]}
-    assert _ts_type_from_openapi(schema) == "number | string"
+    assert ts_type_from_openapi(schema) == "number | string"
 
 
-def test_ts_type_from_openapi_all_of() -> None:
+def testts_type_from_openapi_all_of() -> None:
     """Test allOf compositions (intersection)."""
     schema = {"allOf": [{"type": "object"}, {"type": "object"}]}
-    result = _ts_type_from_openapi(schema)
+    result = ts_type_from_openapi(schema)
     assert "&" in result  # Intersection type
 
 
-def test_ts_type_from_openapi_all_of_wraps_union_parts() -> None:
+def testts_type_from_openapi_all_of_wraps_union_parts() -> None:
     """Test allOf wraps unions so TS precedence is correct."""
     schema = {"allOf": [{"anyOf": [{"type": "string"}, {"type": "integer"}]}, {"type": "string"}]}
-    assert _ts_type_from_openapi(schema) == "(number | string) & string"
+    assert ts_type_from_openapi(schema) == "(number | string) & string"
 
 
-def test_ts_type_from_openapi_enum() -> None:
+def testts_type_from_openapi_enum() -> None:
     """Test enum as literal union."""
-    assert _ts_type_from_openapi({"enum": ["a", "b", "c"]}) == '"a" | "b" | "c"'
-    assert _ts_type_from_openapi({"enum": [1, 2, 3]}) == "1 | 2 | 3"
-    assert _ts_type_from_openapi({"enum": ["active", "inactive"]}) == '"active" | "inactive"'
+    assert ts_type_from_openapi({"enum": ["a", "b", "c"]}) == '"a" | "b" | "c"'
+    assert ts_type_from_openapi({"enum": [1, 2, 3]}) == "1 | 2 | 3"
+    assert ts_type_from_openapi({"enum": ["active", "inactive"]}) == '"active" | "inactive"'
 
 
-def test_ts_type_from_openapi_const() -> None:
+def testts_type_from_openapi_const() -> None:
     """Test const as literal."""
-    assert _ts_type_from_openapi({"const": "active"}) == '"active"'
-    assert _ts_type_from_openapi({"const": 42}) == "42"
-    assert _ts_type_from_openapi({"const": True}) == "true"
+    assert ts_type_from_openapi({"const": "active"}) == '"active"'
+    assert ts_type_from_openapi({"const": 42}) == "42"
+    assert ts_type_from_openapi({"const": True}) == "true"
     # Note: const=False returns "any" due to Litestar's falsy check bug
     # See: litestar/_openapi/typescript_converter/schema_parsing.py line ~117
-    assert _ts_type_from_openapi({"const": False}) == "any"
+    assert ts_type_from_openapi({"const": False}) == "any"
 
 
-def test_ts_literal_helper() -> None:
+def testts_literal_helper() -> None:
     """Test literal helper covers common primitives and fallbacks."""
-    assert _ts_literal(None) == "null"
-    assert _ts_literal(True) == "true"
-    assert _ts_literal(False) == "false"
-    assert _ts_literal(1) == "1"
-    assert _ts_literal(1.5) == "1.5"
-    assert _ts_literal("x") == '"x"'
-    assert _ts_literal({"a": 1}) == "any"
+    assert ts_literal(None) == "null"
+    assert ts_literal(True) == "true"
+    assert ts_literal(False) == "false"
+    assert ts_literal(1) == "1"
+    assert ts_literal(1.5) == "1.5"
+    assert ts_literal("x") == '"x"'
+    assert ts_literal({"a": 1}) == "any"
 
 
-def test_ts_type_from_openapi_array() -> None:
+def testts_type_from_openapi_array() -> None:
     """Test array types."""
-    assert _ts_type_from_openapi({"type": "array", "items": {"type": "string"}}) == "string[]"
-    assert _ts_type_from_openapi({"type": "array", "items": {"type": "integer"}}) == "number[]"
-    assert _ts_type_from_openapi({"type": "array"}) == "unknown[]"  # No items = unknown[]
+    assert ts_type_from_openapi({"type": "array", "items": {"type": "string"}}) == "string[]"
+    assert ts_type_from_openapi({"type": "array", "items": {"type": "integer"}}) == "number[]"
+    assert ts_type_from_openapi({"type": "array"}) == "unknown[]"  # No items = unknown[]
     # Nested arrays
     schema = {"type": "array", "items": {"type": "array", "items": {"type": "number"}}}
-    assert _ts_type_from_openapi(schema) == "number[][]"
+    assert ts_type_from_openapi(schema) == "number[][]"
     # Arrays of unions must be parenthesized
     schema = {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}}
-    assert _ts_type_from_openapi(schema) == "(number | string)[]"
+    assert ts_type_from_openapi(schema) == "(number | string)[]"
 
 
-def test_ts_type_from_openapi_format_only() -> None:
+def testts_type_from_openapi_format_only() -> None:
     """Test format-only schemas return 'any' (no type info)."""
     # Format without type returns 'any' per Litestar's behavior
-    assert _ts_type_from_openapi({"format": "uuid"}) == "any"
-    assert _ts_type_from_openapi({"format": "date-time"}) == "any"
+    assert ts_type_from_openapi({"format": "uuid"}) == "any"
+    assert ts_type_from_openapi({"format": "date-time"}) == "any"
 
 
-def test_ts_type_from_openapi_string_formats() -> None:
+def testts_type_from_openapi_string_formats() -> None:
     """Test OpenAPI string formats map to semantic aliases."""
-    assert _ts_type_from_openapi({"type": "string", "format": "uuid"}) == "UUID"
-    assert _ts_type_from_openapi({"type": "string", "format": "date-time"}) == "DateTime"
-    assert _ts_type_from_openapi({"type": "string", "format": "date"}) == "DateOnly"
-    assert _ts_type_from_openapi({"type": "string", "format": "time"}) == "TimeOnly"
-    assert _ts_type_from_openapi({"type": "string", "format": "duration"}) == "Duration"
-    assert _ts_type_from_openapi({"type": "string", "format": "email"}) == "Email"
-    assert _ts_type_from_openapi({"type": "string", "format": "uri"}) == "URI"
-    assert _ts_type_from_openapi({"type": "string", "format": "url"}) == "URI"
-    assert _ts_type_from_openapi({"type": "string", "format": "ipv4"}) == "IPv4"
-    assert _ts_type_from_openapi({"type": "string", "format": "ipv6"}) == "IPv6"
-    assert _ts_type_from_openapi({"type": "string", "format": "unknown-format"}) == "string"
+    assert ts_type_from_openapi({"type": "string", "format": "uuid"}) == "UUID"
+    assert ts_type_from_openapi({"type": "string", "format": "date-time"}) == "DateTime"
+    assert ts_type_from_openapi({"type": "string", "format": "date"}) == "DateOnly"
+    assert ts_type_from_openapi({"type": "string", "format": "time"}) == "TimeOnly"
+    assert ts_type_from_openapi({"type": "string", "format": "duration"}) == "Duration"
+    assert ts_type_from_openapi({"type": "string", "format": "email"}) == "Email"
+    assert ts_type_from_openapi({"type": "string", "format": "uri"}) == "URI"
+    assert ts_type_from_openapi({"type": "string", "format": "url"}) == "URI"
+    assert ts_type_from_openapi({"type": "string", "format": "ipv4"}) == "IPv4"
+    assert ts_type_from_openapi({"type": "string", "format": "ipv6"}) == "IPv6"
+    assert ts_type_from_openapi({"type": "string", "format": "unknown-format"}) == "string"
 
 
 def test_generate_routes_ts_query_params_do_not_emit_null() -> None:
@@ -474,29 +465,29 @@ def test_generate_routes_ts_query_params_do_not_emit_null() -> None:
     assert "q?: null" not in ts_content
 
 
-def test_ts_type_from_openapi_edge_cases() -> None:
+def testts_type_from_openapi_edge_cases() -> None:
     """Test edge cases."""
-    assert _ts_type_from_openapi({}) == "any"  # Empty schema = any
-    assert _ts_type_from_openapi({"type": []}) == "any"  # Empty type list = any
-    assert _ts_type_from_openapi({"type": ["null"]}) == "null"
-    assert _ts_type_from_openapi({"unknown_field": "value"}) == "any"
+    assert ts_type_from_openapi({}) == "any"  # Empty schema = any
+    assert ts_type_from_openapi({"type": []}) == "any"  # Empty type list = any
+    assert ts_type_from_openapi({"type": ["null"]}) == "null"
+    assert ts_type_from_openapi({"unknown_field": "value"}) == "any"
 
 
-def test_ts_type_from_openapi_nullable_array() -> None:
+def testts_type_from_openapi_nullable_array() -> None:
     """Test nullable array in OpenAPI 3.1 style."""
     # oneOf with array and null (sorted alphabetically)
     schema: dict[str, Any] = {"oneOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]}
-    assert _ts_type_from_openapi(schema) == "null | string[]"
+    assert ts_type_from_openapi(schema) == "null | string[]"
 
 
-def test_ts_type_from_openapi_object_properties_required() -> None:
+def testts_type_from_openapi_object_properties_required() -> None:
     """Test object properties generate correct optional markers."""
     schema: dict[str, Any] = {
         "type": "object",
         "properties": {"a": {"type": "string"}, "b": {"type": "integer"}},
         "required": ["a"],
     }
-    result = _ts_type_from_openapi(schema)
+    result = ts_type_from_openapi(schema)
     assert "a: string;" in result
     assert "b?: number;" in result
 
@@ -529,17 +520,17 @@ def test_collect_ref_names_nested() -> None:
 
 def test_ts_helpers_union_and_array_wrapping() -> None:
     """Test union join and array wrap helpers."""
-    assert _join_union(set()) == "any"
-    assert _join_union({"string"}) == "string"
-    assert _wrap_for_array("") == "unknown"
-    assert _wrap_for_array("number | string") == "(number | string)"
+    assert join_union(set()) == "any"
+    assert join_union({"string"}) == "string"
+    assert wrap_for_array("") == "unknown"
+    assert wrap_for_array("number | string") == "(number | string)"
 
 
-def test_routes_helpers_make_unique_name_and_extract_path_params() -> None:
+def test_routes_helpersmake_unique_name_andextract_path_params() -> None:
     """Test helper behaviors for route name collisions and path param extraction."""
     used = {"users"}
-    assert _make_unique_name("users", used, "/users/{id:int}", ["GET"]).startswith("users_users_id:int")
-    assert _extract_path_params("/users/{id:int}/posts/{slug:path}") == {"id": "string", "slug": "string"}
+    assert make_unique_name("users", used, "/users/{id:int}", ["GET"]).startswith("users_users_id:int")
+    assert extract_path_params("/users/{id:int}/posts/{slug:path}") == {"id": "string", "slug": "string"}
 
 
 def test_extract_route_metadata_falls_back_when_openapi_disabled() -> None:

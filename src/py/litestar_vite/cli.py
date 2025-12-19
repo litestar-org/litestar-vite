@@ -5,7 +5,6 @@ from pathlib import Path
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any
 
-import msgspec
 from click import Choice, Context, group, option
 from click import Path as ClickPath
 from litestar.cli._utils import (  # pyright: ignore[reportPrivateImportUsage]
@@ -14,32 +13,15 @@ from litestar.cli._utils import (  # pyright: ignore[reportPrivateImportUsage]
     LitestarGroup,
     console,
 )
-from litestar.exceptions import SerializationException
-from litestar.serialization import decode_json, encode_json, get_serializer
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
-from litestar_vite.codegen import (
-    encode_deterministic_json,
-    generate_inertia_pages_json,
-    generate_routes_json,
-    generate_routes_ts,
-    strip_timestamp_for_comparison,
-    write_if_changed,
-)
-from litestar_vite.config import (
-    DeployConfig,
-    ExternalDevServer,
-    InertiaConfig,
-    InertiaTypeGenConfig,
-    LoggingConfig,
-    TypeGenConfig,
-    ViteConfig,
-)
+from litestar_vite.codegen import encode_deterministic_json, generate_routes_json, generate_routes_ts, write_if_changed
+from litestar_vite.config import DeployConfig, ExternalDevServer, LoggingConfig, TypeGenConfig, ViteConfig
 from litestar_vite.deploy import ViteDeployer, format_bytes
 from litestar_vite.doctor import ViteDoctor
 from litestar_vite.exceptions import ViteExecutionError
-from litestar_vite.plugin import VitePlugin, resolve_litestar_version, set_environment
+from litestar_vite.plugin import VitePlugin, set_environment
 from litestar_vite.scaffolding import TemplateContext, generate_project, get_available_templates
 from litestar_vite.scaffolding.templates import FrameworkType, get_template
 
@@ -102,19 +84,6 @@ def _apply_cli_log_level(config: ViteConfig, *, verbose: bool = False, quiet: bo
             timestamps=config.logging_config.timestamps,
         )
         config.reset_executor()
-
-
-def _relative_path(path: Path) -> str:
-    """Return path relative to CWD when possible.
-
-    Returns:
-        The relative path string when possible, otherwise the absolute path string.
-    """
-
-    try:
-        return str(path.relative_to(Path.cwd()))
-    except ValueError:
-        return str(path)
 
 
 def _print_recommended_config(template_name: str, resource_dir: str, bundle_dir: str) -> None:
@@ -215,8 +184,12 @@ def _build_deploy_config(
     return deploy_config
 
 
-def _run_vite_build(config: ViteConfig, root_dir: Path, console: Any, no_build: bool) -> None:
+def _run_vite_build(
+    config: ViteConfig, root_dir: Path, console: Any, no_build: bool, app: "Litestar | None" = None
+) -> None:
     """Run Vite build unless skipped.
+
+    If app is provided, exports schema/routes before building.
 
     Raises:
         SystemExit: If the build fails.
@@ -224,6 +197,10 @@ def _run_vite_build(config: ViteConfig, root_dir: Path, console: Any, no_build: 
     if no_build:
         console.print("[dim]Skipping Vite build (--no-build).[/]")
         return
+
+    # Export schema/routes if app is provided
+    if app is not None:
+        _generate_schema_and_routes(app, config, console)
 
     console.rule("[yellow]Starting Vite build process[/]", align="left")
     if config.set_environment:
@@ -240,74 +217,36 @@ def _run_vite_build(config: ViteConfig, root_dir: Path, console: Any, no_build: 
 def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: Any) -> None:
     """Export OpenAPI schema, routes, and Inertia page props prior to running a build.
 
-    Skips generation when type generation is disabled.
+    Uses the shared `export_integration_assets` function to guarantee byte-identical
+    output between CLI and Plugin.
 
-    When Inertia page-props export is enabled, the generator may add additional component schemas
-    for routes that are excluded from OpenAPI. In that case, this function persists the augmented
-    OpenAPI document so the TypeScript generator can emit those types.
+    Skips generation when type generation is disabled.
 
     Raises:
         LitestarCLIException: If export fails.
     """
+    from litestar_vite.codegen import export_integration_assets
+
     types_config = config.types
     if not isinstance(types_config, TypeGenConfig):
         return
 
     console.print("[dim]Preparing OpenAPI schema and routes...[/]")
 
-    # For Inertia apps, pre-generate pages metadata to register session prop types
-    # in the OpenAPI schema BEFORE exporting it
-    openapi_schema: dict[str, Any] | None = None
-    if isinstance(config.inertia, InertiaConfig) and types_config.generate_page_props and types_config.openapi_path:
-        try:
-            serializer = get_serializer(app.type_encoders)
-            openapi_schema = app.openapi_schema.to_schema()
-            # Pre-generate inertia pages to register session prop types in schema
-            inertia_type_gen = config.inertia.type_gen or InertiaTypeGenConfig()
-            _ = generate_inertia_pages_json(
-                app,
-                openapi_schema=openapi_schema,
-                include_default_auth=inertia_type_gen.include_default_auth,
-                include_default_flash=inertia_type_gen.include_default_flash,
-                inertia_config=config.inertia,
-                types_config=types_config,
-            )
-            # Export the modified schema (now includes session prop types)
-            console.print("[dim]1. Exporting OpenAPI schema...[/]")
-            schema_content = msgspec.json.format(encode_json(openapi_schema, serializer=serializer), indent=2)
-            types_config.openapi_path.parent.mkdir(parents=True, exist_ok=True)
-            types_config.openapi_path.write_bytes(schema_content)
-            console.print(f"[green]✓ Schema exported to {_relative_path(types_config.openapi_path)}[/]")
-        except (OSError, SerializationException) as exc:
-            console.print(f"[dim]! Could not pre-process OpenAPI schema: {exc}[/]")
-            _export_openapi_schema(app, types_config)
-    else:
-        _export_openapi_schema(app, types_config)
+    try:
+        result = export_integration_assets(app, config)
 
-    _export_routes_metadata(app, types_config)
+        # Report results with detailed status
+        for file in result.exported_files:
+            console.print(f"[green]✓ Exported {file}[/] [dim](updated)[/]")
+        for file in result.unchanged_files:
+            console.print(f"[dim]✓ {file} (unchanged)[/]")
 
-    if types_config.generate_routes:
-        console.print("[dim]3. Exporting typed routes...[/]")
-        try:
-            routes_ts_content = generate_routes_ts(app, global_route=types_config.global_route)
-            routes_ts_path = types_config.routes_ts_path or (types_config.output / "routes.ts")
-            routes_ts_path.parent.mkdir(parents=True, exist_ok=True)
-            routes_ts_path.write_text(routes_ts_content, encoding="utf-8")
-            console.print(f"[green]✓ Typed routes exported to {_relative_path(routes_ts_path)}[/]")
-        except OSError as exc:  # pragma: no cover
-            msg = f"Failed to export typed routes: {exc}"
-            raise LitestarCLIException(msg) from exc
-
-    # Export Inertia pages metadata (schema already has types registered)
-    if isinstance(config.inertia, InertiaConfig) and types_config.generate_page_props and types_config.page_props_path:
-        if openapi_schema is None:
-            try:
-                if types_config.openapi_path and types_config.openapi_path.exists():
-                    openapi_schema = decode_json(types_config.openapi_path.read_bytes())
-            except (OSError, SerializationException):
-                pass
-
-        _export_inertia_pages_metadata(app, types_config, config.inertia, openapi_schema)
+        if not result.exported_files and not result.unchanged_files:
+            console.print("[yellow]! No files exported (OpenAPI may not be available)[/]")
+    except (OSError, TypeError, ValueError) as exc:
+        msg = f"Failed to export type metadata: {exc}"
+        raise LitestarCLIException(msg) from exc
 
 
 @group(cls=LitestarGroup, name="assets")
@@ -645,6 +584,46 @@ def vite_install(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
         console.print("[red]Executor not configured.[/]")
 
 
+@vite_group.command(name="update", help="Update frontend packages.")
+@option(
+    "--latest", type=bool, help="Update to latest versions (ignoring semver constraints).", default=False, is_flag=True
+)
+@option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
+@option("--quiet", type=bool, help="Suppress non-essential output.", default=False, is_flag=True)
+def vite_update(app: "Litestar", latest: "bool", verbose: "bool", quiet: "bool") -> None:
+    """Update frontend packages.
+
+    By default, updates packages within their semver constraints defined in package.json.
+    Use --latest to update to the newest versions available.
+
+    Raises:
+        SystemExit: If the update fails.
+    """
+    if verbose:
+        app.debug = True
+
+    plugin = app.plugins.get(VitePlugin)
+
+    _apply_cli_log_level(plugin.config, verbose=verbose, quiet=quiet)
+
+    if not quiet:
+        if latest:
+            console.rule("[yellow]Updating packages to latest versions[/]", align="left")
+        else:
+            console.rule("[yellow]Updating packages[/]", align="left")
+
+    if plugin.config.executor:
+        root_dir = Path(plugin.config.root_dir or Path.cwd())
+        try:
+            plugin.config.executor.update(root_dir, latest=latest)
+            console.print("[bold green]✓ Packages updated[/]")
+        except ViteExecutionError as e:
+            console.print(f"[bold red]✗ Package update failed: {e!s}[/]")
+            raise SystemExit(1) from None
+    else:
+        console.print("[red]Executor not configured.[/]")
+
+
 @vite_group.command(name="build", help="Building frontend assets with Vite.")
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
 @option("--quiet", type=bool, help="Suppress non-essential output.", default=False, is_flag=True)
@@ -730,8 +709,9 @@ def vite_deploy(
 
     root_dir = Path(config.root_dir or Path.cwd())
     bundle_dir = config.bundle_dir
+
     try:
-        _run_vite_build(config, root_dir, console, no_build)
+        _run_vite_build(config, root_dir, console, no_build, app=app)
     except SystemExit as exc:
         console.print(f"[red]{exc}[/]")
         sys.exit(1)
@@ -917,122 +897,6 @@ def export_routes(
             raise LitestarCLIException(msg) from e
 
 
-def _export_openapi_schema(app: "Litestar", types_config: Any) -> None:
-    """Export OpenAPI schema to file.
-
-    Args:
-        app: The Litestar application instance.
-        types_config: The TypeGenConfig instance.
-
-    Raises:
-        LitestarCLIException: If export fails.
-    """
-    console.print("[dim]1. Exporting OpenAPI schema...[/]")
-    try:
-        serializer = get_serializer(app.type_encoders)
-        schema_dict = app.openapi_schema.to_schema()
-        schema_content = msgspec.json.format(encode_json(schema_dict, serializer=serializer), indent=2)
-        changed = write_if_changed(types_config.openapi_path, schema_content)
-        status = "updated" if changed else "unchanged"
-        console.print(f"[green]✓ Schema exported to {_relative_path(types_config.openapi_path)}[/] [dim]({status})[/]")
-    except OSError as e:
-        msg = f"Failed to export OpenAPI schema: {e}"
-        raise LitestarCLIException(msg) from e
-
-
-def _export_routes_metadata(app: "Litestar", types_config: Any) -> None:
-    """Export routes metadata to file.
-
-    Args:
-        app: The Litestar application instance.
-        types_config: The TypeGenConfig instance.
-
-    Raises:
-        LitestarCLIException: If export fails.
-    """
-    console.print("[dim]2. Exporting route metadata...[/]")
-    try:
-        routes_data = generate_routes_json(app, include_components=True)
-        routes_data["litestar_version"] = resolve_litestar_version()
-        routes_content = encode_deterministic_json(routes_data)
-        changed = write_if_changed(types_config.routes_path, routes_content)
-        status = "updated" if changed else "unchanged"
-        console.print(f"[green]✓ Routes exported to {_relative_path(types_config.routes_path)}[/] [dim]({status})[/]")
-    except OSError as e:
-        msg = f"Failed to export routes: {e}"
-        raise LitestarCLIException(msg) from e
-
-
-def _export_routes_typescript(app: "Litestar", types_config: Any) -> None:
-    """Export typed routes TypeScript file (Ziggy-style).
-
-    Args:
-        app: The Litestar application instance.
-        types_config: The TypeGenConfig instance.
-
-    Raises:
-        LitestarCLIException: If export fails.
-    """
-    if not types_config.generate_routes:
-        return
-
-    console.print("[dim]   Generating typed routes.ts...[/]")
-    try:
-        ts_content = generate_routes_ts(app, global_route=types_config.global_route)
-        changed = write_if_changed(types_config.routes_ts_path, ts_content)
-        status = "updated" if changed else "unchanged"
-        console.print(
-            f"[green]✓ Typed routes generated at {_relative_path(types_config.routes_ts_path)}[/] [dim]({status})[/]"
-        )
-    except OSError as e:
-        msg = f"Failed to generate typed routes: {e}"
-        raise LitestarCLIException(msg) from e
-
-
-def _export_inertia_pages_metadata(
-    app: "Litestar", types_config: Any, inertia_config: Any, openapi_schema: "dict[str, Any] | None" = None
-) -> None:
-    """Export Inertia page props metadata to file.
-
-    Args:
-        app: The Litestar application instance.
-        types_config: The TypeGenConfig instance.
-        inertia_config: The InertiaConfig instance.
-        openapi_schema: Optional pre-loaded OpenAPI schema.
-
-    Raises:
-        LitestarCLIException: If export fails.
-    """
-    console.print("[dim]4. Exporting Inertia page props metadata...[/]")
-    inertia_type_gen = inertia_config.type_gen
-    if inertia_type_gen is None:
-        inertia_type_gen = InertiaTypeGenConfig()
-
-    try:
-        pages_data = generate_inertia_pages_json(
-            app,
-            openapi_schema=openapi_schema,
-            include_default_auth=inertia_type_gen.include_default_auth,
-            include_default_flash=inertia_type_gen.include_default_flash,
-            inertia_config=inertia_config,
-            types_config=types_config,
-        )
-        pages_content = encode_deterministic_json(pages_data)
-        # Use timestamp-aware comparison: ignore generatedAt field when comparing
-        changed = write_if_changed(
-            types_config.page_props_path, pages_content, normalize_for_comparison=strip_timestamp_for_comparison
-        )
-        num_pages = len(pages_data.get("pages", {}))
-        status = "updated" if changed else "unchanged"
-        console.print(
-            f"[green]✓ Page props exported to {_relative_path(types_config.page_props_path)}[/] [dim]({status})[/]"
-        )
-        console.print(f"[dim]  {num_pages} Inertia page(s) found[/]")
-    except OSError as e:
-        msg = f"Failed to export Inertia page props: {e}"
-        raise LitestarCLIException(msg) from e
-
-
 def _get_package_executor_cmd(executor: "str | None", package: str) -> "list[str]":
     """Build package executor command list.
 
@@ -1059,67 +923,43 @@ def _get_package_executor_cmd(executor: "str | None", package: str) -> "list[str
             return ["npx", package]
 
 
-def _run_openapi_ts(
-    config: Any, verbose: bool, install_command: "list[str] | None" = None, executor: "str | None" = None
-) -> None:
-    """Run @hey-api/openapi-ts to generate TypeScript types.
+def _invoke_typegen_cli(config: Any, verbose: bool) -> None:
+    """Invoke the unified TypeScript type generation CLI.
+
+    This is the single entry point for TypeScript type generation, used by
+    `litestar assets generate-types`. It calls `litestar-vite-typegen` which
+    handles both @hey-api/openapi-ts and page-props.ts generation.
 
     Args:
         config: The ViteConfig instance (with .types resolved).
         verbose: Whether to show verbose output.
-        install_command: Command used to install JS dependencies.
-        executor: The JS runtime executor (node, bun, deno, yarn, pnpm).
+
+    Raises:
+        LitestarCLIException: If type generation fails.
     """
-    types_config = config.types
     root_dir = config.root_dir or Path.cwd()
-    resource_dir = Path(config.resource_dir)
-    if not resource_dir.is_absolute():
-        resource_dir = root_dir / resource_dir
+    executor = config.runtime.executor
 
-    console.print("[dim]3. Running @hey-api/openapi-ts...[/]")
+    # Build the command to run the unified TypeScript CLI
+    pkg_cmd = _get_package_executor_cmd(executor, "litestar-vite-typegen")
+    cmd = [*pkg_cmd]
 
-    install_cmd = install_command or ["npm", "install"]
-    pkg_cmd = _get_package_executor_cmd(executor, "@hey-api/openapi-ts")
+    if verbose:
+        cmd.append("--verbose")
 
     try:
-        check_cmd = [*pkg_cmd, "--version"]
-        subprocess.run(check_cmd, check=True, capture_output=True, cwd=root_dir)
-
-        candidate_configs = [
-            resource_dir / "openapi-ts.config.ts",
-            resource_dir / "hey-api.config.ts",
-            root_dir / "openapi-ts.config.ts",
-            root_dir / "hey-api.config.ts",
-        ]
-        config_path = next((p for p in candidate_configs if p.exists()), None)
-
-        if config_path is not None:
-            openapi_cmd = [*pkg_cmd, "--file", str(config_path)]
-        else:
-            openapi_cmd = [*pkg_cmd, "-i", str(types_config.openapi_path), "-o", str(types_config.output)]
-
-            plugins: list[str] = ["@hey-api/typescript", "@hey-api/schemas"]
-            if types_config.generate_sdk:
-                plugins.extend(["@hey-api/sdk"])
-            if types_config.generate_zod:
-                plugins.append("zod")
-
-            if plugins:
-                openapi_cmd.extend(["--plugins", *plugins])
-
-        subprocess.run(openapi_cmd, check=True, cwd=root_dir)
-        console.print(f"[green]✓ Types generated in {types_config.output}[/]")
-    except subprocess.CalledProcessError as e:
-        console.print("[yellow]! @hey-api/openapi-ts failed - install it with:[/]")
-        extra = ["@hey-api/openapi-ts"]
-        if types_config.generate_zod:
-            extra.append("zod")
-        console.print(f"[dim]  {' '.join([*install_cmd, '-D', *extra])}[/]")
-        if verbose:
-            console.print(f"[dim]Error: {e!s}[/]")
+        # Run the CLI, letting stdout/stderr pass through to the terminal
+        result = subprocess.run(cmd, cwd=root_dir, check=False)
+        if result.returncode != 0:
+            msg = "TypeScript type generation failed"
+            raise LitestarCLIException(msg)
     except FileNotFoundError:
         runtime_name = executor or "Node.js"
-        console.print(f"[yellow]! Package executor not found - ensure {runtime_name} is installed[/]")
+        console.print(
+            f"[yellow]! litestar-vite-typegen not found - ensure {runtime_name} and litestar-vite-plugin are installed[/]"
+        )
+        msg = f"Package executor not found - ensure {runtime_name} is installed"
+        raise LitestarCLIException(msg) from None
 
 
 @vite_group.command(name="generate-types", help="Generate TypeScript types from OpenAPI schema and routes.")
@@ -1127,16 +967,21 @@ def _run_openapi_ts(
 def generate_types(app: "Litestar", verbose: "bool") -> None:
     """Generate TypeScript types from OpenAPI schema and routes.
 
+    Uses the unified TypeScript CLI (litestar-vite-typegen) to ensure
+    identical output between CLI, dev server, and build commands.
+
     This command:
-    1. Exports the OpenAPI schema (uses litestar's built-in schema generation)
-    2. Exports route metadata
-    3. Runs @hey-api/openapi-ts to generate TypeScript types
-    4. If Inertia is enabled: exports page props metadata
+    1. Exports OpenAPI schema, routes, and page props metadata
+    2. Invokes the unified TypeScript CLI which handles:
+       - @hey-api/openapi-ts for API types
+       - page-props.ts for Inertia page props (if enabled)
 
     Args:
         app: The Litestar application instance.
         verbose: Whether to enable verbose output.
     """
+    from litestar_vite.codegen import export_integration_assets
+
     if verbose:
         app.debug = True
 
@@ -1150,51 +995,26 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
 
     console.rule("[yellow]Generating TypeScript types[/]", align="left")
 
-    # For Inertia apps, we need to build the page metadata FIRST
-    # so that session prop types get registered in OpenAPI before export
-    openapi_schema: dict[str, Any] | None = None
-    if isinstance(config.inertia, InertiaConfig) and config.types.generate_page_props and config.types.openapi_path:
-        try:
-            serializer = get_serializer(app.type_encoders)
-            openapi_schema = app.openapi_schema.to_schema()
-            # Pre-generate inertia pages to register session prop types in schema
-            inertia_type_gen = config.inertia.type_gen or InertiaTypeGenConfig()
-            _ = generate_inertia_pages_json(
-                app,
-                openapi_schema=openapi_schema,
-                include_default_auth=inertia_type_gen.include_default_auth,
-                include_default_flash=inertia_type_gen.include_default_flash,
-                inertia_config=config.inertia,
-                types_config=config.types,
-            )
-            # Export the modified schema (now includes session prop types)
-            console.print("[dim]1. Exporting OpenAPI schema...[/]")
-            schema_content = msgspec.json.format(encode_json(openapi_schema, serializer=serializer), indent=2)
-            config.types.openapi_path.parent.mkdir(parents=True, exist_ok=True)
-            config.types.openapi_path.write_bytes(schema_content)
-            console.print(f"[green]✓ Schema exported to {_relative_path(config.types.openapi_path)}[/]")
-        except (OSError, SerializationException) as exc:
-            if verbose:
-                console.print(f"[dim]! Could not pre-process OpenAPI schema: {exc}[/]")
-            _export_openapi_schema(app, config.types)
-    else:
-        _export_openapi_schema(app, config.types)
+    # Export all integration assets using the shared function
+    try:
+        result = export_integration_assets(app, config)
 
-    _export_routes_metadata(app, config.types)
-    _export_routes_typescript(app, config.types)
-    _run_openapi_ts(config, verbose, config.install_command, config.runtime.executor)
+        # Report results with detailed status
+        for file in result.exported_files:
+            console.print(f"[green]✓ Exported {file}[/] [dim](updated)[/]")
+        for file in result.unchanged_files:
+            console.print(f"[dim]✓ {file} (unchanged)[/]")
 
-    # Now export the Inertia pages metadata (schema already has types registered)
-    if isinstance(config.inertia, InertiaConfig) and config.types.generate_page_props and config.types.page_props_path:
-        if openapi_schema is None:
-            try:
-                if config.types.openapi_path and config.types.openapi_path.exists():
-                    openapi_schema = decode_json(config.types.openapi_path.read_bytes())
-            except (OSError, SerializationException):
-                if verbose:
-                    console.print("[dim]! Could not load OpenAPI schema for type references[/]")
+        if not result.exported_files and not result.unchanged_files:
+            console.print("[yellow]! No files exported (OpenAPI may not be available)[/]")
+            return
+    except (OSError, TypeError, ValueError) as exc:
+        console.print(f"[red]✗ Failed to export type metadata: {exc}[/]")
+        return
 
-        _export_inertia_pages_metadata(app, config.types, config.inertia, openapi_schema)
+    # Invoke the unified TypeScript type generation CLI
+    # This handles both @hey-api/openapi-ts and page-props.ts generation
+    _invoke_typegen_cli(config, verbose)
 
 
 @vite_group.command(name="status", help="Check the status of the Vite integration.")

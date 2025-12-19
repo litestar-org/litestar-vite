@@ -56,31 +56,31 @@ def ts_type_from_openapi(schema_dict: dict[str, Any]) -> str:
 
     if "anyOf" in schema_dict and isinstance(schema_dict["anyOf"], list) and schema_dict["anyOf"]:
         schemas = cast("list[Any]", schema_dict["anyOf"])
-        union = {_ts_type_from_subschema(s) for s in schemas}
-        return _join_union(union)
+        union = {ts_type_from_subschema(s) for s in schemas}
+        return join_union(union)
 
     result = "any"
     match schema_dict:
         case {"const": const} if const is not None:
-            result = "any" if const is False else _ts_literal(const)
+            result = "any" if const is False else ts_literal(const)
         case {"enum": enum} if isinstance(enum, list) and enum:
             enum_values = cast("list[Any]", enum)
-            result = " | ".join(_ts_literal(v) for v in enum_values)
+            result = " | ".join(ts_literal(v) for v in enum_values)
         case {"oneOf": one_of} if isinstance(one_of, list) and one_of:
             schemas = cast("list[Any]", one_of)
-            union = {_ts_type_from_subschema(s) for s in schemas}
-            result = _join_union(union)
+            union = {ts_type_from_subschema(s) for s in schemas}
+            result = join_union(union)
         case {"allOf": all_of} if isinstance(all_of, list) and all_of:
             schemas = cast("list[Any]", all_of)
-            parts = [_wrap_union_for_intersection(_ts_type_from_subschema(s)) for s in schemas]
+            parts = [wrap_union_for_intersection(ts_type_from_subschema(s)) for s in schemas]
             parts = [p for p in parts if p and p != "any"]
             result = " & ".join(parts) if parts else "any"
         case {"type": list()}:
             type_entries_list: list[Any] = schema_dict["type"]
-            parts = [_ts_type_from_openapi_type_entry(t, schema_dict) for t in type_entries_list if isinstance(t, str)]
-            result = _join_union(set(parts)) if parts else "any"
+            parts = [ts_type_from_openapi_type_entry(t, schema_dict) for t in type_entries_list if isinstance(t, str)]
+            result = join_union(set(parts)) if parts else "any"
         case {"type": str() as schema_type}:
-            result = _ts_type_from_openapi_type_entry(schema_type, schema_dict)
+            result = ts_type_from_openapi_type_entry(schema_type, schema_dict)
         case _:
             pass
 
@@ -146,13 +146,13 @@ def collect_ref_names(schema_dict: Any) -> set[str]:
     return refs
 
 
-def _ts_type_from_subschema(schema: Any) -> str:
+def ts_type_from_subschema(schema: Any) -> str:
     if isinstance(schema, dict):
         return ts_type_from_openapi(cast("dict[str, Any]", schema))
     return "any"
 
 
-def _ts_type_from_openapi_type_entry(type_name: str, schema_dict: dict[str, Any]) -> str:
+def ts_type_from_openapi_type_entry(type_name: str, schema_dict: dict[str, Any]) -> str:
     primitive_types: dict[str, str] = {
         "string": "string",
         "integer": "number",
@@ -168,8 +168,8 @@ def _ts_type_from_openapi_type_entry(type_name: str, schema_dict: dict[str, Any]
             result = _OPENAPI_STRING_FORMAT_TO_TS_ALIAS.get(fmt, result)
     if type_name == "array":
         items = schema_dict.get("items")
-        item_type = _ts_type_from_subschema(items) if isinstance(items, dict) else "unknown"
-        result = f"{_wrap_for_array(item_type)}[]"
+        item_type = ts_type_from_subschema(items) if isinstance(items, dict) else "unknown"
+        result = f"{wrap_for_array(item_type)}[]"
     elif type_name == "object":
         properties = schema_dict.get("properties")
         if not isinstance(properties, dict) or not properties:
@@ -182,7 +182,7 @@ def _ts_type_from_openapi_type_entry(type_name: str, schema_dict: dict[str, Any]
 
             lines: list[str] = ["{"]
             for name, prop_schema in cast("dict[str, Any]", properties).items():
-                ts_type = _ts_type_from_subschema(prop_schema)
+                ts_type = ts_type_from_subschema(prop_schema)
                 optional = "" if name in required else "?"
                 lines.append(f"  {name}{optional}: {ts_type};")
             lines.append("}")
@@ -191,7 +191,7 @@ def _ts_type_from_openapi_type_entry(type_name: str, schema_dict: dict[str, Any]
     return result
 
 
-def _wrap_for_array(type_expr: str) -> str:
+def wrap_for_array(type_expr: str) -> str:
     expr = type_expr.strip()
     if not expr:
         return "unknown"
@@ -203,7 +203,7 @@ def _wrap_for_array(type_expr: str) -> str:
     return expr
 
 
-def _wrap_union_for_intersection(type_expr: str) -> str:
+def wrap_union_for_intersection(type_expr: str) -> str:
     expr = type_expr.strip()
     if not expr:
         return "any"
@@ -214,7 +214,7 @@ def _wrap_union_for_intersection(type_expr: str) -> str:
     return expr
 
 
-def _join_union(types: set[str]) -> str:
+def join_union(types: set[str]) -> str:
     if not types:
         return "any"
     if len(types) == 1:
@@ -222,7 +222,7 @@ def _join_union(types: set[str]) -> str:
     return " | ".join(sorted(types))
 
 
-def _ts_literal(value: Any) -> str:
+def ts_literal(value: Any) -> str:
     if value is None:
         return "null"
     if isinstance(value, bool):

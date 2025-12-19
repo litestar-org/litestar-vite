@@ -4,7 +4,7 @@ This guide explains how configuration flows between Python (Litestar) and TypeSc
 
 ## Architecture Overview
 
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
+**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-18
 
 ```
 ┌─────────────────────┐

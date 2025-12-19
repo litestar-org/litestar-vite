@@ -6,6 +6,8 @@ from litestar_vite.html_transform import (
     inject_body_content,
     inject_head_script,
     inject_json_script,
+    inject_page_script,
+    inject_vite_dev_scripts,
     set_data_attribute,
 )
 
@@ -306,3 +308,234 @@ def test_escape_attr_helper() -> None:
     assert "&quot;" in escaped
     assert "&amp;" in escaped
     assert "<script>" not in escaped
+
+
+def test_inject_page_script_basic() -> None:
+    """Test basic page script injection before </body>."""
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head><title>Test</title></head>
+    <body>
+        <div id="app"></div>
+    </body>
+    </html>
+    """
+    json_data = '{"component":"Home","props":{}}'
+    result = inject_page_script(html, json_data)
+
+    assert '<script type="application/json" id="app_page">' in result
+    assert '{"component":"Home","props":{}}' in result
+    assert result.index("</script>") < result.index("</body>")
+
+
+def test_inject_page_script_with_nonce() -> None:
+    """Test page script injection with CSP nonce."""
+    html = "<html><head></head><body></body></html>"
+    json_data = '{"component":"Test"}'
+    result = inject_page_script(html, json_data, nonce="abc123")
+
+    assert '<script type="application/json" id="app_page" nonce="abc123">' in result
+
+
+def test_inject_page_script_escapes_closing_tags() -> None:
+    """Test that </script> sequences in JSON are escaped to prevent XSS."""
+    html = "<html><head></head><body></body></html>"
+    # Malicious JSON that tries to break out of script tag
+    json_data = '{"content":"</script><script>alert(1)</script>"}'
+    result = inject_page_script(html, json_data)
+
+    # Should escape </ to <\/ to prevent premature tag closure
+    assert r"<\/script>" in result
+    # Should NOT have unescaped </script> in the JSON content
+    # (other than the closing tag of our script element)
+    assert result.count("</script>") == 1  # Only the legitimate closing tag
+
+
+def test_inject_page_script_empty_json() -> None:
+    """Test that empty JSON returns unchanged HTML."""
+    html = "<html><head></head><body></body></html>"
+    result = inject_page_script(html, "")
+
+    assert result == html
+
+
+def test_inject_page_script_no_body() -> None:
+    """Test fallback when no </body> tag exists."""
+    html = "<html><head></head></html>"
+    json_data = '{"component":"Test"}'
+    result = inject_page_script(html, json_data)
+
+    # Should still inject the script (appended at end)
+    assert '<script type="application/json" id="app_page">' in result
+
+
+def test_inject_page_script_custom_id() -> None:
+    """Test page script with custom ID."""
+    html = "<html><head></head><body></body></html>"
+    json_data = '{"data":"test"}'
+    result = inject_page_script(html, json_data, script_id="custom_page")
+
+    assert '<script type="application/json" id="custom_page">' in result
+
+
+def test_inject_page_script_large_payload() -> None:
+    """Test script injection with large JSON payload."""
+    html = "<html><head></head><body></body></html>"
+    # Create a large JSON payload
+    large_data = '{"items":' + str(list(range(1000))) + "}"
+    result = inject_page_script(html, large_data)
+
+    assert '<script type="application/json" id="app_page">' in result
+    assert "[0, 1, 2, 3" in result
+
+
+def test_inject_page_script_vs_data_attribute_escaping() -> None:
+    """Test that script element avoids the heavy escaping needed for data attributes.
+
+    This is the key performance benefit - script elements don't need HTML entity escaping.
+    """
+    html_with_script = "<html><body></body></html>"
+    html_with_attr = '<html><body><div id="app"></div></body></html>'
+    json_data = '{"message":"Hello <World> & \\"Friends\\""}'
+
+    # Script element: JSON is mostly unchanged (only </ escaping)
+    script_result = inject_page_script(html_with_script, json_data)
+
+    # Data attribute: requires full HTML entity escaping
+    attr_result = set_data_attribute(html_with_attr, "#app", "data-page", json_data)
+
+    # Script element preserves quotes and angle brackets
+    assert '"Hello <World>' in script_result or r'"Hello <World>' in script_result
+    assert "&quot;" not in script_result
+    assert "&lt;" not in script_result
+    assert "&gt;" not in script_result
+
+    # Data attribute must escape everything
+    assert "&quot;" in attr_result
+    assert "&lt;" in attr_result
+    assert "&gt;" in attr_result
+
+
+def test_inject_vite_dev_scripts_basic() -> None:
+    """Test basic Vite dev scripts injection."""
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head><title>Test</title></head>
+    <body><div id="app"></div></body>
+    </html>
+    """
+    result = inject_vite_dev_scripts(html, "http://localhost:5173", asset_url="/static/")
+
+    assert '<script type="module" src="/static/@vite/client"></script>' in result
+
+
+def test_inject_vite_dev_scripts_with_react() -> None:
+    """Test Vite dev scripts with React Fast Refresh preamble."""
+    html = "<html><head></head><body></body></html>"
+    result = inject_vite_dev_scripts(html, "", asset_url="/static/", is_react=True)
+
+    assert "RefreshRuntime" in result
+    assert "@react-refresh" in result
+    assert "__vite_plugin_react_preamble_installed__" in result
+
+
+def test_inject_vite_dev_scripts_with_nonce() -> None:
+    """Test Vite dev scripts with CSP nonce."""
+    html = "<html><head></head><body></body></html>"
+    result = inject_vite_dev_scripts(html, "", asset_url="/static/", csp_nonce="abc123")
+
+    assert 'nonce="abc123"' in result
+
+
+def test_inject_vite_dev_scripts_transforms_entry_point_urls() -> None:
+    """Test that entry point script URLs are transformed when resource_dir is provided."""
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head><title>Test</title></head>
+    <body>
+        <div id="app"></div>
+        <script type="module" src="/resources/main.tsx"></script>
+    </body>
+    </html>
+    """
+    result = inject_vite_dev_scripts(html, "http://localhost:5173", asset_url="/static/", resource_dir="resources")
+
+    # Entry point URL should be transformed to include /static/ prefix
+    assert 'src="/static/resources/main.tsx"' in result
+    # Original URL should not be present
+    assert 'src="/resources/main.tsx"' not in result
+    # Vite client should also be injected
+    assert '<script type="module" src="/static/@vite/client"></script>' in result
+
+
+def test_inject_vite_dev_scripts_does_not_double_prefix() -> None:
+    """Test that already-prefixed URLs are not double-prefixed."""
+    html = """
+    <html>
+    <head></head>
+    <body>
+        <script type="module" src="/static/resources/main.tsx"></script>
+    </body>
+    </html>
+    """
+    result = inject_vite_dev_scripts(html, "", asset_url="/static/", resource_dir="resources")
+
+    # Should NOT have double prefix
+    assert "/static/static/" not in result
+    # Original prefixed URL should be preserved
+    assert 'src="/static/resources/main.tsx"' in result
+
+
+def test_inject_vite_dev_scripts_no_resource_dir() -> None:
+    """Test that entry point URLs are not transformed without resource_dir."""
+    html = """
+    <html>
+    <head></head>
+    <body>
+        <script type="module" src="/resources/main.tsx"></script>
+    </body>
+    </html>
+    """
+    result = inject_vite_dev_scripts(html, "", asset_url="/static/", resource_dir=None)
+
+    # Without resource_dir, the URL should remain unchanged
+    assert 'src="/resources/main.tsx"' in result
+
+
+def test_inject_vite_dev_scripts_multiple_entry_points() -> None:
+    """Test transformation of multiple entry point scripts."""
+    html = """
+    <html>
+    <head></head>
+    <body>
+        <script type="module" src="/resources/main.tsx"></script>
+        <script type="module" src="/resources/vendor.ts"></script>
+        <script src="/other/external.js"></script>
+    </body>
+    </html>
+    """
+    result = inject_vite_dev_scripts(html, "", asset_url="/static/", resource_dir="resources")
+
+    # Both resources/ scripts should be transformed
+    assert 'src="/static/resources/main.tsx"' in result
+    assert 'src="/static/resources/vendor.ts"' in result
+    # Non-matching script should remain unchanged
+    assert 'src="/other/external.js"' in result
+
+
+def test_inject_vite_dev_scripts_src_subdir() -> None:
+    """Test with 'src' as resource_dir."""
+    html = """
+    <html>
+    <head></head>
+    <body>
+        <script type="module" src="/src/main.tsx"></script>
+    </body>
+    </html>
+    """
+    result = inject_vite_dev_scripts(html, "", asset_url="/static/", resource_dir="src")
+
+    assert 'src="/static/src/main.tsx"' in result

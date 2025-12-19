@@ -15,7 +15,8 @@
 {% else %}
     "serve": "vite preview",
 {% endif %}
-    "watch": "npm run serve"{% if generate_client %},
+    "watch": "npm run serve",
+    "update": "npm update"{% if generate_client %},
     "generate-types": "openapi-ts"{% endif %}
   },
   "dependencies": {

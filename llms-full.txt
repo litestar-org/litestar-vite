@@ -1,15 +1,14 @@
-# Litestar Vite Reference
+# Litestar Vite: Comprehensive Documentation
 
-> Integration layer connecting Litestar (Python) with Vite (Node.js).
-> Supports SPA, Template (Jinja), Inertia.js, and SSR workflows.
+**Version**: 0.15.0-beta.2
+**Project**: litestar-vite
 
-Current Version: **v0.15.0-beta.2**
-Source: https://github.com/litestar-org/litestar-vite
-Docs: https://litestar-org.github.io/litestar-vite/latest/
+Seamless integration between Litestar and Vite with Inertia.js support.
+This document contains the full context of the project, including architecture, guides, and API reference.
 
 ---
 
-# 1. Architecture
+# 1. Architecture Guide
 
 **Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
 
@@ -40,7 +39,7 @@ The `ViteConfig` class in `config.py` controls the integration behavior. It uses
 
 - **`PathConfig`**: File system paths (root, bundle_dir, resource_dir, static_dir, asset_url, ssr_output_dir, manifest_name, hot_file)
 - **`RuntimeConfig`**: Execution settings (dev_mode, proxy_mode, external_dev_server, http2, start_dev_server)
-- **`TypeGenConfig`**: Type generation settings (output, openapi_path, routes_path, routes_ts_path, page_props_path, generate_zod, generate_sdk, generate_routes, generate_page_props, global_route, fallback_type, type_import_paths, watch_patterns)
+- **`TypeGenConfig`**: Type generation settings (output, openapi_path, routes_path, routes_ts_path, page_props_path, generate_zod, generate_sdk, generate_routes, generate_page_props, global_route, fallback_type, type_import_paths)
 - **`InertiaConfig`**: Inertia.js settings (root_template, component_opt_keys, redirect_unauthorized_to, redirect_404, extra_static_page_props, extra_session_page_props, encrypt_history, type_gen, ssr).
 - **`InertiaTypeGenConfig`**: Inertia type generation settings (include_default_auth, include_default_flash)
 - **`InertiaSSRConfig`**: Inertia Server-Side Rendering settings (enabled, url, timeout)
@@ -50,7 +49,7 @@ The `ViteConfig` class in `config.py` controls the integration behavior. It uses
 - **`ExternalDevServer`**: External dev server configuration (target, command, build_command, http2, enabled)
 - **`PaginationContainer`**: Protocol for pagination containers (must implement `items` attribute)
 - **`ViteConfig`**: Root configuration. Key fields include:
-    - **`mode`**: Serving mode - "spa", "template", "htmx", "hybrid", "ssr", "ssg", or "external"
+    - **`mode`**: Serving mode - "spa", "template", "htmx", "hybrid", "framework", "ssr", "ssg", or "external"
     - **`guards`**: Custom guards for the SPA catch-all route
     - **`exclude_static_from_auth`**: Exclude static file routes from authentication (default: True)
     - **`spa_path`**: Path where the SPA handler serves index.html (default: "/")
@@ -62,7 +61,7 @@ Key `RuntimeConfig` options:
 - **`proxy_mode`**: Proxy handling mode:
     - "vite" (default): Proxy Vite assets only (allow list - SPA mode)
     - "direct": Expose Vite port directly (no proxy)
-    - "proxy": Proxy everything except Litestar routes (deny list - SSR mode)
+    - "proxy": Proxy everything except Litestar routes (deny list - framework mode)
     - None: No proxy (production mode)
 - **`external_dev_server`**: External dev server config (string URL or `ExternalDevServer` with custom commands, http2 flag, enabled flag)
 - **`host`**, **`port`**, **`protocol`**: Vite dev server connection details
@@ -71,7 +70,7 @@ Key `RuntimeConfig` options:
 - **`http2`**: Enable HTTP/2 for proxy HTTP connections (better multiplexing, requires `h2` package). WebSocket traffic (HMR) uses a separate connection and is unaffected. Default: True.
 - **`start_dev_server`**: Auto-start dev server process (default: True). Set to False to manage the dev server manually.
 - **`is_react`**: Enable React Fast Refresh
-- **`ssr_enabled`**: Enable Server-Side Rendering
+    - Framework integration is controlled by `mode="framework"` (aliases: `mode="ssr"` / `mode="ssg"`).
 - **`health_check`**: Enable health check for dev server startup
 - **`detect_nodeenv`**: Detect and use nodeenv in virtualenv (opt-in)
 - **`set_environment`**: Set Vite environment variables from config (default: True)
@@ -79,7 +78,7 @@ Key `RuntimeConfig` options:
 - **`csp_nonce`**: Content Security Policy nonce for inline scripts
 - **`spa_handler`**: Auto-register catch-all SPA route when mode="spa" (default: True)
 
-Python is the source of truth: The VitePlugin's `on_app_init()` method writes `.litestar.json` containing `assetUrl`, `bundleDir`, `resourceDir`, `staticDir`, `manifest`, `ssrOutDir`, `mode`, `proxyMode`, `host`, `port`, `ssrEnabled`, `executor`, type generation paths, and Litestar version. The JS plugin reads this file automatically - only `input` is required in `vite.config.ts`. Override only when you intentionally diverge from Python config.
+Python is the source of truth: The VitePlugin's `on_app_init()` method writes `.litestar.json` containing `assetUrl`, `bundleDir`, `resourceDir`, `staticDir`, `manifest`, `ssrOutDir`, `mode`, `proxyMode`, `host`, `port`, `executor`, type generation paths, and Litestar version. The JS plugin reads this file automatically - only `input` is required in `vite.config.ts`. Override only when you intentionally diverge from Python config.
 
 ### Core Modules
 
@@ -94,9 +93,9 @@ The backend is organized into specialized modules:
     - `deploy.py`: CDN deployment utilities using fsspec backends
 
 3. **SPA Support**:
-    - `spa.py`: `ViteSPAHandler` - serves SPA index.html in dev/production modes with both async and sync HTTP client support
+    - `handler.py` (exposes `AppHandler`): Serves SPA index.html in dev/production modes with both async and sync HTTP client support.
     - `html_transform.py`: HTML transformation functions (`inject_head_script`, `inject_body_content`, `inject_json_script`, `set_data_attribute`)
-    - Key features: `is_initialized` property, `get_html()` for async contexts, `get_html_sync()` for sync contexts, cached HTML in production with `SPAConfig.cache_transformed_html`
+    - Key features: `is_initialized` property, `get_html(request)` for async contexts, `get_html_sync()` for sync contexts, cached HTML in production with `SPAConfig.cache_transformed_html`
 
 4. **CLI & Tooling**:
     - `cli.py`: CLI entry points for Vite integration
@@ -137,12 +136,15 @@ src/js/src/
 ├── helpers/              # Frontend helper utilities
 │   ├── index.ts          # Barrel export
 │   ├── csrf.ts           # CSRF token utilities (getCsrfToken, csrfHeaders, csrfFetch)
-│   └── htmx.ts           # HTMX utilities (addDirective, registerHtmxExtension, setHtmxDebug, swapJson)
+│   ├── htmx.ts           # HTMX utilities (addDirective, registerHtmxExtension, setHtmxDebug, swapJson)
+│   └── routes.ts         # Runtime route helpers (legacy)
 ├── shared/               # Shared utilities across modules
-│   ├── index.ts          # Barrel export
-│   └── debounce.ts       # Type-safe debounce utility
+│   ├── bridge-schema.ts  # Bridge file type definitions
+│   ├── debounce.ts       # Type-safe debounce utility
+│   ├── logger.ts         # Logging utility
+│   └── typegen-plugin.ts # Type generation plugin
 └── inertia-helpers/      # Inertia.js specific helpers
-    └── index.ts          # resolvePageComponent + re-exports
+    └── index.ts          # resolvePageComponent, unwrapPageProps
 ```
 
 ### Key Principles
@@ -320,128 +322,172 @@ def user_list(request: Request) -> OffsetPagination[User]:
 - **API Calls**: For non-Inertia pages, the frontend can make standard RESTful API calls to endpoints exposed by the Litestar backend.
 - **Config Synchronization**: Python writes `.litestar.json` (via `set_environment()`) that the JS plugin reads as defaults, ensuring configuration consistency.
 
-## Example Applications
-
-The `examples/` directory contains working examples demonstrating various integration patterns:
-
-### Framework Examples
-
-- **`angular/`**: Angular 18+ with signals integration
-- **`angular-cli/`**: Angular CLI-based setup
-- **`astro/`**: Astro static site integration
-- **`nuxt/`**: Nuxt 3 SSR/SPA integration
-- **`sveltekit/`**: SvelteKit SSR integration
-- **`svelte/`**: Standalone Svelte 5 with runes
-
-### React Examples
-
-- **`react/`**: Basic React SPA
-- **`react-inertia/`**: React with Inertia.js
-- **`react-inertia-jinja/`**: React + Inertia with Jinja2 templates
-
-### Vue Examples
-
-- **`vue/`**: Basic Vue 3 SPA
-- **`vue-inertia/`**: Vue 3 with Inertia.js (Composition API)
-- **`vue-inertia-jinja/`**: Vue + Inertia with Jinja2 templates
-
-### Templating & HTMX
-
-- **`jinja-htmx/`**: HTMX hypermedia integration with Jinja2 templates
-
-Each example includes its own `package.json`, Vite configuration, and demonstrates best practices for that particular stack.
-
 ---
 
-# 2. Code Style
+# 2. Development Workflow
 
 **Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
 
-This document defines the code style and quality standards for both the Python backend and TypeScript frontend. Consistency is enforced through automated tooling.
+This guide describes the standard development workflow for contributing to the `litestar-vite` project. It covers initial setup, daily development tasks, and the quality assurance process.
 
-## General Principles
+## 1. Initial Setup
 
-- **Clarity**: Write code that is easy to read and understand.
-- **Explicitness**: Prefer explicit over implicit.
-- **Consistency**: Adhere to the existing code style in the project.
+All project tasks are managed through a `Makefile` and the `uv` Python package manager.
 
-## Python Code Style
+1. **Prerequisites**:
+    - Python 3.10+
+    - Node.js 20.19.0+ or 22.12.0+
+    - `curl`
 
-All Python code is automatically formatted and linted using tools configured in `pyproject.toml` and run via `pre-commit` hooks.
+2. **Install `uv`**:
+    If you don't have `uv` installed, you can install it with:
 
-- **Formatter**: [Ruff](https://docs.astral.sh/ruff/) is used for formatting, effectively replacing Black and isort.
-- **Linter**: [Ruff](https://docs.astral.sh/ruff/) is also used for linting, providing fast and comprehensive checks.
-- **Type Checking**: [MyPy](http://mypy-lang.org/) is used for static type checking.
+    ```bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
 
-### Key Standards
+3. **Install Project Dependencies**:
+    Run the `install` target from the `Makefile`. This is the only command you need to get started.
 
-1. **Type Hinting**:
-    - All functions and methods must have type hints for arguments and return values.
-    - Use modern type hints (PEP 604): `list[str]` instead of `List[str]`, and `str | None` instead of `Optional[str]`.
-    - Do **not** use `from __future__ import annotations`.
+    ```bash
+    make install
+    ```
 
-2. **Docstrings**:
-    - All public modules, classes, functions, and methods must have a docstring.
-    - Follow the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#3.8-comments-and-docstrings) for docstrings.
+    This command will:
+    - Create a Python virtual environment (`.venv/`).
+    - Install all required Python dependencies using `uv`.
+    - Install all required Node.js dependencies using `npm`.
+    - Set up the `pre-commit` hooks.
 
-3. **Imports**:
-    - Imports are automatically sorted by Ruff.
-    - Group imports logically (standard library, third-party, first-party).
+## 2. Daily Development
 
-### Additional Python Tools
+### Frontend directory conventions
 
-- **Slotscheck**: Validates `__slots__` definitions for memory efficiency
-- **Pre-commit**: Automated hooks for code quality (configured in `.pre-commit-config.yaml`)
+- Inertia variants follow Laravel conventions and use `resources/` (e.g., `resources/main.tsx`, `resources/pages/*`).
+- All other templates (React, Vue, Svelte, HTMX, Angular Vite, etc.) use `src/` for source files and keep `index.html` at the frontend root.
+- You can relocate the entire frontend under a subfolder (e.g., `web/`) via `litestar assets init --frontend-dir web`; generated files (package.json, vite.config.ts, src/…) will be placed there.
+- When configuring `VitePlugin` manually for non-Inertia templates, set `paths.resource_dir="src"` (default for scaffolds). For Inertia templates, keep `resources/`.
 
-### Tooling Commands
+### Running the Development Server
 
-- **Lint & Type-Check**: `make lint` (runs pre-commit, mypy, pyright, slotscheck)
-- **Auto-format**: `make fix` (runs ruff with auto-fixes)
-- **Type-check only**: `make type-check` (runs mypy + pyright)
-- **Slotscheck**: `make slotscheck` (validates `__slots__`)
-- **Individual type checkers**:
-    - `make mypy` - MyPy with cache
-    - `make pyright` - Pyright
-    - `make basedpyright` - Stricter Pyright variant
+To work on an example application (like the `vue` one), run Litestar and let it manage Vite for you (single port by default):
 
-### Config Source of Truth
+- **Run Litestar App (starts/proxies Vite)**:
 
-- When both Python and Vite need the same values (asset/base URL, bundle/resource dirs, manifest), prefer setting them in `ViteConfig`. The plugin's `on_app_init()` method writes `.litestar.json` during startup and the JS plugin uses it as defaults. Keep `vite.config.ts` overrides minimal.
-- See `specs/guides/config-precedence.md` for detailed configuration flow documentation.
+    ```bash
+    uv run litestar --app examples.vue.app:app run --reload
+    ```
 
-## TypeScript/JavaScript Code Style
+- **Two-port option (start Vite yourself)**:
 
-The frontend codebase (primarily in `src/js/` and `examples/`) is managed by [Biome](https://biomejs.dev/).
+    ```bash
+    uv run litestar --app examples.vue.app:app assets serve
+    uv run litestar --app examples.vue.app:app run --reload
+    ```
 
-- **Formatter**: Biome handles all code formatting.
-- **Linter**: Biome provides comprehensive linting rules.
+- **Production Server (SSR)**:
 
-Configuration is defined in `biome.json`.
+    ```bash
+    uv run litestar --app examples.sveltekit.app:app assets serve --production
+    ```
 
-### Key Standards
+### Running Tests
 
-1. **Formatting**:
-    - Follow the settings in `biome.json` (e.g., indentation, line width).
-    - Do not manually format code; let the tooling handle it.
-
-2. **Language Features**:
-    - Prefer modern ECMAScript features (e.g., `const`/`let` over `var`, arrow functions).
-    - Use TypeScript for all new code to ensure type safety.
-
-### Tooling Commands
-
-The pre-commit hooks automatically run Biome. To run it manually:
+As you make changes, you should run tests to ensure you haven't introduced any regressions.
 
 ```bash
-# Format and lint all relevant files
-npx biome check --write .
+# Run the full test suite (Python and JS)
+make test
+
+# Run only Python tests
+pytest src/py/tests/
+
+# Run only JS tests
+npm run test --workspace=src/js
 ```
 
-## Pre-Commit Hooks
+### Code Quality
 
-This project uses `pre-commit` to ensure that all code committed to the repository meets our quality standards. The hooks are defined in `.pre-commit-config.yaml` and are installed automatically when you run `make install`.
+Before committing, ensure your code meets the project's quality standards. The pre-commit hooks will run these checks automatically, but you can also run them manually.
 
-The hooks will automatically run `ruff`, `biome`, `mypy`, and other checks before allowing a commit to be created.
+```bash
+# Run all linters and type checkers
+make lint
+
+# Auto-format your code
+make fix
+```
+
+## 3. Committing and Pre-Commit Hooks
+
+This project uses `pre-commit` to enforce code quality at the time of commit. When you run `git commit`, a series of automated checks (linting, formatting, type-checking) will execute.
+
+If any of the checks fail, the commit will be aborted. You must fix the reported issues and re-add the files to your commit. For formatting issues, the hooks may fix them for you automatically; in this case, you just need to `git add` the modified files and commit again.
+
+## 4. AI Agent Workflow
+
+For significant features, this project uses an AI agent system with specialized agents for different phases.
+
+See `AGENTS.md` and `CLAUDE.md` for detailed documentation on:
+
+- `/prd [feature]` - Create Product Requirements Documents
+- `/implement [slug]` - Implement features from PRDs
+- `/test [slug]` - Create comprehensive test suites
+- `/review [slug]` - Quality gates and documentation
+- Specialized subagents: `prd`, `expert`, `testing`, `docs-vision`, `sync-guides`
+
+The agent system guides features through planning, implementation, testing, and review, ensuring all quality gates are met.
+
+## 5. Release Workflow
+
+### Standard Release
+
+For regular releases (patch, minor, major):
+
+```bash
+# Ensure clean working tree
+git status
+
+# Bump version (choose one)
+make release bump=patch   # 0.14.0 → 0.14.1
+make release bump=minor   # 0.14.0 → 0.15.0
+make release bump=major   # 0.14.0 → 1.0.0
+
+# Push to main
+git push origin main
+
+# Create GitHub release
+gh release create v0.15.0 --title "v0.15.0" --generate-notes
+```
+
+### Pre-releases (Alpha/Beta/RC)
+
+For testing breaking changes with a limited audience before stable release:
+
+```bash
+# Start alpha
+make pre-release version=0.15.0-alpha.1
+
+# Iterate on alpha
+make pre-release version=0.15.0-alpha.2
+
+# Progress to beta
+make pre-release version=0.15.0-beta.1
+
+# Release candidate
+make pre-release version=0.15.0-rc.1
+
+# Push and create pre-release
+git push origin HEAD
+gh release create v0.15.0-alpha.1 --prerelease --title "v0.15.0-alpha.1"
+```
+
+**Distribution:**
+
+- PyPI: Pre-release versions are automatically marked (users need `pip install --pre` or explicit version)
+- npm: Published with `next` tag (users install via `npm install litestar-vite-plugin@next`)
+
+**Finalizing:** When ready for stable, run `make release bump=minor` (or `patch` from RC).
 
 ---
 
@@ -498,7 +544,6 @@ These fields are meaningful to both Python and TypeScript:
 | Proxy Mode | `proxy_mode` | `proxyMode` | Dev proxy configuration |
 | Host | `host` | `host` | Dev server host |
 | Port | `port` | `port` | Dev server port |
-| SSR Enabled | `ssr_enabled` | `ssrEnabled` | SSR mode flag |
 | SSR Output Dir | `ssr_output_dir` | `ssrOutDir` | SSR build output |
 | Executor | `runtime.executor` | `executor` | Package manager command |
 | Logging | `logging` | `logging` | Logging configuration |
@@ -507,347 +552,196 @@ These fields are meaningful to both Python and TypeScript:
 
 These are configured in Python and not exposed to TypeScript:
 
-- `DeployConfig` - CDN deployment settings (storage_backend, delete_orphaned, include_manifest, content_types)
-- `SPAConfig` - Single-page app settings (inject_csrf, cache_transformed_html, csrf_var_name, app_selector)
-- `InertiaConfig` - Inertia.js integration settings (root_template, component_opt_keys, encrypt_history, type_gen)
-- `InertiaTypeGenConfig` - Inertia type generation (include_default_auth, include_default_flash)
-- `InertiaSSRConfig` - Inertia SSR settings (enabled, url, timeout)
-- `RuntimeConfig.run_command`, `build_command`, `serve_command`, `install_command`, etc.
-- `RuntimeConfig.http2`, `start_dev_server`, `health_check`, `detect_nodeenv`, `set_environment`, `set_static_folders`, `csp_nonce`, `spa_handler`
-- `ExternalDevServer` - External dev server config (target, command, build_command, http2, enabled)
-- `PaginationContainer` - Protocol for pagination unwrapping
-- `ViteConfig` fields: `guards`, `exclude_static_from_auth`, `spa_path`, `include_root_spa_paths`
+- `DeployConfig` - CDN deployment settings
+- `SPAConfig` - Single-page app settings
+- `InertiaConfig` - Inertia.js integration settings
+- `InertiaTypeGenConfig` - Inertia type generation
+- `InertiaSSRConfig` - Inertia SSR settings
+- `RuntimeConfig.run_command`, `build_command` etc.
+- `ExternalDevServer`, `PaginationContainer`, `guards`, etc.
 
 ### TypeScript-Only Fields
 
 These are configured in `vite.config.ts` only:
 
-- `input` - Entry point files
-- `refresh` - HMR file patterns
-- `detectTls` - Auto-detect HTTPS
-- `autoDetectIndex` - Find index.html
-- `transformOnServe` - HTML transforms in dev
-- `types.debounce` - File watch debounce
-- Vite-specific plugins, aliases, etc.
+- `input`, `refresh`, `detectTls`, `autoDetectIndex`, `transformOnServe`, `types.debounce`, plugins, aliases.
 
 ## Best Practices
 
 1. **Let Python Drive Shared Config**: Configure shared settings in Python's `ViteConfig`.
 2. **Keep vite.config.ts Minimal**: Only specify TypeScript-specific options.
-3. **Override Only When Necessary**: If you need to override Python defaults in TypeScript, expect a warning.
+3. **Override Only When Necessary**: If you need to override Python defaults in TypeScript.
+4. **Run Litestar First in Development**: The bridge file is created when Litestar starts.
 
 ---
 
-# 4. Development Workflow
+# 4. Testing Guide
 
 **Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
 
-## 1. Initial Setup
-
-All project tasks are managed through a `Makefile` and the `uv` Python package manager.
-
-1. **Prerequisites**: Python 3.10+, Node.js 20.19.0+ or 22.12.0+, `curl`.
-2. **Install `uv`**: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-3. **Install Project Dependencies**: `make install`
-
-## 2. Daily Development
-
-### Frontend directory conventions
-
-- Inertia variants use `resources/`.
-- Other templates use `src/`.
-- Relocate frontend via `litestar assets init --frontend-dir web`.
-
-### Running the Development Server
-
-- **Run Litestar App (starts/proxies Vite)**:
-    ```bash
-    uv run litestar --app examples.vue.app:app run --reload
-    ```
-- **Two-port option (start Vite yourself)**:
-    ```bash
-    uv run litestar --app examples.vue.app:app assets serve
-    uv run litestar --app examples.vue.app:app run --reload
-    ```
-
-### Running Tests
-
-```bash
-# Run the full test suite (Python and JS)
-make test
-
-# Run only Python tests
-pytest src/py/tests/
-
-# Run only JS tests
-npm run test --workspace=src/js
-```
-
-### Code Quality
-
-```bash
-# Run all linters and type checkers
-make lint
-
-# Auto-format your code
-make fix
-```
-
-## 3. Committing and Pre-Commit Hooks
-
-This project uses `pre-commit` to enforce code quality at the time of commit.
-
-## 4. Release Workflow
-
-### Standard Release
-
-```bash
-make release bump=patch   # or minor/major
-git push origin main
-gh release create v0.15.0 --title "v0.15.0" --generate-notes
-```
-
-### Pre-releases (Alpha/Beta/RC)
-
-```bash
-make pre-release version=0.15.0-beta.1
-git push origin HEAD
-gh release create v0.15.0-beta.1 --prerelease --title "v0.15.0-beta.1"
-```
-
----
-
-# 5. Testing Guide
-
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
+This guide provides instructions and best practices for writing and running tests in the `litestar-vite` project.
 
 ## Overview
 
-- **Backend (Python)**: [pytest](https://docs.pytest.org/).
-- **Frontend (TypeScript)**: [Vitest](https://vitest.dev/).
+The project uses a dual testing strategy for its Python backend and TypeScript frontend.
+
+- **Backend (Python)**: [pytest](https://docs.pytest.org/) is the primary framework for all Python tests.
+- **Frontend (TypeScript)**: [Vitest](https://vitest.dev/) is used for tests related to the core JavaScript/TypeScript library.
 
 The full test suite can be run with a single command: `make test`.
 
 ## Backend Testing (pytest)
 
+Python tests are located in `src/py/tests/`.
+
+### Test Types
+
+1. **Unit Tests (`src/py/tests/unit/`)**: Focus on individual components (functions, classes) in isolation.
+2. **Integration Tests (`src/py/tests/integration/`)**: Verify the interaction between multiple components.
+
+### Key Practices
+
 - **Function-Based Tests**: All tests **must** be function-based. Do not use class-based tests.
-- **Fixtures**: Use `pytest` fixtures (`@pytest.fixture`).
+- **Fixtures**: Use `pytest` fixtures for reusable setup.
 - **Async Tests**: Mark `async` test functions with `@pytest.mark.asyncio`.
-- **Coverage**: Aim for at least 90% test coverage (`make coverage`).
-
-### Recent Test Patterns
-
-1. **Props flattening tests**: Verify dict props are merged at top-level
-2. **Content wrapping tests**: Verify non-dict content goes under `content` key
-3. **Inertia protocol tests**: Test v2 protocol features (deferred, merge, prepend props)
+- **Coverage**: Aim for at least 90% test coverage for any new or modified code.
 
 ## Frontend Testing (Vitest)
 
-- **Modern Syntax**: Use modern ES module syntax.
-- **Mocking**: Use Vitest's built-in mocking capabilities.
+The core TypeScript library tests are located in `src/js/tests/`.
 
-## Full Suite
-
-```bash
-# Run all tests (Python + JS)
-make test
-
-# Run all linting, type-checking, and tests
-make check-all
-
-# Run with coverage report
-make coverage
-```
-
-## Type Checking
+### Running Frontend Tests
 
 ```bash
-# Run all type checkers
-make type-check
+# Navigate to the JS directory
+cd src/js
+
+# Run the tests
+npm run test
 ```
 
 ## End-to-End (E2E) Testing
+
+E2E tests validate the complete developer experience by running actual servers.
 
 ### Critical: Use Litestar CLI Commands
 
 **ALWAYS use `litestar assets` commands instead of npm/node directly in tests!**
 
-```python
-# CORRECT - Uses Litestar CLI
-def start_dev_mode():
-    subprocess.Popen(["litestar", "assets", "serve"], cwd=example_dir, env=env)
-    subprocess.Popen(["litestar", "run", "--port", str(port)], cwd=example_dir, env=env)
-```
-
-**Why this matters:**
-- The Litestar CLI manages port allocation, environment variables, and process coordination
-- Direct npm commands bypass the Python-JS integration layer
-
 ---
 
-# 6. Quality Gates
+# 5. Code Style Guide
 
 **Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
 
-## Implementation Gates
-- `make test`: All tests must pass.
-- `make lint`: Zero linting errors allowed.
-- `make type-check`: Type checking must pass.
+This document defines the code style and quality standards for both the Python backend and TypeScript frontend.
 
-## Testing Gates
-- **Coverage**: 90%+ for modified modules.
-- **All Tests**: Must pass.
-- **Parallel**: Tests must work in parallel (`pytest -n auto`).
-- **N+1**: Database operations must include N+1 query detection.
-- **Concurrent**: Shared state must include concurrent access tests.
+## Python Code Style
 
-## Documentation Gates
-- **Anti-Patterns**:
-  - No `from __future__ import annotations`
-  - No `Optional[...]` (use `T | None`)
-  - No `class Test` (use function-based tests)
-  - Limit `hasattr`/`getattr`
+- **Formatter**: [Ruff](https://docs.astral.sh/ruff/)
+- **Linter**: [Ruff](https://docs.astral.sh/ruff/)
+- **Type Checking**: [MyPy](http://mypy-lang.org/)
 
-- **Recent Patterns Documented**:
-  - Props flattening in InertiaResponse
-  - ViteSPAHandler.is_initialized
-  - HTTP/2 support
-  - ExternalDevServer
-  - InertiaTypeGenConfig
-  - HTMX helper utilities
-  - Inertia v2 features (defer, clear_history, encrypt_history)
-  - PaginationContainer
+### Key Standards
+
+1. **Type Hinting**: PEP 604 (`list[str]`, `str | None`). Do **not** use `from __future__ import annotations`.
+2. **Docstrings**: Google style.
+3. **Imports**: Sorted by Ruff.
+
+## TypeScript/JavaScript Code Style
+
+- **Formatter**: Biome
+- **Linter**: Biome
+
+### Key Standards
+
+1. **Formatting**: Follow `biome.json`.
+2. **Language Features**: Modern ECMAScript features, TypeScript for all new code.
 
 ---
 
-# 7. Python API Reference
+# 6. API Reference
+
+## Python API (`litestar_vite`)
+
+### `VitePlugin`
+The main entry point for integrating Vite with Litestar.
+
+```python
+class VitePlugin(InitPluginProtocol, CLIPlugin):
+    def __init__(
+        self,
+        config: "ViteConfig | None" = None,
+        asset_loader: "ViteAssetLoader | None" = None,
+        static_files_config: "StaticFilesConfig | None" = None,
+    ) -> None: ...
+```
 
 ### `ViteConfig`
-Root configuration object passed to `VitePlugin`.
+Root configuration class.
 
 ```python
-from litestar_vite import ViteConfig, RuntimeConfig, PathConfig, LoggingConfig
-
-config = ViteConfig(
-    mode="spa",           # "spa", "template", "htmx", "hybrid", "ssr", "external"
-    dev_mode=True,        # Enable HMR/Watch (default: check env VITE_DEV_MODE)
-    base_url="/static/",  # CDN/Asset URL (default: env VITE_BASE_URL)
-    paths=PathConfig(
-        root=".",
-        bundle_dir="public",
-        resource_dir="src",
-        public_dir="public",
-        manifest_name="manifest.json",
-        hot_file="hot",
-        asset_url="/static/",
-        ssr_output_dir=None
-    ),
-    runtime=RuntimeConfig(
-        port=5173,
-        host="127.0.0.1",
-        protocol="http",
-        executor="node",       # "node", "bun", "deno", "yarn", "pnpm"
-        proxy_mode="vite",     # "vite" (allowlist), "proxy" (blocklist), "direct", None
-        external_dev_server=None,  # ExternalDevServer config
-        is_react=False,
-        ssr_enabled=False,
-        health_check=False,
-        detect_nodeenv=False,
-        set_environment=True,
-        set_static_folders=True,
-        csp_nonce=None,
-        spa_handler=True,
-        http2=True,
-        start_dev_server=True
-    ),
-    # Feature flags
-    types=True,           # Enable type generation (TypeGenConfig)
-    inertia=True,         # Enable Inertia.js (InertiaConfig)
-    spa=True,             # Enable SPA transformations (SPAConfig)
-    deploy=False,         # Enable CDN deployment (DeployConfig)
-    logging=LoggingConfig(level="normal"), # Logging settings
-
-    # Advanced
-    guards=None,          # Guards for SPA catch-all route
-    exclude_static_from_auth=True, # Exclude static assets from auth middleware
-    spa_path=None,        # Path to serve SPA (default: "/")
-    include_root_spa_paths=False # Also serve at "/" if spa_path is non-root
-)
+@dataclass
+class ViteConfig:
+    mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'inertia', 'framework', 'ssr', 'ssg', 'external'] | None" = None
+    paths: PathConfig = field(default_factory=PathConfig)
+    runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
+    types: "TypeGenConfig | bool | None" = None
+    inertia: "InertiaConfig | bool | None" = None
+    spa: "SPAConfig | bool | None" = None
+    logging: "LoggingConfig | bool | None" = None
+    dev_mode: bool = False
+    base_url: "str | None" = None
+    deploy: "DeployConfig | bool" = False
+    guards: "Sequence[Guard] | None" = None
+    exclude_static_from_auth: bool = True
+    spa_path: "str | None" = None
+    include_root_spa_paths: bool = False
 ```
 
-### `InertiaConfig`
-Configuration for InertiaJS support.
+### `InertiaPlugin`
+Plugin for Inertia.js support.
 
 ```python
-from litestar_vite import InertiaConfig, InertiaSSRConfig, InertiaTypeGenConfig
-
-config = InertiaConfig(
-    root_template="index.html",
-    component_opt_keys=("component", "page"),
-    redirect_unauthorized_to=None,
-    redirect_404=None,
-    extra_static_page_props={},
-    extra_session_page_props=set(),
-    encrypt_history=False,  # Enable v2 browser history encryption (Requires Inertia v2)
-    type_gen=InertiaTypeGenConfig(
-        include_default_auth=True,
-        include_default_flash=True
-    ),
-    ssr=InertiaSSRConfig(   # Enable Inertia SSR
-        enabled=True,
-        url="http://127.0.0.1:13714/render",
-        timeout=2.0
-    ) # Requires running external Node SSR server
-)
+class InertiaPlugin(InitPluginProtocol):
+    def __init__(self, config: "InertiaConfig") -> "None": ...
 ```
 
-### `Inertia Helpers`
-Helpers for Inertia.js integration.
+### `InertiaResponse`
+Response class for Inertia requests, handling props flattening and content wrapping.
 
 ```python
-from litestar_vite.inertia import (
-    share, lazy, defer, merge, flash, error,
-    only, except_, clear_history, scroll_props,
-    get_shared_props, extract_deferred_props, extract_merge_props
-)
-
-# Share props globally
-share(request, "user", current_user)
-
-# Lazy props (v1 style)
-lazy("permissions", lambda: Permission.all())
-
-# Deferred props (Requires Inertia v2)
-defer("notifications", fetch_notifications, group="sidebar")
-
-# Merge props
-merge("filters", current_filters)
-
-# Flash messages
-flash(request, "success", "Item saved!")
-
-# Validation errors
-error(request, "email", "Email is required")
-
-# History encryption (Requires Inertia v2)
-clear_history()  # Clear encrypted history on next response
-
-# Infinite scroll props (Requires Inertia v2)
-scroll_props(items, total=100, limit=20, offset=0)
+class InertiaResponse(Response[T]):
+    def __init__(
+        self,
+        content: T,
+        status_code: int = 200,
+        component: str | None = None,
+        props: dict[str, Any] | None = None,
+        # ... other Response args
+    ) -> None: ...
 ```
 
-### `Inertia Response Classes`
+## TypeScript API (`litestar-vite-plugin`)
 
-```python
-from litestar_vite.inertia import (
-    InertiaResponse, InertiaRedirect, InertiaBack, InertiaExternalRedirect
-)
+### `litestar(config: PluginConfig)`
+Vite plugin function.
 
-@get("/dashboard", component="Dashboard")
-async def dashboard() -> InertiaResponse:
-    return InertiaResponse(
-        {"stats": get_stats()},
-        encrypt_history=True,  # Override global setting (Requires Inertia v2)
-        clear_history=False
-    )
+```typescript
+export default function litestar(config: string | string[] | PluginConfig): any[]
 ```
+
+**`PluginConfig` Interface**:
+- `input`: Entry points (string | string[]).
+- `assetUrl`: Base asset URL (default: '/static/').
+- `bundleDir`: Output dir (default: 'public/dist').
+- `resourceDir`: Source dir (default: 'src').
+- `hotFile`: Path to hot file.
+- `ssr`: SSR entry point.
+- `ssrOutDir`: SSR output dir.
+- `refresh`: Full page reload config.
+- `detectTls`: Auto-detect HTTPS.
+- `autoDetectIndex`: Auto-detect index.html.
+- `inertiaMode`: Disable index auto-detection for Inertia.
+- `types`: Type generation config (boolean | "auto" | TypesConfig).
+- `executor`: JS runtime ('node', 'bun', etc.).

@@ -62,7 +62,7 @@ InertiaConfig Reference
      - ``dict[str, Any]``
      - Props shared with every page. Default: ``{}``
    * - ``extra_session_page_props``
-     - ``set[str]``
+     - ``set[str] | dict[str, type]``
      - Session keys to include in page props. Default: ``set()``
    * - ``encrypt_history``
      - ``bool``
@@ -70,6 +70,9 @@ InertiaConfig Reference
    * - ``type_gen``
      - ``InertiaTypeGenConfig | None``
      - Type generation options. Default: ``None``
+   * - ``use_script_element``
+     - ``bool``
+     - Use script element for page data instead of data-page attribute. Default: ``False``
 
 Component Opt Keys
 ------------------
@@ -118,6 +121,98 @@ Automatically include session keys in page props:
 
    # In a route handler
    request.session["locale"] = "en"  # Auto-included in props
+
+Script Element Optimization (Inertia v2.3+)
+-------------------------------------------
+
+The ``use_script_element`` parameter enables a performance optimization introduced in Inertia.js v2.3+.
+When enabled, page data is embedded in a ``<script type="application/json" id="app_page">`` element
+instead of a ``data-page`` attribute on the app element.
+
+**Benefits:**
+
+- **~37% payload reduction** for large pages by avoiding HTML entity escaping
+- Better performance for pages with complex props
+- Cleaner HTML output
+
+**Requirements:**
+
+This feature requires **both** server-side and client-side configuration:
+
+.. code-block:: python
+
+   # Server-side configuration
+   from litestar_vite import InertiaConfig
+
+   InertiaConfig(
+       use_script_element=True,  # Enable script element mode
+   )
+
+.. code-block:: typescript
+
+   // Client-side configuration (REQUIRED)
+   import { createInertiaApp } from '@inertiajs/react'  // or vue/svelte
+
+   createInertiaApp({
+     // v2.3+ optimization: read page data from script element
+     useScriptElementForInitialPage: true,
+     // ... rest of config
+   })
+
+.. warning::
+
+   Both configurations must be enabled together. If you enable ``use_script_element=True``
+   on the server but forget the client-side configuration, the Inertia app will fail to
+   initialize because it won't find the page data.
+
+.. note::
+
+   This feature is disabled by default (``use_script_element=False``) for backward
+   compatibility with existing Inertia.js clients. Enable it if you're using Inertia v2.3+.
+
+Flash Data Protocol (Inertia v2.3+)
+-----------------------------------
+
+Starting in v0.15, litestar-vite aligns with the Inertia.js v2.3+ protocol for flash messages.
+Flash data is now sent as a **top-level** ``page.flash`` property instead of ``page.props.flash``.
+
+**Why this matters:**
+
+- Flash messages no longer persist in browser history
+- Prevents flash messages from reappearing when navigating back/forward
+- Matches the behavior of official Inertia adapters (Laravel, Rails, Django)
+
+**Python side** (using flash helper):
+
+.. code-block:: python
+
+   from litestar_vite.inertia import flash
+
+   @post("/submit")
+   async def submit_form(request: Request) -> InertiaBack:
+       flash(request, "success", "Form submitted!")
+       return InertiaBack(request)
+
+**Client side** (accessing flash data):
+
+.. code-block:: typescript
+
+   // v2.3+ protocol - flash is at top level
+   import { usePage } from '@inertiajs/react'
+
+   const { flash } = usePage()
+
+   if (flash?.success) {
+     console.log(flash.success)  // ["Form submitted!"]
+   }
+
+.. note::
+
+   Flash messages are always sent as a dictionary mapping category names to lists of strings:
+   ``{ "success": ["Message 1"], "error": ["Error 1", "Error 2"] }``
+
+   An empty flash object is sent as ``{}`` (not ``null``) to support client-side operations
+   like ``router.flash((current) => ({ ...current, success: ["New message"] }))``.
 
 InertiaTypeGenConfig Reference
 ------------------------------

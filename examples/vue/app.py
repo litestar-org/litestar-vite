@@ -55,7 +55,11 @@ def _get_book(book_id: int) -> Book:
 
 
 def _get_summary() -> Summary:
-    """Build summary data."""
+    """Build summary data.
+
+    Returns:
+        The summary data.
+    """
     return Summary(
         app="litestar-vite library", headline="One backend, many frontends", total_books=len(BOOKS), featured=BOOKS[0]
     )
@@ -66,17 +70,29 @@ class LibraryController(Controller):
 
     @get("/api/summary")
     async def summary(self) -> Summary:
-        """Overview endpoint used across all examples."""
+        """Overview endpoint used across all examples.
+
+        Returns:
+            The result.
+        """
         return _get_summary()
 
     @get("/api/books")
     async def books(self) -> list[Book]:
-        """Return all books."""
+        """Return all books.
+
+        Returns:
+            The result.
+        """
         return BOOKS
 
     @get("/api/books/{book_id:int}")
     async def book_detail(self, book_id: int) -> Book:
-        """Return a single book by id."""
+        """Return a single book by id.
+
+        Returns:
+            The result.
+        """
         return _get_book(book_id)
 
 
