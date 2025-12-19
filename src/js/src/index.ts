@@ -185,11 +185,12 @@ export interface PluginConfig {
    */
   autoDetectIndex?: boolean
   /**
-   * Enable Inertia mode, which disables index.html auto-detection.
+   * Enable Inertia mode.
    *
    * In Inertia apps, the backend (Litestar) serves all HTML responses.
    * When enabled, direct access to the Vite dev server will show a placeholder
-   * page directing users to access the app through the backend.
+   * page directing users to access the app through the backend (even if an
+   * index.html exists for the backend to render).
    *
    * Auto-detected from `.litestar.json` when mode is "inertia".
    *
@@ -612,11 +613,11 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
             resolvedConfig.logger.info("")
 
             // Mode - simplified display
-            if (initialIndexPath) {
+            if (pluginConfig.inertiaMode) {
+              resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Mode")}:       Inertia`)
+            } else if (initialIndexPath) {
               const relIndexPath = logger.path(initialIndexPath, server.config.root)
               resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Mode")}:       SPA (${colors.cyan(relIndexPath)})`)
-            } else if (pluginConfig.inertiaMode) {
-              resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Mode")}:       Inertia`)
             } else {
               resolvedConfig.logger.info(`  ${colors.green("➜")}  ${colors.bold("Mode")}:       Litestar`)
             }
@@ -701,33 +702,63 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       }
 
       // Add PRE-middleware to intercept requests BEFORE Vite's base redirect
-      // This allows serving index.html at "/" while using a different base for assets
+      // This allows serving index.html (or placeholder) at "/" while using a different base for assets.
       server.middlewares.use(async (req, res, next) => {
-        const indexPath = await findIndexHtmlPath(server, pluginConfig)
+        const requestUrl = req.originalUrl ?? req.url ?? "/"
+        const requestPath = requestUrl.split("?")[0]
+        const isRootRequest = requestPath === "/" || requestPath === "/index.html"
 
-        // Serve index.html at root "/" even when base is "/static/"
-        // This prevents Vite from redirecting "/" to "/static/"
-        if (indexPath && (req.url === "/" || req.url === "/index.html")) {
-          const currentUrl = req.url
+        if (requestPath === "/__litestar__/transform-index") {
+          if (req.method !== "POST") {
+            res.statusCode = 405
+            res.setHeader("Content-Type", "text/plain")
+            res.end("Method Not Allowed")
+            return
+          }
+
+          const readBody = async (): Promise<string> =>
+            new Promise((resolve, reject) => {
+              let data = ""
+              req.on("data", (chunk) => {
+                data += chunk
+              })
+              req.on("end", () => resolve(data))
+              req.on("error", (err) => reject(err))
+            })
+
           try {
-            const htmlContent = await fs.promises.readFile(indexPath, "utf-8")
-            // Transform the HTML using Vite's pipeline - this injects the correct base-prefixed paths
-            const transformedHtml = await server.transformIndexHtml(req.originalUrl ?? currentUrl, htmlContent, req.originalUrl)
+            const body = await readBody()
+            const payload = JSON.parse(body) as { html?: string; url?: string }
+            if (!payload.html || typeof payload.html !== "string") {
+              res.statusCode = 400
+              res.setHeader("Content-Type", "text/plain")
+              res.end("Invalid payload")
+              return
+            }
+
+            const url = typeof payload.url === "string" && payload.url ? payload.url : "/"
+            const transformedHtml = await server.transformIndexHtml(url, payload.html, url)
             res.statusCode = 200
             res.setHeader("Content-Type", "text/html")
             res.end(transformedHtml)
-            return
           } catch (e) {
-            const relIndexPath = path.relative(server.config.root, indexPath)
-            resolvedConfig.logger.error(`Error serving index.html from ${relIndexPath}: ${e instanceof Error ? e.message : e}`)
-            next(e)
-            return
+            resolvedConfig.logger.error(
+              `Error transforming index.html: ${e instanceof Error ? e.message : e}`,
+            )
+            res.statusCode = 500
+            res.setHeader("Content-Type", "text/plain")
+            res.end("Error transforming HTML")
           }
+          return
         }
 
-        // Serve placeholder for "/" or "/index.html" when no index.html exists
-        // This is useful for modes where there's no index.html at all
-        if (!indexPath && (req.url === "/" || req.url === "/index.html")) {
+        if (!isRootRequest) {
+          next()
+          return
+        }
+
+        // In Inertia mode, always show the dev-server placeholder on the Vite port.
+        if (pluginConfig.inertiaMode) {
           try {
             const placeholderPath = path.join(dirname(), "dev-server-index.html")
             const placeholderContent = await fs.promises.readFile(placeholderPath, "utf-8")
@@ -742,7 +773,40 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           return
         }
 
-        next()
+        const indexPath = await findIndexHtmlPath(server, pluginConfig)
+
+        // Serve index.html at root "/" even when base is "/static/"
+        // This prevents Vite from redirecting "/" to "/static/"
+        if (indexPath) {
+          try {
+            const htmlContent = await fs.promises.readFile(indexPath, "utf-8")
+            // Transform the HTML using Vite's pipeline - this injects the correct base-prefixed paths
+            const transformedHtml = await server.transformIndexHtml(requestUrl, htmlContent, requestUrl)
+            res.statusCode = 200
+            res.setHeader("Content-Type", "text/html")
+            res.end(transformedHtml)
+            return
+          } catch (e) {
+            const relIndexPath = path.relative(server.config.root, indexPath)
+            resolvedConfig.logger.error(`Error serving index.html from ${relIndexPath}: ${e instanceof Error ? e.message : e}`)
+            next(e)
+            return
+          }
+        }
+
+        // Serve placeholder for "/" or "/index.html" when no index.html exists
+        // This is useful for modes where there's no index.html at all
+        try {
+          const placeholderPath = path.join(dirname(), "dev-server-index.html")
+          const placeholderContent = await fs.promises.readFile(placeholderPath, "utf-8")
+          res.statusCode = 200
+          res.setHeader("Content-Type", "text/html")
+          res.end(placeholderContent.replace(/{{ APP_URL }}/g, appUrl))
+        } catch (e) {
+          resolvedConfig.logger.error(`Error serving placeholder index.html: ${e instanceof Error ? e.message : e}`)
+          res.statusCode = 404
+          res.end("Not Found (Error loading placeholder)")
+        }
       })
     },
   }

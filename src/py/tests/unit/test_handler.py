@@ -40,6 +40,27 @@ def temp_resource_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def temp_resource_dir_with_entry(tmp_path: Path) -> Path:
+    """Create a temporary resource directory with an entry point script."""
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    index_html = resource_dir / "index.html"
+    index_html.write_text(
+        """
+        <!DOCTYPE html>
+        <html>
+        <head><title>Test SPA</title></head>
+        <body>
+          <div id="app"></div>
+          <script type="module" src="/resources/main.tsx"></script>
+        </body>
+        </html>
+        """
+    )
+    return resource_dir
+
+
+@pytest.fixture
 def spa_config(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> ViteConfig:
     """Create a ViteConfig for SPA mode."""
     from litestar_vite.config import PathConfig, RuntimeConfig
@@ -61,6 +82,20 @@ def spa_config_dev(temp_resource_dir: Path) -> ViteConfig:
     return ViteConfig(
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
+        dev_mode=True,
+        runtime=RuntimeConfig(dev_mode=True),
+    )
+
+
+@pytest.fixture
+def hybrid_config_dev(temp_resource_dir_with_entry: Path) -> ViteConfig:
+    """Create a ViteConfig for hybrid (Inertia) mode in development."""
+    from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig
+
+    return ViteConfig(
+        mode="hybrid",
+        inertia=InertiaConfig(),
+        paths=PathConfig(resource_dir=temp_resource_dir_with_entry),
         dev_mode=True,
         runtime=RuntimeConfig(dev_mode=True),
     )
@@ -188,6 +223,27 @@ async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "M
 
         assert "Dev Server HTML" in html
         mock_client.get.assert_called_once_with(f"{expected_url}/", follow_redirects=True)
+
+
+async def test_hybrid_dev_mode_uses_local_index_and_injects_vite(hybrid_config_dev: ViteConfig) -> None:
+    """Hybrid mode should serve local index.html and use Vite HTML transforms."""
+    handler = AppHandler(hybrid_config_dev)
+    await handler.initialize_async(vite_url="http://127.0.0.1:5173")
+
+    mock_request = Mock()
+    proxy_mock = AsyncMock()
+    transform_mock = AsyncMock(return_value="<html><script src=\"/static/@vite/client\"></script>"
+                                             "<script type=\"module\" src=\"/static/resources/main.tsx\"></script></html>")
+    with (
+        patch.object(AppHandler, "_proxy_to_dev_server", proxy_mock),
+        patch.object(AppHandler, "_transform_html_with_vite", transform_mock),
+    ):
+        html = await handler.get_html(mock_request, page_data={"component": "Home", "props": {}, "url": "/landing"})
+
+    assert "/static/@vite/client" in html
+    assert "/static/resources/main.tsx" in html
+    proxy_mock.assert_not_called()
+    transform_mock.assert_called_once()
 
 
 async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> None:
