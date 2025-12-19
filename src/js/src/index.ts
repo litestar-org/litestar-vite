@@ -742,9 +742,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
             res.setHeader("Content-Type", "text/html")
             res.end(transformedHtml)
           } catch (e) {
-            resolvedConfig.logger.error(
-              `Error transforming index.html: ${e instanceof Error ? e.message : e}`,
-            )
+            resolvedConfig.logger.error(`Error transforming index.html: ${e instanceof Error ? e.message : e}`)
             res.statusCode = 500
             res.setHeader("Content-Type", "text/plain")
             res.end("Error transforming HTML")

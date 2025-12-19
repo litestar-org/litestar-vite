@@ -15,6 +15,8 @@
   },
   "license": "MIT",
   "author": "Litestar",
+  "main": "./dist/js/index.js",
+  "module": "./dist/js/index.js",
   "exports": {
     ".": {
       "types": "./dist/js/index.d.ts",

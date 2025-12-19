@@ -119,7 +119,7 @@ export async function runHeyApiGeneration(config: TypeGenCoreConfig, configPath:
   // openapi-ts clears its output directory, so we isolate it from our own artifacts
   const sdkOutput = path.join(output, "api")
 
-  if (process.env.VITEST || process.env.CI) {
+  if (process.env.VITEST || process.env.VITE_TEST || process.env.NODE_ENV === "test" || process.env.CI) {
     try {
       nodeRequire.resolve("@hey-api/openapi-ts/package.json", { paths: [projectRoot] })
     } catch {
@@ -204,7 +204,7 @@ export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunT
         result.generated = true
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        if (message.includes("not found") || message.includes("ENOENT")) {
+        if (message.includes("not found") || message.includes("ENOENT") || message.includes("not installed")) {
           const zodHint = config.generateZod ? " zod" : ""
           const warning = `@hey-api/openapi-ts not installed - run: ${resolveInstallHint()} -D @hey-api/openapi-ts${zodHint}`
           result.warnings.push(warning)

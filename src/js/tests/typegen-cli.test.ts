@@ -3,13 +3,44 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
 
 const execAsync = promisify(exec)
+const repoRoot = process.cwd()
+let cliPath = ""
+
+async function ensureCliBuilt(root: string): Promise<string> {
+  const outputPath = path.join(root, "dist/js/typegen-cli.js")
+  if (fs.existsSync(outputPath)) {
+    return outputPath
+  }
+
+  const entryPath = path.join(root, "src/js/src/typegen-cli.ts")
+  const { build } = await import("esbuild")
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+
+  await build({
+    entryPoints: [entryPath],
+    platform: "node",
+    format: "esm",
+    outfile: outputPath,
+    bundle: true,
+    packages: "external",
+    banner: {
+      js: "#!/usr/bin/env node",
+    },
+  })
+
+  return outputPath
+}
 
 describe("typegen-cli", () => {
   let tmpDir: string
   let originalCwd: string
+
+  beforeAll(async () => {
+    cliPath = await ensureCliBuilt(repoRoot)
+  })
 
   beforeEach(() => {
     // Create temp directory
@@ -77,8 +108,6 @@ describe("typegen-cli", () => {
   describe("Configuration reading", () => {
     it("exits with error when .litestar.json is missing", async () => {
       // No .litestar.json file created
-      const cliPath = path.join(originalCwd, "dist/js/typegen-cli.js")
-
       try {
         await execAsync(`node ${cliPath}`)
         expect.fail("Should have thrown error")
@@ -97,7 +126,6 @@ describe("typegen-cli", () => {
 
       fs.writeFileSync(path.join(tmpDir, ".litestar.json"), JSON.stringify(config, null, 2))
 
-      const cliPath = path.join(originalCwd, "dist/js/typegen-cli.js")
       const result = await execAsync(`node ${cliPath}`)
 
       expect(result.stdout).toContain("Type generation is disabled")
@@ -117,8 +145,6 @@ describe("typegen-cli", () => {
       })
 
       fs.writeFileSync(path.join(tmpDir, ".litestar.json"), JSON.stringify(config, null, 2))
-
-      const cliPath = path.join(originalCwd, "dist/js/typegen-cli.js")
 
       // Should complete without crashing (no files to process)
       const result = await execAsync(`node ${cliPath}`)
@@ -174,15 +200,18 @@ describe("typegen-cli", () => {
 
       fs.writeFileSync(path.join(tmpDir, ".litestar.json"), JSON.stringify(config, null, 2))
 
-      const cliPath = path.join(originalCwd, "dist/js/typegen-cli.js")
-
       try {
         const result = await execAsync(`node ${cliPath}`)
-        expect(result.stdout).toContain("TypeScript artifacts updated")
+        // Either @hey-api/openapi-ts is installed and types were generated,
+        // or it's not installed and we get a warning (but still succeed)
+        const hasTypes = result.stdout.includes("TypeScript artifacts updated")
+        const hasWarning = result.stdout.includes("@hey-api/openapi-ts not installed")
+        expect(hasTypes || hasWarning).toBe(true)
       } catch (error: any) {
         // May fail if @hey-api/openapi-ts is not installed, that's okay
-        if (error.message?.includes("not installed")) {
-          expect(error.stdout || error.stderr).toContain("@hey-api/openapi-ts not installed")
+        const output = (error.stdout || "") + (error.stderr || "")
+        if (error.message?.includes("not installed") || output.includes("not installed")) {
+          expect(output).toContain("@hey-api/openapi-ts not installed")
         } else {
           throw error
         }
@@ -234,7 +263,6 @@ describe("typegen-cli", () => {
 
       fs.writeFileSync(path.join(tmpDir, ".litestar.json"), JSON.stringify(config, null, 2))
 
-      const cliPath = path.join(originalCwd, "dist/js/typegen-cli.js")
       const result = await execAsync(`node ${cliPath}`)
 
       // Should generate page-props.ts
@@ -282,8 +310,6 @@ describe("typegen-cli", () => {
 
       fs.writeFileSync(path.join(tmpDir, ".litestar.json"), JSON.stringify(config, null, 2))
 
-      const cliPath = path.join(originalCwd, "dist/js/typegen-cli.js")
-
       // First run - should generate
       const result1 = await execAsync(`node ${cliPath}`)
       expect(result1.stdout).toContain("TypeScript artifacts updated")
@@ -325,8 +351,6 @@ describe("typegen-cli", () => {
 
       fs.writeFileSync(path.join(tmpDir, ".litestar.json"), JSON.stringify(config, null, 2))
 
-      const cliPath = path.join(originalCwd, "dist/js/typegen-cli.js")
-
       try {
         // First run - should generate
         const result1 = await execAsync(`node ${cliPath}`)
@@ -337,8 +361,9 @@ describe("typegen-cli", () => {
         expect(result2.stdout).toContain("Generating TypeScript types")
       } catch (error: any) {
         // Expected if @hey-api/openapi-ts is not installed
-        if (error.message?.includes("not installed")) {
-          expect(error.stdout || error.stderr).toContain("@hey-api/openapi-ts not installed")
+        const output = (error.stdout || "") + (error.stderr || "")
+        if (error.message?.includes("not installed") || output.includes("not installed")) {
+          expect(output).toContain("@hey-api/openapi-ts not installed")
         } else {
           throw error
         }
@@ -356,7 +381,6 @@ describe("typegen-cli", () => {
 
       fs.writeFileSync(path.join(tmpDir, ".litestar.json"), JSON.stringify(config, null, 2))
 
-      const cliPath = path.join(originalCwd, "dist/js/typegen-cli.js")
       const result = await execAsync(`node ${cliPath} --verbose`)
 
       expect(result.stdout).toContain("Type generation is disabled")
@@ -391,8 +415,6 @@ describe("typegen-cli", () => {
 
       fs.writeFileSync(path.join(tmpDir, ".litestar.json"), JSON.stringify(config, null, 2))
 
-      const cliPath = path.join(originalCwd, "dist/js/typegen-cli.js")
-
       // Run with --no-cache should always regenerate
       const result = await execAsync(`node ${cliPath} --no-cache`)
       expect(result.stdout).toBeTruthy()
@@ -402,8 +424,6 @@ describe("typegen-cli", () => {
   describe("Error handling", () => {
     it("handles invalid JSON in .litestar.json", async () => {
       fs.writeFileSync(path.join(tmpDir, ".litestar.json"), "invalid json {{{")
-
-      const cliPath = path.join(originalCwd, "dist/js/typegen-cli.js")
 
       try {
         await execAsync(`node ${cliPath}`)
@@ -433,8 +453,6 @@ describe("typegen-cli", () => {
       })
 
       fs.writeFileSync(path.join(tmpDir, ".litestar.json"), JSON.stringify(config, null, 2))
-
-      const cliPath = path.join(originalCwd, "dist/js/typegen-cli.js")
 
       try {
         await execAsync(`node ${cliPath}`)
