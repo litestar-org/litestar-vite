@@ -149,19 +149,20 @@ def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", 
             field = match.group(1) if match else default_field
             error(request, field, error_detail or detail)
 
-    if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST}:
-        return InertiaBack(request)
-    if isinstance(exc, PermissionDeniedException):
+    if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST} or isinstance(exc, PermissionDeniedException):
         return InertiaBack(request)
 
     if inertia_plugin is None:
         return InertiaResponse[Any](media_type=preferred_type, content=content, status_code=status_code)
 
-    if (status_code == HTTP_401_UNAUTHORIZED or isinstance(exc, NotAuthorizedException)) and (
-        inertia_plugin.config.redirect_unauthorized_to is not None
-        and request.url.path != inertia_plugin.config.redirect_unauthorized_to
-    ):
-        return InertiaRedirect(request, redirect_to=inertia_plugin.config.redirect_unauthorized_to)
+    is_unauthorized = status_code == HTTP_401_UNAUTHORIZED or isinstance(exc, NotAuthorizedException)
+    redirect_to_login = inertia_plugin.config.redirect_unauthorized_to
+    if is_unauthorized and redirect_to_login is not None:
+        if request.url.path != redirect_to_login:
+            return InertiaRedirect(request, redirect_to=redirect_to_login)
+        # Already on login page - redirect back so Inertia processes flash messages
+        # (Inertia.js shows 4xx responses in a modal instead of updating page state)
+        return InertiaBack(request)
 
     if status_code in {HTTP_404_NOT_FOUND, HTTP_405_METHOD_NOT_ALLOWED} and (
         inertia_plugin.config.redirect_404 is not None and request.url.path != inertia_plugin.config.redirect_404
