@@ -119,6 +119,14 @@ export async function runHeyApiGeneration(config: TypeGenCoreConfig, configPath:
   // openapi-ts clears its output directory, so we isolate it from our own artifacts
   const sdkOutput = path.join(output, "api")
 
+  if (process.env.VITEST || process.env.CI) {
+    try {
+      nodeRequire.resolve("@hey-api/openapi-ts/package.json", { paths: [projectRoot] })
+    } catch {
+      throw new Error("@hey-api/openapi-ts not installed")
+    }
+  }
+
   let args: string[]
   if (configPath) {
     args = ["@hey-api/openapi-ts", "--file", configPath]
