@@ -149,7 +149,9 @@ def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", 
             field = match.group(1) if match else default_field
             error(request, field, error_detail or detail)
 
-    if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST} or isinstance(exc, PermissionDeniedException):
+    if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST} or isinstance(
+        exc, PermissionDeniedException
+    ):
         return InertiaBack(request)
 
     if inertia_plugin is None:

@@ -37,7 +37,11 @@ class ExportResult:
 
 
 def fmt_path(path: Path) -> str:
-    """Format path for display, using relative path when possible."""
+    """Format path for display, using relative path when possible.
+
+    Returns:
+        The result.
+    """
     try:
         return str(path.relative_to(Path.cwd()))
     except ValueError:

@@ -83,7 +83,11 @@ class JSExecutor(ABC):
 
     @abstractmethod
     def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
-        """Run a command."""
+        """Run a command.
+
+        Returns:
+            The result.
+        """
 
     @abstractmethod
     def execute(self, args: list[str], cwd: Path) -> None:

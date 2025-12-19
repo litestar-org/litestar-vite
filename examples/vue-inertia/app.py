@@ -54,7 +54,11 @@ def _get_book(book_id: int) -> Book:
 
 
 def _get_summary() -> Summary:
-    """Build summary data."""
+    """Build summary data.
+
+    Returns:
+        The summary data.
+    """
     return Summary(
         app="litestar-vite library", headline="One backend, many frontends", total_books=len(BOOKS), featured=BOOKS[0]
     )
@@ -65,12 +69,20 @@ class LibraryController(Controller):
 
     @get("/", component="Home")
     async def index(self) -> Message:
-        """Serve the home page."""
+        """Serve the home page.
+
+        Returns:
+            The result.
+        """
         return Message(message="Welcome to Vue Inertia!")
 
     @get("/books", component="Books")
     async def books_page(self) -> dict[str, object]:
-        """Books list page (shares API payloads)."""
+        """Books list page (shares API payloads).
+
+        Returns:
+            The result.
+        """
         return {"summary": _get_summary(), "books": BOOKS}
 
     @get("/api/summary")

@@ -12,7 +12,11 @@ pytestmark = pytest.mark.anyio
 
 @pytest.fixture
 def hotfile(tmp_path: Path) -> Path:
-    """Create a hotfile with a test Vite server URL."""
+    """Create a hotfile with a test Vite server URL.
+
+    Returns:
+        The fixture value.
+    """
     hotfile_path = tmp_path / "hot"
     hotfile_path.write_text("http://localhost:3000")
     return hotfile_path
@@ -20,7 +24,11 @@ def hotfile(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def hmr_hotfile(hotfile: Path) -> Path:
-    """Create an HMR hotfile with a distinct HMR port."""
+    """Create an HMR hotfile with a distinct HMR port.
+
+    Returns:
+        The fixture value.
+    """
     hmr_path = Path(f"{hotfile}.hmr")
     hmr_path.write_text("http://127.0.0.1:24678")
     return hmr_path

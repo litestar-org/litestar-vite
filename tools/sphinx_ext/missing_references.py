@@ -85,6 +85,9 @@ def _get_import_nodes(nodes: list[ast.stmt]) -> Generator[ast.Import | ast.Impor
 def get_module_global_imports(module_import_path: str, reference_target_source_obj: str) -> set[str]:
     """Return a set of names that are imported globally within the containing module of ``reference_target_source_obj``,
     including imports in ``if TYPE_CHECKING`` blocks.
+
+    Returns:
+        The module global imports.
     """
     module = importlib.import_module(module_import_path)
     obj = getattr(module, reference_target_source_obj)

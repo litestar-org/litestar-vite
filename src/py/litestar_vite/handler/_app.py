@@ -302,12 +302,10 @@ class AppHandler:
             The HTML with Vite dev scripts injected.
         """
         resource_dir = self._config.resource_dir
-        resource_dir_str = str(resource_dir)
-        if isinstance(resource_dir, Path):
-            try:
-                resource_dir_str = str(resource_dir.relative_to(self._config.root_dir))
-            except ValueError:
-                resource_dir_str = resource_dir.name
+        try:
+            resource_dir_str = str(resource_dir.relative_to(self._config.root_dir))
+        except ValueError:
+            resource_dir_str = resource_dir.name
         return inject_vite_dev_scripts(
             html,
             "",

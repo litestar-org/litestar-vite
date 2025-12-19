@@ -5,7 +5,11 @@ from pathlib import Path
 
 
 def detect_mcp_tools() -> dict[str, bool]:
-    """Detect which MCP tools are available."""
+    """Detect which MCP tools are available.
+
+    Returns:
+        The result.
+    """
     # This is a placeholder detection. A real implementation would
     # check for credentials, API availability, or specific configurations.
     # For this bootstrap, we'll simulate detection based on known context.

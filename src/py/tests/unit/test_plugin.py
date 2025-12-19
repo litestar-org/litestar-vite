@@ -24,6 +24,9 @@ def cleanup_vite_process_instances() -> Generator[None, None, None]:
 
     ViteProcess tracks all instances for signal handling and cleanup. When tests
     create instances with mock processes, these would fail during atexit cleanup.
+
+    Returns:
+        The result.
     """
     yield
     # Clear instances after each test to prevent mock cleanup errors

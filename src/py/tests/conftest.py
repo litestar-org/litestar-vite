@@ -30,7 +30,11 @@ _VITE_ENV_VARS = [
 
 @pytest.fixture(autouse=True)
 def clean_vite_env(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
-    """Clear Vite-related environment variables before each test for isolation."""
+    """Clear Vite-related environment variables before each test for isolation.
+
+    Returns:
+        The result.
+    """
     for var in _VITE_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
     yield

@@ -41,7 +41,11 @@ def temp_resource_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def temp_resource_dir_with_entry(tmp_path: Path) -> Path:
-    """Create a temporary resource directory with an entry point script."""
+    """Create a temporary resource directory with an entry point script.
+
+    Returns:
+        The fixture value.
+    """
     resource_dir = tmp_path / "resources"
     resource_dir.mkdir()
     index_html = resource_dir / "index.html"
@@ -62,7 +66,11 @@ def temp_resource_dir_with_entry(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def spa_config(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> ViteConfig:
-    """Create a ViteConfig for SPA mode."""
+    """Create a ViteConfig for SPA mode.
+
+    Returns:
+        The fixture value.
+    """
     from litestar_vite.config import PathConfig, RuntimeConfig
 
     # Clear environment variables that might affect config
@@ -76,7 +84,11 @@ def spa_config(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Vite
 
 @pytest.fixture
 def spa_config_dev(temp_resource_dir: Path) -> ViteConfig:
-    """Create a ViteConfig for SPA mode in development."""
+    """Create a ViteConfig for SPA mode in development.
+
+    Returns:
+        The fixture value.
+    """
     from litestar_vite.config import PathConfig, RuntimeConfig
 
     return ViteConfig(
@@ -89,7 +101,11 @@ def spa_config_dev(temp_resource_dir: Path) -> ViteConfig:
 
 @pytest.fixture
 def hybrid_config_dev(temp_resource_dir_with_entry: Path) -> ViteConfig:
-    """Create a ViteConfig for hybrid (Inertia) mode in development."""
+    """Create a ViteConfig for hybrid (Inertia) mode in development.
+
+    Returns:
+        The fixture value.
+    """
     from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig
 
     return ViteConfig(
@@ -232,8 +248,10 @@ async def test_hybrid_dev_mode_uses_local_index_and_injects_vite(hybrid_config_d
 
     mock_request = Mock()
     proxy_mock = AsyncMock()
-    transform_mock = AsyncMock(return_value="<html><script src=\"/static/@vite/client\"></script>"
-                                             "<script type=\"module\" src=\"/static/resources/main.tsx\"></script></html>")
+    transform_mock = AsyncMock(
+        return_value='<html><script src="/static/@vite/client"></script>'
+        '<script type="module" src="/static/resources/main.tsx"></script></html>'
+    )
     with (
         patch.object(AppHandler, "_proxy_to_dev_server", proxy_mock),
         patch.object(AppHandler, "_transform_html_with_vite", transform_mock),
@@ -402,6 +420,9 @@ def spa_config_with_script_element(temp_resource_dir: Path, monkeypatch: pytest.
 
     Note: InertiaConfig auto-enables CSRF, so these tests pass page_data which
     bypasses the CSRF check path.
+
+    Returns:
+        The fixture value.
     """
     from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig, SPAConfig
 

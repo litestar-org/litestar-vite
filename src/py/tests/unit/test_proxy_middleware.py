@@ -17,7 +17,11 @@ class _Recorder:
 
 @pytest.fixture
 def hotfile(tmp_path: Path) -> Path:
-    """Create a hotfile with a test Vite server URL."""
+    """Create a hotfile with a test Vite server URL.
+
+    Returns:
+        The fixture value.
+    """
     hotfile_path = tmp_path / "hot"
     hotfile_path.write_text("http://127.0.0.1:9999")
     return hotfile_path

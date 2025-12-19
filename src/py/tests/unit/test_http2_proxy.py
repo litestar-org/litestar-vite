@@ -16,7 +16,11 @@ pytestmark = pytest.mark.anyio
 
 @pytest.fixture
 def hotfile(tmp_path: Path) -> Path:
-    """Create a hotfile with a test Vite server URL."""
+    """Create a hotfile with a test Vite server URL.
+
+    Returns:
+        The fixture value.
+    """
     hotfile_path = tmp_path / "hot"
     hotfile_path.write_text("http://upstream")
     return hotfile_path

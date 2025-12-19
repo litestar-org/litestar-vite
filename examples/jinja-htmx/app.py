@@ -51,7 +51,11 @@ def _get_book(book_id: int) -> Book:
 
 
 def _get_summary() -> Summary:
-    """Build summary data."""
+    """Build summary data.
+
+    Returns:
+        The summary data.
+    """
     return Summary(
         app="litestar-vite library", headline="One backend, many frontends", total_books=len(BOOKS), featured=BOOKS[0]
     )
@@ -63,14 +67,22 @@ class LibraryController(Controller):
 
     @get("/")
     async def index(self, request: HTMXRequest) -> Template:
-        """Serve the home page with initial data."""
+        """Serve the home page with initial data.
+
+        Returns:
+            The result.
+        """
         context = {"summary": _get_summary(), "books": BOOKS, "request": request}
         return Template(template_name="index.html.j2", context=context)
 
     # [docs-start:htmx-fragment]
     @get("/fragments/book/{book_id:int}")
     async def book_fragment(self, book_id: int) -> Template:
-        """Return a book card fragment for HTMX swaps."""
+        """Return a book card fragment for HTMX swaps.
+
+        Returns:
+            The result.
+        """
         book = _get_book(book_id)
         return HTMXTemplate(
             template_name="partials/book_card.html.j2",
