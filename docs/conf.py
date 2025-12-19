@@ -142,6 +142,10 @@ nitpick_ignore = [
     (PY_CLASS, "LoggingConfig"),
     (PY_CLASS, "litestar_vite.config.LoggingConfig"),
     (PY_CLASS, "Markup"),
+    # External dependencies
+    (PY_CLASS, "httpx.AsyncClient"),
+    # Codegen internal types (use public module path - remapping handles private paths)
+    (PY_CLASS, "litestar_vite.codegen.OpenAPISupport"),
 ]
 nitpick_ignore_regex = [
     (PY_RE, r"litestar_vite.*\.T"),
