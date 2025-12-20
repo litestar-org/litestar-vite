@@ -1149,7 +1149,7 @@ dependencies = [
 
 [[package]]
 name = "litestar-vite"
-version = "0.15.0rc3"
+version = "0.15.0rc4"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -1788,11 +1788,11 @@ wheels = [
 
 [[package]]
 name = "nodeenv"
-version = "1.9.1"
+version = "1.10.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/43/16/fc88b08840de0e0a72a2f9d8c6bae36be573e475a6326ae854bcc549fc45/nodeenv-1.9.1.tar.gz", hash = "sha256:6ec12890a2dab7946721edbfbcd91f3319c6ccc9aec47be7c7e6b7011ee6645f", size = 47437, upload-time = "2024-06-04T18:44:11.171Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/24/bf/d1bda4f6168e0b2e9e5958945e01910052158313224ada5ce1fb2e1113b8/nodeenv-1.10.0.tar.gz", hash = "sha256:996c191ad80897d076bdfba80a41994c2b47c68e224c542b48feba42ba00f8bb", size = 55611, upload-time = "2025-12-20T14:08:54.006Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d2/1d/1b658dbd2b9fa9c4c9f32accbfc0205d532c8c6194dc0f2a4c0428e7128a/nodeenv-1.9.1-py2.py3-none-any.whl", hash = "sha256:ba11c9782d29c27c70ffbdda2d7415098754709be8a7056d79a737cd901155c9", size = 22314, upload-time = "2024-06-04T18:44:08.352Z" },
+    { url = "https://files.pythonhosted.org/packages/88/b2/d0896bdcdc8d28a7fc5717c305f1a861c26e18c05047949fb371034d98bd/nodeenv-1.10.0-py2.py3-none-any.whl", hash = "sha256:5bb13e3eed2923615535339b3c620e76779af4cb4c6a90deccc9e36b274d3827", size = 23438, upload-time = "2025-12-20T14:08:52.782Z" },
 ]
 
 [[package]]
@@ -2516,16 +2516,16 @@ wheels = [
 
 [[package]]
 name = "shibuya"
-version = "2025.12.17"
+version = "2025.12.19"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pygments-styles" },
     { name = "sphinx", version = "8.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "sphinx", version = "8.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/31/c3/59dd0d0a8848ac06ba7a026d661dcee6fecd503c0d09b67060e6cf6a50e7/shibuya-2025.12.17.tar.gz", hash = "sha256:24116c03f9f8f232b8a109f0508b24b9d045fbd148790d77d1b406cf63e8fbf1", size = 85824, upload-time = "2025-12-17T03:25:33.611Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/29/c8432c93217b0987f0e47b3c6f3a026037354347416a8c22b54f204d1a84/shibuya-2025.12.19.tar.gz", hash = "sha256:8ff6d87a4aad301170dae94cf790f179da9e04e3b32fc6138b46263b74d76564", size = 85776, upload-time = "2025-12-19T10:16:00.91Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b3/13/189c52177185b552caa9b7c73c846a761f90044b08c0b2f8f2687bc3ae3e/shibuya-2025.12.17-py3-none-any.whl", hash = "sha256:f25ff0f08c481bb130f92adc3c047d3fc5ac3b3ef6244936f91a927fff4ce8b7", size = 103016, upload-time = "2025-12-17T03:25:32.375Z" },
+    { url = "https://files.pythonhosted.org/packages/a9/af/2d14e79fe962119d536f66428a01c8de169b22f70e1d96ae6abfd42dfe13/shibuya-2025.12.19-py3-none-any.whl", hash = "sha256:f6262059311322d352bb28f844892f5b72518f2760196a9eb3e58f4f475c7908", size = 102998, upload-time = "2025-12-19T10:15:59.429Z" },
 ]
 
 [[package]]
