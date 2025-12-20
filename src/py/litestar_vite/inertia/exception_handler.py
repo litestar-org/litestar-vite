@@ -1,12 +1,12 @@
 import re
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import quote, urlparse, urlunparse
 
 from litestar import MediaType
 from litestar.connection import Request
 from litestar.connection.base import AuthT, StateT, UserT
 from litestar.exceptions import (
     HTTPException,
-    ImproperlyConfiguredException,
     InternalServerException,
     NotAuthorizedException,
     NotFoundException,
@@ -132,11 +132,9 @@ def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", 
     if extras:
         content.update({"extra": extras})
 
-    try:
-        if detail:
-            flash(request, detail, category="error")
-    except (AttributeError, KeyError, RuntimeError, ImproperlyConfiguredException):
-        request.logger.warning("Unable to set flash message", exc_info=True)
+    flash_succeeded = False
+    if detail:
+        flash_succeeded = flash(request, detail, category="error")
 
     if extras and isinstance(extras, (list, tuple)) and len(extras) >= 1:  # pyright: ignore[reportUnknownArgumentType]
         first_extra = extras[0]  # pyright: ignore[reportUnknownVariableType]
@@ -161,6 +159,12 @@ def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", 
     redirect_to_login = inertia_plugin.config.redirect_unauthorized_to
     if is_unauthorized and redirect_to_login is not None:
         if request.url.path != redirect_to_login:
+            # If flash failed (no session), pass error message via query param
+            if not flash_succeeded and detail:
+                parsed = urlparse(redirect_to_login)
+                error_param = f"error={quote(detail, safe='')}"
+                query = f"{parsed.query}&{error_param}" if parsed.query else error_param
+                redirect_to_login = urlunparse(parsed._replace(query=query))
             return InertiaRedirect(request, redirect_to=redirect_to_login)
         # Already on login page - redirect back so Inertia processes flash messages
         # (Inertia.js shows 4xx responses in a modal instead of updating page state)
