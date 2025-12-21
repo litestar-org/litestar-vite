@@ -166,10 +166,7 @@ class ProxyHeadersMiddleware(AbstractMiddleware):
     scopes = {ScopeType.HTTP, ScopeType.WEBSOCKET}
 
     def __init__(
-        self,
-        app: "ASGIApp",
-        trusted_hosts: "list[str] | str" = "127.0.0.1",
-        handle_forwarded_host: bool = True,
+        self, app: "ASGIApp", trusted_hosts: "list[str] | str" = "127.0.0.1", handle_forwarded_host: bool = True
     ) -> None:
         """Initialize the proxy headers middleware.
 

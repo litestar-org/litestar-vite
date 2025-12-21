@@ -277,12 +277,7 @@ async def test_middleware_rejects_empty_scheme() -> None:
 
     middleware = ProxyHeadersMiddleware(recorder, trusted_hosts="*")
 
-    scope = {
-        "type": "http",
-        "scheme": "http",
-        "client": ("127.0.0.1", 12345),
-        "headers": [(b"x-forwarded-proto", b"")],
-    }
+    scope = {"type": "http", "scheme": "http", "client": ("127.0.0.1", 12345), "headers": [(b"x-forwarded-proto", b"")]}
 
     await middleware(scope, lambda: ..., lambda x: ...)  # type: ignore
 
@@ -340,10 +335,7 @@ async def test_middleware_applies_forwarded_host() -> None:
         "type": "http",
         "scheme": "http",
         "client": ("127.0.0.1", 12345),
-        "headers": [
-            (b"host", b"internal.local"),
-            (b"x-forwarded-host", b"example.com"),
-        ],
+        "headers": [(b"host", b"internal.local"), (b"x-forwarded-host", b"example.com")],
     }
 
     await middleware(scope, lambda: ..., lambda x: ...)  # type: ignore
@@ -364,10 +356,7 @@ async def test_middleware_skips_forwarded_host_when_disabled() -> None:
         "type": "http",
         "scheme": "http",
         "client": ("127.0.0.1", 12345),
-        "headers": [
-            (b"host", b"internal.local"),
-            (b"x-forwarded-host", b"example.com"),
-        ],
+        "headers": [(b"host", b"internal.local"), (b"x-forwarded-host", b"example.com")],
     }
 
     await middleware(scope, lambda: ..., lambda x: ...)  # type: ignore
