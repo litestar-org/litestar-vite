@@ -35,17 +35,14 @@ if TYPE_CHECKING:
     from litestar import Request
 
 __all__ = (
-    "normalize_validation_errors",
-    "create_precognition_exception_handler",
-    "precognition",
     "PrecognitionResponse",
+    "create_precognition_exception_handler",
+    "normalize_validation_errors",
+    "precognition",
 )
 
 
-def normalize_validation_errors(
-    exc: ValidationException,
-    validate_only: "set[str] | None" = None,
-) -> "dict[str, Any]":
+def normalize_validation_errors(exc: ValidationException, validate_only: "set[str] | None" = None) -> "dict[str, Any]":
     """Normalize Litestar validation errors to Laravel format.
 
     Laravel's Precognition protocol expects errors in this format:
@@ -100,10 +97,7 @@ def normalize_validation_errors(
     elif isinstance(detail, str):  # pyright: ignore[reportUnnecessaryIsInstance]
         errors["_root"] = [detail]
 
-    return {
-        "message": "The given data was invalid.",
-        "errors": errors,
-    }
+    return {"message": "The given data was invalid.", "errors": errors}
 
 
 class PrecognitionResponse(Response[Any]):
@@ -114,15 +108,12 @@ class PrecognitionResponse(Response[Any]):
 
     def __init__(self) -> None:
         super().__init__(
-            content=None,
-            status_code=HTTP_204_NO_CONTENT,
-            headers={InertiaHeaders.PRECOGNITION_SUCCESS.value: "true"},
+            content=None, status_code=HTTP_204_NO_CONTENT, headers={InertiaHeaders.PRECOGNITION_SUCCESS.value: "true"}
         )
 
 
 def create_precognition_exception_handler(
-    *,
-    fallback_handler: "Callable[[Request[Any, Any, Any], ValidationException], Response[Any]] | None" = None,
+    *, fallback_handler: "Callable[[Request[Any, Any, Any], ValidationException], Response[Any]] | None" = None
 ) -> "Callable[[Request[Any, Any, Any], ValidationException], Response[Any]]":
     """Create an exception handler for ValidationException that supports Precognition.
 
@@ -146,7 +137,11 @@ def create_precognition_exception_handler(
         if is_precognition:
             # Get validate_only fields for partial validation
             validate_only_header = request.headers.get(InertiaHeaders.PRECOGNITION_VALIDATE_ONLY.value.lower())
-            validate_only = {field.strip() for field in validate_only_header.split(",") if field.strip()} if validate_only_header else None
+            validate_only = (
+                {field.strip() for field in validate_only_header.split(",") if field.strip()}
+                if validate_only_header
+                else None
+            )
 
             # Normalize errors to Laravel format
             error_data = normalize_validation_errors(exc, validate_only)
@@ -171,7 +166,7 @@ def create_precognition_exception_handler(
             content={
                 "status_code": HTTP_422_UNPROCESSABLE_ENTITY,
                 "detail": "Validation failed",
-                "extra": exc.detail if exc.detail else [],
+                "extra": exc.detail or [],
             },
             status_code=HTTP_422_UNPROCESSABLE_ENTITY,
             media_type=MediaType.JSON,
@@ -180,9 +175,7 @@ def create_precognition_exception_handler(
     return handler
 
 
-def precognition(
-    fn: "Callable[..., Any]",
-) -> "Callable[..., Any]":
+def precognition(fn: "Callable[..., Any]") -> "Callable[..., Any]":
     """Decorator to enable Precognition on a route handler.
 
     When a Precognition request passes DTO validation, this decorator

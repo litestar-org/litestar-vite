@@ -3,19 +3,13 @@
 from typing import Any, cast
 from unittest.mock import MagicMock
 
+import pytest
+from litestar import Request
+from litestar.exceptions import ValidationException
+from litestar.status_codes import HTTP_204_NO_CONTENT, HTTP_422_UNPROCESSABLE_ENTITY
 from litestar.types import HTTPScope
 
-import pytest
-from litestar import Request, get, post
-from litestar.datastructures import State
-from litestar.exceptions import ValidationException
-from litestar.middleware.session.server_side import ServerSideSessionConfig
-from litestar.status_codes import HTTP_204_NO_CONTENT, HTTP_422_UNPROCESSABLE_ENTITY
-from litestar.stores.memory import MemoryStore
-from litestar.template.config import TemplateConfig
-from litestar.testing import create_test_client
-
-from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
+from litestar_vite.inertia import InertiaHeaders
 from litestar_vite.inertia.precognition import (
     PrecognitionResponse,
     create_precognition_exception_handler,
@@ -23,8 +17,6 @@ from litestar_vite.inertia.precognition import (
     precognition,
 )
 from litestar_vite.inertia.request import InertiaDetails, InertiaRequest
-from litestar_vite.plugin import VitePlugin
-
 
 # =====================================================
 # normalize_validation_errors() Tests
@@ -125,9 +117,7 @@ def test_normalize_validation_errors_empty_list_detail() -> None:
 def test_normalize_validation_errors_missing_key() -> None:
     """Test handling error dict without key."""
     exc = ValidationException(
-        detail=[
-            {"message": "Something went wrong.", "source": "body"},
-        ]  # type: ignore[arg-type]
+        detail=[{"message": "Something went wrong.", "source": "body"}]  # type: ignore[arg-type]
     )
 
     result = normalize_validation_errors(exc)
@@ -207,10 +197,7 @@ def test_exception_handler_validate_only_filtering() -> None:
 
     # Create mock request with Precognition and Validate-Only headers
     mock_request = MagicMock(spec=Request)
-    mock_request.headers = {
-        "precognition": "true",
-        "precognition-validate-only": "email,name",
-    }
+    mock_request.headers = {"precognition": "true", "precognition-validate-only": "email,name"}
 
     exc = ValidationException(
         detail=[
@@ -397,10 +384,7 @@ def test_inertia_details_precognition_validate_only() -> None:
             "type": "http",
             "method": "POST",
             "path": "/users",
-            "headers": [
-                (b"precognition", b"true"),
-                (b"precognition-validate-only", b"email,password,name"),
-            ],
+            "headers": [(b"precognition", b"true"), (b"precognition-validate-only", b"email,password,name")],
             "query_string": b"",
             "root_path": "",
             "app": MagicMock(),
@@ -465,10 +449,7 @@ def test_inertia_request_precognition_validate_only() -> None:
             "type": "http",
             "method": "POST",
             "path": "/users",
-            "headers": [
-                (b"precognition", b"true"),
-                (b"precognition-validate-only", b"email,password"),
-            ],
+            "headers": [(b"precognition", b"true"), (b"precognition-validate-only", b"email,password")],
             "query_string": b"",
             "root_path": "",
             "app": MagicMock(),

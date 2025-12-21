@@ -20,10 +20,13 @@ Use ``lazy()`` to mark props that should only load during partial reloads:
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import get
    from litestar_vite.inertia import lazy
 
    @get("/dashboard", component="Dashboard")
-   async def dashboard() -> dict:
+   async def dashboard() -> dict[str, Any]:
        return {
            "stats": get_stats(),                    # Always included
            "notifications": lazy("notifications", get_notifications),  # Partial only
@@ -61,6 +64,99 @@ Static vs Callable Lazy Props
 
       # CORRECT - function reference passed
       lazy("data", get_expensive_data)
+
+Once Props
+----------
+
+Use ``once()`` to cache props client-side after the first response:
+
+.. code-block:: python
+
+   from typing import Any
+
+   from litestar import get
+   from litestar_vite.inertia import once
+
+   @get("/settings", component="Settings")
+   async def settings() -> dict[str, Any]:
+       return {
+           "preferences": once("preferences", get_preferences),
+           "feature_flags": once("feature_flags", get_feature_flags),
+       }
+
+Once props are included in initial loads, but the client caches their values
+and reuses them on subsequent visits.
+
+Optional Props (WhenVisible)
+----------------------------
+
+Optional props are only included when explicitly requested:
+
+.. code-block:: python
+
+   from typing import Any
+
+   from litestar import get
+   from litestar_vite.inertia import optional
+
+   @get("/posts/{post_id}", component="Posts/Show")
+   async def show_post(post_id: int) -> dict[str, Any]:
+       return {
+           "post": await Post.get(post_id),
+           "comments": optional("comments", lambda: Comment.for_post(post_id)),
+       }
+
+These work well with the ``WhenVisible`` component to load data as it enters
+the viewport.
+
+Always Props
+------------
+
+Use ``always()`` for data that must be included in every response, even when
+partial reloads filter props:
+
+.. code-block:: python
+
+   from typing import Any
+
+   from litestar import get
+   from litestar.request import Request
+   from litestar_vite.inertia import always, lazy
+
+   @get("/dashboard", component="Dashboard")
+   async def dashboard(request: Request) -> dict[str, Any]:
+       return {
+           "auth": always("auth", {"user": request.user}),
+           "stats": lazy("stats", get_stats),
+       }
+
+Prop Type Comparison
+--------------------
+
+.. list-table::
+   :widths: 18 22 30 30
+   :header-rows: 1
+
+   * - Type
+     - Initial Load
+     - Partial Reloads
+     - Typical Use
+   * - ``lazy()``
+     - Excluded
+     - Included when requested
+     - Heavy data on demand
+   * - ``optional()``
+     - Excluded
+     - Only when explicitly requested
+     - WhenVisible / viewport loading
+   * - ``once()``
+     - Included, cached
+     - Reused unless requested
+     - Rarely changing data
+   * - ``always()``
+     - Included
+     - Included even when filtered
+     - Critical auth/context
 
 Frontend Partial Reloads
 ------------------------
@@ -157,8 +253,13 @@ Dashboard with heavy charts data:
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import get
+   from litestar_vite.inertia import lazy
+
    @get("/dashboard", component="Dashboard")
-   async def dashboard() -> dict:
+   async def dashboard() -> dict[str, Any]:
        return {
            "user": get_current_user(),              # Always needed
            "summary": get_summary_stats(),          # Always needed
@@ -179,3 +280,5 @@ See Also
 
 - :doc:`deferred-props` - Auto-loaded deferred props
 - :doc:`responses` - InertiaResponse options
+- :doc:`once-props` - Client-cached props
+- :doc:`load-when-visible` - Optional props with WhenVisible

@@ -11,8 +11,12 @@ Litestar-Vite generates TypeScript types for your page props:
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import get
+
    @get("/dashboard", component="Dashboard")
-   async def dashboard() -> dict:
+   async def dashboard() -> dict[str, Any]:
        return {
            "userCount": 42,
            "recentActivity": [...],
@@ -95,6 +99,8 @@ Types are inferred from your Python return types:
 
    from dataclasses import dataclass
 
+   from litestar import get
+
    @dataclass
    class DashboardStats:
        user_count: int
@@ -102,7 +108,7 @@ Types are inferred from your Python return types:
        revenue: float
 
    @get("/dashboard", component="Dashboard")
-   async def dashboard() -> dict:
+   async def dashboard() -> dict[str, DashboardStats]:
        stats = DashboardStats(user_count=42, active_sessions=10, revenue=1234.56)
        return {"stats": stats}
 
@@ -115,11 +121,15 @@ Use path separators for component organization:
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import get
+
    @get("/users", component="Users/Index")
-   async def list_users() -> dict: ...
+   async def list_users() -> dict[str, Any]: ...
 
    @get("/users/{id}", component="Users/Show")
-   async def show_user(id: int) -> dict: ...
+   async def show_user(id: int) -> dict[str, Any]: ...
 
 Access via:
 
@@ -184,8 +194,12 @@ Optional props are marked with ``?``:
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import get
+
    @get("/users/{id}", component="Users/Show")
-   async def show_user(id: int) -> dict:
+   async def show_user(id: int) -> dict[str, Any]:
        user = await User.get_or_none(id)
        return {
            "user": user,  # Can be None

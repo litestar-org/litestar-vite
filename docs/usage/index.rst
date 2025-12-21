@@ -5,6 +5,14 @@ Usage
 The usage documentation is for end users of the library. It provides a high-level
 overview of what features are available and how to use them.
 
+At a Glance
+-----------
+
+- :doc:`vite` for configuration and runtime behavior
+- :doc:`modes` to choose SPA, template, or framework modes
+- :doc:`types` to generate TypeScript types and routes
+- :doc:`inertia` for Inertia.js integration
+
 Core Features
 -------------
 
@@ -67,6 +75,9 @@ If you do not have an existing vite application, you can create a new one for yo
     litestar assets init
     # Inertia (resources/) example
     litestar assets init --template react-inertia
+    litestar assets init --template vue-inertia
+    litestar assets init --template svelte-inertia
+    # Template-mode examples (Jinja): react-inertia-jinja / vue-inertia-jinja
     # Non-Inertia (src/) example under custom frontend dir
     litestar assets init --template react --frontend-dir web
     litestar assets install  # preferred over npm/pnpm/yarn install

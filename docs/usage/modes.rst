@@ -4,6 +4,35 @@ Operation Modes
 
 Litestar Vite supports multiple operation modes to suit different architectural needs.
 
+At a Glance
+-----------
+
+.. list-table::
+   :widths: 18 32 50
+   :header-rows: 1
+
+   * - Mode
+     - Best For
+     - Notes
+   * - ``spa``
+     - React/Vue/Svelte SPAs
+     - Serves ``index.html`` directly (no templates)
+   * - ``template``
+     - Jinja-rendered apps
+     - Use ``vite()`` and ``vite_hmr()`` helpers
+   * - ``htmx``
+     - Hypermedia apps
+     - Template mode with HTMX helpers
+   * - ``hybrid`` / ``inertia``
+     - Inertia.js
+     - Server-side routing + SPA navigation
+   * - ``framework`` / ``ssr`` / ``ssg``
+     - Nuxt, SvelteKit, Astro
+     - Proxy mode defaults to ``"proxy"``
+   * - ``external``
+     - Non-Vite frameworks
+     - Angular CLI or other build systems
+
 SPA Mode (Default)
 ------------------
 
@@ -176,3 +205,10 @@ For backward compatibility and semantic clarity, some modes have aliases:
    * - ``framework``
      - ``ssr`` / ``ssg``
      - Aliases for framework proxy mode
+
+See Also
+--------
+
+- :doc:`/usage/vite` - Vite integration overview
+- :doc:`/frameworks/index` - Framework-specific guides
+- :doc:`/inertia/index` - Inertia.js documentation

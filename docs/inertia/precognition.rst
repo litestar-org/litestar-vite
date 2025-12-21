@@ -1,6 +1,6 @@
-===========
+============
 Precognition
-===========
+============
 
 Real-time form validation without executing handler side effects.
 
@@ -17,7 +17,8 @@ while preventing side effects like database writes or emails.
 The protocol works by:
 
 1. Frontend sends a validation-only request with ``Precognition: true`` header
-2. Server runs DTO/Pydantic validation but skips the handler body
+2. Server runs Litestar validation (DTOs, Pydantic, dataclasses, attrs,
+   TypedDicts, msgspec, etc.) but skips the handler body
 3. Returns 204 on success or 422 with validation errors
 4. Handler only executes on final form submission (without Precognition header)
 
@@ -103,8 +104,9 @@ libraries on the frontend:
                <input
                  value={form.data.name}
                  onChange={(e) => form.setData("name", e.target.value)}
-                 onBlur={() => form.validate("name")}  // Validate on blur
-               />
+                onBlur={() => form.validate("name")}
+              />
+              {/* Validate on blur */}
                {form.errors.name && <span>{form.errors.name}</span>}
 
                <input

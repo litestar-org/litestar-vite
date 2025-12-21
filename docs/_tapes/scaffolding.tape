@@ -29,13 +29,15 @@ Type "cat > app.py << 'EOF'"
 Enter
 Type "from litestar import Litestar, get"
 Enter
+Type "from typing import Any"
+Enter
 Type "from litestar_vite import ViteConfig, VitePlugin"
 Enter
 Type ""
 Enter
 Type "@get('/')"
 Enter
-Type "async def index() -> dict:"
+Type "async def index() -> dict[str, Any]:"
 Enter
 Type "    return {'message': 'Hello!'}"
 Enter

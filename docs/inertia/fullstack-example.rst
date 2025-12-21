@@ -84,8 +84,12 @@ Best Practices
 .. code-block:: python
 
    # Preferred - clean and declarative
+   from typing import Any
+
+   from litestar import get
+
    @get("/", component="Home")
-   async def home() -> dict:
+   async def home() -> dict[str, Any]:
        return {"message": "Hello"}
 
    # Instead of
@@ -146,8 +150,12 @@ Other example projects in the litestar-vite repository:
      - Vue 3 + Inertia.js
    * - ``react-inertia``
      - React 18 + Inertia.js
+   * - ``react-inertia-jinja``
+     - React + Inertia.js (Jinja template mode)
+   * - ``vue-inertia-jinja``
+     - Vue + Inertia.js (Jinja template mode)
    * - ``svelte``
-     - SvelteKit + Inertia.js
+     - Svelte 5 SPA (no Inertia)
    * - ``react``
      - React SPA (no Inertia)
    * - ``vue``

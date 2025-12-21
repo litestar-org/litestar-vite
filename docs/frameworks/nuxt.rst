@@ -4,6 +4,14 @@ Nuxt
 
 Nuxt 3+ integration with Litestar Vite for universal SSR applications.
 
+At a Glance
+-----------
+
+- Template: ``litestar assets init --template nuxt``
+- Mode: ``framework`` (aliases: ``ssr`` / ``ssg``)
+- Dev: ``litestar run --reload`` (starts Nuxt dev server via ExternalDevServer)
+- Types: ``TypeGenConfig`` generates Nuxt composable types
+
 Quick Start
 -----------
 

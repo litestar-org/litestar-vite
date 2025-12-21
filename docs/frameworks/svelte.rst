@@ -4,6 +4,14 @@ Svelte
 
 Svelte 5 integration with Litestar Vite for lightweight, reactive applications.
 
+At a Glance
+-----------
+
+- Template: ``litestar assets init --template svelte``
+- Mode: ``spa``
+- Entry: ``src/main.ts``
+- Dev: ``litestar run --reload`` (or ``litestar assets serve`` + ``litestar run``)
+
 Quick Start
 -----------
 

@@ -109,9 +109,13 @@ Litestar-Vite implements the protocol through:
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import get
+
    # Simple Inertia route
    @get("/dashboard", component="Dashboard")
-   async def dashboard() -> dict:
+   async def dashboard() -> dict[str, Any]:
        return {"user": "Alice", "stats": {"views": 100}}
 
    # The plugin handles:

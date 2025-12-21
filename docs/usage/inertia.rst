@@ -20,22 +20,33 @@ The Basics
 - :doc:`/inertia/pages` - Page components
 - :doc:`/inertia/responses` - InertiaResponse
 - :doc:`/inertia/redirects` - Redirect responses
+- :doc:`/inertia/routing` - Routing and named routes
 - :doc:`/inertia/forms` - Form handling
+- :doc:`/inertia/file-uploads` - File upload patterns
+- :doc:`/inertia/validation` - Validation errors and error bags
 - :doc:`/inertia/links` - Navigation
 
 Data & Props
 ------------
 
 - :doc:`/inertia/shared-data` - Shared props
+- :doc:`/inertia/flash-data` - Flash messages
 - :doc:`/inertia/partial-reloads` - Lazy props and partial reloads
 - :doc:`/inertia/deferred-props` - Deferred loading
+- :doc:`/inertia/once-props` - Client-cached props
 - :doc:`/inertia/merging-props` - Infinite scroll
+- :doc:`/inertia/load-when-visible` - Optional props + WhenVisible
+- :doc:`/inertia/polling` - Polling updates
+- :doc:`/inertia/prefetching` - Prefetching visits
+- :doc:`/inertia/infinite-scroll` - Infinite scroll guide
+- :doc:`/inertia/remembering-state` - Remembered client state
 
 Security
 --------
 
 - :doc:`/inertia/csrf-protection` - CSRF configuration
 - :doc:`/inertia/history-encryption` - History encryption
+- :doc:`/inertia/precognition` - Precognition validation
 
 TypeScript
 ----------
@@ -58,11 +69,13 @@ Quick Reference
 
 .. code-block:: python
 
+   from typing import Any
+
    from litestar import Litestar, get
    from litestar_vite import ViteConfig, VitePlugin
 
    @get("/", component="Home")
-   async def home() -> dict:
+   async def home() -> dict[str, Any]:
        return {"message": "Hello, World!"}
 
    app = Litestar(

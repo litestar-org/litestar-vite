@@ -4,6 +4,14 @@ Vue
 
 Vue 3 integration with Litestar Vite using the Composition API and Single File Components.
 
+At a Glance
+-----------
+
+- Template: ``litestar assets init --template vue``
+- Mode: ``spa``
+- Entry: ``src/main.ts``
+- Dev: ``litestar run --reload`` (or ``litestar assets serve`` + ``litestar run``)
+
 Quick Start
 -----------
 

@@ -65,17 +65,20 @@ Or use project scaffolding:
    litestar assets init --template react-inertia
    litestar assets init --template vue-inertia
    litestar assets init --template svelte-inertia
+   # Template-mode examples (Jinja): react-inertia-jinja / vue-inertia-jinja
 
 Minimal Configuration
 ---------------------
 
 .. code-block:: python
 
+   from typing import Any
+
    from litestar import Litestar, get
    from litestar_vite import ViteConfig, VitePlugin
 
    @get("/", component="Home")
-   async def home() -> dict:
+   async def home() -> dict[str, Any]:
        return {"message": "Welcome!"}
 
    app = Litestar(

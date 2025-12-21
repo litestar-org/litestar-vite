@@ -5,6 +5,14 @@ HTMX
 HTMX integration for hypermedia-driven applications with minimal JavaScript.
 Litestar-Vite provides seamless integration with the `litestar-htmx <https://github.com/litestar-org/litestar-htmx>`_ extension.
 
+At a Glance
+-----------
+
+- Template: ``litestar assets init --template htmx``
+- Mode: ``template`` (or ``htmx``) with ``HTMXPlugin``
+- Entry: ``resources/main.js`` (minimal JS)
+- Dev: ``litestar run --reload`` (or ``litestar assets serve`` + ``litestar run``)
+
 Quick Start
 -----------
 

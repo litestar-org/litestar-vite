@@ -81,18 +81,22 @@ The ``component_opt_keys`` parameter controls which decorator keys specify the c
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import get
+
    # Both are equivalent with default config
    @get("/", component="Home")
-   async def home() -> dict: ...
+   async def home() -> dict[str, Any]: ...
 
    @get("/", page="Home")
-   async def home() -> dict: ...
+   async def home() -> dict[str, Any]: ...
 
    # Custom keys
    InertiaConfig(component_opt_keys=("view", "component", "page"))
 
    @get("/", view="Home")  # Now works
-   async def home() -> dict: ...
+   async def home() -> dict[str, Any]: ...
 
 Static Page Props
 -----------------
