@@ -6,7 +6,29 @@ from typing import Literal
 
 from litestar_vite.config._constants import TRUE_VALUES
 
-__all__ = ("ExternalDevServer", "RuntimeConfig")
+__all__ = ("ExternalDevServer", "RuntimeConfig", "resolve_trusted_proxies")
+
+
+def resolve_trusted_proxies() -> "list[str] | str | None":
+    """Resolve trusted_proxies from environment variable.
+
+    Reads LITESTAR_TRUSTED_PROXIES env var. Examples:
+        - "*" -> Trust all proxies (for container environments)
+        - "127.0.0.1" -> Trust localhost only
+        - "10.0.0.0/8,172.16.0.0/12" -> Trust private networks
+
+    Returns:
+        The trusted proxies configuration, or None if not set.
+    """
+    env_value = os.getenv("LITESTAR_TRUSTED_PROXIES")
+    if env_value is None:
+        return None
+    env_value = env_value.strip()
+    if env_value == "*":
+        return "*"
+    if not env_value:
+        return None
+    return [h.strip() for h in env_value.split(",") if h.strip()]
 
 
 def resolve_proxy_mode() -> "Literal['vite', 'direct', 'proxy'] | None":
@@ -122,6 +144,33 @@ class RuntimeConfig:
     spa_handler: bool = True
     http2: bool = True
     start_dev_server: bool = True
+    trusted_proxies: "list[str] | str | None" = field(default_factory=resolve_trusted_proxies)
+    """Trusted proxy hosts for X-Forwarded-* header processing.
+
+    When set, the ProxyHeadersMiddleware will read and apply X-Forwarded-Proto,
+    X-Forwarded-For, and X-Forwarded-Host headers only from requests originating
+    from these hosts.
+
+    Accepted values:
+        - None (default): Disabled - do not trust any proxy headers
+        - "*": Trust all proxies (use in controlled environments like Docker/Railway)
+        - List of IP addresses: ["127.0.0.1", "10.0.0.0/8"]
+        - Comma-separated string: "127.0.0.1, 10.0.0.0/8"
+
+    Supports:
+        - IPv4 addresses: "192.168.1.1"
+        - IPv6 addresses: "::1"
+        - CIDR notation: "10.0.0.0/8", "fd00::/8"
+        - Unix socket literals (for advanced setups)
+
+    Security Note:
+        Only enable this when your application is behind a trusted reverse proxy.
+        Never enable in environments where clients can directly connect to the app.
+        Using "*" should only be done in controlled environments where direct client
+        connections are blocked by network configuration.
+
+    Environment Variable: LITESTAR_TRUSTED_PROXIES
+    """
 
     def __post_init__(self) -> None:
         """Normalize runtime settings and apply derived defaults."""

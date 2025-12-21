@@ -937,6 +937,18 @@ class ViteConfig:
         return self.runtime.csp_nonce
 
     @property
+    def trusted_proxies(self) -> "list[str] | str | None":
+        """Get trusted proxies configuration.
+
+        When set, enables ProxyHeadersMiddleware to handle X-Forwarded-* headers
+        from reverse proxies (Railway, Heroku, AWS ALB, nginx, etc.).
+
+        Returns:
+            The trusted proxies configuration, or None if disabled.
+        """
+        return self.runtime.trusted_proxies
+
+    @property
     def ssr_output_dir(self) -> "Path | None":
         """Get SSR output directory.
 

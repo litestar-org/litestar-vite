@@ -34,6 +34,7 @@ from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, ExternalDevServer
 from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.plugin._process import ViteProcess
 from litestar_vite.plugin._proxy import ViteProxyMiddleware, create_ssr_proxy_controller, create_vite_hmr_handler
+from litestar_vite.plugin._proxy_headers import ProxyHeadersMiddleware, TrustedHosts
 from litestar_vite.plugin._static import StaticFilesConfig
 from litestar_vite.plugin._utils import (
     create_proxy_client,
@@ -425,6 +426,16 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         app_config.signature_namespace["Response"] = Response
         app_config.signature_namespace["Request"] = LitestarRequest
 
+        # Register proxy headers middleware FIRST if configured
+        # This must run before other middleware to ensure correct scheme/client in scope
+        if self._config.trusted_proxies is not None:
+            from litestar_vite.plugin._proxy_headers import ProxyHeadersMiddleware
+
+            app_config.middleware.insert(
+                0,  # Insert at beginning for early processing
+                DefineMiddleware(ProxyHeadersMiddleware, trusted_hosts=self._config.trusted_proxies),
+            )
+
         handlers: ExceptionHandlersMap = cast("ExceptionHandlersMap", app_config.exception_handlers or {})  # pyright: ignore
         if NotFoundException not in handlers:
             handlers[NotFoundException] = vite_not_found_handler
@@ -660,7 +671,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
 
 __all__ = (
+    "ProxyHeadersMiddleware",
     "StaticFilesConfig",
+    "TrustedHosts",
     "VitePlugin",
     "ViteProcess",
     "ViteProxyMiddleware",
