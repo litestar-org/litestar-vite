@@ -136,6 +136,27 @@ class InertiaConfig:
     Disabled by default for compatibility with existing Inertia clients.
     """
 
+    precognition: bool = False
+    """Enable Precognition support for real-time form validation.
+
+    When True, registers an exception handler that converts validation errors
+    to Laravel's Precognition format when the Precognition header is present.
+    This enables real-time validation without executing handler side effects.
+
+    Usage:
+        1. Enable in config: InertiaConfig(precognition=True)
+        2. Use @precognition decorator on form handlers
+        3. Use laravel-precognition-vue/react on the frontend
+
+    Note on Rate Limiting:
+        Real-time validation can generate many requests. Consider:
+        - Frontend debouncing (built into laravel-precognition libraries)
+        - Server-side throttling for Precognition requests
+        - Laravel has no official rate limiting solution for Precognition
+
+    See: https://laravel.com/docs/precognition
+    """
+
     def __post_init__(self) -> None:
         """Normalize optional sub-configs."""
         if self.ssr is True:

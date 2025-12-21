@@ -231,3 +231,142 @@ export interface ScrollProps {
   /** Next page number, or null if on last page */
   nextPage: number | null
 }
+
+// ============================================================================
+// Precognition Types (Laravel Precognition Protocol)
+// ============================================================================
+
+/**
+ * HTTP headers used by the Precognition protocol.
+ *
+ * These headers enable real-time form validation without executing
+ * handler side effects. Compatible with Laravel's laravel-precognition
+ * frontend libraries.
+ *
+ * @example
+ * ```ts
+ * // Sending a Precognition request
+ * fetch('/users', {
+ *   method: 'POST',
+ *   headers: {
+ *     [PrecognitionHeaders.PRECOGNITION]: 'true',
+ *     [PrecognitionHeaders.VALIDATE_ONLY]: 'email,password',
+ *   },
+ *   body: JSON.stringify({ email: 'test@example.com', password: '123' })
+ * })
+ * ```
+ */
+export const PrecognitionHeaders = {
+  /** Indicates this is a Precognition validation request */
+  PRECOGNITION: "Precognition",
+  /** Returned on successful validation (204 response) */
+  PRECOGNITION_SUCCESS: "Precognition-Success",
+  /** Comma-separated list of fields to validate (partial validation) */
+  VALIDATE_ONLY: "Precognition-Validate-Only",
+} as const
+
+/**
+ * Validation error format returned by Precognition responses.
+ *
+ * Follows Laravel's validation error format for compatibility
+ * with laravel-precognition-vue and laravel-precognition-react.
+ *
+ * @example
+ * ```ts
+ * // Error response from server (422)
+ * const response: PrecognitionValidationErrors = {
+ *   message: "The given data was invalid.",
+ *   errors: {
+ *     email: ["The email field is required."],
+ *     password: ["The password must be at least 8 characters."]
+ *   }
+ * }
+ * ```
+ */
+export interface PrecognitionValidationErrors {
+  /** Human-readable error message */
+  message: string
+  /** Map of field names to array of error messages */
+  errors: Record<string, string[]>
+}
+
+/**
+ * Configuration options for Precognition forms.
+ *
+ * Use with laravel-precognition-vue or laravel-precognition-react.
+ *
+ * @example
+ * ```ts
+ * // Vue 3
+ * import { useForm } from 'laravel-precognition-vue'
+ *
+ * const form = useForm('post', '/users', {
+ *   email: '',
+ *   password: '',
+ * }, {
+ *   validationTimeout: 500,
+ *   onSuccess: () => { ... }
+ * })
+ * ```
+ */
+export interface PrecognitionFormConfig {
+  /**
+   * Debounce timeout in milliseconds before sending validation request.
+   * Helps prevent excessive requests during rapid typing.
+   *
+   * Default varies by library, typically 300-500ms.
+   */
+  validationTimeout?: number
+
+  /**
+   * Callback when form submission succeeds.
+   */
+  onSuccess?: () => void
+
+  /**
+   * Callback when form submission fails with validation errors.
+   */
+  onValidationError?: (errors: PrecognitionValidationErrors) => void
+
+  /**
+   * Callback before each Precognition request.
+   * Return false to cancel the request.
+   */
+  onBefore?: () => boolean | undefined
+
+  /**
+   * Callback after each Precognition request completes.
+   */
+  onFinish?: () => void
+}
+
+/**
+ * Check if a response is a successful Precognition validation.
+ *
+ * @param response - Fetch Response object
+ * @returns True if this is a successful Precognition response (204 with header)
+ */
+export function isPrecognitionSuccess(response: Response): boolean {
+  return response.status === 204 && response.headers.get(PrecognitionHeaders.PRECOGNITION_SUCCESS) === "true"
+}
+
+/**
+ * Check if a response is a Precognition validation error.
+ *
+ * @param response - Fetch Response object
+ * @returns True if this is a Precognition validation error (422 with header)
+ */
+export function isPrecognitionError(response: Response): boolean {
+  return response.status === 422 && response.headers.get(PrecognitionHeaders.PRECOGNITION) === "true"
+}
+
+/**
+ * Extract validation errors from a Precognition error response.
+ *
+ * @param response - Fetch Response object (must be a Precognition error)
+ * @returns Promise resolving to validation errors
+ * @throws If response is not valid JSON
+ */
+export async function extractPrecognitionErrors(response: Response): Promise<PrecognitionValidationErrors> {
+  return response.json() as Promise<PrecognitionValidationErrors>
+}

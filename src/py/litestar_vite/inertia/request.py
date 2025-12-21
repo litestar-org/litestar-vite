@@ -186,6 +186,30 @@ class InertiaDetails:
         """
         return self.reset_props.split(",") if self.reset_props is not None else []
 
+    @cached_property
+    def is_precognition(self) -> bool:
+        """Return True when the request is a Precognition validation request.
+
+        Precognition requests allow real-time form validation without
+        executing handler side effects.
+
+        Returns:
+            True if Precognition header is present and "true".
+        """
+        return self._get_header_value(InertiaHeaders.PRECOGNITION) == "true"
+
+    @cached_property
+    def precognition_validate_only(self) -> list[str]:
+        """Return the fields to validate for partial Precognition validation.
+
+        When present, only errors for these fields should be returned.
+
+        Returns:
+            List of field names to validate, or empty list if validating all fields.
+        """
+        value = self._get_header_value(InertiaHeaders.PRECOGNITION_VALIDATE_ONLY)
+        return value.split(",") if value else []
+
 
 class InertiaRequest(Request[UserT, AuthT, StateT]):
     """Inertia Request class to work with Inertia client."""
@@ -284,3 +308,27 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
             The version string sent by the client, or None if not present.
         """
         return self.inertia.version
+
+    @property
+    def is_precognition(self) -> bool:
+        """Check if this is a Precognition validation request.
+
+        Precognition requests run validation without executing the handler body,
+        enabling real-time form validation.
+
+        Returns:
+            True if this is a Precognition request.
+        """
+        return self.inertia.is_precognition
+
+    @property
+    def precognition_validate_only(self) -> "set[str]":
+        """Get fields to validate for partial Precognition validation.
+
+        When present, only validation errors for these fields should be returned.
+        Used for validating individual fields as the user types.
+
+        Returns:
+            A set of field names to validate, or empty set if validating all.
+        """
+        return set(self.inertia.precognition_validate_only)

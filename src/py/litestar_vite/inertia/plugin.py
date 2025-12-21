@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from anyio.from_thread import start_blocking_portal
@@ -139,7 +139,7 @@ class InertiaPlugin(InitPluginProtocol):
             The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
         """
 
-        from litestar.exceptions import ImproperlyConfiguredException
+        from litestar.exceptions import HTTPException, ImproperlyConfiguredException, ValidationException
         from litestar.middleware import DefineMiddleware
         from litestar.middleware.session import SessionMiddleware
         from litestar.security.session_auth.middleware import MiddlewareWrapper
@@ -159,11 +159,25 @@ class InertiaPlugin(InitPluginProtocol):
         else:
             msg = "The Inertia plugin require a session middleware."
             raise ImproperlyConfiguredException(msg)
-        from litestar.exceptions import HTTPException
 
-        app_config.exception_handlers.update(  # pyright: ignore[reportUnknownMemberType]
-            {Exception: exception_to_http_response, HTTPException: exception_to_http_response}
-        )
+        # Register exception handlers
+        exception_handlers: "dict[type[Exception] | int, Any]" = {
+            Exception: exception_to_http_response,
+            HTTPException: exception_to_http_response,
+        }
+
+        # Add Precognition exception handler when enabled
+        # Note: The exception handler formats validation errors in Laravel's format.
+        # For successful validation to return 204 (without executing the handler),
+        # use the @precognition decorator on your route handlers.
+        if self.config.precognition:
+            from litestar_vite.inertia.precognition import create_precognition_exception_handler
+
+            exception_handlers[ValidationException] = create_precognition_exception_handler(
+                fallback_handler=exception_to_http_response
+            )
+
+        app_config.exception_handlers.update(exception_handlers)  # pyright: ignore[reportUnknownMemberType]
         app_config.request_class = InertiaRequest
         app_config.response_class = InertiaResponse
         app_config.middleware.append(InertiaMiddleware)

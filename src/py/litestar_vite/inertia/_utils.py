@@ -30,6 +30,11 @@ class InertiaHeaders(str, Enum):
 
     INFINITE_SCROLL_MERGE_INTENT = "X-Inertia-Infinite-Scroll-Merge-Intent"
 
+    # Precognition headers (Laravel Precognition protocol)
+    PRECOGNITION = "Precognition"
+    PRECOGNITION_SUCCESS = "Precognition-Success"
+    PRECOGNITION_VALIDATE_ONLY = "Precognition-Validate-Only"
+
 
 def get_enabled_header(enabled: bool = True) -> "dict[str, Any]":
     """True if inertia is enabled.

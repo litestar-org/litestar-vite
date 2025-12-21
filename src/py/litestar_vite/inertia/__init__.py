@@ -26,6 +26,12 @@ from litestar_vite.inertia.helpers import (
 )
 from litestar_vite.inertia.middleware import InertiaMiddleware
 from litestar_vite.inertia.plugin import InertiaPlugin
+from litestar_vite.inertia.precognition import (
+    PrecognitionResponse,
+    create_precognition_exception_handler,
+    normalize_validation_errors,
+    precognition,
+)
 from litestar_vite.inertia.request import InertiaDetails, InertiaHeaders, InertiaRequest
 from litestar_vite.inertia.response import InertiaBack, InertiaExternalRedirect, InertiaRedirect, InertiaResponse
 
@@ -43,10 +49,12 @@ __all__ = (
     "InertiaResponse",
     "OnceProp",
     "OptionalProp",
+    "PrecognitionResponse",
     "PropFilter",
     "always",
     "clear_history",
     "create_inertia_exception_response",
+    "create_precognition_exception_handler",
     "defer",
     "error",
     "except_",
@@ -59,9 +67,11 @@ __all__ = (
     "helpers",
     "lazy",
     "merge",
+    "normalize_validation_errors",
     "once",
     "only",
     "optional",
+    "precognition",
     "scroll_props",
     "share",
 )
