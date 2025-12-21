@@ -2,27 +2,41 @@ from litestar_vite.config import InertiaConfig
 from litestar_vite.inertia import helpers
 from litestar_vite.inertia.exception_handler import create_inertia_exception_response, exception_to_http_response
 from litestar_vite.inertia.helpers import (
+    AlwaysProp,
+    OnceProp,
+    OptionalProp,
     PropFilter,
+    always,
     clear_history,
     defer,
     error,
     except_,
     extract_deferred_props,
     extract_merge_props,
+    extract_once_props,
     flash,
     get_shared_props,
     lazy,
     merge,
+    once,
     only,
+    optional,
     scroll_props,
     share,
 )
 from litestar_vite.inertia.middleware import InertiaMiddleware
 from litestar_vite.inertia.plugin import InertiaPlugin
+from litestar_vite.inertia.precognition import (
+    PrecognitionResponse,
+    create_precognition_exception_handler,
+    normalize_validation_errors,
+    precognition,
+)
 from litestar_vite.inertia.request import InertiaDetails, InertiaHeaders, InertiaRequest
 from litestar_vite.inertia.response import InertiaBack, InertiaExternalRedirect, InertiaRedirect, InertiaResponse
 
 __all__ = (
+    "AlwaysProp",
     "InertiaBack",
     "InertiaConfig",
     "InertiaDetails",
@@ -33,21 +47,31 @@ __all__ = (
     "InertiaRedirect",
     "InertiaRequest",
     "InertiaResponse",
+    "OnceProp",
+    "OptionalProp",
+    "PrecognitionResponse",
     "PropFilter",
+    "always",
     "clear_history",
     "create_inertia_exception_response",
+    "create_precognition_exception_handler",
     "defer",
     "error",
     "except_",
     "exception_to_http_response",
     "extract_deferred_props",
     "extract_merge_props",
+    "extract_once_props",
     "flash",
     "get_shared_props",
     "helpers",
     "lazy",
     "merge",
+    "normalize_validation_errors",
+    "once",
     "only",
+    "optional",
+    "precognition",
     "scroll_props",
     "share",
 )

@@ -14,8 +14,12 @@ For most cases, use the ``component`` decorator parameter:
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import get
+
    @get("/dashboard", component="Dashboard")
-   async def dashboard() -> dict:
+   async def dashboard() -> dict[str, Any]:
        return {"stats": {"users": 100}}
 
 InertiaResponse
@@ -85,8 +89,12 @@ Non-Inertia Responses
 .. code-block:: python
 
    # Works for both browser and Inertia navigation
+   from typing import Any
+
+   from litestar import get
+
    @get("/dashboard", component="Dashboard")
-   async def dashboard() -> dict:
+   async def dashboard() -> dict[str, Any]:
        return {"stats": {...}}
 
 Pagination Containers
@@ -96,10 +104,11 @@ Return pagination objects directly - they're automatically unwrapped:
 
 .. code-block:: python
 
+   from litestar import get
    from litestar.pagination import OffsetPagination
 
    @get("/users", component="Users")
-   async def list_users(offset: int = 0, limit: int = 20) -> OffsetPagination:
+   async def list_users(offset: int = 0, limit: int = 20) -> OffsetPagination[User]:
        users, total = await User.paginate(offset, limit)
        return OffsetPagination(
            items=users,
@@ -112,8 +121,11 @@ The ``items`` are extracted and included in props. Use ``key`` opt to customize:
 
 .. code-block:: python
 
+   from litestar import get
+   from litestar.pagination import OffsetPagination
+
    @get("/users", component="Users", key="users")
-   async def list_users(...) -> OffsetPagination:
+   async def list_users(...) -> OffsetPagination[User]:
        ...  # Props will have "users" instead of "items"
 
 Prop Filtering

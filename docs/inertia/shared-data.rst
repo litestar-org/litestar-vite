@@ -14,10 +14,13 @@ Use ``share()`` to provide data to all pages during a request:
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import Request, get
    from litestar_vite.inertia import share
 
    @get("/dashboard", component="Dashboard")
-   async def dashboard(request: Request) -> dict:
+   async def dashboard(request: Request) -> dict[str, Any]:
        # Share user data with all components
        share(request, "user", {"name": "Alice", "email": "alice@example.com"})
        share(request, "permissions", ["read", "write"])
@@ -33,10 +36,13 @@ Shared props can be lazy to optimize partial reloads:
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import Request, get
    from litestar_vite.inertia import share, lazy
 
    @get("/dashboard", component="Dashboard")
-   async def dashboard(request: Request) -> dict:
+   async def dashboard(request: Request) -> dict[str, Any]:
        # Share expensive data lazily
        share(request, "permissions", lazy("permissions", get_all_permissions))
        share(request, "notifications", lazy("notifications", get_notifications))

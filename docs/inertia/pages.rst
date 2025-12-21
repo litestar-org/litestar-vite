@@ -14,14 +14,16 @@ Use the ``component`` parameter in your route decorator:
 
 .. code-block:: python
 
+   from typing import Any
+
    from litestar import get
 
    @get("/", component="Home")
-   async def home() -> dict:
+   async def home() -> dict[str, Any]:
        return {"message": "Welcome!"}
 
    @get("/dashboard", component="Dashboard")
-   async def dashboard() -> dict:
+   async def dashboard() -> dict[str, Any]:
        return {"stats": {"users": 100, "sales": 50}}
 
 The ``component`` value maps to your frontend page component path
@@ -34,8 +36,12 @@ You can also use ``page`` instead of ``component``:
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import get
+
    @get("/", page="Home")
-   async def home() -> dict:
+   async def home() -> dict[str, Any]:
        return {"message": "Welcome!"}
 
 Props
@@ -45,8 +51,12 @@ The dictionary returned from your handler becomes the page props:
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import get
+
    @get("/users/{user_id:int}", component="Users/Show")
-   async def show_user(user_id: int) -> dict:
+   async def show_user(user_id: int) -> dict[str, Any]:
        user = await User.get(user_id)
        return {
            "user": {
@@ -121,14 +131,18 @@ Use path separators for nested page organization:
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import get
+
    @get("/users", component="Users/Index")
-   async def list_users() -> dict: ...
+   async def list_users() -> dict[str, Any]: ...
 
    @get("/users/{id}", component="Users/Show")
-   async def show_user(id: int) -> dict: ...
+   async def show_user(id: int) -> dict[str, Any]: ...
 
    @get("/users/{id}/edit", component="Users/Edit")
-   async def edit_user(id: int) -> dict: ...
+   async def edit_user(id: int) -> dict[str, Any]: ...
 
 See Also
 --------

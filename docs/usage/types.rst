@@ -4,6 +4,13 @@ Type Generation
 
 Litestar Vite includes a type generation system that keeps your frontend in sync with your Python backend.
 
+At a Glance
+-----------
+
+- Run ``litestar assets generate-types`` to export OpenAPI + routes and generate TS types.
+- Generated artifacts live under ``src/generated`` by default.
+- ``.litestar.json`` is refreshed during generation so the Vite plugin stays in sync.
+
 Overview
 --------
 
@@ -128,6 +135,9 @@ This runs the full pipeline:
 1. Exports OpenAPI schema to ``src/generated/openapi.json``
 2. Runs ``npx openapi-ts`` to generate TypeScript types
 3. Generates ``routes.ts`` with typed route helper
+
+The command also writes/updates ``.litestar.json`` and reports whether it was
+updated or unchanged, matching the output style for other generated files.
 
 You can also export routes separately:
 
@@ -277,6 +287,8 @@ See :doc:`/inertia/type-generation` for Inertia-specific details.
 See Also
 --------
 
+- :doc:`/usage/vite` - Vite integration overview
+- :doc:`/usage/modes` - Operation modes and aliases
 - :doc:`/inertia/type-generation` - Inertia-specific type generation
 - `hey-api Documentation <https://heyapi.dev/>`_
 - `Example: react <https://github.com/litestar-org/litestar-vite/tree/main/examples/react>`_

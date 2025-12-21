@@ -14,10 +14,13 @@ Use ``merge()`` to append or prepend data instead of replacing:
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import get
    from litestar_vite.inertia import merge
 
    @get("/posts", component="Posts")
-   async def list_posts(page: int = 1) -> dict:
+   async def list_posts(page: int = 1) -> dict[str, Any]:
        posts = await Post.paginate(page=page, per_page=20)
        return {
            "posts": merge("posts", posts.items),  # Append to existing
@@ -61,10 +64,13 @@ Backend
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import get
    from litestar_vite.inertia import merge, scroll_props
 
    @get("/posts", component="Posts")
-   async def list_posts(page: int = 1) -> dict:
+   async def list_posts(page: int = 1) -> dict[str, Any]:
        posts = await Post.paginate(page=page, per_page=20)
        return {
            "posts": merge("posts", posts.items),
@@ -163,10 +169,11 @@ Return pagination objects directly - items and scroll props are extracted:
 
 .. code-block:: python
 
+   from litestar import get
    from litestar.pagination import OffsetPagination
 
    @get("/posts", component="Posts", infinite_scroll=True)
-   async def list_posts(offset: int = 0, limit: int = 20) -> OffsetPagination:
+   async def list_posts(offset: int = 0, limit: int = 20) -> OffsetPagination[Post]:
        posts, total = await Post.paginate(offset, limit)
        return OffsetPagination(items=posts, offset=offset, limit=limit, total=total)
 
@@ -187,8 +194,11 @@ The pagination container is automatically unwrapped:
 
 .. code-block:: python
 
+   from litestar import get
+   from litestar.pagination import OffsetPagination
+
    @get("/posts", component="Posts", infinite_scroll=True, key="posts")
-   async def list_posts(offset: int = 0) -> OffsetPagination:
+   async def list_posts(offset: int = 0) -> OffsetPagination[Post]:
        ...  # Props will have "posts" instead of "items"
 
 Protocol Response
@@ -202,10 +212,11 @@ Merge props are indicated in the response:
      "component": "Posts",
      "props": {"posts": ["Post 1", "Post 2"]},
      "mergeProps": ["posts"],
-     "scrollRegion": {
+     "scrollProps": {
        "pageName": "page",
        "currentPage": 1,
-       "nextPageUrl": "/posts?page=2"
+       "nextPage": 2,
+       "previousPage": null
      }
    }
 
@@ -214,3 +225,4 @@ See Also
 
 - :doc:`partial-reloads` - Partial reload mechanics
 - :doc:`deferred-props` - Deferred loading
+- :doc:`infinite-scroll` - Complete infinite scroll guide

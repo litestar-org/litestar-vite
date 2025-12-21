@@ -24,10 +24,12 @@ from litestar_vite.inertia._utils import get_headers
 from litestar_vite.inertia.helpers import (
     extract_deferred_props,
     extract_merge_props,
+    extract_once_props,
     extract_pagination_scroll_props,
     get_shared_props,
     is_merge_prop,
     is_or_contains_lazy_prop,
+    is_or_contains_special_prop,
     is_pagination_container,
     lazy_render,
     pagination_to_dict,
@@ -168,10 +170,6 @@ async def _render_inertia_ssr(
         client: Optional shared httpx.AsyncClient for connection pooling.
             If None, creates a new client per request (slower).
 
-    Raises:
-        ImproperlyConfiguredException: If the SSR server is unreachable,
-            returns an error status, or returns invalid payload.
-
     Returns:
         An _InertiaSSRResult with head and body HTML.
     """
@@ -188,6 +186,10 @@ async def _do_ssr_request(
         url: The SSR server URL.
         timeout_seconds: Request timeout in seconds.
         client: Optional shared httpx.AsyncClient.
+
+    Raises:
+        ImproperlyConfiguredException: If the SSR server is unreachable,
+            returns an error status, or returns invalid payload.
 
     Returns:
         An _InertiaSSRResult with head and body HTML.
@@ -416,7 +418,7 @@ class InertiaResponse(Response[T]):
             shared_props.pop(key, None)
 
         route_content: Any | None = None
-        if is_or_contains_lazy_prop(self.content):
+        if is_or_contains_lazy_prop(self.content) or is_or_contains_special_prop(self.content):
             filtered_content = lazy_render(self.content, partial_data, inertia_plugin.portal, partial_except)
             if filtered_content is not None:
                 route_content = filtered_content
@@ -436,6 +438,11 @@ class InertiaResponse(Response[T]):
                 shared_props["content"] = route_content
 
         deferred_props = extract_deferred_props(shared_props) or None
+        # Extract once props tracked during get_shared_props (already rendered)
+        once_props_from_shared = shared_props.pop("_once_props", [])
+        # Also check route content for once props
+        once_props_from_content = extract_once_props(shared_props) or []
+        once_props = (once_props_from_shared + once_props_from_content) or None
 
         merge_props_list, prepend_props_list, deep_merge_props_list, match_props_on = extract_merge_props(shared_props)
 
@@ -480,6 +487,7 @@ class InertiaResponse(Response[T]):
             encrypt_history=encrypt_history,
             clear_history=clear_history_flag,
             deferred_props=deferred_props,
+            once_props=once_props,
             merge_props=merge_props_list or None,
             prepend_props=prepend_props_list or None,
             deep_merge_props=deep_merge_props_list or None,

@@ -119,6 +119,8 @@ Use the CLI to scaffold any framework:
     litestar assets init --template react-inertia
     litestar assets init --template vue-inertia
     litestar assets init --template svelte-inertia  # New in v0.15
+    # Template-mode examples (Jinja)
+    # react-inertia-jinja / vue-inertia-jinja
 
 Framework Comparison
 --------------------

@@ -4,6 +4,14 @@ Angular
 
 Litestar Vite supports Angular in two ways: Vite-based (using AnalogJS) and Angular CLI.
 
+At a Glance
+-----------
+
+- Vite-based: ``litestar assets init --template angular`` (mode ``spa``)
+- Angular CLI: ``litestar assets init --template angular-cli`` (mode ``external``)
+- Entry: ``src/main.ts`` (both variants)
+- Dev: ``litestar run --reload`` (Vite-based) or ``ng serve`` (Angular CLI)
+
 Option 1: Vite-Based (Recommended)
 ----------------------------------
 
@@ -37,12 +45,14 @@ Backend Setup
 .. code-block:: python
 
     from pathlib import Path
+    from typing import Any
+
     from litestar import Litestar, get
     from litestar_vite import ViteConfig, VitePlugin
     from litestar_vite.config import PathConfig
 
     @get("/api/hello")
-    async def hello() -> dict:
+    async def hello() -> dict[str, Any]:
         return {"message": "Hello from Litestar!"}
 
     vite = VitePlugin(config=ViteConfig(dev_mode=True))

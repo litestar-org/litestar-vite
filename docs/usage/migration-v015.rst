@@ -44,7 +44,7 @@ v0.15 introduces nested configuration for better organization:
             resource_dir="resources",
         ),
         runtime=RuntimeConfig(
-            hot_reload=True,
+            dev_mode=True,
             port=5173,
         ),
     )
@@ -78,6 +78,9 @@ Commands are now under the ``assets`` group:
 - ``litestar assets doctor`` - Diagnose configuration issues (use ``--show-config`` to print effective configs, ``--fix`` to apply safe auto-fixes; restarting the app rewrites ``.litestar.json`` when ``runtime.set_environment=True``)
 - ``litestar assets deploy`` - Deploy assets to CDN
 - ``litestar assets status`` - Check Vite integration status
+
+Note: ``litestar assets generate-types`` now writes or refreshes ``.litestar.json``
+so the Vite plugin stays in sync even when you are not running the dev server.
 
 Proxy Mode Default Change
 -------------------------
@@ -122,6 +125,9 @@ v0.15 introduces mode aliases for convenience:
    * - ``"ssg"``
      - ``"framework"``
      - Static Site Generation (alias for framework mode)
+   * - ``"ssr"``
+     - ``"framework"``
+     - Server-side rendering (alias for framework mode)
 
 **Recommended usage:**
 
@@ -242,6 +248,28 @@ New ``merge()`` helper for combining data during partial reloads:
 
 Supports strategies: ``"append"`` (default), ``"prepend"``, ``"deep"``.
 
+Once, Optional, and Always Props
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+v0.15 adds helpers that align with newer Inertia v2 prop behaviors:
+
+.. code-block:: python
+
+   from typing import Any
+
+   from litestar import get
+   from litestar_vite.inertia import always, once, optional
+
+   @get("/dashboard", component="Dashboard")
+   async def dashboard() -> dict[str, Any]:
+       return {
+           "auth": always("auth", {"user": "alice"}),  # Always included
+           "settings": once("settings", get_settings),  # Cached client-side
+           "details": optional("details", get_details),  # WhenVisible/explicit only
+       }
+
+Use ``optional()`` with the WhenVisible component for viewport-driven loading.
+
 New Inertia Helpers
 ~~~~~~~~~~~~~~~~~~~
 
@@ -264,7 +292,7 @@ New Inertia Helpers
 
 .. code-block:: python
 
-   from litestar_vite.inertia import error, only, except_, scroll_props
+   from litestar_vite.inertia import error, merge, only, except_, scroll_props
 
    # Validation errors
    @post("/users")
@@ -297,19 +325,20 @@ New Inertia Helpers
 Automatic Pagination Support
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-v0.15 automatically detects pagination containers and generates scroll props:
+v0.15 automatically detects pagination containers and unwraps items/metadata.
+When ``infinite_scroll=True`` is set on the route, it also generates scroll props:
 
 .. code-block:: python
 
    from litestar.pagination import OffsetPagination
    from litestar_vite.inertia import InertiaResponse
 
-   @get("/posts", component="Posts")
+   @get("/posts", component="Posts", infinite_scroll=True)
    async def list_posts(limit: int = 10, offset: int = 0) -> InertiaResponse:
        # Returns OffsetPagination with items, total, limit, offset
        posts = await Post.paginate(limit=limit, offset=offset)
 
-       # Automatically unwraps items and generates scroll_props
+       # Automatically unwraps items and generates scroll_props (when enabled)
        return InertiaResponse({"posts": posts})
 
 Supports:

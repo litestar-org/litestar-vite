@@ -19,10 +19,13 @@ The defer() Helper
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import get
    from litestar_vite.inertia import defer
 
    @get("/dashboard", component="Dashboard")
-   async def dashboard() -> dict:
+   async def dashboard() -> dict[str, Any]:
        return {
            "user": get_current_user(),                    # Immediate
            "stats": defer("stats", get_dashboard_stats),  # Deferred
@@ -38,8 +41,13 @@ Group related props to fetch them together:
 
 .. code-block:: python
 
+   from typing import Any
+
+   from litestar import get
+   from litestar_vite.inertia import defer
+
    @get("/users/{id}", component="Users/Show")
-   async def show_user(id: int) -> dict:
+   async def show_user(id: int) -> dict[str, Any]:
        return {
            "user": get_user(id),                                       # Immediate
 
@@ -70,6 +78,23 @@ Async Callbacks
        return {"slow": "data"}
 
    defer("slow", get_slow_data)
+
+Deferred Once Props
+-------------------
+
+You can combine deferred loading with client-side caching:
+
+.. code-block:: python
+
+   from litestar_vite.inertia import defer
+
+   @get("/reports", component="Reports")
+   async def reports() -> dict[str, Any]:
+       return {
+           "summary": defer("summary", build_summary).once(),
+       }
+
+The prop is fetched after the initial render, then cached for later visits.
 
 Frontend Handling
 -----------------
@@ -136,6 +161,9 @@ Defer vs Lazy
    * - Use Case
      - On-demand data
      - Slow initial data
+   * - Caching
+     - No
+     - Optional via ``.once()``
 
 Protocol Response
 -----------------
@@ -181,3 +209,4 @@ See Also
 
 - :doc:`partial-reloads` - Manual partial reloads with lazy()
 - :doc:`merging-props` - Infinite scroll patterns
+- :doc:`once-props` - Client-cached props

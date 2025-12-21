@@ -296,6 +296,9 @@ class PageProps(Generic[T]):
 
     deferred_props: "dict[str, list[str]] | None" = None
 
+    # v2.2.20+ protocol: Props that should only be resolved once and cached client-side
+    once_props: "list[str] | None" = None
+
     scroll_props: "ScrollPropsConfig | None" = None
 
     # v2.3+ protocol: Flash messages at top level (not in props)

@@ -28,7 +28,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast, overload
 
 from rich.console import Console
 
@@ -204,7 +204,19 @@ def log_fail(message: str) -> None:
     console.print(f"{_FAIL} {message}")
 
 
-def write_runtime_config_file(config: "ViteConfig", *, asset_url_override: str | None = None) -> str:
+@overload
+def write_runtime_config_file(config: "ViteConfig", *, asset_url_override: str | None = None) -> str: ...
+
+
+@overload
+def write_runtime_config_file(
+    config: "ViteConfig", *, asset_url_override: str | None = None, return_status: bool
+) -> tuple[str, bool]: ...
+
+
+def write_runtime_config_file(
+    config: "ViteConfig", *, asset_url_override: str | None = None, return_status: bool = False
+) -> str | tuple[str, bool]:
     """Write a JSON handoff file for the Vite plugin and return its path.
 
     The runtime config file is read by the JS plugin. We serialize with Litestar's JSON encoder for
@@ -274,7 +286,9 @@ def write_runtime_config_file(config: "ViteConfig", *, asset_url_override: str |
     from litestar.serialization import encode_json
 
     content = msgspec.json.format(encode_json(payload), indent=2)
-    _write_if_changed(path, content)
+    changed = _write_if_changed(path, content)
+    if return_status:
+        return str(path), changed
     return str(path)
 
 

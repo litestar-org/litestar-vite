@@ -5,6 +5,14 @@ React
 React integration with Litestar Vite provides a modern development experience with
 Hot Module Replacement (HMR) and optimized production builds.
 
+At a Glance
+-----------
+
+- Template: ``litestar assets init --template react``
+- Mode: ``spa``
+- Entry: ``src/main.tsx``
+- Dev: ``litestar run --reload`` (or ``litestar assets serve`` + ``litestar run``)
+
 Quick Start
 -----------
 

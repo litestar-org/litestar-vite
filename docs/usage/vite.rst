@@ -4,6 +4,14 @@ Vite Integration
 
 Litestar Vite provides seamless integration with Vite, a modern frontend build tool.
 
+At a Glance
+-----------
+
+- Python configuration is the source of truth; ``.litestar.json`` bridges settings to Vite.
+- Development: ``litestar run --reload`` proxies the Vite dev server automatically.
+- Production: ``litestar assets build`` then ``litestar run`` serves built assets.
+- Use ``litestar assets init`` and ``litestar assets install`` for setup.
+
 Installation
 ------------
 
@@ -34,6 +42,7 @@ The CLI provides a streamlined setup process:
     # Available templates:
     # SPA: react, react-router, react-tanstack, vue, svelte
     # Inertia: react-inertia, vue-inertia, svelte-inertia
+    # Inertia template-mode examples (Jinja): react-inertia-jinja, vue-inertia-jinja
     # SSR: sveltekit, nuxt, astro
     # Other: angular, angular-cli, htmx
 
@@ -101,6 +110,14 @@ Configuration
 -------------
 
 The integration is configured in two places: the Python backend via the `VitePlugin` and the frontend via the `litestar-vite-plugin` in your `vite.config.ts`.
+
+Runtime Bridge File (``.litestar.json``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Litestar writes a deterministic ``.litestar.json`` file from your Python config.
+The Vite plugin reads it to avoid duplicating configuration values on the JS side.
+The file is created or updated on app startup and when running
+``litestar assets generate-types``.
 
 Python Configuration (`ViteConfig`)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -565,3 +582,10 @@ Do **not** set ``asset_url`` to an ``s3://`` URL. Browsers can only fetch ``http
     )
 
 For more information about Inertia integration, refer to the :doc:`Inertia </usage/inertia>` documentation.
+
+See Also
+--------
+
+- :doc:`/usage/modes` - Operation modes and aliases
+- :doc:`/usage/types` - Type generation pipeline
+- :doc:`/frameworks/index` - Framework templates and examples

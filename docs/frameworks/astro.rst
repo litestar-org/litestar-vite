@@ -4,6 +4,14 @@ Astro
 
 Astro integration with Litestar Vite for content-focused sites with optional islands of interactivity.
 
+At a Glance
+-----------
+
+- Template: ``litestar assets init --template astro``
+- Mode: ``framework`` (aliases: ``ssr`` / ``ssg``)
+- Dev: ``litestar run --reload`` (starts Astro dev server via ExternalDevServer)
+- Types: ``TypeGenConfig`` generates Astro types
+
 Quick Start
 -----------
 

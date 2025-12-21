@@ -144,8 +144,143 @@ def defer(
 
         defer("teams", lambda: Team.all(), group="attributes")
         defer("projects", lambda: Project.all(), group="attributes")
+
+        # Chain with .once() for lazy + cached behavior
+        defer("stats", lambda: compute_expensive_stats()).once()
     """
     return DeferredProp[str, T](key=key, value=callback, group=group)
+
+
+def once(key: str, value_or_callable: "T | Callable[..., T | Coroutine[Any, Any, T]]") -> "OnceProp[str, T]":
+    """Create a prop that resolves once and is cached client-side (v2.2.20+ feature).
+
+    Once props are included in the initial page load and resolved immediately.
+    After resolution, the client caches the value and won't request it again
+    on subsequent page visits, unless explicitly requested via partial reload.
+
+    This is useful for:
+    - Expensive computations that rarely change
+    - User preferences or settings
+    - Feature flags
+    - Static configuration
+
+    Unlike lazy props, once props ARE included in initial loads.
+    The "once" behavior tells the client to cache the result.
+
+    Args:
+        key: The key to store the value under.
+        value_or_callable: Either a static value or a callable that returns the value.
+
+    Returns:
+        An OnceProp instance.
+
+    Example::
+
+        from litestar_vite.inertia import once, InertiaResponse
+
+        @get("/dashboard", component="Dashboard")
+        async def dashboard() -> InertiaResponse:
+            return InertiaResponse({
+                "user": current_user,
+                "settings": once("settings", lambda: Settings.for_user(user_id)),
+                "feature_flags": once("feature_flags", get_feature_flags()),
+            })
+
+    See Also:
+        - :func:`defer`: For deferred props that support ``.once()`` chaining
+        - Inertia.js once props: https://inertiajs.com/partial-reloads#once
+    """
+    return OnceProp[str, T](key=key, value=value_or_callable)
+
+
+def optional(key: str, callback: "Callable[..., T | Coroutine[Any, Any, T]]") -> "OptionalProp[str, T]":
+    """Create a prop only included when explicitly requested (v2 feature).
+
+    Optional props are NEVER included in initial page loads or standard
+    partial reloads. They're only sent when the client explicitly requests
+    them via ``only: ['prop_name']`` in a partial reload.
+
+    This is designed for use with Inertia's WhenVisible component, which
+    triggers a partial reload requesting specific props when an element
+    becomes visible in the viewport.
+
+    The callback is only evaluated when requested, providing both
+    bandwidth and CPU optimization.
+
+    Args:
+        key: The key to store the value under.
+        callback: A callable (sync or async) that returns the value.
+
+    Returns:
+        An OptionalProp instance.
+
+    Example::
+
+        from litestar_vite.inertia import optional, InertiaResponse
+
+        @get("/posts/{post_id}", component="Posts/Show")
+        async def show_post(post_id: int) -> InertiaResponse:
+            post = await Post.get(post_id)
+            return InertiaResponse({
+                "post": post,
+                # Only loaded when WhenVisible triggers
+                "comments": optional("comments", lambda: Comment.for_post(post_id)),
+                "related_posts": optional("related_posts", lambda: Post.related(post_id)),
+            })
+
+    Frontend usage with WhenVisible::
+
+        <WhenVisible data="comments" :params="{ only: ['comments'] }">
+            <template #fallback>
+                <LoadingSpinner />
+            </template>
+            <CommentList :comments="comments" />
+        </WhenVisible>
+
+    See Also:
+        - Inertia.js WhenVisible: https://inertiajs.com/load-when-visible
+    """
+    return OptionalProp[str, T](key=key, callback=callback)
+
+
+def always(key: str, value: "T") -> "AlwaysProp[str, T]":
+    """Create a prop always included, even during partial reloads (v2 feature).
+
+    Always props bypass partial reload filtering entirely. They're included
+    in every response regardless of what keys the client requests.
+
+    Use for critical data that must always be present:
+    - Authentication state
+    - Permission flags
+    - Feature toggles
+    - Error states
+
+    Args:
+        key: The key to store the value under.
+        value: The value (evaluated eagerly).
+
+    Returns:
+        An AlwaysProp instance.
+
+    Example::
+
+        from litestar_vite.inertia import always, lazy, InertiaResponse
+
+        @get("/dashboard", component="Dashboard")
+        async def dashboard(request: Request) -> InertiaResponse:
+            return InertiaResponse({
+                # Always sent, even during partial reloads for other props
+                "auth": always("auth", {"user": request.user, "can": permissions}),
+                # Only sent when explicitly requested
+                "analytics": lazy("analytics", get_analytics),
+                "reports": lazy("reports", get_reports),
+            })
+
+    See Also:
+        - :func:`lazy`: For props excluded from initial load
+        - :func:`optional`: For props only included when explicitly requested
+    """
+    return AlwaysProp[str, T](key=key, value=value)
 
 
 @dataclass
@@ -463,10 +598,12 @@ class DeferredProp(Generic[PropKeyT, T]):
         key: "PropKeyT",
         value: "Callable[..., T | Coroutine[Any, Any, T] | None] | None" = None,
         group: str = DEFAULT_DEFERRED_GROUP,
+        is_once: bool = False,
     ) -> None:
         self._key = key
         self._value = value
         self._group = group
+        self._is_once = is_once
         self._evaluated = False
         self._result: "T | None" = None
 
@@ -482,6 +619,32 @@ class DeferredProp(Generic[PropKeyT, T]):
     @property
     def key(self) -> "PropKeyT":
         return self._key
+
+    @property
+    def is_once(self) -> bool:
+        """Whether this prop should only be resolved once and cached client-side.
+
+        Returns:
+            True if this is a once prop.
+        """
+        return self._is_once
+
+    def once(self) -> "DeferredProp[PropKeyT, T]":
+        """Return a new DeferredProp with once behavior enabled.
+
+        Once props are cached client-side after first resolution.
+        They won't be re-fetched on subsequent visits unless explicitly
+        requested via partial reload.
+
+        Returns:
+            A new DeferredProp with is_once=True.
+
+        Example::
+
+            # Combine defer with once for lazy + cached behavior
+            defer("stats", lambda: compute_expensive_stats()).once()
+        """
+        return DeferredProp[PropKeyT, T](key=self._key, value=self._value, group=self._group, is_once=True)
 
     @staticmethod
     @contextmanager
@@ -513,16 +676,250 @@ class DeferredProp(Generic[PropKeyT, T]):
             return self._result
 
 
+class OnceProp(Generic[PropKeyT, T]):
+    """A wrapper for once-only property evaluation (v2.2.20+ feature).
+
+    Once props are resolved once and cached client-side. They won't be
+    re-fetched on subsequent page visits unless explicitly requested
+    via partial reload with ``only: ['key']``.
+
+    This is useful for expensive computations that rarely change
+    (e.g., user preferences, feature flags, static configuration).
+
+    Unlike lazy props, once props ARE included in the initial page load.
+    The "once" behavior tells the client to cache the value and not
+    request it again on future visits.
+    """
+
+    def __init__(self, key: "PropKeyT", value: "T | Callable[..., T | Coroutine[Any, Any, T]]") -> None:
+        """Initialize a OnceProp.
+
+        Args:
+            key: The prop key.
+            value: Either a static value or a callable that returns the value.
+        """
+        self._key = key
+        self._value = value
+        self._evaluated = False
+        self._result: "T | None" = None
+
+    @property
+    def key(self) -> "PropKeyT":
+        return self._key
+
+    @staticmethod
+    @contextmanager
+    def with_portal(portal: "BlockingPortal | None" = None) -> "Generator[BlockingPortal, None, None]":
+        if portal is None:
+            with start_blocking_portal() as p:
+                yield p
+        else:
+            yield portal
+
+    @staticmethod
+    def _is_awaitable(v: "Callable[..., T | Coroutine[Any, Any, T]]") -> "TypeGuard[Coroutine[Any, Any, T]]":
+        return inspect.iscoroutinefunction(v)
+
+    def render(self, portal: "BlockingPortal | None" = None) -> "T | None":
+        """Render the prop value, caching the result.
+
+        Args:
+            portal: Optional blocking portal for async callbacks.
+
+        Returns:
+            The rendered value.
+        """
+        if self._evaluated:
+            return self._result
+        if not callable(self._value):
+            self._result = self._value
+            self._evaluated = True
+            return self._result
+        if not self._is_awaitable(cast("Callable[..., T]", self._value)):
+            self._result = cast("T", self._value())
+            self._evaluated = True
+            return self._result
+        with self.with_portal(portal) as p:
+            self._result = p.call(cast("Callable[..., T]", self._value))
+            self._evaluated = True
+            return self._result
+
+
+class OptionalProp(Generic[PropKeyT, T]):
+    """A wrapper for optional property evaluation (v2 feature).
+
+    Optional props are NEVER included in initial page loads or standard
+    partial reloads. They're only sent when the client explicitly requests
+    them via ``only: ['prop_name']``.
+
+    This is designed for use with Inertia's WhenVisible component, which
+    loads data only when an element becomes visible in the viewport.
+
+    The callback is only evaluated when the prop is explicitly requested,
+    providing both bandwidth and CPU optimization.
+    """
+
+    def __init__(self, key: "PropKeyT", callback: "Callable[..., T | Coroutine[Any, Any, T]]") -> None:
+        """Initialize an OptionalProp.
+
+        Args:
+            key: The prop key.
+            callback: A callable that returns the value when requested.
+        """
+        self._key = key
+        self._callback = callback
+        self._evaluated = False
+        self._result: "T | None" = None
+
+    @property
+    def key(self) -> "PropKeyT":
+        return self._key
+
+    @staticmethod
+    @contextmanager
+    def with_portal(portal: "BlockingPortal | None" = None) -> "Generator[BlockingPortal, None, None]":
+        if portal is None:
+            with start_blocking_portal() as p:
+                yield p
+        else:
+            yield portal
+
+    @staticmethod
+    def _is_awaitable(v: "Callable[..., T | Coroutine[Any, Any, T]]") -> "TypeGuard[Coroutine[Any, Any, T]]":
+        return inspect.iscoroutinefunction(v)
+
+    def render(self, portal: "BlockingPortal | None" = None) -> "T | None":
+        """Render the prop value, caching the result.
+
+        Args:
+            portal: Optional blocking portal for async callbacks.
+
+        Returns:
+            The rendered value.
+        """
+        if self._evaluated:
+            return self._result
+        if not self._is_awaitable(cast("Callable[..., T]", self._callback)):
+            self._result = cast("T", self._callback())
+            self._evaluated = True
+            return self._result
+        with self.with_portal(portal) as p:
+            self._result = p.call(cast("Callable[..., T]", self._callback))
+            self._evaluated = True
+            return self._result
+
+
+class AlwaysProp(Generic[PropKeyT, T]):
+    """A wrapper for always-included property evaluation (v2 feature).
+
+    Always props are ALWAYS included in responses, even during partial
+    reloads. This is the opposite of lazy props - they bypass any
+    partial reload filtering.
+
+    Use for critical data that must always be present, such as:
+    - Authentication state
+    - Permission flags
+    - Feature toggles
+    - Error states
+    """
+
+    def __init__(self, key: "PropKeyT", value: "T") -> None:
+        """Initialize an AlwaysProp.
+
+        Args:
+            key: The prop key.
+            value: The value (always evaluated eagerly).
+        """
+        self._key = key
+        self._value = value
+
+    @property
+    def key(self) -> "PropKeyT":
+        return self._key
+
+    @property
+    def value(self) -> "T":
+        return self._value
+
+    def render(self, portal: "BlockingPortal | None" = None) -> "T":  # pyright: ignore
+        """Return the prop value.
+
+        Args:
+            portal: Unused, included for interface consistency.
+
+        Returns:
+            The prop value.
+        """
+        return self._value
+
+
 def is_lazy_prop(value: "Any") -> "TypeGuard[DeferredProp[Any, Any] | StaticProp[Any, Any]]":
-    """Check if value is a deferred property.
+    """Check if value is a lazy property (StaticProp or DeferredProp).
+
+    Lazy props are excluded from initial page loads and only sent when
+    explicitly requested via partial reload.
 
     Args:
         value: Any value to check
 
     Returns:
-        True if value is a deferred property
+        True if value is a lazy property (StaticProp or DeferredProp)
     """
     return isinstance(value, (DeferredProp, StaticProp))
+
+
+def is_once_prop(value: "Any") -> "TypeGuard[OnceProp[Any, Any]]":
+    """Check if value is a once prop.
+
+    Once props are included in initial loads but cached client-side.
+
+    Args:
+        value: Any value to check
+
+    Returns:
+        True if value is an OnceProp
+    """
+    return isinstance(value, OnceProp)
+
+
+def is_optional_prop(value: "Any") -> "TypeGuard[OptionalProp[Any, Any]]":
+    """Check if value is an optional prop.
+
+    Optional props are only included when explicitly requested.
+
+    Args:
+        value: Any value to check
+
+    Returns:
+        True if value is an OptionalProp
+    """
+    return isinstance(value, OptionalProp)
+
+
+def is_always_prop(value: "Any") -> "TypeGuard[AlwaysProp[Any, Any]]":
+    """Check if value is an always prop.
+
+    Always props bypass partial reload filtering.
+
+    Args:
+        value: Any value to check
+
+    Returns:
+        True if value is an AlwaysProp
+    """
+    return isinstance(value, AlwaysProp)
+
+
+def is_special_prop(value: "Any") -> bool:
+    """Check if value is any special prop type (lazy, once, optional, always).
+
+    Args:
+        value: Any value to check
+
+    Returns:
+        True if value is a special prop wrapper
+    """
+    return isinstance(value, (DeferredProp, StaticProp, OnceProp, OptionalProp, AlwaysProp))
 
 
 def is_deferred_prop(value: "Any") -> "TypeGuard[DeferredProp[Any, Any]]":
@@ -542,6 +939,9 @@ def extract_deferred_props(props: "dict[str, Any]") -> "dict[str, list[str]]":
 
     This extracts all DeferredProp instances from the props dict and groups them
     by their group name, returning a dict mapping group -> list of prop keys.
+
+    Note: DeferredProp instances with is_once=True are excluded from the result
+    because once props should not be re-fetched after initial resolution.
 
     Args:
         props: The props dictionary to scan.
@@ -566,6 +966,9 @@ def extract_deferred_props(props: "dict[str, Any]") -> "dict[str, list[str]]":
 
     for key, value in props.items():
         if is_deferred_prop(value):
+            # Exclude once props from deferred metadata
+            if value.is_once:
+                continue
             group = value.group
             if group not in groups:
                 groups[group] = []
@@ -574,7 +977,40 @@ def extract_deferred_props(props: "dict[str, Any]") -> "dict[str, list[str]]":
     return groups
 
 
-def should_render(
+def extract_once_props(props: "dict[str, Any]") -> "list[str]":
+    """Extract once props for the Inertia v2.2.20+ protocol.
+
+    Once props are cached client-side after first resolution. This function
+    extracts all OnceProp instances and DeferredProp instances with is_once=True.
+
+    Args:
+        props: The props dictionary to scan.
+
+    Returns:
+        A list of prop keys that should be cached client-side.
+        Empty list if no once props found.
+
+    Example::
+
+        props = {
+            "user": current_user,
+            "settings": once("settings", get_settings),
+            "stats": defer("stats", get_stats).once(),
+        }
+        result = extract_once_props(props)
+
+        The result is ["settings", "stats"].
+    """
+    once_keys: "list[str]" = []
+
+    for key, value in props.items():
+        if is_once_prop(value) or (is_deferred_prop(value) and value.is_once):
+            once_keys.append(key)
+
+    return once_keys
+
+
+def should_render(  # noqa: PLR0911
     value: "Any",
     partial_data: "set[str] | None" = None,
     partial_except: "set[str] | None" = None,
@@ -585,6 +1021,13 @@ def should_render(
     For v2 protocol, partial_except takes precedence over partial_data.
     When a key is provided, filtering applies to all props (not just lazy props).
 
+    Prop types have different behaviors:
+    - **AlwaysProp**: Always included, bypasses all filtering
+    - **OptionalProp**: Only included when explicitly requested via partial_data
+    - **LazyProp** (StaticProp/DeferredProp): Excluded from initial load, included on partial reload
+    - **OnceProp**: Included in initial load, cached client-side
+    - **Regular values**: Follow standard partial reload filtering
+
     Args:
         value: Any value to check
         partial_data: Optional set of keys to include (X-Inertia-Partial-Data)
@@ -594,6 +1037,26 @@ def should_render(
     Returns:
         bool: True if value should be rendered
     """
+    # AlwaysProp: Always render, bypass all filtering
+    if is_always_prop(value):
+        return True
+
+    # OptionalProp: Only render when explicitly requested
+    if is_optional_prop(value):
+        if partial_data:
+            return value.key in partial_data
+        # Never included in initial loads or standard partial reloads
+        return False
+
+    # OnceProp: Always render (client handles caching)
+    if is_once_prop(value):
+        # Once props are always included - the client decides whether to use cached value
+        # However, respect partial_except if specified
+        if partial_except:
+            return value.key not in partial_except
+        return True
+
+    # LazyProp (StaticProp/DeferredProp): Only render on partial reload
     if is_lazy_prop(value):
         if partial_except:
             return value.key not in partial_except
@@ -601,6 +1064,7 @@ def should_render(
             return value.key in partial_data
         return False
 
+    # Regular values: Apply standard filtering
     if key is not None:
         if partial_except:
             return key not in partial_except
@@ -630,7 +1094,29 @@ def is_or_contains_lazy_prop(value: "Any") -> "bool":
     return False
 
 
-def lazy_render(
+def is_or_contains_special_prop(value: "Any") -> "bool":
+    """Check if value is or contains any special prop type.
+
+    This includes lazy, once, optional, and always props.
+
+    Args:
+        value: Any value to check
+
+    Returns:
+        True if value is or contains a special prop
+    """
+    if is_special_prop(value):
+        return True
+    if isinstance(value, str):
+        return False
+    if isinstance(value, Mapping):
+        return any(is_or_contains_special_prop(v) for v in cast("Mapping[str, Any]", value).values())
+    if isinstance(value, Iterable):
+        return any(is_or_contains_special_prop(v) for v in cast("Iterable[Any]", value))
+    return False
+
+
+def lazy_render(  # noqa: PLR0911
     value: "T",
     partial_data: "set[str] | None" = None,
     portal: "BlockingPortal | None" = None,
@@ -681,7 +1167,17 @@ def lazy_render(
             ),
         )
 
+    # Handle special prop types that need rendering
     if is_lazy_prop(value) and should_render(value, partial_data, partial_except):
+        return cast("T", value.render(portal))
+
+    if is_once_prop(value) and should_render(value, partial_data, partial_except):
+        return cast("T", value.render(portal))
+
+    if is_optional_prop(value) and should_render(value, partial_data, partial_except):
+        return cast("T", value.render(portal))
+
+    if is_always_prop(value):
         return cast("T", value.render(portal))
 
     return cast("T", value)
@@ -702,7 +1198,8 @@ def get_shared_props(
         partial_except: Optional set of keys to exclude (X-Inertia-Partial-Except, v2).
 
     Returns:
-        The shared props.
+        The shared props. Includes a special ``_once_props`` key (list of prop keys
+        that were OnceProp instances) for protocol metadata generation.
 
     Note:
         Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
@@ -710,6 +1207,7 @@ def get_shared_props(
     props: "dict[str, Any]" = {}
     flash: "dict[str, list[str]]" = defaultdict(list)
     errors: "dict[str, Any]" = {}
+    once_props_keys: "list[str]" = []
     error_bag = request.headers.get("X-Inertia-Error-Bag", None)
 
     try:
@@ -720,7 +1218,11 @@ def get_shared_props(
         for key, value in shared_props.items():
             if not should_render(value, partial_data, partial_except, key=key):
                 continue
-            if is_lazy_prop(value):
+            # Track once props for protocol metadata
+            if is_once_prop(value) or (is_deferred_prop(value) and value.is_once):
+                once_props_keys.append(key)
+            # Render all special prop types
+            if is_special_prop(value):
                 props[key] = value.render(inertia_plugin.portal)
             else:
                 props[key] = value
@@ -747,6 +1249,8 @@ def get_shared_props(
     props["flash"] = flash
     props["errors"] = {error_bag: errors} if error_bag is not None else errors
     props["csrf_token"] = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
+    # Store once props keys for later extraction (removed before serialization)
+    props["_once_props"] = once_props_keys
     return props
 
 

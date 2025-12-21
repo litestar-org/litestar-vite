@@ -1,3 +1,4 @@
+import contextlib
 import os
 import subprocess
 import sys
@@ -981,6 +982,7 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
         verbose: Whether to enable verbose output.
     """
     from litestar_vite.codegen import export_integration_assets
+    from litestar_vite.plugin._utils import write_runtime_config_file
 
     if verbose:
         app.debug = True
@@ -994,6 +996,15 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
         return
 
     console.rule("[yellow]Generating TypeScript types[/]", align="left")
+
+    config_path, config_changed = write_runtime_config_file(config, return_status=True)
+    config_display = Path(config_path)
+    with contextlib.suppress(ValueError):
+        config_display = config_display.relative_to(Path.cwd())
+    if config_changed:
+        console.print(f"[green]✓ Exported {config_display}[/] [dim](updated)[/]")
+    else:
+        console.print(f"[dim]✓ {config_display} (unchanged)[/]")
 
     # Export all integration assets using the shared function
     try:

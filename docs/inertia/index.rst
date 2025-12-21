@@ -21,12 +21,14 @@ Quick Example
 
 .. code-block:: python
 
+   from typing import Any
+
    from litestar import Litestar, get
    from litestar_vite import ViteConfig, VitePlugin
    from litestar_vite.inertia import InertiaConfig, InertiaPlugin
 
    @get("/", component="Home")
-   async def home() -> dict:
+   async def home() -> dict[str, Any]:
        return {"message": "Hello, World!"}
 
    app = Litestar(
@@ -56,18 +58,27 @@ Quick Example
    pages
    responses
    redirects
-   forms
-   links
    routing
+   links
+   forms
+   file-uploads
+   validation
 
 .. toctree::
    :maxdepth: 1
    :caption: Data & Props
 
    shared-data
+   flash-data
    partial-reloads
    deferred-props
+   once-props
    merging-props
+   load-when-visible
+   polling
+   prefetching
+   infinite-scroll
+   remembering-state
 
 .. toctree::
    :maxdepth: 1
@@ -75,6 +86,7 @@ Quick Example
 
    csrf-protection
    history-encryption
+   precognition
 
 .. toctree::
    :maxdepth: 1
@@ -98,3 +110,9 @@ Quick Example
    :caption: Examples
 
    fullstack-example
+
+See Also
+--------
+
+- :doc:`installation` - Set up Inertia with Litestar
+- :doc:`how-it-works` - Protocol and request lifecycle overview

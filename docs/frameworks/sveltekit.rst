@@ -4,6 +4,14 @@ SvelteKit
 
 SvelteKit integration with Litestar Vite for full-stack Svelte applications.
 
+At a Glance
+-----------
+
+- Template: ``litestar assets init --template sveltekit``
+- Mode: ``framework`` (aliases: ``ssr`` / ``ssg``)
+- Dev: ``litestar run --reload`` (starts SvelteKit dev server via ExternalDevServer)
+- Types: ``TypeGenConfig`` generates SvelteKit types
+
 Quick Start
 -----------
 
