@@ -610,3 +610,433 @@ def test_error_returns_false_when_session_fails() -> None:
 
     assert result is False
     mock_connection.logger.debug.assert_called_once()
+
+
+# =====================================================
+# once() Helper Tests (v2.2.20+)
+# =====================================================
+
+
+def test_once_with_static_value() -> None:
+    """Test once() helper with a static value."""
+    from litestar_vite.inertia.helpers import once
+
+    prop = once("settings", {"theme": "dark"})
+
+    assert prop.key == "settings"
+    result = prop.render()
+    assert result == {"theme": "dark"}
+
+
+def test_once_with_callable() -> None:
+    """Test once() helper with a callable."""
+    from litestar_vite.inertia.helpers import OnceProp, once
+
+    call_count = 0
+
+    def get_settings() -> dict[str, str]:
+        nonlocal call_count
+        call_count += 1
+        return {"theme": "light"}
+
+    prop: OnceProp[str, dict[str, str]] = once("settings", get_settings)
+
+    assert prop.key == "settings"
+    # First render
+    result1 = prop.render()
+    assert result1 == {"theme": "light"}
+    assert call_count == 1
+
+    # Second render should return cached value
+    result2 = prop.render()
+    assert result2 == {"theme": "light"}
+    assert call_count == 1  # Should not call again
+
+
+def test_once_is_recognized_by_type_guard() -> None:
+    """Test is_once_prop type guard recognizes OnceProp."""
+    from litestar_vite.inertia.helpers import is_once_prop, once
+
+    prop = once("key", "value")
+    assert is_once_prop(prop) is True
+    assert is_once_prop("value") is False
+    assert is_once_prop(None) is False
+
+
+def test_once_should_render_always_true() -> None:
+    """Test once props are always rendered (client handles caching)."""
+    from litestar_vite.inertia.helpers import once, should_render
+
+    prop = once("settings", {"value": 1})
+
+    # Always render without partial filters
+    assert should_render(prop) is True
+
+    # Always render even with partial_data (once props don't filter by default)
+    assert should_render(prop, partial_data={"other"}) is True
+
+    # Respect partial_except
+    assert should_render(prop, partial_except={"settings"}) is False
+
+
+# =====================================================
+# optional() Helper Tests (v2 WhenVisible)
+# =====================================================
+
+
+def test_optional_only_included_when_requested() -> None:
+    """Test optional() props only render when explicitly requested."""
+    from litestar_vite.inertia.helpers import optional, should_render
+
+    call_count = 0
+
+    def get_comments() -> list[str]:
+        nonlocal call_count
+        call_count += 1
+        return ["comment1", "comment2"]
+
+    prop = optional("comments", get_comments)
+
+    # Never render on initial load (no partial_data)
+    assert should_render(prop) is False
+
+    # Never render when other props requested
+    assert should_render(prop, partial_data={"posts"}) is False
+
+    # Only render when explicitly requested
+    assert should_render(prop, partial_data={"comments"}) is True
+
+
+def test_optional_callback_only_called_when_needed() -> None:
+    """Test optional() callback only evaluated when prop is requested."""
+    from litestar_vite.inertia.helpers import optional
+
+    call_count = 0
+
+    def expensive_query() -> list[int]:
+        nonlocal call_count
+        call_count += 1
+        return [1, 2, 3]
+
+    prop = optional("data", expensive_query)
+
+    assert call_count == 0  # Not called yet
+
+    # Render the prop
+    result = prop.render()
+    assert result == [1, 2, 3]
+    assert call_count == 1
+
+    # Cached on second render
+    result2 = prop.render()
+    assert result2 == [1, 2, 3]
+    assert call_count == 1
+
+
+def test_optional_is_recognized_by_type_guard() -> None:
+    """Test is_optional_prop type guard recognizes OptionalProp."""
+    from litestar_vite.inertia.helpers import is_optional_prop, optional
+
+    prop = optional("key", lambda: "value")
+    assert is_optional_prop(prop) is True
+    assert is_optional_prop("value") is False
+    assert is_optional_prop(None) is False
+
+
+# =====================================================
+# always() Helper Tests (v2)
+# =====================================================
+
+
+def test_always_included_in_every_response() -> None:
+    """Test always() props bypass all filtering."""
+    from litestar_vite.inertia.helpers import always, should_render
+
+    prop = always("auth", {"user": "Alice", "role": "admin"})
+
+    # Always render without filters
+    assert should_render(prop) is True
+
+    # Always render even with partial_data
+    assert should_render(prop, partial_data={"posts"}) is True
+
+    # Always render even with partial_except (bypasses filtering)
+    assert should_render(prop, partial_except={"auth"}) is True
+
+
+def test_always_value_accessible() -> None:
+    """Test always() prop value is directly accessible."""
+    from litestar_vite.inertia.helpers import always
+
+    prop = always("permissions", ["read", "write"])
+
+    assert prop.key == "permissions"
+    assert prop.value == ["read", "write"]
+    assert prop.render() == ["read", "write"]
+
+
+def test_always_is_recognized_by_type_guard() -> None:
+    """Test is_always_prop type guard recognizes AlwaysProp."""
+    from litestar_vite.inertia.helpers import always, is_always_prop
+
+    prop = always("key", "value")
+    assert is_always_prop(prop) is True
+    assert is_always_prop("value") is False
+    assert is_always_prop(None) is False
+
+
+# =====================================================
+# defer().once() Chaining Tests (v2.2.20+)
+# =====================================================
+
+
+def test_defer_once_chaining() -> None:
+    """Test defer().once() creates a deferred prop with once behavior."""
+    from litestar_vite.inertia.helpers import defer, is_deferred_prop
+
+    prop = defer("stats", lambda: {"views": 100}).once()
+
+    assert is_deferred_prop(prop) is True
+    assert prop.is_once is True
+    assert prop.key == "stats"
+
+
+def test_defer_once_not_in_deferred_props_extraction() -> None:
+    """Test defer().once() props are excluded from deferred_props metadata."""
+    from litestar_vite.inertia.helpers import defer, extract_deferred_props
+
+    props = {
+        "regular_deferred": defer("regular_deferred", lambda: "value"),
+        "once_deferred": defer("once_deferred", lambda: "cached").once(),
+    }
+
+    deferred = extract_deferred_props(props)
+
+    # Regular deferred should be in metadata
+    assert "regular_deferred" in deferred.get("default", [])
+    # Once deferred should NOT be in metadata
+    assert "once_deferred" not in deferred.get("default", [])
+
+
+def test_defer_once_in_once_props_extraction() -> None:
+    """Test defer().once() props are included in once_props extraction."""
+    from litestar_vite.inertia.helpers import defer, extract_once_props, once
+
+    props = {
+        "regular": "value",
+        "once_value": once("once_value", {"data": 1}),
+        "deferred_once": defer("deferred_once", lambda: "cached").once(),
+    }
+
+    once_keys = extract_once_props(props)
+
+    assert "once_value" in once_keys
+    assert "deferred_once" in once_keys
+    assert "regular" not in once_keys
+
+
+# =====================================================
+# extract_once_props() Tests
+# =====================================================
+
+
+def test_extract_once_props_empty() -> None:
+    """Test extract_once_props with no once props."""
+    from litestar_vite.inertia.helpers import extract_once_props
+
+    props = {"user": "Alice", "posts": [1, 2, 3]}
+    result = extract_once_props(props)
+
+    assert result == []
+
+
+def test_extract_once_props_mixed() -> None:
+    """Test extract_once_props with mixed prop types."""
+    from litestar_vite.inertia.helpers import defer, extract_once_props, lazy, once
+
+    props = {
+        "user": "Alice",
+        "settings": once("settings", {"theme": "dark"}),
+        "lazy_data": lazy("lazy_data", "value"),
+        "cached_stats": defer("cached_stats", lambda: {}).once(),
+    }
+
+    result = extract_once_props(props)
+
+    assert "settings" in result
+    assert "cached_stats" in result
+    assert "user" not in result
+    assert "lazy_data" not in result
+
+
+# =====================================================
+# is_special_prop() and is_or_contains_special_prop() Tests
+# =====================================================
+
+
+def test_is_special_prop_recognizes_all_types() -> None:
+    """Test is_special_prop recognizes all special prop types."""
+    from litestar_vite.inertia.helpers import always, defer, is_special_prop, lazy, once, optional
+
+    assert is_special_prop(lazy("k", "v")) is True
+    assert is_special_prop(defer("k", lambda: "v")) is True
+    assert is_special_prop(once("k", "v")) is True
+    assert is_special_prop(optional("k", lambda: "v")) is True
+    assert is_special_prop(always("k", "v")) is True
+    assert is_special_prop("regular") is False
+    assert is_special_prop(123) is False
+
+
+def test_is_or_contains_special_prop_nested() -> None:
+    """Test is_or_contains_special_prop finds nested special props."""
+    from litestar_vite.inertia.helpers import always, is_or_contains_special_prop, once
+
+    # Direct special prop
+    assert is_or_contains_special_prop(once("k", "v")) is True
+
+    # Nested in dict
+    nested_dict = {"data": {"inner": once("inner", "value")}}
+    assert is_or_contains_special_prop(nested_dict) is True
+
+    # Nested in list
+    nested_list = [always("auth", {"user": "Alice"})]
+    assert is_or_contains_special_prop(nested_list) is True
+
+    # No special props
+    assert is_or_contains_special_prop({"a": 1, "b": [2, 3]}) is False
+    assert is_or_contains_special_prop("string") is False
+
+
+# =====================================================
+# Integration Tests for New Prop Types
+# =====================================================
+
+
+async def test_once_prop_in_response(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test once props are included in response with once_props metadata."""
+    from litestar_vite.inertia.helpers import once, share
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        share(request, "settings", once("settings", {"theme": "dark"}))
+        return {"message": "Hello"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+
+        # Props should include the rendered once prop
+        assert data["props"]["settings"] == {"theme": "dark"}
+        # once_props metadata should include the key
+        assert "settings" in (data.get("onceProps") or [])
+
+
+async def test_optional_prop_excluded_from_initial(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test optional props are excluded from initial page load."""
+    from litestar_vite.inertia.helpers import optional, share
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        share(request, "comments", optional("comments", lambda: ["c1", "c2"]))
+        return {"post": "Hello World"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Initial request - optional props should be excluded
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+
+        assert "post" in data["props"]
+        assert "comments" not in data["props"]
+
+
+async def test_optional_prop_included_when_requested(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test optional props are included when explicitly requested via partial reload."""
+    from litestar_vite.inertia.helpers import optional, share
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        share(request, "comments", optional("comments", lambda: ["c1", "c2"]))
+        return {"post": "Hello World"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Partial request specifically requesting comments
+        response = client.get(
+            "/",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_DATA.value: "comments",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+            },
+        )
+        data = response.json()
+
+        # Comments should be included when requested
+        assert data["props"]["comments"] == ["c1", "c2"]
+
+
+async def test_always_prop_included_in_partial(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test always props are included even during partial reloads for other props."""
+    from litestar_vite.inertia.helpers import always, lazy, share
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        share(request, "auth", always("auth", {"user": "Alice"}))
+        share(request, "analytics", lazy("analytics", {"views": 100}))
+        return {"data": "content"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Partial request for analytics only
+        response = client.get(
+            "/",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_DATA.value: "analytics",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+            },
+        )
+        data = response.json()
+
+        # Always prop should be included even though not requested
+        assert data["props"]["auth"] == {"user": "Alice"}
+        # Lazy prop should be included (was requested)
+        assert data["props"]["analytics"] == {"views": 100}
