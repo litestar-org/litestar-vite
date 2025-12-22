@@ -173,4 +173,4 @@ For testing breaking changes or major features with a limited audience before a 
        # or specific version
        npm install litestar-vite-plugin@0.15.0-alpha.1
 
-6. When ready for stable release, use the standard release workflow with ``make release bump=minor`` (or ``patch`` if coming from an RC of the same version)
+6. When ready for stable release from an RC, use ``make release bump=pre`` to remove the pre-release suffix (e.g., ``0.15.0-rc.1`` → ``0.15.0``). For subsequent releases from stable, use ``bump=patch`` or ``bump=minor``.

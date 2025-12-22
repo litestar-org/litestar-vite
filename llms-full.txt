@@ -1,6 +1,6 @@
 # Litestar Vite: Comprehensive Documentation
 
-**Version**: 0.15.0-beta.2
+**Version**: 0.15.0-rc.5
 **Project**: litestar-vite
 
 Seamless integration between Litestar and Vite with Inertia.js support.
@@ -10,7 +10,7 @@ This document contains the full context of the project, including architecture, 
 
 # 1. Architecture Guide
 
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
+**Version**: 0.15.0-rc.5 | **Updated**: 2025-12-22
 
 This document outlines the architectural patterns and conventions used in the `litestar-vite` project.
 
@@ -40,7 +40,7 @@ The `ViteConfig` class in `config.py` controls the integration behavior. It uses
 - **`PathConfig`**: File system paths (root, bundle_dir, resource_dir, static_dir, asset_url, ssr_output_dir, manifest_name, hot_file)
 - **`RuntimeConfig`**: Execution settings (dev_mode, proxy_mode, external_dev_server, http2, start_dev_server)
 - **`TypeGenConfig`**: Type generation settings (output, openapi_path, routes_path, routes_ts_path, page_props_path, generate_zod, generate_sdk, generate_routes, generate_page_props, global_route, fallback_type, type_import_paths)
-- **`InertiaConfig`**: Inertia.js settings (root_template, component_opt_keys, redirect_unauthorized_to, redirect_404, extra_static_page_props, extra_session_page_props, encrypt_history, type_gen, ssr).
+- **`InertiaConfig`**: Inertia.js settings (root_template, component_opt_keys, redirect_unauthorized_to, redirect_404, extra_static_page_props, extra_session_page_props, encrypt_history, type_gen, ssr, use_script_element, precognition).
 - **`InertiaTypeGenConfig`**: Inertia type generation settings (include_default_auth, include_default_flash)
 - **`InertiaSSRConfig`**: Inertia Server-Side Rendering settings (enabled, url, timeout)
 - **`SPAConfig`**: SPA transformation settings (inject_csrf, cache_transformed_html, app_selector, csrf_var_name)
@@ -106,6 +106,21 @@ The backend is organized into specialized modules:
 
 5. **Scaffolding**:
     - `scaffolding/`: Project template generation and initialization
+    - **Supported Templates**:
+        - `react`: React 18+ with TypeScript
+        - `react-router`: React + React Router
+        - `react-tanstack`: React + TanStack Router
+        - `react-inertia`: React + Inertia.js
+        - `vue`: Vue 3
+        - `vue-inertia`: Vue + Inertia.js
+        - `svelte`: Svelte 5
+        - `svelte-inertia`: Svelte + Inertia.js
+        - `sveltekit`: SvelteKit
+        - `nuxt`: Nuxt 3
+        - `astro`: Astro
+        - `htmx`: HTMX
+        - `angular`: Angular (Vite)
+        - `angular-cli`: Angular CLI
 
 6. **Inertia.js Integration** (`inertia/`):
     - `plugin.py`: `InertiaPlugin` - Litestar plugin with BlockingPortal for async DeferredProp resolution
@@ -322,11 +337,42 @@ def user_list(request: Request) -> OffsetPagination[User]:
 - **API Calls**: For non-Inertia pages, the frontend can make standard RESTful API calls to endpoints exposed by the Litestar backend.
 - **Config Synchronization**: Python writes `.litestar.json` (via `set_environment()`) that the JS plugin reads as defaults, ensuring configuration consistency.
 
+## Example Applications
+
+The `examples/` directory contains working examples demonstrating various integration patterns:
+
+### Framework Examples
+
+- **`angular/`**: Angular 18+ with signals integration
+- **`angular-cli/`**: Angular CLI-based setup
+- **`astro/`**: Astro static site integration
+- **`nuxt/`**: Nuxt 3 SSR/SPA integration
+- **`sveltekit/`**: SvelteKit SSR integration
+- **`svelte/`**: Standalone Svelte 5 with runes
+
+### React Examples
+
+- **`react/`**: Basic React SPA
+- **`react-inertia/`**: React with Inertia.js
+- **`react-inertia-jinja/`**: React + Inertia with Jinja2 templates
+
+### Vue Examples
+
+- **`vue/`**: Basic Vue 3 SPA
+- **`vue-inertia/`**: Vue 3 with Inertia.js (Composition API)
+- **`vue-inertia-jinja/`**: Vue + Inertia with Jinja2 templates
+
+### Templating & HTMX
+
+- **`jinja-htmx/`**: HTMX hypermedia integration with Jinja2 templates
+
+Each example includes its own `package.json`, Vite configuration, and demonstrates best practices for that particular stack.
+
 ---
 
 # 2. Development Workflow
 
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
+**Version**: 0.15.0-rc.5 | **Updated**: 2025-12-22
 
 This guide describes the standard development workflow for contributing to the `litestar-vite` project. It covers initial setup, daily development tasks, and the quality assurance process.
 
@@ -493,7 +539,7 @@ gh release create v0.15.0-alpha.1 --prerelease --title "v0.15.0-alpha.1"
 
 # 3. Configuration Precedence
 
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
+**Version**: 0.15.0-rc.5 | **Updated**: 2025-12-22
 
 ```
 ┌─────────────────────┐
@@ -524,7 +570,47 @@ gh release create v0.15.0-alpha.1 --prerelease --title "v0.15.0-alpha.1"
 
 ## The Bridge File (`.litestar.json`)
 
-When Litestar starts, it writes a `.litestar.json` file containing shared configuration.
+When Litestar starts, it writes a `.litestar.json` file containing shared configuration:
+
+```json
+{
+  "assetUrl": "/static/",
+  "bundleDir": "public",
+  "resourceDir": "src",
+  "staticDir": "src/public",
+  "hotFile": "hot",
+  "manifest": "manifest.json",
+  "mode": "spa",
+  "proxyMode": "vite",
+  "port": 5173,
+  "host": "127.0.0.1",
+  "ssrOutDir": null,
+  "types": {
+    "enabled": true,
+    "output": "src/generated",
+    "openapiPath": "src/generated/openapi.json",
+    "routesPath": "src/generated/routes.json",
+    "routesTsPath": "src/generated/routes.ts",
+    "pagePropsPath": "src/generated/inertia-pages.json",
+    "generateZod": true,
+    "generateSdk": true,
+    "generateRoutes": true,
+    "generatePageProps": true,
+    "globalRoute": false,
+    "fallbackType": "unknown",
+    "typeImportPaths": {}
+  },
+  "executor": "node",
+  "logging": {
+    "level": "info",
+    "showPathsAbsolute": false,
+    "suppressNpmOutput": false,
+    "suppressViteBanner": false,
+    "timestamps": false
+  },
+  "litestarVersion": "2.15.0"
+}
+```
 
 ## Field Classification
 
@@ -552,32 +638,165 @@ These fields are meaningful to both Python and TypeScript:
 
 These are configured in Python and not exposed to TypeScript:
 
-- `DeployConfig` - CDN deployment settings
-- `SPAConfig` - Single-page app settings
-- `InertiaConfig` - Inertia.js integration settings
-- `InertiaTypeGenConfig` - Inertia type generation
-- `InertiaSSRConfig` - Inertia SSR settings
-- `RuntimeConfig.run_command`, `build_command` etc.
-- `ExternalDevServer`, `PaginationContainer`, `guards`, etc.
+- `DeployConfig` - CDN deployment settings (storage_backend, delete_orphaned, include_manifest, content_types)
+- `SPAConfig` - Single-page app settings (inject_csrf, cache_transformed_html, csrf_var_name, app_selector)
+- `InertiaConfig` - Inertia.js integration settings (root_template, component_opt_keys, encrypt_history, type_gen, use_script_element, precognition)
+- `InertiaTypeGenConfig` - Inertia type generation (include_default_auth, include_default_flash)
+- `InertiaSSRConfig` - Inertia SSR settings (enabled, url, timeout)
+- `RuntimeConfig.run_command`, `build_command`, `serve_command`, `install_command`, etc.
+- `RuntimeConfig.http2`, `start_dev_server`, `health_check`, `detect_nodeenv`, `set_environment`, `set_static_folders`, `csp_nonce`, `spa_handler`
+- `ExternalDevServer` - External dev server config (target, command, build_command, http2, enabled)
+- `PaginationContainer` - Protocol for pagination unwrapping
+- `ViteConfig` fields: `guards`, `exclude_static_from_auth`, `spa_path`, `include_root_spa_paths`
 
 ### TypeScript-Only Fields
 
 These are configured in `vite.config.ts` only:
 
-- `input`, `refresh`, `detectTls`, `autoDetectIndex`, `transformOnServe`, `types.debounce`, plugins, aliases.
+- `input` - Entry point files
+- `refresh` - HMR file patterns
+- `detectTls` - Auto-detect HTTPS
+- `autoDetectIndex` - Find index.html
+- `transformOnServe` - HTML transforms in dev
+- `types.debounce` - File watch debounce
+- Vite-specific plugins, aliases, etc.
+
+## Naming Convention
+
+- **JSON/TypeScript**: `camelCase` (JavaScript convention)
+- **Python**: `snake_case` (Python convention)
+
+The bridge file uses camelCase since it's primarily consumed by JavaScript.
+
+## Configuration Validation
+
+The TypeScript plugin validates configuration against Python defaults and warns on mismatches:
+
+```
+[litestar-vite] Configuration mismatch detected:
+  • bundleDir: vite.config.ts="dist" differs from Python="public"
+
+Precedence: vite.config.ts > .litestar.json > defaults
+See: https://docs.litestar.dev/vite/config-precedence
+```
+
+This helps catch configuration drift between Python and TypeScript.
 
 ## Best Practices
 
-1. **Let Python Drive Shared Config**: Configure shared settings in Python's `ViteConfig`.
-2. **Keep vite.config.ts Minimal**: Only specify TypeScript-specific options.
-3. **Override Only When Necessary**: If you need to override Python defaults in TypeScript.
-4. **Run Litestar First in Development**: The bridge file is created when Litestar starts.
+### 1. Let Python Drive Shared Config
+
+Configure shared settings in Python's `ViteConfig`:
+
+```python
+# app.py
+vite = VitePlugin(
+    config=ViteConfig(
+        paths=PathConfig(
+            bundle_dir=Path("public/static"),
+            resource_dir=Path("resources"),
+        ),
+        asset_url="/static/",
+    )
+)
+```
+
+### 2. Keep vite.config.ts Minimal
+
+Only specify TypeScript-specific options:
+
+```typescript
+// vite.config.ts
+export default defineConfig({
+  plugins: [
+    litestar({
+      input: ["src/main.ts"],  // Required: entry points
+      // Let Python defaults handle the rest
+    }),
+  ],
+})
+```
+
+### 3. Override Only When Necessary
+
+If you need to override Python defaults in TypeScript:
+
+```typescript
+// vite.config.ts
+export default defineConfig({
+  plugins: [
+    litestar({
+      input: ["src/main.ts"],
+      bundleDir: "dist",  // Override Python default
+      // Warning will be shown if this differs from .litestar.json
+    }),
+  ],
+})
+```
+
+### 4. Run Litestar First in Development
+
+The bridge file is created when Litestar starts:
+
+```bash
+# Start Litestar (creates .litestar.json)
+litestar run
+
+# Or use the integrated command
+litestar assets serve
+```
+
+## Standalone JavaScript Mode
+
+For projects not using Litestar's Python backend, configure everything in TypeScript:
+
+```typescript
+// vite.config.ts
+export default defineConfig({
+  plugins: [
+    litestar({
+      input: ["src/main.ts"],
+      assetUrl: "/static/",
+      bundleDir: "dist",
+      resourceDir: "src",
+      types: false,  // Disable type generation without Python
+    }),
+  ],
+})
+```
+
+## Troubleshooting
+
+### Missing .litestar.json Warning
+
+If you see a warning about missing `.litestar.json`:
+
+1. Start the Litestar backend first: `litestar run`
+2. Or configure all options explicitly in `vite.config.ts`
+
+### Configuration Mismatch Warning
+
+If you see configuration mismatch warnings:
+
+1. Review your `vite.config.ts` overrides
+2. Either remove the override to use Python defaults
+3. Or update Python config to match your TypeScript settings
+
+### Debugging Configuration
+
+Run the doctor command to diagnose issues:
+
+```bash
+litestar assets doctor
+```
+
+This shows a side-by-side comparison of Python and TypeScript configuration.
 
 ---
 
 # 4. Testing Guide
 
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
+**Version**: 0.15.0-rc.5 | **Updated**: 2025-12-22
 
 This guide provides instructions and best practices for writing and running tests in the `litestar-vite` project.
 
@@ -596,21 +815,73 @@ Python tests are located in `src/py/tests/`.
 
 ### Test Types
 
-1. **Unit Tests (`src/py/tests/unit/`)**: Focus on individual components (functions, classes) in isolation.
-2. **Integration Tests (`src/py/tests/integration/`)**: Verify the interaction between multiple components.
+1. **Unit Tests (`src/py/tests/unit/`)**: These tests focus on individual components (functions, classes) in isolation. Dependencies, especially I/O-bound ones like databases or network calls, must be mocked.
+    - **Framework**: `pytest`
+    - **Mocks**: `unittest.mock` (especially `AsyncMock` for async code).
+
+2. **Integration Tests (`src/py/tests/integration/`)**: These tests verify the interaction between multiple components. They may use real dependencies like a test database or a live Vite dev server process.
 
 ### Key Practices
 
-- **Function-Based Tests**: All tests **must** be function-based. Do not use class-based tests.
-- **Fixtures**: Use `pytest` fixtures for reusable setup.
+- **Function-Based Tests**: All tests **must** be function-based. Do not use class-based tests (`class Test...:`).
+    - Good: `async def test_inertia_response_flattens_props() -> None:`
+    - Bad: `class TestInertiaResponse:`
+- **Fixtures**: Use `pytest` fixtures (`@pytest.fixture`) to provide reusable setup and teardown logic, such as creating mock objects or database sessions.
 - **Async Tests**: Mark `async` test functions with `@pytest.mark.asyncio`.
-- **Coverage**: Aim for at least 90% test coverage for any new or modified code.
+- **Coverage**: Aim for at least 90% test coverage for any new or modified code. The full coverage report can be generated with `make coverage`.
+
+### Test Organization
+
+Tests mirror the source structure:
+
+```
+src/py/tests/
+├── unit/              # Fast, isolated tests
+│   ├── inertia/       # Inertia-specific unit tests
+│   ├── test_config.py
+│   └── test_asset_loader.py
+├── integration/       # Tests with real dependencies
+│   ├── cli/           # CLI command integration tests
+│   └── test_examples.py
+└── conftest.py        # Shared fixtures
+```
+
+### Recent Test Patterns
+
+The inertia-props-top-level feature introduced these test patterns:
+
+1. **Props flattening tests**: Verify dict props are merged at top-level
+2. **Content wrapping tests**: Verify non-dict content goes under `content` key
+3. **Inertia protocol tests**: Test v2 protocol features (deferred, merge, prepend props)
+
+### Running Python Tests
+
+```bash
+# Run all python tests
+pytest src/py/tests/
+
+# Run tests in parallel for speed
+pytest -n auto src/py/tests/
+
+# Run a specific test file
+pytest src/py/tests/unit/test_config.py
+
+# Run tests with coverage for a specific module
+pytest --cov=src/py/litestar_vite/config src/py/tests/unit/test_config.py
+```
 
 ## Frontend Testing (Vitest)
 
 The core TypeScript library tests are located in `src/js/tests/`.
 
+### Key Practices
+
+- **Modern Syntax**: Use modern ES module syntax (`import`, `export`).
+- **Mocking**: Use Vitest's built-in mocking capabilities (`vi.mock`, `vi.fn`).
+
 ### Running Frontend Tests
+
+The frontend tests are typically run as part of the `make test` command. To run them in isolation:
 
 ```bash
 # Navigate to the JS directory
@@ -618,6 +889,63 @@ cd src/js
 
 # Run the tests
 npm run test
+```
+
+## Full Suite
+
+To ensure the entire project is working correctly, always run the full test and quality suite before submitting changes.
+
+```bash
+# Run all tests (Python + JS)
+make test
+
+# Run all linting, type-checking, and tests
+make check-all
+
+# Run with coverage report
+make coverage
+
+# Run only linting (includes pre-commit, type-check, slotscheck)
+make lint
+
+# Run only type checking (mypy + pyright)
+make type-check
+```
+
+## Type Checking
+
+The project uses multiple type checkers for comprehensive type safety:
+
+```bash
+# Run mypy (with cache)
+make mypy
+
+# Run mypy without cache
+make mypy-nocache
+
+# Run pyright
+make pyright
+
+# Run basedpyright (stricter variant)
+make basedpyright
+
+# Run all type checkers
+make type-check
+```
+
+## Example Testing
+
+Test all example applications to ensure integrations work correctly:
+
+```bash
+# Install dependencies for all examples
+make install-examples
+
+# Build all examples
+make build-examples
+
+# Run example integration tests
+make test-examples
 ```
 
 ## End-to-End (E2E) Testing
@@ -628,35 +956,150 @@ E2E tests validate the complete developer experience by running actual servers.
 
 **ALWAYS use `litestar assets` commands instead of npm/node directly in tests!**
 
+```python
+# CORRECT - Uses Litestar CLI
+def start_dev_mode():
+    # Start Vite dev server via Litestar
+    subprocess.Popen(["litestar", "assets", "serve"], cwd=example_dir, env=env)
+    # Start Litestar backend
+    subprocess.Popen(["litestar", "run", "--port", str(port)], cwd=example_dir, env=env)
+
+def start_production_mode():
+    # Build assets via Litestar
+    subprocess.run(["litestar", "assets", "build"], cwd=example_dir, env=env, check=True)
+    # Start Litestar backend (serves static files)
+    subprocess.Popen(["litestar", "run", "--port", str(port)], cwd=example_dir, env=env)
+    # For SSR: also start production Node server
+    subprocess.Popen(["litestar", "assets", "serve", "--production"], cwd=example_dir, env=env)
+
+# WRONG - Bypasses Litestar integration
+def start_dev_mode_wrong():
+    subprocess.Popen(["npm", "run", "dev"])  # NO! Use litestar assets serve
+    subprocess.Popen(["npm", "run", "build"])  # NO! Use litestar assets build
+```
+
+**Why this matters:**
+- The Litestar CLI manages port allocation, environment variables, and process coordination
+- Direct npm commands bypass the Python-JS integration layer
+- Tests must validate the real developer experience, not just that npm works
+
+### E2E Test Structure
+
+```
+src/py/tests/e2e/
+├── __init__.py
+├── conftest.py           # Server fixtures with caching and process cleanup
+├── server_manager.py     # ExampleServer class using litestar CLI and port management
+├── health_check.py       # HTTP polling utilities
+├── assertions.py         # HTML/API validation helpers
+├── test_dev_mode.py      # Dev mode tests for all examples
+└── test_production_mode.py  # Production mode tests
+```
+
+### Running E2E Tests
+
+```bash
+# Run all E2E tests
+make test-examples-e2e
+
+# Run E2E tests for specific example
+uv run pytest src/py/tests/e2e/ -k "react" -v
+
+# Run with verbose output for debugging
+uv run pytest src/py/tests/e2e/ -v -s
+```
+
 ---
 
 # 5. Code Style Guide
 
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-14
+**Version**: 0.15.0-rc.5 | **Updated**: 2025-12-22
 
-This document defines the code style and quality standards for both the Python backend and TypeScript frontend.
+This document defines the code style and quality standards for both the Python backend and TypeScript frontend. Consistency is enforced through automated tooling.
+
+## General Principles
+
+- **Clarity**: Write code that is easy to read and understand.
+- **Explicitness**: Prefer explicit over implicit.
+- **Consistency**: Adhere to the existing code style in the project.
 
 ## Python Code Style
 
-- **Formatter**: [Ruff](https://docs.astral.sh/ruff/)
-- **Linter**: [Ruff](https://docs.astral.sh/ruff/)
-- **Type Checking**: [MyPy](http://mypy-lang.org/)
+All Python code is automatically formatted and linted using tools configured in `pyproject.toml` and run via `pre-commit` hooks.
+
+- **Formatter**: [Ruff](https://docs.astral.sh/ruff/) is used for formatting, effectively replacing Black and isort.
+- **Linter**: [Ruff](https://docs.astral.sh/ruff/) is also used for linting, providing fast and comprehensive checks.
+- **Type Checking**: [MyPy](http://mypy-lang.org/) is used for static type checking.
 
 ### Key Standards
 
-1. **Type Hinting**: PEP 604 (`list[str]`, `str | None`). Do **not** use `from __future__ import annotations`.
-2. **Docstrings**: Google style.
-3. **Imports**: Sorted by Ruff.
+1. **Type Hinting**:
+    - All functions and methods must have type hints for arguments and return values.
+    - Use modern type hints (PEP 604): `list[str]` instead of `List[str]`, and `str | None` instead of `Optional[str]`.
+    - Do **not** use `from __future__ import annotations`.
+
+2. **Docstrings**:
+    - All public modules, classes, functions, and methods must have a docstring.
+    - Follow the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#3.8-comments-and-docstrings) for docstrings.
+
+3. **Imports**:
+    - Imports are automatically sorted by Ruff.
+    - Group imports logically (standard library, third-party, first-party).
+
+### Additional Python Tools
+
+- **Slotscheck**: Validates `__slots__` definitions for memory efficiency
+- **Pre-commit**: Automated hooks for code quality (configured in `.pre-commit-config.yaml`)
+
+### Tooling Commands
+
+- **Lint & Type-Check**: `make lint` (runs pre-commit, mypy, pyright, slotscheck)
+- **Auto-format**: `make fix` (runs ruff with auto-fixes)
+- **Type-check only**: `make type-check` (runs mypy + pyright)
+- **Slotscheck**: `make slotscheck` (validates `__slots__`)
+- **Individual type checkers**:
+    - `make mypy` - MyPy with cache
+    - `make pyright` - Pyright
+    - `make basedpyright` - Stricter Pyright variant
+
+### Config Source of Truth
+
+- When both Python and Vite need the same values (asset/base URL, bundle/resource dirs, manifest), prefer setting them in `ViteConfig`. The plugin's `on_app_init()` method writes `.litestar.json` during startup and the JS plugin uses it as defaults. Keep `vite.config.ts` overrides minimal.
+- See `specs/guides/config-precedence.md` for detailed configuration flow documentation.
 
 ## TypeScript/JavaScript Code Style
 
-- **Formatter**: Biome
-- **Linter**: Biome
+The frontend codebase (primarily in `src/js/` and `examples/`) is managed by [Biome](https://biomejs.dev/).
+
+- **Formatter**: Biome handles all code formatting.
+- **Linter**: Biome provides comprehensive linting rules.
+
+Configuration is defined in `biome.json`.
 
 ### Key Standards
 
-1. **Formatting**: Follow `biome.json`.
-2. **Language Features**: Modern ECMAScript features, TypeScript for all new code.
+1. **Formatting**:
+    - Follow the settings in `biome.json` (e.g., indentation, line width).
+    - Do not manually format code; let the tooling handle it.
+
+2. **Language Features**:
+    - Prefer modern ECMAScript features (e.g., `const`/`let` over `var`, arrow functions).
+    - Use TypeScript for all new code to ensure type safety.
+
+### Tooling Commands
+
+The pre-commit hooks automatically run Biome. To run it manually:
+
+```bash
+# Format and lint all relevant files
+npx biome check --write .
+```
+
+## Pre-Commit Hooks
+
+This project uses `pre-commit` to ensure that all code committed to the repository meets our quality standards. The hooks are defined in `.pre-commit-config.yaml` and are installed automatically when you run `make install`.
+
+The hooks will automatically run `ruff`, `biome`, `mypy`, and other checks before allowing a commit to be created.
 
 ---
 

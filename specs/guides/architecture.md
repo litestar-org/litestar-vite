@@ -1,6 +1,6 @@
 # Architecture Guide for litestar-vite
 
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-18
+**Version**: 0.15.0-rc.5 | **Updated**: 2025-12-22
 
 This document outlines the architectural patterns and conventions used in the `litestar-vite` project.
 
@@ -30,7 +30,7 @@ The `ViteConfig` class in `config.py` controls the integration behavior. It uses
 - **`PathConfig`**: File system paths (root, bundle_dir, resource_dir, static_dir, asset_url, ssr_output_dir, manifest_name, hot_file)
 - **`RuntimeConfig`**: Execution settings (dev_mode, proxy_mode, external_dev_server, http2, start_dev_server)
 - **`TypeGenConfig`**: Type generation settings (output, openapi_path, routes_path, routes_ts_path, page_props_path, generate_zod, generate_sdk, generate_routes, generate_page_props, global_route, fallback_type, type_import_paths)
-- **`InertiaConfig`**: Inertia.js settings (root_template, component_opt_keys, redirect_unauthorized_to, redirect_404, extra_static_page_props, extra_session_page_props, encrypt_history, type_gen, ssr).
+- **`InertiaConfig`**: Inertia.js settings (root_template, component_opt_keys, redirect_unauthorized_to, redirect_404, extra_static_page_props, extra_session_page_props, encrypt_history, type_gen, ssr, use_script_element, precognition).
 - **`InertiaTypeGenConfig`**: Inertia type generation settings (include_default_auth, include_default_flash)
 - **`InertiaSSRConfig`**: Inertia Server-Side Rendering settings (enabled, url, timeout)
 - **`SPAConfig`**: SPA transformation settings (inject_csrf, cache_transformed_html, app_selector, csrf_var_name)
@@ -96,6 +96,21 @@ The backend is organized into specialized modules:
 
 5. **Scaffolding**:
     - `scaffolding/`: Project template generation and initialization
+    - **Supported Templates**:
+        - `react`: React 18+ with TypeScript
+        - `react-router`: React + React Router
+        - `react-tanstack`: React + TanStack Router
+        - `react-inertia`: React + Inertia.js
+        - `vue`: Vue 3
+        - `vue-inertia`: Vue + Inertia.js
+        - `svelte`: Svelte 5
+        - `svelte-inertia`: Svelte + Inertia.js
+        - `sveltekit`: SvelteKit
+        - `nuxt`: Nuxt 3
+        - `astro`: Astro
+        - `htmx`: HTMX
+        - `angular`: Angular (Vite)
+        - `angular-cli`: Angular CLI
 
 6. **Inertia.js Integration** (`inertia/`):
     - `plugin.py`: `InertiaPlugin` - Litestar plugin with BlockingPortal for async DeferredProp resolution

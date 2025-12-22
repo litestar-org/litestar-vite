@@ -117,7 +117,7 @@ pre-release:                                       ## Start a pre-release: make 
 		echo "  2. Next alpha:      make pre-release version=0.15.0-alpha.2"; \
 		echo "  3. Move to beta:    make pre-release version=0.15.0-beta.1"; \
 		echo "  4. Move to rc:      make pre-release version=0.15.0-rc.1"; \
-		echo "  5. Final release:   make release bump=patch (from rc) OR bump=minor (from stable)"; \
+		echo "  5. Final release:   make release bump=pre (from rc) OR bump=patch/minor (from stable)"; \
 		exit 1; \
 	fi
 	@echo "${INFO} Preparing pre-release $(version)... 🧪"
