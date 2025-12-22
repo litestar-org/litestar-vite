@@ -4,7 +4,7 @@ This guide explains how configuration flows between Python (Litestar) and TypeSc
 
 ## Architecture Overview
 
-**Version**: 0.15.0-beta.2 | **Updated**: 2025-12-18
+**Version**: 0.15.0-rc.5 | **Updated**: 2025-12-22
 
 ```
 ┌─────────────────────┐
@@ -40,13 +40,13 @@ When Litestar starts, it writes a `.litestar.json` file containing shared config
 ```json
 {
   "assetUrl": "/static/",
-  "bundleDir": "public/static",
-  "resourceDir": "resources",
-  "staticDir": "public",
+  "bundleDir": "public",
+  "resourceDir": "src",
+  "staticDir": "src/public",
   "hotFile": "hot",
   "manifest": "manifest.json",
   "mode": "spa",
-  "proxyMode": "vite_proxy",
+  "proxyMode": "vite",
   "port": 5173,
   "host": "127.0.0.1",
   "ssrOutDir": null,
@@ -67,7 +67,7 @@ When Litestar starts, it writes a `.litestar.json` file containing shared config
   },
   "executor": "node",
   "logging": {
-    "level": "normal",
+    "level": "info",
     "showPathsAbsolute": false,
     "suppressNpmOutput": false,
     "suppressViteBanner": false,
@@ -105,7 +105,7 @@ These are configured in Python and not exposed to TypeScript:
 
 - `DeployConfig` - CDN deployment settings (storage_backend, delete_orphaned, include_manifest, content_types)
 - `SPAConfig` - Single-page app settings (inject_csrf, cache_transformed_html, csrf_var_name, app_selector)
-- `InertiaConfig` - Inertia.js integration settings (root_template, component_opt_keys, encrypt_history, type_gen)
+- `InertiaConfig` - Inertia.js integration settings (root_template, component_opt_keys, encrypt_history, type_gen, use_script_element, precognition)
 - `InertiaTypeGenConfig` - Inertia type generation (include_default_auth, include_default_flash)
 - `InertiaSSRConfig` - Inertia SSR settings (enabled, url, timeout)
 - `RuntimeConfig.run_command`, `build_command`, `serve_command`, `install_command`, etc.
