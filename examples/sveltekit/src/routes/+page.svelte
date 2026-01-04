@@ -62,7 +62,7 @@ const routeEntries = Object.entries(routeDefinitions)
       <section class="space-y-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/40">
         <h2 class="font-semibold text-[#202235] text-xl">{summary?.headline}</h2>
         <p class="text-slate-600">Featured book</p>
-        <article class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4">
+        <article class="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4">
           <h3 class="font-semibold text-[#202235] text-lg">{featured.title}</h3>
           <p class="mt-1 text-slate-600">{featured.author} • {featured.year}</p>
           <p class="mt-1 text-[#202235] text-sm">{featured.tags.join(" · ")}</p>
@@ -75,7 +75,7 @@ const routeEntries = Object.entries(routeDefinitions)
     {#if books.length > 0}
       <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {#each books as book (book.id)}
-          <article class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+          <article class="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4 shadow-sm">
             <h3 class="font-semibold text-[#202235] text-lg">{book.title}</h3>
             <p class="mt-1 text-slate-600">{book.author} • {book.year}</p>
             <p class="mt-1 text-[#202235] text-sm">{book.tags.join(" · ")}</p>

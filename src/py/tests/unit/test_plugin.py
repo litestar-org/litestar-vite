@@ -303,9 +303,9 @@ def test_vite_plugin_lifespan_with_environment_setup(mock_set_env: Mock) -> None
 
 
 @patch("litestar_vite.plugin._utils.console")
-def test_vite_plugin_lifespan_with_vite_process_management(mock_console: Mock) -> None:
+def test_vite_plugin_lifespan_with_vite_process_management(mock_console: Mock, tmp_path: Path) -> None:
     """Test server lifespan with Vite process management."""
-    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True))
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True), paths=PathConfig(root=tmp_path))
     plugin = VitePlugin(config=config)
     plugin._config.types = False
     app = Mock(spec=Litestar)
@@ -322,12 +322,13 @@ def test_vite_plugin_lifespan_with_vite_process_management(mock_console: Mock) -
 
 
 @patch("litestar_vite.plugin._utils.console")
-def test_vite_plugin_lifespan_with_watch_mode(mock_console: Mock) -> None:
+def test_vite_plugin_lifespan_with_watch_mode(mock_console: Mock, tmp_path: Path) -> None:
     """Test server lifespan with watch mode (no HMR)."""
     config = ViteConfig(
         runtime=RuntimeConfig(
             dev_mode=True, proxy_mode="proxy", external_dev_server="http://localhost:4200"
-        )  # Watch mode without HMR
+        ),  # Watch mode without HMR
+        paths=PathConfig(root=tmp_path),
     )
     plugin = VitePlugin(config=config)
     plugin._config.types = False

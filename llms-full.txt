@@ -1,6 +1,6 @@
 # Litestar Vite: Comprehensive Documentation
 
-**Version**: 0.15.0-rc.5
+**Version**: 0.15.1
 **Project**: litestar-vite
 
 Seamless integration between Litestar and Vite with Inertia.js support.
@@ -10,7 +10,7 @@ This document contains the full context of the project, including architecture, 
 
 # 1. Architecture Guide
 
-**Version**: 0.15.0-rc.5 | **Updated**: 2025-12-22
+**Version**: 0.15.1 | **Updated**: 2025-12-22
 
 This document outlines the architectural patterns and conventions used in the `litestar-vite` project.
 
@@ -372,7 +372,7 @@ Each example includes its own `package.json`, Vite configuration, and demonstrat
 
 # 2. Development Workflow
 
-**Version**: 0.15.0-rc.5 | **Updated**: 2025-12-22
+**Version**: 0.15.1 | **Updated**: 2025-12-22
 
 This guide describes the standard development workflow for contributing to the `litestar-vite` project. It covers initial setup, daily development tasks, and the quality assurance process.
 
@@ -539,7 +539,7 @@ gh release create v0.15.0-alpha.1 --prerelease --title "v0.15.0-alpha.1"
 
 # 3. Configuration Precedence
 
-**Version**: 0.15.0-rc.5 | **Updated**: 2025-12-22
+**Version**: 0.15.1 | **Updated**: 2025-12-22
 
 ```
 ┌─────────────────────┐
@@ -796,7 +796,7 @@ This shows a side-by-side comparison of Python and TypeScript configuration.
 
 # 4. Testing Guide
 
-**Version**: 0.15.0-rc.5 | **Updated**: 2025-12-22
+**Version**: 0.15.1 | **Updated**: 2025-12-22
 
 This guide provides instructions and best practices for writing and running tests in the `litestar-vite` project.
 
@@ -1013,7 +1013,7 @@ uv run pytest src/py/tests/e2e/ -v -s
 
 # 5. Code Style Guide
 
-**Version**: 0.15.0-rc.5 | **Updated**: 2025-12-22
+**Version**: 0.15.1 | **Updated**: 2025-12-22
 
 This document defines the code style and quality standards for both the Python backend and TypeScript frontend. Consistency is enforced through automated tooling.
 

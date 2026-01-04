@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast, overload
 
-from rich.console import Console
+from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
 from litestar_vite.codegen import write_if_changed as _write_if_changed
 from litestar_vite.config import InertiaConfig, TypeGenConfig
@@ -47,8 +47,6 @@ _TICK = "[bold green]✓[/]"
 _INFO = "[cyan]•[/]"
 _WARN = "[yellow]![/]"
 _FAIL = "[red]x[/]"
-
-console = Console()
 
 
 _vite_proxy_debug: bool | None = None

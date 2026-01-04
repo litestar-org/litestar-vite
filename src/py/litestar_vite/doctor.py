@@ -11,8 +11,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 from litestar.serialization import decode_json, encode_json
-from rich.console import Console, Group
+from rich.console import Group
 from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.syntax import Syntax
@@ -22,8 +23,6 @@ from litestar_vite.config import ExternalDevServer, TypeGenConfig
 
 if TYPE_CHECKING:
     from litestar_vite.config import ViteConfig
-
-console = Console()
 
 
 def _str_list_factory() -> list[str]:
@@ -195,7 +194,7 @@ class ViteDoctor:
         self.bridge_path = None
         self.bridge_config = None
 
-        console.rule("[yellow]Vite Doctor Diagnostics[/]", align="left")
+        console.rule("[blue]Vite[/] Doctor Diagnostics", align="left")
 
         self._locate_vite_config()
         if not self.vite_config_path or not self.parsed_config:
