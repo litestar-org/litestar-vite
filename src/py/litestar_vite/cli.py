@@ -777,13 +777,13 @@ def vite_serve(app: "Litestar", verbose: "bool", quiet: "bool", production: "boo
     use_production_server = production or not plugin.config.dev_mode
 
     if use_production_server:
-        console.rule("Starting [blue]Vite[/] production server", align="left")
+        console.rule("Starting [blue]Vite[/] server", align="left")
         command_to_run = plugin.config.serve_command
         if command_to_run is None:
             console.print("[red]serve_command not configured. Add 'serve' script to package.json.[/]")
             return
     elif plugin.config.hot_reload:
-        console.rule("Starting [blue]Vite[/] dev server with HMR", align="left")
+        console.rule("Starting [blue]Vite[/] server with HMR", align="left")
         command_to_run = plugin.config.run_command
     else:
         console.rule("Starting [blue]Vite[/] watch and build process", align="left")

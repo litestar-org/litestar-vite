@@ -258,10 +258,13 @@ def write_runtime_config_file(
             "openapiPath": str(types.openapi_path),
             "routesPath": str(types.routes_path),
             "pagePropsPath": str(types.page_props_path),
+            "routesTsPath": str(types.routes_ts_path) if types.routes_ts_path else None,
+            "schemasTsPath": str(types.schemas_ts_path) if types.schemas_ts_path else None,
             "generateZod": types.generate_zod,
             "generateSdk": types.generate_sdk,
             "generateRoutes": types.generate_routes,
             "generatePageProps": types.generate_page_props,
+            "generateSchemas": types.generate_schemas,
             "globalRoute": types.global_route,
         }
         if types

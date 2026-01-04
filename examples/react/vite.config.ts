@@ -9,7 +9,6 @@ export default defineConfig({
     react(),
     litestar({
       input: ["src/main.tsx"],
-      resourceDir: "src",
     }),
   ],
 })

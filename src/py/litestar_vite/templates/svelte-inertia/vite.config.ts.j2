@@ -22,10 +22,7 @@ export default defineConfig({
     litestar({
       input: ["{{ resource_dir }}/main.ts"],
 {% if enable_types %}
-      types: {
-        enabled: true,
-        output: "{{ resource_dir }}/generated/api",
-      },
+      types: "auto",
 {% endif %}
     }),
   ],

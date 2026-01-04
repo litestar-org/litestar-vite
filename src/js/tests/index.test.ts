@@ -21,8 +21,8 @@ vi.mock("fs", async () => {
   }
 })
 
-// Read actual placeholder content for assertions
-const actualPlaceholderContent = fs.readFileSync(path.resolve(__dirname, "../src/dev-server-index.html"), "utf-8")
+// Read actual placeholder content for assertions (built file from dev-server/)
+const actualPlaceholderContent = fs.readFileSync(path.resolve(__dirname, "../../../dist/js/dev-server-index.html"), "utf-8")
 
 // Mock process.env
 const originalEnv = process.env
@@ -717,8 +717,8 @@ describe("litestar-vite-plugin", () => {
     const rootIndexPath = path.join(testRootDir, "index.html")
     const resourceIndexPath = path.join(testRootDir, testResourceDir, "index.html")
     const publicIndexPath = path.join(testRootDir, testPublicDir, "index.html")
-    // Use original placeholder path logic
-    const _placeholderPath = path.resolve(__dirname, "..", "src", "dev-server-index.html")
+    // Use original placeholder path logic (built file from dev-server/)
+    const _placeholderPath = path.resolve(__dirname, "..", "..", "..", "dist", "js", "dev-server-index.html")
 
     beforeEach(() => {
       vi.clearAllMocks()

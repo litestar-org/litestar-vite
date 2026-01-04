@@ -1,6 +1,6 @@
 # Quality Gates for litestar-vite
-# Version: 0.15.0-beta.2
-# Updated: 2025-12-18
+# Version: 0.16.0
+# Updated: 2026-01-04
 
 implementation_gates:
   - name: local_tests_pass

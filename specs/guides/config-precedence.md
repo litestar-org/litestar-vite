@@ -4,7 +4,7 @@ This guide explains how configuration flows between Python (Litestar) and TypeSc
 
 ## Architecture Overview
 
-**Version**: 0.15.0-rc.5 | **Updated**: 2025-12-22
+**Version**: 0.16.0 | **Updated**: 2026-01-04
 
 ```
 ┌─────────────────────┐
@@ -40,6 +40,7 @@ When Litestar starts, it writes a `.litestar.json` file containing shared config
 ```json
 {
   "assetUrl": "/static/",
+  "deployAssetUrl": null,
   "bundleDir": "public",
   "resourceDir": "src",
   "staticDir": "src/public",
@@ -50,24 +51,25 @@ When Litestar starts, it writes a `.litestar.json` file containing shared config
   "port": 5173,
   "host": "127.0.0.1",
   "ssrOutDir": null,
+  "spa": null,
   "types": {
     "enabled": true,
     "output": "src/generated",
     "openapiPath": "src/generated/openapi.json",
     "routesPath": "src/generated/routes.json",
-    "routesTsPath": "src/generated/routes.ts",
     "pagePropsPath": "src/generated/inertia-pages.json",
-    "generateZod": true,
+    "routesTsPath": "src/generated/routes.ts",
+    "schemasTsPath": "src/generated/schemas.ts",
+    "generateZod": false,
     "generateSdk": true,
     "generateRoutes": true,
     "generatePageProps": true,
-    "globalRoute": false,
-    "fallbackType": "unknown",
-    "typeImportPaths": {}
+    "generateSchemas": true,
+    "globalRoute": false
   },
   "executor": "node",
   "logging": {
-    "level": "info",
+    "level": "normal",
     "showPathsAbsolute": false,
     "suppressNpmOutput": false,
     "suppressViteBanner": false,
@@ -86,6 +88,7 @@ These fields are meaningful to both Python and TypeScript:
 | Field | Python Name | JSON/TypeScript Name | Description |
 |-------|-------------|---------------------|-------------|
 | Asset URL | `asset_url` | `assetUrl` | Base URL for assets |
+| Deploy Asset URL | `deploy.asset_url` | `deployAssetUrl` | Asset URL used during `vite build` |
 | Bundle Directory | `bundle_dir` | `bundleDir` | Build output directory |
 | Resource Directory | `resource_dir` | `resourceDir` | Source assets directory |
 | Static Directory | `static_dir` | `staticDir` | Static assets directory |
@@ -109,7 +112,7 @@ These are configured in Python and not exposed to TypeScript:
 - `InertiaTypeGenConfig` - Inertia type generation (include_default_auth, include_default_flash)
 - `InertiaSSRConfig` - Inertia SSR settings (enabled, url, timeout)
 - `RuntimeConfig.run_command`, `build_command`, `serve_command`, `install_command`, etc.
-- `RuntimeConfig.http2`, `start_dev_server`, `health_check`, `detect_nodeenv`, `set_environment`, `set_static_folders`, `csp_nonce`, `spa_handler`
+- `RuntimeConfig.http2`, `start_dev_server`, `health_check`, `detect_nodeenv`, `set_environment`, `set_static_folders`, `csp_nonce`, `spa_handler`, `trusted_proxies`
 - `ExternalDevServer` - External dev server config (target, command, build_command, http2, enabled)
 - `PaginationContainer` - Protocol for pagination unwrapping
 - `ViteConfig` fields: `guards`, `exclude_static_from_auth`, `spa_path`, `include_root_spa_paths`

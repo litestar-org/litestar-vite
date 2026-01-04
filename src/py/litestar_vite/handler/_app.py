@@ -9,6 +9,7 @@ In production, it serves the built index.html with async caching.
 
 import logging
 from contextlib import suppress
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn
 
@@ -27,6 +28,7 @@ from litestar_vite.html_transform import (
     set_data_attribute,
     transform_asset_urls,
 )
+from litestar_vite.utils import get_static_resource_path, read_hotfile_url
 
 if TYPE_CHECKING:
     from litestar.connection import Request
@@ -35,6 +37,38 @@ if TYPE_CHECKING:
     from litestar_vite.config import SPAConfig, ViteConfig
 
 logger = logging.getLogger("litestar_vite")
+
+_SERVER_STARTING_PATH = get_static_resource_path("server-starting.html")
+
+
+@lru_cache(maxsize=1)
+def _load_server_starting_template() -> str:
+    """Load the server starting HTML template once."""
+    try:
+        return _SERVER_STARTING_PATH.read_text()
+    except (FileNotFoundError, IsADirectoryError, OSError):
+        # Fallback minimal HTML if the built file is missing
+        logger.warning("Server starting page not found at %s", _SERVER_STARTING_PATH)
+        return """<!DOCTYPE html>
+<html><head><meta http-equiv="refresh" content="2"><title>Starting...</title></head>
+<body style="background:#202235;color:#dcdfe4;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+<div style="text-align:center"><h1>Server starting...</h1><p>Connecting to {{ vite_url }}</p></div>
+</body></html>"""
+
+
+def _get_server_starting_html(vite_url: str) -> str:
+    """Load and format the server starting page.
+
+    The HTML is loaded from a pre-built static file that ships with the package.
+    Uses module-level caching to avoid repeated file I/O.
+
+    Args:
+        vite_url: The Vite dev server URL to display.
+
+    Returns:
+        Formatted HTML string with the vite_url substituted.
+    """
+    return _load_server_starting_template().replace("{{ vite_url }}", vite_url)
 
 
 class AppHandler:
@@ -332,6 +366,9 @@ class AppHandler:
     def _transform_html_with_vite_sync(self, html: str, url: str) -> str:
         """Transform HTML using the Vite dev server pipeline (sync).
 
+        Raises:
+            ImproperlyConfiguredException: If the HTTP client is not initialized.
+
         Returns:
             The transformed HTML.
         """
@@ -499,10 +536,11 @@ class AppHandler:
             request: Incoming request.
 
         Returns:
-            HTML from the Vite dev server.
+            HTML from the Vite dev server, or a friendly "server starting" page
+            if the server is not yet ready.
 
         Raises:
-            ImproperlyConfiguredException: If the dev server cannot be reached or proxying is not configured.
+            ImproperlyConfiguredException: If the HTTP client is not initialized.
         """
         if self._http_client is None:
             msg = "HTTP client not initialized. Ensure initialize_async() was called for dev mode."
@@ -517,9 +555,10 @@ class AppHandler:
         try:
             response = await self._http_client.get(target_url, follow_redirects=True)
             response.raise_for_status()
-        except httpx.HTTPError as e:
-            msg = f"Failed to proxy request to Vite server at {target_url}. Is the dev server running? Error: {e!s}"
-            raise ImproperlyConfiguredException(msg) from e
+        except httpx.HTTPError:
+            # Return a friendly startup page instead of an error
+            logger.debug("Vite server not ready at %s, showing startup page", target_url)
+            return _get_server_starting_html(target_url)
         else:
             return response.text
 
@@ -527,10 +566,11 @@ class AppHandler:
         """Proxy request to Vite dev server synchronously.
 
         Returns:
-            HTML from the Vite dev server.
+            HTML from the Vite dev server, or a friendly "server starting" page
+            if the server is not yet ready.
 
         Raises:
-            ImproperlyConfiguredException: If the dev server cannot be reached or proxying is not configured.
+            ImproperlyConfiguredException: If the HTTP client is not initialized.
         """
         if self._http_client_sync is None:
             msg = "HTTP client not initialized. Ensure initialize_sync() was called for dev mode."
@@ -545,9 +585,10 @@ class AppHandler:
         try:
             response = self._http_client_sync.get(target_url, follow_redirects=True)
             response.raise_for_status()
-        except httpx.HTTPError as e:
-            msg = f"Failed to proxy request to Vite server at {target_url}. Is the dev server running? Error: {e!s}"
-            raise ImproperlyConfiguredException(msg) from e
+        except httpx.HTTPError:
+            # Return a friendly startup page instead of an error
+            logger.debug("Vite server not ready at %s, showing startup page", target_url)
+            return _get_server_starting_html(target_url)
         else:
             return response.text
 
@@ -563,7 +604,7 @@ class AppHandler:
 
         if hotfile.exists():
             try:
-                url = hotfile.read_text().strip()
+                url = read_hotfile_url(hotfile)
                 if url:
                     return url.rstrip("/")
             except OSError:

@@ -2,6 +2,8 @@
  * Network utilities for URL and host normalization.
  */
 
+import path from "node:path"
+
 /**
  * Normalizes a host address for URL construction.
  *
@@ -31,4 +33,25 @@ export function normalizeHost(host: string): string {
     return `[${host}]`
   }
   return host
+}
+
+/**
+ * Resolve the absolute hot file path from bundleDir + hotFile.
+ *
+ * Python config stores hot_file as a filename (relative to bundle_dir) by default.
+ * If hotFile already includes bundleDir, avoid double-prefixing.
+ */
+export function resolveHotFilePath(bundleDir: string, hotFile: string, rootDir: string = process.cwd()): string {
+  if (path.isAbsolute(hotFile)) {
+    return hotFile
+  }
+
+  const normalizedHot = hotFile.replace(/^\/+/, "")
+  const normalizedBundle = bundleDir.replace(/^\/+/, "").replace(/\/+$/, "")
+
+  if (normalizedBundle && normalizedHot.startsWith(`${normalizedBundle}/`)) {
+    return path.resolve(rootDir, normalizedHot)
+  }
+
+  return path.resolve(rootDir, normalizedBundle, normalizedHot)
 }

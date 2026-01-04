@@ -665,6 +665,8 @@ class ExampleServer:
 
         repo_root = EXAMPLES_DIR.parent
         dist_js = repo_root / "dist" / "js" / "index.js"
+        dist_shared_constants = repo_root / "dist" / "js" / "shared" / "constants.js"
+        dist_shared_network = repo_root / "dist" / "js" / "shared" / "network.js"
 
         # Install JS deps if missing
         node_modules = repo_root / "node_modules"
@@ -673,7 +675,7 @@ class ExampleServer:
             logger.info("Installing root JS deps for plugin build (%s)", " ".join(install_cmd))
             self._run(install_cmd, cwd=repo_root, env=env)
 
-        if not dist_js.exists():
+        if not dist_js.exists() or not dist_shared_constants.exists() or not dist_shared_network.exists():
             logger.info("Building root plugin dist/js for examples")
             build_cmd = ["npm", "run", "build"]
             self._run(build_cmd, cwd=repo_root, env=env)

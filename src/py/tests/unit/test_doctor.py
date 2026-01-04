@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from litestar_vite.config import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig
-from litestar_vite.doctor import ViteDoctor
+from litestar_vite.doctor import ViteDoctor, _extract_braced_block, _format_ts_literal, _rel_to_root
 
 if TYPE_CHECKING:
     pass
@@ -14,6 +14,13 @@ if TYPE_CHECKING:
 def _prepare_frontend_dirs(root: Path) -> None:
     (root / "src").mkdir(parents=True, exist_ok=True)
     (root / "src" / "public").mkdir(parents=True, exist_ok=True)
+
+
+def _prepare_node_modules(root: Path) -> None:
+    dist_dir = root / "node_modules" / "@litestar" / "vite-plugin" / "dist" / "js"
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("index.js", "install-hint.js", "litestar-meta.js"):
+        (dist_dir / name).write_text("// stub")
 
 
 @pytest.fixture
@@ -46,6 +53,10 @@ def doctor(vite_config: ViteConfig) -> ViteDoctor:
 
 def test_doctor_detect_base_mismatch(doctor: ViteDoctor, tmp_path: Path) -> None:
     doctor.config.paths.root = tmp_path
+    if isinstance(doctor.config.types, TypeGenConfig):
+        doctor.config.types.output = tmp_path / "src" / "generated"
+        doctor.config.types.openapi_path = tmp_path / "src" / "generated" / "openapi.json"
+        doctor.config.types.routes_path = tmp_path / "src" / "generated" / "routes.json"
     _prepare_frontend_dirs(tmp_path)
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({
@@ -131,7 +142,17 @@ def test_doctor_detect_typegen_flags_mismatch(doctor: ViteDoctor, tmp_path: Path
 
 def test_doctor_no_issues(doctor: ViteDoctor, tmp_path: Path) -> None:
     doctor.config.paths.root = tmp_path
+    if isinstance(doctor.config.types, TypeGenConfig):
+        doctor.config.types.output = tmp_path / "src" / "generated"
+        doctor.config.types.openapi_path = tmp_path / "src" / "generated" / "openapi.json"
+        doctor.config.types.routes_path = tmp_path / "src" / "generated" / "routes.json"
     _prepare_frontend_dirs(tmp_path)
+    _prepare_node_modules(tmp_path)
+    (tmp_path / "public").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "public" / "manifest.json").write_text("{}")
+    (tmp_path / "src" / "generated").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "src" / "generated" / "openapi.json").write_text("{}")
+    (tmp_path / "src" / "generated" / "routes.json").write_text("{}")
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({
         plugins: [litestar({
@@ -150,15 +171,7 @@ def test_doctor_no_issues(doctor: ViteDoctor, tmp_path: Path) -> None:
     })
     """)
 
-    # Mock checks that rely on filesystem/network not present in test
-    with (
-        patch.object(doctor, "_check_dist_files"),
-        patch.object(doctor, "_check_node_modules"),
-        patch.object(doctor, "_check_manifest_presence"),
-        patch.object(doctor, "_check_typegen_artifacts"),
-        patch.object(doctor, "_check_env_alignment"),
-        patch.object(doctor, "_check_vite_server_reachable"),
-    ):
+    with patch.object(doctor, "_check_env_alignment"), patch.object(doctor, "_check_vite_server_reachable"):
         result = doctor.run(fix=False)
 
     assert result is True
@@ -304,3 +317,59 @@ def test_doctor_can_write_bridge_file(tmp_path: Path) -> None:
 
     assert ok is True
     assert (tmp_path / ".litestar.json").exists()
+
+
+def test_doctor_helpers_format_and_extract(tmp_path: Path) -> None:
+    assert _format_ts_literal(True) == "true"
+    assert _format_ts_literal(10) == "10"
+    assert _format_ts_literal("hello") == "'hello'"
+
+    source = "export default defineConfig({ plugins: [litestar({ assetUrl: '/static/' })] })"
+    open_idx = source.find("{", source.find("litestar"))
+    extracted = _extract_braced_block(source, open_idx)
+    assert extracted is not None
+    block, _, _ = extracted
+    assert "assetUrl" in block
+
+    root = tmp_path
+    path = tmp_path / "src" / "main.ts"
+    assert _rel_to_root(path, root).endswith("src/main.ts")
+
+
+def test_doctor_apply_vite_key_fix(tmp_path: Path) -> None:
+    config = ViteConfig(
+        mode="spa",
+        runtime=RuntimeConfig(dev_mode=False, set_environment=False, proxy_mode="vite", host="127.0.0.1", port=5173),
+        paths=PathConfig(
+            root=tmp_path,
+            bundle_dir=Path("public"),
+            resource_dir=Path("src"),
+            static_dir=Path("public"),
+            asset_url="/static/",
+            hot_file="hot",
+        ),
+        types=False,
+    )
+    doctor = ViteDoctor(config=config)
+    _prepare_frontend_dirs(tmp_path)
+    (tmp_path / "vite.config.ts").write_text("""
+    export default defineConfig({
+        plugins: [litestar({
+            assetUrl: '/wrong/',
+        })]
+    })
+    """)
+
+    with (
+        patch.object(doctor, "_check_dist_files"),
+        patch.object(doctor, "_check_node_modules"),
+        patch.object(doctor, "_check_manifest_presence"),
+        patch.object(doctor, "_check_typegen_artifacts"),
+        patch.object(doctor, "_check_env_alignment"),
+        patch.object(doctor, "_check_vite_server_reachable"),
+    ):
+        ok = doctor.run(fix=True, no_prompt=True)
+
+    assert ok is True
+    content = (tmp_path / "vite.config.ts").read_text()
+    assert "assetUrl: '/static/'" in content

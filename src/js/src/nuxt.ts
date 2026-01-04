@@ -15,10 +15,7 @@
  *   litestar: {
  *     apiProxy: 'http://localhost:8000',
  *     apiPrefix: '/api',
- *     types: {
- *       enabled: true,
- *       output: 'generated',
- *     },
+ *     types: true,
  *   },
  * });
  * ```
@@ -32,7 +29,7 @@ import colors from "picocolors"
 import type { Plugin } from "vite"
 import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema.js"
 import { DEBOUNCE_MS } from "./shared/constants.js"
-import { normalizeHost } from "./shared/network.js"
+import { normalizeHost, resolveHotFilePath } from "./shared/network.js"
 import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
 
 /**
@@ -57,21 +54,28 @@ export interface NuxtTypesConfig {
   /**
    * Path where the OpenAPI schema is exported by Litestar.
    *
-   * @default 'openapi.json'
+   * @default `${output}/openapi.json`
    */
   openapiPath?: string
 
   /**
    * Path where route metadata is exported by Litestar.
    *
-   * @default 'routes.json'
+   * @default `${output}/routes.json`
    */
   routesPath?: string
 
   /**
+   * Optional path for the generated schemas.ts helper file.
+   *
+   * @default `${output}/schemas.ts`
+   */
+  schemasTsPath?: string
+
+  /**
    * Path where Inertia page props metadata is exported by Litestar.
    *
-   * @default 'inertia-pages.json'
+   * @default `${output}/inertia-pages.json`
    */
   pagePropsPath?: string
 
@@ -102,6 +106,13 @@ export interface NuxtTypesConfig {
    * @default true
    */
   generatePageProps?: boolean
+
+  /**
+   * Generate schemas.ts with ergonomic form/response type helpers.
+   *
+   * @default true
+   */
+  generateSchemas?: boolean
 
   /**
    * Register route() globally on window object.
@@ -208,7 +219,7 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
   if (runtime) {
     hasPythonConfig = true
     const hot = runtime.hotFile
-    hotFile = path.isAbsolute(hot) ? hot : path.resolve(process.cwd(), runtime.bundleDir, hot)
+    hotFile = resolveHotFilePath(runtime.bundleDir, hot)
     proxyMode = runtime.proxyMode
     devPort = runtime.port
     pythonExecutor = runtime.executor
@@ -219,45 +230,71 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
 
   let typesConfig: Required<NuxtTypesConfig> | false = false
 
+  const defaultTypesOutput = "generated"
+  const buildTypeDefaults = (output: string) => ({
+    openapiPath: path.join(output, "openapi.json"),
+    routesPath: path.join(output, "routes.json"),
+    pagePropsPath: path.join(output, "inertia-pages.json"),
+    schemasTsPath: path.join(output, "schemas.ts"),
+  })
+
   if (config.types === true) {
+    const output = pythonTypesConfig?.output ?? defaultTypesOutput
+    const defaults = buildTypeDefaults(output)
     typesConfig = {
       enabled: true,
-      output: pythonTypesConfig?.output ?? "generated",
-      openapiPath: pythonTypesConfig?.openapiPath ?? "openapi.json",
-      routesPath: pythonTypesConfig?.routesPath ?? "routes.json",
-      pagePropsPath: pythonTypesConfig?.pagePropsPath ?? "inertia-pages.json",
+      output,
+      openapiPath: pythonTypesConfig?.openapiPath ?? defaults.openapiPath,
+      routesPath: pythonTypesConfig?.routesPath ?? defaults.routesPath,
+      pagePropsPath: pythonTypesConfig?.pagePropsPath ?? defaults.pagePropsPath,
+      schemasTsPath: pythonTypesConfig?.schemasTsPath ?? defaults.schemasTsPath,
       generateZod: pythonTypesConfig?.generateZod ?? false,
       generateSdk: pythonTypesConfig?.generateSdk ?? true,
       generateRoutes: pythonTypesConfig?.generateRoutes ?? true,
       generatePageProps: pythonTypesConfig?.generatePageProps ?? true,
+      generateSchemas: pythonTypesConfig?.generateSchemas ?? true,
       globalRoute: pythonTypesConfig?.globalRoute ?? false,
       debounce: DEBOUNCE_MS,
     }
   } else if (typeof config.types === "object" && config.types !== null) {
+    const userProvidedOutput = Object.hasOwn(config.types, "output")
+    const output = config.types.output ?? pythonTypesConfig?.output ?? defaultTypesOutput
+    const defaults = buildTypeDefaults(output)
+    const openapiFallback = userProvidedOutput ? defaults.openapiPath : pythonTypesConfig?.openapiPath ?? defaults.openapiPath
+    const routesFallback = userProvidedOutput ? defaults.routesPath : pythonTypesConfig?.routesPath ?? defaults.routesPath
+    const pagePropsFallback = userProvidedOutput ? defaults.pagePropsPath : pythonTypesConfig?.pagePropsPath ?? defaults.pagePropsPath
+    const schemasFallback = userProvidedOutput ? defaults.schemasTsPath : pythonTypesConfig?.schemasTsPath ?? defaults.schemasTsPath
+
     typesConfig = {
       enabled: config.types.enabled ?? true,
-      output: config.types.output ?? pythonTypesConfig?.output ?? "generated",
-      openapiPath: config.types.openapiPath ?? pythonTypesConfig?.openapiPath ?? "openapi.json",
-      routesPath: config.types.routesPath ?? pythonTypesConfig?.routesPath ?? "routes.json",
-      pagePropsPath: config.types.pagePropsPath ?? pythonTypesConfig?.pagePropsPath ?? "inertia-pages.json",
+      output,
+      openapiPath: config.types.openapiPath ?? openapiFallback,
+      routesPath: config.types.routesPath ?? routesFallback,
+      pagePropsPath: config.types.pagePropsPath ?? pagePropsFallback,
+      schemasTsPath: config.types.schemasTsPath ?? schemasFallback,
       generateZod: config.types.generateZod ?? pythonTypesConfig?.generateZod ?? false,
       generateSdk: config.types.generateSdk ?? pythonTypesConfig?.generateSdk ?? true,
       generateRoutes: config.types.generateRoutes ?? pythonTypesConfig?.generateRoutes ?? true,
       generatePageProps: config.types.generatePageProps ?? pythonTypesConfig?.generatePageProps ?? true,
+      generateSchemas: config.types.generateSchemas ?? pythonTypesConfig?.generateSchemas ?? true,
       globalRoute: config.types.globalRoute ?? pythonTypesConfig?.globalRoute ?? false,
       debounce: config.types.debounce ?? DEBOUNCE_MS,
     }
   } else if (config.types !== false && pythonTypesConfig?.enabled) {
+    const output = pythonTypesConfig.output ?? defaultTypesOutput
+    const defaults = buildTypeDefaults(output)
     typesConfig = {
       enabled: true,
-      output: pythonTypesConfig.output ?? "generated",
-      openapiPath: pythonTypesConfig.openapiPath ?? "openapi.json",
-      routesPath: pythonTypesConfig.routesPath ?? "routes.json",
-      pagePropsPath: pythonTypesConfig.pagePropsPath ?? "inertia-pages.json",
+      output,
+      openapiPath: pythonTypesConfig.openapiPath ?? defaults.openapiPath,
+      routesPath: pythonTypesConfig.routesPath ?? defaults.routesPath,
+      pagePropsPath: pythonTypesConfig.pagePropsPath ?? defaults.pagePropsPath,
+      schemasTsPath: pythonTypesConfig.schemasTsPath ?? defaults.schemasTsPath,
       generateZod: pythonTypesConfig.generateZod ?? false,
       generateSdk: pythonTypesConfig.generateSdk ?? true,
       generateRoutes: pythonTypesConfig.generateRoutes ?? true,
       generatePageProps: pythonTypesConfig.generatePageProps ?? true,
+      generateSchemas: pythonTypesConfig.generateSchemas ?? true,
       globalRoute: pythonTypesConfig.globalRoute ?? false,
       debounce: DEBOUNCE_MS,
     }

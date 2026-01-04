@@ -1,6 +1,6 @@
 # Development Workflow for litestar-vite
 
-**Version**: 0.15.0-rc.5 | **Updated**: 2025-12-22
+**Version**: 0.16.0 | **Updated**: 2026-01-04
 
 This guide describes the standard development workflow for contributing to the `litestar-vite` project. It covers initial setup, daily development tasks, and the quality assurance process.
 
@@ -77,7 +77,7 @@ make test
 pytest src/py/tests/
 
 # Run only JS tests
-npm run test --workspace=src/js
+npm run test
 ```
 
 ### Code Quality
@@ -123,15 +123,15 @@ For regular releases (patch, minor, major):
 git status
 
 # Bump version (choose one)
-make release bump=patch   # 0.14.0 → 0.14.1
-make release bump=minor   # 0.14.0 → 0.15.0
-make release bump=major   # 0.14.0 → 1.0.0
+make release bump=patch   # 0.16.0 → 0.16.1
+make release bump=minor   # 0.16.0 → 0.17.0
+make release bump=major   # 0.16.0 → 1.0.0
 
 # Push to main
 git push origin main
 
 # Create GitHub release
-gh release create v0.15.0 --title "v0.15.0" --generate-notes
+gh release create v0.16.0 --title "v0.16.0" --generate-notes
 ```
 
 ### Pre-releases (Alpha/Beta/RC)
@@ -140,20 +140,20 @@ For testing breaking changes with a limited audience before stable release:
 
 ```bash
 # Start alpha
-make pre-release version=0.15.0-alpha.1
+make pre-release version=0.16.0-alpha.1
 
 # Iterate on alpha
-make pre-release version=0.15.0-alpha.2
+make pre-release version=0.16.0-alpha.2
 
 # Progress to beta
-make pre-release version=0.15.0-beta.1
+make pre-release version=0.16.0-beta.1
 
 # Release candidate
-make pre-release version=0.15.0-rc.1
+make pre-release version=0.16.0-rc.1
 
 # Push and create pre-release
 git push origin HEAD
-gh release create v0.15.0-alpha.1 --prerelease --title "v0.15.0-alpha.1"
+gh release create v0.16.0-alpha.1 --prerelease --title "v0.16.0-alpha.1"
 ```
 
 **Distribution:**

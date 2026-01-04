@@ -1,6 +1,6 @@
 # Litestar Vite: Comprehensive Documentation
 
-**Version**: 0.15.1
+**Version**: 0.16.0
 **Project**: litestar-vite
 
 Seamless integration between Litestar and Vite with Inertia.js support.
@@ -10,7 +10,7 @@ This document contains the full context of the project, including architecture, 
 
 # 1. Architecture Guide
 
-**Version**: 0.15.1 | **Updated**: 2025-12-22
+**Version**: 0.16.0 | **Updated**: 2026-01-04
 
 This document outlines the architectural patterns and conventions used in the `litestar-vite` project.
 
@@ -30,16 +30,16 @@ The backend code is located in `src/py/litestar_vite/`.
 
 - **Asynchronous by Default**: All I/O-bound operations (database access, API calls) should be `async` to leverage Litestar's performance benefits.
 - **Dependency Injection**: Litestar's dependency injection is used to manage resources like database sessions and services. Dependencies should be defined in a reusable way.
-- **Configuration**: Configuration is managed through Pydantic models within the `config.py` files, allowing for type-safe and environment-aware settings.
+- **Configuration**: Configuration is managed through dataclasses in `config/` modules, allowing for type-safe and environment-aware settings.
 - **Modular Design**: Core functionality is split across specialized modules (config, plugin, loader, SPA handler, Inertia integration, etc.).
 
 ### Configuration (`ViteConfig`)
 
-The `ViteConfig` class in `config.py` controls the integration behavior. It uses a modular structure with sub-configs:
+The `ViteConfig` class in `config/` (imported as `litestar_vite.config`) controls the integration behavior. It uses a modular structure with sub-configs:
 
 - **`PathConfig`**: File system paths (root, bundle_dir, resource_dir, static_dir, asset_url, ssr_output_dir, manifest_name, hot_file)
 - **`RuntimeConfig`**: Execution settings (dev_mode, proxy_mode, external_dev_server, http2, start_dev_server)
-- **`TypeGenConfig`**: Type generation settings (output, openapi_path, routes_path, routes_ts_path, page_props_path, generate_zod, generate_sdk, generate_routes, generate_page_props, global_route, fallback_type, type_import_paths)
+- **`TypeGenConfig`**: Type generation settings (output, openapi_path, routes_path, routes_ts_path, page_props_path, schemas_ts_path, generate_zod, generate_sdk, generate_routes, generate_page_props, generate_schemas, global_route, fallback_type, type_import_paths)
 - **`InertiaConfig`**: Inertia.js settings (root_template, component_opt_keys, redirect_unauthorized_to, redirect_404, extra_static_page_props, extra_session_page_props, encrypt_history, type_gen, ssr, use_script_element, precognition).
 - **`InertiaTypeGenConfig`**: Inertia type generation settings (include_default_auth, include_default_flash)
 - **`InertiaSSRConfig`**: Inertia Server-Side Rendering settings (enabled, url, timeout)
@@ -73,27 +73,28 @@ Key `RuntimeConfig` options:
     - Framework integration is controlled by `mode="framework"` (aliases: `mode="ssr"` / `mode="ssg"`).
 - **`health_check`**: Enable health check for dev server startup
 - **`detect_nodeenv`**: Detect and use nodeenv in virtualenv (opt-in)
-- **`set_environment`**: Set Vite environment variables from config (default: True)
+- **`set_environment`**: Set Vite environment variables and write `.litestar.json` from config (default: True)
 - **`set_static_folders`**: Automatically configure static file serving (default: True)
 - **`csp_nonce`**: Content Security Policy nonce for inline scripts
 - **`spa_handler`**: Auto-register catch-all SPA route when mode="spa" (default: True)
+- **`trusted_proxies`**: Trusted proxy hosts/CIDRs for ProxyHeadersMiddleware (default: None)
 
-Python is the source of truth: The VitePlugin's `on_app_init()` method writes `.litestar.json` containing `assetUrl`, `bundleDir`, `resourceDir`, `staticDir`, `manifest`, `ssrOutDir`, `mode`, `proxyMode`, `host`, `port`, `executor`, type generation paths, and Litestar version. The JS plugin reads this file automatically - only `input` is required in `vite.config.ts`. Override only when you intentionally diverge from Python config.
+Python is the source of truth: The VitePlugin's `on_app_init()` method writes `.litestar.json` containing `assetUrl`, `deployAssetUrl`, `bundleDir`, `resourceDir`, `staticDir`, `hotFile`, `manifest`, `ssrOutDir`, `mode`, `proxyMode`, `host`, `port`, `executor`, `logging`, `spa`, type generation settings, and Litestar version. The JS plugin reads this file automatically - only `input` is required in `vite.config.ts`. Override only when you intentionally diverge from Python config.
 
 ### Core Modules
 
 The backend is organized into specialized modules:
 
 1. **Configuration & Plugin**:
-    - `config.py`: `ViteConfig`, `SPAConfig`, `LoggingConfig`, and other configuration models
-    - `plugin.py`: `VitePlugin` - main Litestar plugin registration
+    - `config/`: `ViteConfig`, `SPAConfig`, `LoggingConfig`, and other configuration models
+    - `plugin/`: `VitePlugin` - main Litestar plugin registration
 
 2. **Asset Management**:
     - `loader.py`: `ViteAssetLoader` - reads Vite manifest and serves assets
     - `deploy.py`: CDN deployment utilities using fsspec backends
 
 3. **SPA Support**:
-    - `handler.py` (exposes `AppHandler`): Serves SPA index.html in dev/production modes with both async and sync HTTP client support.
+    - `handler/` (exposes `AppHandler`): Serves SPA index.html in dev/production modes with both async and sync HTTP client support.
     - `html_transform.py`: HTML transformation functions (`inject_head_script`, `inject_body_content`, `inject_json_script`, `set_data_attribute`)
     - Key features: `is_initialized` property, `get_html(request)` for async contexts, `get_html_sync()` for sync contexts, cached HTML in production with `SPAConfig.cache_transformed_html`
 
@@ -102,7 +103,7 @@ The backend is organized into specialized modules:
     - `commands.py`: CLI command implementations
     - `executor.py`: `JSExecutor` abstraction for Node/Bun/Deno runtimes
     - `doctor.py`: Diagnostic utilities for troubleshooting
-    - `codegen.py`: Code generation utilities (route typegen, etc.)
+    - `codegen/`: Code generation utilities (route typegen, etc.)
 
 5. **Scaffolding**:
     - `scaffolding/`: Project template generation and initialization
@@ -124,7 +125,7 @@ The backend is organized into specialized modules:
 
 6. **Inertia.js Integration** (`inertia/`):
     - `plugin.py`: `InertiaPlugin` - Litestar plugin with BlockingPortal for async DeferredProp resolution
-    - `config.py`: `InertiaConfig` - configuration (moved to main config.py in v0.15)
+    - `config/`: `InertiaConfig` - configuration (moved to main config module in v0.15)
     - `middleware.py`: `InertiaMiddleware` - handles Inertia protocol
     - `request.py`: `InertiaRequest` - enhanced request class with InertiaDetails/InertiaHeaders
     - `response.py`: `InertiaResponse` - Inertia page responses with props flattening
@@ -144,7 +145,14 @@ src/js/src/
 ├── index.ts              # Main Vite plugin entry point
 ├── install-hint.ts       # Package manager detection utilities
 ├── litestar-meta.ts      # Runtime config loading from .litestar.json
-├── dev-server-index.html # Dev server fallback HTML template
+├── dev-server/           # Dev server fallback page (built to dist/js/)
+│   ├── index.html        # Source HTML template
+│   ├── styles.css        # Tailwind CSS source
+│   └── vite.config.ts    # Build config for singlefile output
+├── server-starting/      # Server starting page (built to Python wheel)
+│   ├── index.html        # Source HTML template
+│   ├── styles.css        # Tailwind CSS source
+│   └── vite.config.ts    # Build config for singlefile output
 ├── astro.ts              # Astro integration
 ├── nuxt.ts               # Nuxt module integration
 ├── sveltekit.ts          # SvelteKit integration
@@ -154,10 +162,18 @@ src/js/src/
 │   ├── htmx.ts           # HTMX utilities (addDirective, registerHtmxExtension, setHtmxDebug, swapJson)
 │   └── routes.ts         # Runtime route helpers (legacy)
 ├── shared/               # Shared utilities across modules
-│   ├── bridge-schema.ts  # Bridge file type definitions
-│   ├── debounce.ts       # Type-safe debounce utility
-│   ├── logger.ts         # Logging utility
-│   └── typegen-plugin.ts # Type generation plugin
+│   ├── bridge-schema.ts       # Bridge file type definitions
+│   ├── constants.ts           # Shared defaults (typegen/output)
+│   ├── format-path.ts         # Path normalization
+│   ├── network.ts             # Host normalization utilities
+│   ├── debounce.ts            # Type-safe debounce utility
+│   ├── logger.ts              # Logging utility
+│   ├── write-if-changed.ts    # Deterministic file writes
+│   ├── emit-page-props-types.ts # Inertia page-props types generator
+│   ├── emit-schemas-types.ts  # schemas.ts helper generator
+│   ├── typegen-cache.ts       # Type generation cache
+│   ├── typegen-core.ts        # hey-api pipeline wiring
+│   └── typegen-plugin.ts      # Type generation plugin
 └── inertia-helpers/      # Inertia.js specific helpers
     └── index.ts          # resolvePageComponent, unwrapPageProps
 ```
@@ -181,11 +197,11 @@ The helpers module provides utilities for working with Litestar routes and CSRF 
     - `setHtmxDebug(enabled)` - Enable/disable HTMX debug mode
     - `swapJson(target, json)` - Swap element content with JSON data
 
-Route metadata is now generated as TypeScript at build time (see Type-Safe Routing below). Runtime route helpers are deprecated in favor of the generated routes.ts file.
+Typed route helpers are generated by the Python backend (see Type-Safe Routing below). Runtime route helpers are deprecated in favor of the generated routes.ts file.
 
 ### Type-Safe Routing (Generated)
 
-When `types=TypeGenConfig(generate_routes=True)` is enabled (default), the Python backend generates route metadata that the Vite plugin uses to create a `routes.ts` file (default: `src/generated/routes.ts`). This provides fully typed routing:
+When `types=TypeGenConfig(generate_routes=True)` is enabled (default), the Python backend generates `routes.ts` (default: `src/generated/routes.ts`) alongside `routes.json`. This provides fully typed routing:
 
 ```typescript
 import { route } from '../generated/routes';
@@ -208,7 +224,7 @@ This is the preferred routing method over the untyped runtime helpers.
 Configuration:
 
 - **Python**: `ViteConfig(types=TypeGenConfig(generate_routes=True, routes_ts_path=Path("src/generated/routes.ts")))`
-- **Vite Plugin**: Reads `routes.json` metadata and generates TypeScript at build time
+- **Vite Plugin**: Reads `routes.json` metadata to generate `schemas.ts` helpers (does not generate `routes.ts`)
 
 ### Vite Plugin Configuration
 
@@ -224,17 +240,19 @@ Key options (auto-populated from `.litestar.json` when available):
 
 - **`input`**: Entry points to compile (**required**).
 - **`assetUrl`**: Base path for asset URLs (default: `/static/`).
+- **`deployAssetUrl`**: Asset URL used only during production builds (from Python `DeployConfig.asset_url`).
 - **`bundleDir`**: Output directory for assets (default: `public`).
-- **`resourceDir`**: Source directory (default: `resources`).
+- **`resourceDir`**: Source directory (default: `src`; Inertia templates typically use `resources`).
+- **`staticDir`**: Static public assets directory (default: `${resourceDir}/public` to avoid `publicDir`/`outDir` collisions).
 - **`hotFile`**: Path to the hot file for HMR (default: `${bundleDir}/hot`).
 - **`ssr`**: SSR entry point.
 - **`ssrOutDir`**: Output directory for SSR bundle.
 - **`refresh`**: Configuration for full page reload on file changes.
 - **`detectTls`**: Utilize TLS certificates.
 - **`autoDetectIndex`**: Automatically detect `index.html` (default: `true`).
-- **`inertiaMode`**: Disable index auto-detection for Inertia apps (auto-detected from `.litestar.json`).
-- **`transformOnServe`**: Apply HTML transformations in dev mode (default: `true`).
-- **`types`**: Type generation configuration.
+- **`inertiaMode`**: Disable index auto-detection for Inertia apps (auto-detected from `.litestar.json` when mode is `hybrid`/`inertia`).
+- **`transformOnServe`**: Apply HTML transformations in dev mode.
+- **`types`**: Type generation configuration (`"auto"`/`undefined` reads from `.litestar.json`; fields include `output`, `openapiPath`, `routesPath`, `pagePropsPath`, `schemasTsPath`, `generateRoutes`, `generatePageProps`, `generateSchemas`).
 - **`executor`**: JavaScript runtime executor.
 
 ### Framework Integrations
@@ -372,7 +390,7 @@ Each example includes its own `package.json`, Vite configuration, and demonstrat
 
 # 2. Development Workflow
 
-**Version**: 0.15.1 | **Updated**: 2025-12-22
+**Version**: 0.16.0 | **Updated**: 2026-01-04
 
 This guide describes the standard development workflow for contributing to the `litestar-vite` project. It covers initial setup, daily development tasks, and the quality assurance process.
 
@@ -449,7 +467,7 @@ make test
 pytest src/py/tests/
 
 # Run only JS tests
-npm run test --workspace=src/js
+npm run test
 ```
 
 ### Code Quality
@@ -495,15 +513,15 @@ For regular releases (patch, minor, major):
 git status
 
 # Bump version (choose one)
-make release bump=patch   # 0.14.0 → 0.14.1
-make release bump=minor   # 0.14.0 → 0.15.0
-make release bump=major   # 0.14.0 → 1.0.0
+make release bump=patch   # 0.16.0 → 0.16.1
+make release bump=minor   # 0.16.0 → 0.17.0
+make release bump=major   # 0.16.0 → 1.0.0
 
 # Push to main
 git push origin main
 
 # Create GitHub release
-gh release create v0.15.0 --title "v0.15.0" --generate-notes
+gh release create v0.16.0 --title "v0.16.0" --generate-notes
 ```
 
 ### Pre-releases (Alpha/Beta/RC)
@@ -512,20 +530,20 @@ For testing breaking changes with a limited audience before stable release:
 
 ```bash
 # Start alpha
-make pre-release version=0.15.0-alpha.1
+make pre-release version=0.16.0-alpha.1
 
 # Iterate on alpha
-make pre-release version=0.15.0-alpha.2
+make pre-release version=0.16.0-alpha.2
 
 # Progress to beta
-make pre-release version=0.15.0-beta.1
+make pre-release version=0.16.0-beta.1
 
 # Release candidate
-make pre-release version=0.15.0-rc.1
+make pre-release version=0.16.0-rc.1
 
 # Push and create pre-release
 git push origin HEAD
-gh release create v0.15.0-alpha.1 --prerelease --title "v0.15.0-alpha.1"
+gh release create v0.16.0-alpha.1 --prerelease --title "v0.16.0-alpha.1"
 ```
 
 **Distribution:**
@@ -539,7 +557,7 @@ gh release create v0.15.0-alpha.1 --prerelease --title "v0.15.0-alpha.1"
 
 # 3. Configuration Precedence
 
-**Version**: 0.15.1 | **Updated**: 2025-12-22
+**Version**: 0.16.0 | **Updated**: 2026-01-04
 
 ```
 ┌─────────────────────┐
@@ -575,6 +593,7 @@ When Litestar starts, it writes a `.litestar.json` file containing shared config
 ```json
 {
   "assetUrl": "/static/",
+  "deployAssetUrl": null,
   "bundleDir": "public",
   "resourceDir": "src",
   "staticDir": "src/public",
@@ -592,17 +611,17 @@ When Litestar starts, it writes a `.litestar.json` file containing shared config
     "routesPath": "src/generated/routes.json",
     "routesTsPath": "src/generated/routes.ts",
     "pagePropsPath": "src/generated/inertia-pages.json",
-    "generateZod": true,
+    "schemasTsPath": "src/generated/schemas.ts",
+    "generateZod": false,
     "generateSdk": true,
     "generateRoutes": true,
     "generatePageProps": true,
-    "globalRoute": false,
-    "fallbackType": "unknown",
-    "typeImportPaths": {}
+    "generateSchemas": true,
+    "globalRoute": false
   },
   "executor": "node",
   "logging": {
-    "level": "info",
+    "level": "normal",
     "showPathsAbsolute": false,
     "suppressNpmOutput": false,
     "suppressViteBanner": false,
@@ -621,6 +640,7 @@ These fields are meaningful to both Python and TypeScript:
 | Field | Python Name | JSON/TypeScript Name | Description |
 |-------|-------------|---------------------|-------------|
 | Asset URL | `asset_url` | `assetUrl` | Base URL for assets |
+| Deploy Asset URL | `deploy.asset_url` | `deployAssetUrl` | Asset URL used during `vite build` |
 | Bundle Directory | `bundle_dir` | `bundleDir` | Build output directory |
 | Resource Directory | `resource_dir` | `resourceDir` | Source assets directory |
 | Static Directory | `static_dir` | `staticDir` | Static assets directory |
@@ -644,7 +664,7 @@ These are configured in Python and not exposed to TypeScript:
 - `InertiaTypeGenConfig` - Inertia type generation (include_default_auth, include_default_flash)
 - `InertiaSSRConfig` - Inertia SSR settings (enabled, url, timeout)
 - `RuntimeConfig.run_command`, `build_command`, `serve_command`, `install_command`, etc.
-- `RuntimeConfig.http2`, `start_dev_server`, `health_check`, `detect_nodeenv`, `set_environment`, `set_static_folders`, `csp_nonce`, `spa_handler`
+- `RuntimeConfig.http2`, `start_dev_server`, `health_check`, `detect_nodeenv`, `set_environment`, `set_static_folders`, `csp_nonce`, `spa_handler`, `trusted_proxies`
 - `ExternalDevServer` - External dev server config (target, command, build_command, http2, enabled)
 - `PaginationContainer` - Protocol for pagination unwrapping
 - `ViteConfig` fields: `guards`, `exclude_static_from_auth`, `spa_path`, `include_root_spa_paths`
@@ -796,7 +816,7 @@ This shows a side-by-side comparison of Python and TypeScript configuration.
 
 # 4. Testing Guide
 
-**Version**: 0.15.1 | **Updated**: 2025-12-22
+**Version**: 0.16.0 | **Updated**: 2026-01-04
 
 This guide provides instructions and best practices for writing and running tests in the `litestar-vite` project.
 
@@ -884,9 +904,6 @@ The core TypeScript library tests are located in `src/js/tests/`.
 The frontend tests are typically run as part of the `make test` command. To run them in isolation:
 
 ```bash
-# Navigate to the JS directory
-cd src/js
-
 # Run the tests
 npm run test
 ```
@@ -1013,7 +1030,7 @@ uv run pytest src/py/tests/e2e/ -v -s
 
 # 5. Code Style Guide
 
-**Version**: 0.15.1 | **Updated**: 2025-12-22
+**Version**: 0.16.0 | **Updated**: 2026-01-04
 
 This document defines the code style and quality standards for both the Python backend and TypeScript frontend. Consistency is enforced through automated tooling.
 

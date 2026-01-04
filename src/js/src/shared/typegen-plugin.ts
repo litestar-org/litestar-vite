@@ -14,6 +14,7 @@ import type { Plugin, ResolvedConfig, ViteDevServer } from "vite"
 
 import { debounce } from "./debounce.js"
 import { emitPagePropsTypes } from "./emit-page-props-types.js"
+import { emitSchemasTypes } from "./emit-schemas-types.js"
 import { formatPath } from "./format-path.js"
 import { shouldRunOpenApiTs, updateOpenApiTsCache } from "./typegen-cache.js"
 import { buildHeyApiPlugins, findOpenApiTsConfig, runHeyApiGeneration, type TypeGenCoreConfig, type TypeGenLogger } from "./typegen-core.js"
@@ -24,10 +25,12 @@ export interface RequiredTypeGenConfig {
   openapiPath: string
   routesPath: string
   pagePropsPath: string
+  schemasTsPath?: string
   generateZod: boolean
   generateSdk: boolean
   generateRoutes: boolean
   generatePageProps: boolean
+  generateSchemas: boolean
   globalRoute: boolean
   debounce: number
 }
@@ -129,10 +132,12 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
             projectRoot,
             openapiPath: typesConfig.openapiPath,
             output: typesConfig.output,
+            routesPath: typesConfig.routesPath,
             pagePropsPath: typesConfig.pagePropsPath,
             generateSdk: typesConfig.generateSdk,
             generateZod: typesConfig.generateZod,
             generatePageProps: false, // Handle separately below
+            generateSchemas: typesConfig.generateSchemas,
             sdkClientPlugin,
             executor,
           }
@@ -166,6 +171,22 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           logger.error(`Page props generation failed: ${message}`)
+        }
+      }
+
+      // Generate schema helper types (uses its own caching via emitSchemasTypes)
+      const absoluteRoutesPath = path.resolve(projectRoot, typesConfig.routesPath)
+      if (typesConfig.generateSchemas && fs.existsSync(absoluteRoutesPath)) {
+        try {
+          const changed = await emitSchemasTypes(absoluteRoutesPath, typesConfig.output, typesConfig.schemasTsPath)
+          if (changed) {
+            generated = true
+          } else {
+            resolvedConfig?.logger.info(`${colors.cyan("•")} Schema types ${colors.dim("(unchanged)")}`)
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          logger.error(`Schema types generation failed: ${message}`)
         }
       }
 

@@ -67,10 +67,13 @@ async function main(): Promise<void> {
     openapiPath: typesConfig.openapiPath,
     output: typesConfig.output,
     pagePropsPath: typesConfig.pagePropsPath,
+    routesPath: typesConfig.routesPath,
     generateSdk: typesConfig.generateSdk,
     generateZod: typesConfig.generateZod,
     generatePageProps: typesConfig.generatePageProps,
-    sdkClientPlugin: "@hey-api/client-fetch", // Default for CLI
+    generateSchemas: typesConfig.generateSchemas ?? true, // Default to true
+    schemasTsPath: typesConfig.schemasTsPath,
+    sdkClientPlugin: "@hey-api/client-axios", // Default for CLI (matches Vite plugin + templates)
     executor: bridgeConfig.executor,
   }
 

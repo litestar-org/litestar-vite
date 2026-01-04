@@ -1,4 +1,5 @@
 from pathlib import Path, PosixPath
+from typing import cast
 
 import pytest
 
@@ -154,6 +155,32 @@ def test_external_dev_server_custom_values() -> None:
     assert ext.target == "http://localhost:3000"
     assert ext.http2 is True
     assert ext.enabled is False
+
+
+def test_typegen_config_defaults_from_output_path() -> None:
+    config = TypeGenConfig(output=cast(Path, "src/generated"))
+    assert config.output == Path("src/generated")
+    assert config.openapi_path == Path("src/generated/openapi.json")
+    assert config.routes_path == Path("src/generated/routes.json")
+    assert config.routes_ts_path == Path("src/generated/routes.ts")
+    assert config.page_props_path == Path("src/generated/inertia-pages.json")
+    assert config.schemas_ts_path == Path("src/generated/schemas.ts")
+
+
+def test_typegen_config_string_paths_normalize() -> None:
+    config = TypeGenConfig(
+        output=cast(Path, "src/generated"),
+        openapi_path=cast(Path, "openapi.json"),
+        routes_path=cast(Path, "routes.json"),
+        routes_ts_path=cast(Path, "routes.ts"),
+        page_props_path=cast(Path, "pages.json"),
+        schemas_ts_path=cast(Path, "schemas.ts"),
+    )
+    assert config.openapi_path == Path("openapi.json")
+    assert config.routes_path == Path("routes.json")
+    assert config.routes_ts_path == Path("routes.ts")
+    assert config.page_props_path == Path("pages.json")
+    assert config.schemas_ts_path == Path("schemas.ts")
 
 
 def test_runtime_config_external_dev_server_string_normalization() -> None:

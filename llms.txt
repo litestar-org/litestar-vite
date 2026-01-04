@@ -1,6 +1,6 @@
 # Litestar Vite
 
-> **Version**: 0.15.1 | Python 3.10+ | Node 20.19+ or 22.12+ | Vite 6.x/7.x
+> **Version**: 0.16.0 | Python 3.10+ | Node 20.19+ or 22.12+ | Vite 6.x/7.x
 
 Seamless integration between Litestar and Vite with Inertia.js support.
 
@@ -8,8 +8,8 @@ Seamless integration between Litestar and Vite with Inertia.js support.
 
 ```bash
 pip install litestar-vite
-npm install litestar-vite-plugin
-litestar assets serve  # Start development server
+litestar assets install  # Install frontend deps
+litestar run             # Start backend + Vite dev server
 ```
 
 ## Key Concepts
@@ -21,7 +21,7 @@ litestar assets serve  # Start development server
   - `template`/`htmx`: Server-side templates (Jinja2) + Vite assets.
   - `framework`/`ssr`/`ssg`: Meta-frameworks (Astro, Nuxt, SvelteKit) via proxy.
 - **Configuration**: `vite.config.ts` > `.litestar.json` (auto-generated) > Defaults.
-- **CLI**: Always use `litestar assets [serve|build|install|status|doctor]` to manage the frontend.
+- **CLI**: Always use `litestar assets [serve|build|install|status|doctor]` to manage the frontend (or `litestar run` to start both).
 
 ## Documentation
 

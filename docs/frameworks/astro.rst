@@ -8,8 +8,8 @@ At a Glance
 -----------
 
 - Template: ``litestar assets init --template astro``
-- Mode: ``framework`` (aliases: ``ssr`` / ``ssg``)
-- Dev: ``litestar run --reload`` (starts Astro dev server via ExternalDevServer)
+- Mode: ``ssg`` (alias: ``framework``)
+- Dev: ``litestar run --reload`` (Litestar starts the Astro dev server via Vite)
 - Types: ``TypeGenConfig`` generates Astro types
 
 Quick Start
@@ -49,8 +49,8 @@ Backend Setup
 
 Key points:
 
-- ``mode="framework"`` enables meta-framework integration mode (aliases: ``mode="ssr"`` / ``mode="ssg"``)
-- ``ExternalDevServer`` delegates dev server to Astro
+- ``mode="ssg"`` enables static-site integration mode (alias: ``mode="framework"``)
+- Litestar starts the Astro dev server via ``RuntimeConfig.start_dev_server=True`` (default)
 - ``TypeGenConfig`` enables type generation for Astro
 
 Astro Configuration
@@ -180,8 +180,8 @@ Running
     litestar run --reload
 
     # Alternative: Run separately
-    litestar assets serve --production  # Astro server
-    litestar run --reload               # Backend API (in another terminal)
+    litestar assets serve  # Astro/Vite dev server
+    litestar run --reload  # Backend API (in another terminal)
 
 Type Generation
 ---------------
@@ -207,8 +207,8 @@ For production:
 
 2. Serve the built site:
 
-   - **Framework SSR**: ``litestar assets serve --production`` runs the Astro server
-   - **Static mode**: Serve ``dist/`` via Litestar's static files handler
+   - **Static mode (default)**: ``VITE_DEV_MODE=false litestar run`` (Litestar serves ``dist/``)
+   - **Server/Hybrid**: ``litestar assets serve --production`` (Astro SSR server) + ``litestar run``
 
 Rendering Modes
 ---------------
