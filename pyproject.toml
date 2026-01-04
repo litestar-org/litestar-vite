@@ -54,10 +54,16 @@ exclude = ["/.github", "/docs"]
 include = ["src/py/*","src/js/*","tools/*"]
 force-include = { "src/py/litestar_vite/static/server-starting.html" = "src/py/litestar_vite/static/server-starting.html" }
 
+[tool.hatch.build.targets.sdist.hooks.custom]
+path = "tools/hatch_build.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/py/litestar_vite"]
 include = ["src/py/litestar_vite/static/*.html"]
 force-include = { "src/py/litestar_vite/static/server-starting.html" = "litestar_vite/static/server-starting.html" }
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "tools/hatch_build.py"
 
 [dependency-groups]
 dev = [ {include-group = "build"}, { include-group = "linting" }, { include-group = "test" }, { include-group = "docs" }  ]

@@ -94,7 +94,7 @@ build:                                             ## Build the package
 	@echo "${INFO} Building package... 📦"
 	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm install --no-fund --quiet
 	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run build --quiet
-	@uv build -o dist/py >/dev/null 2>&1
+	@LITESTAR_VITE_SKIP_JS_BUILD=1 uv build -o dist/py
 	@echo "${OK} Package build complete"
 
 .PHONY: release
