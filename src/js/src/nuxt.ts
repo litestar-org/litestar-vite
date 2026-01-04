@@ -31,24 +31,9 @@ import path from "node:path"
 import colors from "picocolors"
 import type { Plugin } from "vite"
 import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema.js"
+import { DEBOUNCE_MS } from "./shared/constants.js"
+import { normalizeHost } from "./shared/network.js"
 import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
-
-/**
- * Normalize a host address for use in URLs.
- * - Converts bind-all addresses (::, 0.0.0.0) to localhost
- * - Converts IPv6 localhost (::1) to localhost
- * - Wraps other IPv6 addresses in brackets for URL compatibility
- */
-function normalizeHost(host: string): string {
-  if (host === "::" || host === "::1" || host === "0.0.0.0") {
-    return "localhost"
-  }
-  // If it contains ":" and isn't already bracketed, it's IPv6
-  if (host.includes(":") && !host.startsWith("[")) {
-    return `[${host}]`
-  }
-  return host
-}
 
 /**
  * Configuration for TypeScript type generation in Nuxt.
@@ -246,7 +231,7 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
       generateRoutes: pythonTypesConfig?.generateRoutes ?? true,
       generatePageProps: pythonTypesConfig?.generatePageProps ?? true,
       globalRoute: pythonTypesConfig?.globalRoute ?? false,
-      debounce: 300,
+      debounce: DEBOUNCE_MS,
     }
   } else if (typeof config.types === "object" && config.types !== null) {
     typesConfig = {
@@ -260,7 +245,7 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
       generateRoutes: config.types.generateRoutes ?? pythonTypesConfig?.generateRoutes ?? true,
       generatePageProps: config.types.generatePageProps ?? pythonTypesConfig?.generatePageProps ?? true,
       globalRoute: config.types.globalRoute ?? pythonTypesConfig?.globalRoute ?? false,
-      debounce: config.types.debounce ?? 300,
+      debounce: config.types.debounce ?? DEBOUNCE_MS,
     }
   } else if (config.types !== false && pythonTypesConfig?.enabled) {
     typesConfig = {
@@ -274,7 +259,7 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
       generateRoutes: pythonTypesConfig.generateRoutes ?? true,
       generatePageProps: pythonTypesConfig.generatePageProps ?? true,
       globalRoute: pythonTypesConfig.globalRoute ?? false,
-      debounce: 300,
+      debounce: DEBOUNCE_MS,
     }
   }
 

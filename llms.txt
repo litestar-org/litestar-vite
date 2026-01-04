@@ -1,12 +1,14 @@
 # Litestar Vite
 
+> **Version**: 0.15.1 | Python 3.10+ | Node 20.19+ or 22.12+ | Vite 6.x/7.x
+
 Seamless integration between Litestar and Vite with Inertia.js support.
 
 ## Quick Start
 
 ```bash
 pip install litestar-vite
-make install       # Install dependencies
+npm install litestar-vite-plugin
 litestar assets serve  # Start development server
 ```
 
@@ -15,11 +17,11 @@ litestar assets serve  # Start development server
 - **Hybrid Architecture**: Python backend (Litestar) + TypeScript frontend (Vite).
 - **Modes**:
   - `spa`: Single Page App (default).
-  - `hybrid`: Inertia.js (v2 protocol).
-  - `template`: Server-side templates (Jinja2) + Vite assets.
-  - `framework`: Meta-frameworks (Astro, Nuxt, SvelteKit) via proxy.
+  - `hybrid`/`inertia`: Inertia.js (v2 protocol) with precognition support.
+  - `template`/`htmx`: Server-side templates (Jinja2) + Vite assets.
+  - `framework`/`ssr`/`ssg`: Meta-frameworks (Astro, Nuxt, SvelteKit) via proxy.
 - **Configuration**: `vite.config.ts` > `.litestar.json` (auto-generated) > Defaults.
-- **CLI**: Always use `litestar assets [serve|build|install]` to manage the frontend.
+- **CLI**: Always use `litestar assets [serve|build|install|status|doctor]` to manage the frontend.
 
 ## Documentation
 
@@ -27,7 +29,6 @@ See `llms-full.txt` for comprehensive guides, API reference, and architectural d
 
 ## Project Structure
 
-- `src/py/litestar_vite/`: Python backend code (Plugin, Config, Loader).
-- `src/js/src/`: TypeScript frontend code (Vite plugin, Helpers).
-- `specs/guides/`: detailed architecture and usage guides.
-- `examples/`: Working examples for React, Vue, Svelte, Astro, Nuxt, etc.
+- `src/py/litestar_vite/`: Python backend (VitePlugin, ViteConfig, ViteAssetLoader, InertiaPlugin).
+- `src/js/src/`: TypeScript frontend (Vite plugin, CSRF helpers, HTMX utilities, Inertia helpers).
+- `examples/`: 13 working examples (React, Vue, Svelte, Angular, Astro, Nuxt, SvelteKit, HTMX).

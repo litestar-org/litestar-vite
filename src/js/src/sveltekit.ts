@@ -36,6 +36,8 @@ import path from "node:path"
 import colors from "picocolors"
 import type { Plugin } from "vite"
 import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema.js"
+import { DEBOUNCE_MS } from "./shared/constants.js"
+import { normalizeHost } from "./shared/network.js"
 import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
 
 /**
@@ -239,7 +241,7 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
       generateRoutes: pythonTypesConfig?.generateRoutes ?? true,
       generatePageProps: pythonTypesConfig?.generatePageProps ?? true,
       globalRoute: pythonTypesConfig?.globalRoute ?? false,
-      debounce: 300,
+      debounce: DEBOUNCE_MS,
     }
   } else if (typeof config.types === "object" && config.types !== null) {
     // Explicit types object in Vite config - merge with Python config
@@ -254,7 +256,7 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
       generateRoutes: config.types.generateRoutes ?? pythonTypesConfig?.generateRoutes ?? true,
       generatePageProps: config.types.generatePageProps ?? pythonTypesConfig?.generatePageProps ?? true,
       globalRoute: config.types.globalRoute ?? pythonTypesConfig?.globalRoute ?? false,
-      debounce: config.types.debounce ?? 300,
+      debounce: config.types.debounce ?? DEBOUNCE_MS,
     }
   } else if (config.types !== false && pythonTypesConfig?.enabled) {
     // No explicit Vite config but Python has types enabled - use Python config
@@ -269,7 +271,7 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
       generateRoutes: pythonTypesConfig.generateRoutes ?? true,
       generatePageProps: pythonTypesConfig.generatePageProps ?? true,
       globalRoute: pythonTypesConfig.globalRoute ?? false,
-      debounce: 300,
+      debounce: DEBOUNCE_MS,
     }
   }
 
@@ -383,14 +385,7 @@ export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): Plu
         server.httpServer?.once("listening", () => {
           const address = server.httpServer?.address()
           if (address && typeof address === "object" && "port" in address) {
-            // Normalize IPv6 addresses to localhost, and wrap any remaining IPv6 in brackets
-            let host = address.address
-            if (host === "::" || host === "::1") {
-              host = "localhost"
-            } else if (host.includes(":")) {
-              // IPv6 address - wrap in brackets for URL
-              host = `[${host}]`
-            }
+            const host = normalizeHost(address.address)
             const url = `http://${host}:${address.port}`
             fs.mkdirSync(path.dirname(hotFile), { recursive: true })
             fs.writeFileSync(hotFile, url)

@@ -146,6 +146,11 @@ nitpick_ignore = [
     (PY_CLASS, "httpx.AsyncClient"),
     # Codegen internal types (use public module path - remapping handles private paths)
     (PY_CLASS, "litestar_vite.codegen.OpenAPISupport"),
+    # Internal async mixin (private module, not in public API)
+    (PY_CLASS, "litestar_vite.inertia._async_mixin.AsyncRenderMixin"),
+    # External anyio types (intersphinx mapping exists but BlockingPortal not in inventory)
+    (PY_CLASS, "BlockingPortal"),
+    (PY_CLASS, "anyio.from_thread.BlockingPortal"),
 ]
 nitpick_ignore_regex = [
     (PY_RE, r"litestar_vite.*\.T"),

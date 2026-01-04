@@ -203,7 +203,7 @@ def _run_vite_build(
     if app is not None:
         _generate_schema_and_routes(app, config, console)
 
-    console.rule("[yellow]Starting Vite build process[/]", align="left")
+    console.rule("Starting [blue]Vite[/] build process", align="left")
     if config.set_environment:
         set_environment(config=config, asset_url_override=config.asset_url)
     os.environ.setdefault("VITE_BASE_URL", config.base_url or "/")
@@ -497,7 +497,7 @@ def vite_init(
     plugin = env.app.plugins.get(VitePlugin)
     config = plugin._config  # pyright: ignore[reportPrivateUsage]
 
-    console.rule("[yellow]Initializing Vite[/]", align="left")
+    console.rule("Initializing [blue]Vite[/]", align="left")
 
     root_path = Path(root_path or config.root_dir or Path.cwd())
     frontend_dir = frontend_dir or "."
@@ -552,7 +552,7 @@ def vite_init(
     console.print(f"\n[green]Generated {len(generated)} files[/]")
 
     if not no_install:
-        console.rule("[yellow]Starting package installation process[/]", align="left")
+        console.rule("Starting [blue]Vite[/] package installation", align="left")
         config.executor.install(root_path)
 
     console.print("\n[bold green]Vite initialization complete![/]")
@@ -576,7 +576,7 @@ def vite_install(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
     _apply_cli_log_level(plugin.config, verbose=verbose, quiet=quiet)
 
     if not quiet:
-        console.rule("[yellow]Starting package installation process[/]", align="left")
+        console.rule("Starting [blue]Vite[/] package installation", align="left")
 
     if plugin.config.executor:
         root_dir = Path(plugin.config.root_dir or Path.cwd())
@@ -609,9 +609,9 @@ def vite_update(app: "Litestar", latest: "bool", verbose: "bool", quiet: "bool")
 
     if not quiet:
         if latest:
-            console.rule("[yellow]Updating packages to latest versions[/]", align="left")
+            console.rule("Updating [blue]Vite[/] packages to latest versions", align="left")
         else:
-            console.rule("[yellow]Updating packages[/]", align="left")
+            console.rule("Updating [blue]Vite[/] packages", align="left")
 
     if plugin.config.executor:
         root_dir = Path(plugin.config.root_dir or Path.cwd())
@@ -619,7 +619,7 @@ def vite_update(app: "Litestar", latest: "bool", verbose: "bool", quiet: "bool")
             plugin.config.executor.update(root_dir, latest=latest)
             console.print("[bold green]✓ Packages updated[/]")
         except ViteExecutionError as e:
-            console.print(f"[bold red]✗ Package update failed: {e!s}[/]")
+            console.print(f"[red]Package update failed: {e!s}[/]")
             raise SystemExit(1) from None
     else:
         console.print("[red]Executor not configured.[/]")
@@ -642,7 +642,7 @@ def vite_build(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
     _apply_cli_log_level(plugin.config, verbose=verbose, quiet=quiet)
 
     if not quiet:
-        console.rule("[yellow]Starting Vite build process[/]", align="left")
+        console.rule("Starting [blue]Vite[/] build process", align="left")
     _generate_schema_and_routes(app, plugin.config, console)
     if plugin.config.set_environment:
         set_environment(config=plugin.config)
@@ -662,7 +662,7 @@ def vite_build(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
             executor.execute(plugin.config.build_command, cwd=root_dir)
         console.print("[bold green]✓ Assets built[/]")
     except ViteExecutionError as e:
-        console.print(f"[bold red]x Asset build failed: {e!s}[/]")
+        console.print(f"[red]Vite build failed: {e!s}[/]")
         raise SystemExit(1) from None
 
 
@@ -717,7 +717,7 @@ def vite_deploy(
         console.print(f"[red]{exc}[/]")
         sys.exit(1)
 
-    console.rule("[yellow]Deploying assets[/]", align="left")
+    console.rule("Deploying [blue]Vite[/] assets", align="left")
     console.print(f"Storage: {deploy_config.storage_backend}")
     console.print(f"Delete orphaned: {deploy_config.delete_orphaned}")
     if dry_run:
@@ -777,25 +777,25 @@ def vite_serve(app: "Litestar", verbose: "bool", quiet: "bool", production: "boo
     use_production_server = production or not plugin.config.dev_mode
 
     if use_production_server:
-        console.rule("[yellow]Starting production server[/]", align="left")
+        console.rule("Starting [blue]Vite[/] production server", align="left")
         command_to_run = plugin.config.serve_command
         if command_to_run is None:
             console.print("[red]serve_command not configured. Add 'serve' script to package.json.[/]")
             return
     elif plugin.config.hot_reload:
-        console.rule("[yellow]Starting Vite process with HMR Enabled[/]", align="left")
+        console.rule("Starting [blue]Vite[/] dev server with HMR", align="left")
         command_to_run = plugin.config.run_command
     else:
-        console.rule("[yellow]Starting Vite watch and build process[/]", align="left")
+        console.rule("Starting [blue]Vite[/] watch and build process", align="left")
         command_to_run = plugin.config.build_watch_command
 
     if plugin.config.executor:
         try:
             root_dir = plugin.config.root_dir or Path.cwd()
             plugin.config.executor.execute(command_to_run, cwd=root_dir)
-            console.print("[yellow]Server process stopped.[/]")
+            console.print("[yellow]Vite process stopped.[/]")
         except ViteExecutionError as e:
-            console.print(f"[bold red]Server process failed: {e!s}[/]")
+            console.print(f"[red]Vite process failed: {e!s}[/]")
     else:
         console.print("[red]Executor not configured.[/]")
 
@@ -995,7 +995,7 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
         console.print("[dim]Set types=True or types=TypeGenConfig() in ViteConfig[/]")
         return
 
-    console.rule("[yellow]Generating TypeScript types[/]", align="left")
+    console.rule("Generating [blue]TypeScript[/] types", align="left")
 
     config_path, config_changed = write_runtime_config_file(config, return_status=True)
     config_display = Path(config_path)
@@ -1036,7 +1036,7 @@ def vite_status(app: "Litestar") -> None:
     plugin = app.plugins.get(VitePlugin)
     config = plugin.config
 
-    console.rule("[yellow]Vite Integration Status[/]", align="left")
+    console.rule("[blue]Vite[/] Integration Status", align="left")
     console.print(f"Dev Mode: {config.dev_mode}")
     console.print(f"Hot Reload: {config.hot_reload}")
     console.print(f"Assets URL: {config.asset_url}")

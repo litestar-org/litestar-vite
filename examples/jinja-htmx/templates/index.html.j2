@@ -18,7 +18,7 @@
     <p class="text-slate-600">Featured book</p>
     <section
       id="book-detail"
-      class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm"
+      class="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4 shadow-sm"
       hx-get="/fragments/book/{{ summary.featured.id }}"
       hx-trigger="load"
     >
@@ -29,7 +29,7 @@
 
   <section id="books" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Books">
     {% for book in books %}
-    <article class="space-y-2 rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+    <article class="space-y-2 rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4 shadow-sm">
       <h3 class="text-lg font-semibold text-[#202235]">{{ book.title }}</h3>
       <p class="mt-1 text-slate-600">{{ book.author }} • {{ book.year }}</p>
       <p class="mt-1 text-sm text-[#202235]">{{ book.tags | join(' · ') }}</p>
@@ -62,7 +62,7 @@
     <div id="json-books" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {# ls-for with "book in $data" syntax - $data is the JSON response #}
       <template ls-for="book in $data" ls-key="book.id">
-        <article :id="`book-${book.id}`" class="space-y-2 rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+        <article :id="`book-${book.id}`" class="space-y-2 rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4 shadow-sm">
           <h3 class="text-lg font-semibold text-[#202235]">${book.title}</h3>
           <p class="mt-1 text-slate-600">${book.author} • ${book.year}</p>
           <p class="mt-1 text-sm text-[#202235]">${book.tags.join(' · ')}</p>
@@ -98,7 +98,7 @@
       >Book 3</button>
     </div>
 
-    <div id="single-book" class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+    <div id="single-book" class="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4 shadow-sm">
       {# Direct property access: title, author, year inherit from JSON via prototype #}
       <template ls-if="id">
         <h4 class="text-lg font-semibold text-[#202235]">${title}</h4>

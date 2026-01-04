@@ -286,7 +286,7 @@ class NodeenvExecutor(JSExecutor):
             return
 
         install_dir = os.environ.get("VIRTUAL_ENV", sys.prefix)
-        console.rule("[yellow]Starting Nodeenv installation process[/]", align="left")
+        console.rule("Starting [blue]Nodeenv[/] installation", align="left")
 
         command = [self._get_nodeenv_command(), install_dir, "--force", "--quiet"]
         subprocess.run(command, cwd=cwd, check=False)

@@ -34,6 +34,8 @@ import type { IncomingMessage, ServerResponse } from "node:http"
 import path from "node:path"
 import type { Plugin, ViteDevServer } from "vite"
 import { readBridgeConfig } from "./shared/bridge-schema.js"
+import { DEBOUNCE_MS } from "./shared/constants.js"
+import { normalizeHost } from "./shared/network.js"
 import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
 
 /**
@@ -281,7 +283,7 @@ function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroC
       generateRoutes: pythonTypesConfig?.generateRoutes ?? true,
       generatePageProps: pythonTypesConfig?.generatePageProps ?? true,
       globalRoute: pythonTypesConfig?.globalRoute ?? false,
-      debounce: 300,
+      debounce: DEBOUNCE_MS,
     }
   } else if (typeof config.types === "object" && config.types !== null) {
     typesConfig = {
@@ -295,7 +297,7 @@ function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroC
       generateRoutes: config.types.generateRoutes ?? pythonTypesConfig?.generateRoutes ?? true,
       generatePageProps: config.types.generatePageProps ?? pythonTypesConfig?.generatePageProps ?? true,
       globalRoute: config.types.globalRoute ?? pythonTypesConfig?.globalRoute ?? false,
-      debounce: config.types.debounce ?? 300,
+      debounce: config.types.debounce ?? DEBOUNCE_MS,
     }
   } else if (config.types !== false && pythonTypesConfig?.enabled) {
     typesConfig = {
@@ -309,7 +311,7 @@ function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroC
       generateRoutes: pythonTypesConfig.generateRoutes ?? true,
       generatePageProps: pythonTypesConfig.generatePageProps ?? true,
       globalRoute: pythonTypesConfig.globalRoute ?? false,
-      debounce: 300,
+      debounce: DEBOUNCE_MS,
     }
   }
 
@@ -491,9 +493,7 @@ export default function litestarAstro(userConfig: LitestarAstroConfig = {}): Ast
       // Always write hotfile - proxy mode needs it for dynamic target discovery
       "astro:server:start": ({ address, logger }) => {
         if (config.hotFile) {
-          // Normalize IPv4/IPv6 wildcards and localhost addresses to "localhost"
-          const rawAddr = address.address
-          const host = rawAddr === "::" || rawAddr === "::1" || rawAddr === "0.0.0.0" || rawAddr === "127.0.0.1" ? "localhost" : rawAddr
+          const host = normalizeHost(address.address)
           const url = `http://${host}:${address.port}`
           fs.mkdirSync(path.dirname(config.hotFile), { recursive: true })
           fs.writeFileSync(config.hotFile, url)

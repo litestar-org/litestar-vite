@@ -8,6 +8,7 @@ import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-re
 
 import { checkBackendAvailability, type LitestarMeta, loadLitestarMeta } from "./litestar-meta.js"
 import { type BridgeSchema, readBridgeConfig } from "./shared/bridge-schema.js"
+import { DEBOUNCE_MS } from "./shared/constants.js"
 import { createLogger } from "./shared/logger.js"
 import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
 
@@ -966,7 +967,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
       generateRoutes: true,
       generatePageProps: true,
       globalRoute: false,
-      debounce: 300,
+      debounce: DEBOUNCE_MS,
     }
   } else if (resolvedConfig.types === "auto" || typeof resolvedConfig.types === "undefined") {
     // Auto mode: read from .litestar.json if available, otherwise disabled
@@ -982,7 +983,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
         generateRoutes: pythonDefaults.types.generateRoutes,
         generatePageProps: pythonDefaults.types.generatePageProps,
         globalRoute: pythonDefaults.types.globalRoute,
-        debounce: 300,
+        debounce: DEBOUNCE_MS,
       }
     }
     // If no pythonDefaults, typesConfig stays false (disabled)
@@ -1004,7 +1005,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
       generateRoutes: resolvedConfig.types.generateRoutes ?? true,
       generatePageProps: resolvedConfig.types.generatePageProps ?? true,
       globalRoute: resolvedConfig.types.globalRoute ?? false,
-      debounce: resolvedConfig.types.debounce ?? 300,
+      debounce: resolvedConfig.types.debounce ?? DEBOUNCE_MS,
     }
 
     // If the user only set output (not openapi/routes/pageProps), cascade them under output for consistency
