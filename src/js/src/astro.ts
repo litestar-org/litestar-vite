@@ -312,10 +312,10 @@ function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroC
     const userProvidedOutput = Object.hasOwn(config.types, "output")
     const output = config.types.output ?? pythonTypesConfig?.output ?? defaultTypesOutput
     const defaults = buildTypeDefaults(output)
-    const openapiFallback = userProvidedOutput ? defaults.openapiPath : pythonTypesConfig?.openapiPath ?? defaults.openapiPath
-    const routesFallback = userProvidedOutput ? defaults.routesPath : pythonTypesConfig?.routesPath ?? defaults.routesPath
-    const pagePropsFallback = userProvidedOutput ? defaults.pagePropsPath : pythonTypesConfig?.pagePropsPath ?? defaults.pagePropsPath
-    const schemasFallback = userProvidedOutput ? defaults.schemasTsPath : pythonTypesConfig?.schemasTsPath ?? defaults.schemasTsPath
+    const openapiFallback = userProvidedOutput ? defaults.openapiPath : (pythonTypesConfig?.openapiPath ?? defaults.openapiPath)
+    const routesFallback = userProvidedOutput ? defaults.routesPath : (pythonTypesConfig?.routesPath ?? defaults.routesPath)
+    const pagePropsFallback = userProvidedOutput ? defaults.pagePropsPath : (pythonTypesConfig?.pagePropsPath ?? defaults.pagePropsPath)
+    const schemasFallback = userProvidedOutput ? defaults.schemasTsPath : (pythonTypesConfig?.schemasTsPath ?? defaults.schemasTsPath)
 
     typesConfig = {
       enabled: config.types.enabled ?? true,

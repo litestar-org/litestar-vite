@@ -12,14 +12,14 @@ import { defineConfig } from "vite"
 import { viteSingleFile } from "vite-plugin-singlefile"
 
 export default defineConfig({
-	plugins: [tailwindcss(), viteSingleFile()],
-	root: __dirname,
-	build: {
-		outDir: path.resolve(__dirname, "../../../../dist/js"),
-		emptyDir: false,
-		rollupOptions: {
-			input: path.resolve(__dirname, "index.html"),
-		},
-		minify: true,
-	},
+  plugins: [tailwindcss(), viteSingleFile()],
+  root: __dirname,
+  build: {
+    outDir: path.resolve(__dirname, "../../../../dist/js"),
+    emptyDir: false,
+    rollupOptions: {
+      input: path.resolve(__dirname, "index.html"),
+    },
+    minify: true,
+  },
 })
