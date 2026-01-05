@@ -25,10 +25,22 @@ jobs:
         run: uv sync --all-extras
 
       - name: Build package
-        run: uv build
+        run: uv build -o dist/py
+
+      - name: Verify build artifacts
+        run: |
+          echo "=== Build artifacts ==="
+          ls -la dist/py/
+          if ! ls dist/py/*.whl 1>/dev/null 2>&1 || ! ls dist/py/*.tar.gz 1>/dev/null 2>&1; then
+            echo "ERROR: Expected wheel and sdist not found in dist/py/"
+            exit 1
+          fi
+          echo "Build artifacts verified successfully"
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/py/
         # Pre-release versions (alpha, beta, rc) are automatically detected by PyPI
         # based on PEP 440 version format (e.g., 0.15.0a1, 0.15.0b1, 0.15.0rc1)
 
