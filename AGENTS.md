@@ -1,6 +1,6 @@
 # AI Agent Guidelines for litestar-vite
 
-**Version**: 3.1 | **Updated**: 2025-12-07 | **Project Version**: 0.15.0-beta.1
+**Version**: 3.1 | **Updated**: 2026-01-04 | **Project Version**: 0.16.0
 
 Seamless integration between [Litestar](https://litestar.dev/) Python framework and [Vite](https://vitejs.dev/) with [Inertia.js](https://inertiajs.com/) support.
 
@@ -13,7 +13,7 @@ Seamless integration between [Litestar](https://litestar.dev/) Python framework 
 | Backend | Frontend |
 |---------|----------|
 | Python 3.10+ | TypeScript |
-| Litestar | Vite 5.x/6.x/7.x |
+| Litestar | Vite 6.x/7.x |
 | pytest, pytest-asyncio | Vitest |
 | Ruff | Biome |
 | uv | npm |
@@ -63,13 +63,13 @@ litestar assets export-routes    # Export route metadata for type-safe routing
 
 ```
 src/py/litestar_vite/     # Python library
-  ├── config.py           # ViteConfig (PathConfig, RuntimeConfig, TypeGenConfig, etc.)
-  ├── plugin.py           # VitePlugin
+  ├── config/             # ViteConfig (PathConfig, RuntimeConfig, TypeGenConfig, etc.)
+  ├── plugin/             # VitePlugin internals
+  ├── handler/            # AppHandler (SPA/HTML serving)
   ├── loader.py           # ViteAssetLoader
-  ├── spa.py              # ViteSPAHandler (async + sync)
   ├── html_transform.py   # HTML transformation functions
   ├── deploy.py           # CDN deployment
-  ├── codegen.py          # Route type generation
+  ├── codegen/            # Route/type generation
   └── inertia/            # Inertia.js integration
       ├── plugin.py       # InertiaPlugin
       ├── response.py     # InertiaResponse (props flattening)

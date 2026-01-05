@@ -439,6 +439,9 @@ New options for type generation:
    * - ``routes_ts_path``
      - ``Path | None``
      - Path for typed routes TypeScript file
+   * - ``schemas_ts_path``
+     - ``Path | None``
+     - Path for schemas helper TypeScript file
    * - ``fallback_type``
      - ``Literal["unknown", "any"]``
      - Fallback value type for untyped dict/list in Inertia page props (default: ``unknown``)
@@ -458,6 +461,7 @@ New options for type generation:
            generate_page_props=True,     # Enable page props generation
            page_props_path=Path("src/generated/inertia-pages.json"),
            routes_ts_path=Path("src/generated/routes.ts"),
+           schemas_ts_path=Path("src/generated/schemas.ts"),
        ),
    )
 

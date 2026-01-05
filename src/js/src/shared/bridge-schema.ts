@@ -22,10 +22,13 @@ export interface BridgeTypesConfig {
   openapiPath: string
   routesPath: string
   pagePropsPath: string
+  routesTsPath?: string
+  schemasTsPath?: string
   generateZod: boolean
   generateSdk: boolean
   generateRoutes: boolean
   generatePageProps: boolean
+  generateSchemas: boolean
   globalRoute: boolean
 }
 
@@ -136,6 +139,15 @@ function assertNullableString(obj: Record<string, unknown>, key: string): string
   return value
 }
 
+function assertOptionalString(obj: Record<string, unknown>, key: string): string | undefined {
+  const value = obj[key]
+  if (value === undefined) return undefined
+  if (typeof value !== "string" || value.length === 0) {
+    fail(`"${key}" must be a non-empty string`)
+  }
+  return value
+}
+
 function assertEnum<T extends string>(value: unknown, key: string, allowed: ReadonlySet<string>): T {
   if (typeof value !== "string" || !allowed.has(value)) {
     fail(`"${key}" must be one of: ${Array.from(allowed).join(", ")}`)
@@ -148,6 +160,15 @@ function assertProxyMode(value: unknown): BridgeProxyMode {
   return assertEnum<Exclude<BridgeProxyMode, null>>(value, "proxyMode", allowedProxyModes)
 }
 
+function assertOptionalBoolean(obj: Record<string, unknown>, key: string, defaultValue: boolean): boolean {
+  const value = obj[key]
+  if (value === undefined) return defaultValue
+  if (typeof value !== "boolean") {
+    fail(`"${key}" must be a boolean`)
+  }
+  return value
+}
+
 function parseTypesConfig(value: unknown): BridgeTypesConfig | null {
   if (value === null) return null
   const obj = assertObject(value, "types")
@@ -157,10 +178,13 @@ function parseTypesConfig(value: unknown): BridgeTypesConfig | null {
   const openapiPath = assertString(obj, "openapiPath")
   const routesPath = assertString(obj, "routesPath")
   const pagePropsPath = assertString(obj, "pagePropsPath")
+  const routesTsPath = assertOptionalString(obj, "routesTsPath")
+  const schemasTsPath = assertOptionalString(obj, "schemasTsPath")
   const generateZod = assertBoolean(obj, "generateZod")
   const generateSdk = assertBoolean(obj, "generateSdk")
   const generateRoutes = assertBoolean(obj, "generateRoutes")
   const generatePageProps = assertBoolean(obj, "generatePageProps")
+  const generateSchemas = assertOptionalBoolean(obj, "generateSchemas", true) // Default to true for backward compatibility
   const globalRoute = assertBoolean(obj, "globalRoute")
 
   return {
@@ -169,10 +193,13 @@ function parseTypesConfig(value: unknown): BridgeTypesConfig | null {
     openapiPath,
     routesPath,
     pagePropsPath,
+    routesTsPath,
+    schemasTsPath,
     generateZod,
     generateSdk,
     generateRoutes,
     generatePageProps,
+    generateSchemas,
     globalRoute,
   }
 }

@@ -58,4 +58,4 @@ async def test_vite_proxy_respects_litestar_routes_with_root_asset_url(test_asse
         # 3. Request a non-existent route that should be proxied (because asset_url="/")
         response = client.get("/assets/main.js")
         assert response.status_code == HTTP_503_SERVICE_UNAVAILABLE
-        assert "Vite dev server not running" in response.text
+        assert "Vite server not running" in response.text

@@ -23,12 +23,9 @@ export default defineConfig({
     react(),
     litestar({
       input: ["{{ resource_dir }}/main.tsx"],
-      types: {
-        enabled: true,
-        output: "{{ resource_dir }}/generated/types",
-        generateZod: true,
-        generateSdk: true,
-      },
+{% if enable_types %}
+      types: "auto",
+{% endif %}
     }),
   ],
   resolve: {

@@ -1,6 +1,6 @@
 # Testing Guide for litestar-vite
 
-**Version**: 0.15.0-rc.5 | **Updated**: 2025-12-22
+**Version**: 0.16.0 | **Updated**: 2026-01-04
 
 This guide provides instructions and best practices for writing and running tests in the `litestar-vite` project.
 
@@ -88,9 +88,6 @@ The core TypeScript library tests are located in `src/js/tests/`.
 The frontend tests are typically run as part of the `make test` command. To run them in isolation:
 
 ```bash
-# Navigate to the JS directory
-cd src/js
-
 # Run the tests
 npm run test
 ```

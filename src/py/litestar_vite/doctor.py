@@ -11,8 +11,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 from litestar.serialization import decode_json, encode_json
-from rich.console import Console, Group
+from rich.console import Group
 from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.syntax import Syntax
@@ -22,8 +23,6 @@ from litestar_vite.config import ExternalDevServer, TypeGenConfig
 
 if TYPE_CHECKING:
     from litestar_vite.config import ViteConfig
-
-console = Console()
 
 
 def _str_list_factory() -> list[str]:
@@ -195,7 +194,7 @@ class ViteDoctor:
         self.bridge_path = None
         self.bridge_config = None
 
-        console.rule("[yellow]Vite Doctor Diagnostics[/]", align="left")
+        console.rule("[blue]Vite[/] Doctor Diagnostics", align="left")
 
         self._locate_vite_config()
         if not self.vite_config_path or not self.parsed_config:
@@ -370,12 +369,12 @@ class ViteDoctor:
 
         bool_pattern = rf"({key}\s*:\s*)(true|false)\b"
         if expected_bool is not None and re.search(bool_pattern, content):
-            content = re.sub(bool_pattern, rf"\\g<1>{expected_bool}", content, count=1)
+            content = re.sub(bool_pattern, rf"\g<1>{expected_bool}", content, count=1)
             return content, True
 
         quoted_pattern = rf"({key}\s*:\s*['\"])([^'\"]+)(['\"])"
         if re.search(quoted_pattern, content):
-            content = re.sub(quoted_pattern, rf"\\g<1>{expected_str}\\g<3>", content, count=1)
+            content = re.sub(quoted_pattern, rf"\g<1>{expected_str}\g<3>", content, count=1)
             return content, True
 
         insert_match = _LITESTAR_CONFIG_START.search(content)
@@ -915,8 +914,8 @@ class ViteDoctor:
                     DoctorIssue(
                         check="Vite Server Not Running",
                         severity="warning",
-                        message=f"Cannot connect to Vite dev server at {host}:{port}",
-                        fix_hint="Start the dev server with `litestar assets serve` (and your backend with `litestar run` if needed)",
+                        message=f"Cannot connect to Vite server at {host}:{port}",
+                        fix_hint="Start the server with `litestar assets serve` (and your backend with `litestar run` if needed)",
                         auto_fixable=False,
                     )
                 )
@@ -928,7 +927,7 @@ class ViteDoctor:
                     check="Vite Server Check Failed",
                     severity="warning",
                     message=f"Could not check Vite server: {e}",
-                    fix_hint="Ensure Vite dev server is running",
+                    fix_hint="Ensure Vite server is running",
                     auto_fixable=False,
                 )
             )
@@ -953,7 +952,7 @@ class ViteDoctor:
                     severity="warning",
                     message=f"Hotfile not found at {hot_path}",
                     fix_hint=(
-                        "If you're running in proxy mode (SSR/external dev server), start the dev server with "
+                        "If you're running in proxy mode (SSR/external server), start the server with "
                         "`litestar assets serve` so it can write the hotfile. Otherwise, ignore this check or run "
                         "`litestar assets doctor` without `--runtime-checks`."
                     ),

@@ -12,6 +12,7 @@ from litestar.exceptions import WebSocketDisconnect
 from litestar.middleware import AbstractMiddleware
 
 from litestar_vite.plugin._utils import console, is_litestar_route, is_proxy_debug, normalize_prefix
+from litestar_vite.utils import read_hotfile_url
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -115,7 +116,7 @@ class ViteProxyMiddleware(AbstractMiddleware):
             return self._cached_target.rstrip("/") if self._cached_target else None
 
         try:
-            url = self.hotfile_path.read_text().strip()
+            url = read_hotfile_url(self.hotfile_path)
             self._cached_target = url
             self._cache_initialized = True
             if is_proxy_debug():
@@ -165,7 +166,7 @@ class ViteProxyMiddleware(AbstractMiddleware):
         target_base_url = self._get_target_base_url()
         if target_base_url is None:
             await send({"type": "http.response.start", "status": 503, "headers": [(b"content-type", b"text/plain")]})
-            await send({"type": "http.response.body", "body": b"Vite dev server not running", "more_body": False})
+            await send({"type": "http.response.body", "body": b"Vite server not running", "more_body": False})
             return
 
         method = scope.get("method", "GET")
@@ -230,7 +231,7 @@ def build_hmr_target_url(hotfile_path: Path, scope: dict[str, Any], hmr_path: st
         The target WebSocket URL or None if the hotfile is not found.
     """
     try:
-        vite_url = hotfile_path.read_text(encoding="utf-8").strip()
+        vite_url = read_hotfile_url(hotfile_path)
     except FileNotFoundError:
         return None
 
@@ -346,8 +347,8 @@ def create_vite_hmr_handler(hotfile_path: Path, hmr_path: str = "/static/vite-hm
         scope_dict = dict(socket.scope)
         target = build_hmr_target_url(hotfile_path, scope_dict, hmr_path, asset_url)
         if target is None:
-            console.print("[yellow][vite-hmr] Vite dev server not running[/]")
-            await socket.close(code=1011, reason="Vite dev server not running")
+            console.print("[yellow][vite-hmr] Vite server not running[/]")
+            await socket.close(code=1011, reason="Vite server not running")
             return
 
         headers = extract_forward_headers(scope_dict)
@@ -441,7 +442,7 @@ def create_target_url_getter(
             return cached_target[0].rstrip("/") if cached_target[0] else None
 
         try:
-            url = hotfile_path.read_text().strip()
+            url = read_hotfile_url(hotfile_path)
             cached_target[0] = url
             cache_initialized[0] = True
             if is_proxy_debug():
@@ -479,7 +480,7 @@ def create_hmr_target_getter(
 
         hmr_path = Path(f"{hotfile_path}.hmr")
         try:
-            url = hmr_path.read_text(encoding="utf-8").strip()
+            url = read_hotfile_url(hmr_path)
             cached_hmr_target[0] = url
             cache_initialized[0] = True
             if is_proxy_debug():
@@ -578,7 +579,7 @@ def create_ssr_proxy_controller(
             """
             target_url = get_target_url()
             if target_url is None:
-                return Response(content=b"SSR dev server not running", status_code=503, media_type="text/plain")
+                return Response(content=b"SSR server not running", status_code=503, media_type="text/plain")
 
             req_path: str = request.url.path
             url = build_proxy_url(target_url, req_path, request.url.query or "")
@@ -614,9 +615,7 @@ def create_ssr_proxy_controller(
                         )
             except httpx.ConnectError:
                 return Response(
-                    content=f"SSR dev server not running at {target_url}".encode(),
-                    status_code=503,
-                    media_type="text/plain",
+                    content=f"SSR server not running at {target_url}".encode(), status_code=503, media_type="text/plain"
                 )
             except httpx.HTTPError as exc:
                 return Response(content=str(exc).encode(), status_code=502, media_type="text/plain")
@@ -634,7 +633,7 @@ def create_ssr_proxy_controller(
             target_url = get_hmr_target_url() or get_target_url()
 
             if target_url is None:
-                await socket.close(code=1011, reason="SSR dev server not running")
+                await socket.close(code=1011, reason="SSR server not running")
                 return
 
             ws_target = target_url.replace("http://", "ws://").replace("https://", "wss://")

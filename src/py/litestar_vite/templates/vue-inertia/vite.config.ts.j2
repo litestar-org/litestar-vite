@@ -29,10 +29,7 @@ export default defineConfig({
       ssr: "{{ resource_dir }}/ssr.ts",
 {% endif %}
 {% if enable_types %}
-      types: {
-        enabled: true,
-        output: "{{ resource_dir }}/generated/api",
-      },
+      types: "auto",
 {% endif %}
     }),
   ],

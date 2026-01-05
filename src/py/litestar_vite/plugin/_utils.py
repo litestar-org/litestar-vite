@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast, overload
 
-from rich.console import Console
+from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
 from litestar_vite.codegen import write_if_changed as _write_if_changed
 from litestar_vite.config import InertiaConfig, TypeGenConfig
@@ -47,8 +47,6 @@ _TICK = "[bold green]✓[/]"
 _INFO = "[cyan]•[/]"
 _WARN = "[yellow]![/]"
 _FAIL = "[red]x[/]"
-
-console = Console()
 
 
 _vite_proxy_debug: bool | None = None
@@ -260,10 +258,13 @@ def write_runtime_config_file(
             "openapiPath": str(types.openapi_path),
             "routesPath": str(types.routes_path),
             "pagePropsPath": str(types.page_props_path),
+            "routesTsPath": str(types.routes_ts_path) if types.routes_ts_path else None,
+            "schemasTsPath": str(types.schemas_ts_path) if types.schemas_ts_path else None,
             "generateZod": types.generate_zod,
             "generateSdk": types.generate_sdk,
             "generateRoutes": types.generate_routes,
             "generatePageProps": types.generate_page_props,
+            "generateSchemas": types.generate_schemas,
             "globalRoute": types.global_route,
         }
         if types

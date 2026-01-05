@@ -1,7 +1,7 @@
 workflow_name: "Feature Development Lifecycle"
 version: "1.0"
-litestar_vite_version: "0.15.0-beta.1"
-updated: "2025-12-07"
+litestar_vite_version: "0.16.0"
+updated: "2026-01-04"
 
 phases:
   - name: "planning"

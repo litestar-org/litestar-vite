@@ -30,7 +30,7 @@ license = { text = "MIT" }
 name = "litestar-vite"
 readme = "README.md"
 requires-python = ">=3.10"
-version = "0.15.0"
+version = "0.16.0"
 
 [project.urls]
 Changelog = "https://litestar-org.github.io/litestar-vite/latest/changelog"
@@ -52,9 +52,18 @@ requires = ["hatchling"]
 [tool.hatch.build.targets.sdist]
 exclude = ["/.github", "/docs"]
 include = ["src/py/*","src/js/*","tools/*"]
+force-include = { "src/py/litestar_vite/static/server-starting.html" = "src/py/litestar_vite/static/server-starting.html" }
+
+[tool.hatch.build.targets.sdist.hooks.custom]
+path = "tools/hatch_build.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/py/litestar_vite"]
+include = ["src/py/litestar_vite/static/*.html"]
+force-include = { "src/py/litestar_vite/static/server-starting.html" = "litestar_vite/static/server-starting.html" }
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "tools/hatch_build.py"
 
 [dependency-groups]
 dev = [ {include-group = "build"}, { include-group = "linting" }, { include-group = "test" }, { include-group = "docs" }  ]
@@ -94,7 +103,7 @@ test = [
 allow_dirty = true
 commit = false
 commit_args = "--no-verify"
-current_version = "0.15.0"
+current_version = "0.16.0"
 ignore_missing_files = false
 ignore_missing_version = false
 message = "chore(release): bump to `v{new_version}`"

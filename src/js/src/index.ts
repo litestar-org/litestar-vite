@@ -8,6 +8,7 @@ import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-re
 
 import { checkBackendAvailability, type LitestarMeta, loadLitestarMeta } from "./litestar-meta.js"
 import { type BridgeSchema, readBridgeConfig } from "./shared/bridge-schema.js"
+import { DEBOUNCE_MS } from "./shared/constants.js"
 import { createLogger } from "./shared/logger.js"
 import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
 
@@ -30,28 +31,33 @@ export interface TypesConfig {
   /**
    * Path to output generated TypeScript types.
    *
-   * @default 'src/types/api'
+   * @default 'src/generated'
    */
   output?: string
   /**
    * Path where the OpenAPI schema is exported by Litestar.
    * The Vite plugin watches this file and runs @hey-api/openapi-ts when it changes.
    *
-   * @default 'openapi.json'
+   * @default 'src/generated/openapi.json'
    */
   openapiPath?: string
   /**
    * Path where route metadata is exported by Litestar.
    * The Vite plugin watches this file for route helper generation.
    *
-   * @default 'routes.json'
+   * @default 'src/generated/routes.json'
    */
   routesPath?: string
+  /**
+   * Optional path for the generated schemas.ts helper file.
+   * Defaults to `${output}/schemas.ts` when not set.
+   */
+  schemasTsPath?: string
   /**
    * Path where Inertia page props metadata is exported by Litestar.
    * The Vite plugin watches this file for page props type generation.
    *
-   * @default 'inertia-pages.json'
+   * @default 'src/generated/inertia-pages.json'
    */
   pagePropsPath?: string
   /**
@@ -63,7 +69,7 @@ export interface TypesConfig {
   /**
    * Generate a typed SDK client (fetch) in addition to types.
    *
-   * @default false
+   * @default true
    */
   generateSdk?: boolean
   /**
@@ -82,6 +88,15 @@ export interface TypesConfig {
    * @default true
    */
   generatePageProps?: boolean
+  /**
+   * Generate schemas.ts with ergonomic form/response type helpers.
+   *
+   * Creates helper types like FormInput<'api:login'> and FormResponse<'api:login', 201>
+   * that wrap hey-api generated types with cleaner DX.
+   *
+   * @default true
+   */
+  generateSchemas?: boolean
   /**
    * Register route() function globally on window object.
    *
@@ -571,11 +586,14 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       const normalizedAppUrl = normalizeAppUrl(rawAppUrl, envWithApp.LITESTAR_PORT)
       const appUrl = normalizedAppUrl.url ?? rawAppUrl
 
-      // Resolve hotFile path relative to Vite root to handle --app-dir scenarios
-      // The hotFile path in pluginConfig may be relative, so we need to resolve it
-      // against the Vite root directory to ensure it's written/read from the correct location
+      // Resolve hotFile path relative to bundleDir (unless user already included it).
+      // This keeps JS + Python aligned (Python reads bundleDir/hot by default).
       if (pluginConfig.hotFile && !path.isAbsolute(pluginConfig.hotFile)) {
-        pluginConfig.hotFile = path.resolve(server.config.root, pluginConfig.hotFile)
+        const normalizedHot = pluginConfig.hotFile.replace(/^\/+/, "")
+        const normalizedBundle = pluginConfig.bundleDir?.replace(/^\/+/, "").replace(/\/+$/, "")
+        const hotUnderBundle = normalizedBundle ? normalizedHot.startsWith(`${normalizedBundle}/`) : false
+        const baseDir = hotUnderBundle ? server.config.root : path.resolve(server.config.root, normalizedBundle ?? "")
+        pluginConfig.hotFile = path.resolve(baseDir, normalizedHot)
       }
 
       // Find index.html path *once* when server starts for logging purposes
@@ -950,6 +968,11 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   // - false: disabled
   // - object: use explicit config (ignore .litestar.json for types)
   let typesConfig: Required<TypesConfig> | false = false
+  const defaultTypesOutput = "src/generated"
+  const defaultOpenapiPath = path.join(defaultTypesOutput, "openapi.json")
+  const defaultRoutesPath = path.join(defaultTypesOutput, "routes.json")
+  const defaultSchemasTsPath = path.join(defaultTypesOutput, "schemas.ts")
+  const defaultPagePropsPath = path.join(defaultTypesOutput, "inertia-pages.json")
 
   if (resolvedConfig.types === false) {
     // Explicitly disabled - do nothing, typesConfig stays false
@@ -957,16 +980,18 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     // Explicitly enabled with hardcoded defaults (ignores .litestar.json)
     typesConfig = {
       enabled: true,
-      output: "src/generated/types",
-      openapiPath: "src/generated/openapi.json",
-      routesPath: "src/generated/routes.json",
-      pagePropsPath: "src/generated/inertia-pages.json",
+      output: defaultTypesOutput,
+      openapiPath: defaultOpenapiPath,
+      routesPath: defaultRoutesPath,
+      pagePropsPath: defaultPagePropsPath,
+      schemasTsPath: defaultSchemasTsPath,
       generateZod: false,
-      generateSdk: false,
+      generateSdk: true,
       generateRoutes: true,
       generatePageProps: true,
+      generateSchemas: true,
       globalRoute: false,
-      debounce: 300,
+      debounce: DEBOUNCE_MS,
     }
   } else if (resolvedConfig.types === "auto" || typeof resolvedConfig.types === "undefined") {
     // Auto mode: read from .litestar.json if available, otherwise disabled
@@ -977,12 +1002,14 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
         openapiPath: pythonDefaults.types.openapiPath,
         routesPath: pythonDefaults.types.routesPath,
         pagePropsPath: pythonDefaults.types.pagePropsPath,
+        schemasTsPath: pythonDefaults.types.schemasTsPath ?? path.join(pythonDefaults.types.output, "schemas.ts"),
         generateZod: pythonDefaults.types.generateZod,
         generateSdk: pythonDefaults.types.generateSdk,
         generateRoutes: pythonDefaults.types.generateRoutes,
         generatePageProps: pythonDefaults.types.generatePageProps,
+        generateSchemas: pythonDefaults.types.generateSchemas ?? true,
         globalRoute: pythonDefaults.types.globalRoute,
-        debounce: 300,
+        debounce: DEBOUNCE_MS,
       }
     }
     // If no pythonDefaults, typesConfig stays false (disabled)
@@ -991,20 +1018,22 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     const userProvidedOpenapi = Object.hasOwn(resolvedConfig.types, "openapiPath")
     const userProvidedRoutes = Object.hasOwn(resolvedConfig.types, "routesPath")
     const userProvidedPageProps = Object.hasOwn(resolvedConfig.types, "pagePropsPath")
+    const userProvidedSchemasTs = Object.hasOwn(resolvedConfig.types, "schemasTsPath")
 
     typesConfig = {
       enabled: resolvedConfig.types.enabled ?? true,
-      output: resolvedConfig.types.output ?? "src/generated/types",
-      openapiPath: resolvedConfig.types.openapiPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "openapi.json") : "src/generated/openapi.json"),
-      routesPath: resolvedConfig.types.routesPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "routes.json") : "src/generated/routes.json"),
-      pagePropsPath:
-        resolvedConfig.types.pagePropsPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "inertia-pages.json") : "src/generated/inertia-pages.json"),
+      output: resolvedConfig.types.output ?? defaultTypesOutput,
+      openapiPath: resolvedConfig.types.openapiPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "openapi.json") : defaultOpenapiPath),
+      routesPath: resolvedConfig.types.routesPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "routes.json") : defaultRoutesPath),
+      pagePropsPath: resolvedConfig.types.pagePropsPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "inertia-pages.json") : defaultPagePropsPath),
+      schemasTsPath: resolvedConfig.types.schemasTsPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "schemas.ts") : defaultSchemasTsPath),
       generateZod: resolvedConfig.types.generateZod ?? false,
-      generateSdk: resolvedConfig.types.generateSdk ?? false,
+      generateSdk: resolvedConfig.types.generateSdk ?? true,
       generateRoutes: resolvedConfig.types.generateRoutes ?? true,
       generatePageProps: resolvedConfig.types.generatePageProps ?? true,
+      generateSchemas: resolvedConfig.types.generateSchemas ?? true,
       globalRoute: resolvedConfig.types.globalRoute ?? false,
-      debounce: resolvedConfig.types.debounce ?? 300,
+      debounce: resolvedConfig.types.debounce ?? DEBOUNCE_MS,
     }
 
     // If the user only set output (not openapi/routes/pageProps), cascade them under output for consistency
@@ -1017,6 +1046,9 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     if (!userProvidedPageProps && resolvedConfig.types.output) {
       typesConfig.pagePropsPath = path.join(typesConfig.output, "inertia-pages.json")
     }
+    if (!userProvidedSchemasTs && resolvedConfig.types.output) {
+      typesConfig.schemasTsPath = path.join(typesConfig.output, "schemas.ts")
+    }
   }
 
   // Auto-detect Inertia mode from .litestar.json if not explicitly set
@@ -1024,6 +1056,9 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   const inertiaMode = resolvedConfig.inertiaMode ?? (pythonDefaults?.mode === "hybrid" || pythonDefaults?.mode === "inertia")
 
   const effectiveResourceDir = resolvedConfig.resourceDir ?? pythonDefaults?.resourceDir ?? "src"
+  const resolvedBundleDir = resolvedConfig.bundleDir ?? pythonDefaults?.bundleDir ?? "public"
+  const resolvedStaticDir = resolvedConfig.staticDir ?? pythonDefaults?.staticDir ?? path.join(effectiveResourceDir, "public")
+  const resolvedHotFile = resolvedConfig.hotFile ?? pythonDefaults?.hotFile ?? path.join(resolvedBundleDir, "hot")
 
   const deployAssetUrlRaw = resolvedConfig.deployAssetUrl ?? pythonDefaults?.deployAssetUrl ?? undefined
 
@@ -1032,12 +1067,12 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     assetUrl: normalizeAssetUrl(resolvedConfig.assetUrl ?? pythonDefaults?.assetUrl ?? "/static/"),
     deployAssetUrl: typeof deployAssetUrlRaw === "string" ? normalizeAssetUrl(deployAssetUrlRaw) : undefined,
     resourceDir: effectiveResourceDir,
-    bundleDir: resolvedConfig.bundleDir ?? pythonDefaults?.bundleDir ?? "public",
-    staticDir: resolvedConfig.staticDir ?? pythonDefaults?.staticDir ?? path.join(effectiveResourceDir, "public"),
+    bundleDir: resolvedBundleDir,
+    staticDir: resolvedStaticDir,
     ssr: resolvedConfig.ssr ?? resolvedConfig.input,
     ssrOutDir: resolvedConfig.ssrOutDir ?? pythonDefaults?.ssrOutDir ?? path.join(effectiveResourceDir, "bootstrap/ssr"),
     refresh: resolvedConfig.refresh ?? false,
-    hotFile: resolvedConfig.hotFile ?? path.join(resolvedConfig.bundleDir ?? "public", "hot"),
+    hotFile: resolvedHotFile,
     detectTls: resolvedConfig.detectTls ?? false,
     autoDetectIndex: resolvedConfig.autoDetectIndex ?? true,
     inertiaMode,
@@ -1381,7 +1416,8 @@ function dirname(): string {
     return fileURLToPath(new URL(".", import.meta.url))
   } catch {
     // Fallback for environments where import.meta.url is problematic (like some test runners)
-    return path.resolve(process.cwd(), "src/js/src")
+    // Use dist/js since that's where built assets (including dev-server-index.html) live
+    return path.resolve(process.cwd(), "dist/js")
   }
 }
 

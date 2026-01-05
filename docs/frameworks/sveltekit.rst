@@ -8,8 +8,8 @@ At a Glance
 -----------
 
 - Template: ``litestar assets init --template sveltekit``
-- Mode: ``framework`` (aliases: ``ssr`` / ``ssg``)
-- Dev: ``litestar run --reload`` (starts SvelteKit dev server via ExternalDevServer)
+- Mode: ``ssr`` (alias: ``framework``)
+- Dev: ``litestar run --reload`` (Litestar starts the SvelteKit dev server via Vite)
 - Types: ``TypeGenConfig`` generates SvelteKit types
 
 Quick Start
@@ -39,7 +39,7 @@ SvelteKit applications use a specialized Vite plugin:
     │   ├── routes/
     │   │   └── +page.svelte    # Pages (file-based routing)
     │   └── lib/
-    │       └── api/        # Generated types from OpenAPI
+    │       └── generated/  # Generated types from OpenAPI
     └── build/              # SvelteKit build output
 
 Backend Setup
@@ -51,8 +51,8 @@ Backend Setup
 
 Key points:
 
-- ``mode="framework"`` enables meta-framework integration mode (aliases: ``mode="ssr"`` / ``mode="ssg"``)
-- ``ExternalDevServer`` delegates dev server to SvelteKit
+- ``mode="ssr"`` enables meta-framework integration mode (alias: ``mode="framework"``)
+- Litestar starts the SvelteKit dev server via ``RuntimeConfig.start_dev_server=True`` (default)
 - ``TypeGenConfig`` enables type generation for SvelteKit
 
 Vite Configuration
@@ -82,8 +82,8 @@ SvelteKit's ``load`` functions are perfect for SSR data fetching:
 
     // src/routes/users/+page.ts
     import type { PageLoad } from './$types'
-    import type { User } from '$lib/api/types.gen'
-    import { route } from '$lib/api/routes'
+    import type { User } from '$lib/generated/types.gen'
+    import { route } from '$lib/generated/routes'
 
     export const load: PageLoad = async ({ fetch }) => {
       const response = await fetch(route('users:list'))
@@ -116,7 +116,7 @@ Use ``+page.server.ts`` for server-only logic:
 
     // src/routes/users/+page.server.ts
     import type { PageServerLoad } from './$types'
-    import type { User } from '$lib/api/types.gen'
+    import type { User } from '$lib/generated/types.gen'
 
     export const load: PageServerLoad = async ({ fetch }) => {
       const response = await fetch('http://localhost:8000/api/users')
@@ -131,8 +131,8 @@ Client-Side Fetch
 
     <script lang="ts">
       import { onMount } from 'svelte'
-      import type { Summary } from '$lib/api/types.gen'
-      import { route } from '$lib/api/routes'
+      import type { Summary } from '$lib/generated/types.gen'
+      import { route } from '$lib/generated/routes'
 
       let summary = $state<Summary | null>(null)
 
@@ -155,8 +155,8 @@ Running
     litestar run --reload
 
     # Alternative: Run separately
-    litestar assets serve --production  # SvelteKit server
-    litestar run --reload               # Backend API (in another terminal)
+    litestar assets serve  # SvelteKit dev server
+    litestar run --reload  # Backend API (in another terminal)
 
 Type Generation
 ---------------
@@ -167,14 +167,14 @@ With ``types=TypeGenConfig()`` enabled in Python:
 
     litestar assets generate-types
 
-This generates TypeScript types in ``src/lib/api/`` (configured via ``.litestar.json``).
+This generates TypeScript types in ``src/lib/generated/`` (configured via ``.litestar.json``).
 
 The types are accessible via SvelteKit's ``$lib`` alias:
 
 .. code-block:: typescript
 
-    import type { User } from '$lib/api/types.gen'
-    import { route } from '$lib/api/routes'
+    import type { User } from '$lib/generated/types.gen'
+    import { route } from '$lib/generated/routes'
 
 Deployment
 ----------

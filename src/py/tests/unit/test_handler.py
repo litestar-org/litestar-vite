@@ -12,6 +12,7 @@ from litestar.testing import AsyncTestClient
 
 from litestar_vite.config import ViteConfig
 from litestar_vite.handler import AppHandler
+from litestar_vite.handler import _app as app_module
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
@@ -265,10 +266,10 @@ async def test_hybrid_dev_mode_uses_local_index_and_injects_vite(hybrid_config_d
 
 
 async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> None:
-    """Test SPA handler handles dev server connection errors."""
+    """Test SPA handler returns startup page when dev server not ready."""
     handler = AppHandler(spa_config_dev)
 
-    # Mock httpx.AsyncClient to raise an error
+    # Mock httpx.AsyncClient to raise an error (server not ready)
     mock_client = AsyncMock()
     mock_client.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
     mock_client.aclose = AsyncMock()
@@ -278,8 +279,12 @@ async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> N
         await handler.initialize_async(vite_url="http://127.0.0.1:5173")
 
         mock_request = Mock()
-        with pytest.raises(ImproperlyConfiguredException, match="Failed to proxy request"):
-            await handler.get_html(mock_request)
+        # Should return friendly startup page instead of raising exception
+        result = await handler.get_html(mock_request)
+        # Check for key elements (Server and starting are split by HTML tags)
+        assert "Server" in result and "starting" in result
+        assert 'meta http-equiv="refresh"' in result
+        assert "http://127.0.0.1:5173" in result  # Shows the URL being connected to
 
 
 async def test_spa_handler_shutdown(spa_config_dev: ViteConfig) -> None:
@@ -762,6 +767,92 @@ async def test_spa_handler_route_exclusion_api_path(spa_config: ViteConfig) -> N
         response = await client.get("/dashboard")
         assert response.status_code == 200
         assert "Test SPA" in response.text
+
+
+def test_server_starting_html_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(app_module, "_SERVER_STARTING_PATH", tmp_path / "missing.html")
+    app_module._load_server_starting_template.cache_clear()
+
+    html = app_module._get_server_starting_html("http://127.0.0.1:5173")
+
+    assert "Starting" in html
+    assert "127.0.0.1:5173" in html
+    assert "127.0.0.1:5173" in html
+
+
+async def test_proxy_to_dev_server_returns_starting_html_on_error(spa_config_dev: ViteConfig) -> None:
+    handler = AppHandler(spa_config_dev)
+
+    mock_async_client = AsyncMock()
+    mock_async_client.get = AsyncMock(side_effect=httpx.ConnectError("boom"))
+    mock_async_client.aclose = AsyncMock()
+    mock_sync_client = Mock()
+
+    with (
+        patch("litestar_vite.handler._app.httpx.AsyncClient", return_value=mock_async_client),
+        patch("litestar_vite.handler._app.httpx.Client", return_value=mock_sync_client),
+    ):
+        await handler.initialize_async(vite_url="http://127.0.0.1:5173")
+        html = await handler._proxy_to_dev_server(Mock())
+
+    assert "Starting" in html
+    assert "127.0.0.1:5173" in html
+
+
+async def test_hybrid_dev_mode_falls_back_to_injected_scripts(hybrid_config_dev: ViteConfig) -> None:
+    handler = AppHandler(hybrid_config_dev)
+
+    with (
+        patch.object(AppHandler, "_transform_html_with_vite", AsyncMock(side_effect=RuntimeError("boom"))),
+        patch.object(AppHandler, "_inject_dev_scripts", return_value="<html>fallback</html>"),
+    ):
+        await handler.initialize_async(vite_url="http://127.0.0.1:5173")
+        request = Mock()
+        request.url = Mock(path="/")
+        html = await handler._get_dev_html(request)
+
+    assert "fallback" in html
+
+
+def test_resolve_vite_url_from_hotfile(tmp_path: Path) -> None:
+    from litestar_vite.config import PathConfig, RuntimeConfig
+
+    (tmp_path / "public").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "public" / "hot").write_text("http://127.0.0.1:5173")
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(root=tmp_path, bundle_dir="public", resource_dir="src", static_dir="public"),
+        runtime=RuntimeConfig(dev_mode=True),
+    )
+    handler = AppHandler(config)
+
+    assert handler._resolve_vite_url() == "http://127.0.0.1:5173"
+
+
+def test_load_index_html_sync_missing_raises(tmp_path: Path) -> None:
+    from litestar_vite.config import PathConfig, RuntimeConfig
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(root=tmp_path, resource_dir="missing", bundle_dir="public", static_dir="public"),
+        runtime=RuntimeConfig(dev_mode=False),
+    )
+    handler = AppHandler(config)
+
+    with pytest.raises(ImproperlyConfiguredException):
+        handler._load_index_html_sync()
+
+
+def test_transform_asset_urls_in_html_uses_manifest(spa_config: ViteConfig) -> None:
+    handler = AppHandler(spa_config)
+    handler._manifest = {"entry": {"file": "assets/main.js"}}
+
+    with patch("litestar_vite.handler._app.transform_asset_urls", return_value="transformed") as transform:
+        html = handler._transform_asset_urls_in_html("<html></html>")
+
+    assert html == "transformed"
+    assert transform.called
 
 
 async def test_spa_handler_route_exclusion_deep_spa_link_allowed(spa_config: ViteConfig) -> None:

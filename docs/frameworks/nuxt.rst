@@ -8,8 +8,8 @@ At a Glance
 -----------
 
 - Template: ``litestar assets init --template nuxt``
-- Mode: ``framework`` (aliases: ``ssr`` / ``ssg``)
-- Dev: ``litestar run --reload`` (starts Nuxt dev server via ExternalDevServer)
+- Mode: ``ssr`` (alias: ``framework``)
+- Dev: ``litestar run --reload`` (Litestar starts the Nuxt dev server via Vite)
 - Types: ``TypeGenConfig`` generates Nuxt composable types
 
 Quick Start
@@ -49,8 +49,8 @@ Backend Setup
 
 Key points:
 
-- ``mode="framework"`` enables meta-framework integration mode (aliases: ``mode="ssr"`` / ``mode="ssg"``)
-- ``ExternalDevServer`` delegates dev server to Nuxt
+- ``mode="ssr"`` enables meta-framework integration mode (alias: ``mode="framework"``)
+- Litestar starts the Nuxt dev server via ``RuntimeConfig.start_dev_server=True`` (default)
 - ``TypeGenConfig`` enables type generation for Nuxt composables
 
 Nuxt Configuration
@@ -143,8 +143,8 @@ Running
     litestar run --reload
 
     # Alternative: Run separately
-    litestar assets serve --production  # Nuxt SSR server
-    litestar run --reload               # Backend API (in another terminal)
+    litestar assets serve  # Nuxt dev server
+    litestar run --reload  # Backend API (in another terminal)
 
 Type Generation
 ---------------

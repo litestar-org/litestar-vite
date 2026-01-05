@@ -52,6 +52,7 @@ from litestar_vite.plugin._utils import (
     static_not_found_handler,
     vite_not_found_handler,
 )
+from litestar_vite.utils import read_hotfile_url
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
@@ -204,11 +205,11 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         ext = self._config.runtime.external_dev_server
         if isinstance(ext, ExternalDevServer) and ext.enabled:
             command = ext.command or self._config.executor.start_command
-            log_info(f"Starting external dev server: {' '.join(command)}")
+            log_info(f"Starting external server: {' '.join(command)}")
             return command
 
         if self._config.hot_reload:
-            log_info("Starting Vite dev server (HMR enabled)")
+            log_info("Starting Vite server with HMR")
             return self._config.run_command
 
         log_info("Starting Vite watch build process")
@@ -484,7 +485,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             except httpx.HTTPError:
                 time.sleep(0.1)
             else:
-                log_success("Vite dev server responded to health check")
+                log_success("Vite server responded to health check")
                 return
         log_fail("Vite server health check failed")
 
@@ -517,7 +518,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         while time.time() - start < timeout:
             if hotfile_path.exists():
                 try:
-                    url = hotfile_path.read_text(encoding="utf-8").strip()
+                    url = read_hotfile_url(hotfile_path)
                     if url:
                         last_url = url
                         resp = httpx.get(url, timeout=0.5, follow_redirects=True)
@@ -604,13 +605,13 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
             try:
                 self._vite_process.start(command_to_run, self._config.root_dir)
-                log_success("Dev server process started")
+                log_success("Vite process started")
                 if self._config.health_check and not is_external:
                     self._run_health_check()
                 yield
             finally:
                 self._vite_process.stop()
-                log_info("Dev server process stopped.")
+                log_info("Vite process stopped.")
         else:
             yield
 

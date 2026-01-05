@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Litestar Vite Dev Server</title>
+    <link rel="stylesheet" href="./styles.css">
+</head>
+<body class="antialiased min-h-screen flex flex-col items-center justify-center overflow-hidden">
+
+    <!-- Main Container -->
+    <div class="relative w-full max-w-2xl px-6 py-12">
+
+        <!-- Animated Background Blobs -->
+        <div class="absolute top-0 -left-4 w-72 h-72 bg-brand-accent/10 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
+        <div class="absolute top-0 -right-4 w-72 h-72 bg-purple-500/10 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
+        <div class="absolute -bottom-8 left-20 w-72 h-72 bg-blue-500/10 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
+
+        <!-- Card -->
+        <div class="relative bg-gray-900/60 backdrop-blur-lg border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
+
+            <!-- Top Accent Line -->
+            <div class="h-1 w-full bg-linear-to-r from-transparent via-brand-accent to-transparent opacity-50"></div>
+
+            <div class="px-8 py-10 sm:px-12 sm:py-12">
+
+                <!-- Header / Logos -->
+                <div class="flex items-center justify-center space-x-8 mb-10">
+                    <!-- Litestar Logo -->
+                    <a href="https://litestar.dev" target="_blank" class="group transition-transform hover:scale-110 duration-300 relative">
+                        <div class="absolute inset-0 bg-brand-accent/20 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                        <svg viewBox="0 52 410 250" xmlns="http://www.w3.org/2000/svg" class="relative h-20 w-auto drop-shadow-lg">
+                            <defs>
+                                <clipPath id="9eb7762d41">
+                                    <path d="M 15.933594 105 L 328 105 L 328 259 L 15.933594 259 Z M 15.933594 105 " clip-rule="nonzero"/>
+                                </clipPath>
+                                <clipPath id="183d3cc178">
+                                    <path d="M 142 78.769531 L 359.433594 78.769531 L 359.433594 296.269531 L 142 296.269531 Z M 142 78.769531 " clip-rule="nonzero"/>
+                                </clipPath>
+                            </defs>
+                            <g clip-path="url(#9eb7762d41)">
+                                <path fill="#edb641" d="M 147.625 240.3125 C 161.5 233.984375 173.554688 227.011719 183.425781 220.550781 C 202.304688 208.203125 226.4375 185.242188 227.761719 183.410156 L 218.917969 177.503906 L 211.257812 172.386719 L 235.503906 171.441406 L 243.296875 171.136719 L 245.414062 163.640625 L 252.007812 140.304688 L 260.402344 163.054688 L 263.097656 170.363281 L 270.890625 170.058594 L 295.136719 169.113281 L 276.078125 184.117188 L 269.953125 188.9375 L 272.652344 196.25 L 281.046875 218.996094 L 260.871094 205.523438 L 254.390625 201.195312 L 248.265625 206.015625 L 229.207031 221.023438 L 232.480469 209.425781 L 235.796875 197.691406 L 236.207031 196.234375 C 213.003906 213.585938 180.546875 230.304688 161.140625 236.488281 C 156.6875 237.90625 152.183594 239.179688 147.625 240.3125 Z M 101.992188 258.078125 C 136.382812 256.734375 177.355469 248 217.675781 222.363281 L 209.90625 249.867188 L 254.910156 214.4375 L 302.539062 246.246094 L 282.71875 192.539062 L 327.71875 157.109375 L 270.46875 159.34375 L 250.648438 105.636719 L 235.085938 160.726562 L 177.835938 162.964844 L 210.980469 185.097656 C 189.164062 204.921875 134.445312 247.195312 61.957031 250.03125 C 47.300781 250.601562 31.914062 249.558594 15.933594 246.394531 C 15.933594 246.394531 52.011719 260.035156 101.992188 258.078125 " fill-opacity="1" fill-rule="nonzero"/>
+                            </g>
+                            <g clip-path="url(#183d3cc178)">
+                                <path fill="#edb641" d="M 250.789062 78.96875 C 190.78125 78.96875 142.140625 127.570312 142.140625 187.519531 C 142.140625 198.875 143.886719 209.816406 147.121094 220.101562 C 151.847656 217.75 156.363281 215.316406 160.660156 212.84375 C 158.394531 204.789062 157.183594 196.296875 157.183594 187.519531 C 157.183594 135.871094 199.089844 93.996094 250.789062 93.996094 C 302.484375 93.996094 344.390625 135.871094 344.390625 187.519531 C 344.390625 239.171875 302.484375 281.042969 250.789062 281.042969 C 222.75 281.042969 197.597656 268.722656 180.441406 249.210938 C 175.453125 251.152344 170.402344 252.917969 165.289062 254.511719 C 185.183594 279.816406 216.082031 296.070312 250.789062 296.070312 C 310.792969 296.070312 359.433594 247.472656 359.433594 187.519531 C 359.433594 127.570312 310.792969 78.96875 250.789062 78.96875 " fill-opacity="1" fill-rule="nonzero"/>
+                            </g>
+                            <path fill="#edb641" d="M 92.292969 173.023438 L 98.289062 191.460938 L 117.691406 191.460938 L 101.992188 202.855469 L 107.988281 221.292969 L 92.292969 209.898438 L 76.59375 221.292969 L 82.589844 202.855469 L 66.894531 191.460938 L 86.296875 191.460938 L 92.292969 173.023438 " fill-opacity="1" fill-rule="nonzero"/>
+                            <path fill="#edb641" d="M 120.214844 112.25 L 125.390625 128.167969 L 142.140625 128.167969 L 128.589844 138 L 133.765625 153.917969 L 120.214844 144.082031 L 106.664062 153.917969 L 111.839844 138 L 98.289062 128.167969 L 115.039062 128.167969 L 120.214844 112.25 " fill-opacity="1" fill-rule="nonzero"/>
+                            <path fill="#edb641" d="M 34.695312 209.136719 L 37.71875 218.421875 L 47.492188 218.421875 L 39.585938 224.160156 L 42.605469 233.449219 L 34.695312 227.707031 L 26.792969 233.449219 L 29.8125 224.160156 L 21.90625 218.421875 L 31.679688 218.421875 L 34.695312 209.136719 " fill-opacity="1" fill-rule="nonzero"/>
+                        </svg>
+                    </a>
+
+                    <!-- Connection Icon -->
+                    <div class="flex items-center text-brand-gray/30">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                        </svg>
+                    </div>
+
+                    <!-- Vite Logo -->
+                    <a href="https://vitejs.dev" target="_blank" class="group transition-transform hover:scale-110 duration-300 relative">
+                        <div class="absolute inset-0 bg-purple-500/20 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                        <svg viewBox="0 0 410 404" class="relative h-16 w-auto drop-shadow-lg" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M399.641 59.5246L215.643 388.545C211.844 395.338 202.084 395.378 198.228 388.618L10.5817 59.5563C6.38087 52.1896 12.6802 43.2665 21.0281 44.7586L205.223 77.6824C206.398 77.8924 207.601 77.8904 208.776 77.6763L389.119 44.8058C397.439 43.2894 403.768 52.1434 399.641 59.5246Z" fill="url(#paint0_linear)"/>
+                            <path d="M292.965 1.5744L156.801 28.2552C154.563 28.6937 152.906 30.5903 152.771 32.8664L144.395 174.33C144.198 177.662 147.258 180.248 150.51 179.498L188.42 170.749C191.967 169.931 195.172 173.055 194.443 176.622L183.18 231.775C182.422 235.487 185.907 238.661 189.532 237.56L212.947 230.446C216.577 229.344 220.065 232.527 219.297 236.242L201.398 322.875C200.278 328.294 207.486 331.249 210.492 326.603L212.5 323.5L323.454 102.072C325.312 98.3645 322.108 94.137 318.036 94.9228L279.014 102.454C275.347 103.161 272.227 99.746 273.262 96.1583L298.731 7.86689C299.767 4.27314 296.636 0.855181 292.965 1.5744Z" fill="url(#paint1_linear)"/>
+                            <defs>
+                                <linearGradient id="paint0_linear" x1="6.00017" y1="32.9999" x2="235" y2="344" gradientUnits="userSpaceOnUse">
+                                    <stop stop-color="#41D1FF"/>
+                                    <stop offset="1" stop-color="#BD34FE"/>
+                                </linearGradient>
+                                <linearGradient id="paint1_linear" x1="194.651" y1="8.81818" x2="236.076" y2="292.989" gradientUnits="userSpaceOnUse">
+                                    <stop stop-color="#FFEA83"/>
+                                    <stop offset="0.0833333" stop-color="#FFDD35"/>
+                                    <stop offset="1" stop-color="#FFA800"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                    </a>
+                </div>
+
+                <!-- Content -->
+                <div class="relative text-center space-y-8">
+                    <div>
+                        <h1 class="text-4xl sm:text-5xl font-bold text-white tracking-tight mb-2">
+                            Litestar <span class="text-transparent bg-clip-text bg-linear-to-r from-brand-accent to-brand-accent-light">Vite</span>
+                        </h1>
+                        <p class="text-brand-gray/60 text-lg font-medium">Frontend Development Server</p>
+                    </div>
+
+                    <div class="p-6 rounded-2xl bg-white/5 border border-white/10 shadow-inner">
+                        <div class="flex items-center justify-center space-x-3 mb-4">
+                            <span class="relative flex h-3 w-3">
+                              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-success opacity-75"></span>
+                              <span class="relative inline-flex rounded-full h-3 w-3 bg-brand-success"></span>
+                            </span>
+                            <span class="text-sm font-semibold text-brand-success tracking-wide uppercase">Server Active</span>
+                        </div>
+
+                        <p class="text-brand-gray leading-relaxed">
+                            This server provides <strong class="text-white">Hot Module Replacement (HMR)</strong> for your assets.
+                            To view your application, ensure your Litestar backend is running.
+                        </p>
+                    </div>
+
+                    <div class="space-y-2">
+                        <p class="text-brand-gray/80">
+                            Your application is configured at:
+                        </p>
+                        <div class="inline-block group">
+                            <a href="{{ APP_URL }}" class="text-2xl font-mono font-bold text-brand-accent group-hover:text-brand-accent-light transition-colors">
+                                {{ APP_URL }}
+                            </a>
+                            <div class="h-px w-full bg-brand-accent/30 group-hover:bg-brand-accent transition-colors mt-1"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="mt-12 pt-8 border-t border-white/10 flex justify-center">
+                    <a href="https://docs.litestar.dev/latest/topics/integrations/vite/" target="_blank" class="group inline-flex items-center px-5 py-2.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-brand-accent/50 transition-all duration-300">
+                        <span class="text-sm font-semibold text-brand-gray group-hover:text-white transition-colors">Documentation</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="ml-2 h-4 w-4 text-brand-accent group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

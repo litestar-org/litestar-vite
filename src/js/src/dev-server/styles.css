@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/* Litestar brand theme using Tailwind v4 @theme directive */
+@theme {
+  /* Brand colors in OKLCH for better perceptual uniformity */
+  --color-brand-primary: oklch(22% 0.03 265);
+  --color-brand-accent: oklch(78% 0.16 85);
+  --color-brand-accent-light: oklch(85% 0.12 85);
+  --color-brand-gray: oklch(90% 0.01 265);
+  --color-brand-success: oklch(65% 0.2 145);
+  --color-brand-error: oklch(70% 0.18 25);
+
+  /* Background pattern color */
+  --color-brand-dots: oklch(26% 0.03 265);
+
+  /* Custom animation timing */
+  --animate-blob: blob 7s infinite ease-in-out;
+
+  /* Custom easing */
+  --ease-blob: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Register blob keyframes with Tailwind v4 */
+@keyframes blob {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+}
+
+/* Background pattern using CSS custom properties */
+body {
+  background-color: var(--color-brand-primary);
+  background-image: radial-gradient(var(--color-brand-dots) 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: var(--color-brand-gray);
+}
+
+/* Animation utilities using Tailwind v4 @utility directive */
+@utility animate-blob {
+  animation: var(--animate-blob);
+}
+
+@utility animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+@utility animation-delay-4000 {
+  animation-delay: 4s;
+}

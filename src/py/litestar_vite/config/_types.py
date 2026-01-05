@@ -24,7 +24,11 @@ class TypeGenConfig:
         generate_routes: Generate typed routes.ts file (Ziggy-style).
         generate_page_props: Generate Inertia page props TypeScript file.
             Auto-enabled when both types and inertia are configured.
+        generate_schemas: Generate schemas.ts with ergonomic form/response type helpers.
+            Creates helper types like FormInput<'api:login'> and FormResponse<'api:login', 201>
+            that wrap hey-api generated types with cleaner DX.
         page_props_path: Path to export page props metadata (JSON format).
+        schemas_ts_path: Path to export schemas TypeScript file.
         global_route: Register route() function globally on window object.
             When True, adds ``window.route = route`` to generated routes.ts,
             providing global access without imports.
@@ -42,6 +46,30 @@ class TypeGenConfig:
     generate_sdk: bool = True
     generate_routes: bool = True
     generate_page_props: bool = True
+    generate_schemas: bool = True
+    """Generate schemas.ts with ergonomic form/response type helpers.
+
+    When True, generates a schemas.ts file that wraps hey-api generated types
+    with cleaner, more ergonomic type helpers:
+
+    .. code-block:: typescript
+
+        import { FormInput, FormResponse, SuccessResponse } from '@/generated/schemas'
+
+        // Type-safe form data using route names
+        type LoginForm = FormInput<'api:login'>  // { username: string; password: string }
+
+        // Type-safe responses by status code
+        type LoginSuccess = SuccessResponse<'api:login'>  // { access_token: string; ... }
+        type LoginError = FormResponse<'api:login', 400>  // { detail: string; ... }
+
+    Requires generate_sdk=True (hey-api types must be generated first).
+    """
+    schemas_ts_path: "Path | None" = field(default=None)
+    """Path to export schemas TypeScript file.
+
+    Defaults to output / "schemas.ts".
+    """
     global_route: bool = False
     """Register route() function globally on window object.
 
@@ -92,3 +120,7 @@ class TypeGenConfig:
             self.page_props_path = self.output / "inertia-pages.json"
         elif isinstance(self.page_props_path, str):
             self.page_props_path = Path(self.page_props_path)
+        if self.schemas_ts_path is None:
+            self.schemas_ts_path = self.output / "schemas.ts"
+        elif isinstance(self.schemas_ts_path, str):
+            self.schemas_ts_path = Path(self.schemas_ts_path)

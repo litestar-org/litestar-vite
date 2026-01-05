@@ -72,7 +72,7 @@ function BooksPage({ books }: { books: Book[] }) {
   return (
     <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {books.map((book) => (
-        <article key={book.id} className="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+        <article key={book.id} className="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4 shadow-sm">
           <h3 className="font-semibold text-[#202235] text-lg">{book.title}</h3>
           <p className="mt-1 text-slate-600">
             {book.author} • {book.year}

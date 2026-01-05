@@ -59,7 +59,7 @@ type RouteEntry = [RouteName, RouteDefinition]
           @if (featured()) {
             <h2 class="font-semibold text-[#202235] text-xl">{{ summary()?.headline }}</h2>
             <p class="text-slate-600">Featured book</p>
-            <article class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4">
+            <article class="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4">
               <h3 class="font-semibold text-[#202235] text-lg">{{ featured()!.title }}</h3>
               <p class="mt-1 text-slate-600">{{ featured()!.author }} • {{ featured()!.year }}</p>
               <p class="mt-1 text-[#202235] text-sm">{{ featured()!.tags.join(' · ') }}</p>
@@ -72,7 +72,7 @@ type RouteEntry = [RouteName, RouteDefinition]
         <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Books">
           @if (books().length > 0) {
             @for (book of books(); track book.id) {
-              <article class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+              <article class="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4 shadow-sm">
                 <h3 class="font-semibold text-[#202235] text-lg">{{ book.title }}</h3>
                 <p class="mt-1 text-slate-600">{{ book.author }} • {{ book.year }}</p>
                 <p class="mt-1 text-[#202235] text-sm">{{ book.tags.join(' · ') }}</p>

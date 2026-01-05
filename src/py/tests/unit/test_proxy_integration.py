@@ -95,4 +95,4 @@ async def test_proxy_returns_503_when_hotfile_missing(tmp_path: Path, monkeypatc
     statuses = [m for m in sent if m.get("type") == "http.response.start"]
     bodies = [m for m in sent if m.get("type") == "http.response.body"]
     assert statuses and statuses[0]["status"] == 503
-    assert bodies and b"Vite dev server not running" in bodies[0]["body"]  # type: ignore[operator]
+    assert bodies and b"Vite server not running" in bodies[0]["body"]  # type: ignore[operator]

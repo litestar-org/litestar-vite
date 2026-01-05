@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="2">
+    <title>Server Starting</title>
+    <link rel="stylesheet" href="./styles.css">
+</head>
+<body class="antialiased min-h-screen flex items-center justify-center overflow-hidden">
+    <!-- Animated Background Blobs -->
+    <div class="absolute top-0 -left-4 w-72 h-72 bg-brand-accent/10 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
+    <div class="absolute top-0 -right-4 w-72 h-72 bg-purple-500/10 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
+    <div class="absolute -bottom-8 left-20 w-72 h-72 bg-blue-500/10 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
+
+    <!-- Main Card -->
+    <div class="relative w-full max-w-md px-6">
+        <div class="relative bg-gray-900/60 backdrop-blur-lg border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
+            <!-- Top Accent Line -->
+            <div class="h-1 w-full bg-linear-to-r from-transparent via-brand-accent to-transparent opacity-50"></div>
+
+            <div class="px-8 py-10 text-center">
+                <!-- Spinner -->
+                <div class="flex justify-center mb-6">
+                    <div class="w-12 h-12 border-4 border-brand-accent/30 border-t-brand-accent rounded-full animate-spin"></div>
+                </div>
+
+                <!-- Heading -->
+                <h1 class="text-3xl font-bold text-white tracking-tight mb-2">
+                    Server <span class="text-transparent bg-clip-text bg-linear-to-r from-brand-accent to-brand-accent-light">starting</span>...
+                </h1>
+
+                <!-- Description -->
+                <p class="text-brand-gray/80 mb-6">
+                    This page will reload automatically
+                </p>
+
+                <!-- URL Info -->
+                <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                    <p class="text-sm text-brand-gray/60 mb-1">Connecting to</p>
+                    <span class="font-mono text-brand-accent">{{ vite_url }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -18,6 +18,7 @@ import { promisify } from "node:util"
 
 import { resolveInstallHint, resolvePackageExecutor } from "../install-hint.js"
 import { emitPagePropsTypes } from "./emit-page-props-types.js"
+import { emitSchemasTypes } from "./emit-schemas-types.js"
 
 const execAsync = promisify(exec)
 const nodeRequire = createRequire(import.meta.url)
@@ -34,12 +35,18 @@ export interface TypeGenCoreConfig {
   output: string
   /** Path to inertia-pages.json (relative or absolute) */
   pagePropsPath: string
+  /** Path to routes.json (relative or absolute) */
+  routesPath: string
   /** Whether to generate SDK client */
   generateSdk: boolean
   /** Whether to generate Zod schemas */
   generateZod: boolean
   /** Whether to generate page props types */
   generatePageProps: boolean
+  /** Whether to generate schema helper types (schemas.ts) */
+  generateSchemas: boolean
+  /** Optional path for schemas.ts output */
+  schemasTsPath?: string
   /** SDK client plugin (e.g., "@hey-api/client-fetch") */
   sdkClientPlugin: string
   /** JS runtime executor (e.g., "bun", "pnpm") */
@@ -231,6 +238,28 @@ export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunT
         const message = error instanceof Error ? error.message : String(error)
         result.errors.push(`Page props generation failed: ${message}`)
         logger?.error(`Page props generation failed: ${message}`)
+      }
+    }
+
+    // Generate schema helper types
+    const { generateSchemas, routesPath, schemasTsPath } = config
+    if (generateSchemas && routesPath) {
+      const absoluteRoutesPath = path.resolve(projectRoot, routesPath)
+      if (fs.existsSync(absoluteRoutesPath)) {
+        try {
+          const changed = await emitSchemasTypes(absoluteRoutesPath, output, schemasTsPath)
+          const schemasOutput = schemasTsPath ?? path.join(output, "schemas.ts")
+          if (changed) {
+            result.generatedFiles.push(schemasOutput)
+            result.generated = true
+          } else {
+            result.skippedFiles.push(schemasOutput)
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          result.errors.push(`Schema types generation failed: ${message}`)
+          logger?.error(`Schema types generation failed: ${message}`)
+        }
       }
     }
   } finally {

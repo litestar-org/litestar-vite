@@ -252,7 +252,7 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - TypeScript/JavaScript source directory. Defaults to `"src"` (use `"resources"` for Inertia templates).
    * - `static_dir`
      - `Path | str`
-     - Static public assets directory (served as-is by Vite). Defaults to `"public"`.
+     - Static public assets directory (served as-is by Vite). Defaults to `"public"` but auto-adjusts to ``{resource_dir}/public`` when it would otherwise collide with ``bundle_dir``.
    * - `manifest_name`
      - `str`
      - Name of the Vite manifest file. Defaults to `"manifest.json"`.
@@ -302,6 +302,9 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
    * - `http2`
      - `bool`
      - Enable HTTP/2 for proxy HTTP requests (better connection multiplexing). WebSocket/HMR uses a separate connection. Requires `h2` package. Defaults to `True`.
+   * - `trusted_proxies`
+     - `list[str] | str | None`
+     - Trusted proxy hosts/CIDRs for `ProxyHeadersMiddleware`. Set to `"*"` or a list of IPs/CIDRs. Defaults to `None` (disabled). Reads from `LITESTAR_TRUSTED_PROXIES` env var.
    * - `start_dev_server`
      - `bool`
      - Auto-start dev server process managed by Litestar. Set to `False` if managing the dev server externally. Defaults to `True`.
@@ -310,7 +313,7 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - Auto-register catch-all SPA route when mode="spa". Defaults to `True`.
    * - `set_environment`
      - `bool`
-     - Write `.litestar.json` config file on startup. Defaults to `True`.
+     - Set Vite-related environment variables and write `.litestar.json` on startup. Defaults to `True`.
    * - `set_static_folders`
      - `bool`
      - Automatically configure static file serving. Defaults to `True`.
@@ -366,12 +369,15 @@ For standalone Vite usage (without Litestar), you can specify paths explicitly:
    * - `assetUrl`
      - `string`
      - The base path for asset URLs. Defaults to `'/static/'`.
+   * - `deployAssetUrl`
+     - `string | null`
+     - Optional asset URL used only during production builds. Typically populated from Python ``DeployConfig.asset_url``.
    * - `bundleDir`
      - `string`
      - The directory where compiled assets and `manifest.json` are written. Defaults to `'public'`.
    * - `resourceDir`
      - `string`
-     - The directory for source assets. Defaults to `'resources'`.
+     - The directory for source assets. Defaults to `'src'` (Inertia templates typically use `'resources'`).
    * - `staticDir`
      - `string`
      - Directory for static, unprocessed assets (maps to Vite's `publicDir`). Defaults to `'${resourceDir}/public'`.
@@ -395,10 +401,10 @@ For standalone Vite usage (without Litestar), you can specify paths explicitly:
      - Automatically detect and serve `index.html`. Defaults to `true`.
    * - `inertiaMode`
      - `boolean`
-     - Enable Inertia mode (disables `index.html` auto-detection). Auto-detected from `.litestar.json` when mode is `"inertia"`. Defaults to `false`.
+     - Enable Inertia mode (disables `index.html` auto-detection). Auto-detected from `.litestar.json` when mode is `"hybrid"` or `"inertia"`. Defaults to `false`.
    * - `types`
      - `boolean | "auto" | TypesConfig`
-     - Type generation configuration. `"auto"` or `undefined` reads from `.litestar.json` (recommended). `true` enables with hardcoded defaults. `false` disables. Object allows fine-grained control with fields: `enabled`, `output`, `openapiPath`, `routesPath`, `pagePropsPath`, `generateZod`, `generateSdk`, `globalRoute`, `debounce`. Defaults to `undefined` (auto-detect).
+     - Type generation configuration. `"auto"` or `undefined` reads from `.litestar.json` (recommended). `true` enables with hardcoded defaults. `false` disables. Object allows fine-grained control with fields: `enabled`, `output`, `openapiPath`, `routesPath`, `pagePropsPath`, `schemasTsPath`, `generateZod`, `generateSdk`, `generateRoutes`, `generatePageProps`, `generateSchemas`, `globalRoute`, `debounce`. Defaults to `undefined` (auto-detect).
    * - `executor`
      - `string`
      - JavaScript runtime: `"node"`, `"bun"`, `"deno"`, `"yarn"`, or `"pnpm"`. Auto-detected from Python config.

@@ -1,18 +1,17 @@
-import inspect
 from collections import defaultdict
-from collections.abc import Callable, Coroutine, Generator, Iterable, Mapping
-from contextlib import contextmanager
+from collections.abc import Callable, Coroutine, Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Generic, Literal, TypeGuard, TypeVar, cast, overload
 
-from anyio.from_thread import BlockingPortal, start_blocking_portal
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.utils.empty import value_or_default
 from litestar.utils.scope.state import ScopeState
 
+from litestar_vite.inertia._async_mixin import AsyncRenderMixin
 from litestar_vite.inertia.types import ScrollPropsConfig
 
 if TYPE_CHECKING:
+    from anyio.from_thread import BlockingPortal
     from litestar.connection import ASGIConnection
 
     from litestar_vite.inertia.plugin import InertiaPlugin
@@ -590,7 +589,7 @@ class StaticProp(Generic[PropKeyT, StaticT]):
         return self._result
 
 
-class DeferredProp(Generic[PropKeyT, T]):
+class DeferredProp(AsyncRenderMixin, Generic[PropKeyT, T]):
     """A wrapper for deferred property evaluation."""
 
     def __init__(
@@ -646,19 +645,6 @@ class DeferredProp(Generic[PropKeyT, T]):
         """
         return DeferredProp[PropKeyT, T](key=self._key, value=self._value, group=self._group, is_once=True)
 
-    @staticmethod
-    @contextmanager
-    def with_portal(portal: "BlockingPortal | None" = None) -> "Generator[BlockingPortal, None, None]":
-        if portal is None:
-            with start_blocking_portal() as p:
-                yield p
-        else:
-            yield portal
-
-    @staticmethod
-    def _is_awaitable(v: "Callable[..., T | Coroutine[Any, Any, T]]") -> "TypeGuard[Coroutine[Any, Any, T]]":
-        return inspect.iscoroutinefunction(v)
-
     def render(self, portal: "BlockingPortal | None" = None) -> "T | None":
         if self._evaluated:
             return self._result
@@ -676,7 +662,7 @@ class DeferredProp(Generic[PropKeyT, T]):
             return self._result
 
 
-class OnceProp(Generic[PropKeyT, T]):
+class OnceProp(AsyncRenderMixin, Generic[PropKeyT, T]):
     """A wrapper for once-only property evaluation (v2.2.20+ feature).
 
     Once props are resolved once and cached client-side. They won't be
@@ -707,19 +693,6 @@ class OnceProp(Generic[PropKeyT, T]):
     def key(self) -> "PropKeyT":
         return self._key
 
-    @staticmethod
-    @contextmanager
-    def with_portal(portal: "BlockingPortal | None" = None) -> "Generator[BlockingPortal, None, None]":
-        if portal is None:
-            with start_blocking_portal() as p:
-                yield p
-        else:
-            yield portal
-
-    @staticmethod
-    def _is_awaitable(v: "Callable[..., T | Coroutine[Any, Any, T]]") -> "TypeGuard[Coroutine[Any, Any, T]]":
-        return inspect.iscoroutinefunction(v)
-
     def render(self, portal: "BlockingPortal | None" = None) -> "T | None":
         """Render the prop value, caching the result.
 
@@ -745,7 +718,7 @@ class OnceProp(Generic[PropKeyT, T]):
             return self._result
 
 
-class OptionalProp(Generic[PropKeyT, T]):
+class OptionalProp(AsyncRenderMixin, Generic[PropKeyT, T]):
     """A wrapper for optional property evaluation (v2 feature).
 
     Optional props are NEVER included in initial page loads or standard
@@ -774,19 +747,6 @@ class OptionalProp(Generic[PropKeyT, T]):
     @property
     def key(self) -> "PropKeyT":
         return self._key
-
-    @staticmethod
-    @contextmanager
-    def with_portal(portal: "BlockingPortal | None" = None) -> "Generator[BlockingPortal, None, None]":
-        if portal is None:
-            with start_blocking_portal() as p:
-                yield p
-        else:
-            yield portal
-
-    @staticmethod
-    def _is_awaitable(v: "Callable[..., T | Coroutine[Any, Any, T]]") -> "TypeGuard[Coroutine[Any, Any, T]]":
-        return inspect.iscoroutinefunction(v)
 
     def render(self, portal: "BlockingPortal | None" = None) -> "T | None":
         """Render the prop value, caching the result.

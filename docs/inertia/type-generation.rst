@@ -51,6 +51,9 @@ TypeGenConfig Reference
    * - ``routes_ts_path``
      - ``Path | None``
      - Path for routes TypeScript. Default: ``{output}/routes.ts``
+   * - ``schemas_ts_path``
+     - ``Path | None``
+     - Path for schemas helper types. Default: ``{output}/schemas.ts``
    * - ``page_props_path``
      - ``Path | None``
      - Path for page props JSON. Default: ``{output}/inertia-pages.json``
@@ -66,6 +69,9 @@ TypeGenConfig Reference
    * - ``generate_page_props``
      - ``bool``
      - Generate page props types. Default: ``True``
+   * - ``generate_schemas``
+     - ``bool``
+     - Generate schemas helper types. Default: ``True``
    * - ``fallback_type``
      - ``Literal["unknown", "any"]``
      - Fallback value type for untyped dict/list in page props. Default: ``unknown``
