@@ -1,6 +1,32 @@
 # Quality Gates for litestar-vite
-# Version: 0.16.0
-# Updated: 2026-01-04
+# Version: 0.16.0 (Intelligent Edition)
+# Updated: 2026-01-06
+
+# Intelligence Layer Configuration
+intelligence:
+  adaptive: true
+  description: "Quality gates that adapt to project conventions and complexity"
+
+  complexity_levels:
+    simple:
+      description: "CRUD, config change, single file"
+      checkpoints: 6
+      tools: ["Read", "Write", "Edit", "Bash"]
+
+    medium:
+      description: "New service, API endpoint, 2-3 files"
+      checkpoints: 8
+      tools: ["Read", "Write", "Edit", "Bash", "sequential_thinking"]
+
+    complex:
+      description: "Architecture change, multi-component, 5+ files"
+      checkpoints: 10
+      tools: ["Read", "Write", "Edit", "Bash", "thinkdeep", "planner", "context7"]
+
+  pattern_library:
+    path: "specs/guides/patterns/"
+    consult_before_implementation: true
+    extract_after_review: true
 
 implementation_gates:
   - name: local_tests_pass
@@ -68,6 +94,22 @@ documentation_gates:
 
   - name: knowledge_captured
     description: "New patterns must be documented before archival"
+
+  - name: pattern_compliance
+    description: "Implementation must follow patterns from similar features"
+    adaptive: true
+    enforcement: |
+      1. Before implementation, search specs/guides/patterns/ for similar patterns
+      2. Follow established conventions (naming, structure, error handling)
+      3. Document deviations with rationale in tmp/deviations.md
+      4. During review, extract new patterns to pattern library
+
+  - name: new_patterns_extracted
+    description: "New patterns discovered during implementation are captured"
+    enforcement: |
+      1. Document new patterns in tmp/new-patterns.md during implementation
+      2. During review, move to specs/guides/patterns/ with proper format
+      3. Update pattern library README if architectural patterns
 
   - name: recent_patterns_documented
     patterns_to_capture:

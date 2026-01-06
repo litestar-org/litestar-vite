@@ -202,6 +202,49 @@ def log_fail(message: str) -> None:
     console.print(f"{_FAIL} {message}")
 
 
+def _path_for_bridge(path: Path, root_dir: Path) -> str:
+    """Convert a path to a relative string for the JS bridge config.
+
+    The JavaScript plugin expects relative paths without leading slashes.
+    This function converts absolute paths to relative paths (relative to root_dir)
+    when possible.
+
+    Args:
+        path: The path to convert.
+        root_dir: The project root directory.
+
+    Returns:
+        A relative path string suitable for .litestar.json.
+        If the path cannot be made relative (outside root_dir), returns
+        a relative path using os.path.relpath (e.g., "../external").
+    """
+    if not path.is_absolute():
+        # Already relative, return as-is without any leading slash
+        return str(path).lstrip("/")
+
+    # Resolve both paths to handle symlinks consistently
+    resolved_path = path.resolve()
+    resolved_root = root_dir.resolve()
+    try:
+        relative = resolved_path.relative_to(resolved_root)
+        return str(relative)
+    except ValueError:
+        # Path is outside root_dir - cannot make relative via relative_to
+        # Use os.path.relpath as fallback which handles "../" paths
+        rel = os.path.relpath(resolved_path, resolved_root)
+        # Warn about paths that go outside root
+        if rel.startswith(".."):
+            logger = logging.getLogger("litestar_vite")
+            logger.warning(
+                "Path '%s' is outside root_dir '%s'. "
+                "The JavaScript plugin may not handle this correctly. "
+                "Consider configuring paths relative to root_dir.",
+                path,
+                root_dir,
+            )
+        return rel
+
+
 @overload
 def write_runtime_config_file(config: "ViteConfig", *, asset_url_override: str | None = None) -> str: ...
 
@@ -227,10 +270,11 @@ def write_runtime_config_file(
     root = config.root_dir or Path.cwd()
     path = Path(root) / ".litestar.json"
     types = config.types if isinstance(config.types, TypeGenConfig) else None
-    resource_dir = config.resource_dir
-    resource_dir_value = str(resource_dir)
-    bundle_dir_value = str(config.bundle_dir)
-    ssr_out_dir_value = str(config.ssr_output_dir) if config.ssr_output_dir else None
+    # Convert paths to relative strings for JS bridge
+    resource_dir_value = _path_for_bridge(config.resource_dir, root)
+    bundle_dir_value = _path_for_bridge(config.bundle_dir, root)
+    static_dir_value = _path_for_bridge(config.static_dir, root)
+    ssr_out_dir_value = _path_for_bridge(config.ssr_output_dir, root) if config.ssr_output_dir else None
 
     litestar_version = os.environ.get("LITESTAR_VERSION") or resolve_litestar_version()
 
@@ -245,7 +289,7 @@ def write_runtime_config_file(
         "bundleDir": bundle_dir_value,
         "hotFile": config.hot_file,
         "resourceDir": resource_dir_value,
-        "staticDir": str(config.static_dir),
+        "staticDir": static_dir_value,
         "manifest": config.manifest_name,
         "mode": config.mode,
         "proxyMode": config.proxy_mode,
@@ -254,12 +298,12 @@ def write_runtime_config_file(
         "ssrOutDir": ssr_out_dir_value,
         "types": {
             "enabled": True,
-            "output": str(types.output),
-            "openapiPath": str(types.openapi_path),
-            "routesPath": str(types.routes_path),
-            "pagePropsPath": str(types.page_props_path),
-            "routesTsPath": str(types.routes_ts_path) if types.routes_ts_path else None,
-            "schemasTsPath": str(types.schemas_ts_path) if types.schemas_ts_path else None,
+            "output": _path_for_bridge(types.output, root),
+            "openapiPath": _path_for_bridge(types.openapi_path, root) if types.openapi_path else None,
+            "routesPath": _path_for_bridge(types.routes_path, root) if types.routes_path else None,
+            "pagePropsPath": _path_for_bridge(types.page_props_path, root) if types.page_props_path else None,
+            "routesTsPath": _path_for_bridge(types.routes_ts_path, root) if types.routes_ts_path else None,
+            "schemasTsPath": _path_for_bridge(types.schemas_ts_path, root) if types.schemas_ts_path else None,
             "generateZod": types.generate_zod,
             "generateSdk": types.generate_sdk,
             "generateRoutes": types.generate_routes,

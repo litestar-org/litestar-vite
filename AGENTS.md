@@ -136,6 +136,8 @@ Framework-specific expertise in `.claude/skills/`:
 | `/fix-issue [#]` | Fix GitHub issue |
 | `/sync-llms-txt` | Sync LLM documentation |
 | `/update-templates` | Audit framework templates |
+| `/assets [context]` | Validate litestar assets integration and run diagnostics |
+| `/typegen [context]` | Generate and verify TypeScript artifacts |
 | `/bootstrap` | Bootstrap new project setup |
 | `/review-docs` | Comprehensive documentation review |
 
