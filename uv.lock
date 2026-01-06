@@ -1150,7 +1150,7 @@ dependencies = [
 
 [[package]]
 name = "litestar-vite"
-version = "0.16.2"
+version = "0.16.3"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
