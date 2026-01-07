@@ -231,18 +231,7 @@ def _path_for_bridge(path: Path, root_dir: Path) -> str:
     except ValueError:
         # Path is outside root_dir - cannot make relative via relative_to
         # Use os.path.relpath as fallback which handles "../" paths
-        rel = os.path.relpath(resolved_path, resolved_root)
-        # Warn about paths that go outside root
-        if rel.startswith(".."):
-            logger = logging.getLogger("litestar_vite")
-            logger.warning(
-                "Path '%s' is outside root_dir '%s'. "
-                "The JavaScript plugin may not handle this correctly. "
-                "Consider configuring paths relative to root_dir.",
-                path,
-                root_dir,
-            )
-        return rel
+        return os.path.relpath(resolved_path, resolved_root)
 
 
 @overload
