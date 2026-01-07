@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import pytest
 from litestar.serialization import decode_json
 
 from litestar_vite.config import PathConfig, ViteConfig
