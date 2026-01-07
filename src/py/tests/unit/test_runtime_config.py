@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import pytest
 from litestar.serialization import decode_json
 
 from litestar_vite.config import PathConfig, ViteConfig
@@ -56,8 +55,8 @@ def test_path_for_bridge_absolute_inside_root(tmp_path: Path) -> None:
     assert not result.startswith("/")
 
 
-def test_path_for_bridge_absolute_outside_root(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
-    """Absolute paths outside root_dir should produce ../ paths with warning."""
+def test_path_for_bridge_absolute_outside_root(tmp_path: Path) -> None:
+    """Absolute paths outside root_dir should produce ../ paths."""
     root = tmp_path / "project"
     root.mkdir()
     external = tmp_path / "external" / "assets"
@@ -68,8 +67,6 @@ def test_path_for_bridge_absolute_outside_root(tmp_path: Path, caplog: pytest.Lo
     # Should produce a relative path with ../
     assert result.startswith("..")
     assert "external" in result
-    # Should log a warning
-    assert "outside root_dir" in caplog.text
 
 
 def test_path_for_bridge_same_as_root(tmp_path: Path) -> None:

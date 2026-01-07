@@ -1113,24 +1113,31 @@ function validateAgainstPythonDefaults(resolved: ResolvedPluginConfig, pythonDef
   // Helper to check if a Python default value is meaningful (not null/undefined)
   const hasPythonValue = (value: unknown): value is string => typeof value === "string" && value.length > 0
 
+  // Helper to compare paths by resolving to absolute - handles "../" relative paths
+  const pathsAreSame = (a: string, b: string): boolean => {
+    const resolvedA = path.resolve(process.cwd(), a)
+    const resolvedB = path.resolve(process.cwd(), b)
+    return resolvedA === resolvedB
+  }
+
   if (userConfig.assetUrl !== undefined && hasPythonValue(pythonDefaults.assetUrl) && resolved.assetUrl !== pythonDefaults.assetUrl) {
     warnings.push(`assetUrl: vite.config.ts="${resolved.assetUrl}" differs from Python="${pythonDefaults.assetUrl}"`)
   }
 
-  if (userConfig.bundleDir !== undefined && hasPythonValue(pythonDefaults.bundleDir) && resolved.bundleDir !== pythonDefaults.bundleDir) {
+  if (userConfig.bundleDir !== undefined && hasPythonValue(pythonDefaults.bundleDir) && !pathsAreSame(resolved.bundleDir, pythonDefaults.bundleDir)) {
     warnings.push(`bundleDir: vite.config.ts="${resolved.bundleDir}" differs from Python="${pythonDefaults.bundleDir}"`)
   }
 
-  if (userConfig.resourceDir !== undefined && hasPythonValue(pythonDefaults.resourceDir) && resolved.resourceDir !== pythonDefaults.resourceDir) {
+  if (userConfig.resourceDir !== undefined && hasPythonValue(pythonDefaults.resourceDir) && !pathsAreSame(resolved.resourceDir, pythonDefaults.resourceDir)) {
     warnings.push(`resourceDir: vite.config.ts="${resolved.resourceDir}" differs from Python="${pythonDefaults.resourceDir}"`)
   }
 
-  if (userConfig.staticDir !== undefined && hasPythonValue(pythonDefaults.staticDir) && resolved.staticDir !== pythonDefaults.staticDir) {
+  if (userConfig.staticDir !== undefined && hasPythonValue(pythonDefaults.staticDir) && !pathsAreSame(resolved.staticDir, pythonDefaults.staticDir)) {
     warnings.push(`staticDir: vite.config.ts="${resolved.staticDir}" differs from Python="${pythonDefaults.staticDir}"`)
   }
 
   const frameworkMode = pythonDefaults.mode === "framework" || pythonDefaults.mode === "ssr" || pythonDefaults.mode === "ssg"
-  if (frameworkMode && userConfig.ssrOutDir !== undefined && hasPythonValue(pythonDefaults.ssrOutDir) && resolved.ssrOutDir !== pythonDefaults.ssrOutDir) {
+  if (frameworkMode && userConfig.ssrOutDir !== undefined && hasPythonValue(pythonDefaults.ssrOutDir) && !pathsAreSame(resolved.ssrOutDir, pythonDefaults.ssrOutDir)) {
     warnings.push(`ssrOutDir: vite.config.ts="${resolved.ssrOutDir}" differs from Python="${pythonDefaults.ssrOutDir}"`)
   }
 
