@@ -34,7 +34,6 @@ extensions = [
     "sphinx.ext.todo",
     "sphinx.ext.viewcode",
     "sphinx_click",
-    "sphinx_toolbox.collapse",
     "sphinx_design",
     "sphinxcontrib.mermaid",
     "sphinx_paramlinks",
@@ -157,6 +156,16 @@ nitpick_ignore_regex = [
     (PY_RE, r"litestar\.template\.*\.T"),
     (PY_RE, r"litestar\.contrib\.*\.T"),
     (PY_RE, r"config\.app\.AppConfig"),
+    # Partial generic type annotations (Sphinx truncates at commas/brackets)
+    (PY_RE, r"dict\[str.*"),
+    (PY_RE, r"tuple\[str.*"),
+    (PY_RE, r"set\[str.*"),
+    (PY_RE, r"list\[str.*"),
+    # Literal types (Sphinx can't resolve these)
+    (PY_RE, r"typing\.Literal\[.*"),
+    (PY_RE, r"Literal\[.*"),
+    # Litestar serializer type
+    (PY_RE, r"Serializer"),
 ]
 
 napoleon_google_docstring = True

@@ -170,14 +170,16 @@ class ViteConfig:
     static_props: "dict[str, Any]" = field(default_factory=empty_dict_factory)
     """Static data to pass to the JavaScript application via the bridge file.
 
-    This data is written to .litestar.json and accessible via the
-    `virtual:litestar-static-props` module in JavaScript.
+    This data is written to ``.litestar.json`` and accessible via the
+    ``virtual:litestar-static-props`` module in JavaScript.
 
-    Warning: Do not include sensitive data (API keys, secrets, passwords).
-    This data is written to disk and included in the client-side JavaScript
-    bundle, visible to all users.
+    Warning:
+        Do not include sensitive data (API keys, secrets, passwords).
+        This data is written to disk and included in the client-side JavaScript
+        bundle, visible to all users.
 
-    Example:
+    Example::
+
         ViteConfig(
             static_props={
                 "appName": "My App",
@@ -186,7 +188,8 @@ class ViteConfig:
             }
         )
 
-    TypeScript usage:
+    TypeScript usage::
+
         import staticProps from 'virtual:litestar-static-props'
         console.log(staticProps.appName)
 

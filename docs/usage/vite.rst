@@ -599,8 +599,8 @@ Static props allow you to pass arbitrary configuration data from Python to JavaS
 - API base URLs or configuration
 - Any static data that doesn't change at runtime
 
-Configuration
-~~~~~~~~~~~~~
+Python Setup
+~~~~~~~~~~~~
 
 Add static props to your ``ViteConfig``:
 

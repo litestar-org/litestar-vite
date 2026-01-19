@@ -1177,6 +1177,74 @@ describe("path comparison for config mismatch detection", () => {
     warnSpy.mockRestore()
   })
 
+  it("treats relative path from Python as equivalent to absolute path in JS", () => {
+    // Python writes relative path "public" to .litestar.json
+    createRuntimeConfigLocal({
+      bundleDir: "public",
+    })
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    // JS plugin configured with absolute path pointing to same location
+    const absolutePath = path.resolve(process.cwd(), "public")
+    const plugin = litestar({
+      input: "resources/js/app.ts",
+      bundleDir: absolutePath,
+    })[0]
+
+    plugin.config({}, { command: "build", mode: "production" })
+
+    // Should NOT warn because they resolve to the same location
+    expect(warnSpy).not.toHaveBeenCalled()
+
+    warnSpy.mockRestore()
+  })
+
+  it("treats absolute path from Python as equivalent to relative path in JS", () => {
+    // Python writes absolute path to .litestar.json
+    const absolutePath = path.resolve(process.cwd(), "dist/assets")
+    createRuntimeConfigLocal({
+      bundleDir: absolutePath,
+    })
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    // JS plugin configured with relative path pointing to same location
+    const plugin = litestar({
+      input: "resources/js/app.ts",
+      bundleDir: "dist/assets",
+    })[0]
+
+    plugin.config({}, { command: "build", mode: "production" })
+
+    // Should NOT warn because they resolve to the same location
+    expect(warnSpy).not.toHaveBeenCalled()
+
+    warnSpy.mockRestore()
+  })
+
+  it("preserves leading slash in absolute paths during comparison", () => {
+    // This ensures /home/user/project/public isn't compared as home/user/project/public
+    const absolutePath = path.resolve(process.cwd(), "public")
+    createRuntimeConfigLocal({
+      bundleDir: absolutePath,
+    })
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    // Same absolute path should match
+    const plugin = litestar({
+      input: "resources/js/app.ts",
+      bundleDir: absolutePath,
+    })[0]
+
+    plugin.config({}, { command: "build", mode: "production" })
+
+    expect(warnSpy).not.toHaveBeenCalled()
+
+    warnSpy.mockRestore()
+  })
+
   it("handles empty path values gracefully", () => {
     createRuntimeConfigLocal({
       bundleDir: "public",

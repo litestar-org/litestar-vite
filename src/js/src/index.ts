@@ -931,8 +931,27 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   if (typeof resolvedConfig.input === "undefined") {
     throw new Error('litestar-vite-plugin: missing configuration for "input".')
   }
+  // Helper to normalize directory paths: trim, strip trailing slashes, and
+  // strip leading slashes only for relative paths (preserve absolute paths)
+  const normalizeDir = (dir: string): string => {
+    const trimmed = dir.trim().replace(/\/+$/, "")
+    // Strip leading slashes for paths that look like relative paths with accidental leading slash
+    // e.g., "/public" → "public", "/public/build" → "public/build"
+    // But preserve true absolute paths like "/home/user/project/public"
+    if (trimmed.startsWith("/")) {
+      const withoutSlash = trimmed.slice(1)
+      const segments = withoutSlash.split("/").filter(Boolean)
+      // Heuristic: if path has <= 2 segments, it's likely a relative path with accidental leading slash
+      // If > 2 segments, it's probably a real absolute filesystem path
+      if (segments.length <= 2) {
+        return withoutSlash
+      }
+    }
+    return trimmed
+  }
+
   if (typeof resolvedConfig.resourceDir === "string") {
-    resolvedConfig.resourceDir = resolvedConfig.resourceDir.trim().replace(/^\/+/, "").replace(/\/+$/, "")
+    resolvedConfig.resourceDir = normalizeDir(resolvedConfig.resourceDir)
 
     if (resolvedConfig.resourceDir === "") {
       throw new Error("litestar-vite-plugin: resourceDir must be a subdirectory. E.g. 'resources'.")
@@ -940,7 +959,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   }
 
   if (typeof resolvedConfig.bundleDir === "string") {
-    resolvedConfig.bundleDir = resolvedConfig.bundleDir.trim().replace(/^\/+/, "").replace(/\/+$/, "")
+    resolvedConfig.bundleDir = normalizeDir(resolvedConfig.bundleDir)
 
     if (resolvedConfig.bundleDir === "") {
       throw new Error("litestar-vite-plugin: bundleDir must be a subdirectory. E.g. 'public'.")
@@ -948,7 +967,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   }
 
   if (typeof resolvedConfig.staticDir === "string") {
-    resolvedConfig.staticDir = resolvedConfig.staticDir.trim().replace(/^\/+/, "").replace(/\/+$/, "")
+    resolvedConfig.staticDir = normalizeDir(resolvedConfig.staticDir)
 
     if (resolvedConfig.staticDir === "") {
       throw new Error("litestar-vite-plugin: staticDir must be a subdirectory. E.g. 'src/public'.")
@@ -956,7 +975,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   }
 
   if (typeof resolvedConfig.ssrOutDir === "string") {
-    resolvedConfig.ssrOutDir = resolvedConfig.ssrOutDir.trim().replace(/^\/+/, "").replace(/\/+$/, "")
+    resolvedConfig.ssrOutDir = normalizeDir(resolvedConfig.ssrOutDir)
   }
 
   if (resolvedConfig.refresh === true) {
