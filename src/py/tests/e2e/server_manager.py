@@ -69,7 +69,7 @@ EXAMPLE_PORTS: dict[str, int] = {
     "angular-cli": 5032,
     "nuxt": 5041,
     "astro": 5051,
-    "jinja-htmx": 5061,
+    "jinja-htmx": 5050,
 }
 
 # External dev server target ports for CLI examples
