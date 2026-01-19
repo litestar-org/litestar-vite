@@ -181,22 +181,14 @@ examples/*/public/
 examples/*/package-lock.json
 examples/*/frontend/package-lock.json
 
-# Agent Systems (Gemini & Claude)
-specs/archive/
-.gemini/mcp-tools.txt
-!specs/active/.gitkeep
-!specs/archive/.gitkeep
-!specs/guides/
-!specs/guides/**/*.md
-!specs/guides/**/*.yaml
-!specs/template-spec/
-!specs/template-spec/**/*.md
-
-# Claude Agent System
-.claude/settings.local.json
-
-# Agent telemetry logs
-specs/guides/telemetry/*.jsonl
+# AI Agent Systems (Gemini & Claude)
+# All AI infrastructure is local-only and not tracked in git
+specs/
+.gemini/
+.claude/
+AGENTS.md
+CLAUDE.md
+gemini.md
 public/hot
 src/generated
 src/py/litestar_vite/static/server-starting.html

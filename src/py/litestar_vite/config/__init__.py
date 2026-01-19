@@ -36,6 +36,7 @@ from litestar_vite.config._constants import (  # pyright: ignore[reportPrivateUs
     FSSPEC_INSTALLED,
     JINJA_INSTALLED,
     TRUE_VALUES,
+    empty_dict_factory,
 )
 from litestar_vite.config._deploy import DeployConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._inertia import (  # pyright: ignore[reportPrivateUsage]
@@ -166,6 +167,32 @@ class ViteConfig:
     dev_mode: bool = False
     base_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
     deploy: "DeployConfig | bool" = False
+    static_props: "dict[str, Any]" = field(default_factory=empty_dict_factory)
+    """Static data to pass to the JavaScript application via the bridge file.
+
+    This data is written to .litestar.json and accessible via the
+    `virtual:litestar-static-props` module in JavaScript.
+
+    Warning: Do not include sensitive data (API keys, secrets, passwords).
+    This data is written to disk and included in the client-side JavaScript
+    bundle, visible to all users.
+
+    Example:
+        ViteConfig(
+            static_props={
+                "appName": "My App",
+                "version": "1.0.0",
+                "features": {"darkMode": True},
+            }
+        )
+
+    TypeScript usage:
+        import staticProps from 'virtual:litestar-static-props'
+        console.log(staticProps.appName)
+
+        // Or with named imports (tree-shakeable)
+        import { appName, version } from 'virtual:litestar-static-props'
+    """
     guards: "Sequence[Guard] | None" = None  # pyright: ignore[reportUnknownVariableType]
     """Custom guards for the SPA catch-all route.
 

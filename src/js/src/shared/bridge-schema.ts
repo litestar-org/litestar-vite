@@ -68,6 +68,12 @@ export interface BridgeSchema {
   } | null
 
   litestarVersion: string
+
+  /**
+   * Static props configured in Python ViteConfig.static_props.
+   * Available in JS via `virtual:litestar-static-props` module.
+   */
+  staticProps?: Record<string, unknown> | null
 }
 
 const allowedTopLevelKeys: ReadonlySet<string> = new Set([
@@ -88,6 +94,7 @@ const allowedTopLevelKeys: ReadonlySet<string> = new Set([
   "executor",
   "logging",
   "litestarVersion",
+  "staticProps",
 ])
 
 const allowedModes: ReadonlySet<string> = new Set(["spa", "template", "htmx", "hybrid", "inertia", "framework", "ssr", "ssg", "external"])
@@ -226,6 +233,11 @@ function parseSpaConfig(value: unknown): BridgeSpaConfig | null {
   return { useScriptElement }
 }
 
+function parseStaticProps(value: unknown): Record<string, unknown> | null {
+  if (value === null || value === undefined) return null
+  return assertObject(value, "staticProps")
+}
+
 export function parseBridgeSchema(value: unknown): BridgeSchema {
   const obj = assertObject(value, "root")
 
@@ -255,6 +267,7 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
   const executor = assertEnum<BridgeExecutor>(obj.executor, "executor", allowedExecutors)
   const logging = parseLogging(obj.logging)
   const litestarVersion = assertString(obj, "litestarVersion")
+  const staticProps = parseStaticProps(obj.staticProps)
 
   return {
     assetUrl,
@@ -274,6 +287,7 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
     executor,
     logging,
     litestarVersion,
+    staticProps,
   }
 }
 

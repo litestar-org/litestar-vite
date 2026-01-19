@@ -180,7 +180,7 @@ def _process_templates(
         if relative_path.parts and relative_path.parts[0] == "public":
             relative_path = Path(context_dict.get("static_dir", "public"), *relative_path.parts[1:])
 
-        output_path = output_dir / str(relative_path).replace(".j2", "")
+        output_path = output_dir / str(relative_path).removesuffix(".j2")
 
         if output_path.exists() and not overwrite:
             console.print(f"[yellow]Skipping {output_path} (exists)[/]")

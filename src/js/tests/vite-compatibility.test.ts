@@ -173,7 +173,8 @@ describe("Vite 7.0 Compatibility", () => {
         types: false,
       })
 
-      expect(plugin.length).toBe(2) // Main plugin + HMR plugin
+      // Plugins: main + HMR + static-props
+      expect(plugin.length).toBe(3) // Main plugin + HMR plugin + static-props plugin
 
       const hmrPlugin = plugin[1]
       expect(hmrPlugin.__litestar_plugin_config).toEqual({
@@ -282,7 +283,8 @@ describe("Vite 7.0 Compatibility", () => {
         types: false,
       })
 
-      expect(plugins.length).toBe(2)
+      // Plugins: main + refresh + static-props
+      expect(plugins.length).toBe(3)
       expect(plugins[0].name).toBe("litestar")
     })
 
@@ -299,8 +301,9 @@ describe("Vite 7.0 Compatibility", () => {
         types: false,
       })
 
-      expect(devPlugins.length).toBe(2) // With HMR
-      expect(prodPlugins.length).toBe(1) // Without HMR
+      // Plugins: main + HMR + static-props vs main + static-props
+      expect(devPlugins.length).toBe(3) // With HMR + static-props
+      expect(prodPlugins.length).toBe(2) // Without HMR + static-props
     })
   })
 
