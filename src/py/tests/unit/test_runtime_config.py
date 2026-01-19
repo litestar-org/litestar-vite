@@ -166,12 +166,7 @@ def test_static_props_serialized_to_json(tmp_path: Path, monkeypatch: object) ->
     """Verify static_props are written to .litestar.json."""
     monkeypatch.setenv("LITESTAR_VERSION", "1.0.0")
 
-    cfg = ViteConfig(
-        static_props={
-            "appName": "Test App",
-            "version": "1.0.0",
-        }
-    )
+    cfg = ViteConfig(static_props={"appName": "Test App", "version": "1.0.0"})
     cfg.paths.root = tmp_path
 
     path_str = write_runtime_config_file(cfg)
@@ -199,15 +194,8 @@ def test_static_props_nested_structures(tmp_path: Path, monkeypatch: object) -> 
 
     cfg = ViteConfig(
         static_props={
-            "app": {
-                "name": "My App",
-                "environment": "production",
-            },
-            "features": {
-                "darkMode": True,
-                "analytics": False,
-                "limits": {"maxUpload": 10000000},
-            },
+            "app": {"name": "My App", "environment": "production"},
+            "features": {"darkMode": True, "analytics": False, "limits": {"maxUpload": 10000000}},
             "tags": ["web", "python", "typescript"],
         }
     )
