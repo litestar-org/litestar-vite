@@ -335,6 +335,10 @@ export default function litestar(config: string | string[] | PluginConfig): any[
     )
   }
 
+  // Add static props virtual module plugin
+  // This allows importing static data from Python config via virtual:litestar-static-props
+  plugins.push(createStaticPropsPlugin())
+
   return plugins
 }
 
@@ -927,8 +931,27 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   if (typeof resolvedConfig.input === "undefined") {
     throw new Error('litestar-vite-plugin: missing configuration for "input".')
   }
+  // Helper to normalize directory paths: trim, strip trailing slashes, and
+  // strip leading slashes only for relative paths (preserve absolute paths)
+  const normalizeDir = (dir: string): string => {
+    const trimmed = dir.trim().replace(/\/+$/, "")
+    // Strip leading slashes for paths that look like relative paths with accidental leading slash
+    // e.g., "/public" → "public", "/public/build" → "public/build"
+    // But preserve true absolute paths like "/home/user/project/public"
+    if (trimmed.startsWith("/")) {
+      const withoutSlash = trimmed.slice(1)
+      const segments = withoutSlash.split("/").filter(Boolean)
+      // Heuristic: if path has <= 2 segments, it's likely a relative path with accidental leading slash
+      // If > 2 segments, it's probably a real absolute filesystem path
+      if (segments.length <= 2) {
+        return withoutSlash
+      }
+    }
+    return trimmed
+  }
+
   if (typeof resolvedConfig.resourceDir === "string") {
-    resolvedConfig.resourceDir = resolvedConfig.resourceDir.trim().replace(/^\/+/, "").replace(/\/+$/, "")
+    resolvedConfig.resourceDir = normalizeDir(resolvedConfig.resourceDir)
 
     if (resolvedConfig.resourceDir === "") {
       throw new Error("litestar-vite-plugin: resourceDir must be a subdirectory. E.g. 'resources'.")
@@ -936,7 +959,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   }
 
   if (typeof resolvedConfig.bundleDir === "string") {
-    resolvedConfig.bundleDir = resolvedConfig.bundleDir.trim().replace(/^\/+/, "").replace(/\/+$/, "")
+    resolvedConfig.bundleDir = normalizeDir(resolvedConfig.bundleDir)
 
     if (resolvedConfig.bundleDir === "") {
       throw new Error("litestar-vite-plugin: bundleDir must be a subdirectory. E.g. 'public'.")
@@ -944,7 +967,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   }
 
   if (typeof resolvedConfig.staticDir === "string") {
-    resolvedConfig.staticDir = resolvedConfig.staticDir.trim().replace(/^\/+/, "").replace(/\/+$/, "")
+    resolvedConfig.staticDir = normalizeDir(resolvedConfig.staticDir)
 
     if (resolvedConfig.staticDir === "") {
       throw new Error("litestar-vite-plugin: staticDir must be a subdirectory. E.g. 'src/public'.")
@@ -952,7 +975,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   }
 
   if (typeof resolvedConfig.ssrOutDir === "string") {
-    resolvedConfig.ssrOutDir = resolvedConfig.ssrOutDir.trim().replace(/^\/+/, "").replace(/\/+$/, "")
+    resolvedConfig.ssrOutDir = normalizeDir(resolvedConfig.ssrOutDir)
   }
 
   if (resolvedConfig.refresh === true) {
@@ -1114,10 +1137,16 @@ function validateAgainstPythonDefaults(resolved: ResolvedPluginConfig, pythonDef
   const hasPythonValue = (value: unknown): value is string => typeof value === "string" && value.length > 0
 
   // Helper to compare paths by resolving to absolute - handles "../" relative paths
+  // Normalizes trailing slashes and path separators for cross-platform consistency
   const pathsAreSame = (a: string, b: string): boolean => {
-    const resolvedA = path.resolve(process.cwd(), a)
-    const resolvedB = path.resolve(process.cwd(), b)
-    return resolvedA === resolvedB
+    // Handle empty strings explicitly
+    if (!a && !b) return true
+    if (!a || !b) return false
+
+    // Resolve to absolute, normalize separators to forward slashes, and strip trailing slashes
+    const normalize = (p: string): string => path.resolve(process.cwd(), p).replace(/\\/g, "/").replace(/\/+$/, "")
+
+    return normalize(a) === normalize(b)
   }
 
   if (userConfig.assetUrl !== undefined && hasPythonValue(pythonDefaults.assetUrl) && resolved.assetUrl !== pythonDefaults.assetUrl) {
@@ -1231,6 +1260,57 @@ function resolveFullReloadConfig({ refresh: config }: ResolvedPluginConfig): Plu
 
     return plugin
   })
+}
+
+const STATIC_PROPS_VIRTUAL_MODULE_ID = "virtual:litestar-static-props"
+const STATIC_PROPS_RESOLVED_ID = "\0virtual:litestar-static-props"
+
+/**
+ * Vite plugin that exposes static props from .litestar.json as a virtual module.
+ *
+ * Usage in your app:
+ * ```ts
+ * import props from 'virtual:litestar-static-props'
+ * console.log(props.appName) // Your configured static prop
+ * ```
+ *
+ * The props are read at plugin initialization time. Changes to static_props
+ * in ViteConfig require a Vite restart to take effect.
+ */
+function createStaticPropsPlugin(): Plugin {
+  const bridgeConfig = readBridgeConfig()
+  const staticProps: Record<string, unknown> = bridgeConfig?.staticProps ?? {}
+
+  return {
+    name: "litestar-vite-static-props",
+    enforce: "pre",
+
+    resolveId(id: string) {
+      if (id === STATIC_PROPS_VIRTUAL_MODULE_ID) {
+        return STATIC_PROPS_RESOLVED_ID
+      }
+      return undefined
+    },
+
+    load(id: string) {
+      if (id === STATIC_PROPS_RESOLVED_ID) {
+        // Generate named exports for valid JavaScript identifiers
+        const namedExports: string[] = []
+        for (const key of Object.keys(staticProps)) {
+          // Check if key is a valid JS identifier
+          if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key)) {
+            namedExports.push(`export const ${key} = ${JSON.stringify(staticProps[key])};`)
+          }
+        }
+
+        // Always export all props as default
+        const defaultExport = `export default ${JSON.stringify(staticProps)};`
+
+        return [...namedExports, defaultExport].join("\n")
+      }
+      return undefined
+    },
+  }
 }
 
 /**

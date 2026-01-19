@@ -10,5 +10,5 @@
     "esModuleInterop": true,
     "skipLibCheck": true
   },
-  "include": ["./src/index.ts", "./src/astro.ts", "./src/sveltekit.ts", "./src/nuxt.ts", "./src/inertia-types.ts"]
+  "include": ["./src/index.ts", "./src/astro.ts", "./src/sveltekit.ts", "./src/nuxt.ts", "./src/inertia-types.ts", "./src/virtual.d.ts"]
 }

@@ -157,3 +157,101 @@ def test_write_runtime_config_no_leading_slashes(tmp_path: Path, monkeypatch: ob
         value = data.get(field)
         if value:
             assert not value.startswith("/"), f"{field}='{value}' has leading slash"
+
+
+# Tests for static_props feature
+
+
+def test_static_props_serialized_to_json(tmp_path: Path, monkeypatch: object) -> None:
+    """Verify static_props are written to .litestar.json."""
+    monkeypatch.setenv("LITESTAR_VERSION", "1.0.0")
+
+    cfg = ViteConfig(static_props={"appName": "Test App", "version": "1.0.0"})
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["staticProps"] == {"appName": "Test App", "version": "1.0.0"}
+
+
+def test_static_props_empty_dict_serializes_as_none(tmp_path: Path, monkeypatch: object) -> None:
+    """Verify empty static_props serializes as null in JSON."""
+    monkeypatch.setenv("LITESTAR_VERSION", "1.0.0")
+
+    cfg = ViteConfig(static_props={})
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["staticProps"] is None
+
+
+def test_static_props_nested_structures(tmp_path: Path, monkeypatch: object) -> None:
+    """Verify nested objects in static_props work correctly."""
+    monkeypatch.setenv("LITESTAR_VERSION", "1.0.0")
+
+    cfg = ViteConfig(
+        static_props={
+            "app": {"name": "My App", "environment": "production"},
+            "features": {"darkMode": True, "analytics": False, "limits": {"maxUpload": 10000000}},
+            "tags": ["web", "python", "typescript"],
+        }
+    )
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["staticProps"]["app"]["name"] == "My App"
+    assert data["staticProps"]["features"]["darkMode"] is True
+    assert data["staticProps"]["features"]["limits"]["maxUpload"] == 10000000
+    assert data["staticProps"]["tags"] == ["web", "python", "typescript"]
+
+
+def test_static_props_default_is_empty_dict() -> None:
+    """Verify static_props defaults to empty dict."""
+    cfg = ViteConfig()
+    assert cfg.static_props == {}
+
+
+# Tests for path normalization - forward slashes
+
+
+def test_path_for_bridge_uses_forward_slashes() -> None:
+    """Verify paths use forward slashes (cross-platform consistency)."""
+    root = Path("/project")
+    # Even on Windows, we want forward slashes in the JSON
+    path = Path("src") / "assets" / "images"
+    result = _path_for_bridge(path, root)
+    # Should use forward slashes regardless of platform
+    assert "\\" not in result
+    assert "src/assets/images" == result
+
+
+def test_path_for_bridge_absolute_uses_forward_slashes(tmp_path: Path) -> None:
+    """Verify absolute paths converted to relative use forward slashes."""
+    root = tmp_path
+    subdir = tmp_path / "src" / "components" / "ui"
+    subdir.mkdir(parents=True)
+
+    result = _path_for_bridge(subdir, root)
+
+    # Should use forward slashes regardless of platform
+    assert "\\" not in result
+    assert result == "src/components/ui"
+
+
+def test_path_for_bridge_outside_root_uses_forward_slashes(tmp_path: Path) -> None:
+    """Verify ../ paths use forward slashes."""
+    root = tmp_path / "project"
+    root.mkdir()
+    external = tmp_path / "external" / "shared"
+    external.mkdir(parents=True)
+
+    result = _path_for_bridge(external, root)
+
+    # Should use forward slashes even for ../ paths
+    assert "\\" not in result
+    assert ".." in result

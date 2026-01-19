@@ -132,9 +132,20 @@ def on_warn_missing_reference(app: Sphinx, domain: str, node: Node) -> bool | No
         "T",  # Generic type parameter
         "EngineType",
         "ViteConfig",  # litestar_vite.config.ViteConfig
+        "Serializer",  # litestar.serialization.Serializer
     }
 
     if target in builtin_types:
+        return True
+
+    # Handle partial generic type annotations that Sphinx truncates at commas/brackets
+    # These appear as incomplete types like "dict[str" or "Literal['value"
+    partial_generic_prefixes = ("dict[", "list[", "set[", "tuple[", "frozenset[", "typing.Literal[", "Literal[")
+    if target.startswith(partial_generic_prefixes):
+        return True
+
+    # Handle union types with partial generics (e.g., "set[str] | dict[str")
+    if " | " in target and any(part.startswith(partial_generic_prefixes) for part in target.split(" | ")):
         return True
 
     if reference_target_source_obj := attributes.get("py:class", attributes.get("py:meth", attributes.get("py:func"))):

@@ -54,6 +54,7 @@ The `ViteConfig` class in `config/` (imported as `litestar_vite.config`) control
     - **`exclude_static_from_auth`**: Exclude static file routes from authentication (default: True)
     - **`spa_path`**: Path where the SPA handler serves index.html (default: "/")
     - **`include_root_spa_paths`**: Register SPA routes at root even when spa_path is non-root (default: False)
+    - **`static_props`**: Dictionary of static configuration data to pass from Python to JavaScript via `virtual:litestar-static-props` module (default: empty dict)
 
 Key `RuntimeConfig` options:
 

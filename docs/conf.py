@@ -34,7 +34,6 @@ extensions = [
     "sphinx.ext.todo",
     "sphinx.ext.viewcode",
     "sphinx_click",
-    "sphinx_toolbox.collapse",
     "sphinx_design",
     "sphinxcontrib.mermaid",
     "sphinx_paramlinks",

@@ -205,7 +205,8 @@ def log_fail(message: str) -> None:
 def _path_for_bridge(path: Path, root_dir: Path) -> str:
     """Convert a path to a relative string for the JS bridge config.
 
-    The JavaScript plugin expects relative paths without leading slashes.
+    The JavaScript plugin expects relative paths without leading slashes
+    and using forward slashes for cross-platform consistency.
     This function converts absolute paths to relative paths (relative to root_dir)
     when possible.
 
@@ -214,24 +215,27 @@ def _path_for_bridge(path: Path, root_dir: Path) -> str:
         root_dir: The project root directory.
 
     Returns:
-        A relative path string suitable for .litestar.json.
+        A relative path string suitable for .litestar.json using forward slashes.
         If the path cannot be made relative (outside root_dir), returns
         a relative path using os.path.relpath (e.g., "../external").
     """
     if not path.is_absolute():
         # Already relative, return as-is without any leading slash
-        return str(path).lstrip("/")
+        # Force forward slashes for cross-platform consistency
+        return str(path).lstrip("/").replace("\\", "/")
 
     # Resolve both paths to handle symlinks consistently
     resolved_path = path.resolve()
     resolved_root = root_dir.resolve()
     try:
         relative = resolved_path.relative_to(resolved_root)
-        return str(relative)
+        # Force forward slashes for cross-platform consistency
+        return str(relative).replace("\\", "/")
     except ValueError:
         # Path is outside root_dir - cannot make relative via relative_to
         # Use os.path.relpath as fallback which handles "../" paths
-        return os.path.relpath(resolved_path, resolved_root)
+        # Force forward slashes for cross-platform consistency
+        return os.path.relpath(resolved_path, resolved_root).replace("\\", "/")
 
 
 @overload
@@ -314,6 +318,7 @@ def write_runtime_config_file(
         else None,
         "executor": config.runtime.executor,
         "litestarVersion": litestar_version,
+        "staticProps": config.static_props if config.static_props else None,
     }
 
     import msgspec

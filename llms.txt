@@ -21,6 +21,7 @@ litestar run             # Start backend + Vite dev server
   - `template`/`htmx`: Server-side templates (Jinja2) + Vite assets.
   - `framework`/`ssr`/`ssg`: Meta-frameworks (Astro, Nuxt, SvelteKit) via proxy.
 - **Configuration**: `vite.config.ts` > `.litestar.json` (auto-generated) > Defaults.
+- **Static Props**: Pass config data from Python to JavaScript via `ViteConfig(static_props={...})`, accessible via `import props from 'virtual:litestar-static-props'`.
 - **CLI**: Always use `litestar assets [serve|build|install|status|doctor]` to manage the frontend (or `litestar run` to start both).
 
 ## Documentation

@@ -554,7 +554,8 @@ describe("litestar-vite-plugin", () => {
     const plugins = litestar("resources/js/app.js")
 
     // With auto mode, types are disabled when no .litestar.json exists
-    expect(plugins.length).toBe(1) // main plugin only (types disabled in auto mode without .litestar.json)
+    // Plugins: main + static-props
+    expect(plugins.length).toBe(2) // main plugin + static-props plugin
   })
 
   it("does not configure full reload when refresh is not present", () => {
@@ -563,7 +564,8 @@ describe("litestar-vite-plugin", () => {
       types: false,
     })
 
-    expect(plugins.length).toBe(1)
+    // Plugins: main + static-props
+    expect(plugins.length).toBe(2)
   })
 
   it("does not configure full reload when refresh is set to undefined", () => {
@@ -572,7 +574,8 @@ describe("litestar-vite-plugin", () => {
       refresh: undefined,
       types: false,
     })
-    expect(plugins.length).toBe(1)
+    // Plugins: main + static-props
+    expect(plugins.length).toBe(2)
   })
 
   it("does not configure full reload when refresh is false", () => {
@@ -582,7 +585,8 @@ describe("litestar-vite-plugin", () => {
       types: false,
     })
 
-    expect(plugins.length).toBe(1)
+    // Plugins: main + static-props
+    expect(plugins.length).toBe(2)
   })
 
   it("configures full reload with python and template files when refresh is true", () => {
@@ -592,7 +596,8 @@ describe("litestar-vite-plugin", () => {
       types: false,
     })
 
-    expect(plugins.length).toBe(2)
+    // Plugins: main + refresh + static-props
+    expect(plugins.length).toBe(3)
     /** @ts-ignore */
     expect(plugins[1].__litestar_plugin_config).toEqual({
       paths: ["src/**", "resources/**", "assets/**"],
@@ -606,7 +611,8 @@ describe("litestar-vite-plugin", () => {
       types: false,
     })
 
-    expect(plugins.length).toBe(2)
+    // Plugins: main + refresh + static-props
+    expect(plugins.length).toBe(3)
     /** @ts-ignore */
     expect(plugins[1].__litestar_plugin_config).toEqual({
       paths: ["path/to/watch/**"],
@@ -620,7 +626,8 @@ describe("litestar-vite-plugin", () => {
       types: false,
     })
 
-    expect(plugins.length).toBe(2)
+    // Plugins: main + refresh + static-props
+    expect(plugins.length).toBe(3)
     /** @ts-ignore */
     expect(plugins[1].__litestar_plugin_config).toEqual({
       paths: ["path/to/watch/**", "another/to/watch/**"],
@@ -637,7 +644,8 @@ describe("litestar-vite-plugin", () => {
       types: false,
     })
 
-    expect(plugins.length).toBe(2)
+    // Plugins: main + refresh + static-props
+    expect(plugins.length).toBe(3)
     /** @ts-ignore */
     expect(plugins[1].__litestar_plugin_config).toEqual({
       paths: ["path/to/watch/**", "another/to/watch/**"],
@@ -661,7 +669,8 @@ describe("litestar-vite-plugin", () => {
       types: false,
     })
 
-    expect(plugins.length).toBe(3)
+    // Plugins: main + 2 refresh + static-props
+    expect(plugins.length).toBe(4)
     /** @ts-ignore */
     expect(plugins[1].__litestar_plugin_config).toEqual({
       paths: ["path/to/watch/**"],
@@ -1047,6 +1056,213 @@ describe("type generation config detection", () => {
     const configPath = candidates.find((p) => fs.existsSync(p)) || null
 
     expect(configPath).toBeNull()
+  })
+})
+
+describe("path comparison for config mismatch detection", () => {
+  const originalEnv = { ...process.env }
+  let tempDir: string
+
+  const createRuntimeConfigLocal = (data: Record<string, unknown>): string => {
+    tempDir = fs.mkdtempSync(path.join(process.cwd(), "vitest-paths-"))
+    const cfgPath = path.join(tempDir, ".litestar.json")
+    const baseConfig = {
+      assetUrl: "/static",
+      deployAssetUrl: null,
+      bundleDir: "public",
+      resourceDir: "resources",
+      staticDir: "public",
+      hotFile: "hot",
+      manifest: "manifest.json",
+      mode: "spa",
+      proxyMode: "vite",
+      host: "localhost",
+      port: 5173,
+      ssrOutDir: null,
+      types: null,
+      spa: null,
+      executor: "node",
+      logging: null,
+      litestarVersion: "2.18.0",
+    }
+    fs.writeFileSync(cfgPath, JSON.stringify({ ...baseConfig, ...data }), "utf-8")
+    process.env.LITESTAR_VITE_CONFIG_PATH = cfgPath
+    return cfgPath
+  }
+
+  const cleanupLocal = (): void => {
+    if (tempDir) {
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true })
+      } catch {
+        // ignore
+      }
+    }
+    delete process.env.LITESTAR_VITE_CONFIG_PATH
+  }
+
+  beforeEach(() => {
+    process.env = { ...originalEnv }
+  })
+
+  afterEach(() => {
+    process.env = { ...originalEnv }
+    cleanupLocal()
+  })
+
+  it("treats paths with trailing slashes as equivalent", () => {
+    // Python may write "dist/public" while JS may have "dist/public/"
+    createRuntimeConfigLocal({
+      bundleDir: "dist/public",
+    })
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    // Create plugin with same path but trailing slash
+    const plugin = litestar({
+      input: "resources/js/app.ts",
+      bundleDir: "dist/public/",
+    })[0]
+
+    // Trigger config resolution which does comparison
+    plugin.config({}, { command: "build", mode: "production" })
+
+    // Should NOT warn about mismatch because paths are semantically equal
+    expect(warnSpy).not.toHaveBeenCalled()
+
+    warnSpy.mockRestore()
+  })
+
+  it("treats paths with different separators as equivalent", () => {
+    // This tests that forward and back slashes are treated the same
+    createRuntimeConfigLocal({
+      bundleDir: "dist/public",
+    })
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const plugin = litestar({
+      input: "resources/js/app.ts",
+      bundleDir: "dist/public", // Same path, should match
+    })[0]
+
+    plugin.config({}, { command: "build", mode: "production" })
+
+    expect(warnSpy).not.toHaveBeenCalled()
+
+    warnSpy.mockRestore()
+  })
+
+  it("detects actual path differences correctly", () => {
+    createRuntimeConfigLocal({
+      bundleDir: "dist/public",
+    })
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const plugin = litestar({
+      input: "resources/js/app.ts",
+      bundleDir: "build/assets", // Different path
+    })[0]
+
+    plugin.config({}, { command: "build", mode: "production" })
+
+    // Should warn about the mismatch
+    expect(warnSpy).toHaveBeenCalled()
+    const warnMessage = warnSpy.mock.calls[0][0]
+    expect(warnMessage).toContain("bundleDir")
+    expect(warnMessage).toContain("build/assets")
+    expect(warnMessage).toContain("dist/public")
+
+    warnSpy.mockRestore()
+  })
+
+  it("treats relative path from Python as equivalent to absolute path in JS", () => {
+    // Python writes relative path "public" to .litestar.json
+    createRuntimeConfigLocal({
+      bundleDir: "public",
+    })
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    // JS plugin configured with absolute path pointing to same location
+    const absolutePath = path.resolve(process.cwd(), "public")
+    const plugin = litestar({
+      input: "resources/js/app.ts",
+      bundleDir: absolutePath,
+    })[0]
+
+    plugin.config({}, { command: "build", mode: "production" })
+
+    // Should NOT warn because they resolve to the same location
+    expect(warnSpy).not.toHaveBeenCalled()
+
+    warnSpy.mockRestore()
+  })
+
+  it("treats absolute path from Python as equivalent to relative path in JS", () => {
+    // Python writes absolute path to .litestar.json
+    const absolutePath = path.resolve(process.cwd(), "dist/assets")
+    createRuntimeConfigLocal({
+      bundleDir: absolutePath,
+    })
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    // JS plugin configured with relative path pointing to same location
+    const plugin = litestar({
+      input: "resources/js/app.ts",
+      bundleDir: "dist/assets",
+    })[0]
+
+    plugin.config({}, { command: "build", mode: "production" })
+
+    // Should NOT warn because they resolve to the same location
+    expect(warnSpy).not.toHaveBeenCalled()
+
+    warnSpy.mockRestore()
+  })
+
+  it("preserves leading slash in absolute paths during comparison", () => {
+    // This ensures /home/user/project/public isn't compared as home/user/project/public
+    const absolutePath = path.resolve(process.cwd(), "public")
+    createRuntimeConfigLocal({
+      bundleDir: absolutePath,
+    })
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    // Same absolute path should match
+    const plugin = litestar({
+      input: "resources/js/app.ts",
+      bundleDir: absolutePath,
+    })[0]
+
+    plugin.config({}, { command: "build", mode: "production" })
+
+    expect(warnSpy).not.toHaveBeenCalled()
+
+    warnSpy.mockRestore()
+  })
+
+  it("handles empty path values gracefully", () => {
+    createRuntimeConfigLocal({
+      bundleDir: "public",
+    })
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    // Plugin with valid path should work
+    const plugin = litestar({
+      input: "resources/js/app.ts",
+      bundleDir: "public",
+    })[0]
+
+    plugin.config({}, { command: "build", mode: "production" })
+
+    expect(warnSpy).not.toHaveBeenCalled()
+
+    warnSpy.mockRestore()
   })
 })
 

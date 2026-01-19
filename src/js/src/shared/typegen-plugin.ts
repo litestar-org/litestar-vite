@@ -15,6 +15,7 @@ import type { Plugin, ResolvedConfig, ViteDevServer } from "vite"
 import { debounce } from "./debounce.js"
 import { emitPagePropsTypes } from "./emit-page-props-types.js"
 import { emitSchemasTypes } from "./emit-schemas-types.js"
+import { emitStaticPropsTypes } from "./emit-static-props-types.js"
 import { formatPath } from "./format-path.js"
 import { shouldRunOpenApiTs, updateOpenApiTsCache } from "./typegen-cache.js"
 import { buildHeyApiPlugins, findOpenApiTsConfig, runHeyApiGeneration, type TypeGenCoreConfig, type TypeGenLogger } from "./typegen-core.js"
@@ -188,6 +189,19 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
           const message = error instanceof Error ? error.message : String(error)
           logger.error(`Schema types generation failed: ${message}`)
         }
+      }
+
+      // Generate static props types from .litestar.json
+      try {
+        const changed = await emitStaticPropsTypes(typesConfig.output)
+        if (changed) {
+          generated = true
+        } else {
+          resolvedConfig?.logger.info(`${colors.cyan("•")} Static props types ${colors.dim("(unchanged)")}`)
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        logger.error(`Static props generation failed: ${message}`)
       }
 
       if (generated && resolvedConfig) {
