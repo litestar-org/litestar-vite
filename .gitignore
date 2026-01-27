@@ -186,6 +186,7 @@ examples/*/frontend/package-lock.json
 specs/
 .gemini/
 .claude/
+.agent/
 AGENTS.md
 CLAUDE.md
 gemini.md
