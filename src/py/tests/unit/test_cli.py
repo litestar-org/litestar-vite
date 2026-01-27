@@ -152,6 +152,14 @@ def test_cli_print_recommended_config(capsys: pytest.CaptureFixture[str]) -> Non
     assert "resource_dir" in output
 
 
+def test_cli_print_recommended_config_with_frontend_dir(capsys: pytest.CaptureFixture[str]) -> None:
+    _print_recommended_config("react", "src", "public", frontend_dir="web")
+    output = capsys.readouterr().out
+    assert 'resource_dir="web/src"' in output
+    assert 'bundle_dir="web/public"' in output
+
+
+
 def test_cli_select_template_with_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
     template = FrameworkTemplate(
         name="React", type=FrameworkType.REACT, description="React template", resource_dir="src"
