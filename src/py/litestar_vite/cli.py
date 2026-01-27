@@ -101,9 +101,9 @@ def _print_recommended_config(
     spa_templates = {"react-router", "react-tanstack"}
     mode = "spa" if template_name in spa_templates else "template"
 
+    root_expr = "Path(__file__).parent"
     if frontend_dir and frontend_dir != ".":
-        resource_dir = f"{frontend_dir}/{resource_dir}"
-        bundle_dir = f"{frontend_dir}/{bundle_dir}"
+        root_expr = f'Path(__file__).parent / "{frontend_dir}"'
 
     config_snippet = dedent(
         f"""\
@@ -115,7 +115,7 @@ def _print_recommended_config(
             dev_mode=True,
             types=True,
             paths=PathConfig(
-                root=Path(__file__).parent,
+                root={root_expr},
                 resource_dir="{resource_dir}",
                 bundle_dir="{bundle_dir}",
             ),
