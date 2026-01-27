@@ -159,7 +159,6 @@ def test_cli_print_recommended_config_with_frontend_dir(capsys: pytest.CaptureFi
     assert 'bundle_dir="web/public"' in output
 
 
-
 def test_cli_select_template_with_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
     template = FrameworkTemplate(
         name="React", type=FrameworkType.REACT, description="React template", resource_dir="src"
@@ -515,7 +514,6 @@ def test_cli_vite_init_frontend_dir(tmp_path: Path) -> None:
 
     assert fake_executor.installs
     assert fake_executor.installs[0] == tmp_path / "web"
-
 
 
 def test_cli_get_package_executor_cmd_variants() -> None:
