@@ -553,7 +553,8 @@ def vite_init(
 
     if not no_install:
         console.rule("Starting [blue]Vite[/] package installation", align="left")
-        config.executor.install(root_path)
+        install_dir = root_path / frontend_dir
+        config.executor.install(install_dir)
 
     console.print("\n[bold green]Vite initialization complete![/]")
 
