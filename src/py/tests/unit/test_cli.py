@@ -476,6 +476,40 @@ def test_cli_export_routes_json_and_ts(tmp_path: Path) -> None:
         )
 
 
+def test_cli_vite_init_frontend_dir(tmp_path: Path) -> None:
+    app = _make_app(tmp_path)
+    env = LitestarEnv(app_path="app:app", app=app, cwd=tmp_path)
+    ctx = SimpleNamespace(obj=env)
+    fake_executor = FakeExecutor()
+    app.plugins.get(VitePlugin).config._executor_instance = fake_executor
+
+    with patch("litestar_vite.cli.generate_project", return_value=[tmp_path / "web" / "file.txt"]):
+        _unwrap_command(vite_init)(
+            ctx,
+            template="react",
+            vite_port=None,
+            enable_ssr=None,
+            asset_url=None,
+            root_path=tmp_path,
+            frontend_dir="web",
+            bundle_path=None,
+            resource_path=None,
+            static_path=None,
+            tailwind=False,
+            enable_types=False,
+            generate_zod=False,
+            generate_client=False,
+            overwrite=True,
+            verbose=False,
+            no_prompt=True,
+            no_install=False,
+        )
+
+    assert fake_executor.installs
+    assert fake_executor.installs[0] == tmp_path / "web"
+
+
+
 def test_cli_get_package_executor_cmd_variants() -> None:
     assert _get_package_executor_cmd("bun", "tool") == ["bunx", "tool"]
     assert _get_package_executor_cmd("deno", "tool") == ["deno", "run", "-A", "npm:tool"]
