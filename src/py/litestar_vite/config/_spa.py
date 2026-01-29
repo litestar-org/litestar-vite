@@ -31,6 +31,14 @@ class SPAConfig:
     csrf_var_name: str = "__LITESTAR_CSRF__"
     app_selector: str = "#app"
     cache_transformed_html: bool = True
+    cache_duration: int = 0
+    """HTTP cache duration in seconds for the SPA HTML response.
+
+    Defaults to 0 (no caching), which is recommended for SPAs to ensure
+    browsers always fetch the latest index.html after deployments.
+    Set to a positive value (e.g., 3600 for 1 hour) if you have a
+    cache-busting strategy in place.
+    """
 
 
 def get_default_log_level() -> "Literal['quiet', 'normal', 'verbose']":
