@@ -1197,7 +1197,9 @@ async def test_spa_handler_route_exclusion_no_false_positives(spa_config: ViteCo
 # ============================================================================
 
 
-async def test_spa_handler_cache_duration_default_is_zero(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_spa_handler_cache_duration_default_is_zero(
+    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Test that default cache_duration is 0 (no HTTP caching)."""
     from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
 
@@ -1223,7 +1225,9 @@ async def test_spa_handler_cache_duration_default_is_zero(temp_resource_dir: Pat
     assert not hasattr(route, "cache") or route.cache is None or route.cache == 0
 
 
-async def test_spa_handler_cache_duration_configurable(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_spa_handler_cache_duration_configurable(
+    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Test that cache_duration can be configured to enable HTTP caching."""
     from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
 

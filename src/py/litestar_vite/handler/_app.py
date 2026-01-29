@@ -650,7 +650,7 @@ class AppHandler:
 
         cache_duration = self._spa_config.cache_duration if self._spa_config else 0
         if cache_duration > 0:
-            return get(path=paths, name="vite_spa", opt=opt, include_in_schema=False, cache=cache_duration, guards=guards)(
-                spa_handler_prod
-            )
+            return get(
+                path=paths, name="vite_spa", opt=opt, include_in_schema=False, cache=cache_duration, guards=guards
+            )(spa_handler_prod)
         return get(path=paths, name="vite_spa", opt=opt, include_in_schema=False, guards=guards)(spa_handler_prod)
