@@ -34,7 +34,7 @@ _PROXY_ALLOW_PREFIXES: tuple[str, ...] = (
     "/@vite/env",
     "/vite-hmr",
     "/__vite_ping",
-    "/node_modules/.vite/",
+    "/node_modules/",
     "/@analogjs/",
 )
 
@@ -339,11 +339,7 @@ def create_vite_hmr_handler(hotfile_path: Path, hmr_path: str = "/static/vite-hm
 
     @websocket(path=hmr_path, opt={"exclude_from_auth": True})
     async def vite_hmr_proxy(socket: "WebSocket[Any, Any, Any]") -> None:
-        """Proxy WebSocket messages between browser and Vite dev server.
-
-        Raises:
-            BaseException: Re-raises unexpected exceptions to allow the ASGI server to log them.
-        """
+        """Proxy WebSocket messages between browser and Vite dev server."""
         scope_dict = dict(socket.scope)
         target = build_hmr_target_url(hotfile_path, scope_dict, hmr_path, asset_url)
         if target is None:

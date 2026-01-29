@@ -70,6 +70,9 @@ async def test_proxy_should_proxy_matches_vite_paths(hotfile: Path) -> None:
     assert middleware._should_proxy("/@analogjs/vite-plugin-angular", dummy_scope)
     assert not middleware._should_proxy("/api/users", dummy_scope)
 
+    # node_modules paths for npm packages with static assets (e.g., @fontsource fonts)
+    assert middleware._should_proxy("/node_modules/@fontsource/geist/files/font.woff2", dummy_scope)
+
     # Project paths (resource_dir) are proxied when configured
     middleware_with_src = ViteProxyMiddleware(noop, hotfile_path=hotfile, resource_dir=Path("src"))
     assert middleware_with_src._should_proxy("/src/main.ts", dummy_scope)

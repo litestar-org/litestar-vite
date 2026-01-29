@@ -1190,3 +1190,86 @@ async def test_spa_handler_route_exclusion_no_false_positives(spa_config: ViteCo
             response = await client.get(path)
             assert response.status_code == 200, f"Failed for path: {path}"
             assert "Test SPA" in response.text, f"No SPA content for path: {path}"
+
+
+# ============================================================================
+# SPA Handler Cache Configuration Tests
+# ============================================================================
+
+
+async def test_spa_handler_cache_duration_default_is_zero(
+    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that default cache_duration is 0 (no HTTP caching)."""
+    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    spa_config = SPAConfig()
+    assert spa_config.cache_duration == 0
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=spa_config,
+    )
+    handler = AppHandler(config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    # With cache_duration=0, the route should NOT have cache decorator
+    # We can verify this by checking the route handler doesn't have cache_config
+    assert not hasattr(route, "cache") or route.cache is None or route.cache == 0
+
+
+async def test_spa_handler_cache_duration_configurable(
+    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that cache_duration can be configured to enable HTTP caching."""
+    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    # Set cache_duration to 1 hour
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(cache_duration=3600),
+    )
+    handler = AppHandler(config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    # With cache_duration=3600, the route should have cache enabled
+    # The route handler should have the cache config set
+    assert route.cache == 3600
+
+
+async def test_spa_handler_no_cache_when_spa_config_disabled(
+    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that no HTTP caching is applied when spa=False."""
+    from litestar_vite.config import PathConfig, RuntimeConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=False,  # Transformations disabled
+    )
+    handler = AppHandler(config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+
+    # With spa=False, cache_duration defaults to 0 (no caching)
+    assert not hasattr(route, "cache") or route.cache is None or route.cache == 0
