@@ -22,7 +22,7 @@ class PathConfig:
         ssr_output_dir: SSR output directory (optional).
     """
 
-    root: "str | Path" = field(default_factory=Path.cwd)
+    root: "str | Path | None" = field(default=None)
     bundle_dir: "str | Path" = field(default_factory=lambda: Path("public"))
     resource_dir: "str | Path" = field(default_factory=lambda: Path("src"))
     static_dir: "str | Path" = field(default_factory=lambda: Path("public"))
@@ -40,7 +40,9 @@ class PathConfig:
         and effectively disable public asset copying, so ``static_dir`` defaults to
         ``<resource_dir>/public`` in that case.
         """
-        if isinstance(self.root, str):
+        if self.root is None:
+            object.__setattr__(self, "root", Path.cwd())
+        elif isinstance(self.root, str):
             object.__setattr__(self, "root", Path(self.root))
         if isinstance(self.bundle_dir, str):
             object.__setattr__(self, "bundle_dir", Path(self.bundle_dir))
