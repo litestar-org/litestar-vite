@@ -235,6 +235,21 @@ class ViteConfig:
 
     def __post_init__(self) -> None:
         """Normalize configurations and apply shortcuts."""
+        if isinstance(self.paths, dict):
+            self.paths = PathConfig(**self.paths)
+        if isinstance(self.runtime, dict):
+            self.runtime = RuntimeConfig(**self.runtime)
+        if isinstance(self.types, dict):
+            self.types = TypeGenConfig(**self.types)
+        if isinstance(self.inertia, dict):
+            self.inertia = InertiaConfig(**self.inertia)
+        if isinstance(self.spa, dict):
+            self.spa = SPAConfig(**self.spa)
+        if isinstance(self.logging, dict):
+            self.logging = LoggingConfig(**self.logging)
+        if isinstance(self.deploy, dict):
+            self.deploy = DeployConfig(**self.deploy)
+
         self._normalize_mode()
         self._normalize_types()
         self._normalize_inertia()
