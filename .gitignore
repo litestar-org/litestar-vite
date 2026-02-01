@@ -209,3 +209,5 @@ examples/*/.angular
 coverage/
 examples/flash/public
 coverage.json
+.agent/
+.geminiignore
