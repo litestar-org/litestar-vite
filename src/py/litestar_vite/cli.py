@@ -87,16 +87,23 @@ def _apply_cli_log_level(config: ViteConfig, *, verbose: bool = False, quiet: bo
         config.reset_executor()
 
 
-def _print_recommended_config(template_name: str, resource_dir: str, bundle_dir: str) -> None:
+def _print_recommended_config(
+    template_name: str, resource_dir: str, bundle_dir: str, frontend_dir: str = "."
+) -> None:
     """Print recommended ViteConfig for the scaffolded template.
 
     Args:
         template_name: The name of the template that was scaffolded.
         resource_dir: The resource directory used.
         bundle_dir: The bundle directory used.
+        frontend_dir: The subdirectory where the frontend is located.
     """
     spa_templates = {"react-router", "react-tanstack"}
     mode = "spa" if template_name in spa_templates else "template"
+
+    root_path_str = "Path(__file__).parent"
+    if frontend_dir and frontend_dir != ".":
+        root_path_str = f'Path(__file__).parent / "{frontend_dir}"'
 
     config_snippet = dedent(
         f"""\
@@ -108,7 +115,7 @@ def _print_recommended_config(template_name: str, resource_dir: str, bundle_dir:
             dev_mode=True,
             types=True,
             paths=PathConfig(
-                root=Path(__file__).parent,
+                root={root_path_str},
                 resource_dir="{resource_dir}",
                 bundle_dir="{bundle_dir}",
             ),
@@ -557,7 +564,7 @@ def vite_init(
 
     console.print("\n[bold green]Vite initialization complete![/]")
 
-    _print_recommended_config(template, context.resource_dir, context.bundle_dir)
+    _print_recommended_config(template, context.resource_dir, context.bundle_dir, frontend_dir)
 
     next_steps_cmd = _format_command(config.run_command)
     console.print(f"\n[dim]Next steps:\n  cd {root_path}\n  {next_steps_cmd}[/]")

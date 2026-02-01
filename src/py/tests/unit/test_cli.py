@@ -573,3 +573,9 @@ def test_cli_vite_init_runs_install_with_frontend_dir(tmp_path: Path) -> None:
 
     # This assertion expects failure currently, as the code uses root_path
     assert fake_executor.installs[0] == tmp_path / "web"
+
+
+def test_cli_print_recommended_config_with_frontend_dir(capsys: pytest.CaptureFixture[str]) -> None:
+    _print_recommended_config("react", "src", "public", frontend_dir="web")
+    output = capsys.readouterr().out
+    assert 'root=Path(__file__).parent / "web"' in output
