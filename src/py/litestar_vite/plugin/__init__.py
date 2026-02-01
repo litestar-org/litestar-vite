@@ -603,7 +603,11 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 target_url = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
                 self._write_hotfile(target_url)
 
+            if not (self._config.root_dir / "package.json").exists():
+                log_warn(f"package.json not found in {self._config.root_dir}. Vite/npm may fail.")
+
             try:
+                log_info(f"Starting Vite process in {self._config.root_dir}")
                 self._vite_process.start(command_to_run, self._config.root_dir)
                 log_success("Vite process started")
                 if self._config.health_check and not is_external:
