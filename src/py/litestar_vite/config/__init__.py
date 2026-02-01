@@ -235,6 +235,7 @@ class ViteConfig:
 
     def __post_init__(self) -> None:
         """Normalize configurations and apply shortcuts."""
+        self._normalize_root_path()
         self._normalize_mode()
         self._normalize_types()
         self._normalize_inertia()
@@ -249,6 +250,16 @@ class ViteConfig:
         self._ensure_spa_default()
         self._auto_enable_dev_mode()
         self._warn_missing_assets()
+
+    def _normalize_root_path(self) -> None:
+        """Ensure root path is absolute.
+
+        If the root path is relative, it is resolved against the current working directory.
+        This ensures consistent path resolution for subdirectory deployments (e.g. ``frontend_dir``).
+        """
+        root = self.paths.root
+        if not root.is_absolute():
+            self.paths.root = root.resolve()
 
     def _auto_detect_react(self) -> None:
         """Enable React Fast Refresh automatically for React templates.
