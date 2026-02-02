@@ -102,6 +102,12 @@ describe("install-hint", () => {
       expect(hint).toBe("npm install -D some-package")
     })
 
+    it("handles multiple packages", () => {
+      const hint = resolveInstallHint("@hey-api/openapi-ts zod")
+
+      expect(hint).toBe("npm install -D @hey-api/openapi-ts zod")
+    })
+
     it("returns bun add for bun runtime", () => {
       process.env.LITESTAR_VITE_RUNTIME = "bun"
 
