@@ -211,7 +211,17 @@ export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunT
         result.generated = true
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        if (message.includes("not found") || message.includes("ENOENT") || message.includes("not installed")) {
+        const isEnoent = message.includes("not found") || message.includes("ENOENT") || message.includes("not installed")
+        
+        // Check for specific path collision bug in openapi-ts v0.91+
+        // It fails with ENOENT when the project path contains /src/
+        const hasSrcInPath = projectRoot.split(path.sep).includes("src")
+
+        if (isEnoent && hasSrcInPath) {
+          const warning = "It looks like you are hitting a path collision bug in @hey-api/openapi-ts v0.91+. Please downgrade to v0.90.10 until this is fixed upstream."
+          result.warnings.push(warning)
+          logger?.warn(warning)
+        } else if (isEnoent) {
           const zodHint = config.generateZod ? " zod" : ""
           const warning = `@hey-api/openapi-ts not installed - run: ${resolveInstallHint("@hey-api/openapi-ts" + zodHint)}`
           result.warnings.push(warning)
