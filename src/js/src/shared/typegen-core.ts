@@ -151,7 +151,7 @@ export async function runHeyApiGeneration(config: TypeGenCoreConfig, configPath:
     try {
       nodeRequire.resolve("zod", { paths: [projectRoot] })
     } catch {
-      logger?.warn(`zod not installed - run: ${resolveInstallHint()} zod`)
+      logger?.warn(`zod not installed - run: ${resolveInstallHint("zod")}`)
     }
   }
 
@@ -213,7 +213,7 @@ export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunT
         const message = error instanceof Error ? error.message : String(error)
         if (message.includes("not found") || message.includes("ENOENT") || message.includes("not installed")) {
           const zodHint = config.generateZod ? " zod" : ""
-          const warning = `@hey-api/openapi-ts not installed - run: ${resolveInstallHint()} -D @hey-api/openapi-ts${zodHint}`
+          const warning = `@hey-api/openapi-ts not installed - run: ${resolveInstallHint("@hey-api/openapi-ts" + zodHint)}`
           result.warnings.push(warning)
           logger?.warn(warning)
         } else {
