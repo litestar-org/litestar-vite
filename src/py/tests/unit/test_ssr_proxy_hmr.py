@@ -1,6 +1,7 @@
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import anyio
 import pytest
 from litestar import WebSocket
 from litestar.exceptions import WebSocketDisconnect
@@ -67,9 +68,9 @@ async def test_ssr_proxy_falls_back_to_main_target_when_hmr_missing(hotfile: Pat
     """Test that SSRProxyController.ws_proxy falls back to main target if hot.hmr is missing."""
 
     # Ensure no hmr file
-    hmr_path = Path(f"{hotfile}.hmr")
-    if hmr_path.exists():
-        hmr_path.unlink()
+    hmr_path = anyio.Path(f"{hotfile}.hmr")
+    if await hmr_path.exists():
+        await hmr_path.unlink()
 
     # Create the controller class
     ControllerClass = create_ssr_proxy_controller(hotfile_path=hotfile)

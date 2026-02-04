@@ -151,7 +151,7 @@ export async function runHeyApiGeneration(config: TypeGenCoreConfig, configPath:
     try {
       nodeRequire.resolve("zod", { paths: [projectRoot] })
     } catch {
-      logger?.warn(`zod not installed - run: ${resolveInstallHint()} zod`)
+      logger?.warn(`zod not installed - run: ${resolveInstallHint("zod")}`)
     }
   }
 
@@ -211,11 +211,23 @@ export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunT
         result.generated = true
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        if (message.includes("not found") || message.includes("ENOENT") || message.includes("not installed")) {
+
+        // Distinguish error types:
+        // 1. "not installed" - our own check from runHeyApiGeneration when package is missing
+        // 2. ENOENT - file system error during openapi-ts execution
+        // 3. Other errors - general failures
+        const isPackageNotInstalled = message.includes("not installed")
+        const isRuntimeEnoent =
+          !isPackageNotInstalled && (message.includes("ENOENT") || (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT"))
+
+        if (isPackageNotInstalled) {
           const zodHint = config.generateZod ? " zod" : ""
-          const warning = `@hey-api/openapi-ts not installed - run: ${resolveInstallHint()} -D @hey-api/openapi-ts${zodHint}`
+          const warning = `@hey-api/openapi-ts not installed - run: ${resolveInstallHint(`@hey-api/openapi-ts${zodHint}`)}`
           result.warnings.push(warning)
           logger?.warn(warning)
+        } else if (isRuntimeEnoent) {
+          result.errors.push(`File not found during type generation: ${message}`)
+          logger?.error(`Type generation failed (file not found): ${message}`)
         } else {
           result.errors.push(message)
           logger?.error(`Type generation failed: ${message}`)
