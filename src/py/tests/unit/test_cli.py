@@ -540,3 +540,42 @@ def test_cli_vite_deploy_dry_run(tmp_path: Path) -> None:
         _unwrap_command(vite_deploy)(
             app, storage=None, storage_option=(), no_build=True, dry_run=True, no_delete=False, verbose=False
         )
+
+
+def test_cli_vite_init_runs_install_with_frontend_dir(tmp_path: Path) -> None:
+    app = _make_app(tmp_path)
+    env = LitestarEnv(app_path="app:app", app=app, cwd=tmp_path)
+    ctx = SimpleNamespace(obj=env)
+    fake_executor = FakeExecutor()
+    app.plugins.get(VitePlugin).config._executor_instance = fake_executor
+
+    with patch("litestar_vite.cli.generate_project", return_value=[tmp_path / "web/file.txt"]):
+        _unwrap_command(vite_init)(
+            ctx,
+            template="react",
+            vite_port=None,
+            enable_ssr=None,
+            asset_url=None,
+            root_path=tmp_path,
+            frontend_dir="web",
+            bundle_path=None,
+            resource_path=None,
+            static_path=None,
+            tailwind=False,
+            enable_types=False,
+            generate_zod=False,
+            generate_client=False,
+            overwrite=True,
+            verbose=False,
+            no_prompt=True,
+            no_install=False,
+        )
+
+    # This assertion expects failure currently, as the code uses root_path
+    assert fake_executor.installs[0] == tmp_path / "web"
+
+
+def test_cli_print_recommended_config_with_frontend_dir(capsys: pytest.CaptureFixture[str]) -> None:
+    _print_recommended_config("react", "src", "public", frontend_dir="web")
+    output = capsys.readouterr().out
+    assert 'root=Path(__file__).parent / "web"' in output
