@@ -318,7 +318,7 @@ def write_runtime_config_file(
         else None,
         "executor": config.runtime.executor,
         "litestarVersion": litestar_version,
-        "staticProps": config.static_props if config.static_props else None,
+        "staticProps": config.static_props or None,
     }
 
     import msgspec

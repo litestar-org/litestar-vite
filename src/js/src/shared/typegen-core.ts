@@ -222,7 +222,7 @@ export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunT
 
         if (isPackageNotInstalled) {
           const zodHint = config.generateZod ? " zod" : ""
-          const warning = `@hey-api/openapi-ts not installed - run: ${resolveInstallHint("@hey-api/openapi-ts" + zodHint)}`
+          const warning = `@hey-api/openapi-ts not installed - run: ${resolveInstallHint(`@hey-api/openapi-ts${zodHint}`)}`
           result.warnings.push(warning)
           logger?.warn(warning)
         } else if (isRuntimeEnoent) {

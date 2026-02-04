@@ -438,7 +438,7 @@ async def test_no_component_or_page_returns_none(
     @get("/no-inertia")
     async def handler(request: Request[Any, Any, Any]) -> str:
         component = request.inertia.route_component  # pyright: ignore
-        return component if component else "none"
+        return component or "none"
 
     with create_test_client(
         route_handlers=[handler],
