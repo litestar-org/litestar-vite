@@ -1,3 +1,4 @@
 *
 !dist/js/**/*
 !tools/clean.js
+!LICENSE
