@@ -515,8 +515,9 @@ def vite_init(
     bundle_path_str = str(bundle_path or config.bundle_dir)
     static_path_str = str(static_path or config.static_dir)
 
+    base = root_path / frontend_dir if frontend_dir != "." else root_path
     if (
-        any((root_path / p).exists() for p in [resource_path_str, bundle_path_str, static_path_str])
+        any((base / p).exists() for p in [resource_path_str, bundle_path_str, static_path_str])
         and not any([overwrite, no_prompt])
         and not Confirm.ask("Files were found in the paths specified. Are you sure you wish to overwrite the contents?")
     ):
