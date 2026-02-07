@@ -228,3 +228,34 @@ app = Litestar(plugins=[vite], template_config=template_config)
     # Should show the "Or run npm commands" message with the frontend directory path
     assert "Or run npm commands directly in:" in result.output
     assert str(tmp_project_dir / "web") in result.output
+
+
+def test_init_existing_files_frontend_dir(
+    runner: CliRunner, create_app_file: CreateAppFileFixture, root_command: LitestarGroup, tmp_project_dir: Path
+) -> None:
+    app_file_content = textwrap.dedent(
+        """
+from __future__ import annotations
+from litestar import Litestar
+from litestar_vite import VitePlugin, ViteConfig
+
+app = Litestar(plugins=[VitePlugin(config=ViteConfig())])
+    """
+    )
+    app_file = create_app_file("command_test_app.py", content=app_file_content)
+
+    # Create existing files in frontend-dir/src
+    frontend_dir = tmp_project_dir / "web"
+    (frontend_dir / "src").mkdir(parents=True)
+    (frontend_dir / "src" / "main.tsx").touch()
+
+    # Run init without --no-prompt, and say 'n' to overwrite
+    result = runner.invoke(
+        root_command,
+        ["--app", f"{app_file.stem}:app", "assets", "init", "--frontend-dir", "web"],
+        input="\nn\n",  # Select default 'react' template, then 'n' for overwrite
+    )
+
+    assert result.exit_code == 2
+    assert "Files were found in the paths specified" in result.output
+    assert "Skipping Vite initialization" in result.output
