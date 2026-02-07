@@ -137,3 +137,94 @@ app = Litestar(plugins=[vite], template_config=template_config)
     # React template creates main.tsx, App.tsx, App.css in src/
     assert Path(app_file.parent / "src" / "main.tsx").exists()
     assert Path(app_file.parent / "src" / "App.tsx").exists()
+
+
+def test_init_next_steps_with_default_frontend_dir(
+    runner: CliRunner, create_app_file: CreateAppFileFixture, root_command: LitestarGroup, tmp_project_dir: Path
+) -> None:
+    """Test that 'Next steps' message shows correctly with default frontend_dir (.)."""
+    template_dir = Path(Path(__file__).parent.parent / "templates")
+    app_file_content = textwrap.dedent(
+        f"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from litestar import Litestar
+from litestar.template.config import TemplateConfig
+from litestar.contrib.jinja import JinjaTemplateEngine
+
+from litestar_vite import ViteConfig, VitePlugin
+
+template_config = TemplateConfig(engine=JinjaTemplateEngine(directory='{template_dir!s}'))
+vite = VitePlugin(config=ViteConfig())
+
+app = Litestar(plugins=[vite], template_config=template_config)
+    """
+    )
+    app_file = create_app_file("command_test_app.py", content=app_file_content)
+    result = runner.invoke(
+        root_command,
+        [
+            "--app-dir",
+            f"{app_file.parent!s}",
+            "--app",
+            f"{app_file.stem}:app",
+            "assets",
+            "init",
+            "--no-prompt",
+            "--no-install",
+        ],
+    )
+
+    assert "Next steps:" in result.output
+    assert f"cd {tmp_project_dir}" in result.output
+    # Should NOT show the "Or run npm commands" message when frontend_dir is default (.)
+    assert "Or run npm commands directly in:" not in result.output
+
+
+def test_init_next_steps_with_custom_frontend_dir(
+    runner: CliRunner, create_app_file: CreateAppFileFixture, root_command: LitestarGroup, tmp_project_dir: Path
+) -> None:
+    """Test that 'Next steps' message includes frontend directory path when --frontend-dir is specified."""
+    template_dir = Path(Path(__file__).parent.parent / "templates")
+    app_file_content = textwrap.dedent(
+        f"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from litestar import Litestar
+from litestar.template.config import TemplateConfig
+from litestar.contrib.jinja import JinjaTemplateEngine
+
+from litestar_vite import ViteConfig, VitePlugin
+
+template_config = TemplateConfig(engine=JinjaTemplateEngine(directory='{template_dir!s}'))
+vite = VitePlugin(config=ViteConfig())
+
+app = Litestar(plugins=[vite], template_config=template_config)
+    """
+    )
+    app_file = create_app_file("command_test_app.py", content=app_file_content)
+    result = runner.invoke(
+        root_command,
+        [
+            "--app-dir",
+            f"{app_file.parent!s}",
+            "--app",
+            f"{app_file.stem}:app",
+            "assets",
+            "init",
+            "--no-prompt",
+            "--no-install",
+            "--frontend-dir",
+            "web",
+        ],
+    )
+
+    assert "Next steps:" in result.output
+    assert f"cd {tmp_project_dir}" in result.output
+    # Should show the "Or run npm commands" message with the frontend directory path
+    assert "Or run npm commands directly in:" in result.output
+    assert str(tmp_project_dir / "web") in result.output
