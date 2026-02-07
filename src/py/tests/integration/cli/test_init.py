@@ -161,14 +161,7 @@ app = Litestar(plugins=[VitePlugin(config=ViteConfig())])
     # Run init without --no-prompt, and say 'n' to overwrite
     result = runner.invoke(
         root_command,
-        [
-            "--app",
-            f"{app_file.stem}:app",
-            "assets",
-            "init",
-            "--frontend-dir",
-            "web",
-        ],
+        ["--app", f"{app_file.stem}:app", "assets", "init", "--frontend-dir", "web"],
         input="\nn\n",  # Select default 'react' template, then 'n' for overwrite
     )
 
