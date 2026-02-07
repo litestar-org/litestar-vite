@@ -568,9 +568,8 @@ def vite_init(
     next_steps_cmd = _format_command(config.run_command)
     next_steps = f"\n[dim]Next steps:\n  cd {root_path}\n  {next_steps_cmd}"
     if frontend_dir and frontend_dir != ".":
-        frontend_full_path = root_path / frontend_dir
-        next_steps += f"\n  # Or run npm commands directly in: {frontend_full_path}"
-    console.print(f"{next_steps}[/]")
+        next_steps += f"\n  # Or run npm commands directly in: {root_path / frontend_dir}"
+    console.print(f"{next_steps}[/]", soft_wrap=True)
 
 
 @vite_group.command(name="install", help="Install frontend packages.")
