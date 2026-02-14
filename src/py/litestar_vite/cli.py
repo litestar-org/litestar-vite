@@ -279,9 +279,14 @@ def _select_framework_template(template: "str | None", no_prompt: bool) -> "tupl
         for i, tmpl in enumerate(available, 1):
             console.print(f"  {i}. [cyan]{tmpl.type.value}[/] - {tmpl.description}")
 
+        name_choices = [t.type.value for t in available]
+        number_choices = [str(i) for i in range(1, len(available) + 1)]
+
         template = Prompt.ask(
-            "\nSelect a framework template", choices=[t.type.value for t in available], default="react"
+            prompt="\nSelect a framework template (name or number)", choices=[*name_choices, *number_choices], default="react"
         )
+        if template.isdigit():
+            template = name_choices[int(template) - 1]
     elif template is None:
         template = "react"
 
