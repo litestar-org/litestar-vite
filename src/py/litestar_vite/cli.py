@@ -283,7 +283,9 @@ def _select_framework_template(template: "str | None", no_prompt: bool) -> "tupl
         number_choices = [str(i) for i in range(1, len(available) + 1)]
 
         template = Prompt.ask(
-            prompt="\nSelect a framework template (name or number)", choices=[*name_choices, *number_choices], default="react"
+            prompt="\nSelect a framework template (name or number)",
+            choices=[*name_choices, *number_choices],
+            default="react",
         )
         if template.isdigit():
             template = name_choices[int(template) - 1]
