@@ -199,7 +199,7 @@ brand_colors = {
 }
 
 html_theme_options: dict[str, Any] = {
-    "logo_target": "/",
+    "logo_target": "/litestar-vite/",
     "github_url": "https://github.com/litestar-org/litestar-vite",
     "github_repo_name": "Litestar Vite",
     "nav_links": [

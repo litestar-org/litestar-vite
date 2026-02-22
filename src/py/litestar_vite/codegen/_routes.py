@@ -159,6 +159,34 @@ def extract_params_from_litestar(
     return path_params, query_params
 
 
+def _update_params_from_openapi(
+    params: dict[str, str], query_params: dict[str, str], openapi_schema: dict[str, Any], path: str, methods: list[str]
+) -> None:
+    path_item = openapi_schema.get("paths", {}).get(path)
+    if not path_item:
+        return
+    for method in methods:
+        m = method.lower()
+        if m in path_item:
+            op = path_item[m]
+            if "parameters" in op:
+                params.clear()
+                query_params.clear()
+                for param in op["parameters"]:
+                    schema_dict = param.get("schema", {})
+                    ts_type = ts_type_from_openapi(schema_dict)
+                    ts_type = ts_type.replace(" | null", "").replace("null | ", "")
+
+                    if not param.get("required") and ts_type != "any" and "undefined" not in ts_type:
+                        ts_type = f"{ts_type} | undefined"
+
+                    if param.get("in") == "path":
+                        params[param["name"]] = ts_type.replace(" | undefined", "")
+                    elif param.get("in") == "query":
+                        query_params[param["name"]] = ts_type
+            break
+
+
 def make_unique_name(base_name: str, used_names: set[str], path: str, methods: list[str]) -> str:
     """Generate a unique route name, avoiding collisions.
 
@@ -195,15 +223,18 @@ def extract_route_metadata(
     """Extract route metadata from a Litestar application.
 
     Note:
-        ``openapi_schema`` is accepted for API compatibility and future enrichment,
-        but parameter typing is currently derived from Litestar's OpenAPI parameter
-        generation, not the exported schema document.
+        ``openapi_schema`` is used to resolve accurate type component references.
+        If not provided, it will be generated from the application automatically.
 
     Returns:
         A list of RouteMetadata objects.
     """
     routes_metadata: list[RouteMetadata] = []
     used_names: set[str] = set()
+
+    if openapi_schema is None and app.openapi_config is not None:
+        with contextlib.suppress(Exception):
+            openapi_schema = app.openapi_schema.to_schema()
 
     openapi_context: OpenAPIContext | None = None
     if app.openapi_config is not None:
@@ -245,6 +276,9 @@ def extract_route_metadata(
             params = extract_path_params(full_path)
 
         normalized_path = normalize_path(full_path)
+
+        if openapi_schema:
+            _update_params_from_openapi(params, query_params, openapi_schema, normalized_path, methods)
 
         opt: dict[str, Any] = route_handler.opt or {}
         component = opt.get("component")
