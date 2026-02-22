@@ -113,7 +113,10 @@ def iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRoute
 
 
 def extract_params_from_litestar(
-    handler: HTTPRouteHandler, http_route: "HTTPRoute", openapi_context: OpenAPIContext | None
+    handler: HTTPRouteHandler,
+    http_route: "HTTPRoute",
+    openapi_context: OpenAPIContext | None,
+    components_schemas: dict[str, Any] | None = None,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Extract path and query parameters using Litestar's native OpenAPI generation.
 
@@ -121,6 +124,7 @@ def extract_params_from_litestar(
         handler: The route handler.
         http_route: The HTTP route.
         openapi_context: The OpenAPI context, if available.
+        components_schemas: OpenAPI component schemas used to resolve enum refs.
 
     Returns:
         A tuple of (path_params, query_params) maps.
@@ -137,7 +141,9 @@ def extract_params_from_litestar(
 
         for param in params:
             schema_dict = param.schema.to_schema() if param.schema else None
-            ts_type = ts_type_from_openapi(schema_dict or {}) if schema_dict else "any"
+            ts_type = (
+                ts_type_from_openapi(schema_dict or {}, components_schemas=components_schemas) if schema_dict else "any"
+            )
             # For URL generation, `null` is not a meaningful value (it would stringify to "null").
             # Treat `null` as "missing" rather than emitting `| null` into route parameter types.
             ts_type = ts_type.replace(" | null", "").replace("null | ", "")
@@ -210,6 +216,15 @@ def extract_route_metadata(
         with contextlib.suppress(AttributeError, TypeError, ValueError):
             openapi_context = OpenAPIContext(openapi_config=app.openapi_config, plugins=app.plugins.openapi)
 
+    components_schemas: dict[str, Any] = {}
+    if isinstance(openapi_schema, dict):
+        components = openapi_schema.get("components")
+        if isinstance(components, dict):
+            components_t = cast("dict[str, Any]", components)
+            schemas = components_t.get("schemas")
+            if isinstance(schemas, dict):
+                components_schemas = cast("dict[str, Any]", schemas)
+
     for http_route, route_handler in iter_route_handlers(app):
         base_name = route_handler.name or route_handler.handler_name or str(route_handler)
         methods = [method.upper() for method in route_handler.http_methods]
@@ -239,7 +254,9 @@ def extract_route_metadata(
         if exclude and any(pattern in route_name or pattern in full_path for pattern in exclude):
             continue
 
-        params, query_params = extract_params_from_litestar(route_handler, http_route, openapi_context)
+        params, query_params = extract_params_from_litestar(
+            route_handler, http_route, openapi_context, components_schemas=components_schemas
+        )
 
         if not params:
             params = extract_path_params(full_path)
