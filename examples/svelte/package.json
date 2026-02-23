@@ -14,7 +14,7 @@
     "axios": "^1.13.2"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "latest",
+    "@sveltejs/vite-plugin-svelte": "^6.0.0",
     "svelte-check": "latest",
     "typescript": "latest",
     "tslib": "latest",
