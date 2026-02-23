@@ -95,18 +95,9 @@ TypeGenConfig Reference
    * - ``type_import_paths``
      - ``{}``
      - Map schema/type names to TypeScript import paths for props types excluded from OpenAPI
-   * - ``watch_patterns``
-     - See below
-     - File patterns to watch for regeneration
 
 Default Inertia shared-props types (``User``, ``AuthData``, ``FlashMessages``) are controlled by
 ``InertiaTypeGenConfig`` under ``InertiaConfig.type_gen``.
-
-Default watch patterns:
-
-.. code-block:: python
-
-    watch_patterns=["**/routes.py", "**/handlers.py", "**/controllers/**/*.py"]
 
 hey-api Configuration
 ---------------------
@@ -254,23 +245,6 @@ The generated ``routes.ts`` provides Ziggy-style type-safe routing:
 
    For URL generation, route params never require ``null`` values. Optionality is represented by optional
    query parameters (``?:``) and omission, matching how ``route()`` serializes values.
-
-Auto-Regeneration
------------------
-
-During development, types are regenerated when watched files change.
-Configure patterns in ``TypeGenConfig``:
-
-.. code-block:: python
-
-    TypeGenConfig(
-        watch_patterns=[
-            "**/routes.py",
-            "**/handlers.py",
-            "**/controllers/**/*.py",
-            "**/models/**/*.py",  # Add custom patterns
-        ],
-    )
 
 Form and Schema Types
 ---------------------

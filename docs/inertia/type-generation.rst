@@ -189,21 +189,6 @@ The Vite plugin generates the final ``page-props.ts``:
      ],
    };
 
-Watch Mode
-----------
-
-Configure patterns to trigger regeneration:
-
-.. code-block:: python
-
-   TypeGenConfig(
-       watch_patterns=[
-           "**/routes.py",
-           "**/handlers.py",
-           "**/controllers/**/*.py",
-       ],
-   )
-
 Output Structure
 ----------------
 
