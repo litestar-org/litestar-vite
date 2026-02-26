@@ -38,6 +38,45 @@ _PROXY_ALLOW_PREFIXES: tuple[str, ...] = (
     "/@analogjs/",
 )
 
+_PROXY_ALLOW_SUFFIXES: tuple[str, ...] = (
+    ".js",
+    ".cjs",
+    ".mjs",
+    ".ts",
+    ".cts",
+    ".mts",
+    ".jsx",
+    ".tsx",
+    ".vue",
+    ".svelte",
+    ".astro",
+    ".css",
+    ".scss",
+    ".sass",
+    ".less",
+    ".html",
+    ".json",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".svg",
+    ".ico",
+    ".webp",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".otf",
+    ".mp4",
+    ".webm",
+    ".ogg",
+    ".mp3",
+    ".wav",
+    ".flac",
+    ".aac",
+)
+
 _HOP_BY_HOP_HEADERS = frozenset({
     "connection",
     "keep-alive",
@@ -144,13 +183,17 @@ class ViteProxyMiddleware(AbstractMiddleware):
         except ImportError:  # pragma: no cover
             decoded = path
             matches_prefix = path.startswith(self._proxy_allow_prefixes)
+            matches_suffix = path.endswith(_PROXY_ALLOW_SUFFIXES)
         else:
             decoded = unquote(path)
             matches_prefix = decoded.startswith(self._proxy_allow_prefixes) or path.startswith(
                 self._proxy_allow_prefixes
             )
+            matches_suffix = decoded.endswith(_PROXY_ALLOW_SUFFIXES) or path.endswith(
+                _PROXY_ALLOW_SUFFIXES
+            )
 
-        if not matches_prefix:
+        if not (matches_prefix or matches_suffix):
             return False
 
         app = scope.get("app")  # pyright: ignore[reportUnknownMemberType]

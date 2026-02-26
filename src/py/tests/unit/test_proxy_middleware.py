@@ -70,6 +70,16 @@ async def test_proxy_should_proxy_matches_vite_paths(hotfile: Path) -> None:
     assert middleware._should_proxy("/@analogjs/vite-plugin-angular", dummy_scope)
     assert not middleware._should_proxy("/api/users", dummy_scope)
 
+    # Static file extensions from any path should be proxied
+    assert middleware._should_proxy("/fonts/my-font.woff2", dummy_scope)
+    assert middleware._should_proxy("/assets/logo.png", dummy_scope)
+    assert middleware._should_proxy("/favicon.ico", dummy_scope)
+    assert middleware._should_proxy("/deep/path/to/script.ts", dummy_scope)
+    
+    # Files without static extensions and not in Vite paths should not be proxied
+    assert not middleware._should_proxy("/api/data", dummy_scope)
+    assert not middleware._should_proxy("/login", dummy_scope)
+
     # node_modules paths for npm packages with static assets (e.g., @fontsource fonts)
     assert middleware._should_proxy("/node_modules/@fontsource/geist/files/font.woff2", dummy_scope)
 
@@ -80,7 +90,7 @@ async def test_proxy_should_proxy_matches_vite_paths(hotfile: Path) -> None:
     # Custom resource dir
     middleware_with_resources = ViteProxyMiddleware(noop, hotfile_path=hotfile, resource_dir=Path("resources"))
     assert middleware_with_resources._should_proxy("/resources/app.tsx", dummy_scope)
-    assert not middleware_with_resources._should_proxy("/src/main.ts", dummy_scope)
+    assert not middleware_with_resources._should_proxy("/src/README.md", dummy_scope)
 
 
 @pytest.mark.anyio
