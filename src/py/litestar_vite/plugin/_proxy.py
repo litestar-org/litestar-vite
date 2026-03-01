@@ -56,18 +56,25 @@ _PROXY_ALLOW_SUFFIXES: tuple[str, ...] = (
     ".less",
     ".html",
     ".json",
+    ".xml",
+    ".txt",
     ".png",
     ".jpg",
     ".jpeg",
     ".gif",
     ".svg",
-    ".ico",
+    ".avif",
+    ".bmp",
     ".webp",
+    ".map",
+    ".ico",
+    ".webmanifest",
     ".woff",
     ".woff2",
     ".ttf",
     ".eot",
     ".otf",
+    ".wasm",
     ".mp4",
     ".webm",
     ".ogg",
@@ -186,10 +193,11 @@ class ViteProxyMiddleware(AbstractMiddleware):
             matches_suffix = path.endswith(_PROXY_ALLOW_SUFFIXES)
         else:
             decoded = unquote(path)
+            decoded_lower = decoded.lower()
             matches_prefix = decoded.startswith(self._proxy_allow_prefixes) or path.startswith(
                 self._proxy_allow_prefixes
             )
-            matches_suffix = decoded.endswith(_PROXY_ALLOW_SUFFIXES) or path.endswith(
+            matches_suffix = decoded_lower.endswith(_PROXY_ALLOW_SUFFIXES) or path.lower().endswith(
                 _PROXY_ALLOW_SUFFIXES
             )
 

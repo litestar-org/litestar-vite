@@ -72,8 +72,11 @@ async def test_proxy_should_proxy_matches_vite_paths(hotfile: Path) -> None:
 
     # Static file extensions from any path should be proxied
     assert middleware._should_proxy("/fonts/my-font.woff2", dummy_scope)
+    assert middleware._should_proxy("/fonts/my-font.WOFF2", dummy_scope)
     assert middleware._should_proxy("/assets/logo.png", dummy_scope)
     assert middleware._should_proxy("/favicon.ico", dummy_scope)
+    assert middleware._should_proxy("/assets/manifest.webmanifest", dummy_scope)
+    assert middleware._should_proxy("/assets/bundle.wasm", dummy_scope)
     assert middleware._should_proxy("/deep/path/to/script.ts", dummy_scope)
     
     # Files without static extensions and not in Vite paths should not be proxied
