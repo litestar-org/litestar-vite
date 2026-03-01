@@ -78,7 +78,7 @@ async def test_proxy_should_proxy_matches_vite_paths(hotfile: Path) -> None:
     assert middleware._should_proxy("/assets/manifest.webmanifest", dummy_scope)
     assert middleware._should_proxy("/assets/bundle.wasm", dummy_scope)
     assert middleware._should_proxy("/deep/path/to/script.ts", dummy_scope)
-    
+
     # Files without static extensions and not in Vite paths should not be proxied
     assert not middleware._should_proxy("/api/data", dummy_scope)
     assert not middleware._should_proxy("/login", dummy_scope)
