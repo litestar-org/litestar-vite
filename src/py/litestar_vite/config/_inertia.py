@@ -122,7 +122,7 @@ class InertiaConfig:
     use_script_element: bool = False
     """Use a script element instead of data-page attribute for page data.
 
-    When True, embeds page data in a ``<script type="application/json" id="app_page">``
+    When True, embeds page data in a ``<script type="application/json" id="app_page" data-page="app">``
     element instead of a ``data-page`` attribute on the app element.
 
     Benefits:
@@ -131,6 +131,7 @@ class InertiaConfig:
 
     Requirements:
         - Client must also enable: ``createInertiaApp({ useScriptElementForInitialPage: true })``
+        - The script should include ``data-page="app"`` so Inertia can locate the payload element.
         - Requires Inertia.js v2.3+
 
     Disabled by default for compatibility with existing Inertia clients.

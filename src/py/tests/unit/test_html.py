@@ -324,7 +324,7 @@ def test_inject_page_script_basic() -> None:
     json_data = '{"component":"Home","props":{}}'
     result = inject_page_script(html, json_data)
 
-    assert '<script type="application/json" id="app_page">' in result
+    assert '<script type="application/json" id="app_page" data-page="app">' in result
     assert '{"component":"Home","props":{}}' in result
     assert result.index("</script>") < result.index("</body>")
 
@@ -335,7 +335,7 @@ def test_inject_page_script_with_nonce() -> None:
     json_data = '{"component":"Test"}'
     result = inject_page_script(html, json_data, nonce="abc123")
 
-    assert '<script type="application/json" id="app_page" nonce="abc123">' in result
+    assert '<script type="application/json" id="app_page" data-page="app" nonce="abc123">' in result
 
 
 def test_inject_page_script_escapes_closing_tags() -> None:
@@ -367,7 +367,7 @@ def test_inject_page_script_no_body() -> None:
     result = inject_page_script(html, json_data)
 
     # Should still inject the script (appended at end)
-    assert '<script type="application/json" id="app_page">' in result
+    assert '<script type="application/json" id="app_page" data-page="app">' in result
 
 
 def test_inject_page_script_custom_id() -> None:
@@ -376,7 +376,7 @@ def test_inject_page_script_custom_id() -> None:
     json_data = '{"data":"test"}'
     result = inject_page_script(html, json_data, script_id="custom_page")
 
-    assert '<script type="application/json" id="custom_page">' in result
+    assert '<script type="application/json" id="custom_page" data-page="app">' in result
 
 
 def test_inject_page_script_large_payload() -> None:
@@ -386,7 +386,7 @@ def test_inject_page_script_large_payload() -> None:
     large_data = '{"items":' + str(list(range(1000))) + "}"
     result = inject_page_script(html, large_data)
 
-    assert '<script type="application/json" id="app_page">' in result
+    assert '<script type="application/json" id="app_page" data-page="app">' in result
     assert "[0, 1, 2, 3" in result
 
 
