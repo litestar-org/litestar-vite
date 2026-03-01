@@ -7,6 +7,7 @@ from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client
+from litestar_vite.inertia.middleware import InertiaRequest
 
 from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
 from litestar_vite.plugin import VitePlugin
@@ -96,6 +97,42 @@ async def test_non_inertia_request_bypasses_version_check(
         # Should return HTML template, not JSON
         assert response.status_code == 200
         assert response.text.startswith("<!DOCTYPE html>")
+
+
+async def test_non_inertia_request_skips_inertia_request_construction(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+    monkeypatch,
+) -> None:
+    """Test that middleware does not instantiate InertiaRequest for non-Inertia traffic."""
+
+    call_count = {"count": 0}
+
+    original_class = InertiaRequest
+
+    class GuardedInertiaRequest(original_class):
+        def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
+            call_count["count"] += 1
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr("litestar_vite.inertia.middleware.InertiaRequest", GuardedInertiaRequest)
+
+    @get("/")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert call_count["count"] == 0
+
 
 
 async def test_version_header_missing_allows_request(
