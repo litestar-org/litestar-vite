@@ -190,7 +190,7 @@ class ViteProxyMiddleware(AbstractMiddleware):
         except ImportError:  # pragma: no cover
             decoded = path
             matches_prefix = path.startswith(self._proxy_allow_prefixes)
-            matches_suffix = path.endswith(_PROXY_ALLOW_SUFFIXES)
+            matches_suffix = path.lower().endswith(_PROXY_ALLOW_SUFFIXES)
         else:
             decoded = unquote(path)
             decoded_lower = decoded.lower()
