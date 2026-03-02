@@ -23,6 +23,20 @@ def test_executor_resolve_executable_found(mock_which: Mock) -> None:
 
 
 @patch("shutil.which")
+def test_executor_resolve_executable_uses_cache(mock_which: Mock) -> None:
+    """Test executable resolution is cached after first lookup."""
+    mock_which.return_value = "/usr/bin/npm"
+    executor = NodeExecutor()
+
+    first = executor._resolve_executable()
+    second = executor._resolve_executable()
+
+    assert first == "/usr/bin/npm"
+    assert second == "/usr/bin/npm"
+    mock_which.assert_called_once_with("npm")
+
+
+@patch("shutil.which")
 def test_executor_resolve_executable_not_found(mock_which: Mock) -> None:
     """Test that resolve_executable raises when executable not found."""
     mock_which.return_value = None

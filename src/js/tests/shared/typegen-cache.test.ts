@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { computePagePropsHash, shouldRegeneratePageProps, shouldRunOpenApiTs, updateOpenApiTsCache, updatePagePropsCache } from "../../src/shared/typegen-cache"
 
@@ -70,6 +70,28 @@ describe("typegen-cache", () => {
       // Second run - should skip (inputs unchanged)
       const shouldRun2 = await shouldRunOpenApiTs(openapiPath, null, options)
       expect(shouldRun2).toBe(false)
+    })
+
+    it("uses metadata fast-path to skip hashing when metadata is unchanged", async () => {
+      const openapiPath = path.join(tmpDir, "openapi.json")
+      fs.writeFileSync(openapiPath, JSON.stringify({ openapi: "3.1.0" }))
+
+      const options = {
+        generateSdk: true,
+        generateZod: false,
+        plugins: ["@hey-api/typescript", "@hey-api/schemas"],
+      }
+
+      await updateOpenApiTsCache(openapiPath, null, options)
+      const spy = vi.spyOn(fs.promises, "readFile")
+
+      const shouldRun = await shouldRunOpenApiTs(openapiPath, null, options)
+
+      expect(shouldRun).toBe(false)
+      const readOpenApi = spy.mock.calls.filter(([file]) => String(file).endsWith("openapi.json"))
+      expect(readOpenApi).toHaveLength(0)
+      const readCache = spy.mock.calls.find(([file]) => String(file).includes("typegen-cache.json"))
+      expect(readCache).not.toBeUndefined()
     })
 
     it("returns true when openapi.json content changes", async () => {
@@ -208,6 +230,22 @@ describe("typegen-cache", () => {
       expect(shouldRegen2).toBe(false)
     })
 
+    it("uses metadata fast-path to skip hashing when input metadata is unchanged", async () => {
+      const filePath = path.join(tmpDir, "inertia-pages.json")
+      fs.writeFileSync(filePath, JSON.stringify({ pages: {} }))
+
+      await updatePagePropsCache(filePath)
+      const spy = vi.spyOn(fs.promises, "readFile")
+
+      const shouldRegen = await shouldRegeneratePageProps(filePath)
+
+      expect(shouldRegen).toBe(false)
+      const readPageProps = spy.mock.calls.filter(([file]) => String(file).endsWith("inertia-pages.json"))
+      expect(readPageProps).toHaveLength(0)
+      const readCache = spy.mock.calls.find(([file]) => String(file).includes("typegen-cache.json"))
+      expect(readCache).not.toBeUndefined()
+    })
+
     it("returns true when input changes", async () => {
       const filePath = path.join(tmpDir, "inertia-pages.json")
       fs.writeFileSync(filePath, JSON.stringify({ pages: {} }))
@@ -243,6 +281,7 @@ describe("typegen-cache", () => {
       const cache = JSON.parse(fs.readFileSync(cacheFile, "utf-8"))
       expect(cache).toHaveProperty("openapi-ts")
       expect(cache["openapi-ts"]).toHaveProperty("inputHash")
+      expect(cache["openapi-ts"]).toHaveProperty("inputMeta")
       expect(cache["openapi-ts"]).toHaveProperty("configHash")
       expect(cache["openapi-ts"]).toHaveProperty("optionsHash")
       expect(cache["openapi-ts"]).toHaveProperty("timestamp")
@@ -287,6 +326,8 @@ describe("typegen-cache", () => {
 
       expect(cache).toHaveProperty("openapi-ts")
       expect(cache).toHaveProperty("page-props")
+
+      expect(cache["page-props"]).toHaveProperty("inputMeta")
     })
   })
 

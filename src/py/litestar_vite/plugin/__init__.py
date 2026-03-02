@@ -117,11 +117,17 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             config = ViteConfig()
         self._config = config
         self._asset_loader = asset_loader
-        self._vite_process = ViteProcess(executor=config.executor)
+        self._vite_process: "ViteProcess | None" = None
         self._static_files_config: dict[str, Any] = static_files_config.__dict__ if static_files_config else {}
         self._proxy_target: "str | None" = None
         self._proxy_client: "httpx.AsyncClient | None" = None
         self._spa_handler: "AppHandler | None" = None
+
+    def _get_vite_process(self) -> ViteProcess:
+        """Get or create the Vite process manager lazily."""
+        if self._vite_process is None:
+            self._vite_process = ViteProcess(executor=self._config.executor)
+        return self._vite_process
 
     @property
     def config(self) -> "ViteConfig":
@@ -266,6 +272,24 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
         return app_config
 
+    def _insert_dev_proxy_middleware(self, app_config: "AppConfig", middleware: "DefineMiddleware") -> None:
+        """Insert a dev proxy middleware at the earliest safe position.
+
+        Ordering guarantees:
+
+        - Proxy headers middleware should run first when enabled, to ensure
+          scheme/host/client are normalized before proxy routing decisions.
+        - Vite proxy middleware should run before user middleware to avoid
+          unnecessary auth/session overhead for pure Vite/static requests.
+        """
+        insert_at = 0
+        for idx, existing in enumerate(app_config.middleware):
+            if getattr(existing, "middleware", None) is ProxyHeadersMiddleware:
+                insert_at = idx + 1
+                break
+
+        app_config.middleware.insert(insert_at, middleware)
+
     def on_cli_init(self, cli: "Group") -> None:
         """Register CLI commands.
 
@@ -362,7 +386,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             hotfile_path: Path to the hotfile.
         """
         self._ensure_proxy_target()
-        app_config.middleware.append(
+        self._insert_dev_proxy_middleware(
+            app_config,
             DefineMiddleware(
                 ViteProxyMiddleware,
                 hotfile_path=hotfile_path,
@@ -372,7 +397,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 root_dir=self._config.root_dir,
                 http2=self._config.http2,
                 plugin=self,
-            )
+            ),
         )
         hmr_path = f"{self._config.asset_url.rstrip('/')}/vite-hmr"
         app_config.route_handlers.append(
@@ -397,6 +422,19 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 http2=external.http2 if external else True,
                 plugin=self,
             )
+        )
+        self._insert_dev_proxy_middleware(
+            app_config,
+            DefineMiddleware(
+                ViteProxyMiddleware,
+                hotfile_path=hotfile_path,
+                asset_url=self._config.asset_url,
+                resource_dir=self._config.resource_dir,
+                bundle_dir=self._config.bundle_dir,
+                root_dir=self._config.root_dir,
+                http2=self._config.http2,
+                plugin=self,
+            ),
         )
         hmr_path = f"{self._config.asset_url.rstrip('/')}/vite-hmr"
         app_config.route_handlers.append(
@@ -603,14 +641,17 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 target_url = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
                 self._write_hotfile(target_url)
 
+            vite_process: ViteProcess | None = None
             try:
-                self._vite_process.start(command_to_run, self._config.root_dir)
+                vite_process = self._get_vite_process()
+                vite_process.start(command_to_run, self._config.root_dir)
                 log_success("Vite process started")
                 if self._config.health_check and not is_external:
                     self._run_health_check()
                 yield
             finally:
-                self._vite_process.stop()
+                if vite_process is not None:
+                    vite_process.stop()
                 log_info("Vite process stopped.")
         else:
             yield

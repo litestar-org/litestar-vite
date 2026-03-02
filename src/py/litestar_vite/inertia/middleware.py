@@ -8,7 +8,14 @@ from litestar_vite.inertia.response import InertiaExternalRedirect
 from litestar_vite.plugin import VitePlugin
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from litestar.types import ASGIApp, Receive, Scope, Send
+
+
+def _is_inertia_request(scope_headers: "Iterable[tuple[bytes, bytes]]") -> bool:
+    """Return ``True`` when this request explicitly identifies as an Inertia request."""
+    return any(key == b"x-inertia" and value == b"true" for key, value in scope_headers)
 
 
 def redirect_on_asset_version_mismatch(request: "InertiaRequest[Any, Any, Any]") -> "InertiaExternalRedirect | None":
@@ -45,6 +52,10 @@ class InertiaMiddleware(AbstractMiddleware):
         self.app = app
 
     async def __call__(self, scope: "Scope", receive: "Receive", send: "Send") -> None:
+        if not _is_inertia_request(scope["headers"]):
+            await self.app(scope, receive, send)
+            return
+
         request: InertiaRequest[Any, Any, Any] = InertiaRequest(scope=scope)
         redirect = redirect_on_asset_version_mismatch(request)
         if redirect is not None:

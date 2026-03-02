@@ -79,9 +79,27 @@ interface Ctx {
 }
 
 let debug = false
-const cache = new Map<string, ((c: Ctx) => unknown) | null>()
+const DEFAULT_EXPRESSION_CACHE_MAX_SIZE = 1024
+const expressionCache = new Map<string, ((c: Ctx) => unknown) | null>()
+let expressionCacheMaxSize = DEFAULT_EXPRESSION_CACHE_MAX_SIZE
 const memoStore = new WeakMap<Node, Record<string, unknown>>()
 const registeredHtmxInstances = new WeakSet<object>()
+
+function trimExpressionCache(): void {
+  while (expressionCache.size > expressionCacheMaxSize) {
+    const first = expressionCache.keys().next().value
+    if (first === undefined) return
+    expressionCache.delete(first)
+  }
+}
+
+function cacheExpression(key: string, value: ((c: Ctx) => unknown) | null): void {
+  if (expressionCache.has(key)) {
+    expressionCache.delete(key)
+  }
+  expressionCache.set(key, value)
+  trimExpressionCache()
+}
 
 function runtime(node: Node): Record<string, unknown> {
   let store = memoStore.get(node)
@@ -498,15 +516,17 @@ function childCtx(parent: Ctx, data: unknown, index?: number, key?: string): Ctx
 
 function expr(s: string | null): ((c: Ctx) => unknown) | null {
   if (!s) return null
-  const cached = cache.get(s)
-  if (cached !== undefined) return cached
+  const cached = expressionCache.get(s)
+  if (cached !== undefined) {
+    return cached
+  }
 
   try {
     const fn = new Function("ctx", `with(ctx){return(${s})}`) as (c: Ctx) => unknown
-    cache.set(s, fn)
+    cacheExpression(s, fn)
     return fn
   } catch {
-    cache.set(s, null)
+    cacheExpression(s, null)
     return null
   }
 }
@@ -595,6 +615,36 @@ function removeBetween(start: Node | null, end: Node): void {
  */
 export function setDebug(on: boolean): void {
   debug = on
+}
+
+/**
+ * @internal
+ * Exposed for tests/diagnostics only.
+ */
+export function __getExpressionCacheSize(): number {
+  return expressionCache.size
+}
+
+/** @internal */
+export function __getExpressionCacheKeys(): string[] {
+  return [...expressionCache.keys()]
+}
+
+/** @internal */
+export function __setExpressionCacheLimit(limit: number): void {
+  const normalized = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : DEFAULT_EXPRESSION_CACHE_MAX_SIZE
+  expressionCacheMaxSize = normalized
+  trimExpressionCache()
+}
+
+/** @internal */
+export function __clearExpressionCache(): void {
+  expressionCache.clear()
+}
+
+/** @internal */
+export function __compileExpressionForTest(expression: string): ((c: Ctx) => unknown) | null {
+  return expr(expression)
 }
 
 export function addDirective(dir: Dir): void {

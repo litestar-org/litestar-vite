@@ -1,8 +1,11 @@
 """HTTP/WebSocket proxy middleware and HMR handlers."""
 
+import logging
+from collections.abc import AsyncGenerator, Awaitable, Iterable
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import unquote
 
 import anyio
 import httpx
@@ -38,6 +41,52 @@ _PROXY_ALLOW_PREFIXES: tuple[str, ...] = (
     "/@analogjs/",
 )
 
+_PROXY_ALLOW_SUFFIXES: tuple[str, ...] = (
+    ".js",
+    ".cjs",
+    ".mjs",
+    ".ts",
+    ".cts",
+    ".mts",
+    ".jsx",
+    ".tsx",
+    ".vue",
+    ".svelte",
+    ".astro",
+    ".css",
+    ".scss",
+    ".sass",
+    ".less",
+    ".html",
+    ".json",
+    ".xml",
+    ".txt",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".svg",
+    ".avif",
+    ".bmp",
+    ".webp",
+    ".map",
+    ".ico",
+    ".webmanifest",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".otf",
+    ".wasm",
+    ".mp4",
+    ".webm",
+    ".ogg",
+    ".mp3",
+    ".wav",
+    ".flac",
+    ".aac",
+)
+
 _HOP_BY_HOP_HEADERS = frozenset({
     "connection",
     "keep-alive",
@@ -51,17 +100,153 @@ _HOP_BY_HOP_HEADERS = frozenset({
     "content-encoding",
 })
 
+_WS_REQUEST_SKIP_HEADERS = _HOP_BY_HOP_HEADERS | {
+    "host",
+    "upgrade",
+    "sec-websocket-key",
+    "sec-websocket-version",
+    "sec-websocket-protocol",
+    "sec-websocket-extensions",
+}
 
-def _extract_proxy_response(upstream_resp: "httpx.Response") -> tuple[int, list[tuple[bytes, bytes]], bytes]:
+_LOGGER = logging.getLogger(__name__)
+
+
+def _normalize_header_key(raw_key: Any) -> str:
+    """Normalize a raw header key to a lower-cased string."""
+    if isinstance(raw_key, bytes):
+        return raw_key.decode("latin-1").lower()
+    return str(raw_key).lower()
+
+
+def _normalize_header_value(raw_value: Any) -> str:
+    """Normalize a raw header value to a string."""
+    if isinstance(raw_value, bytes):
+        return raw_value.decode("latin-1")
+    return str(raw_value)
+
+
+def _collect_connection_tokens(headers: Any) -> set[str]:
+    """Collect header names listed in Connection headers."""
+    tokens: set[str] = set()
+    for key, value in headers:
+        if _normalize_header_key(key) == "connection":
+            tokens.update(token.strip().lower() for token in _normalize_header_value(value).split(",") if token.strip())
+    return tokens
+
+
+def _filter_hop_by_hop_headers(headers: Any) -> list[tuple[str, str]]:
+    """Filter hop-by-hop headers while preserving case-sensitive duplicates and order."""
+    return _extract_request_headers(headers)
+
+
+def _extract_request_headers(
+    headers: Any, extra_skip_headers: "Iterable[bytes | str] | None" = None
+) -> list[tuple[str, str]]:
+    """Extract request headers, excluding hop-by-hop and optional additional skip headers."""
+    if not headers:
+        return []
+
+    skip = {_normalize_header_key(name) for name in _HOP_BY_HOP_HEADERS}
+    if extra_skip_headers is not None:
+        skip.update(_normalize_header_key(name) for name in extra_skip_headers)
+
+    hop_by_hop = set(skip)
+    hop_by_hop.update(_collect_connection_tokens(headers))
+
+    filtered: list[tuple[str, str]] = []
+    for key, value in headers:
+        normalized_key = _normalize_header_key(key)
+        if normalized_key in hop_by_hop:
+            continue
+        filtered.append((str(key) if isinstance(key, str) else key.decode("latin-1"), _normalize_header_value(value)))
+
+    return filtered
+
+
+def _extract_proxy_response(upstream_resp: "httpx.Response") -> tuple[int, list[tuple[bytes, bytes]], bytes]:  # pyright: ignore[reportUnusedFunction]
     """Extract status, headers, and body from an httpx response for proxying.
 
     Returns:
         A tuple of (status_code, headers, body).
     """
-    headers = [
-        (k.encode(), v.encode()) for k, v in upstream_resp.headers.items() if k.lower() not in _HOP_BY_HOP_HEADERS
-    ]
+    headers = _extract_proxy_response_headers(upstream_resp.headers)
     return upstream_resp.status_code, headers, upstream_resp.content
+
+
+def _extract_proxy_response_headers(headers: "httpx.Headers") -> list[tuple[bytes, bytes]]:
+    """Extract response headers while preserving duplicates and filtering hop-by-hop headers."""
+    hop_by_hop = set(_HOP_BY_HOP_HEADERS)
+    for key, value in headers.raw:
+        normalized_key = key.decode("latin-1").lower()
+        if normalized_key == "connection":
+            hop_by_hop.update(token.strip().lower() for token in value.decode("latin-1").split(",") if token.strip())
+
+    extracted: list[tuple[bytes, bytes]] = []
+    for key, value in headers.raw:
+        if isinstance(key, str):
+            lower_key = key.lower()
+            key_bytes = key.encode("latin-1")
+        else:
+            lower_key = key.lower().decode("latin-1")
+            key_bytes = key
+
+        if lower_key in hop_by_hop:
+            continue
+
+        value_bytes = value.encode("latin-1") if isinstance(value, str) else value
+        extracted.append((key_bytes, value_bytes))
+
+    return extracted
+
+
+async def _stream_request_body(receive: "Callable[[], Awaitable[dict[str, Any]]]") -> AsyncGenerator[bytes, None]:
+    """Stream request body chunks from ASGI receive events."""
+    while True:
+        event = await receive()
+        if event.get("type") != "http.request":
+            continue
+        body = event.get("body", b"")
+        if body:
+            yield cast("bytes", body)
+        if not event.get("more_body", False):
+            return
+
+
+async def _stream_request_body_chunks(content: "AsyncGenerator[bytes, None]") -> AsyncGenerator[bytes, None]:
+    """Proxy a request body-like async generator while dropping empty chunks."""
+    async for chunk in content:
+        if chunk:
+            yield chunk
+
+
+async def _stream_response_body(
+    response: "httpx.Response", close_callback: "Callable[[], Awaitable[None]] | None" = None
+) -> AsyncGenerator[bytes, None]:
+    """Iterate response body chunks and close the upstream response."""
+    try:
+        async for chunk in response.aiter_bytes():
+            if chunk:
+                yield chunk
+    finally:
+        if close_callback is not None:
+            await close_callback()
+        else:
+            await response.aclose()
+
+
+async def _proxy_stream_response(
+    response: "httpx.Response",
+    send: "Callable[[dict[str, Any]], Any]",
+    close_callback: "Callable[[], Awaitable[None]] | None" = None,
+) -> None:
+    """Stream upstream response to the client incrementally."""
+    response_headers = _extract_proxy_response_headers(response.headers)
+    await send({"type": "http.response.start", "status": response.status_code, "headers": response_headers})
+    async for chunk in _stream_response_body(response, close_callback=close_callback):
+        await send({"type": "http.response.body", "body": chunk, "more_body": True})
+
+    await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
 class ViteProxyMiddleware(AbstractMiddleware):
@@ -139,29 +324,26 @@ class ViteProxyMiddleware(AbstractMiddleware):
         await self.app(scope, receive, send)
 
     def _should_proxy(self, path: str, scope: "Scope") -> bool:
-        try:
-            from urllib.parse import unquote
-        except ImportError:  # pragma: no cover
-            decoded = path
-            matches_prefix = path.startswith(self._proxy_allow_prefixes)
-        else:
-            decoded = unquote(path)
-            matches_prefix = decoded.startswith(self._proxy_allow_prefixes) or path.startswith(
-                self._proxy_allow_prefixes
-            )
+        decoded = unquote(path) if "%" in path else path
+        path_lower = path.lower()
+        decoded_lower = decoded.lower()
 
-        if not matches_prefix:
+        matches_prefix = decoded.startswith(self._proxy_allow_prefixes) or path.startswith(self._proxy_allow_prefixes)
+        matches_suffix = decoded_lower.endswith(_PROXY_ALLOW_SUFFIXES) or path_lower.endswith(_PROXY_ALLOW_SUFFIXES)
+
+        if not (matches_prefix or matches_suffix):
             return False
 
         app = scope.get("app")  # pyright: ignore[reportUnknownMemberType]
-        return not (app and is_litestar_route(path, app))
+        if not app:
+            return True
+
+        return not (is_litestar_route(path, app) or is_litestar_route(decoded, app))
 
     async def _proxy_http(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         """Proxy a single HTTP request to the Vite dev server.
 
-        The upstream response is buffered inside the httpx client context manager and only sent
-        after the context exits. This avoids ASGI errors when httpx raises during cleanup after the
-        response has started.
+        The upstream response is streamed directly from Vite to the client.
         """
         target_base_url = self._get_target_base_url()
         if target_base_url is None:
@@ -180,20 +362,8 @@ class ViteProxyMiddleware(AbstractMiddleware):
         if query_string:
             url = f"{url}?{query_string}"
 
-        headers = [(k.decode(), v.decode()) for k, v in scope.get("headers", [])]
-        body = b""
-        more_body = True
-        while more_body:
-            event = await receive()
-            if event["type"] != "http.request":
-                continue
-            body += event.get("body", b"")
-            more_body = event.get("more_body", False)
-
-        response_status = 502
-        response_headers: list[tuple[bytes, bytes]] = [(b"content-type", b"text/plain")]
-        response_body = b"Bad gateway"
-        got_full_body = False
+        headers = _filter_hop_by_hop_headers(scope.get("headers", []))
+        request_body = _stream_request_body(receive)
 
         # Use shared client from plugin when available (connection pooling)
         client = self._plugin.proxy_client if self._plugin is not None else None
@@ -201,24 +371,23 @@ class ViteProxyMiddleware(AbstractMiddleware):
         try:
             if client is not None:
                 # Use shared client (connection pooling, HTTP/2 multiplexing)
-                upstream_resp = await client.request(method, url, headers=headers, content=body, timeout=10.0)
-                response_status, response_headers, response_body = _extract_proxy_response(upstream_resp)
-                got_full_body = True
+                async with client.stream(
+                    method, url, headers=headers, content=request_body, timeout=10.0, follow_redirects=False
+                ) as upstream_resp:
+                    await _proxy_stream_response(upstream_resp, send)
             else:
                 # Fallback: per-request client (graceful degradation)
                 http2_enabled = check_http2_support(self.http2)
-                async with httpx.AsyncClient(http2=http2_enabled) as fallback_client:
-                    upstream_resp = await fallback_client.request(
-                        method, url, headers=headers, content=body, timeout=10.0
-                    )
-                    response_status, response_headers, response_body = _extract_proxy_response(upstream_resp)
-                    got_full_body = True
+                async with (
+                    httpx.AsyncClient(http2=http2_enabled) as fallback_client,
+                    fallback_client.stream(
+                        method, url, headers=headers, content=request_body, timeout=10.0, follow_redirects=False
+                    ) as upstream_resp,
+                ):
+                    await _proxy_stream_response(upstream_resp, send)
         except Exception as exc:  # noqa: BLE001  # pragma: no cover - catch all cleanup errors
-            if not got_full_body:
-                response_body = f"Upstream error: {exc}".encode()
-
-        await send({"type": "http.response.start", "status": response_status, "headers": response_headers})
-        await send({"type": "http.response.body", "body": response_body, "more_body": False})
+            await send({"type": "http.response.start", "status": 502, "headers": [(b"content-type", b"text/plain")]})
+            await send({"type": "http.response.body", "body": f"Upstream error: {exc}".encode(), "more_body": False})
 
 
 def build_hmr_target_url(hotfile_path: Path, scope: dict[str, Any], hmr_path: str, asset_url: str) -> "str | None":
@@ -258,16 +427,7 @@ def extract_forward_headers(scope: dict[str, Any]) -> list[tuple[str, str]]:
     Returns:
         A list of (header_name, header_value) tuples.
     """
-    skip_headers = (
-        b"host",
-        b"upgrade",
-        b"connection",
-        b"sec-websocket-key",
-        b"sec-websocket-version",
-        b"sec-websocket-protocol",
-        b"sec-websocket-extensions",
-    )
-    return [(k.decode(), v.decode()) for k, v in scope.get("headers", []) if k.lower() not in skip_headers]
+    return _extract_request_headers(scope.get("headers", []), extra_skip_headers=_WS_REQUEST_SKIP_HEADERS)
 
 
 def extract_subprotocols(scope: dict[str, Any]) -> list[str]:
@@ -277,8 +437,8 @@ def extract_subprotocols(scope: dict[str, Any]) -> list[str]:
         A list of subprotocol strings.
     """
     for key, value in scope.get("headers", []):
-        if key.lower() == b"sec-websocket-protocol":
-            return [p.strip() for p in value.decode().split(",")]
+        if _normalize_header_key(key) == "sec-websocket-protocol":
+            return [p.strip() for p in _normalize_header_value(value).split(",") if p.strip()]
     return []
 
 
@@ -349,8 +509,9 @@ def create_vite_hmr_handler(hotfile_path: Path, hmr_path: str = "/static/vite-hm
 
         headers = extract_forward_headers(scope_dict)
         subprotocols = extract_subprotocols(scope_dict)
+        accept_subprotocol: str | None = subprotocols[0] if subprotocols else None
         typed_subprotocols: list[Subprotocol] = [cast("Subprotocol", p) for p in subprotocols]
-        await socket.accept(subprotocols=typed_subprotocols[0] if typed_subprotocols else None)
+        await socket.accept(subprotocols=accept_subprotocol)
 
         try:
             async with websockets.connect(
@@ -567,7 +728,7 @@ def create_ssr_proxy_controller(
             ],
             name="ssr_proxy",
         )
-        async def http_proxy(self, request: "Request[Any, Any, Any]") -> "Response[bytes]":
+        async def http_proxy(self, request: "Request[Any, Any, Any]") -> "ASGIApp":
             """Proxy all HTTP requests to the SSR framework dev server.
 
             Returns:
@@ -575,7 +736,9 @@ def create_ssr_proxy_controller(
             """
             target_url = get_target_url()
             if target_url is None:
-                return Response(content=b"SSR server not running", status_code=503, media_type="text/plain")
+                return cast(
+                    "ASGIApp", Response(content=b"SSR server not running", status_code=503, media_type="text/plain")
+                )
 
             req_path: str = request.url.path
             url = build_proxy_url(target_url, req_path, request.url.query or "")
@@ -583,45 +746,68 @@ def create_ssr_proxy_controller(
             if is_proxy_debug():
                 console.print(f"[dim][ssr-proxy] {request.method} {req_path} → {url}[/]")
 
-            headers_to_forward = [
-                (k, v) for k, v in request.headers.items() if k.lower() not in {"host", "connection", "keep-alive"}
-            ]
-            body = await request.body()
+            headers_to_forward = _filter_hop_by_hop_headers(request.headers.items())
+            request_body = _stream_request_body_chunks(request.stream())
 
             # Use shared client from plugin when available (connection pooling)
             client = plugin.proxy_client if plugin is not None else None
 
+            stream_context = None
+            http_client: httpx.AsyncClient | None = None
+
             try:
                 if client is not None:
                     # Use shared client (connection pooling, HTTP/2 multiplexing)
-                    upstream_resp = await client.request(
+                    stream_context = client.stream(
                         request.method,
                         url,
                         headers=headers_to_forward,
-                        content=body,
+                        content=request_body,
                         follow_redirects=False,
                         timeout=30.0,
                     )
                 else:
                     # Fallback: per-request client (graceful degradation)
                     http2_enabled = check_http2_support(http2)
-                    async with httpx.AsyncClient(http2=http2_enabled, timeout=30.0) as fallback_client:
-                        upstream_resp = await fallback_client.request(
-                            request.method, url, headers=headers_to_forward, content=body, follow_redirects=False
-                        )
+                    http_client = httpx.AsyncClient(http2=http2_enabled, timeout=30.0)
+                    stream_context = http_client.stream(
+                        request.method, url, headers=headers_to_forward, content=request_body, follow_redirects=False
+                    )
+
+                upstream_resp = await stream_context.__aenter__()
             except httpx.ConnectError:
-                return Response(
-                    content=f"SSR server not running at {target_url}".encode(), status_code=503, media_type="text/plain"
+                if http_client is not None:
+                    await http_client.aclose()
+                return cast(
+                    "ASGIApp",
+                    Response(
+                        content=f"SSR server not running at {target_url}".encode(),
+                        status_code=503,
+                        media_type="text/plain",
+                    ),
                 )
             except httpx.HTTPError as exc:
-                return Response(content=str(exc).encode(), status_code=502, media_type="text/plain")
+                if http_client is not None:
+                    await http_client.aclose()
+                return cast("ASGIApp", Response(content=str(exc).encode(), status_code=502, media_type="text/plain"))
 
-            return Response(
-                content=upstream_resp.content,
-                status_code=upstream_resp.status_code,
-                headers=dict(upstream_resp.headers.items()),
-                media_type=upstream_resp.headers.get("content-type"),
-            )
+            async def _close_stream_context() -> None:
+                try:
+                    await stream_context.__aexit__(None, None, None)
+                    if http_client is not None:
+                        await http_client.aclose()
+                except (RuntimeError, OSError, httpx.HTTPError) as exc:
+                    _LOGGER.debug("Failed to close SSR proxy stream context cleanly: %s", exc)
+
+            async def asgi_response_app(_scope: "Scope", _receive: "Receive", send: "Send") -> None:
+                del _scope, _receive
+                await _proxy_stream_response(
+                    response=upstream_resp,
+                    send=cast("Callable[[dict[str, Any]], Any]", send),
+                    close_callback=_close_stream_context,
+                )
+
+            return asgi_response_app
 
         @websocket(path=["/", "/{path:path}"], name="ssr_proxy_ws")
         async def ws_proxy(self, socket: "WebSocket[Any, Any, Any]") -> None:
@@ -644,8 +830,8 @@ def create_ssr_proxy_controller(
             headers = extract_forward_headers(scope_dict)
             subprotocols = extract_subprotocols(scope_dict)
             typed_subprotocols: list[Subprotocol] = [cast("Subprotocol", p) for p in subprotocols]
-
-            await socket.accept(subprotocols=typed_subprotocols[0] if typed_subprotocols else None)
+            accept_subprotocol: str | None = subprotocols[0] if subprotocols else None
+            await socket.accept(subprotocols=accept_subprotocol)
             await _handle_ssr_websocket_proxy(socket, ws_url, headers, typed_subprotocols)
 
     return SSRProxyController

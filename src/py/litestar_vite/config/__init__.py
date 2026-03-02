@@ -26,6 +26,7 @@ Example usage::
 import logging
 import os
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkable
 
@@ -74,6 +75,22 @@ __all__ = (
     "TypeGenConfig",
     "ViteConfig",
 )
+
+
+@lru_cache(maxsize=128)
+def _package_json_has_react_plugin(package_json_path: str, stat_mtime_ns: int, stat_size: int) -> bool:
+    """Cache `@vitejs/plugin-react` detection for a concrete package.json snapshot."""
+    try:
+        payload = decode_json(Path(package_json_path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, SerializationException):
+        return False
+
+    deps_any = payload.get("dependencies")
+    dev_deps_any = payload.get("devDependencies")
+
+    if isinstance(deps_any, dict) and "@vitejs/plugin-react" in cast("dict[str, Any]", deps_any):
+        return True
+    return bool(isinstance(dev_deps_any, dict) and "@vitejs/plugin-react" in cast("dict[str, Any]", dev_deps_any))
 
 
 @runtime_checkable
@@ -267,22 +284,15 @@ class ViteConfig:
             return
 
         try:
-            payload = decode_json(package_json.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, SerializationException):  # pragma: no cover - defensive
+            package_json_stat = package_json.stat()
+        except OSError:
             return
 
-        deps_any = payload.get("dependencies")
-        dev_deps_any = payload.get("devDependencies")
+        has_react_plugin = _package_json_has_react_plugin(
+            str(package_json), package_json_stat.st_mtime_ns, package_json_stat.st_size
+        )
 
-        deps: dict[str, Any] = {}
-        dev_deps: dict[str, Any] = {}
-
-        if isinstance(deps_any, dict):
-            deps = cast("dict[str, Any]", deps_any)
-        if isinstance(dev_deps_any, dict):
-            dev_deps = cast("dict[str, Any]", dev_deps_any)
-
-        if "@vitejs/plugin-react" in deps or "@vitejs/plugin-react" in dev_deps:
+        if has_react_plugin:
             self.runtime.is_react = True
 
     def _normalize_mode(self) -> None:
@@ -700,7 +710,6 @@ class ViteConfig:
         Returns:
             A de-duplicated list of candidate index.html paths, ordered by preference.
         """
-
         bundle_dir = self._resolve_to_root(self.bundle_dir)
         resource_dir = self._resolve_to_root(self.resource_dir)
         static_dir = self._resolve_to_root(self.static_dir)
@@ -720,6 +729,7 @@ class ViteConfig:
                 continue
             seen.add(path)
             unique.append(path)
+
         return unique
 
     def candidate_manifest_paths(self) -> list[Path]:
@@ -746,6 +756,7 @@ class ViteConfig:
                 continue
             seen.add(path)
             unique.append(path)
+
         return unique
 
     def resolve_manifest_path(self) -> Path:

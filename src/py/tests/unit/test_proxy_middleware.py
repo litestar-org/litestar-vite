@@ -70,6 +70,19 @@ async def test_proxy_should_proxy_matches_vite_paths(hotfile: Path) -> None:
     assert middleware._should_proxy("/@analogjs/vite-plugin-angular", dummy_scope)
     assert not middleware._should_proxy("/api/users", dummy_scope)
 
+    # Static file extensions from any path should be proxied
+    assert middleware._should_proxy("/fonts/my-font.woff2", dummy_scope)
+    assert middleware._should_proxy("/fonts/my-font.WOFF2", dummy_scope)
+    assert middleware._should_proxy("/assets/logo.png", dummy_scope)
+    assert middleware._should_proxy("/favicon.ico", dummy_scope)
+    assert middleware._should_proxy("/assets/manifest.webmanifest", dummy_scope)
+    assert middleware._should_proxy("/assets/bundle.wasm", dummy_scope)
+    assert middleware._should_proxy("/deep/path/to/script.ts", dummy_scope)
+
+    # Files without static extensions and not in Vite paths should not be proxied
+    assert not middleware._should_proxy("/api/data", dummy_scope)
+    assert not middleware._should_proxy("/login", dummy_scope)
+
     # node_modules paths for npm packages with static assets (e.g., @fontsource fonts)
     assert middleware._should_proxy("/node_modules/@fontsource/geist/files/font.woff2", dummy_scope)
 
@@ -80,7 +93,36 @@ async def test_proxy_should_proxy_matches_vite_paths(hotfile: Path) -> None:
     # Custom resource dir
     middleware_with_resources = ViteProxyMiddleware(noop, hotfile_path=hotfile, resource_dir=Path("resources"))
     assert middleware_with_resources._should_proxy("/resources/app.tsx", dummy_scope)
-    assert not middleware_with_resources._should_proxy("/src/main.ts", dummy_scope)
+    assert not middleware_with_resources._should_proxy("/src/README.md", dummy_scope)
+
+
+@pytest.mark.anyio
+async def test_proxy_should_proxy_uses_decoded_path_for_litestar_routes(hotfile: Path) -> None:
+    """Decode path before route checks so encoded API/static boundary routes are respected."""
+
+    async def noop(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile)
+
+    class MockRoute:
+        def __init__(self, path: str) -> None:
+            self.path = path
+
+    class MockState:
+        pass
+
+    class MockApp:
+        def __init__(self) -> None:
+            self.routes = [MockRoute("/api"), MockRoute("/schema")]
+            self.openapi_config = None
+            self.state = MockState()
+
+    scope_with_app: Scope = {"type": "http", "path": "/", "headers": [], "app": MockApp()}  # type: ignore
+
+    assert not middleware._should_proxy("/api%2Fusers", scope_with_app)
+    assert not middleware._should_proxy("/schema%2Fopenapi%2Ejson", scope_with_app)
+    assert middleware._should_proxy("/assets%2Fmain%2Ejs", scope_with_app)
 
 
 @pytest.mark.anyio

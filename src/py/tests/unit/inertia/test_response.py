@@ -1384,6 +1384,47 @@ async def test_pagination_in_dict_preserves_key(
         assert "ignored" not in data["props"]
 
 
+async def test_merge_and_pagination_props_processed_together(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test combined merge and pagination prop transforms remain stable in one pass."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class MockPagination:
+        items: list[str]
+        limit: int
+        offset: int
+        total: int
+
+    @get("/feed", component="Feed")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {
+            "users": merge("users", ["alice", "bob"]),
+            "members": MockPagination(items=["member1", "member2"], limit=10, offset=0, total=2),
+            "note": "visible",
+        }
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/feed", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()["props"]
+
+        assert data["users"] == ["alice", "bob"]
+        assert data["members"] == ["member1", "member2"]
+        assert data["note"] == "visible"
+        assert data["total"] == 2
+        assert data["limit"] == 10
+        assert data["offset"] == 0
+
+
 async def test_pagination_with_infinite_scroll_opt(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,

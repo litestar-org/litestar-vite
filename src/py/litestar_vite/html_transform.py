@@ -341,7 +341,9 @@ def inject_page_script(html: str, json_data: str, *, nonce: str | None = None, s
     escaped_json = json_data.replace("</", r"<\/")
 
     nonce_attr = f' nonce="{_escape_attr(nonce)}"' if nonce else ""
-    script_tag = f'<script type="application/json" id="{script_id}"{nonce_attr}>{escaped_json}</script>\n'
+    script_tag = (
+        f'<script type="application/json" id="{script_id}" data-page="app"{nonce_attr}>{escaped_json}</script>\n'
+    )
 
     body_end_match = _BODY_END_PATTERN.search(html)
     if body_end_match:

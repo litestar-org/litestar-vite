@@ -455,7 +455,7 @@ async def test_spa_handler_transform_html_with_page_data(spa_config_with_script_
     html = await handler.get_html(mock_request, page_data=page_data)
 
     # use_script_element=True - page data injected as script element
-    assert '<script type="application/json" id="app_page">' in html
+    assert '<script type="application/json" id="app_page" data-page="app">' in html
     assert "Home" in html
     assert "test" in html
 
@@ -518,7 +518,7 @@ async def test_spa_handler_get_html_sync_with_page_data(spa_config_with_script_e
     html = handler.get_html_sync(page_data=page_data)
 
     # use_script_element=True - page data injected as script element
-    assert '<script type="application/json" id="app_page">' in html
+    assert '<script type="application/json" id="app_page" data-page="app">' in html
     assert "Home" in html
 
 

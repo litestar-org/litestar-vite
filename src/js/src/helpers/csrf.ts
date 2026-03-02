@@ -15,6 +15,54 @@ declare global {
   }
 }
 
+interface CsrfTokenCache {
+  token: string
+  windowToken?: string
+  metaToken?: string
+  inertiaToken?: string
+}
+
+let csrfTokenCache: CsrfTokenCache | null = null
+
+function getWindowToken(): string | undefined {
+  if (typeof window !== "undefined") {
+    return window.__LITESTAR_CSRF__
+  }
+
+  return undefined
+}
+
+function getMetaToken(): string | undefined {
+  if (typeof document !== "undefined") {
+    const meta = document.querySelector('meta[name="csrf-token"]')
+    if (meta) {
+      const content = meta.getAttribute("content")
+      if (content !== null && content.length > 0) {
+        return content
+      }
+    }
+  }
+
+  return undefined
+}
+
+function getInertiaToken(): string | undefined {
+  if (typeof window === "undefined") {
+    return undefined
+  }
+
+  const win = window as unknown as Record<string, unknown>
+  const inertiaPage = win.__INERTIA_PAGE__ as Record<string, unknown> | undefined
+  if (inertiaPage?.props) {
+    const props = inertiaPage.props as Record<string, unknown>
+    if (typeof props.csrf_token === "string") {
+      return props.csrf_token
+    }
+  }
+
+  return undefined
+}
+
 /**
  * Get the CSRF token from the page.
  *
@@ -39,32 +87,57 @@ declare global {
  * ```
  */
 export function getCsrfToken(): string {
-  // Check window global (SPA mode)
-  if (typeof window !== "undefined" && window.__LITESTAR_CSRF__) {
-    return window.__LITESTAR_CSRF__
-  }
-
-  // Check meta tag (template mode)
-  if (typeof document !== "undefined") {
-    const meta = document.querySelector('meta[name="csrf-token"]')
-    if (meta) {
-      return meta.getAttribute("content") || ""
+  const windowToken = getWindowToken()
+  if (windowToken) {
+    if (csrfTokenCache?.windowToken === windowToken && csrfTokenCache.token === windowToken) {
+      return csrfTokenCache.token
     }
-  }
 
-  // Check Inertia page props
-  if (typeof window !== "undefined") {
-    const win = window as unknown as Record<string, unknown>
-    const inertiaPage = win.__INERTIA_PAGE__ as Record<string, unknown> | undefined
-    if (inertiaPage?.props) {
-      const props = inertiaPage.props as Record<string, unknown>
-      if (typeof props.csrf_token === "string") {
-        return props.csrf_token
-      }
+    csrfTokenCache = {
+      token: windowToken,
+      windowToken,
     }
+    return windowToken
   }
 
-  return ""
+  const metaToken = getMetaToken()
+  const inertiaToken = getInertiaToken()
+  const token = metaToken ?? inertiaToken ?? ""
+
+  if (
+    csrfTokenCache &&
+    csrfTokenCache.windowToken === undefined &&
+    csrfTokenCache.metaToken === metaToken &&
+    csrfTokenCache.inertiaToken === inertiaToken &&
+    csrfTokenCache.token === token
+  ) {
+    return csrfTokenCache.token
+  }
+
+  csrfTokenCache = {
+    token,
+    windowToken: undefined,
+    metaToken,
+    inertiaToken,
+  }
+
+  return token
+}
+
+function hasCsrfHeader(headers: HeadersInit | undefined): boolean {
+  if (headers == null) {
+    return false
+  }
+
+  if (headers instanceof Headers) {
+    return headers.has("X-CSRF-Token")
+  }
+
+  if (Array.isArray(headers)) {
+    return headers.some((entry) => Array.isArray(entry) && entry.length >= 2 && typeof entry[0] === "string" && entry[0].toLowerCase() === "x-csrf-token")
+  }
+
+  return Object.keys(headers as Record<string, string>).some((key) => key.toLowerCase() === "x-csrf-token")
 }
 
 /**
@@ -86,9 +159,18 @@ export function getCsrfToken(): string {
  */
 export function csrfHeaders(additionalHeaders: Record<string, string> = {}): Record<string, string> {
   const token = getCsrfToken()
+  if (!token) {
+    return additionalHeaders
+  }
+
+  const existingTokenHeader = Object.keys(additionalHeaders).find((key) => key.toLowerCase() === "x-csrf-token")
+  if (existingTokenHeader !== undefined) {
+    return additionalHeaders
+  }
+
   return {
     ...additionalHeaders,
-    ...(token ? { "X-CSRF-Token": token } : {}),
+    "X-CSRF-Token": token,
   }
 }
 
@@ -117,13 +199,40 @@ export function csrfFetch(input: RequestInfo | URL, init?: RequestInit): Promise
     return fetch(input, init)
   }
 
-  const headers = new Headers(init?.headers)
-  if (!headers.has("X-CSRF-Token")) {
-    headers.set("X-CSRF-Token", token)
+  if (!hasCsrfHeader(init?.headers)) {
+    if (!init || typeof init.headers === "undefined") {
+      return fetch(input, {
+        ...init,
+        headers: { "X-CSRF-Token": token },
+      })
+    }
+
+    if (typeof init.headers === "object" && init.headers !== null && !(init.headers instanceof Headers)) {
+      if (Array.isArray(init.headers)) {
+        return fetch(input, {
+          ...init,
+          headers: [...init.headers, ["X-CSRF-Token", token]],
+        })
+      }
+
+      return fetch(input, {
+        ...init,
+        headers: {
+          ...init.headers,
+          "X-CSRF-Token": token,
+        },
+      })
+    }
+
+    if (init.headers instanceof Headers) {
+      const headers = new Headers(init.headers)
+      headers.set("X-CSRF-Token", token)
+      return fetch(input, {
+        ...init,
+        headers,
+      })
+    }
   }
 
-  return fetch(input, {
-    ...init,
-    headers,
-  })
+  return fetch(input, init)
 }

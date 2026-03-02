@@ -399,6 +399,7 @@ export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): Plu
               target: config.apiProxy,
               changeOrigin: true,
               secure: false,
+              ws: true,
             },
           },
         },

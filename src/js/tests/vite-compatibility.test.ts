@@ -201,6 +201,24 @@ describe("Vite 7.0 Compatibility", () => {
       expect(config.base).toBe("/static/")
     })
 
+    it("enables websocket proxy for default /api and /schema targets", () => {
+      process.env.APP_URL = "http://127.0.0.1:8000"
+      const plugin = litestar("resources/js/app.ts")[0]
+
+      const config = plugin.config({}, { command: "serve", mode: "development" })
+
+      expect(config.server?.proxy?.["/api"]).toMatchObject({
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+        ws: true,
+      })
+      expect(config.server?.proxy?.["/schema"]).toMatchObject({
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+        ws: true,
+      })
+    })
+
     it("supports Vite 7.0 middleware configuration", () => {
       const plugin = litestar("resources/js/app.ts")[0]
 

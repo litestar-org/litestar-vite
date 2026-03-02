@@ -210,3 +210,4 @@ coverage/
 examples/flash/public
 coverage.json
 .agent/
+.beads/
