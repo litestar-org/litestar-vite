@@ -160,7 +160,7 @@ export async function updateOpenApiTsCache(
     configHash: configPath ? await hashFile(configPath) : "",
     optionsHash: hashObject(options),
     inputMeta: (await readFileMetadata(openapiPath)) ?? undefined,
-    configMeta: configPath ? (await readFileMetadata(configPath)) ?? undefined : undefined,
+    configMeta: configPath ? ((await readFileMetadata(configPath)) ?? undefined) : undefined,
     timestamp: Date.now(),
   }
   await saveCache(cache)

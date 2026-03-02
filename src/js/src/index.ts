@@ -835,15 +835,15 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           return
         }
 
-    // In Inertia mode, always show the dev-server placeholder on the Vite port.
-    if (pluginConfig.inertiaMode) {
-      try {
-        const placeholderContent = await loadDevServerPlaceholder()
-        res.statusCode = 200
-        res.setHeader("Content-Type", "text/html")
-        res.end(placeholderContent.replace(/{{ APP_URL }}/g, appUrl))
-        } catch (e) {
-        resolvedConfig.logger.error(`Error serving placeholder index.html: ${e instanceof Error ? e.message : e}`)
+        // In Inertia mode, always show the dev-server placeholder on the Vite port.
+        if (pluginConfig.inertiaMode) {
+          try {
+            const placeholderContent = await loadDevServerPlaceholder()
+            res.statusCode = 200
+            res.setHeader("Content-Type", "text/html")
+            res.end(placeholderContent.replace(/{{ APP_URL }}/g, appUrl))
+          } catch (e) {
+            resolvedConfig.logger.error(`Error serving placeholder index.html: ${e instanceof Error ? e.message : e}`)
             res.statusCode = 404
             res.end("Not Found (Error loading placeholder)")
           }
@@ -1558,12 +1558,7 @@ function dirname(): string {
     moduleDir = path.resolve(process.cwd(), "src", "js", "src")
   }
 
-  const candidates = [
-    path.resolve(moduleDir, "../../../dist/js"),
-    path.resolve(process.cwd(), "../dist/js"),
-    path.resolve(process.cwd(), "dist/js"),
-    moduleDir,
-  ]
+  const candidates = [path.resolve(moduleDir, "../../../dist/js"), path.resolve(process.cwd(), "../dist/js"), path.resolve(process.cwd(), "dist/js"), moduleDir]
 
   for (const candidate of candidates) {
     if (fs.existsSync(path.join(candidate, "dev-server-index.html"))) {

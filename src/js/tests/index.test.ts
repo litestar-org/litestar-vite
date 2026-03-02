@@ -1069,11 +1069,7 @@ describe("litestar-vite-plugin", () => {
 
     it("rejects transform-index requests with unsupported content type", async () => {
       await setupServer()
-      await mockMiddleware(
-        createTransformRequest("POST", { html: "<html><body>bad</body></html>" }, { "content-type": "text/plain" }),
-        mockRes,
-        mockNext,
-      )
+      await mockMiddleware(createTransformRequest("POST", { html: "<html><body>bad</body></html>" }, { "content-type": "text/plain" }), mockRes, mockNext)
 
       expect(mockRes.statusCode).toBe(415)
       expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/plain")

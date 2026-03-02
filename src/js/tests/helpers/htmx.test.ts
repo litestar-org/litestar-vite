@@ -1,14 +1,14 @@
 /* biome-ignore-all lint/suspicious/noTemplateCurlyInString: Testing ${expr} template syntax intentionally */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
-  addDirective,
-  registerHtmxExtension,
-  swapJson,
   __clearExpressionCache,
   __compileExpressionForTest,
   __getExpressionCacheKeys,
   __getExpressionCacheSize,
   __setExpressionCacheLimit,
+  addDirective,
+  registerHtmxExtension,
+  swapJson,
 } from "../../src/helpers/htmx"
 
 describe("htmx extension", () => {

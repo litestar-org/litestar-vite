@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
+  __clearRouteHelperCachesForTest,
+  __getRouteWildcardRegexCacheSize,
   createRouteHelpers,
   currentRoute,
   isCurrentRoute,
   isRoute,
   type RouteDefinition,
   toRoute,
-  __clearRouteHelperCachesForTest,
-  __getRouteWildcardRegexCacheSize,
 } from "../../src/helpers/routes"
 
 // Sample route definitions matching typical generated output

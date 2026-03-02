@@ -17,12 +17,7 @@ import { emitPagePropsTypes } from "./emit-page-props-types.js"
 import { emitSchemasTypes } from "./emit-schemas-types.js"
 import { emitStaticPropsTypes } from "./emit-static-props-types.js"
 import { formatPath } from "./format-path.js"
-import {
-  shouldRegeneratePageProps,
-  shouldRunOpenApiTs,
-  updateOpenApiTsCache,
-  updatePagePropsCache,
-} from "./typegen-cache.js"
+import { shouldRegeneratePageProps, shouldRunOpenApiTs, updateOpenApiTsCache, updatePagePropsCache } from "./typegen-cache.js"
 import { buildHeyApiPlugins, findOpenApiTsConfig, runHeyApiGeneration, type TypeGenCoreConfig, type TypeGenLogger } from "./typegen-core.js"
 
 export interface RequiredTypeGenConfig {

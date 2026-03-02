@@ -104,7 +104,13 @@ export function getCsrfToken(): string {
   const inertiaToken = getInertiaToken()
   const token = metaToken ?? inertiaToken ?? ""
 
-  if (csrfTokenCache && csrfTokenCache.windowToken === undefined && csrfTokenCache.metaToken === metaToken && csrfTokenCache.inertiaToken === inertiaToken && csrfTokenCache.token === token) {
+  if (
+    csrfTokenCache &&
+    csrfTokenCache.windowToken === undefined &&
+    csrfTokenCache.metaToken === metaToken &&
+    csrfTokenCache.inertiaToken === inertiaToken &&
+    csrfTokenCache.token === token
+  ) {
     return csrfTokenCache.token
   }
 
@@ -128,12 +134,7 @@ function hasCsrfHeader(headers: HeadersInit | undefined): boolean {
   }
 
   if (Array.isArray(headers)) {
-    return headers.some((entry) =>
-      Array.isArray(entry) &&
-      entry.length >= 2 &&
-      typeof entry[0] === "string" &&
-      entry[0].toLowerCase() === "x-csrf-token",
-    )
+    return headers.some((entry) => Array.isArray(entry) && entry.length >= 2 && typeof entry[0] === "string" && entry[0].toLowerCase() === "x-csrf-token")
   }
 
   return Object.keys(headers as Record<string, string>).some((key) => key.toLowerCase() === "x-csrf-token")
