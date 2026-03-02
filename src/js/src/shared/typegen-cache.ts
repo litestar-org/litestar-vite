@@ -9,6 +9,14 @@ interface CacheEntry {
   inputHash: string // SHA-256 of openapi.json
   configHash: string // SHA-256 of config file (if exists)
   optionsHash: string // Hash of generator options
+  inputMeta?: {
+    size: number
+    mtimeMs: number
+  }
+  configMeta?: {
+    size: number
+    mtimeMs: number
+  }
   timestamp: number
 }
 
@@ -51,6 +59,38 @@ async function hashFile(filePath: string): Promise<string> {
   }
 }
 
+interface FileMetadata {
+  size: number
+  mtimeMs: number
+}
+
+/**
+ * Read file size and mtime metadata.
+ */
+async function readFileMetadata(filePath: string): Promise<FileMetadata | null> {
+  try {
+    const stat = await fs.promises.stat(filePath)
+    return {
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+    }
+  } catch {
+    return null
+  }
+}
+
+function isMetadataMatch(a: FileMetadata | null, b: FileMetadata | null): boolean {
+  return a !== null && b !== null && a.size === b.size && a.mtimeMs === b.mtimeMs
+}
+
+function isOptionalMetadataMatch(a: FileMetadata | null, b: FileMetadata | null): boolean {
+  if (a === null && b === null) {
+    return true
+  }
+
+  return isMetadataMatch(a, b)
+}
+
 /**
  * Compute SHA-256 hash of an object.
  * Keys are sorted for deterministic hashing.
@@ -74,12 +114,25 @@ export async function shouldRunOpenApiTs(
   options: { generateSdk: boolean; generateZod: boolean; plugins: string[] },
 ): Promise<boolean> {
   const cache = await loadCache()
-  const inputHash = await hashFile(openapiPath)
-  const configHash = configPath ? await hashFile(configPath) : ""
   const optionsHash = hashObject(options)
 
   const cacheKey = "openapi-ts"
   const entry = cache[cacheKey]
+
+  const currentInputMetadata = await readFileMetadata(openapiPath)
+  const currentConfigMetadata = configPath ? await readFileMetadata(configPath) : null
+
+  if (
+    entry &&
+    entry.optionsHash === optionsHash &&
+    isMetadataMatch(entry.inputMeta ?? null, currentInputMetadata) &&
+    isOptionalMetadataMatch(entry.configMeta ?? null, currentConfigMetadata)
+  ) {
+    return false
+  }
+
+  const inputHash = await hashFile(openapiPath)
+  const configHash = configPath ? await hashFile(configPath) : ""
 
   if (entry && entry.inputHash === inputHash && entry.configHash === configHash && entry.optionsHash === optionsHash) {
     return false // Skip - inputs unchanged
@@ -106,6 +159,8 @@ export async function updateOpenApiTsCache(
     inputHash: await hashFile(openapiPath),
     configHash: configPath ? await hashFile(configPath) : "",
     optionsHash: hashObject(options),
+    inputMeta: await readFileMetadata(openapiPath),
+    configMeta: configPath ? await readFileMetadata(configPath) : undefined,
     timestamp: Date.now(),
   }
   await saveCache(cache)
@@ -129,10 +184,16 @@ export async function computePagePropsHash(pagePropsPath: string): Promise<strin
  */
 export async function shouldRegeneratePageProps(pagePropsPath: string): Promise<boolean> {
   const cache = await loadCache()
-  const currentHash = await hashFile(pagePropsPath)
+  const currentMetadata = await readFileMetadata(pagePropsPath)
 
   const cacheKey = "page-props"
   const entry = cache[cacheKey]
+
+  if (entry && isMetadataMatch(entry.inputMeta ?? null, currentMetadata)) {
+    return false
+  }
+
+  const currentHash = await hashFile(pagePropsPath)
 
   if (entry && entry.inputHash === currentHash) {
     return false // Skip - input unchanged
@@ -150,6 +211,7 @@ export async function updatePagePropsCache(pagePropsPath: string): Promise<void>
   const cache = await loadCache()
   cache["page-props"] = {
     inputHash: await hashFile(pagePropsPath),
+    inputMeta: await readFileMetadata(pagePropsPath),
     configHash: "",
     optionsHash: "",
     timestamp: Date.now(),

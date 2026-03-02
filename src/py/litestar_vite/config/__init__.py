@@ -26,6 +26,7 @@ Example usage::
 import logging
 import os
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkable
 
@@ -74,6 +75,24 @@ __all__ = (
     "TypeGenConfig",
     "ViteConfig",
 )
+
+
+@lru_cache(maxsize=128)
+def _package_json_has_react_plugin(package_json_path: str, stat_mtime_ns: int, stat_size: int) -> bool:
+    """Cache `@vitejs/plugin-react` detection for a concrete package.json snapshot."""
+    try:
+        payload = decode_json(Path(package_json_path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, SerializationException):
+        return False
+
+    deps_any = payload.get("dependencies")
+    dev_deps_any = payload.get("devDependencies")
+
+    if isinstance(deps_any, dict) and "@vitejs/plugin-react" in cast("dict[str, Any]", deps_any):
+        return True
+    if isinstance(dev_deps_any, dict) and "@vitejs/plugin-react" in cast("dict[str, Any]", dev_deps_any):
+        return True
+    return False
 
 
 @runtime_checkable
@@ -231,6 +250,8 @@ class ViteConfig:
     """
 
     _executor_instance: "JSExecutor | None" = field(default=None, repr=False)
+    _cached_index_html_paths: "list[Path] | None" = field(default=None, init=False, repr=False)
+    _cached_manifest_paths: "list[Path] | None" = field(default=None, init=False, repr=False)
     _mode_auto_detected: bool = field(default=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -267,22 +288,17 @@ class ViteConfig:
             return
 
         try:
-            payload = decode_json(package_json.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, SerializationException):  # pragma: no cover - defensive
+            package_json_stat = package_json.stat()
+        except OSError:
             return
 
-        deps_any = payload.get("dependencies")
-        dev_deps_any = payload.get("devDependencies")
+        has_react_plugin = _package_json_has_react_plugin(
+            str(package_json),
+            package_json_stat.st_mtime_ns,
+            package_json_stat.st_size,
+        )
 
-        deps: dict[str, Any] = {}
-        dev_deps: dict[str, Any] = {}
-
-        if isinstance(deps_any, dict):
-            deps = cast("dict[str, Any]", deps_any)
-        if isinstance(dev_deps_any, dict):
-            dev_deps = cast("dict[str, Any]", dev_deps_any)
-
-        if "@vitejs/plugin-react" in deps or "@vitejs/plugin-react" in dev_deps:
+        if has_react_plugin:
             self.runtime.is_react = True
 
     def _normalize_mode(self) -> None:
@@ -701,26 +717,30 @@ class ViteConfig:
             A de-duplicated list of candidate index.html paths, ordered by preference.
         """
 
-        bundle_dir = self._resolve_to_root(self.bundle_dir)
-        resource_dir = self._resolve_to_root(self.resource_dir)
-        static_dir = self._resolve_to_root(self.static_dir)
-        root_dir = self.root_dir
+        if self._cached_index_html_paths is None:
+            bundle_dir = self._resolve_to_root(self.bundle_dir)
+            resource_dir = self._resolve_to_root(self.resource_dir)
+            static_dir = self._resolve_to_root(self.static_dir)
+            root_dir = self.root_dir
 
-        candidates = [
-            bundle_dir / "index.html",
-            resource_dir / "index.html",
-            root_dir / "index.html",
-            static_dir / "index.html",
-        ]
+            candidates = [
+                bundle_dir / "index.html",
+                resource_dir / "index.html",
+                root_dir / "index.html",
+                static_dir / "index.html",
+            ]
 
-        unique: list[Path] = []
-        seen: set[Path] = set()
-        for path in candidates:
-            if path in seen:
-                continue
-            seen.add(path)
-            unique.append(path)
-        return unique
+            unique: list[Path] = []
+            seen: set[Path] = set()
+            for path in candidates:
+                if path in seen:
+                    continue
+                seen.add(path)
+                unique.append(path)
+
+            self._cached_index_html_paths = unique
+
+        return list(self._cached_index_html_paths)
 
     def candidate_manifest_paths(self) -> list[Path]:
         """Return possible manifest.json locations in the bundle directory.
@@ -732,21 +752,25 @@ class ViteConfig:
         Returns:
             A de-duplicated list of candidate manifest paths, ordered by preference.
         """
-        bundle_path = self._resolve_to_root(self.bundle_dir)
-        manifest_rel = Path(self.manifest_name)
+        if self._cached_manifest_paths is None:
+            bundle_path = self._resolve_to_root(self.bundle_dir)
+            manifest_rel = Path(self.manifest_name)
 
-        candidates: list[Path] = [bundle_path / manifest_rel]
-        if not manifest_rel.is_absolute() and (not manifest_rel.parts or manifest_rel.parts[0] != ".vite"):
-            candidates.append(bundle_path / ".vite" / manifest_rel)
+            candidates: list[Path] = [bundle_path / manifest_rel]
+            if not manifest_rel.is_absolute() and (not manifest_rel.parts or manifest_rel.parts[0] != ".vite"):
+                candidates.append(bundle_path / ".vite" / manifest_rel)
 
-        unique: list[Path] = []
-        seen: set[Path] = set()
-        for path in candidates:
-            if path in seen:
-                continue
-            seen.add(path)
-            unique.append(path)
-        return unique
+            unique: list[Path] = []
+            seen: set[Path] = set()
+            for path in candidates:
+                if path in seen:
+                    continue
+                seen.add(path)
+                unique.append(path)
+
+            self._cached_manifest_paths = unique
+
+        return list(self._cached_manifest_paths)
 
     def resolve_manifest_path(self) -> Path:
         """Resolve the most likely manifest path.

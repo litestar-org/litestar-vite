@@ -45,6 +45,8 @@ export type RouteDefinitions = Record<string, RouteDefinition>
 
 /** Cache for compiled route patterns */
 const patternCache = new Map<string, RegExp>()
+/** Cache for wildcard route-name pattern matching */
+const wildcardPatternCache = new Map<string, RegExp>()
 
 /**
  * Compile a route path pattern to a regex for URL matching.
@@ -75,6 +77,17 @@ function compilePattern(path: string): RegExp {
   })
   const regex = new RegExp(`^${pattern}$`, "i")
   patternCache.set(path, regex)
+  return regex
+}
+
+/** Compile a wildcard route pattern to regex for route-name matching. */
+function compileWildcardPattern(pattern: string): RegExp {
+  const cached = wildcardPatternCache.get(pattern)
+  if (cached) return cached
+
+  const escaped = pattern.replace(/[.+?^$|()[\]{}]/g, "\\$&")
+  const regex = new RegExp(`^${escaped.replace(/\*/g, ".*")}$`)
+  wildcardPatternCache.set(pattern, regex)
   return regex
 }
 
@@ -140,9 +153,7 @@ export function currentRoute<T extends string>(routes: Record<T, RouteDefinition
 export function isRoute<T extends string>(url: string, pattern: string, routes: Record<T, RouteDefinition>): boolean {
   const routeName = toRoute(url, routes)
   if (!routeName) return false
-  // Escape special regex chars (except *), then convert * to .*
-  const escaped = pattern.replace(/[.+?^$|()[\]{}]/g, "\\$&")
-  const regex = new RegExp(`^${escaped.replace(/\*/g, ".*")}$`)
+  const regex = compileWildcardPattern(pattern)
   return regex.test(routeName)
 }
 
@@ -165,10 +176,19 @@ export function isRoute<T extends string>(url: string, pattern: string, routes: 
 export function isCurrentRoute<T extends string>(pattern: string, routes: Record<T, RouteDefinition>): boolean {
   const current = currentRoute(routes)
   if (!current) return false
-  // Escape special regex chars (except *), then convert * to .*
-  const escaped = pattern.replace(/[.+?^$|()[\]{}]/g, "\\$&")
-  const regex = new RegExp(`^${escaped.replace(/\*/g, ".*")}$`)
+  const regex = compileWildcardPattern(pattern)
   return regex.test(current)
+}
+
+/** @internal */
+export function __getRouteWildcardRegexCacheSize(): number {
+  return wildcardPatternCache.size
+}
+
+/** @internal */
+export function __clearRouteHelperCachesForTest(): void {
+  patternCache.clear()
+  wildcardPatternCache.clear()
 }
 
 /**

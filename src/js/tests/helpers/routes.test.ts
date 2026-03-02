@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { createRouteHelpers, currentRoute, isCurrentRoute, isRoute, type RouteDefinition, toRoute } from "../../src/helpers/routes"
+import {
+  createRouteHelpers,
+  currentRoute,
+  isCurrentRoute,
+  isRoute,
+  type RouteDefinition,
+  toRoute,
+  __clearRouteHelperCachesForTest,
+  __getRouteWildcardRegexCacheSize,
+} from "../../src/helpers/routes"
 
 // Sample route definitions matching typical generated output
 const sampleRoutes = {
@@ -253,6 +262,26 @@ describe("route helpers", () => {
     })
   })
 
+  describe("wildcard pattern caching", () => {
+    beforeEach(() => {
+      __clearRouteHelperCachesForTest()
+    })
+
+    it("reuses cached wildcard regex for repeated patterns", () => {
+      expect(__getRouteWildcardRegexCacheSize()).toBe(0)
+      expect(isRoute("/api/books", "book*", sampleRoutes)).toBe(true)
+      expect(__getRouteWildcardRegexCacheSize()).toBe(1)
+      expect(isRoute("/books/123", "book*", sampleRoutes)).toBe(false)
+      expect(__getRouteWildcardRegexCacheSize()).toBe(1)
+    })
+
+    it("tracks separate cached regex entries per wildcard pattern", () => {
+      expect(isRoute("/api/books", "book*", sampleRoutes)).toBe(true)
+      expect(isRoute("/books", "*_page", sampleRoutes)).toBe(true)
+      expect(__getRouteWildcardRegexCacheSize()).toBe(2)
+    })
+  })
+
   describe("createRouteHelpers", () => {
     it("creates bound helper functions", () => {
       const helpers = createRouteHelpers(sampleRoutes)
@@ -298,6 +327,7 @@ describe("route helpers", () => {
   describe("pattern caching", () => {
     it("reuses compiled patterns for same path", () => {
       // First call should compile
+      __clearRouteHelperCachesForTest()
       toRoute("/api/books/1", sampleRoutes)
       // Second call should use cache
       const result = toRoute("/api/books/2", sampleRoutes)

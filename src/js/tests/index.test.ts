@@ -785,6 +785,35 @@ describe("litestar-vite-plugin", () => {
       })
     }
 
+    const createTransformRequest = (
+      method: string,
+      body?: object | string,
+      headers?: Record<string, string>,
+    ): {
+      method: string
+      originalUrl: string
+      url: string
+      headers?: Record<string, string>
+      on: (event: string, handler: (chunk?: unknown) => void) => void
+    } => {
+      const payload = typeof body === "string" ? body : body === undefined ? undefined : JSON.stringify(body)
+      return {
+        method,
+        originalUrl: "/__litestar__/transform-index",
+        url: "/__litestar__/transform-index",
+        headers,
+        on: (event, handler) => {
+          if (event === "data" && payload !== undefined) {
+            handler(payload)
+          }
+          if (event === "end") {
+            handler()
+          }
+          return undefined
+        },
+      }
+    }
+
     it("serves index.html from root when detected", async () => {
       await setupServer()
       mockFs(rootIndexPath)
@@ -996,6 +1025,83 @@ describe("litestar-vite-plugin", () => {
       expect(mockRes.end).toHaveBeenCalledWith(expect.stringContaining("Error loading placeholder"))
       expect(mockNext).not.toHaveBeenCalled()
       expect(mockServer.config.logger.error).toHaveBeenCalledWith(expect.stringContaining("Error serving placeholder index.html"))
+    })
+
+    it("transforms index.html via the transform-index endpoint", async () => {
+      await setupServer()
+      await mockMiddleware(
+        createTransformRequest("POST", {
+          html: "<html><head></head><body>page</body></html>",
+          url: "/",
+        }),
+        mockRes,
+        mockNext,
+      )
+
+      expect(mockRes.statusCode).toBe(200)
+      expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+      expect(mockServer.transformIndexHtml).toHaveBeenCalledWith("/", "<html><head></head><body>page</body></html>", "/")
+      expect(mockRes.end).toHaveBeenCalledWith("<html>transformed <html><head></head><body>page</body></html></html>")
+      expect(mockNext).not.toHaveBeenCalled()
+    })
+
+    it("rejects non-POST transform-index requests", async () => {
+      await setupServer()
+      await mockMiddleware(createTransformRequest("GET"), mockRes, mockNext)
+
+      expect(mockRes.statusCode).toBe(405)
+      expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/plain")
+      expect(mockRes.end).toHaveBeenCalledWith("Method Not Allowed")
+      expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+      expect(mockNext).not.toHaveBeenCalled()
+    })
+
+    it("returns bad request for invalid transform-index payloads", async () => {
+      await setupServer()
+      await mockMiddleware(createTransformRequest("POST", "{}"), mockRes, mockNext)
+
+      expect(mockRes.statusCode).toBe(400)
+      expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/plain")
+      expect(mockRes.end).toHaveBeenCalledWith("Invalid payload")
+      expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+      expect(mockNext).not.toHaveBeenCalled()
+    })
+
+    it("rejects transform-index requests with unsupported content type", async () => {
+      await setupServer()
+      await mockMiddleware(
+        createTransformRequest("POST", { html: "<html><body>bad</body></html>" }, { "content-type": "text/plain" }),
+        mockRes,
+        mockNext,
+      )
+
+      expect(mockRes.statusCode).toBe(415)
+      expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/plain")
+      expect(mockRes.end).toHaveBeenCalledWith("Unsupported content type")
+      expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+      expect(mockNext).not.toHaveBeenCalled()
+    })
+
+    it("rejects oversized transform-index payloads", async () => {
+      await setupServer()
+      const payload = {
+        html: `${"A".repeat(1_000_001)}<html><body></body></html>`,
+      }
+
+      await mockMiddleware(
+        createTransformRequest("POST", payload, {
+          "content-type": "application/json",
+          "content-length": String(Buffer.byteLength(JSON.stringify(payload), "utf-8")),
+        }),
+        mockRes,
+        mockNext,
+      )
+
+      expect(mockRes.statusCode).toBe(413)
+      expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/plain")
+      expect(mockRes.end).toHaveBeenCalledWith("Payload too large")
+      expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+      expect(mockNext).not.toHaveBeenCalled()
     })
   })
 })

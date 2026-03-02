@@ -308,6 +308,8 @@ type DevServerUrl = `${"http" | "https"}://${string}:${number}`
 let exitHandlersBound = false
 let warnedMissingRuntimeConfig = false
 
+const MAX_TRANSFORM_PAYLOAD_BYTES = 1_000_000
+
 const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((path) => fs.existsSync(path.replace(/\*\*$/, "")))
 
 /**
@@ -428,10 +430,11 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
               return [key, value]
             }
             const existingConfigure = value.configure
+            const valueWithWebsocket = Object.hasOwn(value, "ws") ? value : { ...value, ws: true }
             return [
               key,
               {
-                ...value,
+                ...valueWithWebsocket,
                 configure(proxy: any, opts: any) {
                   proxy.on("error", (err: any) => {
                     const msg = String(err?.message ?? "")
@@ -488,10 +491,12 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
                     "/api": {
                       target: env.APP_URL,
                       changeOrigin: true,
+                      ws: true,
                     },
                     "/schema": {
                       target: env.APP_URL,
                       changeOrigin: true,
+                      ws: true,
                     },
                   }
                 : undefined),
@@ -730,7 +735,37 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
         const requestPath = requestUrl.split("?")[0]
         const isRootRequest = requestPath === "/" || requestPath === "/index.html"
 
+        const isJsonContentType = (value: string | string[] | undefined): boolean => {
+          if (!value) {
+            return false
+          }
+
+          const normalized = Array.isArray(value) ? value[0] : value
+          return normalized.toLowerCase().split(";")[0].trim() === "application/json"
+        }
+
+        const readBody = async (): Promise<string> =>
+          new Promise((resolve, reject) => {
+            const chunks: Buffer[] = []
+            let bytesRead = 0
+
+            req.on("data", (chunk) => {
+              const bodyChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))
+              bytesRead += bodyChunk.length
+              if (bytesRead > MAX_TRANSFORM_PAYLOAD_BYTES) {
+                req.removeAllListeners()
+                reject(new Error("Request payload too large"))
+                return
+              }
+              chunks.push(bodyChunk)
+            })
+            req.on("error", (error) => reject(error))
+            req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")))
+          })
+
         if (requestPath === "/__litestar__/transform-index") {
+          const reqHeaders = req.headers ?? {}
+
           if (req.method !== "POST") {
             res.statusCode = 405
             res.setHeader("Content-Type", "text/plain")
@@ -738,19 +773,35 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
             return
           }
 
-          const readBody = async (): Promise<string> =>
-            new Promise((resolve, reject) => {
-              let data = ""
-              req.on("data", (chunk) => {
-                data += chunk
-              })
-              req.on("end", () => resolve(data))
-              req.on("error", (err) => reject(err))
-            })
+          const contentLengthHeader = reqHeaders["content-length"]
+          const contentLengthHeaderValue = Array.isArray(contentLengthHeader) ? contentLengthHeader[0] : contentLengthHeader
+          const contentLength = typeof contentLengthHeaderValue === "string" ? Number(contentLengthHeaderValue) : Number.NaN
+          if (!Number.isNaN(contentLength) && contentLength > MAX_TRANSFORM_PAYLOAD_BYTES) {
+            res.statusCode = 413
+            res.setHeader("Content-Type", "text/plain")
+            res.end("Payload too large")
+            return
+          }
+
+          const contentType = reqHeaders["content-type"]
+          if (contentType !== undefined && !isJsonContentType(contentType)) {
+            res.statusCode = 415
+            res.setHeader("Content-Type", "text/plain")
+            res.end("Unsupported content type")
+            return
+          }
 
           try {
             const body = await readBody()
-            const payload = JSON.parse(body) as { html?: string; url?: string }
+            let payload: { html?: string; url?: string }
+            try {
+              payload = JSON.parse(body) as { html?: string; url?: string }
+            } catch {
+              res.statusCode = 400
+              res.setHeader("Content-Type", "text/plain")
+              res.end("Invalid payload")
+              return
+            }
             if (!payload.html || typeof payload.html !== "string") {
               res.statusCode = 400
               res.setHeader("Content-Type", "text/plain")
@@ -764,6 +815,13 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
             res.setHeader("Content-Type", "text/html")
             res.end(transformedHtml)
           } catch (e) {
+            if (e instanceof Error && e.message === "Request payload too large") {
+              res.statusCode = 413
+              res.setHeader("Content-Type", "text/plain")
+              res.end("Payload too large")
+              return
+            }
+
             resolvedConfig.logger.error(`Error transforming index.html: ${e instanceof Error ? e.message : e}`)
             res.statusCode = 500
             res.setHeader("Content-Type", "text/plain")
@@ -777,16 +835,15 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           return
         }
 
-        // In Inertia mode, always show the dev-server placeholder on the Vite port.
-        if (pluginConfig.inertiaMode) {
-          try {
-            const placeholderPath = path.join(dirname(), "dev-server-index.html")
-            const placeholderContent = await fs.promises.readFile(placeholderPath, "utf-8")
-            res.statusCode = 200
-            res.setHeader("Content-Type", "text/html")
-            res.end(placeholderContent.replace(/{{ APP_URL }}/g, appUrl))
-          } catch (e) {
-            resolvedConfig.logger.error(`Error serving placeholder index.html: ${e instanceof Error ? e.message : e}`)
+    // In Inertia mode, always show the dev-server placeholder on the Vite port.
+    if (pluginConfig.inertiaMode) {
+      try {
+        const placeholderContent = await loadDevServerPlaceholder()
+        res.statusCode = 200
+        res.setHeader("Content-Type", "text/html")
+        res.end(placeholderContent.replace(/{{ APP_URL }}/g, appUrl))
+        } catch (e) {
+        resolvedConfig.logger.error(`Error serving placeholder index.html: ${e instanceof Error ? e.message : e}`)
             res.statusCode = 404
             res.end("Not Found (Error loading placeholder)")
           }
@@ -817,8 +874,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
         // Serve placeholder for "/" or "/index.html" when no index.html exists
         // This is useful for modes where there's no index.html at all
         try {
-          const placeholderPath = path.join(dirname(), "dev-server-index.html")
-          const placeholderContent = await fs.promises.readFile(placeholderPath, "utf-8")
+          const placeholderContent = await loadDevServerPlaceholder()
           res.statusCode = 200
           res.setHeader("Content-Type", "text/html")
           res.end(placeholderContent.replace(/{{ APP_URL }}/g, appUrl))
@@ -1495,17 +1551,59 @@ function resolveDevelopmentEnvironmentTld(configPath: string): string {
  * The directory of the current file.
  */
 function dirname(): string {
-  // Use path.resolve relative to process.cwd() as a more robust alternative
-  // Assumes the script runs from the project root or similar predictable location.
-  // Adjust the relative path if necessary based on actual execution context.
+  let moduleDir = ""
   try {
-    // Attempt original method first
-    return fileURLToPath(new URL(".", import.meta.url))
+    moduleDir = fileURLToPath(new URL(".", import.meta.url))
   } catch {
-    // Fallback for environments where import.meta.url is problematic (like some test runners)
-    // Use dist/js since that's where built assets (including dev-server-index.html) live
-    return path.resolve(process.cwd(), "dist/js")
+    moduleDir = path.resolve(process.cwd(), "src", "js", "src")
   }
+
+  const candidates = [
+    path.resolve(moduleDir, "../../../dist/js"),
+    path.resolve(process.cwd(), "../dist/js"),
+    path.resolve(process.cwd(), "dist/js"),
+    moduleDir,
+  ]
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, "dev-server-index.html"))) {
+      return candidate
+    }
+  }
+
+  // Fallback to the previous behavior if no candidate exists.
+  return path.resolve(process.cwd(), "../dist/js")
+}
+
+function getDevServerPlaceholderCandidates(): string[] {
+  const distJsRoot = "dist/js"
+  const placeholderName = "dev-server-index.html"
+  const moduleDir = dirname()
+
+  const candidates = [
+    path.join(dirname(), placeholderName),
+    path.join(process.cwd(), distJsRoot, placeholderName),
+    path.join(process.cwd(), "src", "js", distJsRoot, placeholderName),
+    path.resolve(process.cwd(), "..", distJsRoot, placeholderName),
+    path.join(moduleDir, distJsRoot, placeholderName),
+  ]
+
+  return [...new Set(candidates)]
+}
+
+async function loadDevServerPlaceholder(): Promise<string> {
+  const candidates = getDevServerPlaceholderCandidates()
+  let lastError: unknown = new Error("Failed to load dev server placeholder index.html")
+
+  for (const candidatePath of candidates) {
+    try {
+      return await fs.promises.readFile(candidatePath, "utf-8")
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError
 }
 
 function normalizeAssetUrl(url: string): string {

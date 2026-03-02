@@ -1,12 +1,54 @@
 """Runtime execution settings."""
 
 import os
+from functools import lru_cache
 from dataclasses import dataclass, field
 from typing import Literal
 
 from litestar_vite.config._constants import TRUE_VALUES
 
 __all__ = ("ExternalDevServer", "RuntimeConfig", "resolve_trusted_proxies")
+
+
+@lru_cache(maxsize=32)
+def _cached_resolve_trusted_proxies(env_value: str | None) -> "tuple[str, ...] | Literal['*'] | None":
+    """Resolve trusted proxies from env input with caching.
+
+    Returns a tuple for cached list values to preserve immutability across cache entries.
+    """
+    if env_value is None:
+        return None
+
+    env_value = env_value.strip()
+    if env_value == "*":
+        return ("*",)
+    if not env_value:
+        return None
+
+    return tuple(h.strip() for h in env_value.split(",") if h.strip())
+
+
+@lru_cache(maxsize=16)
+def _cached_resolve_proxy_mode(env_value: str | None) -> "Literal['vite', 'direct', 'proxy'] | None | Literal['__none__']":
+    """Resolve proxy mode from env input with caching.
+
+    "__none__" preserves an explicit "none" value while still allowing "None"
+    for missing values.
+    """
+    match env_value.strip().lower() if env_value is not None else None:
+        case None:
+            return "vite"
+        case "none":
+            return "__none__"
+        case "direct":
+            return "direct"
+        case "proxy":
+            return "proxy"
+        case "vite":
+            return "vite"
+        case _:
+            msg = f"Invalid VITE_PROXY_MODE: {env_value!r}. Expected one of: vite, direct, proxy, none"
+            raise ValueError(msg)
 
 
 def resolve_trusted_proxies() -> "list[str] | str | None":
@@ -20,15 +62,13 @@ def resolve_trusted_proxies() -> "list[str] | str | None":
     Returns:
         The trusted proxies configuration, or None if not set.
     """
-    env_value = os.getenv("LITESTAR_TRUSTED_PROXIES")
-    if env_value is None:
+    cached_value = _cached_resolve_trusted_proxies(os.getenv("LITESTAR_TRUSTED_PROXIES"))
+
+    if cached_value is None:
         return None
-    env_value = env_value.strip()
-    if env_value == "*":
+    if cached_value == ("*",):
         return "*"
-    if not env_value:
-        return None
-    return [h.strip() for h in env_value.split(",") if h.strip()]
+    return list(cached_value)
 
 
 def resolve_proxy_mode() -> "Literal['vite', 'direct', 'proxy'] | None":
@@ -46,21 +86,10 @@ def resolve_proxy_mode() -> "Literal['vite', 'direct', 'proxy'] | None":
     Returns:
         The resolved proxy mode, or None if disabled.
     """
-    env_value = os.getenv("VITE_PROXY_MODE")
-    match env_value.strip().lower() if env_value is not None else None:
-        case None:
-            return "vite"
-        case "none":
-            return None
-        case "direct":
-            return "direct"
-        case "proxy":
-            return "proxy"
-        case "vite":
-            return "vite"
-        case _:
-            msg = f"Invalid VITE_PROXY_MODE: {env_value!r}. Expected one of: vite, direct, proxy, none"
-            raise ValueError(msg)
+    cached_mode = _cached_resolve_proxy_mode(os.getenv("VITE_PROXY_MODE"))
+    if cached_mode == "__none__":
+        return None
+    return cached_mode
 
 
 @dataclass

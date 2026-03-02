@@ -97,6 +97,40 @@ async def test_proxy_should_proxy_matches_vite_paths(hotfile: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_proxy_should_proxy_uses_decoded_path_for_litestar_routes(hotfile: Path) -> None:
+    """Decode path before route checks so encoded API/static boundary routes are respected."""
+
+    async def noop(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile)
+
+    class MockRoute:
+        def __init__(self, path: str) -> None:
+            self.path = path
+
+    class MockState:
+        pass
+
+    class MockApp:
+        def __init__(self) -> None:
+            self.routes = [MockRoute("/api"), MockRoute("/schema")]
+            self.openapi_config = None
+            self.state = MockState()
+
+    scope_with_app: Scope = {
+        "type": "http",
+        "path": "/",
+        "headers": [],
+        "app": MockApp(),
+    }  # type: ignore
+
+    assert not middleware._should_proxy("/api%2Fusers", scope_with_app)
+    assert not middleware._should_proxy("/schema%2Fopenapi%2Ejson", scope_with_app)
+    assert middleware._should_proxy("/assets%2Fmain%2Ejs", scope_with_app)
+
+
+@pytest.mark.anyio
 async def test_proxy_response_includes_more_body_field(hotfile: Path) -> None:
     """Test that proxy response body includes 'more_body': False per ASGI spec.
 

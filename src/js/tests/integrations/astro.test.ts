@@ -176,6 +176,19 @@ describe("litestar-astro integration", () => {
       const config = updateConfig.mock.calls[0][0]
       expect(config.vite).toBeDefined()
       expect(config.vite.plugins).toBeDefined()
+      const vitePlugins = config.vite?.plugins
+      const proxyPlugin = Array.isArray(vitePlugins) ? vitePlugins.find((plugin: any) => plugin.name === "litestar-astro-proxy") : undefined
+      expect(proxyPlugin).toBeDefined()
+      const pluginConfig = proxyPlugin?.config?.()
+      expect(pluginConfig?.server?.proxy).toBeDefined()
+      expect(pluginConfig?.server?.proxy).toMatchObject({
+        "/api": {
+          target: "http://localhost:8000",
+          changeOrigin: true,
+          secure: false,
+          ws: true,
+        },
+      })
     })
 
     it("respects VITE_PORT environment variable", async () => {

@@ -124,6 +124,8 @@ class ViteDeployer:
         self.manifest_path = manifest_path
         self.config = deploy_config
         self._fs, self.remote_path = self._init_filesystem(fs, remote_path)
+        self._manifest_signature: "tuple[int, int] | None" = None
+        self._manifest_paths_cache: set[str] = set()
 
     @property
     def fs(self) -> "AbstractFileSystem":
@@ -141,9 +143,7 @@ class ViteDeployer:
             Mapping of relative paths to file metadata.
         """
 
-        manifest_paths: set[str] = (
-            self._paths_from_manifest(self.manifest_path) if self.manifest_path.exists() else set[str]()
-        )
+        manifest_paths = self._get_manifest_paths()
 
         include_manifest = self.config.include_manifest and self.manifest_path.exists()
         files: dict[str, FileInfo] = {}
@@ -171,6 +171,27 @@ class ViteDeployer:
             files.setdefault("index.html", FileInfo(path="index.html", size=stat.st_size, mtime=stat.st_mtime))
 
         return files
+
+    def _get_manifest_paths(self) -> set[str]:
+        """Get manifest paths from cache when possible.
+
+        Returns:
+            File paths referenced by manifest.json.
+        """
+        if not self.manifest_path.exists():
+            self._manifest_signature = None
+            self._manifest_paths_cache = set[str]()
+            return set[str]()
+
+        stat = self.manifest_path.stat()
+        signature = (stat.st_size, stat.st_mtime_ns)
+        if self._manifest_signature == signature:
+            return set(self._manifest_paths_cache)
+
+        manifest_paths = self._paths_from_manifest(self.manifest_path)
+        self._manifest_paths_cache = manifest_paths
+        self._manifest_signature = signature
+        return set(manifest_paths)
 
     def collect_remote_files(self) -> dict[str, FileInfo]:
         """Collect remote files from the target storage.

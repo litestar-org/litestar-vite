@@ -10,10 +10,17 @@ from unittest.mock import Mock, patch
 import pytest
 from litestar import Litestar, get
 from litestar.config.app import AppConfig
+from litestar.middleware import DefineMiddleware
 from litestar.template.config import TemplateConfig
 
 from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
-from litestar_vite.plugin import StaticFilesConfig, VitePlugin, ViteProcess
+from litestar_vite.plugin import (
+    ProxyHeadersMiddleware,
+    StaticFilesConfig,
+    VitePlugin,
+    ViteProcess,
+    ViteProxyMiddleware,
+)
 
 pytestmark = pytest.mark.anyio
 
@@ -47,6 +54,7 @@ def test_vite_plugin_initialization_default_config() -> None:
     assert plugin._asset_loader is None
     assert plugin._static_files_config == {}
     assert plugin._config.executor is not None
+    assert plugin._vite_process is None
 
 
 def test_vite_plugin_initialization_custom_config() -> None:
@@ -238,6 +246,26 @@ def test_vite_plugin_app_init_direct_mode_skips_proxy() -> None:
     assert plugin._proxy_target is None
 
 
+def test_vite_plugin_middleware_order_preserves_proxy_headers_before_vite_proxy() -> None:
+    class _PassthroughMiddleware:
+        def __init__(self, app: Litestar) -> None:
+            self.app = app
+
+        async def __call__(self, scope: object, receive: object, send: object) -> None:
+            await self.app(scope, receive, send)  # type: ignore[arg-type]
+
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode="vite", trusted_proxies="127.0.0.1"))
+    plugin = VitePlugin(config=config)
+    app_config = AppConfig()
+    app_config.middleware.append(DefineMiddleware(_PassthroughMiddleware))
+
+    plugin.on_app_init(app_config)
+
+    assert app_config.middleware[0].middleware is ProxyHeadersMiddleware
+    assert app_config.middleware[1].middleware is ViteProxyMiddleware
+    assert app_config.middleware[2].middleware is _PassthroughMiddleware
+
+
 def test_vite_plugin_app_init_production_mode_static_config(tmp_path: Path) -> None:
     """Test static configuration in production mode."""
     bundle_dir = tmp_path / "dist"
@@ -310,15 +338,18 @@ def test_vite_plugin_lifespan_with_vite_process_management(mock_console: Mock, t
     plugin._config.types = False
     app = Mock(spec=Litestar)
 
-    # Mock the Vite process
-    with patch.object(plugin._vite_process, "start") as mock_start:
-        with patch.object(plugin._vite_process, "stop") as mock_stop:
-            with plugin.server_lifespan(app):
-                pass
+    with patch("litestar_vite.plugin.ViteProcess") as mock_vite_process:
+        mock_instance = Mock()
+        mock_vite_process.return_value = mock_instance
+        with patch.object(mock_instance, "start") as mock_start:
+            with patch.object(mock_instance, "stop") as mock_stop:
+                with plugin.server_lifespan(app):
+                    pass
 
-            # Should start and stop the Vite process
-            mock_start.assert_called_once()
-            mock_stop.assert_called_once()
+                # Should start and stop the Vite process
+                mock_start.assert_called_once()
+                mock_stop.assert_called_once()
+        mock_vite_process.assert_called_once_with(executor=config.executor)
 
 
 @patch("litestar_vite.plugin._utils.console")
@@ -334,16 +365,38 @@ def test_vite_plugin_lifespan_with_watch_mode(mock_console: Mock, tmp_path: Path
     plugin._config.types = False
     app = Mock(spec=Litestar)
 
-    with patch.object(plugin._vite_process, "start") as mock_start:
-        with patch.object(plugin._vite_process, "stop") as mock_stop:
-            with plugin.server_lifespan(app):
-                pass
+    with patch("litestar_vite.plugin.ViteProcess") as mock_vite_process:
+        mock_instance = Mock()
+        mock_vite_process.return_value = mock_instance
+        with patch.object(mock_instance, "start") as mock_start:
+            with patch.object(mock_instance, "stop") as mock_stop:
+                with plugin.server_lifespan(app):
+                    pass
 
-            # Should use build_watch_command instead of run_command
-            mock_start.assert_called_once()
-            _args, _kwargs = mock_start.call_args
-            # The command should be the build watch command
-            mock_stop.assert_called_once()
+                # Should use build_watch_command instead of run_command
+                mock_start.assert_called_once()
+                _args, _kwargs = mock_start.call_args
+                # The command should be the build watch command
+                mock_stop.assert_called_once()
+        mock_vite_process.assert_called_once_with(executor=config.executor)
+
+
+def test_vite_plugin_lifespan_defers_vite_process_initialization_until_needed(tmp_path: Path) -> None:
+    """Test ViteProcess is created only when server lifespan requires it."""
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True), paths=PathConfig(root=tmp_path))
+    plugin = VitePlugin(config=config)
+    app = Mock(spec=Litestar)
+
+    assert plugin._vite_process is None
+
+    with patch("litestar_vite.plugin.ViteProcess") as mock_process:
+        mock_instance = Mock()
+        mock_process.return_value = mock_instance
+
+        with plugin.server_lifespan(app):
+            pass
+
+    mock_process.assert_called_once_with(executor=config.executor)
 
 
 # =====================================================
@@ -358,6 +411,26 @@ def test_vite_process_initialization() -> None:
 
     assert process.process is None
     assert process._lock is not None
+
+
+@patch("litestar_vite.plugin.os.killpg")
+def test_vite_process_stop_removes_stopped_instance(mock_killpg: Mock) -> None:
+    """Test stopped ViteProcess instances are removed from instance tracking."""
+    mock_process = Mock()
+    mock_process.pid = 12345
+    mock_process.poll.return_value = None
+    mock_process.wait.return_value = 0
+
+    executor = Mock()
+    process = ViteProcess(executor)
+    process.process = mock_process
+
+    assert process in ViteProcess._instances
+
+    process.stop()
+
+    assert process not in ViteProcess._instances
+    mock_killpg.assert_called_once_with(12345, 15)
 
 
 def test_vite_process_start_success() -> None:

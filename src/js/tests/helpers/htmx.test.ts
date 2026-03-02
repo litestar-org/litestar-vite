@@ -1,6 +1,15 @@
 /* biome-ignore-all lint/suspicious/noTemplateCurlyInString: Testing ${expr} template syntax intentionally */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { addDirective, registerHtmxExtension, swapJson } from "../../src/helpers/htmx"
+import {
+  addDirective,
+  registerHtmxExtension,
+  swapJson,
+  __clearExpressionCache,
+  __compileExpressionForTest,
+  __getExpressionCacheKeys,
+  __getExpressionCacheSize,
+  __setExpressionCacheLimit,
+} from "../../src/helpers/htmx"
 
 describe("htmx extension", () => {
   let container: HTMLElement
@@ -403,6 +412,43 @@ describe("htmx extension", () => {
         expect(sections[0].querySelectorAll("p").length).toBe(2)
         expect(sections[1].querySelectorAll("p").length).toBe(1)
       })
+    })
+  })
+
+  describe("expression cache hardening", () => {
+    beforeEach(() => {
+      __setExpressionCacheLimit(1024)
+      __clearExpressionCache()
+    })
+
+    it("reuses compiled expressions and keeps cache bounded", () => {
+      expect(__getExpressionCacheSize()).toBe(0)
+      expect(__compileExpressionForTest("value")).toBeTypeOf("function")
+      expect(__getExpressionCacheSize()).toBe(1)
+
+      expect(__compileExpressionForTest("value")).toBeTypeOf("function")
+      expect(__getExpressionCacheSize()).toBe(1)
+    })
+
+    it("evicts least-recently-used expressions when limit is exceeded", () => {
+      __setExpressionCacheLimit(2)
+      __clearExpressionCache()
+
+      __compileExpressionForTest("first")
+      __compileExpressionForTest("second")
+      expect(__getExpressionCacheKeys()).toEqual(["first", "second"])
+
+      __compileExpressionForTest("third")
+      expect(__getExpressionCacheSize()).toBe(2)
+      expect(__getExpressionCacheKeys()).toEqual(["second", "third"])
+
+      __compileExpressionForTest("third")
+      expect(__getExpressionCacheKeys()).toEqual(["second", "third"])
+
+      __compileExpressionForTest("second")
+      __compileExpressionForTest("fourth")
+      expect(__getExpressionCacheSize()).toBe(2)
+      expect(__getExpressionCacheKeys()).toEqual(["third", "fourth"])
     })
   })
 

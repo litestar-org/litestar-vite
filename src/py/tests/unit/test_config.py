@@ -134,6 +134,22 @@ def test_proxy_mode_invalid_env_raises(monkeypatch: pytest.MonkeyPatch, value: s
         RuntimeConfig()
 
 
+def test_resolve_proxy_mode_cached_by_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify proxy-mode env parsing is cached by normalized value."""
+    monkeypatch.setenv("VITE_PROXY_MODE", "direct")
+
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+
+    _cached_resolve_proxy_mode.cache_clear()
+
+    RuntimeConfig()
+    RuntimeConfig()
+
+    cache_info = _cached_resolve_proxy_mode.cache_info()
+    assert cache_info.misses == 1
+    assert cache_info.hits >= 1
+
+
 # ============================================================================
 # ExternalDevServer tests
 # ============================================================================
@@ -331,6 +347,56 @@ def test_has_built_assets_detects_manifest_in_vite_dir(tmp_path: Path) -> None:
     config = ViteConfig(mode="spa", dev_mode=False, paths=PathConfig(bundle_dir=bundle_dir))
 
     assert config.has_built_assets() is True
+
+
+def test_vite_config_reacts_to_cached_package_json(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Verify package.json reads for react detection are memoized for unchanged files."""
+    from litestar_vite import config as config_module
+
+    package_json = tmp_path / "package.json"
+    package_json.write_text('{"devDependencies": {"@vitejs/plugin-react": "^5.0.0"}}')
+
+    call_count = {"decode_calls": 0}
+    original_decode_json = config_module.decode_json
+
+    def _counting_decode_json(payload: str) -> object:
+        call_count["decode_calls"] += 1
+        return original_decode_json(payload)
+
+    monkeypatch.setattr(config_module, "decode_json", _counting_decode_json)
+
+    cfg1 = ViteConfig(paths=PathConfig(root=tmp_path))
+    cfg2 = ViteConfig(paths=PathConfig(root=tmp_path))
+
+    assert cfg1.runtime.is_react
+    assert cfg2.runtime.is_react
+    assert call_count["decode_calls"] == 1
+
+
+def test_vite_config_reacts_to_package_json_changes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Verify package.json changes invalidate the react detection cache."""
+    from litestar_vite import config as config_module
+
+    package_json = tmp_path / "package.json"
+    package_json.write_text('{"devDependencies": {"@vitejs/plugin-react": "^5.0.0"}}')
+
+    call_count = {"decode_calls": 0}
+    original_decode_json = config_module.decode_json
+
+    def _counting_decode_json(payload: str) -> object:
+        call_count["decode_calls"] += 1
+        return original_decode_json(payload)
+
+    monkeypatch.setattr(config_module, "decode_json", _counting_decode_json)
+
+    cfg1 = ViteConfig(paths=PathConfig(root=tmp_path))
+    assert cfg1.runtime.is_react
+
+    package_json.write_text('{"devDependencies": {}}')
+
+    cfg2 = ViteConfig(paths=PathConfig(root=tmp_path))
+    assert not cfg2.runtime.is_react
+    assert call_count["decode_calls"] == 2
 
 
 def test_validate_mode_spa_dev_mode_allows_missing_index(tmp_path: Path) -> None:

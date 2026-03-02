@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -9,6 +10,29 @@ except ImportError:  # pragma: no cover - optional dependency
 
 from litestar_vite.config import DeployConfig, ViteConfig
 from litestar_vite.deploy import FileInfo, ViteDeployer
+
+
+def test_collect_local_files_caches_manifest_paths(tmp_path: Path) -> None:
+    bundle = tmp_path / "dist"
+    bundle.mkdir()
+    (bundle / "assets").mkdir()
+    (bundle / "assets" / "main.js").write_text("console.log('hi')")
+    manifest = bundle / "manifest.json"
+    manifest.write_text('{"entry":{"file":"assets/main.js"}}')
+
+    deployer = ViteDeployer(
+        bundle_dir=bundle,
+        manifest_name="manifest.json",
+        deploy_config=DeployConfig(enabled=True, storage_backend="memory://deploy"),
+    )
+
+    with patch("litestar_vite.deploy.decode_json") as mock_decode:
+        mock_decode.return_value = {"entry": {"file": "assets/main.js"}}
+
+        deployer.collect_local_files()
+        deployer.collect_local_files()
+
+    mock_decode.assert_called_once()
 
 
 def test_deploy_config_env_fallback(monkeypatch: pytest.MonkeyPatch) -> None:

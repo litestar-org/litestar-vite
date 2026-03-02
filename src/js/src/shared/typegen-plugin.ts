@@ -17,7 +17,12 @@ import { emitPagePropsTypes } from "./emit-page-props-types.js"
 import { emitSchemasTypes } from "./emit-schemas-types.js"
 import { emitStaticPropsTypes } from "./emit-static-props-types.js"
 import { formatPath } from "./format-path.js"
-import { shouldRunOpenApiTs, updateOpenApiTsCache } from "./typegen-cache.js"
+import {
+  shouldRegeneratePageProps,
+  shouldRunOpenApiTs,
+  updateOpenApiTsCache,
+  updatePagePropsCache,
+} from "./typegen-cache.js"
 import { buildHeyApiPlugins, findOpenApiTsConfig, runHeyApiGeneration, type TypeGenCoreConfig, type TypeGenLogger } from "./typegen-core.js"
 
 export interface RequiredTypeGenConfig {
@@ -163,9 +168,15 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
       // Generate page props types (uses its own caching via emitPagePropsTypes)
       if (typesConfig.generatePageProps && fs.existsSync(absolutePagePropsPath)) {
         try {
-          const changed = await emitPagePropsTypes(absolutePagePropsPath, typesConfig.output)
-          if (changed) {
-            generated = true
+          const shouldRun = await shouldRegeneratePageProps(absolutePagePropsPath)
+          if (shouldRun) {
+            const changed = await emitPagePropsTypes(absolutePagePropsPath, typesConfig.output)
+            await updatePagePropsCache(absolutePagePropsPath)
+            if (changed) {
+              generated = true
+            } else {
+              resolvedConfig?.logger.info(`${colors.cyan("•")} Page props types ${colors.dim("(unchanged)")}`)
+            }
           } else {
             resolvedConfig?.logger.info(`${colors.cyan("•")} Page props types ${colors.dim("(unchanged)")}`)
           }

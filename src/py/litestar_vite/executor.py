@@ -67,6 +67,7 @@ class JSExecutor(ABC):
     def __init__(self, executable_path: "Path | str | None" = None, *, silent: bool = False) -> None:
         self.executable_path = executable_path
         self.silent = silent
+        self._resolved_executable: "str | None" = None
 
     @abstractmethod
     def install(self, cwd: Path) -> None:
@@ -102,11 +103,15 @@ class JSExecutor(ABC):
         Raises:
             ViteExecutableNotFoundError: If the binary cannot be located.
         """
+        if self._resolved_executable is not None:
+            return self._resolved_executable
         if self.executable_path:
-            return str(self.executable_path)
+            self._resolved_executable = str(self.executable_path)
+            return self._resolved_executable
         path = shutil.which(self.bin_name)
         if path is None:
             raise ViteExecutableNotFoundError(self.bin_name)
+        self._resolved_executable = path
         return path
 
     def _apply_silent_flag(self, args: list[str]) -> list[str]:

@@ -73,9 +73,10 @@ class ViteProcess:
     @classmethod
     def _cleanup_all_instances(cls) -> None:
         """Stop all tracked ViteProcess instances."""
-        for instance in cls._instances:
+        for instance in list(cls._instances):
             with suppress(Exception):
                 instance.stop()
+        cls._instances.clear()
 
     def start(self, command: list[str], cwd: "Path | str | None") -> None:
         """Start the Vite process.
@@ -142,6 +143,9 @@ class ViteProcess:
             console.print(f"[red]Failed to stop Vite process: {e!s}[/]")
             msg = f"Failed to stop Vite process: {e!s}"
             raise ViteProcessError(msg) from e
+        finally:
+            with suppress(ValueError):
+                ViteProcess._instances.remove(self)
 
     def _terminate_process_group(self, timeout: float) -> None:
         """Terminate the process group, waiting and killing if needed.

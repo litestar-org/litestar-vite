@@ -74,6 +74,32 @@ async def test_version_match_proceeds_normally(
         assert data["props"]["data"] == "value"
 
 
+async def test_version_mismatch_does_not_execute_route_handler(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that stale versions short-circuit before route handler execution."""
+
+    @get("/")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        raise RuntimeError("Route handler should not execute on version mismatch")
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/", headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: "wrong-version"}
+        )
+
+        assert response.status_code == 409
+        assert response.headers[InertiaHeaders.LOCATION.value] == "http://testserver.local/"
+
+
 async def test_non_inertia_request_bypasses_version_check(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,

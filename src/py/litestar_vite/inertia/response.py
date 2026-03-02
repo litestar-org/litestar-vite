@@ -417,6 +417,7 @@ class InertiaResponse(Response[T]):
         for key in reset_keys:
             shared_props.pop(key, None)
 
+        route_handler = request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
         route_content: Any | None = None
         if is_or_contains_lazy_prop(self.content) or is_or_contains_special_prop(self.content):
             filtered_content = lazy_render(self.content, partial_data, inertia_plugin.portal, partial_except)
@@ -431,7 +432,6 @@ class InertiaResponse(Response[T]):
                 for key, value in mapping_content.items():
                     shared_props[key] = value
             elif is_pagination_container(route_content):
-                route_handler = request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
                 prop_key = (route_handler.opt.get("key", "items") if route_handler else "items") or "items"
                 shared_props[prop_key] = route_content
             else:
@@ -446,16 +446,14 @@ class InertiaResponse(Response[T]):
 
         merge_props_list, prepend_props_list, deep_merge_props_list, match_props_on = extract_merge_props(shared_props)
 
-        for key, value in list(shared_props.items()):
-            if is_merge_prop(value):
-                shared_props[key] = value.value
-
         extracted_scroll_props: "ScrollPropsConfig | None" = self.scroll_props
-
-        route_handler = request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
         infinite_scroll_enabled = bool(route_handler and route_handler.opt.get("infinite_scroll", False))
 
-        for key, value in list(shared_props.items()):
+        for key in tuple(shared_props):
+            value = shared_props[key]
+            if is_merge_prop(value):
+                value = shared_props[key] = value.value
+
             if is_pagination_container(value):
                 _, scroll = extract_pagination_scroll_props(value)
                 if extracted_scroll_props is None and scroll is not None and infinite_scroll_enabled:
@@ -644,17 +642,18 @@ class InertiaResponse(Response[T]):
         type_encoders: "TypeEncodersMap | None" = None,
     ) -> "ASGIResponse":
         inertia_info = _get_inertia_request_info(cast("Request[Any, Any, Any]", request))
-        headers = {**headers, **self.headers} if headers is not None else self.headers
+        headers = self.headers if headers is None else ({**headers, **self.headers} if self.headers else headers)
         cookies = self.cookies if cookies is None else itertools.chain(self.cookies, cookies)
         type_encoders = (
             {**type_encoders, **(self.response_type_encoders or {})} if type_encoders else self.response_type_encoders
         )
+        serializer = get_serializer(type_encoders)
 
         if not inertia_info.inertia_enabled:
             resolved_media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
             return ASGIResponse(
                 background=self.background or background,
-                body=self.render(self.content, resolved_media_type, get_serializer(type_encoders)),
+                body=self.render(self.content, resolved_media_type, serializer),
                 cookies=cookies,
                 encoded_headers=encoded_headers,
                 encoding=self.encoding,
@@ -686,7 +685,7 @@ class InertiaResponse(Response[T]):
 
         if inertia_info.is_inertia:
             resolved_media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
-            body = self.render(page_props.to_dict(), resolved_media_type, get_serializer(type_encoders))
+            body = self.render(page_props.to_dict(), resolved_media_type, serializer)
             return ASGIResponse(  # pyright: ignore[reportUnknownMemberType]
                 background=self.background or background,
                 body=body,

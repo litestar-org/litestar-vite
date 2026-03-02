@@ -390,6 +390,7 @@ function createProxyPlugin(config: ResolvedLitestarAstroConfig): Plugin {
               target: config.apiProxy,
               changeOrigin: true,
               secure: false,
+              ws: true,
             },
           },
         },
