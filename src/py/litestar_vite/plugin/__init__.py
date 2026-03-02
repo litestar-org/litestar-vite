@@ -641,6 +641,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 target_url = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
                 self._write_hotfile(target_url)
 
+            vite_process: ViteProcess | None = None
             try:
                 vite_process = self._get_vite_process()
                 vite_process.start(command_to_run, self._config.root_dir)
@@ -649,7 +650,8 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                     self._run_health_check()
                 yield
             finally:
-                vite_process.stop()
+                if vite_process is not None:
+                    vite_process.stop()
                 log_info("Vite process stopped.")
         else:
             yield

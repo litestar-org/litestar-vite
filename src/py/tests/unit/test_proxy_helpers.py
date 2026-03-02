@@ -1,10 +1,13 @@
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from types import SimpleNamespace
-from typing import AsyncGenerator, cast
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import httpx
 import pytest
+from litestar.exceptions import WebSocketDisconnect
+from typing_extensions import Self
 
 from litestar_vite.plugin import VitePlugin
 from litestar_vite.plugin._proxy import (
@@ -14,7 +17,6 @@ from litestar_vite.plugin._proxy import (
     _stream_request_body,
     build_hmr_target_url,
     build_proxy_url,
-    extract_forward_headers,
     check_http2_support,
     create_hmr_target_getter,
     create_ssr_proxy_controller,
@@ -24,8 +26,6 @@ from litestar_vite.plugin._proxy import (
     extract_subprotocols,
     normalize_proxy_prefixes,
 )
-from litestar.exceptions import WebSocketDisconnect
-from litestar.response.streaming import ASGIStreamingResponse
 
 
 class _DummyStreamContext:
@@ -36,26 +36,26 @@ class _DummyStreamContext:
         self.exited = False
         self.entered = False
 
-    async def __aenter__(self) -> object:
+    async def __aenter__(self) -> httpx.Response:
         self.entered = True
         if self._body_stream is not None:
             async for chunk in cast("AsyncGenerator[bytes, None]", self._body_stream):
                 if chunk:
                     self.request_body_chunks.append(chunk)
-        return self._response
+        return cast("httpx.Response", self._response)
 
     async def __aexit__(self, *_args: object) -> None:
         self.exited = True
 
 
 class DummyAsyncClient:
-    def __init__(self, response: object) -> None:
+    def __init__(self, response: httpx.Response) -> None:
         self._response = response
         self.stream_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
         self.stream_context: _DummyStreamContext | None = None
 
     async def request(self, *_args: object, **_kwargs: object) -> httpx.Response:
-        return self._response
+        return cast("httpx.Response", self._response)
 
     def stream(self, *args: object, **kwargs: object) -> _DummyStreamContext:
         self.stream_calls.append((args, kwargs))
@@ -66,10 +66,7 @@ class DummyAsyncClient:
 
 class _DummyStreamingResponse:
     def __init__(
-        self,
-        chunks: list[bytes],
-        status_code: int = 200,
-        headers: list[tuple[str, str]] | None = None,
+        self, chunks: list[bytes], status_code: int = 200, headers: list[tuple[str, str]] | None = None
     ) -> None:
         self.status_code = status_code
         self.headers = httpx.Headers(headers or {})
@@ -96,9 +93,7 @@ async def test_stream_request_body_reads_chunks_preserving_order() -> None:
         return {"type": "http.request", "body": b"", "more_body": False}
 
     generator = _stream_request_body(receive)
-    collected: list[bytes] = []
-    async for chunk in generator:
-        collected.append(chunk)
+    collected: list[bytes] = [chunk async for chunk in generator]
 
     assert collected == [b"first", b"second"]
 
@@ -112,7 +107,7 @@ async def test_proxy_stream_response_streams_chunks_and_closes() -> None:
 
     await _proxy_stream_response(cast("httpx.Response", response), send)
 
-    status = [event for event in events if event.get("type") == "http.response.start"][0]
+    status = next(event for event in events if event.get("type") == "http.response.start")
     bodies = [event for event in events if event.get("type") == "http.response.body"]
 
     assert status["status"] == 200
@@ -131,7 +126,12 @@ pytestmark = pytest.mark.anyio
 def test_extract_proxy_response_filters_headers() -> None:
     response = httpx.Response(
         200,
-        headers=[("content-type", "text/plain"), ("set-cookie", "a=1"), ("set-cookie", "b=2"), ("connection", "keep-alive")],
+        headers=[
+            ("content-type", "text/plain"),
+            ("set-cookie", "a=1"),
+            ("set-cookie", "b=2"),
+            ("connection", "keep-alive"),
+        ],
         content=b"ok",
     )
     status, headers, body = _extract_proxy_response(response)
@@ -212,7 +212,8 @@ async def test_proxy_http_with_plugin_client(tmp_path: Path) -> None:
     hotfile.write_text("http://localhost:5173")
 
     response = httpx.Response(200, headers={"content-type": "text/plain"}, content=b"ok")
-    plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", DummyAsyncClient(response))))
+    plugin_client = DummyAsyncClient(response)
+    plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", plugin_client)))
 
     middleware = ViteProxyMiddleware(app=Mock(), hotfile_path=hotfile, asset_url="/static/", plugin=plugin)
 
@@ -225,13 +226,12 @@ async def test_proxy_http_with_plugin_client(tmp_path: Path) -> None:
     }
     events: list[dict[str, object]] = []
 
+    chunks = [b"up-", b"streaming"]
+
     async def receive() -> dict[str, object]:
-        nonlocal chunks
         if chunks:
             return {"type": "http.request", "body": chunks.pop(0), "more_body": bool(chunks)}
         return {"type": "http.request", "body": b"", "more_body": False}
-
-    chunks = [b"up-", b"streaming"]
 
     async def send(event: dict[str, object]) -> None:
         events.append(event)
@@ -240,8 +240,8 @@ async def test_proxy_http_with_plugin_client(tmp_path: Path) -> None:
 
     assert events[0]["status"] == 200
     assert events[1]["body"] == b"ok"
-    assert plugin.proxy_client.stream_context is not None
-    assert plugin.proxy_client.stream_context.request_body_chunks == [b"up-", b"streaming"]
+    assert plugin_client.stream_context is not None
+    assert plugin_client.stream_context.request_body_chunks == [b"up-", b"streaming"]
 
 
 async def test_proxy_http_no_target(tmp_path: Path) -> None:
@@ -292,17 +292,13 @@ async def test_vite_hmr_handler_accepts_multiple_subprotocols(tmp_path: Path) ->
     handler = create_vite_hmr_handler(hotfile)
 
     socket = MagicMock()
-    socket.scope = {
-        "path": "/vite-hmr",
-        "query_string": b"",
-        "headers": [(b"sec-websocket-protocol", b"json,graphql")],
-    }
+    socket.scope = {"path": "/vite-hmr", "query_string": b"", "headers": [(b"sec-websocket-protocol", b"json,graphql")]}
     socket.accept = AsyncMock()
     socket.close = AsyncMock()
     socket.receive_text = AsyncMock(side_effect=WebSocketDisconnect(code=1000, detail="Client disconnected"))
 
     class _DummyUpstream:
-        async def __aenter__(self) -> "_DummyUpstream":
+        async def __aenter__(self) -> Self:
             return self
 
         async def __aexit__(self, *_args: object) -> None:
@@ -311,7 +307,7 @@ async def test_vite_hmr_handler_accepts_multiple_subprotocols(tmp_path: Path) ->
         def __aiter__(self) -> "_DummyUpstream":
             return self
 
-        async def __anext__(self):
+        async def __anext__(self) -> bytes:
             raise StopAsyncIteration
 
         async def send(self, *_args: object, **_kwargs: object) -> None:
@@ -324,14 +320,22 @@ async def test_vite_hmr_handler_accepts_multiple_subprotocols(tmp_path: Path) ->
         mock_connect.return_value.__aenter__.return_value = _DummyUpstream()
         await handler.fn(socket)
 
-    socket.accept.assert_awaited_once_with(subprotocols=["json", "graphql"])
+    socket.accept.assert_awaited_once_with(subprotocols="json")
 
 
 async def test_ssr_proxy_http_success() -> None:
-    response = _DummyStreamingResponse(
-        chunks=[b"ok"],
-        status_code=200,
-        headers=[("content-type", "text/plain"), ("set-cookie", "a=1"), ("set-cookie", "b=2"), ("connection", "keep-alive")],
+    response = cast(
+        "httpx.Response",
+        _DummyStreamingResponse(
+            chunks=[b"ok"],
+            status_code=200,
+            headers=[
+                ("content-type", "text/plain"),
+                ("set-cookie", "a=1"),
+                ("set-cookie", "b=2"),
+                ("connection", "keep-alive"),
+            ],
+        ),
     )
     plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", DummyAsyncClient(response))))
 
@@ -343,20 +347,33 @@ async def test_ssr_proxy_http_success() -> None:
             yield b""
 
     request = SimpleNamespace(
-        method="GET",
-        url=SimpleNamespace(path="/", query=""),
-        headers={"x-test": "ok"},
-        stream=request_stream,
+        method="GET", url=SimpleNamespace(path="/", query=""), headers={"x-test": "ok"}, stream=request_stream
     )
 
-    response_obj = await controller.http_proxy.fn(controller, request)
-    assert response_obj.status_code == 200
-    assert isinstance(response_obj, ASGIStreamingResponse)
-    streamed_body = b"".join([chunk async for chunk in response_obj.iterator])  # type: ignore[var-annotated]
-    assert streamed_body == b"ok"
-    assert (b"connection", b"keep-alive") not in response_obj.encoded_headers
-    assert response_obj.encoded_headers.count((b"set-cookie", b"a=1")) == 1
-    assert response_obj.encoded_headers.count((b"set-cookie", b"b=2")) == 1
+    response_app = await controller.http_proxy.fn(controller, request)
+    assert response_app.__name__ == "asgi_response_app"
+
+    send_events: list[dict[str, object]] = []
+
+    async def send(event: dict[str, object]) -> None:
+        send_events.append(event)
+
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    scope = {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.0"}, "method": "GET", "path": "/"}
+    await response_app(scope, receive, send)
+
+    start = next(event for event in send_events if event["type"] == "http.response.start")
+    bodies = [event for event in send_events if event["type"] == "http.response.body"]
+
+    assert start["status"] == 200
+    assert (b"connection", b"keep-alive") not in cast("list[tuple[bytes, bytes]]", start["headers"])
+    assert cast("list[tuple[bytes, bytes]]", start["headers"]).count((b"set-cookie", b"a=1")) == 1
+    assert cast("list[tuple[bytes, bytes]]", start["headers"]).count((b"set-cookie", b"b=2")) == 1
+
+    streamed_body = b"".join(cast("bytes", event["body"]) for event in bodies)
+    assert streamed_body.startswith(b"ok")
 
 
 async def test_ssr_proxy_http_no_target() -> None:

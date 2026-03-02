@@ -5,6 +5,7 @@ import sys
 import time
 from collections.abc import Generator
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import Mock, patch
 
 import pytest
@@ -14,13 +15,7 @@ from litestar.middleware import DefineMiddleware
 from litestar.template.config import TemplateConfig
 
 from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
-from litestar_vite.plugin import (
-    ProxyHeadersMiddleware,
-    StaticFilesConfig,
-    VitePlugin,
-    ViteProcess,
-    ViteProxyMiddleware,
-)
+from litestar_vite.plugin import ProxyHeadersMiddleware, StaticFilesConfig, VitePlugin, ViteProcess, ViteProxyMiddleware
 
 pytestmark = pytest.mark.anyio
 
@@ -261,9 +256,9 @@ def test_vite_plugin_middleware_order_preserves_proxy_headers_before_vite_proxy(
 
     plugin.on_app_init(app_config)
 
-    assert app_config.middleware[0].middleware is ProxyHeadersMiddleware
-    assert app_config.middleware[1].middleware is ViteProxyMiddleware
-    assert app_config.middleware[2].middleware is _PassthroughMiddleware
+    assert cast("Any", app_config.middleware[0]).middleware is ProxyHeadersMiddleware
+    assert cast("Any", app_config.middleware[1]).middleware is ViteProxyMiddleware
+    assert cast("Any", app_config.middleware[2]).middleware is _PassthroughMiddleware
 
 
 def test_vite_plugin_app_init_production_mode_static_config(tmp_path: Path) -> None:

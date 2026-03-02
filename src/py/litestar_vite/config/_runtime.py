@@ -1,8 +1,8 @@
 """Runtime execution settings."""
 
 import os
-from functools import lru_cache
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Literal
 
 from litestar_vite.config._constants import TRUE_VALUES
@@ -29,7 +29,7 @@ def _cached_resolve_trusted_proxies(env_value: str | None) -> "tuple[str, ...] |
 
 
 @lru_cache(maxsize=16)
-def _cached_resolve_proxy_mode(env_value: str | None) -> "Literal['vite', 'direct', 'proxy'] | None | Literal['__none__']":
+def _cached_resolve_proxy_mode(env_value: str | None) -> "Literal['vite', 'direct', 'proxy', '__none__'] | None":
     """Resolve proxy mode from env input with caching.
 
     "__none__" preserves an explicit "none" value while still allowing "None"

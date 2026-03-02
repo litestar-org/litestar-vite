@@ -1,5 +1,4 @@
 from typing import TYPE_CHECKING, Any
-from typing import Iterable
 
 from litestar.middleware import AbstractMiddleware
 from litestar.types import Receive, Scope, Send
@@ -9,6 +8,8 @@ from litestar_vite.inertia.response import InertiaExternalRedirect
 from litestar_vite.plugin import VitePlugin
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from litestar.types import ASGIApp, Receive, Scope, Send
 
 

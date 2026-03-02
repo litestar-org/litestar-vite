@@ -2,14 +2,15 @@
 
 from typing import Any
 
+import pytest
 from litestar import Request, get
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client
-from litestar_vite.inertia.middleware import InertiaRequest
 
 from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
+from litestar_vite.inertia.middleware import InertiaRequest
 from litestar_vite.plugin import VitePlugin
 
 
@@ -129,15 +130,13 @@ async def test_non_inertia_request_skips_inertia_request_construction(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test that middleware does not instantiate InertiaRequest for non-Inertia traffic."""
 
     call_count = {"count": 0}
 
-    original_class = InertiaRequest
-
-    class GuardedInertiaRequest(original_class):
+    class GuardedInertiaRequest(InertiaRequest):
         def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
             call_count["count"] += 1
             super().__init__(*args, **kwargs)
@@ -158,7 +157,6 @@ async def test_non_inertia_request_skips_inertia_request_construction(
         response = client.get("/")
         assert response.status_code == 200
         assert call_count["count"] == 0
-
 
 
 async def test_version_header_missing_allows_request(

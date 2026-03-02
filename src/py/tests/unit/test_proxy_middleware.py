@@ -118,12 +118,7 @@ async def test_proxy_should_proxy_uses_decoded_path_for_litestar_routes(hotfile:
             self.openapi_config = None
             self.state = MockState()
 
-    scope_with_app: Scope = {
-        "type": "http",
-        "path": "/",
-        "headers": [],
-        "app": MockApp(),
-    }  # type: ignore
+    scope_with_app: Scope = {"type": "http", "path": "/", "headers": [], "app": MockApp()}  # type: ignore
 
     assert not middleware._should_proxy("/api%2Fusers", scope_with_app)
     assert not middleware._should_proxy("/schema%2Fopenapi%2Ejson", scope_with_app)

@@ -90,9 +90,7 @@ def _package_json_has_react_plugin(package_json_path: str, stat_mtime_ns: int, s
 
     if isinstance(deps_any, dict) and "@vitejs/plugin-react" in cast("dict[str, Any]", deps_any):
         return True
-    if isinstance(dev_deps_any, dict) and "@vitejs/plugin-react" in cast("dict[str, Any]", dev_deps_any):
-        return True
-    return False
+    return bool(isinstance(dev_deps_any, dict) and "@vitejs/plugin-react" in cast("dict[str, Any]", dev_deps_any))
 
 
 @runtime_checkable
@@ -250,8 +248,6 @@ class ViteConfig:
     """
 
     _executor_instance: "JSExecutor | None" = field(default=None, repr=False)
-    _cached_index_html_paths: "list[Path] | None" = field(default=None, init=False, repr=False)
-    _cached_manifest_paths: "list[Path] | None" = field(default=None, init=False, repr=False)
     _mode_auto_detected: bool = field(default=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -293,9 +289,7 @@ class ViteConfig:
             return
 
         has_react_plugin = _package_json_has_react_plugin(
-            str(package_json),
-            package_json_stat.st_mtime_ns,
-            package_json_stat.st_size,
+            str(package_json), package_json_stat.st_mtime_ns, package_json_stat.st_size
         )
 
         if has_react_plugin:
@@ -716,31 +710,27 @@ class ViteConfig:
         Returns:
             A de-duplicated list of candidate index.html paths, ordered by preference.
         """
+        bundle_dir = self._resolve_to_root(self.bundle_dir)
+        resource_dir = self._resolve_to_root(self.resource_dir)
+        static_dir = self._resolve_to_root(self.static_dir)
+        root_dir = self.root_dir
 
-        if self._cached_index_html_paths is None:
-            bundle_dir = self._resolve_to_root(self.bundle_dir)
-            resource_dir = self._resolve_to_root(self.resource_dir)
-            static_dir = self._resolve_to_root(self.static_dir)
-            root_dir = self.root_dir
+        candidates = [
+            bundle_dir / "index.html",
+            resource_dir / "index.html",
+            root_dir / "index.html",
+            static_dir / "index.html",
+        ]
 
-            candidates = [
-                bundle_dir / "index.html",
-                resource_dir / "index.html",
-                root_dir / "index.html",
-                static_dir / "index.html",
-            ]
+        unique: list[Path] = []
+        seen: set[Path] = set()
+        for path in candidates:
+            if path in seen:
+                continue
+            seen.add(path)
+            unique.append(path)
 
-            unique: list[Path] = []
-            seen: set[Path] = set()
-            for path in candidates:
-                if path in seen:
-                    continue
-                seen.add(path)
-                unique.append(path)
-
-            self._cached_index_html_paths = unique
-
-        return list(self._cached_index_html_paths)
+        return unique
 
     def candidate_manifest_paths(self) -> list[Path]:
         """Return possible manifest.json locations in the bundle directory.
@@ -752,25 +742,22 @@ class ViteConfig:
         Returns:
             A de-duplicated list of candidate manifest paths, ordered by preference.
         """
-        if self._cached_manifest_paths is None:
-            bundle_path = self._resolve_to_root(self.bundle_dir)
-            manifest_rel = Path(self.manifest_name)
+        bundle_path = self._resolve_to_root(self.bundle_dir)
+        manifest_rel = Path(self.manifest_name)
 
-            candidates: list[Path] = [bundle_path / manifest_rel]
-            if not manifest_rel.is_absolute() and (not manifest_rel.parts or manifest_rel.parts[0] != ".vite"):
-                candidates.append(bundle_path / ".vite" / manifest_rel)
+        candidates: list[Path] = [bundle_path / manifest_rel]
+        if not manifest_rel.is_absolute() and (not manifest_rel.parts or manifest_rel.parts[0] != ".vite"):
+            candidates.append(bundle_path / ".vite" / manifest_rel)
 
-            unique: list[Path] = []
-            seen: set[Path] = set()
-            for path in candidates:
-                if path in seen:
-                    continue
-                seen.add(path)
-                unique.append(path)
+        unique: list[Path] = []
+        seen: set[Path] = set()
+        for path in candidates:
+            if path in seen:
+                continue
+            seen.add(path)
+            unique.append(path)
 
-            self._cached_manifest_paths = unique
-
-        return list(self._cached_manifest_paths)
+        return unique
 
     def resolve_manifest_path(self) -> Path:
         """Resolve the most likely manifest path.
