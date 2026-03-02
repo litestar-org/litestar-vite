@@ -159,8 +159,8 @@ export async function updateOpenApiTsCache(
     inputHash: await hashFile(openapiPath),
     configHash: configPath ? await hashFile(configPath) : "",
     optionsHash: hashObject(options),
-    inputMeta: await readFileMetadata(openapiPath),
-    configMeta: configPath ? await readFileMetadata(configPath) : undefined,
+    inputMeta: (await readFileMetadata(openapiPath)) ?? undefined,
+    configMeta: configPath ? (await readFileMetadata(configPath)) ?? undefined : undefined,
     timestamp: Date.now(),
   }
   await saveCache(cache)
@@ -211,7 +211,7 @@ export async function updatePagePropsCache(pagePropsPath: string): Promise<void>
   const cache = await loadCache()
   cache["page-props"] = {
     inputHash: await hashFile(pagePropsPath),
-    inputMeta: await readFileMetadata(pagePropsPath),
+    inputMeta: (await readFileMetadata(pagePropsPath)) ?? undefined,
     configHash: "",
     optionsHash: "",
     timestamp: Date.now(),
