@@ -1,35 +1,92 @@
 # Litestar Vite
 
-> **Version**: 0.16.0 | Python 3.10+ | Node 20.19+ or 22.12+ | Vite 6.x/7.x
+> Vite plugin for Litestar
 
-Seamless integration between Litestar and Vite with Inertia.js support.
+Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA, Template, and Inertia flows, and can proxy Vite dev traffic through your ASGI port or run Vite directly. It includes an npm Vite plugin for type generation, route helpers, and framework integrations (Astro, Nuxt, SvelteKit).
+
+## Python Package
+
+- Package: `litestar-vite`
+- Version: 0.18.3
+- Python: >=3.10
+- Key dependencies: `litestar>=2.7.0`, `httpx>=0.24.1`, `websockets>=12.0`
+- Optional extras: `jinja` (Jinja2 templates), `nodeenv` (auto-detected Node), `http2` (h2 for proxy)
+
+## npm Package
+
+- Package: `litestar-vite-plugin`
+- Version: 0.18.3
+- Peer dependency: `vite ^6.0.0 || ^7.0.0`
+- Exports: `.` (main plugin), `./helpers` (route/csrf/htmx helpers), `./inertia-helpers`, `./astro`, `./sveltekit`, `./nuxt`, `./inertia` (types), `./virtual` (virtual module types)
+
+## Core Concepts
+
+**VitePlugin** (`litestar_vite.plugin.VitePlugin`): Main Litestar plugin implementing `InitPluginProtocol` and `CLIPlugin`. Handles static file serving, Jinja2 template callable registration, Vite dev server process management, dev proxy middleware, and SPA handler initialization.
+
+**ViteConfig** (`litestar_vite.config.ViteConfig`): Root configuration dataclass. Key fields: `mode` (spa/template/htmx/hybrid/framework/ssr/ssg/external, auto-detected if unset), `dev_mode` (bool), `paths` (PathConfig), `runtime` (RuntimeConfig), `types` (TypeGenConfig|bool), `inertia` (InertiaConfig|bool), `spa` (SPAConfig|bool), `deploy` (DeployConfig|bool), `static_props` (dict written to `.litestar.json`).
+
+**ViteAssetLoader** (`litestar_vite.loader.ViteAssetLoader`): Reads the Vite manifest and generates HTML script/link tags for production assets.
+
+**Proxy modes**: `vite` (default, proxies Vite assets only), `direct` (two-port, expose Vite directly), `proxy`/`ssr` (meta-frameworks, proxies everything except API routes).
+
+**Code generation** (`litestar_vite.codegen`): Exports OpenAPI schema, route metadata (JSON + TypeScript), and Inertia page props metadata. Triggered via `ViteConfig(types=True)` or `litestar assets generate-types`.
 
 ## Quick Start
 
-```bash
-pip install litestar-vite
-litestar assets install  # Install frontend deps
-litestar run             # Start backend + Vite dev server
+```python
+from pathlib import Path
+from litestar import Litestar
+from litestar_vite import VitePlugin, ViteConfig, PathConfig
+
+app = Litestar(
+    plugins=[VitePlugin(config=ViteConfig(
+        dev_mode=True,
+        paths=PathConfig(root=Path(__file__).parent),
+    ))]
+)
 ```
 
-## Key Concepts
+```bash
+pip install litestar-vite
+litestar assets init --template vue  # scaffold frontend (react, svelte, htmx, etc.)
+litestar run --reload                # Vite dev server proxied automatically
+```
 
-- **Hybrid Architecture**: Python backend (Litestar) + TypeScript frontend (Vite).
-- **Modes**:
-  - `spa`: Single Page App (default).
-  - `hybrid`/`inertia`: Inertia.js (v2 protocol) with precognition support.
-  - `template`/`htmx`: Server-side templates (Jinja2) + Vite assets.
-  - `framework`/`ssr`/`ssg`: Meta-frameworks (Astro, Nuxt, SvelteKit) via proxy.
-- **Configuration**: `vite.config.ts` > `.litestar.json` (auto-generated) > Defaults.
-- **Static Props**: Pass config data from Python to JavaScript via `ViteConfig(static_props={...})`, accessible via `import props from 'virtual:litestar-static-props'`.
-- **CLI**: Always use `litestar assets [serve|build|install|status|doctor]` to manage the frontend (or `litestar run` to start both).
+## CLI Commands
+
+- `litestar assets init --template <name>` -- scaffold frontend (vue, react, svelte, htmx, react-inertia, vue-inertia, angular, astro, nuxt, sveltekit)
+- `litestar assets install` -- install frontend dependencies
+- `litestar assets build` / `serve` -- build or watch
+- `litestar assets generate-types` -- OpenAPI + routes to TypeScript types
+- `litestar assets deploy --storage <uri>` -- upload via fsspec
+- `litestar assets doctor` -- diagnose/fix config (`--fix` to auto-repair)
+
+## Python Module Structure
+
+- `litestar_vite.config` -- ViteConfig, PathConfig, RuntimeConfig, TypeGenConfig, InertiaConfig, DeployConfig, SPAConfig, ExternalDevServer
+- `litestar_vite.plugin` -- VitePlugin, ViteProxyMiddleware, ProxyHeadersMiddleware, ViteProcess
+- `litestar_vite.inertia` -- InertiaPlugin, InertiaRequest, InertiaResponse, InertiaMiddleware, helpers (defer, merge, share, lazy, once, always, flash, error)
+- `litestar_vite.codegen` -- export_integration_assets, generate_routes_json, generate_routes_ts, extract_inertia_pages
+- `litestar_vite.loader` -- ViteAssetLoader
+- `litestar_vite.executor` -- JS runtime executors (node, bun, deno, yarn, pnpm, nodeenv)
+- `litestar_vite.deploy` -- CDN deployment via fsspec
+- `litestar_vite.doctor` -- diagnostic tooling
+- `litestar_vite.cli` -- Click CLI commands
+- `litestar_vite.handler` -- SPA catch-all route handler (AppHandler)
 
 ## Documentation
 
-See `llms-full.txt` for comprehensive guides, API reference, and architectural details.
+- Docs: https://litestar-org.github.io/litestar-vite/latest/
+- Changelog: https://litestar-org.github.io/litestar-vite/latest/changelog
+- Source: https://github.com/litestar-org/litestar-vite
+- Issues: https://github.com/litestar-org/litestar-vite/issues/
+- Discord: https://discord.gg/X3FJqy8d2j
 
-## Project Structure
+## Optional Features
 
-- `src/py/litestar_vite/`: Python backend (VitePlugin, ViteConfig, ViteAssetLoader, InertiaPlugin).
-- `src/js/src/`: TypeScript frontend (Vite plugin, CSRF helpers, HTMX utilities, Inertia helpers).
-- `examples/`: 13 working examples (React, Vue, Svelte, Angular, Astro, Nuxt, SvelteKit, HTMX).
+- **Inertia.js integration**: v2 protocol support via `InertiaPlugin` with session middleware, `InertiaRequest`/`InertiaResponse`, deferred/merge/once props, precognition, SSR client pooling, and exception handling.
+- **Type generation**: Export OpenAPI schema, typed route metadata (JSON + TypeScript), and Inertia page props. Enable with `ViteConfig(types=True)`. The npm plugin watches exported files and can trigger `@hey-api/openapi-ts`.
+- **Route helpers**: The `litestar-vite-plugin/helpers` npm export provides typed route generation functions for use in frontend code, plus CSRF and HTMX helpers.
+- **Meta-framework support**: Use `mode="ssr"` or `mode="framework"` for Astro, Nuxt, SvelteKit. Dedicated npm integrations at `litestar-vite-plugin/astro`, `/nuxt`, `/sveltekit`.
+- **CDN deployment**: `DeployConfig` with fsspec storage backends (GCS, S3, etc.) via `litestar assets deploy`.
+- **Proxy headers**: `ProxyHeadersMiddleware` for X-Forwarded-* header handling behind reverse proxies.
