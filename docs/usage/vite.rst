@@ -444,6 +444,18 @@ What it checks (high level):
 - Core paths exist (``resource_dir``, ``static_dir``) and entrypoint ``input`` files exist
 - Dev/production artifacts (manifest in prod; hotfile/Vite reachability only with ``--runtime-checks``)
 - Environment variables that override runtime (``VITE_PORT``, ``VITE_HOST``, ``VITE_PROXY_MODE``, ``VITE_BASE_URL``)
+- Proxy-mode bypass risks (for example, ``server.origin`` set in ``vite.config`` while ``proxy_mode`` is ``vite``/``proxy``)
+
+Common warning: ``Proxy Mode Origin Override``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When Doctor reports this warning, your ``vite.config`` is forcing ``server.origin`` while Python is configured for proxy mode.
+That can cause CSS/imported assets (fonts, ``node_modules`` URLs) to bypass Litestar and hit the Vite port directly.
+
+Recommended fix:
+
+- Proxy mode (default): remove ``server.origin`` so URLs stay same-origin through Litestar.
+- Direct/two-port workflow: switch to ``runtime.proxy_mode="direct"`` and keep explicit ``server.origin`` if needed.
 
 .. note::
     When ``runtime.set_environment=True`` (the default), Litestar writes ``.litestar.json`` on startup. If Doctor reports a stale/mismatched
