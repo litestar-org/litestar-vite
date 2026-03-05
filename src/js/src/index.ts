@@ -451,6 +451,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           }),
         )
       }
+      const explicitServerOrigin = typeof userConfig.server?.origin === "string" && userConfig.server.origin.length > 0 ? userConfig.server.origin : undefined
+      const shouldForceDirectServerOrigin = explicitServerOrigin !== undefined || pythonDefaults?.proxyMode === "direct"
       const devBase = pluginConfig.assetUrl.startsWith("/") ? pluginConfig.assetUrl : pluginConfig.assetUrl.replace(/\/+$/, "")
 
       ensureCommandShouldRunInEnvironment(command, env, mode)
@@ -469,7 +471,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           assetsInlineLimit: userConfig.build?.assetsInlineLimit ?? 0,
         },
         server: {
-          origin: userConfig.server?.origin ?? "__litestar_vite_placeholder__",
+          origin: shouldForceDirectServerOrigin ? (explicitServerOrigin ?? "__litestar_vite_placeholder__") : undefined,
           // Auto-configure HMR to use a path that routes through Litestar proxy
           // Note: Vite automatically prepends `base` to `hmr.path`, so we just use "vite-hmr"
           // Result: base="/static/" + path="vite-hmr" = "/static/vite-hmr"
@@ -613,7 +615,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
 
         const isAddressInfo = (x: string | AddressInfo | null | undefined): x is AddressInfo => typeof x === "object"
         if (isAddressInfo(address)) {
-          viteDevServerUrl = userConfig.server?.origin ? (userConfig.server.origin as DevServerUrl) : resolveDevServerUrl(address, server.config, userConfig)
+          const explicitServerOrigin = typeof userConfig.server?.origin === "string" && userConfig.server.origin.length > 0 ? userConfig.server.origin : undefined
+          viteDevServerUrl = explicitServerOrigin ? (explicitServerOrigin as DevServerUrl) : resolveDevServerUrl(address, server.config, userConfig)
           fs.mkdirSync(path.dirname(pluginConfig.hotFile), { recursive: true })
           fs.writeFileSync(pluginConfig.hotFile, viteDevServerUrl)
 
@@ -1379,15 +1382,18 @@ function resolveDevServerUrl(address: AddressInfo, config: ResolvedConfig, userC
   const protocol = clientProtocol ?? serverProtocol
 
   const configHmrHost = typeof config.server.hmr === "object" ? config.server.hmr.host : null
+  const userHost = typeof userConfig.server?.host === "string" ? userConfig.server.host : null
   const configHost = typeof config.server.host === "string" ? config.server.host : null
-  const remoteHost = process.env.VITE_ALLOW_REMOTE && !userConfig.server?.host ? "localhost" : null
+  const remoteHost = process.env.VITE_ALLOW_REMOTE && !userConfig.server?.host ? (isIpv6(address) ? "[::1]" : "127.0.0.1") : null
   const serverAddress = isIpv6(address) ? `[${address.address}]` : address.address
-  let host = configHmrHost ?? remoteHost ?? configHost ?? serverAddress
+  let host = configHmrHost ?? userHost ?? remoteHost ?? configHost ?? serverAddress
 
-  // Normalize 0.0.0.0 to 127.0.0.1 - 0.0.0.0 is a bind address meaning "all interfaces"
-  // but is not connectable as a target address for the proxy
+  // Normalize wildcard bind hosts to loopback. Wildcard addresses are bind targets,
+  // not connectable client targets for hotfile/proxy consumers.
   if (host === "0.0.0.0") {
     host = "127.0.0.1"
+  } else if (host === "::" || host === "[::]") {
+    host = "[::1]"
   }
 
   const configHmrClientPort = typeof config.server.hmr === "object" ? config.server.hmr.clientPort : null

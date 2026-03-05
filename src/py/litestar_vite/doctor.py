@@ -47,6 +47,7 @@ _VITE_CONFIG_PATTERNS: dict[str, re.Pattern[str]] = {
     "types_routes": re.compile(r"""routesPath\s*:\s*['"]([^'"]+)['"]"""),
     "types_generate_zod": re.compile(r"""generateZod\s*:\s*(true|false)"""),
     "types_generate_sdk": re.compile(r"""generateSdk\s*:\s*(true|false)"""),
+    "server_origin": re.compile(r"""server\s*:\s*{[\s\S]*?\borigin\s*:\s*['"]([^'"]+)['"]"""),
 }
 
 _LITESTAR_CONFIG_START = re.compile(r"\blitestar\s*\(\s*{", re.MULTILINE)
@@ -163,6 +164,7 @@ class ParsedViteConfig:
     types_routes_path: str | None = None
     types_generate_zod: bool | None = None
     types_generate_sdk: bool | None = None
+    server_origin: str | None = None
 
 
 class ViteDoctor:
@@ -211,6 +213,7 @@ class ViteDoctor:
         self._check_paths_exist()
         self._check_asset_url()
         self._check_hot_file()
+        self._check_proxy_mode_origin_override()
         self._check_bundle_dir()
         self._check_resource_dir()
         self._check_static_dir()
@@ -325,6 +328,7 @@ class ViteDoctor:
             "types_output": "types_output",
             "types_openapi": "types_openapi_path",
             "types_routes": "types_routes_path",
+            "server_origin": "server_origin",
         }
         bool_key_map: dict[str, str] = {
             "inertia_mode": "inertia_mode",
@@ -334,7 +338,8 @@ class ViteDoctor:
         }
 
         for key, pattern in _VITE_CONFIG_PATTERNS.items():
-            found = pattern.search(config_source)
+            search_source = content if key == "server_origin" else config_source
+            found = pattern.search(search_source)
             if not found:
                 continue
             val = found.group(1)
@@ -349,6 +354,38 @@ class ViteDoctor:
                 setattr(parsed, attr_name, val == "true")
 
         return parsed
+
+    def _check_proxy_mode_origin_override(self) -> None:
+        """Warn when server.origin is set while running a proxy mode.
+
+        In proxy modes, forcing an absolute Vite origin can make browser CSS/font
+        requests bypass Litestar middleware and hit Vite directly.
+        """
+        if not self.parsed_config:
+            return
+
+        if self.config.proxy_mode not in {"vite", "proxy"}:
+            return
+
+        js_origin = self.parsed_config.server_origin
+        if not js_origin:
+            return
+
+        self.issues.append(
+            DoctorIssue(
+                check="Proxy Mode Origin Override",
+                severity="warning",
+                message=(
+                    f"vite.config sets server.origin='{js_origin}' while proxy_mode='{self.config.proxy_mode}'. "
+                    "This can bypass Litestar proxy middleware for CSS/imported assets."
+                ),
+                fix_hint=(
+                    "Remove server.origin in proxy mode so assets stay same-origin via Litestar, "
+                    "or switch to runtime.proxy_mode='direct' if two-port direct access is intentional"
+                ),
+                auto_fixable=False,
+            )
+        )
 
     def _apply_write_bridge_fix(self) -> bool:
         if self.bridge_path is None:
