@@ -268,6 +268,182 @@ describe("litestar-vite-plugin", () => {
     }
   })
 
+  it("does not force server.origin in proxy mode from python config", () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({}, { command: "serve", mode: "development" })
+
+      expect(config.server?.origin).toBeUndefined()
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("keeps CSS node_modules font asset URLs on Litestar origin in proxy mode", () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({}, { command: "serve", mode: "development" })
+
+      const fontAssetPath = "/static/node_modules/@fontsource/geist/files/geist-latin-400-normal.woff2"
+      const resolvedFromBackendOrigin = new URL(fontAssetPath, "http://localhost:8000").toString()
+
+      expect(config.base).toBe("/static/")
+      expect(config.server?.origin).toBeUndefined()
+      expect(resolvedFromBackendOrigin).toBe("http://localhost:8000/static/node_modules/@fontsource/geist/files/geist-latin-400-normal.woff2")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("keeps direct mode compatibility by setting placeholder origin", () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "direct",
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({}, { command: "serve", mode: "development" })
+
+      expect(config.server?.origin).toBe("__litestar_vite_placeholder__")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("honors explicit server.origin override in proxy mode", () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config(
+        {
+          server: {
+            origin: "https://assets.example.test",
+          },
+        },
+        { command: "serve", mode: "development" },
+      )
+
+      expect(config.server?.origin).toBe("https://assets.example.test")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("writes hotFile using explicit server.origin override", async () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      plugin.config(
+        {
+          server: {
+            origin: "https://assets.example.test",
+          },
+        },
+        { command: "serve", mode: "development" },
+      )
+
+      const writeSpy = vi.spyOn(fs, "writeFileSync")
+
+      const listeningHandlers: Array<() => void> = []
+      const mockServer = {
+        config: {
+          root: process.cwd(),
+          envDir: process.cwd(),
+          mode: "development",
+          command: "serve",
+          base: "/static/",
+          server: { https: false, hmr: {} },
+          logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        },
+        httpServer: {
+          once: vi.fn((event: string, callback: () => void) => {
+            if (event === "listening") listeningHandlers.push(callback)
+            return undefined
+          }),
+          address: vi.fn(() => ({ address: "127.0.0.1", family: "IPv4", port: 4789 })),
+        },
+        middlewares: { use: vi.fn() },
+        transformIndexHtml: vi.fn(),
+      }
+
+      plugin.configResolved?.(mockServer.config as any)
+      await plugin.configureServer?.(mockServer as any)
+
+      listeningHandlers.forEach((handler) => handler())
+
+      expect(writeSpy).toHaveBeenCalledWith(path.resolve(process.cwd(), "public", "hot"), "https://assets.example.test")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("writes hotFile using derived dev server URL when origin is not overridden", async () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+    })
+
+    try {
+      delete process.env.VITE_ALLOW_REMOTE
+
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      plugin.config(
+        {
+          server: {
+            host: "127.0.0.1",
+          },
+        },
+        { command: "serve", mode: "development" },
+      )
+
+      const writeSpy = vi.spyOn(fs, "writeFileSync")
+
+      const listeningHandlers: Array<() => void> = []
+      const mockServer = {
+        config: {
+          root: process.cwd(),
+          envDir: process.cwd(),
+          mode: "development",
+          command: "serve",
+          base: "/static/",
+          server: { https: false, hmr: {} },
+          logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        },
+        httpServer: {
+          once: vi.fn((event: string, callback: () => void) => {
+            if (event === "listening") listeningHandlers.push(callback)
+            return undefined
+          }),
+          address: vi.fn(() => ({ address: "127.0.0.1", family: "IPv4", port: 4789 })),
+        },
+        middlewares: { use: vi.fn() },
+        transformIndexHtml: vi.fn(),
+      }
+
+      plugin.configResolved?.(mockServer.config as any)
+      await plugin.configureServer?.(mockServer as any)
+
+      listeningHandlers.forEach((handler) => handler())
+
+      expect(writeSpy).toHaveBeenCalledWith(path.resolve(process.cwd(), "public", "hot"), "http://127.0.0.1:4789")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
   it("checks bundleDir for index.html when auto-detecting", async () => {
     const plugin = litestar({
       input: "resources/js/app.ts",

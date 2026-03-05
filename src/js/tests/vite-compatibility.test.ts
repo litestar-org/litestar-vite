@@ -196,8 +196,8 @@ describe("Vite 7.0 Compatibility", () => {
         { command: "serve", mode: "development" },
       )
 
-      // Plugin only sets server config when specific conditions are met
-      expect(config.server?.origin).toBe("__litestar_vite_placeholder__")
+      // Proxy-safe default keeps server.origin unset so CSS asset urls stay same-origin.
+      expect(config.server?.origin).toBeUndefined()
       expect(config.base).toBe("/static/")
     })
 
@@ -232,8 +232,8 @@ describe("Vite 7.0 Compatibility", () => {
         { command: "serve", mode: "development" },
       )
 
-      // Plugin only sets server config when specific conditions are met
-      expect(config.server?.origin).toBe("__litestar_vite_placeholder__")
+      // Proxy-safe default keeps server.origin unset so CSS asset urls stay same-origin.
+      expect(config.server?.origin).toBeUndefined()
       expect(config.base).toBe("/static/")
     })
   })
@@ -339,9 +339,9 @@ describe("Vite 7.0 Compatibility", () => {
         { command: "serve", mode: "development" },
       )
 
-      // Plugin doesn't override optimizeDeps, test what it actually sets
+      // Plugin doesn't override optimizeDeps; proxy-safe default keeps origin unset.
       expect(config.base).toBe("/static/")
-      expect(config.server?.origin).toBe("__litestar_vite_placeholder__")
+      expect(config.server?.origin).toBeUndefined()
     })
 
     it("handles Vite 7.0 build caching", () => {
@@ -400,8 +400,8 @@ describe("Vite 7.0 Compatibility", () => {
         { command: "serve", mode: "development" },
       )
 
-      // Plugin only sets server config when specific conditions are met
-      expect(config.server?.origin).toBe("__litestar_vite_placeholder__")
+      // Proxy-safe default keeps server.origin unset so CSS asset urls stay same-origin.
+      expect(config.server?.origin).toBeUndefined()
       expect(config.base).toBe("/static/")
     })
 

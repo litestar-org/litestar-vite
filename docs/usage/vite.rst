@@ -535,6 +535,12 @@ Proxy vs direct modes:
 
 Switch with `VITE_PROXY_MODE=proxy|direct` (or `ViteConfig.runtime.proxy_mode`).
 
+Origin behavior in development:
+
+- In proxy mode, the JS plugin leaves Vite `server.origin` unset by default. This keeps CSS-imported assets (including `node_modules` fonts) as `/static/...` paths on the Litestar origin so proxy middleware can intercept them.
+- If your workflow depends on absolute asset URLs to the Vite dev server, set `server.origin` explicitly in `vite.config.ts` (or run direct mode).
+- Migration note: setups that previously depended on implicit absolute `http://localhost:<vite-port>/...` CSS asset URLs must now opt in via explicit `server.origin`.
+
 If you prefer to manage the Vite server manually, keep `dev_mode=True` but start Vite yourself (useful for two-port setups):
 
 .. code-block:: bash
