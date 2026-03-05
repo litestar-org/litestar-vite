@@ -35,6 +35,7 @@ export default defineConfig({
 ## Dev / prod notes
 - Dev: writes `hot` file; Litestar proxy reads it to forward HTTP + HMR.
 - Dev (proxy mode): `server.origin` is intentionally left unset by default so CSS `url()` assets resolve to `/static/...` on the Litestar origin and are routed through proxy middleware.
+- Dev URL fallback avoids `localhost` ambiguity: when no explicit host is set, hotfile uses concrete loopback (`127.0.0.1` / `[::1]`) for better IPv4/IPv6 compatibility.
 - If you need absolute Vite-origin asset URLs (two-port/direct workflows), set `server.origin` explicitly in `vite.config.ts`.
 - Prod: serve assets via manifest in `bundleDir`; keep `assetUrl` in sync with backend.
 

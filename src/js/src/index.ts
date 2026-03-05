@@ -1382,15 +1382,18 @@ function resolveDevServerUrl(address: AddressInfo, config: ResolvedConfig, userC
   const protocol = clientProtocol ?? serverProtocol
 
   const configHmrHost = typeof config.server.hmr === "object" ? config.server.hmr.host : null
+  const userHost = typeof userConfig.server?.host === "string" ? userConfig.server.host : null
   const configHost = typeof config.server.host === "string" ? config.server.host : null
-  const remoteHost = process.env.VITE_ALLOW_REMOTE && !userConfig.server?.host ? "localhost" : null
+  const remoteHost = process.env.VITE_ALLOW_REMOTE && !userConfig.server?.host ? (isIpv6(address) ? "[::1]" : "127.0.0.1") : null
   const serverAddress = isIpv6(address) ? `[${address.address}]` : address.address
-  let host = configHmrHost ?? remoteHost ?? configHost ?? serverAddress
+  let host = configHmrHost ?? userHost ?? remoteHost ?? configHost ?? serverAddress
 
-  // Normalize 0.0.0.0 to 127.0.0.1 - 0.0.0.0 is a bind address meaning "all interfaces"
-  // but is not connectable as a target address for the proxy
+  // Normalize wildcard bind hosts to loopback. Wildcard addresses are bind targets,
+  // not connectable client targets for hotfile/proxy consumers.
   if (host === "0.0.0.0") {
     host = "127.0.0.1"
+  } else if (host === "::" || host === "[::]") {
+    host = "[::1]"
   }
 
   const configHmrClientPort = typeof config.server.hmr === "object" ? config.server.hmr.clientPort : null

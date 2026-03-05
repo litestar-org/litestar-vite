@@ -444,6 +444,213 @@ describe("litestar-vite-plugin", () => {
     }
   })
 
+  it("prefers bound loopback host over localhost when VITE_ALLOW_REMOTE is enabled", async () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+    })
+
+    try {
+      process.env.VITE_ALLOW_REMOTE = "1"
+
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      plugin.config({}, { command: "serve", mode: "development" })
+
+      const writeSpy = vi.spyOn(fs, "writeFileSync")
+
+      const listeningHandlers: Array<() => void> = []
+      const mockServer = {
+        config: {
+          root: process.cwd(),
+          envDir: process.cwd(),
+          mode: "development",
+          command: "serve",
+          base: "/static/",
+          server: { https: false, hmr: {} },
+          logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        },
+        httpServer: {
+          once: vi.fn((event: string, callback: () => void) => {
+            if (event === "listening") listeningHandlers.push(callback)
+            return undefined
+          }),
+          address: vi.fn(() => ({ address: "127.0.0.1", family: "IPv4", port: 4789 })),
+        },
+        middlewares: { use: vi.fn() },
+        transformIndexHtml: vi.fn(),
+      }
+
+      plugin.configResolved?.(mockServer.config as any)
+      await plugin.configureServer?.(mockServer as any)
+
+      listeningHandlers.forEach((handler) => handler())
+
+      expect(writeSpy).toHaveBeenCalledWith(path.resolve(process.cwd(), "public", "hot"), "http://127.0.0.1:4789")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+      delete process.env.VITE_ALLOW_REMOTE
+    }
+  })
+
+  it("respects explicit user server.host when VITE_ALLOW_REMOTE is enabled", async () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+    })
+
+    try {
+      process.env.VITE_ALLOW_REMOTE = "1"
+
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      plugin.config(
+        {
+          server: {
+            host: "10.0.0.55",
+          },
+        },
+        { command: "serve", mode: "development" },
+      )
+
+      const writeSpy = vi.spyOn(fs, "writeFileSync")
+
+      const listeningHandlers: Array<() => void> = []
+      const mockServer = {
+        config: {
+          root: process.cwd(),
+          envDir: process.cwd(),
+          mode: "development",
+          command: "serve",
+          base: "/static/",
+          server: { https: false, hmr: {} },
+          logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        },
+        httpServer: {
+          once: vi.fn((event: string, callback: () => void) => {
+            if (event === "listening") listeningHandlers.push(callback)
+            return undefined
+          }),
+          address: vi.fn(() => ({ address: "127.0.0.1", family: "IPv4", port: 4789 })),
+        },
+        middlewares: { use: vi.fn() },
+        transformIndexHtml: vi.fn(),
+      }
+
+      plugin.configResolved?.(mockServer.config as any)
+      await plugin.configureServer?.(mockServer as any)
+
+      listeningHandlers.forEach((handler) => handler())
+
+      expect(writeSpy).toHaveBeenCalledWith(path.resolve(process.cwd(), "public", "hot"), "http://10.0.0.55:4789")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+      delete process.env.VITE_ALLOW_REMOTE
+    }
+  })
+
+  it("prefers hmr.clientPort over the listening address port in hotfile URL", async () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      plugin.config(
+        {
+          server: {
+            hmr: {
+              clientPort: 32001,
+            },
+          },
+        },
+        { command: "serve", mode: "development" },
+      )
+
+      const writeSpy = vi.spyOn(fs, "writeFileSync")
+
+      const listeningHandlers: Array<() => void> = []
+      const mockServer = {
+        config: {
+          root: process.cwd(),
+          envDir: process.cwd(),
+          mode: "development",
+          command: "serve",
+          base: "/static/",
+          server: { https: false, hmr: { clientPort: 32001 } },
+          logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        },
+        httpServer: {
+          once: vi.fn((event: string, callback: () => void) => {
+            if (event === "listening") listeningHandlers.push(callback)
+            return undefined
+          }),
+          address: vi.fn(() => ({ address: "127.0.0.1", family: "IPv4", port: 4789 })),
+        },
+        middlewares: { use: vi.fn() },
+        transformIndexHtml: vi.fn(),
+      }
+
+      plugin.configResolved?.(mockServer.config as any)
+      await plugin.configureServer?.(mockServer as any)
+
+      listeningHandlers.forEach((handler) => handler())
+
+      expect(writeSpy).toHaveBeenCalledWith(path.resolve(process.cwd(), "public", "hot"), "http://127.0.0.1:32001")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("derives https URL when hmr.protocol is wss", async () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      plugin.config(
+        {
+          server: {
+            hmr: {
+              protocol: "wss",
+            },
+          },
+        },
+        { command: "serve", mode: "development" },
+      )
+
+      const writeSpy = vi.spyOn(fs, "writeFileSync")
+
+      const listeningHandlers: Array<() => void> = []
+      const mockServer = {
+        config: {
+          root: process.cwd(),
+          envDir: process.cwd(),
+          mode: "development",
+          command: "serve",
+          base: "/static/",
+          server: { https: false, hmr: { protocol: "wss" } },
+          logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        },
+        httpServer: {
+          once: vi.fn((event: string, callback: () => void) => {
+            if (event === "listening") listeningHandlers.push(callback)
+            return undefined
+          }),
+          address: vi.fn(() => ({ address: "127.0.0.1", family: "IPv4", port: 4789 })),
+        },
+        middlewares: { use: vi.fn() },
+        transformIndexHtml: vi.fn(),
+      }
+
+      plugin.configResolved?.(mockServer.config as any)
+      await plugin.configureServer?.(mockServer as any)
+
+      listeningHandlers.forEach((handler) => handler())
+
+      expect(writeSpy).toHaveBeenCalledWith(path.resolve(process.cwd(), "public", "hot"), "https://127.0.0.1:4789")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
   it("checks bundleDir for index.html when auto-detecting", async () => {
     const plugin = litestar({
       input: "resources/js/app.ts",

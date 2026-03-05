@@ -541,6 +541,13 @@ Origin behavior in development:
 - If your workflow depends on absolute asset URLs to the Vite dev server, set `server.origin` explicitly in `vite.config.ts` (or run direct mode).
 - Migration note: setups that previously depended on implicit absolute `http://localhost:<vite-port>/...` CSS asset URLs must now opt in via explicit `server.origin`.
 
+Dev URL derivation (hotfile) precedence:
+
+- `server.origin` (explicit) wins and is written as-is.
+- Otherwise host precedence is: `server.hmr.host` -> `server.host` -> remote-mode loopback fallback (`127.0.0.1` / `[::1]`) -> bound server address.
+- Port precedence is: `server.hmr.clientPort` -> Vite listening port.
+- Protocol precedence is: `server.hmr.protocol` (`wss` => `https`) -> Vite HTTPS setting.
+
 If you prefer to manage the Vite server manually, keep `dev_mode=True` but start Vite yourself (useful for two-port setups):
 
 .. code-block:: bash
