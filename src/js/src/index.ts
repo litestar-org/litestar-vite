@@ -471,7 +471,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           assetsInlineLimit: userConfig.build?.assetsInlineLimit ?? 0,
         },
         server: {
-          origin: shouldForceDirectServerOrigin ? explicitServerOrigin ?? "__litestar_vite_placeholder__" : undefined,
+          origin: shouldForceDirectServerOrigin ? (explicitServerOrigin ?? "__litestar_vite_placeholder__") : undefined,
           // Auto-configure HMR to use a path that routes through Litestar proxy
           // Note: Vite automatically prepends `base` to `hmr.path`, so we just use "vite-hmr"
           // Result: base="/static/" + path="vite-hmr" = "/static/vite-hmr"
