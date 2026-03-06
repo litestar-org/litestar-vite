@@ -158,8 +158,11 @@ This feature requires **both** server-side and client-side configuration:
    import { createInertiaApp } from '@inertiajs/react'  // or vue/svelte
 
    createInertiaApp({
-     // v2.3+ optimization: read page data from script element
-     useScriptElementForInitialPage: true,
+     defaults: {
+       future: {
+         useScriptElementForInitialPage: true,
+       },
+     },
      // ... rest of config
    })
 
@@ -168,6 +171,12 @@ This feature requires **both** server-side and client-side configuration:
    Both configurations must be enabled together. If you enable ``use_script_element=True``
    on the server but forget the client-side configuration, the Inertia app will fail to
    initialize because it won't find the page data.
+
+.. note::
+
+   The same browser-entry configuration applies when SSR is enabled with ``InertiaConfig(ssr=True)``.
+   The separate Node SSR entry (``resources/ssr.tsx`` or ``resources/ssr.ts``) does not need
+   ``defaults.future.useScriptElementForInitialPage`` because it receives the page object directly.
 
 .. note::
 

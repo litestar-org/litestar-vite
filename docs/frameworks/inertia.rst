@@ -102,6 +102,32 @@ Vue Entry Point
      },
    });
 
+Script Element Bootstrap
+------------------------
+
+If you enable ``InertiaConfig(use_script_element=True)`` on the server, the browser entry point
+must opt into the matching stable Inertia bootstrap path:
+
+.. code-block:: tsx
+
+   createInertiaApp({
+     defaults: {
+       future: {
+         useScriptElementForInitialPage: true,
+       },
+     },
+     // resolve/setup...
+   });
+
+Template-based Inertia examples that keep the ``data-page`` attribute should not enable this option.
+
+SSR Support
+-----------
+
+``litestar-vite`` also supports Inertia's separate Node SSR renderer via ``InertiaConfig(ssr=True)``.
+That SSR path keeps the same browser entry point for hydration and uses ``resources/ssr.tsx`` or
+``resources/ssr.ts`` for the Node entry. It is separate from meta-framework proxy mode.
+
 Learn More
 ----------
 
