@@ -1,0 +1,51 @@
+:root {
+  --lv-code-bg: var(--lv-gray-50);
+  --lv-code-border: rgba(32, 34, 53, 0.1);
+  --lv-code-text: var(--lv-navy);
+  --lv-inline-code-bg: rgba(32, 34, 53, 0.05);
+}
+
+html.dark,
+html[data-theme="dark"] {
+  --lv-code-bg: #161a26;
+  --lv-code-border: rgba(199, 208, 223, 0.14);
+  --lv-code-text: #f2f4f8;
+  --lv-inline-code-bg: rgba(255, 255, 255, 0.08);
+}
+
+.highlight {
+  background: var(--lv-code-bg);
+  border: 1px solid var(--lv-code-border);
+  border-radius: var(--lv-radius-md);
+  overflow: hidden;
+  margin: 1rem 0;
+}
+
+.highlight pre {
+  background: transparent;
+  color: var(--lv-code-text);
+  margin: 0;
+  padding: 1rem 1.125rem;
+  overflow-x: auto;
+  line-height: 1.65;
+  font-size: 0.9rem;
+}
+
+.highlight pre code {
+  white-space: inherit;
+}
+
+code.literal,
+code:not([class]) {
+  background: var(--lv-inline-code-bg);
+  border: 1px solid var(--lv-code-border);
+  border-radius: 0.45rem;
+  color: var(--lv-text);
+  font-size: 0.88em;
+  padding: 0.16em 0.42em;
+}
+
+.highlight .linenos,
+.highlighttable .linenos {
+  color: var(--lv-text-muted);
+}

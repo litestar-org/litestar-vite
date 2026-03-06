@@ -70,6 +70,7 @@ dev = [ {include-group = "build"}, { include-group = "linting" }, { include-grou
 build = ["bump-my-version"]
 docs = [
     "auto-pytabs[sphinx]>=0.4.0",
+    "shibuya",
     "sphinx-autobuild>=2021.3.14",
     "sphinx-click>=4.4.0",
     "sphinx-copybutton>=0.5.2",
@@ -79,7 +80,6 @@ docs = [
     "sphinx-paramlinks>=0.6.0",
     "sphinx-togglebutton>=0.3.2",
     "Pygments","vue-lexer","jsx-lexer",
-    "litestar-sphinx-theme @ git+https://github.com/litestar-org/litestar-sphinx-theme.git@v3",
 ]
 linting = ["pre-commit>=3.4.0", "mypy>=1.5.1", "ruff>=0.0.287", "types-docutils", "slotscheck",  "pyright"]
 test = [

@@ -1,6 +1,3 @@
-# Configuration file for the Sphinx documentation builder.
-from __future__ import annotations
-
 import os
 import sys
 from pathlib import Path
@@ -38,6 +35,7 @@ extensions = [
     "sphinxcontrib.mermaid",
     "sphinx_paramlinks",
     "sphinx_togglebutton",
+    "shibuya",
 ]
 
 intersphinx_mapping = {
@@ -180,31 +178,83 @@ templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 # -- Style configuration -----------------------------------------------------
-html_theme = "litestar_sphinx_theme"
+html_theme = "shibuya"
+html_short_title = "Litestar Vite"
 html_static_path = ["_static"]
-html_css_files = ["style.css"]
+html_css_files = ["theme.css", "layout.css", "code.css"]
+html_js_files = ["theme.js"]
 html_show_sourcelink = True
+html_copy_source = True
 html_title = "Litestar Vite"
-html_favicon = "_static/favicon.ico"
-html_context = {"source_type": "github", "source_user": "litestar-org", "source_repo": project.replace("_", "-")}
-
-brand_colors = {
-    "--brand-primary": {"rgb": "245, 0, 87", "hex": "#f50057"},
-    "--brand-secondary": {"rgb": "32, 32, 32", "hex": "#202020"},
-    "--brand-tertiary": {"rgb": "161, 173, 161", "hex": "#A1ADA1"},
-    "--brand-green": {"rgb": "0, 245, 151", "hex": "#00f597"},
-    "--brand-alert": {"rgb": "243, 96, 96", "hex": "#f36060"},
-    "--brand-dark": {"rgb": "0, 0, 0", "hex": "#000000"},
-    "--brand-light": {"rgb": "235, 221, 221", "hex": "#ebdddd"},
+html_baseurl = "https://litestar-org.github.io/litestar-vite/latest/"
+html_favicon = "_static/favicon.svg"
+html_context = {
+    "source_type": "github",
+    "source_user": "litestar-org",
+    "source_repo": project.replace("_", "-"),
+    "source_version": "main",
+    "source_docs_path": "docs/",
+    "current_version": "latest",
+    "version": release,
 }
+html_sidebars = {"**": []}
 
 html_theme_options: dict[str, Any] = {
-    "logo_target": "/litestar-vite/",
+    "logo_target": "/litestar-vite/latest/",
+    "light_logo": "_static/logo-light.svg",
+    "dark_logo": "_static/logo-dark.svg",
+    "accent_color": "amber",
+    "page_layout": "default",
+    "globaltoc_expand_depth": 0,
+    "toctree_titles_only": True,
     "github_url": "https://github.com/litestar-org/litestar-vite",
-    "github_repo_name": "Litestar Vite",
+    "discussion_url": "https://github.com/litestar-org/litestar-vite/discussions",
+    "discord_url": "https://discord.gg/X3FJqy8d2j",
+    "show_ai_links": True,
+    "open_in_chatgpt": True,
+    "open_in_claude": True,
+    "open_in_perplexity": True,
     "nav_links": [
-        {"title": "Home", "url": "https://litestar-org.github.io/litestar-vite/"},
-        {"title": "Docs", "url": "https://litestar-org.github.io/litestar-vite/latest/"},
-        {"title": "Code", "url": "https://github.com/litestar-org/litestar-vite"},
+        {
+            "title": "Docs",
+            "children": [
+                {
+                    "title": "Get Started",
+                    "url": "usage/index",
+                    "summary": "Install litestar-vite and wire it into a Litestar app.",
+                },
+                {
+                    "title": "Frameworks",
+                    "url": "frameworks/index",
+                    "summary": "React, Vue, Svelte, HTMX, Angular, and SSR framework guides.",
+                },
+                {
+                    "title": "Inertia",
+                    "url": "inertia/index",
+                    "summary": "Server-driven SPA patterns, protocol details, and SSR notes.",
+                },
+                {
+                    "title": "API Reference",
+                    "url": "reference/index",
+                    "summary": "Configuration, CLI, plugin, loader, and codegen reference.",
+                },
+            ],
+        },
+        {
+            "title": "Developers",
+            "children": [
+                {"title": "Changelog", "url": "changelog", "summary": "Track notable changes and migration points."},
+                {
+                    "title": "Contribution Guide",
+                    "url": "contribution-guide",
+                    "summary": "Run docs locally and contribute to the project safely.",
+                },
+                {
+                    "title": "GitHub",
+                    "url": "https://github.com/litestar-org/litestar-vite",
+                    "summary": "Repository, issues, discussions, and release history.",
+                },
+            ],
+        },
     ],
 }
