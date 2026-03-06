@@ -663,8 +663,8 @@ def test_once_is_recognized_by_type_guard() -> None:
     assert is_once_prop(None) is False
 
 
-def test_once_should_render_always_true() -> None:
-    """Test once props are always rendered (client handles caching)."""
+def test_once_should_render_uses_stable_filters() -> None:
+    """Test once props respect stable partial-reload filtering semantics."""
     from litestar_vite.inertia.helpers import once, should_render
 
     prop = once("settings", {"value": 1})
@@ -672,8 +672,9 @@ def test_once_should_render_always_true() -> None:
     # Always render without partial filters
     assert should_render(prop) is True
 
-    # Always render even with partial_data (once props don't filter by default)
-    assert should_render(prop, partial_data={"other"}) is True
+    # Partial reloads only include explicitly requested once props
+    assert should_render(prop, partial_data={"other"}) is False
+    assert should_render(prop, partial_data={"settings"}) is True
 
     # Respect partial_except
     assert should_render(prop, partial_except={"settings"}) is False
@@ -869,6 +870,16 @@ def test_extract_once_props_mixed() -> None:
     assert "lazy_data" not in result
 
 
+def test_should_render_once_prop_with_except_once_props() -> None:
+    """Test that once props honor the except-once header unless explicitly requested."""
+    from litestar_vite.inertia.helpers import once, should_render
+
+    prop = once("settings", {"theme": "dark"})
+
+    assert should_render(prop, except_once_props={"settings"}) is False
+    assert should_render(prop, partial_data={"settings"}, except_once_props={"settings"}) is True
+
+
 # =====================================================
 # is_special_prop() and is_or_contains_special_prop() Tests
 # =====================================================
@@ -937,8 +948,41 @@ async def test_once_prop_in_response(
 
         # Props should include the rendered once prop
         assert data["props"]["settings"] == {"theme": "dark"}
-        # once_props metadata should include the key
-        assert "settings" in (data.get("onceProps") or [])
+        # once_props metadata should use the stable object shape
+        assert data["onceProps"] == {"settings": {"prop": "settings"}}
+
+
+async def test_once_prop_respects_except_once_props_header(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that once props can be omitted after first load while retaining metadata."""
+    from litestar_vite.inertia.helpers import once, share
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        share(request, "settings", once("settings", {"theme": "dark"}))
+        return {"message": "Hello"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.EXCEPT_ONCE_PROPS.value: "settings",
+            },
+        )
+        data = response.json()
+
+        assert "settings" not in data["props"]
+        assert data["onceProps"] == {"settings": {"prop": "settings"}}
 
 
 async def test_optional_prop_excluded_from_initial(

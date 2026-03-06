@@ -136,6 +136,11 @@ def _set_inner_html_replacer(match: re.Match[str], *, content: str) -> str:
     return match.group(1) + content + match.group(5)
 
 
+def _replace_outer_html_replacer(match: re.Match[str], *, content: str) -> str:
+    """Replace an entire element match with raw HTML content."""
+    return content
+
+
 def inject_head_script(html: str, script: str, *, escape: bool = True, nonce: str | None = None) -> str:
     """Inject a script tag before the closing </head> tag.
 
@@ -303,7 +308,30 @@ def set_element_inner_html(html: str, selector: str, content: str) -> str:
     return pattern.sub(replacer, html, count=1)
 
 
-def inject_page_script(html: str, json_data: str, *, nonce: str | None = None, script_id: str = "app_page") -> str:
+def replace_element_outer_html(html: str, selector: str, content: str) -> str:
+    """Replace the outer HTML of an element matching the selector.
+
+    Supports only simple ID selectors (``#app``). This is used by the stable
+    Inertia SSR path because the upstream SSR response already includes the
+    root app wrapper and, in script-element mode, the page-data script.
+    """
+    if not selector or not selector.startswith("#"):
+        return html
+
+    element_id = selector[1:]
+    pattern = _get_id_element_with_content_pattern(element_id)
+    replacer = partial(_replace_outer_html_replacer, content=content)
+    return pattern.sub(replacer, html, count=1)
+
+
+def inject_page_script(
+    html: str,
+    json_data: str,
+    *,
+    app_id: str = "app",
+    nonce: str | None = None,
+    script_id: str = "app_page",
+) -> str:
     r"""Inject page data as a JSON script element before ``</body>``.
 
     This is an Inertia.js v2.3+ optimization that embeds page data in a
@@ -318,6 +346,7 @@ def inject_page_script(html: str, json_data: str, *, nonce: str | None = None, s
     Args:
         html: The HTML document.
         json_data: Pre-serialized JSON string (page props).
+        app_id: The app element ID used by the client bootstrap.
         nonce: Optional CSP nonce to add to the script element.
         script_id: The script element ID (default "app_page" per Inertia protocol).
 
@@ -342,7 +371,8 @@ def inject_page_script(html: str, json_data: str, *, nonce: str | None = None, s
 
     nonce_attr = f' nonce="{_escape_attr(nonce)}"' if nonce else ""
     script_tag = (
-        f'<script type="application/json" id="{script_id}" data-page="app"{nonce_attr}>{escaped_json}</script>\n'
+        f'<script type="application/json" id="{script_id}" data-page="{_escape_attr(app_id)}"{nonce_attr}>'
+        f"{escaped_json}</script>\n"
     )
 
     body_end_match = _BODY_END_PATTERN.search(html)

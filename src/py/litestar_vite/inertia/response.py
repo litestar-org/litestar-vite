@@ -19,9 +19,10 @@ from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
 from litestar.utils.scope.state import ScopeState
 
-from litestar_vite.html_transform import inject_head_html, set_element_inner_html
+from litestar_vite.html_transform import inject_head_html, replace_element_outer_html
 from litestar_vite.inertia._utils import get_headers
 from litestar_vite.inertia.helpers import (
+    build_once_props_metadata,
     extract_deferred_props,
     extract_merge_props,
     extract_once_props,
@@ -63,6 +64,7 @@ class _InertiaRequestInfo:
     is_partial_render: bool
     partial_keys: set[str]
     partial_except_keys: set[str]
+    except_once_keys: set[str]
     reset_keys: set[str]
 
 
@@ -86,6 +88,7 @@ def _get_inertia_request_info(request: "Request[Any, Any, Any]") -> _InertiaRequ
             is_partial_render=request.is_partial_render,
             partial_keys=request.partial_keys,
             partial_except_keys=request.partial_except_keys,
+            except_once_keys=request.except_once_props_keys,
             reset_keys=request.reset_keys,
         )
 
@@ -97,6 +100,7 @@ def _get_inertia_request_info(request: "Request[Any, Any, Any]") -> _InertiaRequ
         is_partial_render=details.is_partial_render,
         partial_keys=set(details.partial_keys),
         partial_except_keys=set(details.partial_except_keys),
+        except_once_keys=set(details.except_once_props_keys),
         reset_keys=set(details.reset_keys),
     )
 
@@ -395,6 +399,7 @@ class InertiaResponse(Response[T]):
         request: "Request[UserT, AuthT, StateT]",
         partial_data: "set[str] | None",
         partial_except: "set[str] | None",
+        except_once_props: "set[str] | None",
         reset_keys: "set[str]",
         vite_plugin: "VitePlugin",
         inertia_plugin: "InertiaPlugin",
@@ -405,6 +410,7 @@ class InertiaResponse(Response[T]):
             request: The request object.
             partial_data: Set of partial data keys.
             partial_except: Set of partial except keys.
+            except_once_props: Set of cached once-prop keys sent by the client.
             reset_keys: Set of keys to reset.
             vite_plugin: The Vite plugin instance.
             inertia_plugin: The Inertia plugin instance.
@@ -412,18 +418,36 @@ class InertiaResponse(Response[T]):
         Returns:
             The PageProps object.
         """
-        shared_props = get_shared_props(request, partial_data=partial_data, partial_except=partial_except)
+        shared_props = get_shared_props(
+            request,
+            partial_data=partial_data,
+            partial_except=partial_except,
+            except_once_props=except_once_props,
+        )
 
         for key in reset_keys:
             shared_props.pop(key, None)
 
         route_handler = request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
         route_content: Any | None = None
+        route_once_props: "list[str]" = []
+        if isinstance(self.content, Mapping):
+            route_once_props = extract_once_props(
+                cast("dict[str, Any]", self.content),
+                partial_data=partial_data,
+                partial_except=partial_except,
+            )
         if is_or_contains_lazy_prop(self.content) or is_or_contains_special_prop(self.content):
-            filtered_content = lazy_render(self.content, partial_data, inertia_plugin.portal, partial_except)
+            filtered_content = lazy_render(
+                self.content,
+                partial_data,
+                inertia_plugin.portal,
+                partial_except,
+                except_once_props,
+            )
             if filtered_content is not None:
                 route_content = filtered_content
-        elif should_render(self.content, partial_data, partial_except):
+        elif should_render(self.content, partial_data, partial_except, except_once_props):
             route_content = self.content
 
         if route_content is not None:
@@ -439,10 +463,10 @@ class InertiaResponse(Response[T]):
 
         deferred_props = extract_deferred_props(shared_props) or None
         # Extract once props tracked during get_shared_props (already rendered)
-        once_props_from_shared = shared_props.pop("_once_props", [])
-        # Also check route content for once props
-        once_props_from_content = extract_once_props(shared_props) or []
-        once_props = (once_props_from_shared + once_props_from_content) or None
+        once_props_from_shared = [key for key in shared_props.pop("_once_props", []) if key not in reset_keys]
+        route_once_props = [key for key in route_once_props if key not in reset_keys]
+        once_prop_keys = list(dict.fromkeys([*once_props_from_shared, *route_once_props]))
+        once_props = build_once_props_metadata(once_prop_keys) or None
 
         merge_props_list, prepend_props_list, deep_merge_props_list, match_props_on = extract_merge_props(shared_props)
 
@@ -589,14 +613,14 @@ class InertiaResponse(Response[T]):
             )
 
             csrf_token = self._get_csrf_token(request)
-            html = spa_handler.get_html_sync(page_data=page_dict, csrf_token=csrf_token)
+            html = spa_handler.get_html_sync(csrf_token=csrf_token)
 
             selector = "#app"
             spa_config = spa_handler._spa_config  # pyright: ignore
             if spa_config is not None:
                 selector = spa_config.app_selector
 
-            html = set_element_inner_html(html, selector, ssr_payload.body)
+            html = replace_element_outer_html(html, selector, ssr_payload.body)
             if ssr_payload.head:
                 html = inject_head_html(html, "\n".join(ssr_payload.head))
 
@@ -666,7 +690,7 @@ class InertiaResponse(Response[T]):
         vite_plugin = request.app.plugins.get(VitePlugin)
         inertia_plugin = request.app.plugins.get(InertiaPlugin)
         headers.update({
-            "Vary": "Accept",
+            "Vary": "X-Inertia",
             **get_headers(InertiaHeaderType(enabled=True, version=vite_plugin.asset_loader.version_id)),
         })
 
@@ -680,7 +704,13 @@ class InertiaResponse(Response[T]):
         )
 
         page_props = self._build_page_props(
-            request, partial_data, partial_except, inertia_info.reset_keys, vite_plugin, inertia_plugin
+            request,
+            partial_data,
+            partial_except,
+            inertia_info.except_once_keys,
+            inertia_info.reset_keys,
+            vite_plugin,
+            inertia_plugin,
         )
 
         if inertia_info.is_inertia:

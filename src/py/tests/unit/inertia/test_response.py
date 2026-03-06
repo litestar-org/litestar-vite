@@ -1,7 +1,10 @@
 import asyncio
+from pathlib import Path
 from time import sleep
 from typing import Any
+from unittest.mock import patch
 
+import pytest
 from litestar import Request, get
 from litestar.exceptions import NotAuthorizedException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
@@ -27,7 +30,7 @@ from litestar_vite.inertia.helpers import (
     share,
     should_render,
 )
-from litestar_vite.inertia.response import InertiaBack, InertiaExternalRedirect
+from litestar_vite.inertia.response import InertiaBack, InertiaExternalRedirect, _InertiaSSRResult
 from litestar_vite.plugin import VitePlugin
 
 
@@ -828,7 +831,7 @@ async def test_extract_merge_props() -> None:
     assert sorted(merge_list) == ["items", "posts"]
     assert prepend_list == ["messages"]
     assert deep_list == ["config"]
-    assert match_on == {"items": ["id"]}
+    assert match_on == ["items.id"]
 
 
 async def test_should_render_with_partial_except() -> None:
@@ -894,6 +897,139 @@ async def test_inertia_response_includes_version_header_json(
         assert "X-Inertia-Version" in response.headers
         # Version should match the asset version
         assert response.headers["X-Inertia-Version"] == response.json()["version"]
+
+
+async def test_inertia_response_uses_x_inertia_vary_header(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that Inertia responses vary on the Inertia header."""
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"data": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        json_response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        html_response = client.get("/")
+
+        assert json_response.headers["Vary"] == "X-Inertia"
+        assert html_response.headers["Vary"] == "X-Inertia"
+
+
+async def test_hybrid_ssr_replaces_shell_root_and_injects_head(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that hybrid SSR replaces the root element instead of nesting it."""
+    from litestar_vite.config import InertiaConfig, InertiaSSRConfig, PathConfig, RuntimeConfig, SPAConfig, ViteConfig
+    from litestar_vite.inertia.plugin import InertiaPlugin
+
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text(
+        "<!DOCTYPE html><html><head><title>Shell</title></head><body><div id=\"app\"></div></body></html>"
+    )
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    inertia_config = InertiaConfig(root_template="index.html", ssr=InertiaSSRConfig())
+    inertia_plugin = InertiaPlugin(config=inertia_config)
+    vite_plugin = VitePlugin(
+        config=ViteConfig(
+            mode="hybrid",
+            paths=PathConfig(resource_dir=resource_dir),
+            runtime=RuntimeConfig(dev_mode=False),
+            spa=SPAConfig(app_selector="#app"),
+            inertia=inertia_config,
+        )
+    )
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"message": "Hello"}
+
+    with patch(
+        "litestar_vite.inertia.response._render_inertia_ssr_sync",
+        return_value=_InertiaSSRResult(
+            head=["<title>SSR</title>"],
+            body='<div id="app" data-page=\'{"component":"Home"}\'><span>SSR body</span></div>',
+        ),
+    ):
+        with create_test_client(
+            route_handlers=[handler],
+            plugins=[inertia_plugin, vite_plugin],
+            middleware=[ServerSideSessionConfig().middleware],
+            stores={"sessions": MemoryStore()},
+        ) as client:
+            response = client.get("/")
+
+    assert response.status_code == 200
+    assert "<title>SSR</title>" in response.text
+    assert "<span>SSR body</span>" in response.text
+    assert response.text.count('id="app"') == 1
+    assert '<div id="app"><div id="app"' not in response.text
+
+
+async def test_hybrid_ssr_script_element_replaces_shell_without_duplicates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that script-element SSR replaces the shell without duplicate bootstrap tags."""
+    from litestar_vite.config import InertiaConfig, InertiaSSRConfig, PathConfig, RuntimeConfig, SPAConfig, ViteConfig
+    from litestar_vite.inertia.plugin import InertiaPlugin
+
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text(
+        "<!DOCTYPE html><html><head><title>Shell</title></head><body><div id=\"app\"></div></body></html>"
+    )
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    inertia_config = InertiaConfig(root_template="index.html", ssr=InertiaSSRConfig(), use_script_element=True)
+    inertia_plugin = InertiaPlugin(config=inertia_config)
+    vite_plugin = VitePlugin(
+        config=ViteConfig(
+            mode="hybrid",
+            paths=PathConfig(resource_dir=resource_dir),
+            runtime=RuntimeConfig(dev_mode=False),
+            spa=SPAConfig(app_selector="#app"),
+            inertia=inertia_config,
+        )
+    )
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"message": "Hello"}
+
+    with patch(
+        "litestar_vite.inertia.response._render_inertia_ssr_sync",
+        return_value=_InertiaSSRResult(
+            head=[],
+            body=(
+                '<script data-page="app" type="application/json">{"component":"Home","props":{}}</script>'
+                '<div id="app"><span>SSR body</span></div>'
+            ),
+        ),
+    ):
+        with create_test_client(
+            route_handlers=[handler],
+            plugins=[inertia_plugin, vite_plugin],
+            middleware=[ServerSideSessionConfig().middleware],
+            stores={"sessions": MemoryStore()},
+        ) as client:
+            response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.text.count('data-page="app"') == 1
+    assert response.text.count('id="app"') == 1
+    assert "<span>SSR body</span>" in response.text
 
 
 async def test_inertia_response_includes_version_header_html(

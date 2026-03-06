@@ -274,7 +274,7 @@ class PageProps(Generic[T]):
         merge_props: Props to append during navigation (v2).
         prepend_props: Props to prepend during navigation (v2).
         deep_merge_props: Props to deep merge during navigation (v2).
-        match_props_on: Keys for matching items during merge (v2).
+        match_props_on: Property paths used for matching items during merge (v2).
         deferred_props: Configuration for lazy-loaded props (v2).
         scroll_props: Configuration for infinite scroll (v2).
         flash: Flash messages as top-level property (v2.3+). Unlike props, flash
@@ -292,12 +292,12 @@ class PageProps(Generic[T]):
     merge_props: "list[str] | None" = None
     prepend_props: "list[str] | None" = None
     deep_merge_props: "list[str] | None" = None
-    match_props_on: "dict[str, list[str]] | None" = None
+    match_props_on: "list[str] | None" = None
 
     deferred_props: "dict[str, list[str]] | None" = None
 
     # v2.2.20+ protocol: Props that should only be resolved once and cached client-side
-    once_props: "list[str] | None" = None
+    once_props: "dict[str, dict[str, str | int | None]] | None" = None
 
     scroll_props: "ScrollPropsConfig | None" = None
 
@@ -331,5 +331,6 @@ class InertiaHeaderType(TypedDict, total=False):
     partial_data: "str | None"
     partial_component: "str | None"
     partial_except: "str | None"
+    except_once_props: "str | None"
     reset: "str | None"
     error_bag: "str | None"
