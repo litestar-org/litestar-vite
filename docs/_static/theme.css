@@ -101,7 +101,7 @@ a {
   transition: color 160ms ease;
 }
 
- a:hover {
+a:hover {
   color: var(--lv-link-hover);
 }
 
@@ -124,4 +124,23 @@ h6 {
 
 .yue strong {
   color: inherit;
+}
+
+.hero-surface,
+.landing-section {
+  padding: clamp(1.25rem, 2vw, 2rem);
+}
+
+.hero-surface > p:first-of-type {
+  font-size: clamp(1.15rem, 1.4vw, 1.35rem);
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 0.75rem;
+}
+
+.hero-surface > p {
+  max-width: 54rem;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
 }

@@ -229,6 +229,11 @@ html_theme_options: dict[str, Any] = {
                     "summary": "React, Vue, Svelte, HTMX, Angular, and SSR framework guides.",
                 },
                 {
+                    "title": "Demos",
+                    "url": "demos",
+                    "summary": "Scaffolding, HMR, type generation, and production build flows in motion.",
+                },
+                {
                     "title": "Inertia",
                     "url": "inertia/index",
                     "summary": "Server-driven SPA patterns, protocol details, and SSR notes.",

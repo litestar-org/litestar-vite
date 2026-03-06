@@ -29,8 +29,10 @@
  */
 
 import fs from "node:fs"
+import type { IncomingMessage, ServerResponse } from "node:http"
 import path from "node:path"
 import colors from "picocolors"
+import type { ViteDevServer } from "vite"
 import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema.js"
 import { DEBOUNCE_MS } from "./shared/constants.js"
 import { normalizeHost, resolveHotFilePath } from "./shared/network.js"
@@ -407,9 +409,9 @@ export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): any
       }
     },
 
-    configureServer(server) {
+    configureServer(server: ViteDevServer) {
       if (config.verbose) {
-        server.middlewares.use((req, _res, next) => {
+        server.middlewares.use((req: IncomingMessage, _res: ServerResponse, next: () => void) => {
           if (req.url?.startsWith(config.apiPrefix)) {
             console.log(colors.cyan("[litestar-sveltekit]"), `Proxying: ${req.method} ${req.url}`)
           }

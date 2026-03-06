@@ -2,86 +2,83 @@
 Usage
 =====
 
-The usage documentation is for end users of the library. It provides a high-level
-overview of what features are available and how to use them.
+Use these guides to move from installation to production runtime without bouncing between scattered examples.
 
-At a Glance
+.. grid:: 1 1 2 2
+   :gutter: 2
+
+   .. grid-item-card:: :octicon:`rocket` Install and Wire It
+      :link: vite
+      :link-type: doc
+
+      Start with the plugin, path configuration, asset serving model, and the development runtime.
+
+   .. grid-item-card:: :octicon:`gear` Choose a Runtime Mode
+      :link: modes
+      :link-type: doc
+
+      Pick SPA, template, hybrid, or framework proxy mode based on how much frontend runtime you want.
+
+   .. grid-item-card:: :octicon:`code-square` Generate Types
+      :link: types
+      :link-type: doc
+
+      Export OpenAPI, routes, and Inertia page props into frontend-friendly TypeScript outputs.
+
+   .. grid-item-card:: :octicon:`plug` Inertia Integration
+      :link: inertia
+      :link-type: doc
+
+      Build server-driven SPAs with the same plugin and runtime model instead of a separate API stack.
+
+Quick Start
 -----------
 
-- :doc:`vite` for configuration and runtime behavior
-- :doc:`modes` to choose SPA, template, or framework modes
-- :doc:`types` to generate TypeScript types and routes
-- :doc:`inertia` for Inertia.js integration
+.. code-block:: python
+   :caption: app.py
 
-Core Features
--------------
+   from pathlib import Path
 
-.. toctree::
-    :titlesonly:
-    :maxdepth: 2
+   from litestar import Litestar
+   from litestar_vite import PathConfig, ViteConfig, VitePlugin
 
-    vite
-    modes
-    types
-    inertia
+   app = Litestar(
+       plugins=[
+           VitePlugin(
+               config=ViteConfig(
+                   dev_mode=True,
+                   paths=PathConfig(root=Path(__file__).parent),
+               )
+           )
+       ]
+   )
+
+.. code-block:: bash
+   :caption: bootstrap a frontend
+
+   litestar assets init --template react-inertia
+   litestar assets install
+   litestar run --reload
 
 Migration Guide
 ---------------
 
+.. grid:: 1 1 2 2
+   :gutter: 2
+
+   .. grid-item-card:: :octicon:`git-compare` 0.15 Migration Notes
+      :link: migration-v015
+      :link-type: doc
+
+      Review the nested configuration changes and current CLI/runtime conventions before updating older projects.
+
 .. toctree::
-    :titlesonly:
-    :maxdepth: 1
+   :titlesonly:
+   :maxdepth: 2
+   :hidden:
 
-    migration-v015
-
-Getting Started
----------------
-
-1. Installation
-~~~~~~~~~~~~~~~
-
-Install litestar-vite using your preferred package manager:
-
-.. code-block:: bash
-
-    pip install litestar-vite
-
-**Note:** Nodeenv support is optional and off by default. To have litestar-vite provision Node inside your virtualenv, install with ``litestar-vite[nodeenv]`` and enable nodeenv detection (for example ``runtime.detect_nodeenv=True`` or ``make install NODEENV=1``). Otherwise, ensure you already have Node/npm installed.
-
-2. Basic Configuration
-~~~~~~~~~~~~~~~~~~~~~~
-
-``dev_mode=True`` starts a Vite dev server for you and proxies HTTP + HMR traffic through Litestar on the same port. In production (``dev_mode=False``) Litestar serves prebuilt assets from ``paths.bundle_dir`` using ``manifest_name`` (defaults to ``public/manifest.json``) and prepends ``asset_url`` (default ``/static/``).
-
-Use the nested configuration objects that shipped in 0.14+:
-
-.. code-block:: python
-
-    from litestar import Litestar
-    from litestar_vite import ViteConfig, VitePlugin
-    from litestar_vite.config import PathConfig, RuntimeConfig
-
-    app = Litestar(
-        plugins=[VitePlugin(config=ViteConfig(dev_mode=True))]
-    )
-
-3. Bootstrap the Typescript Environment
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you do not have an existing vite application, you can create a new one for your Litestar application with the following command:
-
-.. code-block:: bash
-
-    litestar assets init
-    # Inertia (resources/) example
-    litestar assets init --template react-inertia
-    litestar assets init --template vue-inertia
-    litestar assets init --template svelte-inertia
-    # Template-mode examples (Jinja): react-inertia-jinja / vue-inertia-jinja
-    # Non-Inertia (src/) example under custom frontend dir
-    litestar assets init --template react --frontend-dir web
-    litestar assets install  # preferred over npm/pnpm/yarn install
-
-During development run ``litestar run --reload`` (Vite dev server is launched and proxied automatically) or ``litestar assets serve`` if you want to run Vite alone. Build production assets with ``litestar assets build``.
-
-For more detailed information about specific features, refer to the sections in the sidebar.
+   vite
+   modes
+   types
+   inertia
+   migration-v015

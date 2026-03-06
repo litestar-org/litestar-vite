@@ -121,6 +121,12 @@ Use official docs plus official release feeds when checking for updates. For thi
   - @hey-api/openapi-ts docs/releases: https://heyapi.dev/openapi-ts/get-started and https://github.com/hey-api/openapi-ts/releases
   - Re-check here when these change: `src/py/litestar_vite/plugin/`, `src/py/litestar_vite/executor.py`, `src/py/litestar_vite/config/_runtime.py`, `src/py/litestar_vite/codegen/`, `src/js/src/index.ts`, `src/js/src/shared/`, proxy/SSR tests, `README.md`, `llms*.txt`
 
+- **Docs theme / Shibuya**
+  - Docs: https://shibuya.lepture.com/
+  - Releases/changelog: https://github.com/lepture/shibuya/releases
+  - Re-check here when it changes: `docs/conf.py`, `docs/_static/theme.css`, `docs/_static/layout.css`, `docs/_static/code.css`, `docs/_static/theme.js`, `docs/_templates/components/copy-page-button.html`, `CONTRIBUTING.rst`, `README.md`, `llms*.txt`
+  - Local design reference: the official docs code palette is intentionally based on the SQLSpec WASM playground styling; if the sibling workspace is available, inspect `../sqlspec/docs/_static/custom.css` and `../sqlspec/tools/sphinx_ext/playground_template.html` before changing syntax colors or action chrome.
+
 ---
 
 ## Python API
