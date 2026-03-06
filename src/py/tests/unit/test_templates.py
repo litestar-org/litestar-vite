@@ -45,8 +45,12 @@ def test_inertia_examples_use_stable_script_element_bootstrap() -> None:
 
     assert "@ts-expect-error" not in react_jinja
     assert "@ts-expect-error" not in vue_jinja
-    assert "useScriptElementForInitialPage" not in react_jinja
-    assert "useScriptElementForInitialPage" not in vue_jinja
+    assert "defaults:" in react_jinja
+    assert "future: {" in react_jinja
+    assert "useScriptElementForInitialPage: true" in react_jinja
+    assert "defaults:" in vue_jinja
+    assert "future: {" in vue_jinja
+    assert "useScriptElementForInitialPage: true" in vue_jinja
 
 
 def test_inertia_templates_do_not_use_stale_script_element_bootstrap() -> None:
@@ -60,14 +64,30 @@ def test_inertia_templates_do_not_use_stale_script_element_bootstrap() -> None:
         assert "useScriptElementForInitialPage: true," not in template
 
 
+def test_inertia_jinja_templates_include_script_element_target() -> None:
+    """Ensure manual Jinja script-element templates point back at the app root."""
+    react_template = (EXAMPLES_ROOT / "react-inertia-jinja" / "templates" / "index.html").read_text()
+    vue_template = (EXAMPLES_ROOT / "vue-inertia-jinja" / "templates" / "index.html").read_text()
+
+    assert 'id="app_page" data-page="app"' in react_template
+    assert 'id="app_page" data-page="app"' in vue_template
+
+
 def test_inertia_docs_use_stable_script_element_bootstrap_path() -> None:
     """Ensure docs reference the stable defaults.future bootstrap path."""
     config_docs = (ROOT / "docs" / "inertia" / "configuration.rst").read_text()
+    ssr_docs = (ROOT / "docs" / "reference" / "inertia" / "ssr.rst").read_text()
+    inertia_config = (ROOT / "src" / "py" / "litestar_vite" / "config" / "_inertia.py").read_text()
 
     assert "defaults: {" in config_docs
     assert "future: {" in config_docs
     assert "useScriptElementForInitialPage: true" in config_docs
     assert "useScriptElementForInitialPage: true," not in config_docs.split("defaults: {", 1)[0]
+    assert "defaults.future.useScriptElementForInitialPage" in ssr_docs
+    assert "Node SSR entry" in ssr_docs
+    assert "defaults: {" in inertia_config
+    assert "future: {" in inertia_config
+    assert "useScriptElementForInitialPage: true" in inertia_config
 
 
 def test_inertia_readme_and_llms_reference_stable_script_element_bootstrap() -> None:

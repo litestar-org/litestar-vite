@@ -5,6 +5,8 @@ import { createApp, h } from "vue";
 import "./style.css";
 
 createInertiaApp({
+  // If your backend or template emits #app_page, add:
+  // defaults: { future: { useScriptElementForInitialPage: true } },
   resolve: (name) =>
     resolvePageComponent(
       `./pages/${name}.vue`,

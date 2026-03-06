@@ -172,11 +172,15 @@ This feature requires **both** server-side and client-side configuration:
    on the server but forget the client-side configuration, the Inertia app will fail to
    initialize because it won't find the page data.
 
+   If you author the HTML template manually, keep the payload element aligned with the app root,
+   for example ``<script type="application/json" id="app_page" data-page="app">...</script>``.
+
 .. note::
 
-   The same browser-entry configuration applies when SSR is enabled with ``InertiaConfig(ssr=True)``.
-   The separate Node SSR entry (``resources/ssr.tsx`` or ``resources/ssr.ts``) does not need
-   ``defaults.future.useScriptElementForInitialPage`` because it receives the page object directly.
+   When SSR is enabled with ``InertiaConfig(ssr=True)``, keep the same
+   ``defaults.future.useScriptElementForInitialPage`` setting in both the browser entry
+   (``resources/main.tsx`` or ``resources/main.ts``) and the SSR entry
+   (``resources/ssr.tsx`` or ``resources/ssr.ts``).
 
 .. note::
 

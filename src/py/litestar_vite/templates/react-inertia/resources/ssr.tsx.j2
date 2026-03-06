@@ -7,6 +7,7 @@ import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
 createServer(
   async (page) => {
     const inertia = await createInertiaApp({
+      // Mirror defaults.future.useScriptElementForInitialPage here too when SSR + #app_page are enabled.
       page,
       render: renderToString,
       resolve: (name) => resolvePageComponent(`./pages/${name}.tsx`, import.meta.glob("./pages/**/*.tsx")),

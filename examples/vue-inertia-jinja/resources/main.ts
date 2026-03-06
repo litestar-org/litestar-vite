@@ -5,6 +5,11 @@ import { createApp, h } from "vue"
 import "./style.css"
 
 createInertiaApp({
+  defaults: {
+    future: {
+      useScriptElementForInitialPage: true,
+    },
+  },
   resolve: (name) => resolvePageComponent(`./pages/${name}.vue`, import.meta.glob<DefineComponent>("./pages/**/*.vue")),
   setup({ el, App, props, plugin }) {
     createApp({ render: () => h(App, props) })

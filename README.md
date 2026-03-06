@@ -118,6 +118,10 @@ createInertiaApp({
 })
 ```
 
+If SSR is enabled for the same app, keep the same `defaults.future.useScriptElementForInitialPage`
+setting in `resources/ssr.tsx` or `resources/ssr.ts` so server rendering and hydration use the same
+initial-page transport.
+
 `ssr=True` enables Inertia's Node SSR renderer for the first-page HTML response. It is separate
 from meta-framework proxy mode and uses the standard `resources/ssr.tsx` or `resources/ssr.ts`
 entry file.

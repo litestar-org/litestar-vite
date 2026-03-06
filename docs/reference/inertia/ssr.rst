@@ -22,8 +22,8 @@ When you also enable ``use_script_element=True``:
 
 - Keep ``defaults.future.useScriptElementForInitialPage`` in the browser entry so hydration
   reads the initial page payload correctly instead of expecting the default ``data-page`` attribute.
-- Do not add that option to the Node SSR entry; the SSR server already receives the page
-  object directly.
+- Mirror the same option in the Node SSR entry because Inertia applies the same defaults during
+  server rendering.
 
 Selector behavior follows ``SPAConfig.app_selector``. If you render into ``#root`` instead of
 ``#app``, keep the browser template, SSR output, and app selector aligned so Litestar can replace

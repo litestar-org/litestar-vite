@@ -54,6 +54,75 @@ npm install litestar-vite-plugin   # Vite plugin
 
 ---
 
+## Upstream Update Sources
+
+Use official docs plus official release feeds when checking for updates. For this repo, the package registry version is not enough because template/bootstrap, SSR, proxy, and typegen assumptions often change before or alongside dependency range updates.
+
+- **Inertia**
+  - Docs: https://inertiajs.com/
+  - Releases: https://github.com/inertiajs/inertia/releases
+  - Packages/source: https://github.com/inertiajs/inertia
+  - Re-check here when it changes: `src/py/litestar_vite/inertia/`, `src/py/litestar_vite/handler/_app.py`, `src/py/litestar_vite/html_transform.py`, `examples/react-inertia*`, `examples/vue-inertia*`, `src/py/litestar_vite/templates/*inertia*`, `docs/inertia/`, `docs/frameworks/inertia.rst`, `README.md`, `llms*.txt`
+
+- **React / react-dom**
+  - Docs: https://react.dev/
+  - Versions/releases: https://react.dev/versions and https://github.com/facebook/react/releases
+  - Packages/source: https://www.npmjs.com/package/react , https://www.npmjs.com/package/react-dom , https://github.com/facebook/react
+  - Re-check here when it changes: `examples/react*/`, `src/py/litestar_vite/templates/react*/`, React SSR entries (`resources/ssr.tsx*`), `docs/frameworks/react.rst`, `docs/frameworks/inertia.rst`, `src/py/tests/integration/test_examples.py`
+
+- **Vue / @vue/server-renderer**
+  - Docs: https://vuejs.org/
+  - Releases: https://vuejs.org/about/releases and https://github.com/vuejs/core/releases
+  - Packages/source: https://www.npmjs.com/package/vue , https://www.npmjs.com/package/@vue/server-renderer , https://github.com/vuejs/core
+  - Re-check here when it changes: `examples/vue*/`, `src/py/litestar_vite/templates/vue*/`, Vue SSR entries (`resources/ssr.ts*`), `docs/frameworks/vue.rst`, `docs/frameworks/inertia.rst`, `src/py/tests/integration/test_examples.py`
+
+- **Svelte**
+  - Docs: https://svelte.dev/docs
+  - Releases: https://github.com/sveltejs/svelte/releases and https://github.com/sveltejs/svelte/blob/main/packages/svelte/CHANGELOG.md
+  - Package/source: https://www.npmjs.com/package/svelte , https://github.com/sveltejs/svelte
+  - Re-check here when it changes: `examples/svelte/`, `src/py/litestar_vite/templates/svelte/`, `src/py/litestar_vite/templates/svelte-inertia/`, `docs/frameworks/svelte.rst`, `docs/inertia/installation.rst`, `src/py/tests/integration/test_examples.py`
+
+- **SvelteKit**
+  - Docs: https://svelte.dev/docs/kit
+  - Releases/migrations: https://github.com/sveltejs/kit/releases , https://github.com/sveltejs/kit/blob/main/packages/kit/CHANGELOG.md , https://svelte.dev/docs/kit/migrating-to-sveltekit-2 , https://svelte.dev/docs/cli/sv-migrate
+  - Package/source: https://www.npmjs.com/package/@sveltejs/kit , https://github.com/sveltejs/kit
+  - Re-check here when it changes: `examples/sveltekit/`, `src/py/litestar_vite/templates/sveltekit/`, `src/js/src/sveltekit.ts`, `docs/frameworks/sveltekit.rst`, `src/py/tests/e2e/server_manager.py`, `src/py/tests/integration/test_examples.py`
+
+- **Astro**
+  - Docs: https://docs.astro.build/ and upgrade guides under https://docs.astro.build/en/guides/upgrade-to/
+  - Releases: https://github.com/withastro/astro/releases
+  - Package/source: https://www.npmjs.com/package/astro , https://github.com/withastro/astro
+  - Re-check here when it changes: `src/js/src/astro.ts`, `src/py/litestar_vite/templates/astro/`, `examples/astro/`, `docs/frameworks/astro.rst`, `src/py/tests/integration/test_examples.py`
+
+- **Nuxt / Nitro**
+  - Docs: https://nuxt.com/docs and https://nuxt.com/docs/getting-started/upgrade ; Nitro docs: https://nitro.build/
+  - Releases: https://github.com/nuxt/nuxt/releases and https://github.com/nitrojs/nitro/releases
+  - Packages/source: https://www.npmjs.com/package/nuxt , https://github.com/nuxt/nuxt , https://www.npmjs.com/package/nitropack , https://github.com/nitrojs/nitro
+  - Re-check here when it changes: `src/js/src/nuxt.ts`, `src/py/litestar_vite/templates/nuxt/`, `examples/nuxt/`, `docs/frameworks/nuxt.rst`, `src/py/tests/unit/test_ssr_proxy_hmr.py`, `examples/nuxt/app.py`
+
+- **Angular / Angular CLI / Analog**
+  - Docs: https://angular.dev/ , https://angular.dev/tools/cli , https://angular.dev/update-guide , https://angular.dev/tools/cli/build-system-migration
+  - Releases: https://angular.dev/reference/releases , https://github.com/angular/angular/blob/main/CHANGELOG.md , https://github.com/angular/angular-cli/releases
+  - Packages/source: https://github.com/angular/angular , https://github.com/angular/angular-cli , https://github.com/analogjs/analog
+  - Re-check here when it changes: `examples/angular/`, `examples/angular-cli/`, `src/py/litestar_vite/templates/angular/`, `src/py/litestar_vite/templates/angular-cli/`, `docs/frameworks/angular.rst`, `src/py/litestar_vite/config/_runtime.py`, `src/py/litestar_vite/scaffolding/templates.py`
+
+- **HTMX**
+  - Docs: https://htmx.org/docs/
+  - Releases/posts: https://github.com/bigskysoftware/htmx/releases and https://htmx.org/posts/
+  - Packages/source: https://www.npmjs.com/package/htmx.org , https://github.com/bigskysoftware/htmx , https://github.com/litestar-org/litestar-htmx
+  - Re-check here when it changes: `examples/jinja-htmx/`, `src/py/litestar_vite/templates/htmx/`, `src/js/src/helpers/htmx.ts`, `src/js/tests/helpers/htmx.test.ts`, `docs/frameworks/htmx.rst`, `src/py/litestar_vite/scaffolding/templates.py`
+
+- **Core stack**
+  - Litestar docs/releases: https://docs.litestar.dev/latest/ and https://github.com/litestar-org/litestar/releases
+  - Vite docs/releases: https://vite.dev/ and https://github.com/vitejs/vite/releases
+  - Bun docs/releases: https://bun.com/docs and https://github.com/oven-sh/bun/releases
+  - Granian docs/releases: https://github.com/emmett-framework/granian and https://github.com/emmett-framework/granian/releases
+  - httpx docs/releases: https://www.python-httpx.org/ and https://github.com/encode/httpx/releases
+  - @hey-api/openapi-ts docs/releases: https://heyapi.dev/openapi-ts/get-started and https://github.com/hey-api/openapi-ts/releases
+  - Re-check here when these change: `src/py/litestar_vite/plugin/`, `src/py/litestar_vite/executor.py`, `src/py/litestar_vite/config/_runtime.py`, `src/py/litestar_vite/codegen/`, `src/js/src/index.ts`, `src/js/src/shared/`, proxy/SSR tests, `README.md`, `llms*.txt`
+
+---
+
 ## Python API
 
 ### PathConfig
@@ -184,7 +253,7 @@ Post-init: if ssr is True, replaces with InertiaSSRConfig(). If ssr is False, re
 Property: `ssr_config -> InertiaSSRConfig | None` -- returns config if enabled, else None.
 
 Notes:
-- `use_script_element=True` switches full-page HTML bootstrap from a `data-page` attribute to a JSON script element payload. The browser entry must also opt into `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })`.
+- `use_script_element=True` switches full-page HTML bootstrap from a `data-page` attribute to a JSON script element payload. The browser entry must also opt into `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })`, and the SSR entry should mirror that setting when SSR is enabled.
 - `ssr=True` enables Inertia's separate Node SSR renderer for initial HTML responses. It is not the same as framework proxy mode (`mode="framework"` / alias `mode="ssr"`).
 
 ### InertiaSSRConfig
@@ -1064,7 +1133,7 @@ createInertiaApp({
 SSR notes:
 - Use the normal browser entry (`resources/main.tsx` / `resources/main.ts`) for hydration and client-side visits.
 - Add `resources/ssr.tsx` or `resources/ssr.ts` for the Node SSR server entry when `InertiaConfig(ssr=True)` is enabled.
-- Script-element bootstrap is a browser-entry concern; the SSR server entry does not need `defaults.future.useScriptElementForInitialPage`.
+- When `use_script_element=True`, keep `defaults.future.useScriptElementForInitialPage` in both entries so server rendering and hydration use the same initial-page transport.
 
 ### Framework Mode (Astro/Nuxt/SvelteKit)
 

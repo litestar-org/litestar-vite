@@ -5,6 +5,8 @@ import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
 import "./App.css";
 
 createInertiaApp({
+  // If your backend or template emits #app_page, add:
+  // defaults: { future: { useScriptElementForInitialPage: true } },
   resolve: (name) =>
     resolvePageComponent(`./pages/${name}.tsx`, import.meta.glob("./pages/**/*.tsx")),
   setup({ el, App, props }) {

@@ -130,8 +130,12 @@ class InertiaConfig:
         - Better performance for pages with complex props
 
     Requirements:
-        - Client must also enable: ``createInertiaApp({ useScriptElementForInitialPage: true })``
-        - The script should include ``data-page="app"`` so Inertia can locate the payload element.
+        - Client must also enable:
+          ``createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })``
+        - If SSR is enabled, keep the same ``defaults.future.useScriptElementForInitialPage`` option in
+          both the browser entry and the SSR entry.
+        - The script element must include the target app element ID in its ``data-page`` attribute so
+          Inertia can locate the payload element.
         - Requires Inertia.js v2.3+
 
     Disabled by default for compatibility with existing Inertia clients.

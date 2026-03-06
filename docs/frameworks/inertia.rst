@@ -119,14 +119,19 @@ must opt into the matching stable Inertia bootstrap path:
      // resolve/setup...
    });
 
-Template-based Inertia examples that keep the ``data-page`` attribute should not enable this option.
+Template-based apps that keep the ``data-page`` attribute should not enable this option.
+Template-based apps that emit ``<script type="application/json" id="app_page" data-page="app">``
+can use the same browser-entry setting.
+If you also enable ``InertiaConfig(ssr=True)``, apply the same ``defaults.future`` setting in
+``resources/ssr.tsx`` or ``resources/ssr.ts`` so server rendering and hydration use the same
+initial-page transport.
 
 SSR Support
 -----------
 
 ``litestar-vite`` also supports Inertia's separate Node SSR renderer via ``InertiaConfig(ssr=True)``.
-That SSR path keeps the same browser entry point for hydration and uses ``resources/ssr.tsx`` or
-``resources/ssr.ts`` for the Node entry. It is separate from meta-framework proxy mode.
+That SSR path keeps the same browser entry point for hydration, uses ``resources/ssr.tsx`` or
+``resources/ssr.ts`` for the Node entry, and is separate from meta-framework proxy mode.
 
 Learn More
 ----------
