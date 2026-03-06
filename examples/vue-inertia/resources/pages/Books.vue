@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Head, Link } from "@inertiajs/vue3"
-import { route, routeDefinitions } from "@/generated/routes"
+import { route, routeDefinitions } from "@/routes"
 
-const routeEntries = Object.entries(routeDefinitions)
+type RouteName = keyof typeof routeDefinitions
+type RouteDefinition = (typeof routeDefinitions)[RouteName]
+const routeEntries = Object.entries(routeDefinitions) as [RouteName, RouteDefinition][]
 
 type Book = {
   id: number

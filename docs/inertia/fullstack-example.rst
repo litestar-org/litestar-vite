@@ -147,15 +147,15 @@ Other example projects in the litestar-vite repository:
    * - Example
      - Description
    * - ``vue-inertia``
-     - Vue 3 + Inertia.js
+     - Vue + Inertia.js
    * - ``react-inertia``
-     - React 18 + Inertia.js
+     - React + Inertia.js
    * - ``react-inertia-jinja``
      - React + Inertia.js (Jinja template mode)
    * - ``vue-inertia-jinja``
      - Vue + Inertia.js (Jinja template mode)
    * - ``svelte``
-     - Svelte 5 SPA (no Inertia)
+     - Svelte SPA (no Inertia)
    * - ``react``
      - React SPA (no Inertia)
    * - ``vue``

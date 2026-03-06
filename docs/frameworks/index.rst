@@ -12,25 +12,25 @@ working examples for each supported framework.
         :link: react
         :link-type: doc
 
-        React 18+ with Vite
+        React with Vite
 
     .. grid-item-card:: :octicon:`browser` Vue
         :link: vue
         :link-type: doc
 
-        Vue 3 with Composition API
+        Vue with Composition API
 
     .. grid-item-card:: :octicon:`browser` Svelte
         :link: svelte
         :link-type: doc
 
-        Svelte 5 with Vite
+        Svelte with Vite
 
     .. grid-item-card:: :octicon:`browser` Angular
         :link: angular
         :link-type: doc
 
-        Angular 18+ (Vite or CLI)
+        Angular with Analog or CLI
 
     .. grid-item-card:: :octicon:`plug` Inertia.js
         :link: inertia
@@ -54,7 +54,7 @@ Meta-Frameworks
         :link: nuxt
         :link-type: doc
 
-        Universal Vue 3 SSR framework
+        Nuxt app router with Nitro
 
     .. grid-item-card:: :octicon:`rocket` SvelteKit
         :link: sveltekit
@@ -91,7 +91,7 @@ Use the CLI to scaffold any framework:
     # React (SPA)
     litestar assets init --template react
 
-    # React with routing (new in v0.15)
+    # React with routing
     litestar assets init --template react-router
     litestar assets init --template react-tanstack
 
@@ -118,7 +118,7 @@ Use the CLI to scaffold any framework:
     # With Inertia.js
     litestar assets init --template react-inertia
     litestar assets init --template vue-inertia
-    litestar assets init --template svelte-inertia  # New in v0.15
+    litestar assets init --template svelte-inertia
     # Template-mode examples (Jinja)
     # react-inertia-jinja / vue-inertia-jinja
 

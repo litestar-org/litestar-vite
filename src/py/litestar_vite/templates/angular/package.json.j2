@@ -6,31 +6,30 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "serve": "vite preview",
-    "watch": "npm run serve",
-    "update": "npm update"{% if generate_client %},
+    "serve": "vite preview"{% if generate_client %},
     "generate-types": "openapi-ts"{% endif %}
   },
   "dependencies": {
-{%- for dep in dependencies %}
-    "{{ dep }}": "latest"{% if not loop.last or generate_zod %},{% endif %}
-{%- endfor %}
-{%- if generate_zod %}
-    "zod": "^4.1.13"
-{%- endif %}
+    "@angular/animations": "21.2.1",
+    "@angular/common": "21.2.1",
+    "@angular/compiler": "21.2.1",
+    "@angular/core": "21.2.1",
+    "@angular/forms": "21.2.1",
+    "@angular/platform-browser": "21.2.1",
+    "rxjs": "7.8.2"{% if generate_zod %},
+    "zod": "4.3.6"{% endif %}
   },
   "devDependencies": {
-{%- for dep in dev_dependencies %}
-    "{{ dep }}": "latest",
-{%- endfor %}
-{%- if use_tailwind %}
-    "@tailwindcss/vite": "^4.1.17",
-    "tailwindcss": "^4.1.17",
-{%- endif %}
-{%- if generate_client %}
-    "@hey-api/openapi-ts": "^0.88.0",
-{%- endif %}
-    "litestar-vite-plugin": "latest",
-    "vite": "^7.2.6"
+    "@analogjs/vite-plugin-angular": "2.3.1",
+    "@angular/build": "21.2.1",
+    "@angular/compiler-cli": "21.2.1",
+    "@angular/platform-browser-dynamic": "21.2.1",
+{% if use_tailwind %}    "@tailwindcss/vite": "4.2.1",
+{% endif %}{% if generate_client %}    "@hey-api/openapi-ts": "0.94.0",
+{% endif %}    "@types/node": "25.3.5",
+    "litestar-vite-plugin": "{{ package_version('litestar-vite-plugin') }}",
+{% if use_tailwind %}    "tailwindcss": "4.2.1",
+{% endif %}    "typescript": "5.9.3",
+    "vite": "7.3.1"
   }
 }

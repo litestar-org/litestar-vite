@@ -9,7 +9,7 @@ function increment() {
 <template>
   <div class="app">
     <h1>{{ "{{ project_name }}" }}</h1>
-    <p>Nuxt 3 + Litestar</p>
+    <p>Nuxt 4 + Litestar</p>
     <div class="card">
       <button @click="increment">
         count is {{ "{{ count }}" }}
@@ -38,17 +38,12 @@ button {
   font-weight: 500;
   font-family: inherit;
   background-color: #1a1a1a;
+  color: #f8fafc;
   cursor: pointer;
   transition: border-color 0.25s;
 }
 
 button:hover {
   border-color: #00dc82;
-}
-
-@media (prefers-color-scheme: light) {
-  button {
-    background-color: #f9f9f9;
-  }
 }
 </style>

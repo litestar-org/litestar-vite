@@ -7,7 +7,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 ## Python Package
 
 - Package: `litestar-vite`
-- Version: 0.18.3
+- Version: 0.18.4
 - Python: >=3.10
 - Key dependencies: `litestar>=2.7.0`, `httpx>=0.24.1`, `websockets>=12.0`
 - Optional extras: `jinja` (Jinja2 templates), `nodeenv` (auto-detected Node), `http2` (h2 for proxy)
@@ -15,7 +15,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 ## npm Package
 
 - Package: `litestar-vite-plugin`
-- Version: 0.18.3
+- Version: 0.18.4
 - Peer dependency: `vite ^6.0.0 || ^7.0.0`
 - Exports: `.` (main plugin), `./helpers` (route/csrf/htmx helpers), `./inertia-helpers`, `./astro`, `./sveltekit`, `./nuxt`, `./inertia` (types), `./virtual` (virtual module types)
 

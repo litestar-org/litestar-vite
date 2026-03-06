@@ -777,4 +777,4 @@ If you encounter issues during migration:
 
 - Check the `GitHub Issues <https://github.com/litestar-org/litestar-vite/issues>`_
 - Join the `Litestar Discord <https://discord.gg/litestar>`_
-- Review the `documentation <https://docs.litestar.dev/vite/>`_
+- Review the `documentation <https://litestar-org.github.io/litestar-vite/latest/>`_

@@ -5,7 +5,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 ## Features
 
 - One-port dev: proxies Vite HTTP + WS/HMR through Litestar by default; switch to two-port with `VITE_PROXY_MODE=direct`.
-- SSR framework support: use `mode="ssr"` for Astro, Nuxt, SvelteKit - proxies everything except your API routes.
+- Framework-mode support: use `mode="framework"` (alias `mode="ssr"`) for Astro, Nuxt, and SvelteKit. Litestar proxies everything except your API routes.
 - Production assets: reads Vite manifest from `public/manifest.json` (configurable) and serves under `asset_url`.
 - Type-safe frontends: optional OpenAPI/routes export + `@hey-api/openapi-ts` via the Vite plugin.
 - Inertia support: v2 protocol with session middleware and optional SPA mode.
@@ -128,7 +128,7 @@ entry file.
 
 ## Meta-frameworks (Astro, Nuxt, SvelteKit)
 
-Use `mode="ssr"` (or `mode="framework"`) to proxy non-API routes to the framework's dev server:
+Use `mode="framework"` (or the `mode="ssr"` alias) to proxy non-API routes to the framework's dev server:
 
 ```python
 import os

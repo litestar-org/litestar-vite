@@ -1,6 +1,5 @@
 <script lang="ts">
 import { onMount } from "svelte"
-import { route, routeDefinitions } from "@/generated/routes"
 
 type Book = {
   id: number
@@ -17,19 +16,21 @@ type Summary = {
   featured: Book
 }
 
+const summaryPath = "/api/summary"
+const booksPath = "/api/books"
+const bookDetailPath = (bookId: number) => `/api/books/${bookId}`
+
 let summary = $state<Summary | null>(null)
 let books = $state<Book[]>([])
 let view = $state<"overview" | "books">("overview")
 
 onMount(async () => {
-  // Using type-safe route() helper instead of hardcoded strings
-  const [summaryRes, booksRes] = await Promise.all([fetch(route("summary")), fetch(route("books"))])
+  const [summaryRes, booksRes] = await Promise.all([fetch(summaryPath), fetch(booksPath)])
   summary = await summaryRes.json()
   books = await booksRes.json()
 })
 
 const featured = $derived(summary?.featured)
-const routeEntries = Object.entries(routeDefinitions)
 </script>
 
 <main class="mx-auto max-w-5xl space-y-6 px-4 py-10">
@@ -85,21 +86,11 @@ const routeEntries = Object.entries(routeDefinitions)
 
   <footer class="border-slate-200 border-t pt-8 text-slate-400 text-xs">
     <details>
-      <summary class="cursor-pointer">Type-safe route() helper usage</summary>
+      <summary class="cursor-pointer">API endpoints</summary>
       <div class="mt-2 space-y-1 rounded bg-slate-100 p-2 font-mono">
-        <div>route("summary") → {route("summary")}</div>
-        <div>route("books") → {route("books")}</div>
-        <div>route("book_detail", {"{ book_id: 42 }"}) → {route("book_detail", { book_id: 42 })}</div>
-      </div>
-    </details>
-    <details class="mt-2">
-      <summary class="cursor-pointer">Route definitions (from generated routes.ts)</summary>
-      <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
-        {#each routeEntries as [name, def]}
-          <span class="font-mono text-slate-600">
-            {name} → {def.path}
-          </span>
-        {/each}
+        <div>{summaryPath}</div>
+        <div>{booksPath}</div>
+        <div>{bookDetailPath(42)}</div>
       </div>
     </details>
   </footer>

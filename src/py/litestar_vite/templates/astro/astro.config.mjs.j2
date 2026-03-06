@@ -12,8 +12,8 @@ const LITESTAR_PORT = process.env.LITESTAR_PORT ?? "{{ litestar_port }}";
 export default defineConfig({
   integrations: [
     litestar({
-      // API proxy points to the Litestar backend
-      apiProxy: `http://localhost:${LITESTAR_PORT}`,
+      // API proxy points to the Litestar backend.
+      apiProxy: `http://127.0.0.1:${LITESTAR_PORT}`,
       apiPrefix: "/api",
 {% if enable_types %}
       types: true,

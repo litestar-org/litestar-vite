@@ -5,7 +5,7 @@ Load When Visible
 Lazy-load props when elements enter the viewport.
 
 .. seealso::
-   Official Inertia.js docs: `Load When Visible <https://inertiajs.com/docs/v2/data-props/load-when-visible>`_
+   Official Inertia.js docs: `Load When Visible <https://inertiajs.com/load-when-visible>`_
 
 What Is Load When Visible?
 --------------------------

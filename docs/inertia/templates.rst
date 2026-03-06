@@ -20,7 +20,8 @@ It's rendered on initial page loads with page data embedded.
 Key features:
 
 - ``<title inertia>`` - Enables dynamic title updates via Inertia's ``<Head>`` component
-- ``{{ inertia | safe }}`` - JSON-encoded page props (use ``| safe`` to prevent escaping)
+- ``<script type="application/json" id="app_page" data-page="app">`` - Script-element bootstrap payload for ``use_script_element=True``
+- ``{{ inertia | safe }}`` - JSON-encoded page payload (use ``| safe`` to prevent escaping)
 - ``{{ vite_hmr() }}`` and ``{{ vite() }}`` - Vite asset injection
 
 Template Helpers
@@ -39,16 +40,44 @@ These helpers are automatically available in your templates:
    * - ``{{ vite_hmr() }}``
      - HMR client script (dev mode)
    * - ``{{ inertia | safe }}``
-     - JSON-encoded page props for ``data-page``
+     - JSON-encoded page payload for ``data-page`` or the script-element bootstrap
    * - ``{{ csrf_input }}``
      - Hidden CSRF input field
    * - ``{{ csrf_token }}``
      - Raw CSRF token value
 
-The inertia Helper
-------------------
+Script Element Bootstrap
+------------------------
 
-The ``{{ inertia | safe }}`` helper outputs JSON for the ``data-page`` attribute:
+When ``InertiaConfig(use_script_element=True)`` is enabled, keep the app root element empty and
+emit the JSON payload in a matching script element:
+
+.. code-block:: html
+
+   <div id="app"></div>
+   <script type="application/json" id="app_page" data-page="app">{{ inertia | safe }}</script>
+
+Your browser entry must opt into the same transport:
+
+.. code-block:: tsx
+
+   createInertiaApp({
+     defaults: {
+       future: {
+         useScriptElementForInitialPage: true,
+       },
+     },
+     // resolve/setup...
+   })
+
+If ``InertiaConfig(ssr=True)`` is also enabled, mirror the same
+``defaults.future.useScriptElementForInitialPage`` setting in ``resources/ssr.tsx`` or
+``resources/ssr.ts`` so the Node SSR entry and the browser entry hydrate from the same payload.
+
+Classic ``data-page`` Bootstrap
+-------------------------------
+
+The ``{{ inertia | safe }}`` helper can also be used directly with the older ``data-page`` attribute:
 
 .. code-block:: json
 
@@ -68,6 +97,8 @@ The ``{{ inertia | safe }}`` helper outputs JSON for the ``data-page`` attribute
       <div id="app" data-page='{{ inertia | safe }}'></div>
 
    Without ``| safe``, special characters in props will be escaped, breaking JSON parsing.
+
+Use this attribute form only when you are not using ``use_script_element=True``.
 
 Dynamic Titles
 --------------
@@ -134,7 +165,8 @@ Change the root element selector:
 
 .. code-block:: html
 
-   <div id="root" data-page='{{ inertia | safe }}'></div>
+   <div id="root"></div>
+   <script type="application/json" id="app_page" data-page="root">{{ inertia | safe }}</script>
 
 Multiple Templates
 ------------------

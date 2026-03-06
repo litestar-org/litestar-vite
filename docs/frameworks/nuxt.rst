@@ -2,7 +2,7 @@
 Nuxt
 ====
 
-Nuxt 3+ integration with Litestar Vite for universal SSR applications.
+Nuxt integration with Litestar Vite for universal SSR applications.
 
 At a Glance
 -----------
@@ -19,7 +19,7 @@ Quick Start
 
     litestar assets init --template nuxt
 
-This creates a Nuxt 3 project with TypeScript support and SSR capabilities.
+This creates a Nuxt project with TypeScript support and SSR capabilities.
 
 Project Structure
 -----------------
@@ -181,5 +181,5 @@ See Also
 --------
 
 - `Example: nuxt <https://github.com/litestar-org/litestar-vite/tree/main/examples/nuxt>`_
-- `Nuxt 3 Documentation <https://nuxt.com/>`_
+- `Nuxt Documentation <https://nuxt.com/docs>`_
 - :doc:`/usage/types` - TypeScript type generation

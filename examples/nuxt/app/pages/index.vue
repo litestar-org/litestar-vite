@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Import type-safe route helper from generated routes
 import { route, routeDefinitions } from "~/generated/routes"
 
+const api = useApi()
 const routeEntries = Object.entries(routeDefinitions)
 
 type Book = {
@@ -19,14 +19,8 @@ type Summary = {
   featured: Book
 }
 
-// Get the API base URL from runtime config (set by litestar-vite-plugin/nuxt module)
-const config = useRuntimeConfig()
-const apiBase = config.public.apiProxy as string
-
-// Fetch data from Litestar backend using type-safe route() helper
-// This works correctly for both SSR and client-side hydration
-const { data: summary } = await useFetch<Summary>(route("summary"), { baseURL: apiBase })
-const { data: books } = await useFetch<Book[]>(route("books"), { baseURL: apiBase })
+const { data: summary } = await useAsyncData("summary", () => api.get<Summary>(route("summary")))
+const { data: books } = await useAsyncData("books", () => api.get<Book[]>(route("books")))
 
 const view = ref<"overview" | "books">("overview")
 </script>
@@ -36,7 +30,7 @@ const view = ref<"overview" | "books">("overview")
     <header class="space-y-2">
       <p class="font-semibold text-[#edb641] text-sm uppercase tracking-[0.14em]">Litestar · Vite</p>
       <h1 class="font-semibold text-3xl text-[#202235]">Library (Nuxt)</h1>
-      <p class="max-w-3xl text-slate-600">Same API, different frontend. Nuxt 3 with SSR proxy to Litestar.</p>
+      <p class="max-w-3xl text-slate-600">Same API, different frontend. Nuxt 4 with SSR proxy to Litestar.</p>
       <nav class="inline-flex gap-2 rounded-full bg-slate-100 p-1 shadow-sm" aria-label="Views">
         <button
           class="rounded-full px-4 py-2 font-semibold text-sm transition"

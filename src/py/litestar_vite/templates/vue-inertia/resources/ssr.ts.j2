@@ -8,7 +8,11 @@ import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
 createServer(
   (page) =>
     createInertiaApp({
-      // Mirror defaults.future.useScriptElementForInitialPage here too when SSR + #app_page are enabled.
+      defaults: {
+        future: {
+          useScriptElementForInitialPage: true
+        },
+      },
       page,
       render: renderToString,
       resolve: (name) => resolvePageComponent(`./pages/${name}.vue`, import.meta.glob("./pages/**/*.vue")),

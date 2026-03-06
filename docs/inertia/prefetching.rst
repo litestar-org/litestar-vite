@@ -5,7 +5,7 @@ Prefetching
 Preload pages before users navigate to them.
 
 .. seealso::
-   Official Inertia.js docs: `Prefetching <https://inertiajs.com/docs/v2/data-props/prefetching>`_
+   Official Inertia.js docs: `Prefetching <https://inertiajs.com/prefetching>`_
 
 What Is Prefetching?
 --------------------

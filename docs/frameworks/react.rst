@@ -20,7 +20,7 @@ Quick Start
 
     litestar assets init --template react
 
-This creates a React 18+ project with TypeScript support.
+This creates a React project with TypeScript support.
 
 Project Structure
 -----------------

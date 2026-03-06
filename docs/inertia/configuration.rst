@@ -190,7 +190,7 @@ This feature requires **both** server-side and client-side configuration:
 Flash Data Protocol (Inertia v2.3+)
 -----------------------------------
 
-Starting in v0.15, litestar-vite aligns with the Inertia.js v2.3+ protocol for flash messages.
+litestar-vite aligns with the Inertia.js v2.3+ protocol for flash messages.
 Flash data is now sent as a **top-level** ``page.flash`` property instead of ``page.props.flash``.
 
 **Why this matters:**
@@ -234,7 +234,7 @@ Flash data is now sent as a **top-level** ``page.flash`` property instead of ``p
 InertiaTypeGenConfig Reference
 ------------------------------
 
-Controls TypeScript type generation for Inertia page props (new in v0.15).
+Controls TypeScript type generation for Inertia page props.
 
 .. list-table::
    :widths: 25 15 60

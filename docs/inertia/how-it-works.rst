@@ -25,7 +25,7 @@ Instead of returning JSON from an API, your routes return page components:
 
        Note over Browser,Server: Initial Page Load
        Browser->>Server: GET /dashboard
-       Server->>Browser: HTML with data-page JSON
+       Server->>Browser: HTML with page JSON bootstrap
 
        Note over Browser,Server: Subsequent Navigation
        Browser->>Server: XHR GET /users<br>X-Inertia: true
@@ -39,8 +39,16 @@ Request Flow
 
 .. code-block:: html
 
-   <!-- Server returns full HTML -->
+   <!-- Classic data-page bootstrap -->
    <div id="app" data-page='{"component":"Dashboard","props":{"user":"Alice"},"url":"/dashboard"}'></div>
+
+.. code-block:: html
+
+   <!-- Script-element bootstrap when use_script_element=True -->
+   <div id="app"></div>
+   <script type="application/json" id="app_page" data-page="app">
+     {"component":"Dashboard","props":{"user":"Alice"},"url":"/dashboard"}
+   </script>
 
 **XHR Request (JSON)**:
 
@@ -78,6 +86,8 @@ The protocol uses these HTTP headers:
      - Request: Requested partial reload keys
    * - ``X-Inertia-Partial-Except``
      - Request: Keys to exclude (v2)
+   * - ``X-Inertia-Except-Once-Props``
+     - Request: Once-prop keys already cached client-side and safe to omit
    * - ``X-Inertia-Reset``
      - Request: Props to reset (v2)
    * - ``X-Inertia``

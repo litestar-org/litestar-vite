@@ -62,7 +62,8 @@ Root Template
        {{ vite('resources/main.tsx') }}
    </head>
    <body>
-       <div id="app" data-page="{{ inertia }}"></div>
+       <div id="app"></div>
+       <script type="application/json" id="app_page" data-page="app">{{ inertia | safe }}</script>
    </body>
    </html>
 
@@ -119,9 +120,9 @@ must opt into the matching stable Inertia bootstrap path:
      // resolve/setup...
    });
 
-Template-based apps that keep the ``data-page`` attribute should not enable this option.
+Template-based apps that keep the classic ``data-page`` attribute should not enable this option.
 Template-based apps that emit ``<script type="application/json" id="app_page" data-page="app">``
-can use the same browser-entry setting.
+should enable the same browser-entry setting.
 If you also enable ``InertiaConfig(ssr=True)``, apply the same ``defaults.future`` setting in
 ``resources/ssr.tsx`` or ``resources/ssr.ts`` so server rendering and hydration use the same
 initial-page transport.

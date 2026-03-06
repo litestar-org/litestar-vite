@@ -36,7 +36,7 @@ Project Structure
     │       └── book_card.html.j2 # Reusable fragment
     └── resources/
         ├── main.js               # Entry (minimal)
-        └── style.css
+        └── styles.css
 
 Backend Setup
 -------------
@@ -85,6 +85,12 @@ The Litestar HTMX extension must be registered explicitly from your Vite entry f
 .. literalinclude:: /../examples/jinja-htmx/resources/main.js
    :language: javascript
    :caption: resources/main.js
+
+Key points:
+
+- ``window.htmx = htmx`` exposes the HTMX runtime to the extension
+- ``registerHtmxExtension()`` wires in CSRF header injection and JSON templating support
+- ``htmx.process(document.body)`` activates declarative HTMX behavior after the bundle loads
 
 HTMX Fragments
 --------------

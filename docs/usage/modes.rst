@@ -158,7 +158,7 @@ Framework mode is for meta-frameworks like Nuxt, SvelteKit, or Astro that render
 External Mode
 -------------
 
-The External mode is for non-Vite frameworks (Angular CLI, Create React App, etc.) with their own build system.
+The External mode is for non-Vite toolchains (Angular CLI or another standalone dev server) with their own build system.
 
 **Key Features:**
 

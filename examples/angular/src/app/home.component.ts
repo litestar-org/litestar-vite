@@ -29,7 +29,7 @@ type RouteEntry = [RouteName, RouteDefinition]
       <header class="space-y-2">
         <p class="font-semibold text-[#edb641] text-sm uppercase tracking-[0.14em]">Litestar · Vite</p>
         <h1 class="font-semibold text-3xl text-[#202235]">Library (Angular)</h1>
-        <p class="max-w-3xl text-slate-600">Same API, different frontend. Angular 21 with zoneless signals.</p>
+        <p class="max-w-3xl text-slate-600">Same API, different frontend. Angular with standalone components and signals.</p>
         <nav class="inline-flex gap-2 rounded-full bg-slate-100 p-1 shadow-sm" aria-label="Views">
           <button
             class="rounded-full px-4 py-2 font-semibold text-sm transition"
@@ -102,17 +102,14 @@ type RouteEntry = [RouteName, RouteDefinition]
 export class HomeComponent implements OnInit {
   private http = inject(HttpClient)
 
-  // Signals for reactive state
   summary = signal<Summary | null>(null)
   books = signal<Book[]>([])
   view = signal<"overview" | "books">("overview")
 
-  // Computed signals
   featured = computed(() => this.summary()?.featured)
   routeEntries = computed(() => Object.entries(routeDefinitions) as RouteEntry[])
 
   ngOnInit() {
-    // Fetch data on init
     this.http.get<Summary>(route("summary")).subscribe((data) => this.summary.set(data))
     this.http.get<Book[]>(route("books")).subscribe((data) => this.books.set(data))
   }

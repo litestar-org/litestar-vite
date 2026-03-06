@@ -5,7 +5,7 @@ Polling
 Refresh page data on an interval for live updates.
 
 .. seealso::
-   Official Inertia.js docs: `Polling <https://inertiajs.com/docs/v2/data-props/polling>`_
+   Official Inertia.js docs: `Polling <https://inertiajs.com/polling>`_
 
 What Is Polling?
 ----------------

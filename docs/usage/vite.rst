@@ -283,7 +283,7 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - Proxy handling mode: `"vite"` (default, whitelist - proxies Vite assets only), `"direct"` (expose Vite port directly, no proxy), `"proxy"` (blacklist - proxies everything except Litestar routes, used for meta-frameworks), or `None` (disabled, production mode).
    * - `external_dev_server`
      - `ExternalDevServer | str | None`
-     - Configuration for external dev servers (Angular CLI, Next.js, etc.). Can be a string URL (e.g., `"http://localhost:4200"`) or an `ExternalDevServer` object with `target`, `command`, `build_command`, `http2`, and `enabled` fields. When set, automatically switches `proxy_mode` to `"proxy"` if not explicitly configured.
+     - Configuration for external dev servers (for example Angular CLI or another standalone frontend server). Can be a string URL (e.g., `"http://localhost:4200"`) or an `ExternalDevServer` object with `target`, `command`, `build_command`, `http2`, and `enabled` fields. When set, automatically switches `proxy_mode` to `"proxy"` if not explicitly configured.
    * - `host`
      - `str`
      - Host for Vite dev server. Defaults to `"127.0.0.1"` or `VITE_HOST` env var.
@@ -494,8 +494,8 @@ Litestar Vite supports Angular in two ways:
 - **Angular CLI (non-Vite)** – `litestar assets init --template angular-cli`
 
   - Runs via Angular CLI `ng serve` with `proxy.conf.json` targeting Litestar.
-  - Source dir: `src/`; does **not** use `litestar-vite-plugin` or the typed-routes pipeline.
-  - Use the standard Angular CLI commands (`npm start` / `ng build`) and serve `dist/browser/` via Litestar static files.
+  - Source dir: `src/`; uses Angular's `@angular/build` application builder, not `litestar-vite-plugin`.
+  - Route/OpenAPI generation is manual via `npm run generate-types`; production output is served from `dist/browser/`.
 
 Troubleshooting (Angular)
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -513,8 +513,8 @@ Framework             Source dir          Dev server / proxy              Type g
 React/Vue/Svelte      src/                Vite + litestar-vite proxy      Enabled by default
 Inertia variants      resources/          Vite + litestar-vite proxy      Enabled by default
 Angular (Analog)      src/                Vite (Analog) + proxy           Enabled by default
-Angular CLI           src/                Angular CLI + proxy.conf.json   Disabled (CLI handles dev)
-HTMX                  src/                Vite + litestar-vite proxy      Disabled (JS optional)
+Angular CLI           src/                Angular CLI + proxy.conf.json   Manual (`npm run generate-types`)
+HTMX                  resources/          Vite + litestar-vite proxy      Disabled (JS optional)
 ===================== =================== =============================== ===========================
 
 Advanced Asset Handling

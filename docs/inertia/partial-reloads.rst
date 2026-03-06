@@ -222,6 +222,8 @@ The v2 protocol uses these headers for partial reloads:
      - Comma-separated list of props to include (e.g., ``users,teams``)
    * - ``X-Inertia-Partial-Except``
      - Comma-separated list of props to exclude (takes precedence over Partial-Data)
+   * - ``X-Inertia-Except-Once-Props``
+     - Comma-separated list of once props already cached by the client and safe to omit unless explicitly requested
    * - ``X-Inertia-Reset``
      - Comma-separated list of props to reset/remove from shared state
 

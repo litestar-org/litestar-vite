@@ -1,7 +1,7 @@
 # Litestar-Vite – Full LLM Reference
 
 > Generated from source files. Every fact below is verified against the
-> codebase at version 0.18.3.
+> codebase at version 0.18.4.
 
 ## Project Metadata
 
@@ -9,7 +9,7 @@
 |---|---|
 | PyPI name | litestar-vite |
 | npm name | litestar-vite-plugin |
-| Version | 0.18.3 |
+| Version | 0.18.4 |
 | License | MIT |
 | Python | >=3.10 |
 | Node | ^20.19.0 \|\| >=22.12.0 |

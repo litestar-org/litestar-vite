@@ -5,7 +5,7 @@ Remembering State
 Persist client state across visits and browser history.
 
 .. seealso::
-   Official Inertia.js docs: `Remembering State <https://inertiajs.com/docs/v2/data-props/remembering-state>`_
+   Official Inertia.js docs: `Remembering State <https://inertiajs.com/remembering-state>`_
 
 What Is Remembering State?
 --------------------------

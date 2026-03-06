@@ -98,7 +98,7 @@ vite = VitePlugin(
         # mode="hybrid" is auto-detected from Inertia + index.html presence
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources"),
-        # v2.3+ optimization: use_script_element for ~37% smaller page data (requires client config too)
+        # use_script_element requires matching client bootstrap in resources/main.tsx
         inertia=InertiaConfig(root_template="index.html", use_script_element=True),
         types=TypeGenConfig(output=Path("resources/generated")),
         # Fixed port for E2E tests - can be removed for local dev or customized for production

@@ -5,7 +5,7 @@ Once Props
 Cache props client-side after the first resolution.
 
 .. seealso::
-   Official Inertia.js docs: `Once Props <https://inertiajs.com/docs/v2/data-props/once-props>`_
+   Official Inertia.js docs: `Once Props <https://inertiajs.com/once-props>`_
 
 What Are Once Props?
 --------------------

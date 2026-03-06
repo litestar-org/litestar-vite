@@ -20,7 +20,7 @@ Litestar Vite
 ----
 
 Supercharge your Litestar applications with Vite's modern frontend tooling. Litestar-Vite seamlessly integrates
-`Vite <https://vitejs.dev/>`_ - the next generation frontend build tool - with your Litestar web applications.
+`Vite <https://vite.dev/>`_ - the next generation frontend build tool - with your Litestar web applications.
 
 .. grid:: 2 2 4 4
     :gutter: 2

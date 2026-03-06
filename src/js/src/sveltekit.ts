@@ -31,7 +31,6 @@
 import fs from "node:fs"
 import path from "node:path"
 import colors from "picocolors"
-import type { Plugin } from "vite"
 import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema.js"
 import { DEBOUNCE_MS } from "./shared/constants.js"
 import { normalizeHost, resolveHotFilePath } from "./shared/network.js"
@@ -371,9 +370,11 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
  * };
  * ```
  */
-export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): Plugin[] {
+export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): any[] {
   const config = resolveConfig(userConfig)
-  const plugins: Plugin[] = []
+  // Avoid leaking Vite's private plugin types across linked workspaces.
+  // The runtime shape is still a normal Vite plugin array.
+  const plugins: any[] = []
 
   // Main plugin for proxy and logging
   plugins.push({

@@ -1,11 +1,6 @@
-<template>
-  <NuxtLayout>
-    <NuxtPage />
-  </NuxtLayout>
-</template>
-
-<style>
+{% if use_tailwind %}
 @import "tailwindcss";
+{% endif %}
 
 :root {
   font-family: "Inter", "SF Pro Text", system-ui, -apple-system, sans-serif;
@@ -14,4 +9,8 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
-</style>
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}

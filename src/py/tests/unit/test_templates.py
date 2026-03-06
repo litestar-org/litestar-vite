@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -24,7 +25,7 @@ def test_example_dev_scripts_are_framework_specific() -> None:
     if astro.exists():
         assert '"dev": "astro dev"' in astro.read_text()
     if nuxt.exists():
-        assert '"dev": "nuxi dev"' in nuxt.read_text()
+        assert '"dev": "nuxt dev"' in nuxt.read_text()
 
 
 def test_inertia_examples_use_stable_script_element_bootstrap() -> None:
@@ -110,3 +111,303 @@ def test_inertia_ssr_docs_cover_entry_files_and_bootstrap_interaction() -> None:
     assert "use_script_element" in ssr_docs
     assert "data-page" in ssr_docs
     assert "app_selector" in ssr_docs
+
+
+def test_framework_docs_and_js_reference_current_domains_and_wording() -> None:
+    """Ensure shared docs avoid stale framework URLs and version-marketing copy."""
+    docs_index = (ROOT / "docs" / "index.rst").read_text()
+    frameworks_index = (ROOT / "docs" / "frameworks" / "index.rst").read_text()
+    sveltekit_docs = (ROOT / "docs" / "frameworks" / "sveltekit.rst").read_text()
+    nuxt_docs = (ROOT / "docs" / "frameworks" / "nuxt.rst").read_text()
+    migration_guide = (ROOT / "docs" / "usage" / "migration-v015.rst").read_text()
+    readme = (ROOT / "README.md").read_text()
+    dev_server = (ROOT / "src" / "js" / "src" / "dev-server" / "index.html").read_text()
+    js_index = (ROOT / "src" / "js" / "src" / "index.ts").read_text()
+    nuxt_module = (ROOT / "src" / "js" / "src" / "nuxt.ts").read_text()
+
+    for text in (docs_index, dev_server, js_index):
+        assert "vitejs.dev" not in text
+        assert "vite.dev" in text
+
+    for text in (js_index, migration_guide):
+        assert "docs.litestar.dev/vite" not in text
+        assert "litestar-org.github.io/litestar-vite/latest/" in text
+
+    assert "kit.svelte.dev" not in sveltekit_docs
+    assert "https://svelte.dev/docs/kit" in sveltekit_docs
+
+    for text in (frameworks_index, readme, nuxt_docs, nuxt_module):
+        assert "React 18+" not in text
+        assert "Angular 18+" not in text
+        assert "Nuxt 3+" not in text
+
+    assert "new in v0.15" not in frameworks_index.lower()
+
+
+def test_inertia_docs_use_current_links_and_protocol_headers() -> None:
+    """Ensure Inertia docs use current canonical links and describe all supported request headers."""
+    load_when_visible = (ROOT / "docs" / "inertia" / "load-when-visible.rst").read_text()
+    once_props = (ROOT / "docs" / "inertia" / "once-props.rst").read_text()
+    polling = (ROOT / "docs" / "inertia" / "polling.rst").read_text()
+    prefetching = (ROOT / "docs" / "inertia" / "prefetching.rst").read_text()
+    remembering_state = (ROOT / "docs" / "inertia" / "remembering-state.rst").read_text()
+    how_it_works = (ROOT / "docs" / "inertia" / "how-it-works.rst").read_text()
+    partial_reloads = (ROOT / "docs" / "inertia" / "partial-reloads.rst").read_text()
+    configuration = (ROOT / "docs" / "inertia" / "configuration.rst").read_text()
+    fullstack_example = (ROOT / "docs" / "inertia" / "fullstack-example.rst").read_text()
+
+    for text in (load_when_visible, once_props, polling, prefetching, remembering_state):
+        assert "inertiajs.com/docs/v2/data-props/" not in text
+
+    assert "https://inertiajs.com/load-when-visible" in load_when_visible
+    assert "https://inertiajs.com/once-props" in once_props
+    assert "https://inertiajs.com/polling" in polling
+    assert "https://inertiajs.com/prefetching" in prefetching
+    assert "https://inertiajs.com/remembering-state" in remembering_state
+
+    assert "app_page" in how_it_works
+    assert 'data-page="app"' in how_it_works
+    assert "X-Inertia-Except-Once-Props" in how_it_works
+    assert "X-Inertia-Except-Once-Props" in partial_reloads
+    assert "Starting in v0.15" not in configuration
+    assert "(new in v0.15)" not in configuration
+    assert "React 18" not in fullstack_example
+    assert "Vue 3" not in fullstack_example
+    assert "Svelte 5" not in fullstack_example
+
+
+def test_angular_cli_and_htmx_examples_pin_current_stable_registry_versions() -> None:
+    """Ensure owned example manifests pin the current stable versions."""
+    angular_cli = json.loads((EXAMPLES_ROOT / "angular-cli" / "package.json").read_text())
+    htmx = json.loads((EXAMPLES_ROOT / "jinja-htmx" / "package.json").read_text())
+
+    assert angular_cli["dependencies"]["@angular/core"] == "21.2.1"
+    assert angular_cli["dependencies"]["rxjs"] == "7.8.2"
+    assert angular_cli["devDependencies"]["@angular/build"] == "21.2.1"
+    assert angular_cli["devDependencies"]["@angular/cli"] == "21.2.1"
+    assert angular_cli["devDependencies"]["@angular/compiler-cli"] == "21.2.1"
+    assert angular_cli["devDependencies"]["@hey-api/openapi-ts"] == "0.94.0"
+    assert angular_cli["devDependencies"]["@tailwindcss/postcss"] == "4.2.1"
+    assert angular_cli["devDependencies"]["postcss"] == "8.5.8"
+    assert angular_cli["devDependencies"]["tailwindcss"] == "4.2.1"
+    assert angular_cli["devDependencies"]["typescript"] == "5.9.3"
+    assert angular_cli["devDependencies"]["@types/node"] == "25.3.5"
+    assert "@angular-devkit/build-angular" not in angular_cli["devDependencies"]
+    assert "autoprefixer" not in angular_cli["devDependencies"]
+
+    assert htmx["dependencies"]["htmx.org"] == "2.0.8"
+    assert htmx["devDependencies"]["@tailwindcss/vite"] == "4.2.1"
+    assert htmx["devDependencies"]["tailwindcss"] == "4.2.1"
+    assert htmx["devDependencies"]["typescript"] == "5.9.3"
+    assert htmx["devDependencies"]["vite"] == "7.3.1"
+
+
+def test_angular_vite_example_and_template_match_current_router_shell() -> None:
+    """Ensure the Angular Vite scaffold matches the current standalone router layout and pinned versions."""
+    angular_example = json.loads((EXAMPLES_ROOT / "angular" / "package.json").read_text())
+    angular_template = (TEMPLATE_ROOT / "angular" / "package.json.j2").read_text()
+    example_component = (EXAMPLES_ROOT / "angular" / "src" / "app" / "app.component.ts").read_text()
+    example_component_html = (EXAMPLES_ROOT / "angular" / "src" / "app" / "app.component.html").read_text()
+    example_component_css = (EXAMPLES_ROOT / "angular" / "src" / "app" / "app.component.css").read_text()
+    example_config = (EXAMPLES_ROOT / "angular" / "src" / "app" / "app.config.ts").read_text()
+    example_routes = (EXAMPLES_ROOT / "angular" / "src" / "app" / "app.routes.ts").read_text()
+    example_home = (EXAMPLES_ROOT / "angular" / "src" / "app" / "home.component.ts").read_text()
+    template_component = (TEMPLATE_ROOT / "angular" / "src" / "app" / "app.component.ts.j2").read_text()
+    template_component_html = (TEMPLATE_ROOT / "angular" / "src" / "app" / "app.component.html.j2").read_text()
+    template_config = (TEMPLATE_ROOT / "angular" / "src" / "app" / "app.config.ts.j2").read_text()
+    template_routes = (TEMPLATE_ROOT / "angular" / "src" / "app" / "app.routes.ts.j2").read_text()
+    template_home = (TEMPLATE_ROOT / "angular" / "src" / "app" / "home.component.ts.j2").read_text()
+
+    assert angular_example["dependencies"]["@angular/core"] == "21.2.1"
+    assert angular_example["dependencies"]["rxjs"] == "7.8.2"
+    assert angular_example["devDependencies"]["@analogjs/vite-plugin-angular"] == "2.3.1"
+    assert angular_example["devDependencies"]["@angular/build"] == "21.2.1"
+    assert angular_example["devDependencies"]["@angular/compiler-cli"] == "21.2.1"
+    assert angular_example["devDependencies"]["@angular/platform-browser-dynamic"] == "21.2.1"
+    assert angular_example["devDependencies"]["@types/node"] == "25.3.5"
+    assert angular_example["devDependencies"]["vite"] == "7.3.1"
+    assert angular_example["devDependencies"]["tailwindcss"] == "4.2.1"
+
+    assert '"@analogjs/vite-plugin-angular": "2.3.1"' in angular_template
+    assert '"@angular/build": "21.2.1"' in angular_template
+    assert '"@angular/compiler-cli": "21.2.1"' in angular_template
+    assert '"@angular/platform-browser-dynamic": "21.2.1"' in angular_template
+    assert '"@types/node": "25.3.5"' in angular_template
+    assert '"vite": "7.3.1"' in angular_template
+    assert '"zod": "4.3.6"' in angular_template
+    assert '"latest"' not in angular_template
+
+    for text in (example_component, template_component):
+        assert "RouterOutlet" in text
+        assert "imports: [RouterOutlet]" in text
+
+    for text in (example_component_html, template_component_html):
+        assert "<router-outlet></router-outlet>" in text
+
+    for text in (example_config, template_config):
+        assert "provideHttpClient()" in text
+        assert "provideRouter(appRoutes)" in text
+
+    for text in (example_routes, template_routes):
+        assert 'loadComponent: () => import("./home.component")' in text
+
+    for text in (example_home, template_home):
+        assert 'route("summary")' in text
+        assert 'route("books")' in text
+        assert "Angular 21" not in text
+
+    assert "code {" not in example_component_css
+
+
+def test_angular_cli_example_uses_current_builder_and_tailwind_structure() -> None:
+    """Ensure Angular CLI surfaces match the current builder and Tailwind setup."""
+    angular_json = (EXAMPLES_ROOT / "angular-cli" / "angular.json").read_text()
+    styles = (EXAMPLES_ROOT / "angular-cli" / "src" / "styles.css").read_text()
+    index_html = (EXAMPLES_ROOT / "angular-cli" / "src" / "index.html").read_text()
+    tsconfig_app = (EXAMPLES_ROOT / "angular-cli" / "tsconfig.app.json").read_text()
+
+    assert "@angular/build:application" in angular_json
+    assert "@angular/build:dev-server" in angular_json
+    assert "@angular-devkit/build-angular" not in angular_json
+    assert "src/generated" not in angular_json
+    assert '"assets"' not in angular_json
+    assert "@config" not in styles
+    assert "favicon.ico" not in index_html
+    assert "src/generated" not in tsconfig_app
+    assert not (EXAMPLES_ROOT / "angular-cli" / "tailwind.config.js").exists()
+    assert not (EXAMPLES_ROOT / "angular-cli" / "tsconfig.spec.json").exists()
+
+
+def test_angular_cli_and_htmx_templates_match_current_owned_scaffolds() -> None:
+    """Ensure owned templates drop stale Angular CLI/HTMX config patterns."""
+    angular_cli_template = (TEMPLATE_ROOT / "angular-cli" / "package.json.j2").read_text()
+    angular_cli_json = (TEMPLATE_ROOT / "angular-cli" / "angular.json.j2").read_text()
+    angular_cli_styles = (TEMPLATE_ROOT / "angular-cli" / "src" / "styles.css.j2").read_text()
+    htmx_base = (TEMPLATE_ROOT / "htmx" / "templates" / "base.html.j2.j2").read_text()
+    htmx_index = (TEMPLATE_ROOT / "htmx" / "templates" / "index.html.j2.j2").read_text()
+
+    assert '"latest"' not in angular_cli_template
+    assert "@angular/build:application" in angular_cli_json
+    assert "@angular/build:dev-server" in angular_cli_json
+    assert "@angular-devkit/build-angular" not in angular_cli_json
+    assert "src/generated" not in angular_cli_json
+    assert "@config" not in angular_cli_styles
+    assert not (TEMPLATE_ROOT / "angular-cli" / "tailwind.config.js.j2").exists()
+    assert not (TEMPLATE_ROOT / "angular-cli" / "tsconfig.spec.json.j2").exists()
+
+    assert 'meta name="csrf-token"' in htmx_base
+    assert 'body hx-ext="litestar"' in htmx_base
+    assert "color-scheme:" not in htmx_base
+    assert "Load Greeting from API" in htmx_index
+
+
+def test_angular_cli_and_htmx_docs_match_current_owned_scaffolds() -> None:
+    """Ensure Angular CLI and HTMX docs reflect the updated scaffolds."""
+    angular_docs = (ROOT / "docs" / "frameworks" / "angular.rst").read_text()
+    htmx_docs = (ROOT / "docs" / "frameworks" / "htmx.rst").read_text()
+    vite_docs = (ROOT / "docs" / "usage" / "vite.rst").read_text()
+
+    assert "Angular application builder" in angular_docs
+    assert "Manual script" in angular_docs
+    assert "styles.css" in htmx_docs
+    assert "registerHtmxExtension()" in htmx_docs
+    assert "resources/" in vite_docs
+    assert "Manual (`npm run generate-types`)" in vite_docs
+
+
+def test_angular_cli_owned_surfaces_drop_stale_zoneless_marketing_copy() -> None:
+    """Ensure owned Angular CLI surfaces do not ship version-coupled marketing comments."""
+    owned_files = [
+        EXAMPLES_ROOT / "angular-cli" / "src" / "app" / "app.config.ts",
+        EXAMPLES_ROOT / "angular-cli" / "src" / "app" / "home.component.ts",
+        TEMPLATE_ROOT / "angular-cli" / "src" / "app" / "app.config.ts.j2",
+    ]
+
+    for path in owned_files:
+        text = path.read_text()
+        assert "zoneless" not in text
+
+
+def test_svelte_templates_use_current_svelte_5_entrypoints() -> None:
+    """Ensure Svelte templates use the Svelte 5 mount and props APIs."""
+    svelte_main = (TEMPLATE_ROOT / "svelte" / "src" / "main.ts.j2").read_text()
+    inertia_main = (TEMPLATE_ROOT / "svelte-inertia" / "resources" / "main.ts.j2").read_text()
+    inertia_home = (TEMPLATE_ROOT / "svelte-inertia" / "resources" / "pages" / "Home.svelte.j2").read_text()
+
+    assert "mount(App" in svelte_main
+    assert "new App(" not in svelte_main
+    assert "Root element #app not found" in svelte_main
+
+    assert "mount(App" in inertia_main
+    assert "new App(" not in inertia_main
+    assert "props," in inertia_main
+
+    assert "$props()" in inertia_home
+    assert "export let" not in inertia_home
+
+
+def test_sveltekit_templates_use_current_adapter_and_hooks() -> None:
+    """Ensure the SvelteKit scaffold matches current adapter-node and hook patterns."""
+    sveltekit_config = (TEMPLATE_ROOT / "sveltekit" / "svelte.config.js.j2").read_text()
+    sveltekit_hooks = (TEMPLATE_ROOT / "sveltekit" / "src" / "hooks.server.ts.j2").read_text()
+    sveltekit_layout = (TEMPLATE_ROOT / "sveltekit" / "src" / "routes" / "+layout.svelte.j2").read_text()
+
+    assert "@sveltejs/adapter-node" in sveltekit_config
+    assert "@sveltejs/adapter-auto" not in sveltekit_config
+
+    assert "@ts-expect-error" not in sveltekit_hooks
+    assert 'duplex?: "half"' in sveltekit_hooks
+    assert 'headers.delete("host")' in sveltekit_hooks
+
+    assert "LayoutProps" in sveltekit_layout
+    assert "Snippet" not in sveltekit_layout
+
+
+def test_svelte_manifests_pin_concrete_stable_versions() -> None:
+    """Ensure Svelte-family examples and templates pin stable versions instead of latest tags."""
+    svelte_example = (EXAMPLES_ROOT / "svelte" / "package.json").read_text()
+    sveltekit_example = (EXAMPLES_ROOT / "sveltekit" / "package.json").read_text()
+    svelte_template = (TEMPLATE_ROOT / "svelte" / "package.json.j2").read_text()
+    svelte_inertia_template = (TEMPLATE_ROOT / "svelte-inertia" / "package.json.j2").read_text()
+    sveltekit_template = (TEMPLATE_ROOT / "sveltekit" / "package.json.j2").read_text()
+
+    for text in (
+        svelte_example,
+        sveltekit_example,
+        svelte_template,
+        svelte_inertia_template,
+        sveltekit_template,
+    ):
+        assert '"latest"' not in text
+
+    assert '"svelte": "5.53.7"' in svelte_example
+    assert '"@sveltejs/kit": "2.53.4"' in sveltekit_example
+    assert '"@sveltejs/adapter-node": "5.5.4"' in sveltekit_example
+    assert '"prepare": "svelte-kit sync"' in sveltekit_example
+    assert '"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"' in sveltekit_example
+
+
+def test_sveltekit_example_uses_load_functions_and_current_helper_types() -> None:
+    """Ensure the SvelteKit example uses load/PageProps/LayoutProps instead of client-only fetches."""
+    page = (EXAMPLES_ROOT / "sveltekit" / "src" / "routes" / "+page.svelte").read_text()
+    page_load = (EXAMPLES_ROOT / "sveltekit" / "src" / "routes" / "+page.ts").read_text()
+    layout = (EXAMPLES_ROOT / "sveltekit" / "src" / "routes" / "+layout.svelte").read_text()
+    hooks = (EXAMPLES_ROOT / "sveltekit" / "src" / "hooks.server.ts").read_text()
+
+    assert "PageProps" in page
+    assert "onMount" not in page
+    assert "satisfies PageLoad" in page_load
+    assert 'route("summary")' in page_load
+    assert "LayoutProps" in layout
+    assert "@ts-expect-error" not in hooks
+
+
+def test_svelte_example_keeps_frontend_config_aligned_with_backend_type_exports() -> None:
+    """Ensure the plain Svelte example keeps types auto enabled and avoids dead aliases."""
+    vite_config = (EXAMPLES_ROOT / "svelte" / "vite.config.ts").read_text()
+    svelte_template_vite = (TEMPLATE_ROOT / "svelte" / "vite.config.ts.j2").read_text()
+    inertia_template_vite = (TEMPLATE_ROOT / "svelte-inertia" / "vite.config.ts.j2").read_text()
+
+    assert 'types: "auto"' in vite_config
+    assert '"@": "/' not in svelte_template_vite
+    assert '"@": "/' not in inertia_template_vite

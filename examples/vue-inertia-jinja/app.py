@@ -1,7 +1,7 @@
 """Vue Inertia example with Jinja templates.
 
-This example demonstrates Inertia.js with traditional Jinja2 templates.
-The page data is injected via Jinja template syntax: {{ page | tojson | e }}
+This example demonstrates Inertia.js with Litestar templates.
+The page payload is injected through the stable script-element bootstrap.
 """
 
 import os
@@ -107,7 +107,7 @@ vite = VitePlugin(
         mode="template",  # Explicit template mode for Jinja-based Inertia
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources"),
-        inertia=InertiaConfig(root_template="index.html"),  # Auto-registers Inertia
+        inertia=InertiaConfig(root_template="index.html", use_script_element=True),
         types=TypeGenConfig(output=Path("resources/generated"), generate_zod=True),
         # Fixed port for E2E tests - can be removed for local dev or customized for production
         runtime=RuntimeConfig(port=5013),

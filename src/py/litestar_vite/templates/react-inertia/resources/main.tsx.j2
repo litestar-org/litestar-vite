@@ -1,19 +1,14 @@
-import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createInertiaApp } from "@inertiajs/react";
 import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
 import "./App.css";
 
 createInertiaApp({
-  // If your backend or template emits #app_page, add:
+  // If you enable use_script_element=True or render an #app_page JSON script, add:
   // defaults: { future: { useScriptElementForInitialPage: true } },
   resolve: (name) =>
     resolvePageComponent(`./pages/${name}.tsx`, import.meta.glob("./pages/**/*.tsx")),
   setup({ el, App, props }) {
-    createRoot(el).render(
-      <StrictMode>
-        <App {...props} />
-      </StrictMode>
-    );
+    createRoot(el).render(<App {...props} />);
   },
 });
