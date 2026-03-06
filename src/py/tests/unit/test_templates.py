@@ -1,4 +1,5 @@
 import json
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -142,6 +143,37 @@ def test_framework_docs_and_js_reference_current_domains_and_wording() -> None:
         assert "Nuxt 3+" not in text
 
     assert "new in v0.15" not in frameworks_index.lower()
+
+
+def test_docs_portal_pages_keep_demos_discoverable_and_sections_compact() -> None:
+    """Ensure the redesigned docs entry pages stay compact and navigable."""
+    docs_index = (ROOT / "docs" / "index.rst").read_text()
+    demos = (ROOT / "docs" / "demos.rst").read_text()
+    usage = (ROOT / "docs" / "usage" / "index.rst").read_text()
+    frameworks = (ROOT / "docs" / "frameworks" / "index.rst").read_text()
+    inertia = (ROOT / "docs" / "inertia" / "index.rst").read_text()
+    reference = (ROOT / "docs" / "reference" / "index.rst").read_text()
+    conf = runpy.run_path(str(ROOT / "docs" / "conf.py"))
+
+    assert "Featured Demos" in docs_index
+    assert ":link: demos" in docs_index
+    assert "Why Litestar Vite?" not in docs_index
+    assert "Architecture" not in docs_index
+    assert "Quick Start" not in docs_index
+
+    for asset in ("scaffolding.gif", "hmr.gif", "type-generation.gif", "assets-cli.gif", "production-build.gif"):
+        assert asset in demos
+
+    assert "litestar assets init" in demos
+    assert "litestar assets build" in demos
+    assert "Quick Start" in usage
+    assert ".. grid::" in usage
+    assert ".. tab-set::" in frameworks
+    assert "Starter Paths" in inertia
+    assert "Reference Paths" in reference
+
+    docs_group = next(group for group in conf["html_theme_options"]["nav_links"] if group["title"] == "Docs")
+    assert any(child["url"] == "demos" for child in docs_group["children"])
 
 
 def test_inertia_docs_use_current_links_and_protocol_headers() -> None:
@@ -371,13 +403,7 @@ def test_svelte_manifests_pin_concrete_stable_versions() -> None:
     svelte_inertia_template = (TEMPLATE_ROOT / "svelte-inertia" / "package.json.j2").read_text()
     sveltekit_template = (TEMPLATE_ROOT / "sveltekit" / "package.json.j2").read_text()
 
-    for text in (
-        svelte_example,
-        sveltekit_example,
-        svelte_template,
-        svelte_inertia_template,
-        sveltekit_template,
-    ):
+    for text in (svelte_example, sveltekit_example, svelte_template, svelte_inertia_template, sveltekit_template):
         assert '"latest"' not in text
 
     assert '"svelte": "5.53.7"' in svelte_example

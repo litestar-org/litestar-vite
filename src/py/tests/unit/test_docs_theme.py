@@ -40,3 +40,55 @@ def test_docs_dependencies_use_shibuya_theme() -> None:
 
     assert '"shibuya"' in pyproject
     assert "litestar-sphinx-theme" not in pyproject
+
+
+def test_docs_theme_layout_hubs_keep_demo_discovery_visible() -> None:
+    index = (ROOT / "docs" / "index.rst").read_text()
+    demos = (ROOT / "docs" / "demos.rst").read_text()
+    conf = _load_docs_conf()
+
+    assert "landing-badges" in index
+    assert ":link: demos" in index
+    assert "Featured Demos" in index
+
+    for asset in ("scaffolding.gif", "hmr.gif", "type-generation.gif", "assets-cli.gif", "production-build.gif"):
+        assert asset in demos
+
+    docs_group = next(group for group in conf["html_theme_options"]["nav_links"] if group["title"] == "Docs")
+    assert any(child["title"] == "Demos" and child["url"] == "demos" for child in docs_group["children"])
+
+
+def test_docs_theme_code_surface_uses_playground_palette_and_actions() -> None:
+    code_css = (ROOT / "docs" / "_static" / "code.css").read_text()
+    layout_css = (ROOT / "docs" / "_static" / "layout.css").read_text()
+    theme_js = (ROOT / "docs" / "_static" / "theme.js").read_text()
+    template = (ROOT / "docs" / "_templates" / "components" / "copy-page-button.html").read_text()
+
+    for needle in (
+        "--lv-code-keyword",
+        "--lv-code-string",
+        "--lv-code-number",
+        "--lv-code-comment",
+        "--lv-code-definition",
+        "#0369a1",
+        "#2E7D32",
+        "#7dd3fc",
+        "#A5D6A7",
+    ):
+        assert needle in code_css
+
+    for needle in (".admonition", ".copybtn", ".copy-page-wrapper", ".demo-frame"):
+        assert needle in layout_css
+
+    for needle in ("div.highlight", "copybtn", "data-language", "lv-code-block"):
+        assert needle in theme_js
+
+    for needle in (
+        "View Source",
+        "Open in ChatGPT",
+        "Open in Claude",
+        "Open in Gemini",
+        "Open in Perplexity",
+        "raw.githubusercontent.com",
+    ):
+        assert needle in template
