@@ -183,6 +183,10 @@ Post-init: if ssr is True, replaces with InertiaSSRConfig(). If ssr is False, re
 
 Property: `ssr_config -> InertiaSSRConfig | None` -- returns config if enabled, else None.
 
+Notes:
+- `use_script_element=True` switches full-page HTML bootstrap from a `data-page` attribute to a JSON script element payload. The browser entry must also opt into `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })`.
+- `ssr=True` enables Inertia's separate Node SSR renderer for initial HTML responses. It is not the same as framework proxy mode (`mode="framework"` / alias `mode="ssr"`).
+
 ### InertiaSSRConfig
 
 Source: `litestar_vite.config._inertia`
@@ -922,7 +926,7 @@ import staticProps from 'virtual:litestar-static-props'
 | `spa` | Vite serves index.html, Litestar serves API. SPA handler catches all non-API routes. |
 | `template` | Litestar renders Jinja2 templates with Vite asset tags. |
 | `htmx` | Alias for template mode, optimized for HTMX partials. |
-| `hybrid` | Inertia.js mode. Litestar renders full-page HTML with data-page attribute, XHR returns JSON. |
+| `hybrid` | Inertia.js mode. Litestar renders full-page HTML with a `data-page` attribute or, when `use_script_element=True`, a JSON script payload; XHR visits return JSON. |
 | `framework` | Meta-framework mode (Astro, Nuxt, SvelteKit). Dev: proxy to framework dev server. Prod: serve built output. |
 | `external` | Non-Vite frameworks (Angular CLI). Dev: no proxy. Prod: serve bundle_dir. |
 
@@ -1029,7 +1033,10 @@ from litestar_vite.inertia import InertiaResponse
 app = Litestar(
     plugins=[
         VitePlugin(config=ViteConfig(
-            inertia=InertiaConfig(),
+            inertia=InertiaConfig(
+                use_script_element=True,
+                ssr=True,
+            ),
             dev_mode=True,
         ))
     ],
@@ -1040,6 +1047,24 @@ app = Litestar(
 async def index() -> InertiaResponse:
     return InertiaResponse({"greeting": "Hello"})
 ```
+
+Browser bootstrap when `use_script_element=True`:
+
+```typescript
+createInertiaApp({
+  defaults: {
+    future: {
+      useScriptElementForInitialPage: true,
+    },
+  },
+  // resolve/setup...
+})
+```
+
+SSR notes:
+- Use the normal browser entry (`resources/main.tsx` / `resources/main.ts`) for hydration and client-side visits.
+- Add `resources/ssr.tsx` or `resources/ssr.ts` for the Node SSR server entry when `InertiaConfig(ssr=True)` is enabled.
+- Script-element bootstrap is a browser-entry concern; the SSR server entry does not need `defaults.future.useScriptElementForInitialPage`.
 
 ### Framework Mode (Astro/Nuxt/SvelteKit)
 

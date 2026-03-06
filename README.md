@@ -96,10 +96,31 @@ app = Litestar(
     plugins=[VitePlugin(config=ViteConfig(
         dev_mode=True,
         paths=PathConfig(root=here),
-        inertia=InertiaConfig(root_template="index.html"),
+        inertia=InertiaConfig(
+            root_template="index.html",
+            use_script_element=True,
+            ssr=True,  # Optional Node SSR for the initial HTML response
+        ),
     ))],
 )
 ```
+
+If you enable `use_script_element=True`, the browser entry point must opt in too:
+
+```tsx
+createInertiaApp({
+  defaults: {
+    future: {
+      useScriptElementForInitialPage: true,
+    },
+  },
+  // ...
+})
+```
+
+`ssr=True` enables Inertia's Node SSR renderer for the first-page HTML response. It is separate
+from meta-framework proxy mode and uses the standard `resources/ssr.tsx` or `resources/ssr.ts`
+entry file.
 
 ## Meta-frameworks (Astro, Nuxt, SvelteKit)
 

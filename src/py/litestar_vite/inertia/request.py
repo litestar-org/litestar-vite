@@ -106,6 +106,15 @@ class InertiaDetails:
         return self._get_header_value(InertiaHeaders.PARTIAL_EXCEPT)
 
     @cached_property
+    def except_once_props(self) -> "str | None":
+        """Return cached once-prop keys the client wants omitted.
+
+        Returns:
+            Comma-separated once-prop keys, or None if not present.
+        """
+        return self._get_header_value(InertiaHeaders.EXCEPT_ONCE_PROPS)
+
+    @cached_property
     def reset_props(self) -> "str | None":
         """Return comma-separated props to reset on navigation.
 
@@ -176,6 +185,17 @@ class InertiaDetails:
             Parsed partial-except keys.
         """
         return self.partial_except.split(",") if self.partial_except is not None else []
+
+    @cached_property
+    def except_once_props_keys(self) -> list[str]:
+        """Return parsed cached once-prop keys.
+
+        Returns:
+            Parsed once-prop keys the client already has cached.
+        """
+        if self.except_once_props is None:
+            return []
+        return [key.strip() for key in self.except_once_props.split(",") if key.strip()]
 
     @cached_property
     def reset_keys(self) -> list[str]:
@@ -267,6 +287,15 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
             A set of prop keys to exclude.
         """
         return set(self.inertia.partial_except_keys)
+
+    @property
+    def except_once_props_keys(self) -> "set[str]":
+        """Get cached once prop keys the client already has.
+
+        Returns:
+            A set of once-prop keys already cached by the client.
+        """
+        return set(self.inertia.except_once_props_keys)
 
     @property
     def reset_keys(self) -> "set[str]":

@@ -207,7 +207,10 @@ class AppHandler:
             use_script_element = isinstance(inertia, InertiaConfig) and inertia.use_script_element
             if use_script_element:
                 # v2.3+ Inertia protocol: Use script element for better performance (~37% smaller)
-                html = inject_page_script(html, json_data, nonce=self._config.csp_nonce)
+                app_id = "app"
+                if self._spa_config.app_selector.startswith("#") and len(self._spa_config.app_selector) > 1:
+                    app_id = self._spa_config.app_selector[1:]
+                html = inject_page_script(html, json_data, app_id=app_id, nonce=self._config.csp_nonce)
             else:
                 # Legacy: Use data-page attribute
                 html = set_data_attribute(html, self._spa_config.app_selector, "data-page", json_data)
