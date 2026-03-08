@@ -70,10 +70,12 @@ def test_vue_templates_match_stable_bootstrap_and_manifest_structure() -> None:
 
     assert '<div id="app"></div>' in vue_inertia_index
     assert '<script type="module" src="/{{ resource_dir }}/main.ts"></script>' in vue_inertia_index
-    assert "defaults:" in vue_inertia_main
+    assert "\n  defaults:" not in vue_inertia_main
     assert "useScriptElementForInitialPage: true" in vue_inertia_main
-    assert "defaults:" in vue_inertia_ssr
-    assert "useScriptElementForInitialPage: true" in vue_inertia_ssr
+    assert "If you enable use_script_element=True" in vue_inertia_main
+    assert "\n      defaults:" not in vue_inertia_ssr
+    assert "defaults.future.useScriptElementForInitialPage" in vue_inertia_ssr
+    assert "If you enable use_script_element=True" in vue_inertia_ssr
 
 
 def test_vue_templates_use_split_tsconfig_structure() -> None:

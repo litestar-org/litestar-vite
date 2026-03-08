@@ -62,7 +62,13 @@ def test_inertia_templates_do_not_use_stale_script_element_bootstrap() -> None:
     vue_ssr = (TEMPLATE_ROOT / "vue-inertia" / "resources" / "ssr.ts.j2").read_text()
 
     for template in (react_template, vue_template, react_ssr, vue_ssr):
+        assert "\n  defaults: {" not in template
         assert "useScriptElementForInitialPage: true," not in template
+
+    assert "If you enable use_script_element=True" in react_template
+    assert "If you enable use_script_element=True" in react_ssr
+    assert "If you enable use_script_element=True" in vue_template
+    assert "If you enable use_script_element=True" in vue_ssr
 
 
 def test_inertia_jinja_templates_include_script_element_target() -> None:
@@ -76,7 +82,7 @@ def test_inertia_jinja_templates_include_script_element_target() -> None:
 
 def test_inertia_docs_use_stable_script_element_bootstrap_path() -> None:
     """Ensure docs reference the stable defaults.future bootstrap path."""
-    config_docs = (ROOT / "docs" / "inertia" / "configuration.rst").read_text()
+    config_docs = (ROOT / "docs" / "frameworks" / "inertia" / "configuration.rst").read_text()
     ssr_docs = (ROOT / "docs" / "reference" / "inertia" / "ssr.rst").read_text()
     inertia_config = (ROOT / "src" / "py" / "litestar_vite" / "config" / "_inertia.py").read_text()
 
@@ -141,7 +147,6 @@ def test_framework_docs_and_js_reference_current_domains_and_wording() -> None:
     frameworks_index = (ROOT / "docs" / "frameworks" / "index.rst").read_text()
     sveltekit_docs = (ROOT / "docs" / "frameworks" / "sveltekit.rst").read_text()
     nuxt_docs = (ROOT / "docs" / "frameworks" / "nuxt.rst").read_text()
-    migration_guide = (ROOT / "docs" / "usage" / "migration-v015.rst").read_text()
     readme = (ROOT / "README.md").read_text()
     dev_server = (ROOT / "src" / "js" / "src" / "dev-server" / "index.html").read_text()
     js_index = (ROOT / "src" / "js" / "src" / "index.ts").read_text()
@@ -151,9 +156,8 @@ def test_framework_docs_and_js_reference_current_domains_and_wording() -> None:
         assert "vitejs.dev" not in text
         assert "vite.dev" in text
 
-    for text in (js_index, migration_guide):
-        assert "docs.litestar.dev/vite" not in text
-        assert "litestar-org.github.io/litestar-vite/latest/" in text
+    assert "docs.litestar.dev/vite" not in js_index
+    assert "litestar-org.github.io/litestar-vite/latest/" in js_index
 
     assert "kit.svelte.dev" not in sveltekit_docs
     assert "https://svelte.dev/docs/kit" in sveltekit_docs
@@ -168,15 +172,16 @@ def test_framework_docs_and_js_reference_current_domains_and_wording() -> None:
 
 def test_inertia_docs_use_current_links_and_protocol_headers() -> None:
     """Ensure Inertia docs use current canonical links and describe all supported request headers."""
-    load_when_visible = (ROOT / "docs" / "inertia" / "load-when-visible.rst").read_text()
-    once_props = (ROOT / "docs" / "inertia" / "once-props.rst").read_text()
-    polling = (ROOT / "docs" / "inertia" / "polling.rst").read_text()
-    prefetching = (ROOT / "docs" / "inertia" / "prefetching.rst").read_text()
-    remembering_state = (ROOT / "docs" / "inertia" / "remembering-state.rst").read_text()
-    how_it_works = (ROOT / "docs" / "inertia" / "how-it-works.rst").read_text()
-    partial_reloads = (ROOT / "docs" / "inertia" / "partial-reloads.rst").read_text()
-    configuration = (ROOT / "docs" / "inertia" / "configuration.rst").read_text()
-    fullstack_example = (ROOT / "docs" / "inertia" / "fullstack-example.rst").read_text()
+    inertia_docs = ROOT / "docs" / "frameworks" / "inertia"
+    load_when_visible = (inertia_docs / "load-when-visible.rst").read_text()
+    once_props = (inertia_docs / "once-props.rst").read_text()
+    polling = (inertia_docs / "polling.rst").read_text()
+    prefetching = (inertia_docs / "prefetching.rst").read_text()
+    remembering_state = (inertia_docs / "remembering-state.rst").read_text()
+    how_it_works = (inertia_docs / "how-it-works.rst").read_text()
+    partial_reloads = (inertia_docs / "partial-reloads.rst").read_text()
+    configuration = (inertia_docs / "configuration.rst").read_text()
+    fullstack_example = (inertia_docs / "fullstack-example.rst").read_text()
 
     for text in (load_when_visible, once_props, polling, prefetching, remembering_state):
         assert "inertiajs.com/docs/v2/data-props/" not in text
@@ -334,7 +339,7 @@ def test_angular_cli_and_htmx_docs_match_current_owned_scaffolds() -> None:
     assert "styles.css" in htmx_docs
     assert "registerHtmxExtension()" in htmx_docs
     assert "resources/" in vite_docs
-    assert "Manual (`npm run generate-types`)" in vite_docs
+    assert "litestar assets generate-types" in vite_docs
 
 
 def test_angular_cli_owned_surfaces_drop_stale_zoneless_marketing_copy() -> None:
