@@ -958,6 +958,8 @@ def extract_once_props(
 
     Args:
         props: The props dictionary to scan.
+        partial_data: Optional set of requested partial prop keys.
+        partial_except: Optional set of prop keys excluded from the partial response.
 
     Returns:
         A list of prop keys that should be cached client-side.
@@ -985,7 +987,7 @@ def extract_once_props(
     return once_keys
 
 
-def build_once_props_metadata(keys: "Iterable[str]") -> "dict[str, dict[str, str]]":
+def build_once_props_metadata(keys: "Iterable[str]") -> "dict[str, dict[str, str | int | None]]":
     """Build stable once-prop metadata for the Inertia page object."""
     return {key: {"prop": key} for key in keys}
 

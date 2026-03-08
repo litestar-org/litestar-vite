@@ -98,4 +98,4 @@ See Also
 --------
 
 - :doc:`configuration` - Full configuration reference
-- :doc:`/frameworks/inertia` - Framework-specific setup (React, Vue, Svelte)
+- :doc:`/frameworks/inertia/index` - Inertia guide overview and framework entry points

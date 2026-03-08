@@ -1,8 +1,11 @@
-==================
-Framework Examples
-==================
+================
+Framework Guides
+================
 
 Litestar Vite supports a wide range of frontend runtimes without forcing a single app shape.
+
+UI Frameworks
+-------------
 
 .. grid:: 1 1 2 3
    :gutter: 2
@@ -31,23 +34,23 @@ Litestar Vite supports a wide range of frontend runtimes without forcing a singl
 
       Standalone Angular via Vite/Analog plus Angular CLI coverage where you need it.
 
-   .. grid-item-card:: :octicon:`plug` Inertia.js
-      :link: inertia
-      :link-type: doc
-
-      React, Vue, and Svelte server-driven SPA patterns with stable v2 protocol support.
-
    .. grid-item-card:: :octicon:`code` HTMX
       :link: htmx
       :link-type: doc
 
       Server-rendered flows with small JavaScript surfaces and fast iteration.
 
-Meta-Frameworks
----------------
+Application Frameworks
+----------------------
 
-.. grid:: 1 1 3 3
+.. grid:: 1 1 2 2
    :gutter: 2
+
+   .. grid-item-card:: :octicon:`plug` Inertia.js
+      :link: inertia/index
+      :link-type: doc
+
+      React, Vue, and Svelte server-driven SPA patterns with a dedicated guide and stable v2 protocol support.
 
    .. grid-item-card:: :octicon:`rocket` Nuxt
       :link: nuxt
@@ -69,6 +72,19 @@ Meta-Frameworks
 
 Quick Scaffold
 --------------
+
+.. grid:: 1
+   :gutter: 2
+
+   .. grid-item-card:: :octicon:`play` Starter templates
+      :class-card: demo-frame
+
+      .. image:: /_static/demos/scaffolding.gif
+         :alt: Project scaffolding demo
+         :align: center
+         :width: 100%
+
+      Use the same CLI to scaffold owned starters for SPA, HTMX, Inertia, and SSR-style framework setups.
 
 .. tab-set::
 
@@ -124,4 +140,4 @@ Real-World Example
    nuxt
    sveltekit
    astro
-   inertia
+   inertia/index

@@ -47,13 +47,13 @@ Litestar Vite
          :link: frameworks/index
          :link-type: doc
 
-         Reach for React, Vue, Svelte, Angular, HTMX, or a meta-framework without changing the backend story.
+         Choose React, Vue, Svelte, Angular, HTMX, Inertia, or an SSR/meta-framework without changing the backend story.
 
-      .. grid-item-card:: :octicon:`play` Demos
-         :link: demos
+      .. grid-item-card:: :octicon:`plug` Inertia Guide
+         :link: frameworks/inertia/index
          :link-type: doc
 
-         See scaffolding, HMR, type generation, and production flows before you build your own app.
+         Follow the dedicated server-driven SPA guide without bouncing between framework and usage pages.
 
       .. grid-item-card:: :octicon:`code` API Reference
          :link: reference/index
@@ -72,44 +72,55 @@ Quick Install
 
       pip install litestar-vite
 
-Featured Demos
---------------
+Choose a Path
+-------------
 
 .. grid:: 1 1 2 2
    :gutter: 2
 
-   .. grid-item-card:: :octicon:`play` Project scaffolding
-      :link: demos
+   .. grid-item-card:: :octicon:`workflow` Vite Workflow
+      :link: usage/vite
       :link-type: doc
-      :class-card: demo-frame
 
-      .. image:: _static/demos/scaffolding.gif
-         :alt: Project scaffolding demo
-         :align: center
-         :width: 100%
+      Install the plugin, understand the bridge file, and use the assets CLI without starting from a blank Vite setup.
 
-      Generate React, Vue, Svelte, HTMX, Inertia, Angular, Astro, Nuxt, or SvelteKit starters from the same CLI.
-
-   .. grid-item-card:: :octicon:`zap` Hot Module Replacement
-      :link: demos
+   .. grid-item-card:: :octicon:`zap` Development Workflow
+      :link: usage/development
       :link-type: doc
-      :class-card: demo-frame
 
-      .. image:: _static/demos/hmr.gif
-         :alt: HMR demo
-         :align: center
-         :width: 100%
+      Keep one public app entry point while Vite HMR, proxy mode, and two-port workflows stay understandable.
 
-      Run Litestar once, keep one port, and let the Vite dev server stay behind the same application boundary.
+Developer Resources
+-------------------
+
+.. grid:: 1 1 2 2
+   :gutter: 2
+
+   .. grid-item-card:: :octicon:`git-compare` Changelog
+      :link: changelog
+      :link-type: doc
+
+      Review release notes and migration-sensitive changes before updating existing projects.
+
+   .. grid-item-card:: :octicon:`repo` Contribution Guide
+      :link: contribution-guide
+      :link-type: doc
+
+      Work from the project contribution guidance instead of jumping out to the repository immediately.
 
 .. toctree::
    :hidden:
    :titlesonly:
+   :caption: Documentation
 
    usage/index
    frameworks/index
-   inertia/index
-   demos
    reference/index
-   changelog
+
+.. toctree::
+   :hidden:
+   :titlesonly:
+   :caption: Developers
+
    contribution-guide
+   changelog

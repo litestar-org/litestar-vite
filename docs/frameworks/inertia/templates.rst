@@ -57,7 +57,7 @@ emit the JSON payload in a matching script element:
    <div id="app"></div>
    <script type="application/json" id="app_page" data-page="app">{{ inertia | safe }}</script>
 
-Your browser entry must opt into the same transport:
+For current Inertia v2 clients, your browser entry must opt into the same transport:
 
 .. code-block:: tsx
 
@@ -73,6 +73,10 @@ Your browser entry must opt into the same transport:
 If ``InertiaConfig(ssr=True)`` is also enabled, mirror the same
 ``defaults.future.useScriptElementForInitialPage`` setting in ``resources/ssr.tsx`` or
 ``resources/ssr.ts`` so the Node SSR entry and the browser entry hydrate from the same payload.
+
+.. note::
+   This explicit ``defaults.future`` setup matches the stable Inertia v2.3+ client docs. In the
+   official v3 upgrade guide, the future namespace is removed, so keep this example version-scoped.
 
 Classic ``data-page`` Bootstrap
 -------------------------------

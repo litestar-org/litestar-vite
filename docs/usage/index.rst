@@ -1,8 +1,8 @@
-=====
-Usage
-=====
+===============
+Getting Started
+===============
 
-Use these guides to move from installation to production runtime without bouncing between scattered examples.
+Use these guides to move from installation to production runtime without bouncing between framework pages, demos, and reference docs.
 
 .. grid:: 1 1 2 2
    :gutter: 2
@@ -11,7 +11,13 @@ Use these guides to move from installation to production runtime without bouncin
       :link: vite
       :link-type: doc
 
-      Start with the plugin, path configuration, asset serving model, and the development runtime.
+      Start with the plugin, the bridge file, path configuration, and the assets CLI.
+
+   .. grid-item-card:: :octicon:`zap` Development Workflow
+      :link: development
+      :link-type: doc
+
+      Keep HMR, proxy mode, direct mode, and manual dev-server workflows on one page.
 
    .. grid-item-card:: :octicon:`gear` Choose a Runtime Mode
       :link: modes
@@ -25,11 +31,11 @@ Use these guides to move from installation to production runtime without bouncin
 
       Export OpenAPI, routes, and Inertia page props into frontend-friendly TypeScript outputs.
 
-   .. grid-item-card:: :octicon:`plug` Inertia Integration
-      :link: inertia
+   .. grid-item-card:: :octicon:`shield-check` Production and Deploy
+      :link: production
       :link-type: doc
 
-      Build server-driven SPAs with the same plugin and runtime model instead of a separate API stack.
+      Build assets, publish them, and hand manifest-backed bundles back to Litestar cleanly.
 
 Quick Start
 -----------
@@ -60,25 +66,14 @@ Quick Start
    litestar assets install
    litestar run --reload
 
-Migration Guide
----------------
-
-.. grid:: 1 1 2 2
-   :gutter: 2
-
-   .. grid-item-card:: :octicon:`git-compare` 0.15 Migration Notes
-      :link: migration-v015
-      :link-type: doc
-
-      Review the nested configuration changes and current CLI/runtime conventions before updating older projects.
-
 .. toctree::
    :titlesonly:
    :maxdepth: 2
    :hidden:
 
    vite
+   development
+   production
+   static-props
    modes
    types
-   inertia
-   migration-v015

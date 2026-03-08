@@ -7,6 +7,11 @@ Build server-driven single-page applications with Litestar routes, Inertia respo
 .. seealso::
    Official Inertia.js docs: `Getting Started <https://inertiajs.com/>`_
 
+.. note::
+   This section targets the current stable Inertia v2 docs and client APIs. If Litestar-Vite adopts
+   Inertia v3 behavior later, version-specific setup details such as script-element bootstrap should
+   be documented as a separate, explicit upgrade path.
+
 .. grid:: 1 1 2 2
    :gutter: 2
 
@@ -29,7 +34,7 @@ Build server-driven single-page applications with Litestar routes, Inertia respo
       Control script-element bootstrap, SSR, page props, redirects, history encryption, and Precognition.
 
    .. grid-item-card:: :octicon:`server` SSR Reference
-      :link: ../reference/inertia/ssr
+      :link: ../../reference/inertia/ssr
       :link-type: doc
 
       See how the Node SSR renderer fits into the existing Litestar integration without turning into framework proxy mode.

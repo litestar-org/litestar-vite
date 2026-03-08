@@ -1,9 +1,9 @@
 :root {
-  --lv-code-bg: var(--lv-gray-50);
-  --lv-code-border: var(--lv-gray-200);
+  --lv-code-bg: #f8fafc;
+  --lv-code-border: #e2e8f0;
   --lv-code-text: var(--lv-navy);
-  --lv-code-header-bg: rgba(32, 34, 53, 0.04);
-  --lv-code-header-text: var(--lv-gray-500);
+  --lv-code-header-bg: rgba(237, 182, 65, 0.08);
+  --lv-code-header-text: #64748b;
   --lv-code-inline-bg: var(--lv-gray-100);
   --lv-code-inline-border: var(--lv-gray-200);
   --lv-code-selection: rgba(237, 182, 65, 0.18);
@@ -23,10 +23,10 @@
 
 html.dark,
 html[data-theme="dark"] {
-  --lv-code-bg: #1a1c2e;
-  --lv-code-border: #343b4c;
-  --lv-code-text: #f2f4f8;
-  --lv-code-header-bg: rgba(255, 255, 255, 0.04);
+  --lv-code-bg: #0f172a;
+  --lv-code-border: #334155;
+  --lv-code-text: #e6edf3;
+  --lv-code-header-bg: rgba(237, 182, 65, 0.12);
   --lv-code-header-text: #9ca3af;
   --lv-code-inline-bg: #262b38;
   --lv-code-inline-border: #343b4c;
@@ -44,16 +44,57 @@ html[data-theme="dark"] {
   --lv-code-property: #FFCC80;
 }
 
-.highlight,
-div.highlight,
-div[class*="highlight-"] {
+div[class^="highlight-"],
+div[class*=" highlight-"] {
   position: relative;
   background: var(--lv-code-bg);
   border: 1px solid var(--lv-code-border);
-  border-radius: 1rem;
+  border-radius: 0.5rem;
   overflow: hidden;
   margin: 1rem 0 1.35rem;
-  box-shadow: 0 16px 40px rgba(23, 26, 36, 0.08);
+  box-shadow: none;
+}
+
+div.literal-block-wrapper {
+  margin: 1rem 0 1.35rem;
+}
+
+div.literal-block-wrapper > div.highlight,
+div.literal-block-wrapper > div[class*="highlight-"] {
+  margin: 0;
+}
+
+div[class^="highlight-"] > div.highlight,
+div[class*=" highlight-"] > div.highlight {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  box-shadow: none;
+}
+
+div.code-block-caption {
+  margin: 0;
+  padding: 0.7rem 1rem 0.35rem;
+  border: 1px solid var(--lv-code-border);
+  border-bottom: 0;
+  border-radius: 0.5rem 0.5rem 0 0;
+  background: var(--lv-code-bg);
+  color: var(--lv-code-header-text);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+div.code-block-caption + div.highlight,
+div.code-block-caption + div[class*="highlight-"] {
+  border-top: 0;
+  border-radius: 0 0 0.5rem 0.5rem;
+}
+
+div.code-block-caption .headerlink {
+  font-size: 0.8rem;
 }
 
 .lv-code-block::before {
@@ -76,15 +117,37 @@ div[class*="highlight-"] {
   text-transform: uppercase;
 }
 
+.lv-code-block .copybtn {
+  top: 0.55rem;
+  right: 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--lv-code-border) 65%, transparent 35%);
+  border-radius: 999px;
+  background: var(--lv-code-header-bg);
+  color: var(--lv-code-header-text);
+  box-shadow: none;
+}
+
+.lv-code-block .copybtn:hover {
+  border-color: rgba(237, 182, 65, 0.4);
+  background: color-mix(in srgb, var(--lv-code-header-bg) 55%, var(--lv-code-bg) 45%);
+  color: var(--lv-code-text);
+}
+
+.lv-code-block .copybtn[data-copied="true"] {
+  border-color: rgba(237, 182, 65, 0.45);
+  background: color-mix(in srgb, rgba(237, 182, 65, 0.18) 75%, var(--lv-code-header-bg) 25%);
+  color: var(--lv-gold-deep);
+}
+
 .highlight pre,
 .highlighttable pre {
   background: transparent;
   color: var(--lv-code-text);
   margin: 0;
-  padding: 2.5rem 1.125rem 1rem;
+  padding: 2.35rem 1rem 1rem;
   overflow-x: auto;
-  line-height: 1.68;
-  font-size: 0.9rem;
+  line-height: 1.6;
+  font-size: 0.875rem;
 }
 
 .highlight pre code {

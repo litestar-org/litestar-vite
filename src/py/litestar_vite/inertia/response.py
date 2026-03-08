@@ -426,20 +426,21 @@ class InertiaResponse(Response[T]):
             shared_props.pop(key, None)
 
         route_handler = request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
+        content: Any = self.content
         route_content: Any | None = None
         route_once_props: "list[str]" = []
-        if isinstance(self.content, Mapping):
+        if isinstance(content, Mapping):
             route_once_props = extract_once_props(
-                cast("dict[str, Any]", self.content), partial_data=partial_data, partial_except=partial_except
+                cast("dict[str, Any]", content), partial_data=partial_data, partial_except=partial_except
             )
-        if is_or_contains_lazy_prop(self.content) or is_or_contains_special_prop(self.content):
-            filtered_content = lazy_render(
-                self.content, partial_data, inertia_plugin.portal, partial_except, except_once_props
+        if is_or_contains_lazy_prop(content) or is_or_contains_special_prop(content):
+            filtered_content: Any = lazy_render(
+                cast("Any", content), partial_data, inertia_plugin.portal, partial_except, except_once_props
             )
             if filtered_content is not None:
                 route_content = filtered_content
-        elif should_render(self.content, partial_data, partial_except, except_once_props):
-            route_content = self.content
+        elif should_render(content, partial_data, partial_except, except_once_props):
+            route_content = cast("Any", content)
 
         if route_content is not None:
             if isinstance(route_content, Mapping):

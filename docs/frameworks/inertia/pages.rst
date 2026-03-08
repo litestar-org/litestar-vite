@@ -149,4 +149,4 @@ See Also
 
 - :doc:`responses` - InertiaResponse for advanced usage
 - :doc:`typed-page-props` - TypeScript integration for props
-- :doc:`/frameworks/inertia` - Framework setup guides
+- :doc:`/frameworks/inertia/index` - Inertia guide overview

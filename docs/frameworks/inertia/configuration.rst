@@ -133,6 +133,11 @@ The ``use_script_element`` parameter enables a performance optimization introduc
 When enabled, page data is embedded in a ``<script type="application/json" id="app_page">`` element
 instead of a ``data-page`` attribute on the app element.
 
+.. note::
+   This section documents the current Litestar-Vite integration for stable Inertia v2.3+ clients.
+   The official Inertia v3 upgrade guide removes the ``future`` config namespace and changes this
+   bootstrap behavior, so do not treat the client example below as version-agnostic.
+
 **Benefits:**
 
 - **~37% payload reduction** for large pages by avoiding HTML entity escaping
@@ -168,16 +173,16 @@ This feature requires **both** server-side and client-side configuration:
 
 .. warning::
 
-   Both configurations must be enabled together. If you enable ``use_script_element=True``
-   on the server but forget the client-side configuration, the Inertia app will fail to
-   initialize because it won't find the page data.
+   For Inertia v2 clients, both configurations must be enabled together. If you enable
+   ``use_script_element=True`` on the server but forget the client-side configuration,
+   the Inertia app will fail to initialize because it won't find the page data.
 
    If you author the HTML template manually, keep the payload element aligned with the app root,
    for example ``<script type="application/json" id="app_page" data-page="app">...</script>``.
 
 .. note::
 
-   When SSR is enabled with ``InertiaConfig(ssr=True)``, keep the same
+   When SSR is enabled with ``InertiaConfig(ssr=True)`` for an Inertia v2 client, keep the same
    ``defaults.future.useScriptElementForInitialPage`` setting in both the browser entry
    (``resources/main.tsx`` or ``resources/main.ts``) and the SSR entry
    (``resources/ssr.tsx`` or ``resources/ssr.ts``).

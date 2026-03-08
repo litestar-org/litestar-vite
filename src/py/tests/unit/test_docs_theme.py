@@ -1,5 +1,6 @@
 import runpy
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[4]
 
@@ -20,7 +21,7 @@ def test_docs_theme_conf_uses_shibuya_foundation() -> None:
     assert conf["html_css_files"] == ["theme.css", "layout.css", "code.css"]
     assert conf["html_js_files"] == ["theme.js"]
 
-    html_theme_options = conf["html_theme_options"]
+    html_theme_options = cast(dict[str, object], conf["html_theme_options"])
     assert html_theme_options["accent_color"] == "amber"
     assert html_theme_options["light_logo"] == "_static/logo-light.svg"
     assert html_theme_options["dark_logo"] == "_static/logo-dark.svg"

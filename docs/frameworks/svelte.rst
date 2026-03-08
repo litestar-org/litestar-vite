@@ -134,6 +134,6 @@ for more details.
 See Also
 --------
 
-- :doc:`inertia` - Svelte with Inertia.js for server-side routing
+- :doc:`inertia/index` - Svelte with Inertia.js for server-side routing
 - :doc:`/usage/types` - TypeScript type generation
 - `Example: svelte <https://github.com/litestar-org/litestar-vite/tree/main/examples/svelte>`_

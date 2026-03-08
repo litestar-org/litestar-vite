@@ -187,7 +187,7 @@ html_show_sourcelink = True
 html_copy_source = True
 html_title = "Litestar Vite"
 html_baseurl = "https://litestar-org.github.io/litestar-vite/latest/"
-html_favicon = "_static/favicon.svg"
+html_favicon = "_static/favicon.ico"
 html_context = {
     "source_type": "github",
     "source_user": "litestar-org",
@@ -223,22 +223,12 @@ html_theme_options: dict[str, Any] = {
                 {
                     "title": "Get Started",
                     "url": "usage/index",
-                    "summary": "Install litestar-vite and wire it into a Litestar app.",
+                    "summary": "Install litestar-vite, wire the runtime, and choose the right workflow path.",
                 },
                 {
-                    "title": "Frameworks",
+                    "title": "Framework Guides",
                     "url": "frameworks/index",
-                    "summary": "React, Vue, Svelte, HTMX, Angular, and SSR framework guides.",
-                },
-                {
-                    "title": "Demos",
-                    "url": "demos",
-                    "summary": "Scaffolding, HMR, type generation, and production build flows in motion.",
-                },
-                {
-                    "title": "Inertia",
-                    "url": "inertia/index",
-                    "summary": "Server-driven SPA patterns, protocol details, and SSR notes.",
+                    "summary": "React, Vue, Svelte, Angular, HTMX, Inertia, and SSR framework guides.",
                 },
                 {
                     "title": "API Reference",
@@ -250,12 +240,12 @@ html_theme_options: dict[str, Any] = {
         {
             "title": "Developers",
             "children": [
-                {"title": "Changelog", "url": "changelog", "summary": "Track notable changes and migration points."},
                 {
                     "title": "Contribution Guide",
-                    "url": "https://github.com/litestar-org/litestar-vite/blob/main/CONTRIBUTING.rst",
+                    "url": "contribution-guide",
                     "summary": "How to contribute to litestar-vite.",
                 },
+                {"title": "Changelog", "url": "changelog", "summary": "Track notable changes and migration points."},
                 {
                     "title": "GitHub",
                     "url": "https://github.com/litestar-org/litestar-vite",

@@ -31,6 +31,26 @@ html[data-theme="dark"] .sy-head {
   transform-origin: left center;
 }
 
+.sy-head-brand img.light-logo {
+  display: block !important;
+}
+
+.sy-head-brand img.dark-logo {
+  display: none !important;
+}
+
+html.dark .sy-head-brand img.light-logo,
+html[data-theme="dark"] .sy-head-brand img.light-logo,
+html[data-color-mode="dark"] .sy-head-brand img.light-logo {
+  display: none !important;
+}
+
+html.dark .sy-head-brand img.dark-logo,
+html[data-theme="dark"] .sy-head-brand img.dark-logo,
+html[data-color-mode="dark"] .sy-head-brand img.dark-logo {
+  display: block !important;
+}
+
 .sy-head-links a:hover,
 .sy-sidebar a:hover,
 .globaltoc a:hover {
@@ -107,18 +127,24 @@ article.yue > section#litestar-vite > h1 {
   filter: drop-shadow(0 20px 40px rgba(32, 34, 53, 0.14));
 }
 
-.landing-logo--dark {
-  display: none;
+.landing-logo.landing-logo--light {
+  display: block !important;
 }
 
-html.dark .landing-logo--light,
-html[data-theme="dark"] .landing-logo--light {
-  display: none;
+.landing-logo.landing-logo--dark {
+  display: none !important;
 }
 
-html.dark .landing-logo--dark,
-html[data-theme="dark"] .landing-logo--dark {
-  display: block;
+html.dark .landing-logo.landing-logo--light,
+html[data-theme="dark"] .landing-logo.landing-logo--light,
+html[data-color-mode="dark"] .landing-logo.landing-logo--light {
+  display: none !important;
+}
+
+html.dark .landing-logo.landing-logo--dark,
+html[data-theme="dark"] .landing-logo.landing-logo--dark,
+html[data-color-mode="dark"] .landing-logo.landing-logo--dark {
+  display: block !important;
 }
 
 .landing-hero {

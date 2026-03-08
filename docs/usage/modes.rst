@@ -211,4 +211,4 @@ See Also
 
 - :doc:`/usage/vite` - Vite integration overview
 - :doc:`/frameworks/index` - Framework-specific guides
-- :doc:`/inertia/index` - Inertia.js documentation
+- :doc:`/frameworks/inertia/index` - Inertia.js documentation

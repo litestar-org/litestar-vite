@@ -139,6 +139,6 @@ for more details.
 See Also
 --------
 
-- :doc:`inertia` - Vue with Inertia.js for server-side routing
+- :doc:`inertia/index` - Vue with Inertia.js for server-side routing
 - :doc:`/usage/types` - TypeScript type generation
 - `Example: vue <https://github.com/litestar-org/litestar-vite/tree/main/examples/vue>`_
