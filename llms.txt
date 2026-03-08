@@ -7,7 +7,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 ## Python Package
 
 - Package: `litestar-vite`
-- Version: 0.18.3
+- Version: 0.18.4
 - Python: >=3.10
 - Key dependencies: `litestar>=2.7.0`, `httpx>=0.24.1`, `websockets>=12.0`
 - Optional extras: `jinja` (Jinja2 templates), `nodeenv` (auto-detected Node), `http2` (h2 for proxy)
@@ -15,7 +15,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 ## npm Package
 
 - Package: `litestar-vite-plugin`
-- Version: 0.18.3
+- Version: 0.18.4
 - Peer dependency: `vite ^6.0.0 || ^7.0.0`
 - Exports: `.` (main plugin), `./helpers` (route/csrf/htmx helpers), `./inertia-helpers`, `./astro`, `./sveltekit`, `./nuxt`, `./inertia` (types), `./virtual` (virtual module types)
 
@@ -82,11 +82,29 @@ litestar run --reload                # Vite dev server proxied automatically
 - Issues: https://github.com/litestar-org/litestar-vite/issues/
 - Discord: https://discord.gg/X3FJqy8d2j
 
+## Upstream Update Sources
+
+- Prefer official docs plus official GitHub releases/changelogs when checking for framework updates; npm `latest` alone is not enough for breaking-change tracking.
+- **Inertia**: docs https://inertiajs.com/ ; releases https://github.com/inertiajs/inertia/releases . Re-check `src/py/litestar_vite/inertia/`, `src/py/litestar_vite/handler/_app.py`, `src/py/litestar_vite/html_transform.py`, Inertia examples/templates, `docs/inertia/`, `docs/frameworks/inertia.rst`, and `llms*.txt`.
+- **React / react-dom**: docs https://react.dev/ ; releases https://github.com/facebook/react/releases . Re-check React examples/templates, React SSR entries, `docs/frameworks/react.rst`, and Inertia React scaffolds/docs.
+- **Vue / @vue/server-renderer**: docs https://vuejs.org/ ; releases https://github.com/vuejs/core/releases . Re-check Vue examples/templates, Vue SSR entries, `docs/frameworks/vue.rst`, and Inertia Vue scaffolds/docs.
+- **Svelte / SvelteKit**: docs https://svelte.dev/docs and https://svelte.dev/docs/kit ; releases https://github.com/sveltejs/svelte/releases and https://github.com/sveltejs/kit/releases . Re-check Svelte/SvelteKit examples/templates, `src/js/src/sveltekit.ts`, and framework docs.
+- **Astro / Nuxt / Nitro**: docs https://docs.astro.build/ , https://nuxt.com/docs , https://nitro.build/ ; releases https://github.com/withastro/astro/releases , https://github.com/nuxt/nuxt/releases , https://github.com/nitrojs/nitro/releases . Re-check `src/js/src/astro.ts`, `src/js/src/nuxt.ts`, corresponding examples/templates, and SSR proxy/HMR tests.
+- **Angular / Angular CLI / Analog**: docs https://angular.dev/ and https://angular.dev/update-guide ; releases https://github.com/angular/angular/releases and https://github.com/angular/angular-cli/releases ; Analog source https://github.com/analogjs/analog . Re-check Angular examples/templates, CLI proxy config, and `@analogjs/vite-plugin-angular` usage.
+- **HTMX**: docs https://htmx.org/docs/ ; releases https://github.com/bigskysoftware/htmx/releases . Re-check HTMX examples, `src/js/src/helpers/htmx.ts`, and HTMX docs.
+- **Core stack**: Litestar docs/releases https://docs.litestar.dev/latest/ + https://github.com/litestar-org/litestar/releases ; Vite https://vite.dev/ + https://github.com/vitejs/vite/releases ; Bun https://bun.com/docs + https://github.com/oven-sh/bun/releases ; Granian https://github.com/emmett-framework/granian + https://github.com/emmett-framework/granian/releases ; httpx https://www.python-httpx.org/ + https://github.com/encode/httpx/releases ; @hey-api/openapi-ts https://heyapi.dev/openapi-ts/get-started + https://github.com/hey-api/openapi-ts/releases . Re-check runtime/executor/proxy/typegen code and docs when these move.
+- **Docs theme / Shibuya**: docs https://shibuya.lepture.com/ ; releases https://github.com/lepture/shibuya/releases . Re-check `docs/conf.py`, `docs/_static/theme.css`, `docs/_static/layout.css`, `docs/_static/code.css`, `docs/_static/theme.js`, `docs/_templates/components/copy-page-button.html`, `CONTRIBUTING.rst`, `README.md`, and `llms*.txt`. The official docs code palette is based on the SQLSpec WASM playground reference; if the sibling workspace exists, inspect `../sqlspec/docs/_static/custom.css` and `../sqlspec/tools/sphinx_ext/playground_template.html`.
+
 ## Optional Features
 
-- **Inertia.js integration**: v2 protocol support via `InertiaPlugin` with session middleware, `InertiaRequest`/`InertiaResponse`, deferred/merge/once props, precognition, SSR client pooling, and exception handling.
+- **Inertia.js integration**: stable v2 protocol support via `InertiaPlugin` with session middleware, `InertiaRequest`/`InertiaResponse`, deferred/merge/once props, precognition, optional script-element bootstrap (`InertiaConfig(use_script_element=True)` + `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })`), SSR client pooling, and exception handling.
 - **Type generation**: Export OpenAPI schema, typed route metadata (JSON + TypeScript), and Inertia page props. Enable with `ViteConfig(types=True)`. The npm plugin watches exported files and can trigger `@hey-api/openapi-ts`.
 - **Route helpers**: The `litestar-vite-plugin/helpers` npm export provides typed route generation functions for use in frontend code, plus CSRF and HTMX helpers.
 - **Meta-framework support**: Use `mode="ssr"` or `mode="framework"` for Astro, Nuxt, SvelteKit. Dedicated npm integrations at `litestar-vite-plugin/astro`, `/nuxt`, `/sveltekit`.
 - **CDN deployment**: `DeployConfig` with fsspec storage backends (GCS, S3, etc.) via `litestar assets deploy`.
 - **Proxy headers**: `ProxyHeadersMiddleware` for X-Forwarded-* header handling behind reverse proxies.
+
+## Inertia Notes
+
+- `InertiaConfig(use_script_element=True)` switches full-page HTML bootstrap from a `data-page` attribute to a JSON script element payload. The browser entry must also enable `defaults.future.useScriptElementForInitialPage` in `createInertiaApp(...)`, and the SSR entry should mirror that setting when `InertiaConfig(ssr=True)` is enabled.
+- `InertiaConfig(ssr=True)` enables Inertia's separate Node SSR renderer for initial HTML responses. This is distinct from framework proxy mode (`mode="framework"` / alias `mode="ssr"` for Astro, Nuxt, SvelteKit).

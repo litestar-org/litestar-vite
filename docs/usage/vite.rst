@@ -1,8 +1,8 @@
-================
-Vite Integration
-================
+=====================
+Install and Configure
+=====================
 
-Litestar Vite provides seamless integration with Vite, a modern frontend build tool.
+Litestar Vite provides a guided Vite integration instead of making you stitch together Python, frontend tooling, and dev-server state by hand.
 
 At a Glance
 -----------
@@ -11,6 +11,19 @@ At a Glance
 - Development: ``litestar run --reload`` proxies the Vite dev server automatically.
 - Production: ``litestar assets build`` then ``litestar run`` serves built assets.
 - Use ``litestar assets init`` and ``litestar assets install`` for setup.
+
+.. grid:: 1
+   :gutter: 2
+
+   .. grid-item-card:: :octicon:`tools` Assets CLI workflow
+      :class-card: demo-frame
+
+      .. image:: /_static/demos/assets-cli.gif
+         :alt: Assets CLI demo
+         :align: center
+         :width: 100%
+
+      Use ``litestar assets init``, ``install``, ``serve``, ``build``, and ``doctor`` from the same operational path.
 
 Installation
 ------------
@@ -283,7 +296,7 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - Proxy handling mode: `"vite"` (default, whitelist - proxies Vite assets only), `"direct"` (expose Vite port directly, no proxy), `"proxy"` (blacklist - proxies everything except Litestar routes, used for meta-frameworks), or `None` (disabled, production mode).
    * - `external_dev_server`
      - `ExternalDevServer | str | None`
-     - Configuration for external dev servers (Angular CLI, Next.js, etc.). Can be a string URL (e.g., `"http://localhost:4200"`) or an `ExternalDevServer` object with `target`, `command`, `build_command`, `http2`, and `enabled` fields. When set, automatically switches `proxy_mode` to `"proxy"` if not explicitly configured.
+     - Configuration for external dev servers (for example Angular CLI or another standalone frontend server). Can be a string URL (e.g., `"http://localhost:4200"`) or an `ExternalDevServer` object with `target`, `command`, `build_command`, `http2`, and `enabled` fields. When set, automatically switches `proxy_mode` to `"proxy"` if not explicitly configured.
    * - `host`
      - `str`
      - Host for Vite dev server. Defaults to `"127.0.0.1"` or `VITE_HOST` env var.
@@ -461,62 +474,6 @@ Recommended fix:
     When ``runtime.set_environment=True`` (the default), Litestar writes ``.litestar.json`` on startup. If Doctor reports a stale/mismatched
     bridge file, simply restarting your app (``litestar run``) will overwrite it; deleting the file is not required.
 
-Template Integration
-~~~~~~~~~~~~~~~~~~~~
-
-Use the `vite()` and `vite_hmr()` callables in your Jinja2 templates to include the assets (in Template Mode).
-
-.. code-block:: html
-
-    <!DOCTYPE html>
-    <html>
-    <head>
-        {{ vite('src/css/styles.css') }}
-    </head>
-    <body>
-        <div id="app"></div>
-        {{ vite_hmr() }}
-        {{ vite('src/js/main.js') }}
-    </body>
-    </html>
-
-Angular options
----------------
-
-Litestar Vite supports Angular in two ways:
-
-- **Angular (Vite / Analog)** – `litestar assets init --template angular`
-
-  - Uses `@analogjs/vite-plugin-angular` together with `litestar-vite-plugin`.
-  - Source dir: `src/`; hotfile at `public/hot`; single-port proxy/HMR enabled by default.
-  - Typed routes/OpenAPI generation on by default (writes to `src/generated`).
-
-- **Angular CLI (non-Vite)** – `litestar assets init --template angular-cli`
-
-  - Runs via Angular CLI `ng serve` with `proxy.conf.json` targeting Litestar.
-  - Source dir: `src/`; does **not** use `litestar-vite-plugin` or the typed-routes pipeline.
-  - Use the standard Angular CLI commands (`npm start` / `ng build`) and serve `dist/browser/` via Litestar static files.
-
-Troubleshooting (Angular)
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-- HMR not connecting (Analog): ensure `/vite-hmr` and `/@analogjs/` are proxied; stay in single-port mode or expose Vite directly.
-- Types not generating (Analog): install `@hey-api/openapi-ts` or set `types.enabled=false` in `vite.config.ts`.
-- Angular CLI path: confirm backend runs on port 8000 (or update `proxy.conf.json` targets).
-
-Framework comparison (scaffolds)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-===================== =================== =============================== ===========================
-Framework             Source dir          Dev server / proxy              Type generation
-===================== =================== =============================== ===========================
-React/Vue/Svelte      src/                Vite + litestar-vite proxy      Enabled by default
-Inertia variants      resources/          Vite + litestar-vite proxy      Enabled by default
-Angular (Analog)      src/                Vite (Analog) + proxy           Enabled by default
-Angular CLI           src/                Angular CLI + proxy.conf.json   Disabled (CLI handles dev)
-HTMX                  src/                Vite + litestar-vite proxy      Disabled (JS optional)
-===================== =================== =============================== ===========================
-
 Advanced Asset Handling
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -528,223 +485,13 @@ For assets that are not entry points but still need to be referenced (e.g., imag
 
 This resolves the correct URL whether you are in development mode (served by Vite) or production mode (hashed URL from manifest).
 
-Development Workflow
---------------------
-
-Development Server
-~~~~~~~~~~~~~~~~~~
-
-When `use_server_lifespan` is set to `True` (default when `dev_mode=True`), the Litestar CLI will automatically manage the Vite development server.
-
-.. code-block:: bash
-
-    litestar run
-
-Proxy vs direct modes:
-
-- **Proxy (default):** Litestar proxies Vite HTTP + WS/HMR through the ASGI port. Vite binds to loopback with an auto-picked port if `VITE_PORT` is unset, writes `public/hot` with its URL, and the JS plugin reads it. Paths like `/@vite/client`, `/@fs/`, `/node_modules/.vite/`, `/src/`, `/__vite_ping` are forwarded, including WebSockets.
-- **Direct:** classic two-port setup; Vite is exposed on `VITE_HOST:VITE_PORT` and Litestar does not proxy it.
-
-Switch with `VITE_PROXY_MODE=proxy|direct` (or `ViteConfig.runtime.proxy_mode`).
-
-Origin behavior in development:
-
-- In proxy mode, the JS plugin leaves Vite `server.origin` unset by default. This keeps CSS-imported assets (including `node_modules` fonts) as `/static/...` paths on the Litestar origin so proxy middleware can intercept them.
-- If your workflow depends on absolute asset URLs to the Vite dev server, set `server.origin` explicitly in `vite.config.ts` (or run direct mode).
-- Migration note: setups that previously depended on implicit absolute `http://localhost:<vite-port>/...` CSS asset URLs must now opt in via explicit `server.origin`.
-
-Dev URL derivation (hotfile) precedence:
-
-- `server.origin` (explicit) wins and is written as-is.
-- Otherwise host precedence is: `server.hmr.host` -> `server.host` -> remote-mode loopback fallback (`127.0.0.1` / `[::1]`) -> bound server address.
-- Port precedence is: `server.hmr.clientPort` -> Vite listening port.
-- Protocol precedence is: `server.hmr.protocol` (`wss` => `https`) -> Vite HTTPS setting.
-
-If you prefer to manage the Vite server manually, keep `dev_mode=True` but start Vite yourself (useful for two-port setups):
-
-.. code-block:: bash
-    :caption: Terminal 1: Start Vite Dev Server via the Litestar CLI
-
-    litestar assets serve
-
-.. code-block:: bash
-    :caption: Terminal 2: Run Litestar App
-
-    litestar run
-
-Production
-----------
-
-Building Assets
-~~~~~~~~~~~~~~~
-
-Build your assets for production using the CLI:
-
-.. code-block:: bash
-
-    litestar assets build
-
-This command bundles and optimizes all assets, generates a manifest file, and outputs the files to the configured `bundle_dir`.
-
-Deploying Assets (`litestar assets deploy`)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Deployment has two distinct concepts:
-
-- **Where files are synced to** (fsspec target): ``DeployConfig.storage_backend`` (e.g. ``s3://bucket/assets``)
-- **What URLs the browser should use** (public URL): ``DeployConfig.asset_url`` (e.g. ``https://cdn.example.com/assets/``)
-
-Do **not** set ``asset_url`` to an ``s3://`` URL. Browsers can only fetch ``http(s)`` URLs.
-
-``DeployConfig.asset_url`` is written to ``.litestar.json`` as ``deployAssetUrl`` and used by the Vite plugin as the ``base`` during
-``vite build``. If Litestar serves HTML (template/hybrid/AppHandler transforms), also set ``PathConfig.asset_url`` to the same public URL.
-
-.. code-block:: python
-
-    from litestar_vite import DeployConfig, ViteConfig, VitePlugin
-
-    VitePlugin(
-        config=ViteConfig(
-            deploy=DeployConfig(
-                storage_backend="s3://bucket/assets",
-                asset_url="https://cdn.example.com/assets/",
-            )
-        )
-    )
-
-For more information about Inertia integration, refer to the :doc:`Inertia </usage/inertia>` documentation.
-
-Static Props
-------------
-
-Static props allow you to pass arbitrary configuration data from Python to JavaScript at build time. This is useful for:
-
-- Application settings (app name, version, environment)
-- Feature flags and toggles
-- API base URLs or configuration
-- Any static data that doesn't change at runtime
-
-Python Setup
-~~~~~~~~~~~~
-
-Add static props to your ``ViteConfig``:
-
-.. code-block:: python
-
-    from litestar_vite import ViteConfig, VitePlugin
-
-    app = Litestar(
-        plugins=[
-            VitePlugin(
-                config=ViteConfig(
-                    static_props={
-                        "appName": "My Application",
-                        "version": "1.0.0",
-                        "environment": "production",
-                        "features": {
-                            "darkMode": True,
-                            "analytics": False,
-                        },
-                    },
-                )
-            )
-        ]
-    )
-
-The props are serialized to ``.litestar.json`` and made available to JavaScript via a virtual module.
-
-Usage in JavaScript/TypeScript
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Import static props using the virtual module:
-
-.. code-block:: typescript
-
-    // Default import - all props as an object
-    import staticProps from 'virtual:litestar-static-props'
-
-    console.log(staticProps.appName)  // "My Application"
-    console.log(staticProps.features.darkMode)  // true
-
-    // Named imports for valid JS identifiers
-    import { appName, version, features } from 'virtual:litestar-static-props'
-
-    console.log(appName)  // "My Application"
-
-Type Generation
-~~~~~~~~~~~~~~~
-
-When type generation is enabled, litestar-vite automatically generates typed declarations for your static props. The generated file is placed in your output directory (typically ``src/generated/static-props.ts``):
-
-.. code-block:: typescript
-
-    // AUTO-GENERATED by litestar-vite
-    export interface Features {
-      darkMode: boolean
-      analytics: boolean
-    }
-
-    export interface StaticProps {
-      appName: string
-      version: string
-      environment: string
-      features: Features
-    }
-
-    export const staticProps: StaticProps = { ... } as const satisfies StaticProps
-
-    export const appName = staticProps.appName
-    export const version = staticProps.version
-    export const features = staticProps.features
-
-    export default staticProps
-
-You can import from either the virtual module or the generated file:
-
-.. code-block:: typescript
-
-    // Virtual module (runtime) - no type info without augmentation
-    import staticProps from 'virtual:litestar-static-props'
-
-    // Generated file (build time) - fully typed
-    import { appName, features } from './generated/static-props'
-
-Type Augmentation (Optional)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-For full type safety with the virtual module, you can augment the module declaration:
-
-.. code-block:: typescript
-
-    // src/types/static-props.d.ts
-    declare module 'virtual:litestar-static-props' {
-      interface StaticProps {
-        appName: string
-        version: string
-        environment: string
-        features: {
-          darkMode: boolean
-          analytics: boolean
-        }
-      }
-
-      const props: StaticProps
-      export default props
-      export const appName: string
-      export const version: string
-      export const features: StaticProps['features']
-    }
-
-Limitations
-~~~~~~~~~~~
-
-- **No HMR**: Static props are resolved at plugin initialization. Changes to ``static_props`` require a Vite restart.
-- **Build-time only**: Values are embedded at build time and cannot be changed at runtime.
-- **JSON-serializable**: Props must be JSON-serializable (no functions, dates as ISO strings, etc.).
-
 See Also
 --------
 
+- :doc:`/usage/development` - HMR, proxy mode, and manual dev-server workflow
+- :doc:`/usage/production` - Production build and deploy flow
+- :doc:`/usage/static-props` - Static props and generated declarations
+- :doc:`/frameworks/inertia/index` - Inertia integration guide
 - :doc:`/usage/modes` - Operation modes and aliases
 - :doc:`/usage/types` - Type generation pipeline
 - :doc:`/frameworks/index` - Framework templates and examples

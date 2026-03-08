@@ -116,7 +116,7 @@ def test_scaffolding_get_template_by_enum() -> None:
 
     template = get_template(FrameworkType.VUE)
     assert template is not None
-    assert template.name == "Vue 3"
+    assert template.name == "Vue"
 
 
 def test_scaffolding_get_template_invalid() -> None:
@@ -244,6 +244,69 @@ def test_scaffolding_generate_project_angular_cli_skips_vite_base(tmp_path: Path
 
     package_json = decode_json((tmp_path / "package.json").read_text())
     dev_deps = package_json.get("devDependencies", {})
+    angular_json = (tmp_path / "angular.json").read_text()
+    styles = (tmp_path / "src" / "styles.css").read_text()
 
     assert "litestar-vite-plugin" not in dev_deps
     assert (tmp_path / "angular.json").exists()
+    assert dev_deps["@angular/build"] == "21.2.1"
+    assert dev_deps["@angular/cli"] == "21.2.1"
+    assert dev_deps["@angular/compiler-cli"] == "21.2.1"
+    assert dev_deps["@tailwindcss/postcss"] == "4.2.1"
+    assert dev_deps["postcss"] == "8.5.8"
+    assert dev_deps["tailwindcss"] == "4.2.1"
+    assert "autoprefixer" not in dev_deps
+    assert "@types/jasmine" not in dev_deps
+    assert "@angular/build:application" in angular_json
+    assert "@angular/build:dev-server" in angular_json
+    assert "@angular-devkit/build-angular" not in angular_json
+    assert "src/generated" not in angular_json
+    assert "@config" not in styles
+    assert (tmp_path / ".postcssrc.json").exists()
+    assert not (tmp_path / "tailwind.config.js").exists()
+    assert not (tmp_path / "tsconfig.spec.json").exists()
+
+
+def test_scaffolding_generate_project_htmx_uses_current_extension_shell(tmp_path: Path) -> None:
+    """Test that HTMX scaffolding uses pinned versions and the Litestar extension shell."""
+    from litestar_vite.scaffolding import TemplateContext, generate_project
+    from litestar_vite.scaffolding.templates import FrameworkType, get_template
+
+    framework = get_template(FrameworkType.HTMX)
+    assert framework is not None
+
+    context = TemplateContext(
+        project_name="htmx-lite",
+        framework=framework,
+        use_typescript=False,
+        use_tailwind=True,
+        resource_dir=framework.resource_dir,
+    )
+
+    generate_project(tmp_path, context)
+
+    package_json = decode_json((tmp_path / "package.json").read_text())
+    base_template = (tmp_path / "templates" / "base.html.j2").read_text()
+
+    assert package_json["dependencies"]["htmx.org"] == "2.0.8"
+    assert package_json["devDependencies"]["@tailwindcss/vite"] == "4.2.1"
+    assert package_json["devDependencies"]["tailwindcss"] == "4.2.1"
+    assert package_json["devDependencies"]["typescript"] == "5.9.3"
+    assert package_json["devDependencies"]["vite"] == "7.3.1"
+    assert 'meta name="csrf-token"' in base_template
+    assert 'body hx-ext="litestar"' in base_template
+
+
+def test_scaffolding_generated_package_manifests_pin_dependency_versions(tmp_path: Path) -> None:
+    """Ensure scaffold and example package manifests do not emit floating `latest` versions."""
+    root = Path(__file__).resolve().parents[4]
+
+    for package_template in (root / "src" / "py" / "litestar_vite" / "templates").rglob("package.json.j2"):
+        assert '"latest"' not in package_template.read_text(), (
+            f"{package_template}: package template should pin versions"
+        )
+
+    for example_package in (root / "examples").rglob("package.json"):
+        if "node_modules" in example_package.parts:
+            continue
+        assert '"latest"' not in example_package.read_text(), f"{example_package}: example package should pin versions"

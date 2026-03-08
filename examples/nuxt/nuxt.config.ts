@@ -6,18 +6,16 @@ import tailwindcss from "@tailwindcss/vite"
 const LITESTAR_PORT = process.env.LITESTAR_PORT ?? "8000"
 
 export default defineNuxtConfig({
-  compatibilityDate: "2024-11-01",
+  compatibilityDate: "2026-03-06",
   devtools: { enabled: true },
   modules: ["litestar-vite-plugin/nuxt"],
-
+  css: ["~/assets/css/app.css"],
   vite: {
     plugins: [tailwindcss()],
   },
-
   litestar: {
-    // API proxy points to the Litestar backend (apiPrefix defaults to "/api")
+    // API proxy points to the Litestar backend (apiPrefix defaults to "/api").
     apiProxy: `http://127.0.0.1:${LITESTAR_PORT}`,
-    verbose: true,
     types: true,
   },
 })

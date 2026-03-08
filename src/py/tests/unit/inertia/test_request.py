@@ -101,6 +101,30 @@ async def test_is_inertia_true(
         assert data["props"]["content"] is True
 
 
+async def test_except_once_props_header_parsing(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportMissingTypeArgument,reportUnknownParameterType]
+) -> None:
+    @get("/", component="Home")
+    async def handler(request: InertiaRequest[Any, Any, Any]) -> dict[str, Any]:
+        return {"keys": sorted(request.inertia.except_once_props_keys)}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        template_config=template_config,
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/",
+            headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.EXCEPT_ONCE_PROPS.value: "settings, stats"},
+        )
+
+        assert response.json()["props"]["keys"] == ["settings", "stats"]
+
+
 async def test_component_prop_default(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
@@ -225,6 +249,8 @@ def test_page_props_to_dict() -> None:
         props={"user": "test"},
         encrypt_history=True,
         merge_props=["posts"],
+        match_props_on=["posts.id"],
+        once_props={"settings": {"prop": "settings"}},
         deferred_props={"default": ["permissions"]},
     )
 
@@ -239,12 +265,13 @@ def test_page_props_to_dict() -> None:
     # v2 fields with camelCase
     assert result["encryptHistory"] is True
     assert result["mergeProps"] == ["posts"]
+    assert result["matchPropsOn"] == ["posts.id"]
+    assert result["onceProps"] == {"settings": {"prop": "settings"}}
     assert result["deferredProps"] == {"default": ["permissions"]}
 
     # None values excluded (except required)
     assert "prependProps" not in result
     assert "deepMergeProps" not in result
-    assert "matchPropsOn" not in result
 
 
 # =====================================================

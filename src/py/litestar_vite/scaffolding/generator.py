@@ -11,12 +11,34 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from litestar_vite.scaffolding.templates import FrameworkTemplate
 
+from litestar_vite.__metadata__ import __version__ as litestar_vite_version
+from litestar_vite.scaffolding.templates import CURRENT_NPM_VERSION_RANGES
+
 
 def _dict_factory() -> dict[str, Any]:
     return {}
 
 
 _DictStrAnyFactory: Callable[[], dict[str, Any]] = _dict_factory
+
+
+def _build_package_version_map() -> dict[str, str]:
+    return {**CURRENT_NPM_VERSION_RANGES, "litestar-vite-plugin": litestar_vite_version}
+
+
+def _resolve_package_version(package_versions: dict[str, str], package_name: str) -> str:
+    try:
+        return package_versions[package_name]
+    except KeyError as exc:
+        msg = f"No scaffold dependency version configured for '{package_name}'"
+        raise KeyError(msg) from exc
+
+
+def _package_version_resolver(package_versions: dict[str, str]) -> Callable[[str], str]:
+    def resolve(package_name: str) -> str:
+        return _resolve_package_version(package_versions, package_name)
+
+    return resolve
 
 
 @dataclass
@@ -64,6 +86,7 @@ class TemplateContext:
         Returns:
             Dictionary of template variables.
         """
+        package_versions = _build_package_version_map()
         return {
             "project_name": self.project_name,
             "framework": self.framework.type.value,
@@ -86,6 +109,8 @@ class TemplateContext:
             "dev_dependencies": self.framework.dev_dependencies,
             "vite_plugin": self.framework.vite_plugin,
             "uses_vite": self.framework.uses_vite,
+            "package_versions": package_versions,
+            "package_version": _package_version_resolver(package_versions),
             **self.extra,
         }
 

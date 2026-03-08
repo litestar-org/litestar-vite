@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue"
-import { route, routeDefinitions } from "@/generated/routes"
+import { route, routeDefinitions } from "@/routes"
 
 type Book = {
   id: number
@@ -22,7 +22,9 @@ const books = ref<Book[]>([])
 const view = ref<"overview" | "books">("overview")
 
 const featured = computed(() => summary.value?.featured)
-const routeEntries = Object.entries(routeDefinitions)
+type RouteName = keyof typeof routeDefinitions
+type RouteDefinition = (typeof routeDefinitions)[RouteName]
+const routeEntries = Object.entries(routeDefinitions) as [RouteName, RouteDefinition][]
 
 onMounted(async () => {
   // Using type-safe route() helper instead of hardcoded strings

@@ -1,195 +1,143 @@
-==================
-Framework Examples
-==================
+================
+Framework Guides
+================
 
-Litestar Vite supports a wide variety of frontend frameworks. This section provides
-working examples for each supported framework.
+Litestar Vite supports a wide range of frontend runtimes without forcing a single app shape.
 
-.. grid:: 1 1 2 3
-    :gutter: 3
-
-    .. grid-item-card:: :octicon:`browser` React
-        :link: react
-        :link-type: doc
-
-        React 18+ with Vite
-
-    .. grid-item-card:: :octicon:`browser` Vue
-        :link: vue
-        :link-type: doc
-
-        Vue 3 with Composition API
-
-    .. grid-item-card:: :octicon:`browser` Svelte
-        :link: svelte
-        :link-type: doc
-
-        Svelte 5 with Vite
-
-    .. grid-item-card:: :octicon:`browser` Angular
-        :link: angular
-        :link-type: doc
-
-        Angular 18+ (Vite or CLI)
-
-    .. grid-item-card:: :octicon:`plug` Inertia.js
-        :link: inertia
-        :link-type: doc
-
-        SPAs with server-side routing
-
-    .. grid-item-card:: :octicon:`code` HTMX
-        :link: htmx
-        :link-type: doc
-
-        Hypermedia-driven applications
-
-Meta-Frameworks
-~~~~~~~~~~~~~~~
+UI Frameworks
+-------------
 
 .. grid:: 1 1 2 3
-    :gutter: 3
+   :gutter: 2
 
-    .. grid-item-card:: :octicon:`rocket` Nuxt
-        :link: nuxt
-        :link-type: doc
+   .. grid-item-card:: :octicon:`browser` React
+      :link: react
+      :link-type: doc
 
-        Universal Vue 3 SSR framework
+      Vite-first React apps with type generation and optional Inertia integration.
 
-    .. grid-item-card:: :octicon:`rocket` SvelteKit
-        :link: sveltekit
-        :link-type: doc
+   .. grid-item-card:: :octicon:`browser` Vue
+      :link: vue
+      :link-type: doc
 
-        Full-stack Svelte framework
+      Composition API, SSR entrypoints, and current Vite-aligned Vue structure.
 
-    .. grid-item-card:: :octicon:`rocket` Astro
-        :link: astro
-        :link-type: doc
+   .. grid-item-card:: :octicon:`browser` Svelte
+      :link: svelte
+      :link-type: doc
 
-        Content-focused multi-framework SSG/SSR
+      Lean Svelte apps with owned templates and current runtime wiring.
+
+   .. grid-item-card:: :octicon:`browser` Angular
+      :link: angular
+      :link-type: doc
+
+      Standalone Angular via Vite/Analog plus Angular CLI coverage where you need it.
+
+   .. grid-item-card:: :octicon:`code` HTMX
+      :link: htmx
+      :link-type: doc
+
+      Server-rendered flows with small JavaScript surfaces and fast iteration.
+
+Application Frameworks
+----------------------
+
+.. grid:: 1 1 2 2
+   :gutter: 2
+
+   .. grid-item-card:: :octicon:`plug` Inertia.js
+      :link: inertia/index
+      :link-type: doc
+
+      React, Vue, and Svelte server-driven SPA patterns with a dedicated guide and stable v2 protocol support.
+
+   .. grid-item-card:: :octicon:`rocket` Nuxt
+      :link: nuxt
+      :link-type: doc
+
+      Proxy Nuxt through Litestar in development while preserving a clean API boundary.
+
+   .. grid-item-card:: :octicon:`rocket` SvelteKit
+      :link: sveltekit
+      :link-type: doc
+
+      Keep SvelteKit's app structure while sharing type generation and proxy integration.
+
+   .. grid-item-card:: :octicon:`rocket` Astro
+      :link: astro
+      :link-type: doc
+
+      Use Astro's static or server output while Litestar owns backend routes and APIs.
+
+Quick Scaffold
+--------------
+
+.. grid:: 1
+   :gutter: 2
+
+   .. grid-item-card:: :octicon:`play` Starter templates
+      :class-card: demo-frame
+
+      .. image:: /_static/demos/scaffolding.gif
+         :alt: Project scaffolding demo
+         :align: center
+         :width: 100%
+
+      Use the same CLI to scaffold owned starters for SPA, HTMX, Inertia, and SSR-style framework setups.
+
+.. tab-set::
+
+   .. tab-item:: SPA & Templates
+
+      .. code-block:: bash
+
+         litestar assets init --template react
+         litestar assets init --template vue
+         litestar assets init --template svelte
+         litestar assets init --template angular
+         litestar assets init --template angular-cli
+         litestar assets init --template htmx
+
+   .. tab-item:: Inertia
+
+      .. code-block:: bash
+
+         litestar assets init --template react-inertia
+         litestar assets init --template vue-inertia
+         litestar assets init --template svelte-inertia
+         # Template-mode examples: react-inertia-jinja / vue-inertia-jinja
+
+   .. tab-item:: Meta-Frameworks
+
+      .. code-block:: bash
+
+         litestar assets init --template astro
+         litestar assets init --template nuxt
+         litestar assets init --template sveltekit
 
 Real-World Example
 ------------------
 
 .. grid:: 1
-    :gutter: 3
+   :gutter: 2
 
-    .. grid-item-card:: :octicon:`repo` Litestar Fullstack
-        :link: https://github.com/litestar-org/litestar-fullstack
-        :link-type: url
+   .. grid-item-card:: :octicon:`repo` Litestar Fullstack
+      :link: https://github.com/litestar-org/litestar-fullstack
+      :link-type: url
 
-        Production-ready fullstack application template using Litestar, Vite, and React.
-        Demonstrates authentication, team management, type-safe routing, and best practices.
-
-Quick Scaffold
---------------
-
-Use the CLI to scaffold any framework:
-
-.. code-block:: bash
-
-    # React (SPA)
-    litestar assets init --template react
-
-    # React with routing (new in v0.15)
-    litestar assets init --template react-router
-    litestar assets init --template react-tanstack
-
-    # Vue
-    litestar assets init --template vue
-
-    # Svelte
-    litestar assets init --template svelte
-
-    # Angular (Vite-based)
-    litestar assets init --template angular
-
-    # Angular CLI (traditional)
-    litestar assets init --template angular-cli
-
-    # HTMX
-    litestar assets init --template htmx
-
-    # Meta-frameworks
-    litestar assets init --template nuxt
-    litestar assets init --template sveltekit
-    litestar assets init --template astro
-
-    # With Inertia.js
-    litestar assets init --template react-inertia
-    litestar assets init --template vue-inertia
-    litestar assets init --template svelte-inertia  # New in v0.15
-    # Template-mode examples (Jinja)
-    # react-inertia-jinja / vue-inertia-jinja
-
-Framework Comparison
---------------------
-
-.. list-table::
-   :widths: 20 15 25 20 20
-   :header-rows: 1
-
-   * - Framework
-     - Source Dir
-     - Dev Server
-     - Inertia Support
-     - Best For
-   * - React
-     - ``src/``
-     - Vite + HMR
-     - Yes
-     - SPAs, complex UIs
-   * - Vue
-     - ``src/``
-     - Vite + HMR
-     - Yes
-     - SPAs, progressive enhancement
-   * - Svelte
-     - ``src/``
-     - Vite + HMR
-     - Yes
-     - Lightweight SPAs
-   * - Angular
-     - ``src/``
-     - Vite (Analog)
-     - No
-     - Enterprise apps
-   * - Angular CLI
-     - ``src/``
-     - ng serve
-     - No
-     - Standard Angular workflow
-   * - HTMX
-     - ``src/``
-     - Vite + HMR
-     - No
-     - Server-rendered, minimal JS
-   * - Nuxt
-     - ``pages/``
-     - Nuxt dev
-     - No
-     - Universal SSR, auto-routing
-   * - SvelteKit
-     - ``src/routes/``
-     - SvelteKit dev
-     - No
-     - Full-stack Svelte, SSR
-   * - Astro
-     - ``src/pages/``
-     - Astro dev
-     - No
-     - Static sites, islands architecture
+      Production-oriented reference application using Litestar, Vite, and React with authentication, team workflows, and type-safe frontend contracts.
 
 .. toctree::
-    :maxdepth: 2
-    :hidden:
+   :maxdepth: 2
+   :hidden:
 
-    react
-    vue
-    svelte
-    angular
-    htmx
-    nuxt
-    sveltekit
-    astro
-    inertia
+   react
+   vue
+   svelte
+   angular
+   htmx
+   nuxt
+   sveltekit
+   astro
+   inertia/index

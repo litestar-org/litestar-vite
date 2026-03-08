@@ -4,10 +4,11 @@ import Layout from "../layouts/Layout.astro";
 
 <Layout title="{{ project_name }}">
   <main class="app">
+    <p class="eyebrow">Litestar + Astro</p>
     <h1>{{ project_name }}</h1>
-    <p>Astro + Litestar</p>
+    <p class="lede">Astro 5 static frontend with a Litestar backend.</p>
     <div class="card">
-      <button id="counter">count is 0</button>
+      <button id="counter" type="button">count is 0</button>
     </div>
   </main>
 </Layout>
@@ -24,13 +25,49 @@ import Layout from "../layouts/Layout.astro";
 
 <style>
   .app {
-    max-width: 1280px;
+    max-width: 52rem;
     margin: 0 auto;
-    padding: 2rem;
-    text-align: center;
+    padding: 4rem 1.5rem;
+  }
+
+  .eyebrow {
+    margin: 0 0 0.75rem;
+    color: #b45309;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .lede {
+    max-width: 40rem;
+    color: #475569;
   }
 
   .card {
-    padding: 2em;
+    margin-top: 2rem;
+    padding: 2rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 1rem;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    display: inline-flex;
+  }
+
+  button {
+    border-radius: 999px;
+    border: 1px solid transparent;
+    padding: 0.75rem 1.25rem;
+    font-size: 1rem;
+    font-weight: 600;
+    background: #111827;
+    color: #f8fafc;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.18);
   }
 </style>

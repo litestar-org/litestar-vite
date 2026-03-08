@@ -29,9 +29,10 @@
  */
 
 import fs from "node:fs"
+import type { IncomingMessage, ServerResponse } from "node:http"
 import path from "node:path"
 import colors from "picocolors"
-import type { Plugin } from "vite"
+import type { ViteDevServer } from "vite"
 import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema.js"
 import { DEBOUNCE_MS } from "./shared/constants.js"
 import { normalizeHost, resolveHotFilePath } from "./shared/network.js"
@@ -371,9 +372,11 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
  * };
  * ```
  */
-export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): Plugin[] {
+export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): any[] {
   const config = resolveConfig(userConfig)
-  const plugins: Plugin[] = []
+  // Avoid leaking Vite's private plugin types across linked workspaces.
+  // The runtime shape is still a normal Vite plugin array.
+  const plugins: any[] = []
 
   // Main plugin for proxy and logging
   plugins.push({
@@ -406,9 +409,9 @@ export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): Plu
       }
     },
 
-    configureServer(server) {
+    configureServer(server: ViteDevServer) {
       if (config.verbose) {
-        server.middlewares.use((req, _res, next) => {
+        server.middlewares.use((req: IncomingMessage, _res: ServerResponse, next: () => void) => {
           if (req.url?.startsWith(config.apiPrefix)) {
             console.log(colors.cyan("[litestar-sveltekit]"), `Proxying: ${req.method} ${req.url}`)
           }

@@ -200,5 +200,5 @@ See Also
 --------
 
 - `Example: sveltekit <https://github.com/litestar-org/litestar-vite/tree/main/examples/sveltekit>`_
-- `SvelteKit Documentation <https://kit.svelte.dev/>`_
+- `SvelteKit Documentation <https://svelte.dev/docs/kit>`_
 - :doc:`/usage/types` - TypeScript type generation

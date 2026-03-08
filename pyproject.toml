@@ -30,7 +30,7 @@ license = { text = "MIT" }
 name = "litestar-vite"
 readme = "README.md"
 requires-python = ">=3.10"
-version = "0.18.4"
+version = "0.19.0"
 
 [project.urls]
 Changelog = "https://litestar-org.github.io/litestar-vite/latest/changelog"
@@ -70,6 +70,7 @@ dev = [ {include-group = "build"}, { include-group = "linting" }, { include-grou
 build = ["bump-my-version"]
 docs = [
     "auto-pytabs[sphinx]>=0.4.0",
+    "shibuya",
     "sphinx-autobuild>=2021.3.14",
     "sphinx-click>=4.4.0",
     "sphinx-copybutton>=0.5.2",
@@ -79,7 +80,6 @@ docs = [
     "sphinx-paramlinks>=0.6.0",
     "sphinx-togglebutton>=0.3.2",
     "Pygments","vue-lexer","jsx-lexer",
-    "litestar-sphinx-theme @ git+https://github.com/litestar-org/litestar-sphinx-theme.git@v3",
 ]
 linting = ["pre-commit>=3.4.0", "mypy>=1.5.1", "ruff>=0.0.287", "types-docutils", "slotscheck",  "pyright"]
 test = [
@@ -102,7 +102,7 @@ test = [
 allow_dirty = true
 commit = false
 commit_args = "--no-verify"
-current_version = "0.18.4"
+current_version = "0.19.0"
 ignore_missing_files = false
 ignore_missing_version = false
 message = "chore(release): bump to `v{new_version}`"
@@ -409,4 +409,4 @@ module = "tests.*"
 
 [tool.codespell]
 ignore-words-list = "selectin,te"  # te is a valid HTTP hop-by-hop header (RFC 2616)
-skip = 'uv.lock,examples/vue-inertia/package-lock.json,examples/vue-inertia/public/assets/*.js'
+skip = 'uv.lock,examples/vue-inertia/package-lock.json,examples/vue-inertia/public/assets/*.js,docs/_static/code.css'

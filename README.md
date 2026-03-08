@@ -1,26 +1,29 @@
 # Litestar Vite
 
-Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA, Template, and Inertia flows, and can proxy Vite dev traffic through your ASGI port or run Vite directly.
+Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA, Template, Inertia, and meta-framework workflows, and it can proxy Vite dev traffic through your ASGI port or run Vite directly.
 
 ## Features
 
 - One-port dev: proxies Vite HTTP + WS/HMR through Litestar by default; switch to two-port with `VITE_PROXY_MODE=direct`.
-- SSR framework support: use `mode="ssr"` for Astro, Nuxt, SvelteKit - proxies everything except your API routes.
-- Production assets: reads Vite manifest from `public/manifest.json` (configurable) and serves under `asset_url`.
-- Type-safe frontends: optional OpenAPI/routes export + `@hey-api/openapi-ts` via the Vite plugin.
-- Inertia support: v2 protocol with session middleware and optional SPA mode.
+- Framework-mode support: use `mode="framework"` (alias `mode="ssr"`) for Astro, Nuxt, and SvelteKit. Litestar proxies everything except your API routes.
+- Production assets: reads the Vite manifest from `public/manifest.json` (configurable) and serves under `asset_url`.
+- Type-safe frontends: optional OpenAPI/routes export plus `@hey-api/openapi-ts` via the Vite plugin.
+- Inertia support: stable v2 protocol with session middleware, optional script-element bootstrap, and optional SSR.
 
-## Quick Start (SPA)
+## Install
 
 ```bash
 pip install litestar-vite
+npm install litestar-vite-plugin
 ```
+
+## Quick Start
 
 ```python
 import os
 from pathlib import Path
 from litestar import Litestar
-from litestar_vite import VitePlugin, ViteConfig, PathConfig
+from litestar_vite import PathConfig, ViteConfig, VitePlugin
 
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
 
@@ -33,155 +36,47 @@ app = Litestar(
 ```
 
 ```bash
-litestar run --reload  # Vite dev server is proxied automatically
+litestar assets init --template vue
+litestar assets install
+litestar run --reload
 ```
 
-Scaffold a frontend: `litestar assets init --template vue` (or `react`, `svelte`, `htmx`, `react-inertia`, `vue-inertia`, `angular`, `astro`, `nuxt`, `sveltekit`).
+## Documentation
+
+- **[Usage Guide](https://litestar-org.github.io/litestar-vite/latest/usage/)**: Core concepts, configuration, and type generation.
+- **[Inertia](https://litestar-org.github.io/litestar-vite/latest/inertia/)**: Fullstack protocols and SSR.
+- **[Frameworks](https://litestar-org.github.io/litestar-vite/latest/frameworks/)**: Guides for React, Vue, Svelte, Angular, Astro, and Nuxt.
+- **[Reference](https://litestar-org.github.io/litestar-vite/latest/reference/)**: API and CLI documentation.
+
+For a full list of changes, see the [Changelog](https://litestar-org.github.io/litestar-vite/latest/changelog.html).
+
+## Common Commands
+
+- `litestar assets init --template <name>`: scaffold a frontend or framework app
+- `litestar assets install`: install frontend dependencies with the configured executor
+- `litestar assets build`: build production assets
+- `litestar assets serve`: run the frontend toolchain directly
+- `litestar assets generate-types`: export OpenAPI, routes, and Inertia page-prop metadata
+- `litestar assets doctor`: inspect and optionally repair config drift
 
 ## Development
 
-To contribute or run the development project:
-
 ```bash
-# Install all dependencies and build packages
+# Install Python, docs, and JS dependencies; build package artifacts
 make install && make build
 
-# Install frontend dependencies for an example
+# Run an example app
 uv run litestar --app-dir examples/vue-inertia assets install
-
-# Run the development server
 uv run litestar --app-dir examples/vue-inertia run
 ```
 
-Replace `vue-inertia` with any other example: `vue`, `react`, `svelte`, `react-inertia`, `htmx`, `angular`, `astro`, `nuxt`, or `sveltekit`.
+Replace `vue-inertia` with any other example app: `vue`, `react`, `svelte`, `react-inertia`, `htmx`, `angular`, `astro`, `nuxt`, or `sveltekit`.
 
-## Template / HTMX
-
-```python
-from pathlib import Path
-from litestar import Litestar
-from litestar.contrib.jinja import JinjaTemplateEngine
-from litestar.template import TemplateConfig
-from litestar_vite import VitePlugin, ViteConfig, PathConfig
-
-here = Path(__file__).parent
-
-app = Litestar(
-    template_config=TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine),
-    plugins=[VitePlugin(config=ViteConfig(
-        dev_mode=True,
-        paths=PathConfig(root=here),
-    ))],
-)
-```
-
-## Inertia (v2)
-
-Requires session middleware (32-char secret).
-
-```python
-import os
-from pathlib import Path
-from litestar import Litestar
-from litestar.middleware.session.client_side import CookieBackendConfig
-from litestar_vite import VitePlugin, ViteConfig, PathConfig
-from litestar_vite.inertia import InertiaConfig
-
-here = Path(__file__).parent
-SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-32-chars")
-session = CookieBackendConfig(secret=SECRET_KEY.encode("utf-8"))
-
-app = Litestar(
-    middleware=[session.middleware],
-    plugins=[VitePlugin(config=ViteConfig(
-        dev_mode=True,
-        paths=PathConfig(root=here),
-        inertia=InertiaConfig(root_template="index.html"),
-    ))],
-)
-```
-
-## Meta-frameworks (Astro, Nuxt, SvelteKit)
-
-Use `mode="ssr"` (or `mode="framework"`) to proxy non-API routes to the framework's dev server:
-
-```python
-import os
-from pathlib import Path
-from litestar import Litestar
-from litestar_vite import VitePlugin, ViteConfig, PathConfig
-
-here = Path(__file__).parent
-DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
-
-app = Litestar(
-    plugins=[
-        VitePlugin(config=ViteConfig(
-            mode="ssr",
-            dev_mode=DEV_MODE,
-            paths=PathConfig(root=here),
-        ))
-    ],
-)
-```
-
-### Proxy Modes
-
-| Mode | Alias | Use Case |
-|------|-------|----------|
-| `vite` | - | SPAs - proxies Vite assets only (default) |
-| `direct` | - | Two-port dev - expose Vite port directly |
-| `proxy` | `ssr` | Meta-frameworks - proxies everything except API routes |
-
-### Production Deployment
-
-**Astro (static):** Astro generates static HTML by default. Build and serve with Litestar:
-
-```bash
-litestar --app-dir examples/astro assets install
-litestar --app-dir examples/astro assets build
-VITE_DEV_MODE=false litestar --app-dir examples/astro run
-```
-
-**Nuxt/SvelteKit (SSR):** These run their own Node servers. Deploy as two services:
-
-```bash
-# Terminal 1: SSR server
-litestar --app-dir examples/nuxt assets build
-litestar --app-dir examples/nuxt assets serve
-
-# Terminal 2: Litestar API
-VITE_DEV_MODE=false litestar --app-dir examples/nuxt run --port 8001
-```
-
-## Type generation
-
-```python
-VitePlugin(config=ViteConfig(types=True))  # enable exports
-```
-
-```bash
-litestar assets generate-types  # one-off or CI
-```
-
-## CLI cheat sheet
-
-- `litestar assets doctor` — diagnose/fix config
-- `litestar assets init --template react|vue|svelte|...` — scaffold frontend
-- `litestar assets build` / `serve` — build or watch
-- `litestar assets deploy --storage gcs://bucket/assets` — upload via fsspec
-- `litestar assets generate-types` — OpenAPI + routes → TS types
-- `litestar assets install` — install frontend deps with the configured executor
-
-### Doctor command highlights
-
-- Prints Python vs Vite config snapshot (asset URLs, bundle/hot paths, ports, modes).
-- Flags missing hot file (dev proxy), missing manifest (prod), type-gen exports, env/config mismatches, and plugin install issues.
-- `--fix` can rewrite simple vite.config values (assetUrl, bundleDir, hotFile, type paths) after creating a backup.
+For Inertia script-element bootstrap, enable `InertiaConfig(use_script_element=True)` on the Python side and keep `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })` aligned in the browser entry and SSR entry when `ssr=True` is enabled.
 
 ## Links
 
-- Docs: <https://litestar-org.github.io/litestar-vite/>
-- Examples: `examples/` (react, vue, svelte, react-inertia, vue-inertia, astro, nuxt, sveltekit, htmx)
-- Real-world example: [litestar-fullstack](https://github.com/litestar-org/litestar-fullstack) - Full-featured application using litestar-vite
+- Docs: <https://litestar-org.github.io/litestar-vite/latest/>
+- Examples: `examples/` (React, Vue, Svelte, HTMX, Inertia, Astro, Nuxt, SvelteKit, Angular)
+- Real-world example: [litestar-fullstack](https://github.com/litestar-org/litestar-fullstack)
 - Issues: <https://github.com/litestar-org/litestar-vite/issues/>

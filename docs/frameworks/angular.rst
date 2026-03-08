@@ -10,7 +10,7 @@ At a Glance
 - Vite-based: ``litestar assets init --template angular`` (mode ``spa``)
 - Angular CLI: ``litestar assets init --template angular-cli`` (mode ``external``)
 - Entry: ``src/main.ts`` (both variants)
-- Dev: ``litestar run --reload`` (Vite-based) or ``ng serve`` (Angular CLI)
+- Dev: ``litestar run --reload`` (Vite-based) or ``npm start`` / ``ng serve`` (Angular CLI)
 
 Option 1: Vite-Based (Recommended)
 ----------------------------------
@@ -37,7 +37,9 @@ Project Structure
         └── app/
             ├── app.component.ts
             ├── app.component.html
-            └── app.config.ts
+            ├── app.config.ts
+            ├── app.routes.ts
+            └── home.component.ts
 
 Backend Setup
 ~~~~~~~~~~~~~
@@ -76,7 +78,26 @@ Key configuration:
 - ``resourceDir`` explicitly set to ``src``
 - ``resolve.mainFields`` set to ``["module"]`` for Angular compatibility
 
-Angular Component
+Angular Route Shell
+~~~~~~~~~~~~~~~~~~~
+
+The current scaffold keeps ``AppComponent`` as a router shell and loads the
+page component through ``app.routes.ts``:
+
+.. code-block:: typescript
+
+    import { Component } from "@angular/core";
+    import { RouterOutlet } from "@angular/router";
+
+    @Component({
+      selector: "app-root",
+      standalone: true,
+      imports: [RouterOutlet],
+      template: `<router-outlet />`,
+    })
+    export class AppComponent {}
+
+Feature Component
 ~~~~~~~~~~~~~~~~~
 
 .. code-block:: typescript
@@ -92,7 +113,7 @@ Angular Component
         <p>{{ message }}</p>
       `,
     })
-    export class AppComponent implements OnInit {
+    export class HomeComponent implements OnInit {
       private http = inject(HttpClient);
       message = "";
 
@@ -117,7 +138,7 @@ Running (Analog)
 Option 2: Angular CLI
 ---------------------
 
-Standard Angular CLI workflow with proxy to Litestar.
+Standard Angular CLI workflow with proxy to Litestar and Angular's application builder.
 
 .. code-block:: bash
 
@@ -125,9 +146,12 @@ Standard Angular CLI workflow with proxy to Litestar.
 
 This creates a standard Angular project that:
 
+- Uses Angular's ``@angular/build`` application builder
 - Uses ``ng serve`` for development
 - Proxies API requests to Litestar via ``proxy.conf.json``
+- Uses Tailwind 4 via ``.postcssrc.json`` and ``@tailwindcss/postcss``
 - Builds to ``dist/browser/`` for production
+- Exposes ``npm run generate-types`` for manual OpenAPI client generation
 
 Proxy Configuration
 ~~~~~~~~~~~~~~~~~~~
@@ -166,7 +190,7 @@ Comparison
      - Angular CLI
    * - Build Tool
      - Vite
-     - Webpack
+     - Angular application builder
    * - HMR Speed
      - Fast
      - Standard
@@ -175,7 +199,7 @@ Comparison
      - No
    * - Type Generation
      - Enabled
-     - Disabled
+     - Manual script
    * - Port
      - Single (8000)
      - Two (4200 + 8000)

@@ -5,9 +5,9 @@
   "scripts": {
     "dev": "vite",
 {% if enable_ssr %}
-    "build": "vite build{% if use_typescript %} && tsc -b --noEmit{% endif %} && vite build --ssr {{ resource_dir }}/ssr.tsx",
+    "build": "{% if use_typescript %}tsc -b --noEmit && {% endif %}vite build && vite build --ssr {{ resource_dir }}/ssr.tsx",
 {% else %}
-    "build": "vite build{% if use_typescript %} && tsc -b --noEmit{% endif %}",
+    "build": "{% if use_typescript %}tsc -b --noEmit && {% endif %}vite build",
 {% endif %}
     "preview": "vite preview",
 {% if enable_ssr %}
@@ -21,27 +21,26 @@
   },
   "dependencies": {
 {%- for dep in dependencies %}
-    "{{ dep }}": "latest"{% if not loop.last or generate_zod or generate_client %},{% endif %}
+    "{{ dep }}": "{{ package_version(dep) }}"{% if not loop.last or generate_zod or generate_client %},{% endif %}
 {%- endfor %}
 {%- if generate_client %}
-    "axios": "^1.13.2"{% if generate_zod %},{% endif %}
+    "axios": "{{ package_version('axios') }}"{% if generate_zod %},{% endif %}
 {%- endif %}
 {%- if generate_zod %}
-    "zod": "^4.1.13"
+    "zod": "{{ package_version('zod') }}"
 {%- endif %}
   },
   "devDependencies": {
 {%- for dep in dev_dependencies %}
-    "{{ dep }}": "latest",
+    "{{ dep }}": "{{ package_version(dep) }}",
 {%- endfor %}
 {%- if use_tailwind %}
-    "@tailwindcss/vite": "^4.1.17",
-    "tailwindcss": "^4.1.17",
+    "@tailwindcss/vite": "{{ package_version('@tailwindcss/vite') }}",
+    "tailwindcss": "{{ package_version('tailwindcss') }}",
 {%- endif %}
 {%- if generate_client %}
-    "@hey-api/openapi-ts": "^0.88.0",
+    "@hey-api/openapi-ts": "{{ package_version('@hey-api/openapi-ts') }}",
 {%- endif %}
-    "litestar-vite-plugin": "latest",
-    "vite": "^7.2.6"
+    "litestar-vite-plugin": "{{ package_version('litestar-vite-plugin') }}"
   }
 }

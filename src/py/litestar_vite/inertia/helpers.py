@@ -519,7 +519,7 @@ def is_merge_prop(value: "Any") -> "TypeGuard[MergeProp[Any, Any]]":
     return isinstance(value, MergeProp)
 
 
-def extract_merge_props(props: "dict[str, Any]") -> "tuple[list[str], list[str], list[str], dict[str, list[str]]]":
+def extract_merge_props(props: "dict[str, Any]") -> "tuple[list[str], list[str], list[str], list[str]]":
     """Extract merge props metadata for the Inertia v2 protocol.
 
     This extracts all MergeProp instances from the props dict and categorizes them
@@ -531,7 +531,7 @@ def extract_merge_props(props: "dict[str, Any]") -> "tuple[list[str], list[str],
     Returns:
         A tuple of (merge_props, prepend_props, deep_merge_props, match_props_on)
         where each list contains the prop keys for that strategy, and match_props_on
-        is a dict mapping prop keys to the keys to match on.
+        is a flat list of property paths such as ``items.id``.
 
     Example::
 
@@ -549,12 +549,12 @@ def extract_merge_props(props: "dict[str, Any]") -> "tuple[list[str], list[str],
         - merge_props: ["posts", "items"]
         - prepend_props: ["messages"]
         - deep_merge_props: ["data"]
-        - match_props_on: {"items": ["id"]}
+        - match_props_on: ["items.id"]
     """
     merge_list: "list[str]" = []
     prepend_list: "list[str]" = []
     deep_merge_list: "list[str]" = []
-    match_on_dict: "dict[str, list[str]]" = {}
+    match_on_paths: "list[str]" = []
 
     for key, value in props.items():
         if is_merge_prop(value):
@@ -569,9 +569,9 @@ def extract_merge_props(props: "dict[str, Any]") -> "tuple[list[str], list[str],
                     pass
 
             if value.match_on:
-                match_on_dict[key] = value.match_on
+                match_on_paths.extend(f"{key}.{match_key}" for match_key in value.match_on)
 
-    return merge_list, prepend_list, deep_merge_list, match_on_dict
+    return merge_list, prepend_list, deep_merge_list, match_on_paths
 
 
 class StaticProp(Generic[PropKeyT, StaticT]):
@@ -937,7 +937,20 @@ def extract_deferred_props(props: "dict[str, Any]") -> "dict[str, list[str]]":
     return groups
 
 
-def extract_once_props(props: "dict[str, Any]") -> "list[str]":
+def _should_track_once_prop(
+    key: str, partial_data: "set[str] | None" = None, partial_except: "set[str] | None" = None
+) -> bool:
+    """Return whether once-prop metadata should stay in scope for this response."""
+    if partial_except:
+        return key not in partial_except
+    if partial_data:
+        return key in partial_data
+    return True
+
+
+def extract_once_props(
+    props: "dict[str, Any]", partial_data: "set[str] | None" = None, partial_except: "set[str] | None" = None
+) -> "list[str]":
     """Extract once props for the Inertia v2.2.20+ protocol.
 
     Once props are cached client-side after first resolution. This function
@@ -945,6 +958,8 @@ def extract_once_props(props: "dict[str, Any]") -> "list[str]":
 
     Args:
         props: The props dictionary to scan.
+        partial_data: Optional set of requested partial prop keys.
+        partial_except: Optional set of prop keys excluded from the partial response.
 
     Returns:
         A list of prop keys that should be cached client-side.
@@ -964,16 +979,24 @@ def extract_once_props(props: "dict[str, Any]") -> "list[str]":
     once_keys: "list[str]" = []
 
     for key, value in props.items():
-        if is_once_prop(value) or (is_deferred_prop(value) and value.is_once):
+        if (is_once_prop(value) or (is_deferred_prop(value) and value.is_once)) and _should_track_once_prop(
+            key, partial_data, partial_except
+        ):
             once_keys.append(key)
 
     return once_keys
+
+
+def build_once_props_metadata(keys: "Iterable[str]") -> "dict[str, dict[str, str | int | None]]":
+    """Build stable once-prop metadata for the Inertia page object."""
+    return {key: {"prop": key} for key in keys}
 
 
 def should_render(  # noqa: PLR0911
     value: "Any",
     partial_data: "set[str] | None" = None,
     partial_except: "set[str] | None" = None,
+    except_once_props: "set[str] | None" = None,
     key: "str | None" = None,
 ) -> "bool":
     """Check if value should be rendered based on partial reload filtering.
@@ -992,6 +1015,7 @@ def should_render(  # noqa: PLR0911
         value: Any value to check
         partial_data: Optional set of keys to include (X-Inertia-Partial-Data)
         partial_except: Optional set of keys to exclude (X-Inertia-Partial-Except, v2)
+        except_once_props: Optional set of once-prop keys already cached client-side.
         key: Optional key name for this prop (enables key-based filtering for all props)
 
     Returns:
@@ -1008,12 +1032,14 @@ def should_render(  # noqa: PLR0911
         # Never included in initial loads or standard partial reloads
         return False
 
-    # OnceProp: Always render (client handles caching)
+    # OnceProp: Respect partial reload filters and omit on full visits when cached client-side
     if is_once_prop(value):
-        # Once props are always included - the client decides whether to use cached value
-        # However, respect partial_except if specified
         if partial_except:
             return value.key not in partial_except
+        if partial_data:
+            return value.key in partial_data
+        if except_once_props:
+            return value.key not in except_once_props
         return True
 
     # LazyProp (StaticProp/DeferredProp): Only render on partial reload
@@ -1081,6 +1107,7 @@ def lazy_render(  # noqa: PLR0911
     partial_data: "set[str] | None" = None,
     portal: "BlockingPortal | None" = None,
     partial_except: "set[str] | None" = None,
+    except_once_props: "set[str] | None" = None,
 ) -> "T":
     """Filter deferred properties from the value based on partial data.
 
@@ -1091,6 +1118,7 @@ def lazy_render(  # noqa: PLR0911
         partial_data: Keys to include (X-Inertia-Partial-Data)
         portal: Optional portal to use for async rendering
         partial_except: Keys to exclude (X-Inertia-Partial-Except, v2)
+        except_once_props: Cached once-prop keys to omit when possible.
 
     Returns:
         The filtered value
@@ -1101,9 +1129,9 @@ def lazy_render(  # noqa: PLR0911
         return cast(
             "T",
             {
-                k: lazy_render(v, partial_data, portal, partial_except)
+                k: lazy_render(v, partial_data, portal, partial_except, except_once_props)
                 for k, v in cast("Mapping[str, Any]", value).items()
-                if should_render(v, partial_data, partial_except)
+                if should_render(v, partial_data, partial_except, except_once_props)
             },
         )
 
@@ -1111,9 +1139,9 @@ def lazy_render(  # noqa: PLR0911
         return cast(
             "T",
             [
-                lazy_render(v, partial_data, portal, partial_except)
+                lazy_render(v, partial_data, portal, partial_except, except_once_props)
                 for v in cast("Iterable[Any]", value)
-                if should_render(v, partial_data, partial_except)
+                if should_render(v, partial_data, partial_except, except_once_props)
             ],
         )
 
@@ -1121,20 +1149,20 @@ def lazy_render(  # noqa: PLR0911
         return cast(
             "T",
             tuple(
-                lazy_render(v, partial_data, portal, partial_except)
+                lazy_render(v, partial_data, portal, partial_except, except_once_props)
                 for v in cast("Iterable[Any]", value)
-                if should_render(v, partial_data, partial_except)
+                if should_render(v, partial_data, partial_except, except_once_props)
             ),
         )
 
     # Handle special prop types that need rendering
-    if is_lazy_prop(value) and should_render(value, partial_data, partial_except):
+    if is_lazy_prop(value) and should_render(value, partial_data, partial_except, except_once_props):
         return cast("T", value.render(portal))
 
-    if is_once_prop(value) and should_render(value, partial_data, partial_except):
+    if is_once_prop(value) and should_render(value, partial_data, partial_except, except_once_props):
         return cast("T", value.render(portal))
 
-    if is_optional_prop(value) and should_render(value, partial_data, partial_except):
+    if is_optional_prop(value) and should_render(value, partial_data, partial_except, except_once_props):
         return cast("T", value.render(portal))
 
     if is_always_prop(value):
@@ -1147,6 +1175,7 @@ def get_shared_props(
     request: "ASGIConnection[Any, Any, Any, Any]",
     partial_data: "set[str] | None" = None,
     partial_except: "set[str] | None" = None,
+    except_once_props: "set[str] | None" = None,
 ) -> "dict[str, Any]":
     """Return shared session props for a request.
 
@@ -1156,6 +1185,7 @@ def get_shared_props(
         request: The ASGI connection.
         partial_data: Optional set of keys to include (X-Inertia-Partial-Data).
         partial_except: Optional set of keys to exclude (X-Inertia-Partial-Except, v2).
+        except_once_props: Optional cached once-prop keys sent by the client.
 
     Returns:
         The shared props. Includes a special ``_once_props`` key (list of prop keys
@@ -1176,11 +1206,13 @@ def get_shared_props(
         inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
 
         for key, value in shared_props.items():
-            if not should_render(value, partial_data, partial_except, key=key):
-                continue
             # Track once props for protocol metadata
-            if is_once_prop(value) or (is_deferred_prop(value) and value.is_once):
+            if (is_once_prop(value) or (is_deferred_prop(value) and value.is_once)) and _should_track_once_prop(
+                key, partial_data, partial_except
+            ):
                 once_props_keys.append(key)
+            if not should_render(value, partial_data, partial_except, except_once_props, key=key):
+                continue
             # Render all special prop types
             if is_special_prop(value):
                 props[key] = value.render(inertia_plugin.portal)

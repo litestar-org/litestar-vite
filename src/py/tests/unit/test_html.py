@@ -8,6 +8,7 @@ from litestar_vite.html_transform import (
     inject_json_script,
     inject_page_script,
     inject_vite_dev_scripts,
+    replace_element_outer_html,
     set_data_attribute,
 )
 
@@ -377,6 +378,30 @@ def test_inject_page_script_custom_id() -> None:
     result = inject_page_script(html, json_data, script_id="custom_page")
 
     assert '<script type="application/json" id="custom_page" data-page="app">' in result
+
+
+def test_inject_page_script_custom_app_id() -> None:
+    """Test page script uses the configured app element ID."""
+    html = "<html><head></head><body></body></html>"
+    json_data = '{"data":"test"}'
+    result = inject_page_script(html, json_data, app_id="root")
+
+    assert '<script type="application/json" id="app_page" data-page="root">' in result
+
+
+def test_replace_element_outer_html_id_selector() -> None:
+    """Test outer HTML replacement for an ID selector."""
+    html = '<html><body><div id="app"></div></body></html>'
+    result = replace_element_outer_html(html, "#app", '<main id="app">SSR</main>')
+
+    assert result == '<html><body><main id="app">SSR</main></body></html>'
+
+
+def test_replace_element_outer_html_unsupported_selector() -> None:
+    """Test outer HTML replacement returns original HTML for unsupported selectors."""
+    html = '<html><body><div id="app"></div></body></html>'
+
+    assert replace_element_outer_html(html, "div", "<main>SSR</main>") == html
 
 
 def test_inject_page_script_large_payload() -> None:

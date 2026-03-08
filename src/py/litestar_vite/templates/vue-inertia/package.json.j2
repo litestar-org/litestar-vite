@@ -5,9 +5,9 @@
   "scripts": {
     "dev": "vite",
 {% if enable_ssr %}
-    "build": "vite build{% if use_typescript %} && vue-tsc -b --noEmit{% endif %} && vite build --ssr {{ resource_dir }}/ssr.ts",
+    "build": "vue-tsc -b && vite build && vite build --ssr {{ resource_dir }}/ssr.ts",
 {% else %}
-    "build": "vite build{% if use_typescript %} && vue-tsc -b --noEmit{% endif %}",
+    "build": "vue-tsc -b && vite build",
 {% endif %}
     "preview": "vite preview",
 {% if enable_ssr %}
@@ -20,31 +20,32 @@
     "generate-types": "openapi-ts"{% endif %}
   },
   "dependencies": {
-{%- for dep in dependencies %}
-    "{{ dep }}": "latest"{% if not loop.last or generate_zod or generate_client or enable_ssr %},{% endif %}
-{%- endfor %}
+    "@inertiajs/vue3": "2.3.17",
+    "vue": "3.5.29"{% if generate_zod or generate_client or enable_ssr %},{% endif %}
 {%- if generate_client %}
-    "axios": "^1.13.2"{% if generate_zod or enable_ssr %},{% endif %}
+    "axios": "1.13.6"{% if generate_zod or enable_ssr %},{% endif %}
 {%- endif %}
 {%- if generate_zod %}
-    "zod": "^4.1.13"{% if enable_ssr %},{% endif %}
+    "zod": "4.3.6"{% if enable_ssr %},{% endif %}
 {%- endif %}
 {%- if enable_ssr %}
-    "@vue/server-renderer": "latest"
+    "@vue/server-renderer": "3.5.29"
 {%- endif %}
   },
   "devDependencies": {
-{%- for dep in dev_dependencies %}
-    "{{ dep }}": "latest",
-{%- endfor %}
+    "@types/node": "25.3.5",
+    "@vitejs/plugin-vue": "6.0.4",
+    "@vue/tsconfig": "0.9.0",
+    "typescript": "5.9.3",
+    "vue-tsc": "3.2.5",
 {%- if use_tailwind %}
-    "@tailwindcss/vite": "^4.1.17",
-    "tailwindcss": "^4.1.17",
+    "@tailwindcss/vite": "4.2.1",
+    "tailwindcss": "4.2.1",
 {%- endif %}
 {%- if generate_client %}
-    "@hey-api/openapi-ts": "^0.88.0",
+    "@hey-api/openapi-ts": "0.94.0",
 {%- endif %}
-    "litestar-vite-plugin": "latest",
-    "vite": "^7.2.6"
+    "litestar-vite-plugin": "0.18.4",
+    "vite": "7.3.1"
   }
 }

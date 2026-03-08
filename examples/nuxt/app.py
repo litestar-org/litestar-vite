@@ -109,7 +109,7 @@ vite = VitePlugin(
         mode="ssr",  # SSR mode: proxy in dev, Node serves HTML in prod
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here),
-        types=TypeGenConfig(output=Path("generated"), generate_zod=True),
+        types=TypeGenConfig(output=Path("app/generated"), generate_zod=True),
         # Fixed port for E2E tests - can be removed for local dev or customized for production
         runtime=RuntimeConfig(port=5041),
     )

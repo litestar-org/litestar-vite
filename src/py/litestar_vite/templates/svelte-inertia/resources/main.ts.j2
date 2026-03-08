@@ -1,11 +1,15 @@
 import { createInertiaApp } from "@inertiajs/svelte";
 import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
+import { mount } from "svelte";
 import "./app.css";
 
 createInertiaApp({
   resolve: (name) =>
     resolvePageComponent(`./pages/${name}.svelte`, import.meta.glob("./pages/**/*.svelte")),
-  setup({ el, App }) {
-    new App({ target: el });
+  setup({ el, App, props }) {
+    mount(App, {
+      target: el,
+      props,
+    });
   },
 });

@@ -4,22 +4,24 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
+    "build": "astro check && astro build",
+    "check": "astro check",
+    "typecheck": "astro check",
     "preview": "astro preview",
     "serve": "astro preview",
     "watch": "npm run serve",
     "generate-types": "openapi-ts --config openapi-ts.config.ts"
   },
   "dependencies": {
-    "astro": "^5.16.3",
-    "zod": "^4.1.13"
+    "astro": "5.18.0",
+    "zod": "4.3.6"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "^0.88.0",
-    "@tailwindcss/vite": "^4.1.17",
+    "@hey-api/openapi-ts": "0.94.0",
+    "@tailwindcss/vite": "4.2.1",
     "litestar-vite-plugin": "file:../..",
-    "tailwindcss": "^4.1.17",
-    "typescript": "^5.9.3",
-    "vite": "^7.2.6"
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3",
+    "vite": "7.3.1"
   }
 }

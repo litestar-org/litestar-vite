@@ -6,23 +6,29 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve --proxy-config proxy.conf.json",
-    "build": "ng build",
-    "serve": "npx serve dist/{{ project_name }}/browser",
-    "watch": "npm run serve",
-    "update": "npm update"
+    "build": "ng build"{% if generate_client %},
+    "generate-types": "openapi-ts"{% endif %}
   },
   "dependencies": {
-{%- for dep in dependencies %}
-    "{{ dep }}": "latest"{% if not loop.last %},{% endif %}
-{%- endfor %}
+    "@angular/animations": "21.2.1",
+    "@angular/common": "21.2.1",
+    "@angular/compiler": "21.2.1",
+    "@angular/core": "21.2.1",
+    "@angular/forms": "21.2.1",
+    "@angular/platform-browser": "21.2.1",
+    "@angular/platform-browser-dynamic": "21.2.1",
+    "@angular/router": "21.2.1",
+    "rxjs": "7.8.2"
   },
   "devDependencies": {
-{%- for dep in dev_dependencies %}
-    "{{ dep }}": "latest",
-{%- endfor %}
-{%- if generate_client %}
-    "@hey-api/openapi-ts": "^0.88.0",
-{%- endif %}
-    "@types/jasmine": "latest"
+    "@angular/build": "21.2.1",
+    "@angular/cli": "21.2.1",
+    "@angular/compiler-cli": "21.2.1",
+{% if generate_client %}    "@hey-api/openapi-ts": "0.94.0",
+{% endif %}    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "25.3.5",
+    "postcss": "8.5.8",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3"
   }
 }

@@ -958,7 +958,7 @@ function formatMissingConfigWarning(): string {
     `${y("│")}    ${d("  types: false,")}                                             ${y("│")}`,
     `${y("│")}    ${d("})")}                                                          ${y("│")}`,
     `${y("│")}                                                                 ${y("│")}`,
-    `${y("│")}  Docs: ${c("https://docs.litestar.dev/vite/getting-started")}          ${y("│")}`,
+    `${y("│")}  Docs: ${c("https://litestar-org.github.io/litestar-vite/latest/usage/vite/")} ${y("│")}`,
     `${y("│")}                                                                 ${y("│")}`,
     y("╰─────────────────────────────────────────────────────────────────╯"),
     "",
@@ -1235,7 +1235,7 @@ function validateAgainstPythonDefaults(resolved: ResolvedPluginConfig, pythonDef
       colors.yellow("[litestar-vite] Configuration mismatch detected:\n") +
         warnings.map((w) => `  ${colors.dim("•")} ${w}`).join("\n") +
         `\n\n${colors.dim("Precedence: vite.config.ts > .litestar.json > defaults")}\n` +
-        colors.dim("See: https://docs.litestar.dev/vite/config-precedence\n"),
+        colors.dim("See: https://litestar-org.github.io/litestar-vite/latest/usage/vite/\n"),
     )
   }
 }
@@ -1416,7 +1416,7 @@ function isIpv6(address: AddressInfo): boolean {
 /**
  * Add the Inertia helpers to the list of SSR dependencies that aren't externalized.
  *
- * @see https://vitejs.dev/guide/ssr.html#ssr-externals
+ * @see https://vite.dev/guide/ssr.html#ssr-externals
  */
 function noExternalInertiaHelpers(config: UserConfig): true | Array<string | RegExp> {
   /* eslint-disable-next-line @typescript-eslint/ban-ts-comment */

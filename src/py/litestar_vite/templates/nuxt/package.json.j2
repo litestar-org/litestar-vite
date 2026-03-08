@@ -1,0 +1,30 @@
+{
+  "name": "{{ project_name }}",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "serve": "node .output/server/index.mjs",
+    "watch": "npm run serve",
+    "postinstall": "nuxt prepare",
+    "typecheck": "vue-tsc -b --noEmit",
+    "update": "npm update"{% if generate_client %},
+    "generate-types": "openapi-ts --config openapi-ts.config.ts"{% endif %}
+  },
+  "dependencies": {
+    "nuxt": "4.3.1",
+    "vue": "3.5.29"{% if generate_zod %},
+    "zod": "4.3.6"{% endif %}
+  },
+  "devDependencies": {
+{% if generate_client %}    "@hey-api/openapi-ts": "0.94.0",
+{% endif %}{% if use_tailwind %}    "@tailwindcss/vite": "4.2.1",
+{% endif %}    "litestar-vite-plugin": "{{ package_version('litestar-vite-plugin') }}",
+{% if use_tailwind %}    "tailwindcss": "4.2.1",
+{% endif %}    "typescript": "5.9.3",
+    "vite": "7.3.1",
+    "vue-tsc": "3.2.5"
+  }
+}

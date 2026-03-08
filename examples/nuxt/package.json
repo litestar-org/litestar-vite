@@ -3,25 +3,27 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "nuxi dev",
-    "build": "nuxi build",
-    "preview": "nuxi preview",
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
     "serve": "node .output/server/index.mjs",
     "watch": "npm run serve",
+    "postinstall": "nuxt prepare",
+    "typecheck": "vue-tsc -b --noEmit",
     "generate-types": "openapi-ts --config openapi-ts.config.ts"
   },
   "dependencies": {
-    "nuxt": "latest",
-    "vue": "latest",
-    "zod": "^4.0.0"
+    "nuxt": "4.3.1",
+    "vue": "3.5.29",
+    "zod": "4.3.6"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "^0.88.0",
-    "@tailwindcss/vite": "^4.0.0",
+    "@hey-api/openapi-ts": "0.94.0",
+    "@tailwindcss/vite": "4.2.1",
     "litestar-vite-plugin": "file:../..",
-    "tailwindcss": "^4.0.0",
-    "typescript": "latest",
-    "vite": "^7.0.0",
-    "vue-tsc": "latest"
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3",
+    "vite": "7.3.1",
+    "vue-tsc": "3.2.5"
   }
 }

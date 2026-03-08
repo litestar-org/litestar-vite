@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@config "../tailwind.config.js";
 
 :root {
   font-family: "Inter", "SF Pro Text", system-ui, -apple-system, sans-serif;

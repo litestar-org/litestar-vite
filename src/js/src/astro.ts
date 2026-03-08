@@ -1,5 +1,5 @@
 /**
- * Astro integration for Litestar-Vite.
+ * Astro 5 integration for Litestar-Vite.
  *
  * This integration enables seamless development with Astro as the frontend framework
  * and Litestar as the API backend. It provides:
@@ -16,7 +16,7 @@
  * export default defineConfig({
  *   integrations: [
  *     litestar({
- *       apiProxy: 'http://localhost:8000',
+ *       apiProxy: 'http://127.0.0.1:8000',
  *       types: true,
  *     }),
  *   ],
@@ -196,7 +196,7 @@ export interface LitestarAstroConfig {
   /**
    * URL of the Litestar API backend for proxying requests during development.
    *
-   * @example 'http://localhost:8000'
+   * @example 'http://127.0.0.1:8000'
    * @default 'http://localhost:8000'
    */
   apiProxy?: string
@@ -417,7 +417,7 @@ function createProxyPlugin(config: ResolvedLitestarAstroConfig): Plugin {
  * export default defineConfig({
  *   integrations: [
  *     litestar({
- *       apiProxy: 'http://localhost:8000',
+ *       apiProxy: 'http://127.0.0.1:8000',
  *       apiPrefix: '/api',
  *       types: {
  *         enabled: true,
@@ -508,7 +508,9 @@ export default function litestarAstro(userConfig: LitestarAstroConfig = {}): Ast
 
         updateConfig(configUpdate)
 
-        logger.info(`Litestar integration configured - proxying ${config.apiPrefix}/* to ${config.apiProxy}`)
+        if (config.verbose) {
+          logger.info(`Litestar integration configured - proxying ${config.apiPrefix}/* to ${config.apiProxy}`)
+        }
       },
 
       "astro:server:setup": ({ server, logger }) => {
@@ -542,8 +544,10 @@ export default function litestarAstro(userConfig: LitestarAstroConfig = {}): Ast
       },
 
       "astro:build:start": ({ logger }) => {
-        logger.info("Building with Litestar integration")
-        logger.info(`  Make sure your Litestar backend is accessible at: ${config.apiProxy}`)
+        if (config.verbose) {
+          logger.info("Building with Litestar integration")
+          logger.info(`  Make sure your Litestar backend is accessible at: ${config.apiProxy}`)
+        }
       },
     },
   }

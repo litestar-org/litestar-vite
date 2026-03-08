@@ -1,7 +1,7 @@
 /**
- * Nuxt module for Litestar-Vite.
+ * Nuxt 4 module for Litestar-Vite.
  *
- * This module provides seamless integration between Nuxt 3+ and Litestar backend.
+ * This module provides seamless integration between Nuxt 4 and a Litestar backend.
  * It enables:
  * - API proxy configuration for dev server
  * - Type generation integration (shares @hey-api/openapi-ts output)
@@ -13,7 +13,7 @@
  * export default defineNuxtConfig({
  *   modules: ['litestar-vite-plugin/nuxt'],
  *   litestar: {
- *     apiProxy: 'http://localhost:8000',
+ *     apiProxy: 'http://127.0.0.1:8000',
  *     apiPrefix: '/api',
  *     types: true,
  *   },
@@ -136,7 +136,7 @@ export interface LitestarNuxtConfig {
   /**
    * URL of the Litestar API backend for proxying requests during development.
    *
-   * @example 'http://localhost:8000'
+   * @example 'http://127.0.0.1:8000'
    * @default 'http://localhost:8000'
    */
   apiProxy?: string
@@ -393,21 +393,23 @@ function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
       // Note: Hotfile is written by Nuxt's 'listen' hook in litestarNuxtModule,
       // which fires when Nitro's main HTTP server starts (not Vite's internal HMR server).
       // This Vite hook only handles the integration status banner.
-      server.httpServer?.once("listening", () => {
-        setTimeout(() => {
-          console.log("")
-          console.log(`  ${colors.cyan("[litestar-nuxt]")} ${colors.green("Integration active")}`)
-          console.log(`  ${colors.dim("├─")} API Proxy: ${colors.yellow(config.apiProxy)}`)
-          console.log(`  ${colors.dim("├─")} API Prefix: ${colors.yellow(config.apiPrefix)}`)
-          console.log(`  ${colors.dim("├─")} HMR Port: ${colors.yellow(hmrPort)}`)
-          if (config.types !== false && config.types.enabled) {
-            console.log(`  ${colors.dim("└─")} Types Output: ${colors.yellow(config.types.output)}`)
-          } else {
-            console.log(`  ${colors.dim("└─")} Types: ${colors.dim("disabled")}`)
-          }
-          console.log("")
-        }, 100)
-      })
+      if (config.verbose) {
+        server.httpServer?.once("listening", () => {
+          setTimeout(() => {
+            console.log("")
+            console.log(`  ${colors.cyan("[litestar-nuxt]")} ${colors.green("Integration active")}`)
+            console.log(`  ${colors.dim("├─")} API Proxy: ${colors.yellow(config.apiProxy)}`)
+            console.log(`  ${colors.dim("├─")} API Prefix: ${colors.yellow(config.apiPrefix)}`)
+            console.log(`  ${colors.dim("├─")} HMR Port: ${colors.yellow(hmrPort)}`)
+            if (config.types !== false && config.types.enabled) {
+              console.log(`  ${colors.dim("└─")} Types Output: ${colors.yellow(config.types.output)}`)
+            } else {
+              console.log(`  ${colors.dim("└─")} Types: ${colors.dim("disabled")}`)
+            }
+            console.log("")
+          }, 100)
+        })
+      }
     },
   }
 }
@@ -447,7 +449,7 @@ function _litestarPlugins(userConfig: LitestarNuxtConfig = {}): Plugin[] {
  * export default defineNuxtConfig({
  *   modules: ['litestar-vite-plugin/nuxt'],
  *   litestar: {
- *     apiProxy: 'http://localhost:8000',
+ *     apiProxy: 'http://127.0.0.1:8000',
  *     apiPrefix: '/api',
  *     types: {
  *       enabled: true,
@@ -459,7 +461,7 @@ function _litestarPlugins(userConfig: LitestarNuxtConfig = {}): Plugin[] {
  *
  * @example Using generated types in a composable
  * ```typescript
- * // composables/useApi.ts
+ * // app/composables/useApi.ts
  * import type { User } from '~/generated/api/types.gen';
  * import { route } from '~/generated/routes';
  *
@@ -549,7 +551,7 @@ function litestarNuxtModule(userOptions: LitestarNuxtConfig, nuxt: NuxtContext):
   // Write hotfile for Litestar proxy to discover Nuxt server URL
   // Use the port from NUXT_PORT env (set by Python) since that's what Nuxt will use
   if (config.hotFile && config.devPort) {
-    const rawHost = process.env.NUXT_HOST || process.env.HOST || "localhost"
+    const rawHost = process.env.NUXT_HOST || process.env.HOST || "127.0.0.1"
     const host = normalizeHost(rawHost)
     const url = `http://${host}:${config.devPort}`
     fs.mkdirSync(path.dirname(config.hotFile), { recursive: true })
@@ -565,8 +567,9 @@ function litestarNuxtModule(userOptions: LitestarNuxtConfig, nuxt: NuxtContext):
     nuxt.hook("listen", (_server: unknown, listener: unknown) => {
       const info = listener as ListenInfo
       if (info && typeof info.port === "number") {
-        const host = normalizeHost(info.host || "localhost")
+        const host = normalizeHost(info.host || "127.0.0.1")
         const url = `http://${host}:${info.port}`
+        fs.mkdirSync(path.dirname(config.hotFile as string), { recursive: true })
         fs.writeFileSync(config.hotFile as string, url)
         if (config.verbose) {
           console.log(colors.cyan("[litestar-nuxt]"), colors.dim(`Hotfile updated via listen hook: ${url}`))
@@ -575,7 +578,9 @@ function litestarNuxtModule(userOptions: LitestarNuxtConfig, nuxt: NuxtContext):
     })
   }
 
-  console.log(colors.cyan("[litestar-nuxt]"), "Module initialized")
+  if (config.verbose) {
+    console.log(colors.cyan("[litestar-nuxt]"), "Module initialized")
+  }
 }
 
 // Add metadata to the function
@@ -583,7 +588,7 @@ litestarNuxtModule.meta = {
   name: "litestar-vite",
   configKey: "litestar",
   compatibility: {
-    nuxt: ">=3.0.0",
+    nuxt: ">=4.0.0",
   },
 }
 

@@ -11,6 +11,19 @@ At a Glance
 - Generated artifacts live under ``src/generated`` by default.
 - ``.litestar.json`` is refreshed during generation so the Vite plugin stays in sync.
 
+.. grid:: 1
+   :gutter: 2
+
+   .. grid-item-card:: :octicon:`package` Type generation
+      :class-card: demo-frame
+
+      .. image:: /_static/demos/type-generation.gif
+         :alt: Type generation demo
+         :align: center
+         :width: 100%
+
+      Export OpenAPI, routes, and Inertia page-prop metadata into frontend-friendly TypeScript artifacts.
+
 Overview
 --------
 
@@ -369,13 +382,13 @@ When using Inertia.js, enable page props generation:
 This generates ``inertia-pages.json`` which the Vite plugin uses to create
 ``page-props.ts`` with typed props for each page component.
 
-See :doc:`/inertia/type-generation` for Inertia-specific details.
+See :doc:`/frameworks/inertia/type-generation` for Inertia-specific details.
 
 See Also
 --------
 
 - :doc:`/usage/vite` - Vite integration overview
 - :doc:`/usage/modes` - Operation modes and aliases
-- :doc:`/inertia/type-generation` - Inertia-specific type generation
+- :doc:`/frameworks/inertia/type-generation` - Inertia-specific type generation
 - `hey-api Documentation <https://heyapi.dev/>`_
 - `Example: react <https://github.com/litestar-org/litestar-vite/tree/main/examples/react>`_

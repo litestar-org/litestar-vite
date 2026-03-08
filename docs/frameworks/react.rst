@@ -20,7 +20,7 @@ Quick Start
 
     litestar assets init --template react
 
-This creates a React 18+ project with TypeScript support.
+This creates a React project with TypeScript support.
 
 Project Structure
 -----------------
@@ -138,6 +138,6 @@ for more details.
 See Also
 --------
 
-- :doc:`inertia` - React with Inertia.js for server-side routing
+- :doc:`inertia/index` - React with Inertia.js for server-side routing
 - :doc:`/usage/types` - TypeScript type generation
 - `Example: react <https://github.com/litestar-org/litestar-vite/tree/main/examples/react>`_

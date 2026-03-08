@@ -13,7 +13,7 @@ dist/
 *.tsbuildinfo
 
 # Generated types
-resources/generated/
+app/generated/
 
 # IDE
 .idea/

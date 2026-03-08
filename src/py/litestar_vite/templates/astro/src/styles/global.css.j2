@@ -1,1 +1,20 @@
-/* Global styles are included in Layout.astro */
+{% if use_tailwind %}
+@import "tailwindcss";
+{% endif %}
+
+:root {
+  font-family: "Inter", "SF Pro Text", system-ui, -apple-system, sans-serif;
+  color: #202235;
+  background-color: #f8fafc;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+}

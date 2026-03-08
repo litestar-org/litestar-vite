@@ -2,7 +2,7 @@
 Svelte
 ======
 
-Svelte 5 integration with Litestar Vite for lightweight, reactive applications.
+Svelte integration with Litestar Vite for lightweight, reactive applications.
 
 At a Glance
 -----------
@@ -19,7 +19,7 @@ Quick Start
 
     litestar assets init --template svelte
 
-This creates a Svelte 5 project with TypeScript support.
+This creates a Svelte project with TypeScript support.
 
 Project Structure
 -----------------
@@ -134,6 +134,6 @@ for more details.
 See Also
 --------
 
-- :doc:`inertia` - Svelte with Inertia.js for server-side routing
+- :doc:`inertia/index` - Svelte with Inertia.js for server-side routing
 - :doc:`/usage/types` - TypeScript type generation
 - `Example: svelte <https://github.com/litestar-org/litestar-vite/tree/main/examples/svelte>`_

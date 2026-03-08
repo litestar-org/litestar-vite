@@ -1,7 +1,7 @@
 <script lang="ts">
   import { inertia } from "@inertiajs/svelte";
 
-  export let message: string | undefined = undefined;
+  let { message }: { message?: string } = $props();
 </script>
 
 <svelte:head>
@@ -10,7 +10,7 @@
 
 <main class="app">
   <h1>{{ project_name }}</h1>
-  <p>Svelte + Inertia.js + Litestar</p>
+  <p>Svelte 5 + Inertia.js + Litestar</p>
   {#if message}
     <p class="message">{message}</p>
   {/if}

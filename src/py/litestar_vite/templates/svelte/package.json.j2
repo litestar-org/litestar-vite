@@ -1,0 +1,36 @@
+{
+  "name": "{{ project_name }}",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build{% if use_typescript %} && tsc -b --noEmit{% endif %}",
+    "preview": "vite preview",
+    "serve": "vite preview",
+    "watch": "npm run serve",
+    "update": "npm update"{% if enable_types %},
+    "generate-types": "openapi-ts --config openapi-ts.config.ts"{% endif %}
+  },
+  "dependencies": {
+    "svelte": "5.53.7"{% if generate_client %},
+    "axios": "1.13.6"{% endif %}{% if generate_zod %},
+    "zod": "4.3.6"{% endif %}
+  },
+  "devDependencies": {
+{%- if enable_types %}
+    "@hey-api/openapi-ts": "0.94.0",
+{%- endif %}
+    "@sveltejs/vite-plugin-svelte": "6.2.4",
+{%- if use_tailwind %}
+    "@tailwindcss/vite": "4.2.1",
+{%- endif %}
+    "litestar-vite-plugin": "{{ package_version('litestar-vite-plugin') }}",
+    "svelte-check": "4.4.4",
+{%- if use_tailwind %}
+    "tailwindcss": "4.2.1",
+{%- endif %}
+    "tslib": "2.8.1",
+    "typescript": "5.9.3",
+    "vite": "7.3.1"
+  }
+}

@@ -2,7 +2,7 @@
 Vue
 ===
 
-Vue 3 integration with Litestar Vite using the Composition API and Single File Components.
+Vue integration with Litestar Vite using the Composition API and Single File Components.
 
 At a Glance
 -----------
@@ -19,7 +19,7 @@ Quick Start
 
     litestar assets init --template vue
 
-This creates a Vue 3 project with TypeScript support.
+This creates a Vue project with TypeScript support.
 
 Project Structure
 -----------------
@@ -139,6 +139,6 @@ for more details.
 See Also
 --------
 
-- :doc:`inertia` - Vue with Inertia.js for server-side routing
+- :doc:`inertia/index` - Vue with Inertia.js for server-side routing
 - :doc:`/usage/types` - TypeScript type generation
 - `Example: vue <https://github.com/litestar-org/litestar-vite/tree/main/examples/vue>`_

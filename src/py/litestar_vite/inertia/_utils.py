@@ -24,6 +24,7 @@ class InertiaHeaders(str, Enum):
     PARTIAL_DATA = "X-Inertia-Partial-Data"
     PARTIAL_COMPONENT = "X-Inertia-Partial-Component"
     PARTIAL_EXCEPT = "X-Inertia-Partial-Except"
+    EXCEPT_ONCE_PROPS = "X-Inertia-Except-Once-Props"
 
     RESET = "X-Inertia-Reset"
     ERROR_BAG = "X-Inertia-Error-Bag"
