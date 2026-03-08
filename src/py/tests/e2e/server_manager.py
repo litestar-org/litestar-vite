@@ -286,6 +286,11 @@ class ExampleServer:
         # Start Litestar backend on a free port
         # The plugin auto-starts Vite dev server via start_dev_server=True
         self.litestar_port = find_free_port()
+
+        # SvelteKit proxies /api/* to LITESTAR_API; tell its dev server where Litestar is
+        if self.example_name == "sveltekit":
+            env["LITESTAR_API"] = f"http://127.0.0.1:{self.litestar_port}"
+
         litestar_proc, litestar_capture = self._spawn_with_capture(
             self._litestar_run_command(self.litestar_port), env=env, patterns=[LITESTAR_PORT_PATTERN]
         )

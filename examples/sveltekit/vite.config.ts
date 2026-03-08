@@ -13,9 +13,5 @@ const litestarPlugins = litestarSvelteKit({
 }) as PluginOption[]
 
 export default defineConfig({
-  plugins: [
-    tailwindcss(),
-    ...litestarPlugins,
-    sveltekit(),
-  ],
+  plugins: [tailwindcss(), ...litestarPlugins, sveltekit()],
 })

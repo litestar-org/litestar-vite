@@ -1,5 +1,5 @@
-import { error } from "@sveltejs/kit"
 import { route } from "$lib/generated/routes"
+import { error } from "@sveltejs/kit"
 
 import type { PageLoad } from "./$types"
 
@@ -29,10 +29,7 @@ export const load = (async ({ fetch }) => {
     throw error(booksResponse.status, "Failed to load library books")
   }
 
-  const [summary, books] = await Promise.all([
-    summaryResponse.json() as Promise<Summary>,
-    booksResponse.json() as Promise<Book[]>,
-  ])
+  const [summary, books] = await Promise.all([summaryResponse.json() as Promise<Summary>, booksResponse.json() as Promise<Book[]>])
 
   return {
     books,

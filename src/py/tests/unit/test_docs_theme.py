@@ -23,9 +23,9 @@ def test_docs_theme_conf_uses_shibuya_foundation() -> None:
 
     html_theme_options = cast(dict[str, object], conf["html_theme_options"])
     assert html_theme_options["accent_color"] == "amber"
-    assert html_theme_options["light_logo"] == "_static/logo-light.svg"
-    assert html_theme_options["dark_logo"] == "_static/logo-dark.svg"
-    assert html_theme_options["logo_target"] == "/litestar-vite/latest/"
+    assert html_theme_options["light_logo"] == "_static/header-star-light.svg"
+    assert html_theme_options["dark_logo"] == "_static/header-star-dark.svg"
+    assert html_theme_options["logo_target"] == "/"
 
 
 def test_docs_theme_foundation_files_exist() -> None:
