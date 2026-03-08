@@ -31,9 +31,6 @@
   --lv-border: rgba(32, 34, 53, 0.1);
   --lv-link: var(--lv-navy);
   --lv-link-hover: var(--lv-gold-deep);
-  --lv-hero-glow:
-    radial-gradient(circle at top, rgba(95, 182, 255, 0.18), transparent 45%),
-    radial-gradient(circle at 20% 20%, rgba(237, 182, 65, 0.16), transparent 32%);
 
   --sl-color-primary: var(--lv-navy);
   --sl-color-accent: var(--lv-gold);
@@ -43,25 +40,23 @@ html.dark,
 html[data-theme="dark"] {
   --lv-text: #f2f4f8;
   --lv-text-muted: #c7d0df;
-  --lv-surface: #232738;
-  --lv-surface-muted: #1b1f2d;
+  --lv-surface: #2a2d40;
+  --lv-surface-muted: #202235;
   --lv-border: rgba(199, 208, 223, 0.14);
   --lv-link: #edf2ff;
   --lv-link-hover: var(--lv-gold-soft);
   --lv-shadow-soft: 0 24px 72px rgba(0, 0, 0, 0.35);
   --lv-shadow-gold: 0 10px 30px rgba(237, 182, 65, 0.18);
-  --sy-c-background: var(--lv-navy);
-  --sy-c-background-weak: #181c28;
+  --sy-c-background: #202235;
+  --sy-c-background-dropback: rgba(32, 34, 53, 0.8);
+  --sy-c-background-weak: #2a2d40;
   --sy-c-background-hover: rgba(255, 255, 255, 0.06);
   --sy-c-surface: var(--lv-surface);
   --sy-c-border: var(--lv-border);
   --sy-c-text: var(--lv-text);
-  --sy-c-foot-background: #151824;
+  --sy-c-foot-background: #202235;
   --sy-c-foot-text: #c7d0df;
   --sy-c-foot-divider: rgba(199, 208, 223, 0.12);
-  --lv-hero-glow:
-    radial-gradient(circle at top, rgba(95, 182, 255, 0.22), transparent 45%),
-    radial-gradient(circle at 20% 20%, rgba(237, 182, 65, 0.18), transparent 32%);
 }
 
 html[data-accent-color="amber"] {
@@ -78,18 +73,14 @@ html.dark[data-accent-color="amber"] {
 
 body {
   color: var(--lv-text);
-  background:
-    var(--lv-hero-glow),
-    linear-gradient(180deg, var(--lv-surface-muted) 0%, var(--lv-surface) 18%, var(--lv-surface) 100%);
+  background: var(--lv-surface-muted);
   font-size: 1rem;
   line-height: 1.7;
 }
 
 html.dark body,
 html[data-theme="dark"] body {
-  background:
-    var(--lv-hero-glow),
-    linear-gradient(180deg, #171b28 0%, #10131d 100%);
+  background: #202235;
 }
 
 body[data-docs-theme="litestar-vite"] {

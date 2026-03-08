@@ -325,12 +325,7 @@ def replace_element_outer_html(html: str, selector: str, content: str) -> str:
 
 
 def inject_page_script(
-    html: str,
-    json_data: str,
-    *,
-    app_id: str = "app",
-    nonce: str | None = None,
-    script_id: str = "app_page",
+    html: str, json_data: str, *, app_id: str = "app", nonce: str | None = None, script_id: str = "app_page"
 ) -> str:
     r"""Inject page data as a JSON script element before ``</body>``.
 

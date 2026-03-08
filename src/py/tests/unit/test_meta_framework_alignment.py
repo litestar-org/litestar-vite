@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[4]
 EXAMPLES_ROOT = ROOT / "examples"
 TEMPLATE_ROOT = ROOT / "src" / "py" / "litestar_vite" / "templates"

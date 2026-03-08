@@ -4,11 +4,22 @@ Litestar Vite
 
 .. container:: hero-surface
 
-   .. image:: https://raw.githubusercontent.com/litestar-org/branding/main/assets/Branding%20-%20SVG%20-%20Transparent/Vite%20-%20Banner%20-%20Inline%20-%20Light.svg
-      :alt: Litestar Vite
-      :class: landing-logo
-      :width: 440px
-      :align: center
+   .. raw:: html
+
+      <div class="landing-logo-stack">
+        <img
+          src="https://raw.githubusercontent.com/litestar-org/branding/main/assets/Branding%20-%20SVG%20-%20Transparent/Vite%20-%20Banner%20-%20Inline%20-%20Light.svg"
+          alt="Litestar Vite"
+          class="landing-logo landing-logo--light"
+          width="440"
+        />
+        <img
+          src="https://raw.githubusercontent.com/litestar-org/branding/main/assets/Branding%20-%20SVG%20-%20Transparent/Vite%20-%20Banner%20-%20Inline%20-%20Dark.svg"
+          alt="Litestar Vite"
+          class="landing-logo landing-logo--dark"
+          width="440"
+        />
+      </div>
 
    .. raw:: html
 
@@ -19,7 +30,7 @@ Litestar Vite
          <img alt="Coverage" src="https://img.shields.io/codecov/c/github/litestar-org/litestar-vite?labelColor=202235&logo=codecov&logoColor=edb641">
       </div>
 
-   Build frontends without splitting your stack.
+   Keep Litestar in charge while Vite runs the frontend.
 
    Litestar Vite keeps `Vite <https://vite.dev/>`_, your Litestar backend, and your frontend framework on one operational path. Use it for SPAs, server-rendered templates, Inertia apps, or framework proxy mode without inventing a second deployment story.
 

@@ -13,6 +13,24 @@ html[data-theme="dark"] .sy-head {
   display: none;
 }
 
+.sy-head-brand {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  overflow: visible;
+}
+
+.sy-head-brand .light-logo,
+.sy-head-brand .dark-logo {
+  height: 42px !important;
+  max-height: none !important;
+  width: auto;
+  min-width: 42px;
+  object-fit: contain;
+  transform: scale(1.1);
+  transform-origin: left center;
+}
+
 .sy-head-links a:hover,
 .sy-sidebar a:hover,
 .globaltoc a:hover {
@@ -31,6 +49,17 @@ html[data-theme="dark"] .globaltoc a:hover {
 .sy-rside,
 .rside-overlay {
   display: none !important;
+}
+
+.sy-breadcrumbs,
+.breadcrumbs,
+nav[aria-label="Breadcrumb"],
+[aria-label="Breadcrumbs"] {
+  display: none !important;
+}
+
+.sy-main > .sy-breadcrumbs + .flex > .relative.min-w-0.max-w-6xl {
+  padding-top: 1rem !important;
 }
 
 .sy-main,
@@ -61,10 +90,35 @@ html[data-theme="dark"] .globaltoc a:hover {
   color: var(--lv-text-muted);
 }
 
+.landing-logo-stack {
+  display: flex;
+  justify-content: center;
+}
+
+article.yue > section#litestar-vite > h1 {
+  display: none;
+}
+
 .landing-logo {
   display: block;
   margin: 1.25rem auto 0.85rem;
+  width: min(440px, 100%);
+  height: auto;
   filter: drop-shadow(0 20px 40px rgba(32, 34, 53, 0.14));
+}
+
+.landing-logo--dark {
+  display: none;
+}
+
+html.dark .landing-logo--light,
+html[data-theme="dark"] .landing-logo--light {
+  display: none;
+}
+
+html.dark .landing-logo--dark,
+html[data-theme="dark"] .landing-logo--dark {
+  display: block;
 }
 
 .landing-hero {

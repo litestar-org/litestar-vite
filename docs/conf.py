@@ -200,20 +200,22 @@ html_context = {
 html_sidebars = {"**": []}
 
 html_theme_options: dict[str, Any] = {
-    "logo_target": "/litestar-vite/latest/",
-    "light_logo": "_static/logo-light.svg",
-    "dark_logo": "_static/logo-dark.svg",
+    "logo_target": "/",
+    "light_logo": "_static/header-star-light.svg",
+    "dark_logo": "_static/header-star-dark.svg",
     "accent_color": "amber",
     "page_layout": "default",
     "globaltoc_expand_depth": 0,
     "toctree_titles_only": True,
+    "twitter_creator": "litestarapi",
+    "twitter_site": "litestarapi",
+    "twitter_url": "https://twitter.com/litestarapi",
     "github_url": "https://github.com/litestar-org/litestar-vite",
-    "discussion_url": "https://github.com/litestar-org/litestar-vite/discussions",
-    "discord_url": "https://discord.gg/X3FJqy8d2j",
-    "show_ai_links": True,
-    "open_in_chatgpt": True,
-    "open_in_claude": True,
-    "open_in_perplexity": True,
+    "discord_url": "https://discord.gg/litestar",
+    "show_ai_links": False,
+    "open_in_chatgpt": False,
+    "open_in_claude": False,
+    "open_in_perplexity": False,
     "nav_links": [
         {
             "title": "Docs",
@@ -251,8 +253,8 @@ html_theme_options: dict[str, Any] = {
                 {"title": "Changelog", "url": "changelog", "summary": "Track notable changes and migration points."},
                 {
                     "title": "Contribution Guide",
-                    "url": "contribution-guide",
-                    "summary": "Run docs locally and contribute to the project safely.",
+                    "url": "https://github.com/litestar-org/litestar-vite/blob/main/CONTRIBUTING.rst",
+                    "summary": "How to contribute to litestar-vite.",
                 },
                 {
                     "title": "GitHub",

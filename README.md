@@ -43,11 +43,12 @@ litestar run --reload
 
 ## Documentation
 
-- Get started: <https://litestar-org.github.io/litestar-vite/latest/usage/index.html>
-- Framework guides: <https://litestar-org.github.io/litestar-vite/latest/frameworks/index.html>
-- Inertia: <https://litestar-org.github.io/litestar-vite/latest/inertia/index.html>
-- API reference: <https://litestar-org.github.io/litestar-vite/latest/reference/index.html>
-- Changelog: <https://litestar-org.github.io/litestar-vite/latest/changelog.html>
+- **[Usage Guide](https://litestar-org.github.io/litestar-vite/latest/usage/)**: Core concepts, configuration, and type generation.
+- **[Inertia](https://litestar-org.github.io/litestar-vite/latest/inertia/)**: Fullstack protocols and SSR.
+- **[Frameworks](https://litestar-org.github.io/litestar-vite/latest/frameworks/)**: Guides for React, Vue, Svelte, Angular, Astro, and Nuxt.
+- **[Reference](https://litestar-org.github.io/litestar-vite/latest/reference/)**: API and CLI documentation.
+
+For a full list of changes, see the [Changelog](https://litestar-org.github.io/litestar-vite/latest/changelog.html).
 
 ## Common Commands
 

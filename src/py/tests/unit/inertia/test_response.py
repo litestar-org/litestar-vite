@@ -932,7 +932,7 @@ async def test_hybrid_ssr_replaces_shell_root_and_injects_head(tmp_path: Path, m
     resource_dir = tmp_path / "resources"
     resource_dir.mkdir()
     (resource_dir / "index.html").write_text(
-        "<!DOCTYPE html><html><head><title>Shell</title></head><body><div id=\"app\"></div></body></html>"
+        '<!DOCTYPE html><html><head><title>Shell</title></head><body><div id="app"></div></body></html>'
     )
 
     monkeypatch.delenv("VITE_DEV_MODE", raising=False)
@@ -986,7 +986,7 @@ async def test_hybrid_ssr_script_element_replaces_shell_without_duplicates(
     resource_dir = tmp_path / "resources"
     resource_dir.mkdir()
     (resource_dir / "index.html").write_text(
-        "<!DOCTYPE html><html><head><title>Shell</title></head><body><div id=\"app\"></div></body></html>"
+        '<!DOCTYPE html><html><head><title>Shell</title></head><body><div id="app"></div></body></html>'
     )
 
     monkeypatch.delenv("VITE_DEV_MODE", raising=False)

@@ -949,9 +949,7 @@ def _should_track_once_prop(
 
 
 def extract_once_props(
-    props: "dict[str, Any]",
-    partial_data: "set[str] | None" = None,
-    partial_except: "set[str] | None" = None,
+    props: "dict[str, Any]", partial_data: "set[str] | None" = None, partial_except: "set[str] | None" = None
 ) -> "list[str]":
     """Extract once props for the Inertia v2.2.20+ protocol.
 

@@ -973,11 +973,7 @@ async def test_once_prop_respects_except_once_props_header(
         stores={"sessions": MemoryStore()},
     ) as client:
         response = client.get(
-            "/",
-            headers={
-                InertiaHeaders.ENABLED.value: "true",
-                InertiaHeaders.EXCEPT_ONCE_PROPS.value: "settings",
-            },
+            "/", headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.EXCEPT_ONCE_PROPS.value: "settings"}
         )
         data = response.json()
 

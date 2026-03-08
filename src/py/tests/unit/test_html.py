@@ -391,15 +391,15 @@ def test_inject_page_script_custom_app_id() -> None:
 
 def test_replace_element_outer_html_id_selector() -> None:
     """Test outer HTML replacement for an ID selector."""
-    html = "<html><body><div id=\"app\"></div></body></html>"
-    result = replace_element_outer_html(html, "#app", "<main id=\"app\">SSR</main>")
+    html = '<html><body><div id="app"></div></body></html>'
+    result = replace_element_outer_html(html, "#app", '<main id="app">SSR</main>')
 
-    assert result == "<html><body><main id=\"app\">SSR</main></body></html>"
+    assert result == '<html><body><main id="app">SSR</main></body></html>'
 
 
 def test_replace_element_outer_html_unsupported_selector() -> None:
     """Test outer HTML replacement returns original HTML for unsupported selectors."""
-    html = "<html><body><div id=\"app\"></div></body></html>"
+    html = '<html><body><div id="app"></div></body></html>'
 
     assert replace_element_outer_html(html, "div", "<main>SSR</main>") == html
 

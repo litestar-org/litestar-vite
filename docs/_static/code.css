@@ -1,11 +1,11 @@
 :root {
-  --lv-code-bg: #f8fafc;
-  --lv-code-border: rgba(32, 34, 53, 0.12);
+  --lv-code-bg: var(--lv-gray-50);
+  --lv-code-border: var(--lv-gray-200);
   --lv-code-text: var(--lv-navy);
   --lv-code-header-bg: rgba(32, 34, 53, 0.04);
   --lv-code-header-text: var(--lv-gray-500);
-  --lv-code-inline-bg: rgba(32, 34, 53, 0.05);
-  --lv-code-inline-border: rgba(32, 34, 53, 0.1);
+  --lv-code-inline-bg: var(--lv-gray-100);
+  --lv-code-inline-border: var(--lv-gray-200);
   --lv-code-selection: rgba(237, 182, 65, 0.18);
 
   /* SQLSpec WASM playground inspired syntax palette */
@@ -23,13 +23,13 @@
 
 html.dark,
 html[data-theme="dark"] {
-  --lv-code-bg: #0f172a;
-  --lv-code-border: rgba(199, 208, 223, 0.16);
-  --lv-code-text: #e6edf3;
+  --lv-code-bg: #1a1c2e;
+  --lv-code-border: #343b4c;
+  --lv-code-text: #f2f4f8;
   --lv-code-header-bg: rgba(255, 255, 255, 0.04);
   --lv-code-header-text: #9ca3af;
-  --lv-code-inline-bg: rgba(255, 255, 255, 0.08);
-  --lv-code-inline-border: rgba(199, 208, 223, 0.14);
+  --lv-code-inline-bg: #262b38;
+  --lv-code-inline-border: #343b4c;
   --lv-code-selection: rgba(237, 182, 65, 0.22);
 
   --lv-code-keyword: #7dd3fc;
@@ -37,7 +37,7 @@ html[data-theme="dark"] {
   --lv-code-number: #90CAF9;
   --lv-code-comment: #9CA3AF;
   --lv-code-definition: #CE93D8;
-  --lv-code-variable: #e6edf3;
+  --lv-code-variable: #f2f4f8;
   --lv-code-variable-alt: #81D4FA;
   --lv-code-builtin: #4DD0E1;
   --lv-code-operator: #B0BEC5;

@@ -119,10 +119,7 @@ async def test_except_once_props_header_parsing(
     ) as client:
         response = client.get(
             "/",
-            headers={
-                InertiaHeaders.ENABLED.value: "true",
-                InertiaHeaders.EXCEPT_ONCE_PROPS.value: "settings, stats",
-            },
+            headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.EXCEPT_ONCE_PROPS.value: "settings, stats"},
         )
 
         assert response.json()["props"]["keys"] == ["settings", "stats"]

@@ -102,6 +102,28 @@ def test_inertia_readme_and_llms_reference_stable_script_element_bootstrap() -> 
         assert "useScriptElementForInitialPage" in text
 
 
+def test_readme_and_llms_reference_docs_theme_structure() -> None:
+    """Ensure repo-level and maintainer docs point to the correct Shibuya theme overrides."""
+    contributing = (ROOT / "CONTRIBUTING.rst").read_text()
+    llms_summary = (ROOT / "llms.txt").read_text()
+    llms_full = (ROOT / "llms-full.txt").read_text()
+
+    theme_markers = [
+        "docs/conf.py",
+        "docs/_static/theme.css",
+        "docs/_static/layout.css",
+        "docs/_static/code.css",
+        "docs/_static/theme.js",
+        "docs/_templates/components/copy-page-button.html",
+    ]
+
+    for text in (contributing, llms_summary, llms_full):
+        for marker in theme_markers:
+            assert marker in text, f"{marker} missing from docs/repo-level text"
+        assert "Shibuya" in text
+        assert "SQLSpec WASM playground" in text
+
+
 def test_inertia_ssr_docs_cover_entry_files_and_bootstrap_interaction() -> None:
     """Ensure SSR docs explain the SSR entrypoint and script-element interaction."""
     ssr_docs = (ROOT / "docs" / "reference" / "inertia" / "ssr.rst").read_text()
@@ -371,13 +393,7 @@ def test_svelte_manifests_pin_concrete_stable_versions() -> None:
     svelte_inertia_template = (TEMPLATE_ROOT / "svelte-inertia" / "package.json.j2").read_text()
     sveltekit_template = (TEMPLATE_ROOT / "sveltekit" / "package.json.j2").read_text()
 
-    for text in (
-        svelte_example,
-        sveltekit_example,
-        svelte_template,
-        svelte_inertia_template,
-        sveltekit_template,
-    ):
+    for text in (svelte_example, sveltekit_example, svelte_template, svelte_inertia_template, sveltekit_template):
         assert '"latest"' not in text
 
     assert '"svelte": "5.53.7"' in svelte_example

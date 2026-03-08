@@ -302,7 +302,9 @@ def test_scaffolding_generated_package_manifests_pin_dependency_versions(tmp_pat
     root = Path(__file__).resolve().parents[4]
 
     for package_template in (root / "src" / "py" / "litestar_vite" / "templates").rglob("package.json.j2"):
-        assert '"latest"' not in package_template.read_text(), f"{package_template}: package template should pin versions"
+        assert '"latest"' not in package_template.read_text(), (
+            f"{package_template}: package template should pin versions"
+        )
 
     for example_package in (root / "examples").rglob("package.json"):
         if "node_modules" in example_package.parts:

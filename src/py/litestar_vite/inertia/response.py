@@ -419,10 +419,7 @@ class InertiaResponse(Response[T]):
             The PageProps object.
         """
         shared_props = get_shared_props(
-            request,
-            partial_data=partial_data,
-            partial_except=partial_except,
-            except_once_props=except_once_props,
+            request, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
         )
 
         for key in reset_keys:
@@ -433,17 +430,11 @@ class InertiaResponse(Response[T]):
         route_once_props: "list[str]" = []
         if isinstance(self.content, Mapping):
             route_once_props = extract_once_props(
-                cast("dict[str, Any]", self.content),
-                partial_data=partial_data,
-                partial_except=partial_except,
+                cast("dict[str, Any]", self.content), partial_data=partial_data, partial_except=partial_except
             )
         if is_or_contains_lazy_prop(self.content) or is_or_contains_special_prop(self.content):
             filtered_content = lazy_render(
-                self.content,
-                partial_data,
-                inertia_plugin.portal,
-                partial_except,
-                except_once_props,
+                self.content, partial_data, inertia_plugin.portal, partial_except, except_once_props
             )
             if filtered_content is not None:
                 route_content = filtered_content

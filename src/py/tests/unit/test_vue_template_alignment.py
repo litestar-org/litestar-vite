@@ -100,9 +100,9 @@ def test_vue_examples_use_committed_route_snapshots() -> None:
     vue_jinja_home = (EXAMPLES_ROOT / "vue-inertia-jinja" / "resources" / "pages" / "Home.vue").read_text()
     vue_jinja_routes = (EXAMPLES_ROOT / "vue-inertia-jinja" / "resources" / "routes.ts").read_text()
 
-    assert '@/routes' in vue_app
-    assert '@/routes' in vue_inertia_home
-    assert '@/routes' in vue_jinja_home
-    assert 'export const routeDefinitions = {' in vue_routes
-    assert 'export const routeDefinitions = {' in vue_inertia_routes
-    assert 'export const routeDefinitions = {' in vue_jinja_routes
+    assert "@/routes" in vue_app
+    assert "@/routes" in vue_inertia_home
+    assert "@/routes" in vue_jinja_home
+    assert "export const routeDefinitions = {" in vue_routes
+    assert "export const routeDefinitions = {" in vue_inertia_routes
+    assert "export const routeDefinitions = {" in vue_jinja_routes
