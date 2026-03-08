@@ -349,6 +349,9 @@ class ExampleServer:
             # Set VITE_PORT for SSR production server
             # The Litestar plugin will use this to configure the Nitro/SSR server port
             ssr_env = env.copy()
+            # SvelteKit production server proxies /api/* via hooks.server.ts
+            if self.example_name == "sveltekit":
+                ssr_env["LITESTAR_API"] = f"http://127.0.0.1:{self.litestar_port}"
             ssr_env["VITE_PORT"] = str(self.vite_port)
             # Nitro specifically uses NITRO_PORT and NITRO_HOST
             ssr_env["NITRO_PORT"] = str(self.vite_port)
