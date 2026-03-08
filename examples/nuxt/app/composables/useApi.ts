@@ -8,9 +8,7 @@ export function useApi() {
   const apiProxy = (config.public.apiProxy as string) || "http://127.0.0.1:8000"
 
   function resolveUrl(path: string): string {
-    const normalizedPath = path.startsWith(apiPrefix)
-      ? path
-      : `${apiPrefix}${path.startsWith("/") ? path : `/${path}`}`
+    const normalizedPath = path.startsWith(apiPrefix) ? path : `${apiPrefix}${path.startsWith("/") ? path : `/${path}`}`
 
     if (import.meta.client) {
       return normalizedPath
