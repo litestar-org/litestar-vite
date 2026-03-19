@@ -183,13 +183,27 @@ class CommandExecutor(JSExecutor):
     def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
         executable = self._resolve_executable()
         args = self._apply_silent_flag(args)
-        command = args if args and Path(args[0]).name == Path(executable).name else [executable, *args]
+        if args and (
+            Path(args[0]).name == Path(executable).name
+            or Path(args[0]).stem == Path(executable).stem
+            or args[0] == self.bin_name
+        ):
+            command = [executable, *args[1:]] if Path(args[0]).name != Path(executable).name else args
+        else:
+            command = [executable, *args]
         return subprocess.Popen(command, **_popen_server_kwargs(cwd))
 
     def execute(self, args: list[str], cwd: Path) -> None:
         executable = self._resolve_executable()
         args = self._apply_silent_flag(args)
-        command = args if args and Path(args[0]).name == Path(executable).name else [executable, *args]
+        if args and (
+            Path(args[0]).name == Path(executable).name
+            or Path(args[0]).stem == Path(executable).stem
+            or args[0] == self.bin_name
+        ):
+            command = [executable, *args[1:]] if Path(args[0]).name != Path(executable).name else args
+        else:
+            command = [executable, *args]
         process = subprocess.run(
             command,
             cwd=cwd,
@@ -316,13 +330,27 @@ class NodeenvExecutor(JSExecutor):
     def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
         npm_path = self._find_npm_in_venv()
         args = self._apply_silent_flag(args)
-        command = [npm_path, *args]
+        if args and (
+            Path(args[0]).name == Path(npm_path).name
+            or Path(args[0]).stem == Path(npm_path).stem
+            or args[0] == "npm"
+        ):
+            command = [npm_path, *args[1:]] if Path(args[0]).name != Path(npm_path).name else args
+        else:
+            command = [npm_path, *args]
         return subprocess.Popen(command, **_popen_server_kwargs(cwd))
 
     def execute(self, args: list[str], cwd: Path) -> None:
         npm_path = self._find_npm_in_venv()
         args = self._apply_silent_flag(args)
-        command = [npm_path, *args]
+        if args and (
+            Path(args[0]).name == Path(npm_path).name
+            or Path(args[0]).stem == Path(npm_path).stem
+            or args[0] == "npm"
+        ):
+            command = [npm_path, *args[1:]] if Path(args[0]).name != Path(npm_path).name else args
+        else:
+            command = [npm_path, *args]
         process = subprocess.run(
             command, cwd=cwd, shell=platform.system() == "Windows", check=False, capture_output=True
         )
