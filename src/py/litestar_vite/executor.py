@@ -331,9 +331,7 @@ class NodeenvExecutor(JSExecutor):
         npm_path = self._find_npm_in_venv()
         args = self._apply_silent_flag(args)
         if args and (
-            Path(args[0]).name == Path(npm_path).name
-            or Path(args[0]).stem == Path(npm_path).stem
-            or args[0] == "npm"
+            Path(args[0]).name == Path(npm_path).name or Path(args[0]).stem == Path(npm_path).stem or args[0] == "npm"
         ):
             command = [npm_path, *args[1:]] if Path(args[0]).name != Path(npm_path).name else args
         else:
@@ -344,9 +342,7 @@ class NodeenvExecutor(JSExecutor):
         npm_path = self._find_npm_in_venv()
         args = self._apply_silent_flag(args)
         if args and (
-            Path(args[0]).name == Path(npm_path).name
-            or Path(args[0]).stem == Path(npm_path).stem
-            or args[0] == "npm"
+            Path(args[0]).name == Path(npm_path).name or Path(args[0]).stem == Path(npm_path).stem or args[0] == "npm"
         ):
             command = [npm_path, *args[1:]] if Path(args[0]).name != Path(npm_path).name else args
         else:
