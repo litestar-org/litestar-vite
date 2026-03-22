@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 from litestar import Request, get
-from litestar.exceptions import NotAuthorizedException
+from litestar.exceptions import ImproperlyConfiguredException, NotAuthorizedException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
@@ -30,7 +30,12 @@ from litestar_vite.inertia.helpers import (
     share,
     should_render,
 )
-from litestar_vite.inertia.response import InertiaBack, InertiaExternalRedirect, _InertiaSSRResult
+from litestar_vite.inertia.response import (
+    InertiaBack,
+    InertiaExternalRedirect,
+    _InertiaSSRResult,
+    _parse_inertia_ssr_payload,
+)
 from litestar_vite.plugin import VitePlugin
 
 
@@ -2248,3 +2253,32 @@ async def test_deferred_prop_uses_plugin_portal() -> None:
         data = response.json()
         # The async prop should have been resolved
         assert data["props"]["async_prop"] == "async_value"
+
+
+# ===== SSR Response Size Validation =====
+
+
+def test_parse_inertia_ssr_payload_rejects_oversized_body() -> None:
+    """SSR responses with excessively large body should be rejected to prevent DoS."""
+    oversized_body = "x" * (10 * 1024 * 1024 + 1)  # > 10 MiB
+    payload = {"body": oversized_body, "head": []}
+    with pytest.raises(ImproperlyConfiguredException, match="exceeds maximum allowed size"):
+        _parse_inertia_ssr_payload(payload, "http://localhost:13714/render")
+
+
+def test_parse_inertia_ssr_payload_rejects_oversized_head() -> None:
+    """SSR responses with excessively large head entries should be rejected."""
+    oversized_head = ["<meta>" * 500_000] * 20  # large head content
+    payload = {"body": "<div>ok</div>", "head": oversized_head}
+    total_head_size = sum(len(h) for h in oversized_head)
+    if total_head_size > 10 * 1024 * 1024:
+        with pytest.raises(ImproperlyConfiguredException, match="exceeds maximum allowed size"):
+            _parse_inertia_ssr_payload(payload, "http://localhost:13714/render")
+
+
+def test_parse_inertia_ssr_payload_accepts_normal_response() -> None:
+    """Normal-sized SSR responses should be accepted."""
+    payload = {"body": "<div>Hello</div>", "head": ["<title>Test</title>"]}
+    result = _parse_inertia_ssr_payload(payload, "http://localhost:13714/render")
+    assert result.body == "<div>Hello</div>"
+    assert result.head == ["<title>Test</title>"]

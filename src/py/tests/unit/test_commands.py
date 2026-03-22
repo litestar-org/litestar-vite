@@ -292,7 +292,7 @@ def test_scaffolding_generate_project_htmx_uses_current_extension_shell(tmp_path
     assert package_json["devDependencies"]["@tailwindcss/vite"] == "4.2.1"
     assert package_json["devDependencies"]["tailwindcss"] == "4.2.1"
     assert package_json["devDependencies"]["typescript"] == "5.9.3"
-    assert package_json["devDependencies"]["vite"] == "7.3.1"
+    assert package_json["devDependencies"]["vite"] == "8.0.1"
     assert 'meta name="csrf-token"' in base_template
     assert 'body hx-ext="litestar"' in base_template
 

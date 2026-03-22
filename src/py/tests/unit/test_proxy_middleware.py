@@ -207,3 +207,28 @@ async def test_proxy_respects_litestar_routes_when_asset_url_is_root(hotfile: Pa
 
     # 3. Vite internal paths -> Should proxy
     assert middleware._should_proxy("/@vite/client", scope_with_app)
+
+
+# ===== Path Traversal Protection =====
+
+
+def test_should_proxy_rejects_path_traversal(hotfile: Path) -> None:
+    """Paths containing traversal sequences after URL decoding must be rejected."""
+
+    async def downstream(scope: Scope, receive: Receive, send: Send) -> None:
+        pass
+
+    middleware = ViteProxyMiddleware(downstream, hotfile_path=hotfile)
+    scope: Scope = {"type": "http", "path": "/", "headers": []}  # type: ignore
+
+    # Encoded traversal: %2e%2e/
+    assert not middleware._should_proxy("/%2e%2e/etc/passwd", scope)
+    # Double-encoded traversal
+    assert not middleware._should_proxy("/%252e%252e/etc/passwd", scope)
+    # Plain traversal in a suffix-matching path
+    assert not middleware._should_proxy("/static/../../../etc/passwd.js", scope)
+    # Traversal with backslashes (Windows-style)
+    assert not middleware._should_proxy("/static/..\\..\\etc\\passwd.js", scope)
+    # Normal paths with dots should still work
+    assert middleware._should_proxy("/static/file.name.js", scope)
+    assert middleware._should_proxy("/node_modules/.vite/deps/vue.js", scope)

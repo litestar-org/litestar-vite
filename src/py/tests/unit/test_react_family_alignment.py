@@ -58,7 +58,7 @@ def test_react_family_examples_pin_current_stable_versions() -> None:
         "tailwindcss": "4.2.1",
         "typescript": "5.9.3",
         "litestar-vite-plugin": "file:../..",
-        "vite": "7.3.1",
+        "vite": "8.0.1",
         "@hey-api/openapi-ts": "0.94.0",
     }
 
@@ -78,7 +78,7 @@ def test_react_family_examples_pin_current_stable_versions() -> None:
             "tailwindcss": "4.2.1",
             "litestar-vite-plugin": "file:../..",
             "typescript": "5.9.3",
-            "vite": "7.3.1",
+            "vite": "8.0.1",
             "@hey-api/openapi-ts": "0.94.0",
         }
 

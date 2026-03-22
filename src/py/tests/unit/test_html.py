@@ -1,5 +1,7 @@
 """Tests for HTML transformation utilities."""
 
+import pytest
+
 from litestar_vite.html_transform import (
     _escape_attr,
     _escape_script,
@@ -564,3 +566,45 @@ def test_inject_vite_dev_scripts_src_subdir() -> None:
     result = inject_vite_dev_scripts(html, "", asset_url="/static/", resource_dir="src")
 
     assert 'src="/static/src/main.tsx"' in result
+
+
+# ===== Selector/Attribute Input Validation =====
+
+
+def test_set_data_attribute_rejects_selector_with_angle_brackets() -> None:
+    html = '<div id="app"></div>'
+    with pytest.raises(ValueError, match="Invalid selector"):
+        set_data_attribute(html, "<script>alert(1)</script>", "data-page", "val")
+
+
+def test_set_data_attribute_rejects_selector_with_quotes() -> None:
+    html = '<div id="app"></div>'
+    with pytest.raises(ValueError, match="Invalid selector"):
+        set_data_attribute(html, '#app" onload="alert(1)', "data-page", "val")
+
+
+def test_set_data_attribute_rejects_attr_with_angle_brackets() -> None:
+    html = '<div id="app"></div>'
+    with pytest.raises(ValueError, match="Invalid attribute"):
+        set_data_attribute(html, "#app", "<script>alert(1)</script>", "val")
+
+
+def test_set_data_attribute_rejects_attr_with_spaces() -> None:
+    html = '<div id="app"></div>'
+    with pytest.raises(ValueError, match="Invalid attribute"):
+        set_data_attribute(html, "#app", "onclick=alert(1) data-x", "val")
+
+
+def test_set_data_attribute_rejects_attr_with_equals() -> None:
+    html = '<div id="app"></div>'
+    with pytest.raises(ValueError, match="Invalid attribute"):
+        set_data_attribute(html, "#app", 'data-x="y" onclick', "val")
+
+
+def test_set_data_attribute_allows_valid_selectors() -> None:
+    html = '<div id="app"></div>'
+    result = set_data_attribute(html, "#app", "data-page", "hello")
+    assert 'data-page="hello"' in result
+
+    result2 = set_data_attribute(html, "div", "data-page", "hello")
+    assert 'data-page="hello"' in result2

@@ -17,7 +17,7 @@ def test_vue_examples_pin_current_stable_versions_and_use_vue_tsc_builds() -> No
         assert '"@vue/tsconfig": "0.9.0"' in text
         assert '"vue-tsc": "3.2.5"' in text
         assert '"typescript": "5.9.3"' in text
-        assert '"vite": "7.3.1"' in text
+        assert '"vite": "8.0.1"' in text
         assert '"@tailwindcss/vite": "4.2.1"' in text
         assert '"tailwindcss": "4.2.1"' in text
         assert '"@hey-api/openapi-ts": "0.94.0"' in text
@@ -59,7 +59,7 @@ def test_vue_templates_match_stable_bootstrap_and_manifest_structure() -> None:
     assert '"vue": "3.5.29"' in vue_package
     assert '"@vue/tsconfig": "0.9.0"' in vue_package
     assert '"vue-tsc": "3.2.5"' in vue_package
-    assert '"vite": "7.3.1"' in vue_package
+    assert '"vite": "8.0.1"' in vue_package
 
     assert '"build": "vue-tsc -b && vite build && vite build --ssr {{ resource_dir }}/ssr.ts"' in vue_inertia_package
     assert '"@inertiajs/vue3": "2.3.17"' in vue_inertia_package

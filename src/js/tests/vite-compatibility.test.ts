@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import litestar from "../src"
+import { isVite8Plus } from "../src/shared/vite-compat"
+import { getBuildInput } from "./__fixtures__/mock-vite-config"
 
 // Mock the fs module for consistent testing
 vi.mock("fs", async () => {
@@ -34,7 +36,7 @@ describe("Vite 7.0 Compatibility", () => {
       // Test Vite 7.0 style configuration
       const config = plugin.config({}, { command: "build", mode: "production" })
 
-      expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
+      expect(getBuildInput(config)).toBe("resources/js/app.ts")
       expect(config.build?.manifest).toBe("manifest.json")
     })
 
@@ -59,7 +61,7 @@ describe("Vite 7.0 Compatibility", () => {
 
       const ssrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
 
-      expect(ssrConfig.build?.rollupOptions?.input).toBe("resources/js/ssr.ts")
+      expect(getBuildInput(ssrConfig)).toBe("resources/js/ssr.ts")
       expect(ssrConfig.build?.manifest).toBe(false)
     })
 
@@ -129,7 +131,7 @@ describe("Vite 7.0 Compatibility", () => {
       const config = plugin.config(userConfig, { command: "build", mode: "production" })
 
       // Plugin should preserve user's build config while adding its own
-      expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
+      expect(getBuildInput(config)).toBe("resources/js/app.ts")
       expect(config.build?.manifest).toBe("manifest.json")
     })
 
@@ -138,7 +140,7 @@ describe("Vite 7.0 Compatibility", () => {
 
       const config = plugin.config({}, { command: "build", mode: "production" })
 
-      expect(config.build?.rollupOptions?.input).toEqual(["resources/js/app.ts", "resources/js/admin.ts"])
+      expect(getBuildInput(config)).toEqual(["resources/js/app.ts", "resources/js/admin.ts"])
     })
 
     it("supports Vite 7.0 chunk optimization", () => {
@@ -160,7 +162,7 @@ describe("Vite 7.0 Compatibility", () => {
       )
 
       // Plugin should set its own configuration without overriding user chunk config
-      expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
+      expect(getBuildInput(config)).toBe("resources/js/app.ts")
       expect(config.build?.manifest).toBe("manifest.json")
     })
   })
@@ -244,7 +246,7 @@ describe("Vite 7.0 Compatibility", () => {
 
       const config = plugin.config({}, { command: "build", mode: "production" })
 
-      expect(config.build?.rollupOptions?.input).toBe("resources/ts/app.ts")
+      expect(getBuildInput(config)).toBe("resources/ts/app.ts")
     })
 
     it("supports Vite 7.0 TypeScript path mapping", () => {
@@ -358,7 +360,7 @@ describe("Vite 7.0 Compatibility", () => {
       )
 
       // Plugin sets its own build configuration
-      expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
+      expect(getBuildInput(config)).toBe("resources/js/app.ts")
       expect(config.build?.manifest).toBe("manifest.json")
     })
 
@@ -379,7 +381,7 @@ describe("Vite 7.0 Compatibility", () => {
       )
 
       // Plugin sets its own build configuration
-      expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
+      expect(getBuildInput(config)).toBe("resources/js/app.ts")
       expect(config.build?.manifest).toBe("manifest.json")
       expect(config.base).toBe("/static/")
     })
@@ -423,7 +425,7 @@ describe("Vite 7.0 Compatibility", () => {
       )
 
       // Plugin sets its own build configuration
-      expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
+      expect(getBuildInput(config)).toBe("resources/js/app.ts")
       expect(config.build?.manifest).toBe("manifest.json")
     })
   })
@@ -445,7 +447,7 @@ describe("Vite 7.0 Compatibility", () => {
       )
 
       // Plugin sets its own configuration, doesn't preserve user define config
-      expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
+      expect(getBuildInput(config)).toBe("resources/js/app.ts")
       expect(config.base).toBe("/static/")
     })
 
@@ -484,8 +486,8 @@ describe("Vite 7.0 Compatibility", () => {
       const config = plugin.config({}, { command: "build", mode: "production" })
       const ssrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
 
-      expect(config.build?.rollupOptions?.input).toEqual(["resources/js/app.ts", "resources/js/admin.ts"])
-      expect(ssrConfig.build?.rollupOptions?.input).toBe("resources/js/ssr.ts")
+      expect(getBuildInput(config)).toEqual(["resources/js/app.ts", "resources/js/admin.ts"])
+      expect(getBuildInput(ssrConfig)).toBe("resources/js/ssr.ts")
     })
 
     it("handles legacy plugin options gracefully", () => {
@@ -499,7 +501,7 @@ describe("Vite 7.0 Compatibility", () => {
       const config = plugin.config({}, { command: "build", mode: "production" })
 
       // Should still work even if some options don't exist
-      expect(config.build?.rollupOptions?.input).toBe("resources/js/app.js")
+      expect(getBuildInput(config)).toBe("resources/js/app.js")
     })
   })
 
@@ -521,7 +523,7 @@ describe("Vite 7.0 Compatibility", () => {
       )
 
       // Plugin sets its own configuration without preserving experimental features
-      expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
+      expect(getBuildInput(config)).toBe("resources/js/app.ts")
       expect(config.build?.manifest).toBe("manifest.json")
       expect(config.base).toBe("/static/")
     })
@@ -533,6 +535,60 @@ describe("Vite 7.0 Compatibility", () => {
       expect(typeof plugin.config).toBe("function")
       expect(typeof plugin.configResolved).toBe("function")
       expect(plugin.name).toBe("litestar")
+    })
+  })
+})
+
+describe("Vite 8.0 Compatibility", () => {
+  describe("Rolldown Build Options", () => {
+    it("uses version-appropriate bundler options key", () => {
+      const plugin = litestar("resources/js/app.ts")[0]
+      const config = plugin.config({}, { command: "build", mode: "production" })
+
+      if (isVite8Plus) {
+        expect(config.build?.rolldownOptions?.input).toBe("resources/js/app.ts")
+        expect(config.build?.rollupOptions).toBeUndefined()
+      } else {
+        expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
+        expect(config.build?.rolldownOptions).toBeUndefined()
+      }
+    })
+
+    it("reads user input from rolldownOptions when on Vite 8+", () => {
+      const plugin = litestar("resources/js/app.ts")[0]
+
+      // User provides input via rolldownOptions (Vite 8 style)
+      const config = plugin.config({ build: { rolldownOptions: { input: "custom/entry.ts" } } }, { command: "build", mode: "production" })
+
+      expect(getBuildInput(config)).toBe("custom/entry.ts")
+    })
+
+    it("reads user input from rollupOptions as fallback on Vite 8+", () => {
+      const plugin = litestar("resources/js/app.ts")[0]
+
+      // User provides input via legacy rollupOptions (still works on Vite 8)
+      const config = plugin.config({ build: { rollupOptions: { input: "legacy/entry.ts" } } }, { command: "build", mode: "production" })
+
+      expect(getBuildInput(config)).toBe("legacy/entry.ts")
+    })
+
+    it("handles SSR builds with version-appropriate options", () => {
+      const plugin = litestar({
+        input: "resources/js/app.ts",
+        ssr: "resources/js/ssr.ts",
+      })[0]
+
+      const ssrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
+
+      expect(getBuildInput(ssrConfig)).toBe("resources/js/ssr.ts")
+    })
+
+    it("handles multiple inputs with version-appropriate options", () => {
+      const plugin = litestar(["resources/js/app.ts", "resources/js/admin.ts"])[0]
+
+      const config = plugin.config({}, { command: "build", mode: "production" })
+
+      expect(getBuildInput(config)).toEqual(["resources/js/app.ts", "resources/js/admin.ts"])
     })
   })
 })

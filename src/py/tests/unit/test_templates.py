@@ -226,7 +226,7 @@ def test_angular_cli_and_htmx_examples_pin_current_stable_registry_versions() ->
     assert htmx["devDependencies"]["@tailwindcss/vite"] == "4.2.1"
     assert htmx["devDependencies"]["tailwindcss"] == "4.2.1"
     assert htmx["devDependencies"]["typescript"] == "5.9.3"
-    assert htmx["devDependencies"]["vite"] == "7.3.1"
+    assert htmx["devDependencies"]["vite"] == "8.0.1"
 
 
 def test_angular_vite_example_and_template_match_current_router_shell() -> None:
@@ -252,7 +252,7 @@ def test_angular_vite_example_and_template_match_current_router_shell() -> None:
     assert angular_example["devDependencies"]["@angular/compiler-cli"] == "21.2.1"
     assert angular_example["devDependencies"]["@angular/platform-browser-dynamic"] == "21.2.1"
     assert angular_example["devDependencies"]["@types/node"] == "25.3.5"
-    assert angular_example["devDependencies"]["vite"] == "7.3.1"
+    assert angular_example["devDependencies"]["vite"] == "8.0.1"
     assert angular_example["devDependencies"]["tailwindcss"] == "4.2.1"
 
     assert '"@analogjs/vite-plugin-angular": "2.3.1"' in angular_template
@@ -260,7 +260,7 @@ def test_angular_vite_example_and_template_match_current_router_shell() -> None:
     assert '"@angular/compiler-cli": "21.2.1"' in angular_template
     assert '"@angular/platform-browser-dynamic": "21.2.1"' in angular_template
     assert '"@types/node": "25.3.5"' in angular_template
-    assert '"vite": "7.3.1"' in angular_template
+    assert '"vite": "8.0.1"' in angular_template
     assert '"zod": "4.3.6"' in angular_template
     assert '"latest"' not in angular_template
 

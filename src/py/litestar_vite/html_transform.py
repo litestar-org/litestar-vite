@@ -9,6 +9,9 @@ from typing import Any
 
 from litestar.serialization import encode_json
 
+_VALID_SELECTOR_RE = re.compile(r"^#?[a-zA-Z][a-zA-Z0-9_-]*$")
+_VALID_ATTR_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_-]*$")
+
 _HEAD_END_PATTERN = re.compile(r"</head\s*>", re.IGNORECASE)
 _BODY_END_PATTERN = re.compile(r"</body\s*>", re.IGNORECASE)
 _BODY_START_PATTERN = re.compile(r"<body[^>]*>", re.IGNORECASE)
@@ -270,6 +273,13 @@ def set_data_attribute(html: str, selector: str, attr: str, value: str) -> str:
     """
     if not selector or not attr:
         return html
+
+    if not _VALID_SELECTOR_RE.match(selector):
+        msg = f"Invalid selector: {selector!r}. Must be an alphanumeric ID (#id) or element name."
+        raise ValueError(msg)
+    if not _VALID_ATTR_RE.match(attr):
+        msg = f"Invalid attribute name: {attr!r}. Must be an alphanumeric attribute name."
+        raise ValueError(msg)
 
     escaped_value = _escape_attr(value)
     attr_pattern = _get_attr_pattern(attr)

@@ -10,6 +10,7 @@ import path from "node:path"
 import tailwindcss from "@tailwindcss/vite"
 import { defineConfig } from "vite"
 import { viteSingleFile } from "vite-plugin-singlefile"
+import { buildBundlerOptions } from "../shared/vite-compat.js"
 
 export default defineConfig({
   plugins: [tailwindcss(), viteSingleFile()],
@@ -17,9 +18,9 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, "../../../py/litestar_vite/static"),
     emptyDir: false,
-    rollupOptions: {
+    ...buildBundlerOptions({
       input: path.resolve(__dirname, "index.html"),
-    },
+    }),
     minify: true,
   },
 })

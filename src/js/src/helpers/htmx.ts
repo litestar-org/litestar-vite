@@ -520,10 +520,21 @@ function childCtx(parent: Ctx, data: unknown, index?: number, key?: string): Ctx
 
 /** Identifiers that must never appear as standalone words in expressions */
 const BLOCKED_GLOBALS = [
-  "window", "document", "globalThis", "self", "top", "frames",
-  "Function", "eval", "setTimeout", "setInterval",
-  "constructor", "__proto__", "prototype",
-  "import", "require",
+  "window",
+  "document",
+  "globalThis",
+  "self",
+  "top",
+  "frames",
+  "Function",
+  "eval",
+  "setTimeout",
+  "setInterval",
+  "constructor",
+  "__proto__",
+  "prototype",
+  "import",
+  "require",
 ]
 
 /** Build a single regex: matches any blocked word at a word boundary */
@@ -532,9 +543,9 @@ const BLOCKED_RE = new RegExp(`\\b(${BLOCKED_GLOBALS.join("|")})\\b`)
 /** Strip string literals and template strings before checking for blocked patterns */
 function stripStrings(s: string): string {
   return s
-    .replace(/`(?:[^`\\]|\\.)*`/g, "")   // template literals
-    .replace(/"(?:[^"\\]|\\.)*"/g, "")    // double-quoted strings
-    .replace(/'(?:[^'\\]|\\.)*'/g, "")    // single-quoted strings
+    .replace(/`(?:[^`\\]|\\.)*`/g, "") // template literals
+    .replace(/"(?:[^"\\]|\\.)*"/g, "") // double-quoted strings
+    .replace(/'(?:[^'\\]|\\.)*'/g, "") // single-quoted strings
 }
 
 function isExpressionSafe(s: string): boolean {

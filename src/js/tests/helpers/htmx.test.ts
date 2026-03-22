@@ -80,7 +80,7 @@ describe("htmx extension", () => {
 
       it("strips script tags from ls-html output", () => {
         container.innerHTML = '<div ls-html="content"></div>'
-        swapJson(container, { content: '<p>Hello</p><script>alert(1)</script>' })
+        swapJson(container, { content: "<p>Hello</p><script>alert(1)</script>" })
         const div = container.querySelector("div")
         expect(div?.querySelector("script")).toBeNull()
         expect(div?.querySelector("p")?.textContent).toBe("Hello")

@@ -51,12 +51,12 @@ def test_docs_dependencies_use_shibuya_theme() -> None:
 # CSS classes the code.css palette maps to token families.
 # If a lexer emits tokens in these families, the palette covers them.
 _PALETTE_TOKEN_FAMILIES = {
-    Keyword,            # .k, .kd, .kn, etc.  → --lv-code-keyword
-    String,             # .s, .s1, .s2, etc.  → --lv-code-string
-    Comment,            # .c, .c1, .cm, etc.  → --lv-code-comment
-    Name.Tag,           # .nt                  → --lv-code-property
-    Name.Attribute,     # .na                  → --lv-code-definition
-    Name.Builtin,       # .nb                  → --lv-code-builtin
+    Keyword,  # .k, .kd, .kn, etc.  → --lv-code-keyword
+    String,  # .s, .s1, .s2, etc.  → --lv-code-string
+    Comment,  # .c, .c1, .cm, etc.  → --lv-code-comment
+    Name.Tag,  # .nt                  → --lv-code-property
+    Name.Attribute,  # .na                  → --lv-code-definition
+    Name.Builtin,  # .nb                  → --lv-code-builtin
 }
 
 
@@ -92,21 +92,17 @@ def test_astro_lexer_emits_palette_covered_tokens() -> None:
     source = '---\nimport Layout from "./Layout.astro";\nconst title = "Hello";\n---\n<Layout title={title}>\n  <h1>{title}</h1>\n</Layout>'
     families = _token_families_emitted(AstroLexer, source)
 
-    assert families & {Keyword, String, Name.Tag}, (
-        f"Astro lexer missing expected token families; got {families}"
-    )
+    assert families & {Keyword, String, Name.Tag}, f"Astro lexer missing expected token families; got {families}"
 
 
 def test_svelte_lexer_emits_palette_covered_tokens() -> None:
     """Svelte lexer output maps to CSS classes defined in code.css."""
     from tools.sphinx_ext.svelte_lexer import SvelteLexer
 
-    source = '<script>\n  let count = 0;\n  function increment() { count += 1; }\n</script>\n<button on:click={increment}>{count}</button>'
+    source = "<script>\n  let count = 0;\n  function increment() { count += 1; }\n</script>\n<button on:click={increment}>{count}</button>"
     families = _token_families_emitted(SvelteLexer, source)
 
-    assert families & {Keyword, Name.Tag}, (
-        f"Svelte lexer missing expected token families; got {families}"
-    )
+    assert families & {Keyword, Name.Tag}, f"Svelte lexer missing expected token families; got {families}"
 
 
 def test_code_css_covers_all_pygments_short_classes() -> None:
