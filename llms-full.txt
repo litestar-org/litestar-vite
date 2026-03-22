@@ -1,7 +1,7 @@
 # Litestar-Vite – Full LLM Reference
 
 > Generated from source files. Every fact below is verified against the
-> codebase at version 0.18.4.
+> codebase at version 0.19.0.
 
 ## Project Metadata
 
@@ -9,7 +9,7 @@
 |---|---|
 | PyPI name | litestar-vite |
 | npm name | litestar-vite-plugin |
-| Version | 0.18.4 |
+| Version | 0.19.0 |
 | License | MIT |
 | Python | >=3.10 |
 | Node | ^20.19.0 \|\| >=22.12.0 |
@@ -533,9 +533,8 @@ class ViteAssetLoader:
     async def initialize(self) -> None: ...
 
     def render_hmr_client(self) -> markupsafe.Markup: ...
-    def render_asset(self, path: str | list[str], ...) -> markupsafe.Markup: ...
-    def render_static_asset(self, path: str, ...) -> str: ...
-    def render_routes(self, ...) -> markupsafe.Markup: ...
+    def render_asset_tag(self, path: str | list[str], scripts_attrs: dict[str, str] | None = None) -> markupsafe.Markup: ...
+    def get_static_asset(self, path: str) -> str: ...
 
     @cached_property
     def version_id(self) -> str: ...
@@ -628,9 +627,9 @@ Mark next response to clear client history encryption keys.
 
 ```python
 def get_shared_props(request, partial_data=None, partial_except=None) -> dict
-def extract_deferred_props(props: dict) -> list | None
-def extract_merge_props(props: dict) -> tuple
-def extract_once_props(props: dict) -> list | None
+def extract_deferred_props(props: dict) -> dict[str, list[str]]
+def extract_merge_props(props: dict) -> tuple[list[str], list[str], list[str], list[str]]
+def extract_once_props(props: dict, partial_data=None, partial_except=None) -> list[str]
 ```
 
 ---
@@ -731,6 +730,8 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
     @property
     def partial_except_keys(self) -> set[str]: ...
     @property
+    def except_once_props_keys(self) -> set[str]: ...
+    @property
     def reset_keys(self) -> set[str]: ...
     @property
     def error_bag(self) -> str | None: ...
@@ -755,6 +756,7 @@ class InertiaDetails:
     partial_component: str | None
     partial_data: str | None
     partial_except: str | None
+    except_once_props: str | None
     reset_props: str | None
     error_bag: str | None
     merge_intent: str | None
@@ -763,6 +765,7 @@ class InertiaDetails:
     is_partial_render: bool
     partial_keys: list[str]
     partial_except_keys: list[str]
+    except_once_props_keys: list[str]
     reset_keys: list[str]
     is_precognition: bool
     precognition_validate_only: list[str]
@@ -866,6 +869,7 @@ interface PluginConfig {
   inertiaMode?: boolean           // default: false (auto-detected)
   transformOnServe?: (code: string, url: DevServerUrl) => string
   types?: boolean | 'auto' | TypesConfig  // type generation config
+  executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
 }
 
 interface TypesConfig {
@@ -924,7 +928,17 @@ export function resolvePageComponent<T>(
 export function unwrapPageProps<T extends Record<string, unknown>>(props: T): T
 ```
 
-Pagination types exported: OffsetPagination, ClassicPagination, CursorPagination, ScrollProps
+Pagination types exported: OffsetPaginationProps, ClassicPaginationProps, CursorPaginationProps, PaginationProps (union), ScrollProps
+
+Precognition helpers exported:
+```typescript
+export const PrecognitionHeaders: { PRECOGNITION: string, VALIDATE_ONLY: string, PRECOGNITION_SUCCESS: string }
+export interface PrecognitionValidationErrors { message: string; errors: Record<string, string[]> }
+export interface PrecognitionFormConfig { ... }
+export function isPrecognitionSuccess(response: Response): boolean
+export function isPrecognitionError(response: Response): boolean
+export function extractPrecognitionErrors(response: Response): Promise<PrecognitionValidationErrors>
+```
 
 ### npm Exports
 
