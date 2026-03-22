@@ -54,6 +54,26 @@ def _popen_server_kwargs(cwd: Path) -> dict[str, Any]:
     return kwargs
 
 
+def _normalize_command(resolved_executable: str, args: list[str], *, binary_name: str) -> list[str]:
+    """Normalize command args to the resolved executable without duplicating argv[0].
+
+    If the incoming command already names the binary via bare name, full path, or a platform-specific variant
+    (for example ``npm`` vs ``npm.CMD``), rewrite the first token to the resolved executable path and keep the
+    remaining args. Otherwise prepend the resolved executable.
+    """
+    if not args:
+        return [resolved_executable]
+
+    first = Path(args[0])
+    resolved = Path(resolved_executable)
+    match_names = {resolved.name, resolved.stem, binary_name}
+
+    if first == resolved or first.name in match_names or first.stem in match_names:
+        return [resolved_executable, *args[1:]]
+
+    return [resolved_executable, *args]
+
+
 class JSExecutor(ABC):
     """Abstract base class for Javascript executors.
 
@@ -183,13 +203,13 @@ class CommandExecutor(JSExecutor):
     def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
         executable = self._resolve_executable()
         args = self._apply_silent_flag(args)
-        command = args if args and Path(args[0]).name == Path(executable).name else [executable, *args]
+        command = _normalize_command(executable, args, binary_name=self.bin_name)
         return subprocess.Popen(command, **_popen_server_kwargs(cwd))
 
     def execute(self, args: list[str], cwd: Path) -> None:
         executable = self._resolve_executable()
         args = self._apply_silent_flag(args)
-        command = args if args and Path(args[0]).name == Path(executable).name else [executable, *args]
+        command = _normalize_command(executable, args, binary_name=self.bin_name)
         process = subprocess.run(
             command,
             cwd=cwd,
@@ -316,13 +336,13 @@ class NodeenvExecutor(JSExecutor):
     def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
         npm_path = self._find_npm_in_venv()
         args = self._apply_silent_flag(args)
-        command = [npm_path, *args]
+        command = _normalize_command(npm_path, args, binary_name="npm")
         return subprocess.Popen(command, **_popen_server_kwargs(cwd))
 
     def execute(self, args: list[str], cwd: Path) -> None:
         npm_path = self._find_npm_in_venv()
         args = self._apply_silent_flag(args)
-        command = [npm_path, *args]
+        command = _normalize_command(npm_path, args, binary_name="npm")
         process = subprocess.run(
             command, cwd=cwd, shell=platform.system() == "Windows", check=False, capture_output=True
         )

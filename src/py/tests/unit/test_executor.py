@@ -81,6 +81,22 @@ def test_executor_run_command(mock_which: Mock, mock_popen: Mock) -> None:
     assert kwargs["cwd"] == Path("/tmp")
 
 
+@patch("subprocess.Popen")
+@patch("shutil.which")
+def test_executor_run_rewrites_bare_binary_when_resolved_name_has_extension(mock_which: Mock, mock_popen: Mock) -> None:
+    """Short binary names should be rewritten to the resolved executable without duplication."""
+    mock_which.return_value = "C:/Program Files/nodejs/npm.CMD"
+    executor = NodeExecutor()
+    mock_process = Mock()
+    mock_popen.return_value = mock_process
+
+    process = executor.run(["npm", "run", "dev"], Path("/tmp"))
+
+    assert process == mock_process
+    args, _kwargs = mock_popen.call_args
+    assert args[0] == ["C:/Program Files/nodejs/npm.CMD", "run", "dev"]
+
+
 @patch("subprocess.run")
 @patch("shutil.which")
 def test_executor_execute_command_success(mock_which: Mock, mock_run: Mock) -> None:
@@ -92,6 +108,22 @@ def test_executor_execute_command_success(mock_which: Mock, mock_run: Mock) -> N
     executor.execute(["install"], Path("/tmp"))
 
     mock_run.assert_called_once()
+
+
+@patch("subprocess.run")
+@patch("shutil.which")
+def test_executor_execute_rewrites_bare_binary_when_resolved_name_has_extension(
+    mock_which: Mock, mock_run: Mock
+) -> None:
+    """Execute should drop the duplicated short binary when the resolved name has an extension."""
+    mock_which.return_value = "C:/Program Files/nodejs/npm.CMD"
+    mock_run.return_value = Mock(returncode=0)
+    executor = NodeExecutor()
+
+    executor.execute(["npm", "run", "build"], Path("/tmp"))
+
+    args, _kwargs = mock_run.call_args
+    assert args[0] == ["C:/Program Files/nodejs/npm.CMD", "run", "build"]
 
 
 @patch("subprocess.run")
@@ -309,6 +341,40 @@ def test_nodeenv_executor_run(mock_popen: Mock, mock_find: Mock) -> None:
 
 
 @patch("litestar_vite.executor.NodeenvExecutor._find_npm_in_venv")
+@patch("subprocess.Popen")
+def test_nodeenv_executor_run_rewrites_bare_npm_to_venv_path(mock_popen: Mock, mock_find: Mock) -> None:
+    """Bare npm commands should be rewritten to the nodeenv-local npm path."""
+    config = ViteConfig()
+    executor = NodeenvExecutor(config)
+    mock_find.return_value = "/venv/bin/npm"
+    mock_process = Mock()
+    mock_popen.return_value = mock_process
+
+    process = executor.run(["npm", "run", "dev"], Path("/tmp"))
+
+    assert process == mock_process
+    args, _kwargs = mock_popen.call_args
+    assert args[0] == ["/venv/bin/npm", "run", "dev"]
+
+
+@patch("litestar_vite.executor.NodeenvExecutor._find_npm_in_venv")
+@patch("subprocess.Popen")
+def test_nodeenv_executor_run_rewrites_bare_npm_with_silent_flag(mock_popen: Mock, mock_find: Mock) -> None:
+    """Silent flag insertion should preserve normalized bare npm command order."""
+    config = ViteConfig()
+    executor = NodeenvExecutor(config, silent=True)
+    mock_find.return_value = "/venv/bin/npm"
+    mock_process = Mock()
+    mock_popen.return_value = mock_process
+
+    process = executor.run(["npm", "run", "dev"], Path("/tmp"))
+
+    assert process == mock_process
+    args, _kwargs = mock_popen.call_args
+    assert args[0] == ["/venv/bin/npm", "run", "--silent", "dev"]
+
+
+@patch("litestar_vite.executor.NodeenvExecutor._find_npm_in_venv")
 @patch("subprocess.run")
 def test_nodeenv_executor_execute_success(mock_run: Mock, mock_find: Mock) -> None:
     """Test NodeenvExecutor execute command succeeds."""
@@ -322,6 +388,21 @@ def test_nodeenv_executor_execute_success(mock_run: Mock, mock_find: Mock) -> No
     mock_run.assert_called_once()
     args, _kwargs = mock_run.call_args
     assert args[0] == ["/venv/bin/npm", "build"]
+
+
+@patch("litestar_vite.executor.NodeenvExecutor._find_npm_in_venv")
+@patch("subprocess.run")
+def test_nodeenv_executor_execute_rewrites_bare_npm_to_venv_path(mock_run: Mock, mock_find: Mock) -> None:
+    """Bare npm execute commands should be rewritten to the nodeenv-local npm path."""
+    config = ViteConfig()
+    executor = NodeenvExecutor(config)
+    mock_find.return_value = "/venv/bin/npm"
+    mock_run.return_value = Mock(returncode=0)
+
+    executor.execute(["npm", "run", "build"], Path("/tmp"))
+
+    args, _kwargs = mock_run.call_args
+    assert args[0] == ["/venv/bin/npm", "run", "build"]
 
 
 @patch("litestar_vite.executor.NodeenvExecutor._find_npm_in_venv")
