@@ -546,6 +546,9 @@ function expr(s: string | null): ((c: Ctx) => unknown) | null {
   if (!s) return null
   const cached = expressionCache.get(s)
   if (cached !== undefined) {
+    // LRU promotion: move to most-recent position
+    expressionCache.delete(s)
+    expressionCache.set(s, cached)
     return cached
   }
 

@@ -570,17 +570,19 @@ describe("htmx extension", () => {
       __compileExpressionForTest("second")
       expect(__getExpressionCacheKeys()).toEqual(["first", "second"])
 
+      // Insert third — should evict "first" (oldest)
       __compileExpressionForTest("third")
       expect(__getExpressionCacheSize()).toBe(2)
       expect(__getExpressionCacheKeys()).toEqual(["second", "third"])
 
-      __compileExpressionForTest("third")
-      expect(__getExpressionCacheKeys()).toEqual(["second", "third"])
-
+      // Re-access "second" — promotes it to most recent
       __compileExpressionForTest("second")
+      expect(__getExpressionCacheKeys()).toEqual(["third", "second"])
+
+      // Insert fourth — should evict "third" (now least recently used), not "second"
       __compileExpressionForTest("fourth")
       expect(__getExpressionCacheSize()).toBe(2)
-      expect(__getExpressionCacheKeys()).toEqual(["third", "fourth"])
+      expect(__getExpressionCacheKeys()).toEqual(["second", "fourth"])
     })
   })
 
