@@ -51,11 +51,11 @@ def test_react_family_examples_pin_current_stable_versions() -> None:
         "axios": "1.13.6",
     }
     assert react_package["devDependencies"] == {
-        "@vitejs/plugin-react": "5.1.4",
+        "@vitejs/plugin-react": "6.0.1",
         "@types/react": "19.2.14",
         "@types/react-dom": "19.2.3",
-        "@tailwindcss/vite": "4.2.1",
-        "tailwindcss": "4.2.1",
+        "@tailwindcss/vite": "4.2.2",
+        "tailwindcss": "4.2.2",
         "typescript": "5.9.3",
         "litestar-vite-plugin": "file:../..",
         "vite": "8.0.1",
@@ -73,9 +73,9 @@ def test_react_family_examples_pin_current_stable_versions() -> None:
         assert package["devDependencies"] == {
             "@types/react": "19.2.14",
             "@types/react-dom": "19.2.3",
-            "@vitejs/plugin-react": "5.1.4",
-            "@tailwindcss/vite": "4.2.1",
-            "tailwindcss": "4.2.1",
+            "@vitejs/plugin-react": "6.0.1",
+            "@tailwindcss/vite": "4.2.2",
+            "tailwindcss": "4.2.2",
             "litestar-vite-plugin": "file:../..",
             "typescript": "5.9.3",
             "vite": "8.0.1",

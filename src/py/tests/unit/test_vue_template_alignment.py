@@ -18,8 +18,8 @@ def test_vue_examples_pin_current_stable_versions_and_use_vue_tsc_builds() -> No
         assert '"vue-tsc": "3.2.5"' in text
         assert '"typescript": "5.9.3"' in text
         assert '"vite": "8.0.1"' in text
-        assert '"@tailwindcss/vite": "4.2.1"' in text
-        assert '"tailwindcss": "4.2.1"' in text
+        assert '"@tailwindcss/vite": "4.2.2"' in text
+        assert '"tailwindcss": "4.2.2"' in text
         assert '"@hey-api/openapi-ts": "0.94.0"' in text
         assert '"@types/node": "25.3.5"' in text
         assert '"axios": "1.13.6"' in text

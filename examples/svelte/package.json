@@ -15,11 +15,11 @@
   },
   "devDependencies": {
     "@hey-api/openapi-ts": "0.94.0",
-    "@sveltejs/vite-plugin-svelte": "6.2.4",
-    "@tailwindcss/vite": "4.2.1",
+    "@sveltejs/vite-plugin-svelte": "7.0.0",
+    "@tailwindcss/vite": "4.2.2",
     "litestar-vite-plugin": "file:../..",
     "svelte-check": "4.4.4",
-    "tailwindcss": "4.2.1",
+    "tailwindcss": "4.2.2",
     "tslib": "2.8.1",
     "typescript": "5.9.3",
     "vite": "8.0.1"

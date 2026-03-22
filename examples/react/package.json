@@ -16,11 +16,11 @@
     "axios": "1.13.6"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "5.1.4",
+    "@vitejs/plugin-react": "6.0.1",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "@tailwindcss/vite": "4.2.1",
-    "tailwindcss": "4.2.1",
+    "@tailwindcss/vite": "4.2.2",
+    "tailwindcss": "4.2.2",
     "typescript": "5.9.3",
     "litestar-vite-plugin": "file:../..",
     "vite": "8.0.1",
