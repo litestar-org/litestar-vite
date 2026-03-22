@@ -518,6 +518,30 @@ function childCtx(parent: Ctx, data: unknown, index?: number, key?: string): Ctx
 // Expression Compiler
 // =============================================================================
 
+/** Identifiers that must never appear as standalone words in expressions */
+const BLOCKED_GLOBALS = [
+  "window", "document", "globalThis", "self", "top", "frames",
+  "Function", "eval", "setTimeout", "setInterval",
+  "constructor", "__proto__", "prototype",
+  "import", "require",
+]
+
+/** Build a single regex: matches any blocked word at a word boundary */
+const BLOCKED_RE = new RegExp(`\\b(${BLOCKED_GLOBALS.join("|")})\\b`)
+
+/** Strip string literals and template strings before checking for blocked patterns */
+function stripStrings(s: string): string {
+  return s
+    .replace(/`(?:[^`\\]|\\.)*`/g, "")   // template literals
+    .replace(/"(?:[^"\\]|\\.)*"/g, "")    // double-quoted strings
+    .replace(/'(?:[^'\\]|\\.)*'/g, "")    // single-quoted strings
+}
+
+function isExpressionSafe(s: string): boolean {
+  const stripped = stripStrings(s)
+  return !BLOCKED_RE.test(stripped)
+}
+
 function expr(s: string | null): ((c: Ctx) => unknown) | null {
   if (!s) return null
   const cached = expressionCache.get(s)
@@ -525,7 +549,14 @@ function expr(s: string | null): ((c: Ctx) => unknown) | null {
     return cached
   }
 
+  if (!isExpressionSafe(s)) {
+    if (debug) console.warn(`[litestar] blocked expression: ${s}`)
+    cacheExpression(s, null)
+    return null
+  }
+
   try {
+    // Expression validated by isExpressionSafe() above — dangerous globals/constructors blocked
     const fn = new Function("ctx", `with(ctx){return(${s})}`) as (c: Ctx) => unknown
     cacheExpression(s, fn)
     return fn

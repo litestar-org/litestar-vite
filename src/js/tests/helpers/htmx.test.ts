@@ -449,6 +449,104 @@ describe("htmx extension", () => {
     })
   })
 
+  // ===== Expression Security =====
+
+  describe("expression validation (injection prevention)", () => {
+    beforeEach(() => {
+      __clearExpressionCache()
+    })
+
+    it("allows simple property access", () => {
+      expect(__compileExpressionForTest("user.name")).toBeTypeOf("function")
+    })
+
+    it("allows arithmetic operators", () => {
+      expect(__compileExpressionForTest("count + 1")).toBeTypeOf("function")
+    })
+
+    it("allows ternary expressions", () => {
+      expect(__compileExpressionForTest("active ? 'Yes' : 'No'")).toBeTypeOf("function")
+    })
+
+    it("allows method calls on context values", () => {
+      expect(__compileExpressionForTest("items.join(', ')")).toBeTypeOf("function")
+    })
+
+    it("allows object literals", () => {
+      expect(__compileExpressionForTest("{ active: isActive, hidden: false }")).toBeTypeOf("function")
+    })
+
+    it("allows template literals", () => {
+      expect(__compileExpressionForTest("`item-${id}`")).toBeTypeOf("function")
+    })
+
+    it("allows comparison operators", () => {
+      expect(__compileExpressionForTest("count > 0")).toBeTypeOf("function")
+    })
+
+    it("allows JSON.stringify on context data", () => {
+      expect(__compileExpressionForTest("JSON.stringify($data)")).toBeTypeOf("function")
+    })
+
+    it("allows $parent, $index, $key access", () => {
+      expect(__compileExpressionForTest("$parent.source")).toBeTypeOf("function")
+      expect(__compileExpressionForTest("$index")).toBeTypeOf("function")
+      expect(__compileExpressionForTest("$key")).toBeTypeOf("function")
+    })
+
+    it("allows function calls from context", () => {
+      expect(__compileExpressionForTest("onClick(id)")).toBeTypeOf("function")
+    })
+
+    it("rejects constructor access", () => {
+      expect(__compileExpressionForTest("constructor.constructor('alert(1)')()")).toBeNull()
+    })
+
+    it("rejects __proto__ access", () => {
+      expect(__compileExpressionForTest("__proto__.polluted = true")).toBeNull()
+    })
+
+    it("rejects prototype access", () => {
+      expect(__compileExpressionForTest("Object.prototype.x = 1")).toBeNull()
+    })
+
+    it("rejects window access", () => {
+      expect(__compileExpressionForTest("window.location")).toBeNull()
+    })
+
+    it("rejects document access", () => {
+      expect(__compileExpressionForTest("document.cookie")).toBeNull()
+    })
+
+    it("rejects globalThis access", () => {
+      expect(__compileExpressionForTest("globalThis.fetch('/')")).toBeNull()
+    })
+
+    it("rejects Function constructor", () => {
+      expect(__compileExpressionForTest("Function('return this')()")).toBeNull()
+    })
+
+    it("rejects import() expressions", () => {
+      expect(__compileExpressionForTest("import('evil-module')")).toBeNull()
+    })
+
+    it("rejects self/top/parent global access", () => {
+      expect(__compileExpressionForTest("self.location")).toBeNull()
+      expect(__compileExpressionForTest("top.location")).toBeNull()
+    })
+
+    it("does not false-positive on property names containing blocked words", () => {
+      // "documentation" contains "document" but should be allowed
+      expect(__compileExpressionForTest("documentation")).toBeTypeOf("function")
+      // "selfie" contains "self" but should be allowed
+      expect(__compileExpressionForTest("selfie")).toBeTypeOf("function")
+      // "topLevel" contains "top" but should be allowed
+      expect(__compileExpressionForTest("topLevel")).toBeTypeOf("function")
+      // "constructorName" starts with "constructor" but is a longer word
+      expect(__compileExpressionForTest("constructorName")).toBeTypeOf("function")
+    })
+  })
+
   describe("expression cache hardening", () => {
     beforeEach(() => {
       __setExpressionCacheLimit(1024)
