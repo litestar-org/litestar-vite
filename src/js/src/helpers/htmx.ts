@@ -332,14 +332,14 @@ const directives: Dir[] = [
     },
   },
 
-  // ls-html="expr" - innerHTML (use carefully)
+  // ls-html="expr" - sanitized innerHTML
   {
     match: (a) => a.name === "ls-html",
     create(_, a) {
       const g = expr(a.value)
       if (!g) return null
       return (ctx, el) => {
-        el.innerHTML = String(g(ctx) ?? "")
+        el.innerHTML = sanitizeHtml(String(g(ctx) ?? ""))
       }
     },
   },
@@ -541,6 +541,44 @@ function compileTextExpr(t: string): ((c: Ctx) => unknown) | null {
   // Escape backticks and backslashes for safe template literal compilation
   const escaped = t.replace(/[`\\]/g, "\\$&")
   return expr(`\`${escaped}\``)
+}
+
+// =============================================================================
+// HTML Sanitizer
+// =============================================================================
+
+const DANGEROUS_TAGS = new Set(["script", "style", "iframe", "object", "embed", "form", "meta", "link", "base"])
+const DANGEROUS_ATTR_RE = /^on/i
+const DANGEROUS_PROTO_RE = /^\s*javascript\s*:/i
+
+function sanitizeHtml(html: string): string {
+  const tpl = document.createElement("template")
+  tpl.innerHTML = html
+  sanitizeNode(tpl.content)
+  return tpl.innerHTML
+}
+
+function sanitizeNode(node: Node): void {
+  const toRemove: Node[] = []
+  for (let i = 0; i < node.childNodes.length; i++) {
+    const child = node.childNodes[i]
+    if (child.nodeType === 1) {
+      const el = child as Element
+      if (DANGEROUS_TAGS.has(el.tagName.toLowerCase())) {
+        toRemove.push(el)
+        continue
+      }
+      for (const attr of Array.from(el.attributes)) {
+        if (DANGEROUS_ATTR_RE.test(attr.name)) {
+          el.removeAttribute(attr.name)
+        } else if ((attr.name === "href" || attr.name === "src" || attr.name === "action") && DANGEROUS_PROTO_RE.test(attr.value)) {
+          el.removeAttribute(attr.name)
+        }
+      }
+      sanitizeNode(el)
+    }
+  }
+  for (const n of toRemove) n.parentNode?.removeChild(n)
 }
 
 // =============================================================================

@@ -77,6 +77,40 @@ describe("htmx extension", () => {
         swapJson(container, { content: "<strong>Bold</strong>" })
         expect(container.querySelector("div")?.innerHTML).toBe("<strong>Bold</strong>")
       })
+
+      it("strips script tags from ls-html output", () => {
+        container.innerHTML = '<div ls-html="content"></div>'
+        swapJson(container, { content: '<p>Hello</p><script>alert(1)</script>' })
+        const div = container.querySelector("div")
+        expect(div?.querySelector("script")).toBeNull()
+        expect(div?.querySelector("p")?.textContent).toBe("Hello")
+      })
+
+      it("strips event handler attributes from ls-html output", () => {
+        container.innerHTML = '<div ls-html="content"></div>'
+        swapJson(container, { content: '<img src="x" onerror="alert(1)">' })
+        const img = container.querySelector("img")
+        expect(img?.getAttribute("onerror")).toBeNull()
+      })
+
+      it("strips javascript: protocol from href", () => {
+        container.innerHTML = '<div ls-html="content"></div>'
+        swapJson(container, { content: '<a href="javascript:alert(1)">Click</a>' })
+        const a = container.querySelector("a")
+        // href should be removed entirely
+        expect(a?.hasAttribute("href")).toBe(false)
+      })
+
+      it("preserves safe HTML elements and attributes", () => {
+        container.innerHTML = '<div ls-html="content"></div>'
+        swapJson(container, {
+          content: '<a href="/page" class="link"><em>Hello</em></a><br><ul><li>Item</li></ul>',
+        })
+        const div = container.querySelector("div")
+        expect(div?.querySelector("a")?.getAttribute("href")).toBe("/page")
+        expect(div?.querySelector("em")?.textContent).toBe("Hello")
+        expect(div?.querySelector("li")?.textContent).toBe("Item")
+      })
     })
 
     describe(":attr binding", () => {
