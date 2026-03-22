@@ -11,6 +11,7 @@ import { type BridgeSchema, readBridgeConfig } from "./shared/bridge-schema.js"
 import { DEBOUNCE_MS } from "./shared/constants.js"
 import { createLogger } from "./shared/logger.js"
 import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
+import { buildInputOptions, resolveUserBuildInput } from "./shared/vite-compat.js"
 
 /**
  * Configuration for TypeScript type generation.
@@ -465,9 +466,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           manifest: userConfig.build?.manifest ?? (ssr ? false : "manifest.json"),
           ssrManifest: userConfig.build?.ssrManifest ?? (ssr ? "ssr-manifest.json" : false),
           outDir: userConfig.build?.outDir ?? resolveOutDir(pluginConfig, ssr),
-          rollupOptions: {
-            input: userConfig.build?.rollupOptions?.input ?? resolveInput(pluginConfig, ssr),
-          },
+          ...buildInputOptions(resolveUserBuildInput(userConfig.build) ?? resolveInput(pluginConfig, ssr)),
           assetsInlineLimit: userConfig.build?.assetsInlineLimit ?? 0,
         },
         server: {

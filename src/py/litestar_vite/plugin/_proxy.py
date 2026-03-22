@@ -175,33 +175,36 @@ def _extract_proxy_response(upstream_resp: "httpx.Response") -> tuple[int, list[
 
 
 def _extract_proxy_response_headers(headers: "httpx.Headers") -> list[tuple[bytes, bytes]]:
-    """Extract response headers while preserving duplicates and filtering hop-by-hop headers."""
+    """Extract response headers while preserving duplicates and filtering hop-by-hop headers.
+
+    Uses the same hop-by-hop header set as request filtering, plus any headers
+    dynamically listed in the Connection header (RFC 7230 §6.1).
+
+    Returns:
+        A list of (header_name, header_value) tuples.
+    """
     hop_by_hop = set(_HOP_BY_HOP_HEADERS)
-    for key, value in headers.raw:
-        normalized_key = key.decode("latin-1").lower()
-        if normalized_key == "connection":
-            hop_by_hop.update(token.strip().lower() for token in value.decode("latin-1").split(",") if token.strip())
+    # Collect dynamically-declared hop-by-hop headers from Connection header
+    hop_by_hop.update(
+        _collect_connection_tokens((key.decode("latin-1"), value.decode("latin-1")) for key, value in headers.raw)
+    )
 
     extracted: list[tuple[bytes, bytes]] = []
     for key, value in headers.raw:
-        if isinstance(key, str):
-            lower_key = key.lower()
-            key_bytes = key.encode("latin-1")
-        else:
-            lower_key = key.lower().decode("latin-1")
-            key_bytes = key
-
+        lower_key = key.decode("latin-1").lower()
         if lower_key in hop_by_hop:
             continue
-
-        value_bytes = value.encode("latin-1") if isinstance(value, str) else value
-        extracted.append((key_bytes, value_bytes))
+        extracted.append((key, value))
 
     return extracted
 
 
 async def _stream_request_body(receive: "Callable[[], Awaitable[dict[str, Any]]]") -> AsyncGenerator[bytes, None]:
-    """Stream request body chunks from ASGI receive events."""
+    """Stream request body chunks from ASGI receive events.
+
+    Yields:
+        An async generator of bytes.
+    """
     while True:
         event = await receive()
         if event.get("type") != "http.request":
@@ -323,8 +326,19 @@ class ViteProxyMiddleware(AbstractMiddleware):
             return
         await self.app(scope, receive, send)
 
+    @staticmethod
+    def _has_path_traversal(path: str) -> bool:
+        """Check if a path contains directory traversal sequences."""
+        return ".." in path or "\\" in path
+
     def _should_proxy(self, path: str, scope: "Scope") -> bool:
         decoded = unquote(path) if "%" in path else path
+        # Double-decode to catch double-encoded traversal (%252e%252e)
+        double_decoded = unquote(decoded) if "%" in decoded else decoded
+
+        if self._has_path_traversal(decoded) or self._has_path_traversal(double_decoded):
+            return False
+
         path_lower = path.lower()
         decoded_lower = decoded.lower()
 

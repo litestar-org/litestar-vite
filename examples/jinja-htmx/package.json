@@ -13,9 +13,9 @@
   },
   "devDependencies": {
     "typescript": "5.9.3",
-    "@tailwindcss/vite": "4.2.1",
-    "tailwindcss": "4.2.1",
+    "@tailwindcss/vite": "4.2.2",
+    "tailwindcss": "4.2.2",
     "litestar-vite-plugin": "file:../..",
-    "vite": "7.3.1"
+    "vite": "8.0.1"
   }
 }

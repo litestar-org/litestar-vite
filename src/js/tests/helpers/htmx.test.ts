@@ -77,6 +77,40 @@ describe("htmx extension", () => {
         swapJson(container, { content: "<strong>Bold</strong>" })
         expect(container.querySelector("div")?.innerHTML).toBe("<strong>Bold</strong>")
       })
+
+      it("strips script tags from ls-html output", () => {
+        container.innerHTML = '<div ls-html="content"></div>'
+        swapJson(container, { content: "<p>Hello</p><script>alert(1)</script>" })
+        const div = container.querySelector("div")
+        expect(div?.querySelector("script")).toBeNull()
+        expect(div?.querySelector("p")?.textContent).toBe("Hello")
+      })
+
+      it("strips event handler attributes from ls-html output", () => {
+        container.innerHTML = '<div ls-html="content"></div>'
+        swapJson(container, { content: '<img src="x" onerror="alert(1)">' })
+        const img = container.querySelector("img")
+        expect(img?.getAttribute("onerror")).toBeNull()
+      })
+
+      it("strips javascript: protocol from href", () => {
+        container.innerHTML = '<div ls-html="content"></div>'
+        swapJson(container, { content: '<a href="javascript:alert(1)">Click</a>' })
+        const a = container.querySelector("a")
+        // href should be removed entirely
+        expect(a?.hasAttribute("href")).toBe(false)
+      })
+
+      it("preserves safe HTML elements and attributes", () => {
+        container.innerHTML = '<div ls-html="content"></div>'
+        swapJson(container, {
+          content: '<a href="/page" class="link"><em>Hello</em></a><br><ul><li>Item</li></ul>',
+        })
+        const div = container.querySelector("div")
+        expect(div?.querySelector("a")?.getAttribute("href")).toBe("/page")
+        expect(div?.querySelector("em")?.textContent).toBe("Hello")
+        expect(div?.querySelector("li")?.textContent).toBe("Item")
+      })
     })
 
     describe(":attr binding", () => {
@@ -415,6 +449,104 @@ describe("htmx extension", () => {
     })
   })
 
+  // ===== Expression Security =====
+
+  describe("expression validation (injection prevention)", () => {
+    beforeEach(() => {
+      __clearExpressionCache()
+    })
+
+    it("allows simple property access", () => {
+      expect(__compileExpressionForTest("user.name")).toBeTypeOf("function")
+    })
+
+    it("allows arithmetic operators", () => {
+      expect(__compileExpressionForTest("count + 1")).toBeTypeOf("function")
+    })
+
+    it("allows ternary expressions", () => {
+      expect(__compileExpressionForTest("active ? 'Yes' : 'No'")).toBeTypeOf("function")
+    })
+
+    it("allows method calls on context values", () => {
+      expect(__compileExpressionForTest("items.join(', ')")).toBeTypeOf("function")
+    })
+
+    it("allows object literals", () => {
+      expect(__compileExpressionForTest("{ active: isActive, hidden: false }")).toBeTypeOf("function")
+    })
+
+    it("allows template literals", () => {
+      expect(__compileExpressionForTest("`item-${id}`")).toBeTypeOf("function")
+    })
+
+    it("allows comparison operators", () => {
+      expect(__compileExpressionForTest("count > 0")).toBeTypeOf("function")
+    })
+
+    it("allows JSON.stringify on context data", () => {
+      expect(__compileExpressionForTest("JSON.stringify($data)")).toBeTypeOf("function")
+    })
+
+    it("allows $parent, $index, $key access", () => {
+      expect(__compileExpressionForTest("$parent.source")).toBeTypeOf("function")
+      expect(__compileExpressionForTest("$index")).toBeTypeOf("function")
+      expect(__compileExpressionForTest("$key")).toBeTypeOf("function")
+    })
+
+    it("allows function calls from context", () => {
+      expect(__compileExpressionForTest("onClick(id)")).toBeTypeOf("function")
+    })
+
+    it("rejects constructor access", () => {
+      expect(__compileExpressionForTest("constructor.constructor('alert(1)')()")).toBeNull()
+    })
+
+    it("rejects __proto__ access", () => {
+      expect(__compileExpressionForTest("__proto__.polluted = true")).toBeNull()
+    })
+
+    it("rejects prototype access", () => {
+      expect(__compileExpressionForTest("Object.prototype.x = 1")).toBeNull()
+    })
+
+    it("rejects window access", () => {
+      expect(__compileExpressionForTest("window.location")).toBeNull()
+    })
+
+    it("rejects document access", () => {
+      expect(__compileExpressionForTest("document.cookie")).toBeNull()
+    })
+
+    it("rejects globalThis access", () => {
+      expect(__compileExpressionForTest("globalThis.fetch('/')")).toBeNull()
+    })
+
+    it("rejects Function constructor", () => {
+      expect(__compileExpressionForTest("Function('return this')()")).toBeNull()
+    })
+
+    it("rejects import() expressions", () => {
+      expect(__compileExpressionForTest("import('evil-module')")).toBeNull()
+    })
+
+    it("rejects self/top/parent global access", () => {
+      expect(__compileExpressionForTest("self.location")).toBeNull()
+      expect(__compileExpressionForTest("top.location")).toBeNull()
+    })
+
+    it("does not false-positive on property names containing blocked words", () => {
+      // "documentation" contains "document" but should be allowed
+      expect(__compileExpressionForTest("documentation")).toBeTypeOf("function")
+      // "selfie" contains "self" but should be allowed
+      expect(__compileExpressionForTest("selfie")).toBeTypeOf("function")
+      // "topLevel" contains "top" but should be allowed
+      expect(__compileExpressionForTest("topLevel")).toBeTypeOf("function")
+      // "constructorName" starts with "constructor" but is a longer word
+      expect(__compileExpressionForTest("constructorName")).toBeTypeOf("function")
+    })
+  })
+
   describe("expression cache hardening", () => {
     beforeEach(() => {
       __setExpressionCacheLimit(1024)
@@ -438,17 +570,19 @@ describe("htmx extension", () => {
       __compileExpressionForTest("second")
       expect(__getExpressionCacheKeys()).toEqual(["first", "second"])
 
+      // Insert third — should evict "first" (oldest)
       __compileExpressionForTest("third")
       expect(__getExpressionCacheSize()).toBe(2)
       expect(__getExpressionCacheKeys()).toEqual(["second", "third"])
 
-      __compileExpressionForTest("third")
-      expect(__getExpressionCacheKeys()).toEqual(["second", "third"])
-
+      // Re-access "second" — promotes it to most recent
       __compileExpressionForTest("second")
+      expect(__getExpressionCacheKeys()).toEqual(["third", "second"])
+
+      // Insert fourth — should evict "third" (now least recently used), not "second"
       __compileExpressionForTest("fourth")
       expect(__getExpressionCacheSize()).toBe(2)
-      expect(__getExpressionCacheKeys()).toEqual(["third", "fourth"])
+      expect(__getExpressionCacheKeys()).toEqual(["second", "fourth"])
     })
   })
 
@@ -508,6 +642,30 @@ describe("htmx extension", () => {
 
       ext.handleSwap?.("json", container, frag)
       expect(container.innerHTML).toBe("<p>Hello from HTMX</p>")
+    })
+
+    it("does not render error messages as HTML (XSS prevention)", () => {
+      const defineExtension = vi.fn()
+      ;(window as unknown as Record<string, unknown>).htmx = { defineExtension, process: vi.fn() }
+
+      registerHtmxExtension()
+
+      const ext = defineExtension.mock.calls[0]?.[1] as {
+        handleSwap?: (swapStyle: string, target: Element, fragment: DocumentFragment | Element) => Element[]
+      }
+
+      // Craft a fragment with invalid JSON containing an XSS payload
+      const frag = document.createElement("div")
+      frag.textContent = '<img src=x onerror="alert(1)">'
+
+      ext.handleSwap?.("json", container, frag)
+
+      // Error container must use safe DOM construction, not innerHTML
+      const errorDiv = container.querySelector("div")
+      expect(errorDiv).toBeTruthy()
+      // The error text should be visible and HTML-escaped (no child elements from XSS payload)
+      expect(errorDiv?.children.length).toBe(0)
+      expect(errorDiv?.textContent).toContain("SyntaxError")
     })
   })
 

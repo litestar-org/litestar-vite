@@ -149,7 +149,11 @@ export function registerHtmxExtension(): void {
         try {
           swapJson(target, JSON.parse(frag.textContent ?? ""))
         } catch (e) {
-          target.innerHTML = `<div style="color:red;padding:1rem">${e}</div>`
+          const errDiv = document.createElement("div")
+          errDiv.style.cssText = "color:red;padding:1rem"
+          errDiv.textContent = String(e)
+          target.textContent = ""
+          target.appendChild(errDiv)
         }
         return [target]
       }
@@ -328,14 +332,14 @@ const directives: Dir[] = [
     },
   },
 
-  // ls-html="expr" - innerHTML (use carefully)
+  // ls-html="expr" - sanitized innerHTML
   {
     match: (a) => a.name === "ls-html",
     create(_, a) {
       const g = expr(a.value)
       if (!g) return null
       return (ctx, el) => {
-        el.innerHTML = String(g(ctx) ?? "")
+        el.innerHTML = sanitizeHtml(String(g(ctx) ?? ""))
       }
     },
   },
@@ -514,14 +518,59 @@ function childCtx(parent: Ctx, data: unknown, index?: number, key?: string): Ctx
 // Expression Compiler
 // =============================================================================
 
+/** Identifiers that must never appear as standalone words in expressions */
+const BLOCKED_GLOBALS = [
+  "window",
+  "document",
+  "globalThis",
+  "self",
+  "top",
+  "frames",
+  "Function",
+  "eval",
+  "setTimeout",
+  "setInterval",
+  "constructor",
+  "__proto__",
+  "prototype",
+  "import",
+  "require",
+]
+
+/** Build a single regex: matches any blocked word at a word boundary */
+const BLOCKED_RE = new RegExp(`\\b(${BLOCKED_GLOBALS.join("|")})\\b`)
+
+/** Strip string literals and template strings before checking for blocked patterns */
+function stripStrings(s: string): string {
+  return s
+    .replace(/`(?:[^`\\]|\\.)*`/g, "") // template literals
+    .replace(/"(?:[^"\\]|\\.)*"/g, "") // double-quoted strings
+    .replace(/'(?:[^'\\]|\\.)*'/g, "") // single-quoted strings
+}
+
+function isExpressionSafe(s: string): boolean {
+  const stripped = stripStrings(s)
+  return !BLOCKED_RE.test(stripped)
+}
+
 function expr(s: string | null): ((c: Ctx) => unknown) | null {
   if (!s) return null
   const cached = expressionCache.get(s)
   if (cached !== undefined) {
+    // LRU promotion: move to most-recent position
+    expressionCache.delete(s)
+    expressionCache.set(s, cached)
     return cached
   }
 
+  if (!isExpressionSafe(s)) {
+    if (debug) console.warn(`[litestar] blocked expression: ${s}`)
+    cacheExpression(s, null)
+    return null
+  }
+
   try {
+    // Expression validated by isExpressionSafe() above — dangerous globals/constructors blocked
     const fn = new Function("ctx", `with(ctx){return(${s})}`) as (c: Ctx) => unknown
     cacheExpression(s, fn)
     return fn
@@ -537,6 +586,44 @@ function compileTextExpr(t: string): ((c: Ctx) => unknown) | null {
   // Escape backticks and backslashes for safe template literal compilation
   const escaped = t.replace(/[`\\]/g, "\\$&")
   return expr(`\`${escaped}\``)
+}
+
+// =============================================================================
+// HTML Sanitizer
+// =============================================================================
+
+const DANGEROUS_TAGS = new Set(["script", "style", "iframe", "object", "embed", "form", "meta", "link", "base"])
+const DANGEROUS_ATTR_RE = /^on/i
+const DANGEROUS_PROTO_RE = /^\s*javascript\s*:/i
+
+function sanitizeHtml(html: string): string {
+  const tpl = document.createElement("template")
+  tpl.innerHTML = html
+  sanitizeNode(tpl.content)
+  return tpl.innerHTML
+}
+
+function sanitizeNode(node: Node): void {
+  const toRemove: Node[] = []
+  for (let i = 0; i < node.childNodes.length; i++) {
+    const child = node.childNodes[i]
+    if (child.nodeType === 1) {
+      const el = child as Element
+      if (DANGEROUS_TAGS.has(el.tagName.toLowerCase())) {
+        toRemove.push(el)
+        continue
+      }
+      for (const attr of Array.from(el.attributes)) {
+        if (DANGEROUS_ATTR_RE.test(attr.name)) {
+          el.removeAttribute(attr.name)
+        } else if ((attr.name === "href" || attr.name === "src" || attr.name === "action") && DANGEROUS_PROTO_RE.test(attr.value)) {
+          el.removeAttribute(attr.name)
+        }
+      }
+      sanitizeNode(el)
+    }
+  }
+  for (const n of toRemove) n.parentNode?.removeChild(n)
 }
 
 // =============================================================================

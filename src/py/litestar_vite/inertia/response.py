@@ -105,6 +105,11 @@ def _get_inertia_request_info(request: "Request[Any, Any, Any]") -> _InertiaRequ
     )
 
 
+# Maximum allowed size for SSR response body + head combined (10 MiB).
+# This prevents a malicious or misconfigured SSR server from causing OOM.
+_SSR_MAX_RESPONSE_BYTES = 10 * 1024 * 1024
+
+
 def _parse_inertia_ssr_payload(payload: Any, url: str) -> _InertiaSSRResult:
     if not isinstance(payload, dict):
         msg = f"Inertia SSR server at {url!r} returned unexpected payload type: {type(payload)!r}."
@@ -127,6 +132,15 @@ def _parse_inertia_ssr_payload(payload: Any, url: str) -> _InertiaSSRResult:
     head_list = cast("list[Any]", head_raw)
     if any(not isinstance(item, str) for item in head_list):
         msg = f"Inertia SSR server at {url!r} returned invalid 'head' (expected list[str])."
+        raise ImproperlyConfiguredException(msg)
+
+    total_size = len(body) + sum(len(h) for h in head_list)
+    if total_size > _SSR_MAX_RESPONSE_BYTES:
+        msg = (
+            f"Inertia SSR response from {url!r} exceeds maximum allowed size "
+            f"({total_size:,} bytes > {_SSR_MAX_RESPONSE_BYTES:,} bytes). "
+            "This may indicate a misconfigured SSR server."
+        )
         raise ImproperlyConfiguredException(msg)
 
     return _InertiaSSRResult(head=cast("list[str]", head_list), body=body)

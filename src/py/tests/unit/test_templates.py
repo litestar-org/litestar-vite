@@ -214,19 +214,19 @@ def test_angular_cli_and_htmx_examples_pin_current_stable_registry_versions() ->
     assert angular_cli["devDependencies"]["@angular/cli"] == "21.2.1"
     assert angular_cli["devDependencies"]["@angular/compiler-cli"] == "21.2.1"
     assert angular_cli["devDependencies"]["@hey-api/openapi-ts"] == "0.94.0"
-    assert angular_cli["devDependencies"]["@tailwindcss/postcss"] == "4.2.1"
+    assert angular_cli["devDependencies"]["@tailwindcss/postcss"] == "4.2.2"
     assert angular_cli["devDependencies"]["postcss"] == "8.5.8"
-    assert angular_cli["devDependencies"]["tailwindcss"] == "4.2.1"
+    assert angular_cli["devDependencies"]["tailwindcss"] == "4.2.2"
     assert angular_cli["devDependencies"]["typescript"] == "5.9.3"
     assert angular_cli["devDependencies"]["@types/node"] == "25.3.5"
     assert "@angular-devkit/build-angular" not in angular_cli["devDependencies"]
     assert "autoprefixer" not in angular_cli["devDependencies"]
 
     assert htmx["dependencies"]["htmx.org"] == "2.0.8"
-    assert htmx["devDependencies"]["@tailwindcss/vite"] == "4.2.1"
-    assert htmx["devDependencies"]["tailwindcss"] == "4.2.1"
+    assert htmx["devDependencies"]["@tailwindcss/vite"] == "4.2.2"
+    assert htmx["devDependencies"]["tailwindcss"] == "4.2.2"
     assert htmx["devDependencies"]["typescript"] == "5.9.3"
-    assert htmx["devDependencies"]["vite"] == "7.3.1"
+    assert htmx["devDependencies"]["vite"] == "8.0.1"
 
 
 def test_angular_vite_example_and_template_match_current_router_shell() -> None:
@@ -252,15 +252,15 @@ def test_angular_vite_example_and_template_match_current_router_shell() -> None:
     assert angular_example["devDependencies"]["@angular/compiler-cli"] == "21.2.1"
     assert angular_example["devDependencies"]["@angular/platform-browser-dynamic"] == "21.2.1"
     assert angular_example["devDependencies"]["@types/node"] == "25.3.5"
-    assert angular_example["devDependencies"]["vite"] == "7.3.1"
-    assert angular_example["devDependencies"]["tailwindcss"] == "4.2.1"
+    assert angular_example["devDependencies"]["vite"] == "8.0.1"
+    assert angular_example["devDependencies"]["tailwindcss"] == "4.2.2"
 
     assert '"@analogjs/vite-plugin-angular": "2.3.1"' in angular_template
     assert '"@angular/build": "21.2.1"' in angular_template
     assert '"@angular/compiler-cli": "21.2.1"' in angular_template
     assert '"@angular/platform-browser-dynamic": "21.2.1"' in angular_template
     assert '"@types/node": "25.3.5"' in angular_template
-    assert '"vite": "7.3.1"' in angular_template
+    assert '"vite": "8.0.1"' in angular_template
     assert '"zod": "4.3.6"' in angular_template
     assert '"latest"' not in angular_template
 
@@ -402,7 +402,7 @@ def test_svelte_manifests_pin_concrete_stable_versions() -> None:
         assert '"latest"' not in text
 
     assert '"svelte": "5.53.7"' in svelte_example
-    assert '"@sveltejs/kit": "2.53.4"' in sveltekit_example
+    assert '"@sveltejs/kit": "2.55.0"' in sveltekit_example
     assert '"@sveltejs/adapter-node": "5.5.4"' in sveltekit_example
     assert '"prepare": "svelte-kit sync"' in sveltekit_example
     assert '"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"' in sveltekit_example

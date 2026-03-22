@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, version } from "vite";
 import react from "@vitejs/plugin-react";
 import litestar from "litestar-vite-plugin";
 {% if use_tailwind %}
@@ -6,6 +6,8 @@ import tailwindcss from "@tailwindcss/vite";
 {% endif %}
 
 {% if enable_ssr %}
+const bundlerKey = Number(version.split(".")[0]) >= 8 ? "rolldownOptions" : "rollupOptions";
+
 export default defineConfig(({ ssrBuild }) => ({
 {% else %}
 export default defineConfig({
@@ -35,7 +37,7 @@ export default defineConfig({
   ],
 {% if enable_ssr %}
   build: {
-    rollupOptions: {
+    [bundlerKey]: {
       output: ssrBuild
         ? {
             entryFileNames: "ssr.js",

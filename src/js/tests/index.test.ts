@@ -3,6 +3,7 @@ import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import litestar from "../src"
 import { resolvePageComponent } from "../src/inertia-helpers"
+import { getBuildInput } from "./__fixtures__/mock-vite-config"
 
 // Mock the fs module
 vi.mock("fs", async () => {
@@ -200,20 +201,20 @@ describe("litestar-vite-plugin", () => {
     const plugin = litestar("resources/js/app.ts")[0]
 
     const config = plugin.config({}, { command: "build", mode: "production" })
-    expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
+    expect(getBuildInput(config)).toBe("resources/js/app.ts")
 
     const ssrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
-    expect(ssrConfig.build?.rollupOptions?.input).toMatch("resources/js/app.ts")
+    expect(getBuildInput(ssrConfig)).toMatch("resources/js/app.ts")
   })
 
   it("accepts an array of inputs", () => {
     const plugin = litestar(["resources/js/app.ts", "resources/js/other.js"])[0]
 
     const config = plugin.config({}, { command: "build", mode: "production" })
-    expect(config.build?.rollupOptions?.input).toEqual(["resources/js/app.ts", "resources/js/other.js"])
+    expect(getBuildInput(config)).toEqual(["resources/js/app.ts", "resources/js/other.js"])
 
     const ssrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
-    expect(ssrConfig.build?.rollupOptions?.input).toEqual(["resources/js/app.ts", "resources/js/other.js"])
+    expect(getBuildInput(ssrConfig)).toEqual(["resources/js/app.ts", "resources/js/other.js"])
   })
 
   it("accepts a full configuration", () => {
@@ -229,13 +230,13 @@ describe("litestar-vite-plugin", () => {
     expect(config.base).toBe("other-static/")
     expect(config.build?.manifest).toBe("manifest.json")
     expect(config.build?.outDir).toBe("other-build")
-    expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
+    expect(getBuildInput(config)).toBe("resources/js/app.ts")
 
     const ssrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
     expect(ssrConfig.base).toBe("other-static/")
     expect(ssrConfig.build?.manifest).toBe(false)
     expect(ssrConfig.build?.outDir).toBe("other-ssr-output")
-    expect(ssrConfig.build?.rollupOptions?.input).toBe("resources/js/ssr.ts")
+    expect(getBuildInput(ssrConfig)).toBe("resources/js/ssr.ts")
   })
 
   it("uses Vite publicDir from python staticDir when provided", () => {
@@ -751,13 +752,13 @@ describe("litestar-vite-plugin", () => {
     expect(config.base).toMatch("static/")
     expect(config.build?.manifest).toBe("manifest.json")
     expect(config.build?.outDir).toBe("public")
-    expect(config.build?.rollupOptions?.input).toBe("src/js/app.js")
+    expect(getBuildInput(config)).toBe("src/js/app.js")
 
     const ssrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
     expect(ssrConfig.base).toMatch("static/")
     expect(ssrConfig.build?.manifest).toBe(false)
     expect(ssrConfig.build?.outDir).toMatch("src/bootstrap/ssr")
-    expect(ssrConfig.build?.rollupOptions?.input).toMatch("src/js/ssr.js")
+    expect(getBuildInput(ssrConfig)).toMatch("src/js/ssr.js")
   })
   it("accepts a partial configuration with an asset URL", () => {
     const plugin = litestar({
@@ -771,13 +772,13 @@ describe("litestar-vite-plugin", () => {
     expect(config.base).toBe("/over/the/rainbow/")
     expect(config.build?.manifest).toBe("manifest.json")
     expect(config.build?.outDir).toBe("public/build")
-    expect(config.build?.rollupOptions?.input).toBe("src/js/app.js")
+    expect(getBuildInput(config)).toBe("src/js/app.js")
 
     const ssrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
     expect(ssrConfig.base).toBe("/over/the/rainbow/")
     expect(ssrConfig.build?.manifest).toBe(false)
     expect(ssrConfig.build?.outDir).toBe("src/bootstrap/ssr")
-    expect(ssrConfig.build?.rollupOptions?.input).toBe("src/js/ssr.js")
+    expect(getBuildInput(ssrConfig)).toBe("src/js/ssr.js")
   })
 
   it("uses the default entry point when ssr entry point is not provided", () => {
@@ -785,7 +786,7 @@ describe("litestar-vite-plugin", () => {
     const plugin = litestar("resources/js/ssr.js")[0]
 
     const ssrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
-    expect(ssrConfig.build?.rollupOptions?.input).toBe("resources/js/ssr.js")
+    expect(getBuildInput(ssrConfig)).toBe("resources/js/ssr.js")
   })
 
   it("prefixes the base with ASSET_URL in production mode", () => {

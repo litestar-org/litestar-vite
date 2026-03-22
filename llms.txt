@@ -7,7 +7,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 ## Python Package
 
 - Package: `litestar-vite`
-- Version: 0.18.4
+- Version: 0.19.0
 - Python: >=3.10
 - Key dependencies: `litestar>=2.7.0`, `httpx>=0.24.1`, `websockets>=12.0`
 - Optional extras: `jinja` (Jinja2 templates), `nodeenv` (auto-detected Node), `http2` (h2 for proxy)
@@ -15,7 +15,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 ## npm Package
 
 - Package: `litestar-vite-plugin`
-- Version: 0.18.4
+- Version: 0.19.0
 - Peer dependency: `vite ^6.0.0 || ^7.0.0`
 - Exports: `.` (main plugin), `./helpers` (route/csrf/htmx helpers), `./inertia-helpers`, `./astro`, `./sveltekit`, `./nuxt`, `./inertia` (types), `./virtual` (virtual module types)
 
@@ -72,7 +72,12 @@ litestar run --reload                # Vite dev server proxied automatically
 - `litestar_vite.deploy` -- CDN deployment via fsspec
 - `litestar_vite.doctor` -- diagnostic tooling
 - `litestar_vite.cli` -- Click CLI commands
+- `litestar_vite.commands` -- CLI command implementations
 - `litestar_vite.handler` -- SPA catch-all route handler (AppHandler)
+- `litestar_vite.html_transform` -- HTML transformation utilities (inject scripts, set data attributes, transform asset URLs)
+- `litestar_vite.utils` -- Utility functions (static resource paths, hotfile reading)
+- `litestar_vite.scaffolding` -- Template scaffolding for `litestar assets init`
+- `litestar_vite.exceptions` -- Custom exception classes
 
 ## Documentation
 

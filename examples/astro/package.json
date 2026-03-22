@@ -18,10 +18,10 @@
   },
   "devDependencies": {
     "@hey-api/openapi-ts": "0.94.0",
-    "@tailwindcss/vite": "4.2.1",
+    "@tailwindcss/vite": "4.2.2",
     "litestar-vite-plugin": "file:../..",
-    "tailwindcss": "4.2.1",
+    "tailwindcss": "4.2.2",
     "typescript": "5.9.3",
-    "vite": "7.3.1"
+    "vite": "8.0.1"
   }
 }

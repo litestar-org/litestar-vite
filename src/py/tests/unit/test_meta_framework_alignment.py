@@ -12,9 +12,9 @@ def test_astro_example_uses_current_manifest_and_tsconfig() -> None:
 
     assert '"astro": "5.18.0"' in package_text
     assert '"@hey-api/openapi-ts": "0.94.0"' in package_text
-    assert '"@tailwindcss/vite": "4.2.1"' in package_text
-    assert '"tailwindcss": "4.2.1"' in package_text
-    assert '"vite": "7.3.1"' in package_text
+    assert '"@tailwindcss/vite": "4.2.2"' in package_text
+    assert '"tailwindcss": "4.2.2"' in package_text
+    assert '"vite": "8.0.1"' in package_text
     assert '"zod": "4.3.6"' in package_text
     assert '"check": "astro check"' in package_text
     assert '"typecheck": "astro check"' in package_text
@@ -40,10 +40,10 @@ def test_nuxt_example_uses_current_manifest_and_app_directory() -> None:
     assert '"nuxt": "4.3.1"' in package_text
     assert '"vue": "3.5.29"' in package_text
     assert '"@hey-api/openapi-ts": "0.94.0"' in package_text
-    assert '"@tailwindcss/vite": "4.2.1"' in package_text
-    assert '"tailwindcss": "4.2.1"' in package_text
+    assert '"@tailwindcss/vite": "4.2.2"' in package_text
+    assert '"tailwindcss": "4.2.2"' in package_text
     assert '"typescript": "5.9.3"' in package_text
-    assert '"vite": "7.3.1"' in package_text
+    assert '"vite": "8.0.1"' in package_text
     assert '"vue-tsc": "3.2.5"' in package_text
     assert '"zod": "4.3.6"' in package_text
     assert '"dev": "nuxt dev"' in package_text
