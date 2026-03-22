@@ -509,6 +509,30 @@ describe("htmx extension", () => {
       ext.handleSwap?.("json", container, frag)
       expect(container.innerHTML).toBe("<p>Hello from HTMX</p>")
     })
+
+    it("does not render error messages as HTML (XSS prevention)", () => {
+      const defineExtension = vi.fn()
+      ;(window as unknown as Record<string, unknown>).htmx = { defineExtension, process: vi.fn() }
+
+      registerHtmxExtension()
+
+      const ext = defineExtension.mock.calls[0]?.[1] as {
+        handleSwap?: (swapStyle: string, target: Element, fragment: DocumentFragment | Element) => Element[]
+      }
+
+      // Craft a fragment with invalid JSON containing an XSS payload
+      const frag = document.createElement("div")
+      frag.textContent = '<img src=x onerror="alert(1)">'
+
+      ext.handleSwap?.("json", container, frag)
+
+      // Error container must use safe DOM construction, not innerHTML
+      const errorDiv = container.querySelector("div")
+      expect(errorDiv).toBeTruthy()
+      // The error text should be visible and HTML-escaped (no child elements from XSS payload)
+      expect(errorDiv?.children.length).toBe(0)
+      expect(errorDiv?.textContent).toContain("SyntaxError")
+    })
   })
 
   describe("addDirective", () => {

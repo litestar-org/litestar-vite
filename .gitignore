@@ -212,3 +212,4 @@ coverage.json
 .agent/
 .beads/
 src/py/tests/test_app/web/public/hot
+.agents

@@ -149,7 +149,11 @@ export function registerHtmxExtension(): void {
         try {
           swapJson(target, JSON.parse(frag.textContent ?? ""))
         } catch (e) {
-          target.innerHTML = `<div style="color:red;padding:1rem">${e}</div>`
+          const errDiv = document.createElement("div")
+          errDiv.style.cssText = "color:red;padding:1rem"
+          errDiv.textContent = String(e)
+          target.textContent = ""
+          target.appendChild(errDiv)
         }
         return [target]
       }
