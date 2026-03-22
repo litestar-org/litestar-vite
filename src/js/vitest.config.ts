@@ -11,6 +11,7 @@ export default defineConfig({
     },
   },
   test: {
+    globalSetup: ["./src/js/tests/global-setup.ts"],
     environment: "happy-dom",
     globals: true,
     coverage: {

@@ -12,6 +12,7 @@ from litestar_vite.config import (
     TypeGenConfig,
     ViteConfig,
 )
+from litestar_vite.config._inertia import InertiaConfig, InertiaSSRConfig
 from litestar_vite.executor import BunExecutor, NodeenvExecutor, NodeExecutor
 
 
@@ -351,7 +352,7 @@ def test_has_built_assets_detects_manifest_in_vite_dir(tmp_path: Path) -> None:
 
 def test_vite_config_reacts_to_cached_package_json(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Verify package.json reads for react detection are memoized for unchanged files."""
-    from litestar_vite import config as config_module
+    from litestar_vite.config import _vite as config_module
 
     package_json = tmp_path / "package.json"
     package_json.write_text('{"devDependencies": {"@vitejs/plugin-react": "^5.0.0"}}')
@@ -375,7 +376,7 @@ def test_vite_config_reacts_to_cached_package_json(monkeypatch: pytest.MonkeyPat
 
 def test_vite_config_reacts_to_package_json_changes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Verify package.json changes invalidate the react detection cache."""
-    from litestar_vite import config as config_module
+    from litestar_vite.config import _vite as config_module
 
     package_json = tmp_path / "package.json"
     package_json.write_text('{"devDependencies": {"@vitejs/plugin-react": "^5.0.0"}}')
@@ -430,10 +431,10 @@ def test_asset_url_ignores_deploy_asset_url_in_dev_mode() -> None:
 
 def test_validate_mode_template_requires_jinja(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test validation fails for template mode without Jinja2."""
-    # Temporarily disable Jinja2
-    import litestar_vite.config
+    # Temporarily disable Jinja2 in the module where validate_mode reads it
+    from litestar_vite.config import _vite as vite_module
 
-    monkeypatch.setattr(litestar_vite.config, "JINJA_INSTALLED", False)
+    monkeypatch.setattr(vite_module, "JINJA_INSTALLED", False)
 
     config = ViteConfig(mode="template")
 
@@ -685,3 +686,52 @@ def test_mode_alias_inertia_to_hybrid() -> None:
     assert config.mode == "hybrid"
     # Hybrid mode should auto-enable SPAConfig
     assert isinstance(config.spa, SPAConfig)
+
+
+# ===== Mode + Inertia Conflict Validation =====
+
+
+def test_validate_mode_rejects_template_with_inertia() -> None:
+    config = ViteConfig(mode="template", inertia=InertiaConfig())
+    with pytest.raises(ValueError, match=r"Inertia\.js cannot be used with mode='template'"):
+        config.validate_mode()
+
+
+def test_validate_mode_rejects_htmx_with_inertia() -> None:
+    config = ViteConfig(mode="htmx", inertia=InertiaConfig())
+    with pytest.raises(ValueError, match=r"Inertia\.js cannot be used with mode='htmx'"):
+        config.validate_mode()
+
+
+def test_validate_mode_rejects_external_with_inertia() -> None:
+    config = ViteConfig(mode="external", inertia=InertiaConfig())
+    with pytest.raises(ValueError, match=r"Inertia\.js cannot be used with mode='external'"):
+        config.validate_mode()
+
+
+def test_validate_mode_allows_hybrid_with_inertia() -> None:
+    config = ViteConfig(mode="hybrid", inertia=InertiaConfig(), runtime=RuntimeConfig(dev_mode=True))
+    config.validate_mode()  # Should not raise
+    assert isinstance(config.inertia, InertiaConfig)
+
+
+def test_validate_mode_rejects_negative_ssr_timeout() -> None:
+    config = ViteConfig(
+        mode="hybrid", inertia=InertiaConfig(ssr=InertiaSSRConfig(timeout=-1.0)), runtime=RuntimeConfig(dev_mode=True)
+    )
+    with pytest.raises(ValueError, match="timeout must be positive"):
+        config.validate_mode()
+
+
+def test_validate_mode_rejects_zero_ssr_timeout() -> None:
+    config = ViteConfig(
+        mode="hybrid", inertia=InertiaConfig(ssr=InertiaSSRConfig(timeout=0)), runtime=RuntimeConfig(dev_mode=True)
+    )
+    with pytest.raises(ValueError, match="timeout must be positive"):
+        config.validate_mode()
+
+
+def test_validate_mode_rejects_page_props_without_inertia() -> None:
+    config = ViteConfig(types=TypeGenConfig(generate_page_props=True))
+    with pytest.raises(ValueError, match="generate_page_props=True requires Inertia"):
+        config.validate_mode()
