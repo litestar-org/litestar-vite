@@ -112,7 +112,9 @@ def test_executor_execute_command_success(mock_which: Mock, mock_run: Mock) -> N
 
 @patch("subprocess.run")
 @patch("shutil.which")
-def test_executor_execute_rewrites_bare_binary_when_resolved_name_has_extension(mock_which: Mock, mock_run: Mock) -> None:
+def test_executor_execute_rewrites_bare_binary_when_resolved_name_has_extension(
+    mock_which: Mock, mock_run: Mock
+) -> None:
     """Execute should drop the duplicated short binary when the resolved name has an extension."""
     mock_which.return_value = "C:/Program Files/nodejs/npm.CMD"
     mock_run.return_value = Mock(returncode=0)
