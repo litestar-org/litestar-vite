@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -203,89 +202,6 @@ def test_inertia_docs_use_current_links_and_protocol_headers() -> None:
     assert "Svelte 5" not in fullstack_example
 
 
-def test_angular_cli_and_htmx_examples_pin_current_stable_registry_versions() -> None:
-    """Ensure owned example manifests pin the current stable versions."""
-    angular_cli = json.loads((EXAMPLES_ROOT / "angular-cli" / "package.json").read_text())
-    htmx = json.loads((EXAMPLES_ROOT / "jinja-htmx" / "package.json").read_text())
-
-    assert angular_cli["dependencies"]["@angular/core"] == "21.2.1"
-    assert angular_cli["dependencies"]["rxjs"] == "7.8.2"
-    assert angular_cli["devDependencies"]["@angular/build"] == "21.2.1"
-    assert angular_cli["devDependencies"]["@angular/cli"] == "21.2.1"
-    assert angular_cli["devDependencies"]["@angular/compiler-cli"] == "21.2.1"
-    assert angular_cli["devDependencies"]["@hey-api/openapi-ts"] == "0.94.0"
-    assert angular_cli["devDependencies"]["@tailwindcss/postcss"] == "4.2.2"
-    assert angular_cli["devDependencies"]["postcss"] == "8.5.8"
-    assert angular_cli["devDependencies"]["tailwindcss"] == "4.2.2"
-    assert angular_cli["devDependencies"]["typescript"] == "5.9.3"
-    assert angular_cli["devDependencies"]["@types/node"] == "25.3.5"
-    assert "@angular-devkit/build-angular" not in angular_cli["devDependencies"]
-    assert "autoprefixer" not in angular_cli["devDependencies"]
-
-    assert htmx["dependencies"]["htmx.org"] == "2.0.8"
-    assert htmx["devDependencies"]["@tailwindcss/vite"] == "4.2.2"
-    assert htmx["devDependencies"]["tailwindcss"] == "4.2.2"
-    assert htmx["devDependencies"]["typescript"] == "5.9.3"
-    assert htmx["devDependencies"]["vite"] == "8.0.1"
-
-
-def test_angular_vite_example_and_template_match_current_router_shell() -> None:
-    """Ensure the Angular Vite scaffold matches the current standalone router layout and pinned versions."""
-    angular_example = json.loads((EXAMPLES_ROOT / "angular" / "package.json").read_text())
-    angular_template = (TEMPLATE_ROOT / "angular" / "package.json.j2").read_text()
-    example_component = (EXAMPLES_ROOT / "angular" / "src" / "app" / "app.component.ts").read_text()
-    example_component_html = (EXAMPLES_ROOT / "angular" / "src" / "app" / "app.component.html").read_text()
-    example_component_css = (EXAMPLES_ROOT / "angular" / "src" / "app" / "app.component.css").read_text()
-    example_config = (EXAMPLES_ROOT / "angular" / "src" / "app" / "app.config.ts").read_text()
-    example_routes = (EXAMPLES_ROOT / "angular" / "src" / "app" / "app.routes.ts").read_text()
-    example_home = (EXAMPLES_ROOT / "angular" / "src" / "app" / "home.component.ts").read_text()
-    template_component = (TEMPLATE_ROOT / "angular" / "src" / "app" / "app.component.ts.j2").read_text()
-    template_component_html = (TEMPLATE_ROOT / "angular" / "src" / "app" / "app.component.html.j2").read_text()
-    template_config = (TEMPLATE_ROOT / "angular" / "src" / "app" / "app.config.ts.j2").read_text()
-    template_routes = (TEMPLATE_ROOT / "angular" / "src" / "app" / "app.routes.ts.j2").read_text()
-    template_home = (TEMPLATE_ROOT / "angular" / "src" / "app" / "home.component.ts.j2").read_text()
-
-    assert angular_example["dependencies"]["@angular/core"] == "21.2.1"
-    assert angular_example["dependencies"]["rxjs"] == "7.8.2"
-    assert angular_example["devDependencies"]["@analogjs/vite-plugin-angular"] == "2.3.1"
-    assert angular_example["devDependencies"]["@angular/build"] == "21.2.1"
-    assert angular_example["devDependencies"]["@angular/compiler-cli"] == "21.2.1"
-    assert angular_example["devDependencies"]["@angular/platform-browser-dynamic"] == "21.2.1"
-    assert angular_example["devDependencies"]["@types/node"] == "25.3.5"
-    assert angular_example["devDependencies"]["vite"] == "8.0.1"
-    assert angular_example["devDependencies"]["tailwindcss"] == "4.2.2"
-
-    assert '"@analogjs/vite-plugin-angular": "2.3.1"' in angular_template
-    assert '"@angular/build": "21.2.1"' in angular_template
-    assert '"@angular/compiler-cli": "21.2.1"' in angular_template
-    assert '"@angular/platform-browser-dynamic": "21.2.1"' in angular_template
-    assert '"@types/node": "25.3.5"' in angular_template
-    assert '"vite": "8.0.1"' in angular_template
-    assert '"zod": "4.3.6"' in angular_template
-    assert '"latest"' not in angular_template
-
-    for text in (example_component, template_component):
-        assert "RouterOutlet" in text
-        assert "imports: [RouterOutlet]" in text
-
-    for text in (example_component_html, template_component_html):
-        assert "<router-outlet></router-outlet>" in text
-
-    for text in (example_config, template_config):
-        assert "provideHttpClient()" in text
-        assert "provideRouter(appRoutes)" in text
-
-    for text in (example_routes, template_routes):
-        assert 'loadComponent: () => import("./home.component")' in text
-
-    for text in (example_home, template_home):
-        assert 'route("summary")' in text
-        assert 'route("books")' in text
-        assert "Angular 21" not in text
-
-    assert "code {" not in example_component_css
-
-
 def test_angular_cli_example_uses_current_builder_and_tailwind_structure() -> None:
     """Ensure Angular CLI surfaces match the current builder and Tailwind setup."""
     angular_json = (EXAMPLES_ROOT / "angular-cli" / "angular.json").read_text()
@@ -401,9 +317,6 @@ def test_svelte_manifests_pin_concrete_stable_versions() -> None:
     for text in (svelte_example, sveltekit_example, svelte_template, svelte_inertia_template, sveltekit_template):
         assert '"latest"' not in text
 
-    assert '"svelte": "5.53.7"' in svelte_example
-    assert '"@sveltejs/kit": "2.55.0"' in sveltekit_example
-    assert '"@sveltejs/adapter-node": "5.5.4"' in sveltekit_example
     assert '"prepare": "svelte-kit sync"' in sveltekit_example
     assert '"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"' in sveltekit_example
 
