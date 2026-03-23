@@ -228,6 +228,9 @@ class ViteDoctor:
         self._check_manifest_presence()
         self._check_typegen_artifacts()
         self._check_env_alignment()
+        self._check_mode_inertia_conflicts()
+        self._check_ssr_reachability()
+        self._check_static_props_secrets()
 
         self._check_node_modules()
         if runtime_checks:
@@ -1048,6 +1051,69 @@ class ViteDoctor:
                     auto_fixable=False,
                 )
             )
+
+    def _check_mode_inertia_conflicts(self) -> None:
+        """Warn when mode and inertia settings are incompatible."""
+        from litestar_vite.config import InertiaConfig
+
+        inertia_enabled = isinstance(self.config.inertia, InertiaConfig)
+        if inertia_enabled and self.config.mode in {"template", "htmx", "external"}:
+            self.issues.append(
+                DoctorIssue(
+                    check="Mode/Inertia Conflict",
+                    severity="error",
+                    message=f"Inertia is enabled but mode={self.config.mode!r} is incompatible with Inertia",
+                    fix_hint="Switch to mode='spa' or mode='hybrid', or disable inertia",
+                    auto_fixable=False,
+                )
+            )
+
+    def _check_ssr_reachability(self) -> None:
+        """Warn when Inertia SSR is enabled but the server URL looks misconfigured."""
+        from litestar_vite.config import InertiaConfig
+
+        if not isinstance(self.config.inertia, InertiaConfig):
+            return
+        ssr = self.config.inertia.ssr_config
+        if ssr is None:
+            return
+        if not ssr.url.startswith(("http://", "https://")):
+            self.issues.append(
+                DoctorIssue(
+                    check="SSR URL Format",
+                    severity="error",
+                    message=f"InertiaSSRConfig.url={ssr.url!r} is not a valid HTTP URL",
+                    fix_hint="Set url to a full URL like 'http://127.0.0.1:13714/render'",
+                    auto_fixable=False,
+                )
+            )
+        if ssr.timeout <= 0:
+            self.issues.append(
+                DoctorIssue(
+                    check="SSR Timeout",
+                    severity="error",
+                    message=f"InertiaSSRConfig.timeout={ssr.timeout} must be positive",
+                    fix_hint="Set timeout to a positive number (default: 2.0)",
+                    auto_fixable=False,
+                )
+            )
+
+    def _check_static_props_secrets(self) -> None:
+        """Warn when static_props values look like they contain secrets."""
+        if not self.config.static_props:
+            return
+        secret_patterns = {"password", "secret", "token", "api_key", "apikey", "private_key"}
+        for key in self.config.static_props:
+            if any(pat in key.lower() for pat in secret_patterns):
+                self.issues.append(
+                    DoctorIssue(
+                        check="Static Props Secret",
+                        severity="warning",
+                        message=f"static_props key {key!r} may contain a secret — it is written to .litestar.json and exposed to JS",
+                        fix_hint="Move secrets to environment variables or server-side session props instead",
+                        auto_fixable=False,
+                    )
+                )
 
     def _check_env_alignment(self) -> None:
         """Compare key env vars to active config to surface surprises."""
