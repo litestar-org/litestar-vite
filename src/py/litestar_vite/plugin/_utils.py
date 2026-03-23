@@ -292,9 +292,9 @@ def write_runtime_config_file(
         "types": {
             "enabled": True,
             "output": _path_for_bridge(types.output, root),
-            "openapiPath": _path_for_bridge(types.openapi_path, root),
-            "routesPath": _path_for_bridge(types.routes_path, root),
-            "pagePropsPath": _path_for_bridge(types.page_props_path, root),
+            "openapiPath": _path_for_bridge(cast("Path", types.openapi_path), root),
+            "routesPath": _path_for_bridge(cast("Path", types.routes_path), root),
+            "pagePropsPath": _path_for_bridge(cast("Path", types.page_props_path), root),
             "routesTsPath": _path_for_bridge(types.routes_ts_path, root) if types.routes_ts_path else None,
             "schemasTsPath": _path_for_bridge(types.schemas_ts_path, root) if types.schemas_ts_path else None,
             "generateZod": types.generate_zod,

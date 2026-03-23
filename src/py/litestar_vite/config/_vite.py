@@ -548,7 +548,7 @@ class ViteConfig:
             raise ValueError(msg)
 
         # Validate SSR config when Inertia is enabled
-        if inertia_enabled:
+        if isinstance(self.inertia, InertiaConfig):
             ssr_config = self.inertia.ssr_config
             if ssr_config is not None and ssr_config.timeout <= 0:
                 msg = f"InertiaSSRConfig.timeout must be positive, got {ssr_config.timeout}."
