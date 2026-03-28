@@ -1,3 +1,4 @@
+import type { VisitOptions } from "@inertiajs/core";
 import { createInertiaApp } from "@inertiajs/svelte";
 import { csrfHeaders } from "litestar-vite-plugin/helpers";
 import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
@@ -8,7 +9,7 @@ createInertiaApp({
   resolve: (name) =>
     resolvePageComponent(`./pages/${name}.svelte`, import.meta.glob("./pages/**/*.svelte")),
   defaults: {
-    visitOptions: (_href, options) => ({
+    visitOptions: (_href, options: VisitOptions) => ({
       headers: csrfHeaders(options.headers ?? {}),
     }),
   },

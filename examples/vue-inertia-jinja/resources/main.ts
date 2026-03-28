@@ -1,3 +1,4 @@
+import type { VisitOptions } from "@inertiajs/core"
 import { createInertiaApp } from "@inertiajs/vue3"
 import { csrfHeaders } from "litestar-vite-plugin/helpers"
 import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers"
@@ -8,7 +9,7 @@ import "./style.css"
 createInertiaApp({
   resolve: (name) => resolvePageComponent(`./pages/${name}.vue`, import.meta.glob<DefineComponent>("./pages/**/*.vue")),
   defaults: {
-    visitOptions: (_href, options) => ({
+    visitOptions: (_href, options: VisitOptions) => ({
       headers: csrfHeaders(options.headers ?? {}),
     }),
   },
