@@ -8,7 +8,9 @@ import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
 createServer(
   (page) =>
     createInertiaApp({
-      // If you enable use_script_element=True, mirror the same defaults.future.useScriptElementForInitialPage setting here too.
+      // If you enable use_script_element=True:
+      // - Inertia v3 uses the script-element bootstrap by default.
+      // - Inertia v2 must mirror defaults.future.useScriptElementForInitialPage here too.
       page,
       render: renderToString,
       resolve: (name) => resolvePageComponent(`./pages/${name}.vue`, import.meta.glob("./pages/**/*.vue")),

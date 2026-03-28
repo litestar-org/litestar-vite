@@ -31,6 +31,7 @@ def test_astro_example_uses_current_manifest_and_tsconfig() -> None:
 
 def test_nuxt_example_uses_current_manifest_and_app_directory() -> None:
     package_text = (EXAMPLES_ROOT / "nuxt" / "package.json").read_text()
+    openapi_config_text = (EXAMPLES_ROOT / "nuxt" / "openapi-ts.config.ts").read_text()
     tsconfig_text = (EXAMPLES_ROOT / "nuxt" / "tsconfig.json").read_text()
     config_text = (EXAMPLES_ROOT / "nuxt" / "nuxt.config.ts").read_text()
     app_text = (EXAMPLES_ROOT / "nuxt" / "app" / "app.vue").read_text()
@@ -51,7 +52,10 @@ def test_nuxt_example_uses_current_manifest_and_app_directory() -> None:
     assert '"preview": "nuxt preview"' in package_text
     assert '"postinstall": "nuxt prepare"' in package_text
     assert '"typecheck": "vue-tsc -b --noEmit"' in package_text
+    assert '"litestar-vite-plugin": "file:../.."' in package_text
     assert '"latest"' not in package_text
+    assert 'input: "./app/generated/openapi.json"' in openapi_config_text
+    assert 'output: "./app/generated/api"' in openapi_config_text
 
     assert '"references": [' in tsconfig_text
     assert '"path": "./.nuxt/tsconfig.app.json"' in tsconfig_text
@@ -69,11 +73,13 @@ def test_nuxt_example_uses_current_manifest_and_app_directory() -> None:
 
 
 def test_meta_framework_templates_override_stale_base_files() -> None:
+    angular_cli_package = (TEMPLATE_ROOT / "angular-cli" / "package.json.j2").read_text()
     astro_package = TEMPLATE_ROOT / "astro" / "package.json.j2"
     astro_tsconfig = TEMPLATE_ROOT / "astro" / "tsconfig.json.j2"
     astro_layout = (TEMPLATE_ROOT / "astro" / "src" / "layouts" / "Layout.astro.j2").read_text()
 
     nuxt_package = TEMPLATE_ROOT / "nuxt" / "package.json.j2"
+    nuxt_openapi_config = (TEMPLATE_ROOT / "nuxt" / "openapi-ts.config.ts.j2").read_text()
     nuxt_tsconfig = TEMPLATE_ROOT / "nuxt" / "tsconfig.json.j2"
     nuxt_config = (TEMPLATE_ROOT / "nuxt" / "nuxt.config.ts.j2").read_text()
     nuxt_app = TEMPLATE_ROOT / "nuxt" / "app" / "app.vue.j2"
@@ -85,11 +91,14 @@ def test_meta_framework_templates_override_stale_base_files() -> None:
     assert astro_tsconfig.exists()
     assert 'import "../styles/global.css";' in astro_layout
     assert "favicon.svg" not in astro_layout
+    assert '"litestar-vite-plugin": "{{ package_version(\'litestar-vite-plugin\') }}"' in angular_cli_package
 
     assert nuxt_package.exists()
     assert nuxt_tsconfig.exists()
     assert 'compatibilityDate: "2026-03-06"' in nuxt_config
     assert 'css: ["~/assets/css/app.css"]' in nuxt_config
+    assert 'input: "./app/generated/openapi.json"' in nuxt_openapi_config
+    assert 'output: "./app/generated/api"' in nuxt_openapi_config
     assert nuxt_app.exists()
     assert nuxt_page.exists()
     assert "config.public.apiProxy" in nuxt_composable

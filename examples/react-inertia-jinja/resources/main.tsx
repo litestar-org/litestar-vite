@@ -4,12 +4,8 @@ import { createRoot } from "react-dom/client"
 import "./App.css"
 
 createInertiaApp({
-  defaults: {
-    future: {
-      useScriptElementForInitialPage: true,
-    },
-  },
-  resolve: (name) => resolvePageComponent(`./pages/${name}.tsx`, import.meta.glob("./pages/**/*.tsx")),
+  resolve: async (name) =>
+    (await resolvePageComponent(`./pages/${name}.tsx`, import.meta.glob("./pages/**/*.tsx"))).default,
   setup({ el, App, props }) {
     createRoot(el).render(<App {...props} />)
   },

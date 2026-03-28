@@ -28,15 +28,30 @@ def test_react_inertia_bootstrap_matches_current_adapter_shape() -> None:
 
     for text in (hybrid_main, jinja_main):
         assert "StrictMode" not in text
-        assert "defaults:" in text
-        assert "future: {" in text
-        assert "useScriptElementForInitialPage: true" in text
+        assert "defaults:" not in text
+        assert "future: {" not in text
+        assert "useScriptElementForInitialPage: true" not in text
+        assert "resolve: async (name) =>" in text
+        assert "await resolvePageComponent" in text
+        assert ").default" in text
         assert "createRoot(el).render(<App {...props} />)" in text
+        assert "axios" not in text
 
     assert "StrictMode" not in template_main
+    assert "Inertia v2" in template_main
+    assert "Inertia v3" in template_main
     assert "use_script_element=True" in template_main
+    assert "useScriptElementForInitialPage: true" in template_main
+    assert "resolve: async (name) =>" in template_main
+    assert "await resolvePageComponent" in template_main
+    assert ").default" in template_main
     assert "createRoot(el).render(<App {...props} />);" in template_main
+    assert "Inertia v2" in template_ssr
+    assert "Inertia v3" in template_ssr
     assert "use_script_element=True" in template_ssr
+    assert "resolve: async (name) =>" in template_ssr
+    assert "await resolvePageComponent" in template_ssr
+    assert ").default" in template_ssr
 
 
 def test_react_family_examples_pin_current_stable_versions() -> None:
@@ -64,10 +79,9 @@ def test_react_family_examples_pin_current_stable_versions() -> None:
 
     for package in (react_inertia_package, react_inertia_jinja_package):
         assert package["dependencies"] == {
-            "@inertiajs/react": "2.3.17",
+            "@inertiajs/react": "3.0.0",
             "react": "19.2.4",
             "react-dom": "19.2.4",
-            "axios": "1.13.6",
             "zod": "4.3.6",
         }
         assert package["devDependencies"] == {
@@ -102,6 +116,7 @@ def test_react_inertia_template_package_pins_current_stable_versions() -> None:
     for fragment in expected_fragments:
         assert fragment in text
 
+    assert '"axios": "{{ package_version(\'axios\') }}"' not in text
     assert '"latest"' not in text
 
 
@@ -110,6 +125,9 @@ def test_react_inertia_jinja_example_uses_script_element_config() -> None:
     app_text = (EXAMPLES_ROOT / "react-inertia-jinja" / "app.py").read_text()
 
     assert "~37% smaller" not in hybrid_app_text
-    assert "use_script_element requires matching client bootstrap" in hybrid_app_text
+    assert "Inertia v2" in hybrid_app_text
+    assert "Inertia v3" in hybrid_app_text
     assert "use_script_element=True" in app_text
+    assert "Inertia v2" in app_text
+    assert "Inertia v3" in app_text
     assert "{{ page | tojson | e }}" not in app_text

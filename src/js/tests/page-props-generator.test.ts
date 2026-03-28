@@ -19,6 +19,7 @@ interface InertiaPagePropsJson {
       propsType?: string
       tsType?: string
       customTypes?: string[]
+      wrapWithContent?: boolean
       schemaRef?: string
       handler?: string
     }
@@ -166,6 +167,10 @@ export interface FlashMessages {}
   for (const [component, data] of Object.entries(json.pages)) {
     const rawType = data.tsType || data.propsType || defaultFallback
     const propsType = rawType.includes("|") ? `(${rawType})` : rawType
+    if (data.wrapWithContent) {
+      pageEntries.push(`  "${component}": { content: ${rawType} } & FullSharedProps`)
+      continue
+    }
     pageEntries.push(`  "${component}": ${propsType} & FullSharedProps`)
   }
 
@@ -252,6 +257,40 @@ describe("Page Props Type Generation", () => {
 
       const output = generatePagePropsOutput(json)
       expect(output).toContain(`"auth/register": (Response | Record<string, unknown>) & FullSharedProps`)
+    })
+
+    it("wraps non-mapping payloads under content when requested by metadata", () => {
+      const json: InertiaPagePropsJson = {
+        pages: {
+          "Users/Show": { route: "/users", tsType: "UserProps", wrapWithContent: true },
+        },
+        sharedProps: {},
+        typeGenConfig: { includeDefaultAuth: false, includeDefaultFlash: false },
+        generatedAt: new Date().toISOString(),
+      }
+
+      const output = generatePagePropsOutput(json)
+      expect(output).toContain(`"Users/Show": { content: UserProps } & FullSharedProps`)
+    })
+
+    it("emits nested content props through the real generator when metadata requests it", async () => {
+      const tmpDir = _createTempDir()
+      const pagesPath = _createTestPagesJson(tmpDir, {
+        pages: {
+          "Users/Show": { route: "/users", tsType: "UserProps", wrapWithContent: true },
+        },
+        sharedProps: {},
+        typeGenConfig: { includeDefaultAuth: false, includeDefaultFlash: false },
+        generatedAt: new Date().toISOString(),
+      })
+
+      const outputDir = path.join(tmpDir, "generated")
+      const { emitPagePropsTypes } = await import("../src/shared/emit-page-props-types.js")
+
+      await emitPagePropsTypes(pagesPath, outputDir)
+
+      const emitted = fs.readFileSync(path.join(outputDir, "page-props.ts"), "utf-8")
+      expect(emitted).toContain(`"Users/Show": { content: UserProps } & FullSharedProps`)
     })
 
     it("generates GeneratedSharedProps interface", () => {

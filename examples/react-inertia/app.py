@@ -98,7 +98,8 @@ vite = VitePlugin(
         # mode="hybrid" is auto-detected from Inertia + index.html presence
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources"),
-        # use_script_element requires matching client bootstrap in resources/main.tsx
+        # Inertia v3 uses the script-element bootstrap by default.
+        # If you pin Inertia v2, add defaults.future.useScriptElementForInitialPage in the browser/SSR entry.
         inertia=InertiaConfig(root_template="index.html", use_script_element=True),
         types=TypeGenConfig(output=Path("resources/generated")),
         # Fixed port for E2E tests - can be removed for local dev or customized for production

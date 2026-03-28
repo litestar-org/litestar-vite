@@ -11,6 +11,7 @@ interface InertiaPagePropsJson {
       propsType?: string
       tsType?: string
       customTypes?: string[]
+      wrapWithContent?: boolean
       schemaRef?: string
       handler?: string
     }
@@ -247,6 +248,10 @@ export interface FlashMessages {}
   const pageEntries: string[] = []
   for (const [component, data] of Object.entries(json.pages)) {
     const rawType = data.tsType || data.propsType || defaultFallback
+    if (data.wrapWithContent) {
+      pageEntries.push(`  "${component}": { content: ${rawType} } & FullSharedProps`)
+      continue
+    }
     const propsType = rawType.includes("|") ? `(${rawType})` : rawType
     pageEntries.push(`  "${component}": ${propsType} & FullSharedProps`)
   }

@@ -126,17 +126,18 @@ Automatically include session keys in page props:
    # In a route handler
    request.session["locale"] = "en"  # Auto-included in props
 
-Script Element Optimization (Inertia v2.3+)
--------------------------------------------
+Script Element Optimization (Inertia v2 and v3)
+----------------------------------------------
 
-The ``use_script_element`` parameter enables a performance optimization introduced in Inertia.js v2.3+.
+The ``use_script_element`` parameter enables the script-element bootstrap transport supported by
+Inertia.js v2.3+ and Inertia v3.
 When enabled, page data is embedded in a ``<script type="application/json" id="app_page">`` element
 instead of a ``data-page`` attribute on the app element.
 
 .. note::
-   This section documents the current Litestar-Vite integration for stable Inertia v2.3+ clients.
-   The official Inertia v3 upgrade guide removes the ``future`` config namespace and changes this
-   bootstrap behavior, so do not treat the client example below as version-agnostic.
+   Inertia v3 uses the script-element bootstrap by default. Inertia v2 still requires an explicit
+   client-side ``defaults.future.useScriptElementForInitialPage`` opt-in, so treat the client
+   example below as version-scoped.
 
 **Benefits:**
 
@@ -146,7 +147,7 @@ instead of a ``data-page`` attribute on the app element.
 
 **Requirements:**
 
-This feature requires **both** server-side and client-side configuration:
+This feature always requires server-side configuration:
 
 .. code-block:: python
 
@@ -157,9 +158,11 @@ This feature requires **both** server-side and client-side configuration:
        use_script_element=True,  # Enable script element mode
    )
 
+For Inertia v2 clients, it also requires client-side configuration:
+
 .. code-block:: typescript
 
-   // Client-side configuration (REQUIRED)
+   // Inertia v2 client configuration (REQUIRED)
    import { createInertiaApp } from '@inertiajs/react'  // or vue/svelte
 
    createInertiaApp({
@@ -176,6 +179,9 @@ This feature requires **both** server-side and client-side configuration:
    For Inertia v2 clients, both configurations must be enabled together. If you enable
    ``use_script_element=True`` on the server but forget the client-side configuration,
    the Inertia app will fail to initialize because it won't find the page data.
+
+   For Inertia v3 clients, do not add the ``defaults.future`` block. The adapter already
+   reads the script-element payload by default.
 
    If you author the HTML template manually, keep the payload element aligned with the app root,
    for example ``<script type="application/json" id="app_page" data-page="app">...</script>``.

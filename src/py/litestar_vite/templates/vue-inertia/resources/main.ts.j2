@@ -5,8 +5,9 @@ import { createApp, h } from "vue";
 import "./style.css";
 
 createInertiaApp({
-  // If you enable use_script_element=True or render an #app_page JSON script, add:
-  // defaults: { future: { useScriptElementForInitialPage: true } },
+  // If you enable use_script_element=True or render an #app_page JSON script:
+  // - Inertia v3 uses the script-element bootstrap by default.
+  // - Inertia v2 requires: defaults: { future: { useScriptElementForInitialPage: true } },
   resolve: (name) =>
     resolvePageComponent(
       `./pages/${name}.vue`,

@@ -71,7 +71,7 @@ uv run litestar --app-dir examples/vue-inertia run
 
 Replace `vue-inertia` with any other example app: `vue`, `react`, `svelte`, `react-inertia`, `htmx`, `angular`, `astro`, `nuxt`, or `sveltekit`.
 
-For Inertia script-element bootstrap, enable `InertiaConfig(use_script_element=True)` on the Python side and keep `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })` aligned in the browser entry and SSR entry when `ssr=True` is enabled.
+For Inertia script-element bootstrap, enable `InertiaConfig(use_script_element=True)` on the Python side. Inertia v3 clients use that transport by default; if you pin Inertia v2, keep `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })` aligned in the browser entry and SSR entry when `ssr=True` is enabled.
 
 ## Links
 

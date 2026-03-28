@@ -259,7 +259,7 @@ Post-init: if ssr is True, replaces with InertiaSSRConfig(). If ssr is False, re
 Property: `ssr_config -> InertiaSSRConfig | None` -- returns config if enabled, else None.
 
 Notes:
-- `use_script_element=True` switches full-page HTML bootstrap from a `data-page` attribute to a JSON script element payload. The browser entry must also opt into `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })`, and the SSR entry should mirror that setting when SSR is enabled.
+- `use_script_element=True` switches full-page HTML bootstrap from a `data-page` attribute to a JSON script element payload. Inertia v3 clients use that transport by default. If you pin Inertia v2, the browser entry must also opt into `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })`, and the SSR entry should mirror that setting when SSR is enabled.
 - `ssr=True` enables Inertia's separate Node SSR renderer for initial HTML responses. It is not the same as framework proxy mode (`mode="framework"` / alias `mode="ssr"`).
 
 ### InertiaSSRConfig
