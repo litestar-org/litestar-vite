@@ -102,7 +102,7 @@ litestar run --reload                # Vite dev server proxied automatically
 
 ## Optional Features
 
-- **Inertia.js integration**: Inertia v2 and v3 support via `InertiaPlugin` with session middleware, `InertiaRequest`/`InertiaResponse`, deferred/merge/once props, precognition, optional script-element bootstrap (`InertiaConfig(use_script_element=True)`; Inertia v3 defaults to that transport, Inertia v2 still needs `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })`), SSR client pooling, and exception handling.
+- **Inertia.js integration**: Inertia v2 and v3 support via `InertiaPlugin` with session middleware, `InertiaRequest`/`InertiaResponse`, deferred/merge/once props, precognition, script-element bootstrap by default (`InertiaConfig(use_script_element=False)` restores the legacy `data-page` path; Inertia v2 still needs `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })` when using the default transport), SSR client pooling, and exception handling.
 - **Type generation**: Export OpenAPI schema, typed route metadata (JSON + TypeScript), and Inertia page props. Enable with `ViteConfig(types=True)`. The npm plugin watches exported files and can trigger `@hey-api/openapi-ts`.
 - **Route helpers**: The `litestar-vite-plugin/helpers` npm export provides typed route generation functions for use in frontend code, plus CSRF and HTMX helpers.
 - **Meta-framework support**: Use `mode="ssr"` or `mode="framework"` for Astro, Nuxt, SvelteKit. Dedicated npm integrations at `litestar-vite-plugin/astro`, `/nuxt`, `/sveltekit`.
@@ -111,5 +111,5 @@ litestar run --reload                # Vite dev server proxied automatically
 
 ## Inertia Notes
 
-- `InertiaConfig(use_script_element=True)` switches full-page HTML bootstrap from a `data-page` attribute to a JSON script element payload. Inertia v3 clients use that transport by default. If you pin Inertia v2, the browser entry must also enable `defaults.future.useScriptElementForInitialPage` in `createInertiaApp(...)`, and the SSR entry should mirror that setting when `InertiaConfig(ssr=True)` is enabled.
+- Inertia apps default to a JSON script element payload for full-page HTML bootstrap. Inertia v3 clients use that transport automatically. If you pin Inertia v2, the browser entry must also enable `defaults.future.useScriptElementForInitialPage` in `createInertiaApp(...)`, and the SSR entry should mirror that setting when `InertiaConfig(ssr=True)` is enabled. Set `InertiaConfig(use_script_element=False)` to keep the legacy `data-page` attribute bootstrap.
 - `InertiaConfig(ssr=True)` enables Inertia's separate Node SSR renderer for initial HTML responses. This is distinct from framework proxy mode (`mode="framework"` / alias `mode="ssr"` for Astro, Nuxt, SvelteKit).

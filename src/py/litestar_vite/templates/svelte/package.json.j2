@@ -12,8 +12,7 @@
     "generate-types": "openapi-ts --config openapi-ts.config.ts"{% endif %}
   },
   "dependencies": {
-    "svelte": "5.53.7"{% if generate_client %},
-    "axios": "1.13.6"{% endif %}{% if generate_zod %},
+    "svelte": "5.53.7"{% if generate_zod %},
     "zod": "4.3.6"{% endif %}
   },
   "devDependencies": {

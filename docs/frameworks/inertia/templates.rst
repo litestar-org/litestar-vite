@@ -20,7 +20,7 @@ It's rendered on initial page loads with page data embedded.
 Key features:
 
 - ``<title inertia>`` - Enables dynamic title updates via Inertia's ``<Head>`` component
-- ``<script type="application/json" id="app_page" data-page="app">`` - Script-element bootstrap payload for ``use_script_element=True``
+- ``<script type="application/json" id="app_page" data-page="app">`` - Script-element bootstrap payload for the current default transport
 - ``{{ inertia | safe }}`` - JSON-encoded page payload (use ``| safe`` to prevent escaping)
 - ``{{ vite_hmr() }}`` and ``{{ vite() }}`` - Vite asset injection
 
@@ -49,8 +49,8 @@ These helpers are automatically available in your templates:
 Script Element Bootstrap
 ------------------------
 
-When ``InertiaConfig(use_script_element=True)`` is enabled, keep the app root element empty and
-emit the JSON payload in a matching script element:
+By default, litestar-vite keeps the app root element empty and emits the JSON payload in a
+matching script element:
 
 .. code-block:: html
 
@@ -102,7 +102,7 @@ The ``{{ inertia | safe }}`` helper can also be used directly with the older ``d
 
    Without ``| safe``, special characters in props will be escaped, breaking JSON parsing.
 
-Use this attribute form only when you are not using ``use_script_element=True``.
+Use this attribute form only when you set ``use_script_element=False``.
 
 Dynamic Titles
 --------------
@@ -154,7 +154,7 @@ Your ``index.html`` (in ``resource_dir``):
    </body>
    </html>
 
-Litestar-Vite automatically injects ``data-page`` and CSRF token.
+Litestar-Vite automatically injects the Inertia bootstrap payload and CSRF token.
 
 Customizing the App Selector
 ----------------------------

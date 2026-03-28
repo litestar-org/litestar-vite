@@ -70,7 +70,6 @@ CURRENT_NPM_VERSION_RANGES: dict[str, str] = {
     "@vue/server-renderer": "3.5.29",
     "astro": "5.18.0",
     "autoprefixer": "10.4.27",
-    "axios": "1.13.6",
     "htmx.org": "2.0.8",
     "nitropack": "2.13.1",
     "nuxt": "4.3.1",

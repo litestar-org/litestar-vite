@@ -119,7 +119,7 @@ class InertiaConfig:
         - InertiaSSRConfig: use as-is
     """
 
-    use_script_element: bool = False
+    use_script_element: bool = True
     """Use a script element instead of data-page attribute for page data.
 
     When True, embeds page data in a ``<script type="application/json" id="app_page" data-page="app">``
@@ -140,7 +140,9 @@ class InertiaConfig:
           Inertia can locate the payload element.
         - Supported with Inertia v2.3+ and Inertia v3.
 
-    Disabled by default for compatibility with existing Inertia clients.
+    Enabled by default for the current Inertia contract. Set to ``False`` to
+    keep the legacy ``data-page`` attribute bootstrap, which can be useful when
+    staying on an Inertia v2 client without the ``future`` opt-in.
     """
 
     precognition: bool = False

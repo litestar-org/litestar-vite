@@ -19,7 +19,7 @@ litestar-vite supports Inertia v2 and v3.
 What Changes In This Repository
 -------------------------------
 
-When you enable ``InertiaConfig(use_script_element=True)``:
+litestar-vite now defaults Inertia apps to script-element bootstrap:
 
 - Inertia v3 clients use the script-element bootstrap by default.
 - Inertia v2 clients must still enable ``defaults.future.useScriptElementForInitialPage`` in ``createInertiaApp(...)``.
@@ -36,7 +36,7 @@ Upgrade Steps
    - Vue: ``@inertiajs/vue3@3``
    - Svelte: ``@inertiajs/svelte@3``
 
-2. Keep ``InertiaConfig(use_script_element=True)`` on the Python side if you want script-element bootstrap.
+2. Remove explicit ``use_script_element=True`` if you previously added it just to enable the default transport.
 
 3. Remove the Inertia v2-only client opt-in:
 
@@ -66,5 +66,6 @@ Staying On Inertia v2
 ---------------------
 
 If you are not ready to upgrade yet, keep your current Inertia v2 adapter package and retain the
-``defaults.future.useScriptElementForInitialPage`` client configuration whenever
-``InertiaConfig(use_script_element=True)`` is enabled.
+``defaults.future.useScriptElementForInitialPage`` client configuration while using the default
+script-element transport, or set ``InertiaConfig(use_script_element=False)`` to stay on the legacy
+``data-page`` bootstrap.

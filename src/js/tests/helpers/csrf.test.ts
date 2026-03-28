@@ -174,7 +174,7 @@ describe("csrf helpers", () => {
 
       const headers = csrfHeaders()
 
-      expect(headers).toEqual({ "X-CSRF-Token": "test-token" })
+      expect(headers).toEqual({ "X-CSRFToken": "test-token" })
     })
 
     it("merges with additional headers", () => {
@@ -184,7 +184,7 @@ describe("csrf helpers", () => {
 
       expect(headers).toEqual({
         "Content-Type": "application/json",
-        "X-CSRF-Token": "test-token",
+        "X-CSRFToken": "test-token",
       })
     })
 
@@ -206,22 +206,36 @@ describe("csrf helpers", () => {
       expect(headers).toEqual({})
     })
 
-    it("does not override existing X-CSRF-Token in additional headers", () => {
+    it("does not override existing X-CSRFToken in additional headers", () => {
       globalThis.window.__LITESTAR_CSRF__ = "auto-token"
 
-      const headers = csrfHeaders({ "X-CSRF-Token": "manual-token" })
+      const headers = csrfHeaders({ "X-CSRFToken": "manual-token" })
 
-      expect(headers["X-CSRF-Token"]).toBe("manual-token")
+      expect(headers["X-CSRFToken"]).toBe("manual-token")
     })
 
-    it("does not override case-insensitive existing X-CSRF-Token in additional headers", () => {
+    it("does not override case-insensitive existing X-CSRFToken in additional headers", () => {
       globalThis.window.__LITESTAR_CSRF__ = "auto-token"
 
-      const headers = csrfHeaders({ "x-csrf-token": "manual-token", "Content-Type": "application/json" })
+      const headers = csrfHeaders({ "x-csrftoken": "manual-token", "Content-Type": "application/json" })
 
       expect(headers["Content-Type"]).toBe("application/json")
-      expect(headers["x-csrf-token"]).toBe("manual-token")
-      expect(headers["X-CSRF-Token"]).toBeUndefined()
+      expect(headers["x-csrftoken"]).toBe("manual-token")
+      expect(headers["X-CSRFToken"]).toBeUndefined()
+    })
+
+    it("uses the Inertia csrf_token prop without requiring a readable cookie", () => {
+      globalThis.window.__LITESTAR_CSRF__ = undefined
+      ;(globalThis.document.querySelector as ReturnType<typeof vi.fn>).mockReturnValue(null)
+      ;(globalThis.window as unknown as Record<string, unknown>).__INERTIA_PAGE__ = {
+        props: {
+          csrf_token: "inertia-prop-token",
+        },
+      }
+
+      const headers = csrfHeaders()
+
+      expect(headers).toEqual({ "X-CSRFToken": "inertia-prop-token" })
     })
   })
 
@@ -236,7 +250,7 @@ describe("csrf helpers", () => {
       const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
       expect(callArgs[0]).toBe("/api/submit")
       expect(callArgs[1].method).toBe("POST")
-      expect(getHeaderValue(callArgs[1].headers, "X-CSRF-Token")).toBe("fetch-token")
+      expect(getHeaderValue(callArgs[1].headers, "X-CSRFToken")).toBe("fetch-token")
     })
 
     it("preserves existing headers", async () => {
@@ -251,35 +265,35 @@ describe("csrf helpers", () => {
 
       const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
       expect(getHeaderValue(callArgs[1].headers, "Content-Type")).toBe("application/json")
-      expect(getHeaderValue(callArgs[1].headers, "X-CSRF-Token")).toBe("fetch-token")
+      expect(getHeaderValue(callArgs[1].headers, "X-CSRFToken")).toBe("fetch-token")
     })
 
-    it("does not override existing X-CSRF-Token header", async () => {
+    it("does not override existing X-CSRFToken header", async () => {
       globalThis.window.__LITESTAR_CSRF__ = "auto-token"
       const mockResponse = new Response("OK", { status: 200 })
       ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse)
 
       await csrfFetch("/api/submit", {
         method: "POST",
-        headers: { "X-CSRF-Token": "manual-token" },
+        headers: { "X-CSRFToken": "manual-token" },
       })
 
       const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
-      expect(getHeaderValue(callArgs[1].headers, "X-CSRF-Token")).toBe("manual-token")
+      expect(getHeaderValue(callArgs[1].headers, "X-CSRFToken")).toBe("manual-token")
     })
 
-    it("does not override existing X-CSRF-Token case-insensitive header", async () => {
+    it("does not override existing X-CSRFToken case-insensitive header", async () => {
       globalThis.window.__LITESTAR_CSRF__ = "auto-token"
       const mockResponse = new Response("OK", { status: 200 })
       ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse)
 
       await csrfFetch("/api/submit", {
         method: "POST",
-        headers: { "x-csrf-token": "manual-token" } as HeadersInit,
+        headers: { "x-csrftoken": "manual-token" } as HeadersInit,
       })
 
       const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
-      expect(getHeaderValue(callArgs[1].headers, "x-csrf-token")).toBe("manual-token")
+      expect(getHeaderValue(callArgs[1].headers, "x-csrftoken")).toBe("manual-token")
     })
 
     it("passes through when no token available", async () => {
@@ -304,7 +318,7 @@ describe("csrf helpers", () => {
       const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
       expect(callArgs[0]).toEqual(url)
       expect(callArgs[1].method).toBe("POST")
-      expect(getHeaderValue(callArgs[1].headers, "X-CSRF-Token")).toBe("fetch-token")
+      expect(getHeaderValue(callArgs[1].headers, "X-CSRFToken")).toBe("fetch-token")
     })
 
     it("works without init options", async () => {
@@ -354,7 +368,7 @@ describe("csrf helpers", () => {
       const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
       const headers = callArgs[1].headers as Headers
       expect(headers.get("Authorization")).toBe("Bearer xyz")
-      expect(headers.get("X-CSRF-Token")).toBe("fetch-token")
+      expect(headers.get("X-CSRFToken")).toBe("fetch-token")
     })
   })
 })

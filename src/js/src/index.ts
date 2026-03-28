@@ -10,6 +10,7 @@ import { checkBackendAvailability, type LitestarMeta, loadLitestarMeta } from ".
 import { type BridgeSchema, readBridgeConfig } from "./shared/bridge-schema.js"
 import { DEBOUNCE_MS } from "./shared/constants.js"
 import { createLogger } from "./shared/logger.js"
+import { resolveDefaultSdkClientPlugin } from "./shared/typegen-core.js"
 import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
 import { buildInputOptions, resolveUserBuildInput } from "./shared/vite-compat.js"
 
@@ -68,7 +69,7 @@ export interface TypesConfig {
    */
   generateZod?: boolean
   /**
-   * Generate a typed SDK client (fetch) in addition to types.
+   * Generate a typed SDK client in addition to types.
    *
    * @default true
    */
@@ -331,7 +332,7 @@ export default function litestar(config: string | string[] | PluginConfig): any[
       createLitestarTypeGenPlugin(pluginConfig.types, {
         pluginName: "litestar-vite-types",
         frameworkName: "litestar-vite",
-        sdkClientPlugin: "@hey-api/client-axios",
+        sdkClientPlugin: resolveDefaultSdkClientPlugin({ inertiaMode: pluginConfig.inertiaMode }),
         executor: pluginConfig.executor,
         hasPythonConfig: pluginConfig.hasPythonConfig,
       }),

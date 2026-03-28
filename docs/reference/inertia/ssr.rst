@@ -18,7 +18,7 @@ Typical file layout:
 - Browser entry: ``resources/main.tsx`` or ``resources/main.ts``
 - Node SSR entry: ``resources/ssr.tsx`` or ``resources/ssr.ts``
 
-When you also enable ``use_script_element=True``:
+When you use the default script-element bootstrap transport:
 
 - Inertia v3 clients use the script-element bootstrap by default, so no extra client
   ``defaults`` block is required.
@@ -27,6 +27,7 @@ When you also enable ``use_script_element=True``:
   ``data-page`` attribute.
 - Inertia v2 SSR entries should mirror the same option because Inertia applies the same defaults
   during server rendering.
+- Set ``use_script_element=False`` if you need to keep the legacy ``data-page`` attribute bootstrap.
 
 .. note::
    This guidance is intentionally version-scoped. Inertia v2 still uses the ``future`` namespace

@@ -31,7 +31,7 @@ and Framework (SSR/SSG meta-framework) serving modes.
 Key capabilities:
 - Dev-time proxy from Litestar to Vite (HMR, WebSocket forwarding)
 - Production manifest-based asset resolution
-- Inertia.js v2 protocol (lazy, defer, once, optional, always, merge,
+- Inertia.js v2/v3 protocol support (lazy, defer, once, optional, always, merge,
   scroll props, history encryption, precognition)
 - Type generation pipeline (OpenAPI -> TypeScript via @hey-api/openapi-ts)
 - Typed route generation (Ziggy-style)
@@ -259,7 +259,7 @@ Post-init: if ssr is True, replaces with InertiaSSRConfig(). If ssr is False, re
 Property: `ssr_config -> InertiaSSRConfig | None` -- returns config if enabled, else None.
 
 Notes:
-- `use_script_element=True` switches full-page HTML bootstrap from a `data-page` attribute to a JSON script element payload. Inertia v3 clients use that transport by default. If you pin Inertia v2, the browser entry must also opt into `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })`, and the SSR entry should mirror that setting when SSR is enabled.
+- Inertia apps default to a JSON script element payload for full-page HTML bootstrap. Inertia v3 clients use that transport automatically. If you pin Inertia v2, the browser entry must also opt into `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })`, and the SSR entry should mirror that setting when SSR is enabled. Set `InertiaConfig(use_script_element=False)` to keep the legacy `data-page` attribute bootstrap.
 - `ssr=True` enables Inertia's separate Node SSR renderer for initial HTML responses. It is not the same as framework proxy mode (`mode="framework"` / alias `mode="ssr"`).
 
 ### InertiaSSRConfig
@@ -897,8 +897,10 @@ Source: `src/js/src/helpers/index.ts`
 
 ```typescript
 // CSRF
-export function getCsrfToken(): string | null
-export function csrfHeaders(): Record<string, string>
+export function getCsrfToken(): string
+// csrfHeaders() and csrfFetch() use Litestar's default X-CSRFToken header and
+// read from injected window/meta/Inertia page state rather than the cookie itself.
+export function csrfHeaders(additionalHeaders?: Record<string, string>): Record<string, string>
 export function csrfFetch(url: string, options?: RequestInit): Promise<Response>
 
 // HTMX
@@ -1015,7 +1017,7 @@ import staticProps from 'virtual:litestar-static-props'
 | `spa` | Vite serves index.html, Litestar serves API. SPA handler catches all non-API routes. |
 | `template` | Litestar renders Jinja2 templates with Vite asset tags. |
 | `htmx` | Alias for template mode, optimized for HTMX partials. |
-| `hybrid` | Inertia.js mode. Litestar renders full-page HTML with a `data-page` attribute or, when `use_script_element=True`, a JSON script payload; XHR visits return JSON. |
+| `hybrid` | Inertia.js mode. Litestar renders full-page HTML with a JSON script payload by default, or with a `data-page` attribute when `use_script_element=False`; XHR visits return JSON. |
 | `framework` | Meta-framework mode (Astro, Nuxt, SvelteKit). Dev: proxy to framework dev server. Prod: serve built output. |
 | `external` | Non-Vite frameworks (Angular CLI). Dev: no proxy. Prod: serve bundle_dir. |
 
@@ -1123,7 +1125,6 @@ app = Litestar(
     plugins=[
         VitePlugin(config=ViteConfig(
             inertia=InertiaConfig(
-                use_script_element=True,
                 ssr=True,
             ),
             dev_mode=True,
@@ -1137,7 +1138,7 @@ async def index() -> InertiaResponse:
     return InertiaResponse({"greeting": "Hello"})
 ```
 
-Browser bootstrap when `use_script_element=True`:
+Browser bootstrap for the default script-element transport:
 
 ```typescript
 createInertiaApp({
@@ -1153,7 +1154,7 @@ createInertiaApp({
 SSR notes:
 - Use the normal browser entry (`resources/main.tsx` / `resources/main.ts`) for hydration and client-side visits.
 - Add `resources/ssr.tsx` or `resources/ssr.ts` for the Node SSR server entry when `InertiaConfig(ssr=True)` is enabled.
-- When `use_script_element=True`, keep `defaults.future.useScriptElementForInitialPage` in both entries so server rendering and hydration use the same initial-page transport.
+- When you stay on the default script-element transport, keep `defaults.future.useScriptElementForInitialPage` in both entries for Inertia v2 so server rendering and hydration use the same initial-page transport. Set `use_script_element=False` to keep the legacy `data-page` bootstrap instead.
 
 ### Framework Mode (Astro/Nuxt/SvelteKit)
 

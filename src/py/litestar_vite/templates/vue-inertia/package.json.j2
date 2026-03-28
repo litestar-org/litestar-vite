@@ -21,10 +21,7 @@
   },
   "dependencies": {
     "@inertiajs/vue3": "{{ package_version('@inertiajs/vue3') }}",
-    "vue": "{{ package_version('vue') }}"{% if generate_zod or generate_client or enable_ssr %},{% endif %}
-{%- if generate_client %}
-    "axios": "{{ package_version('axios') }}"{% if generate_zod or enable_ssr %},{% endif %}
-{%- endif %}
+    "vue": "{{ package_version('vue') }}"{% if generate_zod or enable_ssr %},{% endif %}
 {%- if generate_zod %}
     "zod": "{{ package_version('zod') }}"{% if enable_ssr %},{% endif %}
 {%- endif %}

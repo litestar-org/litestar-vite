@@ -28,7 +28,7 @@
  * @module
  */
 
-import { getCsrfToken } from "./csrf.js"
+import { DEFAULT_CSRF_HEADER_NAME, getCsrfToken } from "./csrf.js"
 
 /** Type for route function - matches generated routes.ts */
 type RouteFn = (name: string, params?: Record<string, string | number>) => string
@@ -126,8 +126,8 @@ export function registerHtmxExtension(): void {
         const token = getCsrfToken()
         const headers = getHeadersFromConfigRequestEvent(evt)
         if (token && headers) {
-          if (headers instanceof Headers) headers.set("X-CSRF-Token", token)
-          else headers["X-CSRF-Token"] = token
+          if (headers instanceof Headers) headers.set(DEFAULT_CSRF_HEADER_NAME, token)
+          else headers[DEFAULT_CSRF_HEADER_NAME] = token
         }
       }
       return true

@@ -31,7 +31,6 @@ Or with custom configuration:
    VitePlugin(config=ViteConfig(
        dev_mode=True,
        inertia=InertiaConfig(
-           root_template="index.html",
            redirect_unauthorized_to="/login",
        ),
    ))
@@ -72,7 +71,7 @@ InertiaConfig Reference
      - Type generation options. Default: ``None``
    * - ``use_script_element``
      - ``bool``
-     - Use script element for page data instead of data-page attribute. Default: ``False``
+     - Use script element for page data instead of data-page attribute. Default: ``True``
 
 Component Opt Keys
 ------------------
@@ -129,10 +128,10 @@ Automatically include session keys in page props:
 Script Element Optimization (Inertia v2 and v3)
 ----------------------------------------------
 
-The ``use_script_element`` parameter enables the script-element bootstrap transport supported by
-Inertia.js v2.3+ and Inertia v3.
-When enabled, page data is embedded in a ``<script type="application/json" id="app_page">`` element
-instead of a ``data-page`` attribute on the app element.
+litestar-vite now defaults Inertia apps to the script-element bootstrap transport supported by
+Inertia.js v2.3+ and Inertia v3. Page data is embedded in a
+``<script type="application/json" id="app_page">`` element instead of a ``data-page`` attribute
+on the app element.
 
 .. note::
    Inertia v3 uses the script-element bootstrap by default. Inertia v2 still requires an explicit
@@ -147,16 +146,14 @@ instead of a ``data-page`` attribute on the app element.
 
 **Requirements:**
 
-This feature always requires server-side configuration:
+This is now the default server-side configuration:
 
 .. code-block:: python
 
    # Server-side configuration
    from litestar_vite import InertiaConfig
 
-   InertiaConfig(
-       use_script_element=True,  # Enable script element mode
-   )
+   InertiaConfig()
 
 For Inertia v2 clients, it also requires client-side configuration:
 
@@ -176,8 +173,8 @@ For Inertia v2 clients, it also requires client-side configuration:
 
 .. warning::
 
-   For Inertia v2 clients, both configurations must be enabled together. If you enable
-   ``use_script_element=True`` on the server but forget the client-side configuration,
+   For Inertia v2 clients, both configurations must be enabled together. If you keep the
+   default script-element transport on the server but forget the client-side configuration,
    the Inertia app will fail to initialize because it won't find the page data.
 
    For Inertia v3 clients, do not add the ``defaults.future`` block. The adapter already
@@ -195,8 +192,8 @@ For Inertia v2 clients, it also requires client-side configuration:
 
 .. note::
 
-   This feature is disabled by default (``use_script_element=False``) for backward
-   compatibility with existing Inertia.js clients. Enable it if you're using Inertia v2.3+.
+   Set ``use_script_element=False`` if you need to keep the legacy ``data-page`` attribute
+   bootstrap, for example while staying on an Inertia v2 client without the ``future`` opt-in.
 
 Flash Data Protocol (Inertia v2.3+)
 -----------------------------------

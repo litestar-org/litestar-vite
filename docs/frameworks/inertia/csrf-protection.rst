@@ -10,13 +10,14 @@ Configure CSRF protection for Inertia applications.
 Overview
 --------
 
-Inertia uses Axios for XHR requests, which automatically handles CSRF tokens
-via the ``XSRF-TOKEN`` cookie pattern.
+Unsafe requests need a CSRF token. ``litestar-vite`` exposes that token through
+page state, so browser code does not need to read the CSRF cookie directly.
 
-Litestar Configuration
-----------------------
+Recommended Litestar Configuration
+----------------------------------
 
-Configure Litestar's CSRF middleware to work with Inertia:
+For ``litestar-vite`` helpers and generated Inertia scaffolds, the minimal
+recommended setup is:
 
 .. code-block:: python
 
@@ -26,15 +27,18 @@ Configure Litestar's CSRF middleware to work with Inertia:
    app = Litestar(
        csrf_config=CSRFConfig(
            secret="your-secret-key-min-32-chars-long",
-           cookie_name="XSRF-TOKEN",      # Axios looks for this
-           header_name="X-XSRF-TOKEN",    # Axios sends this
-           cookie_httponly=False,         # Axios needs to read it
+           cookie_httponly=True,
        ),
    )
 
-.. warning::
-   ``cookie_httponly=False`` is required for Axios to read the token.
-   This is safe because the token is not a session identifier.
+This keeps Litestar's default cookie/header names (``csrftoken`` and
+``x-csrftoken``) and works with ``cookie_httponly=True`` because the browser
+reads the token from injected page state instead of the cookie itself.
+
+.. note::
+   If you intentionally use a client library that reads the CSRF cookie directly,
+   such as a legacy Axios XSRF-cookie setup, keep ``cookie_httponly=False`` and
+   align the cookie/header names explicitly for that client.
 
 Token in Templates
 ------------------
@@ -63,23 +67,27 @@ The ``csrf_token`` prop is automatically included in shared props:
 
    const { csrf_token } = usePage<SharedProps>().props;
 
-Axios Configuration
--------------------
+Inertia Client Visits
+---------------------
 
-Inertia's Axios instance is pre-configured, but for manual requests:
+The generated Inertia templates wire Litestar's default CSRF header into global
+visit options so unsafe Inertia requests work with ``cookie_httponly=True``:
 
 .. code-block:: typescript
 
-   import axios from "axios";
+   import { createInertiaApp } from "@inertiajs/react";
+   import { csrfHeaders } from "litestar-vite-plugin/helpers";
 
-   axios.defaults.xsrfCookieName = "XSRF-TOKEN";
-   axios.defaults.xsrfHeaderName = "X-XSRF-TOKEN";
+   createInertiaApp({
+     defaults: {
+       visitOptions: (_href, options) => ({
+         headers: csrfHeaders(options.headers ?? {}),
+       }),
+     },
+     // ...
+   });
 
-   // Or use the usePage hook
-   import { usePage } from "@inertiajs/react";
-
-   const { csrf_token } = usePage().props;
-   axios.defaults.headers.common["X-XSRF-TOKEN"] = csrf_token;
+The same pattern works for ``@inertiajs/vue3`` and ``@inertiajs/svelte``.
 
 SPA Mode
 --------
@@ -113,10 +121,10 @@ The ``litestar-vite-plugin/helpers`` package provides utility functions for CSRF
 
    import { getCsrfToken, csrfHeaders, csrfFetch } from 'litestar-vite-plugin/helpers';
 
-   // Get CSRF token (from window.__LITESTAR_CSRF__ or meta tag)
+   // Get CSRF token (from window.__LITESTAR_CSRF__, meta tag, or Inertia props)
    const token = getCsrfToken();
 
-   // Get headers object with CSRF token
+   // Get headers object with Litestar's default X-CSRFToken header
    const headers = csrfHeaders();
 
    // Make a fetch request with CSRF token automatically included
@@ -127,19 +135,20 @@ The ``litestar-vite-plugin/helpers`` package provides utility functions for CSRF
 
 These helpers work in both SPA and template modes, automatically detecting the token source.
 
-Form Submissions
-----------------
+Legacy Cookie-Readable Clients
+------------------------------
 
-Inertia form helpers automatically include the CSRF token:
+If you intentionally rely on a client that reads the CSRF cookie directly,
+configure the middleware for that flow explicitly:
 
-.. code-block:: tsx
+.. code-block:: python
 
-   const { post } = useForm({ name: "" });
-
-   function submit(e) {
-     e.preventDefault();
-     post("/users");  // CSRF token included automatically
-   }
+   CSRFConfig(
+       secret="your-secret-key-min-32-chars-long",
+       cookie_name="XSRF-TOKEN",
+       header_name="X-XSRF-TOKEN",
+       cookie_httponly=False,
+   )
 
 Excluding Routes
 ----------------
@@ -158,15 +167,15 @@ Troubleshooting
 
 **403 Forbidden errors**:
 
-1. Verify cookie name is ``XSRF-TOKEN``
-2. Verify header name is ``X-XSRF-TOKEN``
-3. Verify ``cookie_httponly=False``
-4. Check cookie is set on the correct domain/path
+1. Verify the request sends Litestar's default CSRF header (``x-csrftoken`` / ``X-CSRFToken``)
+2. Verify the CSRF cookie is set on the correct domain/path
+3. If you use a cookie-readable client, verify ``cookie_httponly=False``
+4. If you customized ``header_name``, make sure your client sends the same header
 
 **Token not found**:
 
 1. Ensure CSRF middleware is registered
-2. Check the token cookie exists in browser DevTools
+2. Check the token is present in injected page state (global, meta tag, or Inertia props)
 3. Verify the token is included in the request headers
 
 See Also

@@ -77,6 +77,9 @@ def test_meta_framework_templates_override_stale_base_files() -> None:
     astro_package = TEMPLATE_ROOT / "astro" / "package.json.j2"
     astro_tsconfig = TEMPLATE_ROOT / "astro" / "tsconfig.json.j2"
     astro_layout = (TEMPLATE_ROOT / "astro" / "src" / "layouts" / "Layout.astro.j2").read_text()
+    react_inertia_openapi = (TEMPLATE_ROOT / "react-inertia" / "openapi-ts.config.ts.j2").read_text()
+    vue_inertia_openapi = (TEMPLATE_ROOT / "vue-inertia" / "openapi-ts.config.ts.j2").read_text()
+    svelte_inertia_openapi = (TEMPLATE_ROOT / "svelte-inertia" / "openapi-ts.config.ts.j2").read_text()
 
     nuxt_package = TEMPLATE_ROOT / "nuxt" / "package.json.j2"
     nuxt_openapi_config = (TEMPLATE_ROOT / "nuxt" / "openapi-ts.config.ts.j2").read_text()
@@ -104,6 +107,12 @@ def test_meta_framework_templates_override_stale_base_files() -> None:
     assert "config.public.apiProxy" in nuxt_composable
     assert "config.public.apiPrefix" in nuxt_composable
     assert '@import "tailwindcss";' in nuxt_css
+    assert "@hey-api/client-fetch" in react_inertia_openapi
+    assert "@hey-api/client-axios" not in react_inertia_openapi
+    assert "@hey-api/client-fetch" in vue_inertia_openapi
+    assert "@hey-api/client-axios" not in vue_inertia_openapi
+    assert "@hey-api/client-fetch" in svelte_inertia_openapi
+    assert "@hey-api/client-axios" not in svelte_inertia_openapi
 
     assert not (TEMPLATE_ROOT / "nuxt" / "app.vue.j2").exists()
     assert not (TEMPLATE_ROOT / "nuxt" / "pages" / "index.vue.j2").exists()

@@ -89,7 +89,7 @@ TypeGenConfig Reference
      - Generate Zod schemas for runtime validation
    * - ``generate_sdk``
      - ``True``
-     - Generate API client SDK via hey-api (fetch-based)
+     - Generate API client SDK via hey-api
    * - ``generate_routes``
      - ``True``
      - Generate typed routes.ts file
@@ -130,6 +130,9 @@ Available hey-api plugins:
 - ``@hey-api/client-axios`` - Axios-based HTTP client
 - ``@hey-api/client-fetch`` - Fetch-based HTTP client
 - ``@hey-api/zod`` - Zod runtime validators
+
+Scaffolds in this repository use ``@hey-api/client-fetch`` by default. Opt into
+``@hey-api/client-axios`` only if your project specifically needs Axios behavior.
 
 Generating Types
 ----------------

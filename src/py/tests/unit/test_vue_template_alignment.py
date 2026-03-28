@@ -23,6 +23,7 @@ def test_vue_examples_pin_current_stable_versions_and_use_vue_tsc_builds() -> No
         assert '"@hey-api/openapi-ts": "0.94.0"' in text
         assert '"@types/node": "25.3.5"' in text
         assert '"latest"' not in text
+        assert '"axios": "1.13.6"' not in text
 
     for text in (vue_inertia, vue_jinja):
         assert '"@inertiajs/vue3": "3.0.0"' in text
@@ -72,16 +73,22 @@ def test_vue_templates_match_stable_bootstrap_and_manifest_structure() -> None:
 
     assert '<div id="app"></div>' in vue_inertia_index
     assert '<script type="module" src="/{{ resource_dir }}/main.ts"></script>' in vue_inertia_index
-    assert "\n  defaults:" not in vue_inertia_main
+    assert "\n  defaults: {" in vue_inertia_main
     assert "Inertia v2" in vue_inertia_main
     assert "Inertia v3" in vue_inertia_main
+    assert "defaults to the script-element bootstrap" in vue_inertia_main
+    assert "use_script_element=False" in vue_inertia_main
     assert "useScriptElementForInitialPage: true" in vue_inertia_main
-    assert "If you enable use_script_element=True" in vue_inertia_main
+    assert "cookie_httponly=True" in vue_inertia_main
+    assert 'import { csrfHeaders } from "litestar-vite-plugin/helpers";' in vue_inertia_main
+    assert "visitOptions: (_href, options) => ({" in vue_inertia_main
+    assert "headers: csrfHeaders(options.headers ?? {})," in vue_inertia_main
     assert "\n      defaults:" not in vue_inertia_ssr
     assert "Inertia v2" in vue_inertia_ssr
     assert "Inertia v3" in vue_inertia_ssr
+    assert "defaults to the script-element bootstrap" in vue_inertia_ssr
+    assert "use_script_element=False" in vue_inertia_ssr
     assert "defaults.future.useScriptElementForInitialPage" in vue_inertia_ssr
-    assert "If you enable use_script_element=True" in vue_inertia_ssr
 
 
 def test_vue_templates_use_split_tsconfig_structure() -> None:
