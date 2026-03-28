@@ -1,4 +1,3 @@
-import type { VisitOptions } from "@inertiajs/core"
 import { createInertiaApp } from "@inertiajs/react"
 import { csrfHeaders } from "litestar-vite-plugin/helpers"
 import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers"
@@ -11,7 +10,7 @@ const pages = import.meta.glob("./pages/**/*.tsx") as Record<string, () => Promi
 createInertiaApp({
   resolve: async (name) => (await resolvePageComponent(`./pages/${name}.tsx`, pages)).default,
   defaults: {
-    visitOptions: (_href, options: VisitOptions) => ({
+    visitOptions: (_href, options) => ({
       headers: csrfHeaders(options.headers ?? {}),
     }),
   },

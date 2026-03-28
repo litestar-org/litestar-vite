@@ -94,7 +94,7 @@ def test_meta_framework_templates_override_stale_base_files() -> None:
     assert astro_tsconfig.exists()
     assert 'import "../styles/global.css";' in astro_layout
     assert "favicon.svg" not in astro_layout
-    assert '"litestar-vite-plugin": "{{ package_version(\'litestar-vite-plugin\') }}"' in angular_cli_package
+    assert '"litestar-vite-plugin": "{{ package_version(\'litestar-vite-plugin\') }}"' not in angular_cli_package
 
     assert nuxt_package.exists()
     assert nuxt_tsconfig.exists()

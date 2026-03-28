@@ -1,4 +1,3 @@
-import type { VisitOptions } from "@inertiajs/core";
 import { createRoot } from "react-dom/client";
 import { createInertiaApp } from "@inertiajs/react";
 import { csrfHeaders } from "litestar-vite-plugin/helpers";
@@ -18,7 +17,7 @@ createInertiaApp({
   // which keeps cookie_httponly=True compatible with Inertia's client requests.
   resolve: async (name) => (await resolvePageComponent(`./pages/${name}.tsx`, pages)).default,
   defaults: {
-    visitOptions: (_href, options: VisitOptions) => ({
+    visitOptions: (_href, options) => ({
       headers: csrfHeaders(options.headers ?? {}),
     }),
   },
