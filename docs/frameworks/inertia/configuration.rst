@@ -126,7 +126,7 @@ Automatically include session keys in page props:
    request.session["locale"] = "en"  # Auto-included in props
 
 Script Element Optimization (Inertia v2 and v3)
-----------------------------------------------
+-----------------------------------------------
 
 litestar-vite now defaults Inertia apps to the script-element bootstrap transport supported by
 Inertia.js v2.3+ and Inertia v3. Page data is embedded in a
