@@ -59,27 +59,38 @@ function wrapComponent<T>(module: T): T {
  * Resolve a page component from a glob import.
  *
  * Used with Inertia.js to dynamically import page components.
- * Automatically unwraps Litestar's `content` prop for ergonomic access.
+ * Automatically unwraps Litestar's `content` prop for ergonomic access
+ * and extracts the default export from ES modules.
  *
  * @param path - Component path or array of paths to try
  * @param pages - Glob import result (e.g., import.meta.glob('./pages/**\/*.vue'))
- * @returns Promise resolving to the component
+ * @returns Promise resolving to the component (default export extracted when present)
  * @throws Error if no matching component is found
  *
  * @example
  * ```ts
  * import { resolvePageComponent } from 'litestar-vite-plugin/inertia-helpers'
  *
+ * // React — type the glob with the module shape to get proper inference:
+ * const pages = import.meta.glob<{ default: ComponentType }>("./pages/**\/*.tsx")
+ * createInertiaApp({
+ *   resolve: (name) => resolvePageComponent(`./pages/${name}.tsx`, pages),
+ *   // ...
+ * })
+ *
+ * // Vue — type the glob with the component type directly:
  * createInertiaApp({
  *   resolve: (name) => resolvePageComponent(
  *     `./pages/${name}.vue`,
- *     import.meta.glob('./pages/**\/*.vue')
+ *     import.meta.glob<DefineComponent>('./pages/**\/*.vue')
  *   ),
  *   // ...
  * })
  * ```
  */
-export async function resolvePageComponent<T>(path: string | string[], pages: Record<string, Promise<T> | (() => Promise<T>)>): Promise<T> {
+export async function resolvePageComponent<T>(path: string | string[], pages: Record<string, Promise<{ default: T }> | (() => Promise<{ default: T }>)>): Promise<T>
+export async function resolvePageComponent<T>(path: string | string[], pages: Record<string, Promise<T> | (() => Promise<T>)>): Promise<T>
+export async function resolvePageComponent(path: string | string[], pages: Record<string, Promise<unknown> | (() => Promise<unknown>)>): Promise<unknown> {
   for (const p of Array.isArray(path) ? path : [path]) {
     const page = pages[p]
 
@@ -88,7 +99,13 @@ export async function resolvePageComponent<T>(path: string | string[], pages: Re
     }
 
     const resolved = typeof page === "function" ? await page() : await page
-    return wrapComponent(resolved)
+    const wrapped = wrapComponent(resolved)
+
+    if (wrapped != null && typeof wrapped === "object" && "default" in (wrapped as Record<string, unknown>)) {
+      return (wrapped as Record<string, unknown>).default
+    }
+
+    return wrapped
   }
 
   throw new Error(`Page not found: ${path}`)

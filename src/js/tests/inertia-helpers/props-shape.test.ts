@@ -32,7 +32,7 @@ describe("inertia-helpers props shape", () => {
 
     const component = await resolvePageComponent("./pages/Home.tsx", pages)
 
-    const rendered = (component as { default: (props: Record<string, unknown>) => Record<string, unknown> }).default({
+    const rendered = (component as (props: Record<string, unknown>) => Record<string, unknown>)({
       content: { books: [1] },
       hello: "world",
     })

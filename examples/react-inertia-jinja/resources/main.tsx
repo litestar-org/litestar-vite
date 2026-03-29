@@ -5,10 +5,10 @@ import type { ComponentType } from "react"
 import { createRoot } from "react-dom/client"
 import "./App.css"
 
-const pages = import.meta.glob("./pages/**/*.tsx") as Record<string, () => Promise<{ default: ComponentType }>>
+const pages = import.meta.glob<{ default: ComponentType }>("./pages/**/*.tsx")
 
 createInertiaApp({
-  resolve: async (name) => (await resolvePageComponent(`./pages/${name}.tsx`, pages)).default,
+  resolve: (name) => resolvePageComponent(`./pages/${name}.tsx`, pages),
   defaults: {
     visitOptions: (_href, options) => ({
       headers: csrfHeaders(options.headers ?? {}),

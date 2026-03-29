@@ -5,7 +5,7 @@ import { renderToString } from "react-dom/server";
 
 import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
 
-const pages = import.meta.glob("./pages/**/*.tsx") as Record<string, () => Promise<{ default: ComponentType }>>;
+const pages = import.meta.glob<{ default: ComponentType }>("./pages/**/*.tsx");
 
 createServer(
   async (page) => {
@@ -16,7 +16,7 @@ createServer(
       //   here too or set use_script_element=False on the Python side.
       page,
       render: renderToString,
-      resolve: async (name) => (await resolvePageComponent(`./pages/${name}.tsx`, pages)).default,
+      resolve: (name) => resolvePageComponent(`./pages/${name}.tsx`, pages),
       setup: ({ App, props }) => <App {...props} />,
     });
 
