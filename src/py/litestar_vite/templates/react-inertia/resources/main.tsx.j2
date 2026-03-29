@@ -5,7 +5,7 @@ import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
 import type { ComponentType } from "react";
 import "./App.css";
 
-const pages = import.meta.glob("./pages/**/*.tsx") as Record<string, () => Promise<{ default: ComponentType }>>;
+const pages = import.meta.glob<{ default: ComponentType }>("./pages/**/*.tsx");
 
 createInertiaApp({
   // litestar-vite defaults to the script-element bootstrap for Inertia.
@@ -15,7 +15,7 @@ createInertiaApp({
   // Litestar's default CSRF middleware uses x-csrftoken.
   // The generated app forwards the injected token on every Inertia visit,
   // which keeps cookie_httponly=True compatible with Inertia's client requests.
-  resolve: async (name) => (await resolvePageComponent(`./pages/${name}.tsx`, pages)).default,
+  resolve: (name) => resolvePageComponent(`./pages/${name}.tsx`, pages),
   defaults: {
     visitOptions: (_href, options) => ({
       headers: csrfHeaders(options.headers ?? {}),

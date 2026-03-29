@@ -36,9 +36,10 @@ def test_react_inertia_bootstrap_matches_current_adapter_shape() -> None:
         assert "headers: csrfHeaders(options.headers ?? {})," in text
         assert "future: {" not in text
         assert "useScriptElementForInitialPage: true" not in text
-        assert "resolve: async (name) =>" in text
-        assert "await resolvePageComponent" in text
-        assert ").default" in text
+        assert "resolve: (name) =>" in text
+        assert "resolvePageComponent" in text
+        assert ").default" not in text
+        assert "import.meta.glob<{ default: ComponentType }>" in text
         assert "createRoot(el).render(<App {...props} />)" in text
         assert "axios" not in text
 
@@ -54,18 +55,19 @@ def test_react_inertia_bootstrap_matches_current_adapter_shape() -> None:
     assert 'import { csrfHeaders } from "litestar-vite-plugin/helpers";' in template_main
     assert "visitOptions: (_href, options) => ({" in template_main
     assert "headers: csrfHeaders(options.headers ?? {})," in template_main
-    assert "resolve: async (name) =>" in template_main
-    assert "await resolvePageComponent" in template_main
-    assert ").default" in template_main
+    assert "resolve: (name) =>" in template_main
+    assert "resolvePageComponent" in template_main
+    assert ").default" not in template_main
+    assert "import.meta.glob<{ default: ComponentType }>" in template_main
     assert "createRoot(el).render(<App {...props} />);" in template_main
     assert "Inertia v2" in template_ssr
     assert "Inertia v3" in template_ssr
     assert "defaults to the script-element bootstrap" in template_ssr
     assert "use_script_element=False" in template_ssr
     assert "use_script_element=True" not in template_ssr
-    assert "resolve: async (name) =>" in template_ssr
-    assert "await resolvePageComponent" in template_ssr
-    assert ").default" in template_ssr
+    assert "resolve: (name) =>" in template_ssr
+    assert "resolvePageComponent" in template_ssr
+    assert ").default" not in template_ssr
 
 
 def test_react_family_examples_pin_current_stable_versions() -> None:

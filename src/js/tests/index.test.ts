@@ -1767,29 +1767,37 @@ describe("inertia-helpers", () => {
       [testPath]: Promise.resolve({ default: "Dummy File" }),
     }
 
-    const file = await resolvePageComponent<{ default: string }>(testPath, pages)
-    expect(file.default).toBe("Dummy File")
+    const file = await resolvePageComponent<string>(testPath, pages)
+    expect(file).toBe("Dummy File")
   })
 
   it("pass eagerly globed value to resolvePageComponent", async () => {
     const pages = {
-      [testPath]: { default: "Dummy File" },
+      [testPath]: Promise.resolve({ default: "Dummy File" }),
     }
-    const file = await resolvePageComponent<{ default: string }>(testPath, pages as any)
-    expect(file.default).toBe("Dummy File")
+    const file = await resolvePageComponent<string>(testPath, pages)
+    expect(file).toBe("Dummy File")
   })
 
   it("accepts array of paths", async () => {
     const pages = {
-      [testPath]: { default: "Dummy File" },
+      [testPath]: Promise.resolve({ default: "Dummy File" }),
     }
-    const file = await resolvePageComponent<{ default: string }>(["missing-page", testPath], pages as any)
-    expect(file.default).toBe("Dummy File")
+    const file = await resolvePageComponent<string>(["missing-page", testPath], pages)
+    expect(file).toBe("Dummy File")
+  })
+
+  it("returns value directly when no default export", async () => {
+    const pages = {
+      [testPath]: Promise.resolve("Direct Value"),
+    }
+    const file = await resolvePageComponent<string>(testPath, pages)
+    expect(file).toBe("Direct Value")
   })
 
   it("throws an error when a page is not found", async () => {
     const pages = {}
-    await expect(resolvePageComponent<{ default: string }>("missing-page", pages)).rejects.toThrow("Page not found: missing-page")
+    await expect(resolvePageComponent<string>("missing-page", pages)).rejects.toThrow("Page not found: missing-page")
   })
 
   // Note: Route utility tests removed - use generated routes.ts instead
