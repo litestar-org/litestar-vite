@@ -102,7 +102,11 @@ vite = VitePlugin(
         mode="template",  # Explicit template mode for Jinja-based Inertia
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources"),
-        inertia=InertiaConfig(root_template="index.html", use_script_element=True),
+        # litestar-vite defaults to the script-element bootstrap for Inertia.
+        # Inertia v3 uses that transport automatically.
+        # If you pin Inertia v2, add defaults.future.useScriptElementForInitialPage
+        # in the browser/SSR entry or set use_script_element=False on the server.
+        inertia=InertiaConfig(),
         types=TypeGenConfig(output=Path("resources/generated"), generate_zod=True),
         # Fixed port for E2E tests - can be removed for local dev or customized for production
         runtime=RuntimeConfig(port=5003),

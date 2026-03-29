@@ -60,7 +60,24 @@ import { exec } from "node:child_process"
 import fs from "node:fs"
 
 import type { TypeGenCoreConfig, TypeGenLogger } from "../../src/shared/typegen-core"
-import { runTypeGeneration } from "../../src/shared/typegen-core"
+import { resolveDefaultSdkClientPlugin, runTypeGeneration } from "../../src/shared/typegen-core"
+
+describe("resolveDefaultSdkClientPlugin", () => {
+  it("uses fetch for inertia bridge modes", () => {
+    expect(resolveDefaultSdkClientPlugin({ mode: "hybrid" })).toBe("@hey-api/client-fetch")
+    expect(resolveDefaultSdkClientPlugin({ mode: "inertia" })).toBe("@hey-api/client-fetch")
+  })
+
+  it("uses fetch when inertia mode is explicitly enabled", () => {
+    expect(resolveDefaultSdkClientPlugin({ inertiaMode: true })).toBe("@hey-api/client-fetch")
+  })
+
+  it("uses fetch for non-inertia projects too", () => {
+    expect(resolveDefaultSdkClientPlugin({ mode: "spa" })).toBe("@hey-api/client-fetch")
+    expect(resolveDefaultSdkClientPlugin({ mode: "framework" })).toBe("@hey-api/client-fetch")
+    expect(resolveDefaultSdkClientPlugin({ inertiaMode: false })).toBe("@hey-api/client-fetch")
+  })
+})
 
 describe("typegen-core", () => {
   let mockLogger: TypeGenLogger

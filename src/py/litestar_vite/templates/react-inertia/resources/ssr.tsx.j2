@@ -1,16 +1,22 @@
 import createServer from "@inertiajs/react/server";
 import { createInertiaApp } from "@inertiajs/react";
+import type { ComponentType } from "react";
 import { renderToString } from "react-dom/server";
 
 import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
 
+const pages = import.meta.glob("./pages/**/*.tsx") as Record<string, () => Promise<{ default: ComponentType }>>;
+
 createServer(
   async (page) => {
     const inertia = await createInertiaApp({
-      // If you enable use_script_element=True, mirror the same defaults.future.useScriptElementForInitialPage setting here too.
+      // litestar-vite defaults to the script-element bootstrap for Inertia.
+      // - Inertia v3 reads the #app_page payload automatically.
+      // - If you pin Inertia v2, mirror defaults.future.useScriptElementForInitialPage
+      //   here too or set use_script_element=False on the Python side.
       page,
       render: renderToString,
-      resolve: (name) => resolvePageComponent(`./pages/${name}.tsx`, import.meta.glob("./pages/**/*.tsx")),
+      resolve: async (name) => (await resolvePageComponent(`./pages/${name}.tsx`, pages)).default,
       setup: ({ App, props }) => <App {...props} />,
     });
 

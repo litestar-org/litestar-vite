@@ -1,4 +1,5 @@
 import { createInertiaApp } from "@inertiajs/svelte";
+import { csrfHeaders } from "litestar-vite-plugin/helpers";
 import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
 import { mount } from "svelte";
 import "./app.css";
@@ -6,6 +7,11 @@ import "./app.css";
 createInertiaApp({
   resolve: (name) =>
     resolvePageComponent(`./pages/${name}.svelte`, import.meta.glob("./pages/**/*.svelte")),
+  defaults: {
+    visitOptions: (_href, options) => ({
+      headers: csrfHeaders(options.headers ?? {}),
+    }),
+  },
   setup({ el, App, props }) {
     mount(App, {
       target: el,

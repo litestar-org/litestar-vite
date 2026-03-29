@@ -37,6 +37,10 @@ Frontend Setup
 
 Install the Inertia.js client and litestar-vite-plugin:
 
+.. note::
+   litestar-vite supports Inertia v2 and v3. Generated templates and examples now target Inertia v3.
+   If you are upgrading an existing Inertia v2 app, see :doc:`upgrade-guide`.
+
 .. tab-set::
 
    .. tab-item:: React

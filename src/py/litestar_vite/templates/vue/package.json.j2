@@ -12,10 +12,7 @@
     "generate-types": "openapi-ts"{% endif %}
   },
   "dependencies": {
-    "vue": "3.5.29"{% if generate_client or generate_zod %},{% endif %}
-{%- if generate_client %}
-    "axios": "1.13.6"{% if generate_zod %},{% endif %}
-{%- endif %}
+    "vue": "3.5.29"{% if generate_zod %},{% endif %}
 {%- if generate_zod %}
     "zod": "4.3.6"
 {%- endif %}

@@ -18,16 +18,20 @@ Typical file layout:
 - Browser entry: ``resources/main.tsx`` or ``resources/main.ts``
 - Node SSR entry: ``resources/ssr.tsx`` or ``resources/ssr.ts``
 
-When you also enable ``use_script_element=True`` for an Inertia v2 client:
+When you use the default script-element bootstrap transport:
 
-- Keep ``defaults.future.useScriptElementForInitialPage`` in the browser entry so hydration
-  reads the initial page payload correctly instead of expecting the default ``data-page`` attribute.
-- Mirror the same option in the Node SSR entry because Inertia applies the same defaults during
-  server rendering.
+- Inertia v3 clients use the script-element bootstrap by default, so no extra client
+  ``defaults`` block is required.
+- Inertia v2 clients must keep ``defaults.future.useScriptElementForInitialPage`` in the browser
+  entry so hydration reads the initial page payload correctly instead of expecting the default
+  ``data-page`` attribute.
+- Inertia v2 SSR entries should mirror the same option because Inertia applies the same defaults
+  during server rendering.
+- Set ``use_script_element=False`` if you need to keep the legacy ``data-page`` attribute bootstrap.
 
 .. note::
-   This guidance is intentionally scoped to current Inertia v2 clients. The official v3 upgrade
-   guide removes the ``future`` config namespace and changes the bootstrap default.
+   This guidance is intentionally version-scoped. Inertia v2 still uses the ``future`` namespace
+   for script-element bootstrap, while Inertia v3 removes that extra client configuration.
 
 Selector behavior follows ``SPAConfig.app_selector``. If you render into ``#root`` instead of
 ``#app``, keep the browser template, SSR output, and app selector aligned so Litestar can replace

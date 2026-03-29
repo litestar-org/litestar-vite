@@ -611,7 +611,7 @@ describe("htmx extension", () => {
       const evt = new CustomEvent("htmx:configRequest", { detail })
       ext.onEvent?.("htmx:configRequest", evt)
 
-      expect(detail.headers["X-CSRF-Token"]).toBe("csrf-token")
+      expect(detail.headers["X-CSRFToken"]).toBe("csrf-token")
     })
 
     it("does not throw if event detail is missing/invalid", () => {

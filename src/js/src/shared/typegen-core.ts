@@ -90,6 +90,14 @@ export interface RunTypeGenOptions {
 }
 
 /**
+ * Resolve the default hey-api client plugin for the current project mode.
+ */
+export function resolveDefaultSdkClientPlugin(options: { inertiaMode?: boolean; mode?: string | null | undefined }): string {
+  void options
+  return "@hey-api/client-fetch"
+}
+
+/**
  * Find user's openapi-ts config file.
  */
 export function findOpenApiTsConfig(projectRoot: string): string | null {

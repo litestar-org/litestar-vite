@@ -28,29 +28,57 @@ def test_example_dev_scripts_are_framework_specific() -> None:
 
 
 def test_inertia_examples_use_stable_script_element_bootstrap() -> None:
-    """Ensure Inertia examples match stable 2.3.x bootstrap guidance."""
+    """Ensure current examples target Inertia v3 while docs preserve the v2 path."""
     react_hybrid = (EXAMPLES_ROOT / "react-inertia" / "resources" / "main.tsx").read_text()
     vue_hybrid = (EXAMPLES_ROOT / "vue-inertia" / "resources" / "main.ts").read_text()
     react_jinja = (EXAMPLES_ROOT / "react-inertia-jinja" / "resources" / "main.tsx").read_text()
     vue_jinja = (EXAMPLES_ROOT / "vue-inertia-jinja" / "resources" / "main.ts").read_text()
+    react_openapi = (EXAMPLES_ROOT / "react-inertia" / "openapi-ts.config.ts").read_text()
+    react_jinja_openapi = (EXAMPLES_ROOT / "react-inertia-jinja" / "openapi-ts.config.ts").read_text()
+    vue_openapi = (EXAMPLES_ROOT / "vue-inertia" / "openapi-ts.config.ts").read_text()
+    vue_jinja_openapi = (EXAMPLES_ROOT / "vue-inertia-jinja" / "openapi-ts.config.ts").read_text()
 
     assert "@ts-expect-error" not in react_hybrid
     assert "@ts-expect-error" not in vue_hybrid
-    assert "defaults:" in react_hybrid
-    assert "future: {" in react_hybrid
-    assert "useScriptElementForInitialPage: true" in react_hybrid
-    assert "defaults:" in vue_hybrid
-    assert "future: {" in vue_hybrid
-    assert "useScriptElementForInitialPage: true" in vue_hybrid
+    assert "defaults: {" in react_hybrid
+    assert 'import { csrfHeaders } from "litestar-vite-plugin/helpers"' in react_hybrid
+    assert "visitOptions: (_href, options) => ({" in react_hybrid
+    assert "headers: csrfHeaders(options.headers ?? {})," in react_hybrid
+    assert "future: {" not in react_hybrid
+    assert "useScriptElementForInitialPage: true" not in react_hybrid
+    assert "defaults: {" in vue_hybrid
+    assert 'import { csrfHeaders } from "litestar-vite-plugin/helpers"' in vue_hybrid
+    assert "visitOptions: (_href, options) => ({" in vue_hybrid
+    assert "headers: csrfHeaders(options.headers ?? {})," in vue_hybrid
+    assert "future: {" not in vue_hybrid
+    assert "useScriptElementForInitialPage: true" not in vue_hybrid
 
     assert "@ts-expect-error" not in react_jinja
     assert "@ts-expect-error" not in vue_jinja
-    assert "defaults:" in react_jinja
-    assert "future: {" in react_jinja
-    assert "useScriptElementForInitialPage: true" in react_jinja
-    assert "defaults:" in vue_jinja
-    assert "future: {" in vue_jinja
-    assert "useScriptElementForInitialPage: true" in vue_jinja
+    assert "defaults: {" in react_jinja
+    assert 'import { csrfHeaders } from "litestar-vite-plugin/helpers"' in react_jinja
+    assert "visitOptions: (_href, options) => ({" in react_jinja
+    assert "headers: csrfHeaders(options.headers ?? {})," in react_jinja
+    assert "future: {" not in react_jinja
+    assert "useScriptElementForInitialPage: true" not in react_jinja
+    assert "defaults: {" in vue_jinja
+    assert 'import { csrfHeaders } from "litestar-vite-plugin/helpers"' in vue_jinja
+    assert "visitOptions: (_href, options) => ({" in vue_jinja
+    assert "headers: csrfHeaders(options.headers ?? {})," in vue_jinja
+    assert "future: {" not in vue_jinja
+    assert "useScriptElementForInitialPage: true" not in vue_jinja
+
+    for text in (react_openapi, react_jinja_openapi, vue_openapi, vue_jinja_openapi):
+        assert "@hey-api/client-axios" not in text
+        assert "@hey-api/client-fetch" in text
+
+    react_spa_openapi = (EXAMPLES_ROOT / "react" / "openapi-ts.config.ts").read_text()
+    vue_spa_openapi = (EXAMPLES_ROOT / "vue" / "openapi-ts.config.ts").read_text()
+    svelte_spa_openapi = (EXAMPLES_ROOT / "svelte" / "openapi-ts.config.ts").read_text()
+
+    for text in (react_spa_openapi, vue_spa_openapi, svelte_spa_openapi):
+        assert "@hey-api/client-axios" not in text
+        assert "@hey-api/client-fetch" in text
 
 
 def test_inertia_templates_do_not_use_stale_script_element_bootstrap() -> None:
@@ -61,13 +89,26 @@ def test_inertia_templates_do_not_use_stale_script_element_bootstrap() -> None:
     vue_ssr = (TEMPLATE_ROOT / "vue-inertia" / "resources" / "ssr.ts.j2").read_text()
 
     for template in (react_template, vue_template, react_ssr, vue_ssr):
-        assert "\n  defaults: {" not in template
         assert "useScriptElementForInitialPage: true," not in template
+        assert "Inertia v2" in template
+        assert "Inertia v3" in template
+        assert "defaults to the script-element bootstrap" in template
+        assert "use_script_element=False" in template
 
-    assert "If you enable use_script_element=True" in react_template
-    assert "If you enable use_script_element=True" in react_ssr
-    assert "If you enable use_script_element=True" in vue_template
-    assert "If you enable use_script_element=True" in vue_ssr
+    for template in (react_template, vue_template):
+        assert "\n  defaults: {" in template
+        assert 'import { csrfHeaders } from "litestar-vite-plugin/helpers";' in template
+        assert "visitOptions: (_href, options) => ({" in template
+        assert "headers: csrfHeaders(options.headers ?? {})," in template
+        assert "cookie_httponly=True" in template
+
+    for template in (react_ssr, vue_ssr):
+        assert "\n  defaults: {" not in template
+
+    assert "If you enable use_script_element=True" not in react_template
+    assert "If you enable use_script_element=True" not in react_ssr
+    assert "If you enable use_script_element=True" not in vue_template
+    assert "If you enable use_script_element=True" not in vue_ssr
 
 
 def test_inertia_jinja_templates_include_script_element_target() -> None:
@@ -80,19 +121,33 @@ def test_inertia_jinja_templates_include_script_element_target() -> None:
 
 
 def test_inertia_docs_use_stable_script_element_bootstrap_path() -> None:
-    """Ensure docs reference the stable defaults.future bootstrap path."""
+    """Ensure docs cover both the Inertia v2 and v3 script-element paths."""
     config_docs = (ROOT / "docs" / "frameworks" / "inertia" / "configuration.rst").read_text()
     ssr_docs = (ROOT / "docs" / "reference" / "inertia" / "ssr.rst").read_text()
+    install_docs = (ROOT / "docs" / "frameworks" / "inertia" / "installation.rst").read_text()
+    upgrade_docs = (ROOT / "docs" / "frameworks" / "inertia" / "upgrade-guide.rst").read_text()
+    index_docs = (ROOT / "docs" / "frameworks" / "inertia" / "index.rst").read_text()
     inertia_config = (ROOT / "src" / "py" / "litestar_vite" / "config" / "_inertia.py").read_text()
 
     assert "defaults: {" in config_docs
-    assert "future: {" in config_docs
+    assert "Inertia v2" in config_docs
+    assert "Inertia v3" in config_docs
+    assert "Default: ``True``" in config_docs
     assert "useScriptElementForInitialPage: true" in config_docs
     assert "useScriptElementForInitialPage: true," not in config_docs.split("defaults: {", 1)[0]
     assert "defaults.future.useScriptElementForInitialPage" in ssr_docs
+    assert "Inertia v2" in ssr_docs
+    assert "Inertia v3" in ssr_docs
     assert "Node SSR entry" in ssr_docs
-    assert "defaults: {" in inertia_config
-    assert "future: {" in inertia_config
+    assert "supports Inertia v2 and v3" in install_docs
+    assert "upgrade-guide" in install_docs
+    assert "upgrade-guide" in index_docs
+    assert "supports Inertia v2 and v3" in upgrade_docs
+    assert "defaults.future.useScriptElementForInitialPage" in upgrade_docs
+    assert "Generated templates and examples now target Inertia v3" in upgrade_docs
+    assert "Inertia v2" in inertia_config
+    assert "Inertia v3" in inertia_config
+    assert "use_script_element: bool = True" in inertia_config
     assert "useScriptElementForInitialPage: true" in inertia_config
 
 
@@ -103,7 +158,7 @@ def test_inertia_readme_and_llms_reference_stable_script_element_bootstrap() -> 
     llms_full = (ROOT / "llms-full.txt").read_text()
 
     for text in (readme, llms_summary, llms_full):
-        assert "use_script_element" in text
+        assert "use_script_element=False" in text
         assert "useScriptElementForInitialPage" in text
 
 
@@ -317,6 +372,10 @@ def test_svelte_manifests_pin_concrete_stable_versions() -> None:
     for text in (svelte_example, sveltekit_example, svelte_template, svelte_inertia_template, sveltekit_template):
         assert '"latest"' not in text
 
+    assert '"@inertiajs/svelte": "3.0.0"' in svelte_inertia_template
+    assert '"axios": "1.13.6"' not in svelte_inertia_template
+    assert '"axios": "1.13.6"' not in svelte_example
+    assert '"axios": "1.13.6"' not in svelte_template
     assert '"prepare": "svelte-kit sync"' in sveltekit_example
     assert '"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"' in sveltekit_example
 

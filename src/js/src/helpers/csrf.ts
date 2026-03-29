@@ -23,6 +23,7 @@ interface CsrfTokenCache {
 }
 
 let csrfTokenCache: CsrfTokenCache | null = null
+export const DEFAULT_CSRF_HEADER_NAME = "X-CSRFToken"
 
 function getWindowToken(): string | undefined {
   if (typeof window !== "undefined") {
@@ -80,7 +81,7 @@ function getInertiaToken(): string | undefined {
  * fetch('/api/submit', {
  *   method: 'POST',
  *   headers: {
- *     'X-CSRF-Token': getCsrfToken(),
+ *     'X-CSRFToken': getCsrfToken(),
  *   },
  *   body: JSON.stringify(data),
  * })
@@ -130,21 +131,21 @@ function hasCsrfHeader(headers: HeadersInit | undefined): boolean {
   }
 
   if (headers instanceof Headers) {
-    return headers.has("X-CSRF-Token")
+    return headers.has(DEFAULT_CSRF_HEADER_NAME)
   }
 
   if (Array.isArray(headers)) {
-    return headers.some((entry) => Array.isArray(entry) && entry.length >= 2 && typeof entry[0] === "string" && entry[0].toLowerCase() === "x-csrf-token")
+    return headers.some((entry) => Array.isArray(entry) && entry.length >= 2 && typeof entry[0] === "string" && entry[0].toLowerCase() === DEFAULT_CSRF_HEADER_NAME.toLowerCase())
   }
 
-  return Object.keys(headers as Record<string, string>).some((key) => key.toLowerCase() === "x-csrf-token")
+  return Object.keys(headers as Record<string, string>).some((key) => key.toLowerCase() === DEFAULT_CSRF_HEADER_NAME.toLowerCase())
 }
 
 /**
  * Create headers object with CSRF token included.
  *
  * @param additionalHeaders - Additional headers to include
- * @returns Headers object with X-CSRF-Token set
+ * @returns Headers object with Litestar's default CSRF header set
  *
  * @example
  * ```ts
@@ -163,14 +164,14 @@ export function csrfHeaders(additionalHeaders: Record<string, string> = {}): Rec
     return additionalHeaders
   }
 
-  const existingTokenHeader = Object.keys(additionalHeaders).find((key) => key.toLowerCase() === "x-csrf-token")
+  const existingTokenHeader = Object.keys(additionalHeaders).find((key) => key.toLowerCase() === DEFAULT_CSRF_HEADER_NAME.toLowerCase())
   if (existingTokenHeader !== undefined) {
     return additionalHeaders
   }
 
   return {
     ...additionalHeaders,
-    "X-CSRF-Token": token,
+    [DEFAULT_CSRF_HEADER_NAME]: token,
   }
 }
 
@@ -203,7 +204,7 @@ export function csrfFetch(input: RequestInfo | URL, init?: RequestInit): Promise
     if (!init || typeof init.headers === "undefined") {
       return fetch(input, {
         ...init,
-        headers: { "X-CSRF-Token": token },
+        headers: { [DEFAULT_CSRF_HEADER_NAME]: token },
       })
     }
 
@@ -211,7 +212,7 @@ export function csrfFetch(input: RequestInfo | URL, init?: RequestInit): Promise
       if (Array.isArray(init.headers)) {
         return fetch(input, {
           ...init,
-          headers: [...init.headers, ["X-CSRF-Token", token]],
+          headers: [...init.headers, [DEFAULT_CSRF_HEADER_NAME, token]],
         })
       }
 
@@ -219,14 +220,14 @@ export function csrfFetch(input: RequestInfo | URL, init?: RequestInit): Promise
         ...init,
         headers: {
           ...init.headers,
-          "X-CSRF-Token": token,
+          [DEFAULT_CSRF_HEADER_NAME]: token,
         },
       })
     }
 
     if (init.headers instanceof Headers) {
       const headers = new Headers(init.headers)
-      headers.set("X-CSRF-Token", token)
+      headers.set(DEFAULT_CSRF_HEADER_NAME, token)
       return fetch(input, {
         ...init,
         headers,

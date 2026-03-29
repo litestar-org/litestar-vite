@@ -11,7 +11,7 @@
 import colors from "picocolors"
 
 import { readBridgeConfig } from "./shared/bridge-schema.js"
-import { runTypeGeneration, type TypeGenCoreConfig, type TypeGenLogger } from "./shared/typegen-core.js"
+import { resolveDefaultSdkClientPlugin, runTypeGeneration, type TypeGenCoreConfig, type TypeGenLogger } from "./shared/typegen-core.js"
 
 interface CliOptions {
   verbose: boolean
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
     generatePageProps: typesConfig.generatePageProps,
     generateSchemas: typesConfig.generateSchemas ?? true, // Default to true
     schemasTsPath: typesConfig.schemasTsPath,
-    sdkClientPlugin: "@hey-api/client-axios", // Default for CLI (matches Vite plugin + templates)
+    sdkClientPlugin: resolveDefaultSdkClientPlugin({ mode: bridgeConfig.mode }),
     executor: bridgeConfig.executor,
   }
 

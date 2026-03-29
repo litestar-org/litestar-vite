@@ -20,7 +20,7 @@ It's rendered on initial page loads with page data embedded.
 Key features:
 
 - ``<title inertia>`` - Enables dynamic title updates via Inertia's ``<Head>`` component
-- ``<script type="application/json" id="app_page" data-page="app">`` - Script-element bootstrap payload for ``use_script_element=True``
+- ``<script type="application/json" id="app_page" data-page="app">`` - Script-element bootstrap payload for the current default transport
 - ``{{ inertia | safe }}`` - JSON-encoded page payload (use ``| safe`` to prevent escaping)
 - ``{{ vite_hmr() }}`` and ``{{ vite() }}`` - Vite asset injection
 
@@ -49,15 +49,15 @@ These helpers are automatically available in your templates:
 Script Element Bootstrap
 ------------------------
 
-When ``InertiaConfig(use_script_element=True)`` is enabled, keep the app root element empty and
-emit the JSON payload in a matching script element:
+By default, litestar-vite keeps the app root element empty and emits the JSON payload in a
+matching script element:
 
 .. code-block:: html
 
    <div id="app"></div>
    <script type="application/json" id="app_page" data-page="app">{{ inertia | safe }}</script>
 
-For current Inertia v2 clients, your browser entry must opt into the same transport:
+For Inertia v2 clients, your browser entry must opt into the same transport:
 
 .. code-block:: tsx
 
@@ -70,13 +70,13 @@ For current Inertia v2 clients, your browser entry must opt into the same transp
      // resolve/setup...
    })
 
-If ``InertiaConfig(ssr=True)`` is also enabled, mirror the same
+If ``InertiaConfig(ssr=True)`` is also enabled for an Inertia v2 client, mirror the same
 ``defaults.future.useScriptElementForInitialPage`` setting in ``resources/ssr.tsx`` or
 ``resources/ssr.ts`` so the Node SSR entry and the browser entry hydrate from the same payload.
 
 .. note::
-   This explicit ``defaults.future`` setup matches the stable Inertia v2.3+ client docs. In the
-   official v3 upgrade guide, the future namespace is removed, so keep this example version-scoped.
+   Inertia v3 uses the script-element bootstrap by default, so the extra ``defaults.future`` block
+   is only needed when you pin an Inertia v2 client.
 
 Classic ``data-page`` Bootstrap
 -------------------------------
@@ -102,7 +102,7 @@ The ``{{ inertia | safe }}`` helper can also be used directly with the older ``d
 
    Without ``| safe``, special characters in props will be escaped, breaking JSON parsing.
 
-Use this attribute form only when you are not using ``use_script_element=True``.
+Use this attribute form only when you set ``use_script_element=False``.
 
 Dynamic Titles
 --------------
@@ -154,7 +154,7 @@ Your ``index.html`` (in ``resource_dir``):
    </body>
    </html>
 
-Litestar-Vite automatically injects ``data-page`` and CSRF token.
+Litestar-Vite automatically injects the Inertia bootstrap payload and CSRF token.
 
 Customizing the App Selector
 ----------------------------

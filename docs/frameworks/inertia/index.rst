@@ -8,9 +8,9 @@ Build server-driven single-page applications with Litestar routes, Inertia respo
    Official Inertia.js docs: `Getting Started <https://inertiajs.com/>`_
 
 .. note::
-   This section targets the current stable Inertia v2 docs and client APIs. If Litestar-Vite adopts
-   Inertia v3 behavior later, version-specific setup details such as script-element bootstrap should
-   be documented as a separate, explicit upgrade path.
+   Litestar-Vite supports Inertia v2 and v3. Generated templates and examples now target Inertia v3
+   by default, while the version-specific Inertia v2 bootstrap path remains documented in
+   :doc:`upgrade-guide`.
 
 .. grid:: 1 1 2 2
    :gutter: 2
@@ -74,6 +74,7 @@ Starter Paths
    :caption: Getting Started
 
    installation
+   upgrade-guide
    configuration
 
 .. toctree::

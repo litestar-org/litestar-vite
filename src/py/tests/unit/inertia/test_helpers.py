@@ -1,6 +1,7 @@
 """Tests for Inertia helper functions (scroll_props, clear_history, should_render)."""
 
 from typing import Any
+from unittest.mock import MagicMock
 
 from litestar import Request, get
 from litestar.middleware.session.server_side import ServerSideSessionConfig
@@ -16,6 +17,30 @@ from litestar_vite.plugin import VitePlugin
 # =====================================================
 # scroll_props() Helper Tests
 # =====================================================
+
+
+def test_get_shared_props_includes_csrf_token_from_scope() -> None:
+    """Shared props should always expose the scope CSRF token for page-state helpers."""
+    from litestar.utils.scope.state import ScopeState
+
+    from litestar_vite.inertia.helpers import get_shared_props
+
+    request = MagicMock()
+    request.headers.get.return_value = None
+    request.session = {}
+    request.scope = {}
+    ScopeState.from_scope(request.scope).csrf_token = "scope-csrf-token"
+    request.logger = MagicMock()
+
+    inertia_plugin = MagicMock()
+    inertia_plugin.config.extra_static_page_props = {}
+    inertia_plugin.config.extra_session_page_props = []
+    inertia_plugin.portal = None
+    request.app.plugins.get.return_value = inertia_plugin
+
+    shared_props = get_shared_props(request)
+
+    assert shared_props["csrf_token"] == "scope-csrf-token"
 
 
 def test_scroll_props_helper_creates_config() -> None:

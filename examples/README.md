@@ -11,9 +11,8 @@ This directory contains example applications demonstrating litestar-vite integra
 
 Type generation defaults:
 
-- OpenAPI input: `./src/generated/openapi.json`
-- Output: `./src/generated`
-- Client: axios
+- Generated paths follow the scaffold layout: `./src/generated` for SPA examples, `./resources/generated` for Inertia examples, and `./app/generated` for Nuxt.
+- Client plugin: `@hey-api/client-fetch` by default. Opt into `@hey-api/client-axios` only if you need Axios-specific behavior.
 - Zod: off by default. To enable, set `schemas.type = "zod"` in `hey-api.config.ts` and install `zod`.
 
 ## Requirements for Examples

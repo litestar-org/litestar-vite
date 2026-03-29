@@ -119,7 +119,7 @@ class InertiaConfig:
         - InertiaSSRConfig: use as-is
     """
 
-    use_script_element: bool = False
+    use_script_element: bool = True
     """Use a script element instead of data-page attribute for page data.
 
     When True, embeds page data in a ``<script type="application/json" id="app_page" data-page="app">``
@@ -130,15 +130,19 @@ class InertiaConfig:
         - Better performance for pages with complex props
 
     Requirements:
-        - Client must also enable:
+        - Inertia v3 clients use this transport by default; no extra client ``defaults`` block is required.
+        - Inertia v2 clients must also enable:
           ``createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })``
-        - If SSR is enabled, keep the same ``defaults.future.useScriptElementForInitialPage`` option in
-          both the browser entry and the SSR entry.
+        - If SSR is enabled for an Inertia v2 client, keep the same
+          ``defaults.future.useScriptElementForInitialPage`` option in both the browser entry
+          and the SSR entry.
         - The script element must include the target app element ID in its ``data-page`` attribute so
           Inertia can locate the payload element.
-        - Requires Inertia.js v2.3+
+        - Supported with Inertia v2.3+ and Inertia v3.
 
-    Disabled by default for compatibility with existing Inertia clients.
+    Enabled by default for the current Inertia contract. Set to ``False`` to
+    keep the legacy ``data-page`` attribute bootstrap, which can be useful when
+    staying on an Inertia v2 client without the ``future`` opt-in.
     """
 
     precognition: bool = False

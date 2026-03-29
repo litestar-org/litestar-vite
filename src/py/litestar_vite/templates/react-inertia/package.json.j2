@@ -21,11 +21,8 @@
   },
   "dependencies": {
 {%- for dep in dependencies %}
-    "{{ dep }}": "{{ package_version(dep) }}"{% if not loop.last or generate_zod or generate_client %},{% endif %}
+    "{{ dep }}": "{{ package_version(dep) }}"{% if not loop.last or generate_zod %},{% endif %}
 {%- endfor %}
-{%- if generate_client %}
-    "axios": "{{ package_version('axios') }}"{% if generate_zod %},{% endif %}
-{%- endif %}
 {%- if generate_zod %}
     "zod": "{{ package_version('zod') }}"
 {%- endif %}

@@ -8,7 +8,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 - Framework-mode support: use `mode="framework"` (alias `mode="ssr"`) for Astro, Nuxt, and SvelteKit. Litestar proxies everything except your API routes.
 - Production assets: reads the Vite manifest from `public/manifest.json` (configurable) and serves under `asset_url`.
 - Type-safe frontends: optional OpenAPI/routes export plus `@hey-api/openapi-ts` via the Vite plugin.
-- Inertia support: stable v2 protocol with session middleware, optional script-element bootstrap, and optional SSR.
+- Inertia support: Inertia v2/v3 protocol support with session middleware, script-element bootstrap by default, and optional SSR.
 
 ## Install
 
@@ -72,7 +72,7 @@ uv run litestar --app-dir examples/vue-inertia run
 
 Replace `vue-inertia` with any other example app: `vue`, `react`, `svelte`, `react-inertia`, `htmx`, `angular`, `astro`, `nuxt`, or `sveltekit`.
 
-For Inertia script-element bootstrap, enable `InertiaConfig(use_script_element=True)` on the Python side and keep `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })` aligned in the browser entry and SSR entry when `ssr=True` is enabled.
+litestar-vite now defaults Inertia apps to script-element bootstrap. Inertia v3 clients use that transport automatically; if you pin Inertia v2, keep `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })` aligned in the browser entry and SSR entry when `ssr=True` is enabled, or opt back into the legacy `data-page` path with `InertiaConfig(use_script_element=False)`.
 
 ## Links
 

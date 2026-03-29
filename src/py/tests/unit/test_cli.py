@@ -398,8 +398,47 @@ def test_cli_vite_install_update_build(tmp_path: Path) -> None:
     _unwrap_command(vite_update)(app, latest=True, verbose=False, quiet=False)
     assert fake_executor.updates[-1][1] is True
 
-    with patch("litestar_vite.cli._generate_schema_and_routes"), patch("litestar_vite.cli.set_environment"):
+    with (
+        patch("litestar_vite.cli._generate_schema_and_routes"),
+        patch("litestar_vite.cli._invoke_typegen_cli") as invoke,
+        patch("litestar_vite.cli.set_environment"),
+    ):
         _unwrap_command(vite_build)(app, verbose=False, quiet=False)
+    invoke.assert_called_once_with(config, False)
+    assert fake_executor.executes
+
+
+def test_cli_vite_build_invokes_typegen_when_types_enabled(tmp_path: Path) -> None:
+    app = _make_app(tmp_path, types=True)
+    config = app.plugins.get(VitePlugin).config
+    fake_executor = FakeExecutor()
+    config._executor_instance = fake_executor
+
+    with (
+        patch("litestar_vite.cli._generate_schema_and_routes"),
+        patch("litestar_vite.cli._invoke_typegen_cli") as invoke,
+        patch("litestar_vite.cli.set_environment"),
+    ):
+        _unwrap_command(vite_build)(app, verbose=False, quiet=False)
+
+    invoke.assert_called_once_with(config, False)
+    assert fake_executor.executes
+
+
+def test_cli_vite_build_skips_typegen_when_types_disabled(tmp_path: Path) -> None:
+    app = _make_app(tmp_path, types=False)
+    config = app.plugins.get(VitePlugin).config
+    fake_executor = FakeExecutor()
+    config._executor_instance = fake_executor
+
+    with (
+        patch("litestar_vite.cli._generate_schema_and_routes"),
+        patch("litestar_vite.cli._invoke_typegen_cli") as invoke,
+        patch("litestar_vite.cli.set_environment"),
+    ):
+        _unwrap_command(vite_build)(app, verbose=False, quiet=False)
+
+    invoke.assert_not_called()
     assert fake_executor.executes
 
 
@@ -419,8 +458,13 @@ def test_cli_vite_build_external_dev_server(tmp_path: Path) -> None:
     fake_executor = FakeExecutor()
     config._executor_instance = fake_executor
 
-    with patch("litestar_vite.cli._generate_schema_and_routes"), patch("litestar_vite.cli.set_environment"):
+    with (
+        patch("litestar_vite.cli._generate_schema_and_routes"),
+        patch("litestar_vite.cli._invoke_typegen_cli") as invoke,
+        patch("litestar_vite.cli.set_environment"),
+    ):
         _unwrap_command(vite_build)(app, verbose=False, quiet=False)
+    invoke.assert_called_once_with(config, False)
     assert any("build:ext" in cmd for cmd, _ in fake_executor.executes)
 
 
@@ -500,6 +544,24 @@ def test_cli_invoke_typegen_cli_missing_executor(tmp_path: Path, monkeypatch: py
     monkeypatch.setattr("litestar_vite.cli.subprocess.run", _raise)
     with pytest.raises(LitestarCLIException):
         _invoke_typegen_cli(config, verbose=False)
+
+
+def test_cli_invoke_typegen_cli_prefers_local_bin_for_pnpm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = ViteConfig(paths=PathConfig(root=tmp_path))
+    config.runtime.executor = "pnpm"
+
+    local_bin = tmp_path / "node_modules" / ".bin" / "litestar-vite-typegen"
+    local_bin.parent.mkdir(parents=True, exist_ok=True)
+    local_bin.write_text("")
+
+    run = Mock(return_value=Mock(returncode=0))
+    monkeypatch.setattr("litestar_vite.cli.subprocess.run", run)
+
+    _invoke_typegen_cli(config, verbose=True)
+
+    assert run.call_args.args[0] == [str(local_bin), "--verbose"]
+    assert run.call_args.kwargs["cwd"] == tmp_path
+    assert run.call_args.kwargs["check"] is False
 
 
 def test_cli_generate_types_invokes_typegen(tmp_path: Path) -> None:

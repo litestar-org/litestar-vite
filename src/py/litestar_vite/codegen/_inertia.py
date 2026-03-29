@@ -1,6 +1,7 @@
 """Inertia page-props metadata extraction and export."""
 
 import re
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -148,6 +149,7 @@ class InertiaPageMetadata:
     handler_name: str | None = None
     ts_type: str | None = None
     custom_types: list[str] = field(default_factory=str_list_factory)
+    wrap_with_content: bool = False
 
 
 def get_return_type_name(handler: HTTPRouteHandler) -> "str | None":
@@ -173,6 +175,46 @@ def get_return_type_name(handler: HTTPRouteHandler) -> "str | None":
     if isinstance(origin, type):
         return origin.__name__
     return str(raw)
+
+
+def _filter_page_props_response_types(field_definition: FieldDefinition) -> FieldDefinition | None:
+    """Filter response wrapper types out of a handler return annotation."""
+    if not field_definition.is_union:
+        return field_definition
+
+    props_types: list[type[Any]] = []
+    for inner in field_definition.inner_types:
+        if inner.is_subclass_of(NoneType):
+            continue
+        if inner.is_subclass_of(ASGIResponse):
+            continue
+        props_types.append(cast("type[Any]", inner.annotation))
+
+    if not props_types:
+        return None
+    if len(props_types) == 1:
+        return FieldDefinition.from_annotation(props_types[0])
+
+    from typing import Union
+
+    props_types.sort(key=lambda t: getattr(t, "__qualname__", str(t)))
+    union_type = Union[tuple(props_types)]  # type: ignore[valid-type] # noqa: UP007
+    return FieldDefinition.from_annotation(union_type)
+
+
+def should_wrap_page_props_with_content(handler: HTTPRouteHandler) -> bool:
+    """Return whether generated props should stay nested under ``content``.
+
+    Runtime Inertia responses flatten mapping payloads into top-level props, but
+    keep non-mapping objects nested under ``content``. The generated metadata has
+    to preserve that distinction so ``page-props.ts`` matches actual responses.
+    """
+    field_definition = _filter_page_props_response_types(handler.parsed_fn_signature.return_type)
+    if field_definition is None:
+        return False
+    if field_definition.is_subclass_of((NoneType, ASGIResponse)):
+        return False
+    return not field_definition.is_subclass_of(Mapping)
 
 
 def get_openapi_schema_ref(
@@ -352,6 +394,7 @@ def extract_inertia_pages(
             props_type=props_type,
             schema_ref=schema_ref,
             handler_name=handler_name,
+            wrap_with_content=should_wrap_page_props_with_content(route_handler),
         )
 
         # Prefer GET handlers when multiple handlers map to the same component
@@ -586,6 +629,8 @@ def generate_inertia_pages_json(
             page_data["tsType"] = page.ts_type
         if page.custom_types:
             page_data["customTypes"] = page.custom_types
+        if page.wrap_with_content:
+            page_data["wrapWithContent"] = True
         if page.schema_ref:
             page_data["schemaRef"] = page.schema_ref
         if page.handler_name:

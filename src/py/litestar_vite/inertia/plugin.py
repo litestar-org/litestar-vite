@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 import httpx
+from anyio import to_thread
 from anyio.from_thread import start_blocking_portal
 from litestar.plugins import InitPluginProtocol
 
@@ -91,11 +92,16 @@ class InertiaPlugin(InitPluginProtocol):
             timeout=httpx.Timeout(10.0),  # Default timeout, can be overridden per-request
         )
 
+        portal_context_manager = start_blocking_portal()
         try:
-            with start_blocking_portal() as portal:
-                self._portal = portal
-                yield
+            # anyio.from_thread.start_blocking_portal() must be entered from sync code.
+            # In async lifespan startup, enter/exit it through a worker thread so the
+            # shared portal still runs on its own dedicated thread.
+            self._portal = await to_thread.run_sync(portal_context_manager.__enter__)
+            yield
         finally:
+            self._portal = None
+            await to_thread.run_sync(lambda: portal_context_manager.__exit__(None, None, None))
             await self._ssr_client.aclose()
             self._ssr_client = None  # Reset to signal client is closed
 

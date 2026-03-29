@@ -20,32 +20,29 @@
     "generate-types": "openapi-ts"{% endif %}
   },
   "dependencies": {
-    "@inertiajs/vue3": "2.3.17",
-    "vue": "3.5.29"{% if generate_zod or generate_client or enable_ssr %},{% endif %}
-{%- if generate_client %}
-    "axios": "1.13.6"{% if generate_zod or enable_ssr %},{% endif %}
-{%- endif %}
+    "@inertiajs/vue3": "{{ package_version('@inertiajs/vue3') }}",
+    "vue": "{{ package_version('vue') }}"{% if generate_zod or enable_ssr %},{% endif %}
 {%- if generate_zod %}
-    "zod": "4.3.6"{% if enable_ssr %},{% endif %}
+    "zod": "{{ package_version('zod') }}"{% if enable_ssr %},{% endif %}
 {%- endif %}
 {%- if enable_ssr %}
-    "@vue/server-renderer": "3.5.29"
+    "@vue/server-renderer": "{{ package_version('@vue/server-renderer') }}"
 {%- endif %}
   },
   "devDependencies": {
-    "@types/node": "25.3.5",
-    "@vitejs/plugin-vue": "6.0.4",
-    "@vue/tsconfig": "0.9.0",
-    "typescript": "5.9.3",
-    "vue-tsc": "3.2.5",
+    "@types/node": "{{ package_version('@types/node') }}",
+    "@vitejs/plugin-vue": "{{ package_version('@vitejs/plugin-vue') }}",
+    "@vue/tsconfig": "{{ package_version('@vue/tsconfig') }}",
+    "typescript": "{{ package_version('typescript') }}",
+    "vue-tsc": "{{ package_version('vue-tsc') }}",
 {%- if use_tailwind %}
-    "@tailwindcss/vite": "4.2.2",
-    "tailwindcss": "4.2.2",
+    "@tailwindcss/vite": "{{ package_version('@tailwindcss/vite') }}",
+    "tailwindcss": "{{ package_version('tailwindcss') }}",
 {%- endif %}
 {%- if generate_client %}
-    "@hey-api/openapi-ts": "0.94.0",
+    "@hey-api/openapi-ts": "{{ package_version('@hey-api/openapi-ts') }}",
 {%- endif %}
-    "litestar-vite-plugin": "0.18.4",
-    "vite": "8.0.1"
+    "litestar-vite-plugin": "{{ package_version('litestar-vite-plugin') }}",
+    "vite": "{{ package_version('vite') }}"
   }
 }

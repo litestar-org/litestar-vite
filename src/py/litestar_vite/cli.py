@@ -220,13 +220,16 @@ def _run_vite_build(
         raise SystemExit(msg) from exc
 
 
-def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: Any) -> None:
+def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: Any) -> bool:
     """Export OpenAPI schema, routes, and Inertia page props prior to running a build.
 
     Uses the shared `export_integration_assets` function to guarantee byte-identical
     output between CLI and Plugin.
 
     Skips generation when type generation is disabled.
+
+    Returns:
+        ``True`` when integration assets were exported or confirmed unchanged, otherwise ``False``.
 
     Raises:
         LitestarCLIException: If export fails.
@@ -235,7 +238,7 @@ def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: An
 
     types_config = config.types
     if not isinstance(types_config, TypeGenConfig):
-        return
+        return False
 
     console.print("[dim]Preparing OpenAPI schema and routes...[/]")
 
@@ -250,9 +253,12 @@ def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: An
 
         if not result.exported_files and not result.unchanged_files:
             console.print("[yellow]! No files exported (OpenAPI may not be available)[/]")
+            return False
     except (OSError, TypeError, ValueError) as exc:
         msg = f"Failed to export type metadata: {exc}"
         raise LitestarCLIException(msg) from exc
+
+    return True
 
 
 @group(cls=LitestarGroup, name="assets")
@@ -659,7 +665,7 @@ def vite_build(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
 
     if not quiet:
         console.rule("Starting [blue]Vite[/] build process", align="left")
-    _generate_schema_and_routes(app, plugin.config, console)
+    generated_assets = _generate_schema_and_routes(app, plugin.config, console)
     if plugin.config.set_environment:
         set_environment(config=plugin.config)
 
@@ -669,6 +675,8 @@ def vite_build(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
         if not (Path(root_dir) / "node_modules").exists():
             console.print("[dim]Installing frontend dependencies (node_modules missing)...[/]")
             executor.install(Path(root_dir))
+        if generated_assets and isinstance(plugin.config.types, TypeGenConfig):
+            _invoke_typegen_cli(plugin.config, verbose)
         ext = plugin.config.runtime.external_dev_server
         if isinstance(ext, ExternalDevServer) and ext.enabled:
             build_cmd = ext.build_command or executor.build_command
@@ -940,6 +948,20 @@ def _get_package_executor_cmd(executor: "str | None", package: str) -> "list[str
             return ["npx", package]
 
 
+def _get_local_binary_cmd(root_dir: Path, binary: str) -> "list[str] | None":
+    """Resolve a locally installed project binary from ``node_modules/.bin``."""
+    bin_dir = root_dir / "node_modules" / ".bin"
+    candidates = [bin_dir / binary]
+    if os.name == "nt":
+        candidates = [bin_dir / f"{binary}.cmd", bin_dir / f"{binary}.CMD", bin_dir / f"{binary}.exe", *candidates]
+
+    for candidate in candidates:
+        if candidate.exists():
+            return [str(candidate)]
+
+    return None
+
+
 def _invoke_typegen_cli(config: Any, verbose: bool) -> None:
     """Invoke the unified TypeScript type generation CLI.
 
@@ -958,7 +980,9 @@ def _invoke_typegen_cli(config: Any, verbose: bool) -> None:
     executor = config.runtime.executor
 
     # Build the command to run the unified TypeScript CLI
-    pkg_cmd = _get_package_executor_cmd(executor, "litestar-vite-typegen")
+    pkg_cmd = _get_local_binary_cmd(root_dir, "litestar-vite-typegen") or _get_package_executor_cmd(
+        executor, "litestar-vite-typegen"
+    )
     cmd = [*pkg_cmd]
 
     if verbose:

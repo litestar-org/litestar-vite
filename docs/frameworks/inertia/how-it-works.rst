@@ -35,9 +35,8 @@ Instead of returning JSON from an API, your routes return page components:
 Request Flow
 ------------
 
-The examples below show both bootstrap formats because Litestar-Vite currently targets stable
-Inertia v2 clients. Script-element bootstrap is available in v2.3+, while classic ``data-page``
-remains the compatibility path.
+The examples below show both bootstrap formats because litestar-vite now defaults to the
+script-element transport while still supporting the classic ``data-page`` compatibility path.
 
 **Initial Load (Full HTML)**:
 
@@ -48,7 +47,7 @@ remains the compatibility path.
 
 .. code-block:: html
 
-   <!-- Script-element bootstrap when use_script_element=True -->
+   <!-- Default script-element bootstrap -->
    <div id="app"></div>
    <script type="application/json" id="app_page" data-page="app">
      {"component":"Dashboard","props":{"user":"Alice"},"url":"/dashboard"}

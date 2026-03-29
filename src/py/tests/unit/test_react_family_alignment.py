@@ -16,7 +16,9 @@ def test_react_spa_entrypoints_match_current_vite_bootstrap() -> None:
 
     for text in (example_main, template_main):
         assert 'import App from "./App.tsx"' in text
-        assert 'createRoot(document.getElementById("root")!).render(' in text
+        assert 'const root = document.getElementById("root")' in text
+        assert 'throw new Error("Root element #root not found")' in text
+        assert "createRoot(root).render(" in text
         assert "StrictMode" in text
 
 
@@ -28,15 +30,42 @@ def test_react_inertia_bootstrap_matches_current_adapter_shape() -> None:
 
     for text in (hybrid_main, jinja_main):
         assert "StrictMode" not in text
-        assert "defaults:" in text
-        assert "future: {" in text
-        assert "useScriptElementForInitialPage: true" in text
+        assert "defaults: {" in text
+        assert 'import { csrfHeaders } from "litestar-vite-plugin/helpers"' in text
+        assert "visitOptions: (_href, options) => ({" in text
+        assert "headers: csrfHeaders(options.headers ?? {})," in text
+        assert "future: {" not in text
+        assert "useScriptElementForInitialPage: true" not in text
+        assert "resolve: async (name) =>" in text
+        assert "await resolvePageComponent" in text
+        assert ").default" in text
         assert "createRoot(el).render(<App {...props} />)" in text
+        assert "axios" not in text
 
     assert "StrictMode" not in template_main
-    assert "use_script_element=True" in template_main
+    assert "Inertia v2" in template_main
+    assert "Inertia v3" in template_main
+    assert "defaults to the script-element bootstrap" in template_main
+    assert "use_script_element=False" in template_main
+    assert "use_script_element=True" not in template_main
+    assert "useScriptElementForInitialPage: true" in template_main
+    assert "cookie_httponly=True" in template_main
+    assert "defaults: {" in template_main
+    assert 'import { csrfHeaders } from "litestar-vite-plugin/helpers";' in template_main
+    assert "visitOptions: (_href, options) => ({" in template_main
+    assert "headers: csrfHeaders(options.headers ?? {})," in template_main
+    assert "resolve: async (name) =>" in template_main
+    assert "await resolvePageComponent" in template_main
+    assert ").default" in template_main
     assert "createRoot(el).render(<App {...props} />);" in template_main
-    assert "use_script_element=True" in template_ssr
+    assert "Inertia v2" in template_ssr
+    assert "Inertia v3" in template_ssr
+    assert "defaults to the script-element bootstrap" in template_ssr
+    assert "use_script_element=False" in template_ssr
+    assert "use_script_element=True" not in template_ssr
+    assert "resolve: async (name) =>" in template_ssr
+    assert "await resolvePageComponent" in template_ssr
+    assert ").default" in template_ssr
 
 
 def test_react_family_examples_pin_current_stable_versions() -> None:
@@ -44,12 +73,7 @@ def test_react_family_examples_pin_current_stable_versions() -> None:
     react_inertia_package = _load_json(EXAMPLES_ROOT / "react-inertia" / "package.json")
     react_inertia_jinja_package = _load_json(EXAMPLES_ROOT / "react-inertia-jinja" / "package.json")
 
-    assert react_package["dependencies"] == {
-        "react": "19.2.4",
-        "react-dom": "19.2.4",
-        "react-router-dom": "7.13.1",
-        "axios": "1.13.6",
-    }
+    assert react_package["dependencies"] == {"react": "19.2.4", "react-dom": "19.2.4", "react-router-dom": "7.13.1"}
     assert react_package["devDependencies"] == {
         "@vitejs/plugin-react": "6.0.1",
         "@types/react": "19.2.14",
@@ -64,10 +88,9 @@ def test_react_family_examples_pin_current_stable_versions() -> None:
 
     for package in (react_inertia_package, react_inertia_jinja_package):
         assert package["dependencies"] == {
-            "@inertiajs/react": "2.3.17",
+            "@inertiajs/react": "3.0.0",
             "react": "19.2.4",
             "react-dom": "19.2.4",
-            "axios": "1.13.6",
             "zod": "4.3.6",
         }
         assert package["devDependencies"] == {
@@ -91,7 +114,6 @@ def test_react_inertia_template_package_pins_current_stable_versions() -> None:
 
     expected_fragments = (
         '"{{ dep }}": "{{ package_version(dep) }}"',
-        '"axios": "{{ package_version(\'axios\') }}"',
         '"zod": "{{ package_version(\'zod\') }}"',
         '"@tailwindcss/vite": "{{ package_version(\'@tailwindcss/vite\') }}"',
         '"tailwindcss": "{{ package_version(\'tailwindcss\') }}"',
@@ -102,6 +124,7 @@ def test_react_inertia_template_package_pins_current_stable_versions() -> None:
     for fragment in expected_fragments:
         assert fragment in text
 
+    assert '"axios": "{{ package_version(\'axios\') }}"' not in text
     assert '"latest"' not in text
 
 
@@ -110,6 +133,12 @@ def test_react_inertia_jinja_example_uses_script_element_config() -> None:
     app_text = (EXAMPLES_ROOT / "react-inertia-jinja" / "app.py").read_text()
 
     assert "~37% smaller" not in hybrid_app_text
-    assert "use_script_element requires matching client bootstrap" in hybrid_app_text
-    assert "use_script_element=True" in app_text
+    assert "Inertia v2" in hybrid_app_text
+    assert "Inertia v3" in hybrid_app_text
+    assert "use_script_element=True" not in hybrid_app_text
+    assert "use_script_element=False" in hybrid_app_text
+    assert "use_script_element=True" not in app_text
+    assert "use_script_element=False" in app_text
+    assert "Inertia v2" in app_text
+    assert "Inertia v3" in app_text
     assert "{{ page | tojson | e }}" not in app_text

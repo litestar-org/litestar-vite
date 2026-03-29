@@ -276,6 +276,22 @@ def test_extract_inertia_pages_captures_return_type() -> None:
     assert pages[0].custom_types == ["BookProps"]
 
 
+def test_extract_inertia_pages_marks_non_mapping_payloads_for_content_wrapping() -> None:
+    """Dataclass payloads should keep runtime-compatible nested content metadata."""
+
+    @get("/users", opt={"component": "Users/Show"}, sync_to_thread=False)
+    def users() -> UserProps:
+        return UserProps(name="Test", email="test@example.com")
+
+    app = Litestar([users])
+    pages = extract_inertia_pages(app)
+
+    assert len(pages) == 1
+    assert pages[0].props_type == "UserProps"
+    assert pages[0].ts_type == "UserProps"
+    assert pages[0].wrap_with_content is True
+
+
 def test_extract_inertia_pages_union_type_with_any() -> None:
     """Test that union types with Any preserve the specific type."""
 
@@ -396,6 +412,23 @@ def test_generate_inertia_pages_json_with_props_type() -> None:
     assert page.get("propsType") == "BookProps"
     assert page.get("tsType") == "BookProps"
     assert page.get("customTypes") == ["BookProps"]
+    assert "wrapWithContent" not in page
+
+
+def test_generate_inertia_pages_json_marks_non_mapping_payloads_for_content_wrapping() -> None:
+    """Dataclass payload metadata should tell the TS emitter to keep nested content."""
+
+    @get("/users", opt={"component": "Users/Show"}, sync_to_thread=False)
+    def users() -> UserProps:
+        return UserProps(name="Test", email="test@example.com")
+
+    app = Litestar([users])
+    result = generate_inertia_pages_json(app)
+
+    page = result["pages"]["Users/Show"]
+    assert page["propsType"] == "UserProps"
+    assert page["tsType"] == "UserProps"
+    assert page["wrapWithContent"] is True
 
 
 def test_generate_inertia_pages_json_includes_types_config_hints() -> None:
@@ -503,6 +536,7 @@ def test_inertia_page_metadata_defaults() -> None:
     assert page.props_type is None
     assert page.ts_type is None
     assert page.custom_types == []
+    assert page.wrap_with_content is False
     assert page.schema_ref is None
     assert page.handler_name is None
 
@@ -515,6 +549,7 @@ def test_inertia_page_metadata_full() -> None:
         props_type="DashboardProps",
         ts_type="DashboardProps",
         custom_types=["DashboardProps"],
+        wrap_with_content=True,
         schema_ref="#/components/schemas/DashboardProps",
         handler_name="dashboard_index",
     )
@@ -524,5 +559,6 @@ def test_inertia_page_metadata_full() -> None:
     assert page.props_type == "DashboardProps"
     assert page.ts_type == "DashboardProps"
     assert page.custom_types == ["DashboardProps"]
+    assert page.wrap_with_content is True
     assert page.schema_ref == "#/components/schemas/DashboardProps"
     assert page.handler_name == "dashboard_index"

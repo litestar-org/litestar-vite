@@ -1,17 +1,28 @@
 import { createInertiaApp } from "@inertiajs/vue3";
+import { csrfHeaders } from "litestar-vite-plugin/helpers";
 import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
 import type { DefineComponent } from "vue";
 import { createApp, h } from "vue";
 import "./style.css";
 
 createInertiaApp({
-  // If you enable use_script_element=True or render an #app_page JSON script, add:
-  // defaults: { future: { useScriptElementForInitialPage: true } },
+  // litestar-vite defaults to the script-element bootstrap for Inertia.
+  // - Inertia v3 reads the #app_page payload automatically.
+  // - If you pin Inertia v2, add defaults: { future: { useScriptElementForInitialPage: true } }
+  //   or set use_script_element=False on the Python side.
+  // Litestar's default CSRF middleware uses x-csrftoken.
+  // The generated app forwards the injected token on every Inertia visit,
+  // which keeps cookie_httponly=True compatible with Inertia's client requests.
   resolve: (name) =>
     resolvePageComponent(
       `./pages/${name}.vue`,
       import.meta.glob<DefineComponent>("./pages/**/*.vue"),
     ),
+  defaults: {
+    visitOptions: (_href, options) => ({
+      headers: csrfHeaders(options.headers ?? {}),
+    }),
+  },
   setup({ el, App, props, plugin }) {
     createApp({ render: () => h(App, props) })
       .use(plugin)
