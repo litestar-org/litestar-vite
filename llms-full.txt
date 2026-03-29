@@ -922,6 +922,13 @@ export function toRoute(name: string, params?: Record<string, unknown>): string
 Source: `src/js/src/inertia-helpers/index.ts`
 
 ```typescript
+// Overload 1: ES modules with default export — extracts .default automatically
+export function resolvePageComponent<T>(
+  path: string | string[],
+  pages: Record<string, Promise<{ default: T }> | (() => Promise<{ default: T }>)>
+): Promise<T>
+
+// Overload 2: Direct values
 export function resolvePageComponent<T>(
   path: string | string[],
   pages: Record<string, Promise<T> | (() => Promise<T>)>
