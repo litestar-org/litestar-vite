@@ -37,9 +37,7 @@ function IndexPage() {
   return (
     <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/40">
       <h2 className="font-semibold text-[#202235] text-xl">{summary.headline}</h2>
-      <p className="text-slate-600">
-        {summary.total_books} books in the library. Featured:
-      </p>
+      <p className="text-slate-600">{summary.total_books} books in the library. Featured:</p>
       <article className="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4">
         <h3 className="font-semibold text-[#202235] text-lg">{summary.featured.title}</h3>
         <p className="mt-1 text-slate-600">
