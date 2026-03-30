@@ -2,7 +2,10 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 __all__ = ("TypeGenConfig",)
 
@@ -98,6 +101,23 @@ class TypeGenConfig:
 
     The Vite plugin reads this file to generate page-props.ts.
     Defaults to output / "inertia-pages.json".
+    """
+    extra_commands: "Sequence[Sequence[str]]" = field(default_factory=lambda: cast("list[Sequence[str]]", []))
+    """Additional commands to run during type generation.
+
+    These run after metadata export but before the typegen CLI.
+    Useful for Vite plugins that have standalone code-generation CLIs
+    (e.g., TanStack Router's ``tsr generate``).
+
+    Each entry is ``[binary, *args]``.  The binary is resolved through
+    the project's JS executor (local ``node_modules/.bin`` first, then
+    the configured package runner such as npx, pnpm dlx, yarn dlx, etc.).
+
+    Example::
+
+        TypeGenConfig(
+            extra_commands=[["tsr", "generate"]],
+        )
     """
 
     def __post_init__(self) -> None:

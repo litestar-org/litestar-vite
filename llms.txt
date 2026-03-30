@@ -57,7 +57,7 @@ litestar run --reload                # Vite dev server proxied automatically
 - `litestar assets init --template <name>` -- scaffold frontend (vue, react, svelte, htmx, react-inertia, vue-inertia, angular, astro, nuxt, sveltekit)
 - `litestar assets install` -- install frontend dependencies
 - `litestar assets build` / `serve` -- build or watch
-- `litestar assets generate-types` -- OpenAPI + routes to TypeScript types
+- `litestar assets generate-types` -- OpenAPI + routes to TypeScript types (also runs `extra_commands` from TypeGenConfig)
 - `litestar assets deploy --storage <uri>` -- upload via fsspec
 - `litestar assets doctor` -- diagnose/fix config (`--fix` to auto-repair)
 
@@ -103,7 +103,7 @@ litestar run --reload                # Vite dev server proxied automatically
 ## Optional Features
 
 - **Inertia.js integration**: Inertia v2 and v3 support via `InertiaPlugin` with session middleware, `InertiaRequest`/`InertiaResponse`, deferred/merge/once props, precognition, script-element bootstrap by default (`InertiaConfig(use_script_element=False)` restores the legacy `data-page` path; Inertia v2 still needs `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })` when using the default transport), SSR client pooling, and exception handling.
-- **Type generation**: Export OpenAPI schema, typed route metadata (JSON + TypeScript), and Inertia page props. Enable with `ViteConfig(types=True)`. The npm plugin watches exported files and can trigger `@hey-api/openapi-ts`.
+- **Type generation**: Export OpenAPI schema, typed route metadata (JSON + TypeScript), and Inertia page props. Enable with `ViteConfig(types=True)`. The npm plugin watches exported files and can trigger `@hey-api/openapi-ts`. Use `TypeGenConfig(extra_commands=[["tsr", "generate"]])` to run additional code-generation CLIs (e.g., TanStack Router) during `generate-types` and `build`; binaries are resolved through the project's JS executor.
 - **Route helpers**: The `litestar-vite-plugin/helpers` npm export provides typed route generation functions for use in frontend code, plus CSRF and HTMX helpers.
 - **Meta-framework support**: Use `mode="ssr"` or `mode="framework"` for Astro, Nuxt, SvelteKit. Dedicated npm integrations at `litestar-vite-plugin/astro`, `/nuxt`, `/sveltekit`.
 - **CDN deployment**: `DeployConfig` with fsspec storage backends (GCS, S3, etc.) via `litestar assets deploy`.

@@ -232,6 +232,7 @@ class TypeGenConfig:
     fallback_type: Literal['unknown','any'] # default: "unknown"
     type_import_paths: dict[str, str]       # default: {}
     page_props_path: Path | None            # default: None -> output / "inertia-pages.json"
+    extra_commands: Sequence[Sequence[str]] # default: [] -- additional [binary, *args] to run during generate-types (resolved via project JS executor)
 ```
 
 ### InertiaConfig
@@ -837,7 +838,7 @@ All commands are under `litestar assets`.
 | `serve` | Serve frontend (dev or production). Options: --verbose, --quiet, --production |
 | `deploy` | Build and deploy to CDN storage. Options: --storage, --storage-option, --no-build, --dry-run, --no-delete, --verbose |
 | `export-routes` | Export route metadata. Options: --output, --only, --except, --include-components, --typescript/--ts, --verbose |
-| `generate-types` | Generate TypeScript types from OpenAPI and routes. Options: --verbose |
+| `generate-types` | Generate TypeScript types from OpenAPI and routes. Runs extra_commands (e.g., tsr generate) then litestar-vite-typegen. Options: --verbose |
 | `status` | Check Vite integration status (manifest, dev server) |
 
 Available init templates: react, react-router, react-tanstack, react-inertia,

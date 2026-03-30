@@ -108,6 +108,9 @@ TypeGenConfig Reference
    * - ``type_import_paths``
      - ``{}``
      - Map schema/type names to TypeScript import paths for props types excluded from OpenAPI
+   * - ``extra_commands``
+     - ``[]``
+     - Additional ``[binary, *args]`` commands to run during type generation (resolved through the project's JS executor)
 
 Default Inertia shared-props types (``User``, ``AuthData``, ``FlashMessages``) are controlled by
 ``InertiaTypeGenConfig`` under ``InertiaConfig.type_gen``.
@@ -147,7 +150,8 @@ This runs the full pipeline:
 
 1. Exports OpenAPI schema to ``src/generated/openapi.json``
 2. Exports route metadata to ``src/generated/routes.json`` and ``routes.ts`` (if enabled)
-3. Runs ``litestar-vite-typegen`` (invokes ``@hey-api/openapi-ts`` and generates ``schemas.ts`` / page props types)
+3. Runs any ``extra_commands`` (e.g., ``tsr generate`` for TanStack Router)
+4. Runs ``litestar-vite-typegen`` (invokes ``@hey-api/openapi-ts`` and generates ``schemas.ts`` / page props types)
 
 The command also writes/updates ``.litestar.json`` and reports whether it was
 updated or unchanged, matching the output style for other generated files.
@@ -386,6 +390,35 @@ This generates ``inertia-pages.json`` which the Vite plugin uses to create
 ``page-props.ts`` with typed props for each page component.
 
 See :doc:`/frameworks/inertia/type-generation` for Inertia-specific details.
+
+Extra Commands
+--------------
+
+Some frontend tools (e.g., TanStack Router, Generouted) use Vite plugins that
+generate TypeScript during ``vite build`` but also ship standalone CLIs.
+Because ``generate-types`` runs outside Vite, those plugin hooks never fire.
+
+Use ``extra_commands`` to include them in the generation pipeline:
+
+.. code-block:: python
+
+    VitePlugin(
+        config=ViteConfig(
+            types=TypeGenConfig(
+                extra_commands=[["tsr", "generate"]],
+            ),
+        )
+    )
+
+Each entry is ``[binary, *args]``.  The binary is resolved through the
+project's JS executor — ``node_modules/.bin`` is checked first, then the
+configured package runner (npx, pnpm dlx, yarn dlx, etc.) is used as a
+fallback.  This means the same config works regardless of which package
+manager the project uses.
+
+Extra commands run after metadata export but before the typegen CLI, so their
+output (e.g., ``routeTree.gen.ts``) is available when ``tsc --noEmit`` runs
+during linting.
 
 See Also
 --------

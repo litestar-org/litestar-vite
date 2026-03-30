@@ -29,6 +29,7 @@ EXAMPLES = [
     ("jinja-htmx", False, False, False),  # Template mode (HTMX)
     ("nuxt", False, False, True),  # SSR framework - no SPA mode
     ("react", True, False, False),
+    ("react-tanstack", True, False, False),
     ("react-inertia", False, True, False),  # Inertia hybrid mode
     ("react-inertia-jinja", False, True, False),  # Inertia template mode
     ("svelte", True, False, False),
@@ -161,6 +162,7 @@ def test_example_api_endpoints(example_name: str, has_spa: bool, has_inertia: bo
         "jinja-htmx",
         "nuxt",
         "react",
+        "react-tanstack",
         "react-inertia",
         "react-inertia-jinja",
         "svelte",
