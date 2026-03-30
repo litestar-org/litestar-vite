@@ -12,19 +12,19 @@
   "dependencies": {
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "@tanstack/react-router": "1.166.2",
+    "@tanstack/react-router": "1.168.8",
     "zod": "4.3.6"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "6.0.1",
-    "@tanstack/router-plugin": "1.166.2",
-    "@hey-api/openapi-ts": "0.94.0",
+    "@tanstack/router-plugin": "1.167.10",
+    "@hey-api/openapi-ts": "0.94.5",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@tailwindcss/vite": "4.2.2",
     "tailwindcss": "4.2.2",
-    "typescript": "5.9.3",
+    "typescript": "6.0.2",
     "litestar-vite-plugin": "file:../..",
-    "vite": "8.0.1"
+    "vite": "8.0.3"
   }
 }

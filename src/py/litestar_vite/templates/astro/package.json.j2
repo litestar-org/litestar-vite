@@ -14,15 +14,15 @@
     "generate-types": "openapi-ts --config openapi-ts.config.ts"{% endif %}
   },
   "dependencies": {
-    "astro": "5.18.0"{% if generate_zod %},
-    "zod": "4.3.6"{% endif %}
+    "astro": "{{ package_version('astro') }}"{% if generate_zod %},
+    "zod": "{{ package_version('zod') }}"{% endif %}
   },
   "devDependencies": {
-{% if generate_client %}    "@hey-api/openapi-ts": "0.94.0",
-{% endif %}{% if use_tailwind %}    "@tailwindcss/vite": "4.2.2",
+{% if generate_client %}    "@hey-api/openapi-ts": "{{ package_version('@hey-api/openapi-ts') }}",
+{% endif %}{% if use_tailwind %}    "@tailwindcss/vite": "{{ package_version('@tailwindcss/vite') }}",
 {% endif %}    "litestar-vite-plugin": "{{ package_version('litestar-vite-plugin') }}",
-{% if use_tailwind %}    "tailwindcss": "4.2.2",
-{% endif %}    "typescript": "5.9.3",
-    "vite": "8.0.1"
+{% if use_tailwind %}    "tailwindcss": "{{ package_version('tailwindcss') }}",
+{% endif %}    "typescript": "{{ package_version('typescript') }}",
+    "vite": "{{ package_version('vite') }}"
   }
 }

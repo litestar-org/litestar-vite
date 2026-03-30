@@ -13,15 +13,15 @@
     "generate-types": "openapi-ts --config openapi-ts.config.ts"
   },
   "dependencies": {
-    "astro": "5.18.0",
+    "astro": "6.1.2",
     "zod": "4.3.6"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "0.94.0",
+    "@hey-api/openapi-ts": "0.94.5",
     "@tailwindcss/vite": "4.2.2",
     "litestar-vite-plugin": "file:../..",
     "tailwindcss": "4.2.2",
-    "typescript": "5.9.3",
-    "vite": "8.0.1"
+    "typescript": "6.0.2",
+    "vite": "8.0.3"
   }
 }

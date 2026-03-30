@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from litestar_vite.scaffolding.templates import CURRENT_NPM_VERSION_RANGES as V
+
 ROOT = Path(__file__).resolve().parents[4]
 EXAMPLES_ROOT = ROOT / "examples"
 TEMPLATE_ROOT = ROOT / "src" / "py" / "litestar_vite" / "templates"
@@ -75,36 +77,40 @@ def test_react_family_examples_pin_current_stable_versions() -> None:
     react_inertia_package = _load_json(EXAMPLES_ROOT / "react-inertia" / "package.json")
     react_inertia_jinja_package = _load_json(EXAMPLES_ROOT / "react-inertia-jinja" / "package.json")
 
-    assert react_package["dependencies"] == {"react": "19.2.4", "react-dom": "19.2.4", "react-router-dom": "7.13.1"}
+    assert react_package["dependencies"] == {
+        "react": V["react"],
+        "react-dom": V["react-dom"],
+        "react-router-dom": V["react-router-dom"],
+    }
     assert react_package["devDependencies"] == {
-        "@vitejs/plugin-react": "6.0.1",
-        "@types/react": "19.2.14",
-        "@types/react-dom": "19.2.3",
-        "@tailwindcss/vite": "4.2.2",
-        "tailwindcss": "4.2.2",
-        "typescript": "5.9.3",
+        "@vitejs/plugin-react": V["@vitejs/plugin-react"],
+        "@types/react": V["@types/react"],
+        "@types/react-dom": V["@types/react-dom"],
+        "@tailwindcss/vite": V["@tailwindcss/vite"],
+        "tailwindcss": V["tailwindcss"],
+        "typescript": V["typescript"],
         "litestar-vite-plugin": "file:../..",
-        "vite": "8.0.1",
-        "@hey-api/openapi-ts": "0.94.0",
+        "vite": V["vite"],
+        "@hey-api/openapi-ts": V["@hey-api/openapi-ts"],
     }
 
     for package in (react_inertia_package, react_inertia_jinja_package):
         assert package["dependencies"] == {
-            "@inertiajs/react": "3.0.0",
-            "react": "19.2.4",
-            "react-dom": "19.2.4",
-            "zod": "4.3.6",
+            "@inertiajs/react": V["@inertiajs/react"],
+            "react": V["react"],
+            "react-dom": V["react-dom"],
+            "zod": V["zod"],
         }
         assert package["devDependencies"] == {
-            "@types/react": "19.2.14",
-            "@types/react-dom": "19.2.3",
-            "@vitejs/plugin-react": "6.0.1",
-            "@tailwindcss/vite": "4.2.2",
-            "tailwindcss": "4.2.2",
+            "@types/react": V["@types/react"],
+            "@types/react-dom": V["@types/react-dom"],
+            "@vitejs/plugin-react": V["@vitejs/plugin-react"],
+            "@tailwindcss/vite": V["@tailwindcss/vite"],
+            "tailwindcss": V["tailwindcss"],
             "litestar-vite-plugin": "file:../..",
-            "typescript": "5.9.3",
-            "vite": "8.0.1",
-            "@hey-api/openapi-ts": "0.94.0",
+            "typescript": V["typescript"],
+            "vite": V["vite"],
+            "@hey-api/openapi-ts": V["@hey-api/openapi-ts"],
         }
 
     assert react_inertia_package["name"] == "react-inertia"

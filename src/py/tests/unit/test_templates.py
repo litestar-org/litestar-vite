@@ -372,10 +372,10 @@ def test_svelte_manifests_pin_concrete_stable_versions() -> None:
     for text in (svelte_example, sveltekit_example, svelte_template, svelte_inertia_template, sveltekit_template):
         assert '"latest"' not in text
 
-    assert '"@inertiajs/svelte": "3.0.0"' in svelte_inertia_template
-    assert '"axios": "1.13.6"' not in svelte_inertia_template
-    assert '"axios": "1.13.6"' not in svelte_example
-    assert '"axios": "1.13.6"' not in svelte_template
+    assert '"@inertiajs/svelte": "{{ package_version(\'@inertiajs/svelte\') }}"' in svelte_inertia_template
+    assert '"axios"' not in svelte_inertia_template
+    assert '"axios"' not in svelte_example
+    assert '"axios"' not in svelte_template
     assert '"prepare": "svelte-kit sync"' in sveltekit_example
     assert '"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"' in sveltekit_example
 

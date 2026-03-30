@@ -14,26 +14,26 @@
     "generate-types": "openapi-ts --config openapi-ts.config.ts"{% endif %}
   },
   "dependencies": {
-    "@sveltejs/kit": "2.55.0",
-    "svelte": "5.53.7"{% if generate_zod %},
-    "zod": "4.3.6"{% endif %}
+    "@sveltejs/kit": "{{ package_version('@sveltejs/kit') }}",
+    "svelte": "{{ package_version('svelte') }}"{% if generate_zod %},
+    "zod": "{{ package_version('zod') }}"{% endif %}
   },
   "devDependencies": {
 {%- if enable_types %}
-    "@hey-api/openapi-ts": "0.94.0",
+    "@hey-api/openapi-ts": "{{ package_version('@hey-api/openapi-ts') }}",
 {%- endif %}
-    "@sveltejs/adapter-node": "5.5.4",
-    "@sveltejs/vite-plugin-svelte": "7.0.0",
+    "@sveltejs/adapter-node": "{{ package_version('@sveltejs/adapter-node') }}",
+    "@sveltejs/vite-plugin-svelte": "{{ package_version('@sveltejs/vite-plugin-svelte') }}",
 {%- if use_tailwind %}
-    "@tailwindcss/vite": "4.2.2",
+    "@tailwindcss/vite": "{{ package_version('@tailwindcss/vite') }}",
 {%- endif %}
     "litestar-vite-plugin": "{{ package_version('litestar-vite-plugin') }}",
-    "svelte-check": "4.4.4",
+    "svelte-check": "{{ package_version('svelte-check') }}",
 {%- if use_tailwind %}
-    "tailwindcss": "4.2.2",
+    "tailwindcss": "{{ package_version('tailwindcss') }}",
 {%- endif %}
-    "tslib": "2.8.1",
-    "typescript": "5.9.3",
-    "vite": "8.0.1"
+    "tslib": "{{ package_version('tslib') }}",
+    "typescript": "{{ package_version('typescript') }}",
+    "vite": "{{ package_version('vite') }}"
   }
 }

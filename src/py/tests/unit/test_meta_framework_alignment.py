@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from litestar_vite.scaffolding.templates import CURRENT_NPM_VERSION_RANGES as V
+
 ROOT = Path(__file__).resolve().parents[4]
 EXAMPLES_ROOT = ROOT / "examples"
 TEMPLATE_ROOT = ROOT / "src" / "py" / "litestar_vite" / "templates"
@@ -10,12 +12,12 @@ def test_astro_example_uses_current_manifest_and_tsconfig() -> None:
     tsconfig_text = (EXAMPLES_ROOT / "astro" / "tsconfig.json").read_text()
     layout_text = (EXAMPLES_ROOT / "astro" / "src" / "layouts" / "Layout.astro").read_text()
 
-    assert '"astro": "5.18.0"' in package_text
-    assert '"@hey-api/openapi-ts": "0.94.0"' in package_text
-    assert '"@tailwindcss/vite": "4.2.2"' in package_text
-    assert '"tailwindcss": "4.2.2"' in package_text
-    assert '"vite": "8.0.1"' in package_text
-    assert '"zod": "4.3.6"' in package_text
+    assert f'"astro": "{V["astro"]}"' in package_text
+    assert f'"@hey-api/openapi-ts": "{V["@hey-api/openapi-ts"]}"' in package_text
+    assert f'"@tailwindcss/vite": "{V["@tailwindcss/vite"]}"' in package_text
+    assert f'"tailwindcss": "{V["tailwindcss"]}"' in package_text
+    assert f'"vite": "{V["vite"]}"' in package_text
+    assert f'"zod": "{V["zod"]}"' in package_text
     assert '"check": "astro check"' in package_text
     assert '"typecheck": "astro check"' in package_text
     assert '"latest"' not in package_text
@@ -38,15 +40,15 @@ def test_nuxt_example_uses_current_manifest_and_app_directory() -> None:
     composable_text = (EXAMPLES_ROOT / "nuxt" / "app" / "composables" / "useApi.ts").read_text()
     css_text = (EXAMPLES_ROOT / "nuxt" / "app" / "assets" / "css" / "app.css").read_text()
 
-    assert '"nuxt": "4.3.1"' in package_text
-    assert '"vue": "3.5.29"' in package_text
-    assert '"@hey-api/openapi-ts": "0.94.0"' in package_text
-    assert '"@tailwindcss/vite": "4.2.2"' in package_text
-    assert '"tailwindcss": "4.2.2"' in package_text
-    assert '"typescript": "5.9.3"' in package_text
-    assert '"vite": "8.0.1"' in package_text
-    assert '"vue-tsc": "3.2.5"' in package_text
-    assert '"zod": "4.3.6"' in package_text
+    assert f'"nuxt": "{V["nuxt"]}"' in package_text
+    assert f'"vue": "{V["vue"]}"' in package_text
+    assert f'"@hey-api/openapi-ts": "{V["@hey-api/openapi-ts"]}"' in package_text
+    assert f'"@tailwindcss/vite": "{V["@tailwindcss/vite"]}"' in package_text
+    assert f'"tailwindcss": "{V["tailwindcss"]}"' in package_text
+    assert f'"typescript": "{V["typescript"]}"' in package_text
+    assert f'"vite": "{V["vite"]}"' in package_text
+    assert f'"vue-tsc": "{V["vue-tsc"]}"' in package_text
+    assert f'"zod": "{V["zod"]}"' in package_text
     assert '"dev": "nuxt dev"' in package_text
     assert '"build": "nuxt build"' in package_text
     assert '"preview": "nuxt preview"' in package_text
