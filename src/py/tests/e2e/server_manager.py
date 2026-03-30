@@ -58,6 +58,7 @@ EXTERNAL_EXAMPLES: set[str] = {"angular-cli"}
 # This avoids output parsing which is unreliable in CI due to stdout buffering
 EXAMPLE_PORTS: dict[str, int] = {
     "react": 5001,
+    "react-tanstack": 5005,
     "react-inertia": 5002,
     "react-inertia-jinja": 5003,
     "vue": 5011,

@@ -16,6 +16,7 @@ jobs:
         example:
           # SPA examples
           - react
+          - react-tanstack
           - vue
           - svelte
           - angular
