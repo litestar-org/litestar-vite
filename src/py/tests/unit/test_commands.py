@@ -6,6 +6,8 @@ from unittest.mock import patch
 import pytest
 from litestar.serialization import decode_json
 
+from litestar_vite.scaffolding.templates import CURRENT_NPM_VERSION_RANGES as V
+
 pytestmark = pytest.mark.anyio
 
 
@@ -249,12 +251,12 @@ def test_scaffolding_generate_project_angular_cli_skips_vite_base(tmp_path: Path
 
     assert "litestar-vite-plugin" not in dev_deps
     assert (tmp_path / "angular.json").exists()
-    assert dev_deps["@angular/build"] == "21.2.1"
-    assert dev_deps["@angular/cli"] == "21.2.1"
-    assert dev_deps["@angular/compiler-cli"] == "21.2.1"
-    assert dev_deps["@tailwindcss/postcss"] == "4.2.2"
-    assert dev_deps["postcss"] == "8.5.8"
-    assert dev_deps["tailwindcss"] == "4.2.2"
+    assert dev_deps["@angular/build"] == V["@angular/build"]
+    assert dev_deps["@angular/cli"] == V["@angular/cli"]
+    assert dev_deps["@angular/compiler-cli"] == V["@angular/compiler-cli"]
+    assert dev_deps["@tailwindcss/postcss"] == V["@tailwindcss/postcss"]
+    assert dev_deps["postcss"] == V["postcss"]
+    assert dev_deps["tailwindcss"] == V["tailwindcss"]
     assert "autoprefixer" not in dev_deps
     assert "@types/jasmine" not in dev_deps
     assert "@angular/build:application" in angular_json
@@ -288,11 +290,11 @@ def test_scaffolding_generate_project_htmx_uses_current_extension_shell(tmp_path
     package_json = decode_json((tmp_path / "package.json").read_text())
     base_template = (tmp_path / "templates" / "base.html.j2").read_text()
 
-    assert package_json["dependencies"]["htmx.org"] == "2.0.8"
-    assert package_json["devDependencies"]["@tailwindcss/vite"] == "4.2.2"
-    assert package_json["devDependencies"]["tailwindcss"] == "4.2.2"
-    assert package_json["devDependencies"]["typescript"] == "5.9.3"
-    assert package_json["devDependencies"]["vite"] == "8.0.1"
+    assert package_json["dependencies"]["htmx.org"] == V["htmx.org"]
+    assert package_json["devDependencies"]["@tailwindcss/vite"] == V["@tailwindcss/vite"]
+    assert package_json["devDependencies"]["tailwindcss"] == V["tailwindcss"]
+    assert package_json["devDependencies"]["typescript"] == V["typescript"]
+    assert package_json["devDependencies"]["vite"] == V["vite"]
     assert 'meta name="csrf-token"' in base_template
     assert 'body hx-ext="litestar"' in base_template
 

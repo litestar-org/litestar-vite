@@ -14,17 +14,17 @@
     "generate-types": "openapi-ts --config openapi-ts.config.ts"{% endif %}
   },
   "dependencies": {
-    "nuxt": "4.3.1",
-    "vue": "3.5.29"{% if generate_zod %},
-    "zod": "4.3.6"{% endif %}
+    "nuxt": "{{ package_version('nuxt') }}",
+    "vue": "{{ package_version('vue') }}"{% if generate_zod %},
+    "zod": "{{ package_version('zod') }}"{% endif %}
   },
   "devDependencies": {
-{% if generate_client %}    "@hey-api/openapi-ts": "0.94.0",
-{% endif %}{% if use_tailwind %}    "@tailwindcss/vite": "4.2.2",
+{% if generate_client %}    "@hey-api/openapi-ts": "{{ package_version('@hey-api/openapi-ts') }}",
+{% endif %}{% if use_tailwind %}    "@tailwindcss/vite": "{{ package_version('@tailwindcss/vite') }}",
 {% endif %}    "litestar-vite-plugin": "{{ package_version('litestar-vite-plugin') }}",
-{% if use_tailwind %}    "tailwindcss": "4.2.2",
-{% endif %}    "typescript": "5.9.3",
-    "vite": "8.0.1",
-    "vue-tsc": "3.2.5"
+{% if use_tailwind %}    "tailwindcss": "{{ package_version('tailwindcss') }}",
+{% endif %}    "typescript": "{{ package_version('typescript') }}",
+    "vite": "{{ package_version('vite') }}",
+    "vue-tsc": "{{ package_version('vue-tsc') }}"
   }
 }

@@ -21,6 +21,7 @@ from litestar_vite.cli import (
     _parse_storage_options,
     _print_recommended_config,
     _prompt_for_options,
+    _run_extra_commands,
     _run_vite_build,
     _select_framework_template,
     export_routes,
@@ -564,6 +565,103 @@ def test_cli_invoke_typegen_cli_prefers_local_bin_for_pnpm(tmp_path: Path, monke
     assert run.call_args.kwargs["check"] is False
 
 
+def test_cli_run_extra_commands_executes_all(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = ViteConfig(
+        paths=PathConfig(root=tmp_path), types=TypeGenConfig(extra_commands=[["tsr", "generate"], ["biome", "check"]])
+    )
+    run = Mock(return_value=Mock(returncode=0))
+    monkeypatch.setattr("litestar_vite.cli.subprocess.run", run)
+
+    _run_extra_commands(config, verbose=False)
+
+    assert run.call_count == 2
+    # Binary resolved through executor (default npm → npx)
+    assert run.call_args_list[0].args[0] == ["npx", "tsr", "generate"]
+    assert run.call_args_list[1].args[0] == ["npx", "biome", "check"]
+    assert run.call_args_list[0].kwargs["cwd"] == tmp_path
+
+
+def test_cli_run_extra_commands_prefers_local_bin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = ViteConfig(paths=PathConfig(root=tmp_path), types=TypeGenConfig(extra_commands=[["tsr", "generate"]]))
+    local_bin = tmp_path / "node_modules" / ".bin" / "tsr"
+    local_bin.parent.mkdir(parents=True, exist_ok=True)
+    local_bin.write_text("")
+
+    run = Mock(return_value=Mock(returncode=0))
+    monkeypatch.setattr("litestar_vite.cli.subprocess.run", run)
+
+    _run_extra_commands(config, verbose=False)
+
+    assert run.call_args.args[0] == [str(local_bin), "generate"]
+
+
+def test_cli_run_extra_commands_respects_executor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = ViteConfig(
+        paths=PathConfig(root=tmp_path),
+        runtime=RuntimeConfig(executor="pnpm"),
+        types=TypeGenConfig(extra_commands=[["tsr", "generate"]]),
+    )
+    run = Mock(return_value=Mock(returncode=0))
+    monkeypatch.setattr("litestar_vite.cli.subprocess.run", run)
+
+    _run_extra_commands(config, verbose=False)
+
+    assert run.call_args.args[0] == ["pnpm", "dlx", "tsr", "generate"]
+
+
+def test_cli_run_extra_commands_noop_when_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = ViteConfig(paths=PathConfig(root=tmp_path), types=TypeGenConfig())
+    run = Mock(return_value=Mock(returncode=0))
+    monkeypatch.setattr("litestar_vite.cli.subprocess.run", run)
+
+    _run_extra_commands(config, verbose=False)
+
+    run.assert_not_called()
+
+
+def test_cli_run_extra_commands_failure_warns_and_continues(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = ViteConfig(
+        paths=PathConfig(root=tmp_path), types=TypeGenConfig(extra_commands=[["tsr", "generate"], ["biome", "check"]])
+    )
+    # First command fails, second succeeds
+    run = Mock(side_effect=[Mock(returncode=1), Mock(returncode=0)])
+    monkeypatch.setattr("litestar_vite.cli.subprocess.run", run)
+
+    result = _run_extra_commands(config, verbose=False)
+
+    assert result is False
+    # Both commands were still attempted
+    assert run.call_count == 2
+
+
+def test_cli_run_extra_commands_not_found_warns_and_continues(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = ViteConfig(
+        paths=PathConfig(root=tmp_path),
+        types=TypeGenConfig(extra_commands=[["nonexistent-tool", "generate"], ["tsr", "generate"]]),
+    )
+    ok_result = Mock(returncode=0)
+
+    def _side_effect(cmd: list[str], **_kwargs: object) -> Mock:
+        if "nonexistent-tool" in cmd[0] or cmd == ["npx", "nonexistent-tool", "generate"]:
+            raise FileNotFoundError
+        return ok_result
+
+    monkeypatch.setattr("litestar_vite.cli.subprocess.run", _side_effect)
+
+    result = _run_extra_commands(config, verbose=False)
+
+    assert result is False
+
+
+def test_cli_run_extra_commands_all_succeed_returns_true(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = ViteConfig(paths=PathConfig(root=tmp_path), types=TypeGenConfig(extra_commands=[["tsr", "generate"]]))
+    monkeypatch.setattr("litestar_vite.cli.subprocess.run", Mock(return_value=Mock(returncode=0)))
+
+    result = _run_extra_commands(config, verbose=False)
+
+    assert result is True
+
+
 def test_cli_generate_types_invokes_typegen(tmp_path: Path) -> None:
     app = _make_app(tmp_path)
     app.plugins.get(VitePlugin).config
@@ -641,3 +739,11 @@ def test_cli_print_recommended_config_with_frontend_dir(capsys: pytest.CaptureFi
     _print_recommended_config("react", "src", "public", frontend_dir="web")
     output = capsys.readouterr().out
     assert 'root=Path(__file__).parent / "web"' in output
+
+
+def test_cli_print_recommended_config_tanstack_includes_extra_commands(capsys: pytest.CaptureFixture[str]) -> None:
+    _print_recommended_config("react-tanstack", "src", "public")
+    output = capsys.readouterr().out
+    assert "TypeGenConfig" in output
+    assert "extra_commands" in output
+    assert "tsr" in output

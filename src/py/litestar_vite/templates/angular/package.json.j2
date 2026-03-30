@@ -10,26 +10,26 @@
     "generate-types": "openapi-ts"{% endif %}
   },
   "dependencies": {
-    "@angular/animations": "21.2.1",
-    "@angular/common": "21.2.1",
-    "@angular/compiler": "21.2.1",
-    "@angular/core": "21.2.1",
-    "@angular/forms": "21.2.1",
-    "@angular/platform-browser": "21.2.1",
-    "rxjs": "7.8.2"{% if generate_zod %},
-    "zod": "4.3.6"{% endif %}
+    "@angular/animations": "{{ package_version('@angular/animations') }}",
+    "@angular/common": "{{ package_version('@angular/common') }}",
+    "@angular/compiler": "{{ package_version('@angular/compiler') }}",
+    "@angular/core": "{{ package_version('@angular/core') }}",
+    "@angular/forms": "{{ package_version('@angular/forms') }}",
+    "@angular/platform-browser": "{{ package_version('@angular/platform-browser') }}",
+    "rxjs": "{{ package_version('rxjs') }}"{% if generate_zod %},
+    "zod": "{{ package_version('zod') }}"{% endif %}
   },
   "devDependencies": {
-    "@analogjs/vite-plugin-angular": "2.3.1",
-    "@angular/build": "21.2.1",
-    "@angular/compiler-cli": "21.2.1",
-    "@angular/platform-browser-dynamic": "21.2.1",
-{% if use_tailwind %}    "@tailwindcss/vite": "4.2.2",
-{% endif %}{% if generate_client %}    "@hey-api/openapi-ts": "0.94.0",
-{% endif %}    "@types/node": "25.3.5",
+    "@analogjs/vite-plugin-angular": "{{ package_version('@analogjs/vite-plugin-angular') }}",
+    "@angular/build": "{{ package_version('@angular/build') }}",
+    "@angular/compiler-cli": "{{ package_version('@angular/compiler-cli') }}",
+    "@angular/platform-browser-dynamic": "{{ package_version('@angular/platform-browser-dynamic') }}",
+{% if use_tailwind %}    "@tailwindcss/vite": "{{ package_version('@tailwindcss/vite') }}",
+{% endif %}{% if generate_client %}    "@hey-api/openapi-ts": "{{ package_version('@hey-api/openapi-ts') }}",
+{% endif %}    "@types/node": "{{ package_version('@types/node') }}",
     "litestar-vite-plugin": "{{ package_version('litestar-vite-plugin') }}",
-{% if use_tailwind %}    "tailwindcss": "4.2.2",
-{% endif %}    "typescript": "5.9.3",
-    "vite": "8.0.1"
+{% if use_tailwind %}    "tailwindcss": "{{ package_version('tailwindcss') }}",
+{% endif %}    "typescript": "{{ package_version('typescript') }}",
+    "vite": "{{ package_version('vite') }}"
   }
 }

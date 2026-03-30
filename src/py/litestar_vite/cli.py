@@ -99,19 +99,29 @@ def _print_recommended_config(template_name: str, resource_dir: str, bundle_dir:
     spa_templates = {"react-router", "react-tanstack"}
     mode = "spa" if template_name in spa_templates else "template"
 
+    # Templates whose Vite plugins generate code outside the litestar pipeline
+    extra_commands_templates: dict[str, str] = {
+        "react-tanstack": '    types=TypeGenConfig(extra_commands=[["tsr", "generate"]]),'
+    }
+
     root_path = "Path(__file__).parent"
     if frontend_dir and frontend_dir != ".":
         root_path = f'Path(__file__).parent / "{frontend_dir}"'
 
+    types_line = extra_commands_templates.get(template_name, "    types=True,")
+    imports = "from litestar_vite import ViteConfig, PathConfig"
+    if template_name in extra_commands_templates:
+        imports = "from litestar_vite import ViteConfig, PathConfig, TypeGenConfig"
+
     config_snippet = dedent(
         f"""\
         from pathlib import Path
-        from litestar_vite import ViteConfig, PathConfig
+        {imports}
 
         vite_config = ViteConfig(
             mode="{mode}",
             dev_mode=True,
-            types=True,
+        {types_line}
             paths=PathConfig(
                 root={root_path},
                 resource_dir="{resource_dir}",
@@ -676,6 +686,7 @@ def vite_build(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
             console.print("[dim]Installing frontend dependencies (node_modules missing)...[/]")
             executor.install(Path(root_dir))
         if generated_assets and isinstance(plugin.config.types, TypeGenConfig):
+            _run_extra_commands(plugin.config, verbose)
             _invoke_typegen_cli(plugin.config, verbose)
         ext = plugin.config.runtime.external_dev_server
         if isinstance(ext, ExternalDevServer) and ext.enabled:
@@ -962,6 +973,65 @@ def _get_local_binary_cmd(root_dir: Path, binary: str) -> "list[str] | None":
     return None
 
 
+def _run_extra_commands(config: Any, verbose: bool) -> bool:
+    """Run additional code-generation commands configured in TypeGenConfig.
+
+    These execute after metadata export but before the typegen CLI, giving
+    Vite-plugin code generators (e.g., TanStack Router ``tsr generate``)
+    a chance to produce their artifacts so that ``tsc --noEmit`` passes.
+
+    Each command is specified as ``[binary, *args]``.  The *binary* (first
+    element) is resolved through the project's JS executor — first checking
+    ``node_modules/.bin/<binary>``, then falling back to the configured
+    package runner (npx / pnpm dlx / yarn dlx / bunx / deno run).
+
+    Failures are reported as warnings so that independent generators
+    (e.g., hey-api typegen) still run even if one extra command fails.
+
+    Args:
+        config: The ViteConfig instance (with .types resolved).
+        verbose: Whether to show verbose output.
+
+    Returns:
+        True if all commands succeeded, False if any failed.
+    """
+    types_config = config.types
+    if not hasattr(types_config, "extra_commands") or not types_config.extra_commands:
+        return True
+
+    root_dir = config.root_dir or Path.cwd()
+    executor = config.runtime.executor
+    all_ok = True
+
+    for cmd in types_config.extra_commands:
+        cmd_list = list(cmd)
+        binary = cmd_list[0]
+        args = cmd_list[1:]
+
+        # Resolve the binary through the project's JS executor,
+        # same pattern as _invoke_typegen_cli.
+        resolved = _get_local_binary_cmd(root_dir, binary) or _get_package_executor_cmd(executor, binary)
+        full_cmd = [*resolved, *args]
+        display = " ".join(full_cmd)
+
+        if verbose:
+            console.print(f"[dim]Running extra command: {display}[/]")
+        try:
+            result = subprocess.run(full_cmd, cwd=root_dir, check=False)
+            if result.returncode != 0:
+                console.print(f"[yellow]⚠ Extra command failed (exit {result.returncode}): {display}[/]")
+                console.print("[dim]  (continuing with remaining type generation)[/]")
+                all_ok = False
+        except FileNotFoundError:
+            console.print(f"[yellow]⚠ Command not found: {full_cmd[0]} — ensure it is installed[/]")
+            console.print("[dim]  (continuing with remaining type generation)[/]")
+            all_ok = False
+
+    if all_ok:
+        console.print(f"[green]✓ Ran {len(types_config.extra_commands)} extra command(s)[/]")
+    return all_ok
+
+
 def _invoke_typegen_cli(config: Any, verbose: bool) -> None:
     """Invoke the unified TypeScript type generation CLI.
 
@@ -1062,6 +1132,9 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     except (OSError, TypeError, ValueError) as exc:
         console.print(f"[red]✗ Failed to export type metadata: {exc}[/]")
         return
+
+    # Run any extra code-generation commands (e.g., tsr generate for TanStack Router)
+    _run_extra_commands(config, verbose)
 
     # Invoke the unified TypeScript type generation CLI
     # This handles both @hey-api/openapi-ts and page-props.ts generation

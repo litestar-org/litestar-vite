@@ -10,25 +10,25 @@
     "generate-types": "openapi-ts"{% endif %}
   },
   "dependencies": {
-    "@angular/animations": "21.2.1",
-    "@angular/common": "21.2.1",
-    "@angular/compiler": "21.2.1",
-    "@angular/core": "21.2.1",
-    "@angular/forms": "21.2.1",
-    "@angular/platform-browser": "21.2.1",
-    "@angular/platform-browser-dynamic": "21.2.1",
-    "@angular/router": "21.2.1",
-    "rxjs": "7.8.2"
+    "@angular/animations": "{{ package_version('@angular/animations') }}",
+    "@angular/common": "{{ package_version('@angular/common') }}",
+    "@angular/compiler": "{{ package_version('@angular/compiler') }}",
+    "@angular/core": "{{ package_version('@angular/core') }}",
+    "@angular/forms": "{{ package_version('@angular/forms') }}",
+    "@angular/platform-browser": "{{ package_version('@angular/platform-browser') }}",
+    "@angular/platform-browser-dynamic": "{{ package_version('@angular/platform-browser-dynamic') }}",
+    "@angular/router": "{{ package_version('@angular/router') }}",
+    "rxjs": "{{ package_version('rxjs') }}"
   },
   "devDependencies": {
-    "@angular/build": "21.2.1",
-    "@angular/cli": "21.2.1",
-    "@angular/compiler-cli": "21.2.1",
-{% if generate_client %}    "@hey-api/openapi-ts": "0.94.0",
-{% endif %}    "@tailwindcss/postcss": "4.2.2",
-    "@types/node": "25.3.5",
-    "postcss": "8.5.8",
-    "tailwindcss": "4.2.2",
-    "typescript": "5.9.3"
+    "@angular/build": "{{ package_version('@angular/build') }}",
+    "@angular/cli": "{{ package_version('@angular/cli') }}",
+    "@angular/compiler-cli": "{{ package_version('@angular/compiler-cli') }}",
+{% if generate_client %}    "@hey-api/openapi-ts": "{{ package_version('@hey-api/openapi-ts') }}",
+{% endif %}    "@tailwindcss/postcss": "{{ package_version('@tailwindcss/postcss') }}",
+    "@types/node": "{{ package_version('@types/node') }}",
+    "postcss": "{{ package_version('postcss') }}",
+    "tailwindcss": "{{ package_version('tailwindcss') }}",
+    "typescript": "{{ package_version('typescript') }}"
   }
 }

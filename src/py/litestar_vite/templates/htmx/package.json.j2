@@ -9,13 +9,13 @@
     "serve": "vite preview"
   },
   "dependencies": {
-    "htmx.org": "2.0.8"
+    "htmx.org": "{{ package_version('htmx.org') }}"
   },
   "devDependencies": {
-{% if use_tailwind %}    "@tailwindcss/vite": "4.2.2",
-{% endif %}    "litestar-vite-plugin": "0.18.4",
-{% if use_tailwind %}    "tailwindcss": "4.2.2",
-{% endif %}    "typescript": "5.9.3",
-    "vite": "8.0.1"
+{% if use_tailwind %}    "@tailwindcss/vite": "{{ package_version('@tailwindcss/vite') }}",
+{% endif %}    "litestar-vite-plugin": "{{ package_version('litestar-vite-plugin') }}",
+{% if use_tailwind %}    "tailwindcss": "{{ package_version('tailwindcss') }}",
+{% endif %}    "typescript": "{{ package_version('typescript') }}",
+    "vite": "{{ package_version('vite') }}"
   }
 }

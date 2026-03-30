@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from litestar_vite.scaffolding.templates import CURRENT_NPM_VERSION_RANGES as V
+
 ROOT = Path(__file__).resolve().parents[4]
 TEMPLATE_ROOT = ROOT / "src" / "py" / "litestar_vite" / "templates"
 EXAMPLES_ROOT = ROOT / "examples"
@@ -12,18 +14,18 @@ def test_vue_examples_pin_current_stable_versions_and_use_vue_tsc_builds() -> No
 
     for text in (vue, vue_inertia, vue_jinja):
         assert '"build": "vue-tsc -b && vite build"' in text
-        assert '"vue": "3.5.29"' in text
-        assert '"@vitejs/plugin-vue": "6.0.4"' in text
-        assert '"@vue/tsconfig": "0.9.0"' in text
-        assert '"vue-tsc": "3.2.5"' in text
-        assert '"typescript": "5.9.3"' in text
-        assert '"vite": "8.0.1"' in text
-        assert '"@tailwindcss/vite": "4.2.2"' in text
-        assert '"tailwindcss": "4.2.2"' in text
-        assert '"@hey-api/openapi-ts": "0.94.0"' in text
-        assert '"@types/node": "25.3.5"' in text
+        assert f'"vue": "{V["vue"]}"' in text
+        assert f'"@vitejs/plugin-vue": "{V["@vitejs/plugin-vue"]}"' in text
+        assert f'"@vue/tsconfig": "{V["@vue/tsconfig"]}"' in text
+        assert f'"vue-tsc": "{V["vue-tsc"]}"' in text
+        assert f'"typescript": "{V["typescript"]}"' in text
+        assert f'"vite": "{V["vite"]}"' in text
+        assert f'"@tailwindcss/vite": "{V["@tailwindcss/vite"]}"' in text
+        assert f'"tailwindcss": "{V["tailwindcss"]}"' in text
+        assert f'"@hey-api/openapi-ts": "{V["@hey-api/openapi-ts"]}"' in text
+        assert f'"@types/node": "{V["@types/node"]}"' in text
         assert '"latest"' not in text
-        assert '"axios": "1.13.6"' not in text
+        assert '"axios"' not in text
 
     for text in (vue_inertia, vue_jinja):
         assert '"@inertiajs/vue3": "3.0.0"' in text
@@ -57,10 +59,10 @@ def test_vue_templates_match_stable_bootstrap_and_manifest_structure() -> None:
     vue_inertia_ssr = (TEMPLATE_ROOT / "vue-inertia" / "resources" / "ssr.ts.j2").read_text()
 
     assert '"build": "vue-tsc -b && vite build"' in vue_package
-    assert '"vue": "3.5.29"' in vue_package
-    assert '"@vue/tsconfig": "0.9.0"' in vue_package
-    assert '"vue-tsc": "3.2.5"' in vue_package
-    assert '"vite": "8.0.1"' in vue_package
+    assert "{{ package_version('vue') }}" in vue_package
+    assert "{{ package_version('@vue/tsconfig') }}" in vue_package
+    assert "{{ package_version('vue-tsc') }}" in vue_package
+    assert "{{ package_version('vite') }}" in vue_package
 
     assert '"build": "vue-tsc -b && vite build && vite build --ssr {{ resource_dir }}/ssr.ts"' in vue_inertia_package
     assert '"@inertiajs/vue3": "{{ package_version(\'@inertiajs/vue3\') }}"' in vue_inertia_package
