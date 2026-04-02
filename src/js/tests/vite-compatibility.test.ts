@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+
 import litestar from "../src"
 import { isVite8Plus } from "../src/shared/vite-compat"
 import { getBuildInput } from "./__fixtures__/mock-vite-config"

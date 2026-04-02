@@ -1,4 +1,5 @@
 import { Head, Link } from "@inertiajs/react"
+
 import { route, routeDefinitions } from "@/generated/routes"
 
 type RouteName = keyof typeof routeDefinitions

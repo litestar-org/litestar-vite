@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue"
+
 import { route, routeDefinitions } from "@/routes"
 
 type Book = {
@@ -94,9 +95,7 @@ onMounted(async () => {
       <details class="mt-2">
         <summary class="cursor-pointer">Route definitions (from generated routes.ts)</summary>
         <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
-          <span v-for="[name, def] in routeEntries" :key="name" class="font-mono text-slate-600">
-            {{ name }} → {{ def.path }}
-          </span>
+          <span v-for="[name, def] in routeEntries" :key="name" class="font-mono text-slate-600"> {{ name }} → {{ def.path }} </span>
         </div>
       </details>
     </footer>

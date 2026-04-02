@@ -236,10 +236,23 @@ slotscheck:                                        ## Run slotscheck
 fix:                                               ## Run code formatters
 	@echo "${INFO} Running code formatters... 🔧"
 	@uv run ruff check --fix --unsafe-fixes
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run fmt
 	@echo "${OK} Code formatting complete ✨"
 
+.PHONY: oxlint
+oxlint:                                            ## Run oxlint on JS/TS sources
+	@echo "${INFO} Running oxlint... 🔍"
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run lint
+	@echo "${OK} Oxlint checks passed ✨"
+
+.PHONY: oxfmt
+oxfmt:                                             ## Run oxfmt format check on JS/TS sources
+	@echo "${INFO} Running oxfmt check... 🔍"
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run fmt:check
+	@echo "${OK} Oxfmt checks passed ✨"
+
 .PHONY: lint
-lint: pre-commit type-check slotscheck             ## Run all linting checks
+lint: pre-commit type-check slotscheck oxlint oxfmt ## Run all linting checks
 
 .PHONY: check-all
 check-all: lint test coverage                      ## Run all checks (lint, test, coverage)

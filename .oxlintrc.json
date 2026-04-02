@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "import", "unicorn", "jsx-a11y"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "off",
+    "unicorn/no-array-for-each": "off",
+    "default-param-last": "error",
+    "@typescript-eslint/no-inferrable-types": "error"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.svelte", "**/*.astro", "**/*.vue"],
+      "rules": {
+        "@typescript-eslint/no-unused-vars": "off",
+        "no-unused-vars": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "node_modules/",
+    "dist/",
+    "out/",
+    ".next/",
+    "public/",
+    "src/py/"
+  ]
+}
