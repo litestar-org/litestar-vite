@@ -8,7 +8,7 @@ import { dirname } from "node:path"
  */
 
 const argument = (name) => {
-  const index = process.argv.findIndex((argument) => argument.startsWith(`--${name}=`))
+  const index = process.argv.findIndex((arg) => arg.startsWith(`--${name}=`))
 
   return index === -1 ? undefined : process.argv[index].substring(`--${name}=`.length)
 }
@@ -48,7 +48,7 @@ const main = () => {
 
   const isSsr = Array.isArray(manifest[manifestFiles[0]])
 
-  isSsr ? info("SSR manifest found.") : info("Non-SSR manifest found.")
+  if (isSsr) { info("SSR manifest found.") } else { info("Non-SSR manifest found.") }
 
   const manifestAssets = isSsr ? manifestFiles.flatMap((key) => manifest[key]) : manifestFiles.flatMap((key) => [...(manifest[key].css ?? []), manifest[key].file])
 
@@ -63,12 +63,12 @@ const main = () => {
   if (orphanedAssets.length === 0) {
     info("No orphaned assets found.")
   } else {
-    orphanedAssets.length === 1 ? info(`[${orphanedAssets.length}] orphaned asset found.`) : info(`[${orphanedAssets.length}] orphaned assets found.`)
+    if (orphanedAssets.length === 1) { info(`[${orphanedAssets.length}] orphaned asset found.`) } else { info(`[${orphanedAssets.length}] orphaned assets found.`) }
 
     orphanedAssets.forEach((asset) => {
       const path = `${assetsPath}/${asset.name}`
 
-      option("dry-run") ? info(`Orphaned asset [${path}] would be removed.`) : info(`Removing orphaned asset [${path}].`)
+      if (option("dry-run")) { info(`Orphaned asset [${path}] would be removed.`) } else { info(`Removing orphaned asset [${path}].`) }
 
       if (!option("dry-run")) {
         unlinkSync(path)

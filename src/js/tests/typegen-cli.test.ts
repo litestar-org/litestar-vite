@@ -102,7 +102,7 @@ describe("typegen-cli", () => {
     }
 
     // Merge types separately to avoid duplicate key warning
-    mergedConfig.types = { ...baseTypes, ...(overrides.types || {}) }
+    mergedConfig.types = { ...baseTypes, ...overrides.types }
     return mergedConfig
   }
 

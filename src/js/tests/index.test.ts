@@ -15,7 +15,7 @@ vi.mock("fs", async () => {
     promises: actual.promises,
     default: {
       ...actual,
-      existsSync: (path: string) => ["resources/", "assets/", "src/"].includes(path) || actual.existsSync(path),
+      existsSync: (p: string) => ["resources/", "assets/", "src/"].includes(p) || actual.existsSync(p),
       readFileSync: actual.readFileSync,
       mkdirSync: actual.mkdirSync,
       writeFileSync: actual.writeFileSync,
@@ -100,10 +100,10 @@ beforeEach(() => {
 })
 
 describe("litestar-vite-plugin", () => {
-  const originalEnv = { ...process.env }
+  const savedEnv = { ...process.env }
 
   afterEach(() => {
-    process.env = { ...originalEnv }
+    process.env = { ...savedEnv }
     vi.resetAllMocks()
   })
 
@@ -1489,16 +1489,16 @@ describe("litestar-vite-plugin", () => {
 })
 
 describe("type generation config detection", () => {
-  const originalEnv = { ...process.env }
+  const savedEnv = { ...process.env }
   let tempDir: string
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(process.cwd(), "vitest-config-detect-"))
-    process.env = { ...originalEnv }
+    process.env = { ...savedEnv }
   })
 
   afterEach(() => {
-    process.env = { ...originalEnv }
+    process.env = { ...savedEnv }
     try {
       fs.rmSync(tempDir, { recursive: true, force: true })
     } catch {
@@ -1548,7 +1548,7 @@ describe("type generation config detection", () => {
 })
 
 describe("path comparison for config mismatch detection", () => {
-  const originalEnv = { ...process.env }
+  const savedEnv = { ...process.env }
   let tempDir: string
 
   const createRuntimeConfigLocal = (data: Record<string, unknown>): string => {
@@ -1590,11 +1590,11 @@ describe("path comparison for config mismatch detection", () => {
   }
 
   beforeEach(() => {
-    process.env = { ...originalEnv }
+    process.env = { ...savedEnv }
   })
 
   afterEach(() => {
-    process.env = { ...originalEnv }
+    process.env = { ...savedEnv }
     cleanupLocal()
   })
 

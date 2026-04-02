@@ -11,16 +11,5 @@
   "endOfLine": "lf",
   "insertFinalNewline": true,
   "sortImports": true,
-  "ignorePatterns": [
-    "node_modules/",
-    "dist/",
-    "out/",
-    ".next/",
-    "public/",
-    "src/py/",
-    "CHANGELOG.md",
-    "package-lock.json",
-    "pnpm-lock.yaml",
-    ".venv/"
-  ]
+  "ignorePatterns": ["node_modules/", "dist/", "out/", ".next/", "public/", "src/py/", "CHANGELOG.md", "package-lock.json", "pnpm-lock.yaml", ".venv/"]
 }
