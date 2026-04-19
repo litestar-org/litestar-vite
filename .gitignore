@@ -221,3 +221,7 @@ src/py/tests/test_app/web/public/hot
 GEMINI.md
 test-build
 
+# Generated content
+examples/*/src/generated/
+src/py/tests/*/src/generated/
+*.tsbuildinfo

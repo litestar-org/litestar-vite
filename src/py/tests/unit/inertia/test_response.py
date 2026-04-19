@@ -12,6 +12,7 @@ from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
 
+from litestar_vite.config import InertiaConfig, ViteConfig
 from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
 from litestar_vite.inertia.helpers import (
     DeferredProp,
@@ -625,23 +626,20 @@ async def test_filter_deferred_props() -> None:
 
     # Partial data, only specified deferred props should be rendered
     partial_response_deferred = lazy_render(data, partial_data={"deferred"})
-    assert partial_response_deferred == {"static": "value", "deferred": "deferred_value", "nested": {}, "list": []}
+    assert partial_response_deferred == {"deferred": "deferred_value"}
 
-    partial_response_list = lazy_render(data, partial_data={"list_deferred"})
-    assert partial_response_list == {"static": "value", "nested": {}, "list": ["list_deferred_value"]}
+    partial_response_list = lazy_render(data, partial_data={"list", "list_deferred"})
+    assert partial_response_list == {"list": ["list_deferred_value"]}
 
-    partial_response_multiple = lazy_render(data, partial_data={"nested_deferred", "list_deferred"})
+    partial_response_multiple = lazy_render(data, partial_data={"nested", "nested_deferred", "list", "list_deferred"})
     assert partial_response_multiple == {
-        "static": "value",
         "nested": {"nested_deferred": "nested_deferred_value"},
         "list": ["list_deferred_value"],
     }
 
-    partial_response_nested_deferred = lazy_render(data, partial_data={"nested_deferred"})
+    partial_response_nested_deferred = lazy_render(data, partial_data={"nested", "nested_deferred"})
     assert partial_response_nested_deferred == {
-        "static": "value",
         "nested": {"nested_deferred": "nested_deferred_value"},
-        "list": [],
     }
 
 
@@ -703,9 +701,11 @@ async def test_component_inertia_deferred_props(
                 InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
             },
         )
-        assert response_partial.json()["props"]["static"] == "value"
-        assert response_partial.json()["props"]["deferred"] == "deferred_value"
-        assert response_partial.json()["props"]["list_deferred"] == ["list_deferred_value"]
+        props = response_partial.json()["props"]
+        assert props["deferred"] == "deferred_value"
+        assert props["list_deferred"] == ["list_deferred_value"]
+        assert "static" not in props
+
         assert "content" not in response_partial.json()["props"]
         # Partial data, only specified deferred props should be rendered
         response_partial2 = client.get(
@@ -716,10 +716,12 @@ async def test_component_inertia_deferred_props(
                 InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
             },
         )
-        assert response_partial2.json()["props"]["static"] == "value"
-        assert response_partial2.json()["props"]["deferred"] == "deferred_value"
-        assert response_partial2.json()["props"]["list_deferred"] == ["list_deferred_value"]
-        assert "content" not in response_partial2.json()["props"]
+        props2 = response_partial2.json()["props"]
+        assert props2["deferred"] == "deferred_value"
+        assert props2["list_deferred"] == ["list_deferred_value"]
+        assert "static" not in props2
+        assert "content" not in props2
+
         response_partial3 = client.get(
             "/",
             headers={
@@ -728,11 +730,12 @@ async def test_component_inertia_deferred_props(
                 InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
             },
         )
-        assert response_partial3.json()["props"]["static"] == "value"
-        assert response_partial3.json()["props"]["deferred"] == "deferred_value"
-        assert response_partial3.json()["props"]["optional"] == "async_result"
-        assert response_partial3.json()["props"]["list_deferred"] == ["list_deferred_value"]
-        assert response_partial3.json()["props"]["sync"] == "sync_result"
+        props3 = response_partial3.json()["props"]
+        assert props3["deferred"] == "deferred_value"
+        assert props3["optional"] == "async_result"
+        assert props3["list_deferred"] == ["list_deferred_value"]
+        assert props3["sync"] == "sync_result"
+        assert "static" not in props3
         assert "content" not in response_partial3.json()["props"]
 
 
@@ -2282,3 +2285,75 @@ def test_parse_inertia_ssr_payload_accepts_normal_response() -> None:
     result = _parse_inertia_ssr_payload(payload, "http://localhost:13714/render")
     assert result.body == "<div>Hello</div>"
     assert result.head == ["<title>Test</title>"]
+
+def test_issue_236_metadata_loss() -> None:
+    """Verify that deferred props metadata is present in the initial response.
+
+    In Issue #236, the 'deferredProps' key is missing from the initial JSON
+    response because 'lazy_render' strips the metadata during value extraction.
+    """
+
+    @get("/", component="TestComponent")
+    async def handler() -> dict[str, Any]:
+        return {
+            "eager_data": "loads immediately",
+            "slow_data": defer("slow_data", lambda: {"items": [1, 2, 3]}),
+        }
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[InertiaPlugin(config=InertiaConfig()), VitePlugin(config=ViteConfig())],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # Initial load (not a partial reload)
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert response.status_code == 200
+        
+        data = response.json()
+        
+        # 1. Eager data should be present
+        assert data["props"]["eager_data"] == "loads immediately"
+        
+        # 2. Slow data value should NOT be present (it's deferred)
+        assert "slow_data" not in data["props"]
+        
+        # 3. METADATA should be present (This is what fails in #236)
+        assert "deferredProps" in data, "deferredProps metadata missing from response"
+        assert "default" in data["deferredProps"]
+        assert "slow_data" in data["deferredProps"]["default"]
+
+def test_inertia_deferred_props_full_cycle() -> None:
+    """Test full cycle of deferred props: initial load and partial reload."""
+
+    @get("/", component="Home")
+    async def handler() -> dict[str, Any]:
+        return {
+            "immediate": "fast",
+            "deferred": defer("deferred", lambda: "slow_result"),
+        }
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[InertiaPlugin(config=InertiaConfig()), VitePlugin()],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        # 1. Initial request
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+        assert "deferred" not in data["props"]
+        assert "deferred" in data["deferredProps"]["default"]
+
+        # 2. Partial reload requesting the deferred prop
+        response_partial = client.get(
+            "/",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_DATA.value: "deferred",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+            },
+        )
+        data_partial = response_partial.json()
+        assert data_partial["props"]["deferred"] == "slow_result"
+        assert "immediate" not in data_partial["props"]
