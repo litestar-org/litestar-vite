@@ -408,7 +408,7 @@ class InertiaResponse(Response[T]):
             "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
         }
 
-    def _build_page_props(
+    def _build_page_props(  # noqa: PLR0915
         self,
         request: "Request[UserT, AuthT, StateT]",
         partial_data: "set[str] | None",
@@ -443,10 +443,16 @@ class InertiaResponse(Response[T]):
         content: Any = self.content
         route_content: Any | None = None
         route_once_props: "list[str]" = []
+
+        # v2.2+ protocol: Extract deferred props metadata before filtering
+        # This ensures metadata is preserved even when values are omitted on initial load
+        deferred_props_map: "dict[str, list[str]]" = {}
         if isinstance(content, Mapping):
+            deferred_props_map = extract_deferred_props(cast("dict[str, Any]", content))
             route_once_props = extract_once_props(
                 cast("dict[str, Any]", content), partial_data=partial_data, partial_except=partial_except
             )
+
         if is_or_contains_lazy_prop(content) or is_or_contains_special_prop(content):
             filtered_content: Any = lazy_render(
                 cast("Any", content), partial_data, inertia_plugin.portal, partial_except, except_once_props
@@ -467,7 +473,13 @@ class InertiaResponse(Response[T]):
             else:
                 shared_props["content"] = route_content
 
-        deferred_props = extract_deferred_props(shared_props) or None
+        # Combine deferred props from shared props and route content
+        deferred_props_from_shared = extract_deferred_props(shared_props)
+        if deferred_props_from_shared:
+            for group, keys in deferred_props_from_shared.items():
+                deferred_props_map.setdefault(group, []).extend(keys)
+
+        deferred_props = deferred_props_map or None
         # Extract once props tracked during get_shared_props (already rendered)
         once_props_from_shared = [key for key in shared_props.pop("_once_props", []) if key not in reset_keys]
         route_once_props = [key for key in route_once_props if key not in reset_keys]
