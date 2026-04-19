@@ -638,9 +638,7 @@ async def test_filter_deferred_props() -> None:
     }
 
     partial_response_nested_deferred = lazy_render(data, partial_data={"nested", "nested_deferred"})
-    assert partial_response_nested_deferred == {
-        "nested": {"nested_deferred": "nested_deferred_value"},
-    }
+    assert partial_response_nested_deferred == {"nested": {"nested_deferred": "nested_deferred_value"}}
 
 
 async def test_lazy_helper() -> None:
@@ -2286,6 +2284,7 @@ def test_parse_inertia_ssr_payload_accepts_normal_response() -> None:
     assert result.body == "<div>Hello</div>"
     assert result.head == ["<title>Test</title>"]
 
+
 def test_issue_236_metadata_loss() -> None:
     """Verify that deferred props metadata is present in the initial response.
 
@@ -2295,10 +2294,7 @@ def test_issue_236_metadata_loss() -> None:
 
     @get("/", component="TestComponent")
     async def handler() -> dict[str, Any]:
-        return {
-            "eager_data": "loads immediately",
-            "slow_data": defer("slow_data", lambda: {"items": [1, 2, 3]}),
-        }
+        return {"eager_data": "loads immediately", "slow_data": defer("slow_data", lambda: {"items": [1, 2, 3]})}
 
     with create_test_client(
         route_handlers=[handler],
@@ -2309,29 +2305,27 @@ def test_issue_236_metadata_loss() -> None:
         # Initial load (not a partial reload)
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
         assert response.status_code == 200
-        
+
         data = response.json()
-        
+
         # 1. Eager data should be present
         assert data["props"]["eager_data"] == "loads immediately"
-        
+
         # 2. Slow data value should NOT be present (it's deferred)
         assert "slow_data" not in data["props"]
-        
+
         # 3. METADATA should be present (This is what fails in #236)
         assert "deferredProps" in data, "deferredProps metadata missing from response"
         assert "default" in data["deferredProps"]
         assert "slow_data" in data["deferredProps"]["default"]
+
 
 def test_inertia_deferred_props_full_cycle() -> None:
     """Test full cycle of deferred props: initial load and partial reload."""
 
     @get("/", component="Home")
     async def handler() -> dict[str, Any]:
-        return {
-            "immediate": "fast",
-            "deferred": defer("deferred", lambda: "slow_result"),
-        }
+        return {"immediate": "fast", "deferred": defer("deferred", lambda: "slow_result")}
 
     with create_test_client(
         route_handlers=[handler],
