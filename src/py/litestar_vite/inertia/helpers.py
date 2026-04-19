@@ -1131,7 +1131,7 @@ def lazy_render(  # noqa: PLR0911
             {
                 k: lazy_render(v, partial_data, portal, partial_except, except_once_props)
                 for k, v in cast("Mapping[str, Any]", value).items()
-                if should_render(v, partial_data, partial_except, except_once_props)
+                if should_render(v, partial_data, partial_except, except_once_props, key=k)
             },
         )
 

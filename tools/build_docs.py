@@ -18,6 +18,13 @@ def build(output_dir: str) -> None:
     output_path.mkdir(parents=True, exist_ok=True)
     output_path.joinpath(".nojekyll").touch(exist_ok=True)
 
+    # Copy LLM context files from root to documentation output directory
+    # This enables discovery at litestar-org.github.io/litestar-vite/llms.txt
+    for filename in ["llms.txt", "llms-full.txt"]:
+        root_file = Path(filename)
+        if root_file.exists():
+            shutil.copy2(root_file, output_path / filename)
+
     for item in docs_src_path.iterdir():
         dest = output_path / item.name
         if item.is_dir():
