@@ -1,12 +1,19 @@
 """Unit tests for codegen module."""
 
+from enum import Enum
 from typing import Annotated, Any
 from uuid import UUID
 
 from litestar import Litestar, get, post
 from litestar.params import Parameter
 
-from litestar_vite.codegen import escape_ts_string, generate_routes_ts, is_type_required, ts_type_for_param
+from litestar_vite.codegen import (
+    escape_ts_string,
+    generate_routes_json,
+    generate_routes_ts,
+    is_type_required,
+    ts_type_for_param,
+)
 from litestar_vite.codegen._routes import extract_path_params, extract_route_metadata, make_unique_name
 from litestar_vite.codegen._ts import (
     collect_ref_names,
@@ -350,6 +357,22 @@ def testts_type_from_openapi_ref() -> None:
     assert ts_type_from_openapi({"$ref": "#/components/schemas/User"}) == "User"
 
 
+def testts_type_from_openapi_ref_enum_resolves_to_literal_union() -> None:
+    """Test enum refs resolve to literal unions when component schemas are provided."""
+    schema = {"$ref": "#/components/schemas/__main___Granularity"}
+    components_schemas: dict[str, Any] = {"Granularity": {"type": "string", "enum": ["hour", "day", "month"]}}
+    assert ts_type_from_openapi(schema, components_schemas=components_schemas) == '"hour" | "day" | "month"'
+
+
+def testts_type_from_openapi_any_of_ref_enum_resolves_to_literal_union() -> None:
+    """Test anyOf containing enum refs resolves correctly with nullability."""
+    schema = {
+        "anyOf": [{"$ref": "#/components/schemas/app_domain_insight_schemas__base_Granularity"}, {"type": "null"}]
+    }
+    components_schemas: dict[str, Any] = {"Granularity": {"type": "string", "enum": ["hour", "day", "month"]}}
+    assert ts_type_from_openapi(schema, components_schemas=components_schemas) == '"hour" | "day" | "month" | null'
+
+
 def testts_type_from_openapi_list_types() -> None:
     """Test OpenAPI 3.1 list types (nullable)."""
     # Litestar sorts union types alphabetically
@@ -463,6 +486,30 @@ def test_generate_routes_ts_query_params_do_not_emit_null() -> None:
     assert "q?: string" in ts_content
     assert "q?: string | null" not in ts_content
     assert "q?: null" not in ts_content
+
+
+def test_generate_routes_ts_str_enum_query_params_emit_literal_unions() -> None:
+    """StrEnum query params should emit literal unions, not mangled type names."""
+
+    class Granularity(str, Enum):
+        HOUR = "hour"
+        DAY = "day"
+        MONTH = "month"
+
+    @get("/trends", name="trends.list", sync_to_thread=False)
+    def trends(granularity: Granularity = Granularity.DAY) -> list[str]:
+        return []
+
+    app = Litestar([trends])
+    schema = app.openapi_schema.to_schema()
+
+    routes_json = generate_routes_json(app, openapi_schema=schema)
+    query_type = routes_json["routes"]["trends.list"]["queryParameters"]["granularity"]
+    assert query_type == '"hour" | "day" | "month" | undefined'
+
+    ts_content = generate_routes_ts(app, openapi_schema=schema)
+    assert 'granularity?: "hour" | "day" | "month";' in ts_content
+    assert "__main___Granularity" not in ts_content
 
 
 def testts_type_from_openapi_edge_cases() -> None:
