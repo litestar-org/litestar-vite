@@ -213,3 +213,15 @@ coverage.json
 .beads/
 src/py/tests/test_app/web/public/hot
 .agents
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+GEMINI.md
+test-build
+
+# Generated content
+examples/*/src/generated/
+src/py/tests/*/src/generated/
+*.tsbuildinfo

@@ -19,7 +19,10 @@ export default defineConfig({
 {% if use_tailwind %}
     tailwindcss(),
 {% endif %}
-    TanStackRouterVite(),
+    TanStackRouterVite({
+      routesDirectory: "src/routes",
+      generatedRouteTree: "src/generated/routeTree.gen.ts",
+    }),
     react(),
     litestar({
       input: ["{{ resource_dir }}/main.tsx"],
