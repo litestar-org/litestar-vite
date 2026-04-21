@@ -1,5 +1,6 @@
 /* biome-ignore-all lint/suspicious/noTemplateCurlyInString: Testing ${expr} template syntax intentionally */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+
 import {
   __clearExpressionCache,
   __compileExpressionForTest,

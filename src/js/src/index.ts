@@ -2,6 +2,7 @@ import fs from "node:fs"
 import type { AddressInfo } from "node:net"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+
 import colors from "picocolors"
 import { loadEnv, type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer } from "vite"
 import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-reload"
@@ -312,7 +313,7 @@ let warnedMissingRuntimeConfig = false
 
 const MAX_TRANSFORM_PAYLOAD_BYTES = 1_000_000
 
-const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((path) => fs.existsSync(path.replace(/\*\*$/, "")))
+const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((p) => fs.existsSync(p.replace(/\*\*$/, "")))
 
 /**
  * Litestar plugin for Vite.
@@ -480,7 +481,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
               ? false
               : {
                   path: "vite-hmr",
-                  ...(serverConfig?.hmr ?? {}),
+                  ...serverConfig?.hmr,
                   ...(userConfig.server?.hmr === true ? {} : userConfig.server?.hmr),
                 },
           // Auto-configure proxy to forward API requests to Litestar backend
@@ -1266,10 +1267,10 @@ function resolveInput(config: ResolvedPluginConfig, ssr: boolean): string | stri
 /**
  * Check if a path is absolute (Unix or Windows).
  */
-function isAbsolutePath(path: string): boolean {
+function isAbsolutePath(filePath: string): boolean {
   // Unix absolute path starts with /
   // Windows absolute path starts with drive letter (C:\, D:\, etc.)
-  return path.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(path)
+  return filePath.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(filePath)
 }
 
 /**

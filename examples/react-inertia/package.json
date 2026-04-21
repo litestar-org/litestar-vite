@@ -16,14 +16,14 @@
     "zod": "4.3.6"
   },
   "devDependencies": {
+    "@hey-api/openapi-ts": "0.94.5",
+    "@tailwindcss/vite": "4.2.2",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.1",
-    "@tailwindcss/vite": "4.2.2",
-    "tailwindcss": "4.2.2",
     "litestar-vite-plugin": "file:../..",
+    "tailwindcss": "4.2.2",
     "typescript": "5.9.3",
-    "vite": "8.0.3",
-    "@hey-api/openapi-ts": "0.94.5"
+    "vite": "8.0.3"
   }
 }

@@ -15,14 +15,14 @@
     "react-router-dom": "7.13.2"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "6.0.1",
+    "@hey-api/openapi-ts": "0.94.5",
+    "@tailwindcss/vite": "4.2.2",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "@tailwindcss/vite": "4.2.2",
+    "@vitejs/plugin-react": "6.0.1",
+    "litestar-vite-plugin": "file:../..",
     "tailwindcss": "4.2.2",
     "typescript": "5.9.3",
-    "litestar-vite-plugin": "file:../..",
-    "vite": "8.0.3",
-    "@hey-api/openapi-ts": "0.94.5"
+    "vite": "8.0.3"
   }
 }

@@ -1,0 +1,15 @@
+{
+  "printWidth": 180,
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": false,
+  "singleQuote": false,
+  "jsxSingleQuote": false,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "arrowParens": "always",
+  "endOfLine": "lf",
+  "insertFinalNewline": true,
+  "sortImports": true,
+  "ignorePatterns": ["node_modules/", "dist/", "out/", ".next/", "public/", "src/py/", "CHANGELOG.md", "package-lock.json", "pnpm-lock.yaml", ".venv/"]
+}

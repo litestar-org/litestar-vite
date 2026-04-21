@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link } from "@inertiajs/vue3"
+
 import { route, routeDefinitions } from "@/routes"
 
 type RouteName = keyof typeof routeDefinitions
@@ -36,9 +37,7 @@ defineProps<{
       <p class="max-w-3xl text-slate-600">{{ summary.headline }}</p>
       <nav class="flex gap-4">
         <!-- Using type-safe route() helper like Laravel's Ziggy -->
-        <Link :href="route('index')" class="rounded-full bg-slate-100 px-4 py-2 font-semibold text-slate-600 text-sm transition hover:bg-slate-200">
-          Home
-        </Link>
+        <Link :href="route('index')" class="rounded-full bg-slate-100 px-4 py-2 font-semibold text-slate-600 text-sm transition hover:bg-slate-200"> Home </Link>
         <span class="rounded-full bg-white px-4 py-2 font-semibold text-[#202235] text-sm shadow">Books ({{ summary.total_books }})</span>
       </nav>
     </header>
@@ -63,9 +62,7 @@ defineProps<{
       <details class="mt-2">
         <summary class="cursor-pointer">Route definitions (from generated routes.ts)</summary>
         <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
-          <span v-for="[name, def] in routeEntries" :key="name" class="font-mono text-slate-600">
-            {{ name }} → {{ def.path }}
-          </span>
+          <span v-for="[name, def] in routeEntries" :key="name" class="font-mono text-slate-600"> {{ name }} → {{ def.path }} </span>
         </div>
       </details>
     </footer>

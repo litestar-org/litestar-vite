@@ -25,8 +25,10 @@
 
 import fs from "node:fs"
 import path from "node:path"
+
 import colors from "picocolors"
 import type { Plugin } from "vite"
+
 import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema.js"
 import { DEBOUNCE_MS } from "./shared/constants.js"
 import { normalizeHost, resolveHotFilePath } from "./shared/network.js"

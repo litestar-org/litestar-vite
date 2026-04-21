@@ -1,5 +1,6 @@
 import type { Logger, ResolvedConfig } from "vite"
 import { vi } from "vitest"
+
 import { isVite8Plus } from "../../src/shared/vite-compat.js"
 
 /**

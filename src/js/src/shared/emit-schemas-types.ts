@@ -120,9 +120,9 @@ function parseHeyApiTypes(content: string): {
  * Normalize a route path for matching.
  * Converts Litestar path params to OpenAPI format: {param:type} -> {param}
  */
-function normalizePath(path: string): string {
+function normalizePath(routePath: string): string {
   // Remove type constraints from path params: {id:int} -> {id}
-  return path.replace(/\{([^:}]+):[^}]+\}/g, "{$1}")
+  return routePath.replace(/\{([^:}]+):[^}]+\}/g, "{$1}")
 }
 
 /**
@@ -170,7 +170,7 @@ function createOperationMappings(
   }
 
   // Sort by route name for deterministic output
-  return mappings.sort((a, b) => a.routeName.localeCompare(b.routeName))
+  return mappings.toSorted((a, b) => a.routeName.localeCompare(b.routeName))
 }
 
 /**
@@ -216,7 +216,7 @@ export type SuccessResponse<T extends OperationName> = never
   const responsesTypeImports = [...new Set(validMappings.map((m) => m.responsesType).filter(Boolean))] as string[]
   const errorsTypeImports = [...new Set(validMappings.map((m) => m.errorsType).filter(Boolean))] as string[]
 
-  const allImports = [...dataTypeImports, ...responsesTypeImports, ...errorsTypeImports].sort()
+  const allImports = [...dataTypeImports, ...responsesTypeImports, ...errorsTypeImports].toSorted()
 
   // Build OperationName union
   const operationNames = validMappings.map((m) => `  | '${m.routeName}'`).join("\n")

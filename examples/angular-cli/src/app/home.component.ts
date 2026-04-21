@@ -49,12 +49,12 @@ type RouteEntry = [RouteName, RouteDefinition]
             [class.text-slate-600]="view() !== 'books'"
             (click)="view.set('books')"
           >
-            Books {{ summary() ? '(' + summary()!.total_books + ')' : '' }}
+            Books {{ summary() ? "(" + summary()!.total_books + ")" : "" }}
           </button>
         </nav>
       </header>
 
-      @if (view() === 'overview') {
+      @if (view() === "overview") {
         <section class="space-y-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/40">
           @if (featured()) {
             <h2 class="font-semibold text-[#202235] text-xl">{{ summary()?.headline }}</h2>
@@ -62,7 +62,7 @@ type RouteEntry = [RouteName, RouteDefinition]
             <article class="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4">
               <h3 class="font-semibold text-[#202235] text-lg">{{ featured()!.title }}</h3>
               <p class="mt-1 text-slate-600">{{ featured()!.author }} • {{ featured()!.year }}</p>
-              <p class="mt-1 text-[#202235] text-sm">{{ featured()!.tags.join(' · ') }}</p>
+              <p class="mt-1 text-[#202235] text-sm">{{ featured()!.tags.join(" · ") }}</p>
             </article>
           } @else {
             <div class="text-slate-600">Loading...</div>
@@ -75,7 +75,7 @@ type RouteEntry = [RouteName, RouteDefinition]
               <article class="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4 shadow-sm">
                 <h3 class="font-semibold text-[#202235] text-lg">{{ book.title }}</h3>
                 <p class="mt-1 text-slate-600">{{ book.author }} • {{ book.year }}</p>
-                <p class="mt-1 text-[#202235] text-sm">{{ book.tags.join(' · ') }}</p>
+                <p class="mt-1 text-[#202235] text-sm">{{ book.tags.join(" · ") }}</p>
               </article>
             }
           } @else {
@@ -89,9 +89,7 @@ type RouteEntry = [RouteName, RouteDefinition]
           <summary class="cursor-pointer">Route definitions (from generated routes.ts)</summary>
           <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
             @for (entry of routeEntries(); track entry[0]) {
-              <span class="font-mono text-slate-600">
-                {{ entry[0] }} → {{ entry[1].path }}
-              </span>
+              <span class="font-mono text-slate-600"> {{ entry[0] }} → {{ entry[1].path }} </span>
             }
           </div>
         </details>

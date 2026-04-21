@@ -1,7 +1,6 @@
 {
   "name": "litestar-vite-plugin",
   "version": "0.22.1",
-  "type": "module",
   "description": "Litestar plugin for Vite.",
   "keywords": [
     "litestar",
@@ -9,14 +8,49 @@
     "vite-plugin"
   ],
   "homepage": "https://github.com/litestar-org/litestar-vite",
+  "license": "MIT",
+  "author": "Litestar",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/litestar-org/litestar-vite.git"
   },
-  "license": "MIT",
-  "author": "Litestar",
+  "bin": {
+    "clean-orphaned-assets": "tools/clean.js",
+    "litestar-vite-typegen": "dist/js/typegen-cli.js"
+  },
+  "files": [
+    "dist/js/**/*",
+    "tools/clean.js"
+  ],
+  "type": "module",
   "main": "./dist/js/index.js",
   "module": "./dist/js/index.js",
+  "types": "./dist/js/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "helpers": [
+        "./dist/js/helpers/index.d.ts"
+      ],
+      "inertia-helpers": [
+        "./dist/js/inertia-helpers/index.d.ts"
+      ],
+      "astro": [
+        "./dist/js/astro.d.ts"
+      ],
+      "sveltekit": [
+        "./dist/js/sveltekit.d.ts"
+      ],
+      "nuxt": [
+        "./dist/js/nuxt.d.ts"
+      ],
+      "inertia": [
+        "./dist/js/inertia-types.d.ts"
+      ],
+      "virtual": [
+        "./dist/js/virtual.d.ts"
+      ]
+    }
+  },
   "exports": {
     ".": {
       "types": "./dist/js/index.d.ts",
@@ -50,40 +84,6 @@
       "types": "./dist/js/virtual.d.ts"
     }
   },
-  "types": "./dist/js/index.d.ts",
-  "typesVersions": {
-    "*": {
-      "helpers": [
-        "./dist/js/helpers/index.d.ts"
-      ],
-      "inertia-helpers": [
-        "./dist/js/inertia-helpers/index.d.ts"
-      ],
-      "astro": [
-        "./dist/js/astro.d.ts"
-      ],
-      "sveltekit": [
-        "./dist/js/sveltekit.d.ts"
-      ],
-      "nuxt": [
-        "./dist/js/nuxt.d.ts"
-      ],
-      "inertia": [
-        "./dist/js/inertia-types.d.ts"
-      ],
-      "virtual": [
-        "./dist/js/virtual.d.ts"
-      ]
-    }
-  },
-  "files": [
-    "dist/js/**/*",
-    "tools/clean.js"
-  ],
-  "bin": {
-    "clean-orphaned-assets": "tools/clean.js",
-    "litestar-vite-typegen": "dist/js/typegen-cli.js"
-  },
   "scripts": {
     "build": "npm run build-plugin && npm run build-helpers && npm run build-inertia-helpers && npm run build-integrations && npm run build-static-pages",
     "build-static-pages": "vite build --config src/js/src/server-starting/vite.config.ts && mv src/py/litestar_vite/static/index.html src/py/litestar_vite/static/server-starting.html",
@@ -94,16 +94,23 @@
     "build-helpers": "rm -rf dist/js/helpers && tsc --project src/js/tsconfig.helpers.json",
     "build-inertia-helpers": "rm -rf dist/js/inertia-helpers && tsc --project src/js/tsconfig.inertia-helpers.json",
     "build-integrations": "esbuild src/js/src/astro.ts src/js/src/sveltekit.ts src/js/src/nuxt.ts src/js/src/inertia-types.ts --platform=node --format=esm --outdir=dist/js",
-    "lint": "biome check --vcs-enabled=false src/js/src src/js/tests",
+    "lint": "oxlint src/js/src src/js/tests",
+    "fmt": "oxfmt src/js/src src/js/tests",
+    "fmt:check": "oxfmt --check src/js/src src/js/tests",
     "test": "vitest --config ./src/js/vitest.config.ts run"
   },
+  "dependencies": {
+    "picocolors": "^1.1.1",
+    "vite-plugin-full-reload": "^1.2.0"
+  },
   "devDependencies": {
-    "@biomejs/biome": "2.0.6",
     "@tailwindcss/vite": "^4.0.0",
     "@types/node": "^22.15.3",
     "@vitest/coverage-v8": "^3.2.4",
     "esbuild": "0.27.4",
     "happy-dom": "^20.0.2",
+    "oxfmt": "^0.43.0",
+    "oxlint": "^1.58.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.8.3",
     "vite": "^8.0.0",
@@ -115,9 +122,5 @@
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
-  },
-  "dependencies": {
-    "picocolors": "^1.1.1",
-    "vite-plugin-full-reload": "^1.2.0"
   }
 }
