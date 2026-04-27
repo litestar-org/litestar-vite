@@ -2,14 +2,11 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 import httpx
-from anyio import to_thread
-from anyio.from_thread import start_blocking_portal
 from litestar.plugins import InitPluginProtocol
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-    from anyio.from_thread import BlockingPortal
     from litestar import Litestar
     from litestar.config.app import AppConfig
 
@@ -25,19 +22,12 @@ class InertiaPlugin(InitPluginProtocol):
     - InertiaRequest and InertiaResponse as default classes
     - Type encoders for StaticProp and DeferredProp
 
-    BlockingPortal Behavior:
-        The plugin creates a BlockingPortal during its lifespan for executing
-        async DeferredProp callbacks from synchronous type encoders. This is
-        necessary because Litestar's JSON serialization happens synchronously,
-        but DeferredProp may contain async callables.
-
-        The portal is shared across all requests during the app's lifetime.
-        Type encoders for StaticProp and DeferredProp use ``val.render()``
-        which may access this portal for async resolution.
-
-        If you're using DeferredProp outside of InertiaResponse (e.g., in
-        custom serialization), ensure the app lifespan is active and the
-        portal is available via ``inertia_plugin.portal``.
+    Async Prop Resolution:
+        Async ``optional()``/``defer()``/``lazy()``/``once()`` callbacks are
+        pre-resolved by ``InertiaResponse`` on the request event loop before
+        the body is serialized. This guarantees they share the loop with
+        request-scoped async resources (asyncpg/aiosqlite/sqlspec sessions),
+        so callbacks can safely use those resources.
 
     SSR Client Pooling:
         When SSR is enabled, the plugin maintains a shared ``httpx.AsyncClient``
@@ -59,21 +49,16 @@ class InertiaPlugin(InitPluginProtocol):
         )
     """
 
-    __slots__ = ("_portal", "_ssr_client", "config")
+    __slots__ = ("_ssr_client", "config")
 
     def __init__(self, config: "InertiaConfig") -> "None":
         """Initialize the plugin with Inertia configuration."""
         self.config = config
         self._ssr_client: "httpx.AsyncClient | None" = None
-        self._portal: "BlockingPortal | None" = None  # pyright: ignore[reportInvalidTypeForm]
 
     @asynccontextmanager
     async def lifespan(self, app: "Litestar") -> "AsyncGenerator[None, None]":
-        """Lifespan to ensure the event loop is available.
-
-        Initializes:
-        - BlockingPortal for sync-to-async DeferredProp resolution
-        - Shared httpx.AsyncClient for SSR requests (connection pooling)
+        """Lifespan to manage the shared SSR HTTP client.
 
         Args:
             app: The :class:`Litestar <litestar.app.Litestar>` instance.
@@ -91,34 +76,11 @@ class InertiaPlugin(InitPluginProtocol):
             limits=limits,
             timeout=httpx.Timeout(10.0),  # Default timeout, can be overridden per-request
         )
-
-        portal_context_manager = start_blocking_portal()
         try:
-            # anyio.from_thread.start_blocking_portal() must be entered from sync code.
-            # In async lifespan startup, enter/exit it through a worker thread so the
-            # shared portal still runs on its own dedicated thread.
-            self._portal = await to_thread.run_sync(portal_context_manager.__enter__)
             yield
         finally:
-            self._portal = None
-            await to_thread.run_sync(lambda: portal_context_manager.__exit__(None, None, None))
             await self._ssr_client.aclose()
             self._ssr_client = None  # Reset to signal client is closed
-
-    @property
-    def portal(self) -> "BlockingPortal":
-        """Return the blocking portal used for deferred prop resolution.
-
-        Returns:
-            The BlockingPortal instance.
-
-        Raises:
-            RuntimeError: If accessed before app lifespan is active.
-        """
-        if self._portal is None:
-            msg = "BlockingPortal not available. Ensure app lifespan is active."
-            raise RuntimeError(msg)
-        return self._portal
 
     @property
     def ssr_client(self) -> "httpx.AsyncClient | None":
@@ -188,12 +150,12 @@ class InertiaPlugin(InitPluginProtocol):
         app_config.response_class = InertiaResponse
         app_config.middleware.append(InertiaMiddleware)
         app_config.signature_types.extend([InertiaRequest, InertiaResponse, InertiaBack, StaticProp, DeferredProp])
-        # Type encoders for prop resolution
-        # DeferredProp encoder passes the plugin's portal for efficient async resolution
-        # This avoids creating a new BlockingPortal per DeferredProp (~5-10ms savings)
+        # Type encoders for prop resolution. Async DeferredProp callbacks are
+        # pre-resolved on the request loop by InertiaResponse before the encoder
+        # ever runs, so render() short-circuits at the cached _result.
         app_config.type_encoders = {
             StaticProp: lambda val: val.render(),
-            DeferredProp: lambda val: val.render(portal=getattr(self, "_portal", None)),
+            DeferredProp: lambda val: val.render(),
             **(app_config.type_encoders or {}),
         }
         app_config.type_decoders = [

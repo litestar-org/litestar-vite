@@ -35,7 +35,6 @@ def test_get_shared_props_includes_csrf_token_from_scope() -> None:
     inertia_plugin = MagicMock()
     inertia_plugin.config.extra_static_page_props = {}
     inertia_plugin.config.extra_session_page_props = []
-    inertia_plugin.portal = None
     request.app.plugins.get.return_value = inertia_plugin
 
     shared_props = get_shared_props(request)

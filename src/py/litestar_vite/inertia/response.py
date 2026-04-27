@@ -28,12 +28,14 @@ from litestar_vite.inertia.helpers import (
     extract_once_props,
     extract_pagination_scroll_props,
     get_shared_props,
+    has_unresolved_async_props,
     is_merge_prop,
     is_or_contains_lazy_prop,
     is_or_contains_special_prop,
     is_pagination_container,
     lazy_render,
     pagination_to_dict,
+    resolve_async_props,
     should_render,
 )
 from litestar_vite.inertia.plugin import InertiaPlugin
@@ -42,7 +44,6 @@ from litestar_vite.inertia.types import InertiaHeaderType, PageProps, ScrollProp
 from litestar_vite.plugin import VitePlugin
 
 if TYPE_CHECKING:
-    from anyio.from_thread import BlockingPortal
     from litestar.background_tasks import BackgroundTask, BackgroundTasks
     from litestar.connection.base import AuthT, StateT, UserT
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
@@ -144,36 +145,6 @@ def _parse_inertia_ssr_payload(payload: Any, url: str) -> _InertiaSSRResult:
         raise ImproperlyConfiguredException(msg)
 
     return _InertiaSSRResult(head=cast("list[str]", head_list), body=body)
-
-
-def _render_inertia_ssr_sync(
-    page: dict[str, Any],
-    url: str,
-    *,
-    timeout_seconds: float,
-    portal: "BlockingPortal",
-    client: "httpx.AsyncClient | None" = None,
-) -> _InertiaSSRResult:
-    """Call the Inertia SSR server and return head/body HTML.
-
-    The official Inertia SSR server listens on ``/render`` and expects the raw
-    page object as JSON. It returns JSON with at least a ``body`` field, and
-    optionally ``head`` (list of strings).
-
-    This function uses the application's :class:`~anyio.from_thread.BlockingPortal`
-    to call the async HTTP client without blocking the event loop thread.
-
-    Args:
-        page: The page object to send to the SSR server.
-        url: The SSR server URL.
-        timeout_seconds: Request timeout in seconds.
-        portal: BlockingPortal for sync-to-async bridging.
-        client: Optional shared httpx.AsyncClient for connection pooling.
-
-    Returns:
-        An _InertiaSSRResult with head and body HTML.
-    """
-    return portal.call(_render_inertia_ssr, page, url, timeout_seconds, client)
 
 
 async def _render_inertia_ssr(
@@ -382,6 +353,12 @@ class InertiaResponse(Response[T]):
         self.encrypt_history = encrypt_history
         self.clear_history = clear_history
         self.scroll_props = scroll_props
+        # Set by the async pre-pass in _AsyncInertiaASGIResponse before
+        # to_asgi_response() re-enters synchronously. ``_async_prepass_done``
+        # tells the sync re-entry to skip the deferral check; ``_cached_ssr_payload``
+        # is the awaited SSR result so _render_spa doesn't need to call SSR.
+        self._async_prepass_done: bool = False
+        self._cached_ssr_payload: "_InertiaSSRResult | None" = None
 
     def create_template_context(
         self,
@@ -454,9 +431,7 @@ class InertiaResponse(Response[T]):
             )
 
         if is_or_contains_lazy_prop(content) or is_or_contains_special_prop(content):
-            filtered_content: Any = lazy_render(
-                cast("Any", content), partial_data, inertia_plugin.portal, partial_except, except_once_props
-            )
+            filtered_content: Any = lazy_render(cast("Any", content), partial_data, partial_except, except_once_props)
             if filtered_content is not None:
                 route_content = filtered_content
         elif should_render(content, partial_data, partial_except, except_once_props):
@@ -583,26 +558,21 @@ class InertiaResponse(Response[T]):
         return csrf_token or None
 
     def _render_spa(
-        self,
-        request: "Request[UserT, AuthT, StateT]",
-        page_props: "PageProps[T]",
-        vite_plugin: "VitePlugin",
-        inertia_plugin: "InertiaPlugin",
+        self, request: "Request[UserT, AuthT, StateT]", page_props: "PageProps[T]", vite_plugin: "VitePlugin"
     ) -> bytes:
         """Render the page using SPA mode (HTML transformation instead of templates).
 
         This method uses AppHandler to get the base HTML and injects
         the page props as a data-page attribute on the app element.
 
-        Uses get_html_sync() for both dev and production modes to avoid
-        deadlocks when calling async code from sync context within the
-        same event loop thread.
+        SSR (when configured) is fetched on the request's event loop by the
+        async pre-pass in :class:`_AsyncInertiaASGIResponse` and stored on
+        ``self._cached_ssr_payload``; this method just consumes it.
 
         Args:
             request: The request object.
             page_props: The page props to render.
             vite_plugin: The Vite plugin instance (for SPA handler access).
-            inertia_plugin: The Inertia plugin instance (for config access).
 
         Returns:
             The rendered HTML as bytes.
@@ -620,15 +590,8 @@ class InertiaResponse(Response[T]):
 
         page_dict = page_props.to_dict()
 
-        ssr_config = inertia_plugin.config.ssr_config
-        if ssr_config is not None:
-            ssr_payload = _render_inertia_ssr_sync(
-                page_dict,
-                ssr_config.url,
-                timeout_seconds=ssr_config.timeout,
-                portal=inertia_plugin.portal,
-                client=inertia_plugin.ssr_client,
-            )
+        if self._cached_ssr_payload is not None:
+            ssr_payload = self._cached_ssr_payload
 
             csrf_token = self._get_csrf_token(request)
             html = spa_handler.get_html_sync(csrf_token=csrf_token)
@@ -649,6 +612,28 @@ class InertiaResponse(Response[T]):
         html = spa_handler.get_html_sync(page_data=page_dict, csrf_token=csrf_token)
 
         return html.encode(self.encoding)
+
+    def _will_render_ssr(self, request: "Request[Any, Any, Any]", inertia_info: "_InertiaRequestInfo") -> bool:
+        """Predict whether this response will hit the SSR HTTP server.
+
+        Used by the deferral gate in :meth:`to_asgi_response` to decide
+        whether async pre-pass is required. Conditions: Inertia is enabled,
+        the request is NOT an Inertia JSON request, the plugin has SSR config,
+        and the Vite plugin is in hybrid mode (the only mode that calls SSR).
+
+        Returns:
+            ``True`` if this response will perform an SSR HTTP fetch.
+        """
+        if not inertia_info.inertia_enabled or inertia_info.is_inertia:
+            return False
+        try:
+            inertia_plugin = request.app.plugins.get(InertiaPlugin)
+            vite_plugin = request.app.plugins.get(VitePlugin)
+        except KeyError:
+            return False
+        if inertia_plugin.config.ssr_config is None:
+            return False
+        return vite_plugin.config.mode == "hybrid"
 
     def _determine_media_type(self, media_type: "MediaType | str | None") -> "MediaType | str":
         """Determine the media type for the response.
@@ -685,48 +670,48 @@ class InertiaResponse(Response[T]):
     ) -> "ASGIResponse":
         inertia_info = _get_inertia_request_info(cast("Request[Any, Any, Any]", request))
 
-        # If any in-scope prop holds an unevaluated async callback, defer the
-        # entire build to async dispatch time so the callback runs on the
-        # request loop (rather than the BlockingPortal's foreign loop, which
-        # breaks request-scoped async resources like asyncpg/aiosqlite). The
-        # deferred wrapper awaits ``aresolve_props`` first, then re-enters
-        # this method (with all in-scope props now ``_evaluated``) to produce
-        # the real ASGIResponse. Filtering by ``should_render`` keeps lazy
-        # props from triggering deferral on initial loads.
-        from litestar_vite.inertia._aresolve import has_unresolved_async_callback
-
-        partial_data_for_check = (
-            inertia_info.partial_keys if inertia_info.is_partial_render and inertia_info.partial_keys else None
-        )
-        partial_except_for_check = (
-            inertia_info.partial_except_keys
-            if inertia_info.is_partial_render and inertia_info.partial_except_keys
-            else None
-        )
-        if has_unresolved_async_callback(
-            self.content,
-            partial_data=partial_data_for_check,
-            partial_except=partial_except_for_check,
-            except_once_props=inertia_info.except_once_keys or None,
-        ):
-            return cast(
-                "ASGIResponse",
-                _DeferredInertiaASGIResponse(
-                    response=self,
-                    app=app,
-                    request=cast("Request[Any, Any, Any]", request),
-                    kwargs={
-                        "background": background,
-                        "cookies": cookies,
-                        "encoded_headers": encoded_headers,
-                        "headers": headers,
-                        "is_head_response": is_head_response,
-                        "media_type": media_type,
-                        "status_code": status_code,
-                        "type_encoders": type_encoders,
-                    },
-                ),
+        # First entry: if any async work is required (unresolved async prop
+        # callbacks, or SSR HTTP), hand off to _AsyncInertiaASGIResponse.
+        # Its __call__ runs on the request task — same event loop as DI-injected
+        # async resources — so we await everything there and re-enter this
+        # method synchronously with all async results cached on ``self``.
+        # Filtering by ``should_render`` keeps lazy props from triggering
+        # deferral on initial loads, preserving the laziness contract.
+        if not self._async_prepass_done:
+            partial_data_for_check = (
+                inertia_info.partial_keys if inertia_info.is_partial_render and inertia_info.partial_keys else None
             )
+            partial_except_for_check = (
+                inertia_info.partial_except_keys
+                if inertia_info.is_partial_render and inertia_info.partial_except_keys
+                else None
+            )
+            needs_props_resolve = has_unresolved_async_props(
+                self.content,
+                partial_data=partial_data_for_check,
+                partial_except=partial_except_for_check,
+                except_once_props=inertia_info.except_once_keys or None,
+            )
+            needs_ssr = self._will_render_ssr(cast("Request[Any, Any, Any]", request), inertia_info)
+            if needs_props_resolve or needs_ssr:
+                return cast(
+                    "ASGIResponse",
+                    _AsyncInertiaASGIResponse(
+                        response=self,
+                        app=app,
+                        request=cast("Request[Any, Any, Any]", request),
+                        kwargs={
+                            "background": background,
+                            "cookies": cookies,
+                            "encoded_headers": encoded_headers,
+                            "headers": headers,
+                            "is_head_response": is_head_response,
+                            "media_type": media_type,
+                            "status_code": status_code,
+                            "type_encoders": type_encoders,
+                        },
+                    ),
+                )
         headers = self.headers if headers is None else ({**headers, **self.headers} if self.headers else headers)
         cookies = self.cookies if cookies is None else itertools.chain(self.cookies, cookies)
         type_encoders = (
@@ -792,7 +777,7 @@ class InertiaResponse(Response[T]):
         resolved_media_type = self._determine_media_type(media_type or MediaType.HTML)
 
         if vite_plugin.config.mode == "hybrid":
-            body = self._render_spa(request, page_props, vite_plugin, inertia_plugin)
+            body = self._render_spa(request, page_props, vite_plugin)
         else:
             body = self._render_template(request, page_props, type_encoders, inertia_plugin)
 
@@ -809,27 +794,31 @@ class InertiaResponse(Response[T]):
         )
 
 
-class _DeferredInertiaASGIResponse:
-    """Deferred ASGI response that pre-resolves async Inertia prop callbacks
-    on the request loop before the body is serialized.
+class _AsyncInertiaASGIResponse:
+    """Async ASGI response that performs all async work for an InertiaResponse
+    on the request event loop before the body is serialized.
 
-    :meth:`InertiaResponse.to_asgi_response` returns this object instead of
-    a real :class:`ASGIResponse` whenever the response content holds at least
-    one unevaluated async-callback prop. Litestar treats the result of
-    ``to_asgi_response`` as an ASGI app (it just awaits ``__call__``), so
-    deferring works without any framework cooperation.
+    :meth:`InertiaResponse.to_asgi_response` returns this object instead of a
+    real :class:`ASGIResponse` whenever the response needs async work — either
+    unevaluated async prop callbacks, or an SSR HTTP fetch, or both. Litestar
+    treats the result of ``to_asgi_response`` as an ASGI app (it just awaits
+    ``__call__``), so this redirection works without any framework cooperation.
 
-    Inside ``__call__`` (which IS async and runs on the same task as the
-    route handler), we ``await aresolve_props`` so each prop's
-    ``_evaluated``/``_result`` cache is populated, then re-enter
-    ``InertiaResponse.to_asgi_response`` — this time with no unresolved
-    async callbacks left, so it builds the real ASGIResponse synchronously
-    and we dispatch it.
+    Inside ``__call__`` (which IS async and runs on the same task as the route
+    handler), we:
 
-    This is the suggested "Option B" from
-    https://github.com/litestar-org/litestar-vite/issues/244 — pre-resolution
-    happens at response-invoke time, eliminating any dependency on Litestar's
-    ``after_request`` last-wins layering.
+    1. ``await resolve_async_props`` so each prop's ``_evaluated``/``_result``
+       cache is populated on the request loop — eliminating cross-loop errors
+       for request-scoped async resources (asyncpg/aiosqlite/sqlspec sessions).
+    2. ``await _render_inertia_ssr`` (if SSR is configured for this response)
+       and stash the payload on the response so :meth:`InertiaResponse._render_spa`
+       picks it up synchronously.
+
+    Then we re-enter ``InertiaResponse.to_asgi_response`` with the
+    ``_async_prepass_done`` flag set, so it skips this branch and builds the
+    real :class:`ASGIResponse` synchronously, which we dispatch.
+
+    Background: https://github.com/litestar-org/litestar-vite/issues/244
     """
 
     __slots__ = ("_app", "_kwargs", "_request", "_response")
@@ -848,19 +837,45 @@ class _DeferredInertiaASGIResponse:
         self._kwargs = kwargs
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
-        from litestar_vite.inertia._aresolve import aresolve_props
-
         info = _get_inertia_request_info(self._request)
         partial_data = info.partial_keys if info.is_partial_render and info.partial_keys else None
         partial_except = info.partial_except_keys if info.is_partial_render and info.partial_except_keys else None
-        await aresolve_props(
+
+        await resolve_async_props(
             self._response.content,
             partial_data=partial_data,
             partial_except=partial_except,
             except_once_props=info.except_once_keys or None,
         )
+
+        if self._response._will_render_ssr(self._request, info):  # pyright: ignore[reportPrivateUsage]
+            await self._prefetch_ssr(info, partial_data, partial_except)
+
+        self._response._async_prepass_done = True  # pyright: ignore[reportPrivateUsage]
         asgi_response = self._response.to_asgi_response(self._app, self._request, **self._kwargs)
         await asgi_response(scope, receive, send)
+
+    async def _prefetch_ssr(
+        self, info: "_InertiaRequestInfo", partial_data: "set[str] | None", partial_except: "set[str] | None"
+    ) -> None:
+        """Build the page dict on this loop and fetch SSR HTML."""
+        vite_plugin = self._request.app.plugins.get(VitePlugin)
+        inertia_plugin = self._request.app.plugins.get(InertiaPlugin)
+        ssr_config = inertia_plugin.config.ssr_config
+        if ssr_config is None:
+            return
+        page_props = self._response._build_page_props(  # pyright: ignore[reportPrivateUsage]
+            self._request,
+            partial_data,
+            partial_except,
+            info.except_once_keys,
+            info.reset_keys,
+            vite_plugin,
+            inertia_plugin,
+        )
+        self._response._cached_ssr_payload = await _render_inertia_ssr(  # pyright: ignore[reportPrivateUsage]
+            page_props.to_dict(), ssr_config.url, ssr_config.timeout, inertia_plugin.ssr_client
+        )
 
 
 class InertiaExternalRedirect(Response[Any]):

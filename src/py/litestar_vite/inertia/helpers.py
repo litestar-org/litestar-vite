@@ -1,3 +1,4 @@
+import inspect
 from collections import defaultdict
 from collections.abc import Callable, Coroutine, Iterable, Mapping
 from dataclasses import dataclass
@@ -7,14 +8,19 @@ from litestar.exceptions import ImproperlyConfiguredException
 from litestar.utils.empty import value_or_default
 from litestar.utils.scope.state import ScopeState
 
-from litestar_vite.inertia._async_mixin import AsyncRenderMixin
 from litestar_vite.inertia.types import ScrollPropsConfig
 
 if TYPE_CHECKING:
-    from anyio.from_thread import BlockingPortal
     from litestar.connection import ASGIConnection
 
     from litestar_vite.inertia.plugin import InertiaPlugin
+
+
+_ASYNC_RENDER_DIRECT_CALL_MSG = (
+    "Async prop callback is unresolved. Async callbacks are pre-resolved on the "
+    "request loop by InertiaResponse during ASGI dispatch — call render() only "
+    "after the response pipeline has had a chance to await resolve_async()."
+)
 T = TypeVar("T")
 PropKeyT = TypeVar("PropKeyT", bound=str)
 StaticT = TypeVar("StaticT", bound=object)
@@ -585,11 +591,11 @@ class StaticProp(Generic[PropKeyT, StaticT]):
     def key(self) -> "PropKeyT":
         return self._key
 
-    def render(self, portal: "BlockingPortal | None" = None) -> "StaticT":  # pyright: ignore
+    def render(self) -> "StaticT":
         return self._result
 
 
-class DeferredProp(AsyncRenderMixin, Generic[PropKeyT, T]):
+class DeferredProp(Generic[PropKeyT, T]):
     """A wrapper for deferred property evaluation."""
 
     def __init__(
@@ -645,24 +651,35 @@ class DeferredProp(AsyncRenderMixin, Generic[PropKeyT, T]):
         """
         return DeferredProp[PropKeyT, T](key=self._key, value=self._value, group=self._group, is_once=True)
 
-    def render(self, portal: "BlockingPortal | None" = None) -> "T | None":
+    def render(self) -> "T | None":
         if self._evaluated:
             return self._result
         if self._value is None or not callable(self._value):
-            self._result = self._value
+            self._result = cast("T | None", self._value)
             self._evaluated = True
             return self._result
-        if not self._is_awaitable(cast("Callable[..., T]", self._value)):
-            self._result = cast("T", self._value())
-            self._evaluated = True
-            return self._result
-        with self.with_portal(portal) as p:
-            self._result = p.call(cast("Callable[..., T]", self._value))
-            self._evaluated = True
-            return self._result
+        if inspect.iscoroutinefunction(self._value):
+            raise RuntimeError(_ASYNC_RENDER_DIRECT_CALL_MSG)
+        self._result = cast("T", self._value())
+        self._evaluated = True
+        return self._result
+
+    async def resolve_async(self) -> None:
+        """Pre-evaluate an async callback on the current event loop.
+
+        No-op if already evaluated or if the callback is sync (``render()``
+        handles those inline). Mutates ``_result``/``_evaluated`` in place so
+        the subsequent sync :meth:`render` short-circuits at the cache.
+        """
+        if self._evaluated:
+            return
+        if self._value is None or not inspect.iscoroutinefunction(self._value):
+            return
+        self._result = cast("T", await self._value())
+        self._evaluated = True
 
 
-class OnceProp(AsyncRenderMixin, Generic[PropKeyT, T]):
+class OnceProp(Generic[PropKeyT, T]):
     """A wrapper for once-only property evaluation (v2.2.20+ feature).
 
     Once props are resolved once and cached client-side. They won't be
@@ -693,11 +710,8 @@ class OnceProp(AsyncRenderMixin, Generic[PropKeyT, T]):
     def key(self) -> "PropKeyT":
         return self._key
 
-    def render(self, portal: "BlockingPortal | None" = None) -> "T | None":
+    def render(self) -> "T | None":
         """Render the prop value, caching the result.
-
-        Args:
-            portal: Optional blocking portal for async callbacks.
 
         Returns:
             The rendered value.
@@ -705,20 +719,29 @@ class OnceProp(AsyncRenderMixin, Generic[PropKeyT, T]):
         if self._evaluated:
             return self._result
         if not callable(self._value):
-            self._result = self._value
+            self._result = cast("T", self._value)
             self._evaluated = True
             return self._result
-        if not self._is_awaitable(cast("Callable[..., T]", self._value)):
-            self._result = cast("T", self._value())
-            self._evaluated = True
-            return self._result
-        with self.with_portal(portal) as p:
-            self._result = p.call(cast("Callable[..., T]", self._value))
-            self._evaluated = True
-            return self._result
+        if inspect.iscoroutinefunction(self._value):
+            raise RuntimeError(_ASYNC_RENDER_DIRECT_CALL_MSG)
+        self._result = cast("T", self._value())
+        self._evaluated = True
+        return self._result
+
+    async def resolve_async(self) -> None:
+        """Pre-evaluate an async callback on the current event loop.
+
+        No-op if already evaluated or if the value is not an async callback.
+        """
+        if self._evaluated:
+            return
+        if not callable(self._value) or not inspect.iscoroutinefunction(self._value):
+            return
+        self._result = cast("T", await self._value())
+        self._evaluated = True
 
 
-class OptionalProp(AsyncRenderMixin, Generic[PropKeyT, T]):
+class OptionalProp(Generic[PropKeyT, T]):
     """A wrapper for optional property evaluation (v2 feature).
 
     Optional props are NEVER included in initial page loads or standard
@@ -748,25 +771,31 @@ class OptionalProp(AsyncRenderMixin, Generic[PropKeyT, T]):
     def key(self) -> "PropKeyT":
         return self._key
 
-    def render(self, portal: "BlockingPortal | None" = None) -> "T | None":
+    def render(self) -> "T | None":
         """Render the prop value, caching the result.
-
-        Args:
-            portal: Optional blocking portal for async callbacks.
 
         Returns:
             The rendered value.
         """
         if self._evaluated:
             return self._result
-        if not self._is_awaitable(cast("Callable[..., T]", self._callback)):
-            self._result = cast("T", self._callback())
-            self._evaluated = True
-            return self._result
-        with self.with_portal(portal) as p:
-            self._result = p.call(cast("Callable[..., T]", self._callback))
-            self._evaluated = True
-            return self._result
+        if inspect.iscoroutinefunction(self._callback):
+            raise RuntimeError(_ASYNC_RENDER_DIRECT_CALL_MSG)
+        self._result = cast("T", self._callback())
+        self._evaluated = True
+        return self._result
+
+    async def resolve_async(self) -> None:
+        """Pre-evaluate an async callback on the current event loop.
+
+        No-op if already evaluated or if the callback is sync.
+        """
+        if self._evaluated:
+            return
+        if not inspect.iscoroutinefunction(self._callback):
+            return
+        self._result = cast("T", await self._callback())
+        self._evaluated = True
 
 
 class AlwaysProp(Generic[PropKeyT, T]):
@@ -801,11 +830,8 @@ class AlwaysProp(Generic[PropKeyT, T]):
     def value(self) -> "T":
         return self._value
 
-    def render(self, portal: "BlockingPortal | None" = None) -> "T":  # pyright: ignore
+    def render(self) -> "T":
         """Return the prop value.
-
-        Args:
-            portal: Unused, included for interface consistency.
 
         Returns:
             The prop value.
@@ -1105,7 +1131,6 @@ def is_or_contains_special_prop(value: "Any") -> "bool":
 def lazy_render(  # noqa: PLR0911
     value: "T",
     partial_data: "set[str] | None" = None,
-    portal: "BlockingPortal | None" = None,
     partial_except: "set[str] | None" = None,
     except_once_props: "set[str] | None" = None,
 ) -> "T":
@@ -1113,10 +1138,12 @@ def lazy_render(  # noqa: PLR0911
 
     For v2 protocol, partial_except takes precedence over partial_data.
 
+    Async-callback props must be pre-resolved by :func:`resolve_async_props`
+    before this function runs; otherwise their :meth:`render` will raise.
+
     Args:
         value: The value to filter
         partial_data: Keys to include (X-Inertia-Partial-Data)
-        portal: Optional portal to use for async rendering
         partial_except: Keys to exclude (X-Inertia-Partial-Except, v2)
         except_once_props: Cached once-prop keys to omit when possible.
 
@@ -1129,7 +1156,7 @@ def lazy_render(  # noqa: PLR0911
         return cast(
             "T",
             {
-                k: lazy_render(v, partial_data, portal, partial_except, except_once_props)
+                k: lazy_render(v, partial_data, partial_except, except_once_props)
                 for k, v in cast("Mapping[str, Any]", value).items()
                 if should_render(v, partial_data, partial_except, except_once_props, key=k)
             },
@@ -1139,7 +1166,7 @@ def lazy_render(  # noqa: PLR0911
         return cast(
             "T",
             [
-                lazy_render(v, partial_data, portal, partial_except, except_once_props)
+                lazy_render(v, partial_data, partial_except, except_once_props)
                 for v in cast("Iterable[Any]", value)
                 if should_render(v, partial_data, partial_except, except_once_props)
             ],
@@ -1149,7 +1176,7 @@ def lazy_render(  # noqa: PLR0911
         return cast(
             "T",
             tuple(
-                lazy_render(v, partial_data, portal, partial_except, except_once_props)
+                lazy_render(v, partial_data, partial_except, except_once_props)
                 for v in cast("Iterable[Any]", value)
                 if should_render(v, partial_data, partial_except, except_once_props)
             ),
@@ -1157,18 +1184,123 @@ def lazy_render(  # noqa: PLR0911
 
     # Handle special prop types that need rendering
     if is_lazy_prop(value) and should_render(value, partial_data, partial_except, except_once_props):
-        return cast("T", value.render(portal))
+        return cast("T", value.render())
 
     if is_once_prop(value) and should_render(value, partial_data, partial_except, except_once_props):
-        return cast("T", value.render(portal))
+        return cast("T", value.render())
 
     if is_optional_prop(value) and should_render(value, partial_data, partial_except, except_once_props):
-        return cast("T", value.render(portal))
+        return cast("T", value.render())
 
     if is_always_prop(value):
-        return cast("T", value.render(portal))
+        return cast("T", value.render())
 
     return cast("T", value)
+
+
+def has_unresolved_async_props(  # noqa: PLR0911
+    value: "Any",
+    *,
+    partial_data: "set[str] | None" = None,
+    partial_except: "set[str] | None" = None,
+    except_once_props: "set[str] | None" = None,
+    _key: "str | None" = None,
+) -> bool:
+    """Return ``True`` if ``value`` (recursively) contains a prop that will be
+    rendered for this request AND whose async callback hasn't been evaluated yet.
+
+    Mirrors :func:`should_render` filtering so out-of-scope props (an
+    ``optional()`` on a full page load, a ``defer()`` not in ``partial_data``)
+    don't count — preserving the laziness contract and preventing infinite
+    re-deferral when ``InertiaResponse.to_asgi_response`` re-enters after
+    async resolution mutates the prop in place.
+    """
+    if not should_render(value, partial_data, partial_except, except_once_props, key=_key):
+        return False
+    if is_optional_prop(value):
+        return not value._evaluated and inspect.iscoroutinefunction(value._callback)  # pyright: ignore[reportPrivateUsage]
+    if is_deferred_prop(value):
+        cb = value._value  # pyright: ignore[reportPrivateUsage]
+        return not value._evaluated and cb is not None and inspect.iscoroutinefunction(cb)  # pyright: ignore[reportPrivateUsage]
+    if is_once_prop(value):
+        cb = value._value  # pyright: ignore[reportPrivateUsage]
+        return not value._evaluated and callable(cb) and inspect.iscoroutinefunction(cb)  # pyright: ignore[reportPrivateUsage]
+    if isinstance(value, str):
+        return False
+    if isinstance(value, Mapping):
+        mapping = cast("Mapping[str, Any]", value)
+        return any(
+            has_unresolved_async_props(
+                v, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props, _key=k
+            )
+            for k, v in mapping.items()
+        )
+    if isinstance(value, (list, tuple)):
+        sequence = cast("Iterable[Any]", value)
+        return any(
+            has_unresolved_async_props(
+                v, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
+            )
+            for v in sequence
+        )
+    return False
+
+
+async def resolve_async_props(
+    value: "Any",
+    *,
+    partial_data: "set[str] | None" = None,
+    partial_except: "set[str] | None" = None,
+    except_once_props: "set[str] | None" = None,
+) -> None:
+    """Walk ``value`` and ``await`` async prop callbacks on the current loop.
+
+    Mirrors the filter logic of :func:`lazy_render` so we only evaluate props
+    that will actually be rendered for this request — preserving the laziness
+    contract of ``defer()``/``optional()`` on full page loads.
+
+    Mutates :class:`DeferredProp`/:class:`OnceProp`/:class:`OptionalProp`
+    instances in place (see each class's :meth:`resolve_async`). Sync callbacks
+    and already-evaluated props are left untouched.
+
+    Args:
+        value: The response content (typically a ``dict``).
+        partial_data: ``X-Inertia-Partial-Data`` keys, when present.
+        partial_except: ``X-Inertia-Partial-Except`` keys (v2 protocol).
+        except_once_props: Once-prop keys cached client-side.
+    """
+    if isinstance(value, Mapping):
+        mapping = cast("Mapping[str, Any]", value)
+        for k, v in mapping.items():
+            if not should_render(v, partial_data, partial_except, except_once_props, key=k):
+                continue
+            await _resolve_one(v, partial_data, partial_except, except_once_props)
+        return
+
+    if isinstance(value, (list, tuple)):
+        sequence = cast("Iterable[Any]", value)
+        for v in sequence:
+            if not should_render(v, partial_data, partial_except, except_once_props):
+                continue
+            await _resolve_one(v, partial_data, partial_except, except_once_props)
+        return
+
+    await _resolve_one(value, partial_data, partial_except, except_once_props)
+
+
+async def _resolve_one(
+    value: "Any",
+    partial_data: "set[str] | None",
+    partial_except: "set[str] | None",
+    except_once_props: "set[str] | None",
+) -> None:
+    if is_optional_prop(value) or is_deferred_prop(value) or is_once_prop(value):
+        await value.resolve_async()
+        return
+    if isinstance(value, (Mapping, list, tuple)):
+        await resolve_async_props(
+            value, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
+        )
 
 
 def get_shared_props(
@@ -1213,9 +1345,11 @@ def get_shared_props(
                 once_props_keys.append(key)
             if not should_render(value, partial_data, partial_except, except_once_props, key=key):
                 continue
-            # Render all special prop types
+            # Render all special prop types. Async callbacks must already be
+            # pre-resolved by InertiaResponse's async pre-pass; render() raises
+            # otherwise.
             if is_special_prop(value):
-                props[key] = value.render(inertia_plugin.portal)
+                props[key] = value.render()
             else:
                 props[key] = value
 
