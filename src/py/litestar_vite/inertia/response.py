@@ -684,6 +684,49 @@ class InertiaResponse(Response[T]):
         type_encoders: "TypeEncodersMap | None" = None,
     ) -> "ASGIResponse":
         inertia_info = _get_inertia_request_info(cast("Request[Any, Any, Any]", request))
+
+        # If any in-scope prop holds an unevaluated async callback, defer the
+        # entire build to async dispatch time so the callback runs on the
+        # request loop (rather than the BlockingPortal's foreign loop, which
+        # breaks request-scoped async resources like asyncpg/aiosqlite). The
+        # deferred wrapper awaits ``aresolve_props`` first, then re-enters
+        # this method (with all in-scope props now ``_evaluated``) to produce
+        # the real ASGIResponse. Filtering by ``should_render`` keeps lazy
+        # props from triggering deferral on initial loads.
+        from litestar_vite.inertia._aresolve import has_unresolved_async_callback
+
+        partial_data_for_check = (
+            inertia_info.partial_keys if inertia_info.is_partial_render and inertia_info.partial_keys else None
+        )
+        partial_except_for_check = (
+            inertia_info.partial_except_keys
+            if inertia_info.is_partial_render and inertia_info.partial_except_keys
+            else None
+        )
+        if has_unresolved_async_callback(
+            self.content,
+            partial_data=partial_data_for_check,
+            partial_except=partial_except_for_check,
+            except_once_props=inertia_info.except_once_keys or None,
+        ):
+            return cast(
+                "ASGIResponse",
+                _DeferredInertiaASGIResponse(
+                    response=self,
+                    app=app,
+                    request=cast("Request[Any, Any, Any]", request),
+                    kwargs={
+                        "background": background,
+                        "cookies": cookies,
+                        "encoded_headers": encoded_headers,
+                        "headers": headers,
+                        "is_head_response": is_head_response,
+                        "media_type": media_type,
+                        "status_code": status_code,
+                        "type_encoders": type_encoders,
+                    },
+                ),
+            )
         headers = self.headers if headers is None else ({**headers, **self.headers} if self.headers else headers)
         cookies = self.cookies if cookies is None else itertools.chain(self.cookies, cookies)
         type_encoders = (
@@ -764,6 +807,60 @@ class InertiaResponse(Response[T]):
             media_type=resolved_media_type,
             status_code=self.status_code or status_code,
         )
+
+
+class _DeferredInertiaASGIResponse:
+    """Deferred ASGI response that pre-resolves async Inertia prop callbacks
+    on the request loop before the body is serialized.
+
+    :meth:`InertiaResponse.to_asgi_response` returns this object instead of
+    a real :class:`ASGIResponse` whenever the response content holds at least
+    one unevaluated async-callback prop. Litestar treats the result of
+    ``to_asgi_response`` as an ASGI app (it just awaits ``__call__``), so
+    deferring works without any framework cooperation.
+
+    Inside ``__call__`` (which IS async and runs on the same task as the
+    route handler), we ``await aresolve_props`` so each prop's
+    ``_evaluated``/``_result`` cache is populated, then re-enter
+    ``InertiaResponse.to_asgi_response`` — this time with no unresolved
+    async callbacks left, so it builds the real ASGIResponse synchronously
+    and we dispatch it.
+
+    This is the suggested "Option B" from
+    https://github.com/litestar-org/litestar-vite/issues/244 — pre-resolution
+    happens at response-invoke time, eliminating any dependency on Litestar's
+    ``after_request`` last-wins layering.
+    """
+
+    __slots__ = ("_app", "_kwargs", "_request", "_response")
+
+    def __init__(
+        self,
+        *,
+        response: "InertiaResponse[Any]",
+        app: "Litestar | None",
+        request: "Request[Any, Any, Any]",
+        kwargs: "dict[str, Any]",
+    ) -> None:
+        self._response = response
+        self._app = app
+        self._request = request
+        self._kwargs = kwargs
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        from litestar_vite.inertia._aresolve import aresolve_props
+
+        info = _get_inertia_request_info(self._request)
+        partial_data = info.partial_keys if info.is_partial_render and info.partial_keys else None
+        partial_except = info.partial_except_keys if info.is_partial_render and info.partial_except_keys else None
+        await aresolve_props(
+            self._response.content,
+            partial_data=partial_data,
+            partial_except=partial_except,
+            except_once_props=info.except_once_keys or None,
+        )
+        asgi_response = self._response.to_asgi_response(self._app, self._request, **self._kwargs)
+        await asgi_response(scope, receive, send)
 
 
 class InertiaExternalRedirect(Response[Any]):
