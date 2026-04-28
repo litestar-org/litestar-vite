@@ -17,11 +17,11 @@
     "zod": "4.3.6"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "0.94.5",
-    "@tailwindcss/vite": "4.2.2",
+    "@hey-api/openapi-ts": "0.96.1",
+    "@tailwindcss/vite": "4.2.4",
     "litestar-vite-plugin": "file:../..",
-    "tailwindcss": "4.2.2",
+    "tailwindcss": "4.2.4",
     "typescript": "5.9.3",
-    "vite": "8.0.3"
+    "vite": "8.0.10"
   }
 }
