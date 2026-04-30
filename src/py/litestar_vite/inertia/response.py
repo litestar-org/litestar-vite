@@ -27,6 +27,7 @@ from litestar_vite.inertia.helpers import (
     extract_merge_props,
     extract_once_props,
     extract_pagination_scroll_props,
+    get_raw_shared_props,
     get_shared_props,
     has_unresolved_async_props,
     is_merge_prop,
@@ -409,6 +410,10 @@ class InertiaResponse(Response[T]):
         Returns:
             The PageProps object.
         """
+        raw_shared_props = get_raw_shared_props(request)
+        deferred_props_map: "dict[str, list[str]]" = {}
+        _merge_deferred_props(deferred_props_map, extract_deferred_props(raw_shared_props))
+
         shared_props = get_shared_props(
             request, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
         )
@@ -421,13 +426,16 @@ class InertiaResponse(Response[T]):
         route_content: Any | None = None
         route_once_props: "list[str]" = []
 
-        # v2.2+ protocol: Extract deferred props metadata before filtering
-        # This ensures metadata is preserved even when values are omitted on initial load
-        deferred_props_map: "dict[str, list[str]]" = {}
+        # v2.2+ protocol: Extract deferred props metadata before filtering.
+        # Route props override shared props with the same key, so discard any
+        # shared metadata for those keys before adding route metadata.
         if isinstance(content, Mapping):
-            deferred_props_map = extract_deferred_props(cast("dict[str, Any]", content))
+            content_mapping = cast("Mapping[str, Any]", content)
+            for key in content_mapping:
+                _discard_deferred_prop_key(deferred_props_map, str(key))
+            _merge_deferred_props(deferred_props_map, extract_deferred_props(content_mapping))
             route_once_props = extract_once_props(
-                cast("dict[str, Any]", content), partial_data=partial_data, partial_except=partial_except
+                content_mapping, partial_data=partial_data, partial_except=partial_except
             )
 
         if is_or_contains_lazy_prop(content) or is_or_contains_special_prop(content):
@@ -447,12 +455,6 @@ class InertiaResponse(Response[T]):
                 shared_props[prop_key] = route_content
             else:
                 shared_props["content"] = route_content
-
-        # Combine deferred props from shared props and route content
-        deferred_props_from_shared = extract_deferred_props(shared_props)
-        if deferred_props_from_shared:
-            for group, keys in deferred_props_from_shared.items():
-                deferred_props_map.setdefault(group, []).extend(keys)
 
         deferred_props = deferred_props_map or None
         # Extract once props tracked during get_shared_props (already rendered)
@@ -565,8 +567,7 @@ class InertiaResponse(Response[T]):
         This method uses AppHandler to get the base HTML and injects
         the page props as a data-page attribute on the app element.
 
-        SSR (when configured) is fetched on the request's event loop by the
-        async pre-pass in :class:`_AsyncInertiaASGIResponse` and stored on
+        SSR (when configured) is fetched by the async pre-pass and stored on
         ``self._cached_ssr_payload``; this method just consumes it.
 
         Args:
@@ -675,12 +676,17 @@ class InertiaResponse(Response[T]):
         info = _get_inertia_request_info(request)
         partial_data = info.partial_keys if info.is_partial_render and info.partial_keys else None
         partial_except = info.partial_except_keys if info.is_partial_render and info.partial_except_keys else None
+        except_once_props = info.except_once_keys or None
 
         await resolve_async_props(
-            self.content,
+            get_raw_shared_props(request),
             partial_data=partial_data,
             partial_except=partial_except,
-            except_once_props=info.except_once_keys or None,
+            except_once_props=except_once_props,
+        )
+
+        await resolve_async_props(
+            self.content, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
         )
 
         if self._will_render_ssr(request, info):
@@ -724,13 +730,9 @@ class InertiaResponse(Response[T]):
     ) -> "ASGIResponse":
         inertia_info = _get_inertia_request_info(cast("Request[Any, Any, Any]", request))
 
-        # First entry: if any async work is required (unresolved async prop
-        # callbacks, or SSR HTTP), hand off to _AsyncInertiaASGIResponse.
-        # Its __call__ runs on the request task — same event loop as DI-injected
-        # async resources — so we await everything there and re-enter this
-        # method synchronously with all async results cached on ``self``.
-        # Filtering by ``should_render`` keeps lazy props from triggering
-        # deferral on initial loads, preserving the laziness contract.
+        # Async prop callbacks must already be resolved by the handler wrapper,
+        # which runs inside Litestar's DI cleanup scope. SSR is the only async
+        # work that can still be safely deferred from this synchronous method.
         if not self._async_prepass_done:
             partial_data_for_check = (
                 inertia_info.partial_keys if inertia_info.is_partial_render and inertia_info.partial_keys else None
@@ -745,12 +747,24 @@ class InertiaResponse(Response[T]):
                 partial_data=partial_data_for_check,
                 partial_except=partial_except_for_check,
                 except_once_props=inertia_info.except_once_keys or None,
+            ) or has_unresolved_async_props(
+                get_raw_shared_props(request),
+                partial_data=partial_data_for_check,
+                partial_except=partial_except_for_check,
+                except_once_props=inertia_info.except_once_keys or None,
             )
             needs_ssr = self._will_render_ssr(cast("Request[Any, Any, Any]", request), inertia_info)
-            if needs_props_resolve or needs_ssr:
+            if needs_props_resolve:
+                msg = (
+                    "InertiaResponse contains unresolved async prop callbacks. "
+                    "InertiaPlugin must be registered so route handlers are wrapped "
+                    "and async props resolve before request-scoped dependencies are released."
+                )
+                raise ImproperlyConfiguredException(msg)
+            if needs_ssr:
                 return cast(
                     "ASGIResponse",
-                    _AsyncInertiaASGIResponse(
+                    _AsyncInertiaSSRResponse(
                         response=self,
                         app=app,
                         request=cast("Request[Any, Any, Any]", request),
@@ -848,31 +862,29 @@ class InertiaResponse(Response[T]):
         )
 
 
-class _AsyncInertiaASGIResponse:
-    """Async ASGI response that performs all async work for an InertiaResponse
-    on the request event loop before the body is serialized.
+def _merge_deferred_props(target: "dict[str, list[str]]", source: "Mapping[str, list[str]]") -> None:
+    for group, keys in source.items():
+        group_keys = target.setdefault(group, [])
+        for key in keys:
+            if key not in group_keys:
+                group_keys.append(key)
 
-    :meth:`InertiaResponse.to_asgi_response` returns this object instead of a
-    real :class:`ASGIResponse` whenever the response needs async work — either
-    unevaluated async prop callbacks, or an SSR HTTP fetch, or both. Litestar
-    treats the result of ``to_asgi_response`` as an ASGI app (it just awaits
-    ``__call__``), so this redirection works without any framework cooperation.
 
-    Inside ``__call__`` (which IS async and runs on the same task as the route
-    handler), we:
+def _discard_deferred_prop_key(target: "dict[str, list[str]]", key: str) -> None:
+    for group in tuple(target):
+        group_keys = target[group]
+        if key in group_keys:
+            group_keys.remove(key)
+        if not group_keys:
+            del target[group]
 
-    1. ``await resolve_async_props`` so each prop's ``_evaluated``/``_result``
-       cache is populated on the request loop — eliminating cross-loop errors
-       for request-scoped async resources (asyncpg/aiosqlite/sqlspec sessions).
-    2. ``await _render_inertia_ssr`` (if SSR is configured for this response)
-       and stash the payload on the response so :meth:`InertiaResponse._render_spa`
-       picks it up synchronously.
 
-    Then we re-enter ``InertiaResponse.to_asgi_response`` with the
-    ``_async_prepass_done`` flag set, so it skips this branch and builds the
-    real :class:`ASGIResponse` synchronously, which we dispatch.
+class _AsyncInertiaSSRResponse:
+    """ASGI response placeholder for SSR HTTP pre-fetch.
 
-    Background: https://github.com/litestar-org/litestar-vite/issues/244
+    Async prop callbacks are not resolved here because ASGI dispatch happens
+    after Litestar's yield-based dependency cleanup. The handler wrapper must
+    resolve those callbacks before this object is created.
     """
 
     __slots__ = ("_app", "_kwargs", "_request", "_response")
@@ -891,7 +903,11 @@ class _AsyncInertiaASGIResponse:
         self._kwargs = kwargs
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
-        await self._response.resolve_async_props(self._request)
+        info = _get_inertia_request_info(self._request)
+        partial_data = info.partial_keys if info.is_partial_render and info.partial_keys else None
+        partial_except = info.partial_except_keys if info.is_partial_render and info.partial_except_keys else None
+        await self._response._prefetch_ssr(self._request, info, partial_data, partial_except)  # pyright: ignore[reportPrivateUsage]
+        self._response._async_prepass_done = True  # pyright: ignore[reportPrivateUsage]
         asgi_response = self._response.to_asgi_response(self._app, self._request, **self._kwargs)
         await asgi_response(scope, receive, send)
 
