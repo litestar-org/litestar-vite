@@ -28,8 +28,8 @@ def test_vue_examples_pin_current_stable_versions_and_use_vue_tsc_builds() -> No
         assert '"axios"' not in text
 
     for text in (vue_inertia, vue_jinja):
-        assert '"@inertiajs/vue3": "3.0.0"' in text
-        assert '"zod": "4.3.6"' in text
+        assert f'"@inertiajs/vue3": "{V["@inertiajs/vue3"]}"' in text
+        assert f'"zod": "{V["zod"]}"' in text
         assert '"axios": "1.13.6"' not in text
 
 

@@ -1,16 +1,17 @@
+import functools
+import inspect
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
-from anyio import to_thread
-from anyio.from_thread import start_blocking_portal
+from litestar.handlers.http_handlers.base import HTTPRouteHandler
 from litestar.plugins import InitPluginProtocol
+from litestar.response import Response
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-    from anyio.from_thread import BlockingPortal
-    from litestar import Litestar
+    from litestar import Litestar, Request
     from litestar.config.app import AppConfig
 
     from litestar_vite.config import InertiaConfig
@@ -25,19 +26,12 @@ class InertiaPlugin(InitPluginProtocol):
     - InertiaRequest and InertiaResponse as default classes
     - Type encoders for StaticProp and DeferredProp
 
-    BlockingPortal Behavior:
-        The plugin creates a BlockingPortal during its lifespan for executing
-        async DeferredProp callbacks from synchronous type encoders. This is
-        necessary because Litestar's JSON serialization happens synchronously,
-        but DeferredProp may contain async callables.
-
-        The portal is shared across all requests during the app's lifetime.
-        Type encoders for StaticProp and DeferredProp use ``val.render()``
-        which may access this portal for async resolution.
-
-        If you're using DeferredProp outside of InertiaResponse (e.g., in
-        custom serialization), ensure the app lifespan is active and the
-        portal is available via ``inertia_plugin.portal``.
+    Async Prop Resolution:
+        Async ``optional()``/``defer()``/``lazy()``/``once()`` callbacks are
+        pre-resolved by ``InertiaResponse`` on the request event loop before
+        the body is serialized. This guarantees they share the loop with
+        request-scoped async resources (asyncpg/aiosqlite/sqlspec sessions),
+        so callbacks can safely use those resources.
 
     SSR Client Pooling:
         When SSR is enabled, the plugin maintains a shared ``httpx.AsyncClient``
@@ -59,21 +53,16 @@ class InertiaPlugin(InitPluginProtocol):
         )
     """
 
-    __slots__ = ("_portal", "_ssr_client", "config")
+    __slots__ = ("_ssr_client", "config")
 
     def __init__(self, config: "InertiaConfig") -> "None":
         """Initialize the plugin with Inertia configuration."""
         self.config = config
         self._ssr_client: "httpx.AsyncClient | None" = None
-        self._portal: "BlockingPortal | None" = None  # pyright: ignore[reportInvalidTypeForm]
 
     @asynccontextmanager
     async def lifespan(self, app: "Litestar") -> "AsyncGenerator[None, None]":
-        """Lifespan to ensure the event loop is available.
-
-        Initializes:
-        - BlockingPortal for sync-to-async DeferredProp resolution
-        - Shared httpx.AsyncClient for SSR requests (connection pooling)
+        """Lifespan to manage the shared SSR HTTP client.
 
         Args:
             app: The :class:`Litestar <litestar.app.Litestar>` instance.
@@ -91,34 +80,11 @@ class InertiaPlugin(InitPluginProtocol):
             limits=limits,
             timeout=httpx.Timeout(10.0),  # Default timeout, can be overridden per-request
         )
-
-        portal_context_manager = start_blocking_portal()
         try:
-            # anyio.from_thread.start_blocking_portal() must be entered from sync code.
-            # In async lifespan startup, enter/exit it through a worker thread so the
-            # shared portal still runs on its own dedicated thread.
-            self._portal = await to_thread.run_sync(portal_context_manager.__enter__)
             yield
         finally:
-            self._portal = None
-            await to_thread.run_sync(lambda: portal_context_manager.__exit__(None, None, None))
             await self._ssr_client.aclose()
             self._ssr_client = None  # Reset to signal client is closed
-
-    @property
-    def portal(self) -> "BlockingPortal":
-        """Return the blocking portal used for deferred prop resolution.
-
-        Returns:
-            The BlockingPortal instance.
-
-        Raises:
-            RuntimeError: If accessed before app lifespan is active.
-        """
-        if self._portal is None:
-            msg = "BlockingPortal not available. Ensure app lifespan is active."
-            raise RuntimeError(msg)
-        return self._portal
 
     @property
     def ssr_client(self) -> "httpx.AsyncClient | None":
@@ -188,12 +154,12 @@ class InertiaPlugin(InitPluginProtocol):
         app_config.response_class = InertiaResponse
         app_config.middleware.append(InertiaMiddleware)
         app_config.signature_types.extend([InertiaRequest, InertiaResponse, InertiaBack, StaticProp, DeferredProp])
-        # Type encoders for prop resolution
-        # DeferredProp encoder passes the plugin's portal for efficient async resolution
-        # This avoids creating a new BlockingPortal per DeferredProp (~5-10ms savings)
+        # Type encoders for prop resolution. Async DeferredProp callbacks are
+        # pre-resolved on the request loop by InertiaResponse before the encoder
+        # ever runs, so render() short-circuits at the cached _result.
         app_config.type_encoders = {
             StaticProp: lambda val: val.render(),
-            DeferredProp: lambda val: val.render(portal=getattr(self, "_portal", None)),
+            DeferredProp: lambda val: val.render(),
             **(app_config.type_encoders or {}),
         }
         app_config.type_decoders = [
@@ -202,4 +168,106 @@ class InertiaPlugin(InitPluginProtocol):
             *(app_config.type_decoders or []),
         ]
         app_config.lifespan.append(self.lifespan)  # pyright: ignore[reportUnknownMemberType]
+
+        # Wrap every HTTP route handler at app startup so async Inertia prop
+        # callbacks resolve inside Litestar's _call_handler_function
+        # AsyncExitStack frame (where DI-scoped resources are still alive).
+        # Runs at startup (NOT on_app_init) because the layered handler
+        # objects are only fully resolved with runtime attributes
+        # (has_sync_callable, signature_model, etc.) after route registration
+        # completes.
+        app_config.on_startup.append(_wrap_app_handlers)  # pyright: ignore[reportUnknownMemberType]
+
         return app_config
+
+
+def _request_from_context(kwargs: "dict[str, Any]") -> "Request[Any, Any, Any] | None":
+    request = kwargs.get("request")
+    if request is not None:
+        return cast("Request[Any, Any, Any]", request)
+
+    from litestar_vite.inertia.middleware import get_current_inertia_request
+
+    return get_current_inertia_request()
+
+
+async def _resolve_inertia_response_data(data: "Any", request: "Request[Any, Any, Any]") -> None:
+    from litestar_vite.inertia.helpers import get_raw_shared_props, has_unresolved_async_props, resolve_async_props
+    from litestar_vite.inertia.response import (  # pyright: ignore[reportPrivateUsage]
+        InertiaResponse,
+        _get_inertia_request_info,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    if isinstance(data, InertiaResponse):
+        await data.resolve_async_props(request)
+        return
+    if isinstance(data, Response):
+        return
+
+    info = _get_inertia_request_info(request)
+    partial_data = info.partial_keys if info.is_partial_render and info.partial_keys else None
+    partial_except = info.partial_except_keys if info.is_partial_render and info.partial_except_keys else None
+    except_once_props = info.except_once_keys or None
+
+    shared_props = get_raw_shared_props(request)
+    if has_unresolved_async_props(
+        shared_props, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
+    ):
+        await resolve_async_props(
+            shared_props, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
+        )
+
+    if has_unresolved_async_props(
+        data, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
+    ):
+        await resolve_async_props(
+            data, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
+        )
+
+
+def _wrap_handler_fn(handler: "HTTPRouteHandler") -> None:
+    """Wrap ``handler.fn`` so async Inertia prop callbacks resolve inside the
+    DI ``AsyncExitStack`` frame.
+
+    Litestar resolves layered ``after_request`` hooks by keeping only
+    ``after_request_handlers[-1]`` (see ``litestar/handlers/http_handlers/base.py``),
+    so a plugin-registered hook can be silently dropped by any user-defined
+    ``after_request`` at router/controller/handler level. Wrapping ``fn`` directly
+    sidesteps that — the wrapper IS the handler, and runs inside the
+    ``async with stack:`` block in ``_call_handler_function`` where
+    yield-based dependencies are still alive.
+    """
+    if getattr(handler.fn, "_inertia_wrapped", False):  # idempotent guard
+        return
+
+    original = handler.fn
+
+    @functools.wraps(original)  # pyright: ignore[reportUnknownArgumentType]
+    async def wrapped(**kwargs: "Any") -> "Any":
+        result = original(**kwargs)
+        if inspect.isawaitable(result):
+            result = await result
+
+        request = _request_from_context(kwargs)
+        if request is None:
+            return result
+
+        await _resolve_inertia_response_data(result, request)
+        return result
+
+    wrapped._inertia_wrapped = True  # type: ignore[attr-defined]  # pyright: ignore[reportFunctionMemberAccess]
+    # ``handler.fn`` is a property; the backing attribute is ``_fn``.
+    handler._fn = wrapped  # pyright: ignore[reportPrivateUsage]
+    handler.has_sync_callable = False
+
+
+def _wrap_app_handlers(app: "Litestar") -> None:
+    """Idempotently wrap every HTTP route handler on the live app.
+
+    Run after Litestar's full route registration so dynamically-attached
+    handlers (controllers instantiated late, plugins, etc.) are also wrapped.
+    """
+    for route in app.routes:
+        for handler in getattr(route, "route_handlers", ()):
+            if isinstance(handler, HTTPRouteHandler):
+                _wrap_handler_fn(handler)
