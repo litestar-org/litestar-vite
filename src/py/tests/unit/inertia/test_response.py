@@ -2329,6 +2329,40 @@ def test_issue_236_metadata_loss() -> None:
         assert "slow_data" in data["deferredProps"]["default"]
 
 
+def test_issue_236_shared_deferred_props_metadata_loss() -> None:
+    """Deferred props registered through ``share()`` also need metadata on the
+    initial response so the client can fetch them later.
+    """
+
+    @get("/", component="TestComponent")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        share(request, "shared_slow_data", defer("shared_slow_data", lambda: {"items": [1, 2, 3]}))
+        return {"eager_data": "loads immediately"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[InertiaPlugin(config=InertiaConfig()), VitePlugin(config=ViteConfig())],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["props"]["eager_data"] == "loads immediately"
+        assert "shared_slow_data" not in data["props"]
+        assert "shared_slow_data" in data["deferredProps"]["default"]
+
+
+def test_async_prop_asgi_dispatch_fallback_removed() -> None:
+    """Async prop resolution must not be deferred to ASGI dispatch, which runs
+    after yield-based dependency cleanup.
+    """
+    from litestar_vite.inertia import response as response_module
+
+    assert not hasattr(response_module, "_AsyncInertiaASGIResponse")
+
+
 def test_inertia_deferred_props_full_cycle() -> None:
     """Test full cycle of deferred props: initial load and partial reload."""
 

@@ -920,7 +920,7 @@ def is_deferred_prop(value: "Any") -> "TypeGuard[DeferredProp[Any, Any]]":
     return isinstance(value, DeferredProp)
 
 
-def extract_deferred_props(props: "dict[str, Any]") -> "dict[str, list[str]]":
+def extract_deferred_props(props: "Mapping[str, Any]") -> "dict[str, list[str]]":
     """Extract deferred props metadata for the Inertia v2 protocol.
 
     This extracts all DeferredProp instances from the props dict and groups them
@@ -975,7 +975,7 @@ def _should_track_once_prop(
 
 
 def extract_once_props(
-    props: "dict[str, Any]", partial_data: "set[str] | None" = None, partial_except: "set[str] | None" = None
+    props: "Mapping[str, Any]", partial_data: "set[str] | None" = None, partial_except: "set[str] | None" = None
 ) -> "list[str]":
     """Extract once props for the Inertia v2.2.20+ protocol.
 
@@ -1301,6 +1301,20 @@ async def _resolve_one(
         await resolve_async_props(
             value, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
         )
+
+
+def get_raw_shared_props(request: "ASGIConnection[Any, Any, Any, Any]") -> "Mapping[str, Any]":
+    """Return the unrendered shared props stored on the request session.
+
+    ``get_shared_props()`` consumes and renders ``_shared``. Callers that need
+    deferred metadata or async pre-resolution must inspect the raw mapping
+    before that happens.
+    """
+    try:
+        shared_props = request.session.get("_shared", {})
+    except (AttributeError, ImproperlyConfiguredException):
+        return {}
+    return cast("Mapping[str, Any]", shared_props) if isinstance(shared_props, Mapping) else {}
 
 
 def get_shared_props(

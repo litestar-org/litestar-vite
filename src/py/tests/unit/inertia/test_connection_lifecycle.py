@@ -27,7 +27,6 @@ References:
 from collections.abc import AsyncGenerator
 from typing import Any
 
-import pytest
 from litestar import Request, get
 from litestar.di import Provide
 from litestar.middleware.session.server_side import ServerSideSessionConfig
@@ -36,7 +35,7 @@ from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
 
 from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
-from litestar_vite.inertia.helpers import optional
+from litestar_vite.inertia.helpers import optional, share
 from litestar_vite.plugin import VitePlugin
 
 
@@ -82,17 +81,6 @@ def _inertia_partial_headers(*, key: str, component: str = "Home") -> "dict[str,
     }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Reproduces #244 follow-up: async resolution runs in "
-        "_AsyncInertiaASGIResponse.__call__ (response.py:844), which fires "
-        "AFTER Litestar's _call_handler_function AsyncExitStack pops. The "
-        "yield-based dependency has already released the connection. Will "
-        "pass when litestar-vite-conn-fix.3 lands the handler-fn wrap; the "
-        "strict marker forces removal at that point."
-    ),
-)
 async def test_async_prop_callback_runs_inside_di_scope(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
@@ -125,12 +113,6 @@ async def test_async_prop_callback_runs_inside_di_scope(
         assert response.json()["props"]["recent"] == "ok"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Reproduces #244 follow-up for defer(). Will pass when litestar-vite-conn-fix.3 lands the handler-fn wrap."
-    ),
-)
 async def test_defer_async_callback_runs_inside_di_scope(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
@@ -157,3 +139,137 @@ async def test_defer_async_callback_runs_inside_di_scope(
         response = client.get("/", headers=_inertia_partial_headers(key="stats"))
         assert response.status_code == 200, response.text
         assert response.json()["props"]["stats"] == "ok"
+
+
+async def test_async_prop_callback_runs_inside_di_scope_without_request_parameter(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Handlers do not need to declare ``request`` for async props to resolve
+    before yield-based dependencies are released.
+    """
+
+    @get("/", component="Home", dependencies={"conn": Provide(_provide_conn)})
+    async def handler(conn: _FakeConnection) -> "dict[str, Any]":
+        async def fetch_recent() -> str:
+            return await conn.fetch()
+
+        return {"recent": optional("recent", fetch_recent)}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers=_inertia_partial_headers(key="recent"))
+        assert response.status_code == 200, response.text
+        assert response.json()["props"]["recent"] == "ok"
+
+
+async def test_shared_async_prop_callback_runs_inside_di_scope(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Async props registered through ``share()`` use the same DI-safe
+    resolution path as route-handler props.
+    """
+
+    @get("/", component="Home", dependencies={"conn": Provide(_provide_conn)})
+    async def handler(request: Request[Any, Any, Any], conn: _FakeConnection) -> "dict[str, Any]":
+        async def fetch_recent() -> str:
+            return await conn.fetch()
+
+        share(request, "recent", optional("recent", fetch_recent))
+        return {}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers=_inertia_partial_headers(key="recent"))
+        assert response.status_code == 200, response.text
+        assert response.json()["props"]["recent"] == "ok"
+
+
+async def test_handler_after_request_override_does_not_bypass_resolution(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Handler-level ``after_request`` hooks must not bypass async prop
+    resolution inside the DI scope.
+    """
+
+    async def user_after_request(response: Any) -> Any:
+        return response
+
+    @get("/", component="Home", after_request=user_after_request, dependencies={"conn": Provide(_provide_conn)})
+    async def handler(request: Request[Any, Any, Any], conn: _FakeConnection) -> "dict[str, Any]":
+        async def fetch_recent() -> str:
+            return await conn.fetch()
+
+        return {"recent": optional("recent", fetch_recent)}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers=_inertia_partial_headers(key="recent"))
+        assert response.status_code == 200, response.text
+        assert response.json()["props"]["recent"] == "ok"
+
+
+async def test_sync_handler_still_works_with_inertia_wrapper(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Wrapping Inertia handlers must preserve Litestar's sync handler path."""
+
+    @get("/", component="Home", sync_to_thread=True)
+    def handler(request: Request[Any, Any, Any]) -> "dict[str, Any]":
+        return {"value": optional("value", lambda: "ok")}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers=_inertia_partial_headers(key="value"))
+        assert response.status_code == 200, response.text
+        assert response.json()["props"]["value"] == "ok"
+
+
+async def test_sync_to_thread_false_handler_still_works_with_inertia_wrapper(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Non-blocking sync handlers are valid when ``sync_to_thread=False``."""
+
+    @get("/", component="Home", sync_to_thread=False)
+    def handler(request: Request[Any, Any, Any]) -> "dict[str, Any]":
+        return {"value": optional("value", lambda: "ok")}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers=_inertia_partial_headers(key="value"))
+        assert response.status_code == 200, response.text
+        assert response.json()["props"]["value"] == "ok"
