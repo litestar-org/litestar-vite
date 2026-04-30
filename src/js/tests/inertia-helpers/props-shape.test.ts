@@ -41,4 +41,35 @@ describe("inertia-helpers props shape", () => {
     expect(rendered.hello).toBe("world")
     expect(rendered.content).toBeUndefined()
   })
+
+  // Regression for litestar-vite-8u9: Inertia's Pages.set() calls resolveComponent
+  // on every navigation/partial-reload. If the resolved component identity changes
+  // across calls, React's reconciler sees a different element type and unmounts the
+  // page subtree, wiping useState and re-running effects (looks like an auto-reload).
+  it("returns identical component reference across repeated resolves of the same path", async () => {
+    const Original = (received: Record<string, unknown>) => received
+    const pages = {
+      "./pages/Home.tsx": Promise.resolve({ default: Original }),
+    }
+
+    const first = await resolvePageComponent("./pages/Home.tsx", pages)
+    const second = await resolvePageComponent("./pages/Home.tsx", pages)
+
+    expect(first).toBe(second)
+  })
+
+  it("returns identical reference for direct function exports across resolves", async () => {
+    const pages = {
+      "./pages/Direct.tsx": Promise.resolve(
+        ((received: Record<string, unknown>) => received) as unknown as {
+          default: (props: Record<string, unknown>) => unknown
+        },
+      ),
+    }
+
+    const first = await resolvePageComponent("./pages/Direct.tsx", pages)
+    const second = await resolvePageComponent("./pages/Direct.tsx", pages)
+
+    expect(first).toBe(second)
+  })
 })
