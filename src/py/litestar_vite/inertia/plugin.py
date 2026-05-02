@@ -1,5 +1,6 @@
 import functools
 import inspect
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, cast
 
@@ -191,38 +192,21 @@ def _request_from_context(kwargs: "dict[str, Any]") -> "Request[Any, Any, Any] |
     return get_current_inertia_request()
 
 
-async def _resolve_inertia_response_data(data: "Any", request: "Request[Any, Any, Any]") -> None:
-    from litestar_vite.inertia.helpers import get_raw_shared_props, has_unresolved_async_props, resolve_async_props
-    from litestar_vite.inertia.response import (  # pyright: ignore[reportPrivateUsage]
-        InertiaResponse,
-        _get_inertia_request_info,  # pyright: ignore[reportPrivateUsage]
-    )
+async def _resolve_inertia_response_data(data: "Any", request: "Request[Any, Any, Any]") -> "Any":
+    from litestar_vite.inertia.response import InertiaResponse
 
     if isinstance(data, InertiaResponse):
         await data.resolve_async_props(request)
-        return
+        return cast("Any", data)
     if isinstance(data, Response):
-        return
+        return cast("Any", data)
 
-    info = _get_inertia_request_info(request)
-    partial_data = info.partial_keys if info.is_partial_render and info.partial_keys else None
-    partial_except = info.partial_except_keys if info.is_partial_render and info.partial_except_keys else None
-    except_once_props = info.except_once_keys or None
+    if isinstance(data, Mapping) or data is None:
+        response: InertiaResponse[Any] = InertiaResponse(content=cast("Any", data))
+        await response.resolve_async_props(request)
+        return cast("Any", response)
 
-    shared_props = get_raw_shared_props(request)
-    if has_unresolved_async_props(
-        shared_props, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
-    ):
-        await resolve_async_props(
-            shared_props, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
-        )
-
-    if has_unresolved_async_props(
-        data, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
-    ):
-        await resolve_async_props(
-            data, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
-        )
+    return data
 
 
 def _wrap_handler_fn(handler: "HTTPRouteHandler") -> None:
@@ -252,8 +236,7 @@ def _wrap_handler_fn(handler: "HTTPRouteHandler") -> None:
         if request is None:
             return result
 
-        await _resolve_inertia_response_data(result, request)
-        return result
+        return await _resolve_inertia_response_data(result, request)
 
     wrapped._inertia_wrapped = True  # type: ignore[attr-defined]  # pyright: ignore[reportFunctionMemberAccess]
     # ``handler.fn`` is a property; the backing attribute is ``_fn``.

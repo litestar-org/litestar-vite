@@ -127,7 +127,7 @@ async def test_proxy_should_proxy_uses_decoded_path_for_litestar_routes(hotfile:
 
 @pytest.mark.anyio
 async def test_proxy_response_includes_more_body_field(hotfile: Path) -> None:
-    """Test that proxy response body includes 'more_body': False per ASGI spec.
+    """Test that fallback response bodies include 'more_body': False per ASGI spec.
 
     This is important for compatibility with middleware that expects the more_body
     field, such as logging hooks that check message["more_body"] to detect end of response.
@@ -135,12 +135,12 @@ async def test_proxy_response_includes_more_body_field(hotfile: Path) -> None:
     sent = _Recorder()
 
     async def downstream(scope: Scope, receive: Receive, send: Send) -> None:
-        # This won't be called for Vite paths
-        pass
+        await send({"type": "http.response.start", "status": 404, "headers": []})
+        await send({"type": "http.response.body", "body": b"downstream", "more_body": False})
 
     ViteProxyMiddleware(downstream, hotfile_path=hotfile)
 
-    # Test the 503 response when Vite server is not running (hotfile doesn't exist)
+    # Test the fallback response when Vite server is not running (hotfile doesn't exist)
     no_hotfile = Path("/nonexistent/hot")
     middleware_no_server = ViteProxyMiddleware(downstream, hotfile_path=no_hotfile)
 

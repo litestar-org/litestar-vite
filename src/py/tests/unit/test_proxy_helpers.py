@@ -247,7 +247,6 @@ async def test_proxy_http_with_plugin_client(tmp_path: Path) -> None:
 
 async def test_proxy_http_no_target(tmp_path: Path) -> None:
     hotfile = tmp_path / "hot"
-    middleware = ViteProxyMiddleware(app=Mock(), hotfile_path=hotfile, asset_url="/static/")
 
     scope = {"method": "GET", "raw_path": b"/@vite/client", "query_string": b"", "headers": [], "path": "/@vite/client"}
     events: list[dict[str, object]] = []
@@ -258,8 +257,15 @@ async def test_proxy_http_no_target(tmp_path: Path) -> None:
     async def send(event: dict[str, object]) -> None:
         events.append(event)
 
+    async def downstream(_scope: object, _receive: object, _send: object) -> None:
+        await send({"type": "http.response.start", "status": 404, "headers": []})
+        await send({"type": "http.response.body", "body": b"downstream", "more_body": False})
+
+    middleware = ViteProxyMiddleware(app=downstream, hotfile_path=hotfile, asset_url="/static/")
+
     await middleware._proxy_http(scope, receive, send)
-    assert events[0]["status"] == 503
+    assert events[0]["status"] == 404
+    assert events[1]["body"] == b"downstream"
 
 
 async def test_vite_hmr_handler_timeout(tmp_path: Path) -> None:

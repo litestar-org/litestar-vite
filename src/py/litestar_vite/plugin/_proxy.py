@@ -359,12 +359,13 @@ class ViteProxyMiddleware(AbstractMiddleware):
     async def _proxy_http(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         """Proxy a single HTTP request to the Vite dev server.
 
-        The upstream response is streamed directly from Vite to the client.
+        The upstream response is streamed directly from Vite to the client. When
+        the Vite hot file is absent, the request falls through to the next ASGI
+        app so static files can serve built assets when they exist.
         """
         target_base_url = self._get_target_base_url()
         if target_base_url is None:
-            await send({"type": "http.response.start", "status": 503, "headers": [(b"content-type", b"text/plain")]})
-            await send({"type": "http.response.body", "body": b"Vite server not running", "more_body": False})
+            await self.app(cast("Scope", scope), receive, send)
             return
 
         method = scope.get("method", "GET")
