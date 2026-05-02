@@ -28,6 +28,8 @@ if TYPE_CHECKING:
 
 _DISCONNECT_EXCEPTIONS = (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed)
 
+_BODY_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
 _PROXY_ALLOW_PREFIXES: tuple[str, ...] = (
     "/@vite",
     "/@id/",
@@ -377,7 +379,11 @@ class ViteProxyMiddleware(AbstractMiddleware):
             url = f"{url}?{query_string}"
 
         headers = _filter_hop_by_hop_headers(scope.get("headers", []))
-        request_body = _stream_request_body(receive)
+        # Only stream request body for methods that carry a body.
+        # Passing an async generator as content for GET/HEAD/OPTIONS causes httpx
+        # to add Transfer-Encoding: chunked, which Vite dev server rejects with 400.
+        # See: https://github.com/litestar-org/litestar-vite/issues/242
+        request_body = _stream_request_body(receive) if method in _BODY_METHODS else None
 
         # Use shared client from plugin when available (connection pooling)
         client = self._plugin.proxy_client if self._plugin is not None else None
@@ -761,7 +767,9 @@ def create_ssr_proxy_controller(
                 console.print(f"[dim][ssr-proxy] {request.method} {req_path} → {url}[/]")
 
             headers_to_forward = _filter_hop_by_hop_headers(request.headers.items())
-            request_body = _stream_request_body_chunks(request.stream())
+            # Only stream request body for methods that carry a body.
+            # See: https://github.com/litestar-org/litestar-vite/issues/242
+            request_body = _stream_request_body_chunks(request.stream()) if request.method in _BODY_METHODS else None
 
             # Use shared client from plugin when available (connection pooling)
             client = plugin.proxy_client if plugin is not None else None
