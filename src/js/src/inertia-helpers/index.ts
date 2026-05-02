@@ -29,13 +29,34 @@ export function unwrapPageProps<T extends Record<string, unknown>>(props: T): T 
   return props
 }
 
+// Cache wrapped results keyed by the source module/function. Vite's import.meta.glob
+// memoizes resolved modules, so the same path yields the same input object across
+// resolves; caching keeps the wrapper identity stable. Inertia's Pages.set() calls
+// resolveComponent on every navigation/partial-reload — without this, React would
+// see a new element type each call and unmount the page subtree (wiping useState
+// and re-running effects). HMR-replaced modules are new objects, so they re-wrap.
+const wrapCache = new WeakMap<object, unknown>()
+
 /**
  * Wrap a component to automatically unwrap Litestar's content prop.
+ *
+ * Memoized by the input module reference so the same module always yields the
+ * same wrapper, preserving component identity across Inertia's repeated resolve
+ * calls.
  *
  * @param component - The original component (function or object with default)
  * @returns Wrapped component that transforms props
  */
 function wrapComponent<T>(module: T): T {
+  if (module === null || (typeof module !== "object" && typeof module !== "function")) {
+    return module
+  }
+  const key = module as unknown as object
+  const cached = wrapCache.get(key)
+  if (cached !== undefined) {
+    return cached as T
+  }
+  let result: T = module
   // Handle ES module with default export
   const mod = module as Record<string, unknown>
   if (mod.default && typeof mod.default === "function") {
@@ -43,16 +64,16 @@ function wrapComponent<T>(module: T): T {
     const Wrapped = (props: Record<string, unknown>) => Original(unwrapPageProps(props))
     // Copy static properties (displayName, layout, etc.)
     Object.assign(Wrapped, Original)
-    return { ...mod, default: Wrapped } as T
-  }
-  // Handle direct function export
-  if (typeof module === "function") {
+    result = { ...mod, default: Wrapped } as T
+  } else if (typeof module === "function") {
+    // Handle direct function export
     const Original = module as unknown as (props: Record<string, unknown>) => unknown
     const Wrapped = (props: Record<string, unknown>) => Original(unwrapPageProps(props))
     Object.assign(Wrapped, Original)
-    return Wrapped as T
+    result = Wrapped as T
   }
-  return module
+  wrapCache.set(key, result)
+  return result
 }
 
 /**
