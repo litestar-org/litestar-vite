@@ -40,6 +40,7 @@ export interface BridgeSpaConfig {
 export interface BridgeSchema {
   assetUrl: string
   deployAssetUrl: string | null
+  appUrl: string | null
   bundleDir: string
   resourceDir: string
   staticDir: string
@@ -79,6 +80,7 @@ export interface BridgeSchema {
 const allowedTopLevelKeys: ReadonlySet<string> = new Set([
   "assetUrl",
   "deployAssetUrl",
+  "appUrl",
   "bundleDir",
   "resourceDir",
   "staticDir",
@@ -140,6 +142,15 @@ function assertNumber(obj: Record<string, unknown>, key: string): number {
 function assertNullableString(obj: Record<string, unknown>, key: string): string | null {
   const value = obj[key]
   if (value === null) return null
+  if (typeof value !== "string") {
+    fail(`"${key}" must be a string or null`)
+  }
+  return value
+}
+
+function assertOptionalNullableString(obj: Record<string, unknown>, key: string): string | null {
+  const value = obj[key]
+  if (value === undefined || value === null) return null
   if (typeof value !== "string") {
     fail(`"${key}" must be a string or null`)
   }
@@ -249,6 +260,7 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
 
   const assetUrl = assertString(obj, "assetUrl")
   const deployAssetUrl = assertNullableString(obj, "deployAssetUrl")
+  const appUrl = assertOptionalNullableString(obj, "appUrl")
   const bundleDir = assertString(obj, "bundleDir")
   const resourceDir = assertString(obj, "resourceDir")
   const staticDir = assertString(obj, "staticDir")
@@ -272,6 +284,7 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
   return {
     assetUrl,
     deployAssetUrl,
+    appUrl,
     bundleDir,
     resourceDir,
     staticDir,

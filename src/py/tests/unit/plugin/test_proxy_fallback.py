@@ -5,7 +5,6 @@ from typing import Any, Literal
 from unittest.mock import patch
 
 import httpx
-
 from litestar import Litestar
 from litestar.testing import TestClient
 
@@ -48,10 +47,7 @@ def _build_vite_app(
                 config=ViteConfig(
                     mode=mode,
                     paths=PathConfig(
-                        root=tmp_path,
-                        resource_dir=Path("resources"),
-                        bundle_dir=bundle,
-                        asset_url="/static/dist/",
+                        root=tmp_path, resource_dir=Path("resources"), bundle_dir=bundle, asset_url="/static/dist/"
                     ),
                     runtime=runtime or RuntimeConfig(dev_mode=True, executor="node"),
                 )
