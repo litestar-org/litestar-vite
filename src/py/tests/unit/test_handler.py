@@ -281,8 +281,8 @@ async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> N
         mock_request = Mock()
         # Should return friendly startup page instead of raising exception
         result = await handler.get_html(mock_request)
-        # Check for key elements (Server and starting are split by HTML tags)
-        assert "Server" in result and "starting" in result
+        # Check for key elements; page copy may use title case.
+        assert "server" in result.lower() and "starting" in result.lower()
         assert 'meta http-equiv="refresh"' in result
         assert "http://127.0.0.1:5173" in result  # Shows the URL being connected to
 
