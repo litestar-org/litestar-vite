@@ -227,3 +227,4 @@ src/py/tests/*/src/generated/
 *.tsbuildinfo
 .codex
 **/.astro
+examples/**/bootstrap/ssr/*
