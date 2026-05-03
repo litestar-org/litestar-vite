@@ -30,6 +30,9 @@ jobs:
           - react-inertia-jinja
           - vue-inertia
           - vue-inertia-jinja
+          # Inertia SSR examples (plugin manages the Node /render process)
+          - vue-inertia-ssr
+          - vue-inertia-jinja-ssr
           # Template examples
           - jinja-htmx
     steps:
