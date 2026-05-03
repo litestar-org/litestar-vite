@@ -313,3 +313,42 @@ def test_path_for_bridge_outside_root_uses_forward_slashes(tmp_path: Path) -> No
     # Should use forward slashes even for ../ paths
     assert "\\" not in result
     assert ".." in result
+
+
+# ============================================================================
+# C3: proxy_mode resolver and auto-derivation
+# ============================================================================
+
+
+def test_resolve_proxy_mode_direct_deprecates_to_vite(
+    monkeypatch: pytest.MonkeyPatch, recwarn: pytest.WarningsRecorder
+) -> None:
+    """VITE_PROXY_MODE='direct' emits DeprecationWarning and coerces to 'vite'."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode, resolve_proxy_mode
+
+    monkeypatch.setenv("VITE_PROXY_MODE", "direct")
+    _cached_resolve_proxy_mode.cache_clear()
+
+    assert resolve_proxy_mode() == "vite"
+    assert any(issubclass(w.category, DeprecationWarning) for w in recwarn.list)
+
+
+def test_resolve_proxy_mode_invalid_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unknown VITE_PROXY_MODE values raise ValueError listing the canonical set."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode, resolve_proxy_mode
+
+    monkeypatch.setenv("VITE_PROXY_MODE", "bogus")
+    _cached_resolve_proxy_mode.cache_clear()
+
+    with pytest.raises(ValueError, match="vite, proxy, none"):
+        resolve_proxy_mode()
+
+
+def test_resolve_proxy_mode_unset_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unset VITE_PROXY_MODE returns None so ViteConfig auto-derives from mode."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode, resolve_proxy_mode
+
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    assert resolve_proxy_mode() is None

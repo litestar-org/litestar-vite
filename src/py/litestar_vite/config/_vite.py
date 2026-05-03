@@ -261,7 +261,8 @@ class ViteConfig:
         self._auto_detect_mode()
         self._auto_configure_inertia()
         self._auto_detect_react()
-        self._apply_framework_mode_defaults()
+        self._apply_proxy_mode_defaults()
+        self._validate_proxy_mode()
         self._normalize_deploy()
         self._ensure_spa_default()
         self._auto_enable_dev_mode()
@@ -408,39 +409,51 @@ class ViteConfig:
         if isinstance(self.inertia, InertiaConfig) and isinstance(self.spa, SPAConfig) and not self.spa.inject_csrf:
             self.spa = replace(self.spa, inject_csrf=True)
 
-    def _apply_framework_mode_defaults(self) -> None:
-        """Apply intelligent defaults for framework proxy mode.
+    def _apply_proxy_mode_defaults(self) -> None:
+        """Auto-derive ``proxy_mode`` from ``mode`` when not explicitly set.
 
-        When mode='framework' is set, automatically configure proxy_mode and spa_handler
-        based on dev_mode and whether built assets exist:
+        - dev_mode + mode in {spa, hybrid, template} + ``proxy_mode`` None -> ``'vite'``
+        - dev_mode + mode == 'framework' + ``proxy_mode`` None -> ``'proxy'``
+        - not dev_mode -> ``proxy_mode`` = None (disabled in production)
+        - Existing ``proxy_mode`` (set explicitly via ``VITE_PROXY_MODE`` or constructor)
+          is preserved (with a warning when framework mode in dev would normally force ``'proxy'``).
 
-        - Dev mode: proxy_mode='proxy', spa_handler=False
-          (Proxy all non-API routes to the SSR/SSG framework dev server)
-        - Prod mode with built assets: proxy_mode=None, spa_handler=True
-          (Serve static SSG output like Astro's dist/)
-        - Prod mode without built assets: proxy_mode=None, spa_handler=False
-          (True SSR - Node server handles HTML, Litestar only serves API)
+        Also applies the framework spa_handler defaults that the previous
+        ``_apply_framework_mode_defaults`` handled:
+
+        - mode='framework' + dev_mode -> spa_handler=False (proxy serves HTML)
+        - mode='framework' + prod + has_built_assets -> spa_handler=True
+        - mode='framework' + prod + no built assets -> spa_handler=False (true SSR)
         """
-        if not self.wants_html_proxy:
+        if not self.runtime.dev_mode:
+            self.runtime.proxy_mode = None
+            if self.wants_html_proxy:
+                self.runtime.spa_handler = self.has_built_assets()
             return
 
-        if self.runtime.dev_mode:
-            env_proxy = os.getenv("VITE_PROXY_MODE")
-            if env_proxy is None:
-                if self.runtime.proxy_mode is not None and self.runtime.proxy_mode != "proxy":
-                    logger.warning(
-                        "proxy_mode=%r overridden to 'proxy' by framework mode in dev. "
-                        "Set VITE_PROXY_MODE env var to keep your custom proxy_mode.",
-                        self.runtime.proxy_mode,
-                    )
+        if self.wants_html_proxy:
+            if self.runtime.proxy_mode is None:
                 self.runtime.proxy_mode = "proxy"
             self.runtime.spa_handler = False
-        else:
-            self.runtime.proxy_mode = None
-            if self.has_built_assets():
-                self.runtime.spa_handler = True
-            else:
-                self.runtime.spa_handler = False
+        elif self.runtime.proxy_mode is None and self.serves_own_html:
+            self.runtime.proxy_mode = "vite"
+
+    def _validate_proxy_mode(self) -> None:
+        """Validate ``proxy_mode`` against ``mode``.
+
+        Raises:
+            ValueError: When ``proxy_mode='proxy'`` is paired with a non-framework mode.
+        """
+        if self.runtime.proxy_mode == "proxy" and not self.wants_html_proxy:
+            msg = (
+                f"proxy_mode='proxy' is only valid with mode='framework'. Got mode={self.mode!r}. "
+                "The proxy mode catches all non-API requests and forwards them to a framework dev server "
+                "(Astro/Nuxt/SvelteKit/Angular CLI). It cannot be used with template/spa/hybrid modes "
+                "because Litestar serves HTML in those modes — registering a /-catching proxy collides "
+                "with user-defined / route handlers. To use a non-Vite frontend dev server, set "
+                "mode='framework' with external_dev_server=ExternalDevServer(...)."
+            )
+            raise ValueError(msg)
 
     def _normalize_deploy(self) -> None:
         if self.deploy is True:
@@ -873,13 +886,13 @@ class ViteConfig:
     def hot_reload(self) -> bool:
         """Check if hot reload is enabled (derived from dev_mode and proxy_mode).
 
-        HMR requires dev_mode=True AND a Vite-based proxy mode (vite, direct, or proxy).
-        All modes support HMR since even SSR frameworks use Vite internally.
+        HMR requires dev_mode=True AND a proxy is active (vite or proxy). All modes support
+        HMR since even SSR frameworks use Vite internally.
 
         Returns:
             True if hot reload is enabled, otherwise False.
         """
-        return self.runtime.dev_mode and self.runtime.proxy_mode in {"vite", "direct", "proxy"}
+        return self.runtime.dev_mode and self.runtime.proxy_mode in {"vite", "proxy"}
 
     @property
     def is_dev_mode(self) -> bool:
@@ -986,7 +999,7 @@ class ViteConfig:
         return self.runtime.detect_nodeenv
 
     @property
-    def proxy_mode(self) -> "Literal['vite', 'direct', 'proxy'] | None":
+    def proxy_mode(self) -> "Literal['vite', 'proxy'] | None":
         """Get proxy mode.
 
         Returns:

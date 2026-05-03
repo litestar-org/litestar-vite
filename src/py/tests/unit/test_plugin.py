@@ -351,6 +351,7 @@ def test_vite_plugin_lifespan_with_vite_process_management(mock_console: Mock, t
 def test_vite_plugin_lifespan_with_watch_mode(mock_console: Mock, tmp_path: Path) -> None:
     """Test server lifespan with watch mode (no HMR)."""
     config = ViteConfig(
+        mode="framework",
         runtime=RuntimeConfig(
             dev_mode=True, proxy_mode="proxy", external_dev_server="http://localhost:4200"
         ),  # Watch mode without HMR
@@ -1360,14 +1361,15 @@ async def test_vite_plugin_proxy_client_none_in_production_mode() -> None:
 
 
 async def test_vite_plugin_proxy_client_none_when_no_proxy_mode() -> None:
-    """Test that proxy_client remains None when proxy_mode is None."""
-    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode=None), mode="template")
+    """proxy_client stays None when proxy_mode resolves to None.
+
+    After C3, dev_mode + serves_own_html auto-derives proxy_mode='vite'. To exercise the
+    no-proxy path, run in production mode where the auto-derivation yields None.
+    """
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=False), mode="template")
     plugin = VitePlugin(config=config)
+    assert config.proxy_mode is None
 
-    # Create a minimal app for lifespan
     app = Litestar(route_handlers=[])
-
-    # Run the lifespan context manager
     async with plugin.lifespan(app):
-        # Without proxy_mode, proxy_client should remain None
         assert plugin.proxy_client is None

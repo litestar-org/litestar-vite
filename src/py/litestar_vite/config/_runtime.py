@@ -1,6 +1,7 @@
 """Runtime execution settings."""
 
 import os
+import warnings
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Literal
@@ -29,25 +30,33 @@ def _cached_resolve_trusted_proxies(env_value: str | None) -> "tuple[str, ...] |
 
 
 @lru_cache(maxsize=16)
-def _cached_resolve_proxy_mode(env_value: str | None) -> "Literal['vite', 'direct', 'proxy', '__none__'] | None":
+def _cached_resolve_proxy_mode(env_value: str | None) -> "Literal['vite', 'proxy', '__none__'] | None":
     """Resolve proxy mode from env input with caching.
 
-    "__none__" preserves an explicit "none" value while still allowing "None"
-    for missing values.
+    "__none__" preserves an explicit "none" value while still allowing ``None``
+    for missing values. ``None`` (unset) defers to ``ViteConfig._apply_proxy_mode_defaults``
+    which auto-derives from ``mode``.
     """
     match env_value.strip().lower() if env_value is not None else None:
         case None:
-            return "vite"
+            return None
         case "none":
             return "__none__"
         case "direct":
-            return "direct"
+            warnings.warn(
+                "VITE_PROXY_MODE='direct' is deprecated and now coerced to 'vite'. "
+                "Two-port dev mode (browser hits Vite directly) violates the single-port-via-ASGI "
+                "contract and is no longer supported.",
+                DeprecationWarning,
+                stacklevel=4,
+            )
+            return "vite"
         case "proxy":
             return "proxy"
         case "vite":
             return "vite"
         case _:
-            msg = f"Invalid VITE_PROXY_MODE: {env_value!r}. Expected one of: vite, direct, proxy, none"
+            msg = f"Invalid VITE_PROXY_MODE: {env_value!r}. Expected one of: vite, proxy, none"
             raise ValueError(msg)
 
 
@@ -71,20 +80,22 @@ def resolve_trusted_proxies() -> "list[str] | str | None":
     return list(cached_value)
 
 
-def resolve_proxy_mode() -> "Literal['vite', 'direct', 'proxy'] | None":
+def resolve_proxy_mode() -> "Literal['vite', 'proxy'] | None":
     """Resolve proxy_mode from environment variable.
 
-    Reads VITE_PROXY_MODE env var. Valid values:
-    - "vite" (default): Proxy to internal Vite server (allow list - assets only)
-    - "direct": Expose Vite port directly (no proxy)
-    - "proxy": Proxy everything except Litestar routes (deny list)
-    - "none": Disable proxy (for production)
+    Reads ``VITE_PROXY_MODE`` env var. Valid values:
+
+    - unset (default): auto-derive from ``ViteConfig.mode``
+    - ``"vite"``: Proxy to internal Vite server (allow list - assets only)
+    - ``"proxy"``: Proxy everything except Litestar routes (deny list); requires ``mode='framework'``
+    - ``"none"``: Disable proxy (for production)
+    - ``"direct"``: DEPRECATED. Auto-coerced to ``"vite"`` with ``DeprecationWarning``.
 
     Raises:
         ValueError: If an invalid value is provided.
 
     Returns:
-        The resolved proxy mode, or None if disabled.
+        The resolved proxy mode, or None if disabled or unset (let ViteConfig auto-derive).
     """
     cached_mode = _cached_resolve_proxy_mode(os.getenv("VITE_PROXY_MODE"))
     if cached_mode == "__none__":
@@ -126,11 +137,10 @@ class RuntimeConfig:
 
     Attributes:
         dev_mode: Enable development mode with HMR/watch.
-        proxy_mode: Proxy handling mode:
-            - "vite" (default): Proxy Vite assets only (allow list - SPA mode)
-            - "direct": Expose Vite port directly (no proxy)
+        proxy_mode: Proxy handling mode (auto-derived from ``ViteConfig.mode`` when None):
+            - "vite": Proxy Vite assets only (allow list - SPA / hybrid / template modes)
             - "proxy": Proxy everything except Litestar routes (deny list - framework mode)
-            - None: No proxy (production mode)
+            - None: No proxy (auto-derived for production)
         external_dev_server: Configuration for external dev server (used with proxy_mode="proxy").
         host: Vite dev server host.
         port: Vite dev server port.
@@ -153,7 +163,7 @@ class RuntimeConfig:
     """
 
     dev_mode: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)
-    proxy_mode: "Literal['vite', 'direct', 'proxy'] | None" = field(default_factory=resolve_proxy_mode)
+    proxy_mode: "Literal['vite', 'proxy'] | None" = field(default_factory=resolve_proxy_mode)
     external_dev_server: "ExternalDevServer | str | None" = None
     host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "127.0.0.1"))
     port: int = field(default_factory=lambda: int(os.getenv("VITE_PORT", "5173")))

@@ -98,7 +98,10 @@ def test_doctor_detect_missing_hotfile(doctor: ViteDoctor, tmp_path: Path) -> No
 
 
 def test_doctor_warns_server_origin_override_in_proxy_mode(doctor: ViteDoctor, tmp_path: Path) -> None:
+    """After C3, proxy_mode is None in production; the override warning needs dev mode active."""
     doctor.config.paths.root = tmp_path
+    doctor.config.runtime.dev_mode = True
+    doctor.config.runtime.proxy_mode = "vite"
     _prepare_frontend_dirs(tmp_path)
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({

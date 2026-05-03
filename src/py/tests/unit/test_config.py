@@ -91,22 +91,31 @@ def test_mode_auto_detection_spa_with_index_html(tmp_path: Path) -> None:
     assert config._mode_auto_detected is True
 
 
-def test_proxy_mode_defaults_to_vite(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test proxy_mode defaults to vite."""
+def test_proxy_mode_defaults_to_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """proxy_mode defaults to None when env var is unset; ViteConfig auto-derives from mode."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+
     monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    config = RuntimeConfig()
+
+    assert config.proxy_mode is None
+
+
+def test_proxy_mode_direct_env_coerces_to_vite(
+    monkeypatch: pytest.MonkeyPatch, recwarn: pytest.WarningsRecorder
+) -> None:
+    """VITE_PROXY_MODE=direct is deprecated; coerces to vite with DeprecationWarning."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+
+    monkeypatch.setenv("VITE_PROXY_MODE", "direct")
+    _cached_resolve_proxy_mode.cache_clear()
 
     config = RuntimeConfig()
 
     assert config.proxy_mode == "vite"
-
-
-def test_proxy_mode_respects_direct_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test VITE_PROXY_MODE=direct maps to direct."""
-    monkeypatch.setenv("VITE_PROXY_MODE", "direct")
-
-    config = RuntimeConfig()
-
-    assert config.proxy_mode == "direct"
+    assert any(issubclass(w.category, DeprecationWarning) for w in recwarn.list)
 
 
 def test_proxy_mode_respects_none_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -227,17 +236,18 @@ def test_runtime_config_proxy_mode_without_target() -> None:
 
 
 def test_vite_config_proxy_mode() -> None:
-    """Test ViteConfig with proxy mode."""
+    """proxy_mode='proxy' requires mode='framework' after C3."""
     config = ViteConfig(
+        mode="framework",
         runtime=RuntimeConfig(
             dev_mode=True, proxy_mode="proxy", external_dev_server=ExternalDevServer(target="http://localhost:4200")
-        )
+        ),
     )
 
     assert config.proxy_mode == "proxy"
     assert config.external_dev_server is not None
     assert config.external_dev_server.target == "http://localhost:4200"
-    # HMR is now supported in proxy mode (SSR frameworks use Vite internally)
+    # HMR is supported in proxy mode (SSR frameworks use Vite internally).
     assert config.hot_reload is True
 
 
@@ -248,20 +258,19 @@ def test_hot_reload_derived_from_vite_mode() -> None:
     assert config.hot_reload is True
 
 
-def test_hot_reload_derived_from_direct_mode() -> None:
-    """Test hot_reload is True for direct mode."""
-    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode="direct"))
-
-    assert config.hot_reload is True
+def test_hot_reload_disabled_when_proxy_mode_none() -> None:
+    """proxy_mode='direct' is gone after C3; verify hot_reload is False with no proxy."""
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=False, proxy_mode=None))
+    assert config.hot_reload is False
 
 
 def test_hot_reload_enabled_for_proxy_mode() -> None:
-    """Test hot_reload is True for proxy mode (SSR frameworks use Vite internally)."""
+    """hot_reload is True for proxy mode (SSR frameworks use Vite internally)."""
     config = ViteConfig(
-        runtime=RuntimeConfig(dev_mode=True, proxy_mode="proxy", external_dev_server="http://localhost:4200")
+        mode="framework",
+        runtime=RuntimeConfig(dev_mode=True, proxy_mode="proxy", external_dev_server="http://localhost:4200"),
     )
 
-    # HMR is now supported in proxy mode since SSR frameworks use Vite internally
     assert config.hot_reload is True
 
 
@@ -943,3 +952,98 @@ def test_vite_config_external_mode_without_dev_server_raises() -> None:
     """mode='external' without external_dev_server raises (cannot proxy to nothing)."""
     with pytest.raises(ValueError, match="external_dev_server"):
         ViteConfig(mode="external")
+
+
+# ============================================================================
+# C3: proxy_mode auto-derivation and validation
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    ("mode", "dev_mode", "explicit_proxy_mode", "expected_proxy_mode"),
+    [
+        ("spa", True, None, "vite"),
+        ("hybrid", True, None, "vite"),
+        ("template", True, None, "vite"),
+        ("framework", True, None, "proxy"),
+        ("spa", False, None, None),
+        ("framework", False, None, None),
+        # User overrides preserved:
+        ("spa", True, "vite", "vite"),
+        ("framework", True, "vite", "vite"),
+    ],
+)
+def test_vite_config_proxy_mode_auto_derivation(
+    mode: str,
+    dev_mode: bool,
+    explicit_proxy_mode: "str | None",
+    expected_proxy_mode: "str | None",
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """proxy_mode auto-derives from mode + dev_mode; explicit values are preserved."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    runtime_kwargs: dict[str, object] = {"dev_mode": dev_mode}
+    if explicit_proxy_mode is not None:
+        runtime_kwargs["proxy_mode"] = explicit_proxy_mode
+    config = ViteConfig(mode=mode, runtime=RuntimeConfig(**runtime_kwargs))
+    assert config.proxy_mode == expected_proxy_mode
+
+
+@pytest.mark.parametrize("mode", ["spa", "hybrid", "template"])
+def test_vite_config_proxy_mode_proxy_with_non_framework_mode_raises(
+    mode: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """proxy_mode='proxy' raises for non-framework modes with a clear message."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    with pytest.raises(ValueError, match="only valid with mode='framework'"):
+        ViteConfig(
+            mode=mode,
+            runtime=RuntimeConfig(dev_mode=True, proxy_mode="proxy"),
+        )
+
+
+def test_vite_config_proxy_mode_proxy_with_framework_mode_works(monkeypatch: pytest.MonkeyPatch) -> None:
+    """proxy_mode='proxy' is the canonical default for framework mode; no error."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    config = ViteConfig(
+        mode="framework",
+        runtime=RuntimeConfig(dev_mode=True, proxy_mode="proxy"),
+    )
+    assert config.proxy_mode == "proxy"
+
+
+def test_vite_config_template_mode_with_proxy_env_raises_clearly(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reproduce oracledb-vertexai-demo bug: template + VITE_PROXY_MODE=proxy raises at config validation,
+    NOT at app construction with a confusing 'Handler already registered' error.
+    """
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+
+    monkeypatch.setenv("VITE_PROXY_MODE", "proxy")
+    _cached_resolve_proxy_mode.cache_clear()
+
+    with pytest.raises(ValueError, match=r"proxy_mode='proxy' is only valid with mode='framework'"):
+        ViteConfig(mode="template", runtime=RuntimeConfig(dev_mode=True))
+
+
+def test_vite_config_proxy_mode_none_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    """proxy_mode auto-derives to None when dev_mode=False, regardless of mode."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    for mode in ("spa", "hybrid", "template", "framework"):
+        config = ViteConfig(mode=mode, runtime=RuntimeConfig(dev_mode=False))
+        assert config.proxy_mode is None, f"{mode!r} should not have a proxy_mode in production"
