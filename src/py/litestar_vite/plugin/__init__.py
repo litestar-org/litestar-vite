@@ -483,7 +483,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._config.inertia is not None:
             app_config = self._configure_inertia(app_config)
 
-        if JINJA_INSTALLED and self._config.mode in {"template", "htmx"}:
+        if JINJA_INSTALLED and self._config.mode == "template":
             self._configure_jinja_callables(app_config)
 
         skip_static = self._config.mode == "external" and self._config.is_dev_mode
