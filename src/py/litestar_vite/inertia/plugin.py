@@ -123,7 +123,7 @@ class InertiaPlugin(InitPluginProtocol):
         from litestar_vite.inertia.request import InertiaRequest
         from litestar_vite.inertia.response import InertiaBack, InertiaResponse
 
-        if app_config.response_class is InertiaResponse:
+        if app_config.response_class is InertiaResponse:  # pyright: ignore[reportUnknownMemberType]
             return app_config
 
         for mw in app_config.middleware:
