@@ -814,3 +814,49 @@ def test_openapi_routes_use_simple_names() -> None:
         if "openapi" in name.lower():
             # Should be simple like "openapi.json" not a long hash
             assert len(name) < 20, f"OpenAPI route name '{name}' should be simple, not hashed"
+
+
+# ===== C8: Module-prefixed enum ref resolution =====
+
+
+def testts_type_from_openapi_ref_enum_resolves_to_literal_union() -> None:
+    """Test enum refs resolve to literal unions when component schemas are provided."""
+    schema = {"$ref": "#/components/schemas/__main___Granularity"}
+    components_schemas: dict[str, Any] = {"Granularity": {"type": "string", "enum": ["hour", "day", "month"]}}
+    assert ts_type_from_openapi(schema, components_schemas=components_schemas) == '"hour" | "day" | "month"'
+
+
+def testts_type_from_openapi_any_of_ref_enum_resolves_to_literal_union() -> None:
+    """Test anyOf containing enum refs resolves correctly with nullability."""
+    schema = {
+        "anyOf": [{"$ref": "#/components/schemas/app_domain_insight_schemas__base_Granularity"}, {"type": "null"}],
+    }
+    components_schemas: dict[str, Any] = {"Granularity": {"type": "string", "enum": ["hour", "day", "month"]}}
+    assert ts_type_from_openapi(schema, components_schemas=components_schemas) == '"hour" | "day" | "month" | null'
+
+
+def test_generate_routes_ts_str_enum_query_params_emit_literal_unions() -> None:
+    """StrEnum query params should emit literal unions, not mangled type names."""
+    from enum import Enum
+
+    from litestar_vite.codegen import generate_routes_json
+
+    class Granularity(str, Enum):
+        HOUR = "hour"
+        DAY = "day"
+        MONTH = "month"
+
+    @get("/trends", name="trends.list", sync_to_thread=False)
+    def trends(granularity: Granularity = Granularity.DAY) -> list[str]:
+        return []
+
+    app = Litestar([trends])
+    schema = app.openapi_schema.to_schema()
+
+    routes_json = generate_routes_json(app, openapi_schema=schema)
+    query_type = routes_json["routes"]["trends.list"]["queryParameters"]["granularity"]
+    assert query_type == '"hour" | "day" | "month" | undefined'
+
+    ts_content = generate_routes_ts(app, openapi_schema=schema)
+    assert 'granularity?: "hour" | "day" | "month";' in ts_content
+    assert "__main___Granularity" not in ts_content

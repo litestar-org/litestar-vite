@@ -36,13 +36,57 @@ def normalize_path(path: str) -> str:
     return _PATH_PARAM_TYPE_PATTERN.sub(r"{\1}", str(PurePosixPath(path)))
 
 
-def ts_type_from_openapi(schema_dict: dict[str, Any]) -> str:
+def _extract_schema_ref_name(ref: str) -> str | None:
+    """Return the schema name from a ``#/components/schemas/<name>`` ref or None.
+
+    Returns:
+        The trailing schema name when ``ref`` is a components-schemas pointer; None otherwise.
+    """
+    prefix = "#/components/schemas/"
+    if ref.startswith(prefix):
+        return ref[len(prefix) :]
+    return None
+
+
+def _resolve_component_schema_name(name: str, components_schemas: dict[str, Any]) -> str | None:
+    """Resolve Litestar's mangled schema names back to a key in ``components.schemas``.
+
+    Litestar emits fully-qualified module paths in ``$ref`` targets (e.g.
+    ``app_domain_insight_schemas__base_Granularity``) when nested types collide,
+    but ``components.schemas`` is keyed on the short name (``Granularity``).
+    Strip leading underscore-separated segments until a matching key is found.
+
+    Returns:
+        The resolved key from ``components_schemas``, or None when no match is found.
+    """
+    if name in components_schemas:
+        return name
+
+    if "_" not in name:
+        return None
+
+    parts = name.split("_")
+    for i in range(len(parts)):
+        candidate = "_".join(parts[i:])
+        if candidate in components_schemas:
+            return candidate
+    return None
+
+
+def ts_type_from_openapi(schema_dict: dict[str, Any], components_schemas: dict[str, Any] | None = None) -> str:
     """Convert an OpenAPI schema dict to a TypeScript type string.
 
     This function is intentionally lightweight and mirrors the historical
     behavior used in this project's unit tests (OpenAPI 3.1 union types,
     oneOf nullable patterns, etc.). It is not a full OpenAPI-to-TypeScript
     compiler.
+
+    Args:
+        schema_dict: The OpenAPI schema fragment to convert.
+        components_schemas: Optional ``components.schemas`` map used to resolve
+            ``$ref`` targets, including Litestar's name-mangled refs. When a
+            ref resolves to a schema with ``enum``, the value expands to a TS
+            literal union so the type is self-contained.
 
     Returns:
         A TypeScript type expression string.
@@ -52,11 +96,29 @@ def ts_type_from_openapi(schema_dict: dict[str, Any]) -> str:
 
     ref = schema_dict.get("$ref")
     if isinstance(ref, str) and ref:
-        return ref.split("/")[-1]
+        ref_name = _extract_schema_ref_name(ref)
+        if ref_name is None:
+            return ref.split("/")[-1]
+
+        resolved_type = ref_name
+        if components_schemas:
+            resolved_name = _resolve_component_schema_name(ref_name, components_schemas) or ref_name
+            resolved_schema = components_schemas.get(resolved_name)
+            if isinstance(resolved_schema, dict):
+                resolved_schema_t = cast("dict[str, Any]", resolved_schema)
+                enum_values = resolved_schema_t.get("enum")
+                if isinstance(enum_values, list) and enum_values:
+                    enum_values_t = cast("list[Any]", enum_values)
+                    resolved_type = " | ".join(ts_literal(v) for v in enum_values_t)
+                else:
+                    resolved_type = resolved_name
+            else:
+                resolved_type = resolved_name
+        return resolved_type
 
     if "anyOf" in schema_dict and isinstance(schema_dict["anyOf"], list) and schema_dict["anyOf"]:
         schemas = cast("list[Any]", schema_dict["anyOf"])
-        union = {ts_type_from_subschema(s) for s in schemas}
+        union = {ts_type_from_subschema(s, components_schemas=components_schemas) for s in schemas}
         return join_union(union)
 
     result = "any"
@@ -68,19 +130,26 @@ def ts_type_from_openapi(schema_dict: dict[str, Any]) -> str:
             result = " | ".join(ts_literal(v) for v in enum_values)
         case {"oneOf": one_of} if isinstance(one_of, list) and one_of:
             schemas = cast("list[Any]", one_of)
-            union = {ts_type_from_subschema(s) for s in schemas}
+            union = {ts_type_from_subschema(s, components_schemas=components_schemas) for s in schemas}
             result = join_union(union)
         case {"allOf": all_of} if isinstance(all_of, list) and all_of:
             schemas = cast("list[Any]", all_of)
-            parts = [wrap_union_for_intersection(ts_type_from_subschema(s)) for s in schemas]
+            parts = [
+                wrap_union_for_intersection(ts_type_from_subschema(s, components_schemas=components_schemas))
+                for s in schemas
+            ]
             parts = [p for p in parts if p and p != "any"]
             result = " & ".join(parts) if parts else "any"
         case {"type": list()}:
             type_entries_list: list[Any] = schema_dict["type"]
-            parts = [ts_type_from_openapi_type_entry(t, schema_dict) for t in type_entries_list if isinstance(t, str)]
+            parts = [
+                ts_type_from_openapi_type_entry(t, schema_dict, components_schemas=components_schemas)
+                for t in type_entries_list
+                if isinstance(t, str)
+            ]
             result = join_union(set(parts)) if parts else "any"
         case {"type": str() as schema_type}:
-            result = ts_type_from_openapi_type_entry(schema_type, schema_dict)
+            result = ts_type_from_openapi_type_entry(schema_type, schema_dict, components_schemas=components_schemas)
         case _:
             pass
 
@@ -146,13 +215,17 @@ def collect_ref_names(schema_dict: Any) -> set[str]:
     return refs
 
 
-def ts_type_from_subschema(schema: Any) -> str:
+def ts_type_from_subschema(schema: Any, components_schemas: dict[str, Any] | None = None) -> str:
     if isinstance(schema, dict):
-        return ts_type_from_openapi(cast("dict[str, Any]", schema))
+        return ts_type_from_openapi(cast("dict[str, Any]", schema), components_schemas=components_schemas)
     return "any"
 
 
-def ts_type_from_openapi_type_entry(type_name: str, schema_dict: dict[str, Any]) -> str:
+def ts_type_from_openapi_type_entry(
+    type_name: str,
+    schema_dict: dict[str, Any],
+    components_schemas: dict[str, Any] | None = None,
+) -> str:
     primitive_types: dict[str, str] = {
         "string": "string",
         "integer": "number",
@@ -168,7 +241,11 @@ def ts_type_from_openapi_type_entry(type_name: str, schema_dict: dict[str, Any])
             result = _OPENAPI_STRING_FORMAT_TO_TS_ALIAS.get(fmt, result)
     if type_name == "array":
         items = schema_dict.get("items")
-        item_type = ts_type_from_subschema(items) if isinstance(items, dict) else "unknown"
+        item_type = (
+            ts_type_from_subschema(items, components_schemas=components_schemas)
+            if isinstance(items, dict)
+            else "unknown"
+        )
         result = f"{wrap_for_array(item_type)}[]"
     elif type_name == "object":
         properties = schema_dict.get("properties")
@@ -182,7 +259,7 @@ def ts_type_from_openapi_type_entry(type_name: str, schema_dict: dict[str, Any])
 
             lines: list[str] = ["{"]
             for name, prop_schema in cast("dict[str, Any]", properties).items():
-                ts_type = ts_type_from_subschema(prop_schema)
+                ts_type = ts_type_from_subschema(prop_schema, components_schemas=components_schemas)
                 optional = "" if name in required else "?"
                 lines.append(f"  {name}{optional}: {ts_type};")
             lines.append("}")
