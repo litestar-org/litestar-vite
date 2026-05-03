@@ -323,6 +323,31 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             engine.register_template_callable(key="vite_static", template_callable=render_static_asset)
             engine.register_template_callable(key="vite_routes", template_callable=render_routes)
 
+    def _wants_jinja_callables(self, app_config: "AppConfig") -> bool:
+        """Decide whether to register Jinja ``vite_*`` callables for this app.
+
+        The full gate requires three conditions, each of which is independently
+        load-bearing: the configured mode must be ``template`` (canonical), Jinja2
+        must be importable, and the user must have provided a ``TemplateConfig``
+        backed by ``JinjaTemplateEngine``. Returning ``False`` here is harmless:
+        callables are simply not registered and HTMX-without-Jinja, raw HTML, and
+        non-Jinja template engine consumers continue to work.
+
+        Args:
+            app_config: The Litestar application configuration.
+
+        Returns:
+            True when ``vite_hmr`` / ``vite`` / ``vite_static`` / ``vite_routes`` should be registered.
+        """
+        if self._config.mode != "template" or not JINJA_INSTALLED:
+            return False
+        template_config = app_config.template_config  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+        if template_config is None:
+            return False
+        from litestar.contrib.jinja import JinjaTemplateEngine
+
+        return isinstance(template_config.engine_instance, JinjaTemplateEngine)  # pyright: ignore[reportUnknownMemberType]
+
     def _configure_static_files(self, app_config: "AppConfig") -> None:
         """Configure static file serving for Vite assets.
 
@@ -485,24 +510,36 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._config.inertia is not None:
             app_config = self._configure_inertia(app_config)
 
-        if JINJA_INSTALLED and self._config.mode == "template":
+        if self._wants_jinja_callables(app_config):
             self._configure_jinja_callables(app_config)
 
-        skip_static = self._config.mode == "external" and self._config.is_dev_mode
+        skip_static = (
+            self._config.wants_html_proxy
+            and self._config.is_dev_mode
+            and self._config.runtime.external_dev_server is not None
+        )
         if self._config.set_static_folders and not skip_static:
             self._configure_static_files(app_config)
 
         if self._config.is_dev_mode and self._config.proxy_mode is not None and not is_non_serving_assets_cli():
             self._configure_dev_proxy(app_config)
 
-        use_spa_handler = self._config.spa_handler and self._config.mode in {"spa", "framework"}
-        use_spa_handler = use_spa_handler or (self._config.mode == "external" and not self._config.is_dev_mode)
+        use_spa_handler = self._config.spa_handler and (
+            self._config.registers_html_catchall or self._config.wants_html_proxy
+        )
+        use_spa_handler = use_spa_handler or (
+            self._config.wants_html_proxy
+            and not self._config.is_dev_mode
+            and self._config.runtime.external_dev_server is not None
+        )
         if use_spa_handler:
             from litestar_vite.handler import AppHandler
 
             self._spa_handler = AppHandler(self._config)
             app_config.route_handlers.append(self._spa_handler.create_route_handler())
         elif self._config.mode == "hybrid":
+            # Hybrid mode prebuilds AppHandler so InertiaResponse._render_spa can reuse it.
+            # Template + Inertia uses _render_template (Jinja-direct) and does not need this.
             from litestar_vite.handler import AppHandler
 
             self._spa_handler = AppHandler(self._config)
@@ -697,7 +734,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._spa_handler.initialize_sync(vite_url=self._proxy_target)
             log_success("SPA handler initialized")
 
-        is_ssr_mode = self._config.mode == "framework" or self._config.proxy_mode == "proxy"
+        is_ssr_mode = self._config.wants_html_proxy
         if not self._config.is_dev_mode and not self._config.has_built_assets() and not is_ssr_mode:
             log_warn(
                 "Vite dev server is disabled (dev_mode=False) but no index.html was found. "

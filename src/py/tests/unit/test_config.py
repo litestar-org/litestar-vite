@@ -769,8 +769,23 @@ def test_validate_mode_allows_htmx_normalized_to_template_with_inertia(tmp_path:
 
 
 def test_validate_mode_rejects_external_with_inertia() -> None:
-    config = ViteConfig(mode="external", inertia=InertiaConfig())
-    with pytest.raises(ValueError, match=r"Inertia\.js cannot be used with mode='external'"):
+    """external + Inertia is rejected. After C2 collapses external→framework, the proper error path
+    runs at construction (no external_dev_server) or at validate_mode (framework not inertia_compatible).
+    """
+    with pytest.raises(ValueError, match="external_dev_server"):
+        ViteConfig(mode="external", inertia=InertiaConfig())
+
+
+def test_validate_mode_rejects_framework_with_inertia() -> None:
+    """framework mode is not inertia_compatible because an external dev server owns HTML rendering."""
+    config = ViteConfig(
+        mode="framework",
+        inertia=InertiaConfig(),
+        runtime=RuntimeConfig(
+            external_dev_server=ExternalDevServer(target="http://localhost:4200"),
+        ),
+    )
+    with pytest.raises(ValueError, match=r"Inertia\.js cannot be used with mode"):
         config.validate_mode()
 
 
@@ -800,3 +815,131 @@ def test_validate_mode_rejects_page_props_without_inertia() -> None:
     config = ViteConfig(types=TypeGenConfig(generate_page_props=True))
     with pytest.raises(ValueError, match="generate_page_props=True requires Inertia"):
         config.validate_mode()
+
+
+# ============================================================================
+# C2: Capability predicates
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    ("mode", "inertia_enabled", "expected"),
+    [
+        (
+            "spa",
+            False,
+            {
+                "serves_own_html": True,
+                "registers_html_catchall": True,
+                "wants_inertia_html_shell": False,
+                "wants_html_proxy": False,
+                "inertia_compatible": True,
+                "wants_spa_config": True,
+            },
+        ),
+        (
+            "spa",
+            True,
+            {
+                "serves_own_html": True,
+                "registers_html_catchall": True,
+                "wants_inertia_html_shell": False,
+                "wants_html_proxy": False,
+                "inertia_compatible": True,
+                "wants_spa_config": True,
+            },
+        ),
+        (
+            "hybrid",
+            False,
+            {
+                "serves_own_html": True,
+                "registers_html_catchall": False,
+                "wants_inertia_html_shell": False,
+                "wants_html_proxy": False,
+                "inertia_compatible": True,
+                "wants_spa_config": True,
+            },
+        ),
+        (
+            "hybrid",
+            True,
+            {
+                "serves_own_html": True,
+                "registers_html_catchall": False,
+                "wants_inertia_html_shell": True,
+                "wants_html_proxy": False,
+                "inertia_compatible": True,
+                "wants_spa_config": True,
+            },
+        ),
+        (
+            "template",
+            False,
+            {
+                "serves_own_html": True,
+                "registers_html_catchall": False,
+                "wants_inertia_html_shell": False,
+                "wants_html_proxy": False,
+                "inertia_compatible": True,
+                "wants_spa_config": False,
+            },
+        ),
+        (
+            "template",
+            True,
+            {
+                "serves_own_html": True,
+                "registers_html_catchall": False,
+                "wants_inertia_html_shell": True,
+                "wants_html_proxy": False,
+                "inertia_compatible": True,
+                "wants_spa_config": False,
+            },
+        ),
+        (
+            "framework",
+            False,
+            {
+                "serves_own_html": False,
+                "registers_html_catchall": False,
+                "wants_inertia_html_shell": False,
+                "wants_html_proxy": True,
+                "inertia_compatible": False,
+                "wants_spa_config": False,
+            },
+        ),
+    ],
+)
+def test_vite_config_capability_predicates(mode: str, inertia_enabled: bool, expected: dict[str, bool]) -> None:
+    """Capability predicates return the expected truth table for every canonical mode."""
+    inertia = InertiaConfig() if inertia_enabled else None
+    config = ViteConfig(mode=mode, inertia=inertia)
+    for prop, want in expected.items():
+        assert getattr(config, prop) is want, f"{prop} for mode={mode!r}, inertia={inertia_enabled}"
+
+
+@pytest.mark.parametrize(
+    ("input_mode", "canonical_mode"),
+    [("inertia", "hybrid"), ("htmx", "template"), ("ssr", "framework"), ("ssg", "framework")],
+)
+def test_vite_config_aliases_normalize_to_canonical(input_mode: str, canonical_mode: str) -> None:
+    """Documentation aliases collapse to canonical modes at construction (no warnings)."""
+    config = ViteConfig(mode=input_mode)  # type: ignore[arg-type]
+    assert config.mode == canonical_mode
+
+
+def test_vite_config_external_mode_with_dev_server_deprecates(recwarn: pytest.WarningsRecorder) -> None:
+    """mode='external' + external_dev_server: warns deprecation, normalizes to framework."""
+    config = ViteConfig(
+        mode="external",
+        runtime=RuntimeConfig(external_dev_server=ExternalDevServer(target="http://localhost:4200")),
+    )
+    assert config.mode == "framework"
+    assert any(issubclass(w.category, DeprecationWarning) for w in recwarn.list)
+
+
+def test_vite_config_external_mode_without_dev_server_raises() -> None:
+    """mode='external' without external_dev_server raises (cannot proxy to nothing)."""
+    with pytest.raises(ValueError, match="external_dev_server"):
+        ViteConfig(mode="external")

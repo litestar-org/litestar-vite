@@ -1059,13 +1059,15 @@ class ViteDoctor:
         from litestar_vite.config import InertiaConfig
 
         inertia_enabled = isinstance(self.config.inertia, InertiaConfig)
-        if inertia_enabled and self.config.mode == "external":
+        if inertia_enabled and not self.config.inertia_compatible:
             self.issues.append(
                 DoctorIssue(
                     check="Mode/Inertia Conflict",
                     severity="error",
-                    message="Inertia is enabled but mode='external' is incompatible with Inertia "
-                    "(external mode delegates to a non-Vite dev server like Angular CLI)",
+                    message=(
+                        f"Inertia is enabled but mode={self.config.mode!r} is incompatible with Inertia "
+                        "(framework mode delegates HTML to an external dev server)"
+                    ),
                     fix_hint="Switch to mode='spa', mode='hybrid', or mode='template', or disable inertia",
                     auto_fixable=False,
                 )

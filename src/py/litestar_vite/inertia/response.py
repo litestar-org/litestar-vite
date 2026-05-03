@@ -652,7 +652,7 @@ class InertiaResponse(Response[T]):
             return False
         if inertia_plugin.config.ssr_config is None:
             return False
-        return vite_plugin.config.mode in {"spa", "hybrid", "template"}
+        return vite_plugin.config.inertia_compatible
 
     def _determine_media_type(self, media_type: "MediaType | str | None") -> "MediaType | str":
         """Determine the media type for the response.
@@ -862,7 +862,7 @@ class InertiaResponse(Response[T]):
 
         resolved_media_type = self._determine_media_type(media_type or MediaType.HTML)
 
-        if vite_plugin.config.mode in {"spa", "hybrid"}:
+        if vite_plugin.config.wants_spa_config:
             body = self._render_spa(request, page_props, vite_plugin)
         else:
             body = self._render_template(request, page_props, type_encoders, inertia_plugin)
