@@ -228,17 +228,21 @@ def test_vite_plugin_app_init_static_directories_configuration(tmp_path: Path) -
     assert len(app_config.route_handlers) > 0
 
 
-def test_vite_plugin_app_init_direct_mode_skips_proxy() -> None:
-    """Proxy middleware should only attach in proxy mode."""
+def test_vite_plugin_app_init_no_proxy_when_proxy_mode_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When proxy_mode resolves to None (production), no proxy middleware is attached."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
 
-    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode="direct"))
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    config = ViteConfig(mode="spa", runtime=RuntimeConfig(dev_mode=False))
     plugin = VitePlugin(config=config)
     app_config = AppConfig()
 
     plugin.on_app_init(app_config)
 
-    assert app_config.middleware == []
     assert plugin._proxy_target is None
+    assert config.proxy_mode is None
 
 
 def test_vite_plugin_middleware_order_preserves_proxy_headers_before_vite_proxy() -> None:
@@ -351,6 +355,7 @@ def test_vite_plugin_lifespan_with_vite_process_management(mock_console: Mock, t
 def test_vite_plugin_lifespan_with_watch_mode(mock_console: Mock, tmp_path: Path) -> None:
     """Test server lifespan with watch mode (no HMR)."""
     config = ViteConfig(
+        mode="framework",
         runtime=RuntimeConfig(
             dev_mode=True, proxy_mode="proxy", external_dev_server="http://localhost:4200"
         ),  # Watch mode without HMR
@@ -793,6 +798,74 @@ def test_vite_plugin_optional_template_callable_registration_optional() -> None:
     assert result is app_config
 
 
+# =====================================================
+# Template-mode + (Inertia/HTMX) x Jinja matrix
+# =====================================================
+
+
+@pytest.mark.parametrize(
+    ("inertia_enabled", "jinja_installed", "use_jinja_template_config", "expect_callables"),
+    [
+        pytest.param(True, True, True, True, id="inertia-jinja"),
+        pytest.param(True, False, False, False, id="inertia-no-jinja"),
+        pytest.param(False, True, True, True, id="htmx-jinja"),
+        pytest.param(False, False, False, False, id="htmx-no-jinja"),
+    ],
+)
+def test_template_mode_jinja_callables_matrix(
+    inertia_enabled: bool,
+    jinja_installed: bool,
+    use_jinja_template_config: bool,
+    expect_callables: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lock the Inertia x Jinja and HTMX x Jinja matrix for ``mode='template'``.
+
+    Callables (``vite_hmr``, ``vite``, ``vite_static``, ``vite_routes``) register iff
+    BOTH ``JINJA_INSTALLED`` is true AND a ``TemplateConfig`` with ``JinjaTemplateEngine``
+    is provided. Without Jinja, ``mode='template'`` must still construct cleanly so
+    raw-HTML / non-Jinja-engine consumers (HTMX, Mako, Chameleon) are not blocked.
+    """
+    from litestar.contrib.jinja import JinjaTemplateEngine
+    from litestar.middleware.session.server_side import ServerSideSessionConfig
+    from litestar.stores.base import Store
+    from litestar.stores.memory import MemoryStore
+    from litestar.types import Middleware
+
+    import litestar_vite.plugin as plugin_module
+    from litestar_vite.config import _vite as vite_config_mod
+
+    monkeypatch.setattr(vite_config_mod, "JINJA_INSTALLED", jinja_installed)
+    monkeypatch.setattr(plugin_module, "JINJA_INSTALLED", jinja_installed)
+
+    inertia = True if inertia_enabled else None
+    config = ViteConfig(mode="template", inertia=inertia)
+
+    template_config: TemplateConfig | None = None
+    engine: JinjaTemplateEngine | None = None
+    if use_jinja_template_config:
+        engine = JinjaTemplateEngine(directory=tmp_path)
+        template_config = TemplateConfig(engine=engine)
+
+    plugin = VitePlugin(config=config)
+    middleware: list[Middleware] = [ServerSideSessionConfig().middleware] if inertia_enabled else []
+    stores: dict[str, Store] = {"sessions": MemoryStore()} if inertia_enabled else {}
+    app_config = AppConfig(template_config=template_config, middleware=middleware, stores=stores)
+
+    plugin.on_app_init(app_config)
+
+    if expect_callables:
+        assert engine is not None
+        assert "vite_hmr" in engine.engine.globals
+        assert "vite" in engine.engine.globals
+        assert "vite_static" in engine.engine.globals
+        assert "vite_routes" in engine.engine.globals
+    elif engine is not None:
+        assert "vite_hmr" not in engine.engine.globals
+        assert "vite" not in engine.engine.globals
+
+
 def test_vite_plugin_optional_asset_url_generation_without_jinja() -> None:
     """Test asset URL generation works without Jinja template functions."""
     config = ViteConfig(paths=PathConfig(bundle_dir=Path("dist"), asset_url="/static/"))
@@ -1157,7 +1230,7 @@ def test_is_litestar_route_case_sensitive() -> None:
 
 
 def test_is_litestar_route_with_root_path() -> None:
-    """Test is_litestar_route with root path."""
+    """Root `/` handlers must be detected so the SSR proxy middleware can fall through to them."""
     from litestar_vite.plugin import is_litestar_route
 
     @get("/")
@@ -1166,9 +1239,21 @@ def test_is_litestar_route_with_root_path() -> None:
 
     app = Litestar(route_handlers=[root])
 
-    # Root should not match (special case in SPA handler)
-    # But the function itself should return False since no prefix matches
+    assert is_litestar_route("/", app) is True
+
+
+def test_is_litestar_route_root_absent_when_no_root_handler() -> None:
+    """Without an explicit `/` handler, `is_litestar_route('/')` must remain False."""
+    from litestar_vite.plugin import is_litestar_route
+
+    @get("/api/users")
+    async def get_users() -> dict[str, str]:
+        return {"message": "users"}
+
+    app = Litestar(route_handlers=[get_users])
+
     assert is_litestar_route("/", app) is False
+    assert is_litestar_route("/api/users", app) is True
 
 
 def test_is_litestar_route_cache_performance() -> None:
@@ -1292,14 +1377,15 @@ async def test_vite_plugin_proxy_client_none_in_production_mode() -> None:
 
 
 async def test_vite_plugin_proxy_client_none_when_no_proxy_mode() -> None:
-    """Test that proxy_client remains None when proxy_mode is None."""
-    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode=None), mode="template")
+    """proxy_client stays None when proxy_mode resolves to None.
+
+    After C3, dev_mode + serves_own_html auto-derives proxy_mode='vite'. To exercise the
+    no-proxy path, run in production mode where the auto-derivation yields None.
+    """
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=False), mode="template")
     plugin = VitePlugin(config=config)
+    assert config.proxy_mode is None
 
-    # Create a minimal app for lifespan
     app = Litestar(route_handlers=[])
-
-    # Run the lifespan context manager
     async with plugin.lifespan(app):
-        # Without proxy_mode, proxy_client should remain None
         assert plugin.proxy_client is None

@@ -367,7 +367,7 @@ class ViteDoctor:
         if not self.parsed_config:
             return
 
-        if self.config.proxy_mode not in {"vite", "proxy"}:
+        if self.config.proxy_mode is None:
             return
 
         js_origin = self.parsed_config.server_origin
@@ -382,10 +382,7 @@ class ViteDoctor:
                     f"vite.config sets server.origin='{js_origin}' while proxy_mode='{self.config.proxy_mode}'. "
                     "This can bypass Litestar proxy middleware for CSS/imported assets."
                 ),
-                fix_hint=(
-                    "Remove server.origin in proxy mode so assets stay same-origin via Litestar, "
-                    "or switch to runtime.proxy_mode='direct' if two-port direct access is intentional"
-                ),
+                fix_hint="Remove server.origin in proxy mode so assets stay same-origin via Litestar.",
                 auto_fixable=False,
             )
         )
@@ -1059,13 +1056,15 @@ class ViteDoctor:
         from litestar_vite.config import InertiaConfig
 
         inertia_enabled = isinstance(self.config.inertia, InertiaConfig)
-        if inertia_enabled and self.config.mode == "external":
+        if inertia_enabled and not self.config.inertia_compatible:
             self.issues.append(
                 DoctorIssue(
                     check="Mode/Inertia Conflict",
                     severity="error",
-                    message="Inertia is enabled but mode='external' is incompatible with Inertia "
-                    "(external mode delegates to a non-Vite dev server like Angular CLI)",
+                    message=(
+                        f"Inertia is enabled but mode={self.config.mode!r} is incompatible with Inertia "
+                        "(framework mode delegates HTML to an external dev server)"
+                    ),
                     fix_hint="Switch to mode='spa', mode='hybrid', or mode='template', or disable inertia",
                     auto_fixable=False,
                 )

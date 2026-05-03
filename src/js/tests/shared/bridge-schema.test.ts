@@ -54,3 +54,24 @@ describe("bridge schema mode contract", () => {
     }
   })
 })
+
+describe("bridge schema litestarPort", () => {
+  it("accepts a numeric litestarPort", () => {
+    const config = parseBridgeSchema({ ...baseBridgeConfig, litestarPort: 8000 })
+    expect(config.litestarPort).toBe(8000)
+  })
+
+  it("accepts a null litestarPort", () => {
+    const config = parseBridgeSchema({ ...baseBridgeConfig, litestarPort: null })
+    expect(config.litestarPort).toBeNull()
+  })
+
+  it("treats a missing litestarPort as null for older bridge files", () => {
+    const config = parseBridgeSchema(baseBridgeConfig)
+    expect(config.litestarPort).toBeNull()
+  })
+
+  it("rejects non-integer litestarPort", () => {
+    expect(() => parseBridgeSchema({ ...baseBridgeConfig, litestarPort: "8000" })).toThrow(/litestarPort/)
+  })
+})

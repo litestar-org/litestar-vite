@@ -97,8 +97,12 @@ def _cleanup_processes_after_session() -> Generator[None, None, None]:
             except Exception:
                 pass
 
-    # Kill any orphaned processes on our fixed ports
-    for port in EXAMPLE_PORTS.values():
+    # Kill any orphaned processes on our fixed ports.
+    # Includes 13714 — the default Inertia SSR /render port shared by vue-inertia-ssr
+    # and vue-inertia-jinja-ssr. The plugin manages the Node SSR process now, so the
+    # port collides between successive test runs unless we reap survivors.
+    cleanup_ports = [*list(EXAMPLE_PORTS.values()), 13714]
+    for port in cleanup_ports:
         try:
             result = subprocess.run(["lsof", "-t", "-i", f":{port}"], capture_output=True, text=True, timeout=5)
             if result.stdout.strip():

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from litestar_vite.config import RuntimeConfig, ViteConfig
+from litestar_vite.config import ViteConfig
 from litestar_vite.plugin import VitePlugin
 
 
@@ -46,13 +46,3 @@ def test_auto_port_when_not_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     # Proxy target should contain the auto-picked port
     assert plugin._proxy_target.count(":") >= 2  # protocol://host:port
     assert str(cfg.port) in plugin._proxy_target
-
-
-def test_direct_mode_does_not_write_hotfile(tmp_path: Path) -> None:
-    cfg = ViteConfig(dev_mode=True, runtime=RuntimeConfig(proxy_mode="direct"))
-    cfg.paths.bundle_dir = tmp_path
-    plugin = VitePlugin(config=cfg)
-
-    plugin._ensure_proxy_target()
-
-    assert not (tmp_path / cfg.hot_file).exists()

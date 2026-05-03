@@ -58,19 +58,25 @@ EXTERNAL_EXAMPLES: set[str] = {"angular-cli"}
 # This avoids output parsing which is unreliable in CI due to stdout buffering
 EXAMPLE_PORTS: dict[str, int] = {
     "react": 5001,
+    "react-router": 5004,
     "react-tanstack": 5005,
     "react-inertia": 5002,
     "react-inertia-jinja": 5003,
     "vue": 5011,
     "vue-inertia": 5012,
     "vue-inertia-jinja": 5013,
+    "vue-inertia-ssr": 5014,
+    "vue-inertia-jinja-ssr": 5015,
     "svelte": 5021,
+    "svelte-inertia": 5023,
+    "svelte-inertia-jinja": 5024,
     "sveltekit": 5022,
     "angular": 5031,
     "angular-cli": 5032,
     "nuxt": 5041,
     "astro": 5051,
     "jinja-htmx": 5050,
+    "htmx-no-jinja": 5060,
 }
 
 # External dev server target ports for CLI examples

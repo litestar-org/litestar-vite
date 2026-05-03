@@ -1,0 +1,28 @@
+{
+  "name": "svelte-inertia-jinja",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && tsc -b --noEmit",
+    "preview": "vite preview",
+    "serve": "vite preview",
+    "generate-types": "openapi-ts --config openapi-ts.config.ts"
+  },
+  "dependencies": {
+    "@inertiajs/svelte": "3.0.3",
+    "svelte": "5.55.5",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "0.96.1",
+    "@sveltejs/vite-plugin-svelte": "7.0.0",
+    "@tailwindcss/vite": "4.2.4",
+    "litestar-vite-plugin": "file:../..",
+    "svelte-check": "4.4.6",
+    "tailwindcss": "4.2.4",
+    "tslib": "2.8.1",
+    "typescript": "5.9.3",
+    "vite": "8.0.10"
+  }
+}

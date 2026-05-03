@@ -2,6 +2,7 @@
 
 import logging
 import os
+import warnings
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
@@ -137,26 +138,29 @@ class ViteConfig:
     - Explicit mode parameter overrides auto-detection
 
     Attributes:
-        mode: Serving mode. Five canonical values plus four aliases that normalize
-            to canonical values at ``__post_init__`` (so downstream code only ever
-            switches on canonical values).
+        mode: Serving mode. Four canonical values plus five aliases (one deprecated)
+            that normalize to canonical values at ``__post_init__`` (so downstream code
+            only ever switches on canonical values).
 
-            Canonical (5):
-                - "spa": prebuilt index.html SPA + auto catch-all SPA route handler.
-                - "template": Jinja2 server-rendered HTML; Litestar owns routing.
-                  Pair with the litestar-htmx package for HTMX flows.
-                - "hybrid": prebuilt index.html with Jinja chrome injection;
-                  Inertia.js entrypoint mode.
-                - "framework": external dev server (Astro / Nuxt / SvelteKit) with
-                  framework proxy.
-                - "external": non-Vite external dev server (Angular CLI, etc.) with
-                  proxy. Auto-serves bundle_dir in production.
+            Canonical (4):
+                - "spa": Litestar serves a single index.html catch-all; client-side router
+                  owns navigation.
+                - "hybrid": Litestar serves a prebuilt index.html with Vite scripts injected;
+                  user defines per-page handlers that return Inertia data.
+                - "template": Litestar serves per-route HTML. With Jinja2 + JinjaTemplateEngine
+                  TemplateConfig, ``vite``/``vite_hmr``/``vite_static``/``vite_routes`` callables
+                  are auto-registered. Without Jinja, return raw HTML strings or use a different
+                  template engine (Mako, Chameleon). HTMX flows use this mode.
+                - "framework": External dev server (Astro/Nuxt/SvelteKit/Angular CLI) owns HTML;
+                  Litestar proxies non-API routes via ``SSRProxyMiddleware``. Combine with
+                  ``runtime.external_dev_server=ExternalDevServer(...)`` for non-Vite tools.
 
-            Aliases (collapse at __post_init__):
-                - "htmx" → "template"
+            Aliases (auto-translated at construction):
                 - "inertia" → "hybrid"
-                - "ssr" → "framework"
-                - "ssg" → "framework"
+                - "htmx" → "template"
+                - "ssr" / "ssg" → "framework"
+                - "external" → "framework" (DEPRECATED; emits ``DeprecationWarning``. Use
+                  ``mode='framework'`` with ``external_dev_server`` instead.)
 
             Auto-detected if not set.
         paths: File system paths configuration.
@@ -257,7 +261,8 @@ class ViteConfig:
         self._auto_detect_mode()
         self._auto_configure_inertia()
         self._auto_detect_react()
-        self._apply_framework_mode_defaults()
+        self._apply_proxy_mode_defaults()
+        self._validate_proxy_mode()
         self._normalize_deploy()
         self._ensure_spa_default()
         self._auto_enable_dev_mode()
@@ -294,7 +299,7 @@ class ViteConfig:
     def _normalize_mode(self) -> None:
         """Normalize mode aliases to canonical values.
 
-        Canonical modes (5): ``spa``, ``template``, ``hybrid``, ``framework``, ``external``.
+        Canonical modes (4): ``spa``, ``template``, ``hybrid``, ``framework``.
 
         Aliases collapse to the canonical mode at construction so downstream code
         only ever switches on canonical values:
@@ -312,6 +317,15 @@ class ViteConfig:
           path. Jinja-rendered server HTML with HTMX attributes IS template mode.
           HTMX-specific runtime behavior (HTMXPlugin, HTMXRequest, HTMXResponse)
           lives in the litestar-htmx package and is orthogonal to ViteConfig.mode.
+
+        - 'external' → 'framework' (DEPRECATED): the legacy ``external`` mode is
+          a flavor of ``framework`` distinguished only by ``external_dev_server``
+          being set. Emits ``DeprecationWarning`` and collapses to ``framework``
+          when an external dev server is configured. Raises ``ValueError`` when
+          ``external_dev_server`` is missing — without it the proxy has no target.
+
+        Raises:
+            ValueError: When ``mode='external'`` is provided without ``external_dev_server``.
         """
         if self.mode in {"ssr", "ssg"}:
             self.mode = "framework"
@@ -319,6 +333,20 @@ class ViteConfig:
             self.mode = "hybrid"
         elif self.mode == "htmx":
             self.mode = "template"
+        elif self.mode == "external":
+            if self.runtime.external_dev_server is None:
+                msg = (
+                    "mode='external' is deprecated and requires external_dev_server. "
+                    "Use mode='framework' with external_dev_server=ExternalDevServer(...) instead."
+                )
+                raise ValueError(msg)
+            warnings.warn(
+                "mode='external' is deprecated; use mode='framework' with "
+                "external_dev_server=ExternalDevServer(...). The mode now auto-translates to 'framework'.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            self.mode = "framework"
 
     def _normalize_types(self) -> None:
         """Normalize type generation configuration.
@@ -381,39 +409,51 @@ class ViteConfig:
         if isinstance(self.inertia, InertiaConfig) and isinstance(self.spa, SPAConfig) and not self.spa.inject_csrf:
             self.spa = replace(self.spa, inject_csrf=True)
 
-    def _apply_framework_mode_defaults(self) -> None:
-        """Apply intelligent defaults for framework proxy mode.
+    def _apply_proxy_mode_defaults(self) -> None:
+        """Auto-derive ``proxy_mode`` from ``mode`` when not explicitly set.
 
-        When mode='framework' is set, automatically configure proxy_mode and spa_handler
-        based on dev_mode and whether built assets exist:
+        - dev_mode + mode in {spa, hybrid, template} + ``proxy_mode`` None -> ``'vite'``
+        - dev_mode + mode == 'framework' + ``proxy_mode`` None -> ``'proxy'``
+        - not dev_mode -> ``proxy_mode`` = None (disabled in production)
+        - Existing ``proxy_mode`` (set explicitly via ``VITE_PROXY_MODE`` or constructor)
+          is preserved (with a warning when framework mode in dev would normally force ``'proxy'``).
 
-        - Dev mode: proxy_mode='proxy', spa_handler=False
-          (Proxy all non-API routes to the SSR/SSG framework dev server)
-        - Prod mode with built assets: proxy_mode=None, spa_handler=True
-          (Serve static SSG output like Astro's dist/)
-        - Prod mode without built assets: proxy_mode=None, spa_handler=False
-          (True SSR - Node server handles HTML, Litestar only serves API)
+        Also applies the framework spa_handler defaults that the previous
+        ``_apply_framework_mode_defaults`` handled:
+
+        - mode='framework' + dev_mode -> spa_handler=False (proxy serves HTML)
+        - mode='framework' + prod + has_built_assets -> spa_handler=True
+        - mode='framework' + prod + no built assets -> spa_handler=False (true SSR)
         """
-        if self.mode != "framework":
+        if not self.runtime.dev_mode:
+            self.runtime.proxy_mode = None
+            if self.wants_html_proxy:
+                self.runtime.spa_handler = self.has_built_assets()
             return
 
-        if self.runtime.dev_mode:
-            env_proxy = os.getenv("VITE_PROXY_MODE")
-            if env_proxy is None:
-                if self.runtime.proxy_mode is not None and self.runtime.proxy_mode != "proxy":
-                    logger.warning(
-                        "proxy_mode=%r overridden to 'proxy' by framework mode in dev. "
-                        "Set VITE_PROXY_MODE env var to keep your custom proxy_mode.",
-                        self.runtime.proxy_mode,
-                    )
+        if self.wants_html_proxy:
+            if self.runtime.proxy_mode is None:
                 self.runtime.proxy_mode = "proxy"
             self.runtime.spa_handler = False
-        else:
-            self.runtime.proxy_mode = None
-            if self.has_built_assets():
-                self.runtime.spa_handler = True
-            else:
-                self.runtime.spa_handler = False
+        elif self.runtime.proxy_mode is None and self.serves_own_html:
+            self.runtime.proxy_mode = "vite"
+
+    def _validate_proxy_mode(self) -> None:
+        """Validate ``proxy_mode`` against ``mode``.
+
+        Raises:
+            ValueError: When ``proxy_mode='proxy'`` is paired with a non-framework mode.
+        """
+        if self.runtime.proxy_mode == "proxy" and not self.wants_html_proxy:
+            msg = (
+                f"proxy_mode='proxy' is only valid with mode='framework'. Got mode={self.mode!r}. "
+                "The proxy mode catches all non-API requests and forwards them to a framework dev server "
+                "(Astro/Nuxt/SvelteKit/Angular CLI). It cannot be used with template/spa/hybrid modes "
+                "because Litestar serves HTML in those modes — registering a /-catching proxy collides "
+                "with user-defined / route handlers. To use a non-Vite frontend dev server, set "
+                "mode='framework' with external_dev_server=ExternalDevServer(...)."
+            )
+            raise ValueError(msg)
 
     def _normalize_deploy(self) -> None:
         if self.deploy is True:
@@ -464,7 +504,7 @@ class ViteConfig:
         )
 
     def _ensure_spa_default(self) -> None:
-        if self.mode in {"spa", "hybrid"} and self.spa is None:
+        if self.wants_spa_config and self.spa is None:
             self.spa = SPAConfig()
         elif self.spa is None:
             self.spa = False
@@ -474,19 +514,14 @@ class ViteConfig:
             return
 
         auto_dev_mode = os.getenv("VITE_AUTO_DEV_MODE", "True") in TRUE_VALUES
-        if (
-            auto_dev_mode
-            and not self.runtime.dev_mode
-            and self.mode in {"spa", "hybrid"}
-            and not self.has_built_assets()
-        ):
+        if auto_dev_mode and not self.runtime.dev_mode and self.wants_spa_config and not self.has_built_assets():
             self.runtime.dev_mode = True
 
     def _warn_missing_assets(self) -> None:
         """Warn if running in production mode without built assets."""
         import sys
 
-        if self.mode not in {"spa", "hybrid"}:
+        if not self.wants_spa_config:
             return
         if self.runtime.dev_mode:
             return
@@ -561,12 +596,12 @@ class ViteConfig:
         # template mode + Inertia is supported: Jinja template hosts the Inertia
         # page payload via {{ inertia|safe }}, and _render_template injects the
         # SSR-rendered body into the configured target_selector. See #243.
-        if inertia_enabled and self.mode == "external":
+        if inertia_enabled and not self.inertia_compatible:
             msg = (
-                "Inertia.js cannot be used with mode='external'. "
-                "External mode delegates to an external dev server (e.g. Angular CLI) "
-                "which is incompatible with Inertia's SPA routing. "
-                "Either remove inertia= or switch to mode='spa' or mode='hybrid'."
+                f"Inertia.js cannot be used with mode={self.mode!r}. "
+                "Framework mode delegates HTML to an external dev server which is "
+                "incompatible with Inertia's per-request payload injection. "
+                "Either remove inertia= or switch to mode='spa', mode='hybrid', or mode='template'."
             )
             raise ValueError(msg)
 
@@ -607,11 +642,6 @@ class ViteConfig:
                     f"{joined_paths}. "
                     "Either create the file or run in dev mode."
                 )
-                raise ValueError(msg)
-
-        elif self.mode == "template":
-            if not JINJA_INSTALLED:
-                msg = "template mode requires Jinja2 to be installed. Install it with: pip install litestar-vite[jinja]"
                 raise ValueError(msg)
 
     @property
@@ -856,13 +886,13 @@ class ViteConfig:
     def hot_reload(self) -> bool:
         """Check if hot reload is enabled (derived from dev_mode and proxy_mode).
 
-        HMR requires dev_mode=True AND a Vite-based proxy mode (vite, direct, or proxy).
-        All modes support HMR since even SSR frameworks use Vite internally.
+        HMR requires dev_mode=True AND a proxy is active (vite or proxy). All modes support
+        HMR since even SSR frameworks use Vite internally.
 
         Returns:
             True if hot reload is enabled, otherwise False.
         """
-        return self.runtime.dev_mode and self.runtime.proxy_mode in {"vite", "direct", "proxy"}
+        return self.runtime.dev_mode and self.runtime.proxy_mode in {"vite", "proxy"}
 
     @property
     def is_dev_mode(self) -> bool:
@@ -969,7 +999,7 @@ class ViteConfig:
         return self.runtime.detect_nodeenv
 
     @property
-    def proxy_mode(self) -> "Literal['vite', 'direct', 'proxy'] | None":
+    def proxy_mode(self) -> "Literal['vite', 'proxy'] | None":
         """Get proxy mode.
 
         Returns:
@@ -996,6 +1026,80 @@ class ViteConfig:
             True if the SPA handler should be auto-registered, otherwise False.
         """
         return self.runtime.spa_handler
+
+    # ============================================================================
+    # Capability predicates (single source of truth for mode-conditional behavior)
+    # ============================================================================
+
+    @property
+    def serves_own_html(self) -> bool:
+        """True when Litestar (not an external dev server) serves HTML for this app.
+
+        Covers ``spa`` (catch-all shell), ``hybrid`` (Inertia per-route), ``template``
+        (Jinja or raw HTML per-route).
+
+        Returns:
+            True when Litestar owns HTML rendering for this configuration.
+        """
+        return self.mode in {"spa", "hybrid", "template"}
+
+    @property
+    def registers_html_catchall(self) -> bool:
+        """True when the SPA handler should register a ``/{path:path}`` catch-all route.
+
+        Only true for ``mode='spa'``. Hybrid and template modes have user-defined
+        per-route handlers; framework mode delegates HTML to an external dev server.
+
+        Returns:
+            True when an HTML catch-all should be auto-registered.
+        """
+        return self.mode == "spa"
+
+    @property
+    def wants_inertia_html_shell(self) -> bool:
+        """True when Inertia uses ``AppHandler`` to render the HTML shell on each request.
+
+        Hybrid mode: ``AppHandler`` injects Inertia data into a prebuilt index.html.
+        Template mode + Inertia: equivalent injection into a Jinja-rendered shell.
+
+        Returns:
+            True when Inertia HTML shell rendering is required.
+        """
+        return self.mode in {"hybrid", "template"} and isinstance(self.inertia, InertiaConfig)
+
+    @property
+    def wants_html_proxy(self) -> bool:
+        """True when an external dev server owns HTML and Litestar proxies to it.
+
+        Covers ``framework`` mode (Astro / Nuxt / SvelteKit / Angular CLI / etc).
+        ``external_dev_server`` is the runtime axis distinguishing Vite frameworks
+        from non-Vite tools; the mode string itself is documentation.
+
+        Returns:
+            True when non-API routes should be proxied to an external dev server.
+        """
+        return self.mode == "framework"
+
+    @property
+    def inertia_compatible(self) -> bool:
+        """True when this mode supports Inertia.js integration.
+
+        Inertia requires Litestar to render HTML so it can inject the page payload.
+        External dev server modes cannot host Inertia.
+
+        Returns:
+            True when Inertia can be enabled for this mode.
+        """
+        return self.mode in {"spa", "hybrid", "template"}
+
+    @property
+    def wants_spa_config(self) -> bool:
+        """True when ``SPAConfig`` defaults should be applied (mode in {spa, hybrid}).
+
+        Returns:
+            True when SPA-shell defaults are applicable to this mode.
+        """
+        return self.mode in {"spa", "hybrid"}
 
     @property
     def http2(self) -> bool:

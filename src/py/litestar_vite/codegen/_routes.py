@@ -113,7 +113,10 @@ def iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRoute
 
 
 def extract_params_from_litestar(
-    handler: HTTPRouteHandler, http_route: "HTTPRoute", openapi_context: OpenAPIContext | None
+    handler: HTTPRouteHandler,
+    http_route: "HTTPRoute",
+    openapi_context: OpenAPIContext | None,
+    components_schemas: dict[str, Any] | None = None,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Extract path and query parameters using Litestar's native OpenAPI generation.
 
@@ -121,6 +124,7 @@ def extract_params_from_litestar(
         handler: The route handler.
         http_route: The HTTP route.
         openapi_context: The OpenAPI context, if available.
+        components_schemas: OpenAPI ``components.schemas`` map used to resolve enum refs.
 
     Returns:
         A tuple of (path_params, query_params) maps.
@@ -137,7 +141,9 @@ def extract_params_from_litestar(
 
         for param in params:
             schema_dict = param.schema.to_schema() if param.schema else None
-            ts_type = ts_type_from_openapi(schema_dict or {}) if schema_dict else "any"
+            ts_type = (
+                ts_type_from_openapi(schema_dict or {}, components_schemas=components_schemas) if schema_dict else "any"
+            )
             # For URL generation, `null` is not a meaningful value (it would stringify to "null").
             # Treat `null` as "missing" rather than emitting `| null` into route parameter types.
             ts_type = ts_type.replace(" | null", "").replace("null | ", "")
@@ -160,7 +166,12 @@ def extract_params_from_litestar(
 
 
 def _update_params_from_openapi(
-    params: dict[str, str], query_params: dict[str, str], openapi_schema: dict[str, Any], path: str, methods: list[str]
+    params: dict[str, str],
+    query_params: dict[str, str],
+    openapi_schema: dict[str, Any],
+    path: str,
+    methods: list[str],
+    components_schemas: dict[str, Any] | None = None,
 ) -> None:
     path_item = openapi_schema.get("paths", {}).get(path)
     if not path_item:
@@ -174,7 +185,7 @@ def _update_params_from_openapi(
                 query_params.clear()
                 for param in op["parameters"]:
                     schema_dict = param.get("schema", {})
-                    ts_type = ts_type_from_openapi(schema_dict)
+                    ts_type = ts_type_from_openapi(schema_dict, components_schemas=components_schemas)
                     ts_type = ts_type.replace(" | null", "").replace("null | ", "")
 
                     if not param.get("required") and ts_type != "any" and "undefined" not in ts_type:
@@ -236,6 +247,15 @@ def extract_route_metadata(
         with contextlib.suppress(Exception):
             openapi_schema = app.openapi_schema.to_schema()
 
+    components_schemas: dict[str, Any] = {}
+    if isinstance(openapi_schema, dict):
+        components = openapi_schema.get("components")
+        if isinstance(components, dict):
+            components_t = cast("dict[str, Any]", components)
+            schemas = components_t.get("schemas")
+            if isinstance(schemas, dict):
+                components_schemas = cast("dict[str, Any]", schemas)
+
     openapi_context: OpenAPIContext | None = None
     if app.openapi_config is not None:
         with contextlib.suppress(AttributeError, TypeError, ValueError):
@@ -270,7 +290,9 @@ def extract_route_metadata(
         if exclude and any(pattern in route_name or pattern in full_path for pattern in exclude):
             continue
 
-        params, query_params = extract_params_from_litestar(route_handler, http_route, openapi_context)
+        params, query_params = extract_params_from_litestar(
+            route_handler, http_route, openapi_context, components_schemas=components_schemas
+        )
 
         if not params:
             params = extract_path_params(full_path)
@@ -278,7 +300,9 @@ def extract_route_metadata(
         normalized_path = normalize_path(full_path)
 
         if openapi_schema:
-            _update_params_from_openapi(params, query_params, openapi_schema, normalized_path, methods)
+            _update_params_from_openapi(
+                params, query_params, openapi_schema, normalized_path, methods, components_schemas=components_schemas
+            )
 
         opt: dict[str, Any] = route_handler.opt or {}
         component = opt.get("component")

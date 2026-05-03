@@ -35,7 +35,7 @@ import colors from "picocolors"
 import type { ViteDevServer } from "vite"
 import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema.js"
 import { DEBOUNCE_MS } from "./shared/constants.js"
-import { normalizeHost, resolveHotFilePath } from "./shared/network.js"
+import { normalizeHost, resolveHotFilePath, resolveLitestarPort } from "./shared/network.js"
 import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
 
 /**
@@ -194,6 +194,13 @@ interface ResolvedConfig {
   proxyMode: "vite" | "direct" | "proxy" | null
   /** Port for Vite dev server (from VITE_PORT env or runtime config) */
   port?: number
+  /**
+   * Litestar dev server port. Used to set `vite.server.hmr.clientPort` so the
+   * browser opens HMR WebSockets against Litestar (single-port contract).
+   */
+  litestarPort?: number
+  /** Asset URL prefix (e.g. ``/static``); used to build the HMR path. */
+  assetUrl?: string
   /** JavaScript runtime executor for package commands */
   executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
   /** Whether .litestar.json was found */
@@ -223,6 +230,8 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
   }
 
   let pythonExecutor: "node" | "bun" | "deno" | "yarn" | "pnpm" | undefined
+  let assetUrl: string | undefined
+  let litestarPort: number | undefined
 
   const runtime = readBridgeConfig()
   if (runtime) {
@@ -232,9 +241,14 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
     proxyMode = runtime.proxyMode
     port = runtime.port
     pythonExecutor = runtime.executor
+    assetUrl = runtime.assetUrl
     if (runtime.types) {
       pythonTypesConfig = runtime.types
     }
+  }
+  const resolvedLitestarPort = resolveLitestarPort(runtime?.litestarPort, runtime?.appUrl)
+  if (resolvedLitestarPort !== null) {
+    litestarPort = resolvedLitestarPort
   }
 
   let typesConfig: Required<SvelteKitTypesConfig> | false = false
@@ -321,6 +335,8 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
     hotFile,
     proxyMode,
     port,
+    litestarPort,
+    assetUrl,
     executor: config.executor ?? pythonExecutor,
     hasPythonConfig,
   }
@@ -384,6 +400,7 @@ export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): any
     enforce: "pre",
 
     config() {
+      const hmrPath = `${(config.assetUrl ?? "/static").replace(/\/$/, "")}/vite-hmr`
       return {
         server: {
           // Force IPv4 binding for consistency with Python proxy configuration
@@ -395,6 +412,17 @@ export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): any
             ? {
                 port: config.port,
                 strictPort: true,
+              }
+            : {}),
+          // Route HMR through the Litestar port so DevTools never sees the framework port.
+          ...(config.litestarPort !== undefined
+            ? {
+                hmr: {
+                  protocol: "ws" as const,
+                  host: "127.0.0.1",
+                  clientPort: config.litestarPort,
+                  path: hmrPath,
+                },
               }
             : {}),
           proxy: {

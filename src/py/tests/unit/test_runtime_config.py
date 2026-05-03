@@ -79,6 +79,77 @@ def test_bridge_app_url_null_when_unknown(tmp_path: Path, monkeypatch: pytest.Mo
     assert data["appUrl"] is None
 
 
+def test_bridge_litestar_port_from_app_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bridge MUST emit litestarPort parsed from APP_URL so framework integrations can route HMR through it."""
+    monkeypatch.setenv("APP_URL", "https://api.example.com:9876")
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["litestarPort"] == 9876
+
+
+def test_bridge_litestar_port_from_litestar_port_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("APP_URL", raising=False)
+    monkeypatch.delenv("LITESTAR_HOST", raising=False)
+    monkeypatch.setenv("LITESTAR_PORT", "9001")
+    monkeypatch.delenv("PORT", raising=False)
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["litestarPort"] == 9001
+
+
+def test_bridge_litestar_port_from_port_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("APP_URL", raising=False)
+    monkeypatch.delenv("LITESTAR_HOST", raising=False)
+    monkeypatch.delenv("LITESTAR_PORT", raising=False)
+    monkeypatch.setenv("PORT", "8080")
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["litestarPort"] == 8080
+
+
+def test_bridge_litestar_port_null_when_unknown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("APP_URL", raising=False)
+    monkeypatch.delenv("LITESTAR_HOST", raising=False)
+    monkeypatch.delenv("LITESTAR_PORT", raising=False)
+    monkeypatch.delenv("PORT", raising=False)
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["litestarPort"] is None
+
+
+def test_bridge_litestar_port_from_app_url_default_http_port(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """APP_URL without an explicit port must yield port 80 (http) or 443 (https)."""
+    monkeypatch.setenv("APP_URL", "https://api.example.com")
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["litestarPort"] == 443
+
+
 # Tests for _path_for_bridge helper function
 
 
@@ -313,3 +384,42 @@ def test_path_for_bridge_outside_root_uses_forward_slashes(tmp_path: Path) -> No
     # Should use forward slashes even for ../ paths
     assert "\\" not in result
     assert ".." in result
+
+
+# ============================================================================
+# C3: proxy_mode resolver and auto-derivation
+# ============================================================================
+
+
+def test_resolve_proxy_mode_direct_deprecates_to_vite(
+    monkeypatch: pytest.MonkeyPatch, recwarn: pytest.WarningsRecorder
+) -> None:
+    """VITE_PROXY_MODE='direct' emits DeprecationWarning and coerces to 'vite'."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode, resolve_proxy_mode
+
+    monkeypatch.setenv("VITE_PROXY_MODE", "direct")
+    _cached_resolve_proxy_mode.cache_clear()
+
+    assert resolve_proxy_mode() == "vite"
+    assert any(issubclass(w.category, DeprecationWarning) for w in recwarn.list)
+
+
+def test_resolve_proxy_mode_invalid_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unknown VITE_PROXY_MODE values raise ValueError listing the canonical set."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode, resolve_proxy_mode
+
+    monkeypatch.setenv("VITE_PROXY_MODE", "bogus")
+    _cached_resolve_proxy_mode.cache_clear()
+
+    with pytest.raises(ValueError, match="vite, proxy, none"):
+        resolve_proxy_mode()
+
+
+def test_resolve_proxy_mode_unset_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unset VITE_PROXY_MODE returns None so ViteConfig auto-derives from mode."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode, resolve_proxy_mode
+
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    assert resolve_proxy_mode() is None

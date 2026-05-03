@@ -1,5 +1,5 @@
 from pathlib import Path, PosixPath
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -14,6 +14,11 @@ from litestar_vite.config import (
 )
 from litestar_vite.config._inertia import InertiaConfig, InertiaSSRConfig
 from litestar_vite.executor import BunExecutor, NodeenvExecutor, NodeExecutor
+
+# C2 narrowed ViteConfig.mode to a Literal union; parametrize over `str` for
+# readability and cast at the call site so mypy is satisfied without burying the
+# parametrize tables behind type aliases.
+_ViteMode = Any
 
 
 def test_default_vite_config() -> None:
@@ -91,22 +96,31 @@ def test_mode_auto_detection_spa_with_index_html(tmp_path: Path) -> None:
     assert config._mode_auto_detected is True
 
 
-def test_proxy_mode_defaults_to_vite(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test proxy_mode defaults to vite."""
+def test_proxy_mode_defaults_to_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """proxy_mode defaults to None when env var is unset; ViteConfig auto-derives from mode."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+
     monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    config = RuntimeConfig()
+
+    assert config.proxy_mode is None
+
+
+def test_proxy_mode_direct_env_coerces_to_vite(
+    monkeypatch: pytest.MonkeyPatch, recwarn: pytest.WarningsRecorder
+) -> None:
+    """VITE_PROXY_MODE=direct is deprecated; coerces to vite with DeprecationWarning."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+
+    monkeypatch.setenv("VITE_PROXY_MODE", "direct")
+    _cached_resolve_proxy_mode.cache_clear()
 
     config = RuntimeConfig()
 
     assert config.proxy_mode == "vite"
-
-
-def test_proxy_mode_respects_direct_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test VITE_PROXY_MODE=direct maps to direct."""
-    monkeypatch.setenv("VITE_PROXY_MODE", "direct")
-
-    config = RuntimeConfig()
-
-    assert config.proxy_mode == "direct"
+    assert any(issubclass(w.category, DeprecationWarning) for w in recwarn.list)
 
 
 def test_proxy_mode_respects_none_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -227,17 +241,18 @@ def test_runtime_config_proxy_mode_without_target() -> None:
 
 
 def test_vite_config_proxy_mode() -> None:
-    """Test ViteConfig with proxy mode."""
+    """proxy_mode='proxy' requires mode='framework' after C3."""
     config = ViteConfig(
+        mode="framework",
         runtime=RuntimeConfig(
             dev_mode=True, proxy_mode="proxy", external_dev_server=ExternalDevServer(target="http://localhost:4200")
-        )
+        ),
     )
 
     assert config.proxy_mode == "proxy"
     assert config.external_dev_server is not None
     assert config.external_dev_server.target == "http://localhost:4200"
-    # HMR is now supported in proxy mode (SSR frameworks use Vite internally)
+    # HMR is supported in proxy mode (SSR frameworks use Vite internally).
     assert config.hot_reload is True
 
 
@@ -248,20 +263,19 @@ def test_hot_reload_derived_from_vite_mode() -> None:
     assert config.hot_reload is True
 
 
-def test_hot_reload_derived_from_direct_mode() -> None:
-    """Test hot_reload is True for direct mode."""
-    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode="direct"))
-
-    assert config.hot_reload is True
+def test_hot_reload_disabled_when_proxy_mode_none() -> None:
+    """proxy_mode='direct' is gone after C3; verify hot_reload is False with no proxy."""
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=False, proxy_mode=None))
+    assert config.hot_reload is False
 
 
 def test_hot_reload_enabled_for_proxy_mode() -> None:
-    """Test hot_reload is True for proxy mode (SSR frameworks use Vite internally)."""
+    """hot_reload is True for proxy mode (SSR frameworks use Vite internally)."""
     config = ViteConfig(
-        runtime=RuntimeConfig(dev_mode=True, proxy_mode="proxy", external_dev_server="http://localhost:4200")
+        mode="framework",
+        runtime=RuntimeConfig(dev_mode=True, proxy_mode="proxy", external_dev_server="http://localhost:4200"),
     )
 
-    # HMR is now supported in proxy mode since SSR frameworks use Vite internally
     assert config.hot_reload is True
 
 
@@ -462,17 +476,42 @@ def test_asset_url_ignores_deploy_asset_url_in_dev_mode() -> None:
     assert config.asset_url == "/static/"
 
 
-def test_validate_mode_template_requires_jinja(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test validation fails for template mode without Jinja2."""
-    # Temporarily disable Jinja2 in the module where validate_mode reads it
+def test_vite_config_template_mode_without_jinja_does_not_raise(monkeypatch: pytest.MonkeyPatch) -> None:
+    """mode='template' without Jinja installed must not raise.
+
+    HTMX returning raw HTML strings, Mako/Chameleon engines, and ``mode='htmx'``
+    aliasing all need template mode to construct without Jinja. The Jinja-callable
+    registration in ``VitePlugin._configure_jinja_callables`` already gates on
+    both ``JINJA_INSTALLED`` and a ``JinjaTemplateEngine`` template_config, so the
+    config-level pre-check is redundant.
+    """
     from litestar_vite.config import _vite as vite_module
 
     monkeypatch.setattr(vite_module, "JINJA_INSTALLED", False)
 
     config = ViteConfig(mode="template")
+    config.validate_mode()
 
-    with pytest.raises(ValueError, match="requires Jinja2"):
-        config.validate_mode()
+    assert config.mode == "template"
+
+
+def test_vite_config_template_mode_with_jinja_works() -> None:
+    """mode='template' with Jinja installed continues to work (existing behavior)."""
+    config = ViteConfig(mode="template")
+    config.validate_mode()
+    assert config.mode == "template"
+
+
+def test_vite_config_htmx_alias_normalizes_without_jinja(monkeypatch: pytest.MonkeyPatch) -> None:
+    """mode='htmx' alias normalizes to template even without Jinja installed."""
+    from litestar_vite.config import _vite as vite_module
+
+    monkeypatch.setattr(vite_module, "JINJA_INSTALLED", False)
+
+    config = ViteConfig(mode="htmx")
+    config.validate_mode()
+
+    assert config.mode == "template"
 
 
 def test_mode_detection_prefers_index_html_over_jinja(tmp_path: Path) -> None:
@@ -744,8 +783,21 @@ def test_validate_mode_allows_htmx_normalized_to_template_with_inertia(tmp_path:
 
 
 def test_validate_mode_rejects_external_with_inertia() -> None:
-    config = ViteConfig(mode="external", inertia=InertiaConfig())
-    with pytest.raises(ValueError, match=r"Inertia\.js cannot be used with mode='external'"):
+    """external + Inertia is rejected. After C2 collapses external→framework, the proper error path
+    runs at construction (no external_dev_server) or at validate_mode (framework not inertia_compatible).
+    """
+    with pytest.raises(ValueError, match="external_dev_server"):
+        ViteConfig(mode="external", inertia=InertiaConfig())
+
+
+def test_validate_mode_rejects_framework_with_inertia() -> None:
+    """framework mode is not inertia_compatible because an external dev server owns HTML rendering."""
+    config = ViteConfig(
+        mode="framework",
+        inertia=InertiaConfig(),
+        runtime=RuntimeConfig(external_dev_server=ExternalDevServer(target="http://localhost:4200")),
+    )
+    with pytest.raises(ValueError, match=r"Inertia\.js cannot be used with mode"):
         config.validate_mode()
 
 
@@ -775,3 +827,219 @@ def test_validate_mode_rejects_page_props_without_inertia() -> None:
     config = ViteConfig(types=TypeGenConfig(generate_page_props=True))
     with pytest.raises(ValueError, match="generate_page_props=True requires Inertia"):
         config.validate_mode()
+
+
+# ============================================================================
+# C2: Capability predicates
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    ("mode", "inertia_enabled", "expected"),
+    [
+        (
+            "spa",
+            False,
+            {
+                "serves_own_html": True,
+                "registers_html_catchall": True,
+                "wants_inertia_html_shell": False,
+                "wants_html_proxy": False,
+                "inertia_compatible": True,
+                "wants_spa_config": True,
+            },
+        ),
+        (
+            "spa",
+            True,
+            {
+                "serves_own_html": True,
+                "registers_html_catchall": True,
+                "wants_inertia_html_shell": False,
+                "wants_html_proxy": False,
+                "inertia_compatible": True,
+                "wants_spa_config": True,
+            },
+        ),
+        (
+            "hybrid",
+            False,
+            {
+                "serves_own_html": True,
+                "registers_html_catchall": False,
+                "wants_inertia_html_shell": False,
+                "wants_html_proxy": False,
+                "inertia_compatible": True,
+                "wants_spa_config": True,
+            },
+        ),
+        (
+            "hybrid",
+            True,
+            {
+                "serves_own_html": True,
+                "registers_html_catchall": False,
+                "wants_inertia_html_shell": True,
+                "wants_html_proxy": False,
+                "inertia_compatible": True,
+                "wants_spa_config": True,
+            },
+        ),
+        (
+            "template",
+            False,
+            {
+                "serves_own_html": True,
+                "registers_html_catchall": False,
+                "wants_inertia_html_shell": False,
+                "wants_html_proxy": False,
+                "inertia_compatible": True,
+                "wants_spa_config": False,
+            },
+        ),
+        (
+            "template",
+            True,
+            {
+                "serves_own_html": True,
+                "registers_html_catchall": False,
+                "wants_inertia_html_shell": True,
+                "wants_html_proxy": False,
+                "inertia_compatible": True,
+                "wants_spa_config": False,
+            },
+        ),
+        (
+            "framework",
+            False,
+            {
+                "serves_own_html": False,
+                "registers_html_catchall": False,
+                "wants_inertia_html_shell": False,
+                "wants_html_proxy": True,
+                "inertia_compatible": False,
+                "wants_spa_config": False,
+            },
+        ),
+    ],
+)
+def test_vite_config_capability_predicates(mode: str, inertia_enabled: bool, expected: dict[str, bool]) -> None:
+    """Capability predicates return the expected truth table for every canonical mode."""
+    inertia = InertiaConfig() if inertia_enabled else None
+    config = ViteConfig(mode=cast(_ViteMode, mode), inertia=inertia)
+    for prop, want in expected.items():
+        assert getattr(config, prop) is want, f"{prop} for mode={mode!r}, inertia={inertia_enabled}"
+
+
+@pytest.mark.parametrize(
+    ("input_mode", "canonical_mode"),
+    [("inertia", "hybrid"), ("htmx", "template"), ("ssr", "framework"), ("ssg", "framework")],
+)
+def test_vite_config_aliases_normalize_to_canonical(input_mode: str, canonical_mode: str) -> None:
+    """Documentation aliases collapse to canonical modes at construction (no warnings)."""
+    config = ViteConfig(mode=input_mode)  # type: ignore[arg-type]
+    assert config.mode == canonical_mode
+
+
+def test_vite_config_external_mode_with_dev_server_deprecates(recwarn: pytest.WarningsRecorder) -> None:
+    """mode='external' + external_dev_server: warns deprecation, normalizes to framework."""
+    config = ViteConfig(
+        mode="external", runtime=RuntimeConfig(external_dev_server=ExternalDevServer(target="http://localhost:4200"))
+    )
+    assert config.mode == "framework"
+    assert any(issubclass(w.category, DeprecationWarning) for w in recwarn.list)
+
+
+def test_vite_config_external_mode_without_dev_server_raises() -> None:
+    """mode='external' without external_dev_server raises (cannot proxy to nothing)."""
+    with pytest.raises(ValueError, match="external_dev_server"):
+        ViteConfig(mode="external")
+
+
+# ============================================================================
+# C3: proxy_mode auto-derivation and validation
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    ("mode", "dev_mode", "explicit_proxy_mode", "expected_proxy_mode"),
+    [
+        ("spa", True, None, "vite"),
+        ("hybrid", True, None, "vite"),
+        ("template", True, None, "vite"),
+        ("framework", True, None, "proxy"),
+        ("spa", False, None, None),
+        ("framework", False, None, None),
+        # User overrides preserved:
+        ("spa", True, "vite", "vite"),
+        ("framework", True, "vite", "vite"),
+    ],
+)
+def test_vite_config_proxy_mode_auto_derivation(
+    mode: str,
+    dev_mode: bool,
+    explicit_proxy_mode: "str | None",
+    expected_proxy_mode: "str | None",
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """proxy_mode auto-derives from mode + dev_mode; explicit values are preserved."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    runtime_kwargs: dict[str, Any] = {"dev_mode": dev_mode}
+    if explicit_proxy_mode is not None:
+        runtime_kwargs["proxy_mode"] = explicit_proxy_mode
+    config = ViteConfig(mode=cast(_ViteMode, mode), runtime=RuntimeConfig(**runtime_kwargs))
+    assert config.proxy_mode == expected_proxy_mode
+
+
+@pytest.mark.parametrize("mode", ["spa", "hybrid", "template"])
+def test_vite_config_proxy_mode_proxy_with_non_framework_mode_raises(
+    mode: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """proxy_mode='proxy' raises for non-framework modes with a clear message."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    with pytest.raises(ValueError, match="only valid with mode='framework'"):
+        ViteConfig(mode=cast(_ViteMode, mode), runtime=RuntimeConfig(dev_mode=True, proxy_mode="proxy"))
+
+
+def test_vite_config_proxy_mode_proxy_with_framework_mode_works(monkeypatch: pytest.MonkeyPatch) -> None:
+    """proxy_mode='proxy' is the canonical default for framework mode; no error."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    config = ViteConfig(mode="framework", runtime=RuntimeConfig(dev_mode=True, proxy_mode="proxy"))
+    assert config.proxy_mode == "proxy"
+
+
+def test_vite_config_template_mode_with_proxy_env_raises_clearly(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reproduce oracledb-vertexai-demo bug: template + VITE_PROXY_MODE=proxy raises at config validation,
+    NOT at app construction with a confusing 'Handler already registered' error.
+    """
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+
+    monkeypatch.setenv("VITE_PROXY_MODE", "proxy")
+    _cached_resolve_proxy_mode.cache_clear()
+
+    with pytest.raises(ValueError, match=r"proxy_mode='proxy' is only valid with mode='framework'"):
+        ViteConfig(mode="template", runtime=RuntimeConfig(dev_mode=True))
+
+
+def test_vite_config_proxy_mode_none_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    """proxy_mode auto-derives to None when dev_mode=False, regardless of mode."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    for mode in ("spa", "hybrid", "template", "framework"):
+        config = ViteConfig(mode=mode, runtime=RuntimeConfig(dev_mode=False))
+        assert config.proxy_mode is None, f"{mode!r} should not have a proxy_mode in production"

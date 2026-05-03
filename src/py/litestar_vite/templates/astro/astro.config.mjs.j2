@@ -1,8 +1,5 @@
 import { defineConfig } from "astro/config";
 import litestar from "litestar-vite-plugin/astro";
-{% if use_tailwind %}
-import tailwindcss from "@tailwindcss/vite";
-{% endif %}
 
 // Litestar manages the dev server port via VITE_PORT and runtime config.
 // The Astro integration reads the port automatically - no hardcoding needed.
@@ -20,9 +17,4 @@ export default defineConfig({
 {% endif %}
     }),
   ],
-{% if use_tailwind %}
-  vite: {
-    plugins: [tailwindcss()],
-  },
-{% endif %}
 });

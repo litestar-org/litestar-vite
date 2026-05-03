@@ -98,7 +98,10 @@ def test_doctor_detect_missing_hotfile(doctor: ViteDoctor, tmp_path: Path) -> No
 
 
 def test_doctor_warns_server_origin_override_in_proxy_mode(doctor: ViteDoctor, tmp_path: Path) -> None:
+    """After C3, proxy_mode is None in production; the override warning needs dev mode active."""
     doctor.config.paths.root = tmp_path
+    doctor.config.runtime.dev_mode = True
+    doctor.config.runtime.proxy_mode = "vite"
     _prepare_frontend_dirs(tmp_path)
     (tmp_path / "vite.config.ts").write_text("""
     export default defineConfig({
@@ -122,34 +125,6 @@ def test_doctor_warns_server_origin_override_in_proxy_mode(doctor: ViteDoctor, t
         doctor.run(fix=False)
 
     assert any(i.check == "Proxy Mode Origin Override" for i in doctor.issues)
-
-
-def test_doctor_allows_server_origin_in_direct_mode(doctor: ViteDoctor, tmp_path: Path) -> None:
-    doctor.config.paths.root = tmp_path
-    doctor.config.runtime.proxy_mode = "direct"
-    _prepare_frontend_dirs(tmp_path)
-    (tmp_path / "vite.config.ts").write_text("""
-    export default defineConfig({
-        server: {
-            origin: 'http://localhost:5173',
-        },
-        plugins: [...litestar({
-            assetUrl: '/static/',
-        })]
-    })
-    """)
-
-    with (
-        patch.object(doctor, "_check_dist_files"),
-        patch.object(doctor, "_check_node_modules"),
-        patch.object(doctor, "_check_manifest_presence"),
-        patch.object(doctor, "_check_typegen_artifacts"),
-        patch.object(doctor, "_check_env_alignment"),
-        patch.object(doctor, "_check_vite_server_reachable"),
-    ):
-        doctor.run(fix=False)
-
-    assert all(i.check != "Proxy Mode Origin Override" for i in doctor.issues)
 
 
 @pytest.mark.parametrize("mode", ["spa", "hybrid", "template"])

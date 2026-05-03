@@ -41,6 +41,13 @@ export interface BridgeSchema {
   assetUrl: string
   deployAssetUrl: string | null
   appUrl: string | null
+  /**
+   * Litestar dev server port. Used by framework integrations to set
+   * `vite.server.hmr.clientPort`, ensuring the browser connects to Litestar
+   * (not the framework dev server) for HMR — preserving the single-port
+   * contract.
+   */
+  litestarPort: number | null
   bundleDir: string
   resourceDir: string
   staticDir: string
@@ -81,6 +88,7 @@ const allowedTopLevelKeys: ReadonlySet<string> = new Set([
   "assetUrl",
   "deployAssetUrl",
   "appUrl",
+  "litestarPort",
   "bundleDir",
   "resourceDir",
   "staticDir",
@@ -153,6 +161,15 @@ function assertOptionalNullableString(obj: Record<string, unknown>, key: string)
   if (value === undefined || value === null) return null
   if (typeof value !== "string") {
     fail(`"${key}" must be a string or null`)
+  }
+  return value
+}
+
+function assertOptionalNullableInteger(obj: Record<string, unknown>, key: string): number | null {
+  const value = obj[key]
+  if (value === undefined || value === null) return null
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    fail(`"${key}" must be a positive integer or null`)
   }
   return value
 }
@@ -261,6 +278,7 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
   const assetUrl = assertString(obj, "assetUrl")
   const deployAssetUrl = assertNullableString(obj, "deployAssetUrl")
   const appUrl = assertOptionalNullableString(obj, "appUrl")
+  const litestarPort = assertOptionalNullableInteger(obj, "litestarPort")
   const bundleDir = assertString(obj, "bundleDir")
   const resourceDir = assertString(obj, "resourceDir")
   const staticDir = assertString(obj, "staticDir")
@@ -285,6 +303,7 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
     assetUrl,
     deployAssetUrl,
     appUrl,
+    litestarPort,
     bundleDir,
     resourceDir,
     staticDir,

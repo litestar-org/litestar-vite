@@ -1,7 +1,7 @@
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import httpx
@@ -11,6 +11,7 @@ from typing_extensions import Self
 
 from litestar_vite.plugin import VitePlugin
 from litestar_vite.plugin._proxy import (
+    SSRProxyMiddleware,
     ViteProxyMiddleware,
     _extract_proxy_response,
     _proxy_stream_response,
@@ -20,6 +21,7 @@ from litestar_vite.plugin._proxy import (
     check_http2_support,
     create_hmr_target_getter,
     create_ssr_proxy_controller,
+    create_ssr_websocket_handler,
     create_target_url_getter,
     create_vite_hmr_handler,
     extract_forward_headers,
@@ -330,7 +332,8 @@ async def test_vite_hmr_handler_accepts_multiple_subprotocols(tmp_path: Path) ->
     socket.accept.assert_awaited_once_with(subprotocols="json")
 
 
-async def test_ssr_proxy_http_success() -> None:
+async def test_ssr_proxy_middleware_http_success() -> None:
+    """SSRProxyMiddleware streams upstream response and filters hop-by-hop headers."""
     response = cast(
         "httpx.Response",
         _DummyStreamingResponse(
@@ -346,30 +349,19 @@ async def test_ssr_proxy_http_success() -> None:
     )
     plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", DummyAsyncClient(response))))
 
-    Controller = create_ssr_proxy_controller(target="http://localhost:3000", plugin=plugin, http2=False)
-    controller = Controller(owner=MagicMock())
-
-    async def request_stream() -> AsyncGenerator[bytes, None]:
-        if False:
-            yield b""
-
-    request = SimpleNamespace(
-        method="GET", url=SimpleNamespace(path="/", query=""), headers={"x-test": "ok"}, stream=request_stream
-    )
-
-    response_app = await controller.http_proxy.fn(controller, request)
-    assert response_app.__name__ == "asgi_response_app"
+    inner_app = AsyncMock()
+    middleware = SSRProxyMiddleware(app=inner_app, target="http://localhost:3000", http2=False, plugin=plugin)
 
     send_events: list[dict[str, object]] = []
-
-    async def send(event: dict[str, object]) -> None:
-        send_events.append(event)
 
     async def receive() -> dict[str, object]:
         return {"type": "http.request", "body": b"", "more_body": False}
 
-    scope = {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.0"}, "method": "GET", "path": "/"}
-    await response_app(scope, receive, send)
+    async def send(event: dict[str, object]) -> None:
+        send_events.append(event)
+
+    scope: dict[str, object] = {"method": "GET", "raw_path": b"/", "query_string": b"", "headers": [(b"x-test", b"ok")]}
+    await middleware._proxy_http(scope, receive, send, "http://localhost:3000")
 
     start = next(event for event in send_events if event["type"] == "http.response.start")
     bodies = [event for event in send_events if event["type"] == "http.response.body"]
@@ -383,16 +375,18 @@ async def test_ssr_proxy_http_success() -> None:
     assert streamed_body.startswith(b"ok")
 
 
-async def test_ssr_proxy_http_no_target() -> None:
-    Controller = create_ssr_proxy_controller(target=None, hotfile_path=None, http2=False)
-    controller = Controller(owner=MagicMock())
+async def test_ssr_proxy_middleware_falls_through_when_target_unavailable() -> None:
+    """When framework dev server is unavailable, the middleware falls through to the next ASGI app."""
+    inner_app = AsyncMock()
+    middleware = SSRProxyMiddleware(app=inner_app, target=None, hotfile_path=None, http2=False)
 
-    request = SimpleNamespace(
-        method="GET", url=SimpleNamespace(path="/", query=""), headers={}, body=AsyncMock(return_value=b"")
-    )
+    scope = cast("Any", {"type": "http", "method": "GET", "path": "/", "raw_path": b"/", "query_string": b""})
+    receive = AsyncMock()
+    send = AsyncMock()
 
-    response_obj = await controller.http_proxy.fn(controller, request)
-    assert response_obj.status_code == 503
+    await middleware(scope, receive, send)
+
+    inner_app.assert_awaited_once_with(scope, receive, send)
 
 
 def test_build_proxy_url_and_http2_support() -> None:
@@ -592,8 +586,8 @@ async def test_proxy_http_put_still_sends_body(tmp_path: Path) -> None:
     assert kwargs["content"] is not None, "PUT requests must still send a request body"
 
 
-async def test_ssr_proxy_get_does_not_send_body() -> None:
-    """SSR proxy GET requests must pass content=None.
+async def test_ssr_proxy_middleware_get_does_not_send_body() -> None:
+    """SSRProxyMiddleware GET requests must pass content=None (#246 invariant).
 
     Regression test for https://github.com/litestar-org/litestar-vite/issues/242
     """
@@ -604,27 +598,24 @@ async def test_ssr_proxy_get_does_not_send_body() -> None:
     dummy_client = DummyAsyncClient(response)
     plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", dummy_client)))
 
-    Controller = create_ssr_proxy_controller(target="http://localhost:3000", plugin=plugin, http2=False)
-    controller = Controller(owner=MagicMock())
+    middleware = SSRProxyMiddleware(app=AsyncMock(), target="http://localhost:3000", http2=False, plugin=plugin)
 
-    async def request_stream() -> AsyncGenerator[bytes, None]:
-        if False:
-            yield b""
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
 
-    request = SimpleNamespace(
-        method="GET", url=SimpleNamespace(path="/", query=""), headers={"x-test": "ok"}, stream=request_stream
-    )
+    async def send(_event: dict[str, object]) -> None:
+        return None
 
-    await controller.http_proxy.fn(controller, request)
+    scope: dict[str, object] = {"method": "GET", "raw_path": b"/", "query_string": b"", "headers": []}
+    await middleware._proxy_http(scope, receive, send, "http://localhost:3000")
 
-    # Verify content=None was passed for GET
     assert len(dummy_client.stream_calls) == 1
     _, kwargs = dummy_client.stream_calls[0]
     assert kwargs["content"] is None, "SSR proxy GET requests must not send a request body"
 
 
-async def test_ssr_proxy_post_still_sends_body() -> None:
-    """SSR proxy POST requests must still stream the request body."""
+async def test_ssr_proxy_middleware_post_still_sends_body() -> None:
+    """SSRProxyMiddleware POST requests must still stream the request body."""
     response = cast(
         "httpx.Response",
         _DummyStreamingResponse(chunks=[b"ok"], status_code=200, headers=[("content-type", "text/plain")]),
@@ -632,18 +623,165 @@ async def test_ssr_proxy_post_still_sends_body() -> None:
     dummy_client = DummyAsyncClient(response)
     plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", dummy_client)))
 
-    Controller = create_ssr_proxy_controller(target="http://localhost:3000", plugin=plugin, http2=False)
-    controller = Controller(owner=MagicMock())
+    middleware = SSRProxyMiddleware(app=AsyncMock(), target="http://localhost:3000", http2=False, plugin=plugin)
 
-    async def request_stream() -> AsyncGenerator[bytes, None]:
-        yield b"post-body"
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"post-body", "more_body": False}
 
-    request = SimpleNamespace(
-        method="POST", url=SimpleNamespace(path="/submit", query=""), headers={"x-test": "ok"}, stream=request_stream
-    )
+    async def send(_event: dict[str, object]) -> None:
+        return None
 
-    await controller.http_proxy.fn(controller, request)
+    scope: dict[str, object] = {"method": "POST", "raw_path": b"/submit", "query_string": b"", "headers": []}
+    await middleware._proxy_http(scope, receive, send, "http://localhost:3000")
 
     assert len(dummy_client.stream_calls) == 1
     _, kwargs = dummy_client.stream_calls[0]
     assert kwargs["content"] is not None, "SSR proxy POST requests must still send a request body"
+
+
+async def test_create_ssr_proxy_controller_emits_deprecation_warning(recwarn: pytest.WarningsRecorder) -> None:
+    """create_ssr_proxy_controller is deprecated; the alias still returns a WS-only Controller."""
+    handler_class = create_ssr_proxy_controller(target="http://localhost:3000")
+
+    assert handler_class.__name__ == "SSRProxyWebSocketHandler"
+    assert any(issubclass(w.category, DeprecationWarning) for w in recwarn.list)
+
+
+def test_create_ssr_websocket_handler_returns_ws_only_controller() -> None:
+    """create_ssr_websocket_handler returns a Controller hosting only the WS handler."""
+    handler_class = create_ssr_websocket_handler(target="http://localhost:3000")
+    assert handler_class.__name__ == "SSRProxyWebSocketHandler"
+
+
+def test_ssr_proxy_middleware_falls_through_to_user_root_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression guard: a user-defined / handler in framework mode no longer collides with the proxy.
+
+    Pre-C4 the SSRProxyController hard-bound path=['/', '/{path:path}'] which raised
+    ``Handler already registered for path '/'`` at app construction. Middleware falls through
+    to user routes naturally.
+    """
+    from litestar import Litestar, get
+    from litestar.testing import TestClient
+
+    from litestar_vite.config import ExternalDevServer, PathConfig, RuntimeConfig, ViteConfig
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+    from litestar_vite.plugin import VitePlugin
+
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    @get("/", name="user_root", sync_to_thread=False)
+    def user_root() -> str:
+        return "user-served root"
+
+    config = ViteConfig(
+        mode="framework",
+        paths=PathConfig(),
+        runtime=RuntimeConfig(dev_mode=True, external_dev_server=ExternalDevServer(target="http://127.0.0.1:14321")),
+    )
+    app = Litestar(plugins=[VitePlugin(config=config)], route_handlers=[user_root])
+
+    with TestClient(app=app) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.text == "user-served root"
+
+
+def test_framework_mode_proxies_root_when_no_user_handler_at_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: GET / must proxy to the framework dev server when no user handler claims '/'.
+
+    Pre-fix the plugin registered SSRProxyMiddleware (per-route) plus a WS-only Controller at
+    path=['/', '/{path:path}']. Litestar matched the WS route for HTTP GET / and returned
+    405 Method Not Allowed before the middleware ever ran. The fix re-introduces the HTTP
+    catch-all as an actual route handler so Litestar matches it and dispatches to the proxy.
+    """
+    from litestar import Litestar
+    from litestar.testing import TestClient
+
+    from litestar_vite.config import ExternalDevServer, PathConfig, RuntimeConfig, ViteConfig
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+    from litestar_vite.plugin import VitePlugin
+
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    config = ViteConfig(
+        mode="framework",
+        paths=PathConfig(),
+        runtime=RuntimeConfig(dev_mode=True, external_dev_server=ExternalDevServer(target="http://127.0.0.1:14321")),
+    )
+    app = Litestar(plugins=[VitePlugin(config=config)])
+
+    with TestClient(app=app) as client:
+        response = client.get("/")
+        # Framework dev server is not running, so the proxy handler should surface the
+        # connect error as 503. The previous regression returned 405 because the WS-only
+        # '/' route was matched by Litestar before any proxy code ran.
+        assert response.status_code != 405, "GET / must not 405; framework mode must proxy when no user '/' handler"
+        assert response.status_code == 503
+
+
+def test_framework_mode_proxies_arbitrary_path_when_user_owns_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    """User-defined GET / coexists with the proxy: '/' is user-served, other paths are proxied.
+
+    Tests the collision-detection path: when app_config.route_handlers contains an HTTP
+    handler at '/', the plugin must drop '/' from the proxy handler's path list (keeping
+    only '/{path:path}'). The user handler answers GET /; everything else proxies.
+    """
+    from litestar import Litestar, get
+    from litestar.testing import TestClient
+
+    from litestar_vite.config import ExternalDevServer, PathConfig, RuntimeConfig, ViteConfig
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+    from litestar_vite.plugin import VitePlugin
+
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    @get("/", name="user_root", sync_to_thread=False)
+    def user_root() -> str:
+        return "user-served root"
+
+    config = ViteConfig(
+        mode="framework",
+        paths=PathConfig(),
+        runtime=RuntimeConfig(dev_mode=True, external_dev_server=ExternalDevServer(target="http://127.0.0.1:14321")),
+    )
+    app = Litestar(plugins=[VitePlugin(config=config)], route_handlers=[user_root])
+
+    with TestClient(app=app) as client:
+        # User handler wins for / (no collision exception, plugin dropped its own '/')
+        root = client.get("/")
+        assert root.status_code == 200
+        assert root.text == "user-served root"
+        # Proxy handler still claims everything else
+        other = client.get("/some-framework-page")
+        assert other.status_code == 503
+
+
+def test_get_litestar_route_prefixes_excludes_websocket_only_routes() -> None:
+    """get_litestar_route_prefixes must filter out WebSocket-only routes.
+
+    The proxy middlewares (Vite/SSR) declare scopes={ScopeType.HTTP}, so the route check
+    must be HTTP-only. WebSocket routes must not poison the cached prefix list and cause
+    HTTP requests at the same path to skip the proxy.
+    """
+    from typing import Any
+
+    from litestar import Controller, Litestar, WebSocket, websocket
+
+    from litestar_vite.plugin import get_litestar_route_prefixes
+
+    class _WSOnly(Controller):
+        @websocket(path=["/", "/{path:path}"], name="ws_only")
+        async def handler(self, socket: WebSocket[Any, Any, Any]) -> None:  # pragma: no cover
+            await socket.accept()
+
+    app = Litestar(route_handlers=[_WSOnly])
+
+    prefixes = get_litestar_route_prefixes(app)
+
+    assert "/" not in prefixes, f"WebSocket-only '/' must not appear in HTTP route prefixes; got {prefixes}"
+    assert "/{path:path}" not in prefixes, (
+        f"WebSocket-only '/{{path:path}}' must not appear in HTTP route prefixes; got {prefixes}"
+    )

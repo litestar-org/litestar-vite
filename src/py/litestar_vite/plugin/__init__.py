@@ -33,7 +33,15 @@ from litestar.static_files import create_static_files_router  # pyright: ignore[
 from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, ExternalDevServer
 from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.plugin._process import ViteProcess
-from litestar_vite.plugin._proxy import ViteProxyMiddleware, create_ssr_proxy_controller, create_vite_hmr_handler
+from litestar_vite.plugin._proxy import (
+    SSRProxyMiddleware,
+    ViteProxyMiddleware,
+    create_ssr_http_proxy_handler,
+    create_ssr_proxy_controller,
+    create_ssr_websocket_handler,
+    create_ssr_ws_proxy_handler,
+    create_vite_hmr_handler,
+)
 from litestar_vite.plugin._proxy_headers import ProxyHeadersMiddleware, TrustedHosts
 from litestar_vite.plugin._static import StaticFilesConfig
 from litestar_vite.plugin._utils import (
@@ -55,15 +63,58 @@ from litestar_vite.plugin._utils import (
 from litestar_vite.utils import read_hotfile_url
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Generator
+    from collections.abc import AsyncGenerator, Generator, Iterable
 
     from click import Group
     from litestar import Litestar
     from litestar.config.app import AppConfig
-    from litestar.types import ExceptionHandlersMap
+    from litestar.types import ControllerRouterHandler, ExceptionHandlersMap
 
     from litestar_vite.config import ViteConfig
+    from litestar_vite.config._inertia import InertiaSSRConfig
     from litestar_vite.handler import AppHandler
+
+
+def _user_has_root_http_handler(route_handlers: "Iterable[ControllerRouterHandler]") -> bool:
+    """Return True if any handler in ``route_handlers`` registers an HTTP route at ``/``.
+
+    Walks top-level entries (functions, Controllers, Routers). A match means the SSR
+    proxy must omit the bare ``/`` from its HTTP path list to avoid Litestar raising
+    ``Handler already registered for path '/'`` at app construction.
+    """
+    import inspect
+
+    from litestar import Controller, Router
+    from litestar.handlers.http_handlers import HTTPRouteHandler
+    from litestar.routes import HTTPRoute
+
+    def _is_root_path(prefix: str, path: str) -> bool:
+        joined = (prefix.rstrip("/") + "/" + path.lstrip("/")).rstrip("/")
+        return joined in {"", "/"}
+
+    def _walk(item: Any, prefix: str = "") -> bool:
+        if isinstance(item, HTTPRouteHandler):
+            return any(_is_root_path(prefix, p) for p in item.paths)
+        if isinstance(item, type) and issubclass(item, Controller):
+            ctrl_path_attr = getattr(item, "path", "")
+            ctrl_path = ctrl_path_attr if isinstance(ctrl_path_attr, str) else ""
+            new_prefix = prefix.rstrip("/") + "/" + ctrl_path.lstrip("/")
+            for _, member in inspect.getmembers(item):
+                if isinstance(member, HTTPRouteHandler) and any(_is_root_path(new_prefix, p) for p in member.paths):
+                    return True
+            return False
+        if isinstance(item, Router):
+            # Router.routes is the resolved route list with full paths.
+            full_root = (prefix.rstrip("/") or "/").rstrip("/") or "/"
+            for route in item.routes:
+                if isinstance(route, HTTPRoute):
+                    full_path = (prefix.rstrip("/") + "/" + route.path.lstrip("/")).rstrip("/") or "/"
+                    if full_path == full_root:
+                        return True
+            return False
+        return False
+
+    return any(_walk(item) for item in route_handlers or [])
 
 
 class VitePlugin(InitPluginProtocol, CLIPlugin):
@@ -94,6 +145,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         "_proxy_client",
         "_proxy_target",
         "_spa_handler",
+        "_ssr_process",
         "_static_files_config",
         "_vite_process",
     )
@@ -118,6 +170,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._config = config
         self._asset_loader = asset_loader
         self._vite_process: "ViteProcess | None" = None
+        self._ssr_process: "ViteProcess | None" = None
         self._static_files_config: dict[str, Any] = static_files_config.__dict__ if static_files_config else {}
         self._proxy_target: "str | None" = None
         self._proxy_client: "httpx.AsyncClient | None" = None
@@ -128,6 +181,48 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._vite_process is None:
             self._vite_process = ViteProcess(executor=self._config.executor)
         return self._vite_process
+
+    def _get_ssr_process(self) -> ViteProcess:
+        """Get or create the SSR process manager lazily.
+
+        Returns a separate ViteProcess instance so SSR has its own signal-handler
+        registration, atexit cleanup, and stop() lifecycle independent of Vite.
+        """
+        if self._ssr_process is None:
+            self._ssr_process = ViteProcess(executor=self._config.executor)
+        return self._ssr_process
+
+    def _resolved_ssr_config(self) -> "InertiaSSRConfig | None":
+        """Return the active InertiaSSRConfig when Inertia + SSR are enabled."""
+        from litestar_vite.config._inertia import InertiaConfig
+
+        inertia = self._config.inertia
+        if not isinstance(inertia, InertiaConfig):
+            return None
+        return inertia.ssr_config
+
+    def _run_ssr_health_check(self, ssr_config: "InertiaSSRConfig") -> None:
+        """Poll the SSR url until it responds (or until timeout)."""
+        import time
+        from urllib.parse import urlparse
+
+        deadline = time.monotonic() + ssr_config.health_check_timeout
+        # Poll the origin (a GET on /render typically returns 405; any non-connection
+        # error means the server is up).
+        parsed = urlparse(ssr_config.url)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        last_error: str = ""
+        while time.monotonic() < deadline:
+            try:
+                response = httpx.get(origin, timeout=2.0)
+                if response.status_code < 500:
+                    log_success(f"SSR /render server ready at {origin}")
+                    return
+                last_error = f"HTTP {response.status_code}"
+            except httpx.RequestError as exc:
+                last_error = str(exc)
+            time.sleep(0.25)
+        log_warn(f"SSR /render server health check timed out at {origin} (last: {last_error})")
 
     @property
     def config(self) -> "ViteConfig":
@@ -323,6 +418,31 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             engine.register_template_callable(key="vite_static", template_callable=render_static_asset)
             engine.register_template_callable(key="vite_routes", template_callable=render_routes)
 
+    def _wants_jinja_callables(self, app_config: "AppConfig") -> bool:
+        """Decide whether to register Jinja ``vite_*`` callables for this app.
+
+        The full gate requires three conditions, each of which is independently
+        load-bearing: the configured mode must be ``template`` (canonical), Jinja2
+        must be importable, and the user must have provided a ``TemplateConfig``
+        backed by ``JinjaTemplateEngine``. Returning ``False`` here is harmless:
+        callables are simply not registered and HTMX-without-Jinja, raw HTML, and
+        non-Jinja template engine consumers continue to work.
+
+        Args:
+            app_config: The Litestar application configuration.
+
+        Returns:
+            True when ``vite_hmr`` / ``vite`` / ``vite_static`` / ``vite_routes`` should be registered.
+        """
+        if self._config.mode != "template" or not JINJA_INSTALLED:
+            return False
+        template_config = app_config.template_config  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+        if template_config is None:
+            return False
+        from litestar.contrib.jinja import JinjaTemplateEngine
+
+        return isinstance(template_config.engine_instance, JinjaTemplateEngine)  # pyright: ignore[reportUnknownMemberType]
+
     def _configure_static_files(self, app_config: "AppConfig") -> None:
         """Configure static file serving for Vite assets.
 
@@ -367,18 +487,17 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         app_config.route_handlers.append(create_static_files_router(**static_files_config))
 
     def _configure_dev_proxy(self, app_config: "AppConfig") -> None:
-        """Configure dev proxy middleware and handlers based on proxy_mode.
+        """Configure dev proxy middleware and handlers based on the canonical mode.
 
         Args:
             app_config: The Litestar application configuration.
         """
-        proxy_mode = self._config.proxy_mode
         hotfile_path = self._resolve_hotfile_path()
 
-        if proxy_mode == "vite":
-            self._configure_vite_proxy(app_config, hotfile_path)
-        elif proxy_mode == "proxy":
+        if self._config.wants_html_proxy:
             self._configure_ssr_proxy(app_config, hotfile_path)
+        else:
+            self._configure_vite_proxy(app_config, hotfile_path)
 
     def _configure_vite_proxy(self, app_config: "AppConfig", hotfile_path: Path) -> None:
         """Configure Vite proxy mode (allow list).
@@ -407,7 +526,22 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         )
 
     def _configure_ssr_proxy(self, app_config: "AppConfig", hotfile_path: Path) -> None:
-        """Configure SSR proxy mode (deny list).
+        """Configure SSR proxy mode for framework dev servers.
+
+        Registers an HTTP catch-all route handler plus a WebSocket HMR handler at
+        ``/`` and ``/{path:path}``. Litestar dispatches matched routes directly, so
+        any path the user has not registered falls through to the framework's dev
+        server. Litestar's per-route middleware never runs on unmatched paths, so a
+        true route is required (see commit history: an earlier middleware-based
+        approach hit 405 Method Not Allowed because the WS handler at ``/`` was
+        matched first).
+
+        Collision avoidance: when a user has already registered an HTTP handler at
+        ``/``, the plugin omits ``/`` from the HTTP catch-all's path list (keeping
+        ``/{path:path}``) so Litestar does not raise
+        ``Handler already registered for path '/'`` at app construction.
+        ``ViteProxyMiddleware`` is also registered for asset URLs since framework
+        dev servers commonly ship Vite-bundled assets.
 
         Args:
             app_config: The Litestar application configuration.
@@ -416,15 +550,22 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._ensure_proxy_target()
         external = self._config.external_dev_server
         static_target = external.target if external else None
+        ssr_hotfile = hotfile_path if static_target is None else None
+
+        user_owns_root = _user_has_root_http_handler(app_config.route_handlers)
+        http_paths = ["/{path:path}"] if user_owns_root else ["/", "/{path:path}"]
 
         app_config.route_handlers.append(
-            create_ssr_proxy_controller(
+            create_ssr_http_proxy_handler(
                 target=static_target,
-                hotfile_path=hotfile_path if static_target is None else None,
+                hotfile_path=ssr_hotfile,
                 http2=external.http2 if external else True,
                 plugin=self,
+                paths=http_paths,
             )
         )
+        app_config.route_handlers.append(create_ssr_ws_proxy_handler(target=static_target, hotfile_path=ssr_hotfile))
+
         self._insert_dev_proxy_middleware(
             app_config,
             DefineMiddleware(
@@ -485,24 +626,36 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._config.inertia is not None:
             app_config = self._configure_inertia(app_config)
 
-        if JINJA_INSTALLED and self._config.mode == "template":
+        if self._wants_jinja_callables(app_config):
             self._configure_jinja_callables(app_config)
 
-        skip_static = self._config.mode == "external" and self._config.is_dev_mode
+        skip_static = (
+            self._config.wants_html_proxy
+            and self._config.is_dev_mode
+            and self._config.runtime.external_dev_server is not None
+        )
         if self._config.set_static_folders and not skip_static:
             self._configure_static_files(app_config)
 
         if self._config.is_dev_mode and self._config.proxy_mode is not None and not is_non_serving_assets_cli():
             self._configure_dev_proxy(app_config)
 
-        use_spa_handler = self._config.spa_handler and self._config.mode in {"spa", "framework"}
-        use_spa_handler = use_spa_handler or (self._config.mode == "external" and not self._config.is_dev_mode)
+        use_spa_handler = self._config.spa_handler and (
+            self._config.registers_html_catchall or self._config.wants_html_proxy
+        )
+        use_spa_handler = use_spa_handler or (
+            self._config.wants_html_proxy
+            and not self._config.is_dev_mode
+            and self._config.runtime.external_dev_server is not None
+        )
         if use_spa_handler:
             from litestar_vite.handler import AppHandler
 
             self._spa_handler = AppHandler(self._config)
             app_config.route_handlers.append(self._spa_handler.create_route_handler())
         elif self._config.mode == "hybrid":
+            # Hybrid mode prebuilds AppHandler so InertiaResponse._render_spa can reuse it.
+            # Template + Inertia uses _render_template (Jinja-direct) and does not need this.
             from litestar_vite.handler import AppHandler
 
             self._spa_handler = AppHandler(self._config)
@@ -632,6 +785,10 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
         self._export_types_sync(app)
 
+        ssr_config = self._resolved_ssr_config()
+        ssr_should_start = ssr_config is not None and ssr_config.command is not None and ssr_config.auto_start
+        ssr_process: ViteProcess | None = None
+
         if self._config.is_dev_mode and self._config.runtime.start_dev_server:
             ext = self._config.runtime.external_dev_server
             is_external = isinstance(ext, ExternalDevServer) and ext.enabled
@@ -650,13 +807,41 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 log_success("Vite process started")
                 if self._config.health_check and not is_external:
                     self._run_health_check()
+                if ssr_should_start and ssr_config is not None:
+                    ssr_process = self._start_ssr_process(ssr_config)
                 yield
             finally:
+                self._stop_ssr_process(ssr_process)
                 if vite_process is not None:
                     vite_process.stop()
                 log_info("Vite process stopped.")
+        elif ssr_should_start and ssr_config is not None:
+            try:
+                ssr_process = self._start_ssr_process(ssr_config)
+                yield
+            finally:
+                self._stop_ssr_process(ssr_process)
         else:
             yield
+
+    def _start_ssr_process(self, ssr_config: "InertiaSSRConfig") -> "ViteProcess":
+        """Spawn the SSR /render Node process and run an optional health check."""
+        if ssr_config.command is None:  # pragma: no cover - guarded by callers
+            msg = "InertiaSSRConfig.command must be set to spawn the SSR process"
+            raise ValueError(msg)
+        process = self._get_ssr_process()
+        cwd = ssr_config.cwd or self._config.root_dir
+        process.start(ssr_config.command, cwd)
+        log_success(f"SSR /render process started: {' '.join(ssr_config.command)}")
+        if ssr_config.health_check:
+            self._run_ssr_health_check(ssr_config)
+        return process
+
+    def _stop_ssr_process(self, ssr_process: "ViteProcess | None") -> None:
+        """Stop the SSR process if one was started."""
+        if ssr_process is not None:
+            ssr_process.stop()
+            log_info("SSR /render process stopped.")
 
     @asynccontextmanager
     async def lifespan(self, app: "Litestar") -> "AsyncGenerator[None, None]":
@@ -697,7 +882,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
             self._spa_handler.initialize_sync(vite_url=self._proxy_target)
             log_success("SPA handler initialized")
 
-        is_ssr_mode = self._config.mode == "framework" or self._config.proxy_mode == "proxy"
+        is_ssr_mode = self._config.wants_html_proxy
         if not self._config.is_dev_mode and not self._config.has_built_assets() and not is_ssr_mode:
             log_warn(
                 "Vite dev server is disabled (dev_mode=False) but no index.html was found. "
@@ -716,12 +901,16 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
 __all__ = (
     "ProxyHeadersMiddleware",
+    "SSRProxyMiddleware",
     "StaticFilesConfig",
     "TrustedHosts",
     "VitePlugin",
     "ViteProcess",
     "ViteProxyMiddleware",
+    "create_ssr_http_proxy_handler",
     "create_ssr_proxy_controller",
+    "create_ssr_websocket_handler",
+    "create_ssr_ws_proxy_handler",
     "create_vite_hmr_handler",
     "get_litestar_route_prefixes",
     "is_litestar_route",
