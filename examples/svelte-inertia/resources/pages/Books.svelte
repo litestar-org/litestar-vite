@@ -1,22 +1,22 @@
 <script lang="ts">
-  import { Link } from "@inertiajs/svelte"
+import { Link } from "@inertiajs/svelte"
 
-  type Book = {
-    id: number
-    title: string
-    author: string
-    year: number
-    tags: string[]
-  }
+type Book = {
+  id: number
+  title: string
+  author: string
+  year: number
+  tags: string[]
+}
 
-  type Summary = {
-    app: string
-    headline: string
-    total_books: number
-    featured: Book
-  }
+type Summary = {
+  app: string
+  headline: string
+  total_books: number
+  featured: Book
+}
 
-  let { summary, books }: { summary: Summary; books: Book[] } = $props()
+let { summary, books }: { summary: Summary; books: Book[] } = $props()
 </script>
 
 <svelte:head>

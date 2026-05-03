@@ -113,9 +113,4 @@ vite = VitePlugin(
     )
 )
 
-app = Litestar(
-    route_handlers=[LibraryController],
-    plugins=[vite],
-    middleware=[session_backend.middleware],
-    debug=True,
-)
+app = Litestar(route_handlers=[LibraryController], plugins=[vite], middleware=[session_backend.middleware], debug=True)

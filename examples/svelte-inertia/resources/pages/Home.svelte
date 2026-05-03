@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { inertia, Link } from "@inertiajs/svelte"
+import { inertia, Link } from "@inertiajs/svelte"
 
-  let { message }: { message?: string } = $props()
+let { message }: { message?: string } = $props()
 </script>
 
 <svelte:head>

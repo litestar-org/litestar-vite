@@ -829,7 +829,7 @@ def testts_type_from_openapi_ref_enum_resolves_to_literal_union() -> None:
 def testts_type_from_openapi_any_of_ref_enum_resolves_to_literal_union() -> None:
     """Test anyOf containing enum refs resolves correctly with nullability."""
     schema = {
-        "anyOf": [{"$ref": "#/components/schemas/app_domain_insight_schemas__base_Granularity"}, {"type": "null"}],
+        "anyOf": [{"$ref": "#/components/schemas/app_domain_insight_schemas__base_Granularity"}, {"type": "null"}]
     }
     components_schemas: dict[str, Any] = {"Granularity": {"type": "string", "enum": ["hour", "day", "month"]}}
     assert ts_type_from_openapi(schema, components_schemas=components_schemas) == '"hour" | "day" | "month" | null'

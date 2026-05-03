@@ -790,9 +790,7 @@ def test_validate_mode_rejects_framework_with_inertia() -> None:
     config = ViteConfig(
         mode="framework",
         inertia=InertiaConfig(),
-        runtime=RuntimeConfig(
-            external_dev_server=ExternalDevServer(target="http://localhost:4200"),
-        ),
+        runtime=RuntimeConfig(external_dev_server=ExternalDevServer(target="http://localhost:4200")),
     )
     with pytest.raises(ValueError, match=r"Inertia\.js cannot be used with mode"):
         config.validate_mode()
@@ -941,8 +939,7 @@ def test_vite_config_aliases_normalize_to_canonical(input_mode: str, canonical_m
 def test_vite_config_external_mode_with_dev_server_deprecates(recwarn: pytest.WarningsRecorder) -> None:
     """mode='external' + external_dev_server: warns deprecation, normalizes to framework."""
     config = ViteConfig(
-        mode="external",
-        runtime=RuntimeConfig(external_dev_server=ExternalDevServer(target="http://localhost:4200")),
+        mode="external", runtime=RuntimeConfig(external_dev_server=ExternalDevServer(target="http://localhost:4200"))
     )
     assert config.mode == "framework"
     assert any(issubclass(w.category, DeprecationWarning) for w in recwarn.list)
@@ -1004,10 +1001,7 @@ def test_vite_config_proxy_mode_proxy_with_non_framework_mode_raises(
     _cached_resolve_proxy_mode.cache_clear()
 
     with pytest.raises(ValueError, match="only valid with mode='framework'"):
-        ViteConfig(
-            mode=mode,
-            runtime=RuntimeConfig(dev_mode=True, proxy_mode="proxy"),
-        )
+        ViteConfig(mode=mode, runtime=RuntimeConfig(dev_mode=True, proxy_mode="proxy"))
 
 
 def test_vite_config_proxy_mode_proxy_with_framework_mode_works(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1017,10 +1011,7 @@ def test_vite_config_proxy_mode_proxy_with_framework_mode_works(monkeypatch: pyt
     monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
     _cached_resolve_proxy_mode.cache_clear()
 
-    config = ViteConfig(
-        mode="framework",
-        runtime=RuntimeConfig(dev_mode=True, proxy_mode="proxy"),
-    )
+    config = ViteConfig(mode="framework", runtime=RuntimeConfig(dev_mode=True, proxy_mode="proxy"))
     assert config.proxy_mode == "proxy"
 
 

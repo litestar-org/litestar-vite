@@ -464,9 +464,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 plugin=self,
             ),
         )
-        app_config.route_handlers.append(
-            create_ssr_websocket_handler(target=static_target, hotfile_path=ssr_hotfile)
-        )
+        app_config.route_handlers.append(create_ssr_websocket_handler(target=static_target, hotfile_path=ssr_hotfile))
 
         self._insert_dev_proxy_middleware(
             app_config,

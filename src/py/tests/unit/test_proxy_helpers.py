@@ -360,12 +360,7 @@ async def test_ssr_proxy_middleware_http_success() -> None:
     async def send(event: dict[str, object]) -> None:
         send_events.append(event)
 
-    scope: dict[str, object] = {
-        "method": "GET",
-        "raw_path": b"/",
-        "query_string": b"",
-        "headers": [(b"x-test", b"ok")],
-    }
+    scope: dict[str, object] = {"method": "GET", "raw_path": b"/", "query_string": b"", "headers": [(b"x-test", b"ok")]}
     await middleware._proxy_http(scope, receive, send, "http://localhost:3000")
 
     start = next(event for event in send_events if event["type"] == "http.response.start")
@@ -682,10 +677,7 @@ def test_ssr_proxy_middleware_falls_through_to_user_root_route(monkeypatch: pyte
     config = ViteConfig(
         mode="framework",
         paths=PathConfig(),
-        runtime=RuntimeConfig(
-            dev_mode=True,
-            external_dev_server=ExternalDevServer(target="http://127.0.0.1:14321"),
-        ),
+        runtime=RuntimeConfig(dev_mode=True, external_dev_server=ExternalDevServer(target="http://127.0.0.1:14321")),
     )
     app = Litestar(plugins=[VitePlugin(config=config)], route_handlers=[user_root])
 

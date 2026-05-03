@@ -68,7 +68,9 @@ def test_inertia_ssr_examples_have_runnable_node_render_entries() -> None:
         ssr_text = ssr_entry.read_text()
         assert "@inertiajs/vue3/server" in ssr_text, f"{name}: ssr.ts must import @inertiajs/vue3/server"
         assert "createServer" in ssr_text, f"{name}: ssr.ts must call createServer"
-        assert "13714" in ssr_text or "INERTIA_SSR_PORT" in ssr_text, f"{name}: ssr.ts must bind 13714 (or use INERTIA_SSR_PORT env)"
+        assert "13714" in ssr_text or "INERTIA_SSR_PORT" in ssr_text, (
+            f"{name}: ssr.ts must bind 13714 (or use INERTIA_SSR_PORT env)"
+        )
 
         assert "start:ssr" in package_json, f"{name}: package.json must define a start:ssr script"
         assert "build:ssr" in package_json, f"{name}: package.json must define a build:ssr script"
@@ -114,8 +116,7 @@ def test_vue_inertia_ssr_example_invokes_ssr_endpoint() -> None:
             "litestar_vite.inertia.response._render_inertia_ssr",
             new_callable=AsyncMock,
             return_value=_InertiaSSRResult(
-                head=["<title>SSR_TITLE_VUE</title>"],
-                body='<div id="app">SSR_BODY_VUE</div>',
+                head=["<title>SSR_TITLE_VUE</title>"], body='<div id="app">SSR_BODY_VUE</div>'
             ),
         ) as mock_ssr:
             with TestClient(app=module.app) as client:
@@ -149,8 +150,7 @@ def test_vue_inertia_jinja_ssr_example_invokes_ssr_endpoint() -> None:
             "litestar_vite.inertia.response._render_inertia_ssr",
             new_callable=AsyncMock,
             return_value=_InertiaSSRResult(
-                head=["<title>SSR_TITLE_JINJA</title>"],
-                body='<div id="app">SSR_BODY_JINJA</div>',
+                head=["<title>SSR_TITLE_JINJA</title>"], body='<div id="app">SSR_BODY_JINJA</div>'
             ),
         ) as mock_ssr:
             with TestClient(app=module.app) as client:

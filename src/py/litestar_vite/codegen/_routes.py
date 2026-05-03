@@ -142,9 +142,7 @@ def extract_params_from_litestar(
         for param in params:
             schema_dict = param.schema.to_schema() if param.schema else None
             ts_type = (
-                ts_type_from_openapi(schema_dict or {}, components_schemas=components_schemas)
-                if schema_dict
-                else "any"
+                ts_type_from_openapi(schema_dict or {}, components_schemas=components_schemas) if schema_dict else "any"
             )
             # For URL generation, `null` is not a meaningful value (it would stringify to "null").
             # Treat `null` as "missing" rather than emitting `| null` into route parameter types.

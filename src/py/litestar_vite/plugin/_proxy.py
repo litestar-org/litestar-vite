@@ -780,13 +780,7 @@ class SSRProxyMiddleware(AbstractMiddleware):
         scope_dict = cast("dict[str, Any]", scope)
         await self._proxy_http(scope_dict, receive, send, target_base_url)
 
-    async def _proxy_http(
-        self,
-        scope: dict[str, Any],
-        receive: Any,
-        send: Any,
-        target_base_url: str,
-    ) -> None:
+    async def _proxy_http(self, scope: dict[str, Any], receive: Any, send: Any, target_base_url: str) -> None:
         method = scope.get("method", "GET")
         raw_path = scope.get("raw_path", b"").decode()
         query_string = scope.get("query_string", b"").decode()
@@ -820,27 +814,18 @@ class SSRProxyMiddleware(AbstractMiddleware):
                 ):
                     await _proxy_stream_response(upstream_resp, send)
         except httpx.ConnectError:
-            await send(
-                {"type": "http.response.start", "status": 503, "headers": [(b"content-type", b"text/plain")]}
-            )
-            await send(
-                {
-                    "type": "http.response.body",
-                    "body": f"SSR server not running at {target_base_url}".encode(),
-                    "more_body": False,
-                }
-            )
+            await send({"type": "http.response.start", "status": 503, "headers": [(b"content-type", b"text/plain")]})
+            await send({
+                "type": "http.response.body",
+                "body": f"SSR server not running at {target_base_url}".encode(),
+                "more_body": False,
+            })
         except Exception as exc:  # noqa: BLE001
-            await send(
-                {"type": "http.response.start", "status": 502, "headers": [(b"content-type", b"text/plain")]}
-            )
+            await send({"type": "http.response.start", "status": 502, "headers": [(b"content-type", b"text/plain")]})
             await send({"type": "http.response.body", "body": f"Upstream error: {exc}".encode(), "more_body": False})
 
 
-def create_ssr_websocket_handler(
-    target: "str | None" = None,
-    hotfile_path: "Path | None" = None,
-) -> type:
+def create_ssr_websocket_handler(target: "str | None" = None, hotfile_path: "Path | None" = None) -> type:
     """Create a Controller that hosts only the SSR WebSocket HMR proxy handler.
 
     The HTTP catch-all is now ``SSRProxyMiddleware``; this Controller exists solely to

@@ -222,9 +222,7 @@ def ts_type_from_subschema(schema: Any, components_schemas: dict[str, Any] | Non
 
 
 def ts_type_from_openapi_type_entry(
-    type_name: str,
-    schema_dict: dict[str, Any],
-    components_schemas: dict[str, Any] | None = None,
+    type_name: str, schema_dict: dict[str, Any], components_schemas: dict[str, Any] | None = None
 ) -> str:
     primitive_types: dict[str, str] = {
         "string": "string",

@@ -136,9 +136,7 @@ def test_external_mode_dev_without_hot_file_still_skips_static_router(tmp_path: 
     (bundle / "assets" / "main.js").write_text("console.log('built')")
 
     runtime = RuntimeConfig(
-        dev_mode=True,
-        executor="node",
-        external_dev_server=ExternalDevServer(target="http://localhost:4200"),
+        dev_mode=True, executor="node", external_dev_server=ExternalDevServer(target="http://localhost:4200")
     )
     app = _build_vite_app(tmp_path, mode="framework", runtime=runtime)
 
