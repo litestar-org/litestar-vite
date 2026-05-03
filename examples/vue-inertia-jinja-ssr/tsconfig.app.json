@@ -19,5 +19,5 @@
     }
   },
   "include": ["env.d.ts", "resources/**/*.ts", "resources/**/*.tsx", "resources/**/*.vue"],
-  "exclude": ["resources/generated/**"]
+  "exclude": ["resources/generated/**", "resources/ssr.ts"]
 }
