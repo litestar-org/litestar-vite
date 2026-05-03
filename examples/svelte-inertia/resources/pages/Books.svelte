@@ -1,0 +1,57 @@
+<script lang="ts">
+  import { Link } from "@inertiajs/svelte"
+
+  type Book = {
+    id: number
+    title: string
+    author: string
+    year: number
+    tags: string[]
+  }
+
+  type Summary = {
+    app: string
+    headline: string
+    total_books: number
+    featured: Book
+  }
+
+  let { summary, books }: { summary: Summary; books: Book[] } = $props()
+</script>
+
+<svelte:head>
+  <title>Books - svelte-inertia</title>
+</svelte:head>
+
+<main class="mx-auto max-w-5xl space-y-6 px-4 py-10">
+  <header class="space-y-2">
+    <p class="font-semibold text-[#edb641] text-sm uppercase tracking-[0.14em]">Litestar · Vite</p>
+    <h1 class="font-semibold text-3xl text-[#202235]">Library (Svelte 5 + Inertia)</h1>
+    <p class="max-w-3xl text-slate-600">{summary.headline}</p>
+    <nav class="flex gap-4">
+      <Link
+        href="/"
+        class="rounded-full bg-slate-100 px-4 py-2 font-semibold text-slate-600 text-sm transition hover:bg-slate-200"
+      >
+        Home
+      </Link>
+      <span class="rounded-full bg-white px-4 py-2 font-semibold text-[#202235] text-sm shadow">
+        Books ({summary.total_books})
+      </span>
+    </nav>
+  </header>
+
+  <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Books">
+    {#each books as book (book.id)}
+      <article class="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4 shadow-sm">
+        <h3 class="font-semibold text-[#202235] text-lg">{book.title}</h3>
+        <p class="mt-1 text-slate-600">{book.author} · {book.year}</p>
+        <p class="mt-1 text-[#202235] text-sm">{book.tags.join(" · ")}</p>
+      </article>
+    {/each}
+  </section>
+
+  <footer class="border-slate-200 border-t pt-8 text-slate-400 text-xs">
+    <p>Data provided by Inertia.js props from the server. No client-side fetch required.</p>
+  </footer>
+</main>

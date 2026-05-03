@@ -1,0 +1,21 @@
+import { createInertiaApp } from "@inertiajs/vue3"
+import { csrfHeaders } from "litestar-vite-plugin/helpers"
+import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers"
+import type { DefineComponent } from "vue"
+import { createSSRApp, h } from "vue"
+import "./style.css"
+
+createInertiaApp({
+  resolve: (name) => resolvePageComponent(`./pages/${name}.vue`, import.meta.glob<DefineComponent>("./pages/**/*.vue")),
+  defaults: {
+    visitOptions: (_href, options) => ({
+      headers: csrfHeaders(options.headers ?? {}),
+    }),
+  },
+  setup({ el, App, props, plugin }) {
+    // Use createSSRApp so client-side hydration matches the SSR-rendered tree
+    createSSRApp({ render: () => h(App, props) })
+      .use(plugin)
+      .mount(el)
+  },
+})
