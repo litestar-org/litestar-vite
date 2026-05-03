@@ -541,11 +541,26 @@ class InertiaResponse(Response[T]):
 
         context = self.create_template_context(request, page_props, type_encoders)  # pyright: ignore[reportUnknownMemberType]
         if self.template_str is not None:
-            return template_engine.render_string(self.template_str, context).encode(self.encoding)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType,reportReturnType]
+            html = cast(
+                "str",
+                template_engine.render_string(self.template_str, context),  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+            )
+        else:
+            template_name = self.template_name or inertia_plugin.config.root_template
+            template = template_engine.get_template(template_name)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+            html = cast("str", template.render(**context))  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
 
-        template_name = self.template_name or inertia_plugin.config.root_template
-        template = template_engine.get_template(template_name)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
-        return template.render(**context).encode(self.encoding)  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType,reportReturnType]
+        # When SSR is configured and the prepass populated _cached_ssr_payload,
+        # inject the SSR-rendered body into the template's target_selector
+        # element and prepend any SSR head HTML. Mirrors _render_spa.
+        if self._cached_ssr_payload is not None:
+            ssr_config = inertia_plugin.config.ssr_config
+            selector = ssr_config.target_selector if ssr_config is not None else "#app"
+            html = replace_element_outer_html(html, selector, self._cached_ssr_payload.body)
+            if self._cached_ssr_payload.head:
+                html = inject_head_html(html, "\n".join(self._cached_ssr_payload.head))
+
+        return html.encode(self.encoding)  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType,reportReturnType]
 
     def _get_csrf_token(self, request: "Request[UserT, AuthT, StateT]") -> "str | None":
         """Extract CSRF token from the request scope.
@@ -617,10 +632,13 @@ class InertiaResponse(Response[T]):
     def _will_render_ssr(self, request: "Request[Any, Any, Any]", inertia_info: "_InertiaRequestInfo") -> bool:
         """Predict whether this response will hit the SSR HTTP server.
 
-        Used by the deferral gate in :meth:`to_asgi_response` to decide
-        whether async pre-pass is required. Conditions: Inertia is enabled,
-        the request is NOT an Inertia JSON request, the plugin has SSR config,
-        and the Vite plugin is in hybrid mode (the only mode that calls SSR).
+        Used by the deferral gate in :meth:`to_asgi_response` to decide whether
+        async pre-pass is required. Conditions: Inertia is enabled, the request
+        is NOT an Inertia JSON request, the plugin has SSR config, and the Vite
+        plugin's render path can host the SSR fragment:
+
+        - ``mode='spa'`` / ``mode='hybrid'`` consume ``_cached_ssr_payload`` via ``_render_spa``.
+        - ``mode='template'`` consumes ``_cached_ssr_payload`` via ``_render_template``.
 
         Returns:
             ``True`` if this response will perform an SSR HTTP fetch.
@@ -634,7 +652,7 @@ class InertiaResponse(Response[T]):
             return False
         if inertia_plugin.config.ssr_config is None:
             return False
-        return vite_plugin.config.mode == "hybrid"
+        return vite_plugin.config.mode in {"spa", "hybrid", "template"}
 
     def _determine_media_type(self, media_type: "MediaType | str | None") -> "MediaType | str":
         """Determine the media type for the response.
@@ -844,7 +862,7 @@ class InertiaResponse(Response[T]):
 
         resolved_media_type = self._determine_media_type(media_type or MediaType.HTML)
 
-        if vite_plugin.config.mode == "hybrid":
+        if vite_plugin.config.mode in {"spa", "hybrid"}:
             body = self._render_spa(request, page_props, vite_plugin)
         else:
             body = self._render_template(request, page_props, type_encoders, inertia_plugin)

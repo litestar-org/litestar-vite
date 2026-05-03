@@ -25,6 +25,15 @@ class InertiaSSRConfig:
     enabled: bool = True
     url: str = "http://127.0.0.1:13714/render"
     timeout: float = 2.0
+    target_selector: str = "#app"
+    """CSS selector for the element whose outer HTML is replaced by the SSR-rendered body.
+
+    Used by ``_render_template`` (template mode) to locate the mount point in the
+    rendered Jinja HTML. Defaults to ``#app`` to match Inertia's convention.
+
+    For ``mode="hybrid"``, ``SPAConfig.app_selector`` is the source of truth and
+    this field is ignored — SPA config already governs the SPA shell selector.
+    """
 
 
 @dataclass

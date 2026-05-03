@@ -77,6 +77,22 @@ def test_generate_asset_tags_dev_mode() -> None:
     assert 'src="http://127.0.0.1:5173/static/main.js"' in tags
 
 
+def test_generate_asset_tags_dev_mode_uses_litestar_origin_from_hotfile(tmp_path: Path) -> None:
+    bundle_dir = tmp_path / "public"
+    bundle_dir.mkdir()
+    (bundle_dir / "hot").write_text("http://localhost:5006")
+
+    config = ViteConfig(
+        paths=PathConfig(bundle_dir=bundle_dir, asset_url="/static/dist/"), runtime=RuntimeConfig(dev_mode=True)
+    )
+    loader = ViteAssetLoader.initialize_loader(config)
+
+    tags = loader.generate_asset_tags("src/main.js")
+
+    assert 'src="http://localhost:5006/static/dist/src/main.js"' in tags
+    assert "127.0.0.1:5173" not in tags
+
+
 def test_generate_asset_tags_missing_entry() -> None:
     config = ViteConfig(runtime=RuntimeConfig(dev_mode=False))
     loader = ViteAssetLoader(config)

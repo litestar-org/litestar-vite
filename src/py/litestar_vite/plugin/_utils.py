@@ -238,6 +238,23 @@ def _path_for_bridge(path: Path, root_dir: Path) -> str:
         return os.path.relpath(resolved_path, resolved_root).replace("\\", "/")
 
 
+def _derive_bridge_app_url() -> str | None:
+    """Derive the canonical backend URL for the JS bridge config.
+
+    Returns:
+        The explicit ``APP_URL`` value, a host/port-derived URL, or ``None``
+        when no backend address is available.
+    """
+    if explicit := os.environ.get("APP_URL"):
+        return explicit
+
+    host = os.environ.get("LITESTAR_HOST")
+    port = os.environ.get("LITESTAR_PORT") or os.environ.get("PORT")
+    if not host and not port:
+        return None
+    return f"http://{host or '127.0.0.1'}:{port or '8000'}"
+
+
 @overload
 def write_runtime_config_file(config: "ViteConfig", *, asset_url_override: str | None = None) -> str: ...
 
@@ -279,6 +296,7 @@ def write_runtime_config_file(
     payload = {
         "assetUrl": config.asset_url,
         "deployAssetUrl": deploy_asset_url,
+        "appUrl": _derive_bridge_app_url(),
         "bundleDir": bundle_dir_value,
         "hotFile": config.hot_file,
         "resourceDir": resource_dir_value,

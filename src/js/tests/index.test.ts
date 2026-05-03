@@ -284,6 +284,54 @@ describe("litestar-vite-plugin", () => {
     }
   })
 
+  it("defaults server.origin to bridge appUrl in proxy mode", () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+      appUrl: "http://localhost:5006",
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({}, { command: "serve", mode: "development" })
+
+      expect(config.server?.origin).toBe("http://localhost:5006")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("leaves server.origin undefined in proxy mode when bridge appUrl is null", () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+      appUrl: null,
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({}, { command: "serve", mode: "development" })
+
+      expect(config.server?.origin).toBeUndefined()
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("does not default server.origin from bridge appUrl when proxy mode is absent", () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: null,
+      appUrl: "http://localhost:5006",
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({}, { command: "serve", mode: "development" })
+
+      expect(config.server?.origin).toBeUndefined()
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
   it("keeps CSS node_modules font asset URLs on Litestar origin in proxy mode", () => {
     const configPath = createRuntimeConfig({
       proxyMode: "vite",
@@ -307,6 +355,7 @@ describe("litestar-vite-plugin", () => {
   it("keeps direct mode compatibility by setting placeholder origin", () => {
     const configPath = createRuntimeConfig({
       proxyMode: "direct",
+      appUrl: "http://localhost:5006",
     })
 
     try {
@@ -322,6 +371,7 @@ describe("litestar-vite-plugin", () => {
   it("honors explicit server.origin override in proxy mode", () => {
     const configPath = createRuntimeConfig({
       proxyMode: "vite",
+      appUrl: "http://localhost:5006",
     })
 
     try {
@@ -392,6 +442,51 @@ describe("litestar-vite-plugin", () => {
     }
   })
 
+  it("writes hotFile using bridge appUrl default origin in proxy mode", async () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+      appUrl: "http://localhost:5006",
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({}, { command: "serve", mode: "development" })
+
+      const writeSpy = vi.spyOn(fs, "writeFileSync")
+
+      const listeningHandlers: Array<() => void> = []
+      const mockServer = {
+        config: {
+          root: process.cwd(),
+          envDir: process.cwd(),
+          mode: "development",
+          command: "serve",
+          base: "/static/",
+          server: { https: false, hmr: {}, origin: config.server?.origin },
+          logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        },
+        httpServer: {
+          once: vi.fn((event: string, callback: () => void) => {
+            if (event === "listening") listeningHandlers.push(callback)
+            return undefined
+          }),
+          address: vi.fn(() => ({ address: "127.0.0.1", family: "IPv4", port: 4789 })),
+        },
+        middlewares: { use: vi.fn() },
+        transformIndexHtml: vi.fn(),
+      }
+
+      plugin.configResolved?.(mockServer.config as any)
+      await plugin.configureServer?.(mockServer as any)
+
+      listeningHandlers.forEach((handler) => handler())
+
+      expect(writeSpy).toHaveBeenCalledWith(path.resolve(process.cwd(), "public", "hot"), "http://localhost:5006")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
   it("writes hotFile using derived dev server URL when origin is not overridden", async () => {
     const configPath = createRuntimeConfig({
       proxyMode: "vite",
@@ -440,6 +535,105 @@ describe("litestar-vite-plugin", () => {
       listeningHandlers.forEach((handler) => handler())
 
       expect(writeSpy).toHaveBeenCalledWith(path.resolve(process.cwd(), "public", "hot"), "http://127.0.0.1:4789")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("uses bridge appUrl as default proxy target when APP_URL env is missing", () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+      appUrl: "http://127.0.0.1:8001",
+    })
+
+    try {
+      delete process.env.APP_URL
+
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({}, { command: "serve", mode: "development" })
+
+      expect(config.server?.proxy?.["/api"]).toMatchObject({
+        target: "http://127.0.0.1:8001",
+        changeOrigin: true,
+        ws: true,
+      })
+      expect(config.server?.proxy?.["/schema"]).toMatchObject({
+        target: "http://127.0.0.1:8001",
+        changeOrigin: true,
+        ws: true,
+      })
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("prefers APP_URL env over bridge appUrl for default proxy target", () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+      appUrl: "http://bridge.local:8001",
+    })
+
+    try {
+      process.env.APP_URL = "http://env.local:8002"
+
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({}, { command: "serve", mode: "development" })
+
+      expect(config.server?.proxy?.["/api"]).toMatchObject({
+        target: "http://env.local:8002",
+        changeOrigin: true,
+        ws: true,
+      })
+      expect(config.server?.proxy?.["/schema"]).toMatchObject({
+        target: "http://env.local:8002",
+        changeOrigin: true,
+        ws: true,
+      })
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("leaves default proxy undefined when env and bridge appUrl are missing", () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+      appUrl: null,
+    })
+
+    try {
+      delete process.env.APP_URL
+
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({}, { command: "serve", mode: "development" })
+
+      expect(config.server?.proxy).toBeUndefined()
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("preserves explicit user proxy when bridge appUrl is present", () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+      appUrl: "http://bridge.local:8001",
+    })
+
+    try {
+      delete process.env.APP_URL
+
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config(
+        {
+          server: {
+            proxy: {
+              "/api": "http://user.local:9000",
+            },
+          },
+        },
+        { command: "serve", mode: "development" },
+      )
+
+      expect(config.server?.proxy?.["/api"]).toBe("http://user.local:9000")
     } finally {
       cleanupRuntimeConfig(configPath)
     }
@@ -1314,12 +1508,12 @@ describe("litestar-vite-plugin", () => {
       expect(mockNext).not.toHaveBeenCalled()
     })
 
-    it("serves placeholder when mode is 'hybrid' in .litestar.json (inertiaMode auto-detected)", async () => {
-      // When Python sets mode="inertia", it's normalized to "hybrid" in .litestar.json.
+    it("serves placeholder when bridge has Inertia config in hybrid mode", async () => {
+      // Inertia is detected from bridge Inertia metadata, not from the mode value.
       // In inertia mode, the Vite dev server should always show the placeholder page.
       const appUrl = "http://test.app:8000"
       process.env.APP_URL = appUrl
-      const configPath = createRuntimeConfig({ mode: "hybrid" })
+      const configPath = createRuntimeConfig({ mode: "hybrid", spa: { useScriptElement: true } })
 
       try {
         await setupServer() // No explicit inertiaMode - should auto-detect from .litestar.json
@@ -1338,11 +1532,11 @@ describe("litestar-vite-plugin", () => {
       }
     })
 
-    it("serves placeholder when mode is 'inertia' in .litestar.json", async () => {
-      // In inertia mode, the Vite dev server should always show the placeholder page.
+    it("serves placeholder when bridge has Inertia config in template mode", async () => {
+      // Template-mode Inertia apps still use Litestar for HTML responses.
       const appUrl = "http://test.app:8000"
       process.env.APP_URL = appUrl
-      const configPath = createRuntimeConfig({ mode: "inertia" })
+      const configPath = createRuntimeConfig({ mode: "template", spa: { useScriptElement: true } })
 
       try {
         await setupServer()
@@ -1361,10 +1555,31 @@ describe("litestar-vite-plugin", () => {
       }
     })
 
-    it("serves placeholder for /index.html when inertia mode is enabled, even if index exists", async () => {
+    it("serves placeholder when bridge has Inertia config in spa mode", async () => {
       const appUrl = "http://test.app:8000"
       process.env.APP_URL = appUrl
-      const configPath = createRuntimeConfig({ mode: "inertia" })
+      const configPath = createRuntimeConfig({ mode: "spa", spa: { useScriptElement: true } })
+
+      try {
+        await setupServer()
+        mockFs(rootIndexPath) // index.html exists
+
+        await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
+
+        expect(mockRes.statusCode).toBe(200)
+        expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+        expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+        expect(mockRes.end).toHaveBeenCalledWith(actualPlaceholderContent.replace(/{{ APP_URL }}/g, appUrl))
+        expect(mockNext).not.toHaveBeenCalled()
+      } finally {
+        cleanupRuntimeConfig(configPath)
+      }
+    })
+
+    it("serves placeholder for /index.html when bridge has Inertia config, even if index exists", async () => {
+      const appUrl = "http://test.app:8000"
+      process.env.APP_URL = appUrl
+      const configPath = createRuntimeConfig({ mode: "spa", spa: { useScriptElement: true } })
 
       try {
         await setupServer()

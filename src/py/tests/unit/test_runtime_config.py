@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from litestar.serialization import decode_json
 
 from litestar_vite.config import PathConfig, ViteConfig
@@ -19,6 +20,63 @@ def test_runtime_config_includes_litestar_version(tmp_path: Path, monkeypatch: o
 
     # Assert
     assert data["litestarVersion"] == "9.9.9"
+
+
+def test_bridge_app_url_explicit_app_url_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_URL", "https://api.example.com")
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["appUrl"] == "https://api.example.com"
+
+
+def test_bridge_app_url_falls_back_to_litestar_host_port(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_URL", "")
+    monkeypatch.setenv("LITESTAR_HOST", "0.0.0.0")
+    monkeypatch.setenv("LITESTAR_PORT", "9001")
+    monkeypatch.delenv("PORT", raising=False)
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["appUrl"] == "http://0.0.0.0:9001"
+
+
+def test_bridge_app_url_falls_back_to_port_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_URL", "")
+    monkeypatch.setenv("LITESTAR_HOST", "")
+    monkeypatch.delenv("LITESTAR_PORT", raising=False)
+    monkeypatch.setenv("PORT", "8080")
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["appUrl"] == "http://127.0.0.1:8080"
+
+
+def test_bridge_app_url_null_when_unknown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("APP_URL", raising=False)
+    monkeypatch.delenv("LITESTAR_HOST", raising=False)
+    monkeypatch.delenv("LITESTAR_PORT", raising=False)
+    monkeypatch.delenv("PORT", raising=False)
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["appUrl"] is None
 
 
 # Tests for _path_for_bridge helper function

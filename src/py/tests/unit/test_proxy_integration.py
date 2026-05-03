@@ -66,8 +66,8 @@ async def test_proxy_http_forwarding(monkeypatch: pytest.MonkeyPatch, hotfile: P
     assert bodies and bodies[0]["body"] == b"from-upstream"
 
 
-async def test_proxy_returns_503_when_hotfile_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure middleware returns 503 when Vite server is not running (no hotfile)."""
+async def test_proxy_falls_through_when_hotfile_missing(tmp_path: Path) -> None:
+    """Ensure middleware falls through when Vite server is not running."""
     hotfile_path = tmp_path / "nonexistent_hot"  # Don't create the file
 
     sent: list[dict[str, object]] = []
@@ -88,11 +88,12 @@ async def test_proxy_returns_503_when_hotfile_missing(tmp_path: Path, monkeypatc
     }
 
     async def downstream(_scope: Scope, _receive: Receive, _send: Send) -> None:
-        return None
+        await _send({"type": "http.response.start", "status": 404, "headers": []})
+        await _send({"type": "http.response.body", "body": b"downstream", "more_body": False})
 
     middleware = ViteProxyMiddleware(downstream, hotfile_path=hotfile_path)
     await middleware(scope, receive, send)  # type: ignore[arg-type]
     statuses = [m for m in sent if m.get("type") == "http.response.start"]
     bodies = [m for m in sent if m.get("type") == "http.response.body"]
-    assert statuses and statuses[0]["status"] == 503
-    assert bodies and b"Vite server not running" in bodies[0]["body"]  # type: ignore[operator]
+    assert statuses and statuses[0]["status"] == 404
+    assert bodies and bodies[0]["body"] == b"downstream"

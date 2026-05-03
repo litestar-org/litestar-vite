@@ -1,11 +1,11 @@
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from unittest.mock import patch
 
 import pytest
 
-from litestar_vite.config import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig
-from litestar_vite.doctor import ViteDoctor, _extract_braced_block, _format_ts_literal, _rel_to_root
+from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig
+from litestar_vite.doctor import ParsedViteConfig, ViteDoctor, _extract_braced_block, _format_ts_literal, _rel_to_root
 
 if TYPE_CHECKING:
     pass
@@ -150,6 +150,31 @@ def test_doctor_allows_server_origin_in_direct_mode(doctor: ViteDoctor, tmp_path
         doctor.run(fix=False)
 
     assert all(i.check != "Proxy Mode Origin Override" for i in doctor.issues)
+
+
+@pytest.mark.parametrize("mode", ["spa", "hybrid", "template"])
+def test_doctor_inertia_mode_uses_inertia_config_presence(
+    mode: Literal["spa", "hybrid", "template"], tmp_path: Path
+) -> None:
+    config = ViteConfig(
+        mode=mode, inertia=InertiaConfig(), runtime=RuntimeConfig(dev_mode=True), paths=PathConfig(root=tmp_path)
+    )
+    doctor = ViteDoctor(config=config)
+    doctor.parsed_config = ParsedViteConfig(path=tmp_path / "vite.config.ts", content="", inertia_mode=True)
+
+    doctor._check_inertia_mode()
+
+    assert all(issue.check != "Inertia Mode Mismatch" for issue in doctor.issues)
+
+
+def test_doctor_inertia_mode_warns_when_js_enables_inertia_without_python_config(tmp_path: Path) -> None:
+    config = ViteConfig(mode="spa", runtime=RuntimeConfig(dev_mode=True), paths=PathConfig(root=tmp_path))
+    doctor = ViteDoctor(config=config)
+    doctor.parsed_config = ParsedViteConfig(path=tmp_path / "vite.config.ts", content="", inertia_mode=True)
+
+    doctor._check_inertia_mode()
+
+    assert any(issue.check == "Inertia Mode Mismatch" for issue in doctor.issues)
 
 
 def test_doctor_detect_typegen_mismatch(doctor: ViteDoctor, tmp_path: Path) -> None:

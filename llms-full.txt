@@ -1,7 +1,7 @@
 # Litestar-Vite – Full LLM Reference
 
 > Generated from source files. Every fact below is verified against the
-> codebase at version 0.19.0.
+> codebase at version 0.22.2.
 
 ## Project Metadata
 
@@ -9,16 +9,17 @@
 |---|---|
 | PyPI name | litestar-vite |
 | npm name | litestar-vite-plugin |
-| Version | 0.19.0 |
+| Version | 0.22.2 |
 | License | MIT |
 | Python | >=3.10 |
 | Node | ^20.19.0 \|\| >=22.12.0 |
-| Vite peer | ^6.0.0 \|\| ^7.0.0 |
+| Vite peer | ^7.0.0 \|\| ^8.0.0 |
 
 Python dependencies: litestar>=2.7.0, httpx>=0.24.1, websockets>=12.0, typing_extensions
 Optional extras: jinja (jinja2), nodeenv (nodeenv), http2 (h2>=4.0.0)
 
 npm dependencies: picocolors ^1.1.1, vite-plugin-full-reload ^1.2.0
+npm bin: clean-orphaned-assets, litestar-vite-typegen
 
 ---
 
@@ -26,16 +27,19 @@ npm dependencies: picocolors ^1.1.1, vite-plugin-full-reload ^1.2.0
 
 Litestar-Vite connects the Litestar Python web framework to the Vite
 frontend build tool. It supports SPA, Template/HTMX, Hybrid (Inertia.js),
-and Framework (SSR/SSG meta-framework) serving modes.
+Framework (SSR/SSG meta-framework), and External (non-Vite, e.g. Angular CLI)
+serving modes.
 
 Key capabilities:
 - Dev-time proxy from Litestar to Vite (HMR, WebSocket forwarding)
-- Production manifest-based asset resolution
+- Production manifest-based asset resolution (with `.vite/` subdir support for meta-frameworks)
 - Inertia.js v2/v3 protocol support (lazy, defer, once, optional, always, merge,
   scroll props, history encryption, precognition)
-- Type generation pipeline (OpenAPI -> TypeScript via @hey-api/openapi-ts)
+- Type generation pipeline (OpenAPI -> TypeScript via @hey-api/openapi-ts +
+  ergonomic schemas helpers + Inertia page-props)
 - Typed route generation (Ziggy-style)
 - Bridge file (.litestar.json) as Python-to-JavaScript config contract
+- Static-props bridge surfaced via `virtual:litestar-static-props`
 - CDN deployment via fsspec
 - CLI commands under `litestar assets`
 
@@ -185,17 +189,17 @@ class RuntimeConfig:
 
 Post-init: if external_dev_server is a string, wraps it in ExternalDevServer(target=...).
 If external_dev_server is set and proxy_mode is None or "vite", auto-sets proxy_mode to "proxy".
-If executor is None, defaults to "node". Sets run/build/install/serve/watch commands based on executor.
+If executor is None, defaults to "node". Sets run/build/build_watch/serve/install commands based on executor.
 
-Executor command defaults:
+Executor command defaults (run / build / build_watch / serve / install):
 
-| Executor | run | build | install |
-|---|---|---|---|
-| node | npm run dev | npm run build | npm install |
-| bun | bun run dev | bun run build | bun install |
-| deno | deno task dev | deno task build | deno install |
-| yarn | yarn dev | yarn build | yarn install |
-| pnpm | pnpm dev | pnpm build | pnpm install |
+| Executor | run | build | build_watch | serve | install |
+|---|---|---|---|---|---|
+| node | npm run dev | npm run build | npm run watch | npm run serve | npm install |
+| bun | bun run dev | bun run build | bun run watch | bun run serve | bun install |
+| deno | deno task dev | deno task build | deno task watch | deno task serve | deno install |
+| yarn | yarn dev | yarn build | yarn watch | yarn serve | yarn install |
+| pnpm | pnpm dev | pnpm build | pnpm watch | pnpm serve | pnpm install |
 
 ### ExternalDevServer
 
@@ -235,6 +239,15 @@ class TypeGenConfig:
     extra_commands: Sequence[Sequence[str]] # default: [] -- additional [binary, *args] to run during generate-types (resolved via project JS executor)
 ```
 
+`generate_schemas=True` emits a `schemas.ts` file with ergonomic helpers like
+`FormInput<'api:login'>`, `FormResponse<'api:login', 201>`, and
+`SuccessResponse<'api:login'>` on top of the @hey-api/openapi-ts output. Requires
+`generate_sdk=True`.
+
+`page_props_path` is the JSON metadata file the npm plugin reads to emit
+`page-props.ts`. `generate_page_props=True` requires Inertia to be enabled
+(validated by `ViteConfig.validate_mode()`).
+
 ### InertiaConfig
 
 Source: `litestar_vite.config._inertia`
@@ -251,17 +264,18 @@ class InertiaConfig:
     encrypt_history: bool                           # default: False
     type_gen: InertiaTypeGenConfig | None            # default: None
     ssr: InertiaSSRConfig | bool | None              # default: None
-    use_script_element: bool                         # default: False
+    use_script_element: bool                         # default: True
     precognition: bool                               # default: False
 ```
 
 Post-init: if ssr is True, replaces with InertiaSSRConfig(). If ssr is False, replaces with None.
 
-Property: `ssr_config -> InertiaSSRConfig | None` -- returns config if enabled, else None.
+Property: `ssr_config -> InertiaSSRConfig | None` -- returns config when enabled, else None.
 
 Notes:
-- Inertia apps default to a JSON script element payload for full-page HTML bootstrap. Inertia v3 clients use that transport automatically. If you pin Inertia v2, the browser entry must also opt into `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })`, and the SSR entry should mirror that setting when SSR is enabled. Set `InertiaConfig(use_script_element=False)` to keep the legacy `data-page` attribute bootstrap.
+- The Inertia transport defaults to a JSON `<script type="application/json" id="app_page" data-page="app">` element for full-page HTML bootstrap. Inertia v3 clients use that transport automatically. If you pin Inertia v2, the browser entry must also opt into `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })`, and the SSR entry should mirror that setting when SSR is enabled. Set `InertiaConfig(use_script_element=False)` to keep the legacy `data-page` attribute bootstrap.
 - `ssr=True` enables Inertia's separate Node SSR renderer for initial HTML responses. It is not the same as framework proxy mode (`mode="framework"` / alias `mode="ssr"`).
+- `precognition=True` registers a `ValidationException` handler that returns Laravel-format errors when the `Precognition` header is present. Pair with the `@precognition` decorator to short-circuit the handler body on successful validation (see Precognition section).
 
 ### InertiaSSRConfig
 
@@ -297,12 +311,18 @@ class DeployConfig:
     storage_backend: str | None        # default: VITE_DEPLOY_STORAGE env
     storage_options: dict[str, Any]    # default: default_storage_options()
     asset_url: str | None              # default: VITE_DEPLOY_ASSET_URL env
-    delete_orphaned: bool              # default: VITE_DEPLOY_DELETE env in TRUE_VALUES
+    delete_orphaned: bool              # default: VITE_DEPLOY_DELETE env in TRUE_VALUES (default "true")
     include_manifest: bool             # default: True
     content_types: dict[str, str]      # default: default_content_types()
 ```
 
+Post-init: re-reads env fallbacks for `storage_backend`/`asset_url`, and ensures
+`asset_url` ends with "/" when set.
+
 Method: `with_overrides(storage_backend, storage_options, asset_url, delete_orphaned) -> DeployConfig`
+
+When `enabled=True` and `asset_url` is set, the value is written to `.litestar.json`
+as `deployAssetUrl` and used by the Vite plugin as `base` during `vite build`.
 
 ### SPAConfig
 
@@ -317,6 +337,11 @@ class SPAConfig:
     cache_transformed_html: bool       # default: True
     cache_duration: int                # default: 0
 ```
+
+Caching is automatically disabled when `inject_csrf=True` because CSRF tokens are
+per-request. `cache_duration` controls the HTTP `Cache-Control` max-age sent with
+the SPA HTML response (defaults to 0 to ensure browsers fetch fresh `index.html`
+after deployments).
 
 ### LoggingConfig
 
@@ -334,7 +359,7 @@ class LoggingConfig:
 
 ### ViteConfig
 
-Source: `litestar_vite.config`
+Source: `litestar_vite.config._vite`
 
 ```python
 @dataclass
@@ -363,7 +388,9 @@ Shortcut normalization:
 - types=False/None -> None
 - inertia=True -> InertiaConfig()
 - inertia=False -> None
-- spa=True -> SPAConfig()
+- spa=True -> SPAConfig() (also auto-set when mode in {"spa","hybrid"} and spa is None)
+- spa=None for non-spa/hybrid modes -> False
+- logging=True/False/None -> LoggingConfig()
 - deploy=True -> DeployConfig(enabled=True)
 - deploy=False -> DeployConfig(enabled=False)
 - dev_mode=True -> runtime.dev_mode = True
@@ -377,15 +404,23 @@ Auto-detection (when mode is None):
 Auto-enable dev mode: if mode auto-detected as "spa"/"hybrid" and no built assets
 found, dev_mode is enabled (unless VITE_AUTO_DEV_MODE=False).
 
-Auto-detect React: reads package.json for @vitejs/plugin-react, auto-enables is_react.
+Auto-detect React: reads package.json for @vitejs/plugin-react, auto-enables `runtime.is_react`.
+
+Auto-configure Inertia: when an `InertiaConfig` is present alongside an `SPAConfig`,
+`spa.inject_csrf` is forced to `True` so Inertia forms keep CSRF protection.
 
 Framework mode defaults (mode="framework"):
-- Dev: proxy_mode="proxy", spa_handler=False
+- Dev: proxy_mode="proxy", spa_handler=False (set `VITE_PROXY_MODE` to override)
 - Prod with built assets: proxy_mode=None, spa_handler=True
 - Prod without built assets: proxy_mode=None, spa_handler=False
 
+Production warning: when `mode in {"spa","hybrid"}` runs in production without a
+built manifest and without an external dev server, a warning is logged unless the
+current CLI command is one of `install`, `build`, `init`, `serve`, `deploy`,
+`doctor`, `generate-types`, `export-routes`, or `status`.
+
 Key properties:
-- bundle_dir, resource_dir, static_dir, root_dir -> Path
+- bundle_dir, resource_dir, static_dir, root_dir, manifest_name, hot_file, asset_url -> Path/str
 - host, port, protocol -> delegated to runtime
 - hot_reload -> bool (dev_mode AND proxy_mode in {vite, direct, proxy})
 - is_dev_mode, is_react -> bool
@@ -393,19 +428,25 @@ Key properties:
 - serve_command -> list[str] | None
 - proxy_mode, spa_handler, http2, csp_nonce -> delegated to runtime
 - trusted_proxies -> delegated to runtime
+- external_dev_server -> ExternalDevServer | None
 - spa_config -> SPAConfig | None
-- deploy_config -> DeployConfig | None
-- logging_config -> LoggingConfig
+- deploy_config -> DeployConfig | None (None when not enabled)
+- logging_config -> LoggingConfig (always available after normalization)
 - ssr_output_dir -> Path | None
 - executor -> JSExecutor (lazily created)
 
 Key methods:
 - candidate_index_html_paths() -> list[Path]
-- candidate_manifest_paths() -> list[Path]
+- candidate_manifest_paths() -> list[Path]  (also probes `<bundle>/.vite/manifest.json`)
 - resolve_manifest_path() -> Path
-- has_built_assets() -> bool
-- validate_mode() -> None (raises ValueError)
-- reset_executor() -> None
+- has_built_assets() -> bool  (manifest OR built `index.html` in bundle_dir)
+- validate_mode() -> None (raises ValueError on invalid combinations)
+- reset_executor() -> None  (call after mutating logging config to refresh executor instance)
+
+`PaginationContainer` protocol is also exported from `litestar_vite.config._vite`.
+Any type with an `items` attribute satisfies it; built-in support covers
+`litestar.pagination.OffsetPagination`, `ClassicPagination`, and
+`advanced_alchemy.service.OffsetPagination`.
 
 ---
 
@@ -443,27 +484,27 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
 `on_app_init` wires:
 - Signature namespace (Response, Request)
-- ProxyHeadersMiddleware if trusted_proxies is set
-- NotFoundException handler
+- ProxyHeadersMiddleware if `runtime.trusted_proxies` is set
+- NotFoundException handler (Vite vs static fallback depending on mode)
 - InertiaPlugin if inertia config present
-- Jinja2 template callables (vite_hmr, vite, vite_static, vite_routes) for template/htmx modes
-- Static file serving router
-- Dev proxy middleware (ViteProxyMiddleware, HMR WebSocket handler)
-- SPA handler (AppHandler) for spa/framework modes
-- Lifespan registration
+- Jinja2 template callables (`vite_hmr`, `vite`, `vite_static`, `vite_routes`) for template/htmx modes
+- Static file serving router (skips when running CLI subcommands that don't need it)
+- Dev proxy middleware (`ViteProxyMiddleware`, HMR WebSocket handler, optional SSR proxy controller)
+- SPA handler (`AppHandler`) for spa/framework modes, honoring `spa_path`/`include_root_spa_paths`/`guards`/`exclude_static_from_auth`
+- Lifespan registration (per-process and once-before-workers)
 
-`server_lifespan` (runs ONCE before workers):
-- Sets environment variables
-- Exports type metadata
-- Starts/stops Vite dev server process
-- Writes hotfile
-- Runs health check
+`server_lifespan` (runs ONCE before workers, when `set_environment=True`):
+- Sets environment variables (see Environment Variables table)
+- Exports type metadata (`export_integration_assets`)
+- Picks free dev port and writes `.litestar.json`
+- Starts/stops Vite dev server process (or external dev server)
+- Writes hotfile when running internally
+- Runs health check when `health_check=True`
 
 `lifespan` (runs per worker):
-- Sets environment variables (per-process)
-- Initializes shared proxy httpx.AsyncClient
-- Initializes ViteAssetLoader
-- Initializes SPA handler
+- Sets per-process environment variables
+- Initializes shared proxy `httpx.AsyncClient` (HTTP/2 when `http2=True`)
+- Initializes `ViteAssetLoader` and `AppHandler`
 - Cleans up on shutdown
 
 ### InertiaPlugin
@@ -478,24 +519,25 @@ class InertiaPlugin(InitPluginProtocol):
     async def lifespan(self, app: Litestar) -> AsyncGenerator[None, None]: ...
 
     @property
-    def portal(self) -> BlockingPortal: ...
-    @property
     def ssr_client(self) -> httpx.AsyncClient | None: ...
 
     def on_app_init(self, app_config: AppConfig) -> AppConfig: ...
 ```
 
 `on_app_init`:
-- Validates session middleware is present (raises ImproperlyConfiguredException)
-- Registers exception handlers (Exception, HTTPException -> exception_to_http_response)
-- Registers Precognition exception handler if enabled
-- Sets request_class=InertiaRequest, response_class=InertiaResponse
-- Adds InertiaMiddleware
-- Registers type encoders for StaticProp, DeferredProp
+- Validates a session middleware (`SessionMiddleware` or `MiddlewareWrapper`) is present (raises `ImproperlyConfiguredException`)
+- Registers exception handlers (`Exception`, `HTTPException` -> `exception_to_http_response`)
+- Registers a Precognition `ValidationException` handler when `precognition=True`
+- Sets `request_class=InertiaRequest`, `response_class=InertiaResponse`
+- Adds `InertiaMiddleware`
+- Extends `signature_types` with `InertiaRequest`, `InertiaResponse`, `InertiaBack`, `StaticProp`, `DeferredProp`
+- Registers type encoders/decoders for `StaticProp` and `DeferredProp`
+- Appends `_wrap_app_handlers` to `on_startup` so async Inertia prop callbacks run inside Litestar's request `AsyncExitStack` (DI-scoped resources stay alive during prop resolution)
 
 `lifespan`:
-- Creates BlockingPortal for sync-to-async DeferredProp resolution
-- Creates shared httpx.AsyncClient for SSR requests with connection pooling
+- Creates a shared `httpx.AsyncClient` for SSR fan-out
+  (`max_keepalive_connections=10`, `max_connections=20`, `keepalive_expiry=30s`,
+  default request timeout 10s) and closes it on shutdown.
 
 ### AppHandler
 
@@ -505,20 +547,24 @@ Source: `litestar_vite.handler._app`
 class AppHandler:
     def __init__(self, config: ViteConfig) -> None: ...
 
-    async def initialize_async(self) -> None: ...
-    def initialize_sync(self, vite_url: str | None = None) -> None: ...
-    async def shutdown_async(self) -> None: ...
-    def get_html(self, ...) -> str: ...
-    def get_html_sync(self, ...) -> str: ...
-    def get_bytes(self, ...) -> bytes: ...
-    def create_route_handler(self) -> Any: ...
-
     @property
     def is_initialized(self) -> bool: ...
+
+    async def initialize_async(self, vite_url: str | None = None) -> None: ...
+    def initialize_sync(self, vite_url: str | None = None) -> None: ...
+    async def shutdown_async(self) -> None: ...
+
+    async def get_html(self, request: Request[Any, Any, Any], *, page_data: dict[str, Any] | None = None) -> str: ...
+    def get_html_sync(self, *, page_data: dict[str, Any] | None = None, csrf_token: str | None = None) -> str: ...
+    async def get_bytes(self) -> bytes: ...
+
+    def create_route_handler(self) -> Any: ...
 ```
 
-Serves SPA HTML with CSRF injection, page data injection (data-page attribute
-or script element), and Vite dev script injection in dev mode.
+Serves SPA HTML with CSRF injection, page data injection (data-page attribute or
+script element via `SPAConfig.app_selector`), and Vite dev script injection in
+dev mode. In dev with `proxy_mode != "direct"`, requests to the SPA route fetch
+HTML from the Vite dev server through the shared proxy client.
 
 ### ViteAssetLoader
 
@@ -532,6 +578,7 @@ class ViteAssetLoader:
     def initialize_loader(cls, config: ViteConfig) -> ViteAssetLoader: ...
 
     async def initialize(self) -> None: ...
+    def parse_manifest(self) -> None: ...
 
     def render_hmr_client(self) -> markupsafe.Markup: ...
     def render_asset_tag(self, path: str | list[str], scripts_attrs: dict[str, str] | None = None) -> markupsafe.Markup: ...
@@ -543,9 +590,9 @@ class ViteAssetLoader:
 
 Jinja2 template callables (registered when mode is template/htmx):
 - `{{ vite_hmr() }}` - renders HMR client script tag
-- `{{ vite("src/main.ts") }}` - renders asset script/link tags
-- `{{ vite_static("image.png") }}` - renders static asset URL
-- `{{ vite_routes() }}` - renders route metadata script tag
+- `{{ vite("src/main.ts") }}` - renders asset script/link tags (string or list)
+- `{{ vite_static("image.png") }}` - returns a static asset URL
+- `{{ vite_routes(only=..., exclude=..., include_components=False) }}` - inline `<script>` populating `window.Litestar.routes` from `generate_routes_json`
 
 ---
 
@@ -558,7 +605,7 @@ Source: `litestar_vite.inertia.helpers`
 ```python
 def lazy(key: str, value_or_callable: T | Callable | None = None) -> StaticProp | DeferredProp
 ```
-Excluded from initial load, only sent on partial reload. Static value or callable.
+Excluded from initial load, only sent on partial reload. Static value or sync/async callable.
 
 ```python
 def defer(key: str, callback: Callable, group: str = "default") -> DeferredProp
@@ -665,9 +712,10 @@ class InertiaResponse(Response[T]):
 
 Behavior:
 - If not an Inertia request and no route component: returns content as JSON
-- If X-Inertia header present: returns page props as JSON
-- If mode="hybrid": uses AppHandler (SPA mode rendering)
+- If `X-Inertia` header present: returns page props as JSON
+- If mode="hybrid": uses `AppHandler` (SPA mode rendering with the configured Inertia transport)
 - Otherwise: renders Jinja2 template
+- Async `defer`/`lazy`/`once`/`optional` callbacks are pre-resolved on the request loop before serialization (see `InertiaPlugin` notes)
 
 ### InertiaRedirect
 
@@ -675,7 +723,7 @@ Behavior:
 class InertiaRedirect(Redirect):
     def __init__(self, request: Request, redirect_to: str, **kwargs) -> None: ...
 ```
-Status: 307 for GET, 303 for other methods. Same-origin validation.
+Status: 307 for GET, 303 for other methods. Same-origin validation; falls back to base URL on cross-origin.
 
 ### InertiaExternalRedirect
 
@@ -683,7 +731,7 @@ Status: 307 for GET, 303 for other methods. Same-origin validation.
 class InertiaExternalRedirect(Response):
     def __init__(self, request: Request, redirect_to: str, **kwargs) -> None: ...
 ```
-Status: 409 Conflict with X-Inertia-Location header. For cross-origin redirects.
+Status: 409 Conflict with `X-Inertia-Location` header. For cross-origin redirects (no same-origin check).
 
 ### InertiaBack
 
@@ -691,7 +739,7 @@ Status: 409 Conflict with X-Inertia-Location header. For cross-origin redirects.
 class InertiaBack(Redirect):
     def __init__(self, request: Request, **kwargs) -> None: ...
 ```
-Redirects to Referer header with same-origin validation.
+Redirects to `Referer` header with same-origin validation.
 
 ---
 
@@ -702,11 +750,17 @@ Source: `litestar_vite.inertia.middleware`
 ```python
 class InertiaMiddleware(AbstractMiddleware):
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None: ...
+
+def get_current_inertia_request() -> InertiaRequest[Any, Any, Any] | None: ...
+def redirect_on_asset_version_mismatch(request: InertiaRequest[Any, Any, Any]) -> InertiaExternalRedirect | None: ...
 ```
 
-Detects asset version mismatches between client (X-Inertia-Version header)
-and server (VitePlugin.asset_loader.version_id). On mismatch, returns
-409 Conflict with X-Inertia-Location to trigger client-side hard refresh.
+Detects asset version mismatches between client (`X-Inertia-Version` header)
+and server (`VitePlugin.asset_loader.version_id`). On mismatch, returns
+409 Conflict with `X-Inertia-Location` to trigger client-side hard refresh.
+
+`get_current_inertia_request()` exposes the current Inertia request via a
+`ContextVar` for use in handler wrappers (e.g., async prop pre-resolution).
 
 ---
 
@@ -772,6 +826,30 @@ class InertiaDetails:
     precognition_validate_only: list[str]
 ```
 
+### InertiaHeaders enum
+
+Source: `litestar_vite.inertia._utils`
+
+```python
+class InertiaHeaders(str, Enum):
+    ENABLED = "X-Inertia"
+    VERSION = "X-Inertia-Version"
+    LOCATION = "X-Inertia-Location"
+    REFERER = "Referer"
+    PARTIAL_DATA = "X-Inertia-Partial-Data"
+    PARTIAL_COMPONENT = "X-Inertia-Partial-Component"
+    PARTIAL_EXCEPT = "X-Inertia-Partial-Except"
+    EXCEPT_ONCE_PROPS = "X-Inertia-Except-Once-Props"
+    RESET = "X-Inertia-Reset"
+    ERROR_BAG = "X-Inertia-Error-Bag"
+    INFINITE_SCROLL_MERGE_INTENT = "X-Inertia-Infinite-Scroll-Merge-Intent"
+    PRECOGNITION = "Precognition"
+    PRECOGNITION_SUCCESS = "Precognition-Success"
+    PRECOGNITION_VALIDATE_ONLY = "Precognition-Validate-Only"
+```
+
+Re-exported from `litestar_vite.inertia` and `litestar_vite.inertia.request`.
+
 ---
 
 ## Precognition
@@ -781,27 +859,35 @@ Source: `litestar_vite.inertia.precognition`
 ```python
 def precognition(fn: Callable) -> Callable
 ```
-Decorator for route handlers. When Precognition header is present and
-validation passes, returns 204 No Content instead of executing handler body.
+Decorator for route handlers. When the `Precognition` header is present and
+validation passes, returns 204 `No Content` (with `Precognition-Success: true`)
+instead of executing the handler body.
 
 ```python
 class PrecognitionResponse(Response[Any]):
     def __init__(self) -> None: ...
 ```
-Returns 204 with Precognition-Success: true header.
+Returns 204 with `Precognition-Success: true` header.
 
 ```python
 def create_precognition_exception_handler(
     *, fallback_handler: Callable | None = None
 ) -> Callable
 ```
-Creates exception handler that formats ValidationException in Laravel format
-for Precognition requests.
+Creates a `ValidationException` handler that:
+- Returns 422 with `{ "message": "...", "errors": {...} }` and
+  `Precognition: true` for Precognition requests.
+- Returns 204 (`PrecognitionResponse`) when `Precognition-Validate-Only`
+  filtered all errors away.
+- Falls back to the supplied handler (or a default JSON 422 response) for
+  non-Precognition requests.
 
 ```python
 def normalize_validation_errors(exc: ValidationException, validate_only: set[str] | None = None) -> dict[str, Any]
 ```
-Normalizes errors to `{"message": "...", "errors": {"field": ["msg"]}}` format.
+Normalizes Litestar validation detail to Laravel's
+`{"message": "...", "errors": {"field": ["msg"]}}` format. `validate_only`
+restricts which fields are reported.
 
 ---
 
@@ -812,7 +898,10 @@ Source: `litestar_vite.codegen`
 ```python
 def export_integration_assets(app: Litestar, config: ViteConfig) -> ExportResult
 ```
-Unified export of OpenAPI schema, routes JSON, routes TS, and Inertia page props.
+Unified export of OpenAPI schema, routes JSON, routes TypeScript, schemas
+helpers, and Inertia page-props metadata. Returns an `ExportResult` listing
+which files were updated vs. unchanged. CLI commands and the plugin both call
+this to keep output byte-identical.
 
 ```python
 def generate_routes_json(app: Litestar, only=None, exclude=None, include_components=True) -> dict
@@ -820,7 +909,16 @@ def generate_routes_ts(app: Litestar, only=None, exclude=None, global_route=Fals
 def generate_inertia_pages_json(app: Litestar, config: ViteConfig) -> str
 def extract_route_metadata(app: Litestar) -> list[RouteMetadata]
 def extract_inertia_pages(app: Litestar) -> list[InertiaPageMetadata]
+def encode_deterministic_json(value: Any) -> bytes
+def write_if_changed(path: Path, content: bytes | str) -> bool
+def strip_timestamp_for_comparison(value: bytes | str) -> bytes | str
 ```
+
+Public re-exports: `ExportResult`, `InertiaPageMetadata`, `RouteMetadata`,
+`encode_deterministic_json`, `export_integration_assets`,
+`extract_inertia_pages`, `extract_route_metadata`,
+`generate_inertia_pages_json`, `generate_routes_json`, `generate_routes_ts`,
+`strip_timestamp_for_comparison`, `write_if_changed`.
 
 ---
 
@@ -830,20 +928,20 @@ All commands are under `litestar assets`.
 
 | Command | Description |
 |---|---|
-| `doctor` | Diagnose and fix Vite config issues. Options: --check, --fix, --no-prompt, --verbose, --show-config, --runtime-checks |
-| `init` | Initialize Vite project with framework templates. Options: --template, --root-path, --frontend-dir, --bundle-path, --resource-path, --static-path, --asset-url, --vite-port, --enable-ssr/--disable-ssr, --tailwind, --enable-types, --generate-zod, --generate-client, --overwrite, --verbose, --no-prompt, --no-install |
-| `install` | Install frontend packages. Options: --verbose, --quiet |
-| `update` | Update frontend packages. Options: --latest, --verbose, --quiet |
-| `build` | Build frontend assets. Options: --verbose, --quiet |
-| `serve` | Serve frontend (dev or production). Options: --verbose, --quiet, --production |
-| `deploy` | Build and deploy to CDN storage. Options: --storage, --storage-option, --no-build, --dry-run, --no-delete, --verbose |
-| `export-routes` | Export route metadata. Options: --output, --only, --except, --include-components, --typescript/--ts, --verbose |
-| `generate-types` | Generate TypeScript types from OpenAPI and routes. Runs extra_commands (e.g., tsr generate) then litestar-vite-typegen. Options: --verbose |
-| `status` | Check Vite integration status (manifest, dev server) |
+| `doctor` | Diagnose and fix Vite config issues. Options: `--check`, `--fix`, `--no-prompt`, `--verbose`, `--show-config`, `--runtime-checks` |
+| `init` | Initialize Vite project with framework templates. Options: `--template`, `--root-path`, `--frontend-dir`, `--bundle-path`, `--resource-path`, `--static-path`, `--asset-url`, `--vite-port`, `--enable-ssr`/`--disable-ssr`, `--tailwind`, `--enable-types`, `--generate-zod`, `--generate-client`, `--overwrite`, `--verbose`, `--no-prompt`, `--no-install` |
+| `install` | Install frontend packages. Options: `--verbose`, `--quiet` |
+| `update` | Update frontend packages. Options: `--latest`, `--verbose`, `--quiet` |
+| `build` | Build frontend assets. Options: `--verbose`, `--quiet` |
+| `serve` | Serve frontend (dev or production). Options: `--verbose`, `--quiet`, `--production` |
+| `deploy` | Build and deploy to CDN storage. Options: `--storage`, `--storage-option` (repeatable `key=value`), `--no-build`, `--dry-run`, `--no-delete`, `--verbose` |
+| `export-routes` | Export route metadata. Options: `--output`, `--only`, `--except`, `--include-components`, `--typescript`/`--ts`, `--verbose` |
+| `generate-types` | Generate TypeScript types from OpenAPI and routes. Runs `extra_commands` (e.g., `tsr generate`) then `litestar-vite-typegen`. Options: `--verbose` |
+| `status` | Check Vite integration status (manifest, dev server reachability) |
 
-Available init templates: react, react-router, react-tanstack, react-inertia,
-vue, vue-inertia, svelte, svelte-inertia, sveltekit, nuxt, astro, htmx,
-angular, angular-cli
+Available init templates: `react`, `react-router`, `react-tanstack`,
+`react-inertia`, `vue`, `vue-inertia`, `svelte`, `svelte-inertia`, `sveltekit`,
+`nuxt`, `astro`, `htmx`, `angular`, `angular-cli`.
 
 ---
 
@@ -867,9 +965,9 @@ interface PluginConfig {
   refresh?: boolean | string | string[] | RefreshConfig | RefreshConfig[]
   detectTls?: string | boolean | null
   autoDetectIndex?: boolean       // default: true
-  inertiaMode?: boolean           // default: false (auto-detected)
+  inertiaMode?: boolean           // default: false (auto-detected from .litestar.json)
   transformOnServe?: (code: string, url: DevServerUrl) => string
-  types?: boolean | 'auto' | TypesConfig  // type generation config
+  types?: boolean | 'auto' | TypesConfig  // default: undefined (auto from .litestar.json)
   executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
 }
 
@@ -889,12 +987,18 @@ interface TypesConfig {
   debounce?: number               // default: 300
 }
 
-function litestar(config: string | string[] | PluginConfig): Plugin[]
+export default function litestar(config: string | string[] | PluginConfig): any[]
 ```
+
+Returns a `Plugin[]` typed as `any[]` to avoid version conflicts across Vite 7
+and 8. The plugin always pushes a virtual-module plugin for
+`virtual:litestar-static-props`; it pushes the type generation plugin only when
+`types` resolves to enabled.
 
 ### Helpers (`litestar-vite-plugin/helpers`)
 
-Source: `src/js/src/helpers/index.ts`
+Sources: `src/js/src/helpers/csrf.ts`, `htmx.ts`, `routes.ts`, re-exported via
+`src/js/src/helpers/index.ts`.
 
 ```typescript
 // CSRF
@@ -916,6 +1020,10 @@ export function isCurrentRoute(name: string): boolean
 export function currentRoute(): string | null
 export function isRoute(name: string, path: string): boolean
 export function toRoute(name: string, params?: Record<string, unknown>): string
+// types
+export type RouteDefinition
+export type RouteDefinitions
+export type RouteHelpers
 ```
 
 ### Inertia Helpers (`litestar-vite-plugin/inertia-helpers`)
@@ -938,13 +1046,15 @@ export function resolvePageComponent<T>(
 export function unwrapPageProps<T extends Record<string, unknown>>(props: T): T
 ```
 
-Pagination types exported: OffsetPaginationProps, ClassicPaginationProps, CursorPaginationProps, PaginationProps (union), ScrollProps
+Pagination types exported: `OffsetPaginationProps`, `ClassicPaginationProps`,
+`CursorPaginationProps`, `PaginationProps` (union), `ScrollProps`.
 
-Precognition helpers exported:
+Precognition exports:
+
 ```typescript
 export const PrecognitionHeaders: { PRECOGNITION: string, VALIDATE_ONLY: string, PRECOGNITION_SUCCESS: string }
 export interface PrecognitionValidationErrors { message: string; errors: Record<string, string[]> }
-export interface PrecognitionFormConfig { ... }
+export interface PrecognitionFormConfig { /* ... */ }
 export function isPrecognitionSuccess(response: Response): boolean
 export function isPrecognitionError(response: Response): boolean
 export function extractPrecognitionErrors(response: Response): Promise<PrecognitionValidationErrors>
@@ -956,7 +1066,7 @@ export function extractPrecognitionErrors(response: Response): Promise<Precognit
 |---|---|
 | `litestar-vite-plugin` | Main Vite plugin |
 | `litestar-vite-plugin/helpers` | CSRF, HTMX, route helpers |
-| `litestar-vite-plugin/inertia-helpers` | resolvePageComponent, pagination types |
+| `litestar-vite-plugin/inertia-helpers` | resolvePageComponent, pagination types, precognition helpers |
 | `litestar-vite-plugin/astro` | Astro integration |
 | `litestar-vite-plugin/sveltekit` | SvelteKit integration |
 | `litestar-vite-plugin/nuxt` | Nuxt integration |
@@ -977,25 +1087,57 @@ export function extractPrecognitionErrors(response: Response): Promise<Precognit
 Source: `src/js/src/shared/bridge-schema.ts`
 
 The bridge file is the Python-to-JavaScript configuration contract.
-Written by VitePlugin on startup, read by the Vite plugin.
+Written by `VitePlugin` on startup, read by the Vite plugin. The project is
+pre-1.0 — there are no legacy keys and unknown keys cause the Vite plugin to
+fail fast with a clear error.
 
 ```typescript
+type BridgeMode = "spa" | "template" | "htmx" | "hybrid" | "inertia" | "framework" | "ssr" | "ssg" | "external"
+type BridgeProxyMode = "vite" | "direct" | "proxy" | null
+type BridgeExecutor = "node" | "bun" | "deno" | "yarn" | "pnpm"
+
+interface BridgeTypesConfig {
+  enabled: boolean
+  output: string
+  openapiPath: string
+  routesPath: string
+  pagePropsPath: string
+  routesTsPath?: string
+  schemasTsPath?: string
+  generateZod: boolean
+  generateSdk: boolean
+  generateRoutes: boolean
+  generatePageProps: boolean
+  generateSchemas: boolean   // optional in payload; defaults to true
+  globalRoute: boolean
+}
+
+interface BridgeSpaConfig {
+  /** Use script element instead of data-page attribute for Inertia page data */
+  useScriptElement: boolean
+}
+
 interface BridgeSchema {
   assetUrl: string
   deployAssetUrl: string | null
+  appUrl: string | null
   bundleDir: string
   resourceDir: string
   staticDir: string
   hotFile: string
   manifest: string
-  mode: BridgeMode        // "spa" | "template" | "htmx" | "hybrid" | "inertia" | "framework" | "ssr" | "ssg" | "external"
-  proxyMode: BridgeProxyMode  // "vite" | "direct" | "proxy" | null
+
+  mode: BridgeMode
+  proxyMode: BridgeProxyMode
   host: string
   port: number
+
   ssrOutDir: string | null
+
   types: BridgeTypesConfig | null
   spa: BridgeSpaConfig | null
-  executor: BridgeExecutor  // "node" | "bun" | "deno" | "yarn" | "pnpm"
+  executor: BridgeExecutor
+
   logging: {
     level: "quiet" | "normal" | "verbose"
     showPathsAbsolute: boolean
@@ -1003,15 +1145,16 @@ interface BridgeSchema {
     suppressViteBanner: boolean
     timestamps: boolean
   } | null
+
   litestarVersion: string
   staticProps?: Record<string, unknown> | null
 }
 ```
 
-Located at `.litestar.json` in project root, or override with
-`LITESTAR_VITE_CONFIG_PATH` env var.
+Located at `.litestar.json` in the project root, or override via the
+`LITESTAR_VITE_CONFIG_PATH` env var. Static props from `ViteConfig.static_props`
+are accessible in JavaScript via:
 
-Static props from `ViteConfig.static_props` are accessible in JavaScript via:
 ```typescript
 import staticProps from 'virtual:litestar-static-props'
 ```
@@ -1025,11 +1168,11 @@ import staticProps from 'virtual:litestar-static-props'
 | `spa` | Vite serves index.html, Litestar serves API. SPA handler catches all non-API routes. |
 | `template` | Litestar renders Jinja2 templates with Vite asset tags. |
 | `htmx` | Alias for template mode, optimized for HTMX partials. |
-| `hybrid` | Inertia.js mode. Litestar renders full-page HTML with a JSON script payload by default, or with a `data-page` attribute when `use_script_element=False`; XHR visits return JSON. |
+| `hybrid` | Inertia.js mode. Litestar renders full-page HTML with a JSON `<script>` payload by default, or with a `data-page` attribute when `use_script_element=False`; XHR visits return JSON. |
 | `framework` | Meta-framework mode (Astro, Nuxt, SvelteKit). Dev: proxy to framework dev server. Prod: serve built output. |
-| `external` | Non-Vite frameworks (Angular CLI). Dev: no proxy. Prod: serve bundle_dir. |
+| `external` | Non-Vite frameworks (e.g. Angular CLI). Dev: no proxy. Prod: serve `bundle_dir`. |
 
-Mode aliases: "ssr" -> "framework", "ssg" -> "framework", "inertia" -> "hybrid"
+Mode aliases: `"ssr"` -> `"framework"`, `"ssg"` -> `"framework"`, `"inertia"` -> `"hybrid"`.
 
 ## Proxy Modes
 
@@ -1040,7 +1183,7 @@ Mode aliases: "ssr" -> "framework", "ssg" -> "framework", "inertia" -> "hybrid"
 | `proxy` | Deny-list: proxy everything except Litestar routes (framework mode) |
 | `None` | No proxy (production) |
 
-Set via VITE_PROXY_MODE env var.
+Set via the `VITE_PROXY_MODE` env var (`"none"` is accepted to disable).
 
 ---
 
@@ -1052,17 +1195,28 @@ Set via VITE_PROXY_MODE env var.
 | `VITE_HOST` | Vite dev server host (default: 127.0.0.1) |
 | `VITE_PORT` | Vite dev server port (default: 5173) |
 | `VITE_PROXY_MODE` | Proxy mode: vite, direct, proxy, none |
-| `VITE_BASE_URL` | Base URL for app |
+| `VITE_PROTOCOL` | Set by the plugin to mirror `RuntimeConfig.protocol` |
+| `VITE_BASE_URL` | Base URL for app (also exported during build) |
 | `VITE_AUTO_DEV_MODE` | Auto-enable dev mode when no built assets (default: True) |
-| `VITE_ALLOW_REMOTE` | Allow non-loopback Vite host |
+| `VITE_ALLOW_REMOTE` | Allow non-loopback Vite host (default: False; auto-set to True by the plugin in dev) |
 | `VITE_HEALTH_CHECK` | Enable dev server health check |
+| `VITE_PROXY_DEBUG` | Verbose dev-proxy logging (1/true/yes) |
 | `ASSET_URL` | Static asset URL prefix (default: /static/) |
+| `APP_URL` | Public application URL (auto-set to `http://<LITESTAR_HOST>:<LITESTAR_PORT>` when missing) |
+| `LITESTAR_HOST` | Backend host used to derive `APP_URL` (default: 127.0.0.1) |
+| `LITESTAR_PORT` / `PORT` | Backend port used to derive `APP_URL` (defaults to inferred argv port or 8000) |
+| `LITESTAR_VERSION` | Litestar version emitted into `.litestar.json` (auto-resolved when unset) |
+| `LITESTAR_VITE_RUNTIME` | JS executor name written to env for the npm plugin (set from `RuntimeConfig.executor`) |
+| `LITESTAR_VITE_INSTALL_CMD` | Cached install command (joined `install_command`) |
+| `LITESTAR_VITE_LOG_LEVEL` | Log level: quiet, normal, verbose |
+| `LITESTAR_VITE_CONFIG_PATH` | Override `.litestar.json` path (read by both Python and the npm plugin) |
+| `LITESTAR_TRUSTED_PROXIES` | Trusted proxy IPs / CIDRs (or `*`) for X-Forwarded-* headers |
+| `LITESTAR_OPENAPI_PATH` | Set when an OpenAPI config is detected; surfaces the schema URL to JS |
 | `VITE_DEPLOY_STORAGE` | fsspec URL for deploy target |
 | `VITE_DEPLOY_ASSET_URL` | Public CDN URL for deployed assets |
 | `VITE_DEPLOY_DELETE` | Delete orphaned remote files (default: true) |
-| `LITESTAR_TRUSTED_PROXIES` | Trusted proxy IPs for X-Forwarded-* headers |
-| `LITESTAR_VITE_LOG_LEVEL` | Log level: quiet, normal, verbose |
-| `LITESTAR_VITE_CONFIG_PATH` | Override .litestar.json path |
+| `NUXT_HOST` / `NUXT_PORT` / `NITRO_HOST` / `NITRO_PORT` / `HOST` / `PORT` | Set by the plugin so framework dev servers bind to the same host/port as Vite |
+| `VIRTUAL_ENV` | Read by the `nodeenv` executor to discover the venv root |
 
 ---
 
@@ -1080,6 +1234,7 @@ Example applications in the `examples/` directory:
 | `react` | React SPA |
 | `react-inertia` | React + Inertia.js hybrid mode |
 | `react-inertia-jinja` | React + Inertia.js + Jinja2 template mode |
+| `react-tanstack` | React + TanStack Router (with `tsr generate` extra command) |
 | `svelte` | Svelte SPA |
 | `sveltekit` | SvelteKit framework mode |
 | `vue` | Vue SPA |
@@ -1146,7 +1301,8 @@ async def index() -> InertiaResponse:
     return InertiaResponse({"greeting": "Hello"})
 ```
 
-Browser bootstrap for the default script-element transport:
+Browser bootstrap for the default script-element transport (Inertia v2 only;
+v3 enables this transport by default):
 
 ```typescript
 createInertiaApp({
@@ -1208,6 +1364,7 @@ export default defineConfig({
 
 ```
 litestar_vite.__init__
+litestar_vite.__metadata__
 litestar_vite.config.__init__
 litestar_vite.config._constants
 litestar_vite.config._deploy
@@ -1216,6 +1373,7 @@ litestar_vite.config._paths
 litestar_vite.config._runtime
 litestar_vite.config._spa
 litestar_vite.config._types
+litestar_vite.config._vite
 litestar_vite.plugin.__init__
 litestar_vite.plugin._process
 litestar_vite.plugin._proxy
@@ -1226,7 +1384,6 @@ litestar_vite.handler.__init__
 litestar_vite.handler._app
 litestar_vite.handler._routing
 litestar_vite.inertia.__init__
-litestar_vite.inertia._async_mixin
 litestar_vite.inertia._utils
 litestar_vite.inertia.exception_handler
 litestar_vite.inertia.helpers
@@ -1262,9 +1419,12 @@ litestar_vite.utils
 
 ```
 src/js/src/index.ts                       # Main Vite plugin
-src/js/src/helpers/index.ts               # CSRF, HTMX, route helpers
-src/js/src/inertia-helpers/index.ts       # resolvePageComponent, pagination
-src/js/src/shared/bridge-schema.ts        # Bridge file schema
+src/js/src/helpers/index.ts               # CSRF, HTMX, route helpers (re-exports)
+src/js/src/helpers/csrf.ts                # CSRF utilities
+src/js/src/helpers/htmx.ts                # HTMX utilities
+src/js/src/helpers/routes.ts              # Route helpers
+src/js/src/inertia-helpers/index.ts       # resolvePageComponent, pagination, precognition
+src/js/src/shared/bridge-schema.ts        # Bridge file schema + parser
 src/js/src/shared/constants.ts            # Shared constants
 src/js/src/shared/debounce.ts             # Debounce utility
 src/js/src/shared/format-path.ts          # Path formatting
@@ -1277,13 +1437,17 @@ src/js/src/shared/emit-page-props-types.ts # Page props type emitter
 src/js/src/shared/emit-schemas-types.ts   # Schemas type emitter
 src/js/src/shared/emit-static-props-types.ts # Static props type emitter
 src/js/src/shared/network.ts              # Network utilities
+src/js/src/shared/vite-compat.ts          # Vite 7/8 compatibility shims
 src/js/src/litestar-meta.ts               # Litestar metadata loader
-src/js/src/typegen-cli.ts                 # Type generation CLI
+src/js/src/typegen-cli.ts                 # Type generation CLI entry
 src/js/src/install-hint.ts                # Install hint
 src/js/src/astro.ts                       # Astro integration
 src/js/src/sveltekit.ts                   # SvelteKit integration
 src/js/src/nuxt.ts                        # Nuxt integration
 src/js/src/inertia-types.ts               # Inertia type definitions
+src/js/src/virtual.d.ts                   # Virtual module type declarations
+src/js/src/dev-server/vite.config.ts      # Internal Vite config bundling the dev-server placeholder
+src/js/src/server-starting/vite.config.ts # Internal Vite config bundling the server-starting page
 ```
 
 ## Public Python Exports

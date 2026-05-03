@@ -697,10 +697,12 @@ class ViteDoctor:
 
     def _check_inertia_mode(self) -> None:
         """Warn when vite.config inertiaMode conflicts with Python mode."""
+        from litestar_vite.config import InertiaConfig
+
         if not self.parsed_config or self.parsed_config.inertia_mode is None:
             return
 
-        py_inertia = self.config.mode == "inertia"
+        py_inertia = isinstance(self.config.inertia, InertiaConfig)
         js_inertia = self.parsed_config.inertia_mode
 
         if py_inertia != js_inertia:
@@ -709,10 +711,10 @@ class ViteDoctor:
                     check="Inertia Mode Mismatch",
                     severity="warning",
                     message=(
-                        f"Python mode={self.config.mode!r} implies inertiaMode={py_inertia}, "
+                        f"Python inertia config implies inertiaMode={py_inertia}, "
                         f"but vite.config sets inertiaMode={js_inertia}"
                     ),
-                    fix_hint="Remove inertiaMode from vite.config to auto-detect, or set it to match your Python mode",
+                    fix_hint="Remove inertiaMode from vite.config to auto-detect, or set it to match your Python inertia config",
                     auto_fixable=False,
                 )
             )
@@ -1057,13 +1059,14 @@ class ViteDoctor:
         from litestar_vite.config import InertiaConfig
 
         inertia_enabled = isinstance(self.config.inertia, InertiaConfig)
-        if inertia_enabled and self.config.mode in {"template", "htmx", "external"}:
+        if inertia_enabled and self.config.mode == "external":
             self.issues.append(
                 DoctorIssue(
                     check="Mode/Inertia Conflict",
                     severity="error",
-                    message=f"Inertia is enabled but mode={self.config.mode!r} is incompatible with Inertia",
-                    fix_hint="Switch to mode='spa' or mode='hybrid', or disable inertia",
+                    message="Inertia is enabled but mode='external' is incompatible with Inertia "
+                    "(external mode delegates to a non-Vite dev server like Angular CLI)",
+                    fix_hint="Switch to mode='spa', mode='hybrid', or mode='template', or disable inertia",
                     auto_fixable=False,
                 )
             )

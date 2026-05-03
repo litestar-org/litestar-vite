@@ -296,6 +296,39 @@ def test_mode_explicit_overrides_detection(tmp_path: Path) -> None:
     assert config._mode_auto_detected is False
 
 
+def test_mode_normalization_htmx_to_template(tmp_path: Path) -> None:
+    """ViteConfig(mode='htmx') normalizes to mode='template' (htmx is an alias)."""
+    config = ViteConfig(mode="htmx", paths=PathConfig(resource_dir=tmp_path))
+    assert config.mode == "template"
+
+
+def test_mode_normalization_inertia_to_hybrid(tmp_path: Path) -> None:
+    """ViteConfig(mode='inertia') normalizes to mode='hybrid' (existing alias)."""
+    config = ViteConfig(mode="inertia", paths=PathConfig(resource_dir=tmp_path))
+    assert config.mode == "hybrid"
+
+
+def test_mode_normalization_ssr_to_framework(tmp_path: Path) -> None:
+    """ViteConfig(mode='ssr') normalizes to mode='framework' (existing alias)."""
+    config = ViteConfig(mode="ssr", paths=PathConfig(resource_dir=tmp_path))
+    assert config.mode == "framework"
+
+
+def test_mode_normalization_ssg_to_framework(tmp_path: Path) -> None:
+    """ViteConfig(mode='ssg') normalizes to mode='framework' (existing alias)."""
+    config = ViteConfig(mode="ssg", paths=PathConfig(resource_dir=tmp_path))
+    assert config.mode == "framework"
+
+
+def test_mode_htmx_with_inertia_normalizes_and_validates(tmp_path: Path) -> None:
+    """mode='htmx' + inertia=True normalizes to template and is allowed (Jinja hosts Inertia)."""
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    config = ViteConfig(mode="htmx", inertia=True, paths=PathConfig(resource_dir=resource_dir))
+    assert config.mode == "template"
+    config.validate_mode()  # must not raise
+
+
 def test_validate_mode_spa_missing_index_html(tmp_path: Path) -> None:
     """Test validation fails for SPA mode without index.html in production."""
     resource_dir = tmp_path / "resources"
@@ -691,16 +724,23 @@ def test_mode_alias_inertia_to_hybrid() -> None:
 # ===== Mode + Inertia Conflict Validation =====
 
 
-def test_validate_mode_rejects_template_with_inertia() -> None:
-    config = ViteConfig(mode="template", inertia=InertiaConfig())
-    with pytest.raises(ValueError, match=r"Inertia\.js cannot be used with mode='template'"):
-        config.validate_mode()
+def test_validate_mode_allows_template_with_inertia(tmp_path: Path) -> None:
+    """Inertia + template mode is valid: Jinja hosts the page payload and SSR shell."""
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    config = ViteConfig(mode="template", inertia=InertiaConfig(), paths=PathConfig(resource_dir=resource_dir))
+    config.validate_mode()  # must not raise
+    assert config.mode == "template"
+    assert isinstance(config.inertia, InertiaConfig)
 
 
-def test_validate_mode_rejects_htmx_with_inertia() -> None:
-    config = ViteConfig(mode="htmx", inertia=InertiaConfig())
-    with pytest.raises(ValueError, match=r"Inertia\.js cannot be used with mode='htmx'"):
-        config.validate_mode()
+def test_validate_mode_allows_htmx_normalized_to_template_with_inertia(tmp_path: Path) -> None:
+    """mode='htmx' normalizes to 'template'; inertia is allowed in either form."""
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    config = ViteConfig(mode="htmx", inertia=InertiaConfig(), paths=PathConfig(resource_dir=resource_dir))
+    assert config.mode == "template"
+    config.validate_mode()  # must not raise
 
 
 def test_validate_mode_rejects_external_with_inertia() -> None:

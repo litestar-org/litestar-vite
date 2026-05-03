@@ -209,7 +209,7 @@ export interface PluginConfig {
    * page directing users to access the app through the backend (even if an
    * index.html exists for the backend to render).
    *
-   * Auto-detected from `.litestar.json` when mode is "inertia".
+   * Auto-detected from `.litestar.json` when Inertia is configured.
    *
    * @default false (auto-detected from .litestar.json)
    */
@@ -285,7 +285,7 @@ interface RefreshConfig {
  * Resolved plugin configuration with all defaults applied.
  * Note: `types` is resolved to `Required<TypesConfig> | false` instead of `boolean | TypesConfig`
  * Note: `executor` remains optional - undefined means auto-detect from env
- * Note: `inertiaMode` is resolved to boolean (auto-detected from .litestar.json mode)
+ * Note: `inertiaMode` is resolved to boolean (auto-detected from .litestar.json Inertia metadata)
  */
 interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor" | "inertiaMode" | "deployAssetUrl"> {
   types: Required<TypesConfig> | false
@@ -423,6 +423,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       const runtimeAssetUrl = normalizeAssetUrl(env.ASSET_URL || pluginConfig.assetUrl)
       const buildAssetUrl = pluginConfig.deployAssetUrl ?? runtimeAssetUrl
       const serverConfig = command === "serve" ? (resolveDevelopmentEnvironmentServerConfig(pluginConfig.detectTls) ?? resolveEnvironmentServerConfig(env)) : undefined
+      const effectiveAppUrl = env.APP_URL || pythonDefaults?.appUrl || undefined
 
       const withProxyErrorSilencer = (proxyConfig: Record<string, any> | undefined) => {
         if (!proxyConfig) return undefined
@@ -455,6 +456,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       }
       const explicitServerOrigin = typeof userConfig.server?.origin === "string" && userConfig.server.origin.length > 0 ? userConfig.server.origin : undefined
       const shouldForceDirectServerOrigin = explicitServerOrigin !== undefined || pythonDefaults?.proxyMode === "direct"
+      const proxyOriginDefault = !explicitServerOrigin && pythonDefaults?.proxyMode === "vite" && pythonDefaults.appUrl ? pythonDefaults.appUrl : undefined
       const devBase = pluginConfig.assetUrl.startsWith("/") ? pluginConfig.assetUrl : pluginConfig.assetUrl.replace(/\/+$/, "")
 
       ensureCommandShouldRunInEnvironment(command, env, mode)
@@ -471,7 +473,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           assetsInlineLimit: userConfig.build?.assetsInlineLimit ?? 0,
         },
         server: {
-          origin: shouldForceDirectServerOrigin ? (explicitServerOrigin ?? "__litestar_vite_placeholder__") : undefined,
+          origin: shouldForceDirectServerOrigin ? (explicitServerOrigin ?? "__litestar_vite_placeholder__") : proxyOriginDefault,
           // Auto-configure HMR to use a path that routes through Litestar proxy
           // Note: Vite automatically prepends `base` to `hmr.path`, so we just use "vite-hmr"
           // Result: base="/static/" + path="vite-hmr" = "/static/vite-hmr"
@@ -488,15 +490,15 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           // Only proxies /api and /schema routes - everything else is handled by Vite
           proxy: withProxyErrorSilencer(
             userConfig.server?.proxy ??
-              (env.APP_URL
+              (effectiveAppUrl
                 ? {
                     "/api": {
-                      target: env.APP_URL,
+                      target: effectiveAppUrl,
                       changeOrigin: true,
                       ws: true,
                     },
                     "/schema": {
-                      target: env.APP_URL,
+                      target: effectiveAppUrl,
                       changeOrigin: true,
                       ws: true,
                     },
@@ -616,7 +618,12 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
         const isAddressInfo = (x: string | AddressInfo | null | undefined): x is AddressInfo => typeof x === "object"
         if (isAddressInfo(address)) {
           const explicitServerOrigin = typeof userConfig.server?.origin === "string" && userConfig.server.origin.length > 0 ? userConfig.server.origin : undefined
-          viteDevServerUrl = explicitServerOrigin ? (explicitServerOrigin as DevServerUrl) : resolveDevServerUrl(address, server.config, userConfig)
+          const configuredServerOrigin =
+            typeof server.config.server.origin === "string" && server.config.server.origin.length > 0 && server.config.server.origin !== "__litestar_vite_placeholder__"
+              ? server.config.server.origin
+              : undefined
+          const hotfileOrigin = configuredServerOrigin ?? explicitServerOrigin
+          viteDevServerUrl = hotfileOrigin ? (hotfileOrigin as DevServerUrl) : resolveDevServerUrl(address, server.config, userConfig)
           fs.mkdirSync(path.dirname(pluginConfig.hotFile), { recursive: true })
           fs.writeFileSync(pluginConfig.hotFile, viteDevServerUrl)
 
@@ -1133,9 +1140,11 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     }
   }
 
-  // Auto-detect Inertia mode from .litestar.json if not explicitly set
-  // Check for both "hybrid" and "inertia" since Python normalizes "inertia" -> "hybrid"
-  const inertiaMode = resolvedConfig.inertiaMode ?? (pythonDefaults?.mode === "hybrid" || pythonDefaults?.mode === "inertia")
+  // Auto-detect Inertia from .litestar.json if not explicitly set.
+  // Inertia can be used with spa, hybrid, or template mode; bridge spa metadata
+  // is present only when Python configured InertiaConfig.
+  const bridgeInertiaEnabled = pythonDefaults?.spa !== null && pythonDefaults?.spa !== undefined
+  const inertiaMode = resolvedConfig.inertiaMode ?? bridgeInertiaEnabled
 
   const effectiveResourceDir = resolvedConfig.resourceDir ?? pythonDefaults?.resourceDir ?? "src"
   const resolvedBundleDir = resolvedConfig.bundleDir ?? pythonDefaults?.bundleDir ?? "public"
@@ -1224,7 +1233,7 @@ function validateAgainstPythonDefaults(resolved: ResolvedPluginConfig, pythonDef
     warnings.push(`staticDir: vite.config.ts="${resolved.staticDir}" differs from Python="${pythonDefaults.staticDir}"`)
   }
 
-  const frameworkMode = pythonDefaults.mode === "framework" || pythonDefaults.mode === "ssr" || pythonDefaults.mode === "ssg"
+  const frameworkMode = pythonDefaults.mode === "framework"
   if (frameworkMode && userConfig.ssrOutDir !== undefined && hasPythonValue(pythonDefaults.ssrOutDir) && !pathsAreSame(resolved.ssrOutDir, pythonDefaults.ssrOutDir)) {
     warnings.push(`ssrOutDir: vite.config.ts="${resolved.ssrOutDir}" differs from Python="${pythonDefaults.ssrOutDir}"`)
   }

@@ -208,6 +208,7 @@ def precognition(fn: "Callable[..., Any]") -> "Callable[..., Any]":
         - The decorator checks for Precognition header AFTER DTO validation
     """
     import asyncio
+    import inspect
 
     @wraps(fn)
     def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -243,7 +244,7 @@ def precognition(fn: "Callable[..., Any]") -> "Callable[..., Any]":
         return result
 
     # Return appropriate wrapper based on function type
-    if asyncio.iscoroutinefunction(fn):
+    if inspect.iscoroutinefunction(fn):
         return async_wrapper
     return sync_wrapper
 
