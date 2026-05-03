@@ -79,6 +79,77 @@ def test_bridge_app_url_null_when_unknown(tmp_path: Path, monkeypatch: pytest.Mo
     assert data["appUrl"] is None
 
 
+def test_bridge_litestar_port_from_app_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bridge MUST emit litestarPort parsed from APP_URL so framework integrations can route HMR through it."""
+    monkeypatch.setenv("APP_URL", "https://api.example.com:9876")
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["litestarPort"] == 9876
+
+
+def test_bridge_litestar_port_from_litestar_port_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("APP_URL", raising=False)
+    monkeypatch.delenv("LITESTAR_HOST", raising=False)
+    monkeypatch.setenv("LITESTAR_PORT", "9001")
+    monkeypatch.delenv("PORT", raising=False)
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["litestarPort"] == 9001
+
+
+def test_bridge_litestar_port_from_port_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("APP_URL", raising=False)
+    monkeypatch.delenv("LITESTAR_HOST", raising=False)
+    monkeypatch.delenv("LITESTAR_PORT", raising=False)
+    monkeypatch.setenv("PORT", "8080")
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["litestarPort"] == 8080
+
+
+def test_bridge_litestar_port_null_when_unknown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("APP_URL", raising=False)
+    monkeypatch.delenv("LITESTAR_HOST", raising=False)
+    monkeypatch.delenv("LITESTAR_PORT", raising=False)
+    monkeypatch.delenv("PORT", raising=False)
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["litestarPort"] is None
+
+
+def test_bridge_litestar_port_from_app_url_default_http_port(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """APP_URL without an explicit port must yield port 80 (http) or 443 (https)."""
+    monkeypatch.setenv("APP_URL", "https://api.example.com")
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["litestarPort"] == 443
+
+
 # Tests for _path_for_bridge helper function
 
 

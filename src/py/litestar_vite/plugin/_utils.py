@@ -255,6 +255,42 @@ def _derive_bridge_app_url() -> str | None:
     return f"http://{host or '127.0.0.1'}:{port or '8000'}"
 
 
+_DEFAULT_PORT_BY_SCHEME = {"http": 80, "https": 443}
+
+
+def _derive_bridge_litestar_port() -> int | None:
+    """Derive the Litestar listen port for the JS bridge config.
+
+    Framework integrations need this to route HMR WebSockets through the Litestar port,
+    enforcing the single-port-via-ASGI contract (browser must never see the framework
+    dev server's port).
+
+    Resolution order:
+        1. ``APP_URL`` env var (parsed for explicit port; default 80/443 by scheme).
+        2. ``LITESTAR_PORT`` / ``PORT`` env var.
+        3. ``None`` when no signal is available.
+
+    Returns:
+        The port number as an integer, or None when no port information is available.
+
+    """
+    from urllib.parse import urlparse
+
+    if explicit := os.environ.get("APP_URL"):
+        parsed = urlparse(explicit)
+        if parsed.port is not None:
+            return parsed.port
+        return _DEFAULT_PORT_BY_SCHEME.get(parsed.scheme)
+
+    raw = os.environ.get("LITESTAR_PORT") or os.environ.get("PORT")
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
 @overload
 def write_runtime_config_file(config: "ViteConfig", *, asset_url_override: str | None = None) -> str: ...
 
@@ -297,6 +333,7 @@ def write_runtime_config_file(
         "assetUrl": config.asset_url,
         "deployAssetUrl": deploy_asset_url,
         "appUrl": _derive_bridge_app_url(),
+        "litestarPort": _derive_bridge_litestar_port(),
         "bundleDir": bundle_dir_value,
         "hotFile": config.hot_file,
         "resourceDir": resource_dir_value,
