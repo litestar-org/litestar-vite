@@ -320,13 +320,13 @@ class ViteAssetLoader:
         """Asynchronously read the hot file for dev server URL."""
         hot_file_path = anyio.Path(self._get_hot_file_path())
         if await hot_file_path.exists():
-            self._vite_base_path = await hot_file_path.read_text()
+            self._vite_base_path = (await hot_file_path.read_text()).strip() or None
 
     def _load_hot_file_sync(self) -> None:
         """Synchronously read the hot file for dev server URL."""
         hot_file_path = self._get_hot_file_path()
         if hot_file_path.exists():
-            self._vite_base_path = hot_file_path.read_text()
+            self._vite_base_path = hot_file_path.read_text().strip() or None
 
     @property
     def manifest_content(self) -> str:
@@ -501,6 +501,13 @@ class ViteAssetLoader:
         Returns:
             Full URL to the asset on the dev server.
         """
+        # Lazy retry: ``parse_manifest()`` runs once at loader init and races the JS
+        # plugin's hotfile write — if the file did not exist yet, ``_vite_base_path``
+        # stays ``None`` for the loader's lifetime and every asset URL silently leaks
+        # the raw Vite dev server origin (breaking the single-port-via-ASGI bridge
+        # contract). Re-reading on demand fixes the race without polling.
+        if self._vite_base_path is None:
+            self._load_hot_file_sync()
         base_path = self._vite_base_path or f"{self._config.protocol}://{self._config.host}:{self._config.port}"
         return urljoin(base_path, urljoin(self._config.asset_url, path if path is not None else ""))
 

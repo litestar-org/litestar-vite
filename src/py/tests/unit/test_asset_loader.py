@@ -68,8 +68,10 @@ def test_generate_asset_tags_prod_mode() -> None:
     assert '<script type="module" async="" defer="" src="/static/assets/main.js"></script>' in tags
 
 
-def test_generate_asset_tags_dev_mode() -> None:
-    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True))
+def test_generate_asset_tags_dev_mode(tmp_path: Path) -> None:
+    # Empty bundle_dir guarantees no hotfile is found by the lazy-retry path,
+    # forcing the host:port fallback we're asserting on.
+    config = ViteConfig(paths=PathConfig(bundle_dir=tmp_path), runtime=RuntimeConfig(dev_mode=True))
     loader = ViteAssetLoader(config)
 
     tags = loader.generate_asset_tags("main.js")
@@ -93,6 +95,51 @@ def test_generate_asset_tags_dev_mode_uses_litestar_origin_from_hotfile(tmp_path
     assert "127.0.0.1:5173" not in tags
 
 
+def test_generate_asset_tags_dev_mode_rereads_hotfile_when_initially_missing(tmp_path: Path) -> None:
+    """Race scenario: loader initializes before the JS plugin has written the hotfile.
+
+    The first ``parse_manifest()`` call sees no hotfile and leaves ``_vite_base_path``
+    as ``None``. Without a lazy retry, every subsequent asset URL silently falls back
+    to ``http://<host>:<port>`` (the raw Vite dev server origin), breaking the
+    single-port-via-ASGI contract. The loader MUST re-read the hotfile on demand once
+    it appears.
+    """
+    bundle_dir = tmp_path / "public"
+    bundle_dir.mkdir()
+
+    config = ViteConfig(
+        paths=PathConfig(bundle_dir=bundle_dir, asset_url="/static/dist/"), runtime=RuntimeConfig(dev_mode=True)
+    )
+    loader = ViteAssetLoader.initialize_loader(config)
+    assert loader._vite_base_path is None
+
+    # Simulate the JS plugin writing the bridge URL after Vite has started.
+    (bundle_dir / "hot").write_text("http://localhost:5006")
+
+    tags = loader.generate_asset_tags("src/main.js")
+
+    assert 'src="http://localhost:5006/static/dist/src/main.js"' in tags
+
+
+def test_load_hot_file_strips_trailing_whitespace(tmp_path: Path) -> None:
+    """Hotfile written by Node tooling commonly has a trailing newline; that newline
+    must not survive into ``urljoin`` (where it produces malformed URLs like
+    ``http://localhost:5006\\n/static/...``).
+    """
+    bundle_dir = tmp_path / "public"
+    bundle_dir.mkdir()
+    (bundle_dir / "hot").write_text("http://localhost:5006\n")
+
+    config = ViteConfig(
+        paths=PathConfig(bundle_dir=bundle_dir, asset_url="/static/dist/"), runtime=RuntimeConfig(dev_mode=True)
+    )
+    loader = ViteAssetLoader.initialize_loader(config)
+
+    assert loader._vite_base_path == "http://localhost:5006"
+    tags = loader.generate_asset_tags("src/main.js")
+    assert "\n" not in tags
+
+
 def test_generate_asset_tags_missing_entry() -> None:
     config = ViteConfig(runtime=RuntimeConfig(dev_mode=False))
     loader = ViteAssetLoader(config)
@@ -102,8 +149,8 @@ def test_generate_asset_tags_missing_entry() -> None:
         loader.generate_asset_tags("missing.js")
 
 
-def test_get_static_asset_dev_mode() -> None:
-    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True))
+def test_get_static_asset_dev_mode(tmp_path: Path) -> None:
+    config = ViteConfig(paths=PathConfig(bundle_dir=tmp_path), runtime=RuntimeConfig(dev_mode=True))
     loader = ViteAssetLoader(config)
     assert loader.get_static_asset("test.png") == "http://127.0.0.1:5173/static/test.png"
 

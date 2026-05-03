@@ -278,9 +278,19 @@ def _derive_bridge_litestar_port() -> int | None:
 
     if explicit := os.environ.get("APP_URL"):
         parsed = urlparse(explicit)
-        if parsed.port is not None:
-            return parsed.port
-        return _DEFAULT_PORT_BY_SCHEME.get(parsed.scheme)
+        try:
+            port = parsed.port
+        except ValueError:
+            # Unexpanded shell-style placeholders like 'http://localhost:${LITESTAR_PORT}'
+            # leave a non-integer in the port slot. The user clearly intended a real port
+            # value; fall through to LITESTAR_PORT/PORT instead of pretending APP_URL had
+            # no port (which would yield a misleading scheme default of 80/443).
+            pass
+        else:
+            if port is not None:
+                return port
+            if parsed.scheme in _DEFAULT_PORT_BY_SCHEME:
+                return _DEFAULT_PORT_BY_SCHEME[parsed.scheme]
 
     raw = os.environ.get("LITESTAR_PORT") or os.environ.get("PORT")
     if not raw:
