@@ -687,9 +687,7 @@ def test_ssr_proxy_middleware_falls_through_to_user_root_route(monkeypatch: pyte
         assert response.text == "user-served root"
 
 
-def test_framework_mode_proxies_root_when_no_user_handler_at_root(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_framework_mode_proxies_root_when_no_user_handler_at_root(monkeypatch: pytest.MonkeyPatch) -> None:
     """Regression: GET / must proxy to the framework dev server when no user handler claims '/'.
 
     Pre-fix the plugin registered SSRProxyMiddleware (per-route) plus a WS-only Controller at
@@ -723,9 +721,7 @@ def test_framework_mode_proxies_root_when_no_user_handler_at_root(
         assert response.status_code == 503
 
 
-def test_framework_mode_proxies_arbitrary_path_when_user_owns_root(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_framework_mode_proxies_arbitrary_path_when_user_owns_root(monkeypatch: pytest.MonkeyPatch) -> None:
     """User-defined GET / coexists with the proxy: '/' is user-served, other paths are proxied.
 
     Tests the collision-detection path: when app_config.route_handlers contains an HTTP

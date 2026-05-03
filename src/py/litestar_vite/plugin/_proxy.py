@@ -854,7 +854,7 @@ def create_ssr_http_proxy_handler(
     Returns:
         A Litestar HTTP route handler decorated with ``@route``.
     """
-    from litestar import HttpMethod, Response, Request, route
+    from litestar import HttpMethod, Request, Response, route
 
     if paths is None:
         paths = ["/", "/{path:path}"]
@@ -882,8 +882,7 @@ def create_ssr_http_proxy_handler(
         target_url = get_target_url()
         if target_url is None:
             return cast(
-                "ASGIApp",
-                Response(content=b"SSR server not running", status_code=503, media_type="text/plain"),
+                "ASGIApp", Response(content=b"SSR server not running", status_code=503, media_type="text/plain")
             )
 
         req_path: str = request.url.path
@@ -915,11 +914,7 @@ def create_ssr_http_proxy_handler(
                 http2_enabled = check_http2_support(http2)
                 http_client = httpx.AsyncClient(http2=http2_enabled, timeout=30.0)
                 stream_context = http_client.stream(
-                    request.method,
-                    url,
-                    headers=headers_to_forward,
-                    content=request_body,
-                    follow_redirects=False,
+                    request.method, url, headers=headers_to_forward, content=request_body, follow_redirects=False
                 )
 
             upstream_resp = await stream_context.__aenter__()
@@ -929,18 +924,13 @@ def create_ssr_http_proxy_handler(
             return cast(
                 "ASGIApp",
                 Response(
-                    content=f"SSR server not running at {target_url}".encode(),
-                    status_code=503,
-                    media_type="text/plain",
+                    content=f"SSR server not running at {target_url}".encode(), status_code=503, media_type="text/plain"
                 ),
             )
         except httpx.HTTPError as exc:
             if http_client is not None:
                 await http_client.aclose()
-            return cast(
-                "ASGIApp",
-                Response(content=str(exc).encode(), status_code=502, media_type="text/plain"),
-            )
+            return cast("ASGIApp", Response(content=str(exc).encode(), status_code=502, media_type="text/plain"))
 
         async def _close_stream_context() -> None:
             try:
@@ -964,9 +954,7 @@ def create_ssr_http_proxy_handler(
 
 
 def create_ssr_ws_proxy_handler(
-    target: "str | None" = None,
-    hotfile_path: "Path | None" = None,
-    paths: "list[str] | None" = None,
+    target: "str | None" = None, hotfile_path: "Path | None" = None, paths: "list[str] | None" = None
 ) -> Any:
     """Create a WebSocket route handler that proxies HMR traffic to an SSR framework dev server.
 
