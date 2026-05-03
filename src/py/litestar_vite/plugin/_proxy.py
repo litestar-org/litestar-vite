@@ -1011,9 +1011,10 @@ def create_ssr_websocket_handler(target: "str | None" = None, hotfile_path: "Pat
     """Create a Controller that hosts only the SSR WebSocket HMR proxy handler.
 
     .. deprecated:: 0.23.0
-        Use :func:`create_ssr_ws_proxy_handler` for the WebSocket handler and
-        :func:`create_ssr_http_proxy_handler` for the HTTP catch-all. The plugin no longer
-        registers this Controller; the function is retained for any external callers.
+        Use :func:`~litestar_vite.plugin.create_ssr_ws_proxy_handler` for the WebSocket
+        handler and :func:`~litestar_vite.plugin.create_ssr_http_proxy_handler` for the
+        HTTP catch-all. The plugin no longer registers this Controller; the function is
+        retained for any external callers.
 
     Args:
         target: Static target URL (for frameworks with a known dev URL).
