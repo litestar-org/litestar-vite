@@ -150,6 +150,24 @@ def test_bridge_litestar_port_from_app_url_default_http_port(tmp_path: Path, mon
     assert data["litestarPort"] == 443
 
 
+def test_bridge_litestar_port_falls_back_when_app_url_has_unexpanded_template(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """APP_URL with a shell-style placeholder for the port (e.g. ``${LITESTAR_PORT}``)
+    must not crash; the resolver should fall through to LITESTAR_PORT/PORT.
+    """
+    monkeypatch.setenv("APP_URL", "http://localhost:${LITESTAR_PORT}")
+    monkeypatch.setenv("LITESTAR_PORT", "8000")
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["litestarPort"] == 8000
+
+
 # Tests for _path_for_bridge helper function
 
 
