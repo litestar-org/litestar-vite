@@ -46,3 +46,11 @@ describe("bridge schema appUrl", () => {
     expect(config.appUrl).toBeNull()
   })
 })
+
+describe("bridge schema mode contract", () => {
+  it("rejects alias modes because Python writes canonical modes", () => {
+    for (const mode of ["htmx", "inertia", "ssr", "ssg"]) {
+      expect(() => parseBridgeSchema({ ...baseBridgeConfig, mode })).toThrow(`"mode" must be one of`)
+    }
+  })
+})

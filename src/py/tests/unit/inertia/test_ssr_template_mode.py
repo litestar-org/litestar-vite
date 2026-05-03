@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import AsyncMock, patch
 
 from litestar import Request, get
@@ -43,26 +43,39 @@ async def _provide_conn() -> AsyncGenerator[_FakeConnection, None]:
         conn.released = True
 
 
-def _build_template_plugins(
+def _build_plugins(
     tmp_path: Path,
     *,
+    mode: Literal["spa", "template"],
     ssr: bool = True,
     target_selector: str = "#app",
     root_template: str = "inertia_ssr.html.j2",
 ) -> tuple[InertiaPlugin, VitePlugin, TemplateConfig[JinjaTemplateEngine]]:
-    """Construct InertiaPlugin/VitePlugin for a template-mode + Inertia app."""
+    """Construct InertiaPlugin/VitePlugin for an Inertia app."""
     resource_dir = tmp_path / "resources"
     resource_dir.mkdir()
+    (resource_dir / "index.html").write_text(
+        "<!DOCTYPE html><html><head></head><body><div id='app'>CLIENT_PLACEHOLDER</div></body></html>"
+    )
     ssr_config = InertiaSSRConfig(target_selector=target_selector) if ssr else None
     inertia_config = InertiaConfig(root_template=root_template, ssr=ssr_config)
     vite_config = ViteConfig(
-        mode="template",
-        paths=PathConfig(resource_dir=resource_dir),
+        mode=mode,
+        paths=PathConfig(root=tmp_path, resource_dir=resource_dir),
         runtime=RuntimeConfig(dev_mode=False),
         inertia=inertia_config,
     )
     template_config = TemplateConfig(engine=JinjaTemplateEngine(directory=TEMPLATES_DIR))
     return InertiaPlugin(config=inertia_config), VitePlugin(config=vite_config), template_config
+
+
+def _build_template_plugins(
+    tmp_path: Path, *, ssr: bool = True, target_selector: str = "#app", root_template: str = "inertia_ssr.html.j2"
+) -> tuple[InertiaPlugin, VitePlugin, TemplateConfig[JinjaTemplateEngine]]:
+    """Construct InertiaPlugin/VitePlugin for a template-mode + Inertia app."""
+    return _build_plugins(
+        tmp_path, mode="template", ssr=ssr, target_selector=target_selector, root_template=root_template
+    )
 
 
 # ===== Core SSR firing =====
@@ -96,6 +109,63 @@ async def test_template_mode_ssr_endpoint_invoked(tmp_path: Path) -> None:
     assert "SSR_BODY" in response.text
     assert "SSR_TITLE" in response.text
     assert "CLIENT_PLACEHOLDER" not in response.text
+
+
+async def test_spa_mode_ssr_endpoint_invoked_without_jinja(tmp_path: Path) -> None:
+    """mode='spa' + InertiaConfig(ssr=...) hits SSR and uses the SPA index without Jinja."""
+    inertia_plugin, vite_plugin, _template_config = _build_plugins(tmp_path, mode="spa", ssr=True)
+
+    @get("/page", component="Home")
+    async def handler() -> dict[str, Any]:
+        return {"message": "ok"}
+
+    with patch(
+        "litestar_vite.inertia.response._render_inertia_ssr",
+        new_callable=AsyncMock,
+        return_value=_InertiaSSRResult(head=["<title>SPA_SSR_TITLE</title>"], body='<div id="app">SPA_SSR_BODY</div>'),
+    ) as mock_ssr:
+        with create_test_client(
+            route_handlers=[handler],
+            plugins=[inertia_plugin, vite_plugin],
+            middleware=[ServerSideSessionConfig().middleware],
+            stores={"sessions": MemoryStore()},
+            raise_server_exceptions=False,
+        ) as client:
+            response = client.get("/page")
+
+    assert response.status_code == 200, response.text
+    mock_ssr.assert_awaited_once()
+    assert "SPA_SSR_BODY" in response.text
+    assert "SPA_SSR_TITLE" in response.text
+    assert "CLIENT_PLACEHOLDER" not in response.text
+
+
+async def test_spa_mode_without_ssr_renders_without_jinja(tmp_path: Path) -> None:
+    """mode='spa' + InertiaConfig without SSR uses the SPA index and does not require Jinja."""
+    inertia_plugin, vite_plugin, _template_config = _build_plugins(tmp_path, mode="spa", ssr=False)
+
+    @get("/page", component="Home")
+    async def handler() -> dict[str, Any]:
+        return {"message": "ok"}
+
+    with patch(
+        "litestar_vite.inertia.response._render_inertia_ssr",
+        new_callable=AsyncMock,
+        return_value=_InertiaSSRResult(head=[], body="<div>UNEXPECTED</div>"),
+    ) as mock_ssr:
+        with create_test_client(
+            route_handlers=[handler],
+            plugins=[inertia_plugin, vite_plugin],
+            middleware=[ServerSideSessionConfig().middleware],
+            stores={"sessions": MemoryStore()},
+            raise_server_exceptions=False,
+        ) as client:
+            response = client.get("/page")
+
+    assert response.status_code == 200, response.text
+    mock_ssr.assert_not_awaited()
+    assert "data-page=" in response.text
+    assert "UNEXPECTED" not in response.text
 
 
 async def test_template_mode_custom_target_selector_respected(tmp_path: Path) -> None:

@@ -1508,12 +1508,12 @@ describe("litestar-vite-plugin", () => {
       expect(mockNext).not.toHaveBeenCalled()
     })
 
-    it("serves placeholder when mode is 'hybrid' in .litestar.json (inertiaMode auto-detected)", async () => {
-      // When Python sets mode="inertia", it's normalized to "hybrid" in .litestar.json.
+    it("serves placeholder when bridge has Inertia config in hybrid mode", async () => {
+      // Inertia is detected from bridge Inertia metadata, not from the mode value.
       // In inertia mode, the Vite dev server should always show the placeholder page.
       const appUrl = "http://test.app:8000"
       process.env.APP_URL = appUrl
-      const configPath = createRuntimeConfig({ mode: "hybrid" })
+      const configPath = createRuntimeConfig({ mode: "hybrid", spa: { useScriptElement: true } })
 
       try {
         await setupServer() // No explicit inertiaMode - should auto-detect from .litestar.json
@@ -1532,11 +1532,11 @@ describe("litestar-vite-plugin", () => {
       }
     })
 
-    it("serves placeholder when mode is 'inertia' in .litestar.json", async () => {
-      // In inertia mode, the Vite dev server should always show the placeholder page.
+    it("serves placeholder when bridge has Inertia config in template mode", async () => {
+      // Template-mode Inertia apps still use Litestar for HTML responses.
       const appUrl = "http://test.app:8000"
       process.env.APP_URL = appUrl
-      const configPath = createRuntimeConfig({ mode: "inertia" })
+      const configPath = createRuntimeConfig({ mode: "template", spa: { useScriptElement: true } })
 
       try {
         await setupServer()
@@ -1555,10 +1555,31 @@ describe("litestar-vite-plugin", () => {
       }
     })
 
-    it("serves placeholder for /index.html when inertia mode is enabled, even if index exists", async () => {
+    it("serves placeholder when bridge has Inertia config in spa mode", async () => {
       const appUrl = "http://test.app:8000"
       process.env.APP_URL = appUrl
-      const configPath = createRuntimeConfig({ mode: "inertia" })
+      const configPath = createRuntimeConfig({ mode: "spa", spa: { useScriptElement: true } })
+
+      try {
+        await setupServer()
+        mockFs(rootIndexPath) // index.html exists
+
+        await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
+
+        expect(mockRes.statusCode).toBe(200)
+        expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/html")
+        expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+        expect(mockRes.end).toHaveBeenCalledWith(actualPlaceholderContent.replace(/{{ APP_URL }}/g, appUrl))
+        expect(mockNext).not.toHaveBeenCalled()
+      } finally {
+        cleanupRuntimeConfig(configPath)
+      }
+    })
+
+    it("serves placeholder for /index.html when bridge has Inertia config, even if index exists", async () => {
+      const appUrl = "http://test.app:8000"
+      process.env.APP_URL = appUrl
+      const configPath = createRuntimeConfig({ mode: "spa", spa: { useScriptElement: true } })
 
       try {
         await setupServer()

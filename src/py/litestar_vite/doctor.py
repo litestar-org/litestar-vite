@@ -697,10 +697,12 @@ class ViteDoctor:
 
     def _check_inertia_mode(self) -> None:
         """Warn when vite.config inertiaMode conflicts with Python mode."""
+        from litestar_vite.config import InertiaConfig
+
         if not self.parsed_config or self.parsed_config.inertia_mode is None:
             return
 
-        py_inertia = self.config.mode == "inertia"
+        py_inertia = isinstance(self.config.inertia, InertiaConfig)
         js_inertia = self.parsed_config.inertia_mode
 
         if py_inertia != js_inertia:
@@ -709,10 +711,10 @@ class ViteDoctor:
                     check="Inertia Mode Mismatch",
                     severity="warning",
                     message=(
-                        f"Python mode={self.config.mode!r} implies inertiaMode={py_inertia}, "
+                        f"Python inertia config implies inertiaMode={py_inertia}, "
                         f"but vite.config sets inertiaMode={js_inertia}"
                     ),
-                    fix_hint="Remove inertiaMode from vite.config to auto-detect, or set it to match your Python mode",
+                    fix_hint="Remove inertiaMode from vite.config to auto-detect, or set it to match your Python inertia config",
                     auto_fixable=False,
                 )
             )

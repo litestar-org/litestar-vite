@@ -209,7 +209,7 @@ export interface PluginConfig {
    * page directing users to access the app through the backend (even if an
    * index.html exists for the backend to render).
    *
-   * Auto-detected from `.litestar.json` when mode is "inertia".
+   * Auto-detected from `.litestar.json` when Inertia is configured.
    *
    * @default false (auto-detected from .litestar.json)
    */
@@ -285,7 +285,7 @@ interface RefreshConfig {
  * Resolved plugin configuration with all defaults applied.
  * Note: `types` is resolved to `Required<TypesConfig> | false` instead of `boolean | TypesConfig`
  * Note: `executor` remains optional - undefined means auto-detect from env
- * Note: `inertiaMode` is resolved to boolean (auto-detected from .litestar.json mode)
+ * Note: `inertiaMode` is resolved to boolean (auto-detected from .litestar.json Inertia metadata)
  */
 interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor" | "inertiaMode" | "deployAssetUrl"> {
   types: Required<TypesConfig> | false
@@ -1140,9 +1140,11 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     }
   }
 
-  // Auto-detect Inertia mode from .litestar.json if not explicitly set
-  // Check for both "hybrid" and "inertia" since Python normalizes "inertia" -> "hybrid"
-  const inertiaMode = resolvedConfig.inertiaMode ?? (pythonDefaults?.mode === "hybrid" || pythonDefaults?.mode === "inertia")
+  // Auto-detect Inertia from .litestar.json if not explicitly set.
+  // Inertia can be used with spa, hybrid, or template mode; bridge spa metadata
+  // is present only when Python configured InertiaConfig.
+  const bridgeInertiaEnabled = pythonDefaults?.spa !== null && pythonDefaults?.spa !== undefined
+  const inertiaMode = resolvedConfig.inertiaMode ?? bridgeInertiaEnabled
 
   const effectiveResourceDir = resolvedConfig.resourceDir ?? pythonDefaults?.resourceDir ?? "src"
   const resolvedBundleDir = resolvedConfig.bundleDir ?? pythonDefaults?.bundleDir ?? "public"
@@ -1231,7 +1233,7 @@ function validateAgainstPythonDefaults(resolved: ResolvedPluginConfig, pythonDef
     warnings.push(`staticDir: vite.config.ts="${resolved.staticDir}" differs from Python="${pythonDefaults.staticDir}"`)
   }
 
-  const frameworkMode = pythonDefaults.mode === "framework" || pythonDefaults.mode === "ssr" || pythonDefaults.mode === "ssg"
+  const frameworkMode = pythonDefaults.mode === "framework"
   if (frameworkMode && userConfig.ssrOutDir !== undefined && hasPythonValue(pythonDefaults.ssrOutDir) && !pathsAreSame(resolved.ssrOutDir, pythonDefaults.ssrOutDir)) {
     warnings.push(`ssrOutDir: vite.config.ts="${resolved.ssrOutDir}" differs from Python="${pythonDefaults.ssrOutDir}"`)
   }

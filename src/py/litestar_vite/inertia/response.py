@@ -541,11 +541,14 @@ class InertiaResponse(Response[T]):
 
         context = self.create_template_context(request, page_props, type_encoders)  # pyright: ignore[reportUnknownMemberType]
         if self.template_str is not None:
-            html = template_engine.render_string(self.template_str, context)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+            html = cast(
+                "str",
+                template_engine.render_string(self.template_str, context),  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+            )
         else:
             template_name = self.template_name or inertia_plugin.config.root_template
             template = template_engine.get_template(template_name)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
-            html = template.render(**context)  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
+            html = cast("str", template.render(**context))  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
 
         # When SSR is configured and the prepass populated _cached_ssr_payload,
         # inject the SSR-rendered body into the template's target_selector
@@ -634,7 +637,7 @@ class InertiaResponse(Response[T]):
         is NOT an Inertia JSON request, the plugin has SSR config, and the Vite
         plugin's render path can host the SSR fragment:
 
-        - ``mode='hybrid'`` consumes ``_cached_ssr_payload`` via ``_render_spa``.
+        - ``mode='spa'`` / ``mode='hybrid'`` consume ``_cached_ssr_payload`` via ``_render_spa``.
         - ``mode='template'`` consumes ``_cached_ssr_payload`` via ``_render_template``.
 
         Returns:
@@ -649,7 +652,7 @@ class InertiaResponse(Response[T]):
             return False
         if inertia_plugin.config.ssr_config is None:
             return False
-        return vite_plugin.config.mode in {"hybrid", "template"}
+        return vite_plugin.config.mode in {"spa", "hybrid", "template"}
 
     def _determine_media_type(self, media_type: "MediaType | str | None") -> "MediaType | str":
         """Determine the media type for the response.
@@ -859,7 +862,7 @@ class InertiaResponse(Response[T]):
 
         resolved_media_type = self._determine_media_type(media_type or MediaType.HTML)
 
-        if vite_plugin.config.mode == "hybrid":
+        if vite_plugin.config.mode in {"spa", "hybrid"}:
             body = self._render_spa(request, page_props, vite_plugin)
         else:
             body = self._render_template(request, page_props, type_encoders, inertia_plugin)

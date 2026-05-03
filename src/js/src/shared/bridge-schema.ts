@@ -12,7 +12,7 @@
 import fs from "node:fs"
 import path from "node:path"
 
-export type BridgeMode = "spa" | "template" | "htmx" | "hybrid" | "inertia" | "framework" | "ssr" | "ssg" | "external"
+export type BridgeMode = "spa" | "template" | "hybrid" | "framework" | "external"
 export type BridgeProxyMode = "vite" | "direct" | "proxy" | null
 export type BridgeExecutor = "node" | "bun" | "deno" | "yarn" | "pnpm"
 
@@ -99,7 +99,7 @@ const allowedTopLevelKeys: ReadonlySet<string> = new Set([
   "staticProps",
 ])
 
-const allowedModes: ReadonlySet<string> = new Set(["spa", "template", "htmx", "hybrid", "inertia", "framework", "ssr", "ssg", "external"])
+const allowedModes: ReadonlySet<string> = new Set(["spa", "template", "hybrid", "framework", "external"])
 const allowedProxyModes: ReadonlySet<string> = new Set(["vite", "direct", "proxy"])
 const allowedExecutors: ReadonlySet<string> = new Set(["node", "bun", "deno", "yarn", "pnpm"])
 const allowedLogLevels: ReadonlySet<string> = new Set(["quiet", "normal", "verbose"])
