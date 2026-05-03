@@ -611,10 +611,7 @@ class ViteConfig:
 
         elif self.mode == "template":
             if not JINJA_INSTALLED:
-                msg = (
-                    "template mode requires Jinja2 to be installed. "
-                    "Install it with: pip install litestar-vite[jinja]"
-                )
+                msg = "template mode requires Jinja2 to be installed. Install it with: pip install litestar-vite[jinja]"
                 raise ValueError(msg)
 
     @property
