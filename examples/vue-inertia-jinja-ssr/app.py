@@ -126,9 +126,7 @@ vite = VitePlugin(
         # and the plugin manages the Node /render process. The Jinja shell renders
         # <div id="app"></div>; SSR replaces that element outerHTML with the
         # Node-rendered Inertia tree.
-        inertia=InertiaConfig(
-            ssr=InertiaSSRConfig(target_selector="#app", command=["npm", "run", "dev:ssr"]),
-        ),
+        inertia=InertiaConfig(ssr=InertiaSSRConfig(target_selector="#app", command=["npm", "run", "dev:ssr"])),
         types=TypeGenConfig(output=Path("resources/generated"), generate_zod=True),
         runtime=RuntimeConfig(port=5015),
     )

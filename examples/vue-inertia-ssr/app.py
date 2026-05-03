@@ -115,9 +115,7 @@ vite = VitePlugin(
         # The plugin starts the Node /render server itself via the configured command —
         # no second terminal needed. Litestar POSTs to InertiaSSRConfig.url
         # (default 127.0.0.1:13714/render) inside the handler frame.
-        inertia=InertiaConfig(
-            ssr=InertiaSSRConfig(command=["npm", "run", "dev:ssr"]),
-        ),
+        inertia=InertiaConfig(ssr=InertiaSSRConfig(command=["npm", "run", "dev:ssr"])),
         types=TypeGenConfig(output=Path("resources/generated"), generate_zod=True),
         runtime=RuntimeConfig(port=5014),
     )

@@ -1,6 +1,6 @@
 import contextlib
 import itertools
-from collections.abc import Iterable, Mapping
+from collections.abc import AsyncGenerator, Iterable, Mapping
 from dataclasses import dataclass
 from mimetypes import guess_type
 from pathlib import PurePath
@@ -13,7 +13,7 @@ from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.response import Redirect
 from litestar.response.base import ASGIResponse
-from litestar.serialization import get_serializer
+from litestar.serialization import encode_json, get_serializer
 from litestar.status_codes import HTTP_200_OK, HTTP_303_SEE_OTHER, HTTP_307_TEMPORARY_REDIRECT, HTTP_409_CONFLICT
 from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
@@ -166,6 +166,21 @@ async def _render_inertia_ssr(
     return await _do_ssr_request(page, url, timeout_seconds, client)
 
 
+@contextlib.asynccontextmanager
+async def _acquire_ssr_client(client: "httpx.AsyncClient | None") -> "AsyncGenerator[httpx.AsyncClient, None]":
+    """Yield ``client`` when provided, otherwise a short-lived fallback client.
+
+    Yields:
+        The shared client when supplied, or a fallback client whose lifecycle is
+        bound to the context.
+    """
+    if client is not None:
+        yield client
+    else:
+        async with httpx.AsyncClient() as fallback:
+            yield fallback
+
+
 async def _do_ssr_request(
     page: dict[str, Any], url: str, timeout_seconds: float, client: "httpx.AsyncClient | None"
 ) -> _InertiaSSRResult:
@@ -184,37 +199,26 @@ async def _do_ssr_request(
     Returns:
         An _InertiaSSRResult with head and body HTML.
     """
-    response: "httpx.Response"
+    # Use Litestar's msgspec encoder so msgspec Structs and other custom types embedded
+    # in handler return values serialize the same way as the regular Inertia render path
+    # (response.render uses get_serializer too). httpx's default json= serializer falls
+    # back to stdlib json.dumps and rejects Struct instances.
+    body = encode_json(page, serializer=get_serializer(None))
+    headers = {"content-type": "application/json"}
 
-    if client is not None:
-        # Use shared client for connection pooling benefits
-        try:
-            response = await client.post(url, json=page, timeout=timeout_seconds)
+    try:
+        async with _acquire_ssr_client(client) as resolved_client:
+            response = await resolved_client.post(url, content=body, headers=headers, timeout=timeout_seconds)
             response.raise_for_status()
-        except httpx.RequestError as exc:
-            msg = (
-                f"Inertia SSR is enabled but the SSR server is not reachable at {url!r}. "
-                "Start the SSR server (Node) or disable InertiaConfig.ssr."
-            )
-            raise ImproperlyConfiguredException(msg) from exc
-        except httpx.HTTPStatusError as exc:
-            msg = f"Inertia SSR server at {url!r} returned HTTP {exc.response.status_code}. Check the SSR server logs."
-            raise ImproperlyConfiguredException(msg) from exc
-    else:
-        # Fallback: create a new client per request (graceful degradation)
-        try:
-            async with httpx.AsyncClient() as fallback_client:
-                response = await fallback_client.post(url, json=page, timeout=timeout_seconds)
-                response.raise_for_status()
-        except httpx.RequestError as exc:
-            msg = (
-                f"Inertia SSR is enabled but the SSR server is not reachable at {url!r}. "
-                "Start the SSR server (Node) or disable InertiaConfig.ssr."
-            )
-            raise ImproperlyConfiguredException(msg) from exc
-        except httpx.HTTPStatusError as exc:
-            msg = f"Inertia SSR server at {url!r} returned HTTP {exc.response.status_code}. Check the SSR server logs."
-            raise ImproperlyConfiguredException(msg) from exc
+    except httpx.RequestError as exc:
+        msg = (
+            f"Inertia SSR is enabled but the SSR server is not reachable at {url!r}. "
+            "Start the SSR server (Node) or disable InertiaConfig.ssr."
+        )
+        raise ImproperlyConfiguredException(msg) from exc
+    except httpx.HTTPStatusError as exc:
+        msg = f"Inertia SSR server at {url!r} returned HTTP {exc.response.status_code}. Check the SSR server logs."
+        raise ImproperlyConfiguredException(msg) from exc
 
     try:
         payload = response.json()

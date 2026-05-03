@@ -786,9 +786,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._export_types_sync(app)
 
         ssr_config = self._resolved_ssr_config()
-        ssr_should_start = (
-            ssr_config is not None and ssr_config.command is not None and ssr_config.auto_start
-        )
+        ssr_should_start = ssr_config is not None and ssr_config.command is not None and ssr_config.auto_start
         ssr_process: ViteProcess | None = None
 
         if self._config.is_dev_mode and self._config.runtime.start_dev_server:
