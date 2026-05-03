@@ -462,17 +462,42 @@ def test_asset_url_ignores_deploy_asset_url_in_dev_mode() -> None:
     assert config.asset_url == "/static/"
 
 
-def test_validate_mode_template_requires_jinja(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test validation fails for template mode without Jinja2."""
-    # Temporarily disable Jinja2 in the module where validate_mode reads it
+def test_vite_config_template_mode_without_jinja_does_not_raise(monkeypatch: pytest.MonkeyPatch) -> None:
+    """mode='template' without Jinja installed must not raise.
+
+    HTMX returning raw HTML strings, Mako/Chameleon engines, and ``mode='htmx'``
+    aliasing all need template mode to construct without Jinja. The Jinja-callable
+    registration in ``VitePlugin._configure_jinja_callables`` already gates on
+    both ``JINJA_INSTALLED`` and a ``JinjaTemplateEngine`` template_config, so the
+    config-level pre-check is redundant.
+    """
     from litestar_vite.config import _vite as vite_module
 
     monkeypatch.setattr(vite_module, "JINJA_INSTALLED", False)
 
     config = ViteConfig(mode="template")
+    config.validate_mode()
 
-    with pytest.raises(ValueError, match="requires Jinja2"):
-        config.validate_mode()
+    assert config.mode == "template"
+
+
+def test_vite_config_template_mode_with_jinja_works() -> None:
+    """mode='template' with Jinja installed continues to work (existing behavior)."""
+    config = ViteConfig(mode="template")
+    config.validate_mode()
+    assert config.mode == "template"
+
+
+def test_vite_config_htmx_alias_normalizes_without_jinja(monkeypatch: pytest.MonkeyPatch) -> None:
+    """mode='htmx' alias normalizes to template even without Jinja installed."""
+    from litestar_vite.config import _vite as vite_module
+
+    monkeypatch.setattr(vite_module, "JINJA_INSTALLED", False)
+
+    config = ViteConfig(mode="htmx")
+    config.validate_mode()
+
+    assert config.mode == "template"
 
 
 def test_mode_detection_prefers_index_html_over_jinja(tmp_path: Path) -> None:

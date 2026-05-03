@@ -793,6 +793,74 @@ def test_vite_plugin_optional_template_callable_registration_optional() -> None:
     assert result is app_config
 
 
+# =====================================================
+# Template-mode + (Inertia/HTMX) x Jinja matrix
+# =====================================================
+
+
+@pytest.mark.parametrize(
+    ("inertia_enabled", "jinja_installed", "use_jinja_template_config", "expect_callables"),
+    [
+        pytest.param(True, True, True, True, id="inertia-jinja"),
+        pytest.param(True, False, False, False, id="inertia-no-jinja"),
+        pytest.param(False, True, True, True, id="htmx-jinja"),
+        pytest.param(False, False, False, False, id="htmx-no-jinja"),
+    ],
+)
+def test_template_mode_jinja_callables_matrix(
+    inertia_enabled: bool,
+    jinja_installed: bool,
+    use_jinja_template_config: bool,
+    expect_callables: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lock the Inertia x Jinja and HTMX x Jinja matrix for ``mode='template'``.
+
+    Callables (``vite_hmr``, ``vite``, ``vite_static``, ``vite_routes``) register iff
+    BOTH ``JINJA_INSTALLED`` is true AND a ``TemplateConfig`` with ``JinjaTemplateEngine``
+    is provided. Without Jinja, ``mode='template'`` must still construct cleanly so
+    raw-HTML / non-Jinja-engine consumers (HTMX, Mako, Chameleon) are not blocked.
+    """
+    from litestar.contrib.jinja import JinjaTemplateEngine
+    from litestar.middleware.session.server_side import ServerSideSessionConfig
+    from litestar.stores.base import Store
+    from litestar.stores.memory import MemoryStore
+    from litestar.types import Middleware
+
+    import litestar_vite.plugin as plugin_module
+    from litestar_vite.config import _vite as vite_config_mod
+
+    monkeypatch.setattr(vite_config_mod, "JINJA_INSTALLED", jinja_installed)
+    monkeypatch.setattr(plugin_module, "JINJA_INSTALLED", jinja_installed)
+
+    inertia = True if inertia_enabled else None
+    config = ViteConfig(mode="template", inertia=inertia)
+
+    template_config: TemplateConfig | None = None
+    engine: JinjaTemplateEngine | None = None
+    if use_jinja_template_config:
+        engine = JinjaTemplateEngine(directory=tmp_path)
+        template_config = TemplateConfig(engine=engine)
+
+    plugin = VitePlugin(config=config)
+    middleware: list[Middleware] = [ServerSideSessionConfig().middleware] if inertia_enabled else []
+    stores: dict[str, Store] = {"sessions": MemoryStore()} if inertia_enabled else {}
+    app_config = AppConfig(template_config=template_config, middleware=middleware, stores=stores)
+
+    plugin.on_app_init(app_config)
+
+    if expect_callables:
+        assert engine is not None
+        assert "vite_hmr" in engine.engine.globals
+        assert "vite" in engine.engine.globals
+        assert "vite_static" in engine.engine.globals
+        assert "vite_routes" in engine.engine.globals
+    elif engine is not None:
+        assert "vite_hmr" not in engine.engine.globals
+        assert "vite" not in engine.engine.globals
+
+
 def test_vite_plugin_optional_asset_url_generation_without_jinja() -> None:
     """Test asset URL generation works without Jinja template functions."""
     config = ViteConfig(paths=PathConfig(bundle_dir=Path("dist"), asset_url="/static/"))

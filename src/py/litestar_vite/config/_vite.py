@@ -143,8 +143,12 @@ class ViteConfig:
 
             Canonical (5):
                 - "spa": prebuilt index.html SPA + auto catch-all SPA route handler.
-                - "template": Jinja2 server-rendered HTML; Litestar owns routing.
-                  Pair with the litestar-htmx package for HTMX flows.
+                - "template": Litestar serves per-route HTML. If Jinja2 is installed
+                  AND the user provides a TemplateConfig with JinjaTemplateEngine,
+                  vite_hmr/vite/vite_static/vite_routes callables are auto-registered.
+                  Without Jinja, users return raw HTML strings or use a different
+                  template engine (Mako, Chameleon). HTMX flows ("htmx" alias) use
+                  this mode.
                 - "hybrid": prebuilt index.html with Jinja chrome injection;
                   Inertia.js entrypoint mode.
                 - "framework": external dev server (Astro / Nuxt / SvelteKit) with
@@ -607,11 +611,6 @@ class ViteConfig:
                     f"{joined_paths}. "
                     "Either create the file or run in dev mode."
                 )
-                raise ValueError(msg)
-
-        elif self.mode == "template":
-            if not JINJA_INSTALLED:
-                msg = "template mode requires Jinja2 to be installed. Install it with: pip install litestar-vite[jinja]"
                 raise ValueError(msg)
 
     @property
