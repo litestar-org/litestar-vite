@@ -228,17 +228,21 @@ def test_vite_plugin_app_init_static_directories_configuration(tmp_path: Path) -
     assert len(app_config.route_handlers) > 0
 
 
-def test_vite_plugin_app_init_direct_mode_skips_proxy() -> None:
-    """Proxy middleware should only attach in proxy mode."""
+def test_vite_plugin_app_init_no_proxy_when_proxy_mode_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When proxy_mode resolves to None (production), no proxy middleware is attached."""
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
 
-    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, proxy_mode="direct"))
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    config = ViteConfig(mode="spa", runtime=RuntimeConfig(dev_mode=False))
     plugin = VitePlugin(config=config)
     app_config = AppConfig()
 
     plugin.on_app_init(app_config)
 
-    assert app_config.middleware == []
     assert plugin._proxy_target is None
+    assert config.proxy_mode is None
 
 
 def test_vite_plugin_middleware_order_preserves_proxy_headers_before_vite_proxy() -> None:
@@ -1226,7 +1230,7 @@ def test_is_litestar_route_case_sensitive() -> None:
 
 
 def test_is_litestar_route_with_root_path() -> None:
-    """Test is_litestar_route with root path."""
+    """Root `/` handlers must be detected so the SSR proxy middleware can fall through to them."""
     from litestar_vite.plugin import is_litestar_route
 
     @get("/")
@@ -1235,9 +1239,21 @@ def test_is_litestar_route_with_root_path() -> None:
 
     app = Litestar(route_handlers=[root])
 
-    # Root should not match (special case in SPA handler)
-    # But the function itself should return False since no prefix matches
+    assert is_litestar_route("/", app) is True
+
+
+def test_is_litestar_route_root_absent_when_no_root_handler() -> None:
+    """Without an explicit `/` handler, `is_litestar_route('/')` must remain False."""
+    from litestar_vite.plugin import is_litestar_route
+
+    @get("/api/users")
+    async def get_users() -> dict[str, str]:
+        return {"message": "users"}
+
+    app = Litestar(route_handlers=[get_users])
+
     assert is_litestar_route("/", app) is False
+    assert is_litestar_route("/api/users", app) is True
 
 
 def test_is_litestar_route_cache_performance() -> None:

@@ -33,7 +33,13 @@ from litestar.static_files import create_static_files_router  # pyright: ignore[
 from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, ExternalDevServer
 from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.plugin._process import ViteProcess
-from litestar_vite.plugin._proxy import ViteProxyMiddleware, create_ssr_proxy_controller, create_vite_hmr_handler
+from litestar_vite.plugin._proxy import (
+    SSRProxyMiddleware,
+    ViteProxyMiddleware,
+    create_ssr_proxy_controller,
+    create_ssr_websocket_handler,
+    create_vite_hmr_handler,
+)
 from litestar_vite.plugin._proxy_headers import ProxyHeadersMiddleware, TrustedHosts
 from litestar_vite.plugin._static import StaticFilesConfig
 from litestar_vite.plugin._utils import (
@@ -392,18 +398,17 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         app_config.route_handlers.append(create_static_files_router(**static_files_config))
 
     def _configure_dev_proxy(self, app_config: "AppConfig") -> None:
-        """Configure dev proxy middleware and handlers based on proxy_mode.
+        """Configure dev proxy middleware and handlers based on the canonical mode.
 
         Args:
             app_config: The Litestar application configuration.
         """
-        proxy_mode = self._config.proxy_mode
         hotfile_path = self._resolve_hotfile_path()
 
-        if proxy_mode == "vite":
-            self._configure_vite_proxy(app_config, hotfile_path)
-        elif proxy_mode == "proxy":
+        if self._config.wants_html_proxy:
             self._configure_ssr_proxy(app_config, hotfile_path)
+        else:
+            self._configure_vite_proxy(app_config, hotfile_path)
 
     def _configure_vite_proxy(self, app_config: "AppConfig", hotfile_path: Path) -> None:
         """Configure Vite proxy mode (allow list).
@@ -432,7 +437,13 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         )
 
     def _configure_ssr_proxy(self, app_config: "AppConfig", hotfile_path: Path) -> None:
-        """Configure SSR proxy mode (deny list).
+        """Configure SSR proxy mode (deny list) for framework dev servers.
+
+        Registers ``SSRProxyMiddleware`` (HTTP catch-all) plus a Controller hosting only the
+        WebSocket HMR handler. Falls through to Litestar routes naturally — eliminating the
+        ``Handler already registered for path '/'`` collision class. Also registers
+        ``ViteProxyMiddleware`` for asset URLs since framework dev servers commonly ship
+        Vite-bundled assets.
 
         Args:
             app_config: The Litestar application configuration.
@@ -441,15 +452,22 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         self._ensure_proxy_target()
         external = self._config.external_dev_server
         static_target = external.target if external else None
+        ssr_hotfile = hotfile_path if static_target is None else None
 
-        app_config.route_handlers.append(
-            create_ssr_proxy_controller(
+        self._insert_dev_proxy_middleware(
+            app_config,
+            DefineMiddleware(
+                SSRProxyMiddleware,
                 target=static_target,
-                hotfile_path=hotfile_path if static_target is None else None,
+                hotfile_path=ssr_hotfile,
                 http2=external.http2 if external else True,
                 plugin=self,
-            )
+            ),
         )
+        app_config.route_handlers.append(
+            create_ssr_websocket_handler(target=static_target, hotfile_path=ssr_hotfile)
+        )
+
         self._insert_dev_proxy_middleware(
             app_config,
             DefineMiddleware(
@@ -753,12 +771,14 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 
 __all__ = (
     "ProxyHeadersMiddleware",
+    "SSRProxyMiddleware",
     "StaticFilesConfig",
     "TrustedHosts",
     "VitePlugin",
     "ViteProcess",
     "ViteProxyMiddleware",
     "create_ssr_proxy_controller",
+    "create_ssr_websocket_handler",
     "create_vite_hmr_handler",
     "get_litestar_route_prefixes",
     "is_litestar_route",

@@ -468,10 +468,13 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
         pass
 
     prefixes: list[str] = []
+    has_root_route = False
     for route in app.routes:
         prefix = route.path.rstrip("/")
         if prefix:
             prefixes.append(prefix)
+        elif route.path == "/":
+            has_root_route = True
 
     openapi_config = app.openapi_config
     if openapi_config is not None:
@@ -482,6 +485,8 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
     prefixes.extend(["/api", "/schema", "/docs"])
 
     unique_prefixes = sorted(set(prefixes), key=len, reverse=True)
+    if has_root_route:
+        unique_prefixes.append("/")
     result = tuple(unique_prefixes)
 
     state.litestar_vite_route_prefixes = result
