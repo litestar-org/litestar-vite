@@ -1,5 +1,5 @@
 from pathlib import Path, PosixPath
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -14,6 +14,11 @@ from litestar_vite.config import (
 )
 from litestar_vite.config._inertia import InertiaConfig, InertiaSSRConfig
 from litestar_vite.executor import BunExecutor, NodeenvExecutor, NodeExecutor
+
+# C2 narrowed ViteConfig.mode to a Literal union; parametrize over `str` for
+# readability and cast at the call site so mypy is satisfied without burying the
+# parametrize tables behind type aliases.
+_ViteMode = Any
 
 
 def test_default_vite_config() -> None:
@@ -921,7 +926,7 @@ def test_validate_mode_rejects_page_props_without_inertia() -> None:
 def test_vite_config_capability_predicates(mode: str, inertia_enabled: bool, expected: dict[str, bool]) -> None:
     """Capability predicates return the expected truth table for every canonical mode."""
     inertia = InertiaConfig() if inertia_enabled else None
-    config = ViteConfig(mode=mode, inertia=inertia)
+    config = ViteConfig(mode=cast(_ViteMode, mode), inertia=inertia)
     for prop, want in expected.items():
         assert getattr(config, prop) is want, f"{prop} for mode={mode!r}, inertia={inertia_enabled}"
 
@@ -983,10 +988,10 @@ def test_vite_config_proxy_mode_auto_derivation(
     monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
     _cached_resolve_proxy_mode.cache_clear()
 
-    runtime_kwargs: dict[str, object] = {"dev_mode": dev_mode}
+    runtime_kwargs: dict[str, Any] = {"dev_mode": dev_mode}
     if explicit_proxy_mode is not None:
         runtime_kwargs["proxy_mode"] = explicit_proxy_mode
-    config = ViteConfig(mode=mode, runtime=RuntimeConfig(**runtime_kwargs))
+    config = ViteConfig(mode=cast(_ViteMode, mode), runtime=RuntimeConfig(**runtime_kwargs))
     assert config.proxy_mode == expected_proxy_mode
 
 
@@ -1001,7 +1006,7 @@ def test_vite_config_proxy_mode_proxy_with_non_framework_mode_raises(
     _cached_resolve_proxy_mode.cache_clear()
 
     with pytest.raises(ValueError, match="only valid with mode='framework'"):
-        ViteConfig(mode=mode, runtime=RuntimeConfig(dev_mode=True, proxy_mode="proxy"))
+        ViteConfig(mode=cast(_ViteMode, mode), runtime=RuntimeConfig(dev_mode=True, proxy_mode="proxy"))
 
 
 def test_vite_config_proxy_mode_proxy_with_framework_mode_works(monkeypatch: pytest.MonkeyPatch) -> None:
