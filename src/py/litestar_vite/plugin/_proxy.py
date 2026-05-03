@@ -825,14 +825,207 @@ class SSRProxyMiddleware(AbstractMiddleware):
             await send({"type": "http.response.body", "body": f"Upstream error: {exc}".encode(), "more_body": False})
 
 
+def create_ssr_http_proxy_handler(
+    target: "str | None" = None,
+    hotfile_path: "Path | None" = None,
+    http2: bool = True,
+    plugin: "VitePlugin | None" = None,
+    paths: "list[str] | None" = None,
+) -> Any:
+    """Create an HTTP catch-all route handler that proxies to an SSR framework dev server.
+
+    Used in framework mode (Astro / Nuxt / SvelteKit / Angular CLI). The handler claims
+    ``/`` and ``/{path:path}`` for all HTTP methods so any path the user has not registered
+    falls through to the framework's dev server. Litestar's routing dispatches the matched
+    route directly, avoiding the 405 Method Not Allowed class that would result from a
+    WebSocket-only ``/`` registration.
+
+    The ``paths`` argument is the collision-avoidance lever: pass ``["/{path:path}"]``
+    when the user has registered a handler at ``/`` so Litestar does not raise
+    ``Handler already registered for path '/'`` at app construction.
+
+    Args:
+        target: Static target URL (for external dev servers with a known URL).
+        hotfile_path: Path to the hotfile for dynamic target discovery.
+        http2: Enable HTTP/2 for proxy connections.
+        plugin: Optional VitePlugin reference for accessing the shared proxy client.
+        paths: Override the default HTTP paths; defaults to ``["/", "/{path:path}"]``.
+
+    Returns:
+        A Litestar HTTP route handler decorated with ``@route``.
+    """
+    from litestar import HttpMethod, Response, Request, route
+
+    if paths is None:
+        paths = ["/", "/{path:path}"]
+
+    cached_target: list[str | None] = [target]
+    get_target_url = create_target_url_getter(target, hotfile_path, cached_target)
+
+    @route(
+        path=paths,
+        http_method=[
+            HttpMethod.GET,
+            HttpMethod.POST,
+            HttpMethod.PUT,
+            HttpMethod.PATCH,
+            HttpMethod.DELETE,
+            HttpMethod.HEAD,
+            HttpMethod.OPTIONS,
+        ],
+        name="ssr_proxy_http",
+        include_in_schema=False,
+        opt={"exclude_from_auth": True},
+    )
+    async def http_proxy(request: "Request[Any, Any, Any]") -> "ASGIApp":
+        """Proxy any HTTP request to the SSR framework dev server."""
+        target_url = get_target_url()
+        if target_url is None:
+            return cast(
+                "ASGIApp",
+                Response(content=b"SSR server not running", status_code=503, media_type="text/plain"),
+            )
+
+        req_path: str = request.url.path
+        url = build_proxy_url(target_url, req_path, request.url.query or "")
+
+        if is_proxy_debug():
+            console.print(f"[dim][ssr-proxy] {request.method} {req_path} → {url}[/]")
+
+        headers_to_forward = _filter_hop_by_hop_headers(request.headers.items())
+        # #246 invariant: GET/HEAD/OPTIONS must not stream a body — Vite-style upstreams
+        # reject the resulting Transfer-Encoding: chunked with 400.
+        request_body = request.stream() if request.method in _BODY_METHODS else None
+
+        client = plugin.proxy_client if plugin is not None else None
+
+        stream_context: Any = None
+        http_client: httpx.AsyncClient | None = None
+        try:
+            if client is not None:
+                stream_context = client.stream(
+                    request.method,
+                    url,
+                    headers=headers_to_forward,
+                    content=request_body,
+                    follow_redirects=False,
+                    timeout=30.0,
+                )
+            else:
+                http2_enabled = check_http2_support(http2)
+                http_client = httpx.AsyncClient(http2=http2_enabled, timeout=30.0)
+                stream_context = http_client.stream(
+                    request.method,
+                    url,
+                    headers=headers_to_forward,
+                    content=request_body,
+                    follow_redirects=False,
+                )
+
+            upstream_resp = await stream_context.__aenter__()
+        except httpx.ConnectError:
+            if http_client is not None:
+                await http_client.aclose()
+            return cast(
+                "ASGIApp",
+                Response(
+                    content=f"SSR server not running at {target_url}".encode(),
+                    status_code=503,
+                    media_type="text/plain",
+                ),
+            )
+        except httpx.HTTPError as exc:
+            if http_client is not None:
+                await http_client.aclose()
+            return cast(
+                "ASGIApp",
+                Response(content=str(exc).encode(), status_code=502, media_type="text/plain"),
+            )
+
+        async def _close_stream_context() -> None:
+            try:
+                await stream_context.__aexit__(None, None, None)
+                if http_client is not None:
+                    await http_client.aclose()
+            except (RuntimeError, OSError, httpx.HTTPError) as exc:
+                _LOGGER.debug("Failed to close SSR proxy stream context cleanly: %s", exc)
+
+        async def asgi_response_app(_scope: "Scope", _receive: "Receive", send: "Send") -> None:
+            del _scope, _receive
+            await _proxy_stream_response(
+                response=upstream_resp,
+                send=cast("Callable[[dict[str, Any]], Any]", send),
+                close_callback=_close_stream_context,
+            )
+
+        return asgi_response_app
+
+    return http_proxy
+
+
+def create_ssr_ws_proxy_handler(
+    target: "str | None" = None,
+    hotfile_path: "Path | None" = None,
+    paths: "list[str] | None" = None,
+) -> Any:
+    """Create a WebSocket route handler that proxies HMR traffic to an SSR framework dev server.
+
+    Used in framework mode for hot-module-reload WebSocket connections. ``paths`` defaults
+    to ``["/", "/{path:path}"]`` to catch every HMR endpoint the framework might use; the
+    HTTP catch-all from :func:`create_ssr_http_proxy_handler` ensures HTTP requests at the
+    same paths are dispatched to a real handler instead of returning 405.
+
+    Args:
+        target: Static target URL (for external dev servers with a known URL).
+        hotfile_path: Path to the hotfile for dynamic target discovery.
+        paths: Override the default WS paths.
+
+    Returns:
+        A Litestar WebSocket route handler decorated with ``@websocket``.
+    """
+    from litestar import WebSocket, websocket
+
+    if paths is None:
+        paths = ["/", "/{path:path}"]
+
+    cached_target: list[str | None] = [target]
+    get_target_url = create_target_url_getter(target, hotfile_path, cached_target)
+    get_hmr_target_url = create_hmr_target_getter(hotfile_path, [None])
+
+    @websocket(path=paths, name="ssr_proxy_ws", opt={"exclude_from_auth": True})
+    async def ws_proxy(socket: "WebSocket[Any, Any, Any]") -> None:
+        """Proxy WebSocket connections to the SSR framework dev server (HMR)."""
+        target_url = get_hmr_target_url() or get_target_url()
+        if target_url is None:
+            await socket.close(code=1011, reason="SSR server not running")
+            return
+
+        ws_target = target_url.replace("http://", "ws://").replace("https://", "wss://")
+        scope_dict = dict(socket.scope)
+        ws_path = str(scope_dict.get("path", "/"))
+        query_bytes = cast("bytes", scope_dict.get("query_string", b""))
+        ws_url = build_proxy_url(ws_target, ws_path, query_bytes.decode("utf-8") if query_bytes else "")
+
+        if is_proxy_debug():
+            console.print(f"[dim][ssr-proxy-ws] {ws_path} → {ws_url}[/]")
+
+        headers = extract_forward_headers(scope_dict)
+        subprotocols = extract_subprotocols(scope_dict)
+        typed_subprotocols: list[Subprotocol] = [cast("Subprotocol", p) for p in subprotocols]
+        accept_subprotocol: str | None = subprotocols[0] if subprotocols else None
+        await socket.accept(subprotocols=accept_subprotocol)
+        await _handle_ssr_websocket_proxy(socket, ws_url, headers, typed_subprotocols)
+
+    return ws_proxy
+
+
 def create_ssr_websocket_handler(target: "str | None" = None, hotfile_path: "Path | None" = None) -> type:
     """Create a Controller that hosts only the SSR WebSocket HMR proxy handler.
 
-    The HTTP catch-all is now ``SSRProxyMiddleware``; this Controller exists solely to
-    register the WebSocket route at ``/{path:path}`` for framework HMR (Astro / Nuxt /
-    SvelteKit / Angular CLI). The WebSocket collision risk at ``/`` is negligible: users
-    rarely register ``@websocket("/")`` handlers, and framework HMR paths are typically
-    framework-specific (``/__astro_hmr``, ``/_nuxt/hmr``, etc.).
+    .. deprecated:: 0.23.0
+        Use :func:`create_ssr_ws_proxy_handler` for the WebSocket handler and
+        :func:`create_ssr_http_proxy_handler` for the HTTP catch-all. The plugin no longer
+        registers this Controller; the function is retained for any external callers.
 
     Args:
         target: Static target URL (for frameworks with a known dev URL).

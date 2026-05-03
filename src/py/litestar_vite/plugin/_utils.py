@@ -504,9 +504,17 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
     except AttributeError:
         pass
 
+    from litestar.routes import WebSocketRoute
+
     prefixes: list[str] = []
     has_root_route = False
     for route in app.routes:
+        # Proxy middlewares declare scopes={ScopeType.HTTP}; WebSocket-only routes must
+        # not poison the prefix list and cause HTTP requests at the same path to skip the
+        # proxy. Without this filter the framework HMR WebSocket at '/' makes GET / fall
+        # through to the WS handler and Litestar returns 405 Method Not Allowed.
+        if isinstance(route, WebSocketRoute):
+            continue
         prefix = route.path.rstrip("/")
         if prefix:
             prefixes.append(prefix)

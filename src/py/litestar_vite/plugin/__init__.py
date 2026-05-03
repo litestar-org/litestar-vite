@@ -36,8 +36,10 @@ from litestar_vite.plugin._process import ViteProcess
 from litestar_vite.plugin._proxy import (
     SSRProxyMiddleware,
     ViteProxyMiddleware,
+    create_ssr_http_proxy_handler,
     create_ssr_proxy_controller,
     create_ssr_websocket_handler,
+    create_ssr_ws_proxy_handler,
     create_vite_hmr_handler,
 )
 from litestar_vite.plugin._proxy_headers import ProxyHeadersMiddleware, TrustedHosts
@@ -61,15 +63,57 @@ from litestar_vite.plugin._utils import (
 from litestar_vite.utils import read_hotfile_url
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Generator
+    from collections.abc import AsyncGenerator, Generator, Iterable
 
     from click import Group
     from litestar import Litestar
     from litestar.config.app import AppConfig
-    from litestar.types import ExceptionHandlersMap
+    from litestar.types import ControllerRouterHandler, ExceptionHandlersMap
 
     from litestar_vite.config import ViteConfig
     from litestar_vite.handler import AppHandler
+
+
+def _user_has_root_http_handler(route_handlers: "Iterable[ControllerRouterHandler]") -> bool:
+    """Return True if any handler in ``route_handlers`` registers an HTTP route at ``/``.
+
+    Walks top-level entries (functions, Controllers, Routers). A match means the SSR
+    proxy must omit the bare ``/`` from its HTTP path list to avoid Litestar raising
+    ``Handler already registered for path '/'`` at app construction.
+    """
+    import inspect
+
+    from litestar import Controller, Router
+    from litestar.handlers.http_handlers import HTTPRouteHandler
+    from litestar.routes import HTTPRoute
+
+    def _is_root_path(prefix: str, path: str) -> bool:
+        joined = (prefix.rstrip("/") + "/" + path.lstrip("/")).rstrip("/")
+        return joined in {"", "/"}
+
+    def _walk(item: Any, prefix: str = "") -> bool:
+        if isinstance(item, HTTPRouteHandler):
+            return any(_is_root_path(prefix, p) for p in item.paths)
+        if isinstance(item, type) and issubclass(item, Controller):
+            ctrl_path_attr = getattr(item, "path", "")
+            ctrl_path = ctrl_path_attr if isinstance(ctrl_path_attr, str) else ""
+            new_prefix = prefix.rstrip("/") + "/" + ctrl_path.lstrip("/")
+            for _, member in inspect.getmembers(item):
+                if isinstance(member, HTTPRouteHandler) and any(_is_root_path(new_prefix, p) for p in member.paths):
+                    return True
+            return False
+        if isinstance(item, Router):
+            # Router.routes is the resolved route list with full paths.
+            full_root = (prefix.rstrip("/") or "/").rstrip("/") or "/"
+            for route in item.routes:
+                if isinstance(route, HTTPRoute):
+                    full_path = (prefix.rstrip("/") + "/" + route.path.lstrip("/")).rstrip("/") or "/"
+                    if full_path == full_root:
+                        return True
+            return False
+        return False
+
+    return any(_walk(item) for item in route_handlers or [])
 
 
 class VitePlugin(InitPluginProtocol, CLIPlugin):
@@ -437,13 +481,22 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         )
 
     def _configure_ssr_proxy(self, app_config: "AppConfig", hotfile_path: Path) -> None:
-        """Configure SSR proxy mode (deny list) for framework dev servers.
+        """Configure SSR proxy mode for framework dev servers.
 
-        Registers ``SSRProxyMiddleware`` (HTTP catch-all) plus a Controller hosting only the
-        WebSocket HMR handler. Falls through to Litestar routes naturally — eliminating the
-        ``Handler already registered for path '/'`` collision class. Also registers
-        ``ViteProxyMiddleware`` for asset URLs since framework dev servers commonly ship
-        Vite-bundled assets.
+        Registers an HTTP catch-all route handler plus a WebSocket HMR handler at
+        ``/`` and ``/{path:path}``. Litestar dispatches matched routes directly, so
+        any path the user has not registered falls through to the framework's dev
+        server. Litestar's per-route middleware never runs on unmatched paths, so a
+        true route is required (see commit history: an earlier middleware-based
+        approach hit 405 Method Not Allowed because the WS handler at ``/`` was
+        matched first).
+
+        Collision avoidance: when a user has already registered an HTTP handler at
+        ``/``, the plugin omits ``/`` from the HTTP catch-all's path list (keeping
+        ``/{path:path}``) so Litestar does not raise
+        ``Handler already registered for path '/'`` at app construction.
+        ``ViteProxyMiddleware`` is also registered for asset URLs since framework
+        dev servers commonly ship Vite-bundled assets.
 
         Args:
             app_config: The Litestar application configuration.
@@ -454,17 +507,21 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         static_target = external.target if external else None
         ssr_hotfile = hotfile_path if static_target is None else None
 
-        self._insert_dev_proxy_middleware(
-            app_config,
-            DefineMiddleware(
-                SSRProxyMiddleware,
+        user_owns_root = _user_has_root_http_handler(app_config.route_handlers)
+        http_paths = ["/{path:path}"] if user_owns_root else ["/", "/{path:path}"]
+
+        app_config.route_handlers.append(
+            create_ssr_http_proxy_handler(
                 target=static_target,
                 hotfile_path=ssr_hotfile,
                 http2=external.http2 if external else True,
                 plugin=self,
-            ),
+                paths=http_paths,
+            )
         )
-        app_config.route_handlers.append(create_ssr_websocket_handler(target=static_target, hotfile_path=ssr_hotfile))
+        app_config.route_handlers.append(
+            create_ssr_ws_proxy_handler(target=static_target, hotfile_path=ssr_hotfile)
+        )
 
         self._insert_dev_proxy_middleware(
             app_config,

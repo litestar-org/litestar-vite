@@ -685,3 +685,107 @@ def test_ssr_proxy_middleware_falls_through_to_user_root_route(monkeypatch: pyte
         response = client.get("/")
         assert response.status_code == 200
         assert response.text == "user-served root"
+
+
+def test_framework_mode_proxies_root_when_no_user_handler_at_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: GET / must proxy to the framework dev server when no user handler claims '/'.
+
+    Pre-fix the plugin registered SSRProxyMiddleware (per-route) plus a WS-only Controller at
+    path=['/', '/{path:path}']. Litestar matched the WS route for HTTP GET / and returned
+    405 Method Not Allowed before the middleware ever ran. The fix re-introduces the HTTP
+    catch-all as an actual route handler so Litestar matches it and dispatches to the proxy.
+    """
+    from litestar import Litestar
+    from litestar.testing import TestClient
+
+    from litestar_vite.config import ExternalDevServer, PathConfig, RuntimeConfig, ViteConfig
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+    from litestar_vite.plugin import VitePlugin
+
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    config = ViteConfig(
+        mode="framework",
+        paths=PathConfig(),
+        runtime=RuntimeConfig(dev_mode=True, external_dev_server=ExternalDevServer(target="http://127.0.0.1:14321")),
+    )
+    app = Litestar(plugins=[VitePlugin(config=config)])
+
+    with TestClient(app=app) as client:
+        response = client.get("/")
+        # Framework dev server is not running, so the proxy handler should surface the
+        # connect error as 503. The previous regression returned 405 because the WS-only
+        # '/' route was matched by Litestar before any proxy code ran.
+        assert response.status_code != 405, "GET / must not 405; framework mode must proxy when no user '/' handler"
+        assert response.status_code == 503
+
+
+def test_framework_mode_proxies_arbitrary_path_when_user_owns_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User-defined GET / coexists with the proxy: '/' is user-served, other paths are proxied.
+
+    Tests the collision-detection path: when app_config.route_handlers contains an HTTP
+    handler at '/', the plugin must drop '/' from the proxy handler's path list (keeping
+    only '/{path:path}'). The user handler answers GET /; everything else proxies.
+    """
+    from litestar import Litestar, get
+    from litestar.testing import TestClient
+
+    from litestar_vite.config import ExternalDevServer, PathConfig, RuntimeConfig, ViteConfig
+    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
+    from litestar_vite.plugin import VitePlugin
+
+    monkeypatch.delenv("VITE_PROXY_MODE", raising=False)
+    _cached_resolve_proxy_mode.cache_clear()
+
+    @get("/", name="user_root", sync_to_thread=False)
+    def user_root() -> str:
+        return "user-served root"
+
+    config = ViteConfig(
+        mode="framework",
+        paths=PathConfig(),
+        runtime=RuntimeConfig(dev_mode=True, external_dev_server=ExternalDevServer(target="http://127.0.0.1:14321")),
+    )
+    app = Litestar(plugins=[VitePlugin(config=config)], route_handlers=[user_root])
+
+    with TestClient(app=app) as client:
+        # User handler wins for / (no collision exception, plugin dropped its own '/')
+        root = client.get("/")
+        assert root.status_code == 200
+        assert root.text == "user-served root"
+        # Proxy handler still claims everything else
+        other = client.get("/some-framework-page")
+        assert other.status_code == 503
+
+
+def test_get_litestar_route_prefixes_excludes_websocket_only_routes() -> None:
+    """get_litestar_route_prefixes must filter out WebSocket-only routes.
+
+    The proxy middlewares (Vite/SSR) declare scopes={ScopeType.HTTP}, so the route check
+    must be HTTP-only. WebSocket routes must not poison the cached prefix list and cause
+    HTTP requests at the same path to skip the proxy.
+    """
+    from typing import Any
+
+    from litestar import Controller, Litestar, WebSocket, websocket
+
+    from litestar_vite.plugin import get_litestar_route_prefixes
+
+    class _WSOnly(Controller):
+        @websocket(path=["/", "/{path:path}"], name="ws_only")
+        async def handler(self, socket: WebSocket[Any, Any, Any]) -> None:  # pragma: no cover
+            await socket.accept()
+
+    app = Litestar(route_handlers=[_WSOnly])
+
+    prefixes = get_litestar_route_prefixes(app)
+
+    assert "/" not in prefixes, f"WebSocket-only '/' must not appear in HTTP route prefixes; got {prefixes}"
+    assert "/{path:path}" not in prefixes, (
+        f"WebSocket-only '/{{path:path}}' must not appear in HTTP route prefixes; got {prefixes}"
+    )
