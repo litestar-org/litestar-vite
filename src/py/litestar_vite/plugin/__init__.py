@@ -268,7 +268,9 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         from litestar_vite.inertia.plugin import InertiaPlugin
 
         inertia_plugin = InertiaPlugin(config=self._config.inertia)  # type: ignore[arg-type]
-        app_config.plugins.append(inertia_plugin)
+        app_config = inertia_plugin.on_app_init(app_config)
+        if inertia_plugin not in app_config.plugins:
+            app_config.plugins.append(inertia_plugin)
 
         return app_config
 
