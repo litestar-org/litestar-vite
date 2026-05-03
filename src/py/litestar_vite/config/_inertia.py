@@ -60,15 +60,20 @@ class InertiaSSRConfig:
     (useful when running under an external process manager).
     """
 
-    health_check: bool = True
+    health_check: bool = False
     """When True, poll the SSR ``url`` until it responds before completing app startup.
 
-    Catches misconfigured commands early instead of surfacing the error on the first
-    Inertia render request.
+    Default is False so the SSR process starts in the background and Litestar can serve
+    requests immediately. Set to True if you want startup to block until /render is ready
+    (catches misconfigured commands early at the cost of slower boot).
     """
 
-    health_check_timeout: float = 30.0
-    """Seconds to wait for the SSR endpoint to become reachable during startup."""
+    health_check_timeout: float = 10.0
+    """Seconds to wait for the SSR endpoint to become reachable during startup.
+
+    Only consulted when ``health_check`` is True. On timeout the plugin logs a warning
+    and continues — startup is not aborted.
+    """
 
 
 @dataclass

@@ -49,7 +49,9 @@ def test_ssr_config_defaults_have_no_command_so_plugin_does_nothing() -> None:
     config = InertiaSSRConfig()
     assert config.command is None
     assert config.auto_start is True
-    assert config.health_check is True
+    # health_check is opt-in (False default) so SSR starts non-blocking and Litestar
+    # is ready to serve requests immediately.
+    assert config.health_check is False
     assert config.health_check_timeout > 0
     assert config.cwd is None
 
