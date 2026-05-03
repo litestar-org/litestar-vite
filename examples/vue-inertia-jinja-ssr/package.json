@@ -7,6 +7,7 @@
     "build": "vue-tsc -b && vite build && npm run build:ssr",
     "build:ssr": "vite build --ssr resources/ssr.ts --outDir bootstrap/ssr",
     "start:ssr": "node bootstrap/ssr/ssr.js",
+    "dev:ssr": "npm run build:ssr && node bootstrap/ssr/ssr.js",
     "preview": "vite preview",
     "serve": "vite preview",
     "generate-types": "openapi-ts --config openapi-ts.config.ts"

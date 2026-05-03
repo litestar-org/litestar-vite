@@ -1,21 +1,16 @@
 """Vue + Inertia.js with server-side rendering (hybrid mode).
 
 Demonstrates the Inertia SSR contract:
-- ``InertiaConfig(ssr=True)`` enables a POST to ``InertiaSSRConfig.url``
-  (default ``http://127.0.0.1:13714/render``) from inside the handler frame.
-- A separate Node process runs ``resources/ssr.ts`` and listens on port 13714.
-- Litestar injects the returned ``head`` and ``body`` into the SPA shell.
+- ``InertiaSSRConfig(command=...)`` tells the plugin to spawn the Node /render
+  server (port 13714 by default) alongside the Vite dev server. Litestar POSTs
+  the page payload from inside the handler frame and injects the returned head
+  tags + body into the SPA shell.
 
-Run two processes:
+One command, two processes:
 
 .. code-block:: bash
 
-    # Terminal 1: build SSR bundle then start the Node /render server
     npm install
-    npm run build:ssr
-    npm run start:ssr
-
-    # Terminal 2: start the Litestar app (auto-starts Vite dev server)
     litestar --app-dir examples/vue-inertia-ssr run
 
 The Inertia SSR HTTP path is independent of the dev ``proxy_mode``;
@@ -31,6 +26,7 @@ from litestar.middleware.session.client_side import CookieBackendConfig
 from msgspec import Struct
 
 from litestar_vite import InertiaConfig, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
+from litestar_vite.config import InertiaSSRConfig
 
 here = Path(__file__).parent
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
@@ -116,9 +112,12 @@ vite = VitePlugin(
         # mode="hybrid" auto-derives from Inertia + index.html presence
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources"),
-        # ssr=True enables POST to InertiaSSRConfig.url (default 127.0.0.1:13714/render).
-        # Run `npm run start:ssr` in a separate terminal to start the Node /render server.
-        inertia=InertiaConfig(ssr=True),
+        # The plugin starts the Node /render server itself via the configured command —
+        # no second terminal needed. Litestar POSTs to InertiaSSRConfig.url
+        # (default 127.0.0.1:13714/render) inside the handler frame.
+        inertia=InertiaConfig(
+            ssr=InertiaSSRConfig(command=["npm", "run", "dev:ssr"]),
+        ),
         types=TypeGenConfig(output=Path("resources/generated"), generate_zod=True),
         runtime=RuntimeConfig(port=5014),
     )

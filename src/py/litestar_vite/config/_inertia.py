@@ -1,9 +1,12 @@
 """Inertia.js configuration classes."""
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from litestar_vite.config._constants import empty_dict_factory, empty_set_factory
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 __all__ = ("InertiaConfig", "InertiaSSRConfig", "InertiaTypeGenConfig")
 
@@ -16,6 +19,10 @@ class InertiaSSRConfig:
     Inertia page object. Litestar sends the page payload to the SSR server (by
     default at ``http://127.0.0.1:13714/render``) and injects the returned head
     tags and body markup into the HTML response.
+
+    When ``command`` is set, the plugin spawns the Node /render server in the
+    server lifespan (mirroring Vite process management) and tears it down on
+    shutdown. This makes SSR examples self-contained — no second terminal needed.
 
     Notes:
         - This is *not* Litestar-Vite's framework proxy mode (``mode="framework"``; aliases: ``mode="ssr"`` / ``mode="ssg"``).
@@ -34,6 +41,34 @@ class InertiaSSRConfig:
     For ``mode="hybrid"``, ``SPAConfig.app_selector`` is the source of truth and
     this field is ignored — SPA config already governs the SPA shell selector.
     """
+
+    command: "list[str] | None" = None
+    """Command to start the Node /render server, e.g. ``["npm", "run", "start:ssr"]``.
+
+    When set, the plugin spawns the command as a subprocess in the server lifespan
+    and stops it on shutdown. Set to ``None`` to disable auto-start (run the SSR
+    server manually in a separate terminal).
+    """
+
+    cwd: "Path | None" = None
+    """Working directory for the SSR command. Defaults to ``ViteConfig.root_dir`` when None."""
+
+    auto_start: bool = True
+    """When True and ``command`` is set, the plugin starts the Node SSR process in lifespan.
+
+    Set to False to keep the command around for documentation but skip auto-start
+    (useful when running under an external process manager).
+    """
+
+    health_check: bool = True
+    """When True, poll the SSR ``url`` until it responds before completing app startup.
+
+    Catches misconfigured commands early instead of surfacing the error on the first
+    Inertia render request.
+    """
+
+    health_check_timeout: float = 30.0
+    """Seconds to wait for the SSR endpoint to become reachable during startup."""
 
 
 @dataclass
