@@ -41,7 +41,10 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          # Astro 6.x and @hey-api/openapi-ts require Node >=22.12 — staying on
+          # Node 20 caused Astro to silently fail to start in CI (timeouts only,
+          # no install error because the engine mismatch is just a warning).
+          node-version: 22
           cache: npm
 
       - name: Install uv
