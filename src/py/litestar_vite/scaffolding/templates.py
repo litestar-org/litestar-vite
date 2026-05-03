@@ -75,7 +75,7 @@ CURRENT_NPM_VERSION_RANGES: dict[str, str] = {
     "@vitejs/plugin-vue": "6.0.6",
     "@vue/tsconfig": "0.9.1",
     "@vue/server-renderer": "3.5.33",
-    "astro": "5.18.1",
+    "astro": "6.2.1",
     "autoprefixer": "10.5.0",
     "htmx.org": "2.0.10",
     "nitropack": "2.13.3",

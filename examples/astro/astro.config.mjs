@@ -1,4 +1,3 @@
-import tailwindcss from "@tailwindcss/vite"
 import { defineConfig } from "astro/config"
 import litestar from "litestar-vite-plugin/astro"
 
@@ -16,7 +15,4 @@ export default defineConfig({
       types: true,
     }),
   ],
-  vite: {
-    plugins: [tailwindcss()],
-  },
 })

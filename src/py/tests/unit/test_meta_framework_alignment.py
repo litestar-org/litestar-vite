@@ -8,14 +8,19 @@ TEMPLATE_ROOT = ROOT / "src" / "py" / "litestar_vite" / "templates"
 
 
 def test_astro_example_uses_current_manifest_and_tsconfig() -> None:
+    # Astro 6 ships rolldown-vite, which rejects @tailwindcss/vite@4.x
+    # (Missing field tsconfigPaths on BindingViteResolvePluginConfig.resolveOptions —
+    # withastro/astro#16542). Upstream-recommended workaround is the PostCSS plugin.
     package_text = (EXAMPLES_ROOT / "astro" / "package.json").read_text()
     tsconfig_text = (EXAMPLES_ROOT / "astro" / "tsconfig.json").read_text()
     layout_text = (EXAMPLES_ROOT / "astro" / "src" / "layouts" / "Layout.astro").read_text()
+    postcss_text = (EXAMPLES_ROOT / "astro" / "postcss.config.mjs").read_text()
 
     assert f'"astro": "{V["astro"]}"' in package_text
     assert f'"@hey-api/openapi-ts": "{V["@hey-api/openapi-ts"]}"' in package_text
-    assert f'"@tailwindcss/vite": "{V["@tailwindcss/vite"]}"' in package_text
+    assert f'"@tailwindcss/postcss": "{V["@tailwindcss/postcss"]}"' in package_text
     assert f'"tailwindcss": "{V["tailwindcss"]}"' in package_text
+    assert "@tailwindcss/vite" not in package_text
     assert f'"vite": "{V["vite"]}"' in package_text
     assert f'"zod": "{V["zod"]}"' in package_text
     assert '"check": "astro check"' in package_text
@@ -29,6 +34,8 @@ def test_astro_example_uses_current_manifest_and_tsconfig() -> None:
 
     assert 'import "../styles/global.css"' in layout_text
     assert "favicon.svg" not in layout_text
+
+    assert '"@tailwindcss/postcss"' in postcss_text
 
 
 def test_nuxt_example_uses_current_manifest_and_app_directory() -> None:
