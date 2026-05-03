@@ -111,7 +111,6 @@ class InertiaPlugin(InitPluginProtocol):
         Returns:
             The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
         """
-
         from litestar.exceptions import HTTPException, ImproperlyConfiguredException, ValidationException
         from litestar.middleware import DefineMiddleware
         from litestar.middleware.session import SessionMiddleware
@@ -123,6 +122,9 @@ class InertiaPlugin(InitPluginProtocol):
         from litestar_vite.inertia.middleware import InertiaMiddleware
         from litestar_vite.inertia.request import InertiaRequest
         from litestar_vite.inertia.response import InertiaBack, InertiaResponse
+
+        if app_config.response_class is InertiaResponse:
+            return app_config
 
         for mw in app_config.middleware:
             if isinstance(mw, DefineMiddleware) and is_class_and_subclass(
