@@ -34,6 +34,18 @@ def test_bridge_app_url_explicit_app_url_env(tmp_path: Path, monkeypatch: pytest
     assert data["appUrl"] == "https://api.example.com"
 
 
+def test_bridge_app_url_normalizes_bind_all_explicit_app_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_URL", "http://0.0.0.0:9001")
+
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["appUrl"] == "http://localhost:9001"
+
+
 def test_bridge_app_url_falls_back_to_litestar_host_port(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_URL", "")
     monkeypatch.setenv("LITESTAR_HOST", "0.0.0.0")
@@ -46,7 +58,7 @@ def test_bridge_app_url_falls_back_to_litestar_host_port(tmp_path: Path, monkeyp
     path_str = write_runtime_config_file(cfg)
     data = decode_json(Path(path_str).read_text())
 
-    assert data["appUrl"] == "http://0.0.0.0:9001"
+    assert data["appUrl"] == "http://localhost:9001"
 
 
 def test_bridge_app_url_falls_back_to_port_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

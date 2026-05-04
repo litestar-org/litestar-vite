@@ -300,6 +300,42 @@ describe("litestar-vite-plugin", () => {
     }
   })
 
+  it("normalizes bind-all bridge appUrl before using it as server.origin", () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+      appUrl: "http://0.0.0.0:5006",
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({}, { command: "serve", mode: "development" })
+
+      expect(config.server?.origin).toBe("http://localhost:5006")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("routes default HMR client connections through the Litestar port in proxy mode", () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+      appUrl: "http://localhost:5006",
+      litestarPort: 5006,
+    })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({}, { command: "serve", mode: "development" })
+
+      expect(config.server?.hmr).toMatchObject({
+        path: "vite-hmr",
+        clientPort: 5006,
+      })
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
   it("leaves server.origin undefined in proxy mode when bridge appUrl is null", () => {
     const configPath = createRuntimeConfig({
       proxyMode: "vite",
@@ -446,6 +482,7 @@ describe("litestar-vite-plugin", () => {
     const configPath = createRuntimeConfig({
       proxyMode: "vite",
       appUrl: "http://localhost:5006",
+      litestarPort: 5006,
     })
 
     try {
@@ -462,7 +499,7 @@ describe("litestar-vite-plugin", () => {
           mode: "development",
           command: "serve",
           base: "/static/",
-          server: { https: false, hmr: {}, origin: config.server?.origin },
+          server: { https: false, hmr: config.server?.hmr, origin: config.server?.origin },
           logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         },
         httpServer: {
@@ -559,6 +596,33 @@ describe("litestar-vite-plugin", () => {
       })
       expect(config.server?.proxy?.["/schema"]).toMatchObject({
         target: "http://127.0.0.1:8001",
+        changeOrigin: true,
+        ws: true,
+      })
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("normalizes bind-all bridge appUrl before using it as default proxy target", () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+      appUrl: "http://0.0.0.0:8001",
+    })
+
+    try {
+      delete process.env.APP_URL
+
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config({}, { command: "serve", mode: "development" })
+
+      expect(config.server?.proxy?.["/api"]).toMatchObject({
+        target: "http://localhost:8001",
+        changeOrigin: true,
+        ws: true,
+      })
+      expect(config.server?.proxy?.["/schema"]).toMatchObject({
+        target: "http://localhost:8001",
         changeOrigin: true,
         ws: true,
       })

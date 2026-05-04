@@ -10,6 +10,7 @@ import { checkBackendAvailability, type LitestarMeta, loadLitestarMeta } from ".
 import { type BridgeSchema, readBridgeConfig } from "./shared/bridge-schema.js"
 import { DEBOUNCE_MS } from "./shared/constants.js"
 import { createLogger } from "./shared/logger.js"
+import { resolveLitestarPort } from "./shared/network.js"
 import { resolveDefaultSdkClientPlugin } from "./shared/typegen-core.js"
 import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
 import { buildInputOptions, resolveUserBuildInput } from "./shared/vite-compat.js"
@@ -392,6 +393,9 @@ function normalizeAppUrl(appUrl: string | undefined, _fallbackPort?: string): { 
   }
   try {
     const url = new URL(appUrl)
+    if (url.hostname === "0.0.0.0" || url.hostname === "[::]") {
+      url.hostname = "localhost"
+    }
 
     const rebuilt = url.origin + (url.pathname === "/" ? "" : url.pathname) + (url.search ?? "") + (url.hash ?? "")
 
@@ -423,7 +427,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       const runtimeAssetUrl = normalizeAssetUrl(env.ASSET_URL || pluginConfig.assetUrl)
       const buildAssetUrl = pluginConfig.deployAssetUrl ?? runtimeAssetUrl
       const serverConfig = command === "serve" ? (resolveDevelopmentEnvironmentServerConfig(pluginConfig.detectTls) ?? resolveEnvironmentServerConfig(env)) : undefined
-      const effectiveAppUrl = env.APP_URL || pythonDefaults?.appUrl || undefined
+      const effectiveAppUrl = normalizeAppUrl(env.APP_URL || pythonDefaults?.appUrl || undefined).url ?? undefined
+      const proxyHmrClientPort = pythonDefaults?.proxyMode === "vite" ? resolveLitestarPort(pythonDefaults.litestarPort, effectiveAppUrl, process.env) : null
 
       const withProxyErrorSilencer = (proxyConfig: Record<string, any> | undefined) => {
         if (!proxyConfig) return undefined
@@ -456,7 +461,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       }
       const explicitServerOrigin = typeof userConfig.server?.origin === "string" && userConfig.server.origin.length > 0 ? userConfig.server.origin : undefined
       const shouldForceDirectServerOrigin = explicitServerOrigin !== undefined || pythonDefaults?.proxyMode === "direct"
-      const proxyOriginDefault = !explicitServerOrigin && pythonDefaults?.proxyMode === "vite" && pythonDefaults.appUrl ? pythonDefaults.appUrl : undefined
+      const proxyOriginDefault = !explicitServerOrigin && pythonDefaults?.proxyMode === "vite" ? effectiveAppUrl : undefined
       const devBase = pluginConfig.assetUrl.startsWith("/") ? pluginConfig.assetUrl : pluginConfig.assetUrl.replace(/\/+$/, "")
 
       ensureCommandShouldRunInEnvironment(command, env, mode)
@@ -482,6 +487,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
               ? false
               : {
                   path: "vite-hmr",
+                  ...(proxyHmrClientPort ? { clientPort: proxyHmrClientPort } : {}),
                   ...(serverConfig?.hmr ?? {}),
                   ...(userConfig.server?.hmr === true ? {} : userConfig.server?.hmr),
                 },
@@ -1399,8 +1405,8 @@ function resolveDevServerUrl(address: AddressInfo, config: ResolvedConfig, userC
     host = "[::1]"
   }
 
-  const configHmrClientPort = typeof config.server.hmr === "object" ? config.server.hmr.clientPort : null
-  const port = configHmrClientPort ?? address.port
+  const userHmrClientPort = typeof userConfig.server?.hmr === "object" ? userConfig.server.hmr.clientPort : null
+  const port = userHmrClientPort ?? address.port
 
   return `${protocol}://${host}:${port}`
 }

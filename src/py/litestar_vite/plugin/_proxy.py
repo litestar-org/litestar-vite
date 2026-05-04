@@ -577,6 +577,38 @@ def create_vite_hmr_handler(hotfile_path: Path, hmr_path: str = "/static/vite-hm
     return vite_hmr_proxy
 
 
+def create_disabled_vite_hmr_handlers(hmr_path: str = "/static/vite-hmr") -> list[Any]:
+    """Create route handlers for stale Vite HMR clients.
+
+    Production mode does not register the real HMR proxy, but browser tabs that
+    loaded the dev client before a restart can keep reconnecting to the old HMR
+    endpoint. Registering this explicit websocket route prevents those requests
+    from matching the HTTP-only static files route and surfacing as a Litestar
+    routing ``KeyError``. A matching HTTP 404 route preserves the previous
+    production response for accidental HTTP requests to the same path.
+
+    Args:
+        hmr_path: The path to register the stale HMR WebSocket handler at.
+
+    Returns:
+        Route handlers for HTTP and WebSocket traffic on the HMR path.
+    """
+    from litestar import WebSocket, get, websocket
+    from litestar.exceptions import NotFoundException
+
+    @get(path=hmr_path, opt={"exclude_from_auth": True}, include_in_schema=False)
+    async def disabled_vite_hmr_http() -> None:
+        msg = "Vite HMR is disabled"
+        raise NotFoundException(msg)
+
+    @websocket(path=hmr_path, opt={"exclude_from_auth": True})
+    async def disabled_vite_hmr(socket: "WebSocket[Any, Any, Any]") -> None:
+        await socket.accept()
+        await socket.close(code=1001, reason="Vite HMR is disabled")
+
+    return [disabled_vite_hmr_http, disabled_vite_hmr]
+
+
 def check_http2_support(enable: bool) -> bool:
     """Check if HTTP/2 support is available.
 

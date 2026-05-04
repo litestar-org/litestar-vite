@@ -18,6 +18,7 @@ createInertiaApp({
     }),
   },
   setup({ el, App, props }) {
+    if (!el) throw new Error("Inertia mount element not found")
     mount(App, {
       target: el,
       props,
