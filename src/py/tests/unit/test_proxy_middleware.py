@@ -339,11 +339,14 @@ def test_proxy_target_cache_invariant(
 
     The middleware-level ``_cache_initialized`` flag ensures the bridge lookup
     happens at most once per middleware instance lifetime — matching the
-    existing hotfile semantics.
+    existing hotfile semantics. The hotfile must exist (readiness signal) for
+    the bridge branch to be reached at all.
     """
     import litestar_vite.plugin._proxy as proxy_module
 
     read_bridge_config.cache_clear()
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://bridge")
     bridge = _write_bridge(
         tmp_path, {"appUrl": "http://bridge", "host": "127.0.0.1", "port": 5173}
     )
@@ -362,7 +365,7 @@ def test_proxy_target_cache_invariant(
     async def noop(scope: Scope, receive: Receive, send: Send) -> None:
         return None
 
-    middleware = ViteProxyMiddleware(noop, hotfile_path=tmp_path / "hot")
+    middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile)
 
     middleware._get_target_base_url()
     middleware._get_target_base_url()

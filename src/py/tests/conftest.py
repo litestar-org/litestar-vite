@@ -25,19 +25,35 @@ _VITE_ENV_VARS = [
     "LITESTAR_PORT",
     "LITESTAR_DEBUG",
     "ASSET_URL",
+    # litestar-vite-c1t: bridge config path leaks across tests; force a
+    # guaranteed-missing default so consumers fall back to legacy hotfile
+    # semantics unless a test explicitly opts in.
+    "LITESTAR_VITE_CONFIG_PATH",
 ]
 
 
 @pytest.fixture(autouse=True)
-def clean_vite_env(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
-    """Clear Vite-related environment variables before each test for isolation.
+def clean_vite_env(
+    tmp_path_factory: TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> Generator[None, None, None]:
+    """Clear Vite-related env vars and bridge cache before each test for isolation.
+
+    Also points ``LITESTAR_VITE_CONFIG_PATH`` at a guaranteed-missing path so
+    the bridge-config CWD fallback never picks up a developer's stray
+    ``.litestar.json`` from the repo root mid-test.
 
     Returns:
         The result.
     """
+    from litestar_vite.utils import read_bridge_config
+
     for var in _VITE_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+    sentinel = tmp_path_factory.mktemp("no-bridge") / "missing.json"
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(sentinel))
+    read_bridge_config.cache_clear()
     yield
+    read_bridge_config.cache_clear()
 
 
 @pytest.fixture

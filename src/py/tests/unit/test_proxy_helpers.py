@@ -145,13 +145,21 @@ def test_extract_proxy_response_filters_headers() -> None:
     assert body == b"ok"
 
 
-def test_build_hmr_target_url_includes_query(tmp_path: Path) -> None:
+def test_build_hmr_target_url_includes_query(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hotfile-only fallback: bridge cleared so legacy hotfile semantics apply."""
+    from litestar_vite.utils import read_bridge_config
+
+    read_bridge_config.cache_clear()
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(tmp_path / "no-bridge.json"))
     hotfile = tmp_path / "hot"
     hotfile.write_text("http://localhost:5173")
     scope = {"path": "/vite-hmr", "query_string": b"token=1"}
 
     target = build_hmr_target_url(hotfile, scope, "/vite-hmr", "/static/")
     assert target == "ws://localhost:5173/vite-hmr?token=1"
+    read_bridge_config.cache_clear()
 
 
 def test_extract_headers_and_subprotocols() -> None:
@@ -785,3 +793,83 @@ def test_get_litestar_route_prefixes_excludes_websocket_only_routes() -> None:
     assert "/{path:path}" not in prefixes, (
         f"WebSocket-only '/{{path:path}}' must not appear in HTTP route prefixes; got {prefixes}"
     )
+
+
+# ===== Bridge-config preference for HMR target (litestar-vite-c1t) =====
+
+
+def _write_bridge_for_hmr(tmp_path: Path, payload: object) -> Path:
+    import json
+
+    bridge = tmp_path / ".litestar.json"
+    bridge.write_text(json.dumps(payload))
+    return bridge
+
+
+def test_build_hmr_target_url_prefers_bridge_host_port(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bridge ``host:port`` beats hotfile contents for the HMR WS target.
+
+    In ``proxyMode='vite'`` the hotfile points at the bridge URL (post-JS-C4),
+    so HMR would otherwise upgrade against Litestar itself. The bridge config
+    carries the real Vite host:port; prefer it for the WS target base.
+    """
+    from litestar_vite.utils import read_bridge_config
+
+    read_bridge_config.cache_clear()
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://litestar-bridge:8000")
+    bridge = _write_bridge_for_hmr(
+        tmp_path, {"appUrl": "http://litestar-bridge:8000", "host": "127.0.0.1", "port": 5173}
+    )
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(bridge))
+    scope = {"path": "/vite-hmr", "query_string": b"token=1"}
+
+    target = build_hmr_target_url(hotfile, scope, "/vite-hmr", "/static/")
+
+    assert target == "ws://127.0.0.1:5173/vite-hmr?token=1"
+    read_bridge_config.cache_clear()
+
+
+def test_build_hmr_target_url_falls_back_to_hotfile_when_bridge_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from litestar_vite.utils import read_bridge_config
+
+    read_bridge_config.cache_clear()
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://localhost:5173")
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(tmp_path / "missing.json"))
+    scope = {"path": "/vite-hmr", "query_string": b""}
+
+    target = build_hmr_target_url(hotfile, scope, "/vite-hmr", "/static/")
+
+    assert target == "ws://localhost:5173/vite-hmr"
+    read_bridge_config.cache_clear()
+
+
+def test_create_hmr_target_getter_sibling_overrides_bridge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``<hotfile>.hmr`` sibling continues to win for the HMR clientPort override.
+
+    The sibling carries Vite's HMR-specific target (often a different port than
+    the dev server's HTTP port), so it must take precedence even when bridge
+    config is present.
+    """
+    from litestar_vite.utils import read_bridge_config
+
+    read_bridge_config.cache_clear()
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://localhost:5173")
+    (tmp_path / "hot.hmr").write_text("http://127.0.0.1:24678")
+    bridge = _write_bridge_for_hmr(
+        tmp_path, {"appUrl": "http://bridge", "host": "127.0.0.1", "port": 5173}
+    )
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(bridge))
+
+    getter = create_hmr_target_getter(hotfile, [None])
+
+    assert getter() == "http://127.0.0.1:24678"
+    read_bridge_config.cache_clear()
