@@ -16,7 +16,6 @@ import pytest
 
 from litestar_vite.utils import read_bridge_config
 
-
 # ===== Fixtures and helpers =====
 
 

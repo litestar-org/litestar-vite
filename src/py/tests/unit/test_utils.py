@@ -43,7 +43,13 @@ def test_check_h2_available_import_error(monkeypatch: pytest.MonkeyPatch) -> Non
         return orig_import(name, globals, locals, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
-    assert utils._check_h2_available() is False
+    try:
+        assert utils._check_h2_available() is False
+    finally:
+        # Reset the module-level cache so subsequent tests don't observe the
+        # monkeypatched outcome (would otherwise leak into integration tests
+        # that try to construct a real HTTP/2 client when h2 is missing).
+        utils._h2_available = None
 
 
 def test_check_h2_available_success(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -62,7 +68,10 @@ def test_check_h2_available_success(monkeypatch: pytest.MonkeyPatch) -> None:
         return orig_import(name, globals, locals, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
-    assert utils._check_h2_available() is True
+    try:
+        assert utils._check_h2_available() is True
+    finally:
+        utils._h2_available = None
 
 
 def test_infer_port_from_argv(monkeypatch: pytest.MonkeyPatch) -> None:

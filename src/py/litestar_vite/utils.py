@@ -121,7 +121,7 @@ def read_bridge_config(path: Path | None = None) -> dict[str, Any] | None:
 
     # Defer the msgspec import: ``utils`` is imported during plugin init and we
     # do not want a hard requirement on a heavy dependency for unrelated callers.
-    import msgspec  # noqa: PLC0415
+    import msgspec
 
     try:
         parsed = msgspec.json.decode(raw)
