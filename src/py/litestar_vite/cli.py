@@ -973,6 +973,34 @@ def _get_local_binary_cmd(root_dir: Path, binary: str) -> "list[str] | None":
     return None
 
 
+def _resolve_js_cli(root_dir: Path, executor: "str | None", binary: str) -> "list[str]":
+    """Resolve a JS CLI command, honoring the configured executor.
+
+    Prefers a locally installed ``node_modules/.bin/<binary>``. When the
+    resolved binary carries a ``#!/usr/bin/env node`` shebang and the
+    executor is ``bun`` or ``deno``, the runtime is prepended explicitly
+    so the shebang does not leak a hard ``node`` dependency into bun- or
+    deno-only environments (e.g., slim CI images that ship only ``bun``).
+    For ``npm``/``yarn``/``pnpm``/``node`` the bare path is returned and
+    the shebang governs, matching prior behavior.
+
+    Falls back to ``_get_package_executor_cmd`` (``npx`` / ``bunx`` /
+    ``deno run`` / ``yarn dlx`` / ``pnpm dlx``) when the local binary
+    is missing.
+    """
+    local = _get_local_binary_cmd(root_dir, binary)
+    if local is None:
+        return _get_package_executor_cmd(executor, binary)
+
+    match executor:
+        case "bun":
+            return ["bun", "run", *local]
+        case "deno":
+            return ["deno", "run", "-A", *local]
+        case _:
+            return local
+
+
 def _run_extra_commands(config: Any, verbose: bool) -> bool:
     """Run additional code-generation commands configured in TypeGenConfig.
 
@@ -1010,7 +1038,7 @@ def _run_extra_commands(config: Any, verbose: bool) -> bool:
 
         # Resolve the binary through the project's JS executor,
         # same pattern as _invoke_typegen_cli.
-        resolved = _get_local_binary_cmd(root_dir, binary) or _get_package_executor_cmd(executor, binary)
+        resolved = _resolve_js_cli(root_dir, executor, binary)
         full_cmd = [*resolved, *args]
         display = " ".join(full_cmd)
 
@@ -1050,9 +1078,7 @@ def _invoke_typegen_cli(config: Any, verbose: bool) -> None:
     executor = config.runtime.executor
 
     # Build the command to run the unified TypeScript CLI
-    pkg_cmd = _get_local_binary_cmd(root_dir, "litestar-vite-typegen") or _get_package_executor_cmd(
-        executor, "litestar-vite-typegen"
-    )
+    pkg_cmd = _resolve_js_cli(root_dir, executor, "litestar-vite-typegen")
     cmd = [*pkg_cmd]
 
     if verbose:
