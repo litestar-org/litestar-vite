@@ -575,6 +575,47 @@ def test_cli_resolve_js_cli_node_executors_use_bare_local_bin(tmp_path: Path) ->
         assert _resolve_js_cli(tmp_path, executor, "tool") == [str(local_bin)]
 
 
+def test_cli_resolve_js_cli_bun_ignores_posix_shell_shim(tmp_path: Path) -> None:
+    """Bun should not be asked to run a shell shim as JavaScript."""
+    local_bin = tmp_path / "node_modules" / ".bin" / "tool"
+    local_bin.parent.mkdir(parents=True, exist_ok=True)
+    local_bin.write_text('#!/bin/sh\nexec node ../tool/bin.js "$@"\n')
+
+    assert _resolve_js_cli(tmp_path, "bun", "tool") == ["bunx", "tool"]
+
+
+def test_cli_resolve_js_cli_bun_ignores_windows_cmd_shim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Windows .cmd shims still route through node, so Bun should use bunx instead."""
+    monkeypatch.setattr("litestar_vite.cli.os.name", "nt")
+    local_bin = tmp_path / "node_modules" / ".bin" / "tool.cmd"
+    local_bin.parent.mkdir(parents=True, exist_ok=True)
+    local_bin.write_text("@ECHO off\r\nnode ..\\tool\\bin.js %*\r\n")
+
+    assert _resolve_js_cli(tmp_path, "bun", "tool") == ["bunx", "tool"]
+
+
+def test_cli_resolve_js_cli_deno_ignores_windows_cmd_shim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Deno cannot execute a Windows .cmd shim as a JavaScript module."""
+    monkeypatch.setattr("litestar_vite.cli.os.name", "nt")
+    local_bin = tmp_path / "node_modules" / ".bin" / "tool.cmd"
+    local_bin.parent.mkdir(parents=True, exist_ok=True)
+    local_bin.write_text("@ECHO off\r\nnode ..\\tool\\bin.js %*\r\n")
+
+    assert _resolve_js_cli(tmp_path, "deno", "tool") == ["deno", "run", "-A", "npm:tool"]
+
+
+def test_cli_resolve_js_cli_node_executors_keep_windows_cmd_shim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Windows shim remains correct for Node-backed executors."""
+    monkeypatch.setattr("litestar_vite.cli.os.name", "nt")
+    local_bin = tmp_path / "node_modules" / ".bin" / "tool.cmd"
+    local_bin.parent.mkdir(parents=True, exist_ok=True)
+    local_bin.write_text("@ECHO off\r\nnode ..\\tool\\bin.js %*\r\n")
+
+    assert _resolve_js_cli(tmp_path, "pnpm", "tool") == [str(local_bin)]
+
+
 def test_cli_invoke_typegen_cli_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = ViteConfig(paths=PathConfig(root=tmp_path))
     monkeypatch.setattr("litestar_vite.cli.subprocess.run", Mock(return_value=Mock(returncode=1)))
