@@ -286,10 +286,19 @@ class ViteProxyMiddleware(AbstractMiddleware):
         )
 
     def _get_target_base_url(self) -> str | None:
-        """Read the Vite server URL from the hotfile with permanent caching.
+        """Resolve the upstream Vite server URL with permanent caching.
 
-        The hotfile is read once and cached for the lifetime of the server.
-        Server restart refreshes the cache automatically.
+        The hotfile is both the readiness signal and the upstream target. Its
+        absence means "Vite is not running, fall through to static". When the
+        hotfile is present, its contents are already the resolved dev-server URL
+        from the frontend side, including scheme, normalized host, and port.
+
+        Resolution order:
+            1. Hotfile contents → upstream target.
+            2. Missing hotfile → None.
+
+        The result is cached for the lifetime of the middleware instance;
+        server restart re-runs the resolution.
 
         Returns:
             The Vite server URL or None if unavailable.
@@ -298,16 +307,17 @@ class ViteProxyMiddleware(AbstractMiddleware):
             return self._cached_target.rstrip("/") if self._cached_target else None
 
         try:
-            url = read_hotfile_url(self.hotfile_path)
-            self._cached_target = url
-            self._cache_initialized = True
-            if is_proxy_debug():
-                console.print(f"[dim][vite-proxy] Target: {url}[/]")
-            return url.rstrip("/")
+            hotfile_url = read_hotfile_url(self.hotfile_path)
         except FileNotFoundError:
             self._cached_target = None
             self._cache_initialized = True
             return None
+
+        self._cached_target = hotfile_url
+        self._cache_initialized = True
+        if is_proxy_debug():
+            console.print(f"[dim][vite-proxy] Target: {hotfile_url}[/]")
+        return hotfile_url.rstrip("/")
 
     async def __call__(self, scope: "Scope", receive: "Receive", send: "Send") -> None:
         scope_dict = cast("dict[str, Any]", scope)
@@ -409,15 +419,19 @@ def build_hmr_target_url(hotfile_path: Path, scope: dict[str, Any], hmr_path: st
     Vite's HMR WebSocket listens at {base}{hmr.path}, so we preserve
     the full path including the asset prefix (e.g., /static/vite-hmr).
 
+    Resolution order:
+        1. Hotfile contents → upstream target.
+        2. Missing hotfile → None.
+
     Returns:
-        The target WebSocket URL or None if the hotfile is not found.
+        The target WebSocket URL or None if no source is available.
     """
     try:
-        vite_url = read_hotfile_url(hotfile_path)
+        hotfile_url = read_hotfile_url(hotfile_path)
     except FileNotFoundError:
         return None
 
-    ws_url = vite_url.replace("http://", "ws://").replace("https://", "wss://")
+    ws_url = hotfile_url.replace("http://", "ws://").replace("https://", "wss://")
     original_path = scope.get("path", hmr_path)
     query_string = scope.get("query_string", b"").decode()
 
@@ -629,12 +643,17 @@ def create_target_url_getter(
 def create_hmr_target_getter(
     hotfile_path: "Path | None", cached_hmr_target: list["str | None"]
 ) -> "Callable[[], str | None]":
-    """Create a function that returns the HMR target URL from hotfile with permanent caching.
+    """Create a function that returns the HMR target URL with permanent caching.
 
-    The hotfile is read once and cached for the lifetime of the server.
-    Server restart refreshes the cache automatically.
+    Resolution order:
+        1. ``<hotfile>.hmr`` sibling file — JS writes the HMR clientPort
+           override here; this MUST win when present (different port than the
+           dev server's HTTP port for many configurations).
+        2. Main hotfile contents — actual upstream target resolved by the
+           frontend side, preserving scheme and normalized host.
 
-    The JS side writes HMR URLs to a sibling file at ``<hotfile>.hmr``.
+    The result is cached for the lifetime of the server; server restart
+    refreshes the cache automatically.
 
     Returns:
         A callable that returns the HMR target URL or None if unavailable.
@@ -657,6 +676,15 @@ def create_hmr_target_getter(
                 console.print(f"[dim][ssr-proxy] HMR target: {url}[/]")
             return url.rstrip("/")
         except FileNotFoundError:
+            try:
+                url = read_hotfile_url(hotfile_path)
+                cached_hmr_target[0] = url
+                cache_initialized[0] = True
+                if is_proxy_debug():
+                    console.print(f"[dim][ssr-proxy] HMR target fallback: {url}[/]")
+                return url.rstrip("/")
+            except FileNotFoundError:
+                pass
             cached_hmr_target[0] = None
             cache_initialized[0] = True
             return None

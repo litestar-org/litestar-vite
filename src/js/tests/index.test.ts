@@ -391,7 +391,7 @@ describe("litestar-vite-plugin", () => {
     }
   })
 
-  it("writes hotFile using explicit server.origin override", async () => {
+  it("writes hotFile using actual dev server URL even with explicit server.origin override", async () => {
     const configPath = createRuntimeConfig({
       proxyMode: "vite",
     })
@@ -436,13 +436,13 @@ describe("litestar-vite-plugin", () => {
 
       listeningHandlers.forEach((handler) => handler())
 
-      expect(writeSpy).toHaveBeenCalledWith(path.resolve(process.cwd(), "public", "hot"), "https://assets.example.test")
+      expect(writeSpy).toHaveBeenCalledWith(path.resolve(process.cwd(), "public", "hot"), "http://127.0.0.1:4789")
     } finally {
       cleanupRuntimeConfig(configPath)
     }
   })
 
-  it("writes hotFile using bridge appUrl default origin in proxy mode", async () => {
+  it("writes hotFile using actual dev server URL when bridge appUrl defaults server.origin", async () => {
     const configPath = createRuntimeConfig({
       proxyMode: "vite",
       appUrl: "http://localhost:5006",
@@ -481,7 +481,7 @@ describe("litestar-vite-plugin", () => {
 
       listeningHandlers.forEach((handler) => handler())
 
-      expect(writeSpy).toHaveBeenCalledWith(path.resolve(process.cwd(), "public", "hot"), "http://localhost:5006")
+      expect(writeSpy).toHaveBeenCalledWith(path.resolve(process.cwd(), "public", "hot"), "http://127.0.0.1:4789")
     } finally {
       cleanupRuntimeConfig(configPath)
     }

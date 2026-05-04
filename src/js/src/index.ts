@@ -617,13 +617,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
 
         const isAddressInfo = (x: string | AddressInfo | null | undefined): x is AddressInfo => typeof x === "object"
         if (isAddressInfo(address)) {
-          const explicitServerOrigin = typeof userConfig.server?.origin === "string" && userConfig.server.origin.length > 0 ? userConfig.server.origin : undefined
-          const configuredServerOrigin =
-            typeof server.config.server.origin === "string" && server.config.server.origin.length > 0 && server.config.server.origin !== "__litestar_vite_placeholder__"
-              ? server.config.server.origin
-              : undefined
-          const hotfileOrigin = configuredServerOrigin ?? explicitServerOrigin
-          viteDevServerUrl = hotfileOrigin ? (hotfileOrigin as DevServerUrl) : resolveDevServerUrl(address, server.config, userConfig)
+          viteDevServerUrl = resolveDevServerUrl(address, server.config, userConfig)
           fs.mkdirSync(path.dirname(pluginConfig.hotFile), { recursive: true })
           fs.writeFileSync(pluginConfig.hotFile, viteDevServerUrl)
 
