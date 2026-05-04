@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "import", "unicorn", "jsx-a11y", "react"],
+  "plugins": ["typescript", "import", "unicorn", "jsx-a11y", "react", "vue", "vitest", "node", "promise"],
   "categories": {
     "correctness": "error",
     "suspicious": "error"
@@ -13,6 +13,11 @@
     "import/no-unassigned-import": "off",
     "no-underscore-dangle": "off",
     "react/react-in-jsx-scope": "off",
+    "vitest/require-mock-type-parameters": "off",
+    "vitest/no-conditional-expect": "off",
+    "vitest/hoisted-apis-on-top": "off",
+    "jest/no-conditional-expect": "off",
+    "promise/always-return": "off",
     "default-param-last": "error",
     "@typescript-eslint/no-inferrable-types": "error",
     "@typescript-eslint/prefer-enum-initializers": "error",
