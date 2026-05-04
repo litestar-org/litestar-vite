@@ -25,6 +25,7 @@ from litestar.exceptions import SerializationException
 from litestar.serialization import decode_json
 
 from litestar_vite.exceptions import AssetNotFoundError, ManifestNotFoundError
+from litestar_vite.utils import read_bridge_config
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -501,14 +502,25 @@ class ViteAssetLoader:
         Returns:
             Full URL to the asset on the dev server.
         """
-        # Lazy retry: ``parse_manifest()`` runs once at loader init and races the JS
-        # plugin's hotfile write — if the file did not exist yet, ``_vite_base_path``
-        # stays ``None`` for the loader's lifetime and every asset URL silently leaks
-        # the raw Vite dev server origin (breaking the single-port-via-ASGI bridge
-        # contract). Re-reading on demand fixes the race without polling.
-        if self._vite_base_path is None:
-            self._load_hot_file_sync()
-        base_path = self._vite_base_path or f"{self._config.protocol}://{self._config.host}:{self._config.port}"
+        # Bridge-config preference (litestar-vite-c1t): when ``.litestar.json``
+        # exists and carries a non-null ``appUrl``, anchor asset URLs at that
+        # value. This is the authoritative single-port-via-ASGI bridge URL and
+        # supersedes the hotfile contents (which in proxyMode='vite' are also
+        # the bridge URL post-JS-C4, so this is consistent — but it removes the
+        # ambiguity for any consumer that races the hotfile write).
+        bridge = read_bridge_config()
+        app_url = bridge.get("appUrl") if bridge is not None else None
+        if isinstance(app_url, str) and app_url:
+            base_path = app_url
+        else:
+            # Lazy retry: ``parse_manifest()`` runs once at loader init and races the JS
+            # plugin's hotfile write — if the file did not exist yet, ``_vite_base_path``
+            # stays ``None`` for the loader's lifetime and every asset URL silently leaks
+            # the raw Vite dev server origin (breaking the single-port-via-ASGI bridge
+            # contract). Re-reading on demand fixes the race without polling.
+            if self._vite_base_path is None:
+                self._load_hot_file_sync()
+            base_path = self._vite_base_path or f"{self._config.protocol}://{self._config.host}:{self._config.port}"
         return urljoin(base_path, urljoin(self._config.asset_url, path if path is not None else ""))
 
     @staticmethod
