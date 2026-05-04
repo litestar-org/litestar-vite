@@ -1,8 +1,197 @@
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[4]
 TEMPLATE_ROOT = ROOT / "src" / "py" / "litestar_vite" / "templates"
 EXAMPLES_ROOT = ROOT / "examples"
+
+
+def _example_dir_names() -> set[str]:
+    return {child.name for child in EXAMPLES_ROOT.iterdir() if child.is_dir() and (child / "app.py").exists()}
+
+
+def test_framework_type_enum_includes_all_examples() -> None:
+    """Every example/ subdirectory must have a matching FrameworkType enum value.
+
+    Examples without enum entries are invisible to scaffolding lookups and risk
+    drifting out of e2e parametrization (which discovers by directory name).
+    """
+    from litestar_vite.scaffolding.templates import FrameworkType
+
+    enum_values = {ft.value for ft in FrameworkType}
+    missing_in_enum = _example_dir_names() - enum_values
+    assert not missing_in_enum, f"Examples without FrameworkType entries: {missing_in_enum}"
+
+
+def test_framework_templates_covers_all_enum_values() -> None:
+    """Every FrameworkType must have a matching FRAMEWORK_TEMPLATES entry."""
+    from litestar_vite.scaffolding.templates import FRAMEWORK_TEMPLATES, FrameworkType
+
+    enum_values = set(FrameworkType)
+    template_keys = set(FRAMEWORK_TEMPLATES.keys())
+    missing = enum_values - template_keys
+    extra = template_keys - enum_values
+    assert not missing, f"FrameworkType values without FRAMEWORK_TEMPLATES entries: {missing}"
+    assert not extra, f"FRAMEWORK_TEMPLATES entries without FrameworkType: {extra}"
+
+
+def test_c6_required_examples_exist() -> None:
+    """C6 adds 4 examples for previously uncovered Mode x Framework x Inertia x Jinja cells, plus 2 SSR variants."""
+    expected = {
+        "react-router",
+        "svelte-inertia",
+        "svelte-inertia-jinja",
+        "htmx-no-jinja",
+        "vue-inertia-ssr",
+        "vue-inertia-jinja-ssr",
+    }
+    missing = expected - _example_dir_names()
+    assert not missing, f"C6 examples missing from examples/: {missing}"
+
+
+def test_inertia_ssr_examples_have_runnable_node_render_entries() -> None:
+    """vue-inertia-ssr and vue-inertia-jinja-ssr ship runnable Node /render servers.
+
+    Locks the C6 SSR contract: each SSR example must have a real ``resources/ssr.ts``
+    that runs ``createServer(...)`` from ``@inertiajs/vue3/server``, plus a
+    ``start:ssr`` script in ``package.json`` and ``InertiaConfig(ssr=...)`` in app.py.
+    Without these the Inertia SSR endpoint cannot be exercised end-to-end.
+    """
+    for name in ("vue-inertia-ssr", "vue-inertia-jinja-ssr"):
+        example = EXAMPLES_ROOT / name
+        ssr_entry = example / "resources" / "ssr.ts"
+        package_json = (example / "package.json").read_text()
+        app_py = (example / "app.py").read_text()
+
+        assert ssr_entry.exists(), f"{name}: missing resources/ssr.ts SSR runner entry"
+        ssr_text = ssr_entry.read_text()
+        assert "@inertiajs/vue3/server" in ssr_text, f"{name}: ssr.ts must import @inertiajs/vue3/server"
+        assert "createServer" in ssr_text, f"{name}: ssr.ts must call createServer"
+        assert "13714" in ssr_text or "INERTIA_SSR_PORT" in ssr_text, (
+            f"{name}: ssr.ts must bind 13714 (or use INERTIA_SSR_PORT env)"
+        )
+
+        assert "start:ssr" in package_json, f"{name}: package.json must define a start:ssr script"
+        assert "build:ssr" in package_json, f"{name}: package.json must define a build:ssr script"
+        assert "@vue/server-renderer" in package_json, f"{name}: package.json must include @vue/server-renderer"
+
+        assert "InertiaConfig" in app_py and "ssr=" in app_py, (
+            f"{name}: app.py must construct InertiaConfig(ssr=...) so the handler frame POSTs to /render"
+        )
+
+    # The Jinja-shell SSR example must wire a Jinja TemplateConfig (template mode).
+    jinja_app_py = (EXAMPLES_ROOT / "vue-inertia-jinja-ssr" / "app.py").read_text()
+    assert "TemplateConfig" in jinja_app_py and "JinjaTemplateEngine" in jinja_app_py, (
+        "vue-inertia-jinja-ssr: must wire JinjaTemplateEngine via TemplateConfig (template mode contract)"
+    )
+    assert (EXAMPLES_ROOT / "vue-inertia-jinja-ssr" / "templates" / "index.html").exists(), (
+        "vue-inertia-jinja-ssr: must ship templates/index.html Jinja shell"
+    )
+
+
+def test_vue_inertia_ssr_example_invokes_ssr_endpoint() -> None:
+    """The vue-inertia-ssr example POSTs to the Inertia SSR endpoint when serving an Inertia handler.
+
+    Imports the example app and patches the SSR client so we never actually open a socket;
+    asserts the Inertia handler frame issues the POST and the rendered HTML is injected back
+    into the SPA shell. This locks the example's wiring without requiring a real Node process.
+    """
+    import importlib.util
+    import sys
+    from unittest.mock import AsyncMock, patch
+
+    from litestar.testing import TestClient
+
+    from litestar_vite.inertia.response import _InertiaSSRResult
+
+    example_dir = EXAMPLES_ROOT / "vue-inertia-ssr"
+    spec = importlib.util.spec_from_file_location("_vue_inertia_ssr_example", example_dir / "app.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["_vue_inertia_ssr_example"] = module
+    try:
+        spec.loader.exec_module(module)
+        with patch(
+            "litestar_vite.inertia.response._render_inertia_ssr",
+            new_callable=AsyncMock,
+            return_value=_InertiaSSRResult(
+                head=["<title>SSR_TITLE_VUE</title>"], body='<div id="app">SSR_BODY_VUE</div>'
+            ),
+        ) as mock_ssr:
+            with TestClient(app=module.app) as client:
+                response = client.get("/")
+        assert response.status_code == 200, response.text
+        mock_ssr.assert_awaited_once()
+        assert "SSR_BODY_VUE" in response.text
+        assert "SSR_TITLE_VUE" in response.text
+    finally:
+        sys.modules.pop("_vue_inertia_ssr_example", None)
+
+
+def test_vue_inertia_jinja_ssr_example_invokes_ssr_endpoint() -> None:
+    """The vue-inertia-jinja-ssr example POSTs to the Inertia SSR endpoint and injects into the Jinja shell."""
+    import importlib.util
+    import sys
+    from unittest.mock import AsyncMock, patch
+
+    from litestar.testing import TestClient
+
+    from litestar_vite.inertia.response import _InertiaSSRResult
+
+    example_dir = EXAMPLES_ROOT / "vue-inertia-jinja-ssr"
+    spec = importlib.util.spec_from_file_location("_vue_inertia_jinja_ssr_example", example_dir / "app.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["_vue_inertia_jinja_ssr_example"] = module
+    try:
+        spec.loader.exec_module(module)
+        with patch(
+            "litestar_vite.inertia.response._render_inertia_ssr",
+            new_callable=AsyncMock,
+            return_value=_InertiaSSRResult(
+                head=["<title>SSR_TITLE_JINJA</title>"], body='<div id="app">SSR_BODY_JINJA</div>'
+            ),
+        ) as mock_ssr:
+            with TestClient(app=module.app) as client:
+                response = client.get("/")
+        assert response.status_code == 200, response.text
+        mock_ssr.assert_awaited_once()
+        assert "SSR_BODY_JINJA" in response.text
+        assert "SSR_TITLE_JINJA" in response.text
+    finally:
+        sys.modules.pop("_vue_inertia_jinja_ssr_example", None)
+
+
+def test_htmx_no_jinja_example_starts_without_jinja_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The htmx-no-jinja example must boot cleanly when Jinja2 is treated as absent.
+
+    This locks the C1 contract (template-mode-without-Jinja) at the example level —
+    the example is the canonical demonstration that handlers returning raw HTML strings
+    do not require a TemplateConfig or Jinja2 import.
+    """
+    import importlib.util
+    import sys
+
+    from litestar.testing import TestClient
+
+    from litestar_vite.config import _vite
+
+    monkeypatch.setattr(_vite, "JINJA_INSTALLED", False)
+
+    example_dir = EXAMPLES_ROOT / "htmx-no-jinja"
+    spec = importlib.util.spec_from_file_location("_htmx_no_jinja_example", example_dir / "app.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["_htmx_no_jinja_example"] = module
+    try:
+        spec.loader.exec_module(module)
+        with TestClient(app=module.app) as client:
+            response = client.get("/")
+            assert response.status_code == 200
+            assert "hx-get" in response.text
+    finally:
+        sys.modules.pop("_htmx_no_jinja_example", None)
 
 
 def test_templates_no_hardcoded_type_paths() -> None:

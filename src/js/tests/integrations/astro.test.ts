@@ -58,6 +58,8 @@ vi.mock("picocolors", () => ({
 const baseRuntimeConfig = {
   assetUrl: "/static",
   deployAssetUrl: null,
+  appUrl: null,
+  litestarPort: null,
   bundleDir: "public",
   resourceDir: "resources",
   staticDir: "public",
@@ -289,6 +291,7 @@ describe("litestar-astro integration", () => {
     })
 
     it("skips type generation plugin setup during build command", async () => {
+      ;(fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false)
       const integration = litestarAstro({
         types: true,
       })
@@ -381,6 +384,93 @@ describe("litestar-astro integration", () => {
       const config = updateConfig.mock.calls[0][0]
       // Check that proxy was configured (will have default /api prefix)
       expect(config.vite.plugins).toBeDefined()
+    })
+
+    it("sets vite.server.hmr.clientPort to the Litestar port from bridge", async () => {
+      process.env.LITESTAR_VITE_CONFIG_PATH = "/tmp/vite-config.json"
+      ;(fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true)
+      ;(fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
+        runtimeConfig({
+          appUrl: "http://127.0.0.1:8000",
+          litestarPort: 8000,
+          assetUrl: "/static",
+        }),
+      )
+
+      const integration = litestarAstro()
+      const updateConfig = vi.fn()
+      const mockLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), label: "test" }
+
+      await integration.hooks["astro:config:setup"]?.({
+        config: {},
+        command: "dev",
+        isRestart: false,
+        updateConfig,
+        logger: mockLogger,
+      })
+
+      const cfg = updateConfig.mock.calls[0][0]
+      const proxyPlugin = cfg.vite?.plugins?.find((p: any) => p.name === "litestar-astro-proxy")
+      const pluginConfig = proxyPlugin?.config?.()
+      expect(pluginConfig?.server?.hmr).toMatchObject({
+        protocol: "ws",
+        host: "127.0.0.1",
+        clientPort: 8000,
+        path: "/static/vite-hmr",
+      })
+    })
+
+    it("falls back to parsing appUrl when bridge lacks litestarPort", async () => {
+      process.env.LITESTAR_VITE_CONFIG_PATH = "/tmp/vite-config.json"
+      ;(fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true)
+      ;(fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
+        runtimeConfig({
+          appUrl: "http://127.0.0.1:9100",
+          assetUrl: "/static",
+        }),
+      )
+
+      const integration = litestarAstro()
+      const updateConfig = vi.fn()
+      const mockLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), label: "test" }
+
+      await integration.hooks["astro:config:setup"]?.({
+        config: {},
+        command: "dev",
+        isRestart: false,
+        updateConfig,
+        logger: mockLogger,
+      })
+
+      const cfg = updateConfig.mock.calls[0][0]
+      const proxyPlugin = cfg.vite?.plugins?.find((p: any) => p.name === "litestar-astro-proxy")
+      const pluginConfig = proxyPlugin?.config?.()
+      expect(pluginConfig?.server?.hmr?.clientPort).toBe(9100)
+    })
+
+    it("omits hmr config when no Litestar port can be resolved", async () => {
+      delete process.env.LITESTAR_PORT
+      delete process.env.PORT
+      delete process.env.APP_URL
+      delete process.env.LITESTAR_VITE_CONFIG_PATH
+      ;(fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false)
+
+      const integration = litestarAstro()
+      const updateConfig = vi.fn()
+      const mockLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), label: "test" }
+
+      await integration.hooks["astro:config:setup"]?.({
+        config: {},
+        command: "dev",
+        isRestart: false,
+        updateConfig,
+        logger: mockLogger,
+      })
+
+      const cfg = updateConfig.mock.calls[0][0]
+      const proxyPlugin = cfg.vite?.plugins?.find((p: any) => p.name === "litestar-astro-proxy")
+      const pluginConfig = proxyPlugin?.config?.()
+      expect(pluginConfig?.server?.hmr).toBeUndefined()
     })
 
     it("handles invalid VITE_PORT gracefully", async () => {

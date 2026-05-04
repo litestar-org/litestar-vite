@@ -36,6 +36,45 @@ export function normalizeHost(host: string): string {
 }
 
 /**
+ * Resolve the Litestar dev server port for HMR routing.
+ *
+ * Framework integrations (Astro/Nuxt/SvelteKit) need this port to set
+ * `vite.server.hmr.clientPort` so the browser opens the HMR WebSocket against
+ * Litestar — NOT the framework dev server's port — preserving the
+ * single-port-via-ASGI contract.
+ *
+ * Resolution order:
+ *   1. `bridge.litestarPort` (preferred; written by Python ≥0.23.0).
+ *   2. Parse `bridge.appUrl` (works with older bridges that lack `litestarPort`).
+ *   3. `LITESTAR_PORT` / `PORT` env var.
+ *   4. `null` if no signal.
+ */
+export function resolveLitestarPort(bridgeLitestarPort: number | null | undefined, bridgeAppUrl: string | null | undefined, env: NodeJS.ProcessEnv = process.env): number | null {
+  if (typeof bridgeLitestarPort === "number" && Number.isInteger(bridgeLitestarPort) && bridgeLitestarPort > 0) {
+    return bridgeLitestarPort
+  }
+  if (typeof bridgeAppUrl === "string" && bridgeAppUrl.length > 0) {
+    try {
+      const parsed = new URL(bridgeAppUrl)
+      if (parsed.port) {
+        const p = Number.parseInt(parsed.port, 10)
+        if (!Number.isNaN(p) && p > 0) return p
+      }
+      if (parsed.protocol === "https:") return 443
+      if (parsed.protocol === "http:") return 80
+    } catch {
+      // fall through
+    }
+  }
+  const raw = env.LITESTAR_PORT ?? env.PORT
+  if (raw) {
+    const p = Number.parseInt(raw, 10)
+    if (!Number.isNaN(p) && p > 0) return p
+  }
+  return null
+}
+
+/**
  * Resolve the absolute hot file path from bundleDir + hotFile.
  *
  * Python config stores hot_file as a filename (relative to bundle_dir) by default.

@@ -172,13 +172,13 @@ class AppHandler:
 
     def _load_production_assets_sync(self) -> None:
         """Load manifest and index.html synchronously in production modes."""
-        if self._config.mode != "external":
+        if self._config.runtime.external_dev_server is None:
             self._load_manifest_sync()
         self._load_index_html_sync()
 
     async def _load_production_assets_async(self) -> None:
         """Load manifest and index.html asynchronously in production modes."""
-        if self._config.mode != "external":
+        if self._config.runtime.external_dev_server is None:
             await self._load_manifest_async()
         await self._load_index_html_async()
 
@@ -389,6 +389,8 @@ class AppHandler:
         Returns:
             The HTML to serve in development.
         """
+        # Hybrid mode owns the prebuilt index.html + HMR-injection path. Template, SPA, and
+        # framework modes fall through to the dev-server proxy.
         if self._config.mode == "hybrid":
             if self._cached_html is None:
                 await self._load_index_html_async()
@@ -407,6 +409,8 @@ class AppHandler:
         Returns:
             The HTML to serve in development.
         """
+        # Hybrid mode owns the prebuilt index.html + HMR-injection path. Template, SPA, and
+        # framework modes fall through to the dev-server proxy.
         if self._config.mode == "hybrid":
             if self._cached_html is None:
                 self._load_index_html_sync()

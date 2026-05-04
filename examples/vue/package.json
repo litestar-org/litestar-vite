@@ -10,18 +10,18 @@
     "generate-types": "openapi-ts --config openapi-ts.config.ts"
   },
   "dependencies": {
-    "vue": "3.5.31"
+    "vue": "3.5.33"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "0.94.5",
-    "@tailwindcss/vite": "4.2.2",
-    "@types/node": "25.5.0",
-    "@vitejs/plugin-vue": "6.0.5",
+    "@hey-api/openapi-ts": "0.96.1",
+    "@tailwindcss/vite": "4.2.4",
+    "@types/node": "25.6.0",
+    "@vitejs/plugin-vue": "6.0.6",
     "@vue/tsconfig": "0.9.1",
     "litestar-vite-plugin": "file:../..",
-    "tailwindcss": "4.2.2",
+    "tailwindcss": "4.2.4",
     "typescript": "5.9.3",
-    "vite": "8.0.3",
-    "vue-tsc": "3.2.6"
+    "vite": "8.0.10",
+    "vue-tsc": "3.2.7"
   }
 }

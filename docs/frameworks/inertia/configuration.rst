@@ -302,9 +302,9 @@ Then define your own User interface in TypeScript:
 Vite Plugin Auto-Detection
 --------------------------
 
-When you enable Inertia (`inertia=True`), the Python backend writes a `.litestar.json` file
-with `mode: "inertia"`. The Vite plugin automatically reads this file and enables `inertiaMode`,
-which:
+When you enable Inertia (``inertia=True``), the Python backend writes a
+``.litestar.json`` file with canonical mode plus Inertia metadata. The Vite
+plugin automatically reads this file and enables ``inertiaMode``, which:
 
 - Disables auto-detection of `index.html` in the project
 - Shows a placeholder page when accessing Vite directly, directing users to the backend URL

@@ -414,7 +414,7 @@ For standalone Vite usage (without Litestar), you can specify paths explicitly:
      - Automatically detect and serve `index.html`. Defaults to `true`.
    * - `inertiaMode`
      - `boolean`
-     - Enable Inertia mode (disables `index.html` auto-detection). Auto-detected from `.litestar.json` when mode is `"hybrid"` or `"inertia"`. Defaults to `false`.
+     - Enable Inertia mode (disables `index.html` auto-detection). Auto-detected from `.litestar.json` when Python configured Inertia. Defaults to `false`.
    * - `types`
      - `boolean | "auto" | TypesConfig`
      - Type generation configuration. `"auto"` or `undefined` reads from `.litestar.json` (recommended). `true` enables with hardcoded defaults. `false` disables. Object allows fine-grained control with fields: `enabled`, `output`, `openapiPath`, `routesPath`, `pagePropsPath`, `schemasTsPath`, `generateZod`, `generateSdk`, `generateRoutes`, `generatePageProps`, `generateSchemas`, `globalRoute`, `debounce`. Defaults to `undefined` (auto-detect).

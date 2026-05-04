@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from litestar import Litestar, get
 from litestar.openapi.config import OpenAPIConfig
-from litestar.status_codes import HTTP_200_OK, HTTP_503_SERVICE_UNAVAILABLE
+from litestar.status_codes import HTTP_200_OK
 from litestar.testing import TestClient
 
 from litestar_vite import PathConfig, ViteConfig, VitePlugin
@@ -55,7 +55,8 @@ async def test_vite_proxy_respects_litestar_routes_with_root_asset_url(test_asse
         assert response.status_code == HTTP_200_OK
         assert "application/vnd.oai.openapi+json" in response.headers["content-type"]
 
-        # 3. Request a non-existent route that should be proxied (because asset_url="/")
+        # 3. Request a non-existent route that would be proxied when Vite is running.
+        # Without a hot file, the proxy falls through to the app instead of emitting 503.
         response = client.get("/assets/main.js")
-        assert response.status_code == HTTP_503_SERVICE_UNAVAILABLE
-        assert "Vite server not running" in response.text
+        assert response.status_code == HTTP_200_OK
+        assert "Vite server not running" not in response.text

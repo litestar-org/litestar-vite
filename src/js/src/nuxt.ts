@@ -31,7 +31,7 @@ import type { Plugin } from "vite"
 
 import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema.js"
 import { DEBOUNCE_MS } from "./shared/constants.js"
-import { normalizeHost, resolveHotFilePath } from "./shared/network.js"
+import { normalizeHost, resolveHotFilePath, resolveLitestarPort } from "./shared/network.js"
 import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
 
 /**
@@ -190,6 +190,13 @@ interface ResolvedNuxtConfig {
   proxyMode: "vite" | "direct" | "proxy" | null
   /** Preferred dev server port (provided by Python via VITE_PORT) */
   devPort?: number
+  /**
+   * Litestar dev server port. Used to set `vite.server.hmr.clientPort` so the
+   * browser opens HMR WebSockets against Litestar (single-port contract).
+   */
+  litestarPort?: number
+  /** Asset URL prefix (e.g. ``/static``); used to build the HMR path. */
+  assetUrl?: string
   /** JavaScript runtime executor for package commands */
   executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
   /** Whether .litestar.json was found */
@@ -216,6 +223,8 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
   }
 
   let pythonExecutor: "node" | "bun" | "deno" | "yarn" | "pnpm" | undefined
+  let assetUrl: string | undefined
+  let litestarPort: number | undefined
 
   const runtime = readBridgeConfig()
   if (runtime) {
@@ -225,9 +234,14 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
     proxyMode = runtime.proxyMode
     devPort = runtime.port
     pythonExecutor = runtime.executor
+    assetUrl = runtime.assetUrl
     if (runtime.types) {
       pythonTypesConfig = runtime.types
     }
+  }
+  const resolvedLitestarPort = resolveLitestarPort(runtime?.litestarPort, runtime?.appUrl)
+  if (resolvedLitestarPort !== null) {
+    litestarPort = resolvedLitestarPort
   }
 
   let typesConfig: Required<NuxtTypesConfig> | false = false
@@ -310,6 +324,8 @@ function resolveConfig(config: LitestarNuxtConfig = {}): ResolvedNuxtConfig {
     hotFile,
     proxyMode,
     devPort,
+    litestarPort,
+    assetUrl,
     executor: config.executor ?? pythonExecutor,
     hasPythonConfig,
   }
@@ -350,6 +366,10 @@ function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
       hmrPort = await getPort()
       // Note: Server port is controlled by PORT env var (set by Python)
       // We configure the host binding and HMR here
+      const hmrPath = `${(config.assetUrl ?? "/static").replace(/\/$/, "")}/vite-hmr`
+      // The browser must connect to the Litestar port (single-port-via-ASGI contract).
+      // Falls back to the Nuxt dev port when no Litestar URL is known.
+      const browserHmrPort = config.litestarPort ?? config.devPort
       return {
         server: {
           // Force IPv4 binding for consistency with Python proxy configuration
@@ -363,11 +383,13 @@ function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
                 strictPort: true,
               }
             : {}),
-          // Avoid HMR port collisions by letting Vite pick a free port for WS
+          // Vite serves HMR on a separate internal port; browsers reach it through
+          // Litestar's /static/vite-hmr WebSocket handler.
           hmr: {
             port: hmrPort,
             host: "127.0.0.1",
-            clientPort: config.devPort,
+            ...(browserHmrPort !== undefined ? { clientPort: browserHmrPort } : {}),
+            ...(config.litestarPort !== undefined ? { path: hmrPath, protocol: "ws" as const } : {}),
           },
         },
       }

@@ -2,7 +2,7 @@ import asyncio
 from pathlib import Path
 from time import sleep
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from litestar import Request, get
@@ -528,28 +528,40 @@ async def test_non_mapping_content_remains_nested(
         assert "0" not in props  # ensure list not spread
 
 
-def test_deferred_prop_render() -> None:
-    # Test rendering a callable
+def test_deferred_prop_render_sync_callback() -> None:
+    """Sync callbacks resolve inline on direct render()."""
 
     def simulated_expensive_sync_function() -> str:
-        sleep(0.5)
+        sleep(0.01)
         return "callable_result"
-
-    async def simulated_expensive_async_function() -> str:
-        await asyncio.sleep(0.5)
-        return "async_result"
 
     test_prop_1 = lazy("test_prop_1", simulated_expensive_sync_function)
     assert test_prop_1.render() == "callable_result"
-    test_prop_2 = lazy("test_prop_2", simulated_expensive_async_function)
-    assert test_prop_2.render() == "async_result"
 
-    # Test rendering an async callable
+
+async def test_deferred_prop_render_async_callback_raises_without_resolve() -> None:
+    """Calling render() directly on an unresolved async DeferredProp raises a
+    clear error — async callbacks must be pre-resolved on the request loop by
+    InertiaResponse before render() runs."""
+
+    async def simulated_expensive_async_function() -> str:
+        return "async_result"
+
+    test_prop = lazy("test_prop", simulated_expensive_async_function)
+    with pytest.raises(RuntimeError, match="Async prop callback is unresolved"):
+        test_prop.render()
+
+
+async def test_deferred_prop_render_after_resolve_async() -> None:
+    """``await resolve_async()`` populates the prop's cache so subsequent
+    sync ``render()`` returns the awaited value."""
+
     async def async_callable_func() -> str:
         return "async_result"
 
-    prop_async_callable = DeferredProp[str, str](key="async_callable", value=async_callable_func)
-    assert prop_async_callable.render() == "async_result"
+    prop = DeferredProp[str, str](key="async_callable", value=async_callable_func)
+    await prop.resolve_async()
+    assert prop.render() == "async_result"
 
 
 async def test_static_prop_render() -> None:
@@ -961,7 +973,8 @@ async def test_hybrid_ssr_replaces_shell_root_and_injects_head(tmp_path: Path, m
         return {"message": "Hello"}
 
     with patch(
-        "litestar_vite.inertia.response._render_inertia_ssr_sync",
+        "litestar_vite.inertia.response._render_inertia_ssr",
+        new_callable=AsyncMock,
         return_value=_InertiaSSRResult(
             head=["<title>SSR</title>"],
             body='<div id="app" data-page=\'{"component":"Home"}\'><span>SSR body</span></div>',
@@ -1015,7 +1028,8 @@ async def test_hybrid_ssr_script_element_replaces_shell_without_duplicates(
         return {"message": "Hello"}
 
     with patch(
-        "litestar_vite.inertia.response._render_inertia_ssr_sync",
+        "litestar_vite.inertia.response._render_inertia_ssr",
+        new_callable=AsyncMock,
         return_value=_InertiaSSRResult(
             head=[],
             body=(
@@ -2205,8 +2219,9 @@ async def test_ssr_client_shared_across_requests(
     assert all(c is clients_seen[0] for c in clients_seen)
 
 
-async def test_deferred_prop_uses_plugin_portal() -> None:
-    """Test that DeferredProp uses the plugin's portal for async resolution."""
+async def test_deferred_prop_async_callback_resolved_via_pipeline() -> None:
+    """Async ``defer()`` callbacks are pre-resolved by InertiaResponse on the
+    request loop and serialized correctly on partial reload."""
     import asyncio
 
     from litestar.middleware.session.server_side import ServerSideSessionConfig
@@ -2224,7 +2239,6 @@ async def test_deferred_prop_uses_plugin_portal() -> None:
     vite_plugin = VitePlugin(config=vite_config)
 
     async def async_prop_callback() -> str:
-        # This would normally require portal access to run from sync context
         await asyncio.sleep(0.001)
         return "async_value"
 
@@ -2238,10 +2252,6 @@ async def test_deferred_prop_uses_plugin_portal() -> None:
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:
-        # Verify portal is available during request
-        assert inertia_plugin.portal is not None
-
-        # Request with partial data to trigger deferred prop resolution
         response = client.get(
             "/",
             headers={
@@ -2252,7 +2262,6 @@ async def test_deferred_prop_uses_plugin_portal() -> None:
         )
         assert response.status_code == 200
         data = response.json()
-        # The async prop should have been resolved
         assert data["props"]["async_prop"] == "async_value"
 
 
@@ -2318,6 +2327,40 @@ def test_issue_236_metadata_loss() -> None:
         assert "deferredProps" in data, "deferredProps metadata missing from response"
         assert "default" in data["deferredProps"]
         assert "slow_data" in data["deferredProps"]["default"]
+
+
+def test_issue_236_shared_deferred_props_metadata_loss() -> None:
+    """Deferred props registered through ``share()`` also need metadata on the
+    initial response so the client can fetch them later.
+    """
+
+    @get("/", component="TestComponent")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        share(request, "shared_slow_data", defer("shared_slow_data", lambda: {"items": [1, 2, 3]}))
+        return {"eager_data": "loads immediately"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[InertiaPlugin(config=InertiaConfig()), VitePlugin(config=ViteConfig())],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["props"]["eager_data"] == "loads immediately"
+        assert "shared_slow_data" not in data["props"]
+        assert "shared_slow_data" in data["deferredProps"]["default"]
+
+
+def test_async_prop_asgi_dispatch_fallback_removed() -> None:
+    """Async prop resolution must not be deferred to ASGI dispatch, which runs
+    after yield-based dependency cleanup.
+    """
+    from litestar_vite.inertia import response as response_module
+
+    assert not hasattr(response_module, "_AsyncInertiaASGIResponse")
 
 
 def test_inertia_deferred_props_full_cycle() -> None:

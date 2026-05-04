@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest"
+import fs from "node:fs"
+
+import { describe, expect, it, vi } from "vitest"
 
 import litestarNuxtModule from "../../src/nuxt"
 
@@ -10,6 +12,48 @@ describe("litestar-nuxt integration", () => {
         nuxt: ">=4.0.0",
       },
     })
+  })
+
+  it("sets vite.server.hmr.clientPort to the Litestar port from bridge", async () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(true)
+    vi.spyOn(fs, "readFileSync").mockReturnValue(
+      JSON.stringify({
+        assetUrl: "/static",
+        deployAssetUrl: null,
+        appUrl: "http://127.0.0.1:8000",
+        litestarPort: 8000,
+        bundleDir: "public",
+        resourceDir: "resources",
+        staticDir: "public",
+        hotFile: "hot",
+        manifest: "manifest.json",
+        mode: "framework",
+        proxyMode: "vite",
+        host: "localhost",
+        port: 5173,
+        ssrOutDir: null,
+        types: null,
+        executor: "node",
+        logging: null,
+        litestarVersion: "2.18.0",
+      }),
+    )
+    process.env.LITESTAR_VITE_CONFIG_PATH = "/tmp/.litestar.json"
+
+    try {
+      const nuxt = { options: { vite: {}, runtimeConfig: {}, nitro: {} } }
+      litestarNuxtModule({ apiProxy: "http://127.0.0.1:8000" }, nuxt as any)
+
+      const vitePlugins = (nuxt.options.vite as any).plugins as any[]
+      const proxyPlugin = vitePlugins.find((p) => p.name === "litestar-nuxt-proxy")
+      const cfg = await proxyPlugin.config()
+      expect(cfg.server.hmr.clientPort).toBe(8000)
+      expect(cfg.server.hmr.path).toBe("/static/vite-hmr")
+      expect(cfg.server.hmr.protocol).toBe("ws")
+    } finally {
+      vi.restoreAllMocks()
+      delete process.env.LITESTAR_VITE_CONFIG_PATH
+    }
   })
 
   it("merges module options into vite, runtime config, and nitro devProxy", () => {

@@ -367,7 +367,7 @@ class ViteDoctor:
         if not self.parsed_config:
             return
 
-        if self.config.proxy_mode not in {"vite", "proxy"}:
+        if self.config.proxy_mode is None:
             return
 
         js_origin = self.parsed_config.server_origin
@@ -382,10 +382,7 @@ class ViteDoctor:
                     f"vite.config sets server.origin='{js_origin}' while proxy_mode='{self.config.proxy_mode}'. "
                     "This can bypass Litestar proxy middleware for CSS/imported assets."
                 ),
-                fix_hint=(
-                    "Remove server.origin in proxy mode so assets stay same-origin via Litestar, "
-                    "or switch to runtime.proxy_mode='direct' if two-port direct access is intentional"
-                ),
+                fix_hint="Remove server.origin in proxy mode so assets stay same-origin via Litestar.",
                 auto_fixable=False,
             )
         )
@@ -697,10 +694,12 @@ class ViteDoctor:
 
     def _check_inertia_mode(self) -> None:
         """Warn when vite.config inertiaMode conflicts with Python mode."""
+        from litestar_vite.config import InertiaConfig
+
         if not self.parsed_config or self.parsed_config.inertia_mode is None:
             return
 
-        py_inertia = self.config.mode == "inertia"
+        py_inertia = isinstance(self.config.inertia, InertiaConfig)
         js_inertia = self.parsed_config.inertia_mode
 
         if py_inertia != js_inertia:
@@ -709,10 +708,10 @@ class ViteDoctor:
                     check="Inertia Mode Mismatch",
                     severity="warning",
                     message=(
-                        f"Python mode={self.config.mode!r} implies inertiaMode={py_inertia}, "
+                        f"Python inertia config implies inertiaMode={py_inertia}, "
                         f"but vite.config sets inertiaMode={js_inertia}"
                     ),
-                    fix_hint="Remove inertiaMode from vite.config to auto-detect, or set it to match your Python mode",
+                    fix_hint="Remove inertiaMode from vite.config to auto-detect, or set it to match your Python inertia config",
                     auto_fixable=False,
                 )
             )
@@ -1057,13 +1056,16 @@ class ViteDoctor:
         from litestar_vite.config import InertiaConfig
 
         inertia_enabled = isinstance(self.config.inertia, InertiaConfig)
-        if inertia_enabled and self.config.mode in {"template", "htmx", "external"}:
+        if inertia_enabled and not self.config.inertia_compatible:
             self.issues.append(
                 DoctorIssue(
                     check="Mode/Inertia Conflict",
                     severity="error",
-                    message=f"Inertia is enabled but mode={self.config.mode!r} is incompatible with Inertia",
-                    fix_hint="Switch to mode='spa' or mode='hybrid', or disable inertia",
+                    message=(
+                        f"Inertia is enabled but mode={self.config.mode!r} is incompatible with Inertia "
+                        "(framework mode delegates HTML to an external dev server)"
+                    ),
+                    fix_hint="Switch to mode='spa', mode='hybrid', or mode='template', or disable inertia",
                     auto_fixable=False,
                 )
             )

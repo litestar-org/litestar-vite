@@ -12,7 +12,7 @@
 import fs from "node:fs"
 import path from "node:path"
 
-export type BridgeMode = "spa" | "template" | "htmx" | "hybrid" | "inertia" | "framework" | "ssr" | "ssg" | "external"
+export type BridgeMode = "spa" | "template" | "hybrid" | "framework" | "external"
 export type BridgeProxyMode = "vite" | "direct" | "proxy" | null
 export type BridgeExecutor = "node" | "bun" | "deno" | "yarn" | "pnpm"
 
@@ -40,6 +40,14 @@ export interface BridgeSpaConfig {
 export interface BridgeSchema {
   assetUrl: string
   deployAssetUrl: string | null
+  appUrl: string | null
+  /**
+   * Litestar dev server port. Used by framework integrations to set
+   * `vite.server.hmr.clientPort`, ensuring the browser connects to Litestar
+   * (not the framework dev server) for HMR — preserving the single-port
+   * contract.
+   */
+  litestarPort: number | null
   bundleDir: string
   resourceDir: string
   staticDir: string
@@ -79,6 +87,8 @@ export interface BridgeSchema {
 const allowedTopLevelKeys: ReadonlySet<string> = new Set([
   "assetUrl",
   "deployAssetUrl",
+  "appUrl",
+  "litestarPort",
   "bundleDir",
   "resourceDir",
   "staticDir",
@@ -97,7 +107,7 @@ const allowedTopLevelKeys: ReadonlySet<string> = new Set([
   "staticProps",
 ])
 
-const allowedModes: ReadonlySet<string> = new Set(["spa", "template", "htmx", "hybrid", "inertia", "framework", "ssr", "ssg", "external"])
+const allowedModes: ReadonlySet<string> = new Set(["spa", "template", "hybrid", "framework", "external"])
 const allowedProxyModes: ReadonlySet<string> = new Set(["vite", "direct", "proxy"])
 const allowedExecutors: ReadonlySet<string> = new Set(["node", "bun", "deno", "yarn", "pnpm"])
 const allowedLogLevels: ReadonlySet<string> = new Set(["quiet", "normal", "verbose"])
@@ -142,6 +152,24 @@ function assertNullableString(obj: Record<string, unknown>, key: string): string
   if (value === null) return null
   if (typeof value !== "string") {
     fail(`"${key}" must be a string or null`)
+  }
+  return value
+}
+
+function assertOptionalNullableString(obj: Record<string, unknown>, key: string): string | null {
+  const value = obj[key]
+  if (value === undefined || value === null) return null
+  if (typeof value !== "string") {
+    fail(`"${key}" must be a string or null`)
+  }
+  return value
+}
+
+function assertOptionalNullableInteger(obj: Record<string, unknown>, key: string): number | null {
+  const value = obj[key]
+  if (value === undefined || value === null) return null
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    fail(`"${key}" must be a positive integer or null`)
   }
   return value
 }
@@ -249,6 +277,8 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
 
   const assetUrl = assertString(obj, "assetUrl")
   const deployAssetUrl = assertNullableString(obj, "deployAssetUrl")
+  const appUrl = assertOptionalNullableString(obj, "appUrl")
+  const litestarPort = assertOptionalNullableInteger(obj, "litestarPort")
   const bundleDir = assertString(obj, "bundleDir")
   const resourceDir = assertString(obj, "resourceDir")
   const staticDir = assertString(obj, "staticDir")
@@ -272,6 +302,8 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
   return {
     assetUrl,
     deployAssetUrl,
+    appUrl,
+    litestarPort,
     bundleDir,
     resourceDir,
     staticDir,
