@@ -21,6 +21,7 @@ from litestar_vite.cli import (
     _parse_storage_options,
     _print_recommended_config,
     _prompt_for_options,
+    _resolve_js_cli,
     _run_extra_commands,
     _run_vite_build,
     _select_framework_template,
@@ -529,6 +530,92 @@ def test_cli_get_package_executor_cmd_variants() -> None:
     assert _get_package_executor_cmd(None, "tool") == ["npx", "tool"]
 
 
+def _make_local_bin(root_dir: Path, name: str) -> Path:
+    local_bin = root_dir / "node_modules" / ".bin" / name
+    local_bin.parent.mkdir(parents=True, exist_ok=True)
+    local_bin.write_text("#!/usr/bin/env node\n")
+    return local_bin
+
+
+def test_cli_resolve_js_cli_no_local_bin_falls_back_to_executor(tmp_path: Path) -> None:
+    assert _resolve_js_cli(tmp_path, "bun", "litestar-vite-typegen") == ["bunx", "litestar-vite-typegen"]
+    assert _resolve_js_cli(tmp_path, "deno", "litestar-vite-typegen") == [
+        "deno",
+        "run",
+        "-A",
+        "npm:litestar-vite-typegen",
+    ]
+    assert _resolve_js_cli(tmp_path, "pnpm", "litestar-vite-typegen") == ["pnpm", "dlx", "litestar-vite-typegen"]
+    assert _resolve_js_cli(tmp_path, None, "litestar-vite-typegen") == ["npx", "litestar-vite-typegen"]
+
+
+def test_cli_resolve_js_cli_bun_wraps_local_bin(tmp_path: Path) -> None:
+    """Regression test: bun executor must invoke local node-shebanged binary via `bun run`.
+
+    Without this wrap, the kernel reads `#!/usr/bin/env node` from the script
+    and fails with `/usr/bin/env: 'node': No such file or directory` on hosts
+    that ship only bun (e.g., slim CI images).
+    """
+    local_bin = _make_local_bin(tmp_path, "litestar-vite-typegen")
+
+    assert _resolve_js_cli(tmp_path, "bun", "litestar-vite-typegen") == ["bun", "run", str(local_bin)]
+
+
+def test_cli_resolve_js_cli_deno_wraps_local_bin(tmp_path: Path) -> None:
+    local_bin = _make_local_bin(tmp_path, "litestar-vite-typegen")
+
+    assert _resolve_js_cli(tmp_path, "deno", "litestar-vite-typegen") == ["deno", "run", "-A", str(local_bin)]
+
+
+def test_cli_resolve_js_cli_node_executors_use_bare_local_bin(tmp_path: Path) -> None:
+    """node/npm/yarn/pnpm imply node-on-PATH, so the shebang governs (no wrap)."""
+    local_bin = _make_local_bin(tmp_path, "tool")
+
+    for executor in ("node", "yarn", "pnpm", None):
+        assert _resolve_js_cli(tmp_path, executor, "tool") == [str(local_bin)]
+
+
+def test_cli_resolve_js_cli_bun_ignores_posix_shell_shim(tmp_path: Path) -> None:
+    """Bun should not be asked to run a shell shim as JavaScript."""
+    local_bin = tmp_path / "node_modules" / ".bin" / "tool"
+    local_bin.parent.mkdir(parents=True, exist_ok=True)
+    local_bin.write_text('#!/bin/sh\nexec node ../tool/bin.js "$@"\n')
+
+    assert _resolve_js_cli(tmp_path, "bun", "tool") == ["bunx", "tool"]
+
+
+def test_cli_resolve_js_cli_bun_ignores_windows_cmd_shim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Windows .cmd shims still route through node, so Bun should use bunx instead."""
+    monkeypatch.setattr("litestar_vite.cli.os.name", "nt")
+    local_bin = tmp_path / "node_modules" / ".bin" / "tool.cmd"
+    local_bin.parent.mkdir(parents=True, exist_ok=True)
+    local_bin.write_text("@ECHO off\r\nnode ..\\tool\\bin.js %*\r\n")
+
+    assert _resolve_js_cli(tmp_path, "bun", "tool") == ["bunx", "tool"]
+
+
+def test_cli_resolve_js_cli_deno_ignores_windows_cmd_shim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Deno cannot execute a Windows .cmd shim as a JavaScript module."""
+    monkeypatch.setattr("litestar_vite.cli.os.name", "nt")
+    local_bin = tmp_path / "node_modules" / ".bin" / "tool.cmd"
+    local_bin.parent.mkdir(parents=True, exist_ok=True)
+    local_bin.write_text("@ECHO off\r\nnode ..\\tool\\bin.js %*\r\n")
+
+    assert _resolve_js_cli(tmp_path, "deno", "tool") == ["deno", "run", "-A", "npm:tool"]
+
+
+def test_cli_resolve_js_cli_node_executors_keep_windows_cmd_shim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Windows shim remains correct for Node-backed executors."""
+    monkeypatch.setattr("litestar_vite.cli.os.name", "nt")
+    local_bin = tmp_path / "node_modules" / ".bin" / "tool.cmd"
+    local_bin.parent.mkdir(parents=True, exist_ok=True)
+    local_bin.write_text("@ECHO off\r\nnode ..\\tool\\bin.js %*\r\n")
+
+    assert _resolve_js_cli(tmp_path, "pnpm", "tool") == [str(local_bin)]
+
+
 def test_cli_invoke_typegen_cli_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = ViteConfig(paths=PathConfig(root=tmp_path))
     monkeypatch.setattr("litestar_vite.cli.subprocess.run", Mock(return_value=Mock(returncode=1)))
@@ -563,6 +650,47 @@ def test_cli_invoke_typegen_cli_prefers_local_bin_for_pnpm(tmp_path: Path, monke
     assert run.call_args.args[0] == [str(local_bin), "--verbose"]
     assert run.call_args.kwargs["cwd"] == tmp_path
     assert run.call_args.kwargs["check"] is False
+
+
+def test_cli_invoke_typegen_cli_wraps_local_bin_with_bun_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression for bun-only environments: local bin must be invoked via `bun run`.
+
+    See https://github.com/litestar-org/litestar-vite/issues/...
+    Previously, the CLI returned the bare path of node_modules/.bin/litestar-vite-typegen
+    and let the OS resolve `#!/usr/bin/env node` — which fails on hosts without node.
+    """
+    config = ViteConfig(paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(executor="bun"))
+
+    local_bin = tmp_path / "node_modules" / ".bin" / "litestar-vite-typegen"
+    local_bin.parent.mkdir(parents=True, exist_ok=True)
+    local_bin.write_text("#!/usr/bin/env node\n")
+
+    run = Mock(return_value=Mock(returncode=0))
+    monkeypatch.setattr("litestar_vite.cli.subprocess.run", run)
+
+    _invoke_typegen_cli(config, verbose=False)
+
+    assert run.call_args.args[0] == ["bun", "run", str(local_bin)]
+    assert run.call_args.kwargs["cwd"] == tmp_path
+
+
+def test_cli_invoke_typegen_cli_wraps_local_bin_with_deno_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = ViteConfig(paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(executor="deno"))
+
+    local_bin = tmp_path / "node_modules" / ".bin" / "litestar-vite-typegen"
+    local_bin.parent.mkdir(parents=True, exist_ok=True)
+    local_bin.write_text("#!/usr/bin/env node\n")
+
+    run = Mock(return_value=Mock(returncode=0))
+    monkeypatch.setattr("litestar_vite.cli.subprocess.run", run)
+
+    _invoke_typegen_cli(config, verbose=True)
+
+    assert run.call_args.args[0] == ["deno", "run", "-A", str(local_bin), "--verbose"]
 
 
 def test_cli_run_extra_commands_executes_all(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -607,6 +735,27 @@ def test_cli_run_extra_commands_respects_executor(tmp_path: Path, monkeypatch: p
     _run_extra_commands(config, verbose=False)
 
     assert run.call_args.args[0] == ["pnpm", "dlx", "tsr", "generate"]
+
+
+def test_cli_run_extra_commands_wraps_local_bin_with_bun_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: extra_commands must also honor bun executor for local bins."""
+    config = ViteConfig(
+        paths=PathConfig(root=tmp_path),
+        runtime=RuntimeConfig(executor="bun"),
+        types=TypeGenConfig(extra_commands=[["tsr", "generate"]]),
+    )
+    local_bin = tmp_path / "node_modules" / ".bin" / "tsr"
+    local_bin.parent.mkdir(parents=True, exist_ok=True)
+    local_bin.write_text("#!/usr/bin/env node\n")
+
+    run = Mock(return_value=Mock(returncode=0))
+    monkeypatch.setattr("litestar_vite.cli.subprocess.run", run)
+
+    _run_extra_commands(config, verbose=False)
+
+    assert run.call_args.args[0] == ["bun", "run", str(local_bin), "generate"]
 
 
 def test_cli_run_extra_commands_noop_when_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

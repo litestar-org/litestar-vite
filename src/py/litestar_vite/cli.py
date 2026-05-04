@@ -973,6 +973,74 @@ def _get_local_binary_cmd(root_dir: Path, binary: str) -> "list[str] | None":
     return None
 
 
+def _is_direct_js_cli(candidate: Path) -> bool:
+    """Return True when ``candidate`` can be executed directly by a JS runtime."""
+    try:
+        resolved = candidate.resolve()
+    except OSError:
+        resolved = candidate
+
+    if resolved.suffix.lower() in {".js", ".mjs", ".cjs"}:
+        return True
+
+    try:
+        with candidate.open(encoding="utf-8", errors="ignore") as fp:
+            first_line = fp.readline()
+    except (OSError, UnicodeDecodeError):
+        return False
+
+    return first_line.startswith("#!") and any(runtime in first_line for runtime in ("node", "bun", "deno"))
+
+
+def _get_local_js_cli_cmd(root_dir: Path, binary: str) -> "list[str] | None":
+    """Resolve a local binary only when it points at a direct JS CLI file."""
+    bin_dir = root_dir / "node_modules" / ".bin"
+    for candidate in (bin_dir / binary, bin_dir / f"{binary}.js", bin_dir / f"{binary}.mjs", bin_dir / f"{binary}.cjs"):
+        if candidate.exists() and _is_direct_js_cli(candidate):
+            return [str(candidate)]
+    return None
+
+
+def _resolve_js_cli(root_dir: Path, executor: "str | None", binary: str) -> "list[str]":
+    """Resolve a JS CLI command, honoring the configured executor.
+
+    Prefers a locally installed ``node_modules/.bin/<binary>``. When the
+    resolved binary is a direct JS CLI and the executor is ``bun`` or
+    ``deno``, the runtime is prepended explicitly so the shebang does not
+    leak a hard ``node`` dependency into bun- or deno-only environments
+    (e.g., slim CI images that ship only ``bun``).
+
+    Windows ``.cmd``/``.exe`` shims and POSIX shell shims are intentionally
+    not passed into Bun/Deno; those fall back to the runtime's package runner.
+    For ``npm``/``yarn``/``pnpm``/``node`` the bare path is returned and
+    the shebang governs, matching prior behavior.
+
+    Falls back to ``_get_package_executor_cmd`` (``npx`` / ``bunx`` /
+    ``deno run`` / ``yarn dlx`` / ``pnpm dlx``) when the local binary
+    is missing.
+
+    Returns:
+        A command list suitable for subprocess.run.
+    """
+    local = _get_local_binary_cmd(root_dir, binary)
+    if local is None:
+        return _get_package_executor_cmd(executor, binary)
+
+    match executor:
+        case "bun":
+            js_local = _get_local_js_cli_cmd(root_dir, binary)
+            return ["bun", "run", *js_local] if js_local is not None else _get_package_executor_cmd(executor, binary)
+        case "deno":
+            js_local = _get_local_js_cli_cmd(root_dir, binary)
+            return (
+                ["deno", "run", "-A", *js_local]
+                if js_local is not None
+                else _get_package_executor_cmd(executor, binary)
+            )
+        case _:
+            return local
+
+
 def _run_extra_commands(config: Any, verbose: bool) -> bool:
     """Run additional code-generation commands configured in TypeGenConfig.
 
@@ -1010,7 +1078,7 @@ def _run_extra_commands(config: Any, verbose: bool) -> bool:
 
         # Resolve the binary through the project's JS executor,
         # same pattern as _invoke_typegen_cli.
-        resolved = _get_local_binary_cmd(root_dir, binary) or _get_package_executor_cmd(executor, binary)
+        resolved = _resolve_js_cli(root_dir, executor, binary)
         full_cmd = [*resolved, *args]
         display = " ".join(full_cmd)
 
@@ -1050,9 +1118,7 @@ def _invoke_typegen_cli(config: Any, verbose: bool) -> None:
     executor = config.runtime.executor
 
     # Build the command to run the unified TypeScript CLI
-    pkg_cmd = _get_local_binary_cmd(root_dir, "litestar-vite-typegen") or _get_package_executor_cmd(
-        executor, "litestar-vite-typegen"
-    )
+    pkg_cmd = _resolve_js_cli(root_dir, executor, "litestar-vite-typegen")
     cmd = [*pkg_cmd]
 
     if verbose:
