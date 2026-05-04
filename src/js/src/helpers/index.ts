@@ -44,13 +44,4 @@ export { csrfFetch, csrfHeaders, getCsrfToken } from "./csrf.js"
 // HTMX utilities
 export { addDirective, registerHtmxExtension, setDebug as setHtmxDebug, swapJson } from "./htmx.js"
 // Route matching utilities
-export {
-  createRouteHelpers,
-  currentRoute,
-  isCurrentRoute,
-  isRoute,
-  type RouteDefinition,
-  type RouteDefinitions,
-  type RouteHelpers,
-  toRoute,
-} from "./routes.js"
+export { createRouteHelpers, currentRoute, isCurrentRoute, isRoute, type RouteDefinition, type RouteDefinitions, type RouteHelpers, toRoute } from "./routes.js"

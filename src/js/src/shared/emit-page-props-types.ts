@@ -121,7 +121,7 @@ export interface FlashMessages {}
   const generatedSharedProps = Object.keys(json.sharedProps ?? {}).length > 0 ? json.sharedProps : defaultGeneratedSharedProps
 
   const generatedSharedPropLines = Object.entries(generatedSharedProps)
-    .sort(([a], [b]) => a.localeCompare(b))
+    .toSorted(([a], [b]) => a.localeCompare(b))
     .map(([key, def]) => {
       const optional = def.optional ? "?" : ""
       const safeKey = /^[$A-Z_][0-9A-Z_$]*$/i.test(key) ? key : JSON.stringify(key)
@@ -202,8 +202,8 @@ export interface FlashMessages {}
     }
   }
 
-  const apiImports = [...allCustomTypes].filter((t) => availableApiTypes.has(t)).sort()
-  const remainingTypes = [...allCustomTypes].filter((t) => !availableApiTypes.has(t)).sort()
+  const apiImports = [...allCustomTypes].filter((t) => availableApiTypes.has(t)).toSorted()
+  const remainingTypes = [...allCustomTypes].filter((t) => !availableApiTypes.has(t)).toSorted()
 
   const importsByPath = new Map<string, string[]>()
   const unresolvedTypes: string[] = []
@@ -233,9 +233,9 @@ export interface FlashMessages {}
   if (apiImports.length > 0) {
     importStatement += `import type { ${apiImports.join(", ")} } from "./api/types.gen"\n`
   }
-  const sortedImportPaths = [...importsByPath.keys()].sort()
+  const sortedImportPaths = [...importsByPath.keys()].toSorted()
   for (const p of sortedImportPaths) {
-    const names = (importsByPath.get(p) ?? []).sort()
+    const names = (importsByPath.get(p) ?? []).toSorted()
     if (names.length > 0) {
       importStatement += `import type { ${names.join(", ")} } from "${p}"\n`
     }

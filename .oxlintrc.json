@@ -1,0 +1,60 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "import", "unicorn", "jsx-a11y", "react", "vue", "vitest", "node", "promise"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-extraneous-class": "off",
+    "unicorn/no-array-for-each": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "import/no-unassigned-import": "off",
+    "no-underscore-dangle": "off",
+    "react/react-in-jsx-scope": "off",
+    "vitest/require-mock-type-parameters": "off",
+    "vitest/no-conditional-expect": "off",
+    "vitest/hoisted-apis-on-top": "off",
+    "jest/no-conditional-expect": "off",
+    "promise/always-return": "off",
+    "default-param-last": "error",
+    "@typescript-eslint/no-inferrable-types": "error",
+    "@typescript-eslint/prefer-enum-initializers": "error",
+    "no-param-reassign": "error",
+    "no-else-return": "error",
+    "react/self-closing-comp": "error"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.svelte", "**/*.astro", "**/*.vue"],
+      "rules": {
+        "@typescript-eslint/no-unused-vars": "off",
+        "no-unused-vars": "off"
+      }
+    },
+    {
+      "files": ["**/helpers/htmx.ts"],
+      "rules": {
+        "@typescript-eslint/no-confusing-void-expression": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "node_modules/",
+    "dist/",
+    "out/",
+    ".next/",
+    ".nuxt/",
+    ".output/",
+    ".svelte-kit/",
+    ".angular/",
+    "public/",
+    "**/bootstrap/ssr/**",
+    "src/py/",
+    "CHANGELOG.md",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    ".venv/"
+  ]
+}

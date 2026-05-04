@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { emitStaticPropsTypes } from "../../src/shared/emit-static-props-types"

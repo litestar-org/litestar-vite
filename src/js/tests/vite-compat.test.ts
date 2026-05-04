@@ -1,5 +1,6 @@
 import { version } from "vite"
 import { describe, expect, it } from "vitest"
+
 import { buildBundlerOptions, buildInputOptions, isVite8Plus, resolveUserBuildInput, viteMajor } from "../src/shared/vite-compat"
 
 describe("vite-compat", () => {

@@ -8,13 +8,20 @@ repos:
         stages: [commit-msg]
   - repo: local
     hooks:
-      - id: local-biome-check
-        name: biome check
-        entry: npm exec biome -- check --write --unsafe --files-ignore-unknown=true --no-errors-on-unmatched --vcs-enabled=false
+      - id: local-oxfmt
+        name: oxfmt format
+        entry: npm exec oxfmt -- --write
         language: system
         types: [text]
-        files: "\\.(jsx?|tsx?|c(js|ts)|m(js|ts)|d\\.(ts|cts|mts)|jsonc?|css|svelte|vue|astro|graphql|gql)$"
+        files: "\\.(jsx?|tsx?|c(js|ts)|m(js|ts)|d\\.(ts|cts|mts))$"
         exclude: templates|migrations|scripts|docs|dist|.venv|public|node_modules|package-lock.json
+      - id: local-oxlint
+        name: oxlint check
+        entry: npm exec oxlint --
+        language: system
+        types: [text]
+        files: "\\.(jsx?|tsx?|c(js|ts)|m(js|ts)|d\\.(ts|cts|mts))$"
+        exclude: templates|migrations|scripts|docs|dist|.venv|public|node_modules
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

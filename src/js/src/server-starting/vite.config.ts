@@ -7,9 +7,11 @@
  * Uses vite-plugin-singlefile to inline all assets into a single HTML file.
  */
 import path from "node:path"
+
 import tailwindcss from "@tailwindcss/vite"
 import { defineConfig } from "vite"
 import { viteSingleFile } from "vite-plugin-singlefile"
+
 import { buildBundlerOptions } from "../shared/vite-compat.js"
 
 export default defineConfig({

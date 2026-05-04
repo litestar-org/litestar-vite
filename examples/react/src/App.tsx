@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom"
+
 import { route, routeDefinitions } from "@/generated/routes"
 
 type Book = {

@@ -8,6 +8,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+
 import { describe, expect, it } from "vitest"
 
 // Import the interface type for our test data
@@ -155,7 +156,7 @@ export interface FlashMessages {}
   const generatedSharedProps = Object.keys(json.sharedProps ?? {}).length > 0 ? json.sharedProps : defaultGeneratedSharedProps
 
   const generatedSharedPropLines = Object.entries(generatedSharedProps)
-    .sort(([a], [b]) => a.localeCompare(b))
+    .toSorted(([a], [b]) => a.localeCompare(b))
     .map(([key, def]) => {
       const optional = def.optional ? "?" : ""
       const safeKey = /^[$A-Z_][0-9A-Z_$]*$/i.test(key) ? key : JSON.stringify(key)
