@@ -505,9 +505,8 @@ class ViteAssetLoader:
         # Bridge-config preference (litestar-vite-c1t): when ``.litestar.json``
         # exists and carries a non-null ``appUrl``, anchor asset URLs at that
         # value. This is the authoritative single-port-via-ASGI bridge URL and
-        # supersedes the hotfile contents (which in proxyMode='vite' are also
-        # the bridge URL post-JS-C4, so this is consistent — but it removes the
-        # ambiguity for any consumer that races the hotfile write).
+        # supersedes the hotfile contents, which are reserved for the actual
+        # upstream dev-server URL used by proxy/HMR consumers.
         bridge = read_bridge_config()
         app_url = bridge.get("appUrl") if bridge is not None else None
         if isinstance(app_url, str) and app_url:

@@ -145,9 +145,7 @@ def test_extract_proxy_response_filters_headers() -> None:
     assert body == b"ok"
 
 
-def test_build_hmr_target_url_includes_query(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_build_hmr_target_url_includes_query(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Hotfile-only fallback: bridge cleared so legacy hotfile semantics apply."""
     from litestar_vite.utils import read_bridge_config
 
@@ -806,29 +804,27 @@ def _write_bridge_for_hmr(tmp_path: Path, payload: object) -> Path:
     return bridge
 
 
-def test_build_hmr_target_url_prefers_bridge_host_port(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Bridge ``host:port`` beats hotfile contents for the HMR WS target.
+def test_build_hmr_target_url_preserves_resolved_hotfile_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Vite HMR handler preserves the resolved hotfile target.
 
-    In ``proxyMode='vite'`` the hotfile points at the bridge URL (post-JS-C4),
-    so HMR would otherwise upgrade against Litestar itself. The bridge config
-    carries the real Vite host:port; prefer it for the WS target base.
+    The resolved hotfile URL already carries HTTPS, IPv6 brackets, wildcard
+    normalization, and any HMR clientPort override. Rebuilding from bridge
+    ``host``+``port`` loses those details.
     """
     from litestar_vite.utils import read_bridge_config
 
     read_bridge_config.cache_clear()
     hotfile = tmp_path / "hot"
-    hotfile.write_text("http://litestar-bridge:8000")
+    hotfile.write_text("https://[::1]:32001")
     bridge = _write_bridge_for_hmr(
-        tmp_path, {"appUrl": "http://litestar-bridge:8000", "host": "127.0.0.1", "port": 5173}
+        tmp_path, {"appUrl": "https://litestar-bridge:8443", "host": "::", "port": 5173, "proxyMode": "vite"}
     )
     monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(bridge))
     scope = {"path": "/vite-hmr", "query_string": b"token=1"}
 
     target = build_hmr_target_url(hotfile, scope, "/vite-hmr", "/static/")
 
-    assert target == "ws://127.0.0.1:5173/vite-hmr?token=1"
+    assert target == "wss://[::1]:32001/vite-hmr?token=1"
     read_bridge_config.cache_clear()
 
 
@@ -849,9 +845,7 @@ def test_build_hmr_target_url_falls_back_to_hotfile_when_bridge_missing(
     read_bridge_config.cache_clear()
 
 
-def test_create_hmr_target_getter_sibling_overrides_bridge(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_create_hmr_target_getter_sibling_overrides_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """``<hotfile>.hmr`` sibling continues to win for the HMR clientPort override.
 
     The sibling carries Vite's HMR-specific target (often a different port than
@@ -864,12 +858,30 @@ def test_create_hmr_target_getter_sibling_overrides_bridge(
     hotfile = tmp_path / "hot"
     hotfile.write_text("http://localhost:5173")
     (tmp_path / "hot.hmr").write_text("http://127.0.0.1:24678")
-    bridge = _write_bridge_for_hmr(
-        tmp_path, {"appUrl": "http://bridge", "host": "127.0.0.1", "port": 5173}
-    )
+    bridge = _write_bridge_for_hmr(tmp_path, {"appUrl": "http://bridge", "host": "127.0.0.1", "port": 5173})
     monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(bridge))
 
     getter = create_hmr_target_getter(hotfile, [None])
 
     assert getter() == "http://127.0.0.1:24678"
+    read_bridge_config.cache_clear()
+
+
+def test_create_hmr_target_getter_uses_hotfile_when_sibling_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Framework HMR fallback must keep the hotfile target outside Vite proxy mode."""
+    from litestar_vite.utils import read_bridge_config
+
+    read_bridge_config.cache_clear()
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("https://framework-dev-server:4321")
+    bridge = _write_bridge_for_hmr(
+        tmp_path, {"appUrl": "http://litestar-bridge:8000", "host": "127.0.0.1", "port": 5173, "proxyMode": "proxy"}
+    )
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(bridge))
+
+    getter = create_hmr_target_getter(hotfile, [None])
+
+    assert getter() == "https://framework-dev-server:4321"
     read_bridge_config.cache_clear()

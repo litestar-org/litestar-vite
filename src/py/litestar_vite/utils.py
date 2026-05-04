@@ -5,7 +5,10 @@ from __future__ import annotations
 import os
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+from litestar.exceptions import SerializationException
+from litestar.serialization import decode_json
 
 
 def get_package_path(*parts: str) -> Path:
@@ -119,21 +122,18 @@ def read_bridge_config(path: Path | None = None) -> dict[str, Any] | None:
         _BRIDGE_CACHE.pop(key, None)
         return None
 
-    # Defer the msgspec import: ``utils`` is imported during plugin init and we
-    # do not want a hard requirement on a heavy dependency for unrelated callers.
-    import msgspec
-
     try:
-        parsed = msgspec.json.decode(raw)
-    except msgspec.DecodeError:
+        parsed = decode_json(raw)
+    except SerializationException:
         _BRIDGE_CACHE.pop(key, None)
         return None
     if not isinstance(parsed, dict):
         _BRIDGE_CACHE.pop(key, None)
         return None
 
-    _BRIDGE_CACHE[key] = (mtime_ns, parsed)
-    return parsed
+    bridge_config = cast("dict[str, Any]", parsed)
+    _BRIDGE_CACHE[key] = (mtime_ns, bridge_config)
+    return bridge_config
 
 
 def _cache_clear() -> None:

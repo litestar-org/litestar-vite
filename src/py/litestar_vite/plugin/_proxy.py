@@ -15,7 +15,7 @@ from litestar.exceptions import WebSocketDisconnect
 from litestar.middleware import AbstractMiddleware
 
 from litestar_vite.plugin._utils import console, is_litestar_route, is_proxy_debug, normalize_prefix
-from litestar_vite.utils import read_bridge_config, read_hotfile_url
+from litestar_vite.utils import read_hotfile_url
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -288,18 +288,14 @@ class ViteProxyMiddleware(AbstractMiddleware):
     def _get_target_base_url(self) -> str | None:
         """Resolve the upstream Vite server URL with permanent caching.
 
-        The hotfile remains the readiness signal — its absence means "Vite is
-        not running, fall through to static". When the hotfile IS present, the
-        bridge config (``.litestar.json``) takes precedence for the target
-        host:port: in ``proxyMode='vite'`` the JS plugin writes the *bridge*
-        URL into the hotfile (post-JS-C4) so the hotfile contents would self-
-        loop the proxy back to Litestar — bridge ``host``+``port`` carry the
-        real Vite endpoint (litestar-vite-c1t).
+        The hotfile is both the readiness signal and the upstream target. Its
+        absence means "Vite is not running, fall through to static". When the
+        hotfile is present, its contents are already the resolved dev-server URL
+        from the frontend side, including scheme, normalized host, and port.
 
         Resolution order:
-            1. Hotfile presence → readiness check; missing → None.
-            2. Bridge config ``host``+``port`` → preferred target.
-            3. Hotfile contents → back-compat fallback.
+            1. Hotfile contents → upstream target.
+            2. Missing hotfile → None.
 
         The result is cached for the lifetime of the middleware instance;
         server restart re-runs the resolution.
@@ -316,21 +312,6 @@ class ViteProxyMiddleware(AbstractMiddleware):
             self._cached_target = None
             self._cache_initialized = True
             return None
-
-        bridge = read_bridge_config()
-        if bridge is not None:
-            host = bridge.get("host")
-            port = bridge.get("port")
-            # Defensive type checks gate the bridge branch — anything else
-            # (missing keys, wrong types, e.g., a stringly-typed port from a
-            # hand-edited config) falls through to hotfile contents.
-            if isinstance(host, str) and host and isinstance(port, int):
-                target = f"http://{host}:{port}"
-                self._cached_target = target
-                self._cache_initialized = True
-                if is_proxy_debug():
-                    console.print(f"[dim][vite-proxy] Target (bridge): {target}[/]")
-                return target.rstrip("/")
 
         self._cached_target = hotfile_url
         self._cache_initialized = True
@@ -438,13 +419,9 @@ def build_hmr_target_url(hotfile_path: Path, scope: dict[str, Any], hmr_path: st
     Vite's HMR WebSocket listens at {base}{hmr.path}, so we preserve
     the full path including the asset prefix (e.g., /static/vite-hmr).
 
-    Resolution order (litestar-vite-c1t):
-        1. Hotfile presence → readiness check; missing → None.
-        2. Bridge config ``host``+``port`` from ``.litestar.json`` — the real
-           Vite host:port. In ``proxyMode='vite'`` the hotfile carries the
-           bridge URL (post-JS-C4) and would otherwise upgrade the WS against
-           Litestar itself.
-        3. Hotfile contents → back-compat fallback.
+    Resolution order:
+        1. Hotfile contents → upstream target.
+        2. Missing hotfile → None.
 
     Returns:
         The target WebSocket URL or None if no source is available.
@@ -454,15 +431,7 @@ def build_hmr_target_url(hotfile_path: Path, scope: dict[str, Any], hmr_path: st
     except FileNotFoundError:
         return None
 
-    vite_url = hotfile_url
-    bridge = read_bridge_config()
-    if bridge is not None:
-        host = bridge.get("host")
-        port = bridge.get("port")
-        if isinstance(host, str) and host and isinstance(port, int):
-            vite_url = f"http://{host}:{port}"
-
-    ws_url = vite_url.replace("http://", "ws://").replace("https://", "wss://")
+    ws_url = hotfile_url.replace("http://", "ws://").replace("https://", "wss://")
     original_path = scope.get("path", hmr_path)
     query_string = scope.get("query_string", b"").decode()
 
@@ -676,14 +645,12 @@ def create_hmr_target_getter(
 ) -> "Callable[[], str | None]":
     """Create a function that returns the HMR target URL with permanent caching.
 
-    Resolution order (litestar-vite-c1t):
+    Resolution order:
         1. ``<hotfile>.hmr`` sibling file — JS writes the HMR clientPort
            override here; this MUST win when present (different port than the
            dev server's HTTP port for many configurations).
-        2. Bridge config ``host``+``port`` from ``.litestar.json`` — fallback
-           when no sibling override is in play; in ``proxyMode='vite'`` the
-           plain hotfile points at the bridge URL, so we cannot trust it for
-           the HMR target.
+        2. Main hotfile contents — actual upstream target resolved by the
+           frontend side, preserving scheme and normalized host.
 
     The result is cached for the lifetime of the server; server restart
     refreshes the cache automatically.
@@ -709,18 +676,15 @@ def create_hmr_target_getter(
                 console.print(f"[dim][ssr-proxy] HMR target: {url}[/]")
             return url.rstrip("/")
         except FileNotFoundError:
-            # Sibling missing: fall back to bridge config (real Vite host:port).
-            bridge = read_bridge_config()
-            if bridge is not None:
-                host = bridge.get("host")
-                port = bridge.get("port")
-                if isinstance(host, str) and host and isinstance(port, int):
-                    url = f"http://{host}:{port}"
-                    cached_hmr_target[0] = url
-                    cache_initialized[0] = True
-                    if is_proxy_debug():
-                        console.print(f"[dim][ssr-proxy] HMR target (bridge): {url}[/]")
-                    return url.rstrip("/")
+            try:
+                url = read_hotfile_url(hotfile_path)
+                cached_hmr_target[0] = url
+                cache_initialized[0] = True
+                if is_proxy_debug():
+                    console.print(f"[dim][ssr-proxy] HMR target fallback: {url}[/]")
+                return url.rstrip("/")
+            except FileNotFoundError:
+                pass
             cached_hmr_target[0] = None
             cache_initialized[0] = True
             return None

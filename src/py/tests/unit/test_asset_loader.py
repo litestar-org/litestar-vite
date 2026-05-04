@@ -115,7 +115,7 @@ def test_generate_asset_tags_dev_mode_rereads_hotfile_when_initially_missing(tmp
     loader = ViteAssetLoader.initialize_loader(config)
     assert loader._vite_base_path is None
 
-    # Simulate the JS plugin writing the bridge URL after Vite has started.
+    # Simulate the JS plugin writing the resolved Vite URL after Vite has started.
     (bundle_dir / "hot").write_text("http://localhost:5006")
 
     tags = loader.generate_asset_tags("src/main.js")
@@ -252,29 +252,22 @@ def _write_bridge_config(tmp_path: Path, payload: object) -> Path:
     return bridge
 
 
-def test_vite_server_url_prefers_bridge_appurl_over_hotfile(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_vite_server_url_prefers_bridge_appurl_over_hotfile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Bridge appUrl beats the hotfile for the loader-side anchor URL.
 
-    This is the dual-consumer-conflict resolution test on the loader side: the
-    JS plugin's C4 fix writes the bridge URL into the hotfile in
-    proxyMode='vite', but here we assert that even when the hotfile carries the
-    real Vite origin, the bridge appUrl wins.
+    This is the dual-consumer-conflict resolution test on the loader side: even
+    when the hotfile carries the real Vite origin for proxy/HMR consumers, the
+    bridge appUrl wins for browser-facing asset emission.
     """
     read_bridge_config.cache_clear()
     bundle_dir = tmp_path / "public"
     bundle_dir.mkdir()
     (bundle_dir / "hot").write_text("http://127.0.0.1:9999")
-    bridge = _write_bridge_config(
-        tmp_path,
-        {"appUrl": "http://localhost:8000", "host": "127.0.0.1", "port": 9999},
-    )
+    bridge = _write_bridge_config(tmp_path, {"appUrl": "http://localhost:8000", "host": "127.0.0.1", "port": 9999})
     monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(bridge))
 
     config = ViteConfig(
-        paths=PathConfig(bundle_dir=bundle_dir, asset_url="/static/"),
-        runtime=RuntimeConfig(dev_mode=True),
+        paths=PathConfig(bundle_dir=bundle_dir, asset_url="/static/"), runtime=RuntimeConfig(dev_mode=True)
     )
     loader = ViteAssetLoader.initialize_loader(config)
 
@@ -295,8 +288,7 @@ def test_vite_server_url_falls_back_to_hotfile_when_bridge_missing(
     monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(tmp_path / "missing.json"))
 
     config = ViteConfig(
-        paths=PathConfig(bundle_dir=bundle_dir, asset_url="/static/"),
-        runtime=RuntimeConfig(dev_mode=True),
+        paths=PathConfig(bundle_dir=bundle_dir, asset_url="/static/"), runtime=RuntimeConfig(dev_mode=True)
     )
     loader = ViteAssetLoader.initialize_loader(config)
 
@@ -326,9 +318,7 @@ def test_vite_server_url_falls_back_to_host_port_when_neither_present(
     read_bridge_config.cache_clear()
 
 
-def test_vite_server_url_ignores_bridge_when_appurl_null(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_vite_server_url_ignores_bridge_when_appurl_null(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Real-world: backend env vars not set → bridge writer emits ``appUrl: null``."""
     read_bridge_config.cache_clear()
     bundle_dir = tmp_path / "public"
@@ -338,8 +328,7 @@ def test_vite_server_url_ignores_bridge_when_appurl_null(
     monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(bridge))
 
     config = ViteConfig(
-        paths=PathConfig(bundle_dir=bundle_dir, asset_url="/static/"),
-        runtime=RuntimeConfig(dev_mode=True),
+        paths=PathConfig(bundle_dir=bundle_dir, asset_url="/static/"), runtime=RuntimeConfig(dev_mode=True)
     )
     loader = ViteAssetLoader.initialize_loader(config)
 

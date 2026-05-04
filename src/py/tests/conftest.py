@@ -33,9 +33,7 @@ _VITE_ENV_VARS = [
 
 
 @pytest.fixture(autouse=True)
-def clean_vite_env(
-    tmp_path_factory: TempPathFactory, monkeypatch: pytest.MonkeyPatch
-) -> Generator[None, None, None]:
+def clean_vite_env(tmp_path_factory: TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
     """Clear Vite-related env vars and bridge cache before each test for isolation.
 
     Also points ``LITESTAR_VITE_CONFIG_PATH`` at a guaranteed-missing path so
