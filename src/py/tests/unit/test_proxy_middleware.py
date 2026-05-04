@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Any
 
@@ -5,6 +6,7 @@ import pytest
 from litestar.types import HTTPRequestEvent, Receive, Scope, Send
 
 from litestar_vite.plugin import ViteProxyMiddleware
+from litestar_vite.utils import read_bridge_config
 
 
 class _Recorder:
@@ -232,3 +234,139 @@ def test_should_proxy_rejects_path_traversal(hotfile: Path) -> None:
     # Normal paths with dots should still work
     assert middleware._should_proxy("/static/file.name.js", scope)
     assert middleware._should_proxy("/node_modules/.vite/deps/vue.js", scope)
+
+
+# ===== Bridge-config target precedence (litestar-vite-c1t) =====
+
+
+def _write_bridge(tmp_path: Path, payload: object) -> Path:
+    bridge = tmp_path / ".litestar.json"
+    bridge.write_text(json.dumps(payload))
+    return bridge
+
+
+@pytest.fixture(autouse=False)
+def _clear_bridge_cache() -> None:
+    read_bridge_config.cache_clear()
+
+
+def test_proxy_target_uses_bridge_host_port_over_hotfile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bridge ``host``+``port`` beats hotfile contents for the proxy upstream.
+
+    This is the dual-consumer-conflict resolution test on the proxy side: in
+    ``proxyMode='vite'`` the JS plugin's C4 fix writes the bridge URL into the
+    hotfile, which would make the proxy self-loop without this preference.
+    """
+    read_bridge_config.cache_clear()
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://litestar-bridge:8000")
+    bridge = _write_bridge(
+        tmp_path,
+        {"appUrl": "http://litestar-bridge:8000", "host": "127.0.0.1", "port": 5173},
+    )
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(bridge))
+
+    async def noop(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile)
+    target = middleware._get_target_base_url()
+
+    assert target == "http://127.0.0.1:5173"
+    read_bridge_config.cache_clear()
+
+
+def test_proxy_target_falls_back_to_hotfile_when_bridge_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    read_bridge_config.cache_clear()
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://127.0.0.1:9999")
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(tmp_path / "missing.json"))
+
+    async def noop(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile)
+    target = middleware._get_target_base_url()
+
+    assert target == "http://127.0.0.1:9999"
+    read_bridge_config.cache_clear()
+
+
+def test_proxy_target_falls_back_to_hotfile_when_bridge_lacks_host_port(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bridge present but missing/wrong-typed host or port → hotfile fallback."""
+    read_bridge_config.cache_clear()
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://127.0.0.1:9999")
+    bridge = _write_bridge(tmp_path, {"appUrl": "http://anywhere", "host": "127.0.0.1", "port": "not-an-int"})
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(bridge))
+
+    async def noop(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile)
+    target = middleware._get_target_base_url()
+
+    assert target == "http://127.0.0.1:9999"
+    read_bridge_config.cache_clear()
+
+
+def test_proxy_target_returns_none_when_neither_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    read_bridge_config.cache_clear()
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(tmp_path / "missing.json"))
+
+    async def noop(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    middleware = ViteProxyMiddleware(noop, hotfile_path=tmp_path / "no-hot")
+    target = middleware._get_target_base_url()
+
+    assert target is None
+    read_bridge_config.cache_clear()
+
+
+def test_proxy_target_cache_invariant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Second call to _get_target_base_url must not re-read the bridge file.
+
+    The middleware-level ``_cache_initialized`` flag ensures the bridge lookup
+    happens at most once per middleware instance lifetime — matching the
+    existing hotfile semantics.
+    """
+    import litestar_vite.plugin._proxy as proxy_module
+
+    read_bridge_config.cache_clear()
+    bridge = _write_bridge(
+        tmp_path, {"appUrl": "http://bridge", "host": "127.0.0.1", "port": 5173}
+    )
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(bridge))
+
+    call_count = 0
+    real_read = proxy_module.read_bridge_config
+
+    def counting_read(*args: object, **kwargs: object) -> object:
+        nonlocal call_count
+        call_count += 1
+        return real_read(*args, **kwargs)
+
+    monkeypatch.setattr(proxy_module, "read_bridge_config", counting_read)
+
+    async def noop(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    middleware = ViteProxyMiddleware(noop, hotfile_path=tmp_path / "hot")
+
+    middleware._get_target_base_url()
+    middleware._get_target_base_url()
+    middleware._get_target_base_url()
+
+    assert call_count == 1
+    read_bridge_config.cache_clear()

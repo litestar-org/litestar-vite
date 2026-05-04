@@ -15,7 +15,7 @@ from litestar.exceptions import WebSocketDisconnect
 from litestar.middleware import AbstractMiddleware
 
 from litestar_vite.plugin._utils import console, is_litestar_route, is_proxy_debug, normalize_prefix
-from litestar_vite.utils import read_hotfile_url
+from litestar_vite.utils import read_bridge_config, read_hotfile_url
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -286,16 +286,40 @@ class ViteProxyMiddleware(AbstractMiddleware):
         )
 
     def _get_target_base_url(self) -> str | None:
-        """Read the Vite server URL from the hotfile with permanent caching.
+        """Resolve the upstream Vite server URL with permanent caching.
 
-        The hotfile is read once and cached for the lifetime of the server.
-        Server restart refreshes the cache automatically.
+        Resolution order (litestar-vite-c1t):
+            1. Bridge config ``host``+``port`` from ``.litestar.json`` — the
+               authoritative real Vite host:port. In ``proxyMode='vite'`` the
+               JS plugin's C4 fix writes the *bridge* URL into the hotfile, so
+               the hotfile would otherwise self-loop the proxy back to
+               Litestar.
+            2. Hotfile contents (back-compat for older configs / SSR-style
+               flows where the hotfile still carries an upstream URL).
+
+        The result is cached for the lifetime of the middleware instance;
+        server restart re-runs the resolution.
 
         Returns:
             The Vite server URL or None if unavailable.
         """
         if self._cache_initialized:
             return self._cached_target.rstrip("/") if self._cached_target else None
+
+        bridge = read_bridge_config()
+        if bridge is not None:
+            host = bridge.get("host")
+            port = bridge.get("port")
+            # Defensive type checks gate the bridge branch — anything else
+            # (missing keys, wrong types, e.g., a stringly-typed port from a
+            # hand-edited config) falls through to the hotfile path.
+            if isinstance(host, str) and host and isinstance(port, int):
+                target = f"http://{host}:{port}"
+                self._cached_target = target
+                self._cache_initialized = True
+                if is_proxy_debug():
+                    console.print(f"[dim][vite-proxy] Target (bridge): {target}[/]")
+                return target.rstrip("/")
 
         try:
             url = read_hotfile_url(self.hotfile_path)
