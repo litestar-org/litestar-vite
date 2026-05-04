@@ -119,7 +119,7 @@ jobs:
         run: npm run fmt:check
 
       - name: Lint
-        run: npm run lint
+        run: npm run lint:all
 
   test_js:
     name: "test (js ${{ matrix.node-version }})"

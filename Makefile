@@ -242,7 +242,7 @@ fix:                                               ## Run code formatters
 .PHONY: oxlint
 oxlint:                                            ## Run oxlint on JS/TS sources
 	@echo "${INFO} Running oxlint... 🔍"
-	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run lint
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run lint:all
 	@echo "${OK} Oxlint checks passed ✨"
 
 .PHONY: oxfmt

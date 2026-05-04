@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "import", "unicorn", "jsx-a11y"],
+  "plugins": ["typescript", "import", "unicorn", "jsx-a11y", "react"],
   "categories": {
     "correctness": "error",
     "suspicious": "error"
@@ -11,8 +11,14 @@
     "unicorn/no-array-for-each": "off",
     "unicorn/consistent-function-scoping": "off",
     "import/no-unassigned-import": "off",
+    "no-underscore-dangle": "off",
+    "react/react-in-jsx-scope": "off",
     "default-param-last": "error",
-    "@typescript-eslint/no-inferrable-types": "error"
+    "@typescript-eslint/no-inferrable-types": "error",
+    "@typescript-eslint/prefer-enum-initializers": "error",
+    "no-param-reassign": "error",
+    "no-else-return": "error",
+    "react/self-closing-comp": "error"
   },
   "overrides": [
     {
@@ -21,7 +27,29 @@
         "@typescript-eslint/no-unused-vars": "off",
         "no-unused-vars": "off"
       }
+    },
+    {
+      "files": ["**/helpers/htmx.ts"],
+      "rules": {
+        "@typescript-eslint/no-confusing-void-expression": "off"
+      }
     }
   ],
-  "ignorePatterns": ["node_modules/", "dist/", "out/", ".next/", "public/", "src/py/"]
+  "ignorePatterns": [
+    "node_modules/",
+    "dist/",
+    "out/",
+    ".next/",
+    ".nuxt/",
+    ".output/",
+    ".svelte-kit/",
+    ".angular/",
+    "public/",
+    "**/bootstrap/ssr/**",
+    "src/py/",
+    "CHANGELOG.md",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    ".venv/"
+  ]
 }

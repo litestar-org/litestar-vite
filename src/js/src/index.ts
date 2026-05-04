@@ -1294,11 +1294,12 @@ function resolveOutDir(config: ResolvedPluginConfig, ssr: boolean): string {
   return dir.replace(/^\/+/, "").replace(/\/+$/, "")
 }
 
-function resolveFullReloadConfig({ refresh: config }: ResolvedPluginConfig): PluginOption[] {
-  if (typeof config === "boolean") {
+function resolveFullReloadConfig({ refresh }: ResolvedPluginConfig): PluginOption[] {
+  if (typeof refresh === "boolean") {
     return []
   }
 
+  let config: string | string[] | RefreshConfig | RefreshConfig[] = refresh
   if (typeof config === "string") {
     config = [{ paths: [config] }]
   }
