@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from litestar import Request, get
+from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.exceptions import ImproperlyConfiguredException, NotAuthorizedException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.stores.memory import MemoryStore
@@ -964,6 +965,36 @@ async def test_html_bootstrap_response_uses_text_html_content_type(
         route_handlers=[handler],
         plugins=[inertia_plugin, vite_plugin],
         template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/html"), (
+            f"expected text/html bootstrap, got {response.headers['content-type']!r}"
+        )
+        assert response.text.startswith("<!DOCTYPE html>")
+
+
+async def test_html_bootstrap_response_uses_text_html_content_type_for_custom_template_suffix(
+    tmp_path: Path,
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+) -> None:
+    (tmp_path / "app.jinja2").write_text(
+        '<!DOCTYPE html><html><body><div id="app" data-page="{{ inertia | escape }}"></div></body></html>'
+    )
+
+    @get("/", component="Home")
+    async def handler() -> Any:
+        from litestar_vite.inertia.response import InertiaResponse
+
+        return InertiaResponse(content={"thing": "value"}, template_name="app.jinja2")
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=TemplateConfig(engine=JinjaTemplateEngine(directory=tmp_path)),
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:

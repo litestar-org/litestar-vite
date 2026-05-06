@@ -2,8 +2,6 @@ import contextlib
 import itertools
 from collections.abc import AsyncGenerator, Iterable, Mapping
 from dataclasses import dataclass
-from mimetypes import guess_type
-from pathlib import PurePath
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 from urllib.parse import quote, urlparse
 
@@ -316,8 +314,8 @@ class InertiaResponse(Response[T]):
                 ``Set-Cookie`` header.
             encoding: Content encoding
             headers: A string keyed dictionary of response headers. Header keys are insensitive.
-            media_type: A string or member of the :class:`MediaType <.enums.MediaType>` enum. If not set, try to infer
-                the media type based on the template name. If this fails, fall back to ``text/plain``.
+            media_type: A string or member of the :class:`MediaType <.enums.MediaType>` enum. If not set, Inertia JSON
+                responses use ``application/json`` and HTML bootstrap responses use ``text/html``.
             status_code: A value for the response HTTP status code.
             type_encoders: A mapping of types to callables that transform them into types supported for serialization.
             encrypt_history: Enable browser history encryption for this response (v2 feature).
@@ -659,22 +657,16 @@ class InertiaResponse(Response[T]):
         return vite_plugin.config.inertia_compatible
 
     def _determine_media_type(self, media_type: "MediaType | str | None") -> "MediaType | str":
-        """Determine the media type for the response.
+        """Determine the media type for HTML bootstrap responses.
 
         Args:
             media_type: The provided media type or None.
 
         Returns:
-            The determined media type.
+            The provided media type, or HTML when unset.
         """
         if media_type:
             return media_type
-        if self.template_name:
-            suffixes = PurePath(self.template_name).suffixes
-            for suffix in suffixes:
-                if type_ := guess_type(f"name{suffix}")[0]:
-                    return type_
-            return MediaType.TEXT
         return MediaType.HTML
 
     async def resolve_async_props(self, request: "Request[Any, Any, Any]") -> None:
