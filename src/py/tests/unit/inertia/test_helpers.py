@@ -1104,3 +1104,24 @@ async def test_always_prop_included_in_partial(
         assert data["props"]["auth"] == {"user": "Alice"}
         # Lazy prop should be included (was requested)
         assert data["props"]["analytics"] == {"views": 100}
+
+
+def test_determine_media_type_falls_back_to_html_when_unset() -> None:
+    """``_determine_media_type`` returns HTML when the response has no media_type.
+
+    The bootstrap branch in ``to_asgi_response`` calls
+    ``_determine_media_type(self.media_type)``. When the user did not set one,
+    ``self.media_type`` is ``None`` and the helper must fall back to HTML —
+    the route's declared ``media_type`` (forwarded via
+    ``create_response_handler`` after #249) must not leak in.
+    """
+    from litestar.enums import MediaType
+
+    resp: InertiaResponse[dict[str, Any]] = InertiaResponse(content={})
+    assert resp._determine_media_type(resp.media_type) == MediaType.HTML  # pyright: ignore[reportPrivateUsage]
+
+
+def test_determine_media_type_honours_explicit_response_media_type() -> None:
+    """Explicit ``media_type`` set on ``InertiaResponse`` is preserved."""
+    resp: InertiaResponse[dict[str, Any]] = InertiaResponse(content={}, media_type="application/xhtml+xml")
+    assert resp._determine_media_type(resp.media_type) == "application/xhtml+xml"  # pyright: ignore[reportPrivateUsage]

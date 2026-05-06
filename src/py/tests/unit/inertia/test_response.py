@@ -942,6 +942,92 @@ async def test_inertia_response_uses_x_inertia_vary_header(
         assert html_response.headers["Vary"] == "X-Inertia"
 
 
+async def test_html_bootstrap_response_uses_text_html_content_type(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """The HTML bootstrap branch must send ``Content-Type: text/html``.
+
+    Regression for the 0.23.x bug: ``create_response_handler`` (used after the
+    handler-wrapping change in #249) forwards the route's declared
+    ``media_type`` — ``MediaType.JSON`` for ``@get`` by default — into
+    ``InertiaResponse.to_asgi_response``. The bootstrap branch renders HTML
+    unconditionally and must ignore that leaked default.
+    """
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"thing": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/html"), (
+            f"expected text/html bootstrap, got {response.headers['content-type']!r}"
+        )
+        assert response.text.startswith("<!DOCTYPE html>")
+
+
+async def test_inertia_partial_response_uses_application_json_content_type(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """The Inertia partial branch (X-Inertia: true) must remain JSON."""
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"thing": "value"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/json"
+        assert response.json()["component"] == "Home"
+
+
+async def test_explicit_response_media_type_is_respected_in_bootstrap(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """An explicit ``media_type`` set on the ``InertiaResponse`` object wins.
+
+    The bootstrap branch ignores the route's ``media_type`` kwarg, but a value
+    set directly on the response object must still flow through
+    ``_determine_media_type``.
+    """
+    from litestar_vite.inertia.response import InertiaResponse
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaResponse[dict[str, Any]]:
+        return InertiaResponse(content={"thing": "value"}, media_type="application/xhtml+xml")
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/xhtml+xml")
+
+
 async def test_hybrid_ssr_replaces_shell_root_and_injects_head(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test that hybrid SSR replaces the root element instead of nesting it."""
     from litestar_vite.config import InertiaConfig, InertiaSSRConfig, PathConfig, RuntimeConfig, SPAConfig, ViteConfig
