@@ -864,13 +864,6 @@ class InertiaResponse(Response[T]):
                 status_code=self.status_code or status_code,
             )
 
-        # Bootstrap branch: body is always HTML, rendered by _render_spa or
-        # _render_template. Honour an explicit `self.media_type` if the user
-        # set one on the response, but ignore the route's `media_type` kwarg —
-        # Litestar's create_response_handler (used after the handler wrapping
-        # added in #249) forwards the route's declared media_type, which
-        # defaults to MediaType.JSON for @get and would otherwise be applied
-        # to an HTML body.
         resolved_media_type = self._determine_media_type(self.media_type)
 
         if vite_plugin.config.wants_spa_config:
