@@ -1044,7 +1044,7 @@ wheels = [
 
 [[package]]
 name = "litestar-vite"
-version = "0.23.3"
+version = "0.23.4"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
