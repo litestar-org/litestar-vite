@@ -977,9 +977,7 @@ async def test_html_bootstrap_response_uses_text_html_content_type(
 
 
 async def test_html_bootstrap_response_uses_text_html_content_type_for_custom_template_suffix(
-    tmp_path: Path,
-    inertia_plugin: InertiaPlugin,
-    vite_plugin: VitePlugin,
+    tmp_path: Path, inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin
 ) -> None:
     (tmp_path / "app.jinja2").write_text(
         '<!DOCTYPE html><html><body><div id="app" data-page="{{ inertia | escape }}"></div></body></html>'
