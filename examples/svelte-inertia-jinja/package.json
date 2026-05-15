@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@inertiajs/svelte": "3.0.3",
-    "svelte": "5.55.5",
+    "svelte": "5.55.7",
     "zod": "4.3.6"
   },
   "devDependencies": {
