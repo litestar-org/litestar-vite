@@ -2509,3 +2509,124 @@ def test_inertia_deferred_props_full_cycle() -> None:
         data_partial = response_partial.json()
         assert data_partial["props"]["deferred"] == "slow_result"
         assert "immediate" not in data_partial["props"]
+        # The resolved key must not be re-advertised as still-deferred,
+        # or the @inertiajs/core v3 client loops on loadDeferredProps.
+        assert "deferred" not in data_partial.get("deferredProps", {}).get("default", []), (
+            "Server echoed the resolved deferred key back in `deferredProps`; "
+            "this causes the Inertia v3 client to re-fire `loadDeferredProps` in an infinite loop."
+        )
+
+
+def test_deferred_props_partial_reload_strips_resolved_keys_from_metadata() -> None:
+    """A partial reload for a deferred key must not echo it back in `deferredProps`."""
+
+    @get("/", component="Home")
+    async def handler() -> dict[str, Any]:
+        return {"fast": "loads immediately", "slow": defer("slow", lambda: "computed")}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[InertiaPlugin(config=InertiaConfig()), VitePlugin()],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        partial = client.get(
+            "/",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_DATA.value: "slow",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+            },
+        )
+        body = partial.json()
+        assert body["props"]["slow"] == "computed"
+        # With the only deferred key resolved, `deferredProps` must drop out entirely.
+        assert body.get("deferredProps") in (None, {}), body.get("deferredProps")
+
+
+def test_deferred_props_partial_reload_preserves_unrequested_metadata() -> None:
+    """When only one of two deferred props is requested, the unrequested one
+    must remain in `deferredProps` so the client can fetch it later.
+    """
+
+    @get("/", component="Home")
+    async def handler() -> dict[str, Any]:
+        return {"first": defer("first", lambda: "value-1"), "second": defer("second", lambda: "value-2")}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[InertiaPlugin(config=InertiaConfig()), VitePlugin()],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        partial = client.get(
+            "/",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_DATA.value: "first",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+            },
+        )
+        body = partial.json()
+        assert body["props"]["first"] == "value-1"
+        assert "first" not in body["deferredProps"].get("default", [])
+        assert "second" in body["deferredProps"]["default"]
+
+
+def test_deferred_props_grouped_partial_reload_strips_only_requested_group() -> None:
+    """When deferred props live in distinct groups, a partial reload for one
+    group's keys must strip those keys from their group only; other groups
+    stay intact and an emptied group is removed entirely.
+    """
+
+    @get("/", component="Home")
+    async def handler() -> dict[str, Any]:
+        return {
+            "stats": defer("stats", lambda: {"hits": 1}, group="metrics"),
+            "perms": defer("perms", lambda: ["read"], group="security"),
+        }
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[InertiaPlugin(config=InertiaConfig()), VitePlugin()],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        partial = client.get(
+            "/",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_DATA.value: "stats",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+            },
+        )
+        body = partial.json()
+        assert body["props"]["stats"] == {"hits": 1}
+        assert "metrics" not in body.get("deferredProps", {}), (
+            "An emptied group must be removed from `deferredProps` entirely."
+        )
+        assert body["deferredProps"]["security"] == ["perms"]
+
+
+def test_deferred_props_initial_response_still_advertises_all_keys() -> None:
+    """The fix must NOT affect the initial response — every deferred key must
+    still be advertised so the client knows to fetch them. Regression guard
+    against over-correcting #236 / PR #241.
+    """
+
+    @get("/", component="Home")
+    async def handler() -> dict[str, Any]:
+        return {"a": defer("a", lambda: 1), "b": defer("b", lambda: 2, group="other")}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[InertiaPlugin(config=InertiaConfig()), VitePlugin()],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        initial = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        body = initial.json()
+        assert "a" not in body["props"]
+        assert "b" not in body["props"]
+        assert body["deferredProps"]["default"] == ["a"]
+        assert body["deferredProps"]["other"] == ["b"]
