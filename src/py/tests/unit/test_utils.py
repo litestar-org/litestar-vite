@@ -119,12 +119,14 @@ def test_set_environment_sets_vars(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.delenv("ASSET_URL", raising=False)
     monkeypatch.delenv("VITE_HOST", raising=False)
     monkeypatch.delenv("VITE_PORT", raising=False)
-    monkeypatch.delenv("LITESTAR_HOST", raising=False)
-    monkeypatch.delenv("LITESTAR_PORT", raising=False)
+    monkeypatch.setenv("LITESTAR_HOST", "0.0.0.0")
+    monkeypatch.setenv("LITESTAR_PORT", "8000")
+    monkeypatch.delenv("APP_URL", raising=False)
 
     utils.set_environment(config, asset_url_override="https://cdn.example.com/")
 
     assert os.environ["ASSET_URL"] == "https://cdn.example.com/"
+    assert os.environ["APP_URL"] == "http://localhost:8000"
     assert os.environ["VITE_HOST"] == "0.0.0.0"
     assert os.environ["VITE_PORT"] == "9999"
     assert os.environ["LITESTAR_VITE_CONFIG_PATH"].endswith(".litestar.json")

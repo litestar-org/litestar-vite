@@ -36,6 +36,7 @@ from litestar_vite.plugin._process import ViteProcess
 from litestar_vite.plugin._proxy import (
     SSRProxyMiddleware,
     ViteProxyMiddleware,
+    create_disabled_vite_hmr_handlers,
     create_ssr_http_proxy_handler,
     create_ssr_proxy_controller,
     create_ssr_websocket_handler,
@@ -499,6 +500,13 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         else:
             self._configure_vite_proxy(app_config, hotfile_path)
 
+    def _resolve_hmr_path(self) -> "str | None":
+        """Return the local HMR websocket path for the configured asset URL."""
+        asset_url = self._config.asset_url
+        if not asset_url.startswith("/"):
+            return None
+        return f"{asset_url.rstrip('/')}/vite-hmr"
+
     def _configure_vite_proxy(self, app_config: "AppConfig", hotfile_path: Path) -> None:
         """Configure Vite proxy mode (allow list).
 
@@ -520,10 +528,17 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 plugin=self,
             ),
         )
-        hmr_path = f"{self._config.asset_url.rstrip('/')}/vite-hmr"
-        app_config.route_handlers.append(
-            create_vite_hmr_handler(hotfile_path=hotfile_path, hmr_path=hmr_path, asset_url=self._config.asset_url)
-        )
+        hmr_path = self._resolve_hmr_path()
+        if hmr_path is not None:
+            app_config.route_handlers.append(
+                create_vite_hmr_handler(hotfile_path=hotfile_path, hmr_path=hmr_path, asset_url=self._config.asset_url)
+            )
+
+    def _configure_disabled_hmr_handler(self, app_config: "AppConfig") -> None:
+        """Register a clean-close websocket sink for stale Vite HMR clients."""
+        hmr_path = self._resolve_hmr_path()
+        if hmr_path is not None:
+            app_config.route_handlers.extend(create_disabled_vite_hmr_handlers(hmr_path=hmr_path))
 
     def _configure_ssr_proxy(self, app_config: "AppConfig", hotfile_path: Path) -> None:
         """Configure SSR proxy mode for framework dev servers.
@@ -579,10 +594,11 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
                 plugin=self,
             ),
         )
-        hmr_path = f"{self._config.asset_url.rstrip('/')}/vite-hmr"
-        app_config.route_handlers.append(
-            create_vite_hmr_handler(hotfile_path=hotfile_path, hmr_path=hmr_path, asset_url=self._config.asset_url)
-        )
+        hmr_path = self._resolve_hmr_path()
+        if hmr_path is not None:
+            app_config.route_handlers.append(
+                create_vite_hmr_handler(hotfile_path=hotfile_path, hmr_path=hmr_path, asset_url=self._config.asset_url)
+            )
 
     def on_app_init(self, app_config: "AppConfig") -> "AppConfig":
         """Configure the Litestar application for Vite.
@@ -637,8 +653,13 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         if self._config.set_static_folders and not skip_static:
             self._configure_static_files(app_config)
 
-        if self._config.is_dev_mode and self._config.proxy_mode is not None and not is_non_serving_assets_cli():
+        dev_proxy_configured = (
+            self._config.is_dev_mode and self._config.proxy_mode is not None and not is_non_serving_assets_cli()
+        )
+        if dev_proxy_configured:
             self._configure_dev_proxy(app_config)
+        elif self._config.set_static_folders:
+            self._configure_disabled_hmr_handler(app_config)
 
         use_spa_handler = self._config.spa_handler and (
             self._config.registers_html_catchall or self._config.wants_html_proxy
@@ -907,6 +928,7 @@ __all__ = (
     "VitePlugin",
     "ViteProcess",
     "ViteProxyMiddleware",
+    "create_disabled_vite_hmr_handlers",
     "create_ssr_http_proxy_handler",
     "create_ssr_proxy_controller",
     "create_ssr_websocket_handler",

@@ -238,6 +238,50 @@ def _path_for_bridge(path: Path, root_dir: Path) -> str:
         return os.path.relpath(resolved_path, resolved_root).replace("\\", "/")
 
 
+def _normalize_browser_host(host: str) -> str:
+    """Return a host safe to emit into browser-facing URLs."""
+    normalized = host.strip()
+    if normalized in {"0.0.0.0", "::", "[::]"}:  # noqa: S104
+        return "localhost"
+    if ":" in normalized and not normalized.startswith("["):
+        return f"[{normalized}]"
+    return normalized
+
+
+def _normalize_browser_url(url: str) -> str:
+    """Normalize bind-only hosts in URLs meant for browser navigation."""
+    from urllib.parse import urlsplit, urlunsplit
+
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return url
+
+    if not parsed.scheme or not parsed.netloc or parsed.hostname is None:
+        return url
+
+    host = _normalize_browser_host(parsed.hostname)
+    if host == parsed.hostname:
+        return url
+
+    try:
+        port = parsed.port
+    except ValueError:
+        return url
+
+    userinfo = ""
+    if parsed.username:
+        userinfo = parsed.username
+        if parsed.password:
+            userinfo = f"{userinfo}:{parsed.password}"
+        userinfo = f"{userinfo}@"
+
+    netloc = f"{userinfo}{host}"
+    if port is not None:
+        netloc = f"{netloc}:{port}"
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
+
+
 def _derive_bridge_app_url() -> str | None:
     """Derive the canonical backend URL for the JS bridge config.
 
@@ -246,13 +290,13 @@ def _derive_bridge_app_url() -> str | None:
         when no backend address is available.
     """
     if explicit := os.environ.get("APP_URL"):
-        return explicit
+        return _normalize_browser_url(explicit)
 
     host = os.environ.get("LITESTAR_HOST")
     port = os.environ.get("LITESTAR_PORT") or os.environ.get("PORT")
     if not host and not port:
         return None
-    return f"http://{host or '127.0.0.1'}:{port or '8000'}"
+    return f"http://{_normalize_browser_host(host or '127.0.0.1')}:{port or '8000'}"
 
 
 _DEFAULT_PORT_BY_SCHEME = {"http": 80, "https": 443}
@@ -418,7 +462,7 @@ def set_environment(config: "ViteConfig", asset_url_override: str | None = None)
     backend_port = os.environ.get("LITESTAR_PORT") or os.environ.get("PORT") or infer_port_from_argv() or "8000"
     os.environ["LITESTAR_HOST"] = backend_host
     os.environ["LITESTAR_PORT"] = str(backend_port)
-    os.environ.setdefault("APP_URL", f"http://{backend_host}:{backend_port}")
+    os.environ.setdefault("APP_URL", f"http://{_normalize_browser_host(backend_host)}:{backend_port}")
 
     os.environ.setdefault("VITE_PROTOCOL", config.protocol)
     if config.proxy_mode is not None:

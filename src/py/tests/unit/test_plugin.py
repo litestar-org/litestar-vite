@@ -11,8 +11,10 @@ from unittest.mock import Mock, patch
 import pytest
 from litestar import Litestar, get
 from litestar.config.app import AppConfig
+from litestar.exceptions import WebSocketDisconnect
 from litestar.middleware import DefineMiddleware
 from litestar.template.config import TemplateConfig
+from litestar.testing import TestClient
 
 from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
 from litestar_vite.plugin import ProxyHeadersMiddleware, StaticFilesConfig, VitePlugin, ViteProcess, ViteProxyMiddleware
@@ -226,6 +228,45 @@ def test_vite_plugin_app_init_static_directories_configuration(tmp_path: Path) -
     assert result is app_config
     # Should configure multiple static directories in dev mode
     assert len(app_config.route_handlers) > 0
+
+
+def test_vite_plugin_production_stale_hmr_websocket_closes_cleanly(tmp_path: Path) -> None:
+    """Stale dev clients reconnecting to HMR in production must not hit Litestar's static HTTP route.
+
+    This reproduces issue #254: ``/static/{file_path:path}`` handles HTTP requests,
+    but a browser tab with an old Vite HMR client may still make a websocket
+    request to ``/static/vite-hmr`` after the app restarts with ``dev_mode=False``.
+    """
+
+    @get("/", sync_to_thread=False)
+    def index() -> str:
+        return "ok"
+
+    bundle_dir = tmp_path / "static"
+    bundle_dir.mkdir()
+
+    app = Litestar(
+        route_handlers=[index],
+        plugins=[
+            VitePlugin(
+                config=ViteConfig(
+                    mode="template",
+                    paths=PathConfig(bundle_dir=bundle_dir, asset_url="/static/"),
+                    runtime=RuntimeConfig(dev_mode=False),
+                )
+            )
+        ],
+        debug=True,
+    )
+
+    with TestClient(app=app) as client:
+        assert client.get("/static/vite-hmr").status_code == 404
+
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            with client.websocket_connect("/static/vite-hmr") as websocket:
+                websocket.receive_text()
+
+    assert exc_info.value.code == 1001
 
 
 def test_vite_plugin_app_init_no_proxy_when_proxy_mode_none(monkeypatch: pytest.MonkeyPatch) -> None:
