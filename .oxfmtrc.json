@@ -11,6 +11,8 @@
   "endOfLine": "lf",
   "insertFinalNewline": true,
   "sortImports": true,
+  "sortTailwindcss": {},
+  "sortPackageJson": false,
   "ignorePatterns": [
     "node_modules/",
     "dist/",
@@ -23,7 +25,7 @@
     "public/",
     "**/bootstrap/ssr/**",
     "src/py/",
-    "CHANGELOG.md",
+    "*.md",
     "package-lock.json",
     "pnpm-lock.yaml",
     ".venv/"
