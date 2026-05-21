@@ -1192,9 +1192,7 @@ async def test_spa_handler_route_exclusion_no_false_positives(spa_config: ViteCo
             assert "Test SPA" in response.text, f"No SPA content for path: {path}"
 
 
-async def test_spa_handler_serves_non_root_spa_path(
-    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_spa_handler_serves_non_root_spa_path(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Regression test for #258: spa_path="/ui" must remain reachable.
 
     is_litestar_route() previously included the SPA handler's own paths in the
