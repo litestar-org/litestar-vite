@@ -9,11 +9,11 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body class="min-h-screen flex items-center justify-center px-6 py-16">
+  <body class="flex min-h-screen items-center justify-center px-6 py-16">
     <main class="w-full max-w-lg">
       <!-- Brand hero: signature display-lg treatment per DESIGN.md -->
-      <header class="text-center mb-12">
-        <div class="flex items-center justify-center gap-6 mb-10">
+      <header class="mb-12 text-center">
+        <div class="mb-10 flex items-center justify-center gap-6">
           <a href="https://litestar.dev" target="_blank" rel="noreferrer" class="block transition-opacity duration-200 hover:opacity-80" aria-label="Litestar">
             <svg viewBox="0 52 410 250" xmlns="http://www.w3.org/2000/svg" class="h-14 w-auto">
               <defs>
@@ -61,7 +61,7 @@
             </svg>
           </a>
 
-          <span aria-hidden="true" class="text-on-surface-subtle text-xl font-light leading-none">+</span>
+          <span aria-hidden="true" class="text-on-surface-subtle text-xl leading-none font-light">+</span>
 
           <a href="https://vite.dev" target="_blank" rel="noreferrer" class="block transition-opacity duration-200 hover:opacity-80" aria-label="Vite">
             <svg viewBox="0 0 410 404" class="h-12 w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -88,23 +88,23 @@
           </a>
         </div>
 
-        <h1 class="text-on-surface text-brand-glow font-light uppercase text-2xl sm:text-4xl mb-4" style="letter-spacing: 0.25em">Litestar Vite</h1>
+        <h1 class="text-on-surface text-brand-glow mb-4 text-2xl font-light uppercase sm:text-4xl" style="letter-spacing: 0.25em">Litestar Vite</h1>
         <p class="text-on-surface-subtle text-base">Frontend Development Server</p>
       </header>
 
       <!-- Status surface: bordered, no glass; "borders over shadows" -->
-      <section class="rounded-brand-lg border border-outline bg-navy-surface">
+      <section class="rounded-brand-lg border-outline bg-navy-surface border">
         <!-- Status row -->
-        <div class="flex items-center gap-3 px-8 py-5 border-b border-outline">
+        <div class="border-outline flex items-center gap-3 border-b px-8 py-5">
           <span class="relative inline-flex h-2.5 w-2.5">
-            <span class="absolute inline-flex h-full w-full rounded-full bg-success opacity-60 animate-pulse-dot"></span>
-            <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-success"></span>
+            <span class="bg-success animate-pulse-dot absolute inline-flex h-full w-full rounded-full opacity-60"></span>
+            <span class="bg-success relative inline-flex h-2.5 w-2.5 rounded-full"></span>
           </span>
-          <span class="text-on-surface text-xs font-semibold uppercase tracking-widest"> Server Active </span>
-          <span aria-hidden="true" class="ml-auto text-on-surface-subtle text-xs font-mono uppercase tracking-widest"> HMR </span>
+          <span class="text-on-surface text-xs font-semibold tracking-widest uppercase"> Server Active </span>
+          <span aria-hidden="true" class="text-on-surface-subtle ml-auto font-mono text-xs tracking-widest uppercase"> HMR </span>
         </div>
 
-        <div class="px-8 py-8 sm:px-10 sm:py-10 space-y-8">
+        <div class="space-y-8 px-8 py-8 sm:px-10 sm:py-10">
           <p class="text-on-surface-muted text-base leading-relaxed">
             This server provides
             <strong class="text-on-surface font-medium">Hot Module Replacement</strong>
@@ -112,10 +112,10 @@
           </p>
 
           <div>
-            <p class="text-on-surface-subtle text-xs font-semibold uppercase tracking-widest mb-3">Application URL</p>
+            <p class="text-on-surface-subtle mb-3 text-xs font-semibold tracking-widest uppercase">Application URL</p>
             <a
               href="{{ APP_URL }}"
-              class="group flex w-full items-center gap-3 rounded-brand border-l-[3px] border-l-gold border border-outline bg-navy-surface-variant px-4 py-3 font-mono text-base text-gold transition-colors duration-200 hover:bg-navy hover:text-gold-light"
+              class="group rounded-brand border-l-gold border-outline bg-navy-surface-variant text-gold hover:bg-navy hover:text-gold-light flex w-full items-center gap-3 border border-l-[3px] px-4 py-3 font-mono text-base transition-colors duration-200"
             >
               <span class="min-w-0 flex-1 break-all select-all">{{ APP_URL }}</span>
               <svg
@@ -139,7 +139,7 @@
           href="https://docs.litestar.dev/latest/topics/integrations/vite/"
           target="_blank"
           rel="noreferrer"
-          class="group inline-flex items-center gap-2 text-sm text-on-surface-muted transition-colors duration-200 hover:text-gold"
+          class="group text-on-surface-muted hover:text-gold inline-flex items-center gap-2 text-sm transition-colors duration-200"
         >
           <span>Documentation</span>
           <svg

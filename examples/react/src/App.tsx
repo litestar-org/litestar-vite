@@ -51,14 +51,14 @@ function OverviewPage({ summary }: { summary: Summary | null }) {
 
   return (
     <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/40">
-      <h2 className="font-semibold text-[#202235] text-xl">{summary.headline}</h2>
+      <h2 className="text-xl font-semibold text-[#202235]">{summary.headline}</h2>
       <p className="text-slate-600">Featured book</p>
       <article className="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4">
-        <h3 className="font-semibold text-[#202235] text-lg">{featured.title}</h3>
+        <h3 className="text-lg font-semibold text-[#202235]">{featured.title}</h3>
         <p className="mt-1 text-slate-600">
           {featured.author} • {featured.year}
         </p>
-        <p className="mt-1 text-[#202235] text-sm">{featured.tags.join(" · ")}</p>
+        <p className="mt-1 text-sm text-[#202235]">{featured.tags.join(" · ")}</p>
       </article>
     </section>
   )
@@ -74,11 +74,11 @@ function BooksPage({ books }: { books: Book[] }) {
     <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {books.map((book) => (
         <article key={book.id} className="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4 shadow-sm">
-          <h3 className="font-semibold text-[#202235] text-lg">{book.title}</h3>
+          <h3 className="text-lg font-semibold text-[#202235]">{book.title}</h3>
           <p className="mt-1 text-slate-600">
             {book.author} • {book.year}
           </p>
-          <p className="mt-1 text-[#202235] text-sm">{book.tags.join(" · ")}</p>
+          <p className="mt-1 text-sm text-[#202235]">{book.tags.join(" · ")}</p>
         </article>
       ))}
     </section>
@@ -93,10 +93,10 @@ function Navigation({ totalBooks }: { totalBooks: number | undefined }) {
 
   return (
     <nav className="inline-flex gap-2 rounded-full bg-slate-100 p-1 shadow-sm" aria-label="Views">
-      <Link to="/" className={`rounded-full px-4 py-2 font-semibold text-sm transition ${isOverview ? "bg-white text-[#202235] shadow" : "text-slate-600"}`}>
+      <Link to="/" className={`rounded-full px-4 py-2 text-sm font-semibold transition ${isOverview ? "bg-white text-[#202235] shadow" : "text-slate-600"}`}>
         Overview
       </Link>
-      <Link to="/books" className={`rounded-full px-4 py-2 font-semibold text-sm transition ${isBooks ? "bg-white text-[#202235] shadow" : "text-slate-600"}`}>
+      <Link to="/books" className={`rounded-full px-4 py-2 text-sm font-semibold transition ${isBooks ? "bg-white text-[#202235] shadow" : "text-slate-600"}`}>
         Books ({totalBooks ?? "–"})
       </Link>
     </nav>
@@ -110,8 +110,8 @@ function AppLayout() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-10">
       <header className="space-y-2">
-        <p className="font-semibold text-[#edb641] text-sm uppercase tracking-[0.14em]">Litestar · Vite</p>
-        <h1 className="font-semibold text-3xl text-[#202235]">Example Library (React + Router)</h1>
+        <p className="text-sm font-semibold tracking-[0.14em] text-[#edb641] uppercase">Litestar · Vite</p>
+        <h1 className="text-3xl font-semibold text-[#202235]">Example Library (React + Router)</h1>
         <p className="max-w-3xl text-slate-600">One backend, many frontends. Click the tabs to navigate - notice the URL changes!</p>
         <Navigation totalBooks={summary?.total_books} />
       </header>
@@ -123,7 +123,7 @@ function AppLayout() {
       </Routes>
 
       {/* Show injected routes from server (if available) */}
-      <footer className="border-slate-200 border-t pt-8 text-slate-400 text-xs">
+      <footer className="border-t border-slate-200 pt-8 text-xs text-slate-400">
         <details>
           <summary className="cursor-pointer">Type-safe route() helper usage</summary>
           <div className="mt-2 space-y-1 rounded bg-slate-100 p-2 font-mono">

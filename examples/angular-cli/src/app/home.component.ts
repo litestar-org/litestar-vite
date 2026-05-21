@@ -27,12 +27,12 @@ type RouteEntry = [RouteName, RouteDefinition]
   template: `
     <main class="mx-auto max-w-5xl space-y-6 px-4 py-10">
       <header class="space-y-2">
-        <p class="font-semibold text-[#edb641] text-sm uppercase tracking-[0.14em]">Litestar · Vite</p>
-        <h1 class="font-semibold text-3xl text-[#202235]">Library (Angular CLI)</h1>
+        <p class="text-sm font-semibold tracking-[0.14em] text-[#edb641] uppercase">Litestar · Vite</p>
+        <h1 class="text-3xl font-semibold text-[#202235]">Library (Angular CLI)</h1>
         <p class="max-w-3xl text-slate-600">Same API, different frontend. Angular 21 standalone + signals via Angular CLI.</p>
         <nav class="inline-flex gap-2 rounded-full bg-slate-100 p-1 shadow-sm" aria-label="Views">
           <button
-            class="rounded-full px-4 py-2 font-semibold text-sm transition"
+            class="rounded-full px-4 py-2 text-sm font-semibold transition"
             [class.bg-white]="view() === 'overview'"
             [class.text-slate-900]="view() === 'overview'"
             [class.shadow]="view() === 'overview'"
@@ -42,7 +42,7 @@ type RouteEntry = [RouteName, RouteDefinition]
             Overview
           </button>
           <button
-            class="rounded-full px-4 py-2 font-semibold text-sm transition"
+            class="rounded-full px-4 py-2 text-sm font-semibold transition"
             [class.bg-white]="view() === 'books'"
             [class.text-slate-900]="view() === 'books'"
             [class.shadow]="view() === 'books'"
@@ -57,12 +57,12 @@ type RouteEntry = [RouteName, RouteDefinition]
       @if (view() === "overview") {
         <section class="space-y-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/40">
           @if (featured()) {
-            <h2 class="font-semibold text-[#202235] text-xl">{{ summary()?.headline }}</h2>
+            <h2 class="text-xl font-semibold text-[#202235]">{{ summary()?.headline }}</h2>
             <p class="text-slate-600">Featured book</p>
             <article class="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4">
-              <h3 class="font-semibold text-[#202235] text-lg">{{ featured()!.title }}</h3>
+              <h3 class="text-lg font-semibold text-[#202235]">{{ featured()!.title }}</h3>
               <p class="mt-1 text-slate-600">{{ featured()!.author }} • {{ featured()!.year }}</p>
-              <p class="mt-1 text-[#202235] text-sm">{{ featured()!.tags.join(" · ") }}</p>
+              <p class="mt-1 text-sm text-[#202235]">{{ featured()!.tags.join(" · ") }}</p>
             </article>
           } @else {
             <div class="text-slate-600">Loading...</div>
@@ -73,9 +73,9 @@ type RouteEntry = [RouteName, RouteDefinition]
           @if (books().length > 0) {
             @for (book of books(); track book.id) {
               <article class="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4 shadow-sm">
-                <h3 class="font-semibold text-[#202235] text-lg">{{ book.title }}</h3>
+                <h3 class="text-lg font-semibold text-[#202235]">{{ book.title }}</h3>
                 <p class="mt-1 text-slate-600">{{ book.author }} • {{ book.year }}</p>
-                <p class="mt-1 text-[#202235] text-sm">{{ book.tags.join(" · ") }}</p>
+                <p class="mt-1 text-sm text-[#202235]">{{ book.tags.join(" · ") }}</p>
               </article>
             }
           } @else {
@@ -84,7 +84,7 @@ type RouteEntry = [RouteName, RouteDefinition]
         </section>
       }
 
-      <footer class="border-slate-200 border-t pt-8 text-slate-400 text-xs">
+      <footer class="border-t border-slate-200 pt-8 text-xs text-slate-400">
         <details>
           <summary class="cursor-pointer">Route definitions (from generated routes.ts)</summary>
           <div class="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">

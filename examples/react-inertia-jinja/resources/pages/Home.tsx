@@ -16,8 +16,8 @@ export default function Home({ message }: Props) {
       <Head title="Home" />
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-10">
         <header className="space-y-2">
-          <p className="font-semibold text-[#edb641] text-sm uppercase tracking-[0.14em]">Litestar · Vite</p>
-          <h1 className="font-semibold text-3xl text-[#202235]">Library (React + Inertia)</h1>
+          <p className="text-sm font-semibold tracking-[0.14em] text-[#edb641] uppercase">Litestar · Vite</p>
+          <h1 className="text-3xl font-semibold text-[#202235]">Library (React + Inertia)</h1>
           <p className="max-w-3xl text-slate-600">Server-driven SPA with shared backend payloads. Inertia.js bridges server and client.</p>
         </header>
 
@@ -28,12 +28,12 @@ export default function Home({ message }: Props) {
 
         <nav className="flex gap-4">
           {/* Using type-safe route() helper like Laravel's Ziggy */}
-          <Link href={route("books_page")} className="rounded-full bg-[#202235] px-6 py-2 font-semibold text-sm text-white transition hover:bg-[#2d3348]">
+          <Link href={route("books_page")} className="rounded-full bg-[#202235] px-6 py-2 text-sm font-semibold text-white transition hover:bg-[#2d3348]">
             View Books
           </Link>
         </nav>
 
-        <footer className="border-slate-200 border-t pt-8 text-slate-400 text-xs">
+        <footer className="border-t border-slate-200 pt-8 text-xs text-slate-400">
           <details>
             <summary className="cursor-pointer">Type-safe route() helper usage</summary>
             <div className="mt-2 space-y-1 rounded bg-slate-100 p-2 font-mono">

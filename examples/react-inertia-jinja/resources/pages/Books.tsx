@@ -32,31 +32,31 @@ export default function Books({ summary, books }: Props) {
       <Head title="Books" />
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-10">
         <header className="space-y-2">
-          <p className="font-semibold text-[#edb641] text-sm uppercase tracking-[0.14em]">Litestar · Vite</p>
-          <h1 className="font-semibold text-3xl text-[#202235]">Library (React + Inertia)</h1>
+          <p className="text-sm font-semibold tracking-[0.14em] text-[#edb641] uppercase">Litestar · Vite</p>
+          <h1 className="text-3xl font-semibold text-[#202235]">Library (React + Inertia)</h1>
           <p className="max-w-3xl text-slate-600">{summary.headline}</p>
           <nav className="flex gap-4">
             {/* Using type-safe route() helper like Laravel's Ziggy */}
-            <Link href={route("index")} className="rounded-full bg-slate-100 px-4 py-2 font-semibold text-slate-600 text-sm transition hover:bg-slate-200">
+            <Link href={route("index")} className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200">
               Home
             </Link>
-            <span className="rounded-full bg-white px-4 py-2 font-semibold text-[#202235] text-sm shadow">Books ({summary.total_books})</span>
+            <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-[#202235] shadow">Books ({summary.total_books})</span>
           </nav>
         </header>
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Books">
           {books.map((book) => (
             <article key={book.id} className="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4 shadow-sm">
-              <h3 className="font-semibold text-[#202235] text-lg">{book.title}</h3>
+              <h3 className="text-lg font-semibold text-[#202235]">{book.title}</h3>
               <p className="mt-1 text-slate-600">
                 {book.author} · {book.year}
               </p>
-              <p className="mt-1 text-[#202235] text-sm">{book.tags.join(" · ")}</p>
+              <p className="mt-1 text-sm text-[#202235]">{book.tags.join(" · ")}</p>
             </article>
           ))}
         </section>
 
-        <footer className="border-slate-200 border-t pt-8 text-slate-400 text-xs">
+        <footer className="border-t border-slate-200 pt-8 text-xs text-slate-400">
           <p>Data provided by Inertia.js props from the server. No client-side fetch required.</p>
           <details className="mt-2">
             <summary className="cursor-pointer">Type-safe route() helper usage</summary>

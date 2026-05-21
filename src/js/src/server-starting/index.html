@@ -10,11 +10,11 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body class="min-h-screen flex items-center justify-center px-6 py-16">
+  <body class="flex min-h-screen items-center justify-center px-6 py-16">
     <main class="w-full max-w-md">
       <!-- Brand hero: matches dev-server treatment, scaled for the smaller surface -->
-      <header class="text-center mb-10">
-        <div class="flex items-center justify-center gap-5 mb-8">
+      <header class="mb-10 text-center">
+        <div class="mb-8 flex items-center justify-center gap-5">
           <a href="https://litestar.dev" target="_blank" rel="noreferrer" class="block transition-opacity duration-200 hover:opacity-80" aria-label="Litestar">
             <svg viewBox="0 52 410 250" xmlns="http://www.w3.org/2000/svg" class="h-12 w-auto">
               <defs>
@@ -62,7 +62,7 @@
             </svg>
           </a>
 
-          <span aria-hidden="true" class="text-on-surface-subtle text-lg font-light leading-none">+</span>
+          <span aria-hidden="true" class="text-on-surface-subtle text-lg leading-none font-light">+</span>
 
           <a href="https://vite.dev" target="_blank" rel="noreferrer" class="block transition-opacity duration-200 hover:opacity-80" aria-label="Vite">
             <svg viewBox="0 0 410 404" class="h-10 w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -89,33 +89,33 @@
           </a>
         </div>
 
-        <h1 class="text-on-surface text-brand-glow font-light uppercase text-2xl sm:text-4xl mb-4" style="letter-spacing: 0.25em">Litestar Vite</h1>
+        <h1 class="text-on-surface text-brand-glow mb-4 text-2xl font-light uppercase sm:text-4xl" style="letter-spacing: 0.25em">Litestar Vite</h1>
         <p class="text-on-surface-subtle text-base">Frontend Development Server</p>
       </header>
 
-      <section class="rounded-brand-lg border border-outline bg-navy-surface">
+      <section class="rounded-brand-lg border-outline bg-navy-surface border">
         <!-- Status row: pulsing gold, mirrors dev-server status row layout -->
-        <div class="flex items-center gap-3 px-8 py-5 border-b border-outline">
+        <div class="border-outline flex items-center gap-3 border-b px-8 py-5">
           <span class="relative inline-flex h-2.5 w-2.5">
-            <span class="absolute inline-flex h-full w-full rounded-full bg-gold opacity-60 animate-pulse-dot"></span>
-            <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-gold"></span>
+            <span class="bg-gold animate-pulse-dot absolute inline-flex h-full w-full rounded-full opacity-60"></span>
+            <span class="bg-gold relative inline-flex h-2.5 w-2.5 rounded-full"></span>
           </span>
-          <span class="text-on-surface text-xs font-semibold uppercase tracking-widest"> Starting </span>
-          <span aria-hidden="true" class="ml-auto text-on-surface-subtle text-xs font-mono uppercase tracking-widest"> Auto-refresh 2s </span>
+          <span class="text-on-surface text-xs font-semibold tracking-widest uppercase"> Starting </span>
+          <span aria-hidden="true" class="text-on-surface-subtle ml-auto font-mono text-xs tracking-widest uppercase"> Auto-refresh 2s </span>
         </div>
 
-        <div class="px-8 py-10 space-y-8">
+        <div class="space-y-8 px-8 py-10">
           <!-- Spinner: gold ring, restrained 40px size; only motion on the page -->
           <div class="flex justify-center">
-            <div class="h-10 w-10 rounded-full border-2 border-outline border-t-gold animate-spin"></div>
+            <div class="border-outline border-t-gold h-10 w-10 animate-spin rounded-full border-2"></div>
           </div>
 
-          <p class="text-center text-on-surface-muted text-base leading-relaxed">Waiting for the Vite development server to come up. This page will reload automatically.</p>
+          <p class="text-on-surface-muted text-center text-base leading-relaxed">Waiting for the Vite development server to come up. This page will reload automatically.</p>
 
           <div>
-            <p class="text-on-surface-subtle text-xs font-semibold uppercase tracking-widest mb-3 text-center">Connecting to</p>
-            <div class="rounded-brand border-l-[3px] border-l-gold border border-outline bg-navy-surface-variant px-4 py-3">
-              <span class="block text-center font-mono text-sm text-gold select-all">{{ vite_url }}</span>
+            <p class="text-on-surface-subtle mb-3 text-center text-xs font-semibold tracking-widest uppercase">Connecting to</p>
+            <div class="rounded-brand border-l-gold border-outline bg-navy-surface-variant border border-l-[3px] px-4 py-3">
+              <span class="text-gold block text-center font-mono text-sm select-all">{{ vite_url }}</span>
             </div>
           </div>
         </div>
