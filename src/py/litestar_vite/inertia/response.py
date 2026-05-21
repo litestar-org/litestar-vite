@@ -458,11 +458,7 @@ class InertiaResponse(Response[T]):
             else:
                 shared_props["content"] = route_content
 
-        # v2.2+ protocol: drop keys this partial reload just resolved.
-        # Echoing them back makes @inertiajs/core treat the response as
-        # "still has deferred work" and re-fire loadDeferredProps forever.
-        # partial_except keys are NOT resolved by this response, so they
-        # remain legitimately deferred — no symmetric filter needed.
+        # Drop keys this partial reload just resolved, or the client loops on loadDeferredProps.
         if partial_data:
             for key in partial_data:
                 _discard_deferred_prop_key(deferred_props_map, key)
