@@ -6,8 +6,8 @@
     "suspicious": "error"
   },
   "rules": {
-    "@typescript-eslint/no-explicit-any": "off",
-    "@typescript-eslint/no-extraneous-class": "off",
+    "typescript/no-explicit-any": "off",
+    "typescript/no-extraneous-class": "off",
     "unicorn/no-array-for-each": "off",
     "unicorn/consistent-function-scoping": "off",
     "import/no-unassigned-import": "off",
@@ -19,8 +19,12 @@
     "jest/no-conditional-expect": "off",
     "promise/always-return": "off",
     "default-param-last": "error",
-    "@typescript-eslint/no-inferrable-types": "error",
-    "@typescript-eslint/prefer-enum-initializers": "error",
+    "typescript/consistent-type-imports": "error",
+    "typescript/no-inferrable-types": "error",
+    "typescript/no-unnecessary-template-expression": "error",
+    "typescript/prefer-as-const": "error",
+    "typescript/prefer-enum-initializers": "error",
+    "unicorn/prefer-number-properties": "error",
     "no-param-reassign": "error",
     "no-else-return": "error",
     "react/self-closing-comp": "error"
@@ -29,14 +33,15 @@
     {
       "files": ["**/*.svelte", "**/*.astro", "**/*.vue"],
       "rules": {
-        "@typescript-eslint/no-unused-vars": "off",
+        "prefer-const": "off",
+        "typescript/consistent-type-imports": "off",
         "no-unused-vars": "off"
       }
     },
     {
       "files": ["**/helpers/htmx.ts"],
       "rules": {
-        "@typescript-eslint/no-confusing-void-expression": "off"
+        "typescript/no-confusing-void-expression": "off"
       }
     }
   ],

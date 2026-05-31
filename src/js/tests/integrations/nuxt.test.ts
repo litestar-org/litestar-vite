@@ -1,7 +1,5 @@
 import fs from "node:fs"
-
 import { describe, expect, it, vi } from "vitest"
-
 import litestarNuxtModule from "../../src/nuxt"
 
 describe("litestar-nuxt integration", () => {

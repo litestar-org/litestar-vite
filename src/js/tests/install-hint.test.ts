@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-
 import { detectExecutor, resolveInstallHint, resolvePackageExecutor } from "../src/install-hint"
 
 // Mock fs module

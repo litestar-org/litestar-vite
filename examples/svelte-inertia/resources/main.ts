@@ -1,7 +1,6 @@
 import { createInertiaApp } from "@inertiajs/svelte"
 import { csrfHeaders } from "litestar-vite-plugin/helpers"
 import { type Component, mount } from "svelte"
-
 import "./app.css"
 
 const pages = import.meta.glob<{ default: Component }>("./pages/**/*.svelte")

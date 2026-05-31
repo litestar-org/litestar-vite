@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue"
-
 import { route, routeDefinitions } from "@/routes"
 
 type Book = {

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest"
-
 import { parseBridgeSchema } from "../../src/shared/bridge-schema"
 
 const baseBridgeConfig = {

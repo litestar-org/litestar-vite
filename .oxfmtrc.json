@@ -10,9 +10,15 @@
   "arrowParens": "always",
   "endOfLine": "lf",
   "insertFinalNewline": true,
-  "sortImports": true,
+  "sortImports": {
+    "newlinesBetween": false,
+    "partitionByNewline": true
+  },
   "sortTailwindcss": {},
   "sortPackageJson": false,
+  "svelte": {
+    "indentScriptAndStyle": false
+  },
   "ignorePatterns": [
     "node_modules/",
     "dist/",

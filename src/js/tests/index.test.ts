@@ -1,15 +1,14 @@
+import type * as FsModule from "fs"
 import fs from "node:fs"
 import path from "node:path"
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-
 import litestar from "../src"
 import { resolvePageComponent } from "../src/inertia-helpers"
 import { getBuildInput } from "./__fixtures__/mock-vite-config"
 
 // Mock the fs module
 vi.mock("fs", async () => {
-  const actual = await vi.importActual<typeof import("fs")>("fs")
+  const actual = await vi.importActual<typeof FsModule>("fs")
 
   return {
     promises: actual.promises,

@@ -1,7 +1,5 @@
 import fs from "node:fs"
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-
 import { checkBackendAvailability, loadLitestarMeta } from "../src/litestar-meta"
 import { createMockViteConfig } from "./__fixtures__/mock-vite-config"
 

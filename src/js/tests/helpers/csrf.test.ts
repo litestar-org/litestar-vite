@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-
 import { csrfFetch, csrfHeaders, getCsrfToken } from "../../src/helpers/csrf"
 
 function getHeaderValue(headers: HeadersInit | undefined, header: string): string | null | undefined {

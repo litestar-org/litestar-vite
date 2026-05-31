@@ -1,7 +1,6 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-
 import { loadLitestarMeta } from "../src/litestar-meta"
 
 describe("litestar-meta runtime config fallback", () => {

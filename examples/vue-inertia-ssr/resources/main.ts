@@ -3,7 +3,6 @@ import { csrfHeaders } from "litestar-vite-plugin/helpers"
 import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers"
 import type { DefineComponent } from "vue"
 import { createSSRApp, h } from "vue"
-
 import "./style.css"
 
 createInertiaApp({

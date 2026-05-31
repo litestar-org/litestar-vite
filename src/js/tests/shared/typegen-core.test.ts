@@ -1,8 +1,11 @@
+import type * as ChildProcessModule from "node:child_process"
+import type * as FsModule from "node:fs"
+import type * as NodeModule from "node:module"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // Mock node:child_process exec (promisified as execAsync)
 vi.mock("node:child_process", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:child_process")>()
+  const actual = await importOriginal<typeof ChildProcessModule>()
   return {
     ...actual,
     exec: vi.fn(),
@@ -11,7 +14,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 
 // Mock node:fs
 vi.mock("node:fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs")>()
+  const actual = await importOriginal<typeof FsModule>()
   return {
     ...actual,
     default: {
@@ -30,7 +33,7 @@ vi.mock("node:fs", async (importOriginal) => {
 
 // Mock node:module createRequire
 vi.mock("node:module", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:module")>()
+  const actual = await importOriginal<typeof NodeModule>()
   return {
     ...actual,
     createRequire: vi.fn(() => {

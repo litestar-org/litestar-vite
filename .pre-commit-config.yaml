@@ -13,7 +13,9 @@ repos:
         entry: npm exec oxfmt -- --write
         language: system
         types: [text]
-        files: "\\.(jsx?|tsx?|c(js|ts)|m(js|ts)|d\\.(ts|cts|mts))$"
+        # Follow-up: Oxfmt 0.51 does not target .astro, .graphql, or .gql.
+        # Keep those unformatted until a non-Biome fallback is chosen.
+        files: "\\.(jsx?|tsx?|c(js|ts)|m(js|ts)|d\\.(ts|cts|mts)|jsonc?|css|svelte|vue)$"
         exclude: templates|migrations|scripts|docs|dist|.venv|public|node_modules|package-lock.json
       - id: local-oxlint
         name: oxlint check
