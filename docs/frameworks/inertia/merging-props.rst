@@ -17,10 +17,11 @@ Use ``merge()`` to append or prepend data instead of replacing:
    from typing import Any
 
    from litestar import get
+   from litestar.params import FromQuery
    from litestar_vite.inertia import merge
 
    @get("/posts", component="Posts")
-   async def list_posts(page: int = 1) -> dict[str, Any]:
+   async def list_posts(page: FromQuery[int] = 1) -> dict[str, Any]:
        posts = await Post.paginate(page=page, per_page=20)
        return {
            "posts": merge("posts", posts.items),  # Append to existing
@@ -67,10 +68,11 @@ Backend
    from typing import Any
 
    from litestar import get
+   from litestar.params import FromQuery
    from litestar_vite.inertia import merge, scroll_props
 
    @get("/posts", component="Posts")
-   async def list_posts(page: int = 1) -> dict[str, Any]:
+   async def list_posts(page: FromQuery[int] = 1) -> dict[str, Any]:
        posts = await Post.paginate(page=page, per_page=20)
        return {
            "posts": merge("posts", posts.items),
@@ -170,10 +172,13 @@ Return pagination objects directly - items and scroll props are extracted:
 .. code-block:: python
 
    from litestar import get
+   from litestar.params import FromQuery
    from litestar.pagination import OffsetPagination
 
    @get("/posts", component="Posts", infinite_scroll=True)
-   async def list_posts(offset: int = 0, limit: int = 20) -> OffsetPagination[Post]:
+   async def list_posts(
+       offset: FromQuery[int] = 0, limit: FromQuery[int] = 20
+   ) -> OffsetPagination[Post]:
        posts, total = await Post.paginate(offset, limit)
        return OffsetPagination(items=posts, offset=offset, limit=limit, total=total)
 
@@ -195,10 +200,11 @@ The pagination container is automatically unwrapped:
 .. code-block:: python
 
    from litestar import get
+   from litestar.params import FromQuery
    from litestar.pagination import OffsetPagination
 
    @get("/posts", component="Posts", infinite_scroll=True, key="posts")
-   async def list_posts(offset: int = 0) -> OffsetPagination[Post]:
+   async def list_posts(offset: FromQuery[int] = 0) -> OffsetPagination[Post]:
        ...  # Props will have "posts" instead of "items"
 
 Protocol Response

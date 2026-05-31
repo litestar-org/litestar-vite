@@ -23,7 +23,7 @@ import pytest
 from litestar import Request, get
 from litestar.config.app import AppConfig
 from litestar.middleware.session.server_side import ServerSideSessionConfig
-from litestar.plugins import InitPluginProtocol
+from litestar.plugins import InitPlugin
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
@@ -48,7 +48,7 @@ def inertia_vite_config(test_app_path: Path) -> ViteConfig:
 @pytest.fixture
 def template_config_inertia(test_app_path: Path) -> TemplateConfig[Any]:
     """Template config that points at the Inertia test templates folder."""
-    from litestar.contrib.jinja import JinjaTemplateEngine
+    from litestar.plugins.jinja import JinjaTemplateEngine
 
     return TemplateConfig(engine=JinjaTemplateEngine(directory=Path(__file__).parent / "templates"))
 
@@ -136,7 +136,7 @@ def test_inertia_middleware_installed_only_once(
         assert count == 1, f"InertiaMiddleware registered {count} times, expected 1"
 
 
-class _ReboundPlugin(InitPluginProtocol):
+class _ReboundPlugin(InitPlugin):
     """Test double for plugins (e.g. older SQLSpecPlugin) that rebind plugins.
 
     This reproduces the exact failure mode from the bug report: a plugin that

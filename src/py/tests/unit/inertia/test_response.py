@@ -6,9 +6,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from litestar import Request, get
-from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.exceptions import ImproperlyConfiguredException, NotAuthorizedException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
+from litestar.params import FromPath, FromQuery
+from litestar.plugins.jinja import JinjaTemplateEngine
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
@@ -1371,7 +1372,7 @@ async def test_scroll_props_parameter(
     from litestar_vite.inertia.response import InertiaResponse
 
     @get("/posts", component="Posts")
-    async def handler(request: Request[Any, Any, Any], page: int = 1) -> InertiaResponse[dict[str, Any]]:
+    async def handler(request: Request[Any, Any, Any], page: FromQuery[int] = 1) -> InertiaResponse[dict[str, Any]]:
         posts = [{"id": i, "title": f"Post {i}"} for i in range((page - 1) * 10, page * 10)]
         return InertiaResponse(
             {"posts": posts},
@@ -1529,7 +1530,7 @@ async def test_http_exception_404_preserved_for_non_inertia_requests(
     from litestar.exceptions import NotFoundException
 
     @get("/api/items/{item_id:int}")
-    async def handler(request: Request[Any, Any, Any], item_id: int) -> dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any], item_id: FromPath[int]) -> dict[str, Any]:
         raise NotFoundException(detail=f"Item {item_id} not found")
 
     with create_test_client(

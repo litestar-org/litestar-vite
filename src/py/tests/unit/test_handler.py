@@ -8,6 +8,7 @@ import httpx
 import pytest
 from litestar import Litestar, get
 from litestar.exceptions import ImproperlyConfiguredException
+from litestar.params import FromPath, FromQuery
 from litestar.testing import AsyncTestClient
 
 from litestar_vite.config import ViteConfig
@@ -741,7 +742,7 @@ async def test_spa_handler_route_exclusion_api_path(spa_config: ViteConfig) -> N
         return {"users": ["alice", "bob"]}
 
     @get("/api/posts/{post_id:int}")
-    async def get_post(post_id: int) -> dict[str, int]:
+    async def get_post(post_id: FromPath[int]) -> dict[str, int]:
         return {"id": post_id}
 
     # SPA route should be registered LAST
@@ -1050,7 +1051,7 @@ async def test_spa_handler_route_exclusion_with_query_params(spa_config: ViteCon
 
     # Add API route that accepts query params
     @get("/api/search")
-    async def search(q: str) -> dict[str, str]:
+    async def search(q: FromQuery[str]) -> dict[str, str]:
         return {"query": q}
 
     app = Litestar(route_handlers=[route, search])
@@ -1216,7 +1217,7 @@ async def test_spa_handler_serves_non_root_spa_path(temp_resource_dir: Path, mon
     route = handler.create_route_handler()
 
     @get("/books/{book_id:int}")
-    async def get_book(book_id: int) -> dict:
+    async def get_book(book_id: FromPath[int]) -> dict:
         return {"book_id": book_id}
 
     app = Litestar(route_handlers=[get_book, route])

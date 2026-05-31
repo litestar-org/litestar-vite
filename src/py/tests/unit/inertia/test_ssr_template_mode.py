@@ -6,9 +6,9 @@ from typing import Any, Literal
 from unittest.mock import AsyncMock, patch
 
 from litestar import Request, get
-from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.di import Provide
 from litestar.middleware.session.server_side import ServerSideSessionConfig
+from litestar.plugins.jinja import JinjaTemplateEngine
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]

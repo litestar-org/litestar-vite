@@ -44,10 +44,11 @@ Group related props to fetch them together:
    from typing import Any
 
    from litestar import get
+   from litestar.params import FromPath
    from litestar_vite.inertia import defer
 
    @get("/users/{id}", component="Users/Show")
-   async def show_user(id: int) -> dict[str, Any]:
+   async def show_user(id: FromPath[int]) -> dict[str, Any]:
        return {
            "user": get_user(id),                                       # Immediate
 

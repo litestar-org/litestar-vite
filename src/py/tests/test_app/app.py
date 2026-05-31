@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from litestar import Litestar
-from litestar.contrib.jinja import JinjaTemplateEngine
+from litestar.plugins.jinja import JinjaTemplateEngine
 from litestar.template.config import TemplateConfig
 
 from litestar_vite import PathConfig, RuntimeConfig, ViteConfig, VitePlugin

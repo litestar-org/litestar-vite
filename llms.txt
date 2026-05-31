@@ -23,7 +23,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 
 ## Core Concepts
 
-**VitePlugin** (`litestar_vite.plugin.VitePlugin`): Main Litestar plugin implementing `InitPluginProtocol` and `CLIPlugin`. Handles static file serving, Jinja2 template callable registration, Vite dev server process management, dev proxy middleware, and SPA handler initialization.
+**VitePlugin** (`litestar_vite.plugin.VitePlugin`): Main Litestar plugin implementing `InitPlugin` and `CLIPlugin`. Handles static file serving, Jinja2 template callable registration, Vite dev server process management, dev proxy middleware, and SPA handler initialization.
 
 **ViteConfig** (`litestar_vite.config.ViteConfig`): Root configuration dataclass. Key fields: `mode` (spa/template/htmx/hybrid/inertia/framework/ssr/ssg/external, auto-detected if unset), `dev_mode` (bool), `paths` (PathConfig), `runtime` (RuntimeConfig), `types` (TypeGenConfig|bool), `inertia` (InertiaConfig|bool), `spa` (SPAConfig|bool), `deploy` (DeployConfig|bool), `static_props` (dict written to `.litestar.json`), `guards` (Sequence[Guard] for the SPA catch-all), `exclude_static_from_auth` (bool), `spa_path` (str), `include_root_spa_paths` (bool).
 

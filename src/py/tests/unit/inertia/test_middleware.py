@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 from litestar import Request, get
 from litestar.middleware.session.server_side import ServerSideSessionConfig
+from litestar.params import FromQuery
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client
@@ -220,7 +221,7 @@ async def test_version_mismatch_preserves_query_string(
     """Test that version mismatch preserves query parameters in redirect."""
 
     @get("/search", component="Search")
-    async def handler(request: Request[Any, Any, Any], q: str = "") -> dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any], q: FromQuery[str] = "") -> dict[str, Any]:
         return {"query": q}
 
     with create_test_client(

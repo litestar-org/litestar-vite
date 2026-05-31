@@ -221,10 +221,11 @@ def optional(key: str, callback: "Callable[..., T | Coroutine[Any, Any, T]]") ->
 
     Example::
 
+        from litestar.params import FromPath
         from litestar_vite.inertia import optional, InertiaResponse
 
         @get("/posts/{post_id}", component="Posts/Show")
-        async def show_post(post_id: int) -> InertiaResponse:
+        async def show_post(post_id: FromPath[int]) -> InertiaResponse:
             post = await Post.get(post_id)
             return InertiaResponse({
                 "post": post,
@@ -494,10 +495,11 @@ def scroll_props(
 
     Example::
 
+        from litestar.params import FromQuery
         from litestar_vite.inertia import scroll_props, InertiaResponse
 
         @get("/posts", component="Posts")
-        async def list_posts(page: int = 1) -> InertiaResponse:
+        async def list_posts(page: FromQuery[int] = 1) -> InertiaResponse:
             posts = await Post.paginate(page=page, per_page=20)
             return InertiaResponse(
                 {"posts": merge("posts", posts.items)},

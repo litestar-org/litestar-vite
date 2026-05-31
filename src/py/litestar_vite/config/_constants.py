@@ -1,7 +1,8 @@
 """Constants and utility functions for configuration."""
 
-from importlib.util import find_spec
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+from litestar_vite._typing import FSSPEC_INSTALLED, JINJA_INSTALLED
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -18,8 +19,6 @@ __all__ = (
 )
 
 TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
-JINJA_INSTALLED = bool(find_spec("jinja2"))
-FSSPEC_INSTALLED = bool(find_spec("fsspec"))
 
 
 @runtime_checkable

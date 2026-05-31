@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from litestar import Litestar, get
+from litestar.params import FromPath
 from litestar.serialization import decode_json, encode_json, get_serializer
 
 from litestar_vite.codegen import generate_routes_json
@@ -18,7 +19,7 @@ def test_export_routes_integration(tmp_path: Path) -> None:
         return ["user1", "user2"]
 
     @get("/users/{user_id:int}", name="get_user", sync_to_thread=False)
-    def get_user_handler(user_id: int) -> dict[str, int]:
+    def get_user_handler(user_id: FromPath[int]) -> dict[str, int]:
         return {"id": user_id}
 
     @get("/dashboard", name="dashboard", opt={"component": "Dashboard/Index"}, sync_to_thread=False)
@@ -114,7 +115,7 @@ def test_export_routes_typescript_integration(tmp_path: Path) -> None:
         return ["user1", "user2"]
 
     @get("/users/{user_id:int}", name="get_user", sync_to_thread=False)
-    def get_user_handler(user_id: int) -> dict[str, int]:
+    def get_user_handler(user_id: FromPath[int]) -> dict[str, int]:
         return {"id": user_id}
 
     @get("/dashboard", name="dashboard", opt={"component": "Dashboard/Index"}, sync_to_thread=False)

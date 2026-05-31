@@ -15,6 +15,7 @@ from pathlib import Path
 
 from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
+from litestar.params import FromPath
 from msgspec import Struct
 
 from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
@@ -85,7 +86,7 @@ class LibraryController(Controller):
         return BOOKS
 
     @get("/api/books/{book_id:int}")
-    async def book_detail(self, book_id: int) -> Book:
+    async def book_detail(self, book_id: FromPath[int]) -> Book:
         """Return a single book by id.
 
         Returns:

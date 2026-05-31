@@ -22,7 +22,7 @@ from litestar_vite import ViteConfig, VitePlugin
 
 try:
     from litestar.template.config import TemplateConfig
-    from litestar.contrib.jinja import JinjaTemplateEngine
+    from litestar.plugins.jinja import JinjaTemplateEngine
     jinja_available = True
 except ImportError:
     jinja_available = False
@@ -64,7 +64,7 @@ from pathlib import Path
 from litestar import Controller, Litestar, get
 from litestar.response import Template
 from litestar.template.config import TemplateConfig
-from litestar.contrib.jinja import JinjaTemplateEngine
+from litestar.plugins.jinja import JinjaTemplateEngine
 
 from litestar_vite import ViteConfig, VitePlugin
 
@@ -117,7 +117,7 @@ from __future__ import annotations
 
 from litestar import Litestar
 from litestar.template.config import TemplateConfig
-from litestar.contrib.jinja import JinjaTemplateEngine
+from litestar.plugins.jinja import JinjaTemplateEngine
 
 from litestar_vite import VitePlugin, ViteConfig
 
@@ -152,7 +152,7 @@ from pathlib import Path
 
 from litestar import Litestar
 from litestar.template.config import TemplateConfig
-from litestar.contrib.jinja import JinjaTemplateEngine
+from litestar.plugins.jinja import JinjaTemplateEngine
 
 from litestar_vite import ViteConfig, VitePlugin
 
@@ -196,7 +196,7 @@ from pathlib import Path
 
 from litestar import Litestar
 from litestar.template.config import TemplateConfig
-from litestar.contrib.jinja import JinjaTemplateEngine
+from litestar.plugins.jinja import JinjaTemplateEngine
 
 from litestar_vite import ViteConfig, VitePlugin
 

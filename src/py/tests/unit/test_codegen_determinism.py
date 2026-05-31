@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 from litestar import Litestar, get, post
+from litestar.params import FromPath, FromQuery
 
 from litestar_vite.codegen import generate_inertia_pages_json, generate_routes_json, generate_routes_ts
 from litestar_vite.codegen._utils import (
@@ -185,15 +186,15 @@ def test_generate_routes_json_is_deterministic() -> None:
     """Test that generate_routes_json produces deterministic output."""
 
     @get("/users/{id:int}", name="get_user", sync_to_thread=False)
-    def get_user(id: int) -> dict[str, int]:
+    def get_user(id: FromPath[int]) -> dict[str, int]:
         return {"id": id}
 
     @get("/posts/{id:int}", name="get_post", sync_to_thread=False)
-    def get_post(id: int) -> dict[str, int]:
+    def get_post(id: FromPath[int]) -> dict[str, int]:
         return {"id": id}
 
     @get("/comments/{id:int}", name="get_comment", sync_to_thread=False)
-    def get_comment(id: int) -> dict[str, int]:
+    def get_comment(id: FromPath[int]) -> dict[str, int]:
         return {"id": id}
 
     app = Litestar([get_user, get_post, get_comment])
@@ -214,15 +215,15 @@ def test_generate_routes_ts_is_deterministic() -> None:
     """Test that generate_routes_ts produces deterministic output."""
 
     @get("/users/{id:int}", name="get_user", sync_to_thread=False)
-    def get_user(id: int) -> dict[str, int]:
+    def get_user(id: FromPath[int]) -> dict[str, int]:
         return {"id": id}
 
     @get("/posts/{id:int}", name="get_post", sync_to_thread=False)
-    def get_post(id: int) -> dict[str, int]:
+    def get_post(id: FromPath[int]) -> dict[str, int]:
         return {"id": id}
 
     @get("/comments/{id:int}", name="get_comment", sync_to_thread=False)
-    def get_comment(id: int) -> dict[str, int]:
+    def get_comment(id: FromPath[int]) -> dict[str, int]:
         return {"id": id}
 
     app = Litestar([get_user, get_post, get_comment])
@@ -272,7 +273,7 @@ def test_generate_routes_json_params_are_sorted() -> None:
     """Test that route parameters are sorted alphabetically."""
 
     @get("/search", name="search", sync_to_thread=False)
-    def search(z_param: str, a_param: str, m_param: str) -> list[str]:
+    def search(z_param: FromQuery[str], a_param: FromQuery[str], m_param: FromQuery[str]) -> list[str]:
         return []
 
     app = Litestar([search])
@@ -288,7 +289,7 @@ def test_generate_routes_ts_params_are_sorted() -> None:
     """Test that TypeScript route parameters are sorted alphabetically."""
 
     @get("/search", name="search", sync_to_thread=False)
-    def search(z_param: str, a_param: str, m_param: str) -> list[str]:
+    def search(z_param: FromQuery[str], a_param: FromQuery[str], m_param: FromQuery[str]) -> list[str]:
         return []
 
     app = Litestar([search])

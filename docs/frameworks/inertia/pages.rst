@@ -54,9 +54,10 @@ The dictionary returned from your handler becomes the page props:
    from typing import Any
 
    from litestar import get
+   from litestar.params import FromPath
 
    @get("/users/{user_id:int}", component="Users/Show")
-   async def show_user(user_id: int) -> dict[str, Any]:
+   async def show_user(user_id: FromPath[int]) -> dict[str, Any]:
        user = await User.get(user_id)
        return {
            "user": {
@@ -134,15 +135,16 @@ Use path separators for nested page organization:
    from typing import Any
 
    from litestar import get
+   from litestar.params import FromPath
 
    @get("/users", component="Users/Index")
    async def list_users() -> dict[str, Any]: ...
 
    @get("/users/{id}", component="Users/Show")
-   async def show_user(id: int) -> dict[str, Any]: ...
+   async def show_user(id: FromPath[int]) -> dict[str, Any]: ...
 
    @get("/users/{id}/edit", component="Users/Edit")
-   async def edit_user(id: int) -> dict[str, Any]: ...
+   async def edit_user(id: FromPath[int]) -> dict[str, Any]: ...
 
 See Also
 --------

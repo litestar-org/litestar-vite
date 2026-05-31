@@ -21,10 +21,11 @@ Mark list props as mergeable and provide scroll metadata:
 .. code-block:: python
 
    from litestar import get
+   from litestar.params import FromQuery
    from litestar_vite.inertia import merge, scroll_props, InertiaResponse
 
    @get("/posts", component="Posts")
-   async def list_posts(page: int = 1) -> InertiaResponse:
+   async def list_posts(page: FromQuery[int] = 1) -> InertiaResponse:
        posts = await Post.paginate(page=page, per_page=20)
        return InertiaResponse(
            {"posts": merge("posts", posts.items, match_on="id")},
@@ -44,10 +45,11 @@ the route. Litestar-Vite will extract items and scroll props for you:
 
 .. code-block:: python
 
+   from litestar.params import FromQuery
    from litestar.pagination import OffsetPagination
 
    @get("/posts", component="Posts", infinite_scroll=True, key="posts")
-   async def list_posts(offset: int = 0, limit: int = 20) -> OffsetPagination[Post]:
+   async def list_posts(offset: FromQuery[int] = 0, limit: FromQuery[int] = 20) -> OffsetPagination[Post]:
        posts, total = await Post.paginate(offset=offset, limit=limit)
        return OffsetPagination(items=posts, total=total, limit=limit, offset=offset)
 

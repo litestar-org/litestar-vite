@@ -97,10 +97,11 @@ Optional props are only included when explicitly requested:
    from typing import Any
 
    from litestar import get
+   from litestar.params import FromPath
    from litestar_vite.inertia import optional
 
    @get("/posts/{post_id}", component="Posts/Show")
-   async def show_post(post_id: int) -> dict[str, Any]:
+   async def show_post(post_id: FromPath[int]) -> dict[str, Any]:
        return {
            "post": await Post.get(post_id),
            "comments": optional("comments", lambda: Comment.for_post(post_id)),

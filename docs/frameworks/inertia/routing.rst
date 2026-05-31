@@ -235,9 +235,10 @@ litestar-vite uses kebab-case for route names by default (converted from Python 
    from typing import Any
 
    from litestar import get
+   from litestar.params import FromPath
 
    @get("/users/{user_id}", component="UserProfile")
-   async def user_profile(user_id: int) -> dict[str, Any]:
+   async def user_profile(user_id: FromPath[int]) -> dict[str, Any]:
        ...  # Route name: "user-profile"
 
    @get("/users", component="Users")
@@ -251,9 +252,10 @@ This differs from Laravel's dot notation (``users.show``), but you can customize
    from typing import Any
 
    from litestar import get
+   from litestar.params import FromPath
 
    @get("/users/{user_id}", component="UserProfile", name="users.show")
-   async def user_profile(user_id: int) -> dict[str, Any]:
+   async def user_profile(user_id: FromPath[int]) -> dict[str, Any]:
        ...  # Route name: "users.show" (custom)
 
 See Also

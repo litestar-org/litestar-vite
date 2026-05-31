@@ -105,10 +105,11 @@ Return pagination objects directly - they're automatically unwrapped:
 .. code-block:: python
 
    from litestar import get
+   from litestar.params import FromQuery
    from litestar.pagination import OffsetPagination
 
    @get("/users", component="Users")
-   async def list_users(offset: int = 0, limit: int = 20) -> OffsetPagination[User]:
+   async def list_users(offset: FromQuery[int] = 0, limit: FromQuery[int] = 20) -> OffsetPagination[User]:
        users, total = await User.paginate(offset, limit)
        return OffsetPagination(
            items=users,
