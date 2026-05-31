@@ -534,6 +534,23 @@ class _RoutePrefixesState(Protocol):
     litestar_vite_route_prefixes: tuple[str, ...]
 
 
+def _route_is_vite_spa(route: Any) -> bool:
+    """Check whether a route belongs to the litestar-vite SPA handler.
+
+    Litestar exposes a single ``route_handler`` on most route types and a list on
+    HTTPRoute; check both to stay version-agnostic.
+    """
+    handlers = getattr(route, "route_handlers", None)
+    if not handlers:
+        single = getattr(route, "route_handler", None)
+        handlers = [single] if single is not None else []
+    for handler in handlers:
+        opt = getattr(handler, "opt", None)
+        if opt and "_vite_spa_handler" in opt:
+            return True
+    return False
+
+
 def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
     """Build a cached list of Litestar route prefixes for the given app.
 
@@ -568,6 +585,12 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
         # proxy. Without this filter the framework HMR WebSocket at '/' makes GET / fall
         # through to the WS handler and Litestar returns 405 Method Not Allowed.
         if isinstance(route, WebSocketRoute):
+            continue
+        # The SPA handler itself is registered as a Litestar route; including its path in
+        # the prefix list would make is_litestar_route() self-exclude the SPA — non-root
+        # spa_path values like "/ui" become unreachable. Identify SPA routes via the
+        # _vite_spa_handler marker AppHandler.create_route_handler sets on opt.
+        if _route_is_vite_spa(route):
             continue
         prefix = route.path.rstrip("/")
         if prefix:
