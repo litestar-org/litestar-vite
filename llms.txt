@@ -7,7 +7,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 ## Python Package
 
 - Package: `litestar-vite`
-- Version: 0.22.2
+- Version: 0.23.5
 - Python: >=3.10
 - Key dependencies: `litestar>=2.7.0`, `httpx>=0.24.1`, `websockets>=12.0`, `typing_extensions`
 - Optional extras: `jinja` (Jinja2 templates), `nodeenv` (auto-detected Node), `http2` (h2 for proxy)
@@ -15,8 +15,8 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 ## npm Package
 
 - Package: `litestar-vite-plugin`
-- Version: 0.22.2
-- Node: `^20.19.0 || >=22.12.0`
+- Version: 0.23.5
+- Node: `>=22.12.0`
 - Peer dependency: `vite ^7.0.0 || ^8.0.0`
 - Exports: `.` (main plugin), `./helpers` (route/csrf/htmx helpers), `./inertia-helpers`, `./astro`, `./sveltekit`, `./nuxt`, `./inertia` (types), `./virtual` (virtual module types)
 - Bin: `clean-orphaned-assets`, `litestar-vite-typegen`
@@ -29,7 +29,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 
 **ViteAssetLoader** (`litestar_vite.loader.ViteAssetLoader`): Reads the Vite manifest and generates HTML script/link tags for production assets. Lazily initialized and exposes a `version_id` derived from the manifest digest.
 
-**Proxy modes**: `vite` (default, proxies Vite assets only), `direct` (two-port, expose Vite directly), `proxy` (meta-frameworks, proxies everything except API routes), `None` (production, no proxy). The `mode="ssr"`/`"ssg"` aliases resolve to `mode="framework"` and `mode="inertia"` resolves to `mode="hybrid"`.
+**Proxy modes**: `vite` (default, proxies Vite assets only), `proxy` (meta-frameworks, proxies everything except Litestar routes), `None` (production, no proxy). `direct` is deprecated and coerced to `vite` (`VITE_PROXY_MODE=direct` emits a `DeprecationWarning`). Mode aliases (normalized at construction): `"ssr"`/`"ssg"` → `"framework"`, `"inertia"` → `"hybrid"`, `"htmx"` → `"template"`, and `"external"` → `"framework"` (deprecated; requires `external_dev_server`). The four canonical modes after normalization are `spa`, `template`, `hybrid`, `framework`.
 
 **Code generation** (`litestar_vite.codegen`): Exports OpenAPI schema, route metadata (JSON + TypeScript), and Inertia page props metadata. Triggered via `ViteConfig(types=True)` or `litestar assets generate-types`.
 
@@ -70,7 +70,7 @@ litestar run --reload                # Vite dev server proxied automatically
 
 - `litestar_vite.config` -- ViteConfig, PathConfig, RuntimeConfig, TypeGenConfig, InertiaConfig, InertiaSSRConfig, InertiaTypeGenConfig, DeployConfig, SPAConfig, LoggingConfig, ExternalDevServer
 - `litestar_vite.plugin` -- VitePlugin, ViteProxyMiddleware, ProxyHeadersMiddleware, ViteProcess
-- `litestar_vite.inertia` -- InertiaPlugin, InertiaRequest, InertiaResponse, InertiaMiddleware, InertiaHeaders, InertiaBack, InertiaRedirect, InertiaExternalRedirect, helpers (defer, merge, share, lazy, once, optional, always, flash, error, scroll_props, only, except_, share, clear_history)
+- `litestar_vite.inertia` -- InertiaPlugin, InertiaRequest, InertiaResponse, InertiaMiddleware, InertiaHeaders, InertiaBack, InertiaRedirect, InertiaExternalRedirect, helpers (defer, merge, share, lazy, once, optional, always, flash, error, scroll_props, only, except_, clear_history)
 - `litestar_vite.codegen` -- export_integration_assets, ExportResult, generate_routes_json, generate_routes_ts, generate_inertia_pages_json, extract_route_metadata, extract_inertia_pages, encode_deterministic_json, write_if_changed
 - `litestar_vite.loader` -- ViteAssetLoader
 - `litestar_vite.executor` -- JS runtime executors (NodeExecutor, BunExecutor, DenoExecutor, YarnExecutor, PnpmExecutor, NodeenvExecutor)
@@ -109,7 +109,7 @@ litestar run --reload                # Vite dev server proxied automatically
 - **Inertia.js integration**: Inertia v2 and v3 support via `InertiaPlugin` with session middleware, `InertiaRequest`/`InertiaResponse`, deferred/merge/once/optional/always props, infinite-scroll `scroll_props`, precognition (`InertiaConfig(precognition=True)` + `@precognition`), JSON script-element bootstrap by default (`InertiaConfig(use_script_element=False)` restores the legacy `data-page` path; Inertia v2 still needs `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })` when using the default transport), pooled SSR client (`httpx.AsyncClient` with HTTP/2-aware connection limits), async prop pre-resolution on the request loop, and exception handling.
 - **Type generation**: Export OpenAPI schema, typed route metadata (JSON + TypeScript), Inertia page props, and ergonomic `schemas.ts` form/response helpers. Enable with `ViteConfig(types=True)`. The npm plugin watches exported files and triggers `@hey-api/openapi-ts` plus the bundled `litestar-vite-typegen` CLI. Use `TypeGenConfig(extra_commands=[["tsr", "generate"]])` to run additional code-generation CLIs (e.g., TanStack Router) during `generate-types` and `build`; binaries are resolved through the project's JS executor (`node_modules/.bin` first, then npx/pnpm dlx/yarn dlx/bunx/deno run).
 - **Route helpers**: The `litestar-vite-plugin/helpers` npm export provides typed route generation functions (`createRouteHelpers`, `isCurrentRoute`, `currentRoute`, `isRoute`, `toRoute`) plus CSRF (`getCsrfToken`, `csrfHeaders`, `csrfFetch`) and HTMX helpers (`addDirective`, `registerHtmxExtension`, `setHtmxDebug`, `swapJson`).
-- **Meta-framework support**: Use `mode="ssr"`/`mode="ssg"` (alias for `mode="framework"`) for Astro, Nuxt, SvelteKit. Dedicated npm integrations at `litestar-vite-plugin/astro`, `/nuxt`, `/sveltekit`. Use `mode="external"` for non-Vite tools (Angular CLI) that own their build output.
+- **Meta-framework support**: Use `mode="ssr"`/`mode="ssg"` (alias for `mode="framework"`) for Astro, Nuxt, SvelteKit. Dedicated npm integrations at `litestar-vite-plugin/astro`, `/nuxt`, `/sveltekit`. For non-Vite tools (Angular CLI) that own their build output, use `mode="framework"` with `RuntimeConfig(external_dev_server=ExternalDevServer(...))`; the legacy `mode="external"` is deprecated and auto-translates to `framework`.
 - **CDN deployment**: `DeployConfig` with fsspec storage backends (GCS, S3, Azure, etc.) via `litestar assets deploy`. Set `DeployConfig.asset_url` to write `deployAssetUrl` into `.litestar.json` so production builds use the CDN base URL.
 - **Proxy headers**: `ProxyHeadersMiddleware` for X-Forwarded-* header handling behind reverse proxies. Configured via `RuntimeConfig.trusted_proxies` or the `LITESTAR_TRUSTED_PROXIES` env var.
 - **Static props bridge**: `ViteConfig(static_props={...})` writes a JSON payload into `.litestar.json` and exposes it on the JS side via the `virtual:litestar-static-props` virtual module.
