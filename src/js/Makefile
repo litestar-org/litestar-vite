@@ -23,7 +23,7 @@ upgrade:       										## Upgrade all dependencies to the latest stable versio
 	@echo "=> Updating all dependencies"
 	@npm upgrade --latest
 	@echo "=> Dependencies Updated"
-	# @pre-commit autoupdate
+	# @prek auto-update
 	# @echo "=> Updated Pre-commit"
 
 # =============================================================================
@@ -42,10 +42,10 @@ destroy-node_modules: 											## Destroy the node environment
 # Tests, Linting, Coverage, Build
 # =============================================================================
 .PHONY: lint
-lint: 												## Runs pre-commit hooks; includes ruff linting, codespell, black
-	@echo "=> Running pre-commit process"
-	@pre-commit run --all-files
-	@echo "=> Pre-commit complete"
+lint: 												## Runs prek hooks; includes ruff linting, codespell, black
+	@echo "=> Running prek process"
+	@prek run --all-files
+	@echo "=> prek complete"
 
 .PHONY: test
 test:  												## Run the tests

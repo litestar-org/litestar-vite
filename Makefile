@@ -62,7 +62,7 @@ install: destroy clean                              ## Install the project, depe
 .PHONY: destroy
 destroy:                                            ## Destroy the virtual environment
 	@echo "${INFO} Destroying virtual environment... 🗑️"
-	@uv run pre-commit clean >/dev/null 2>&1
+	@uv run prek clean >/dev/null 2>&1
 	@rm -rf .venv
 	@echo "${OK} Virtual environment destroyed 🗑️"
 
@@ -76,7 +76,7 @@ upgrade:                                            ## Upgrade all dependencies 
 	@uv lock --upgrade
 	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm update --no-fund
 	@echo "${OK} Dependencies updated 🔄"
-	@uv run pre-commit autoupdate
+	@uv run prek auto-update
 	@echo "${OK} Updated Pre-commit hooks 🔄"
 
 .PHONY: lock
@@ -223,7 +223,7 @@ type-check: mypy pyright                           ## Run all type checking
 .PHONY: pre-commit
 pre-commit:                                        ## Run pre-commit hooks
 	@echo "${INFO} Running pre-commit checks... 🔎"
-	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" uv run pre-commit run --color=never --all-files
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" uv run prek run --color=never --all-files
 	@echo "${OK} Pre-commit checks passed ✨"
 
 .PHONY: slotscheck
