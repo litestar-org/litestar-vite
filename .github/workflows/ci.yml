@@ -20,7 +20,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install frontend deps
@@ -128,7 +128,7 @@ jobs:
       LITESTAR_BYPASS_ENV_CHECK: 1
     strategy:
       matrix:
-        node-version: [20,22,24]
+        node-version: [22,24]
 
     steps:
     - uses: actions/checkout@v6
@@ -250,7 +250,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install frontend dependencies
