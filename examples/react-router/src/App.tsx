@@ -46,14 +46,14 @@ function Layout() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-10">
       <header className="space-y-2">
-        <p className="font-semibold text-[#edb641] text-sm uppercase tracking-[0.14em]">Litestar · Vite</p>
-        <h1 className="font-semibold text-3xl text-[#202235]">Library (React + React Router 7)</h1>
+        <p className="text-sm font-semibold tracking-[0.14em] text-[#edb641] uppercase">Litestar · Vite</p>
+        <h1 className="text-3xl font-semibold text-[#202235]">Library (React + React Router 7)</h1>
         <p className="max-w-3xl text-slate-600">SPA mode with React Router 7's data router. Loaders fan out fetches alongside route changes.</p>
         <nav className="inline-flex gap-2 rounded-full bg-slate-100 p-1 shadow-sm" aria-label="Views">
-          <Link to="/" className={`rounded-full px-4 py-2 font-semibold text-sm transition ${isOverview ? "bg-white text-[#202235] shadow" : "text-slate-600"}`}>
+          <Link to="/" className={`rounded-full px-4 py-2 text-sm font-semibold transition ${isOverview ? "bg-white text-[#202235] shadow" : "text-slate-600"}`}>
             Overview
           </Link>
-          <Link to="/books" className={`rounded-full px-4 py-2 font-semibold text-sm transition ${isBooks ? "bg-white text-[#202235] shadow" : "text-slate-600"}`}>
+          <Link to="/books" className={`rounded-full px-4 py-2 text-sm font-semibold transition ${isBooks ? "bg-white text-[#202235] shadow" : "text-slate-600"}`}>
             Books ({totalBooks ?? "–"})
           </Link>
         </nav>
@@ -69,15 +69,15 @@ function OverviewPage() {
 
   return (
     <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/40">
-      <h2 className="font-semibold text-[#202235] text-xl">{summary.headline}</h2>
+      <h2 className="text-xl font-semibold text-[#202235]">{summary.headline}</h2>
       <p className="text-slate-600">Featured book</p>
       <article className="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4">
-        <h3 className="font-semibold text-[#202235] text-lg">{featured.title}</h3>
+        <h3 className="text-lg font-semibold text-[#202235]">{featured.title}</h3>
         <p className="mt-1 text-slate-600">
           {featured.author} • {featured.year}
         </p>
-        <p className="mt-1 text-[#202235] text-sm">{featured.tags.join(" · ")}</p>
-        <Link to={`/books/${featured.id}`} className="mt-3 inline-block rounded-full bg-[#202235] px-4 py-2 font-semibold text-sm text-white">
+        <p className="mt-1 text-sm text-[#202235]">{featured.tags.join(" · ")}</p>
+        <Link to={`/books/${featured.id}`} className="mt-3 inline-block rounded-full bg-[#202235] px-4 py-2 text-sm font-semibold text-white">
           View detail
         </Link>
       </article>
@@ -92,12 +92,12 @@ function BooksPage() {
     <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {books.map((book) => (
         <article key={book.id} className="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4 shadow-sm">
-          <h3 className="font-semibold text-[#202235] text-lg">{book.title}</h3>
+          <h3 className="text-lg font-semibold text-[#202235]">{book.title}</h3>
           <p className="mt-1 text-slate-600">
             {book.author} • {book.year}
           </p>
-          <p className="mt-1 text-[#202235] text-sm">{book.tags.join(" · ")}</p>
-          <Link to={`/books/${book.id}`} className="mt-3 inline-block rounded-full bg-slate-100 px-4 py-2 font-semibold text-slate-700 text-sm">
+          <p className="mt-1 text-sm text-[#202235]">{book.tags.join(" · ")}</p>
+          <Link to={`/books/${book.id}`} className="mt-3 inline-block rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
             Detail
           </Link>
         </article>
@@ -111,12 +111,12 @@ function BookDetailPage() {
 
   return (
     <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/40">
-      <h2 className="font-semibold text-[#202235] text-xl">{book.title}</h2>
+      <h2 className="text-xl font-semibold text-[#202235]">{book.title}</h2>
       <p className="text-slate-600">
         {book.author} • {book.year}
       </p>
-      <p className="text-[#202235] text-sm">{book.tags.join(" · ")}</p>
-      <Link to="/books" className="mt-4 inline-block rounded-full bg-slate-100 px-4 py-2 font-semibold text-slate-700 text-sm">
+      <p className="text-sm text-[#202235]">{book.tags.join(" · ")}</p>
+      <Link to="/books" className="mt-4 inline-block rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
         Back to books
       </Link>
     </section>

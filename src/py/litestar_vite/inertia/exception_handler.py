@@ -78,9 +78,9 @@ def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "E
     if not inertia_enabled:
         if isinstance(exc, HTTPException):
             return cast("Response[Any]", create_exception_response(request, exc))
-        if isinstance(exc, NotFoundError):
+        if isinstance(exc, NotFoundError):  # pyright: ignore[reportArgumentType]
             http_exc = NotFoundException
-        elif isinstance(exc, (RepositoryError, ConflictError)):
+        elif isinstance(exc, (RepositoryError, ConflictError)):  # pyright: ignore[reportArgumentType]
             http_exc = _HTTPConflictException  # type: ignore[assignment]
         else:
             http_exc = InternalServerException  # type: ignore[assignment]

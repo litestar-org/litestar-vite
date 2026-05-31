@@ -31,11 +31,11 @@ function BooksPage() {
     <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {books.map((book) => (
         <article key={book.id} className="rounded-xl border border-slate-200 bg-linear-to-b from-white to-slate-50 p-4 shadow-sm">
-          <h3 className="font-semibold text-[#202235] text-lg">{book.title}</h3>
+          <h3 className="text-lg font-semibold text-[#202235]">{book.title}</h3>
           <p className="mt-1 text-slate-600">
             {book.author} · {book.year}
           </p>
-          <p className="mt-1 text-[#202235] text-sm">{book.tags.join(" · ")}</p>
+          <p className="mt-1 text-sm text-[#202235]">{book.tags.join(" · ")}</p>
         </article>
       ))}
     </section>

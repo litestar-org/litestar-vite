@@ -96,7 +96,7 @@ function isOptionalMetadataMatch(a: FileMetadata | null, b: FileMetadata | null)
  * Keys are sorted for deterministic hashing.
  */
 function hashObject(obj: object): string {
-  const sorted = JSON.stringify(obj, Object.keys(obj).sort())
+  const sorted = JSON.stringify(obj, Object.keys(obj).toSorted())
   return crypto.createHash("sha256").update(sorted).digest("hex")
 }
 

@@ -62,7 +62,7 @@ install: destroy clean                              ## Install the project, depe
 .PHONY: destroy
 destroy:                                            ## Destroy the virtual environment
 	@echo "${INFO} Destroying virtual environment... 🗑️"
-	@uv run pre-commit clean >/dev/null 2>&1
+	@uv run prek clean >/dev/null 2>&1
 	@rm -rf .venv
 	@echo "${OK} Virtual environment destroyed 🗑️"
 
@@ -76,7 +76,7 @@ upgrade:                                            ## Upgrade all dependencies 
 	@uv lock --upgrade
 	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm update --no-fund
 	@echo "${OK} Dependencies updated 🔄"
-	@uv run pre-commit autoupdate
+	@uv run prek auto-update
 	@echo "${OK} Updated Pre-commit hooks 🔄"
 
 .PHONY: lock
@@ -223,7 +223,7 @@ type-check: mypy pyright                           ## Run all type checking
 .PHONY: pre-commit
 pre-commit:                                        ## Run pre-commit hooks
 	@echo "${INFO} Running pre-commit checks... 🔎"
-	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" uv run pre-commit run --color=never --all-files
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" uv run prek run --color=never --all-files
 	@echo "${OK} Pre-commit checks passed ✨"
 
 .PHONY: slotscheck
@@ -236,10 +236,23 @@ slotscheck:                                        ## Run slotscheck
 fix:                                               ## Run code formatters
 	@echo "${INFO} Running code formatters... 🔧"
 	@uv run ruff check --fix --unsafe-fixes
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run fmt
 	@echo "${OK} Code formatting complete ✨"
 
+.PHONY: oxlint
+oxlint:                                            ## Run oxlint on JS/TS sources
+	@echo "${INFO} Running oxlint... 🔍"
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run lint:all
+	@echo "${OK} Oxlint checks passed ✨"
+
+.PHONY: oxfmt
+oxfmt:                                             ## Run oxfmt format check on JS/TS sources
+	@echo "${INFO} Running oxfmt check... 🔍"
+	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run fmt:check
+	@echo "${OK} Oxfmt checks passed ✨"
+
 .PHONY: lint
-lint: pre-commit type-check slotscheck             ## Run all linting checks
+lint: pre-commit type-check slotscheck oxlint oxfmt ## Run all linting checks
 
 .PHONY: check-all
 check-all: lint test coverage                      ## Run all checks (lint, test, coverage)

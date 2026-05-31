@@ -372,10 +372,10 @@ const directives: Dir[] = [
     create(el, a) {
       if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement)) return null
       const key = a.value
-      return (ctx, el) => {
+      return (ctx, innerEl) => {
         const v = ctx[key]
         if (v === undefined) return
-        const inp = el as HTMLInputElement
+        const inp = innerEl as HTMLInputElement
         if (inp.type === "checkbox") inp.checked = Boolean(v)
         else if (inp.type === "radio") inp.checked = v === inp.value
         else inp.value = String(v ?? "")

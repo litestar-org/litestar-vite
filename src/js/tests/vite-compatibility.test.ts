@@ -1,3 +1,4 @@
+import type * as FsModule from "fs"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import litestar from "../src"
 import { isVite8Plus } from "../src/shared/vite-compat"
@@ -5,7 +6,7 @@ import { getBuildInput } from "./__fixtures__/mock-vite-config"
 
 // Mock the fs module for consistent testing
 vi.mock("fs", async () => {
-  const actual = await vi.importActual<typeof import("fs")>("fs")
+  const actual = await vi.importActual<typeof FsModule>("fs")
 
   return {
     promises: actual.promises,

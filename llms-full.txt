@@ -1,7 +1,7 @@
 # Litestar-Vite – Full LLM Reference
 
 > Generated from source files. Every fact below is verified against the
-> codebase at version 0.22.2.
+> codebase at version 0.23.5.
 
 ## Project Metadata
 
@@ -9,10 +9,10 @@
 |---|---|
 | PyPI name | litestar-vite |
 | npm name | litestar-vite-plugin |
-| Version | 0.22.2 |
+| Version | 0.23.5 |
 | License | MIT |
 | Python | >=3.10 |
-| Node | ^20.19.0 \|\| >=22.12.0 |
+| Node | >=22.12.0 |
 | Vite peer | ^7.0.0 \|\| ^8.0.0 |
 
 Python dependencies: litestar>=2.7.0, httpx>=0.24.1, websockets>=12.0, typing_extensions
@@ -164,7 +164,7 @@ Source: `litestar_vite.config._runtime`
 @dataclass
 class RuntimeConfig:
     dev_mode: bool                                          # default: VITE_DEV_MODE env in TRUE_VALUES
-    proxy_mode: Literal['vite', 'direct', 'proxy'] | None  # default: resolve_proxy_mode() from VITE_PROXY_MODE env
+    proxy_mode: Literal['vite', 'proxy'] | None             # default: resolve_proxy_mode() from VITE_PROXY_MODE env ("direct" is deprecated, coerced to "vite")
     external_dev_server: ExternalDevServer | str | None     # default: None
     host: str                                               # default: VITE_HOST env or "127.0.0.1"
     port: int                                               # default: VITE_PORT env or 5173
@@ -284,9 +284,15 @@ Source: `litestar_vite.config._inertia`
 ```python
 @dataclass
 class InertiaSSRConfig:
-    enabled: bool     # default: True
-    url: str          # default: "http://127.0.0.1:13714/render"
-    timeout: float    # default: 2.0
+    enabled: bool               # default: True
+    url: str                    # default: "http://127.0.0.1:13714/render"
+    timeout: float              # default: 2.0
+    target_selector: str        # default: "#app" (template-mode mount point; ignored for mode="hybrid", where SPAConfig.app_selector wins)
+    command: list[str] | None   # default: None (when set, the plugin spawns the Node /render server in the server lifespan and tears it down on shutdown)
+    cwd: Path | None            # default: None (defaults to ViteConfig.root_dir)
+    auto_start: bool            # default: True
+    health_check: bool          # default: False
+    health_check_timeout: float # default: 10.0 (only consulted when health_check=True)
 ```
 
 ### InertiaTypeGenConfig
@@ -381,7 +387,7 @@ class ViteConfig:
     include_root_spa_paths: bool                # default: False
 ```
 
-Mode aliases: "ssr"/"ssg" -> "framework", "inertia" -> "hybrid"
+Mode aliases: "ssr"/"ssg" -> "framework", "inertia" -> "hybrid", "htmx" -> "template", "external" -> "framework" (DEPRECATED; emits DeprecationWarning and requires runtime.external_dev_server, else raises ValueError). Canonical modes after normalization: "spa", "template", "hybrid", "framework".
 
 Shortcut normalization:
 - types=True -> TypeGenConfig()
@@ -422,7 +428,7 @@ current CLI command is one of `install`, `build`, `init`, `serve`, `deploy`,
 Key properties:
 - bundle_dir, resource_dir, static_dir, root_dir, manifest_name, hot_file, asset_url -> Path/str
 - host, port, protocol -> delegated to runtime
-- hot_reload -> bool (dev_mode AND proxy_mode in {vite, direct, proxy})
+- hot_reload -> bool (dev_mode AND proxy_mode in {vite, proxy})
 - is_dev_mode, is_react -> bool
 - run_command, build_command, build_watch_command, install_command -> list[str]
 - serve_command -> list[str] | None
@@ -563,8 +569,8 @@ class AppHandler:
 
 Serves SPA HTML with CSRF injection, page data injection (data-page attribute or
 script element via `SPAConfig.app_selector`), and Vite dev script injection in
-dev mode. In dev with `proxy_mode != "direct"`, requests to the SPA route fetch
-HTML from the Vite dev server through the shared proxy client.
+dev mode. In dev mode, requests to the SPA route fetch HTML from the Vite dev
+server through the shared proxy client.
 
 ### ViteAssetLoader
 
@@ -674,7 +680,7 @@ Mark next response to clear client history encryption keys.
 ### Internal Helpers
 
 ```python
-def get_shared_props(request, partial_data=None, partial_except=None) -> dict
+def get_shared_props(request, partial_data=None, partial_except=None, except_once_props=None) -> dict
 def extract_deferred_props(props: dict) -> dict[str, list[str]]
 def extract_merge_props(props: dict) -> tuple[list[str], list[str], list[str], list[str]]
 def extract_once_props(props: dict, partial_data=None, partial_except=None) -> list[str]
@@ -1092,9 +1098,15 @@ pre-1.0 — there are no legacy keys and unknown keys cause the Vite plugin to
 fail fast with a clear error.
 
 ```typescript
-type BridgeMode = "spa" | "template" | "htmx" | "hybrid" | "inertia" | "framework" | "ssr" | "ssg" | "external"
+type BridgeMode = "spa" | "template" | "hybrid" | "framework" | "external"
 type BridgeProxyMode = "vite" | "direct" | "proxy" | null
 type BridgeExecutor = "node" | "bun" | "deno" | "yarn" | "pnpm"
+
+// ViteConfig mode aliases ("htmx", "inertia", "ssr", "ssg") are normalized to
+// canonical values before the bridge is written, so they never appear as
+// BridgeMode. "external" remains accepted for backward compatibility. The JS
+// parser still accepts a "direct" proxyMode for compatibility, but Python
+// coerces "direct" to "vite".
 
 interface BridgeTypesConfig {
   enabled: boolean
@@ -1108,7 +1120,7 @@ interface BridgeTypesConfig {
   generateSdk: boolean
   generateRoutes: boolean
   generatePageProps: boolean
-  generateSchemas: boolean   // optional in payload; defaults to true
+  generateSchemas: boolean
   globalRoute: boolean
 }
 
@@ -1121,6 +1133,7 @@ interface BridgeSchema {
   assetUrl: string
   deployAssetUrl: string | null
   appUrl: string | null
+  litestarPort: number | null  // Litestar dev-server port; framework integrations use it to point HMR (vite.server.hmr.clientPort) back at Litestar
   bundleDir: string
   resourceDir: string
   staticDir: string
@@ -1167,19 +1180,19 @@ import staticProps from 'virtual:litestar-static-props'
 |---|---|
 | `spa` | Vite serves index.html, Litestar serves API. SPA handler catches all non-API routes. |
 | `template` | Litestar renders Jinja2 templates with Vite asset tags. |
-| `htmx` | Alias for template mode, optimized for HTMX partials. |
+| `htmx` | Input alias for `template` mode (normalizes to `template`); HTMX support lives in the separate `litestar-htmx` package. |
 | `hybrid` | Inertia.js mode. Litestar renders full-page HTML with a JSON `<script>` payload by default, or with a `data-page` attribute when `use_script_element=False`; XHR visits return JSON. |
 | `framework` | Meta-framework mode (Astro, Nuxt, SvelteKit). Dev: proxy to framework dev server. Prod: serve built output. |
-| `external` | Non-Vite frameworks (e.g. Angular CLI). Dev: no proxy. Prod: serve `bundle_dir`. |
+| `external` | DEPRECATED alias for `framework` (requires `external_dev_server`). For non-Vite frameworks (e.g. Angular CLI), use `mode="framework"` with `external_dev_server`. |
 
-Mode aliases: `"ssr"` -> `"framework"`, `"ssg"` -> `"framework"`, `"inertia"` -> `"hybrid"`.
+Mode aliases (normalized at construction): `"ssr"`/`"ssg"` -> `"framework"`, `"inertia"` -> `"hybrid"`, `"htmx"` -> `"template"`, `"external"` -> `"framework"` (deprecated). Canonical modes: `spa`, `template`, `hybrid`, `framework`.
 
 ## Proxy Modes
 
 | Proxy Mode | Description |
 |---|---|
 | `vite` (default) | Allow-list: only proxy Vite assets (SPA mode) |
-| `direct` | Expose Vite port directly, no proxy (two-port) |
+| `direct` | DEPRECATED — coerced to `vite` (two-port dev violates the single-port-via-ASGI contract); `VITE_PROXY_MODE=direct` emits a `DeprecationWarning` |
 | `proxy` | Deny-list: proxy everything except Litestar routes (framework mode) |
 | `None` | No proxy (production) |
 
@@ -1194,7 +1207,7 @@ Set via the `VITE_PROXY_MODE` env var (`"none"` is accepted to disable).
 | `VITE_DEV_MODE` | Enable dev mode (true/1/yes/on) |
 | `VITE_HOST` | Vite dev server host (default: 127.0.0.1) |
 | `VITE_PORT` | Vite dev server port (default: 5173) |
-| `VITE_PROXY_MODE` | Proxy mode: vite, direct, proxy, none |
+| `VITE_PROXY_MODE` | Proxy mode: vite, proxy, none (`direct` is deprecated and coerced to vite) |
 | `VITE_PROTOCOL` | Set by the plugin to mirror `RuntimeConfig.protocol` |
 | `VITE_BASE_URL` | Base URL for app (also exported during build) |
 | `VITE_AUTO_DEV_MODE` | Auto-enable dev mode when no built assets (default: True) |
@@ -1227,19 +1240,25 @@ Example applications in the `examples/` directory:
 | Directory | Description |
 |---|---|
 | `angular` | Angular with Vite |
-| `angular-cli` | Angular with Angular CLI (external mode) |
+| `angular-cli` | Angular CLI (framework mode via external dev server) |
 | `astro` | Astro SSG framework mode |
+| `htmx-no-jinja` | HTMX template mode without Jinja2 |
 | `jinja-htmx` | Jinja2 + HTMX template mode |
 | `nuxt` | Nuxt framework mode |
 | `react` | React SPA |
 | `react-inertia` | React + Inertia.js hybrid mode |
 | `react-inertia-jinja` | React + Inertia.js + Jinja2 template mode |
+| `react-router` | React + React Router SPA |
 | `react-tanstack` | React + TanStack Router (with `tsr generate` extra command) |
 | `svelte` | Svelte SPA |
+| `svelte-inertia` | Svelte + Inertia.js hybrid mode |
+| `svelte-inertia-jinja` | Svelte + Inertia.js + Jinja2 template mode |
 | `sveltekit` | SvelteKit framework mode |
 | `vue` | Vue SPA |
 | `vue-inertia` | Vue + Inertia.js hybrid mode |
 | `vue-inertia-jinja` | Vue + Inertia.js + Jinja2 template mode |
+| `vue-inertia-jinja-ssr` | Vue + Inertia.js + Jinja2 template mode with Inertia SSR |
+| `vue-inertia-ssr` | Vue + Inertia.js hybrid mode with Inertia SSR |
 
 ---
 

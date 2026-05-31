@@ -3,7 +3,7 @@ import { version } from "vite"
 /**
  * Parsed major version of the running Vite instance.
  */
-export const viteMajor: number = Number(version.split(".")[0])
+export const viteMajor = Number(version.split(".")[0])
 
 /**
  * Whether the running Vite version is 8+, which uses Rolldown
