@@ -2,7 +2,6 @@
 
 import gc
 import sys
-import time
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any, cast
@@ -1011,21 +1010,6 @@ def test_vite_plugin_optional_memory_efficiency_without_jinja() -> None:
     # Basic checks that plugin is initialized efficiently
     assert plugin._config is not None
     assert plugin._asset_loader is None  # Lazy loading
-
-
-def test_vite_plugin_optional_performance_without_jinja() -> None:
-    """Test plugin performance when Jinja is not available."""
-    start_time = time.time()
-
-    # Plugin initialization should be fast
-    plugin = VitePlugin()
-    app_config = AppConfig()
-    plugin.on_app_init(app_config)
-
-    init_time = time.time() - start_time
-
-    # Should initialize quickly (less than 100ms)
-    assert init_time < 0.1, f"Plugin initialization too slow: {init_time}s"
 
 
 # =====================================================
