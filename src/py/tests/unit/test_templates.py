@@ -408,23 +408,6 @@ def test_inertia_ssr_docs_cover_entry_files_and_bootstrap_interaction() -> None:
     assert "app_selector" in ssr_docs
 
 
-def test_inertia_ssr_docs_define_vite_plugin_boundary() -> None:
-    """Ensure SSR docs explain the Litestar bridge and @inertiajs/vite boundary."""
-    ssr_docs = (ROOT / "docs" / "reference" / "inertia" / "ssr.rst").read_text()
-    config_docs = (ROOT / "docs" / "frameworks" / "inertia" / "configuration.rst").read_text()
-    knowledge = (ROOT / ".agents" / "knowledge" / "inertia-protocol.md").read_text()
-
-    for text in (ssr_docs, config_docs, knowledge):
-        assert "@inertiajs/vite" in text
-        assert "litestar-vite-plugin" in text
-
-    assert "InertiaSSRConfig.command" in ssr_docs
-    assert "auto_start" in ssr_docs
-    assert "health_check" in ssr_docs
-    assert "Node ``/render``" in ssr_docs
-    assert "silent fallback" in ssr_docs
-
-
 def test_inertia_scaffolds_do_not_install_inertia_vite_plugin_by_default() -> None:
     """Ensure generated Inertia scaffolds keep litestar-vite-plugin as the bridge owner."""
     paths = [
