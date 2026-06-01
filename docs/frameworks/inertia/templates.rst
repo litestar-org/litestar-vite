@@ -19,7 +19,7 @@ It's rendered on initial page loads with page data embedded.
 
 Key features:
 
-- ``<title inertia>`` - Enables dynamic title updates via Inertia's ``<Head>`` component
+- ``<title data-inertia>`` - Enables dynamic title updates via Inertia's ``<Head>`` component
 - ``<script type="application/json" id="app_page" data-page="app">`` - Script-element bootstrap payload for the current default transport
 - ``{{ inertia | safe }}`` - JSON-encoded page payload (use ``| safe`` to prevent escaping)
 - ``{{ vite_hmr() }}`` and ``{{ vite() }}`` - Vite asset injection
@@ -107,11 +107,11 @@ Use this attribute form only when you set ``use_script_element=False``.
 Dynamic Titles
 --------------
 
-Add the ``inertia`` attribute to ``<title>`` for dynamic title support:
+Add the ``data-inertia`` attribute to ``<title>`` for dynamic title support:
 
 .. code-block:: html
 
-   <title inertia>Default Title</title>
+   <title data-inertia>Default Title</title>
 
 Then update titles from your components using Inertia's ``<Head>`` component:
 

@@ -300,6 +300,30 @@ def test_inertia_templates_do_not_use_stale_script_element_bootstrap() -> None:
     assert "If you enable use_script_element=True" not in vue_ssr
 
 
+def test_v3_inertia_shells_use_data_inertia_title_attribute() -> None:
+    """Ensure v3-facing Inertia shells use the current title attribute."""
+    paths = [
+        TEMPLATE_ROOT / "react-inertia" / "index.html.j2",
+        TEMPLATE_ROOT / "vue-inertia" / "index.html.j2",
+        TEMPLATE_ROOT / "svelte-inertia" / "index.html.j2",
+        EXAMPLES_ROOT / "react-inertia" / "index.html",
+        EXAMPLES_ROOT / "react-inertia" / "resources" / "index.html",
+        EXAMPLES_ROOT / "react-inertia-jinja" / "index.html",
+        EXAMPLES_ROOT / "react-inertia-jinja" / "templates" / "index.html",
+        EXAMPLES_ROOT / "vue-inertia" / "resources" / "index.html",
+        EXAMPLES_ROOT / "vue-inertia-jinja" / "templates" / "index.html",
+        EXAMPLES_ROOT / "vue-inertia-ssr" / "index.html",
+        EXAMPLES_ROOT / "vue-inertia-jinja-ssr" / "templates" / "index.html",
+        EXAMPLES_ROOT / "svelte-inertia" / "index.html",
+        EXAMPLES_ROOT / "svelte-inertia-jinja" / "templates" / "index.html",
+    ]
+
+    for path in paths:
+        text = path.read_text()
+        assert "<title inertia>" not in text, f"{path} still uses stale Inertia title syntax"
+        assert "<title data-inertia>" in text, f"{path} does not mark the title for Inertia updates"
+
+
 def test_inertia_jinja_templates_include_script_element_target() -> None:
     """Ensure manual Jinja script-element templates point back at the app root."""
     react_template = (EXAMPLES_ROOT / "react-inertia-jinja" / "templates" / "index.html").read_text()
@@ -382,6 +406,41 @@ def test_inertia_ssr_docs_cover_entry_files_and_bootstrap_interaction() -> None:
     assert "use_script_element" in ssr_docs
     assert "data-page" in ssr_docs
     assert "app_selector" in ssr_docs
+
+
+def test_inertia_ssr_docs_define_vite_plugin_boundary() -> None:
+    """Ensure SSR docs explain the Litestar bridge and @inertiajs/vite boundary."""
+    ssr_docs = (ROOT / "docs" / "reference" / "inertia" / "ssr.rst").read_text()
+    config_docs = (ROOT / "docs" / "frameworks" / "inertia" / "configuration.rst").read_text()
+    knowledge = (ROOT / ".agents" / "knowledge" / "inertia-protocol.md").read_text()
+
+    for text in (ssr_docs, config_docs, knowledge):
+        assert "@inertiajs/vite" in text
+        assert "litestar-vite-plugin" in text
+
+    assert "InertiaSSRConfig.command" in ssr_docs
+    assert "auto_start" in ssr_docs
+    assert "health_check" in ssr_docs
+    assert "Node ``/render``" in ssr_docs
+    assert "silent fallback" in ssr_docs
+
+
+def test_inertia_scaffolds_do_not_install_inertia_vite_plugin_by_default() -> None:
+    """Ensure generated Inertia scaffolds keep litestar-vite-plugin as the bridge owner."""
+    paths = [
+        TEMPLATE_ROOT / "react-inertia" / "package.json.j2",
+        TEMPLATE_ROOT / "vue-inertia" / "package.json.j2",
+        TEMPLATE_ROOT / "svelte-inertia" / "package.json.j2",
+        EXAMPLES_ROOT / "react-inertia" / "package.json",
+        EXAMPLES_ROOT / "react-inertia-jinja" / "package.json",
+        EXAMPLES_ROOT / "vue-inertia" / "package.json",
+        EXAMPLES_ROOT / "vue-inertia-jinja" / "package.json",
+        EXAMPLES_ROOT / "svelte-inertia" / "package.json",
+        EXAMPLES_ROOT / "svelte-inertia-jinja" / "package.json",
+    ]
+
+    for path in paths:
+        assert '"@inertiajs/vite"' not in path.read_text()
 
 
 def test_framework_docs_and_js_reference_current_domains_and_wording() -> None:

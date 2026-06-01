@@ -312,7 +312,12 @@ class PageProps(Generic[T]):
         Returns:
             The Inertia protocol dictionary.
         """
-        return to_inertia_dict(self, required_fields={"component", "url", "version", "props"})
+        data = to_inertia_dict(self, required_fields={"component", "url", "version", "props"})
+        if data.get("encryptHistory") is False:
+            del data["encryptHistory"]
+        if data.get("clearHistory") is False:
+            del data["clearHistory"]
+        return data
 
 
 @dataclass
