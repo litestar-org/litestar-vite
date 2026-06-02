@@ -151,7 +151,7 @@ def test_proxy_mode_invalid_env_raises(monkeypatch: pytest.MonkeyPatch, value: s
 
 def test_resolve_proxy_mode_cached_by_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify proxy-mode env parsing is cached by normalized value."""
-    monkeypatch.setenv("VITE_PROXY_MODE", "direct")
+    monkeypatch.setenv("VITE_PROXY_MODE", "vite")
 
     from litestar_vite.config._runtime import _cached_resolve_proxy_mode
 

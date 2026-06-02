@@ -300,8 +300,14 @@ def test_inertia_templates_do_not_use_stale_script_element_bootstrap() -> None:
     assert "If you enable use_script_element=True" not in vue_ssr
 
 
-def test_v3_inertia_shells_use_data_inertia_title_attribute() -> None:
-    """Ensure v3-facing Inertia shells use the current title attribute."""
+def test_v3_inertia_shells_use_plain_title_tag() -> None:
+    """Ensure Inertia shells use the canonical plain ``<title>`` tag.
+
+    Per the Inertia v3 docs, the single ``<title>`` tag is always replaced by the
+    client ``<Head>`` component and needs no marker attribute. The legacy
+    ``inertia`` attribute (and its ``data-inertia`` successor) are only meaningful
+    on keyed ``<meta>``/``<link>`` elements, never on the title.
+    """
     paths = [
         TEMPLATE_ROOT / "react-inertia" / "index.html.j2",
         TEMPLATE_ROOT / "vue-inertia" / "index.html.j2",
@@ -320,8 +326,9 @@ def test_v3_inertia_shells_use_data_inertia_title_attribute() -> None:
 
     for path in paths:
         text = path.read_text()
-        assert "<title inertia>" not in text, f"{path} still uses stale Inertia title syntax"
-        assert "<title data-inertia>" in text, f"{path} does not mark the title for Inertia updates"
+        assert "<title inertia>" not in text, f"{path} still uses the legacy Inertia title attribute"
+        assert "<title data-inertia>" not in text, f"{path} marks the title with a superfluous data-inertia attribute"
+        assert "<title>" in text, f"{path} is missing a plain <title> tag"
 
 
 def test_inertia_jinja_templates_include_script_element_target() -> None:

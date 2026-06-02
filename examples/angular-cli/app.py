@@ -100,10 +100,10 @@ class LibraryController(Controller):
 
 # VitePlugin for development proxy, type generation, and production static serving
 # - Dev: Auto-starts Angular CLI (ng serve) and proxies to port 4200
-# - Prod: mode="external" auto-serves bundle_dir as static files
+# - Prod: framework mode auto-serves bundle_dir as static files
 vite = VitePlugin(
     config=ViteConfig(
-        mode="external",
+        mode="framework",
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, bundle_dir=dist_dir),
         types=TypeGenConfig(),

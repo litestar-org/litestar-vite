@@ -6,7 +6,7 @@ import pytest
 from litestar import WebSocket
 from litestar.exceptions import WebSocketDisconnect
 
-from litestar_vite.plugin import create_ssr_proxy_controller
+from litestar_vite.plugin import create_ssr_websocket_handler
 
 pytestmark = pytest.mark.anyio
 
@@ -39,7 +39,7 @@ async def test_ssr_proxy_uses_hmr_target_when_available(hotfile: Path, hmr_hotfi
     """Test that SSRProxyController.ws_proxy uses the HMR target from hot.hmr."""
 
     # Create the controller class
-    ControllerClass = create_ssr_proxy_controller(hotfile_path=hotfile)
+    ControllerClass = create_ssr_websocket_handler(hotfile_path=hotfile)
     controller = ControllerClass(owner=MagicMock())
 
     # Mock WebSocket
@@ -73,7 +73,7 @@ async def test_ssr_proxy_falls_back_to_main_target_when_hmr_missing(hotfile: Pat
         await hmr_path.unlink()
 
     # Create the controller class
-    ControllerClass = create_ssr_proxy_controller(hotfile_path=hotfile)
+    ControllerClass = create_ssr_websocket_handler(hotfile_path=hotfile)
     controller = ControllerClass(owner=MagicMock())
 
     # Mock WebSocket
