@@ -19,7 +19,7 @@ classifiers = [
   "Topic :: Database :: Database Engines/Servers",
 ]
 dependencies = [
-  "litestar>=2.7.0",
+  "litestar>=2.22.0",
   "httpx>=0.24.1",
   "websockets>=12.0",
   "typing_extensions"
