@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any, cast
 import httpx
 from litestar.exceptions import NotFoundException
 from litestar.middleware import DefineMiddleware
-from litestar.plugins import CLIPlugin, InitPluginProtocol
+from litestar.plugins import CLIPlugin, InitPlugin
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
 
 from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, ExternalDevServer
@@ -118,7 +118,7 @@ def _user_has_root_http_handler(route_handlers: "Iterable[ControllerRouterHandle
     return any(_walk(item) for item in route_handlers or [])
 
 
-class VitePlugin(InitPluginProtocol, CLIPlugin):
+class VitePlugin(InitPlugin, CLIPlugin):
     """Vite plugin for Litestar.
 
     This plugin integrates Vite with Litestar, providing:
@@ -404,7 +404,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         Args:
             app_config: The Litestar application configuration.
         """
-        from litestar.contrib.jinja import JinjaTemplateEngine
+        from litestar.plugins.jinja import JinjaTemplateEngine
 
         from litestar_vite.loader import render_asset_tag, render_hmr_client, render_routes, render_static_asset
 
@@ -440,7 +440,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
         template_config = app_config.template_config  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
         if template_config is None:
             return False
-        from litestar.contrib.jinja import JinjaTemplateEngine
+        from litestar.plugins.jinja import JinjaTemplateEngine
 
         return isinstance(template_config.engine_instance, JinjaTemplateEngine)  # pyright: ignore[reportUnknownMemberType]
 

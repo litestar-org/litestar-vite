@@ -16,6 +16,7 @@ from pathlib import Path
 
 from litestar import Controller, Litestar, Response, get
 from litestar.exceptions import NotFoundException
+from litestar.params import FromPath
 from msgspec import Struct
 
 from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
@@ -128,7 +129,7 @@ class LibraryController(Controller):
         return Response(content=_index_html(_get_summary(), BOOKS), media_type="text/html")
 
     @get("/fragments/book/{book_id:int}")
-    async def book_fragment(self, book_id: int) -> Response[str]:
+    async def book_fragment(self, book_id: FromPath[int]) -> Response[str]:
         """Return a book card fragment for HTMX swaps.
 
         Returns:
@@ -145,7 +146,7 @@ class LibraryController(Controller):
         return BOOKS
 
     @get("/api/books/{book_id:int}")
-    async def book_detail(self, book_id: int) -> Book:
+    async def book_detail(self, book_id: FromPath[int]) -> Book:
         return _get_book(book_id)
 
 

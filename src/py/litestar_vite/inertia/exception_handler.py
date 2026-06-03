@@ -1,4 +1,5 @@
 import re
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import quote, urlparse, urlunparse
 
@@ -16,11 +17,6 @@ from litestar.exceptions.responses import (
     create_debug_response,  # pyright: ignore[reportUnknownVariableType]
     create_exception_response,  # pyright: ignore[reportUnknownVariableType]
 )
-from litestar.repository.exceptions import (
-    ConflictError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
-    NotFoundError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
-    RepositoryError,  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
-)
 from litestar.response import Response
 from litestar.status_codes import (
     HTTP_400_BAD_REQUEST,
@@ -37,20 +33,13 @@ from litestar_vite.inertia.request import InertiaRequest
 from litestar_vite.inertia.response import InertiaBack, InertiaRedirect, InertiaResponse
 
 if TYPE_CHECKING:
-    from litestar.connection import Request
     from litestar.connection.base import AuthT, StateT, UserT
-    from litestar.response import Response
 
     from litestar_vite.inertia.plugin import InertiaPlugin
 
 
 FIELD_ERR_RE = re.compile(r"field `(.+)`$")
-
-
-class _HTTPConflictException(HTTPException):
-    """Request conflict with the current state of the target resource."""
-
-    status_code: int = HTTP_409_CONFLICT
+ExceptionHandler = Callable[[Request[Any, Any, Any], Exception], Response[Any]]
 
 
 def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "Exception") -> "Response[Any]":
@@ -78,15 +67,10 @@ def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "E
     if not inertia_enabled:
         if isinstance(exc, HTTPException):
             return cast("Response[Any]", create_exception_response(request, exc))
-        if isinstance(exc, NotFoundError):  # pyright: ignore[reportArgumentType]
-            http_exc = NotFoundException
-        elif isinstance(exc, (RepositoryError, ConflictError)):  # pyright: ignore[reportArgumentType]
-            http_exc = _HTTPConflictException  # type: ignore[assignment]
-        else:
-            http_exc = InternalServerException  # type: ignore[assignment]
-        if request.app.debug and http_exc not in {PermissionDeniedException, NotFoundError}:
+        if request.app.debug:
             return cast("Response[Any]", create_debug_response(request, exc))
-        return cast("Response[Any]", create_exception_response(request, http_exc(detail=str(exc.__cause__))))  # pyright: ignore[reportUnknownArgumentType]
+        detail = str(exc.__cause__) if exc.__cause__ is not None else str(exc)
+        return cast("Response[Any]", create_exception_response(request, InternalServerException(detail=detail)))
     return create_inertia_exception_response(request, exc)
 
 
@@ -176,3 +160,76 @@ def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", 
         return InertiaRedirect(request, redirect_to=inertia_plugin.config.redirect_404)
 
     return InertiaResponse[Any](media_type=preferred_type, content=content, status_code=status_code)
+
+
+def _register_exception_handlers(  # pyright: ignore[reportUnusedFunction]
+    exception_handlers: dict[type[Exception] | int, Any], default_handler: ExceptionHandler
+) -> None:
+    from litestar_vite._typing import (
+        ADVANCED_ALCHEMY_INSTALLED,
+        SQLSPEC_INSTALLED,
+        AdvancedAlchemyDuplicateKeyError,
+        AdvancedAlchemyForeignKeyError,
+        AdvancedAlchemyIntegrityError,
+        AdvancedAlchemyNotFoundError,
+        AdvancedAlchemyRepositoryError,
+        SQLSpecCheckViolationError,
+        SQLSpecForeignKeyViolationError,
+        SQLSpecIntegrityError,
+        SQLSpecNotFoundError,
+        SQLSpecNotNullViolationError,
+        SQLSpecRepositoryError,
+        SQLSpecUniqueViolationError,
+    )
+
+    if ADVANCED_ALCHEMY_INSTALLED:
+        exception_handlers[AdvancedAlchemyRepositoryError] = _make_exception_handler(
+            not_found_exceptions=(AdvancedAlchemyNotFoundError,),
+            conflict_exceptions=(
+                AdvancedAlchemyIntegrityError,
+                AdvancedAlchemyDuplicateKeyError,
+                AdvancedAlchemyForeignKeyError,
+            ),
+            default_handler=default_handler,
+        )
+
+    if SQLSPEC_INSTALLED:
+        exception_handlers[SQLSpecRepositoryError] = _make_exception_handler(
+            not_found_exceptions=(SQLSpecNotFoundError,),
+            conflict_exceptions=(
+                SQLSpecIntegrityError,
+                SQLSpecUniqueViolationError,
+                SQLSpecForeignKeyViolationError,
+                SQLSpecCheckViolationError,
+                SQLSpecNotNullViolationError,
+            ),
+            default_handler=default_handler,
+        )
+
+
+def _make_exception_handler(
+    *,
+    not_found_exceptions: tuple[type[Exception], ...],
+    conflict_exceptions: tuple[type[Exception], ...],
+    default_handler: ExceptionHandler,
+) -> ExceptionHandler:
+    def exception_handler(request: Request[Any, Any, Any], exc: Exception) -> Response[Any]:
+        detail = _exception_detail(exc)
+        if isinstance(exc, not_found_exceptions):
+            http_exc: HTTPException = NotFoundException(detail=detail or "Not Found")
+        elif isinstance(exc, conflict_exceptions):
+            http_exc = HTTPException(detail=detail, status_code=HTTP_409_CONFLICT)
+        else:
+            http_exc = InternalServerException(detail=detail)
+        return default_handler(request, http_exc)
+
+    return exception_handler
+
+
+def _exception_detail(exc: Exception) -> str:
+    detail = getattr(exc, "detail", None)
+    if detail:
+        return str(detail)
+    if exc.__cause__ is not None:
+        return str(exc.__cause__)
+    return str(exc)

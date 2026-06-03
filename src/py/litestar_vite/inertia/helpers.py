@@ -1,6 +1,6 @@
 import inspect
 from collections import defaultdict
-from collections.abc import Callable, Coroutine, Iterable, Mapping
+from collections.abc import Callable, Coroutine, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Generic, Literal, TypeGuard, TypeVar, cast, overload
 
@@ -221,10 +221,11 @@ def optional(key: str, callback: "Callable[..., T | Coroutine[Any, Any, T]]") ->
 
     Example::
 
+        from litestar.params import FromPath
         from litestar_vite.inertia import optional, InertiaResponse
 
         @get("/posts/{post_id}", component="Posts/Show")
-        async def show_post(post_id: int) -> InertiaResponse:
+        async def show_post(post_id: FromPath[int]) -> InertiaResponse:
             post = await Post.get(post_id)
             return InertiaResponse({
                 "post": post,
@@ -494,10 +495,11 @@ def scroll_props(
 
     Example::
 
+        from litestar.params import FromQuery
         from litestar_vite.inertia import scroll_props, InertiaResponse
 
         @get("/posts", component="Posts")
-        async def list_posts(page: int = 1) -> InertiaResponse:
+        async def list_posts(page: FromQuery[int] = 1) -> InertiaResponse:
             posts = await Post.paginate(page=page, per_page=20)
             return InertiaResponse(
                 {"posts": merge("posts", posts.items)},
@@ -525,7 +527,7 @@ def is_merge_prop(value: "Any") -> "TypeGuard[MergeProp[Any, Any]]":
     return isinstance(value, MergeProp)
 
 
-def extract_merge_props(props: "dict[str, Any]") -> "tuple[list[str], list[str], list[str], list[str]]":
+def extract_merge_props(props: "Mapping[str, Any]") -> "tuple[list[str], list[str], list[str], list[str]]":
     """Extract merge props metadata for the Inertia v2 protocol.
 
     This extracts all MergeProp instances from the props dict and categorizes them
@@ -562,7 +564,7 @@ def extract_merge_props(props: "dict[str, Any]") -> "tuple[list[str], list[str],
     deep_merge_list: "list[str]" = []
     match_on_paths: "list[str]" = []
 
-    for key, value in props.items():
+    for key, value in _iter_mapping_prop_paths(props):
         if is_merge_prop(value):
             match value.strategy:
                 case "append":
@@ -578,6 +580,21 @@ def extract_merge_props(props: "dict[str, Any]") -> "tuple[list[str], list[str],
                 match_on_paths.extend(f"{key}.{match_key}" for match_key in value.match_on)
 
     return merge_list, prepend_list, deep_merge_list, match_on_paths
+
+
+def unwrap_merge_props(value: "T") -> "T":
+    """Return ``value`` with any nested MergeProp wrappers replaced by their payloads."""
+    if is_merge_prop(value):
+        return cast("T", unwrap_merge_props(value.value))
+    if isinstance(value, str):
+        return value
+    if isinstance(value, Mapping):
+        return cast("T", {key: unwrap_merge_props(item) for key, item in cast("Mapping[str, Any]", value).items()})
+    if isinstance(value, list):
+        return cast("T", [unwrap_merge_props(item) for item in cast("Iterable[Any]", value)])
+    if isinstance(value, tuple):
+        return cast("T", tuple(unwrap_merge_props(item) for item in cast("Iterable[Any]", value)))
+    return value
 
 
 class StaticProp(Generic[PropKeyT, StaticT]):
@@ -950,7 +967,7 @@ def extract_deferred_props(props: "Mapping[str, Any]") -> "dict[str, list[str]]"
     """
     groups: "dict[str, list[str]]" = {}
 
-    for key, value in props.items():
+    for key, value in _iter_mapping_prop_paths(props):
         if is_deferred_prop(value):
             # Exclude once props from deferred metadata
             if value.is_once:
@@ -961,17 +978,6 @@ def extract_deferred_props(props: "Mapping[str, Any]") -> "dict[str, list[str]]"
             groups[group].append(key)
 
     return groups
-
-
-def _should_track_once_prop(
-    key: str, partial_data: "set[str] | None" = None, partial_except: "set[str] | None" = None
-) -> bool:
-    """Return whether once-prop metadata should stay in scope for this response."""
-    if partial_except:
-        return key not in partial_except
-    if partial_data:
-        return key in partial_data
-    return True
 
 
 def extract_once_props(
@@ -1002,20 +1008,16 @@ def extract_once_props(
 
         The result is ["settings", "stats"].
     """
-    once_keys: "list[str]" = []
-
-    for key, value in props.items():
-        if (is_once_prop(value) or (is_deferred_prop(value) and value.is_once)) and _should_track_once_prop(
-            key, partial_data, partial_except
-        ):
-            once_keys.append(key)
-
-    return once_keys
+    return [key for key, _ in _extract_once_prop_entries(props, partial_data, partial_except)]
 
 
-def build_once_props_metadata(keys: "Iterable[str]") -> "dict[str, dict[str, str | int | None]]":
+def build_once_props_metadata(keys: "Iterable[str | _OncePropEntry]") -> "dict[str, dict[str, str | int | None]]":
     """Build stable once-prop metadata for the Inertia page object."""
-    return {key: {"prop": key} for key in keys}
+    metadata: "dict[str, dict[str, str | int | None]]" = {}
+    for item in keys:
+        key, prop = item if isinstance(item, tuple) else (item, item)
+        metadata[key] = {"prop": prop}
+    return metadata
 
 
 def should_render(  # noqa: PLR0911
@@ -1054,34 +1056,34 @@ def should_render(  # noqa: PLR0911
     # OptionalProp: Only render when explicitly requested
     if is_optional_prop(value):
         if partial_data:
-            return value.key in partial_data
+            return _matches_partial_data(value, partial_data, key)
         # Never included in initial loads or standard partial reloads
         return False
 
     # OnceProp: Respect partial reload filters and omit on full visits when cached client-side
     if is_once_prop(value):
         if partial_except:
-            return value.key not in partial_except
+            return not _matches_partial_except(value, partial_except, key)
         if partial_data:
-            return value.key in partial_data
+            return _matches_partial_data(value, partial_data, key)
         if except_once_props:
-            return value.key not in except_once_props
+            return not _matches_partial_except(value, except_once_props, key)
         return True
 
     # LazyProp (StaticProp/DeferredProp): Only render on partial reload
     if is_lazy_prop(value):
         if partial_except:
-            return value.key not in partial_except
+            return not _matches_partial_except(value, partial_except, key)
         if partial_data:
-            return value.key in partial_data
+            return _matches_partial_data(value, partial_data, key)
         return False
 
     # Regular values: Apply standard filtering
     if key is not None:
         if partial_except:
-            return key not in partial_except
+            return not _matches_partial_except(value, partial_except, key)
         if partial_data:
-            return key in partial_data
+            return _matches_partial_data(value, partial_data, key)
 
     return True
 
@@ -1133,6 +1135,7 @@ def lazy_render(  # noqa: PLR0911
     partial_data: "set[str] | None" = None,
     partial_except: "set[str] | None" = None,
     except_once_props: "set[str] | None" = None,
+    _key: "str | None" = None,
 ) -> "T":
     """Filter deferred properties from the value based on partial data.
 
@@ -1153,14 +1156,19 @@ def lazy_render(  # noqa: PLR0911
     if isinstance(value, str):
         return cast("T", value)
     if isinstance(value, Mapping):
-        return cast(
-            "T",
-            {
-                k: lazy_render(v, partial_data, partial_except, except_once_props)
-                for k, v in cast("Mapping[str, Any]", value).items()
-                if should_render(v, partial_data, partial_except, except_once_props, key=k)
-            },
-        )
+        rendered: "dict[str, Any]" = {}
+        for k, v in cast("Mapping[str, Any]", value).items():
+            child_key = _join_prop_path((str(k),)) if _key is None else f"{_key}.{k}"
+            if isinstance(v, Mapping):
+                child: Any = lazy_render(
+                    cast("Mapping[str, Any]", v), partial_data, partial_except, except_once_props, _key=child_key
+                )
+                if should_render(v, partial_data, partial_except, except_once_props, key=child_key) or child:
+                    rendered[k] = child
+                continue
+            if should_render(v, partial_data, partial_except, except_once_props, key=child_key):
+                rendered[k] = lazy_render(v, partial_data, partial_except, except_once_props, _key=child_key)
+        return cast("T", rendered)
 
     if isinstance(value, list):
         return cast(
@@ -1183,13 +1191,13 @@ def lazy_render(  # noqa: PLR0911
         )
 
     # Handle special prop types that need rendering
-    if is_lazy_prop(value) and should_render(value, partial_data, partial_except, except_once_props):
+    if is_lazy_prop(value) and should_render(value, partial_data, partial_except, except_once_props, key=_key):
         return cast("T", value.render())
 
-    if is_once_prop(value) and should_render(value, partial_data, partial_except, except_once_props):
+    if is_once_prop(value) and should_render(value, partial_data, partial_except, except_once_props, key=_key):
         return cast("T", value.render())
 
-    if is_optional_prop(value) and should_render(value, partial_data, partial_except, except_once_props):
+    if is_optional_prop(value) and should_render(value, partial_data, partial_except, except_once_props, key=_key):
         return cast("T", value.render())
 
     if is_always_prop(value):
@@ -1215,23 +1223,15 @@ def has_unresolved_async_props(  # noqa: PLR0911
     re-deferral when ``InertiaResponse.to_asgi_response`` re-enters after
     async resolution mutates the prop in place.
     """
-    if not should_render(value, partial_data, partial_except, except_once_props, key=_key):
-        return False
-    if is_optional_prop(value):
-        return not value._evaluated and inspect.iscoroutinefunction(value._callback)  # pyright: ignore[reportPrivateUsage]
-    if is_deferred_prop(value):
-        cb = value._value  # pyright: ignore[reportPrivateUsage]
-        return not value._evaluated and cb is not None and inspect.iscoroutinefunction(cb)  # pyright: ignore[reportPrivateUsage]
-    if is_once_prop(value):
-        cb = value._value  # pyright: ignore[reportPrivateUsage]
-        return not value._evaluated and callable(cb) and inspect.iscoroutinefunction(cb)  # pyright: ignore[reportPrivateUsage]
-    if isinstance(value, str):
-        return False
     if isinstance(value, Mapping):
         mapping = cast("Mapping[str, Any]", value)
         return any(
             has_unresolved_async_props(
-                v, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props, _key=k
+                v,
+                partial_data=partial_data,
+                partial_except=partial_except,
+                except_once_props=except_once_props,
+                _key=_join_prop_path((str(k),)) if _key is None else f"{_key}.{k}",
             )
             for k, v in mapping.items()
         )
@@ -1243,6 +1243,16 @@ def has_unresolved_async_props(  # noqa: PLR0911
             )
             for v in sequence
         )
+    if not should_render(value, partial_data, partial_except, except_once_props, key=_key):
+        return False
+    if is_optional_prop(value):
+        return not value._evaluated and inspect.iscoroutinefunction(value._callback)  # pyright: ignore[reportPrivateUsage]
+    if is_deferred_prop(value):
+        cb = value._value  # pyright: ignore[reportPrivateUsage]
+        return not value._evaluated and cb is not None and inspect.iscoroutinefunction(cb)  # pyright: ignore[reportPrivateUsage]
+    if is_once_prop(value):
+        cb = value._value  # pyright: ignore[reportPrivateUsage]
+        return not value._evaluated and callable(cb) and inspect.iscoroutinefunction(cb)  # pyright: ignore[reportPrivateUsage]
     return False
 
 
@@ -1252,6 +1262,7 @@ async def resolve_async_props(
     partial_data: "set[str] | None" = None,
     partial_except: "set[str] | None" = None,
     except_once_props: "set[str] | None" = None,
+    _key: "str | None" = None,
 ) -> None:
     """Walk ``value`` and ``await`` async prop callbacks on the current loop.
 
@@ -1272,9 +1283,19 @@ async def resolve_async_props(
     if isinstance(value, Mapping):
         mapping = cast("Mapping[str, Any]", value)
         for k, v in mapping.items():
-            if not should_render(v, partial_data, partial_except, except_once_props, key=k):
+            child_key = _join_prop_path((str(k),)) if _key is None else f"{_key}.{k}"
+            if isinstance(v, Mapping):
+                await resolve_async_props(
+                    v,
+                    partial_data=partial_data,
+                    partial_except=partial_except,
+                    except_once_props=except_once_props,
+                    _key=child_key,
+                )
                 continue
-            await _resolve_one(v, partial_data, partial_except, except_once_props)
+            if not should_render(v, partial_data, partial_except, except_once_props, key=child_key):
+                continue
+            await _resolve_one(v, partial_data, partial_except, except_once_props, child_key)
         return
 
     if isinstance(value, (list, tuple)):
@@ -1282,25 +1303,10 @@ async def resolve_async_props(
         for v in sequence:
             if not should_render(v, partial_data, partial_except, except_once_props):
                 continue
-            await _resolve_one(v, partial_data, partial_except, except_once_props)
+            await _resolve_one(v, partial_data, partial_except, except_once_props, None)
         return
 
-    await _resolve_one(value, partial_data, partial_except, except_once_props)
-
-
-async def _resolve_one(
-    value: "Any",
-    partial_data: "set[str] | None",
-    partial_except: "set[str] | None",
-    except_once_props: "set[str] | None",
-) -> None:
-    if is_optional_prop(value) or is_deferred_prop(value) or is_once_prop(value):
-        await value.resolve_async()
-        return
-    if isinstance(value, (Mapping, list, tuple)):
-        await resolve_async_props(
-            value, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
-        )
+    await _resolve_one(value, partial_data, partial_except, except_once_props, _key)
 
 
 def get_raw_shared_props(request: "ASGIConnection[Any, Any, Any, Any]") -> "Mapping[str, Any]":
@@ -1343,7 +1349,7 @@ def get_shared_props(
     props: "dict[str, Any]" = {}
     flash: "dict[str, list[str]]" = defaultdict(list)
     errors: "dict[str, Any]" = {}
-    once_props_keys: "list[str]" = []
+    once_props_entries: "list[_OncePropEntry]" = []
     error_bag = request.headers.get("X-Inertia-Error-Bag", None)
 
     try:
@@ -1351,18 +1357,23 @@ def get_shared_props(
         shared_props = cast("dict[str,Any]", request.session.pop("_shared", {}))
         inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
 
+        once_props_entries = _extract_once_prop_entries(shared_props, partial_data, partial_except)
+
         for key, value in shared_props.items():
-            # Track once props for protocol metadata
-            if (is_once_prop(value) or (is_deferred_prop(value) and value.is_once)) and _should_track_once_prop(
-                key, partial_data, partial_except
+            if not should_render(value, partial_data, partial_except, except_once_props, key=key) and not isinstance(
+                value, Mapping
             ):
-                once_props_keys.append(key)
-            if not should_render(value, partial_data, partial_except, except_once_props, key=key):
                 continue
             # Render all special prop types. Async callbacks must already be
             # pre-resolved by InertiaResponse's async pre-pass; render() raises
             # otherwise.
-            if is_special_prop(value):
+            if isinstance(value, Mapping):
+                rendered: Any = lazy_render(
+                    cast("Mapping[str, Any]", value), partial_data, partial_except, except_once_props, _key=key
+                )
+                if rendered or should_render(value, partial_data, partial_except, except_once_props, key=key):
+                    props[key] = rendered
+            elif is_special_prop(value):
                 props[key] = value.render()
             else:
                 props[key] = value
@@ -1390,7 +1401,7 @@ def get_shared_props(
     props["errors"] = {error_bag: errors} if error_bag is not None else errors
     props["csrf_token"] = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
     # Store once props keys for later extraction (removed before serialization)
-    props["_once_props"] = once_props_keys
+    props["_once_props"] = once_props_entries
     return props
 
 
@@ -1650,6 +1661,101 @@ def pagination_to_dict(value: "Any") -> dict[str, Any]:
         result[camel_attr] = attr_value
 
     return result
+
+
+_OncePropEntry = tuple[str, str]
+
+
+def _join_prop_path(path: "tuple[str, ...]") -> str:
+    return ".".join(path)
+
+
+def _iter_mapping_prop_paths(value: "Mapping[str, Any]", path: "tuple[str, ...]" = ()) -> "Iterator[tuple[str, Any]]":
+    for key, item in value.items():
+        item_path = (*path, str(key))
+        yield _join_prop_path(item_path), item
+        if isinstance(item, Mapping):
+            yield from _iter_mapping_prop_paths(cast("Mapping[str, Any]", item), item_path)
+
+
+def _prop_key_candidates(value: "Any", key: "str | None") -> "tuple[str, ...]":
+    candidates: "list[str]" = []
+    if key:
+        candidates.append(key)
+        local_key = key.rsplit(".", maxsplit=1)[-1]
+        if local_key != key:
+            candidates.append(local_key)
+    prop_key = getattr(value, "key", None)
+    if isinstance(prop_key, str):
+        candidates.append(prop_key)
+    return tuple(dict.fromkeys(candidates))
+
+
+def _matches_partial_data(value: "Any", partial_data: "set[str]", key: "str | None") -> bool:
+    candidates = _prop_key_candidates(value, key)
+    if is_special_prop(value):
+        return any(candidate in partial_data for candidate in candidates)
+    return any(
+        candidate in partial_data or any(requested.startswith(f"{candidate}.") for requested in partial_data)
+        for candidate in candidates
+    )
+
+
+def _matches_partial_except(value: "Any", partial_except: "set[str]", key: "str | None") -> bool:
+    candidates = _prop_key_candidates(value, key)
+    return any(
+        candidate in partial_except or any(candidate.startswith(f"{excluded}.") for excluded in partial_except)
+        for candidate in candidates
+    )
+
+
+def _should_track_once_prop(
+    key: str,
+    partial_data: "set[str] | None" = None,
+    partial_except: "set[str] | None" = None,
+    prop_path: "str | None" = None,
+) -> bool:
+    """Return whether once-prop metadata should stay in scope for this response."""
+    candidates = tuple(dict.fromkeys((key, prop_path or key)))
+    if partial_except:
+        return not any(candidate in partial_except for candidate in candidates)
+    if partial_data:
+        return any(candidate in partial_data for candidate in candidates)
+    return True
+
+
+def _extract_once_prop_entries(
+    props: "Mapping[str, Any]", partial_data: "set[str] | None" = None, partial_except: "set[str] | None" = None
+) -> "list[_OncePropEntry]":
+    entries: "list[_OncePropEntry]" = []
+
+    for prop_path, value in _iter_mapping_prop_paths(props):
+        if is_once_prop(value) or (is_deferred_prop(value) and value.is_once):
+            key = str(value.key)
+            if _should_track_once_prop(key, partial_data, partial_except, prop_path):
+                entries.append((key, prop_path))
+
+    return entries
+
+
+async def _resolve_one(
+    value: "Any",
+    partial_data: "set[str] | None",
+    partial_except: "set[str] | None",
+    except_once_props: "set[str] | None",
+    key: "str | None",
+) -> None:
+    if is_optional_prop(value) or is_deferred_prop(value) or is_once_prop(value):
+        await value.resolve_async()
+        return
+    if isinstance(value, (Mapping, list, tuple)):
+        await resolve_async_props(
+            value,
+            partial_data=partial_data,
+            partial_except=partial_except,
+            except_once_props=except_once_props,
+            _key=key,
+        )
 
 
 def _has_offset_pagination_attrs(value: Any) -> bool:

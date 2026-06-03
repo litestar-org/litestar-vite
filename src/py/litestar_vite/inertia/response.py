@@ -20,15 +20,14 @@ from litestar.utils.scope.state import ScopeState
 from litestar_vite.html_transform import inject_head_html, replace_element_outer_html
 from litestar_vite.inertia._utils import get_headers
 from litestar_vite.inertia.helpers import (
+    _extract_once_prop_entries,  # pyright: ignore[reportPrivateUsage]
     build_once_props_metadata,
     extract_deferred_props,
     extract_merge_props,
-    extract_once_props,
     extract_pagination_scroll_props,
     get_raw_shared_props,
     get_shared_props,
     has_unresolved_async_props,
-    is_merge_prop,
     is_or_contains_lazy_prop,
     is_or_contains_special_prop,
     is_pagination_container,
@@ -36,6 +35,7 @@ from litestar_vite.inertia.helpers import (
     pagination_to_dict,
     resolve_async_props,
     should_render,
+    unwrap_merge_props,
 )
 from litestar_vite.inertia.plugin import InertiaPlugin
 from litestar_vite.inertia.request import InertiaDetails, InertiaRequest
@@ -49,234 +49,6 @@ if TYPE_CHECKING:
 
 
 T = TypeVar("T")
-
-
-@dataclass(frozen=True)
-class _InertiaSSRResult:
-    head: list[str]
-    body: str
-
-
-@dataclass(frozen=True)
-class _InertiaRequestInfo:
-    inertia_enabled: bool
-    is_inertia: bool
-    is_partial_render: bool
-    partial_keys: set[str]
-    partial_except_keys: set[str]
-    except_once_keys: set[str]
-    reset_keys: set[str]
-
-
-def _get_inertia_request_info(request: "Request[Any, Any, Any]") -> _InertiaRequestInfo:
-    """Return Inertia request state for both InertiaRequest and plain Request.
-
-    InertiaResponse is typically used together with InertiaMiddleware, which wraps
-    incoming requests in :class:`~litestar_vite.inertia.request.InertiaRequest`.
-
-    This helper preserves compatibility with plain :class:`litestar.Request` by
-    falling back to header parsing via :class:`~litestar_vite.inertia.request.InertiaDetails`.
-
-    Returns:
-        Aggregated Inertia-related request flags and partial-render metadata.
-    """
-    if isinstance(request, InertiaRequest):
-        is_inertia = request.is_inertia
-        return _InertiaRequestInfo(
-            inertia_enabled=bool(request.inertia_enabled or is_inertia),
-            is_inertia=is_inertia,
-            is_partial_render=request.is_partial_render,
-            partial_keys=request.partial_keys,
-            partial_except_keys=request.partial_except_keys,
-            except_once_keys=request.except_once_props_keys,
-            reset_keys=request.reset_keys,
-        )
-
-    details = InertiaDetails(request)
-    is_inertia = bool(details)
-    return _InertiaRequestInfo(
-        inertia_enabled=bool(details.route_component is not None or is_inertia),
-        is_inertia=is_inertia,
-        is_partial_render=details.is_partial_render,
-        partial_keys=set(details.partial_keys),
-        partial_except_keys=set(details.partial_except_keys),
-        except_once_keys=set(details.except_once_props_keys),
-        reset_keys=set(details.reset_keys),
-    )
-
-
-# Maximum allowed size for SSR response body + head combined (10 MiB).
-# This prevents a malicious or misconfigured SSR server from causing OOM.
-_SSR_MAX_RESPONSE_BYTES = 10 * 1024 * 1024
-
-
-def _parse_inertia_ssr_payload(payload: Any, url: str) -> _InertiaSSRResult:
-    if not isinstance(payload, dict):
-        msg = f"Inertia SSR server at {url!r} returned unexpected payload type: {type(payload)!r}."
-        raise ImproperlyConfiguredException(msg)
-
-    payload_dict = cast("dict[str, Any]", payload)
-
-    body = payload_dict.get("body")
-    if not isinstance(body, str):
-        msg = f"Inertia SSR server at {url!r} returned invalid 'body' (expected string)."
-        raise ImproperlyConfiguredException(msg)
-
-    head_raw: Any = payload_dict.get("head", [])
-    if head_raw is None:
-        head_raw = []
-    if not isinstance(head_raw, list):
-        msg = f"Inertia SSR server at {url!r} returned invalid 'head' (expected list[str])."
-        raise ImproperlyConfiguredException(msg)
-
-    head_list = cast("list[Any]", head_raw)
-    if any(not isinstance(item, str) for item in head_list):
-        msg = f"Inertia SSR server at {url!r} returned invalid 'head' (expected list[str])."
-        raise ImproperlyConfiguredException(msg)
-
-    total_size = len(body) + sum(len(h) for h in head_list)
-    if total_size > _SSR_MAX_RESPONSE_BYTES:
-        msg = (
-            f"Inertia SSR response from {url!r} exceeds maximum allowed size "
-            f"({total_size:,} bytes > {_SSR_MAX_RESPONSE_BYTES:,} bytes). "
-            "This may indicate a misconfigured SSR server."
-        )
-        raise ImproperlyConfiguredException(msg)
-
-    return _InertiaSSRResult(head=cast("list[str]", head_list), body=body)
-
-
-async def _render_inertia_ssr(
-    page: dict[str, Any], url: str, timeout_seconds: float, client: "httpx.AsyncClient | None" = None
-) -> _InertiaSSRResult:
-    """Call the Inertia SSR server asynchronously and return head/body HTML.
-
-    Args:
-        page: The page object to send to the SSR server.
-        url: The SSR server URL (typically http://localhost:13714/render).
-        timeout_seconds: Request timeout in seconds.
-        client: Optional shared httpx.AsyncClient for connection pooling.
-            If None, creates a new client per request (slower).
-
-    Returns:
-        An _InertiaSSRResult with head and body HTML.
-    """
-    return await _do_ssr_request(page, url, timeout_seconds, client)
-
-
-@contextlib.asynccontextmanager
-async def _acquire_ssr_client(client: "httpx.AsyncClient | None") -> "AsyncGenerator[httpx.AsyncClient, None]":
-    """Yield ``client`` when provided, otherwise a short-lived fallback client.
-
-    Yields:
-        The shared client when supplied, or a fallback client whose lifecycle is
-        bound to the context.
-    """
-    if client is not None:
-        yield client
-    else:
-        async with httpx.AsyncClient() as fallback:
-            yield fallback
-
-
-async def _do_ssr_request(
-    page: dict[str, Any], url: str, timeout_seconds: float, client: "httpx.AsyncClient | None"
-) -> _InertiaSSRResult:
-    """Execute the SSR request with optional client reuse.
-
-    Args:
-        page: The page object to send to the SSR server.
-        url: The SSR server URL.
-        timeout_seconds: Request timeout in seconds.
-        client: Optional shared httpx.AsyncClient.
-
-    Raises:
-        ImproperlyConfiguredException: If the SSR server is unreachable,
-            returns an error status, or returns invalid payload.
-
-    Returns:
-        An _InertiaSSRResult with head and body HTML.
-    """
-    # Use Litestar's msgspec encoder so msgspec Structs and other custom types embedded
-    # in handler return values serialize the same way as the regular Inertia render path
-    # (response.render uses get_serializer too). httpx's default json= serializer falls
-    # back to stdlib json.dumps and rejects Struct instances.
-    body = encode_json(page, serializer=get_serializer(None))
-    headers = {"content-type": "application/json"}
-
-    try:
-        async with _acquire_ssr_client(client) as resolved_client:
-            response = await resolved_client.post(url, content=body, headers=headers, timeout=timeout_seconds)
-            response.raise_for_status()
-    except httpx.RequestError as exc:
-        msg = (
-            f"Inertia SSR is enabled but the SSR server is not reachable at {url!r}. "
-            "Start the SSR server (Node) or disable InertiaConfig.ssr."
-        )
-        raise ImproperlyConfiguredException(msg) from exc
-    except httpx.HTTPStatusError as exc:
-        msg = f"Inertia SSR server at {url!r} returned HTTP {exc.response.status_code}. Check the SSR server logs."
-        raise ImproperlyConfiguredException(msg) from exc
-
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        msg = f"Inertia SSR server at {url!r} returned invalid JSON. Check the SSR server logs."
-        raise ImproperlyConfiguredException(msg) from exc
-
-    return _parse_inertia_ssr_payload(payload, url)
-
-
-def _get_redirect_url(request: "Request[Any, Any, Any]", url: str | None) -> str:
-    """Return a safe redirect URL, falling back to base_url when invalid.
-
-    Args:
-        request: The request object.
-        url: Candidate redirect URL.
-
-    Returns:
-        A safe redirect URL (same-origin absolute, or relative), otherwise the request base URL.
-    """
-    base_url = str(request.base_url)
-
-    if not url:
-        return base_url
-
-    parsed = urlparse(url)
-    base = urlparse(base_url)
-
-    if not parsed.scheme and not parsed.netloc:
-        return url
-
-    if parsed.scheme not in {"http", "https"}:
-        return base_url
-
-    if parsed.netloc != base.netloc:
-        return base_url
-
-    return url
-
-
-def _get_relative_url(request: "Request[Any, Any, Any]") -> str:
-    """Return the relative URL including query string for Inertia page props.
-
-    The Inertia.js protocol requires the ``url`` property to include query parameters
-    so that page state (e.g., filters, pagination) is preserved on refresh.
-
-    This matches the behavior of other Inertia adapters:
-    - Laravel: Uses ``fullUrl()`` minus scheme/host
-    - Rails: Uses ``request.fullpath``
-    - Django: Uses ``request.get_full_path()``
-
-    Args:
-        request: The request object.
-
-    Returns:
-        The path with query string if present, e.g., ``/reports?page=1&status=active``.
-    """
-    path = request.url.path
-    query = request.url.query
-    return f"{path}?{query}" if query else path
 
 
 class InertiaResponse(Response[T]):
@@ -388,7 +160,7 @@ class InertiaResponse(Response[T]):
             "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
         }
 
-    def _build_page_props(  # noqa: PLR0915, C901
+    def _build_page_props(  # noqa: PLR0915
         self,
         request: "Request[UserT, AuthT, StateT]",
         partial_data: "set[str] | None",
@@ -426,7 +198,7 @@ class InertiaResponse(Response[T]):
         route_handler = request.scope.get("route_handler")  # pyright: ignore[reportUnknownMemberType]
         content: Any = self.content
         route_content: Any | None = None
-        route_once_props: "list[str]" = []
+        route_once_props: "list[tuple[str, str]]" = []
 
         # v2.2+ protocol: Extract deferred props metadata before filtering.
         # Route props override shared props with the same key, so discard any
@@ -436,7 +208,7 @@ class InertiaResponse(Response[T]):
             for key in content_mapping:
                 _discard_deferred_prop_key(deferred_props_map, str(key))
             _merge_deferred_props(deferred_props_map, extract_deferred_props(content_mapping))
-            route_once_props = extract_once_props(
+            route_once_props = _extract_once_prop_entries(
                 content_mapping, partial_data=partial_data, partial_except=partial_except
             )
 
@@ -464,21 +236,20 @@ class InertiaResponse(Response[T]):
                 _discard_deferred_prop_key(deferred_props_map, key)
         deferred_props = deferred_props_map or None
         # Extract once props tracked during get_shared_props (already rendered)
-        once_props_from_shared = [key for key in shared_props.pop("_once_props", []) if key not in reset_keys]
-        route_once_props = [key for key in route_once_props if key not in reset_keys]
-        once_prop_keys = list(dict.fromkeys([*once_props_from_shared, *route_once_props]))
-        once_props = build_once_props_metadata(once_prop_keys) or None
+        once_props_from_shared = shared_props.pop("_once_props", [])
+        once_prop_entries = _dedupe_once_prop_entries(
+            [*once_props_from_shared, *route_once_props], reset_keys=reset_keys
+        )
+        once_props = build_once_props_metadata(once_prop_entries) or None
 
         merge_props_list, prepend_props_list, deep_merge_props_list, match_props_on = extract_merge_props(shared_props)
+        shared_props = unwrap_merge_props(shared_props)
 
         extracted_scroll_props: "ScrollPropsConfig | None" = self.scroll_props
         infinite_scroll_enabled = bool(route_handler and route_handler.opt.get("infinite_scroll", False))
 
         for key in tuple(shared_props):
             value = shared_props[key]
-            if is_merge_prop(value):
-                value = shared_props[key] = value.value
-
             if is_pagination_container(value):
                 _, scroll = extract_pagination_scroll_props(value)
                 if extracted_scroll_props is None and scroll is not None and infinite_scroll_enabled:
@@ -880,56 +651,6 @@ class InertiaResponse(Response[T]):
         )
 
 
-def _merge_deferred_props(target: "dict[str, list[str]]", source: "Mapping[str, list[str]]") -> None:
-    for group, keys in source.items():
-        group_keys = target.setdefault(group, [])
-        for key in keys:
-            if key not in group_keys:
-                group_keys.append(key)
-
-
-def _discard_deferred_prop_key(target: "dict[str, list[str]]", key: str) -> None:
-    for group in tuple(target):
-        group_keys = target[group]
-        if key in group_keys:
-            group_keys.remove(key)
-        if not group_keys:
-            del target[group]
-
-
-class _AsyncInertiaSSRResponse:
-    """ASGI response placeholder for SSR HTTP pre-fetch.
-
-    Async prop callbacks are not resolved here because ASGI dispatch happens
-    after Litestar's yield-based dependency cleanup. The handler wrapper must
-    resolve those callbacks before this object is created.
-    """
-
-    __slots__ = ("_app", "_kwargs", "_request", "_response")
-
-    def __init__(
-        self,
-        *,
-        response: "InertiaResponse[Any]",
-        app: "Litestar | None",
-        request: "Request[Any, Any, Any]",
-        kwargs: "dict[str, Any]",
-    ) -> None:
-        self._response = response
-        self._app = app
-        self._request = request
-        self._kwargs = kwargs
-
-    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
-        info = _get_inertia_request_info(self._request)
-        partial_data = info.partial_keys if info.is_partial_render and info.partial_keys else None
-        partial_except = info.partial_except_keys if info.is_partial_render and info.partial_except_keys else None
-        await self._response._prefetch_ssr(self._request, info, partial_data, partial_except)  # pyright: ignore[reportPrivateUsage]
-        self._response._async_prepass_done = True  # pyright: ignore[reportPrivateUsage]
-        asgi_response = self._response.to_asgi_response(self._app, self._request, **self._kwargs)
-        await asgi_response(scope, receive, send)
-
-
 class InertiaExternalRedirect(Response[Any]):
     """External redirect via Inertia protocol (409 + X-Inertia-Location).
 
@@ -979,14 +700,66 @@ class InertiaRedirect(Redirect):
             **kwargs: Additional keyword arguments passed to the Redirect constructor.
         """
         safe_url = _get_redirect_url(request, redirect_to)
-        super().__init__(  # pyright: ignore[reportUnknownMemberType]
-            path=safe_url,
-            status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
-            **kwargs,
+        if _should_use_fragment_redirect(request, safe_url):
+            self._uses_inertia_fragment_redirect = True
+            Response.__init__(  # pyright: ignore[reportUnknownMemberType]
+                self,
+                content=b"",
+                status_code=HTTP_409_CONFLICT,
+                headers={"X-Inertia-Redirect": quote(safe_url, safe="/#%[]=:;$&()+,!?*@'~")},
+                **kwargs,
+            )
+        else:
+            self._uses_inertia_fragment_redirect = False
+            super().__init__(  # pyright: ignore[reportUnknownMemberType]
+                path=safe_url,
+                status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
+                **kwargs,
+            )
+
+    def to_asgi_response(
+        self,
+        app: "Litestar | None",
+        request: "Request[Any, Any, Any]",
+        *,
+        background: "BackgroundTask | BackgroundTasks | None" = None,
+        cookies: "Iterable[Cookie] | None" = None,
+        encoded_headers: "Iterable[tuple[bytes, bytes]] | None" = None,
+        headers: "dict[str, str] | None" = None,
+        is_head_response: bool = False,
+        media_type: "MediaType | str | None" = None,
+        status_code: "int | None" = None,
+        type_encoders: "TypeEncodersMap | None" = None,
+    ) -> "ASGIResponse":
+        if self._uses_inertia_fragment_redirect:
+            return Response.to_asgi_response(  # pyright: ignore[reportUnknownMemberType]
+                self,
+                app=app,
+                request=request,
+                background=background,
+                cookies=cookies,
+                encoded_headers=encoded_headers,
+                headers=headers,
+                is_head_response=is_head_response,
+                media_type=media_type,
+                status_code=status_code,
+                type_encoders=type_encoders,
+            )
+        return super().to_asgi_response(  # pyright: ignore[reportUnknownMemberType]
+            app=app,
+            request=request,
+            background=background,
+            cookies=cookies,
+            encoded_headers=encoded_headers,
+            headers=headers,
+            is_head_response=is_head_response,
+            media_type=media_type,
+            status_code=status_code,
+            type_encoders=type_encoders,
         )
 
 
-class InertiaBack(Redirect):
+class InertiaBack(InertiaRedirect):
     """Redirect back to the previous page using the Referer header.
 
     This class safely validates the Referer header to prevent open redirect
@@ -1006,8 +779,301 @@ class InertiaBack(Redirect):
             **kwargs: Additional keyword arguments passed to the Redirect constructor.
         """
         safe_url = _get_redirect_url(request, request.headers.get("Referer"))
-        super().__init__(  # pyright: ignore[reportUnknownMemberType]
-            path=safe_url,
-            status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
-            **kwargs,
+        super().__init__(request=request, redirect_to=safe_url, **kwargs)
+
+
+@dataclass(frozen=True)
+class _InertiaSSRResult:
+    head: list[str]
+    body: str
+
+
+@dataclass(frozen=True)
+class _InertiaRequestInfo:
+    inertia_enabled: bool
+    is_inertia: bool
+    is_partial_render: bool
+    partial_keys: set[str]
+    partial_except_keys: set[str]
+    except_once_keys: set[str]
+    reset_keys: set[str]
+
+
+def _get_inertia_request_info(request: "Request[Any, Any, Any]") -> _InertiaRequestInfo:
+    """Return Inertia request state for both InertiaRequest and plain Request.
+
+    InertiaResponse is typically used together with InertiaMiddleware, which wraps
+    incoming requests in :class:`~litestar_vite.inertia.request.InertiaRequest`.
+
+    This helper preserves compatibility with plain :class:`litestar.Request` by
+    falling back to header parsing via :class:`~litestar_vite.inertia.request.InertiaDetails`.
+
+    Returns:
+        Aggregated Inertia-related request flags and partial-render metadata.
+    """
+    if isinstance(request, InertiaRequest):
+        is_inertia = request.is_inertia
+        return _InertiaRequestInfo(
+            inertia_enabled=bool(request.inertia_enabled or is_inertia),
+            is_inertia=is_inertia,
+            is_partial_render=request.is_partial_render,
+            partial_keys=request.partial_keys,
+            partial_except_keys=request.partial_except_keys,
+            except_once_keys=request.except_once_props_keys,
+            reset_keys=request.reset_keys,
         )
+
+    details = InertiaDetails(request)
+    is_inertia = bool(details)
+    return _InertiaRequestInfo(
+        inertia_enabled=bool(details.route_component is not None or is_inertia),
+        is_inertia=is_inertia,
+        is_partial_render=details.is_partial_render,
+        partial_keys=set(details.partial_keys),
+        partial_except_keys=set(details.partial_except_keys),
+        except_once_keys=set(details.except_once_props_keys),
+        reset_keys=set(details.reset_keys),
+    )
+
+
+# Maximum allowed size for SSR response body + head combined (10 MiB).
+# This prevents a malicious or misconfigured SSR server from causing OOM.
+_SSR_MAX_RESPONSE_BYTES = 10 * 1024 * 1024
+
+
+def _parse_inertia_ssr_payload(payload: Any, url: str) -> _InertiaSSRResult:
+    if not isinstance(payload, dict):
+        msg = f"Inertia SSR server at {url!r} returned unexpected payload type: {type(payload)!r}."
+        raise ImproperlyConfiguredException(msg)
+
+    payload_dict = cast("dict[str, Any]", payload)
+
+    body = payload_dict.get("body")
+    if not isinstance(body, str):
+        msg = f"Inertia SSR server at {url!r} returned invalid 'body' (expected string)."
+        raise ImproperlyConfiguredException(msg)
+
+    head_raw: Any = payload_dict.get("head", [])
+    if head_raw is None:
+        head_raw = []
+    if not isinstance(head_raw, list):
+        msg = f"Inertia SSR server at {url!r} returned invalid 'head' (expected list[str])."
+        raise ImproperlyConfiguredException(msg)
+
+    head_list = cast("list[Any]", head_raw)
+    if any(not isinstance(item, str) for item in head_list):
+        msg = f"Inertia SSR server at {url!r} returned invalid 'head' (expected list[str])."
+        raise ImproperlyConfiguredException(msg)
+
+    total_size = len(body) + sum(len(h) for h in head_list)
+    if total_size > _SSR_MAX_RESPONSE_BYTES:
+        msg = (
+            f"Inertia SSR response from {url!r} exceeds maximum allowed size "
+            f"({total_size:,} bytes > {_SSR_MAX_RESPONSE_BYTES:,} bytes). "
+            "This may indicate a misconfigured SSR server."
+        )
+        raise ImproperlyConfiguredException(msg)
+
+    return _InertiaSSRResult(head=cast("list[str]", head_list), body=body)
+
+
+async def _render_inertia_ssr(
+    page: dict[str, Any], url: str, timeout_seconds: float, client: "httpx.AsyncClient | None" = None
+) -> _InertiaSSRResult:
+    """Call the Inertia SSR server asynchronously and return head/body HTML.
+
+    Args:
+        page: The page object to send to the SSR server.
+        url: The SSR server URL (typically http://localhost:13714/render).
+        timeout_seconds: Request timeout in seconds.
+        client: Optional shared httpx.AsyncClient for connection pooling.
+            If None, creates a new client per request (slower).
+
+    Returns:
+        An _InertiaSSRResult with head and body HTML.
+    """
+    return await _do_ssr_request(page, url, timeout_seconds, client)
+
+
+@contextlib.asynccontextmanager
+async def _acquire_ssr_client(client: "httpx.AsyncClient | None") -> "AsyncGenerator[httpx.AsyncClient, None]":
+    """Yield ``client`` when provided, otherwise a short-lived fallback client.
+
+    Yields:
+        The shared client when supplied, or a fallback client whose lifecycle is
+        bound to the context.
+    """
+    if client is not None:
+        yield client
+    else:
+        async with httpx.AsyncClient() as fallback:
+            yield fallback
+
+
+async def _do_ssr_request(
+    page: dict[str, Any], url: str, timeout_seconds: float, client: "httpx.AsyncClient | None"
+) -> _InertiaSSRResult:
+    """Execute the SSR request with optional client reuse.
+
+    Args:
+        page: The page object to send to the SSR server.
+        url: The SSR server URL.
+        timeout_seconds: Request timeout in seconds.
+        client: Optional shared httpx.AsyncClient.
+
+    Raises:
+        ImproperlyConfiguredException: If the SSR server is unreachable,
+            returns an error status, or returns invalid payload.
+
+    Returns:
+        An _InertiaSSRResult with head and body HTML.
+    """
+    # Use Litestar's msgspec encoder so msgspec Structs and other custom types embedded
+    # in handler return values serialize the same way as the regular Inertia render path
+    # (response.render uses get_serializer too). httpx's default json= serializer falls
+    # back to stdlib json.dumps and rejects Struct instances.
+    body = encode_json(page, serializer=get_serializer(None))
+    headers = {"content-type": "application/json"}
+
+    try:
+        async with _acquire_ssr_client(client) as resolved_client:
+            response = await resolved_client.post(url, content=body, headers=headers, timeout=timeout_seconds)
+            response.raise_for_status()
+    except httpx.RequestError as exc:
+        msg = (
+            f"Inertia SSR is enabled but the SSR server is not reachable at {url!r}. "
+            "Start the SSR server (Node) or disable InertiaConfig.ssr."
+        )
+        raise ImproperlyConfiguredException(msg) from exc
+    except httpx.HTTPStatusError as exc:
+        msg = f"Inertia SSR server at {url!r} returned HTTP {exc.response.status_code}. Check the SSR server logs."
+        raise ImproperlyConfiguredException(msg) from exc
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        msg = f"Inertia SSR server at {url!r} returned invalid JSON. Check the SSR server logs."
+        raise ImproperlyConfiguredException(msg) from exc
+
+    return _parse_inertia_ssr_payload(payload, url)
+
+
+def _get_redirect_url(request: "Request[Any, Any, Any]", url: str | None) -> str:
+    """Return a safe redirect URL, falling back to base_url when invalid.
+
+    Args:
+        request: The request object.
+        url: Candidate redirect URL.
+
+    Returns:
+        A safe redirect URL (same-origin absolute, or relative), otherwise the request base URL.
+    """
+    base_url = str(request.base_url)
+
+    if not url:
+        return base_url
+
+    parsed = urlparse(url)
+    base = urlparse(base_url)
+
+    if not parsed.scheme and not parsed.netloc:
+        return url
+
+    if parsed.scheme not in {"http", "https"}:
+        return base_url
+
+    if parsed.netloc != base.netloc:
+        return base_url
+
+    return url
+
+
+def _get_relative_url(request: "Request[Any, Any, Any]") -> str:
+    """Return the relative URL including query string for Inertia page props.
+
+    The Inertia.js protocol requires the ``url`` property to include query parameters
+    so that page state (e.g., filters, pagination) is preserved on refresh.
+
+    This matches the behavior of other Inertia adapters:
+    - Laravel: Uses ``fullUrl()`` minus scheme/host
+    - Rails: Uses ``request.fullpath``
+    - Django: Uses ``request.get_full_path()``
+
+    Args:
+        request: The request object.
+
+    Returns:
+        The path with query string if present, e.g., ``/reports?page=1&status=active``.
+    """
+    path = request.url.path
+    query = request.url.query
+    return f"{path}?{query}" if query else path
+
+
+def _should_use_fragment_redirect(request: "Request[Any, Any, Any]", url: str) -> bool:
+    return bool(InertiaDetails(request)) and bool(urlparse(url).fragment)
+
+
+def _merge_deferred_props(target: "dict[str, list[str]]", source: "Mapping[str, list[str]]") -> None:
+    for group, keys in source.items():
+        group_keys = target.setdefault(group, [])
+        for key in keys:
+            if key not in group_keys:
+                group_keys.append(key)
+
+
+def _discard_deferred_prop_key(target: "dict[str, list[str]]", key: str) -> None:
+    for group in tuple(target):
+        group_keys = target[group]
+        group_keys[:] = [
+            prop_key
+            for prop_key in group_keys
+            if prop_key != key and not prop_key.startswith(f"{key}.") and prop_key.rsplit(".", maxsplit=1)[-1] != key
+        ]
+        if not group_keys:
+            del target[group]
+
+
+def _dedupe_once_prop_entries(
+    entries: "Iterable[str | tuple[str, str]]", *, reset_keys: "set[str]"
+) -> "list[str | tuple[str, str]]":
+    filtered: "dict[str, str | tuple[str, str]]" = {}
+    for entry in entries:
+        key, prop_path = entry if isinstance(entry, tuple) else (entry, entry)
+        if key in reset_keys or prop_path in reset_keys:
+            continue
+        filtered.setdefault(key, entry)
+    return list(filtered.values())
+
+
+class _AsyncInertiaSSRResponse:
+    """ASGI response placeholder for SSR HTTP pre-fetch.
+
+    Async prop callbacks are not resolved here because ASGI dispatch happens
+    after Litestar's yield-based dependency cleanup. The handler wrapper must
+    resolve those callbacks before this object is created.
+    """
+
+    __slots__ = ("_app", "_kwargs", "_request", "_response")
+
+    def __init__(
+        self,
+        *,
+        response: "InertiaResponse[Any]",
+        app: "Litestar | None",
+        request: "Request[Any, Any, Any]",
+        kwargs: "dict[str, Any]",
+    ) -> None:
+        self._response = response
+        self._app = app
+        self._request = request
+        self._kwargs = kwargs
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        info = _get_inertia_request_info(self._request)
+        partial_data = info.partial_keys if info.is_partial_render and info.partial_keys else None
+        partial_except = info.partial_except_keys if info.is_partial_render and info.partial_except_keys else None
+        await self._response._prefetch_ssr(self._request, info, partial_data, partial_except)  # pyright: ignore[reportPrivateUsage]
+        self._response._async_prepass_done = True  # pyright: ignore[reportPrivateUsage]
+        asgi_response = self._response.to_asgi_response(self._app, self._request, **self._kwargs)
+        await asgi_response(scope, receive, send)

@@ -274,6 +274,20 @@ def test_page_props_to_dict() -> None:
     assert "deepMergeProps" not in result
 
 
+def test_page_props_to_dict_omits_false_history_flags_by_default() -> None:
+    """Test PageProps.to_dict() omits v3 optional history flags unless true."""
+    from litestar_vite.inertia.types import PageProps
+
+    page: PageProps[dict[str, str]] = PageProps(
+        component="Home", url="/dashboard", version="abc123", props={"user": "test"}
+    )
+
+    result = page.to_dict()
+
+    assert "encryptHistory" not in result
+    assert "clearHistory" not in result
+
+
 # =====================================================
 # Page Component Alias Tests (component_opt_keys)
 # =====================================================

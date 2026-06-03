@@ -75,7 +75,7 @@ nitpick_ignore = [
     (PY_CLASS, "EmptyType"),
     (PY_CLASS, "ModelT"),
     (PY_CLASS, "T"),
-    (PY_CLASS, "litestar.contrib.jinja.T"),
+    (PY_CLASS, "litestar.plugins.jinja.T"),
     (PY_CLASS, "config.app.AppConfig"),
     (PY_OBJ, "litestar.template.config.EngineType"),
     (PY_CLASS, "litestar.template.config.EngineType"),

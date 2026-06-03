@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 from litestar.handlers.http_handlers.base import HTTPRouteHandler
-from litestar.plugins import InitPluginProtocol
+from litestar.plugins import InitPlugin
 from litestar.response import Response
 
 if TYPE_CHECKING:
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from litestar_vite.config import InertiaConfig
 
 
-class InertiaPlugin(InitPluginProtocol):
+class InertiaPlugin(InitPlugin):
     """Inertia plugin.
 
     This plugin configures Litestar for Inertia.js support, including:
@@ -117,7 +117,10 @@ class InertiaPlugin(InitPluginProtocol):
         from litestar.security.session_auth.middleware import MiddlewareWrapper
         from litestar.utils.predicates import is_class_and_subclass
 
-        from litestar_vite.inertia.exception_handler import exception_to_http_response
+        from litestar_vite.inertia.exception_handler import (
+            _register_exception_handlers,  # pyright: ignore[reportPrivateUsage]
+            exception_to_http_response,
+        )
         from litestar_vite.inertia.helpers import DeferredProp, StaticProp
         from litestar_vite.inertia.middleware import InertiaMiddleware
         from litestar_vite.inertia.request import InertiaRequest
@@ -151,6 +154,8 @@ class InertiaPlugin(InitPluginProtocol):
             exception_handlers[ValidationException] = create_precognition_exception_handler(
                 fallback_handler=exception_to_http_response
             )
+
+        _register_exception_handlers(exception_handlers=exception_handlers, default_handler=exception_to_http_response)
 
         app_config.exception_handlers.update(exception_handlers)  # pyright: ignore[reportUnknownMemberType]
         app_config.request_class = InertiaRequest

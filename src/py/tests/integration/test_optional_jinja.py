@@ -51,7 +51,7 @@ def test_optional_jinja_init_vite_without_jinja_raises_clear_error(tmp_path: Pat
 
 def test_optional_jinja_plugin_with_jinja_available() -> None:
     """Test VitePlugin works when Jinja is available."""
-    from litestar.contrib.jinja import JinjaTemplateEngine
+    from litestar.plugins.jinja import JinjaTemplateEngine
 
     from litestar_vite.plugin import VitePlugin
 
@@ -87,7 +87,7 @@ def test_optional_jinja_plugin_without_jinja_template_engine() -> None:
 
 @patch("litestar_vite.plugin.JINJA_INSTALLED", False)
 def test_optional_jinja_plugin_import_without_jinja_contrib() -> None:
-    """Test plugin behavior when litestar.contrib.jinja is not available."""
+    """Test plugin behavior when litestar.plugins.jinja is not available."""
     # This test simulates the scenario where litestar[jinja] extra is not installed
     from litestar_vite.plugin import VitePlugin
 
@@ -184,7 +184,7 @@ def test_installation_basic_functionality_without_jinja_extra() -> None:
 
 def test_installation_full_functionality_with_jinja_extra(tmp_path: Path) -> None:
     """Test that full functionality works when jinja extra is installed."""
-    from litestar.contrib.jinja import JinjaTemplateEngine
+    from litestar.plugins.jinja import JinjaTemplateEngine
 
     from litestar_vite.config import ViteConfig
     from litestar_vite.plugin import VitePlugin

@@ -35,6 +35,19 @@ Or with custom configuration:
        ),
    ))
 
+Vite Plugin Boundary
+--------------------
+
+Use ``litestar-vite-plugin`` as the default Vite plugin for Litestar-backed Inertia apps. It owns
+the Litestar bridge file, dev/prod asset resolution, proxy routing, type generation, CSRF helper
+wiring, and the ``resolvePageComponent()`` helper used by generated entries.
+
+Do not add ``@inertiajs/vite`` to generated Litestar scaffolds by default. Applications can
+experiment with ``@inertiajs/vite`` for its page shorthand or upstream SSR automation, but it must
+not replace the Litestar bridge/proxy/typegen responsibilities. If both plugins are combined,
+``litestar-vite-plugin`` should remain the bridge owner and ``@inertiajs/vite`` should be treated
+as application-owned integration code.
+
 InertiaConfig Reference
 -----------------------
 

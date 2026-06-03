@@ -23,6 +23,7 @@ from pathlib import Path
 from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
 from litestar.middleware.session.client_side import CookieBackendConfig
+from litestar.params import FromPath
 from msgspec import Struct
 
 from litestar_vite import InertiaConfig, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
@@ -103,7 +104,7 @@ class LibraryController(Controller):
         return BOOKS
 
     @get("/api/books/{book_id:int}")
-    async def book_detail(self, book_id: int) -> Book:
+    async def book_detail(self, book_id: FromPath[int]) -> Book:
         return _get_book(book_id)
 
 

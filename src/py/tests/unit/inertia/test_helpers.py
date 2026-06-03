@@ -148,7 +148,7 @@ async def test_clear_history_helper_consumed_once(
 
         # Second request - flag should be consumed (popped)
         home_response = client.get("/home", headers={InertiaHeaders.ENABLED.value: "true"})
-        assert home_response.json()["clearHistory"] is False
+        assert "clearHistory" not in home_response.json()
 
 
 async def test_clear_history_helper_response_param_takes_precedence(
@@ -894,6 +894,18 @@ def test_extract_once_props_mixed() -> None:
     assert "lazy_data" not in result
 
 
+def test_extract_once_props_nested_keeps_stable_once_keys() -> None:
+    """Test nested once props keep stable keys while path metadata can use dot paths."""
+    from litestar_vite.inertia.helpers import build_once_props_metadata, extract_once_props, once
+
+    props = {"profile": {"settings": once("settings", {"theme": "dark"})}}
+
+    result = extract_once_props(props)
+
+    assert result == ["settings"]
+    assert build_once_props_metadata([("settings", "profile.settings")]) == {"settings": {"prop": "profile.settings"}}
+
+
 def test_should_render_once_prop_with_except_once_props() -> None:
     """Test that once props honor the except-once header unless explicitly requested."""
     from litestar_vite.inertia.helpers import once, should_render
@@ -902,6 +914,22 @@ def test_should_render_once_prop_with_except_once_props() -> None:
 
     assert should_render(prop, except_once_props={"settings"}) is False
     assert should_render(prop, partial_data={"settings"}, except_once_props={"settings"}) is True
+
+
+def test_should_render_special_props_matches_dot_path_and_legacy_key() -> None:
+    """Test nested special props can be selected by v3 dot paths or legacy local keys."""
+    from litestar_vite.inertia.helpers import lazy, optional, should_render
+
+    prop = optional("permissions", lambda: ["read"])
+    deferred = lazy("permissions", ["read"])
+
+    assert should_render(prop, partial_data={"profile.permissions"}, key="profile.permissions") is True
+    assert should_render(prop, partial_data={"permissions"}, key="profile.permissions") is True
+    assert should_render(prop, partial_except={"profile.permissions"}, key="profile.permissions") is False
+    assert should_render(prop, partial_except={"permissions"}, key="profile.permissions") is False
+
+    assert should_render(deferred, partial_data={"profile.permissions"}, key="profile.permissions") is True
+    assert should_render(deferred, partial_data={"permissions"}, key="profile.permissions") is True
 
 
 # =====================================================

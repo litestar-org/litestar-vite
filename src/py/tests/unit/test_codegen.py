@@ -1,10 +1,10 @@
 """Unit tests for codegen module."""
 
-from typing import Annotated, Any
+from typing import Any
 from uuid import UUID
 
 from litestar import Litestar, get, post
-from litestar.params import Parameter
+from litestar.params import FromPath, FromQuery
 
 from litestar_vite.codegen import escape_ts_string, generate_routes_ts, is_type_required, ts_type_for_param
 from litestar_vite.codegen._routes import extract_path_params, extract_route_metadata, make_unique_name
@@ -100,7 +100,7 @@ def test_generate_routes_ts_with_path_params() -> None:
     """Test TypeScript route generation with path parameters."""
 
     @get("/users/{user_id:int}", name="get_user", sync_to_thread=False)
-    def get_user(user_id: int) -> dict[str, int]:
+    def get_user(user_id: FromPath[int]) -> dict[str, int]:
         return {"id": user_id}
 
     app = Litestar([get_user])
@@ -122,7 +122,7 @@ def test_generate_routes_ts_with_uuid_param() -> None:
     """Test TypeScript route generation with UUID path parameter."""
 
     @get("/items/{item_id:uuid}", name="get_item", sync_to_thread=False)
-    def get_item(item_id: UUID) -> dict[str, str]:
+    def get_item(item_id: FromPath[UUID]) -> dict[str, str]:
         return {"id": str(item_id)}
 
     app = Litestar([get_item])
@@ -138,7 +138,7 @@ def test_generate_routes_ts_with_query_params() -> None:
     """Test TypeScript route generation with query parameters."""
 
     @get("/search", name="search", sync_to_thread=False)
-    def search(q: str, limit: Annotated[int | None, Parameter(default=10)] = None) -> list[str]:
+    def search(q: FromQuery[str], limit: FromQuery[int | None] = 10) -> list[str]:
         return []
 
     app = Litestar([search])
@@ -170,11 +170,11 @@ def test_generate_routes_ts_multiple_methods() -> None:
     """Test TypeScript generation with routes having multiple methods."""
 
     @get("/resources/{id:int}", name="get_resource", sync_to_thread=False)
-    def get_resource(id: int) -> dict[str, int]:
+    def get_resource(id: FromPath[int]) -> dict[str, int]:
         return {"id": id}
 
     @post("/resources/{id:int}", name="update_resource", sync_to_thread=False)
-    def update_resource(id: int, data: dict[str, str]) -> dict[str, int]:
+    def update_resource(id: FromPath[int], data: dict[str, str]) -> dict[str, int]:
         return {"id": id}
 
     app = Litestar([get_resource, update_resource])
@@ -241,7 +241,7 @@ def test_generate_routes_ts_type_overloads() -> None:
         return "simple"
 
     @get("/with-param/{id:int}", name="with_param", sync_to_thread=False)
-    def param_route(id: int) -> dict[str, int]:
+    def param_route(id: FromPath[int]) -> dict[str, int]:
         return {"id": id}
 
     app = Litestar([simple_route, param_route])
@@ -304,11 +304,11 @@ def test_generate_routes_ts_is_valid_typescript() -> None:
         return []
 
     @get("/users/{user_id:int}", name="get_user", sync_to_thread=False)
-    def get_user(user_id: int) -> dict[str, int]:
+    def get_user(user_id: FromPath[int]) -> dict[str, int]:
         return {"id": user_id}
 
     @get("/search", name="search", sync_to_thread=False)
-    def search(q: str) -> list[str]:
+    def search(q: FromQuery[str]) -> list[str]:
         return []
 
     app = Litestar([list_users, get_user, search])
@@ -454,7 +454,7 @@ def test_generate_routes_ts_query_params_do_not_emit_null() -> None:
     """Test generated URL param types never include `null`."""
 
     @get("/search-null", name="search_null", sync_to_thread=False)
-    def search_null(q: str | None = None) -> list[str]:
+    def search_null(q: FromQuery[str | None] = None) -> list[str]:
         return []
 
     app = Litestar([search_null])
@@ -537,7 +537,7 @@ def test_extract_route_metadata_falls_back_when_openapi_disabled() -> None:
     """Test route metadata extraction uses path parsing when OpenAPI is disabled."""
 
     @get("/users/{id:int}", name="user_detail", sync_to_thread=False)
-    def user_detail(id: int) -> dict[str, int]:
+    def user_detail(id: FromPath[int]) -> dict[str, int]:
         return {"id": id}
 
     app = Litestar([user_detail], openapi_config=None)
@@ -550,7 +550,7 @@ def test_generate_routes_ts_no_semantic_alias_block_when_unused() -> None:
     """Test generated routes.ts does not include alias preamble when no formats are used."""
 
     @get("/users/{id:int}", name="user_by_id", sync_to_thread=False)
-    def user_by_id(id: int) -> dict[str, int]:
+    def user_by_id(id: FromPath[int]) -> dict[str, int]:
         return {"id": id}
 
     app = Litestar([user_by_id])
@@ -595,7 +595,7 @@ def test_post_body_and_query_params_separated() -> None:
         name: str
 
     @post("/teams", name="teams.add", sync_to_thread=False)
-    def add_team(data: TeamCreate, notify: bool = False) -> dict[str, str]:
+    def add_team(data: TeamCreate, notify: FromQuery[bool] = False) -> dict[str, str]:
         return {}
 
     app = Litestar([add_team])
@@ -619,7 +619,7 @@ def test_put_body_param_excluded() -> None:
         name: str
 
     @put("/teams/{team_id:int}", name="teams.update", sync_to_thread=False)
-    def update_team(team_id: int, data: TeamUpdate) -> dict[str, str]:
+    def update_team(team_id: FromPath[int], data: TeamUpdate) -> dict[str, str]:
         return {}
 
     app = Litestar([update_team])
@@ -642,7 +642,7 @@ def test_patch_body_param_excluded() -> None:
         name: str | None = None
 
     @patch("/teams/{team_id:int}", name="teams.patch", sync_to_thread=False)
-    def patch_team(team_id: int, data: TeamPatch) -> dict[str, str]:
+    def patch_team(team_id: FromPath[int], data: TeamPatch) -> dict[str, str]:
         return {}
 
     app = Litestar([patch_team])
@@ -657,7 +657,7 @@ def test_get_no_body_params_possible() -> None:
     from litestar_vite.codegen import generate_routes_json
 
     @get("/teams", name="teams.list", sync_to_thread=False)
-    def list_teams(limit: int = 10, offset: int = 0) -> list[dict[str, str]]:
+    def list_teams(limit: FromQuery[int] = 10, offset: FromQuery[int] = 0) -> list[dict[str, str]]:
         return []
 
     app = Litestar([list_teams])
@@ -681,7 +681,7 @@ def test_schema_excluded_endpoint_body_detection() -> None:
         name: str
 
     @post("/internal/teams", name="internal.teams.add", include_in_schema=False, sync_to_thread=False)
-    def add_internal_team(data: TeamCreate, notify: bool = False) -> dict[str, str]:
+    def add_internal_team(data: TeamCreate, notify: FromQuery[bool] = False) -> dict[str, str]:
         return {}
 
     app = Litestar([add_internal_team])
@@ -711,7 +711,7 @@ def test_body_param_uses_data_convention() -> None:
         name: str
 
     @post("/teams", name="teams.add", sync_to_thread=False)
-    def add_team(data: TeamPayload, active: bool = True) -> dict[str, str]:
+    def add_team(data: TeamPayload, active: FromQuery[bool] = True) -> dict[str, str]:
         return {}
 
     app = Litestar([add_team])
@@ -847,7 +847,7 @@ def test_generate_routes_ts_str_enum_query_params_emit_literal_unions() -> None:
         MONTH = "month"
 
     @get("/trends", name="trends.list", sync_to_thread=False)
-    def trends(granularity: Granularity = Granularity.DAY) -> list[str]:
+    def trends(granularity: FromQuery[Granularity] = Granularity.DAY) -> list[str]:
         return []
 
     app = Litestar([trends])

@@ -5,8 +5,9 @@ from pathlib import Path
 
 # [docs-start:htmx-imports]
 from litestar import Controller, Litestar, get
-from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.exceptions import NotFoundException
+from litestar.params import FromPath
+from litestar.plugins.jinja import JinjaTemplateEngine
 from litestar.response import Template
 from litestar.template.config import TemplateConfig
 from litestar_htmx import HTMXPlugin, HTMXRequest
@@ -77,7 +78,7 @@ class LibraryController(Controller):
 
     # [docs-start:htmx-fragment]
     @get("/fragments/book/{book_id:int}")
-    async def book_fragment(self, book_id: int) -> Template:
+    async def book_fragment(self, book_id: FromPath[int]) -> Template:
         """Return a book card fragment for HTMX swaps.
 
         Returns:
@@ -103,7 +104,7 @@ class LibraryController(Controller):
         return BOOKS
 
     @get("/api/books/{book_id:int}")
-    async def book_detail(self, book_id: int) -> Book:
+    async def book_detail(self, book_id: FromPath[int]) -> Book:
         return _get_book(book_id)
 
 

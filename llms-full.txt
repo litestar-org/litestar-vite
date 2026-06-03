@@ -15,7 +15,7 @@
 | Node | >=22.12.0 |
 | Vite peer | ^7.0.0 \|\| ^8.0.0 |
 
-Python dependencies: litestar>=2.7.0, httpx>=0.24.1, websockets>=12.0, typing_extensions
+Python dependencies: litestar>=2.22.0, httpx>=0.24.1, websockets>=12.0, typing_extensions
 Optional extras: jinja (jinja2), nodeenv (nodeenv), http2 (h2>=4.0.0)
 
 npm dependencies: picocolors ^1.1.1, vite-plugin-full-reload ^1.2.0
@@ -461,7 +461,7 @@ Any type with an `items` attribute satisfies it; built-in support covers
 Source: `litestar_vite.plugin`
 
 ```python
-class VitePlugin(InitPluginProtocol, CLIPlugin):
+class VitePlugin(InitPlugin, CLIPlugin):
     def __init__(
         self,
         config: ViteConfig | None = None,
@@ -518,7 +518,7 @@ class VitePlugin(InitPluginProtocol, CLIPlugin):
 Source: `litestar_vite.inertia.plugin`
 
 ```python
-class InertiaPlugin(InitPluginProtocol):
+class InertiaPlugin(InitPlugin):
     def __init__(self, config: InertiaConfig) -> None: ...
 
     @asynccontextmanager
@@ -1279,7 +1279,7 @@ app = Litestar(
 
 ```python
 from litestar import Litestar
-from litestar.contrib.jinja import JinjaTemplateEngine
+from litestar.plugins.jinja import JinjaTemplateEngine
 from litestar.template.config import TemplateConfig
 from litestar_vite import VitePlugin, ViteConfig
 

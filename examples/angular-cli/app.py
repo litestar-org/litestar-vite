@@ -17,6 +17,7 @@ from pathlib import Path
 
 from litestar import Controller, Litestar, get
 from litestar.exceptions import NotFoundException
+from litestar.params import FromPath
 from msgspec import Struct
 
 from litestar_vite import ExternalDevServer, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
@@ -88,7 +89,7 @@ class LibraryController(Controller):
         return BOOKS
 
     @get("/api/books/{book_id:int}")
-    async def book_detail(self, book_id: int) -> Book:
+    async def book_detail(self, book_id: FromPath[int]) -> Book:
         """Return a single book by id.
 
         Returns:
@@ -99,10 +100,10 @@ class LibraryController(Controller):
 
 # VitePlugin for development proxy, type generation, and production static serving
 # - Dev: Auto-starts Angular CLI (ng serve) and proxies to port 4200
-# - Prod: mode="external" auto-serves bundle_dir as static files
+# - Prod: framework mode auto-serves bundle_dir as static files
 vite = VitePlugin(
     config=ViteConfig(
-        mode="external",
+        mode="framework",
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, bundle_dir=dist_dir),
         types=TypeGenConfig(),

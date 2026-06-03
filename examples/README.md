@@ -27,6 +27,7 @@ All examples must implement the same "Library" backend with these endpoints:
 
 ```python
 from litestar import Controller, get
+from litestar.params import FromPath
 from msgspec import Struct
 
 class Book(Struct):
@@ -63,7 +64,7 @@ class LibraryController(Controller):
         return BOOKS
 
     @get("/api/books/{book_id:int}")
-    async def book_detail(self, book_id: int) -> Book:
+    async def book_detail(self, book_id: FromPath[int]) -> Book:
         # Return book or raise NotFoundException
         ...
 ```

@@ -124,12 +124,13 @@ Use path separators for component organization:
    from typing import Any
 
    from litestar import get
+   from litestar.params import FromPath
 
    @get("/users", component="Users/Index")
    async def list_users() -> dict[str, Any]: ...
 
    @get("/users/{id}", component="Users/Show")
-   async def show_user(id: int) -> dict[str, Any]: ...
+   async def show_user(id: FromPath[int]) -> dict[str, Any]: ...
 
 Access via:
 
@@ -197,9 +198,10 @@ Optional props are marked with ``?``:
    from typing import Any
 
    from litestar import get
+   from litestar.params import FromPath
 
    @get("/users/{id}", component="Users/Show")
-   async def show_user(id: int) -> dict[str, Any]:
+   async def show_user(id: FromPath[int]) -> dict[str, Any]:
        user = await User.get_or_none(id)
        return {
            "user": user,  # Can be None

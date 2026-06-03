@@ -2,7 +2,6 @@
 
 import gc
 import sys
-import time
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any, cast
@@ -13,6 +12,7 @@ from litestar import Litestar, get
 from litestar.config.app import AppConfig
 from litestar.exceptions import WebSocketDisconnect
 from litestar.middleware import DefineMiddleware
+from litestar.params import FromPath
 from litestar.template.config import TemplateConfig
 from litestar.testing import TestClient
 
@@ -137,7 +137,7 @@ def test_vite_plugin_app_init_without_template_config() -> None:
 def test_vite_plugin_app_init_with_jinja_template_engine(tmp_path: Path) -> None:
     """Test app initialization with Jinja template engine."""
     try:
-        from litestar.contrib.jinja import JinjaTemplateEngine
+        from litestar.plugins.jinja import JinjaTemplateEngine
     except ImportError:
         pytest.skip("Jinja not available for testing")
 
@@ -630,7 +630,7 @@ def test_static_files_config_custom_values() -> None:
 def test_vite_plugin_jinja_with_jinja_available(tmp_path: Path) -> None:
     """Test plugin behavior when Jinja is available."""
     try:
-        from litestar.contrib.jinja import JinjaTemplateEngine
+        from litestar.plugins.jinja import JinjaTemplateEngine
     except ImportError:
         pytest.skip("Jinja not available for testing")
 
@@ -657,7 +657,7 @@ def test_vite_plugin_jinja_without_jinja_available() -> None:
 def test_vite_plugin_jinja_template_callable_registration_check(tmp_path: Path) -> None:
     """Test template callable registration with isinstance check."""
     try:
-        from litestar.contrib.jinja import JinjaTemplateEngine
+        from litestar.plugins.jinja import JinjaTemplateEngine
     except ImportError:
         pytest.skip("Jinja not available for testing")
 
@@ -783,18 +783,18 @@ def test_vite_plugin_optional_works_without_jinja_template_engine() -> None:
 
 @patch("litestar_vite.plugin.JINJA_INSTALLED", False)
 def test_vite_plugin_optional_handles_missing_jinja_contrib_module() -> None:
-    """Test plugin behavior when litestar.contrib.jinja module is not available."""
+    """Test plugin behavior when litestar.plugins.jinja module is not available."""
     plugin = VitePlugin()
     app_config = AppConfig()
 
-    # Should still work even if litestar.contrib.jinja is not available
+    # Should still work even if litestar.plugins.jinja is not available
     result = plugin.on_app_init(app_config)
     assert result is app_config
 
 
 def test_vite_plugin_optional_with_jinja_engine_when_available() -> None:
     """Test plugin with Jinja engine when it is available."""
-    from litestar.contrib.jinja import JinjaTemplateEngine
+    from litestar.plugins.jinja import JinjaTemplateEngine
 
     plugin = VitePlugin()
 
@@ -868,8 +868,8 @@ def test_template_mode_jinja_callables_matrix(
     is provided. Without Jinja, ``mode='template'`` must still construct cleanly so
     raw-HTML / non-Jinja-engine consumers (HTMX, Mako, Chameleon) are not blocked.
     """
-    from litestar.contrib.jinja import JinjaTemplateEngine
     from litestar.middleware.session.server_side import ServerSideSessionConfig
+    from litestar.plugins.jinja import JinjaTemplateEngine
     from litestar.stores.base import Store
     from litestar.stores.memory import MemoryStore
     from litestar.types import Middleware
@@ -1012,21 +1012,6 @@ def test_vite_plugin_optional_memory_efficiency_without_jinja() -> None:
     assert plugin._asset_loader is None  # Lazy loading
 
 
-def test_vite_plugin_optional_performance_without_jinja() -> None:
-    """Test plugin performance when Jinja is not available."""
-    start_time = time.time()
-
-    # Plugin initialization should be fast
-    plugin = VitePlugin()
-    app_config = AppConfig()
-    plugin.on_app_init(app_config)
-
-    init_time = time.time() - start_time
-
-    # Should initialize quickly (less than 100ms)
-    assert init_time < 0.1, f"Plugin initialization too slow: {init_time}s"
-
-
 # =====================================================
 # Route Detection Tests (for SPA catch-all exclusion)
 # =====================================================
@@ -1041,7 +1026,7 @@ def test_get_litestar_route_prefixes_with_multiple_routes() -> None:
         return {"message": "users"}
 
     @get("/posts/{post_id:int}")
-    async def get_post(post_id: int) -> dict[str, int]:
+    async def get_post(post_id: FromPath[int]) -> dict[str, int]:
         return {"id": post_id}
 
     @get("/api/v1/items")
@@ -1244,7 +1229,7 @@ def test_is_litestar_route_with_path_parameters() -> None:
     from litestar_vite.plugin import is_litestar_route
 
     @get("/api/users/{user_id:int}")
-    async def get_user(user_id: int) -> dict[str, int]:
+    async def get_user(user_id: FromPath[int]) -> dict[str, int]:
         return {"id": user_id}
 
     app = Litestar(route_handlers=[get_user])

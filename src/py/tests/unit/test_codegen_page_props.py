@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, TypedDict
 
 from litestar import Litestar, get
+from litestar.params import FromPath
 
 from litestar_vite.codegen import (
     InertiaPageMetadata,
@@ -249,7 +250,7 @@ def test_extract_inertia_pages_with_path_params() -> None:
     """Test page extraction normalizes path parameters."""
 
     @get("/users/{user_id:int}", opt={"component": "Users/Show"}, sync_to_thread=False)
-    def show_user(user_id: int) -> dict[str, int]:
+    def show_user(user_id: FromPath[int]) -> dict[str, int]:
         return {"id": user_id}
 
     app = Litestar([show_user])
