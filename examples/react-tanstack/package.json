@@ -10,16 +10,16 @@
     "generate-types": "openapi-ts --config openapi-ts.config.ts"
   },
   "dependencies": {
-    "react": "19.2.5",
-    "react-dom": "19.2.5",
-    "@tanstack/react-router": "1.168.25",
-    "zod": "4.3.6"
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "@tanstack/react-router": "1.170.11",
+    "zod": "4.4.3"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "6.0.1",
-    "@tanstack/router-plugin": "1.167.28",
-    "@hey-api/openapi-ts": "0.96.1",
-    "@types/react": "19.2.14",
+    "@vitejs/plugin-react": "6.0.2",
+    "@tanstack/router-plugin": "1.168.14",
+    "@hey-api/openapi-ts": "0.98.1",
+    "@types/react": "19.2.16",
     "@types/react-dom": "19.2.3",
     "@tailwindcss/vite": "4.2.4",
     "tailwindcss": "4.2.4",

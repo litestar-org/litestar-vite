@@ -10,19 +10,19 @@
     "generate-types": "openapi-ts --config openapi-ts.config.ts"
   },
   "dependencies": {
-    "react": "19.2.5",
-    "react-dom": "19.2.5",
-    "react-router-dom": "7.14.2"
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-router-dom": "7.16.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "6.0.1",
-    "@types/react": "19.2.14",
+    "@vitejs/plugin-react": "6.0.2",
+    "@types/react": "19.2.16",
     "@types/react-dom": "19.2.3",
     "@tailwindcss/vite": "4.2.4",
     "tailwindcss": "4.2.4",
     "typescript": "5.9.3",
     "litestar-vite-plugin": "file:../..",
     "vite": "8.0.10",
-    "@hey-api/openapi-ts": "0.96.1"
+    "@hey-api/openapi-ts": "0.98.1"
   }
 }
