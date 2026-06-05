@@ -431,19 +431,6 @@ class InertiaResponse(Response[T]):
             return False
         return vite_plugin.config.inertia_compatible
 
-    def _determine_media_type(self, media_type: "MediaType | str | None") -> "MediaType | str":
-        """Determine the media type for HTML bootstrap responses.
-
-        Args:
-            media_type: The provided media type or None.
-
-        Returns:
-            The provided media type, or HTML when unset.
-        """
-        if media_type:
-            return media_type
-        return MediaType.HTML
-
     async def resolve_async_props(self, request: "Request[Any, Any, Any]") -> None:
         """Resolve async prop callbacks on the request loop, before DI cleanup.
 
@@ -631,7 +618,15 @@ class InertiaResponse(Response[T]):
                 status_code=self.status_code or status_code,
             )
 
-        resolved_media_type = self._determine_media_type(self.media_type)
+        # The full-page bootstrap is always a complete HTML document — the Inertia
+        # first-load contract, matching the official server adapters (e.g.
+        # inertia-django always renders text/html and never derives the type from
+        # the view's return). Litestar negotiates a media type from the handler's
+        # return annotation (JSON for typed returns, text/plain for ``-> str``),
+        # but that must never apply here: a component handler is an Inertia page,
+        # not a JSON API. Expose data to non-Inertia clients via a separate
+        # non-component route, which renders JSON through the branch above.
+        resolved_media_type = MediaType.HTML
 
         if vite_plugin.config.wants_spa_config:
             body = self._render_spa(request, page_props, vite_plugin)

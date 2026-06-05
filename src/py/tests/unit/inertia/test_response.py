@@ -1012,6 +1012,110 @@ async def test_html_bootstrap_response_uses_text_html_content_type(
         assert response.text.startswith("<!DOCTYPE html>")
 
 
+async def test_html_bootstrap_response_uses_text_html_for_typed_return(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Bootstrap for a TYPED return (msgspec.Struct) must be text/html, not JSON.
+
+    Regression for the incomplete PR #256 fix: a typed-return handler resolves to
+    the route's default ``media_type`` (``application/json`` for ``@get``), which
+    Litestar forwards onto ``self.media_type``. The bootstrap branch must ignore
+    that JSON default and serve HTML — same as a dict-return handler does today.
+    """
+    import msgspec
+
+    class Widget(msgspec.Struct):
+        id: int
+
+    @get("/dict-page", component="DictPage")
+    async def dict_page() -> dict[str, Any]:
+        return {"ok": True}
+
+    @get("/typed-page", component="TypedPage")
+    async def typed_page() -> Widget:
+        return Widget(id=1)
+
+    with create_test_client(
+        route_handlers=[dict_page, typed_page],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        dict_resp = client.get("/dict-page")  # control — passes today
+        typed_resp = client.get("/typed-page")  # the bug — fails today (application/json)
+
+        assert dict_resp.headers["content-type"].startswith("text/html"), (
+            f"dict control: expected text/html, got {dict_resp.headers['content-type']!r}"
+        )
+        assert typed_resp.headers["content-type"].startswith("text/html"), (
+            f"typed return: expected text/html, got {typed_resp.headers['content-type']!r}"
+        )
+        assert typed_resp.text.startswith("<!DOCTYPE html>")
+
+
+async def test_inertia_xhr_typed_return_uses_application_json(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """An X-Inertia XHR for a typed return must remain application/json."""
+    import msgspec
+
+    class Widget(msgspec.Struct):
+        id: int
+
+    @get("/typed-page", component="TypedPage")
+    async def typed_page() -> Widget:
+        return Widget(id=1)
+
+    with create_test_client(
+        route_handlers=[typed_page],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/typed-page", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/json"
+        assert response.json()["component"] == "TypedPage"
+
+
+async def test_html_bootstrap_response_uses_text_html_for_str_return(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Bootstrap for a ``-> str`` handler must be text/html, not text/plain.
+
+    Same class of bug as the JSON leak: a ``-> str`` component handler resolves to
+    the route default ``text/plain``, which Litestar forwards onto
+    ``self.media_type``. The bootstrap branch must ignore *any* leaked route
+    default, not just JSON.
+    """
+
+    @get("/str-page", component="StrPage")
+    async def str_page() -> str:
+        return "hello"
+
+    with create_test_client(
+        route_handlers=[str_page],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/str-page")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/html"), (
+            f"str return: expected text/html, got {response.headers['content-type']!r}"
+        )
+        assert response.text.startswith("<!DOCTYPE html>")
+
+
 async def test_html_bootstrap_response_uses_text_html_content_type_for_custom_template_suffix(
     tmp_path: Path, inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin
 ) -> None:
@@ -1064,16 +1168,19 @@ async def test_inertia_partial_response_uses_application_json_content_type(
         assert response.json()["component"] == "Home"
 
 
-async def test_explicit_response_media_type_is_respected_in_bootstrap(
+async def test_bootstrap_media_type_is_always_html_ignoring_response_media_type(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
-    """An explicit ``media_type`` set on the ``InertiaResponse`` object wins.
+    """The full-page bootstrap is always text/html, ignoring any ``media_type``.
 
-    The bootstrap branch ignores the route's ``media_type`` kwarg, but a value
-    set directly on the response object must still flow through
-    ``_determine_media_type``.
+    The Inertia first-load contract — matching the official server adapters, e.g.
+    inertia-django always renders ``text/html`` and never derives the type from
+    the view's return — is that a full-page visit returns a complete HTML document.
+    A ``component=`` handler is an Inertia page, not a JSON API, so even an explicit
+    ``media_type`` on the response object does not change the bootstrap content type.
+    (This intentionally drops the non-standard override previously added in PR #256.)
     """
     from litestar_vite.inertia.response import InertiaResponse
 
@@ -1090,7 +1197,8 @@ async def test_explicit_response_media_type_is_respected_in_bootstrap(
     ) as client:
         response = client.get("/")
         assert response.status_code == 200
-        assert response.headers["content-type"].startswith("application/xhtml+xml")
+        assert response.headers["content-type"].startswith("text/html")
+        assert response.text.startswith("<!DOCTYPE html>")
 
 
 async def test_hybrid_ssr_replaces_shell_root_and_injects_head(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
