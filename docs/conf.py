@@ -40,7 +40,8 @@ extensions = [
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
-    "msgspec": ("https://jcristharif.com/msgspec/", None),
+    # NOTE: msgspec intersphinx inventory (https://jcristharif.com/msgspec/objects.inv)
+    # currently 404s; removed temporarily so docs builds don't fail/warn. Restore when upstream is reachable.
     "sqlalchemy": ("https://docs.sqlalchemy.org/en/20/", None),
     "alembic": ("https://alembic.sqlalchemy.org/en/latest/", None),
     "click": ("https://click.palletsprojects.com/en/stable/", None),

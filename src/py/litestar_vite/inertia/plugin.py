@@ -2,9 +2,11 @@ import functools
 import inspect
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
+from dataclasses import fields, is_dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
+import msgspec
 from litestar.handlers.http_handlers.base import HTTPRouteHandler
 from litestar.plugins import InitPlugin
 from litestar.response import Response
@@ -199,21 +201,60 @@ def _request_from_context(kwargs: "dict[str, Any]") -> "Request[Any, Any, Any] |
     return get_current_inertia_request()
 
 
+def _as_inertia_prop_mapping(data: "Any") -> "Mapping[str, Any] | None":
+    """Return a shallow field mapping for structured prop-bag return types.
+
+    A ``msgspec.Struct``, dataclass, or pydantic model returned from an Inertia
+    handler represents a bag of page props, mirroring a returned ``dict``. They
+    are converted to a shallow mapping (field name -> live value) so each field
+    becomes a top-level Inertia prop and special prop objects (``StaticProp`` /
+    ``DeferredProp``) are preserved for the response prop pipeline. A deep
+    conversion is deliberately avoided so it matches ``dict`` handling exactly.
+
+    Args:
+        data: The handler return value.
+
+    Returns:
+        A shallow ``{field: value}`` mapping, or ``None`` when ``data`` is not a
+        recognized structured prop-bag type.
+    """
+    obj: "Any" = data
+    # pydantic BaseModel is an optional dependency; duck-type to avoid a hard import.
+    # Checked first so the dataclass TypeGuard below does not narrow ``type(obj)``.
+    model_fields: "Any" = getattr(cast("Any", type(obj)), "model_fields", None)
+    if model_fields is not None and hasattr(obj, "model_dump"):
+        return {name: getattr(obj, name) for name in model_fields}
+    if isinstance(obj, msgspec.Struct):
+        return {field: getattr(obj, field) for field in obj.__struct_fields__}
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return {field.name: getattr(obj, field.name) for field in fields(obj)}
+    return None
+
+
 async def _resolve_inertia_response_data(data: "Any", request: "Request[Any, Any, Any]") -> "Any":
     from litestar_vite.inertia.response import InertiaResponse
 
     if isinstance(data, InertiaResponse):
         await data.resolve_async_props(request)
-        return cast("Any", data)
+        return cast("InertiaResponse[Any]", data)
     if isinstance(data, Response):
-        return cast("Any", data)
+        return cast("Response[Any]", data)
 
-    if isinstance(data, Mapping) or data is None:
-        response: InertiaResponse[Any] = InertiaResponse(content=cast("Any", data))
-        await response.resolve_async_props(request)
-        return cast("Any", response)
+    from litestar_vite.inertia.helpers import is_pagination_container
 
-    return data
+    content: "Any"
+    if data is None or isinstance(data, Mapping) or is_pagination_container(data):
+        # Pagination containers are wrapped raw so InertiaResponse._build_page_props
+        # can apply its dedicated pagination prop handling.
+        content = cast("Any", data)
+    else:
+        content = _as_inertia_prop_mapping(data)
+        if content is None:
+            return data
+
+    response: InertiaResponse[Any] = InertiaResponse(content=content)
+    await response.resolve_async_props(request)
+    return response
 
 
 def _wrap_handler_fn(handler: "HTTPRouteHandler") -> None:
