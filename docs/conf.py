@@ -196,7 +196,8 @@ html_context = {
 html_sidebars = {"**": []}
 
 html_theme_options: dict[str, Any] = {
-    "logo_target": "/",
+    # NOTE: This breaks redirects when running locally, but ensures correct linking in github pages
+    "logo_target": "/litestar-vite/",
     "light_logo": "_static/header-star-light.svg",
     "dark_logo": "_static/header-star-dark.svg",
     "accent_color": "amber",

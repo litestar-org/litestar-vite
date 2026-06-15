@@ -43,12 +43,11 @@ litestar run --reload
 
 ## Documentation
 
-- **[Usage Guide](https://litestar-org.github.io/litestar-vite/latest/usage/)**: Core concepts, configuration, and type generation.
-- **[Inertia](https://litestar-org.github.io/litestar-vite/latest/inertia/)**: Fullstack protocols and SSR.
-- **[Frameworks](https://litestar-org.github.io/litestar-vite/latest/frameworks/)**: Guides for React, Vue, Svelte, Angular, Astro, and Nuxt.
-- **[Reference](https://litestar-org.github.io/litestar-vite/latest/reference/)**: API and CLI documentation.
+- **[Inertia](https://litestar-org.github.io/litestar-vite/frameworks/inertia/index.html)**: Fullstack protocols and SSR.
+- **[Frameworks](https://litestar-org.github.io/litestar-vite/frameworks/index.html)**: Guides for React, Vue, Svelte, Angular, Astro, and Nuxt.
+- **[API Reference](https://litestar-org.github.io/litestar-vite/reference/index.html)**: API and CLI documentation.
 
-For a full list of changes, see the [Changelog](https://litestar-org.github.io/litestar-vite/latest/changelog.html).
+For a full list of changes, see the [Changelog](https://litestar-org.github.io/litestar-vite/changelog.html).
 
 ## Common Commands
 
@@ -76,7 +75,7 @@ litestar-vite now defaults Inertia apps to script-element bootstrap. Inertia v3 
 
 ## Links
 
-- Docs: <https://litestar-org.github.io/litestar-vite/latest/>
+- Docs: <https://litestar-org.github.io/litestar-vite/>
 - Examples: `examples/` (React, Vue, Svelte, HTMX, Inertia, Astro, Nuxt, SvelteKit, Angular)
 - Real-world example: [litestar-fullstack](https://github.com/litestar-org/litestar-fullstack)
 - Issues: <https://github.com/litestar-org/litestar-vite/issues/>
