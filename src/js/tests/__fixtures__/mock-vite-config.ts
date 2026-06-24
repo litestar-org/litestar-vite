@@ -1,16 +1,12 @@
 import type { Logger, ResolvedConfig } from "vite"
 import { vi } from "vitest"
-import { isVite8Plus } from "../../src/shared/vite-compat.js"
 
 /**
- * Extracts the build input from a plugin config result,
- * reading from the correct key based on Vite version.
+ * Extracts the build input from a plugin config result, preferring the
+ * Rolldown key (Vite 8) and falling back to legacy `rollupOptions`.
  */
 export function getBuildInput(config: Record<string, any>): unknown {
-  if (isVite8Plus) {
-    return config.build?.rolldownOptions?.input ?? config.build?.rollupOptions?.input
-  }
-  return config.build?.rollupOptions?.input ?? config.build?.rolldownOptions?.input
+  return config.build?.rolldownOptions?.input ?? config.build?.rollupOptions?.input
 }
 
 /**
