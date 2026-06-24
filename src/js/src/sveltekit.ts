@@ -417,7 +417,7 @@ export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): any
           // Route HMR through the Litestar port so DevTools never sees the framework port.
           ...(config.litestarPort !== undefined
             ? {
-                hmr: {
+                ws: {
                   protocol: "ws" as const,
                   host: "127.0.0.1",
                   clientPort: config.litestarPort,

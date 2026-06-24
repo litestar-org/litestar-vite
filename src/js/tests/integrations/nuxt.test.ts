@@ -45,9 +45,9 @@ describe("litestar-nuxt integration", () => {
       const vitePlugins = (nuxt.options.vite as any).plugins as any[]
       const proxyPlugin = vitePlugins.find((p) => p.name === "litestar-nuxt-proxy")
       const cfg = await proxyPlugin.config()
-      expect(cfg.server.hmr.clientPort).toBe(8000)
-      expect(cfg.server.hmr.path).toBe("/static/vite-hmr")
-      expect(cfg.server.hmr.protocol).toBe("ws")
+      expect(cfg.server.ws.clientPort).toBe(8000)
+      expect(cfg.server.ws.path).toBe("/static/vite-hmr")
+      expect(cfg.server.ws.protocol).toBe("ws")
     } finally {
       vi.restoreAllMocks()
       delete process.env.LITESTAR_VITE_CONFIG_PATH

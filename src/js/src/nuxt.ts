@@ -382,8 +382,9 @@ function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
               }
             : {}),
           // Vite serves HMR on a separate internal port; browsers reach it through
-          // Litestar's /static/vite-hmr WebSocket handler.
-          hmr: {
+          // Litestar's /static/vite-hmr WebSocket handler. Vite 8.1 moved these
+          // network options from server.hmr.* to server.ws.*.
+          ws: {
             port: hmrPort,
             host: "127.0.0.1",
             ...(browserHmrPort !== undefined ? { clientPort: browserHmrPort } : {}),

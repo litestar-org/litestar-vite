@@ -59,7 +59,7 @@ describe("litestar-sveltekit integration", () => {
     const plugins = litestarSvelteKit({ apiProxy: "http://127.0.0.1:8000" })
     const main = plugins[0]
     const cfg = main.config()
-    expect(cfg.server.hmr).toMatchObject({
+    expect(cfg.server.ws).toMatchObject({
       protocol: "ws",
       host: "127.0.0.1",
       clientPort: 8000,
@@ -75,13 +75,13 @@ describe("litestar-sveltekit integration", () => {
     const plugins = litestarSvelteKit()
     const main = plugins[0]
     const cfg = main.config()
-    expect(cfg.server.hmr.clientPort).toBe(9100)
+    expect(cfg.server.ws.clientPort).toBe(9100)
   })
 
-  it("omits hmr config when no Litestar port can be resolved", () => {
+  it("omits ws config when no Litestar port can be resolved", () => {
     const plugins = litestarSvelteKit()
     const main = plugins[0]
     const cfg = main.config()
-    expect(cfg.server.hmr).toBeUndefined()
+    expect(cfg.server.ws).toBeUndefined()
   })
 })
