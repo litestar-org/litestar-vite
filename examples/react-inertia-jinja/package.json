@@ -23,7 +23,7 @@
     "tailwindcss": "4.2.4",
     "litestar-vite-plugin": "file:../..",
     "typescript": "5.9.3",
-    "vite": "8.0.10",
+    "vite": "8.1.0",
     "@hey-api/openapi-ts": "0.96.1"
   }
 }

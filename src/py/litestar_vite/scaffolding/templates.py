@@ -90,7 +90,7 @@ CURRENT_NPM_VERSION_RANGES: dict[str, str] = {
     "tailwindcss": "4.2.4",
     "tslib": "2.8.1",
     "typescript": "5.9.3",
-    "vite": "8.0.10",
+    "vite": "8.1.0",
     "vue": "3.5.33",
     "vue-tsc": "3.2.7",
     "zod": "4.3.6",
