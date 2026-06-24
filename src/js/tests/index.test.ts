@@ -328,7 +328,7 @@ describe("litestar-vite-plugin", () => {
       const plugin = litestar({ input: "resources/js/app.ts" })[0]
       const config = plugin.config({}, { command: "serve", mode: "development" })
 
-      expect(config.server?.hmr).toMatchObject({
+      expect(config.server?.ws).toMatchObject({
         path: "vite-hmr",
         clientPort: 5006,
       })
@@ -454,7 +454,7 @@ describe("litestar-vite-plugin", () => {
           mode: "development",
           command: "serve",
           base: "/static/",
-          server: { https: false, hmr: {} },
+          server: { https: false, ws: {} },
           logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         },
         httpServer: {
@@ -500,7 +500,7 @@ describe("litestar-vite-plugin", () => {
           mode: "development",
           command: "serve",
           base: "/static/",
-          server: { https: false, hmr: config.server?.hmr, origin: config.server?.origin },
+          server: { https: false, ws: config.server?.ws, origin: config.server?.origin },
           logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         },
         httpServer: {
@@ -553,7 +553,7 @@ describe("litestar-vite-plugin", () => {
           mode: "development",
           command: "serve",
           base: "/static/",
-          server: { https: false, hmr: {} },
+          server: { https: false, ws: {} },
           logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         },
         httpServer: {
@@ -725,7 +725,7 @@ describe("litestar-vite-plugin", () => {
           mode: "development",
           command: "serve",
           base: "/static/",
-          server: { https: false, hmr: {} },
+          server: { https: false, ws: {} },
           logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         },
         httpServer: {
@@ -779,7 +779,7 @@ describe("litestar-vite-plugin", () => {
           mode: "development",
           command: "serve",
           base: "/static/",
-          server: { https: false, hmr: {} },
+          server: { https: false, ws: {} },
           logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         },
         httpServer: {
@@ -805,7 +805,7 @@ describe("litestar-vite-plugin", () => {
     }
   })
 
-  it("prefers hmr.clientPort over the listening address port in hotfile URL", async () => {
+  it("prefers ws.clientPort over the listening address port in hotfile URL", async () => {
     const configPath = createRuntimeConfig({
       proxyMode: "vite",
     })
@@ -815,7 +815,7 @@ describe("litestar-vite-plugin", () => {
       plugin.config(
         {
           server: {
-            hmr: {
+            ws: {
               clientPort: 32001,
             },
           },
@@ -833,7 +833,7 @@ describe("litestar-vite-plugin", () => {
           mode: "development",
           command: "serve",
           base: "/static/",
-          server: { https: false, hmr: { clientPort: 32001 } },
+          server: { https: false, ws: { clientPort: 32001 } },
           logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         },
         httpServer: {
@@ -858,7 +858,7 @@ describe("litestar-vite-plugin", () => {
     }
   })
 
-  it("derives https URL when hmr.protocol is wss", async () => {
+  it("derives https URL when ws.protocol is wss", async () => {
     const configPath = createRuntimeConfig({
       proxyMode: "vite",
     })
@@ -868,7 +868,7 @@ describe("litestar-vite-plugin", () => {
       plugin.config(
         {
           server: {
-            hmr: {
+            ws: {
               protocol: "wss",
             },
           },
@@ -886,7 +886,7 @@ describe("litestar-vite-plugin", () => {
           mode: "development",
           command: "serve",
           base: "/static/",
-          server: { https: false, hmr: { protocol: "wss" } },
+          server: { https: false, ws: { protocol: "wss" } },
           logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         },
         httpServer: {

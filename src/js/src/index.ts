@@ -479,18 +479,21 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
         },
         server: {
           origin: shouldForceDirectServerOrigin ? (explicitServerOrigin ?? "__litestar_vite_placeholder__") : proxyOriginDefault,
-          // Auto-configure HMR to use a path that routes through Litestar proxy
-          // Note: Vite automatically prepends `base` to `hmr.path`, so we just use "vite-hmr"
+          // Auto-configure the HMR WebSocket to use a path that routes through the Litestar proxy.
+          // Vite 8.1 moved the HMR network options (path/host/port/clientPort/protocol/timeout)
+          // from `server.hmr.*` to `server.ws.*`; `server.hmr` now only toggles HMR on/off.
+          // Note: Vite automatically prepends `base` to `ws.path`, so we just use "vite-hmr".
           // Result: base="/static/" + path="vite-hmr" = "/static/vite-hmr"
-          hmr:
-            userConfig.server?.hmr === false
-              ? false
-              : {
+          ...(userConfig.server?.hmr === false || userConfig.server?.ws === false
+            ? { hmr: false }
+            : {
+                ws: {
                   path: "vite-hmr",
                   ...(proxyHmrClientPort ? { clientPort: proxyHmrClientPort } : {}),
-                  ...serverConfig?.hmr,
-                  ...(userConfig.server?.hmr === true ? {} : userConfig.server?.hmr),
+                  ...serverConfig?.ws,
+                  ...(typeof userConfig.server?.ws === "object" ? userConfig.server.ws : {}),
                 },
+              }),
           // Auto-configure proxy to forward API requests to Litestar backend
           // This allows the app to work when accessing Vite directly (not through Litestar proxy)
           // Only proxies /api and /schema routes - everything else is handled by Vite
@@ -1386,17 +1389,17 @@ function createStaticPropsPlugin(): Plugin {
  * Resolve the dev server URL from the server address and configuration.
  */
 function resolveDevServerUrl(address: AddressInfo, config: ResolvedConfig, userConfig: UserConfig): DevServerUrl {
-  const configHmrProtocol = typeof config.server.hmr === "object" ? config.server.hmr.protocol : null
-  const clientProtocol = configHmrProtocol ? (configHmrProtocol === "wss" ? "https" : "http") : null
+  const configWsProtocol = typeof config.server.ws === "object" ? config.server.ws.protocol : null
+  const clientProtocol = configWsProtocol ? (configWsProtocol === "wss" ? "https" : "http") : null
   const serverProtocol = config.server.https ? "https" : "http"
   const protocol = clientProtocol ?? serverProtocol
 
-  const configHmrHost = typeof config.server.hmr === "object" ? config.server.hmr.host : null
+  const configWsHost = typeof config.server.ws === "object" ? config.server.ws.host : null
   const userHost = typeof userConfig.server?.host === "string" ? userConfig.server.host : null
   const configHost = typeof config.server.host === "string" ? config.server.host : null
   const remoteHost = process.env.VITE_ALLOW_REMOTE && !userConfig.server?.host ? (isIpv6(address) ? "[::1]" : "127.0.0.1") : null
   const serverAddress = isIpv6(address) ? `[${address.address}]` : address.address
-  let host = configHmrHost ?? userHost ?? remoteHost ?? configHost ?? serverAddress
+  let host = configWsHost ?? userHost ?? remoteHost ?? configHost ?? serverAddress
 
   // Normalize wildcard bind hosts to loopback. Wildcard addresses are bind targets,
   // not connectable client targets for hotfile/proxy consumers.
@@ -1406,8 +1409,8 @@ function resolveDevServerUrl(address: AddressInfo, config: ResolvedConfig, userC
     host = "[::1]"
   }
 
-  const userHmrClientPort = typeof userConfig.server?.hmr === "object" ? userConfig.server.hmr.clientPort : null
-  const port = userHmrClientPort ?? address.port
+  const userWsClientPort = typeof userConfig.server?.ws === "object" ? userConfig.server.ws.clientPort : null
+  const port = userWsClientPort ?? address.port
 
   return `${protocol}://${host}:${port}`
 }
@@ -1450,7 +1453,7 @@ function noExternalInertiaHelpers(config: UserConfig): true | Array<string | Reg
  */
 function resolveEnvironmentServerConfig(env: Record<string, string>):
   | {
-      hmr?: { host: string }
+      ws?: { host: string }
       host?: string
       https?: { cert: Buffer; key: Buffer }
     }
@@ -1472,7 +1475,7 @@ function resolveEnvironmentServerConfig(env: Record<string, string>):
   }
 
   return {
-    hmr: { host },
+    ws: { host },
     host,
     https: {
       key: fs.readFileSync(env.VITE_DEV_SERVER_KEY),
@@ -1497,7 +1500,7 @@ function resolveHostFromEnv(env: Record<string, string>): string | undefined {
  */
 function resolveDevelopmentEnvironmentServerConfig(host: string | boolean | null):
   | {
-      hmr?: { host: string }
+      ws?: { host: string }
       host?: string
       https?: { cert: string; key: string }
     }
@@ -1526,7 +1529,7 @@ function resolveDevelopmentEnvironmentServerConfig(host: string | boolean | null
   }
 
   return {
-    hmr: { host: resolvedHost },
+    ws: { host: resolvedHost },
     host: resolvedHost,
     https: {
       key: keyPath,
