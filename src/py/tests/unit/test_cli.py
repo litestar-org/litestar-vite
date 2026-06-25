@@ -523,7 +523,7 @@ def test_cli_export_routes_json_and_ts(tmp_path: Path) -> None:
 
 
 def test_cli_get_package_executor_cmd_variants() -> None:
-    assert _get_package_executor_cmd("bun", "tool") == ["bunx", "tool"]
+    assert _get_package_executor_cmd("bun", "tool") == ["bun", "x", "tool"]
     assert _get_package_executor_cmd("deno", "tool") == ["deno", "run", "-A", "npm:tool"]
     assert _get_package_executor_cmd("yarn", "tool") == ["yarn", "dlx", "tool"]
     assert _get_package_executor_cmd("pnpm", "tool") == ["pnpm", "dlx", "tool"]
@@ -538,7 +538,7 @@ def _make_local_bin(root_dir: Path, name: str) -> Path:
 
 
 def test_cli_resolve_js_cli_no_local_bin_falls_back_to_executor(tmp_path: Path) -> None:
-    assert _resolve_js_cli(tmp_path, "bun", "litestar-vite-typegen") == ["bunx", "litestar-vite-typegen"]
+    assert _resolve_js_cli(tmp_path, "bun", "litestar-vite-typegen") == ["bun", "x", "litestar-vite-typegen"]
     assert _resolve_js_cli(tmp_path, "deno", "litestar-vite-typegen") == [
         "deno",
         "run",
@@ -581,17 +581,17 @@ def test_cli_resolve_js_cli_bun_ignores_posix_shell_shim(tmp_path: Path) -> None
     local_bin.parent.mkdir(parents=True, exist_ok=True)
     local_bin.write_text('#!/bin/sh\nexec node ../tool/bin.js "$@"\n')
 
-    assert _resolve_js_cli(tmp_path, "bun", "tool") == ["bunx", "tool"]
+    assert _resolve_js_cli(tmp_path, "bun", "tool") == ["bun", "x", "tool"]
 
 
 def test_cli_resolve_js_cli_bun_ignores_windows_cmd_shim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Windows .cmd shims still route through node, so Bun should use bunx instead."""
+    """Windows .cmd shims still route through node, so Bun should use bun x instead."""
     monkeypatch.setattr("litestar_vite.cli.os.name", "nt")
     local_bin = tmp_path / "node_modules" / ".bin" / "tool.cmd"
     local_bin.parent.mkdir(parents=True, exist_ok=True)
     local_bin.write_text("@ECHO off\r\nnode ..\\tool\\bin.js %*\r\n")
 
-    assert _resolve_js_cli(tmp_path, "bun", "tool") == ["bunx", "tool"]
+    assert _resolve_js_cli(tmp_path, "bun", "tool") == ["bun", "x", "tool"]
 
 
 def test_cli_resolve_js_cli_deno_ignores_windows_cmd_shim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

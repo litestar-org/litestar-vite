@@ -948,7 +948,7 @@ def _get_package_executor_cmd(executor: "str | None", package: str) -> "list[str
     """
     match executor:
         case "bun":
-            return ["bunx", package]
+            return ["bun", "x", package]
         case "deno":
             return ["deno", "run", "-A", f"npm:{package}"]
         case "yarn":
@@ -1015,7 +1015,7 @@ def _resolve_js_cli(root_dir: Path, executor: "str | None", binary: str) -> "lis
     For ``npm``/``yarn``/``pnpm``/``node`` the bare path is returned and
     the shebang governs, matching prior behavior.
 
-    Falls back to ``_get_package_executor_cmd`` (``npx`` / ``bunx`` /
+    Falls back to ``_get_package_executor_cmd`` (``npx`` / ``bun x`` /
     ``deno run`` / ``yarn dlx`` / ``pnpm dlx``) when the local binary
     is missing.
 
@@ -1051,7 +1051,7 @@ def _run_extra_commands(config: Any, verbose: bool) -> bool:
     Each command is specified as ``[binary, *args]``.  The *binary* (first
     element) is resolved through the project's JS executor — first checking
     ``node_modules/.bin/<binary>``, then falling back to the configured
-    package runner (npx / pnpm dlx / yarn dlx / bunx / deno run).
+    package runner (npx / pnpm dlx / yarn dlx / bun x / deno run).
 
     Failures are reported as warnings so that independent generators
     (e.g., hey-api typegen) still run even if one extra command fails.
