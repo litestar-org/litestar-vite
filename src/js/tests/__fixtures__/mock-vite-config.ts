@@ -10,6 +10,19 @@ export function getBuildInput(config: Record<string, any>): unknown {
 }
 
 /**
+ * Extracts the emitted HMR network config regardless of the running Vite version:
+ * Vite 8.1+ places it under `server.ws`, Vite 7 / 8.0 under `server.hmr`. Returns
+ * the network object, or undefined when neither is an object (e.g. disabled/omitted).
+ */
+export function getHmrNetworkConfig(config: Record<string, any> | undefined | null): Record<string, any> | undefined {
+  const ws = config?.server?.ws
+  if (ws && typeof ws === "object") return ws
+  const hmr = config?.server?.hmr
+  if (hmr && typeof hmr === "object") return hmr
+  return undefined
+}
+
+/**
  * Creates a mock Vite resolved configuration for testing.
  */
 export function createMockViteConfig(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {

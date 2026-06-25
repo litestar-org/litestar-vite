@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import litestarAstro from "../../src/astro"
+import { getHmrNetworkConfig } from "../__fixtures__/mock-vite-config"
 
 // Mock node:fs
 vi.mock("node:fs", () => ({
@@ -410,7 +411,7 @@ describe("litestar-astro integration", () => {
       const cfg = updateConfig.mock.calls[0][0]
       const proxyPlugin = cfg.vite?.plugins?.find((p: any) => p.name === "litestar-astro-proxy")
       const pluginConfig = proxyPlugin?.config?.()
-      expect(pluginConfig?.server?.ws).toMatchObject({
+      expect(getHmrNetworkConfig(pluginConfig)).toMatchObject({
         protocol: "ws",
         host: "127.0.0.1",
         clientPort: 8000,
@@ -443,7 +444,7 @@ describe("litestar-astro integration", () => {
       const cfg = updateConfig.mock.calls[0][0]
       const proxyPlugin = cfg.vite?.plugins?.find((p: any) => p.name === "litestar-astro-proxy")
       const pluginConfig = proxyPlugin?.config?.()
-      expect(pluginConfig?.server?.ws?.clientPort).toBe(9100)
+      expect(getHmrNetworkConfig(pluginConfig)?.clientPort).toBe(9100)
     })
 
     it("omits ws config when no Litestar port can be resolved", async () => {
@@ -468,7 +469,7 @@ describe("litestar-astro integration", () => {
       const cfg = updateConfig.mock.calls[0][0]
       const proxyPlugin = cfg.vite?.plugins?.find((p: any) => p.name === "litestar-astro-proxy")
       const pluginConfig = proxyPlugin?.config?.()
-      expect(pluginConfig?.server?.ws).toBeUndefined()
+      expect(getHmrNetworkConfig(pluginConfig)).toBeUndefined()
     })
 
     it("handles invalid VITE_PORT gracefully", async () => {

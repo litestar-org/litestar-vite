@@ -1,6 +1,7 @@
 import type * as FsModule from "fs"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import litestar from "../src"
+import { isVite8Plus } from "../src/shared/vite-compat"
 import { getBuildInput } from "./__fixtures__/mock-vite-config"
 
 // Mock the fs module for consistent testing
@@ -541,12 +542,17 @@ describe("Plugin Configuration Compatibility", () => {
 
 describe("Rolldown Build Options", () => {
   describe("Build input placement", () => {
-    it("places build input under rolldownOptions", () => {
+    it("places build input under the version-appropriate bundler key", () => {
       const plugin = litestar("resources/js/app.ts")[0]
       const config = plugin.config({}, { command: "build", mode: "production" })
 
-      expect(config.build?.rolldownOptions?.input).toBe("resources/js/app.ts")
-      expect(config.build?.rollupOptions).toBeUndefined()
+      if (isVite8Plus) {
+        expect(config.build?.rolldownOptions?.input).toBe("resources/js/app.ts")
+        expect(config.build?.rollupOptions).toBeUndefined()
+      } else {
+        expect(config.build?.rollupOptions?.input).toBe("resources/js/app.ts")
+        expect(config.build?.rolldownOptions).toBeUndefined()
+      }
     })
 
     it("reads user input from rolldownOptions", () => {

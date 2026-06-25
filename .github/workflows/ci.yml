@@ -140,6 +140,29 @@ jobs:
     - run: npm run build --if-present
     - run: npm test
 
+  test_js_vite_compat:
+    name: "test (js, vite ${{ matrix.vite-version }})"
+    runs-on: ubuntu-latest
+    env:
+      LITESTAR_BYPASS_ENV_CHECK: 1
+    strategy:
+      fail-fast: false
+      matrix:
+        # The plugin supports Vite 7 + 8 (peer dep ^7 || ^8); prove both paths.
+        # Vite 7 emits server.hmr.* + rollupOptions; Vite 8.1+ emits server.ws.* + rolldownOptions.
+        vite-version: ["7", "8"]
+
+    steps:
+    - uses: actions/checkout@v6
+    - name: Use Node.js 24
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
+    - run: npm ci
+    - name: Install Vite ${{ matrix.vite-version }}
+      run: npm install "vite@^${{ matrix.vite-version }}" --no-save
+    - run: npm test
+
   test_python:
     name: "test (python ${{ matrix.python-version }})"
     strategy:

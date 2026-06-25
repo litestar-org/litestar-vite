@@ -31,6 +31,7 @@ import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema
 import { DEBOUNCE_MS } from "./shared/constants.js"
 import { normalizeHost, resolveHotFilePath, resolveLitestarPort } from "./shared/network.js"
 import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
+import { hmrServerConfig } from "./shared/vite-compat.js"
 
 /**
  * Configuration for TypeScript type generation in Nuxt.
@@ -382,14 +383,14 @@ function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
               }
             : {}),
           // Vite serves HMR on a separate internal port; browsers reach it through
-          // Litestar's /static/vite-hmr WebSocket handler. Vite 8.1 moved these
-          // network options from server.hmr.* to server.ws.*.
-          ws: {
+          // Litestar's /static/vite-hmr WebSocket handler. Vite 8.1 moved these network
+          // options from server.hmr.* to server.ws.*; hmrServerConfig picks the right key.
+          ...hmrServerConfig({
             port: hmrPort,
             host: "127.0.0.1",
             ...(browserHmrPort !== undefined ? { clientPort: browserHmrPort } : {}),
             ...(config.litestarPort !== undefined ? { path: hmrPath, protocol: "ws" as const } : {}),
-          },
+          }),
         },
       }
     },

@@ -4,7 +4,7 @@ import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import litestar from "../src"
 import { resolvePageComponent } from "../src/inertia-helpers"
-import { getBuildInput } from "./__fixtures__/mock-vite-config"
+import { getBuildInput, getHmrNetworkConfig } from "./__fixtures__/mock-vite-config"
 
 // Mock the fs module
 vi.mock("fs", async () => {
@@ -328,7 +328,7 @@ describe("litestar-vite-plugin", () => {
       const plugin = litestar({ input: "resources/js/app.ts" })[0]
       const config = plugin.config({}, { command: "serve", mode: "development" })
 
-      expect(config.server?.ws).toMatchObject({
+      expect(getHmrNetworkConfig(config)).toMatchObject({
         path: "vite-hmr",
         clientPort: 5006,
       })

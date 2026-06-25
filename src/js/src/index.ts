@@ -13,7 +13,7 @@ import { createLogger } from "./shared/logger.js"
 import { resolveLitestarPort } from "./shared/network.js"
 import { resolveDefaultSdkClientPlugin } from "./shared/typegen-core.js"
 import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
-import { buildInputOptions, resolveUserBuildInput } from "./shared/vite-compat.js"
+import { buildInputOptions, hmrServerConfig, resolveUserBuildInput } from "./shared/vite-compat.js"
 
 /**
  * Configuration for TypeScript type generation.
@@ -480,20 +480,20 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
         server: {
           origin: shouldForceDirectServerOrigin ? (explicitServerOrigin ?? "__litestar_vite_placeholder__") : proxyOriginDefault,
           // Auto-configure the HMR WebSocket to use a path that routes through the Litestar proxy.
+          // Auto-configure the HMR WebSocket to route through the Litestar proxy.
           // Vite 8.1 moved the HMR network options (path/host/port/clientPort/protocol/timeout)
-          // from `server.hmr.*` to `server.ws.*`; `server.hmr` now only toggles HMR on/off.
-          // Note: Vite automatically prepends `base` to `ws.path`, so we just use "vite-hmr".
-          // Result: base="/static/" + path="vite-hmr" = "/static/vite-hmr"
+          // from `server.hmr.*` to `server.ws.*`; on Vite 7 / 8.0 they stay under `server.hmr.*`.
+          // `hmrServerConfig` picks the right key for the running version (deprecation-free on each).
+          // Note: Vite prepends `base` to the path, so we use "vite-hmr" => "/static/vite-hmr".
           ...(userConfig.server?.hmr === false || userConfig.server?.ws === false
             ? { hmr: false }
-            : {
-                ws: {
-                  path: "vite-hmr",
-                  ...(proxyHmrClientPort ? { clientPort: proxyHmrClientPort } : {}),
-                  ...serverConfig?.ws,
-                  ...(typeof userConfig.server?.ws === "object" ? userConfig.server.ws : {}),
-                },
-              }),
+            : hmrServerConfig({
+                path: "vite-hmr",
+                ...(proxyHmrClientPort ? { clientPort: proxyHmrClientPort } : {}),
+                ...(serverConfig?.host ? { host: serverConfig.host } : {}),
+                ...(typeof userConfig.server?.ws === "object" ? userConfig.server.ws : {}),
+                ...(typeof userConfig.server?.hmr === "object" ? userConfig.server.hmr : {}),
+              })),
           // Auto-configure proxy to forward API requests to Litestar backend
           // This allows the app to work when accessing Vite directly (not through Litestar proxy)
           // Only proxies /api and /schema routes - everything else is handled by Vite
@@ -1389,12 +1389,15 @@ function createStaticPropsPlugin(): Plugin {
  * Resolve the dev server URL from the server address and configuration.
  */
 function resolveDevServerUrl(address: AddressInfo, config: ResolvedConfig, userConfig: UserConfig): DevServerUrl {
-  const configWsProtocol = typeof config.server.ws === "object" ? config.server.ws.protocol : null
+  // Read HMR network options version-agnostically: Vite 8.1+ exposes them under
+  // `server.ws.*`, Vite 7 / 8.0 under `server.hmr.*`.
+  const configHmrNet = (typeof config.server.ws === "object" ? config.server.ws : null) ?? (typeof config.server.hmr === "object" ? config.server.hmr : null)
+  const configWsProtocol = configHmrNet?.protocol ?? null
   const clientProtocol = configWsProtocol ? (configWsProtocol === "wss" ? "https" : "http") : null
   const serverProtocol = config.server.https ? "https" : "http"
   const protocol = clientProtocol ?? serverProtocol
 
-  const configWsHost = typeof config.server.ws === "object" ? config.server.ws.host : null
+  const configWsHost = configHmrNet?.host ?? null
   const userHost = typeof userConfig.server?.host === "string" ? userConfig.server.host : null
   const configHost = typeof config.server.host === "string" ? config.server.host : null
   const remoteHost = process.env.VITE_ALLOW_REMOTE && !userConfig.server?.host ? (isIpv6(address) ? "[::1]" : "127.0.0.1") : null
@@ -1409,7 +1412,8 @@ function resolveDevServerUrl(address: AddressInfo, config: ResolvedConfig, userC
     host = "[::1]"
   }
 
-  const userWsClientPort = typeof userConfig.server?.ws === "object" ? userConfig.server.ws.clientPort : null
+  const userHmrNet = (typeof userConfig.server?.ws === "object" ? userConfig.server.ws : null) ?? (typeof userConfig.server?.hmr === "object" ? userConfig.server.hmr : null)
+  const userWsClientPort = userHmrNet?.clientPort ?? null
   const port = userWsClientPort ?? address.port
 
   return `${protocol}://${host}:${port}`
@@ -1453,7 +1457,6 @@ function noExternalInertiaHelpers(config: UserConfig): true | Array<string | Reg
  */
 function resolveEnvironmentServerConfig(env: Record<string, string>):
   | {
-      ws?: { host: string }
       host?: string
       https?: { cert: Buffer; key: Buffer }
     }
@@ -1475,7 +1478,6 @@ function resolveEnvironmentServerConfig(env: Record<string, string>):
   }
 
   return {
-    ws: { host },
     host,
     https: {
       key: fs.readFileSync(env.VITE_DEV_SERVER_KEY),
@@ -1500,7 +1502,6 @@ function resolveHostFromEnv(env: Record<string, string>): string | undefined {
  */
 function resolveDevelopmentEnvironmentServerConfig(host: string | boolean | null):
   | {
-      ws?: { host: string }
       host?: string
       https?: { cert: string; key: string }
     }
@@ -1529,7 +1530,6 @@ function resolveDevelopmentEnvironmentServerConfig(host: string | boolean | null
   }
 
   return {
-    ws: { host: resolvedHost },
     host: resolvedHost,
     https: {
       key: keyPath,
