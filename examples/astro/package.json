@@ -14,15 +14,15 @@
   },
   "dependencies": {
     "astro": "6.2.1",
-    "zod": "4.3.6"
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.9",
-    "@hey-api/openapi-ts": "0.96.1",
-    "@tailwindcss/postcss": "4.2.4",
+    "@hey-api/openapi-ts": "0.98.2",
+    "@tailwindcss/postcss": "4.3.1",
     "litestar-vite-plugin": "file:../..",
     "tailwindcss": "4.2.4",
-    "typescript": "5.9.3",
-    "vite": "8.0.10"
+    "typescript": "6.0.3",
+    "vite": "8.1.0"
   }
 }

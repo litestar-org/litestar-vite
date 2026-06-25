@@ -1,16 +1,25 @@
 import type { Logger, ResolvedConfig } from "vite"
 import { vi } from "vitest"
-import { isVite8Plus } from "../../src/shared/vite-compat.js"
 
 /**
- * Extracts the build input from a plugin config result,
- * reading from the correct key based on Vite version.
+ * Extracts the build input from a plugin config result, preferring the
+ * Rolldown key (Vite 8) and falling back to legacy `rollupOptions`.
  */
 export function getBuildInput(config: Record<string, any>): unknown {
-  if (isVite8Plus) {
-    return config.build?.rolldownOptions?.input ?? config.build?.rollupOptions?.input
-  }
-  return config.build?.rollupOptions?.input ?? config.build?.rolldownOptions?.input
+  return config.build?.rolldownOptions?.input ?? config.build?.rollupOptions?.input
+}
+
+/**
+ * Extracts the emitted HMR network config regardless of the running Vite version:
+ * Vite 8.1+ places it under `server.ws`, Vite 7 / 8.0 under `server.hmr`. Returns
+ * the network object, or undefined when neither is an object (e.g. disabled/omitted).
+ */
+export function getHmrNetworkConfig(config: Record<string, any> | undefined | null): Record<string, any> | undefined {
+  const ws = config?.server?.ws
+  if (ws && typeof ws === "object") return ws
+  const hmr = config?.server?.hmr
+  if (hmr && typeof hmr === "object") return hmr
+  return undefined
 }
 
 /**

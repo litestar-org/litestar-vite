@@ -13,7 +13,7 @@ jobs:
   generate-demos:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install system dependencies
         run: |
@@ -94,7 +94,7 @@ jobs:
     needs: generate-demos
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Download demo artifacts
         uses: actions/download-artifact@v8
@@ -114,6 +114,8 @@ jobs:
 
       - name: Build documentation
         run: uv run python tools/build_docs.py docs-build
+        env:
+          _LITESTAR_VITE_DOCS_BASE_PATH: "/litestar-vite/"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5

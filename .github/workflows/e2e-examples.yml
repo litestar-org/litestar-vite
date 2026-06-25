@@ -36,7 +36,7 @@ jobs:
           # Template examples
           - jinja-htmx
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Node
         uses: actions/setup-node@v6
@@ -72,12 +72,13 @@ jobs:
           # Use exact match with brackets to avoid 'svelte' matching 'sveltekit'
           PYTEST_ADDOPTS: "-m e2e -k '[${{ matrix.example }}]' -n 0 --maxfail=1"
           # Increase timeout for CI environment (slower than local)
-          # SSR frameworks like Nuxt/SvelteKit need extra time on first cold start
-          E2E_TEST_TIMEOUT: "180"
+          # SSR frameworks like Nuxt/SvelteKit need extra time on first cold start, and the
+          # Angular 22 CLI dev server (@angular/build:dev-server) has a heavier first build.
+          E2E_TEST_TIMEOUT: "300"
           # Bypass CI environment check in Vite plugin (we're intentionally testing dev mode in CI)
           LITESTAR_BYPASS_ENV_CHECK: "1"
         run: |
-          uv run pytest src/py/tests/e2e -v --timeout=180
+          uv run pytest src/py/tests/e2e -v --timeout=360
 
       - name: Collect debug info on failure
         if: failure()

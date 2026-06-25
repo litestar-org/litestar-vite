@@ -1,7 +1,8 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": "../../dist/js/helpers"
+    "outDir": "../../dist/js/helpers",
+    "rootDir": "./src/helpers"
   },
   "include": ["./src/helpers/**/*.ts"]
 }

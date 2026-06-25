@@ -13,14 +13,14 @@
     "svelte": "5.55.5"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "0.96.1",
-    "@sveltejs/vite-plugin-svelte": "7.0.0",
+    "@hey-api/openapi-ts": "0.98.2",
+    "@sveltejs/vite-plugin-svelte": "7.1.2",
     "@tailwindcss/vite": "4.2.4",
     "litestar-vite-plugin": "file:../..",
-    "svelte-check": "4.4.6",
+    "svelte-check": "4.6.0",
     "tailwindcss": "4.2.4",
     "tslib": "2.8.1",
-    "typescript": "5.9.3",
-    "vite": "8.0.10"
+    "typescript": "6.0.3",
+    "vite": "8.1.0"
   }
 }

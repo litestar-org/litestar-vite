@@ -1,4 +1,4 @@
-import { defineConfig, version } from "vite";
+import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import litestar from "litestar-vite-plugin";
 {% if use_tailwind %}
@@ -6,8 +6,6 @@ import tailwindcss from "@tailwindcss/vite";
 {% endif %}
 
 {% if enable_ssr %}
-const bundlerKey = Number(version.split(".")[0]) >= 8 ? "rolldownOptions" : "rollupOptions";
-
 export default defineConfig(({ ssrBuild }) => ({
 {% else %}
 export default defineConfig({
@@ -16,7 +14,7 @@ export default defineConfig({
     host: "0.0.0.0",
     port: Number(process.env.VITE_PORT || "{{ vite_port }}"),
     cors: true,
-    hmr: {
+    ws: {
       host: "localhost",
     },
   },
@@ -37,7 +35,7 @@ export default defineConfig({
   ],
 {% if enable_ssr %}
   build: {
-    [bundlerKey]: {
+    rolldownOptions: {
       output: ssrBuild
         ? {
             entryFileNames: "ssr.js",

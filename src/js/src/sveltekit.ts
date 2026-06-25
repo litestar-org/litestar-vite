@@ -37,6 +37,7 @@ import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema
 import { DEBOUNCE_MS } from "./shared/constants.js"
 import { normalizeHost, resolveHotFilePath, resolveLitestarPort } from "./shared/network.js"
 import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
+import { hmrServerConfig } from "./shared/vite-compat.js"
 
 /**
  * Configuration for TypeScript type generation in SvelteKit.
@@ -416,14 +417,12 @@ export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): any
             : {}),
           // Route HMR through the Litestar port so DevTools never sees the framework port.
           ...(config.litestarPort !== undefined
-            ? {
-                hmr: {
-                  protocol: "ws" as const,
-                  host: "127.0.0.1",
-                  clientPort: config.litestarPort,
-                  path: hmrPath,
-                },
-              }
+            ? hmrServerConfig({
+                protocol: "ws" as const,
+                host: "127.0.0.1",
+                clientPort: config.litestarPort,
+                path: hmrPath,
+              })
             : {}),
           proxy: {
             [config.apiPrefix]: {

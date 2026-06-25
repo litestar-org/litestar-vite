@@ -16,6 +16,9 @@ version = __version__
 copyright = "2025, Litestar-Org"
 author = "Litestar-Org"
 release = os.getenv("_LITESTAR_VITE_DOCS_BUILD_VERSION", version.rsplit(".")[0])
+# Base path the published docs live under. GitHub Pages serves the site flat at
+# /litestar-vite/ (set in CI); local builds and the theme unit test default to "/".
+docs_base_path = os.getenv("_LITESTAR_VITE_DOCS_BASE_PATH", "/")
 
 # -- General configuration ---------------------------------------------------
 extensions = [
@@ -196,7 +199,7 @@ html_context = {
 html_sidebars = {"**": []}
 
 html_theme_options: dict[str, Any] = {
-    "logo_target": "/",
+    "logo_target": docs_base_path,
     "light_logo": "_static/header-star-light.svg",
     "dark_logo": "_static/header-star-dark.svg",
     "accent_color": "amber",

@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import { describe, expect, it, vi } from "vitest"
 import litestarNuxtModule from "../../src/nuxt"
+import { getHmrNetworkConfig } from "../__fixtures__/mock-vite-config"
 
 describe("litestar-nuxt integration", () => {
   it("advertises Nuxt 4 compatibility", () => {
@@ -45,9 +46,10 @@ describe("litestar-nuxt integration", () => {
       const vitePlugins = (nuxt.options.vite as any).plugins as any[]
       const proxyPlugin = vitePlugins.find((p) => p.name === "litestar-nuxt-proxy")
       const cfg = await proxyPlugin.config()
-      expect(cfg.server.hmr.clientPort).toBe(8000)
-      expect(cfg.server.hmr.path).toBe("/static/vite-hmr")
-      expect(cfg.server.hmr.protocol).toBe("ws")
+      const hmr = getHmrNetworkConfig(cfg)
+      expect(hmr?.clientPort).toBe(8000)
+      expect(hmr?.path).toBe("/static/vite-hmr")
+      expect(hmr?.protocol).toBe("ws")
     } finally {
       vi.restoreAllMocks()
       delete process.env.LITESTAR_VITE_CONFIG_PATH

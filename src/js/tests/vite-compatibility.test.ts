@@ -4,9 +4,10 @@ import litestar from "../src"
 import { isVite8Plus } from "../src/shared/vite-compat"
 import { getBuildInput } from "./__fixtures__/mock-vite-config"
 
-// Mock the fs module for consistent testing
-vi.mock("fs", async () => {
-  const actual = await vi.importActual<typeof FsModule>("fs")
+// Mock the fs module for consistent testing. The plugin imports `node:fs`;
+// Vitest 4 no longer aliases bare `fs` to `node:fs`, so mock `node:fs` directly.
+vi.mock("node:fs", async () => {
+  const actual = await vi.importActual<typeof FsModule>("node:fs")
 
   return {
     promises: actual.promises,
@@ -29,7 +30,7 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-describe("Vite 7.0 Compatibility", () => {
+describe("Plugin Configuration Compatibility", () => {
   describe("Plugin Configuration", () => {
     it("builds successfully with Vite 7.0 configuration format", () => {
       const plugin = litestar("resources/js/app.ts")[0]
@@ -540,9 +541,9 @@ describe("Vite 7.0 Compatibility", () => {
   })
 })
 
-describe("Vite 8.0 Compatibility", () => {
-  describe("Rolldown Build Options", () => {
-    it("uses version-appropriate bundler options key", () => {
+describe("Rolldown Build Options", () => {
+  describe("Build input placement", () => {
+    it("places build input under the version-appropriate bundler key", () => {
       const plugin = litestar("resources/js/app.ts")[0]
       const config = plugin.config({}, { command: "build", mode: "production" })
 
@@ -555,7 +556,7 @@ describe("Vite 8.0 Compatibility", () => {
       }
     })
 
-    it("reads user input from rolldownOptions when on Vite 8+", () => {
+    it("reads user input from rolldownOptions", () => {
       const plugin = litestar("resources/js/app.ts")[0]
 
       // User provides input via rolldownOptions (Vite 8 style)
@@ -564,7 +565,7 @@ describe("Vite 8.0 Compatibility", () => {
       expect(getBuildInput(config)).toBe("custom/entry.ts")
     })
 
-    it("reads user input from rollupOptions as fallback on Vite 8+", () => {
+    it("reads user input from legacy rollupOptions as fallback", () => {
       const plugin = litestar("resources/js/app.ts")[0]
 
       // User provides input via legacy rollupOptions (still works on Vite 8)
@@ -573,7 +574,7 @@ describe("Vite 8.0 Compatibility", () => {
       expect(getBuildInput(config)).toBe("legacy/entry.ts")
     })
 
-    it("handles SSR builds with version-appropriate options", () => {
+    it("handles SSR builds", () => {
       const plugin = litestar({
         input: "resources/js/app.ts",
         ssr: "resources/js/ssr.ts",
@@ -584,7 +585,7 @@ describe("Vite 8.0 Compatibility", () => {
       expect(getBuildInput(ssrConfig)).toBe("resources/js/ssr.ts")
     })
 
-    it("handles multiple inputs with version-appropriate options", () => {
+    it("handles multiple inputs", () => {
       const plugin = litestar(["resources/js/app.ts", "resources/js/admin.ts"])[0]
 
       const config = plugin.config({}, { command: "build", mode: "production" })

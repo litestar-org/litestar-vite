@@ -85,8 +85,8 @@ litestar run --reload                # Vite dev server proxied automatically
 
 ## Documentation
 
-- Docs: https://litestar-org.github.io/litestar-vite/latest/
-- Changelog: https://litestar-org.github.io/litestar-vite/latest/changelog
+- Docs: https://litestar-org.github.io/litestar-vite/
+- Changelog: https://litestar-org.github.io/litestar-vite/changelog.html
 - Source: https://github.com/litestar-org/litestar-vite
 - Issues: https://github.com/litestar-org/litestar-vite/issues/
 - Discord: https://discord.gg/X3FJqy8d2j

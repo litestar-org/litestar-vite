@@ -109,7 +109,7 @@ vite = VitePlugin(
         types=TypeGenConfig(),
         runtime=RuntimeConfig(
             external_dev_server=ExternalDevServer(
-                target="http://localhost:4200", command=["npm", "run", "start"], build_command=["npm", "run", "build"]
+                target="http://127.0.0.1:4200", command=["npm", "run", "start"], build_command=["npm", "run", "build"]
             )
         ),
     )
