@@ -43,7 +43,6 @@ _ListStrFactory: Callable[[], list[str]] = _str_list_factory
 
 CURRENT_NPM_VERSION_RANGES: dict[str, str] = {
     "@analogjs/vite-plugin-angular": "2.6.1",
-    "@angular/animations": "22.0.2",
     "@angular/build": "22.0.3",
     "@angular/cli": "22.0.3",
     "@angular/common": "22.0.2",
@@ -52,7 +51,6 @@ CURRENT_NPM_VERSION_RANGES: dict[str, str] = {
     "@angular/core": "22.0.2",
     "@angular/forms": "22.0.2",
     "@angular/platform-browser": "22.0.2",
-    "@angular/platform-browser-dynamic": "22.0.2",
     "@angular/router": "22.0.2",
     "@hey-api/openapi-ts": "0.98.2",
     "@inertiajs/react": "3.4.0",
@@ -558,7 +556,6 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         description="Angular with standalone APIs, signals, and Vite",
         vite_plugin="@analogjs/vite-plugin-angular",
         dependencies=[
-            "@angular/animations",
             "@angular/common",
             "@angular/compiler",
             "@angular/core",
@@ -570,7 +567,6 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
             "@analogjs/vite-plugin-angular",
             "@angular/build",
             "@angular/compiler-cli",
-            "@angular/platform-browser-dynamic",
             "typescript",
             "@types/node",
         ],
@@ -601,13 +597,11 @@ FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {
         description="Angular with the application builder, standalone APIs, and Angular CLI",
         vite_plugin=None,
         dependencies=[
-            "@angular/animations",
             "@angular/common",
             "@angular/compiler",
             "@angular/core",
             "@angular/forms",
             "@angular/platform-browser",
-            "@angular/platform-browser-dynamic",
             "rxjs",
         ],
         dev_dependencies=[
