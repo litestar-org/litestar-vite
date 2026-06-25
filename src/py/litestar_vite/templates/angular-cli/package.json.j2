@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "ng": "ng",
-    "start": "ng serve --proxy-config proxy.conf.json",
+    "start": "ng serve --host 127.0.0.1 --proxy-config proxy.conf.json",
     "build": "ng build"{% if generate_client %},
     "generate-types": "openapi-ts"{% endif %}
   },
