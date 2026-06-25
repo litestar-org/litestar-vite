@@ -3,6 +3,7 @@ import runpy
 from pathlib import Path
 from typing import cast
 
+import pytest
 from pygments.token import Comment, Keyword, Name, String, Token
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -29,6 +30,14 @@ def test_docs_theme_conf_uses_shibuya_foundation() -> None:
     assert html_theme_options["light_logo"] == "_static/header-star-light.svg"
     assert html_theme_options["dark_logo"] == "_static/header-star-dark.svg"
     assert html_theme_options["logo_target"] == "/"
+
+
+def test_docs_theme_logo_target_is_base_path_aware(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The logo links to the GitHub Pages base path in CI, defaulting to '/' locally."""
+    monkeypatch.setenv("_LITESTAR_VITE_DOCS_BASE_PATH", "/litestar-vite/")
+    conf = _load_docs_conf()
+    html_theme_options = cast(dict[str, object], conf["html_theme_options"])
+    assert html_theme_options["logo_target"] == "/litestar-vite/"
 
 
 def test_docs_theme_foundation_files_exist() -> None:
