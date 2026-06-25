@@ -6,9 +6,10 @@ import litestar from "../src"
 import { resolvePageComponent } from "../src/inertia-helpers"
 import { getBuildInput, getHmrNetworkConfig } from "./__fixtures__/mock-vite-config"
 
-// Mock the fs module
-vi.mock("fs", async () => {
-  const actual = await vi.importActual<typeof FsModule>("fs")
+// Mock the fs module. The plugin imports `node:fs`; Vitest 4 no longer aliases
+// the bare `fs` specifier to `node:fs`, so the mock must target `node:fs` directly.
+vi.mock("node:fs", async () => {
+  const actual = await vi.importActual<typeof FsModule>("node:fs")
 
   return {
     promises: actual.promises,

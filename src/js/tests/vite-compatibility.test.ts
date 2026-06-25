@@ -4,9 +4,10 @@ import litestar from "../src"
 import { isVite8Plus } from "../src/shared/vite-compat"
 import { getBuildInput } from "./__fixtures__/mock-vite-config"
 
-// Mock the fs module for consistent testing
-vi.mock("fs", async () => {
-  const actual = await vi.importActual<typeof FsModule>("fs")
+// Mock the fs module for consistent testing. The plugin imports `node:fs`;
+// Vitest 4 no longer aliases bare `fs` to `node:fs`, so mock `node:fs` directly.
+vi.mock("node:fs", async () => {
+  const actual = await vi.importActual<typeof FsModule>("node:fs")
 
   return {
     promises: actual.promises,

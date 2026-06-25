@@ -31,6 +31,11 @@ describe("typegen-cache", () => {
     if (fs.existsSync(tmpDir)) {
       fs.rmSync(tmpDir, { recursive: true, force: true })
     }
+
+    // Vitest 4 narrowed restoreAllMocks scope: spies created within a test
+    // (e.g. vi.spyOn(fs.promises, "readFile")) now leak into later tests unless
+    // explicitly restored here.
+    vi.restoreAllMocks()
   })
 
   describe("shouldRunOpenApiTs", () => {
