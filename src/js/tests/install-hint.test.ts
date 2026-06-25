@@ -223,20 +223,20 @@ describe("install-hint", () => {
       expect(executor).toBe("npx @hey-api/openapi-ts -i schema.json")
     })
 
-    it("returns bunx for bun runtime", () => {
+    it("returns bun x for bun runtime", () => {
       process.env.LITESTAR_VITE_RUNTIME = "bun"
 
       const executor = resolvePackageExecutor("@hey-api/openapi-ts")
 
-      expect(executor).toBe("bunx @hey-api/openapi-ts")
+      expect(executor).toBe("bun x @hey-api/openapi-ts")
     })
 
-    it("returns bunx for BUN runtime (case insensitive)", () => {
+    it("returns bun x for BUN runtime (case insensitive)", () => {
       process.env.LITESTAR_VITE_RUNTIME = "BUN"
 
       const executor = resolvePackageExecutor("@hey-api/openapi-ts")
 
-      expect(executor).toBe("bunx @hey-api/openapi-ts")
+      expect(executor).toBe("bun x @hey-api/openapi-ts")
     })
 
     it("returns deno run for deno runtime", () => {
@@ -268,7 +268,7 @@ describe("install-hint", () => {
 
       const executor = resolvePackageExecutor("@hey-api/openapi-ts", "bun")
 
-      expect(executor).toBe("bunx @hey-api/openapi-ts")
+      expect(executor).toBe("bun x @hey-api/openapi-ts")
     })
 
     it("uses env var when executor is undefined", () => {
@@ -307,7 +307,7 @@ describe("install-hint", () => {
 
       const executor = resolvePackageExecutor("@hey-api/openapi-ts -i /path/to/schema.json -o src/types -c @hey-api/client-fetch")
 
-      expect(executor).toBe("bunx @hey-api/openapi-ts -i /path/to/schema.json -o src/types -c @hey-api/client-fetch")
+      expect(executor).toBe("bun x @hey-api/openapi-ts -i /path/to/schema.json -o src/types -c @hey-api/client-fetch")
     })
 
     it("handles 'node' as explicit executor (default)", () => {
@@ -321,7 +321,7 @@ describe("install-hint", () => {
 
       const executor = resolvePackageExecutor("@hey-api/openapi-ts")
 
-      expect(executor).toBe("bunx @hey-api/openapi-ts")
+      expect(executor).toBe("bun x @hey-api/openapi-ts")
     })
 
     it("reads from .litestar.json when available", () => {

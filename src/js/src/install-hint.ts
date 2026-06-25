@@ -70,14 +70,14 @@ export function resolveInstallHint(pkg = "@hey-api/openapi-ts"): string {
  *
  * @param pkg - The package command to execute (e.g., "@hey-api/openapi-ts -i schema.json -o src/types")
  * @param executor - Optional explicit executor override
- * @returns The full command string (e.g., "npx @hey-api/openapi-ts ..." or "bunx @hey-api/openapi-ts ...")
+ * @returns The full command string (e.g., "npx @hey-api/openapi-ts ..." or "bun x @hey-api/openapi-ts ...")
  */
 export function resolvePackageExecutor(pkg: string, executor?: string): string {
   // Use || to treat empty string as falsy, triggering detection
   const runtime = executor || detectExecutor()
   switch (runtime) {
     case "bun":
-      return `bunx ${pkg}`
+      return `bun x ${pkg}`
     case "deno":
       return `deno run -A npm:${pkg}`
     case "pnpm":
