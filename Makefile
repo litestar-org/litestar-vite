@@ -139,8 +139,8 @@ pre-release:                                       ## Start a pre-release: make 
 .PHONY: clean
 clean:                                              ## Cleanup temporary build artifacts
 	@echo "${INFO} Cleaning working directory... 🧹"
-	@rm -rf pytest_cache .ruff_cache .hypothesis build/ -rf dist/ .eggs/ .coverage coverage.xml coverage.json htmlcov/ .pytest_cache tests/.pytest_cache tests/**/.pytest_cache .mypy_cache .unasyncd_cache/ .auto_pytabs_cache node_modules docs-build coverage >/dev/null 2>&1
-	@rm -f .litestar*.json >/dev/null 2>&1 || true
+	@rm -rf pytest_cache .ruff_cache .hypothesis build/ dist/ .eggs/ .coverage coverage.xml coverage.json htmlcov/ .pytest_cache tests/.pytest_cache tests/**/.pytest_cache .mypy_cache .unasyncd_cache/ .auto_pytabs_cache node_modules docs-build coverage >/dev/null 2>&1
+	@rm -f .litestar*.json package-lock.json >/dev/null 2>&1 || true
 	@find . -name '*.egg-info' -exec rm -rf {} + >/dev/null 2>&1
 	@find . -type f -name '*.egg' -exec rm -f {} + >/dev/null 2>&1
 	@find . -name '*.pyc' -exec rm -f {} + >/dev/null 2>&1
@@ -156,6 +156,8 @@ clean:                                              ## Cleanup temporary build a
 clean-examples:                                     ## Clean all example build artifacts
 	@echo "${INFO} Cleaning example artifacts... 🧹"
 	@find examples -maxdepth 2 -type d -name "node_modules" -exec rm -rf {} + >/dev/null 2>&1 || true
+	@find examples -maxdepth 2 -type d -name "build" -exec rm -rf {} + >/dev/null 2>&1 || true
+	@find examples -maxdepth 2 -type d -name "dist" -exec rm -rf {} + >/dev/null 2>&1 || true
 	@find examples -maxdepth 2 -type d -name "public" -exec rm -rf {} + >/dev/null 2>&1 || true
 	@find examples -maxdepth 2 -type d -name ".vite" -exec rm -rf {} + >/dev/null 2>&1 || true
 	@find examples -maxdepth 2 -type d -name ".angular" -exec rm -rf {} + >/dev/null 2>&1 || true
@@ -164,6 +166,7 @@ clean-examples:                                     ## Clean all example build a
 	@find examples -maxdepth 2 -type d -name ".svelte-kit" -exec rm -rf {} + >/dev/null 2>&1 || true
 	@find examples -maxdepth 3 -type d -name "generated" -exec rm -rf {} + >/dev/null 2>&1 || true
 	@find examples -maxdepth 2 -type f -name ".litestar*.json" -exec rm -f {} + >/dev/null 2>&1 || true
+	@find examples -maxdepth 2 -type f -name "package-lock.json" -exec rm -f {} + >/dev/null 2>&1 || true
 	@echo "${OK} Example artifacts cleaned"
 
 # =============================================================================
