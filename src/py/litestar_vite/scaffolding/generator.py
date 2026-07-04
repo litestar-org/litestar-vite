@@ -3,6 +3,7 @@
 This module handles the generation of project files from templates.
 """
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -87,6 +88,7 @@ class TemplateContext:
             Dictionary of template variables.
         """
         package_versions = _build_package_version_map()
+
         return {
             "project_name": self.project_name,
             "framework": self.framework.type.value,
@@ -278,6 +280,28 @@ def generate_project(output_dir: Path, context: TemplateContext, *, overwrite: b
     return generated_files
 
 
+def _deduplicate_json_keys(content: str) -> str:
+    """Remove duplicate keys from rendered JSON content.
+
+    Jinja templates may emit the same package in both a ``{% for %}`` loop
+    (from the framework dependency list) and a conditional ``{% if %}`` block.
+    Round-tripping through ``json.loads``/``json.dumps`` collapses duplicate
+    keys automatically, keeping the last value for each key.
+
+    Args:
+        content: Rendered JSON string, potentially containing duplicate keys.
+
+    Returns:
+        JSON string with duplicate keys removed. Falls back to the original
+        content if parsing fails.
+    """
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        return content
+    return json.dumps(parsed, indent=2) + "\n"
+
+
 def _render_and_write(template_path: Path, output_path: Path, context: dict[str, Any]) -> None:
     """Render a template and write to output file.
 
@@ -291,5 +315,7 @@ def _render_and_write(template_path: Path, output_path: Path, context: dict[str,
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     content = render_template(template_path, context)
+    if output_path.name == "package.json":
+        content = _deduplicate_json_keys(content)
     output_path.write_text(content, encoding="utf-8")
     console.print(f"[green]Created {output_path}[/]")
