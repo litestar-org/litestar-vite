@@ -1053,37 +1053,38 @@ def should_render(  # noqa: PLR0911
     if is_always_prop(value):
         return True
 
-    # OptionalProp: Only render when explicitly requested
+    # OptionalProp: identical to LazyProp under partial reloads (v2 alias of lazy)
     if is_optional_prop(value):
-        if partial_data:
-            return _matches_partial_data(value, partial_data, key)
-        # Never included in initial loads or standard partial reloads
-        return False
+        if partial_data and not _matches_partial_data(value, partial_data, key):
+            return False
+        if partial_except and _matches_partial_except(value, partial_except, key):
+            return False
+        return not (not partial_data and not partial_except)
 
-    # OnceProp: Respect partial reload filters and omit on full visits when cached client-side
+    # OnceProp: included on initial load, cached client-side; only-then-except on partials
     if is_once_prop(value):
-        if partial_except:
-            return not _matches_partial_except(value, partial_except, key)
-        if partial_data:
-            return _matches_partial_data(value, partial_data, key)
-        if except_once_props:
+        if partial_data and not _matches_partial_data(value, partial_data, key):
+            return False
+        if partial_except and _matches_partial_except(value, partial_except, key):
+            return False
+        if not partial_data and not partial_except and except_once_props:
             return not _matches_partial_except(value, except_once_props, key)
         return True
 
-    # LazyProp (StaticProp/DeferredProp): Only render on partial reload
+    # LazyProp (StaticProp/DeferredProp): only render on partial reload; only-then-except
     if is_lazy_prop(value):
-        if partial_except:
-            return not _matches_partial_except(value, partial_except, key)
-        if partial_data:
-            return _matches_partial_data(value, partial_data, key)
-        return False
+        if partial_data and not _matches_partial_data(value, partial_data, key):
+            return False
+        if partial_except and _matches_partial_except(value, partial_except, key):
+            return False
+        return not (not partial_data and not partial_except)
 
-    # Regular values: Apply standard filtering
+    # Regular values: apply `only` (partial_data) first, then `except` (partial_except).
     if key is not None:
-        if partial_except:
-            return not _matches_partial_except(value, partial_except, key)
-        if partial_data:
-            return _matches_partial_data(value, partial_data, key)
+        if partial_data and not _matches_partial_data(value, partial_data, key):
+            return False
+        if partial_except and _matches_partial_except(value, partial_except, key):
+            return False
 
     return True
 
@@ -1309,6 +1310,25 @@ async def resolve_async_props(
     await _resolve_one(value, partial_data, partial_except, except_once_props, _key)
 
 
+_RAW_SHARED_SCOPE_KEY = "_litestar_vite_inertia_shared"
+
+
+def _get_scope_shared_props(request: "ASGIConnection[Any, Any, Any, Any]") -> "Mapping[str, Any]":
+    scope = cast("dict[str, Any]", request.scope)
+    scope_shared = scope.get(_RAW_SHARED_SCOPE_KEY)
+    return cast("Mapping[str, Any]", scope_shared) if isinstance(scope_shared, Mapping) else {}
+
+
+def _set_scope_shared_prop(connection: "ASGIConnection[Any, Any, Any, Any]", key: str, value: "Any") -> None:
+    scope = getattr(connection, "scope", None)
+    if not isinstance(scope, dict):
+        return
+    scope_dict = cast("dict[str, Any]", scope)
+    shared = scope_dict.setdefault(_RAW_SHARED_SCOPE_KEY, {})
+    if isinstance(shared, dict):
+        shared[key] = value
+
+
 def get_raw_shared_props(request: "ASGIConnection[Any, Any, Any, Any]") -> "Mapping[str, Any]":
     """Return the unrendered shared props stored on the request session.
 
@@ -1319,8 +1339,11 @@ def get_raw_shared_props(request: "ASGIConnection[Any, Any, Any, Any]") -> "Mapp
     try:
         shared_props = request.session.get("_shared", {})
     except (AttributeError, ImproperlyConfiguredException):
-        return {}
-    return cast("Mapping[str, Any]", shared_props) if isinstance(shared_props, Mapping) else {}
+        shared_props = {}
+    session_shared: Mapping[str, Any] = (
+        cast("Mapping[str, Any]", shared_props) if isinstance(shared_props, Mapping) else {}
+    )
+    return {**session_shared, **_get_scope_shared_props(request)}
 
 
 def get_shared_props(
@@ -1354,7 +1377,13 @@ def get_shared_props(
 
     try:
         errors = request.session.pop("_errors", {})
-        shared_props = cast("dict[str,Any]", request.session.pop("_shared", {}))
+        session_shared_props = request.session.pop("_shared", {})
+        scope_shared_props = cast("dict[str, Any]", request.scope).pop(_RAW_SHARED_SCOPE_KEY, {})
+        shared_props = (
+            {**cast("Mapping[str, Any]", session_shared_props), **cast("Mapping[str, Any]", scope_shared_props)}
+            if isinstance(session_shared_props, Mapping) and isinstance(scope_shared_props, Mapping)
+            else cast("dict[str,Any]", session_shared_props)
+        )
         inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
 
         once_props_entries = _extract_once_prop_entries(shared_props, partial_data, partial_except)
@@ -1405,12 +1434,31 @@ def get_shared_props(
     return props
 
 
+_UNMATERIALIZABLE_SHARED = object()
+
+
+def _materialize_shared_value(value: "Any") -> "Any":
+    """Convert top-level special props into session-serializable values for share()."""
+    if is_merge_prop(value):
+        return unwrap_merge_props(value)
+    if is_special_prop(value):
+        try:
+            return value.render()
+        except RuntimeError:
+            return _UNMATERIALIZABLE_SHARED
+    return value
+
+
 def share(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", value: "Any") -> "bool":
     """Share a value in the session.
 
     Shared values are included in the props of every Inertia response for
     the current request. This is useful for data that should be available
     to all components (e.g., authenticated user, permissions, settings).
+    Top-level special props are materialized before storage; nested special
+    props inside a shared dict or list are not supported. Async top-level
+    special props cannot be persisted to the session, but remain available
+    to the current response from request scope.
 
     Args:
         connection: The ASGI connection.
@@ -1420,13 +1468,22 @@ def share(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", value: "
     Returns:
         True if the value was successfully shared, False otherwise.
     """
+    materialized = _materialize_shared_value(value)
+    if materialized is _UNMATERIALIZABLE_SHARED:
+        _set_scope_shared_prop(connection, key, value)
+        connection.logger.warning(
+            "Cannot persist shared prop %r: async special props cannot be materialized for session storage.", key
+        )
+        return False
+
     try:
-        connection.session.setdefault("_shared", {}).update({key: value})
+        connection.session.setdefault("_shared", {}).update({key: materialized})
     except (AttributeError, ImproperlyConfiguredException):
         msg = "Unable to share value: session not accessible (user may be unauthenticated)."
         connection.logger.debug(msg)
         return False
     else:
+        _set_scope_shared_prop(connection, key, value)
         return True
 
 

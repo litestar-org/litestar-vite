@@ -272,4 +272,6 @@ def _find_request(args: tuple[Any, ...], kwargs: "dict[str, Any]") -> "Request[A
         if isinstance(arg, Request):  # pyright: ignore[reportUnknownVariableType]
             return arg  # pyright: ignore[reportUnknownVariableType]
 
-    return None
+    from litestar_vite.inertia.middleware import get_current_inertia_request
+
+    return get_current_inertia_request()

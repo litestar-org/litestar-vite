@@ -253,6 +253,7 @@ async def _resolve_inertia_response_data(data: "Any", request: "Request[Any, Any
             return data
 
     response: InertiaResponse[Any] = InertiaResponse(content=content)
+    response._defer_status_to_handler = True  # pyright: ignore[reportPrivateUsage]
     await response.resolve_async_props(request)
     return response
 

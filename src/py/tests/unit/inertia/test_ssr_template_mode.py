@@ -1,5 +1,7 @@
 """Regression coverage for Inertia SSR firing when mode='template' (issue #243)."""
 
+import json
+import re
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any, Literal
@@ -15,7 +17,7 @@ from litestar.testing import create_test_client  # pyright: ignore[reportUnknown
 
 from litestar_vite.config import InertiaConfig, InertiaSSRConfig, PathConfig, RuntimeConfig, ViteConfig
 from litestar_vite.inertia import InertiaPlugin
-from litestar_vite.inertia.helpers import once
+from litestar_vite.inertia.helpers import flash, once
 from litestar_vite.inertia.response import _InertiaSSRResult
 from litestar_vite.plugin import VitePlugin
 
@@ -109,6 +111,73 @@ async def test_template_mode_ssr_endpoint_invoked(tmp_path: Path) -> None:
     assert "SSR_BODY" in response.text
     assert "SSR_TITLE" in response.text
     assert "CLIENT_PLACEHOLDER" not in response.text
+
+
+async def test_ssr_full_page_preserves_flash_across_single_build(tmp_path: Path) -> None:
+    """SSR prefetch and final hydration must use the same PageProps object."""
+    inertia_plugin, vite_plugin, template_config = _build_template_plugins(tmp_path, ssr=True)
+    captured: dict[str, Any] = {}
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        flash(request, "hi")
+        return {"message": "ok"}
+
+    async def fake_render(page: dict[str, Any], *_args: Any, **_kwargs: Any) -> _InertiaSSRResult:
+        captured["page"] = page
+        return _InertiaSSRResult(head=[], body='<div id="app">SSR_BODY</div>')
+
+    with patch("litestar_vite.inertia.response._render_inertia_ssr", side_effect=fake_render):
+        with create_test_client(
+            route_handlers=[handler],
+            plugins=[inertia_plugin, vite_plugin],
+            template_config=template_config,
+            middleware=[ServerSideSessionConfig().middleware],
+            stores={"sessions": MemoryStore()},
+            raise_server_exceptions=False,
+        ) as client:
+            response = client.get("/")
+
+    assert response.status_code == 200, response.text
+    assert captured["page"]["flash"] == {"info": ["hi"]}
+    match = re.search(r'<script id="app_page" type="application/json">(.*?)</script>', response.text, re.DOTALL)
+    assert match is not None
+    hydrated_page = json.loads(match.group(1))
+    assert hydrated_page["flash"] == {"info": ["hi"]}
+
+
+async def test_ssr_prefetch_uses_resolved_type_encoders(tmp_path: Path) -> None:
+    """SSR prefetch receives the same resolved type encoders as the normal response path."""
+    inertia_plugin, vite_plugin, template_config = _build_template_plugins(tmp_path, ssr=True)
+    captured_kwargs: dict[str, Any] = {}
+
+    class Widget:
+        def __init__(self, value: int) -> None:
+            self.value = value
+
+    @get("/", component="Home", type_encoders={Widget: lambda widget: {"handler": widget.value}})
+    async def handler() -> dict[str, Any]:
+        return {"widget": Widget(9)}
+
+    async def fake_render(_page: dict[str, Any], *_args: Any, **kwargs: Any) -> _InertiaSSRResult:
+        captured_kwargs.update(kwargs)
+        return _InertiaSSRResult(head=[], body='<div id="app">SSR_BODY</div>')
+
+    with patch("litestar_vite.inertia.response._render_inertia_ssr", side_effect=fake_render):
+        with create_test_client(
+            route_handlers=[handler],
+            plugins=[inertia_plugin, vite_plugin],
+            template_config=template_config,
+            middleware=[ServerSideSessionConfig().middleware],
+            stores={"sessions": MemoryStore()},
+            raise_server_exceptions=False,
+            type_encoders={Widget: lambda widget: {"app": widget.value}},
+        ) as client:
+            response = client.get("/")
+
+    assert response.status_code == 200, response.text
+    type_encoders = captured_kwargs["type_encoders"]
+    assert type_encoders[Widget](Widget(9)) == {"handler": 9}
 
 
 async def test_spa_mode_ssr_endpoint_invoked_without_jinja(tmp_path: Path) -> None:

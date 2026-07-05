@@ -1,15 +1,17 @@
 import asyncio
+import json
 from pathlib import Path
 from time import sleep
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from litestar import Request, get
+from litestar import Request, delete, get, post
 from litestar.exceptions import ImproperlyConfiguredException, NotAuthorizedException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.params import FromPath, FromQuery
 from litestar.plugins.jinja import JinjaTemplateEngine
+from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED, HTTP_202_ACCEPTED, HTTP_204_NO_CONTENT
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
@@ -21,6 +23,7 @@ from litestar_vite.inertia.helpers import (
     MergeProp,
     StaticProp,
     defer,
+    except_,
     extract_deferred_props,
     extract_merge_props,
     flash,
@@ -31,6 +34,7 @@ from litestar_vite.inertia.helpers import (
     lazy_render,
     merge,
     once,
+    only,
     optional,
     share,
     should_render,
@@ -38,8 +42,10 @@ from litestar_vite.inertia.helpers import (
 from litestar_vite.inertia.response import (
     InertiaBack,
     InertiaExternalRedirect,
+    InertiaResponse,
     _InertiaSSRResult,
     _parse_inertia_ssr_payload,
+    _render_inertia_ssr,
 )
 from litestar_vite.plugin import VitePlugin
 
@@ -1093,10 +1099,178 @@ async def test_explicit_response_media_type_is_respected_in_bootstrap(
         assert response.headers["content-type"].startswith("application/xhtml+xml")
 
 
+async def test_auto_wrapped_post_preserves_default_created_status(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    @post("/create")
+    async def handler() -> dict[str, bool]:
+        return {"ok": True}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.post("/create")
+        assert response.status_code == HTTP_201_CREATED
+        assert response.json() == {"ok": True}
+
+
+async def test_auto_wrapped_delete_preserves_default_no_content_status(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    @delete("/thing/{item_id:int}")
+    async def handler(item_id: FromPath[int]) -> None:
+        assert item_id == 1
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.delete("/thing/1")
+        assert response.status_code == HTTP_204_NO_CONTENT
+        assert response.content == b""
+
+
+async def test_user_constructed_inertia_response_status_is_honored(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    @post("/submit", component="Submit")
+    async def handler() -> InertiaResponse[dict[str, str]]:
+        return InertiaResponse({"message": "accepted"}, status_code=HTTP_202_ACCEPTED)
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.post("/submit", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert response.status_code == HTTP_202_ACCEPTED
+        assert response.json()["props"]["message"] == "accepted"
+
+
+async def test_auto_wrapped_inertia_get_still_uses_default_ok_status(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    @get("/", component="Home")
+    async def handler() -> dict[str, str]:
+        return {"message": "ok"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert response.status_code == HTTP_200_OK
+        assert response.json()["props"]["message"] == "ok"
+
+
+async def test_prop_filter_only_limits_route_props(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    @get("/u", component="U")
+    async def handler() -> InertiaResponse[dict[str, list[int]]]:
+        return InertiaResponse({"users": [1], "teams": [2], "stats": [3]}, prop_filter=only("users"))
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/u", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+
+    assert response.status_code == HTTP_200_OK
+    assert data["props"]["users"] == [1]
+    assert "teams" not in data["props"]
+    assert "stats" not in data["props"]
+    assert "errors" in data["props"]
+    assert "csrf_token" in data["props"]
+    assert data["flash"] == {}
+
+
+async def test_prop_filter_except_excludes_route_props(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    @get("/u", component="U")
+    async def handler() -> InertiaResponse[dict[str, list[int]]]:
+        return InertiaResponse({"users": [1], "teams": [2], "stats": [3]}, prop_filter=except_("stats"))
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/u", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+
+    assert response.status_code == HTTP_200_OK
+    assert data["props"]["users"] == [1]
+    assert data["props"]["teams"] == [2]
+    assert "stats" not in data["props"]
+
+
+async def test_only_and_except_applied_sequentially(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    @get("/", component="Home")
+    async def handler() -> dict[str, int]:
+        return {"a": 1, "b": 2, "c": 3}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_DATA.value: "a,b",
+                InertiaHeaders.PARTIAL_EXCEPT.value: "b",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+            },
+        )
+        props = response.json()["props"]
+
+    assert props["a"] == 1
+    assert "b" not in props
+    assert "c" not in props
+
+
 async def test_hybrid_ssr_replaces_shell_root_and_injects_head(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test that hybrid SSR replaces the root element instead of nesting it."""
     from litestar_vite.config import InertiaConfig, InertiaSSRConfig, PathConfig, RuntimeConfig, SPAConfig, ViteConfig
-    from litestar_vite.inertia.plugin import InertiaPlugin
 
     resource_dir = tmp_path / "resources"
     resource_dir.mkdir()
@@ -1532,6 +1706,38 @@ async def test_nested_once_metadata_survives_except_once_header(
 # =====================================================
 
 
+async def test_scroll_props_emitted_as_record_keyed_by_data_prop(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that infinite scroll props are keyed by the paginated data prop."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class MockPagination:
+        items: list[str]
+        limit: int
+        offset: int
+        total: int
+
+    @get("/posts", component="Posts", key="posts", infinite_scroll=True)
+    async def handler(request: Request[Any, Any, Any]) -> MockPagination:
+        return MockPagination(items=["post1", "post2"], limit=10, offset=10, total=50)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/posts", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+
+    assert data["scrollProps"] == {"posts": {"pageName": "page", "currentPage": 2, "previousPage": 1, "nextPage": 3}}
+
+
 async def test_scroll_props_parameter(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
@@ -1541,7 +1747,7 @@ async def test_scroll_props_parameter(
     from litestar_vite.inertia.helpers import scroll_props
     from litestar_vite.inertia.response import InertiaResponse
 
-    @get("/posts", component="Posts")
+    @get("/posts", component="Posts", key="posts")
     async def handler(request: Request[Any, Any, Any], page: FromQuery[int] = 1) -> InertiaResponse[dict[str, Any]]:
         posts = [{"id": i, "title": f"Post {i}"} for i in range((page - 1) * 10, page * 10)]
         return InertiaResponse(
@@ -1564,7 +1770,7 @@ async def test_scroll_props_parameter(
         data = response.json()
         # scrollProps should be present with correct data (camelCase)
         assert "scrollProps" in data
-        scroll_config = data["scrollProps"]
+        scroll_config = data["scrollProps"]["posts"]
         assert scroll_config["pageName"] == "page"
         assert scroll_config["currentPage"] == 2
         assert scroll_config["previousPage"] == 1
@@ -1595,7 +1801,7 @@ async def test_scroll_props_first_page(
     ) as client:
         response = client.get("/items", headers={InertiaHeaders.ENABLED.value: "true"})
         data = response.json()
-        scroll_config = data["scrollProps"]
+        scroll_config = data["scrollProps"]["items"]
         assert scroll_config["currentPage"] == 1
         # previousPage should not be in JSON when None (Inertia protocol)
         assert "previousPage" not in scroll_config
@@ -1626,7 +1832,7 @@ async def test_scroll_props_last_page(
     ) as client:
         response = client.get("/items", headers={InertiaHeaders.ENABLED.value: "true"})
         data = response.json()
-        scroll_config = data["scrollProps"]
+        scroll_config = data["scrollProps"]["items"]
         assert scroll_config["currentPage"] == 10
         assert scroll_config["previousPage"] == 9
         # nextPage should not be in JSON when None
@@ -1903,9 +2109,9 @@ async def test_pagination_with_infinite_scroll_opt(
         assert data["props"]["offset"] == 10
         # scroll_props should be calculated from pagination metadata
         assert "scrollProps" in data
-        assert data["scrollProps"]["currentPage"] == 2  # offset=10, limit=10 -> page 2
-        assert data["scrollProps"]["previousPage"] == 1
-        assert data["scrollProps"]["nextPage"] == 3
+        assert data["scrollProps"]["posts"]["currentPage"] == 2  # offset=10, limit=10 -> page 2
+        assert data["scrollProps"]["posts"]["previousPage"] == 1
+        assert data["scrollProps"]["posts"]["nextPage"] == 3
 
 
 async def test_pagination_classic_style_metadata(
@@ -2600,6 +2806,42 @@ async def test_deferred_prop_async_callback_resolved_via_pipeline() -> None:
         assert data["props"]["async_prop"] == "async_value"
 
 
+async def test_ssr_request_body_uses_provided_type_encoders() -> None:
+    class Widget:
+        def __init__(self, n: int) -> None:
+            self.n = n
+
+    class StubResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, Any]:
+            return {"head": [], "body": "<div></div>"}
+
+    class StubClient:
+        content: bytes | None = None
+
+        async def post(self, _url: str, *, content: bytes, **_kwargs: Any) -> StubResponse:
+            self.content = content
+            return StubResponse()
+
+    with pytest.raises(Exception):
+        await _render_inertia_ssr({"widget": Widget(5)}, "http://x/render", 1.0, StubClient())  # type: ignore[arg-type]
+
+    client = StubClient()
+    result = await _render_inertia_ssr(
+        {"widget": Widget(5)},
+        "http://x/render",
+        1.0,
+        client,  # type: ignore[arg-type]
+        type_encoders={Widget: lambda widget: {"w": widget.n}},
+    )
+
+    assert result.body == "<div></div>"
+    assert client.content is not None
+    assert json.loads(client.content.decode()) == {"widget": {"w": 5}}
+
+
 # ===== SSR Response Size Validation =====
 
 
@@ -2729,12 +2971,7 @@ def test_inertia_deferred_props_full_cycle() -> None:
         data_partial = response_partial.json()
         assert data_partial["props"]["deferred"] == "slow_result"
         assert "immediate" not in data_partial["props"]
-        # The resolved key must not be re-advertised as still-deferred,
-        # or the @inertiajs/core v3 client loops on loadDeferredProps.
-        assert "deferred" not in data_partial.get("deferredProps", {}).get("default", []), (
-            "Server echoed the resolved deferred key back in `deferredProps`; "
-            "this causes the Inertia v3 client to re-fire `loadDeferredProps` in an infinite loop."
-        )
+        assert data_partial.get("deferredProps") in (None, {})
 
 
 def test_deferred_props_partial_reload_strips_resolved_keys_from_metadata() -> None:
@@ -2764,10 +3001,8 @@ def test_deferred_props_partial_reload_strips_resolved_keys_from_metadata() -> N
         assert body.get("deferredProps") in (None, {}), body.get("deferredProps")
 
 
-def test_deferred_props_partial_reload_preserves_unrequested_metadata() -> None:
-    """When only one of two deferred props is requested, the unrequested one
-    must remain in `deferredProps` so the client can fetch it later.
-    """
+def test_deferred_props_partial_reload_omits_unrequested_metadata() -> None:
+    """Partial reloads do not advertise deferred props metadata."""
 
     @get("/", component="Home")
     async def handler() -> dict[str, Any]:
@@ -2789,15 +3024,11 @@ def test_deferred_props_partial_reload_preserves_unrequested_metadata() -> None:
         )
         body = partial.json()
         assert body["props"]["first"] == "value-1"
-        assert "first" not in body["deferredProps"].get("default", [])
-        assert "second" in body["deferredProps"]["default"]
+        assert body.get("deferredProps") in (None, {}), body.get("deferredProps")
 
 
-def test_deferred_props_grouped_partial_reload_strips_only_requested_group() -> None:
-    """When deferred props live in distinct groups, a partial reload for one
-    group's keys must strip those keys from their group only; other groups
-    stay intact and an emptied group is removed entirely.
-    """
+def test_deferred_props_grouped_partial_reload_omits_all_groups() -> None:
+    """Grouped deferred props metadata is omitted on partial reloads."""
 
     @get("/", component="Home")
     async def handler() -> dict[str, Any]:
@@ -2822,10 +3053,7 @@ def test_deferred_props_grouped_partial_reload_strips_only_requested_group() -> 
         )
         body = partial.json()
         assert body["props"]["stats"] == {"hits": 1}
-        assert "metrics" not in body.get("deferredProps", {}), (
-            "An emptied group must be removed from `deferredProps` entirely."
-        )
-        assert body["deferredProps"]["security"] == ["perms"]
+        assert body.get("deferredProps") in (None, {}), body.get("deferredProps")
 
 
 def test_deferred_props_initial_response_still_advertises_all_keys() -> None:

@@ -66,9 +66,16 @@ def _is_inertia_request(scope_headers: "Iterable[tuple[bytes, bytes]]") -> bool:
 def redirect_on_asset_version_mismatch(request: "InertiaRequest[Any, Any, Any]") -> "InertiaExternalRedirect | None":
     """Return redirect response when client and server asset versions differ.
 
+    The Inertia asset-version check applies to GET requests only. Non-GET
+    requests must never be converted into a version-mismatch redirect, or the
+    client downgrades the submission to a GET and the request body is lost.
+
     Returns:
-        An InertiaExternalRedirect when versions differ, otherwise None.
+        An InertiaExternalRedirect when versions differ on a GET, otherwise None.
     """
+    if request.method != "GET":
+        return None
+
     if not request.is_inertia:
         return None
 

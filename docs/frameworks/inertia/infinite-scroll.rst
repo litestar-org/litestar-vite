@@ -69,7 +69,7 @@ Trigger partial reloads when the bottom sentinel becomes visible:
          export default function Posts() {
            const page = usePage();
            const { posts } = page.props;
-           const { scrollProps } = page;
+           const postScroll = page.props.scrollProps?.posts;
 
            return (
              <div>
@@ -77,10 +77,10 @@ Trigger partial reloads when the bottom sentinel becomes visible:
                  <PostCard key={post.id} post={post} />
                ))}
 
-               {scrollProps?.nextPage && (
+               {postScroll?.nextPage && (
                  <WhenVisible
                    always
-                   params={{ only: ["posts"], data: { page: scrollProps.nextPage } }}
+                   params={{ only: ["posts"], data: { page: postScroll.nextPage } }}
                  >
                    <Spinner />
                  </WhenVisible>
@@ -105,9 +105,9 @@ Trigger partial reloads when the bottom sentinel becomes visible:
              <PostCard v-for="post in posts" :key="post.id" :post="post" />
 
              <WhenVisible
-               v-if="page.scrollProps?.nextPage"
+               v-if="page.props.scrollProps?.posts?.nextPage"
                always
-               :params="{ only: ['posts'], data: { page: page.scrollProps.nextPage } }"
+               :params="{ only: ['posts'], data: { page: page.props.scrollProps.posts.nextPage } }"
              >
                <Spinner />
              </WhenVisible>

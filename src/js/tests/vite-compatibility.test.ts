@@ -1,4 +1,5 @@
 import type * as FsModule from "fs"
+import nodePath from "node:path"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import litestar from "../src"
 import { isVite8Plus } from "../src/shared/vite-compat"
@@ -27,6 +28,7 @@ const originalEnv = process.env
 beforeEach(() => {
   vi.resetModules()
   process.env = { ...originalEnv }
+  process.env.LITESTAR_VITE_CONFIG_PATH = nodePath.join(process.cwd(), ".vitest-missing-litestar.json")
   vi.clearAllMocks()
 })
 
