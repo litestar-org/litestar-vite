@@ -215,7 +215,7 @@ def _prepare_and_build(config: ViteConfig, root_dir: Path, console: Any, app: "L
             raise SystemExit(1)
 
     if config.set_environment:
-        set_environment(config=config, asset_url_override=config.asset_url)
+        set_environment(config=config)
     os.environ.setdefault("VITE_BASE_URL", config.base_url or "/")
 
     ext = config.runtime.external_dev_server
@@ -1090,7 +1090,7 @@ def _resolve_js_cli(
             return local
 
 
-def _run_extra_commands(config: Any, verbose: bool) -> bool:
+def _run_extra_commands(config: ViteConfig, verbose: bool) -> bool:
     """Run additional code-generation commands configured in TypeGenConfig.
 
     These execute after metadata export but before the typegen CLI, giving
@@ -1113,7 +1113,7 @@ def _run_extra_commands(config: Any, verbose: bool) -> bool:
         True if all commands succeeded, False if any failed.
     """
     types_config = config.types
-    if not hasattr(types_config, "extra_commands") or not types_config.extra_commands:
+    if not isinstance(types_config, TypeGenConfig) or not types_config.extra_commands:
         return True
 
     root_dir = config.root_dir or Path.cwd()
@@ -1149,7 +1149,7 @@ def _run_extra_commands(config: Any, verbose: bool) -> bool:
     return all_ok
 
 
-def _invoke_typegen_cli(config: Any, verbose: bool) -> None:
+def _invoke_typegen_cli(config: ViteConfig, verbose: bool) -> None:
     """Invoke the unified TypeScript type generation CLI.
 
     This is the single entry point for TypeScript type generation, used by

@@ -321,7 +321,8 @@ def test_doctor_hotfile_missing(doctor: ViteDoctor, tmp_path: Path) -> None:
     ):
         doctor.run(fix=False, runtime_checks=True)
 
-    assert any(i.check == "Hotfile Missing" for i in doctor.issues)
+    hotfile_issues = [i for i in doctor.issues if i.check == "Hotfile Missing"]
+    assert len(hotfile_issues) == 1
 
 
 def test_doctor_env_mismatch(doctor: ViteDoctor, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

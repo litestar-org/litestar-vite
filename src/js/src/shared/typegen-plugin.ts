@@ -12,6 +12,8 @@ import path from "node:path"
 import colors from "picocolors"
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite"
 
+import type { BridgeTypesConfig } from "./bridge-schema.js"
+import { DEBOUNCE_MS } from "./constants.js"
 import { debounce } from "./debounce.js"
 import { shouldRegeneratePageProps, shouldRunOpenApiTs, updateOpenApiTsCache, updatePagePropsCache } from "./typegen-cache.js"
 import { runTypeGeneration, type TypeGenCoreConfig, type TypeGenLogger, type TypeGenResult } from "./typegen-core.js"
@@ -44,6 +46,127 @@ export interface TypeGenPluginOptions {
   executor?: string
   /** Whether .litestar.json was present (used for buildStart warnings) */
   hasPythonConfig?: boolean
+}
+
+export interface TypesConfigShape {
+  enabled?: boolean
+  output?: string
+  openapiPath?: string
+  routesPath?: string
+  pagePropsPath?: string
+  schemasTsPath?: string
+  generateZod?: boolean
+  generateSdk?: boolean
+  generateRoutes?: boolean
+  generatePageProps?: boolean
+  generateSchemas?: boolean
+  globalRoute?: boolean
+  failOnError?: boolean
+  debounce?: number
+}
+
+export interface ResolveTypesConfigOptions {
+  requested: boolean | "auto" | TypesConfigShape | undefined
+  pythonConfig?: BridgeTypesConfig
+  defaultOutput: string
+  mergePythonWhenTrue?: boolean
+  mergePythonForObject?: boolean
+}
+
+function buildTypeDefaults(output: string) {
+  return {
+    openapiPath: path.join(output, "openapi.json"),
+    routesPath: path.join(output, "routes.json"),
+    pagePropsPath: path.join(output, "inertia-pages.json"),
+    schemasTsPath: path.join(output, "schemas.ts"),
+  }
+}
+
+function resolveFromPython(pythonConfig: BridgeTypesConfig, defaultOutput: string): RequiredTypeGenConfig {
+  const output = pythonConfig.output ?? defaultOutput
+  const defaults = buildTypeDefaults(output)
+  return {
+    enabled: true,
+    output,
+    openapiPath: pythonConfig.openapiPath ?? defaults.openapiPath,
+    routesPath: pythonConfig.routesPath ?? defaults.routesPath,
+    pagePropsPath: pythonConfig.pagePropsPath ?? defaults.pagePropsPath,
+    schemasTsPath: pythonConfig.schemasTsPath ?? defaults.schemasTsPath,
+    generateZod: pythonConfig.generateZod ?? false,
+    generateSdk: pythonConfig.generateSdk ?? true,
+    generateRoutes: pythonConfig.generateRoutes ?? true,
+    generatePageProps: pythonConfig.generatePageProps ?? true,
+    generateSchemas: pythonConfig.generateSchemas ?? true,
+    globalRoute: pythonConfig.globalRoute ?? false,
+    failOnError: pythonConfig.failOnError,
+    debounce: DEBOUNCE_MS,
+  }
+}
+
+function resolveDefaultTypesConfig(defaultOutput: string): RequiredTypeGenConfig {
+  const defaults = buildTypeDefaults(defaultOutput)
+  return {
+    enabled: true,
+    output: defaultOutput,
+    openapiPath: defaults.openapiPath,
+    routesPath: defaults.routesPath,
+    pagePropsPath: defaults.pagePropsPath,
+    schemasTsPath: defaults.schemasTsPath,
+    generateZod: false,
+    generateSdk: true,
+    generateRoutes: true,
+    generatePageProps: true,
+    generateSchemas: true,
+    globalRoute: false,
+    failOnError: undefined,
+    debounce: DEBOUNCE_MS,
+  }
+}
+
+export function resolveTypesConfig(options: ResolveTypesConfigOptions): RequiredTypeGenConfig | false {
+  const { requested, pythonConfig, defaultOutput, mergePythonWhenTrue = false, mergePythonForObject = false } = options
+
+  if (requested === false) {
+    return false
+  }
+
+  if (requested === true) {
+    if (mergePythonWhenTrue && pythonConfig) {
+      return resolveFromPython(pythonConfig, defaultOutput)
+    }
+    return resolveDefaultTypesConfig(defaultOutput)
+  }
+
+  if (requested === "auto" || typeof requested === "undefined") {
+    return pythonConfig?.enabled ? resolveFromPython(pythonConfig, defaultOutput) : false
+  }
+
+  const userProvidedOutput = Object.hasOwn(requested, "output")
+  const output = requested.output ?? (mergePythonForObject ? pythonConfig?.output : undefined) ?? defaultOutput
+  const defaults = buildTypeDefaults(output)
+  const pathFallback = (key: "openapiPath" | "routesPath" | "pagePropsPath" | "schemasTsPath") => {
+    if (!mergePythonForObject || userProvidedOutput) {
+      return defaults[key]
+    }
+    return pythonConfig?.[key] ?? defaults[key]
+  }
+
+  return {
+    enabled: requested.enabled ?? true,
+    output,
+    openapiPath: requested.openapiPath ?? pathFallback("openapiPath"),
+    routesPath: requested.routesPath ?? pathFallback("routesPath"),
+    pagePropsPath: requested.pagePropsPath ?? pathFallback("pagePropsPath"),
+    schemasTsPath: requested.schemasTsPath ?? pathFallback("schemasTsPath"),
+    generateZod: requested.generateZod ?? (mergePythonForObject ? pythonConfig?.generateZod : undefined) ?? false,
+    generateSdk: requested.generateSdk ?? (mergePythonForObject ? pythonConfig?.generateSdk : undefined) ?? true,
+    generateRoutes: requested.generateRoutes ?? (mergePythonForObject ? pythonConfig?.generateRoutes : undefined) ?? true,
+    generatePageProps: requested.generatePageProps ?? (mergePythonForObject ? pythonConfig?.generatePageProps : undefined) ?? true,
+    generateSchemas: requested.generateSchemas ?? (mergePythonForObject ? pythonConfig?.generateSchemas : undefined) ?? true,
+    globalRoute: requested.globalRoute ?? (mergePythonForObject ? pythonConfig?.globalRoute : undefined) ?? false,
+    failOnError: requested.failOnError ?? pythonConfig?.failOnError,
+    debounce: requested.debounce ?? DEBOUNCE_MS,
+  }
 }
 
 async function getFileMtime(filePath: string): Promise<string> {

@@ -14,7 +14,7 @@ from litestar_vite.plugin import VitePlugin
 from litestar_vite.plugin._proxy import (
     SSRProxyMiddleware,
     ViteProxyMiddleware,
-    _extract_proxy_response,
+    _extract_proxy_response_headers,
     _proxy_stream_response,
     _stream_request_body,
     build_hmr_target_url,
@@ -126,7 +126,7 @@ async def test_proxy_stream_response_streams_chunks_and_closes() -> None:
 pytestmark = pytest.mark.anyio
 
 
-def test_extract_proxy_response_filters_headers() -> None:
+def test_extract_proxy_response_headers_filters_headers() -> None:
     response = httpx.Response(
         200,
         headers=[
@@ -137,13 +137,11 @@ def test_extract_proxy_response_filters_headers() -> None:
         ],
         content=b"ok",
     )
-    status, headers, body = _extract_proxy_response(response)
-    assert status == 200
+    headers = _extract_proxy_response_headers(response.headers)
     assert (b"content-type", b"text/plain") in headers
     assert all(key != b"connection" for key, _ in headers)
     assert headers.count((b"set-cookie", b"a=1")) == 1
     assert headers.count((b"set-cookie", b"b=2")) == 1
-    assert body == b"ok"
 
 
 def test_build_hmr_target_url_includes_query(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

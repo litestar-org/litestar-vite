@@ -11,6 +11,8 @@ from litestar_vite.plugin import is_litestar_route
 if TYPE_CHECKING:
     from litestar.connection import Request
 
+    from litestar_vite.handler._app import AppHandler
+
 
 _HTML_MEDIA_TYPE = "text/html; charset=utf-8"
 
@@ -58,7 +60,7 @@ def get_route_asset_prefix(request: "Request[Any, Any, Any]") -> str | None:
     return None
 
 
-def get_spa_handler_from_request(request: "Request[Any, Any, Any]") -> Any:
+def get_spa_handler_from_request(request: "Request[Any, Any, Any]") -> "AppHandler":
     """Resolve the SPA handler instance for the current request.
 
     This is stored on the SPA route handler's ``opt`` when the route is created.
@@ -74,14 +76,10 @@ def get_spa_handler_from_request(request: "Request[Any, Any, Any]") -> Any:
     """
     opt = get_route_opt(request)
     handler = opt.get("_vite_spa_handler") if opt is not None else None
-    if handler is not None:
-        try:
-            _ = handler.get_html
-            _ = handler.get_bytes
-        except AttributeError:
-            pass
-        else:
-            return handler
+    from litestar_vite.handler._app import AppHandler
+
+    if isinstance(handler, AppHandler):
+        return handler
     msg = "SPA handler is not available for this route. Ensure AppHandler.create_route_handler() was used."
     raise ImproperlyConfiguredException(msg)
 

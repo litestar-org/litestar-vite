@@ -3,16 +3,15 @@ import type { AddressInfo } from "node:net"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import colors from "picocolors"
-import { loadEnv, type Plugin, type PluginOption, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer } from "vite"
+import { loadEnv, type Plugin, type PluginOption, type ProxyOptions, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer } from "vite"
 import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-reload"
 
 import { checkBackendAvailability, type LitestarMeta, loadLitestarMeta } from "./litestar-meta.js"
 import { type BridgeSchema, readBridgeConfig } from "./shared/bridge-schema.js"
-import { DEBOUNCE_MS } from "./shared/constants.js"
 import { createLogger } from "./shared/logger.js"
 import { resolveLitestarPort } from "./shared/network.js"
 import { resolveDefaultSdkClientPlugin } from "./shared/typegen-core.js"
-import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig } from "./shared/typegen-plugin.js"
+import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig } from "./shared/typegen-plugin.js"
 import { buildInputOptions, hmrServerConfig, resolveUserBuildInput } from "./shared/vite-compat.js"
 
 /**
@@ -436,34 +435,35 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       const effectiveAppUrl = normalizeAppUrl(env.APP_URL || pythonDefaults?.appUrl || undefined).url ?? undefined
       const proxyHmrClientPort = pythonDefaults?.proxyMode === "vite" ? resolveLitestarPort(pythonDefaults.litestarPort, effectiveAppUrl, process.env) : null
 
-      const withProxyErrorSilencer = (proxyConfig: Record<string, any> | undefined) => {
+      type ServerProxyConfig = NonNullable<NonNullable<UserConfig["server"]>["proxy"]>
+      const withProxyErrorSilencer = (proxyConfig: ServerProxyConfig | undefined): ServerProxyConfig | undefined => {
         if (!proxyConfig) return undefined
-        return Object.fromEntries(
-          Object.entries(proxyConfig).map(([key, value]) => {
-            if (typeof value !== "object" || value === null) {
-              return [key, value]
+        const entries: Array<[string, string | ProxyOptions]> = Object.entries(proxyConfig).map(([key, value]) => {
+          if (typeof value !== "object" || value === null) {
+            return [key, value]
+          }
+          const existingConfigure = value.configure
+          const valueWithWebsocket = Object.hasOwn(value, "ws") ? value : { ...value, ws: true }
+          const configure: NonNullable<ProxyOptions["configure"]> = (proxy, opts) => {
+            proxy.on("error", (err: Error) => {
+              const msg = err.message
+              if (shuttingDown || msg.includes("ECONNREFUSED") || msg.includes("ECONNRESET") || msg.includes("socket hang up")) {
+                return
+              }
+            })
+            if (typeof existingConfigure === "function") {
+              existingConfigure(proxy, opts)
             }
-            const existingConfigure = value.configure
-            const valueWithWebsocket = Object.hasOwn(value, "ws") ? value : { ...value, ws: true }
-            return [
-              key,
-              {
-                ...valueWithWebsocket,
-                configure(proxy: any, opts: any) {
-                  proxy.on("error", (err: any) => {
-                    const msg = String(err?.message ?? "")
-                    if (shuttingDown || msg.includes("ECONNREFUSED") || msg.includes("ECONNRESET") || msg.includes("socket hang up")) {
-                      return
-                    }
-                  })
-                  if (typeof existingConfigure === "function") {
-                    existingConfigure(proxy, opts)
-                  }
-                },
-              },
-            ]
-          }),
-        )
+          }
+          return [
+            key,
+            {
+              ...valueWithWebsocket,
+              configure,
+            },
+          ]
+        })
+        return Object.fromEntries(entries) as ServerProxyConfig
       }
       const explicitServerOrigin = typeof userConfig.server?.origin === "string" && userConfig.server.origin.length > 0 ? userConfig.server.origin : undefined
       const shouldForceDirectServerOrigin = explicitServerOrigin !== undefined || pythonDefaults?.proxyMode === "direct"
@@ -1057,101 +1057,13 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     resolvedConfig.refresh = [{ paths: refreshPaths }]
   }
 
-  // Resolve types configuration
-  // Priority: explicit vite.config.ts > .litestar.json > hardcoded defaults
-  //
-  // Behavior:
-  // - undefined or "auto": read from .litestar.json, disabled if not found
-  // - true: use hardcoded defaults (ignore .litestar.json)
-  // - false: disabled
-  // - object: use explicit config (ignore .litestar.json for types)
-  let typesConfig: RequiredTypeGenConfig | false = false
-  const defaultTypesOutput = "src/generated"
-  const defaultOpenapiPath = path.join(defaultTypesOutput, "openapi.json")
-  const defaultRoutesPath = path.join(defaultTypesOutput, "routes.json")
-  const defaultSchemasTsPath = path.join(defaultTypesOutput, "schemas.ts")
-  const defaultPagePropsPath = path.join(defaultTypesOutput, "inertia-pages.json")
-
-  if (resolvedConfig.types === false) {
-    // Explicitly disabled - do nothing, typesConfig stays false
-  } else if (resolvedConfig.types === true) {
-    // Explicitly enabled with hardcoded defaults (ignores .litestar.json)
-    typesConfig = {
-      enabled: true,
-      output: defaultTypesOutput,
-      openapiPath: defaultOpenapiPath,
-      routesPath: defaultRoutesPath,
-      pagePropsPath: defaultPagePropsPath,
-      schemasTsPath: defaultSchemasTsPath,
-      generateZod: false,
-      generateSdk: true,
-      generateRoutes: true,
-      generatePageProps: true,
-      generateSchemas: true,
-      globalRoute: false,
-      failOnError: undefined,
-      debounce: DEBOUNCE_MS,
-    }
-  } else if (resolvedConfig.types === "auto" || typeof resolvedConfig.types === "undefined") {
-    // Auto mode: read from .litestar.json if available, otherwise disabled
-    if (pythonDefaults?.types) {
-      typesConfig = {
-        enabled: pythonDefaults.types.enabled,
-        output: pythonDefaults.types.output,
-        openapiPath: pythonDefaults.types.openapiPath,
-        routesPath: pythonDefaults.types.routesPath,
-        pagePropsPath: pythonDefaults.types.pagePropsPath,
-        schemasTsPath: pythonDefaults.types.schemasTsPath ?? path.join(pythonDefaults.types.output, "schemas.ts"),
-        generateZod: pythonDefaults.types.generateZod,
-        generateSdk: pythonDefaults.types.generateSdk,
-        generateRoutes: pythonDefaults.types.generateRoutes,
-        generatePageProps: pythonDefaults.types.generatePageProps,
-        generateSchemas: pythonDefaults.types.generateSchemas ?? true,
-        globalRoute: pythonDefaults.types.globalRoute,
-        failOnError: pythonDefaults.types.failOnError,
-        debounce: DEBOUNCE_MS,
-      }
-    }
-    // If no pythonDefaults, typesConfig stays false (disabled)
-  } else if (typeof resolvedConfig.types === "object" && resolvedConfig.types !== null) {
-    // Explicit object config - user overrides
-    const userProvidedOpenapi = Object.hasOwn(resolvedConfig.types, "openapiPath")
-    const userProvidedRoutes = Object.hasOwn(resolvedConfig.types, "routesPath")
-    const userProvidedPageProps = Object.hasOwn(resolvedConfig.types, "pagePropsPath")
-    const userProvidedSchemasTs = Object.hasOwn(resolvedConfig.types, "schemasTsPath")
-
-    const resolvedTypesConfig: RequiredTypeGenConfig = {
-      enabled: resolvedConfig.types.enabled ?? true,
-      output: resolvedConfig.types.output ?? defaultTypesOutput,
-      openapiPath: resolvedConfig.types.openapiPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "openapi.json") : defaultOpenapiPath),
-      routesPath: resolvedConfig.types.routesPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "routes.json") : defaultRoutesPath),
-      pagePropsPath: resolvedConfig.types.pagePropsPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "inertia-pages.json") : defaultPagePropsPath),
-      schemasTsPath: resolvedConfig.types.schemasTsPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "schemas.ts") : defaultSchemasTsPath),
-      generateZod: resolvedConfig.types.generateZod ?? false,
-      generateSdk: resolvedConfig.types.generateSdk ?? true,
-      generateRoutes: resolvedConfig.types.generateRoutes ?? true,
-      generatePageProps: resolvedConfig.types.generatePageProps ?? true,
-      generateSchemas: resolvedConfig.types.generateSchemas ?? true,
-      globalRoute: resolvedConfig.types.globalRoute ?? false,
-      failOnError: resolvedConfig.types.failOnError ?? pythonDefaults?.types?.failOnError,
-      debounce: resolvedConfig.types.debounce ?? DEBOUNCE_MS,
-    }
-
-    // If the user only set output (not openapi/routes/pageProps), cascade them under output for consistency
-    if (!userProvidedOpenapi && resolvedConfig.types.output) {
-      resolvedTypesConfig.openapiPath = path.join(resolvedTypesConfig.output, "openapi.json")
-    }
-    if (!userProvidedRoutes && resolvedConfig.types.output) {
-      resolvedTypesConfig.routesPath = path.join(resolvedTypesConfig.output, "routes.json")
-    }
-    if (!userProvidedPageProps && resolvedConfig.types.output) {
-      resolvedTypesConfig.pagePropsPath = path.join(resolvedTypesConfig.output, "inertia-pages.json")
-    }
-    if (!userProvidedSchemasTs && resolvedConfig.types.output) {
-      resolvedTypesConfig.schemasTsPath = path.join(resolvedTypesConfig.output, "schemas.ts")
-    }
-    typesConfig = resolvedTypesConfig
-  }
+  // Resolve types configuration. Core plugin behavior preserves explicit JS config
+  // as the source of truth; only auto mode reads Python defaults.
+  const typesConfig = resolveTypesConfig({
+    requested: resolvedConfig.types,
+    pythonConfig: pythonDefaults?.types ?? undefined,
+    defaultOutput: "src/generated",
+  })
 
   // Auto-detect Inertia from .litestar.json if not explicitly set.
   // Inertia can be used with spa, hybrid, or template mode; bridge spa metadata
@@ -1336,9 +1248,7 @@ function resolveFullReloadConfig({ refresh }: ResolvedPluginConfig): PluginOptio
   return (config as RefreshConfig[]).flatMap((c) => {
     const plugin = fullReload(c.paths, c.config)
 
-    /* eslint-disable-next-line @typescript-eslint/ban-ts-comment */
-    /** @ts-ignore */
-    plugin.__litestar_plugin_config = c
+    ;(plugin as Plugin & { __litestar_plugin_config?: RefreshConfig }).__litestar_plugin_config = c
 
     return plugin
   })
@@ -1430,14 +1340,10 @@ function resolveDevServerUrl(address: AddressInfo, config: ResolvedConfig, userC
 }
 
 function isIpv6(address: AddressInfo): boolean {
-  return (
-    address.family === "IPv6" ||
-    // In node >=18.0 <18.4 this was an integer value. This was changed in a minor version.
-    // See: https://github.com/laravel/vite-plugin/issues/103
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore-next-line
-    address.family === 6
-  )
+  const family = address.family as string | number
+  // In node >=18.0 <18.4 this was an integer value. This was changed in a minor version.
+  // See: https://github.com/laravel/vite-plugin/issues/103
+  return family === "IPv6" || family === 6
 }
 
 /**
@@ -1446,9 +1352,8 @@ function isIpv6(address: AddressInfo): boolean {
  * @see https://vite.dev/guide/ssr.html#ssr-externals
  */
 function noExternalInertiaHelpers(config: UserConfig): true | Array<string | RegExp> {
-  /* eslint-disable-next-line @typescript-eslint/ban-ts-comment */
-  /* @ts-ignore */
-  const userNoExternal = (config.ssr as SSROptions | undefined)?.noExternal
+  const ssrConfig = typeof config.ssr === "object" && config.ssr !== null ? (config.ssr as SSROptions) : undefined
+  const userNoExternal = ssrConfig?.noExternal
   const pluginNoExternal = ["litestar-vite-plugin"]
 
   if (userNoExternal === true) {

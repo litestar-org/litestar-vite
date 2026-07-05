@@ -845,6 +845,31 @@ def test_load_index_html_sync_missing_raises(tmp_path: Path) -> None:
         handler._load_index_html_sync()
 
 
+def test_app_handler_loads_manifest_from_vite_dir(tmp_path: Path) -> None:
+    from litestar_vite.config import PathConfig, RuntimeConfig
+
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text(
+        "<html><body><script type='module' src='/src/main.ts'></script></body></html>"
+    )
+    bundle_dir = tmp_path / "public"
+    manifest_dir = bundle_dir / ".vite"
+    manifest_dir.mkdir(parents=True)
+    (manifest_dir / "manifest.json").write_text('{"src/main.ts":{"file":"assets/main.js"}}')
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(root=tmp_path, resource_dir="resources", bundle_dir="public", static_dir="public"),
+        runtime=RuntimeConfig(dev_mode=False),
+    )
+    handler = AppHandler(config)
+
+    handler.initialize_sync()
+
+    assert handler._manifest == {"src/main.ts": {"file": "assets/main.js"}}
+
+
 def test_transform_asset_urls_in_html_uses_manifest(spa_config: ViteConfig) -> None:
     handler = AppHandler(spa_config)
     handler._manifest = {"entry": {"file": "assets/main.js"}}

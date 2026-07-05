@@ -14,7 +14,7 @@ from litestar.enums import ScopeType
 from litestar.exceptions import WebSocketDisconnect
 from litestar.middleware import AbstractMiddleware
 
-from litestar_vite.plugin._utils import console, is_litestar_route, is_proxy_debug, normalize_prefix
+from litestar_vite.plugin._utils import check_h2_available, console, is_litestar_route, is_proxy_debug, normalize_prefix
 from litestar_vite.utils import read_hotfile_url
 
 if TYPE_CHECKING:
@@ -165,16 +165,6 @@ def _extract_request_headers(
     return filtered
 
 
-def _extract_proxy_response(upstream_resp: "httpx.Response") -> tuple[int, list[tuple[bytes, bytes]], bytes]:  # pyright: ignore[reportUnusedFunction]
-    """Extract status, headers, and body from an httpx response for proxying.
-
-    Returns:
-        A tuple of (status_code, headers, body).
-    """
-    headers = _extract_proxy_response_headers(upstream_resp.headers)
-    return upstream_resp.status_code, headers, upstream_resp.content
-
-
 def _extract_proxy_response_headers(headers: "httpx.Headers") -> list[tuple[bytes, bytes]]:
     """Extract response headers while preserving duplicates and filtering hop-by-hop headers.
 
@@ -272,8 +262,7 @@ class ViteProxyMiddleware(AbstractMiddleware):
     ) -> None:
         super().__init__(app)
         self.hotfile_path = hotfile_path
-        self._cached_target: str | None = None
-        self._cached_target_mtime_ns: int | None = None
+        self._get_target_url = create_target_url_getter(None, hotfile_path, [None], debug_label="vite-proxy")
         self.asset_prefix = normalize_prefix(asset_url) if asset_url else "/"
         self.http2 = http2
         self._plugin = plugin
@@ -300,28 +289,7 @@ class ViteProxyMiddleware(AbstractMiddleware):
         Returns:
             The Vite server URL or None if unavailable.
         """
-        try:
-            hotfile_stat = self.hotfile_path.stat()
-        except (FileNotFoundError, OSError):
-            self._cached_target = None
-            self._cached_target_mtime_ns = None
-            return None
-
-        if self._cached_target is not None and self._cached_target_mtime_ns == hotfile_stat.st_mtime_ns:
-            return self._cached_target.rstrip("/") if self._cached_target else None
-
-        try:
-            hotfile_url = read_hotfile_url(self.hotfile_path)
-        except (FileNotFoundError, OSError):
-            self._cached_target = None
-            self._cached_target_mtime_ns = None
-            return None
-
-        self._cached_target = hotfile_url
-        self._cached_target_mtime_ns = hotfile_stat.st_mtime_ns
-        if is_proxy_debug():
-            console.print(f"[dim][vite-proxy] Target: {hotfile_url}[/]")
-        return hotfile_url.rstrip("/")
+        return self._get_target_url()
 
     async def __call__(self, scope: "Scope", receive: "Receive", send: "Send") -> None:
         scope_dict = cast("dict[str, Any]", scope)
@@ -621,12 +589,7 @@ def check_http2_support(enable: bool) -> bool:
     """
     if not enable:
         return False
-    try:
-        import h2  # noqa: F401  # pyright: ignore[reportMissingImports,reportUnusedImport]
-    except ImportError:
-        return False
-    else:
-        return True
+    return check_h2_available()
 
 
 def build_proxy_url(target_url: str, path: str, query: str) -> str:
@@ -640,7 +603,11 @@ def build_proxy_url(target_url: str, path: str, query: str) -> str:
 
 
 def create_target_url_getter(
-    target: "str | None", hotfile_path: "Path | None", cached_target: list["str | None"]
+    target: "str | None",
+    hotfile_path: "Path | None",
+    cached_target: list["str | None"],
+    *,
+    debug_label: str = "ssr-proxy",
 ) -> "Callable[[], str | None]":
     """Create a function that returns the current target URL with mtime-revalidated caching.
 
@@ -670,7 +637,7 @@ def create_target_url_getter(
             cached_target[0] = url
             cached_mtime_ns[0] = hotfile_stat.st_mtime_ns
             if is_proxy_debug():
-                console.print(f"[dim][ssr-proxy] Dynamic target: {url}[/]")
+                console.print(f"[dim][{debug_label}] Dynamic target: {url}[/]")
             return url.rstrip("/")
         except (FileNotFoundError, OSError):
             cached_target[0] = None
@@ -768,6 +735,32 @@ async def _handle_ssr_websocket_proxy(
         pass
 
 
+async def _proxy_ssr_websocket_from_socket(
+    socket: Any, get_target_url: "Callable[[], str | None]", get_hmr_target_url: "Callable[[], str | None]"
+) -> None:
+    """Resolve and proxy an SSR HMR WebSocket from a Litestar socket."""
+    target_url = get_hmr_target_url() or get_target_url()
+    if target_url is None:
+        await socket.close(code=1011, reason="SSR server not running")
+        return
+
+    ws_target = target_url.replace("http://", "ws://").replace("https://", "wss://")
+    scope_dict = dict(socket.scope)
+    ws_path = str(scope_dict.get("path", "/"))
+    query_bytes = cast("bytes", scope_dict.get("query_string", b""))
+    ws_url = build_proxy_url(ws_target, ws_path, query_bytes.decode("utf-8") if query_bytes else "")
+
+    if is_proxy_debug():
+        console.print(f"[dim][ssr-proxy-ws] {ws_path} → {ws_url}[/]")
+
+    headers = extract_forward_headers(scope_dict)
+    subprotocols = extract_subprotocols(scope_dict)
+    typed_subprotocols: list[Subprotocol] = [cast("Subprotocol", p) for p in subprotocols]
+    accept_subprotocol: str | None = subprotocols[0] if subprotocols else None
+    await socket.accept(subprotocols=accept_subprotocol)
+    await _handle_ssr_websocket_proxy(socket, ws_url, headers, typed_subprotocols)
+
+
 class SSRProxyMiddleware(AbstractMiddleware):
     """ASGI middleware that proxies HTTP traffic to an SSR framework dev server.
 
@@ -792,10 +785,9 @@ class SSRProxyMiddleware(AbstractMiddleware):
         plugin: "VitePlugin | None" = None,
     ) -> None:
         super().__init__(app)
-        self._static_target = target
-        self._hotfile_path = hotfile_path
         self._http2 = http2
         self._plugin = plugin
+        self._get_target_url = create_target_url_getter(target, hotfile_path, [target])
 
     def _get_target_base_url(self) -> "str | None":
         """Resolve the framework dev server URL.
@@ -803,17 +795,7 @@ class SSRProxyMiddleware(AbstractMiddleware):
         Returns:
             The framework dev server URL, or None when unavailable.
         """
-        if self._static_target is not None:
-            return self._static_target.rstrip("/")
-        if self._hotfile_path is None:
-            return None
-        try:
-            url = read_hotfile_url(self._hotfile_path)
-            if is_proxy_debug():
-                console.print(f"[dim][ssr-proxy] Target: {url}[/]")
-            return url.rstrip("/")
-        except FileNotFoundError:
-            return None
+        return self._get_target_url()
 
     def _should_proxy(self, scope: "Scope") -> bool:
         """Return True when the request should be proxied to the framework dev server.
@@ -1055,26 +1037,7 @@ def create_ssr_ws_proxy_handler(
     @websocket(path=paths, name="ssr_proxy_ws", opt={"exclude_from_auth": True})
     async def ws_proxy(socket: "WebSocket[Any, Any, Any]") -> None:
         """Proxy WebSocket connections to the SSR framework dev server (HMR)."""
-        target_url = get_hmr_target_url() or get_target_url()
-        if target_url is None:
-            await socket.close(code=1011, reason="SSR server not running")
-            return
-
-        ws_target = target_url.replace("http://", "ws://").replace("https://", "wss://")
-        scope_dict = dict(socket.scope)
-        ws_path = str(scope_dict.get("path", "/"))
-        query_bytes = cast("bytes", scope_dict.get("query_string", b""))
-        ws_url = build_proxy_url(ws_target, ws_path, query_bytes.decode("utf-8") if query_bytes else "")
-
-        if is_proxy_debug():
-            console.print(f"[dim][ssr-proxy-ws] {ws_path} → {ws_url}[/]")
-
-        headers = extract_forward_headers(scope_dict)
-        subprotocols = extract_subprotocols(scope_dict)
-        typed_subprotocols: list[Subprotocol] = [cast("Subprotocol", p) for p in subprotocols]
-        accept_subprotocol: str | None = subprotocols[0] if subprotocols else None
-        await socket.accept(subprotocols=accept_subprotocol)
-        await _handle_ssr_websocket_proxy(socket, ws_url, headers, typed_subprotocols)
+        await _proxy_ssr_websocket_from_socket(socket, get_target_url, get_hmr_target_url)
 
     return ws_proxy
 
@@ -1110,26 +1073,7 @@ def create_ssr_websocket_handler(target: "str | None" = None, hotfile_path: "Pat
         @websocket(path=["/", "/{path:path}"], name="ssr_proxy_ws")
         async def ws_proxy(self, socket: "WebSocket[Any, Any, Any]") -> None:
             """Proxy WebSocket connections to the SSR framework dev server (HMR)."""
-            target_url = get_hmr_target_url() or get_target_url()
-            if target_url is None:
-                await socket.close(code=1011, reason="SSR server not running")
-                return
-
-            ws_target = target_url.replace("http://", "ws://").replace("https://", "wss://")
-            scope_dict = dict(socket.scope)
-            ws_path = str(scope_dict.get("path", "/"))
-            query_bytes = cast("bytes", scope_dict.get("query_string", b""))
-            ws_url = build_proxy_url(ws_target, ws_path, query_bytes.decode("utf-8") if query_bytes else "")
-
-            if is_proxy_debug():
-                console.print(f"[dim][ssr-proxy-ws] {ws_path} → {ws_url}[/]")
-
-            headers = extract_forward_headers(scope_dict)
-            subprotocols = extract_subprotocols(scope_dict)
-            typed_subprotocols: list[Subprotocol] = [cast("Subprotocol", p) for p in subprotocols]
-            accept_subprotocol: str | None = subprotocols[0] if subprotocols else None
-            await socket.accept(subprotocols=accept_subprotocol)
-            await _handle_ssr_websocket_proxy(socket, ws_url, headers, typed_subprotocols)
+            await _proxy_ssr_websocket_from_socket(socket, get_target_url, get_hmr_target_url)
 
     return SSRProxyWebSocketHandler
 
