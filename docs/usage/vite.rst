@@ -197,6 +197,9 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
    * - `deploy`
      - `DeployConfig | bool`
      - Deployment configuration for CDN publishing.
+   * - `enabled`
+     - `bool | None`
+     - Controls whether `VitePlugin` wires asset routes, SPA handlers, and lifespans. `None` auto-detects known non-serving contexts, `True` forces active, and `False` makes the plugin inert while keeping CLI/config access available. Reads from ``VITE_ENABLED`` when unset.
 
 **`SPAConfig` Parameters**:
 
@@ -456,7 +459,7 @@ What it checks (high level):
 - Python vs explicit Vite plugin overrides (``assetUrl``, ``bundleDir``, ``resourceDir``, ``staticDir``, ``hotFile``, typegen flags)
 - Core paths exist (``resource_dir``, ``static_dir``) and entrypoint ``input`` files exist
 - Dev/production artifacts (manifest in prod; hotfile/Vite reachability only with ``--runtime-checks``)
-- Environment variables that override runtime (``VITE_PORT``, ``VITE_HOST``, ``VITE_PROXY_MODE``, ``VITE_BASE_URL``)
+- Environment variables that override runtime (``VITE_PORT``, ``VITE_HOST``, ``VITE_PROXY_MODE``, ``VITE_BASE_URL``, ``VITE_ENABLED``)
 - Proxy-mode bypass risks (for example, ``server.origin`` set in ``vite.config`` while ``proxy_mode`` is ``vite``/``proxy``)
 
 Common warning: ``Proxy Mode Origin Override``

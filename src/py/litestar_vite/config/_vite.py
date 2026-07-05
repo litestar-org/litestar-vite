@@ -172,6 +172,7 @@ class ViteConfig:
         dev_mode: Convenience shortcut for runtime.dev_mode.
         base_url: Base URL for the app entry point.
         deploy: Deployment configuration for CDN publishing.
+        enabled: Whether VitePlugin actively wires serving routes and lifespans.
     """
 
     mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'inertia', 'framework', 'ssr', 'ssg', 'external'] | None" = None
@@ -184,6 +185,18 @@ class ViteConfig:
     dev_mode: bool = False
     base_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
     deploy: "DeployConfig | bool" = False
+    enabled: "bool | None" = None
+    """Whether the plugin actively serves assets/routes.
+
+    - ``None`` (default): auto-detect; serving apps behave as before and known non-serving
+      invocations such as ``litestar assets ...`` are inert.
+    - ``True``: force active; inference cannot disable the plugin.
+    - ``False``: fully inert; skip asset/route wiring, static routers, SPA handlers,
+      and Vite lifespans while leaving CLI/config access available.
+
+    When unset, ``VITE_ENABLED`` is consulted. An explicit constructor value wins over
+    the environment variable.
+    """
     static_props: "dict[str, Any]" = field(default_factory=empty_dict_factory)
     """Static data to pass to the JavaScript application via the bridge file.
 
@@ -252,6 +265,7 @@ class ViteConfig:
 
     def __post_init__(self) -> None:
         """Normalize configurations and apply shortcuts."""
+        self._resolve_enabled()
         self._normalize_mode()
         self._normalize_types()
         self._normalize_inertia()
@@ -267,6 +281,13 @@ class ViteConfig:
         self._ensure_spa_default()
         self._auto_enable_dev_mode()
         self._warn_missing_assets()
+
+    def _resolve_enabled(self) -> None:
+        """Resolve VITE_ENABLED only when enabled was not set explicitly."""
+        if self.enabled is None:
+            env = os.getenv("VITE_ENABLED")
+            if env is not None:
+                self.enabled = env.strip() in TRUE_VALUES
 
     def _auto_detect_react(self) -> None:
         """Enable React Fast Refresh automatically for React templates.

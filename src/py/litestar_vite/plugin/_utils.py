@@ -8,6 +8,7 @@ __all__ = (
     "infer_port_from_argv",
     "is_litestar_route",
     "is_non_serving_assets_cli",
+    "is_non_serving_context",
     "is_proxy_debug",
     "log_fail",
     "log_info",
@@ -176,6 +177,15 @@ def is_non_serving_assets_cli() -> bool:
         " assets init",
     )
     return any(cmd in argv_str for cmd in non_serving_commands)
+
+
+def is_non_serving_context() -> bool:
+    """Return True for high-confidence non-HTTP-serving process contexts.
+
+    This is used only when ViteConfig.enabled is left in auto mode. Ambiguous
+    contexts should opt out explicitly with ``enabled=False`` or ``VITE_ENABLED=false``.
+    """
+    return is_non_serving_assets_cli()
 
 
 def log_success(message: str) -> None:

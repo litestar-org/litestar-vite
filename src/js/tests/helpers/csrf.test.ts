@@ -166,6 +166,90 @@ describe("csrf helpers", () => {
 
       expect(token).toBe("")
     })
+
+    it("reads csrftoken cookie when window, meta, and Inertia sources are absent", () => {
+      globalThis.window.__LITESTAR_CSRF__ = undefined
+      globalThis.document = {
+        querySelector: vi.fn(() => null),
+        cookie: "foo=bar; csrftoken=cookie-token-abc; other=1",
+      } as unknown as Document
+
+      expect(getCsrfToken()).toBe("cookie-token-abc")
+    })
+
+    it("prefers csrftoken over XSRF-TOKEN", () => {
+      globalThis.window.__LITESTAR_CSRF__ = undefined
+      globalThis.document = {
+        querySelector: vi.fn(() => null),
+        cookie: "XSRF-TOKEN=xsrf-value; csrftoken=litestar-value",
+      } as unknown as Document
+
+      expect(getCsrfToken()).toBe("litestar-value")
+    })
+
+    it("falls back to XSRF-TOKEN when csrftoken cookie is absent", () => {
+      globalThis.window.__LITESTAR_CSRF__ = undefined
+      globalThis.document = {
+        querySelector: vi.fn(() => null),
+        cookie: "XSRF-TOKEN=xsrf-only",
+      } as unknown as Document
+
+      expect(getCsrfToken()).toBe("xsrf-only")
+    })
+
+    it("URL-decodes the cookie value", () => {
+      globalThis.window.__LITESTAR_CSRF__ = undefined
+      globalThis.document = {
+        querySelector: vi.fn(() => null),
+        cookie: "csrftoken=a%2Bb%2Fc%3D",
+      } as unknown as Document
+
+      expect(getCsrfToken()).toBe("a+b/c=")
+    })
+
+    it("meta tag wins over cookie", () => {
+      globalThis.window.__LITESTAR_CSRF__ = undefined
+      const mockMeta = { getAttribute: vi.fn(() => "meta-token") }
+      ;(globalThis.document as unknown as { querySelector: unknown }).querySelector = vi.fn(() => mockMeta)
+      ;(globalThis.document as unknown as { cookie: string }).cookie = "csrftoken=cookie-token"
+
+      expect(getCsrfToken()).toBe("meta-token")
+    })
+
+    it("Inertia prop wins over cookie", () => {
+      globalThis.window.__LITESTAR_CSRF__ = undefined
+      globalThis.document = {
+        querySelector: vi.fn(() => null),
+        cookie: "csrftoken=cookie-token",
+      } as unknown as Document
+      ;(globalThis.window as unknown as Record<string, unknown>).__INERTIA_PAGE__ = {
+        props: { csrf_token: "inertia-token" },
+      }
+
+      expect(getCsrfToken()).toBe("inertia-token")
+    })
+
+    it("window global wins over cookie", () => {
+      globalThis.window.__LITESTAR_CSRF__ = "window-token"
+      globalThis.document = {
+        querySelector: vi.fn(() => null),
+        cookie: "csrftoken=cookie-token",
+      } as unknown as Document
+
+      expect(getCsrfToken()).toBe("window-token")
+    })
+
+    it("returns a rotated cookie token instead of a stale cached value", () => {
+      globalThis.window.__LITESTAR_CSRF__ = undefined
+      globalThis.document = {
+        querySelector: vi.fn(() => null),
+        cookie: "csrftoken=first",
+      } as unknown as Document
+      expect(getCsrfToken()).toBe("first")
+
+      ;(globalThis.document as unknown as { cookie: string }).cookie = "csrftoken=second"
+      expect(getCsrfToken()).toBe("second")
+    })
   })
 
   describe("csrfHeaders", () => {

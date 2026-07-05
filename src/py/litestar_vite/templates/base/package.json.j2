@@ -12,27 +12,13 @@
     "generate-types": "openapi-ts"{% endif %}
   },
   "dependencies": {
-{%- set emit_zod = generate_zod and not has_dependency('zod') %}
-{%- for dep in dependencies %}
-    "{{ dep }}": "{{ package_version(dep) }}"{% if not loop.last or emit_zod %},{% endif %}
+{%- for name, version in dependencies_map.items() %}
+    "{{ name }}": "{{ version }}"{% if not loop.last %},{% endif %}
 {%- endfor %}
-{%- if emit_zod %}
-    "zod": "{{ package_version('zod') }}"
-{%- endif %}
   },
   "devDependencies": {
-{%- set emit_openapi_ts = generate_client and not has_dev_dependency('@hey-api/openapi-ts') %}
-{%- for dep in dev_dependencies %}
-    "{{ dep }}": "{{ package_version(dep) }}",
+{%- for name, version in dev_dependencies_map.items() %}
+    "{{ name }}": "{{ version }}"{% if not loop.last %},{% endif %}
 {%- endfor %}
-{%- if use_tailwind %}
-    "@tailwindcss/vite": "{{ package_version('@tailwindcss/vite') }}",
-    "tailwindcss": "{{ package_version('tailwindcss') }}",
-{%- endif %}
-{%- if emit_openapi_ts %}
-    "@hey-api/openapi-ts": "{{ package_version('@hey-api/openapi-ts') }}",
-{%- endif %}
-    "litestar-vite-plugin": "{{ package_version('litestar-vite-plugin') }}",
-    "vite": "{{ package_version('vite') }}"
   }
 }
