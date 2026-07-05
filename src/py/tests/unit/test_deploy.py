@@ -155,3 +155,28 @@ def test_sync_memory_filesystem(tmp_path: Path) -> None:
     assert "upload:assets/main.js" in actions
     assert "delete:old.js" in actions
     assert result.dry_run is False
+
+
+def test_sync_dry_run_detects_nested_remote_orphans(tmp_path: Path) -> None:
+    bundle = tmp_path / "dist"
+    bundle.mkdir()
+    (bundle / "assets").mkdir()
+    (bundle / "assets" / "main.js").write_text("new")
+    manifest = bundle / "manifest.json"
+    manifest.write_text('{"entry":{"file":"assets/main.js"}}')
+
+    fs = MemoryFileSystem()
+    fs.pipe_file("deploy/assets/main.js", b"new")
+    fs.pipe_file("deploy/assets/nested/old.js", b"old")
+
+    deployer = ViteDeployer(
+        bundle_dir=bundle,
+        manifest_name="manifest.json",
+        deploy_config=DeployConfig(enabled=True, storage_backend="memory://deploy"),
+        fs=fs,
+        remote_path="deploy",
+    )
+
+    result = deployer.sync(dry_run=True)
+
+    assert result.deleted == ["assets/nested/old.js"]

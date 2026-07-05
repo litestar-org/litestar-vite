@@ -101,7 +101,9 @@ _HOP_BY_HOP_HEADERS = frozenset({
     "content-encoding",
 })
 
-_WS_REQUEST_SKIP_HEADERS = _HOP_BY_HOP_HEADERS | {
+_REQUEST_SKIP_HEADERS = _HOP_BY_HOP_HEADERS
+
+_WS_REQUEST_SKIP_HEADERS = _REQUEST_SKIP_HEADERS | {
     "host",
     "upgrade",
     "sec-websocket-key",
@@ -148,9 +150,9 @@ def _extract_request_headers(
     if not headers:
         return []
 
-    skip = {_normalize_header_key(name) for name in _HOP_BY_HOP_HEADERS}
+    skip = _REQUEST_SKIP_HEADERS
     if extra_skip_headers is not None:
-        skip.update(_normalize_header_key(name) for name in extra_skip_headers)
+        skip = skip | frozenset(_normalize_header_key(name) for name in extra_skip_headers)
 
     hop_by_hop = set(skip)
     hop_by_hop.update(_collect_connection_tokens(headers))

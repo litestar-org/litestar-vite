@@ -1504,29 +1504,47 @@ function dirname(): string {
   return path.resolve(process.cwd(), "../dist/js")
 }
 
+let cachedDevServerPlaceholderCandidates: string[] | undefined
+let cachedDevServerPlaceholderPath: string | undefined
+
 function getDevServerPlaceholderCandidates(): string[] {
+  if (cachedDevServerPlaceholderCandidates) {
+    return cachedDevServerPlaceholderCandidates
+  }
+
   const distJsRoot = "dist/js"
   const placeholderName = "dev-server-index.html"
   const moduleDir = dirname()
 
   const candidates = [
-    path.join(dirname(), placeholderName),
+    path.join(moduleDir, placeholderName),
     path.join(process.cwd(), distJsRoot, placeholderName),
     path.join(process.cwd(), "src", "js", distJsRoot, placeholderName),
     path.resolve(process.cwd(), "..", distJsRoot, placeholderName),
     path.join(moduleDir, distJsRoot, placeholderName),
   ]
 
-  return [...new Set(candidates)]
+  cachedDevServerPlaceholderCandidates = [...new Set(candidates)]
+  return cachedDevServerPlaceholderCandidates
 }
 
 async function loadDevServerPlaceholder(): Promise<string> {
+  if (cachedDevServerPlaceholderPath) {
+    try {
+      return await fs.promises.readFile(cachedDevServerPlaceholderPath, "utf-8")
+    } catch {
+      cachedDevServerPlaceholderPath = undefined
+    }
+  }
+
   const candidates = getDevServerPlaceholderCandidates()
   let lastError: unknown = new Error("Failed to load dev server placeholder index.html")
 
   for (const candidatePath of candidates) {
     try {
-      return await fs.promises.readFile(candidatePath, "utf-8")
+      const content = await fs.promises.readFile(candidatePath, "utf-8")
+      cachedDevServerPlaceholderPath = candidatePath
+      return content
     } catch (error) {
       lastError = error
     }

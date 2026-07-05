@@ -1,4 +1,5 @@
 import inspect
+import os
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -74,6 +75,16 @@ class FakeExecutor(JSExecutor):
         if self.fail_execute:
             raise ViteExecutionError(args, 1, "boom")
         self.executes.append((args, cwd))
+
+
+class EnvCapturingExecutor(FakeExecutor):
+    def __init__(self) -> None:
+        super().__init__()
+        self.build_typegen_env_values: list[str | None] = []
+
+    def execute(self, args: list[str], cwd: Path) -> None:
+        self.build_typegen_env_values.append(os.environ.get("LITESTAR_VITE_SKIP_BUILD_TYPEGEN"))
+        super().execute(args, cwd)
 
 
 class FakeDeployer:
@@ -231,6 +242,23 @@ def test_cli_run_vite_build_executes(tmp_path: Path) -> None:
     assert generate.called
     assert typegen.called
     assert fake_executor.executes
+
+
+def test_cli_run_vite_build_skips_js_build_typegen_after_cli_typegen(tmp_path: Path) -> None:
+    app = _make_app(tmp_path, types=True)
+    config = app.plugins.get(VitePlugin).config
+    fake_executor = EnvCapturingExecutor()
+    config._executor_instance = fake_executor
+
+    with (
+        patch("litestar_vite.cli._generate_schema_and_routes", return_value=True),
+        patch("litestar_vite.cli._invoke_typegen_cli"),
+        patch("litestar_vite.cli.set_environment"),
+    ):
+        _run_vite_build(config, tmp_path, Mock(), no_build=False, app=app)
+
+    assert fake_executor.build_typegen_env_values == ["1"]
+    assert "LITESTAR_VITE_SKIP_BUILD_TYPEGEN" not in os.environ
 
 
 def test_cli_run_vite_build_failure(tmp_path: Path) -> None:

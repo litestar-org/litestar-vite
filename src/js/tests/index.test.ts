@@ -1539,6 +1539,26 @@ describe("litestar-vite-plugin", () => {
       expect(mockNext).not.toHaveBeenCalled()
     })
 
+    it("caches placeholder path probing across placeholder responses", async () => {
+      const appUrl = "http://test.app"
+      process.env.APP_URL = appUrl
+      await setupServer()
+      mockFs(null)
+
+      const existsSpy = vi.spyOn(fs, "existsSync")
+
+      await mockMiddleware({ url: "/index.html", originalUrl: "/index.html" }, mockRes, mockNext)
+      const firstProbeCount = existsSpy.mock.calls.filter(([candidate]) => String(candidate).endsWith("dev-server-index.html")).length
+
+      mockRes.end.mockClear()
+      await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
+      const totalProbeCount = existsSpy.mock.calls.filter(([candidate]) => String(candidate).endsWith("dev-server-index.html")).length
+
+      expect(totalProbeCount).toBe(firstProbeCount)
+      expect(mockRes.end).toHaveBeenCalledWith(actualPlaceholderContent.replace(/{{ APP_URL }}/g, appUrl))
+      expect(mockNext).not.toHaveBeenCalled()
+    })
+
     it("serves placeholder when index.html is not detected and url is /", async () => {
       // When no index.html exists (hybrid/inertia mode), serve the placeholder at root
       // This helps users who accidentally navigate to the Vite dev server port

@@ -31,6 +31,7 @@ from litestar.testing import create_test_client  # pyright: ignore[reportUnknown
 from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig, ViteConfig
 from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
 from litestar_vite.inertia.middleware import InertiaMiddleware
+from litestar_vite.inertia.plugin import _wrap_app_handlers
 from litestar_vite.plugin import VitePlugin
 
 
@@ -99,6 +100,34 @@ def test_inertia_envelope_returned_when_auto_registered(
         assert data["props"]["thing"] == "value"
 
 
+def test_inertia_envelope_uses_custom_component_opt_keys(
+    test_app_path: Path, template_config_inertia: TemplateConfig[Any]
+) -> None:
+    config = ViteConfig(
+        mode="template",
+        paths=PathConfig(bundle_dir=test_app_path / "public", resource_dir=test_app_path / "resources"),
+        runtime=RuntimeConfig(dev_mode=True),
+        inertia=InertiaConfig(root_template="index.html.j2", component_opt_keys=("view", "component", "page")),
+    )
+
+    @get("/", opt={"view": "Dashboard"})
+    async def handler() -> dict[str, str]:
+        return {"thing": "value"}
+
+    with create_test_client(
+        plugins=[VitePlugin(config=config)],
+        route_handlers=[handler],
+        template_config=template_config_inertia,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+
+        assert data["component"] == "Dashboard"
+        assert data["props"]["thing"] == "value"
+
+
 def test_inertia_html_shell_uses_template_render(
     inertia_vite_config: ViteConfig, template_config_inertia: TemplateConfig[Any]
 ) -> None:
@@ -134,6 +163,49 @@ def test_inertia_middleware_installed_only_once(
         # InertiaMiddleware is appended as a class (not DefineMiddleware).
         count = sum(1 for mw in middleware_classes if mw is InertiaMiddleware)
         assert count == 1, f"InertiaMiddleware registered {count} times, expected 1"
+
+
+def test_wrap_app_handlers_skips_non_inertia_handlers() -> None:
+    @get("/api")
+    async def api_handler() -> dict[str, bool]:
+        return {"ok": True}
+
+    @get("/page", component="Home")
+    async def page_handler() -> dict[str, str]:
+        return {"thing": "value"}
+
+    with create_test_client(route_handlers=[api_handler, page_handler]) as client:
+        _wrap_app_handlers(client.app)
+
+        handlers = {
+            path: handler
+            for route in client.app.routes
+            for handler in getattr(route, "route_handlers", ())
+            if "GET" in getattr(handler, "http_methods", ())
+            for path in getattr(handler, "paths", ())
+        }
+
+        assert getattr(handlers["/api"].fn, "_inertia_wrapped", False) is False
+        assert getattr(handlers["/page"].fn, "_inertia_wrapped", False) is True
+
+
+def test_wrap_app_handlers_honors_custom_component_opt_keys() -> None:
+    @get("/page", opt={"view": "Dashboard"})
+    async def page_handler() -> dict[str, str]:
+        return {"thing": "value"}
+
+    with create_test_client(route_handlers=[page_handler]) as client:
+        _wrap_app_handlers(client.app, component_opt_keys=("view", "component", "page"))
+
+        handlers = {
+            path: handler
+            for route in client.app.routes
+            for handler in getattr(route, "route_handlers", ())
+            if "GET" in getattr(handler, "http_methods", ())
+            for path in getattr(handler, "paths", ())
+        }
+
+        assert getattr(handlers["/page"].fn, "_inertia_wrapped", False) is True
 
 
 class _ReboundPlugin(InitPlugin):

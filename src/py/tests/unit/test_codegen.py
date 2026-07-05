@@ -1,6 +1,8 @@
 """Unit tests for codegen module."""
 
+from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 from uuid import UUID
 
 from litestar import Litestar, get, post
@@ -21,6 +23,7 @@ from litestar_vite.codegen._ts import (
     ts_type_from_openapi,
     wrap_for_array,
 )
+from litestar_vite.config import PathConfig, TypeGenConfig, ViteConfig
 
 
 def testts_type_for_param_basic_types() -> None:
@@ -43,6 +46,26 @@ def testts_type_for_param_special_formats() -> None:
     assert ts_type_for_param("email") == "string"
     assert ts_type_for_param("uri") == "string"
     assert ts_type_for_param("path") == "string"
+
+
+def test_export_integration_assets_extracts_route_metadata_once(tmp_path: Path) -> None:
+    from litestar_vite.codegen import _routes as routes_module
+    from litestar_vite.codegen import export_integration_assets
+
+    @get("/users/{user_id:int}")
+    async def handler(user_id: FromPath[int]) -> dict[str, int]:
+        return {"user_id": user_id}
+
+    app = Litestar(route_handlers=[handler])
+    config = ViteConfig(
+        paths=PathConfig(root=tmp_path), types=TypeGenConfig(output=tmp_path / "generated", generate_routes=True)
+    )
+    real_extract = routes_module.extract_route_metadata
+
+    with patch("litestar_vite.codegen._routes.extract_route_metadata", wraps=real_extract) as extract:
+        export_integration_assets(app, config)
+
+    extract.assert_called_once()
 
 
 def testts_type_for_param_optional_handling() -> None:

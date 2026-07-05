@@ -180,6 +180,23 @@ describe("createLitestarTypeGenPlugin", () => {
     expect(context.error).not.toHaveBeenCalled()
   })
 
+  it("skips buildStart generation when Python assets build already ran typegen", async () => {
+    process.env.LITESTAR_VITE_SKIP_BUILD_TYPEGEN = "1"
+    const plugin = createPlugin()
+    plugin.configResolved?.(createResolvedConfig("build") as never)
+    const context = { error: vi.fn(), warn: vi.fn() }
+
+    try {
+      await plugin.buildStart?.call(context as never)
+    } finally {
+      delete process.env.LITESTAR_VITE_SKIP_BUILD_TYPEGEN
+    }
+
+    expect(mocks.runTypeGeneration).not.toHaveBeenCalled()
+    expect(context.error).not.toHaveBeenCalled()
+    expect(context.warn).not.toHaveBeenCalled()
+  })
+
   it("reruns once when a change arrives during active generation", async () => {
     let resolveFirst: (value: unknown) => void = () => undefined
     const firstRun = new Promise((resolve) => {

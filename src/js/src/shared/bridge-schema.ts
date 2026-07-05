@@ -335,28 +335,53 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
 export function readBridgeConfig(explicitPath?: string): BridgeSchema | null {
   const envPath = explicitPath ?? process.env.LITESTAR_VITE_CONFIG_PATH
   if (envPath) {
-    if (!fs.existsSync(envPath)) {
-      return null
-    }
-    try {
-      return readBridgeConfigFile(envPath)
-    } catch (error) {
-      warn(error instanceof Error ? error.message : String(error))
-      return null
-    }
+    return readBridgeConfigFileCached(envPath)
   }
 
   const defaultPath = path.join(process.cwd(), ".litestar.json")
-  if (fs.existsSync(defaultPath)) {
-    try {
-      return readBridgeConfigFile(defaultPath)
-    } catch (error) {
-      warn(error instanceof Error ? error.message : String(error))
-      return null
+  return readBridgeConfigFileCached(defaultPath)
+}
+
+interface BridgeConfigCacheEntry {
+  mtimeMs: number
+  config: BridgeSchema | null
+}
+
+const bridgeConfigCache = new Map<string, BridgeConfigCacheEntry>()
+
+function readBridgeConfigFileCached(filePath: string): BridgeSchema | null {
+  const resolvedPath = path.resolve(filePath)
+  if (!fs.existsSync(resolvedPath)) {
+    return null
+  }
+
+  let mtimeMs: number | null = null
+  try {
+    mtimeMs = fs.statSync(resolvedPath).mtimeMs
+  } catch {
+    mtimeMs = null
+  }
+
+  if (mtimeMs !== null) {
+    const cached = bridgeConfigCache.get(resolvedPath)
+    if (cached?.mtimeMs === mtimeMs) {
+      return cached.config
     }
   }
 
-  return null
+  try {
+    const config = readBridgeConfigFile(resolvedPath)
+    if (mtimeMs !== null) {
+      bridgeConfigCache.set(resolvedPath, { mtimeMs, config })
+    }
+    return config
+  } catch (error) {
+    warn(error instanceof Error ? error.message : String(error))
+    if (mtimeMs !== null) {
+      bridgeConfigCache.set(resolvedPath, { mtimeMs, config: null })
+    }
+    return null
+  }
 }
 
 function readBridgeConfigFile(filePath: string): BridgeSchema {

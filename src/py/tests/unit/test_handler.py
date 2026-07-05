@@ -84,6 +84,31 @@ def spa_config(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Vite
     )
 
 
+def test_load_manifest_sync_reads_vite_default_manifest_path(tmp_path: Path) -> None:
+    """AppHandler should load Vite's default bundle_dir/.vite/manifest.json."""
+    from litestar_vite.config import PathConfig, RuntimeConfig
+
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<html></html>")
+
+    bundle_dir = tmp_path / "public"
+    manifest_path = bundle_dir / ".vite" / "manifest.json"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text('{"main.js":{"file":"assets/main.hash.js"}}')
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(root=tmp_path, resource_dir="resources", bundle_dir="public", static_dir="public"),
+        runtime=RuntimeConfig(dev_mode=False),
+    )
+    handler = AppHandler(config)
+
+    handler._load_manifest_sync()
+
+    assert handler._manifest == {"main.js": {"file": "assets/main.hash.js"}}
+
+
 @pytest.fixture
 def spa_config_dev(temp_resource_dir: Path) -> ViteConfig:
     """Create a ViteConfig for SPA mode in development.
