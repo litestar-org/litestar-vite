@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   execFile: vi.fn(),
   existsSync: vi.fn(() => true),
   readFileSync: vi.fn(() => JSON.stringify({ bin: { "openapi-ts": "bin/openapi-ts.js" } })),
+  resolvePackageExecutorArgv: vi.fn((args: string[], _executor?: string, options?: { packageSpec?: string; binName?: string }) =>
+    options?.packageSpec && options.binName ? ["npm", "exec", "--yes", "--package", options.packageSpec, "--", options.binName, ...args] : ["npx", ...args],
+  ),
   resolve: vi.fn((specifier: string) => {
     if (specifier === "@hey-api/openapi-ts/package.json") {
       return "/fake/node_modules/@hey-api/openapi-ts/package.json"
@@ -40,7 +43,7 @@ vi.mock("node:module", () => ({
 vi.mock("../../src/install-hint.js", () => ({
   resolveInstallHint: vi.fn((pkg?: string) => `npm install -D ${pkg || "@hey-api/openapi-ts"}`),
   resolvePackageExecutor: vi.fn((cmd: string) => `npx ${cmd}`),
-  resolvePackageExecutorArgv: vi.fn((args: string[]) => ["npx", ...args]),
+  resolvePackageExecutorArgv: mocks.resolvePackageExecutorArgv,
 }))
 
 vi.mock("../../src/shared/emit-page-props-types.js", () => ({
@@ -135,6 +138,30 @@ describe("typegen-core", () => {
     expect(execFile).toHaveBeenCalledWith(
       process.execPath,
       ["/fake/node_modules/@hey-api/openapi-ts/bin/openapi-ts.js", "-i", "openapi.json", "-o", "src/generated/api", "--plugins", "@hey-api/typescript"],
+      {
+        cwd: "/home/user/project",
+      },
+      expect.any(Function),
+    )
+  })
+
+  it("runs fallback hey-api through npm exec with an explicit package and binary", async () => {
+    mocks.resolve.mockImplementation((specifier: string) => {
+      if (specifier === "@hey-api/openapi-ts/package.json") {
+        throw new Error("Cannot find module")
+      }
+      return `/fake/node_modules/${specifier}/package.json`
+    })
+
+    await runHeyApiGeneration(createConfig(), null, ["@hey-api/typescript"], logger)
+
+    expect(mocks.resolvePackageExecutorArgv).toHaveBeenCalledWith(["-i", "openapi.json", "-o", "src/generated/api", "--plugins", "@hey-api/typescript"], undefined, {
+      packageSpec: "@hey-api/openapi-ts@0.98.2",
+      binName: "openapi-ts",
+    })
+    expect(execFile).toHaveBeenCalledWith(
+      "npm",
+      ["exec", "--yes", "--package", "@hey-api/openapi-ts@0.98.2", "--", "openapi-ts", "-i", "openapi.json", "-o", "src/generated/api", "--plugins", "@hey-api/typescript"],
       {
         cwd: "/home/user/project",
       },

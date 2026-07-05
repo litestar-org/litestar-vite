@@ -199,7 +199,10 @@ export async function runHeyApiGeneration(config: TypeGenCoreConfig, configPath:
     return sdkOutput
   }
 
-  const fallback = resolvePackageExecutorArgv([HEY_API_PINNED_SPEC, ...args], executor)
+  const fallback = resolvePackageExecutorArgv(args, executor, {
+    packageSpec: HEY_API_PINNED_SPEC,
+    binName: "openapi-ts",
+  })
   if (!fallback.length) {
     throw new Error("@hey-api/openapi-ts not installed")
   }
