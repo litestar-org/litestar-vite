@@ -17,6 +17,9 @@ Litestar Vite Changelog
 - Fixed Precognition validation success handling for handlers without an explicit ``request`` parameter by using the middleware request context.
 - Fixed Inertia SSR serialization so app, handler, and response type encoders are honored for custom page prop values.
 - Fixed Inertia partial reloads so ``deferredProps`` metadata is omitted on partial responses while initial responses still advertise deferred props.
+- Fixed ``litestar assets init`` so generated ``package.json`` files no longer emit duplicate dependency keys. (#303)
+- Added ``ViteConfig(enabled=...)`` and ``VITE_ENABLED`` so Vite routes and lifespans can be disabled in CLI, worker, and test contexts while keeping asset CLI commands available. (#301)
+- Fixed ``getCsrfToken()`` so SPA and HTMX helpers can fall back to the ``csrftoken`` or ``XSRF-TOKEN`` cookie when injected page-state sources are absent. (#299)
 
 0.25.0 - 2026-06-25
 -------------------

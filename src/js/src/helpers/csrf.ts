@@ -5,6 +5,7 @@
  * 1. window.__LITESTAR_CSRF__ (SPA mode)
  * 2. <meta name="csrf-token" content="..."> (template mode)
  * 3. Inertia shared props (Inertia mode)
+ * 4. csrftoken / XSRF-TOKEN cookie (SPA fallback)
  *
  * @module
  */
@@ -20,6 +21,7 @@ interface CsrfTokenCache {
   windowToken?: string
   metaToken?: string
   inertiaToken?: string
+  cookieToken?: string
 }
 
 let csrfTokenCache: CsrfTokenCache | null = null
@@ -64,6 +66,31 @@ function getInertiaToken(): string | undefined {
   return undefined
 }
 
+function getCookie(name: string): string | undefined {
+  if (typeof document === "undefined" || typeof document.cookie !== "string") {
+    return undefined
+  }
+
+  const value = `; ${document.cookie}`
+  const parts = value.split(`; ${name}=`)
+  if (parts.length === 2) {
+    const raw = parts.pop()?.split(";").shift()
+    if (raw !== undefined && raw.length > 0) {
+      try {
+        return decodeURIComponent(raw)
+      } catch {
+        return raw
+      }
+    }
+  }
+
+  return undefined
+}
+
+function getCookieToken(): string | undefined {
+  return getCookie("csrftoken") ?? getCookie("XSRF-TOKEN")
+}
+
 /**
  * Get the CSRF token from the page.
  *
@@ -71,6 +98,7 @@ function getInertiaToken(): string | undefined {
  * 1. window.__LITESTAR_CSRF__ (injected by SPA handler)
  * 2. <meta name="csrf-token"> element
  * 3. Inertia page props (if Inertia is present)
+ * 4. csrftoken / XSRF-TOKEN cookie
  *
  * @returns The CSRF token or empty string if not found
  *
@@ -103,13 +131,15 @@ export function getCsrfToken(): string {
 
   const metaToken = getMetaToken()
   const inertiaToken = getInertiaToken()
-  const token = metaToken ?? inertiaToken ?? ""
+  const cookieToken = getCookieToken()
+  const token = metaToken ?? inertiaToken ?? cookieToken ?? ""
 
   if (
     csrfTokenCache &&
     csrfTokenCache.windowToken === undefined &&
     csrfTokenCache.metaToken === metaToken &&
     csrfTokenCache.inertiaToken === inertiaToken &&
+    csrfTokenCache.cookieToken === cookieToken &&
     csrfTokenCache.token === token
   ) {
     return csrfTokenCache.token
@@ -120,6 +150,7 @@ export function getCsrfToken(): string {
     windowToken: undefined,
     metaToken,
     inertiaToken,
+    cookieToken,
   }
 
   return token

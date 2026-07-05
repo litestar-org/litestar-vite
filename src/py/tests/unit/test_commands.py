@@ -367,6 +367,25 @@ def test_scaffolding_generate_project_react_tanstack_keeps_default_api_deps_when
     assert package_json["devDependencies"]["@hey-api/openapi-ts"] == V["@hey-api/openapi-ts"]
 
 
+def test_scaffolding_generate_project_react_inertia_jinja_has_unique_vite_dev_dep(tmp_path: Path) -> None:
+    """Ensure base-rendered Inertia Jinja package.json keeps Vite once."""
+    from litestar_vite.scaffolding import TemplateContext, generate_project
+    from litestar_vite.scaffolding.templates import FrameworkType, get_template
+
+    framework = get_template(FrameworkType.REACT_INERTIA_JINJA)
+    assert framework is not None
+
+    context = TemplateContext(project_name="inertia-lite", framework=framework)
+
+    generate_project(tmp_path, context)
+
+    package_text = (tmp_path / "package.json").read_text()
+    package_json = decode_json(package_text)
+
+    assert package_text.count('    "vite":') == 1
+    assert package_json["devDependencies"]["vite"] == V["vite"]
+
+
 def test_scaffolding_generated_package_manifests_pin_dependency_versions(tmp_path: Path) -> None:
     """Ensure scaffold and example package manifests do not emit floating `latest` versions."""
     root = Path(__file__).resolve().parents[4]

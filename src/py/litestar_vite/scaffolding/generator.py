@@ -95,6 +95,20 @@ class TemplateContext:
             Dictionary of template variables.
         """
         package_versions = _build_package_version_map()
+        resolve = _package_version_resolver(package_versions)
+
+        dependencies_map: dict[str, str] = {name: resolve(name) for name in self.framework.dependencies}
+        if self.generate_zod:
+            dependencies_map["zod"] = resolve("zod")
+
+        dev_dependencies_map: dict[str, str] = {name: resolve(name) for name in self.framework.dev_dependencies}
+        if self.use_tailwind:
+            dev_dependencies_map["@tailwindcss/vite"] = resolve("@tailwindcss/vite")
+            dev_dependencies_map["tailwindcss"] = resolve("tailwindcss")
+        if self.generate_client:
+            dev_dependencies_map["@hey-api/openapi-ts"] = resolve("@hey-api/openapi-ts")
+        dev_dependencies_map["litestar-vite-plugin"] = resolve("litestar-vite-plugin")
+        dev_dependencies_map["vite"] = resolve("vite")
 
         context: dict[str, Any] = {
             "project_name": self.project_name,
@@ -116,10 +130,12 @@ class TemplateContext:
             "generate_client": self.generate_client,
             "dependencies": self.framework.dependencies,
             "dev_dependencies": self.framework.dev_dependencies,
+            "dependencies_map": dependencies_map,
+            "dev_dependencies_map": dev_dependencies_map,
             "vite_plugin": self.framework.vite_plugin,
             "uses_vite": self.framework.uses_vite,
             "package_versions": package_versions,
-            "package_version": _package_version_resolver(package_versions),
+            "package_version": resolve,
             **self.extra,
         }
         context["has_dependency"] = self.has_dependency

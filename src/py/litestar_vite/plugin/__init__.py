@@ -50,6 +50,7 @@ from litestar_vite.plugin._utils import (
     get_litestar_route_prefixes,
     is_litestar_route,
     is_non_serving_assets_cli,
+    is_non_serving_context,
     log_fail,
     log_info,
     log_success,
@@ -182,6 +183,14 @@ class VitePlugin(InitPlugin, CLIPlugin):
         if self._vite_process is None:
             self._vite_process = ViteProcess(executor=self._config.executor)
         return self._vite_process
+
+    def _is_inert(self) -> bool:
+        """Return whether HTTP-serving Vite wiring should be skipped."""
+        if self._config.enabled is False:
+            return True
+        if self._config.enabled is True:
+            return False
+        return is_non_serving_context()
 
     def _get_ssr_process(self) -> ViteProcess:
         """Get or create the SSR process manager lazily.
@@ -618,6 +627,10 @@ class VitePlugin(InitPlugin, CLIPlugin):
         Returns:
             The modified application configuration.
         """
+        if self._is_inert():
+            log_info("VitePlugin inert; skipping asset and route wiring")
+            return app_config
+
         from litestar import Response
         from litestar.connection import Request as LitestarRequest
 
@@ -796,6 +809,10 @@ class VitePlugin(InitPlugin, CLIPlugin):
         Yields:
             None
         """
+        if self._is_inert():
+            yield
+            return
+
         if self._config.is_dev_mode:
             self._ensure_proxy_target()
 

@@ -90,6 +90,27 @@ def test_is_non_serving_assets_cli(monkeypatch: pytest.MonkeyPatch) -> None:
     assert utils.is_non_serving_assets_cli() is False
 
 
+# ===== is_non_serving_context centralization =====
+
+
+def test_is_non_serving_context_true_for_assets_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["litestar", "assets", "build"])
+
+    assert utils.is_non_serving_context() is True
+
+
+def test_is_non_serving_context_false_for_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["litestar", "run"])
+
+    assert utils.is_non_serving_context() is False
+
+
+def test_is_non_serving_assets_cli_still_works(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["litestar", "assets", "deploy"])
+
+    assert utils.is_non_serving_assets_cli() is True
+
+
 def test_write_runtime_config_file_records_deploy_asset_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LITESTAR_VERSION", "9.9.9")
     config = ViteConfig(
