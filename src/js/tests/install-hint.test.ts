@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { detectExecutor, resolveInstallHint, resolvePackageExecutor } from "../src/install-hint"
+import { detectExecutor, resolveInstallHint, resolvePackageExecutor, resolvePackageExecutorArgv } from "../src/install-hint"
 
 // Mock fs module
 vi.mock("node:fs", () => ({
@@ -331,6 +331,61 @@ describe("install-hint", () => {
       const executor = resolvePackageExecutor("@hey-api/openapi-ts")
 
       expect(executor).toBe("yarn dlx @hey-api/openapi-ts")
+    })
+  })
+
+  describe("resolvePackageExecutorArgv", () => {
+    it("returns argv for node package execution without shell joining", () => {
+      expect(resolvePackageExecutorArgv(["@hey-api/openapi-ts@0.98.2", "-i", "schema.json"])).toEqual(["npx", "@hey-api/openapi-ts@0.98.2", "-i", "schema.json"])
+    })
+
+    it("uses npm exec package/bin argv when an explicit package spec is provided", () => {
+      expect(
+        resolvePackageExecutorArgv(["-i", "schema.json"], "node", {
+          packageSpec: "@hey-api/openapi-ts@0.98.2",
+          binName: "openapi-ts",
+        }),
+      ).toEqual(["npm", "exec", "--yes", "--package", "@hey-api/openapi-ts@0.98.2", "--", "openapi-ts", "-i", "schema.json"])
+    })
+
+    it("returns package-manager specific argv without changing resolvePackageExecutor string output", () => {
+      expect(resolvePackageExecutorArgv(["@hey-api/openapi-ts@0.98.2", "--file", "openapi-ts.config.ts"], "pnpm")).toEqual([
+        "pnpm",
+        "dlx",
+        "@hey-api/openapi-ts@0.98.2",
+        "--file",
+        "openapi-ts.config.ts",
+      ])
+      expect(resolvePackageExecutorArgv(["@hey-api/openapi-ts@0.98.2"], "bun")).toEqual(["bunx", "@hey-api/openapi-ts@0.98.2"])
+      expect(resolvePackageExecutorArgv(["@hey-api/openapi-ts@0.98.2"], "yarn")).toEqual(["yarn", "dlx", "@hey-api/openapi-ts@0.98.2"])
+    })
+
+    it("keeps package-manager fallback argv compatible with explicit package specs", () => {
+      const options = { packageSpec: "@hey-api/openapi-ts@0.98.2", binName: "openapi-ts" }
+
+      expect(resolvePackageExecutorArgv(["--file", "openapi-ts.config.ts"], "pnpm", options)).toEqual([
+        "pnpm",
+        "dlx",
+        "@hey-api/openapi-ts@0.98.2",
+        "--file",
+        "openapi-ts.config.ts",
+      ])
+      expect(resolvePackageExecutorArgv(["--file", "openapi-ts.config.ts"], "bun", options)).toEqual(["bunx", "@hey-api/openapi-ts@0.98.2", "--file", "openapi-ts.config.ts"])
+      expect(resolvePackageExecutorArgv(["--file", "openapi-ts.config.ts"], "yarn", options)).toEqual([
+        "yarn",
+        "dlx",
+        "@hey-api/openapi-ts@0.98.2",
+        "--file",
+        "openapi-ts.config.ts",
+      ])
+      expect(resolvePackageExecutorArgv(["--file", "openapi-ts.config.ts"], "deno", options)).toEqual([
+        "deno",
+        "run",
+        "-A",
+        "npm:@hey-api/openapi-ts@0.98.2",
+        "--file",
+        "openapi-ts.config.ts",
+      ])
     })
   })
 })

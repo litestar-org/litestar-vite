@@ -36,9 +36,17 @@ vi.mock("node:child_process", () => {
       cb(null, "", "")
     }
   })
+  const execFileFn = vi.fn((_file: string, _args: string[], opts: unknown, cb?: (err: Error | null, stdout: string, stderr: string) => void) => {
+    if (typeof opts === "function") {
+      ;(opts as (err: Error | null, stdout: string, stderr: string) => void)(null, "", "")
+    } else if (cb) {
+      cb(null, "", "")
+    }
+  })
   return {
-    default: { exec: execFn },
+    default: { exec: execFn, execFile: execFileFn },
     exec: execFn,
+    execFile: execFileFn,
   }
 })
 
@@ -285,8 +293,10 @@ describe("litestar-astro integration", () => {
       process.env.LITESTAR_VITE_CONFIG_PATH = "/tmp/bad-config.json"
       ;(fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true)
       ;(fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue("invalid json {")
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
 
-      expect(() => litestarAstro()).toThrowError(/invalid \.litestar\.json/)
+      expect(() => litestarAstro()).not.toThrow()
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("invalid .litestar.json"))
     })
 
     it("skips type generation plugin setup during build command", async () => {

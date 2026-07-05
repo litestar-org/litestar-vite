@@ -91,11 +91,11 @@ function toInterfaceName(key: string): string {
  *
  * @returns true if file was changed, false if unchanged
  */
-export async function emitStaticPropsTypes(outputDir: string): Promise<boolean> {
+export async function emitStaticPropsTypes(outputDir: string, projectRoot = process.cwd()): Promise<boolean> {
   const bridgeConfig = readBridgeConfig()
   const staticProps = bridgeConfig?.staticProps ?? {}
 
-  const outDir = path.resolve(process.cwd(), outputDir)
+  const outDir = path.resolve(projectRoot, outputDir)
   await fs.promises.mkdir(outDir, { recursive: true })
   const outFile = path.join(outDir, "static-props.ts")
 

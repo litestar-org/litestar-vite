@@ -293,6 +293,31 @@ describe("Page Props Type Generation", () => {
       expect(emitted).toContain(`"Users/Show": { content: UserProps } & FullSharedProps`)
     })
 
+    it("emits semantic aliases used by generated page prop metadata", async () => {
+      const tmpDir = _createTempDir()
+      const pagesPath = _createTestPagesJson(tmpDir, {
+        pages: {
+          "Users/Show": { route: "/users", tsType: "{ id: UUID; createdAt: DateTime }" },
+        },
+        sharedProps: {
+          requestId: { type: "UUID" },
+        },
+        typeGenConfig: { includeDefaultAuth: false, includeDefaultFlash: false },
+        generatedAt: new Date().toISOString(),
+      })
+
+      const outputDir = path.join(tmpDir, "generated")
+      const { emitPagePropsTypes } = await import("../src/shared/emit-page-props-types.js")
+
+      await emitPagePropsTypes(pagesPath, outputDir)
+
+      const emitted = fs.readFileSync(path.join(outputDir, "page-props.ts"), "utf-8")
+      expect(emitted).toContain("export type DateTime = string")
+      expect(emitted).toContain("export type UUID = string")
+      expect(emitted).toContain(`"Users/Show": { id: UUID; createdAt: DateTime } & FullSharedProps`)
+      expect(emitted).toContain("requestId: UUID")
+    })
+
     it("generates GeneratedSharedProps interface", () => {
       const json: InertiaPagePropsJson = {
         pages: {},

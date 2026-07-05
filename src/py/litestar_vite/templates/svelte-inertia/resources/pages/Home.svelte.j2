@@ -11,9 +11,9 @@
 <main class="app">
   <h1>{{ project_name }}</h1>
   <p>Svelte 5 + Inertia.js + Litestar</p>
-  {#if message}
+  {{ "{#if message}" }}
     <p class="message">{message}</p>
-  {/if}
+  {{ "{/if}" }}
   <div class="links">
     <a href="/users" use:inertia>View Users</a>
   </div>

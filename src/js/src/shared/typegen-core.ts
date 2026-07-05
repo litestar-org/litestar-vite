@@ -10,17 +10,19 @@
  * - Structured output: Returns results for callers to handle
  * - Caching optional: Caller decides whether to use caching
  */
-import { exec } from "node:child_process"
+import { execFile } from "node:child_process"
 import fs from "node:fs"
 import { createRequire } from "node:module"
 import path from "node:path"
 import { promisify } from "node:util"
 
-import { resolveInstallHint, resolvePackageExecutor } from "../install-hint.js"
+import { resolveInstallHint, resolvePackageExecutorArgv } from "../install-hint.js"
+import { HEY_API_PINNED_SPEC } from "./constants.js"
 import { emitPagePropsTypes } from "./emit-page-props-types.js"
 import { emitSchemasTypes } from "./emit-schemas-types.js"
+import { emitStaticPropsTypes } from "./emit-static-props-types.js"
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 const nodeRequire = createRequire(import.meta.url)
 
 /**
@@ -81,12 +83,29 @@ export interface TypeGenLogger {
   error(message: string): void
 }
 
+export interface TypeGenCacheHooks {
+  shouldRunOpenApiTs(
+    openapiPath: string,
+    configPath: string | null,
+    options: { generateSdk: boolean; generateZod: boolean; plugins: string[]; outputPaths?: string[] },
+  ): Promise<boolean>
+  updateOpenApiTsCache(
+    openapiPath: string,
+    configPath: string | null,
+    options: { generateSdk: boolean; generateZod: boolean; plugins: string[]; outputPaths?: string[] },
+  ): Promise<void>
+  shouldRegeneratePageProps(pagePropsPath: string, outputPath?: string): Promise<boolean>
+  updatePagePropsCache(pagePropsPath: string): Promise<void>
+}
+
 /**
  * Options for running type generation.
  */
 export interface RunTypeGenOptions {
   /** Logger for output (optional - silent if not provided) */
   logger?: TypeGenLogger
+  /** Optional cache hooks for Vite dev/build contexts */
+  cache?: TypeGenCacheHooks
 }
 
 /**
@@ -101,7 +120,9 @@ export function resolveDefaultSdkClientPlugin(options: { inertiaMode?: boolean; 
  * Find user's openapi-ts config file.
  */
 export function findOpenApiTsConfig(projectRoot: string): string | null {
-  const candidates = [path.resolve(projectRoot, "openapi-ts.config.ts"), path.resolve(projectRoot, "hey-api.config.ts"), path.resolve(projectRoot, ".hey-api.config.ts")]
+  const bases = ["openapi-ts.config", "hey-api.config", ".hey-api.config"]
+  const extensions = [".ts", ".mjs", ".cjs", ".js"]
+  const candidates = bases.flatMap((base) => extensions.map((extension) => path.resolve(projectRoot, `${base}${extension}`)))
   return candidates.find((p) => fs.existsSync(p)) || null
 }
 
@@ -120,6 +141,23 @@ export function buildHeyApiPlugins(config: { generateSdk: boolean; generateZod: 
 }
 
 /**
+ * Resolve the locally installed @hey-api/openapi-ts executable.
+ */
+export function resolveHeyApiBin(projectRoot: string): { binPath: string } | null {
+  try {
+    const packageJsonPath = nodeRequire.resolve("@hey-api/openapi-ts/package.json", { paths: [projectRoot] })
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as { bin?: string | Record<string, string> }
+    const bin = typeof packageJson.bin === "string" ? packageJson.bin : packageJson.bin?.["openapi-ts"]
+    if (!bin) {
+      return null
+    }
+    return { binPath: path.resolve(path.dirname(packageJsonPath), bin) }
+  } catch {
+    return null
+  }
+}
+
+/**
  * Run @hey-api/openapi-ts to generate TypeScript types from OpenAPI spec.
  *
  * @param config - Type generation configuration
@@ -134,21 +172,13 @@ export async function runHeyApiGeneration(config: TypeGenCoreConfig, configPath:
   // openapi-ts clears its output directory, so we isolate it from our own artifacts
   const sdkOutput = path.join(output, "api")
 
-  if (process.env.VITEST || process.env.VITE_TEST || process.env.NODE_ENV === "test" || process.env.CI) {
-    try {
-      nodeRequire.resolve("@hey-api/openapi-ts/package.json", { paths: [projectRoot] })
-    } catch {
-      throw new Error("@hey-api/openapi-ts not installed")
-    }
-  }
-
   let args: string[]
   if (configPath) {
-    args = ["@hey-api/openapi-ts", "--file", configPath]
+    args = ["--file", configPath]
   } else {
     // Use relative path for -i to match what user would type
     const relativeOpenapiPath = path.relative(projectRoot, path.resolve(projectRoot, openapiPath))
-    args = ["@hey-api/openapi-ts", "-i", relativeOpenapiPath, "-o", sdkOutput]
+    args = ["-i", relativeOpenapiPath, "-o", sdkOutput]
     if (plugins.length) {
       args.push("--plugins", ...plugins)
     }
@@ -163,8 +193,20 @@ export async function runHeyApiGeneration(config: TypeGenCoreConfig, configPath:
     }
   }
 
-  const cmd = resolvePackageExecutor(args.join(" "), executor)
-  await execAsync(cmd, { cwd: projectRoot })
+  const local = resolveHeyApiBin(projectRoot)
+  if (local) {
+    await execFileAsync(process.execPath, [local.binPath, ...args], { cwd: projectRoot })
+    return sdkOutput
+  }
+
+  const fallback = resolvePackageExecutorArgv(args, executor, {
+    packageSpec: HEY_API_PINNED_SPEC,
+    binName: "openapi-ts",
+  })
+  if (!fallback.length) {
+    throw new Error("@hey-api/openapi-ts not installed")
+  }
+  await execFileAsync(fallback[0], fallback.slice(1), { cwd: projectRoot })
 
   return sdkOutput
 }
@@ -181,7 +223,7 @@ export async function runHeyApiGeneration(config: TypeGenCoreConfig, configPath:
  * @returns Result with generated files and timing info
  */
 export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunTypeGenOptions = {}): Promise<TypeGenResult> {
-  const { logger } = options
+  const { cache, logger } = options
   const startTime = Date.now()
 
   const result: TypeGenResult = {
@@ -206,51 +248,71 @@ export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunT
     // Generate OpenAPI types
     if (fs.existsSync(absoluteOpenapiPath) && shouldGenerateSdk) {
       const plugins = buildHeyApiPlugins(config)
-
-      logger?.info("Generating TypeScript types...")
-      if (configPath) {
-        const relConfigPath = path.relative(projectRoot, configPath)
-        logger?.info(`openapi-ts config: ${relConfigPath}`)
+      const sdkOutput = path.join(output, "api")
+      const cacheOptions = {
+        generateSdk: config.generateSdk,
+        generateZod: config.generateZod,
+        plugins,
+        outputPaths: [path.join(projectRoot, sdkOutput, "types.gen.ts")],
       }
+      const shouldRun = cache ? await cache.shouldRunOpenApiTs(absoluteOpenapiPath, configPath, cacheOptions) : true
 
-      try {
-        const outputPath = await runHeyApiGeneration(config, configPath, plugins, logger)
-        result.generatedFiles.push(outputPath)
-        result.generated = true
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-
-        // Distinguish error types:
-        // 1. "not installed" - our own check from runHeyApiGeneration when package is missing
-        // 2. ENOENT - file system error during openapi-ts execution
-        // 3. Other errors - general failures
-        const isPackageNotInstalled = message.includes("not installed")
-        const isRuntimeEnoent =
-          !isPackageNotInstalled && (message.includes("ENOENT") || (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT"))
-
-        if (isPackageNotInstalled) {
-          const zodHint = config.generateZod ? " zod" : ""
-          const warning = `@hey-api/openapi-ts not installed - run: ${resolveInstallHint(`@hey-api/openapi-ts${zodHint}`)}`
-          result.warnings.push(warning)
-          logger?.warn(warning)
-        } else if (isRuntimeEnoent) {
-          result.errors.push(`File not found during type generation: ${message}`)
-          logger?.error(`Type generation failed (file not found): ${message}`)
-        } else {
-          result.errors.push(message)
-          logger?.error(`Type generation failed: ${message}`)
+      if (shouldRun) {
+        logger?.info("Generating TypeScript types...")
+        if (configPath) {
+          const relConfigPath = path.relative(projectRoot, configPath)
+          logger?.info(`openapi-ts config: ${relConfigPath}`)
         }
+
+        try {
+          const outputPath = await runHeyApiGeneration(config, configPath, plugins, logger)
+          await cache?.updateOpenApiTsCache(absoluteOpenapiPath, configPath, cacheOptions)
+          result.generatedFiles.push(outputPath)
+          result.generated = true
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+
+          // Distinguish error types:
+          // 1. "not installed" - our own check from runHeyApiGeneration when package is missing
+          // 2. ENOENT - file system error during openapi-ts execution
+          // 3. Other errors - general failures
+          const isPackageNotInstalled = message.includes("not installed")
+          const isRuntimeEnoent =
+            !isPackageNotInstalled && (message.includes("ENOENT") || (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT"))
+
+          if (isPackageNotInstalled) {
+            const zodHint = config.generateZod ? " zod" : ""
+            const errorMessage = `@hey-api/openapi-ts not installed - run: ${resolveInstallHint(`@hey-api/openapi-ts${zodHint}`)}`
+            result.errors.push(errorMessage)
+            logger?.error(errorMessage)
+          } else if (isRuntimeEnoent) {
+            result.errors.push(`File not found during type generation: ${message}`)
+            logger?.error(`Type generation failed (file not found): ${message}`)
+          } else {
+            result.errors.push(message)
+            logger?.error(`Type generation failed: ${message}`)
+          }
+        }
+      } else {
+        result.skippedFiles.push(sdkOutput)
       }
     }
 
     // Generate page props types
     if (generatePageProps && fs.existsSync(absolutePagePropsPath)) {
       try {
-        const changed = await emitPagePropsTypes(absolutePagePropsPath, output)
         const pagePropsOutput = path.join(output, "page-props.ts")
-        if (changed) {
-          result.generatedFiles.push(pagePropsOutput)
-          result.generated = true
+        const absolutePagePropsOutput = path.resolve(projectRoot, pagePropsOutput)
+        const shouldRun = cache ? await cache.shouldRegeneratePageProps(absolutePagePropsPath, absolutePagePropsOutput) : true
+        if (shouldRun) {
+          const changed = await emitPagePropsTypes(absolutePagePropsPath, output, projectRoot)
+          await cache?.updatePagePropsCache(absolutePagePropsPath)
+          if (changed) {
+            result.generatedFiles.push(pagePropsOutput)
+            result.generated = true
+          } else {
+            result.skippedFiles.push(pagePropsOutput)
+          }
         } else {
           result.skippedFiles.push(pagePropsOutput)
         }
@@ -267,7 +329,7 @@ export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunT
       const absoluteRoutesPath = path.resolve(projectRoot, routesPath)
       if (fs.existsSync(absoluteRoutesPath)) {
         try {
-          const changed = await emitSchemasTypes(absoluteRoutesPath, output, schemasTsPath)
+          const changed = await emitSchemasTypes(absoluteRoutesPath, output, schemasTsPath, projectRoot)
           const schemasOutput = schemasTsPath ?? path.join(output, "schemas.ts")
           if (changed) {
             result.generatedFiles.push(schemasOutput)
@@ -281,6 +343,22 @@ export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunT
           logger?.error(`Schema types generation failed: ${message}`)
         }
       }
+    }
+
+    // Generate static props types from .litestar.json
+    try {
+      const changed = await emitStaticPropsTypes(output, projectRoot)
+      const staticPropsOutput = path.join(output, "static-props.ts")
+      if (changed) {
+        result.generatedFiles.push(staticPropsOutput)
+        result.generated = true
+      } else {
+        result.skippedFiles.push(staticPropsOutput)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      result.errors.push(`Static props generation failed: ${message}`)
+      logger?.error(`Static props generation failed: ${message}`)
     }
   } finally {
     result.durationMs = Date.now() - startTime

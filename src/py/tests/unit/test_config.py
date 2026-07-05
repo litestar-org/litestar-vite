@@ -409,6 +409,19 @@ def test_dev_mode_not_auto_enabled_when_mode_explicit(tmp_path: Path, monkeypatc
     assert config.runtime.dev_mode is False
 
 
+def test_auto_enabled_dev_mode_recomputes_proxy_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VITE_AUTO_DEV_MODE", "True")
+    resource_dir = tmp_path / "src"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<div></div>")
+
+    config = ViteConfig(paths=PathConfig(root=tmp_path, resource_dir=resource_dir, bundle_dir=tmp_path / "public"))
+
+    assert config.runtime.dev_mode is True
+    assert config.runtime.proxy_mode == "vite"
+    assert config.hot_reload is True
+
+
 def test_has_built_assets_detects_manifest_in_vite_dir(tmp_path: Path) -> None:
     """Built-asset detection should include bundle_dir/.vite/manifest.json."""
     bundle_dir = tmp_path / "dist"

@@ -34,7 +34,9 @@
     "{{ dep }}": "{{ package_version(dep) }}",
 {%- endfor %}
 {%- if use_tailwind %}
+    "@tailwindcss/postcss": "{{ package_version('@tailwindcss/postcss') }}",
     "@tailwindcss/vite": "{{ package_version('@tailwindcss/vite') }}",
+    "postcss": "{{ package_version('postcss') }}",
     "tailwindcss": "{{ package_version('tailwindcss') }}",
 {%- endif %}
 {%- if emit_openapi_ts %}

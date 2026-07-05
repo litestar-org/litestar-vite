@@ -33,7 +33,7 @@ import type { Plugin, ViteDevServer } from "vite"
 import { readBridgeConfig } from "./shared/bridge-schema.js"
 import { DEBOUNCE_MS } from "./shared/constants.js"
 import { normalizeHost, resolveHotFilePath, resolveLitestarPort } from "./shared/network.js"
-import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
+import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig } from "./shared/typegen-plugin.js"
 import { hmrServerConfig } from "./shared/vite-compat.js"
 
 /**
@@ -189,6 +189,13 @@ export interface AstroTypesConfig {
   globalRoute?: boolean
 
   /**
+   * Fail Vite when type generation fails.
+   *
+   * Defaults to true during build and false during dev.
+   */
+  failOnError?: boolean
+
+  /**
    * Debounce time in milliseconds for type regeneration.
    *
    * @default 300
@@ -241,7 +248,7 @@ export interface LitestarAstroConfig {
 interface ResolvedLitestarAstroConfig {
   apiProxy: string
   apiPrefix: string
-  types: Required<AstroTypesConfig> | false
+  types: RequiredTypeGenConfig | false
   verbose: boolean
   hotFile?: string
   proxyMode: "vite" | "direct" | "proxy" | null
@@ -301,7 +308,7 @@ function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroC
   }
 
   // Resolve types config
-  let typesConfig: Required<AstroTypesConfig> | false = false
+  let typesConfig: RequiredTypeGenConfig | false = false
 
   const defaultTypesOutput = "src/generated"
   const buildTypeDefaults = (output: string) => ({
@@ -327,6 +334,7 @@ function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroC
       generatePageProps: pythonTypesConfig?.generatePageProps ?? true,
       generateSchemas: pythonTypesConfig?.generateSchemas ?? true,
       globalRoute: pythonTypesConfig?.globalRoute ?? false,
+      failOnError: pythonTypesConfig?.failOnError,
       debounce: DEBOUNCE_MS,
     }
   } else if (typeof config.types === "object" && config.types !== null) {
@@ -351,6 +359,7 @@ function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroC
       generatePageProps: config.types.generatePageProps ?? pythonTypesConfig?.generatePageProps ?? true,
       generateSchemas: config.types.generateSchemas ?? pythonTypesConfig?.generateSchemas ?? true,
       globalRoute: config.types.globalRoute ?? pythonTypesConfig?.globalRoute ?? false,
+      failOnError: config.types.failOnError ?? pythonTypesConfig?.failOnError,
       debounce: config.types.debounce ?? DEBOUNCE_MS,
     }
   } else if (config.types !== false && pythonTypesConfig?.enabled) {
@@ -369,6 +378,7 @@ function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroC
       generatePageProps: pythonTypesConfig.generatePageProps ?? true,
       generateSchemas: pythonTypesConfig.generateSchemas ?? true,
       globalRoute: pythonTypesConfig.globalRoute ?? false,
+      failOnError: pythonTypesConfig.failOnError,
       debounce: DEBOUNCE_MS,
     }
   }

@@ -273,7 +273,7 @@ class ViteProxyMiddleware(AbstractMiddleware):
         super().__init__(app)
         self.hotfile_path = hotfile_path
         self._cached_target: str | None = None
-        self._cache_initialized = False
+        self._cached_target_mtime_ns: int | None = None
         self.asset_prefix = normalize_prefix(asset_url) if asset_url else "/"
         self.http2 = http2
         self._plugin = plugin
@@ -286,7 +286,7 @@ class ViteProxyMiddleware(AbstractMiddleware):
         )
 
     def _get_target_base_url(self) -> str | None:
-        """Resolve the upstream Vite server URL with permanent caching.
+        """Resolve the upstream Vite server URL with mtime-revalidated caching.
 
         The hotfile is both the readiness signal and the upstream target. Its
         absence means "Vite is not running, fall through to static". When the
@@ -297,24 +297,28 @@ class ViteProxyMiddleware(AbstractMiddleware):
             1. Hotfile contents → upstream target.
             2. Missing hotfile → None.
 
-        The result is cached for the lifetime of the middleware instance;
-        server restart re-runs the resolution.
-
         Returns:
             The Vite server URL or None if unavailable.
         """
-        if self._cache_initialized:
+        try:
+            hotfile_stat = self.hotfile_path.stat()
+        except (FileNotFoundError, OSError):
+            self._cached_target = None
+            self._cached_target_mtime_ns = None
+            return None
+
+        if self._cached_target is not None and self._cached_target_mtime_ns == hotfile_stat.st_mtime_ns:
             return self._cached_target.rstrip("/") if self._cached_target else None
 
         try:
             hotfile_url = read_hotfile_url(self.hotfile_path)
-        except FileNotFoundError:
+        except (FileNotFoundError, OSError):
             self._cached_target = None
-            self._cache_initialized = True
+            self._cached_target_mtime_ns = None
             return None
 
         self._cached_target = hotfile_url
-        self._cache_initialized = True
+        self._cached_target_mtime_ns = hotfile_stat.st_mtime_ns
         if is_proxy_debug():
             console.print(f"[dim][vite-proxy] Target: {hotfile_url}[/]")
         return hotfile_url.rstrip("/")
@@ -638,15 +642,12 @@ def build_proxy_url(target_url: str, path: str, query: str) -> str:
 def create_target_url_getter(
     target: "str | None", hotfile_path: "Path | None", cached_target: list["str | None"]
 ) -> "Callable[[], str | None]":
-    """Create a function that returns the current target URL with permanent caching.
-
-    The hotfile is read once and cached for the lifetime of the server.
-    Server restart refreshes the cache automatically.
+    """Create a function that returns the current target URL with mtime-revalidated caching.
 
     Returns:
         A callable that returns the target URL or None if unavailable.
     """
-    cache_initialized: list[bool] = [False]
+    cached_mtime_ns: list[int | None] = [None]
 
     def _get_target_url() -> str | None:
         if target is not None:
@@ -654,19 +655,26 @@ def create_target_url_getter(
         if hotfile_path is None:
             return None
 
-        if cache_initialized[0]:
+        try:
+            hotfile_stat = hotfile_path.stat()
+        except (FileNotFoundError, OSError):
+            cached_target[0] = None
+            cached_mtime_ns[0] = None
+            return None
+
+        if cached_target[0] is not None and cached_mtime_ns[0] == hotfile_stat.st_mtime_ns:
             return cached_target[0].rstrip("/") if cached_target[0] else None
 
         try:
             url = read_hotfile_url(hotfile_path)
             cached_target[0] = url
-            cache_initialized[0] = True
+            cached_mtime_ns[0] = hotfile_stat.st_mtime_ns
             if is_proxy_debug():
                 console.print(f"[dim][ssr-proxy] Dynamic target: {url}[/]")
             return url.rstrip("/")
-        except FileNotFoundError:
+        except (FileNotFoundError, OSError):
             cached_target[0] = None
-            cache_initialized[0] = True
+            cached_mtime_ns[0] = None
             return None
 
     return _get_target_url
@@ -675,7 +683,7 @@ def create_target_url_getter(
 def create_hmr_target_getter(
     hotfile_path: "Path | None", cached_hmr_target: list["str | None"]
 ) -> "Callable[[], str | None]":
-    """Create a function that returns the HMR target URL with permanent caching.
+    """Create a function that returns the HMR target URL with mtime-revalidated caching.
 
     Resolution order:
         1. ``<hotfile>.hmr`` sibling file — JS writes the HMR clientPort
@@ -684,42 +692,46 @@ def create_hmr_target_getter(
         2. Main hotfile contents — actual upstream target resolved by the
            frontend side, preserving scheme and normalized host.
 
-    The result is cached for the lifetime of the server; server restart
-    refreshes the cache automatically.
-
     Returns:
         A callable that returns the HMR target URL or None if unavailable.
     """
-    cache_initialized: list[bool] = [False]
+    cached_mtime_ns: list[int | None] = [None]
+    cached_path: list[Path | None] = [None]
 
     def _get_hmr_target_url() -> str | None:
         if hotfile_path is None:
             return None
 
-        if cache_initialized[0]:
-            return cached_hmr_target[0].rstrip("/") if cached_hmr_target[0] else None
-
         hmr_path = Path(f"{hotfile_path}.hmr")
-        try:
-            url = read_hotfile_url(hmr_path)
-            cached_hmr_target[0] = url
-            cache_initialized[0] = True
-            if is_proxy_debug():
-                console.print(f"[dim][ssr-proxy] HMR target: {url}[/]")
-            return url.rstrip("/")
-        except FileNotFoundError:
+        for candidate, label in ((hmr_path, "HMR target"), (hotfile_path, "HMR target fallback")):
             try:
-                url = read_hotfile_url(hotfile_path)
-                cached_hmr_target[0] = url
-                cache_initialized[0] = True
-                if is_proxy_debug():
-                    console.print(f"[dim][ssr-proxy] HMR target fallback: {url}[/]")
-                return url.rstrip("/")
-            except FileNotFoundError:
-                pass
-            cached_hmr_target[0] = None
-            cache_initialized[0] = True
-            return None
+                candidate_stat = candidate.stat()
+            except (FileNotFoundError, OSError):
+                continue
+
+            if (
+                cached_path[0] == candidate
+                and cached_hmr_target[0] is not None
+                and cached_mtime_ns[0] == candidate_stat.st_mtime_ns
+            ):
+                return cached_hmr_target[0].rstrip("/")
+
+            try:
+                url = read_hotfile_url(candidate)
+            except (FileNotFoundError, OSError):
+                continue
+
+            cached_path[0] = candidate
+            cached_mtime_ns[0] = candidate_stat.st_mtime_ns
+            cached_hmr_target[0] = url
+            if is_proxy_debug():
+                console.print(f"[dim][ssr-proxy] {label}: {url}[/]")
+            return url.rstrip("/")
+
+        cached_path[0] = None
+        cached_mtime_ns[0] = None
+        cached_hmr_target[0] = None
+        return None
 
     return _get_hmr_target_url
 

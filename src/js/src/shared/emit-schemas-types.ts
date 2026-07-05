@@ -36,17 +36,6 @@ interface RoutesJson {
 }
 
 /**
- * Parsed hey-api type information
- */
-interface HeyApiTypeInfo {
-  typeName: string
-  url: string | null
-  hasBody: boolean
-  hasPath: boolean
-  hasQuery: boolean
-}
-
-/**
  * Operation mapping (route name -> hey-api type name)
  */
 interface OperationMapping {
@@ -67,35 +56,17 @@ interface OperationMapping {
  *   export type SomeOperationErrors = SomeOperationResponses[400 | 422]
  */
 function parseHeyApiTypes(content: string): {
-  dataTypes: Map<string, HeyApiTypeInfo>
   responsesTypes: Set<string>
   errorsTypes: Set<string>
   urlToDataType: Map<string, string>
 } {
-  const dataTypes = new Map<string, HeyApiTypeInfo>()
   const responsesTypes = new Set<string>()
   const errorsTypes = new Set<string>()
   const urlToDataType = new Map<string, string>()
 
-  // Match Data types: export type XxxData = { ... url: '/path' ... }
-  // Handle multiline type definitions
-  const typeBlockRegex = /export\s+type\s+(\w+Data)\s*=\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/gs
-  for (const match of content.matchAll(typeBlockRegex)) {
-    const typeName = match[1]
-    const typeBody = match[2]
-
-    // Extract URL from type body
-    const urlMatch = typeBody.match(/url:\s*['"]([^'"]+)['"]/)
+  for (const { typeName, body } of findExportedDataTypeBlocks(content)) {
+    const urlMatch = body.match(/url:\s*['"]([^'"]+)['"]/)
     const url = urlMatch ? urlMatch[1] : null
-
-    // Check for body, path, query properties
-    const hasBody = /\bbody\s*:/.test(typeBody) && !/\bbody\s*\?\s*:\s*never/.test(typeBody)
-    const hasPath = /\bpath\s*:/.test(typeBody) && !/\bpath\s*\?\s*:\s*never/.test(typeBody)
-    const hasQuery = /\bquery\s*:/.test(typeBody) && !/\bquery\s*\?\s*:\s*never/.test(typeBody)
-
-    const info: HeyApiTypeInfo = { typeName, url, hasBody, hasPath, hasQuery }
-    dataTypes.set(typeName, info)
-
     if (url) {
       urlToDataType.set(url, typeName)
     }
@@ -113,7 +84,105 @@ function parseHeyApiTypes(content: string): {
     errorsTypes.add(match[1])
   }
 
-  return { dataTypes, responsesTypes, errorsTypes, urlToDataType }
+  return { responsesTypes, errorsTypes, urlToDataType }
+}
+
+function findExportedDataTypeBlocks(content: string): Array<{ typeName: string; body: string }> {
+  const blocks: Array<{ typeName: string; body: string }> = []
+  const declarationRegex = /export\s+type\s+(\w+Data)\s*=\s*/g
+
+  for (const match of content.matchAll(declarationRegex)) {
+    const typeName = match[1]
+    const bodyStart = match.index + match[0].length
+    const openIndex = content.indexOf("{", bodyStart)
+    const nextToken = content.slice(bodyStart, openIndex === -1 ? content.length : openIndex).trim()
+    if (openIndex === -1 || nextToken.length > 0) {
+      // eslint-disable-next-line no-console
+      console.warn(`litestar-vite: Unable to parse hey-api Data type ${typeName}; expected object type`)
+      continue
+    }
+
+    const closeIndex = findMatchingBrace(content, openIndex)
+    if (closeIndex === -1) {
+      // eslint-disable-next-line no-console
+      console.warn(`litestar-vite: Unable to parse hey-api Data type ${typeName}; unbalanced braces`)
+      continue
+    }
+
+    blocks.push({ typeName, body: content.slice(openIndex + 1, closeIndex) })
+  }
+
+  return blocks
+}
+
+function findMatchingBrace(content: string, openIndex: number): number {
+  let depth = 0
+  let quote: '"' | "'" | "`" | null = null
+  let escaped = false
+  let lineComment = false
+  let blockComment = false
+
+  for (let i = openIndex; i < content.length; i += 1) {
+    const char = content[i]
+    const next = content[i + 1]
+
+    if (lineComment) {
+      if (char === "\n") {
+        lineComment = false
+      }
+      continue
+    }
+
+    if (blockComment) {
+      if (char === "*" && next === "/") {
+        blockComment = false
+        i += 1
+      }
+      continue
+    }
+
+    if (quote) {
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (char === quote) {
+        quote = null
+      }
+      continue
+    }
+
+    if (char === "/" && next === "/") {
+      lineComment = true
+      i += 1
+      continue
+    }
+
+    if (char === "/" && next === "*") {
+      blockComment = true
+      i += 1
+      continue
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char
+      continue
+    }
+
+    if (char === "{") {
+      depth += 1
+      continue
+    }
+
+    if (char === "}") {
+      depth -= 1
+      if (depth === 0) {
+        return i
+      }
+    }
+  }
+
+  return -1
 }
 
 /**
@@ -446,9 +515,9 @@ export type HasQueryParams<T extends OperationName> = QueryParams<T> extends nev
  * @param outputDir - Output directory (contains api/types.gen.ts)
  * @returns true if file was changed, false if unchanged
  */
-export async function emitSchemasTypes(routesJsonPath: string, outputDir: string, schemasOutputPath?: string): Promise<boolean> {
-  const outDir = path.resolve(process.cwd(), outputDir)
-  const outFile = schemasOutputPath ? path.resolve(process.cwd(), schemasOutputPath) : path.join(outDir, "schemas.ts")
+export async function emitSchemasTypes(routesJsonPath: string, outputDir: string, schemasOutputPath?: string, projectRoot = process.cwd()): Promise<boolean> {
+  const outDir = path.resolve(projectRoot, outputDir)
+  const outFile = schemasOutputPath ? path.resolve(projectRoot, schemasOutputPath) : path.join(outDir, "schemas.ts")
   const schemasDir = path.dirname(outFile)
   const apiTypesPath = path.join(outDir, "api", "types.gen.ts")
   const apiTypesImportPath = toImportPath(schemasDir, apiTypesPath)

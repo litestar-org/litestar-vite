@@ -221,10 +221,15 @@ def test_cli_run_vite_build_executes(tmp_path: Path) -> None:
     fake_executor = FakeExecutor()
     config._executor_instance = fake_executor
 
-    with patch("litestar_vite.cli._generate_schema_and_routes") as generate, patch("litestar_vite.cli.set_environment"):
+    with (
+        patch("litestar_vite.cli._generate_schema_and_routes") as generate,
+        patch("litestar_vite.cli._invoke_typegen_cli") as typegen,
+        patch("litestar_vite.cli.set_environment"),
+    ):
         _run_vite_build(config, tmp_path, Mock(), no_build=False, app=app)
 
     assert generate.called
+    assert typegen.called
     assert fake_executor.executes
 
 
@@ -234,7 +239,7 @@ def test_cli_run_vite_build_failure(tmp_path: Path) -> None:
     fake_executor = FakeExecutor(fail_execute=True)
     config._executor_instance = fake_executor
 
-    with patch("litestar_vite.cli.set_environment"):
+    with patch("litestar_vite.cli._invoke_typegen_cli"), patch("litestar_vite.cli.set_environment"):
         with pytest.raises(SystemExit, match="Build failed"):
             _run_vite_build(config, tmp_path, Mock(), no_build=False, app=app)
 
@@ -354,6 +359,41 @@ def test_cli_vite_init_existing_files_aborts(tmp_path: Path, monkeypatch: pytest
             )
 
     assert exc.value.code == 2
+
+
+def test_cli_vite_init_no_prompt_existing_root_file_aborts(tmp_path: Path) -> None:
+    app = _make_app(tmp_path)
+    env = LitestarEnv(app_path="app:app", app=app, cwd=tmp_path)
+    ctx = SimpleNamespace(obj=env)
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+    (frontend_dir / "package.json").write_text("{}", encoding="utf-8")
+
+    with patch("litestar_vite.cli.generate_project", return_value=[]) as generate:
+        with pytest.raises(SystemExit) as exc:
+            _unwrap_command(vite_init)(
+                ctx,
+                template="react",
+                vite_port=None,
+                enable_ssr=None,
+                asset_url=None,
+                root_path=tmp_path,
+                frontend_dir="frontend",
+                bundle_path=None,
+                resource_path=None,
+                static_path=None,
+                tailwind=False,
+                enable_types=False,
+                generate_zod=False,
+                generate_client=False,
+                overwrite=False,
+                verbose=False,
+                no_prompt=True,
+                no_install=True,
+            )
+
+    assert exc.value.code == 2
+    assert not generate.called
 
 
 def test_cli_vite_init_runs_install(tmp_path: Path) -> None:
@@ -530,6 +570,23 @@ def test_cli_get_package_executor_cmd_variants() -> None:
     assert _get_package_executor_cmd(None, "tool") == ["npx", "tool"]
 
 
+def test_cli_get_package_executor_cmd_uses_package_flag_for_typegen() -> None:
+    assert _get_package_executor_cmd("pnpm", "litestar-vite-typegen", package_name="litestar-vite-plugin") == [
+        "pnpm",
+        "--package",
+        "litestar-vite-plugin",
+        "dlx",
+        "litestar-vite-typegen",
+    ]
+    assert _get_package_executor_cmd(None, "litestar-vite-typegen", package_name="litestar-vite-plugin") == [
+        "npx",
+        "--package",
+        "litestar-vite-plugin",
+        "litestar-vite-typegen",
+    ]
+    assert _get_package_executor_cmd(None, "tsr") == ["npx", "tsr"]
+
+
 def _make_local_bin(root_dir: Path, name: str) -> Path:
     local_bin = root_dir / "node_modules" / ".bin" / name
     local_bin.parent.mkdir(parents=True, exist_ok=True)
@@ -547,6 +604,13 @@ def test_cli_resolve_js_cli_no_local_bin_falls_back_to_executor(tmp_path: Path) 
     ]
     assert _resolve_js_cli(tmp_path, "pnpm", "litestar-vite-typegen") == ["pnpm", "dlx", "litestar-vite-typegen"]
     assert _resolve_js_cli(tmp_path, None, "litestar-vite-typegen") == ["npx", "litestar-vite-typegen"]
+
+
+def test_cli_resolve_js_cli_fallback_names_plugin_package(tmp_path: Path) -> None:
+    command = _resolve_js_cli(tmp_path, None, "litestar-vite-typegen", package_name="litestar-vite-plugin")
+
+    assert command == ["npx", "--package", "litestar-vite-plugin", "litestar-vite-typegen"]
+    assert command != ["npx", "litestar-vite-typegen"]
 
 
 def test_cli_resolve_js_cli_bun_wraps_local_bin(tmp_path: Path) -> None:
@@ -828,6 +892,58 @@ def test_cli_generate_types_invokes_typegen(tmp_path: Path) -> None:
         invoke.assert_called_once()
 
 
+def test_cli_generate_types_exits_nonzero_on_export_failure(tmp_path: Path) -> None:
+    app = _make_app(tmp_path)
+
+    with (
+        patch(
+            "litestar_vite.plugin._utils.write_runtime_config_file",
+            return_value=(str(tmp_path / ".litestar.json"), True),
+        ),
+        patch("litestar_vite.codegen.export_integration_assets", side_effect=ValueError("boom")),
+    ):
+        with pytest.raises(SystemExit) as exc_info:
+            _unwrap_command(generate_types)(app, verbose=False)
+
+    assert exc_info.value.code == 1
+
+
+def test_cli_generate_types_exits_nonzero_when_nothing_exported(tmp_path: Path) -> None:
+    app = _make_app(tmp_path)
+    result = Mock(exported_files=[], unchanged_files=[])
+
+    with (
+        patch(
+            "litestar_vite.plugin._utils.write_runtime_config_file",
+            return_value=(str(tmp_path / ".litestar.json"), True),
+        ),
+        patch("litestar_vite.codegen.export_integration_assets", return_value=result),
+    ):
+        with pytest.raises(SystemExit) as exc_info:
+            _unwrap_command(generate_types)(app, verbose=False)
+
+    assert exc_info.value.code == 1
+
+
+def test_cli_generate_types_exits_nonzero_when_extra_command_fails(tmp_path: Path) -> None:
+    app = _make_app(tmp_path)
+    result = Mock(exported_files=["routes.json"], unchanged_files=[])
+
+    with (
+        patch("litestar_vite.cli._run_extra_commands", return_value=False),
+        patch("litestar_vite.cli._invoke_typegen_cli"),
+        patch(
+            "litestar_vite.plugin._utils.write_runtime_config_file",
+            return_value=(str(tmp_path / ".litestar.json"), True),
+        ),
+        patch("litestar_vite.codegen.export_integration_assets", return_value=result),
+    ):
+        with pytest.raises(SystemExit) as exc_info:
+            _unwrap_command(generate_types)(app, verbose=False)
+
+    assert exc_info.value.code == 1
+
+
 def test_cli_generate_types_disabled(tmp_path: Path) -> None:
     app = _make_app(tmp_path, types=False)
     _unwrap_command(generate_types)(app, verbose=False)
@@ -849,6 +965,47 @@ def test_cli_vite_deploy_dry_run(tmp_path: Path) -> None:
         _unwrap_command(vite_deploy)(
             app, storage=None, storage_option=(), no_build=True, dry_run=True, no_delete=False, verbose=False
         )
+
+
+def test_cli_vite_deploy_invokes_typegen_when_types_enabled(tmp_path: Path) -> None:
+    deploy_config = DeployConfig(enabled=True, storage_backend="s3://bucket")
+    app = _make_app(tmp_path)
+    config = app.plugins.get(VitePlugin).config
+    config.deploy = deploy_config
+    config._executor_instance = FakeExecutor()
+
+    with (
+        patch("litestar_vite.cli._generate_schema_and_routes", return_value=True),
+        patch("litestar_vite.cli._run_extra_commands", return_value=True),
+        patch("litestar_vite.cli._invoke_typegen_cli") as invoke,
+        patch("litestar_vite.cli.ViteDeployer", FakeDeployer),
+        patch("litestar_vite.cli.format_bytes", lambda *_: "0B"),
+    ):
+        _unwrap_command(vite_deploy)(
+            app, storage=None, storage_option=(), no_build=False, dry_run=True, no_delete=False, verbose=False
+        )
+
+    invoke.assert_called_once_with(config, False)
+
+
+def test_cli_vite_deploy_skips_typegen_when_types_disabled(tmp_path: Path) -> None:
+    deploy_config = DeployConfig(enabled=True, storage_backend="s3://bucket")
+    app = _make_app(tmp_path, types=False)
+    config = app.plugins.get(VitePlugin).config
+    config.deploy = deploy_config
+    config._executor_instance = FakeExecutor()
+
+    with (
+        patch("litestar_vite.cli._generate_schema_and_routes", return_value=False),
+        patch("litestar_vite.cli._invoke_typegen_cli") as invoke,
+        patch("litestar_vite.cli.ViteDeployer", FakeDeployer),
+        patch("litestar_vite.cli.format_bytes", lambda *_: "0B"),
+    ):
+        _unwrap_command(vite_deploy)(
+            app, storage=None, storage_option=(), no_build=False, dry_run=True, no_delete=False, verbose=False
+        )
+
+    invoke.assert_not_called()
 
 
 def test_cli_vite_init_runs_install_with_frontend_dir(tmp_path: Path) -> None:

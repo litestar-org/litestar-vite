@@ -26,16 +26,52 @@ interface InertiaPagePropsJson {
   generatedAt: string
 }
 
+const semanticAliases: Record<string, { description: string; base: string }> = {
+  UUID: { description: "UUID v4 string", base: "string" },
+  DateTime: { description: "RFC 3339 date-time string", base: "string" },
+  DateOnly: { description: "ISO 8601 date string (YYYY-MM-DD)", base: "string" },
+  TimeOnly: { description: "ISO 8601 time string", base: "string" },
+  Duration: { description: "ISO 8601 duration string", base: "string" },
+  Email: { description: "Email address string", base: "string" },
+  URI: { description: "URI/URL string", base: "string" },
+  IPv4: { description: "IPv4 address string", base: "string" },
+  IPv6: { description: "IPv6 address string", base: "string" },
+}
+
+function collectSemanticAliases(typeExpr: string): string[] {
+  const aliases = new Set<string>()
+  for (const match of typeExpr.matchAll(/\b[A-Za-z_][A-Za-z0-9_]*\b/g)) {
+    const name = match[0]
+    if (name in semanticAliases) {
+      aliases.add(name)
+    }
+  }
+  return [...aliases].toSorted()
+}
+
+function renderSemanticAliases(aliases: Set<string>): string {
+  if (aliases.size === 0) {
+    return ""
+  }
+
+  const lines = ["/** Semantic string aliases derived from OpenAPI `format`. */"]
+  for (const alias of [...aliases].toSorted()) {
+    const { description, base } = semanticAliases[alias]
+    lines.push(`/** ${description} */`, `export type ${alias} = ${base}`, "")
+  }
+  return `${lines.join("\n").trimEnd()}\n\n`
+}
+
 /**
  * Generate `page-props.ts` from `inertia-pages.json` metadata.
  *
  * @returns true if file was changed, false if unchanged
  */
-export async function emitPagePropsTypes(pagesPath: string, outputDir: string): Promise<boolean> {
+export async function emitPagePropsTypes(pagesPath: string, outputDir: string, projectRoot = process.cwd()): Promise<boolean> {
   const contents = await fs.promises.readFile(pagesPath, "utf-8")
   const json: InertiaPagePropsJson = JSON.parse(contents)
 
-  const outDir = path.resolve(process.cwd(), outputDir)
+  const outDir = path.resolve(projectRoot, outputDir)
   await fs.promises.mkdir(outDir, { recursive: true })
   const outFile = path.join(outDir, "page-props.ts")
 
@@ -130,8 +166,15 @@ export interface FlashMessages {}
 
   // Collect custom types from metadata
   const allCustomTypes = new Set<string>()
+  const usedSemanticAliases = new Set<string>()
   for (const data of Object.values(json.pages)) {
-    if (data.tsType) {
+    const typeExpr = data.tsType ?? data.propsType
+    if (typeExpr) {
+      for (const alias of collectSemanticAliases(typeExpr)) {
+        usedSemanticAliases.add(alias)
+      }
+    }
+    if (data.tsType && /^[A-Za-z_][A-Za-z0-9_]*$/.test(data.tsType)) {
       allCustomTypes.add(data.tsType)
     }
     for (const t of data.customTypes ?? []) {
@@ -179,9 +222,13 @@ export interface FlashMessages {}
     "User",
     "AuthData",
     "FlashMessages",
+    ...Object.keys(semanticAliases),
   ])
 
   for (const def of Object.values(generatedSharedProps)) {
+    for (const alias of collectSemanticAliases(def.type)) {
+      usedSemanticAliases.add(alias)
+    }
     for (const match of def.type.matchAll(/\b[A-Za-z_][A-Za-z0-9_]*\b/g)) {
       const name = match[0]
       if (!builtinTypes.has(name)) {
@@ -243,6 +290,7 @@ export interface FlashMessages {}
   if (importStatement) {
     importStatement += "\n"
   }
+  const semanticAliasTypes = renderSemanticAliases(usedSemanticAliases)
 
   // Build page props entries
   const pageEntries: string[] = []
@@ -262,7 +310,7 @@ export interface FlashMessages {}
 // Import user-defined type extensions (edit page-props.user.ts to customize)
 import type { UserExtensions, SharedPropsExtensions } from "./page-props.user"
 
-${importStatement}${userTypes}${authTypes}${flashTypes}/**
+${importStatement}${semanticAliasTypes}${userTypes}${authTypes}${flashTypes}/**
  * Generated shared props (always present).
  * Includes built-in props + static config props.
  */

@@ -1,3 +1,4 @@
+import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from types import SimpleNamespace
@@ -202,7 +203,24 @@ def test_target_url_getter_caches(tmp_path: Path) -> None:
     getter = create_target_url_getter(None, hotfile, cached)
 
     assert getter() == "http://localhost:5173"
+    assert getter() == "http://localhost:5173"
+
     hotfile.write_text("http://changed:1234")
+    current_mtime = hotfile.stat().st_mtime_ns
+    os.utime(hotfile, ns=(current_mtime + 1_000_000, current_mtime + 1_000_000))
+
+    assert getter() == "http://changed:1234"
+
+
+def test_target_url_getter_recovers_after_initial_missing_hotfile(tmp_path: Path) -> None:
+    hotfile = tmp_path / "hot"
+    cached: list[str | None] = [None]
+    getter = create_target_url_getter(None, hotfile, cached)
+
+    assert getter() is None
+
+    hotfile.write_text("http://localhost:5173")
+
     assert getter() == "http://localhost:5173"
 
 

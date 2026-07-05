@@ -20,9 +20,11 @@
   },
   "devDependencies": {
 {% if generate_client %}    "@hey-api/openapi-ts": "{{ package_version('@hey-api/openapi-ts') }}",
-{% endif %}{% if use_tailwind %}    "@tailwindcss/vite": "{{ package_version('@tailwindcss/vite') }}",
+{% endif %}{% if use_tailwind %}    "@tailwindcss/postcss": "{{ package_version('@tailwindcss/postcss') }}",
+    "@tailwindcss/vite": "{{ package_version('@tailwindcss/vite') }}",
 {% endif %}    "litestar-vite-plugin": "{{ package_version('litestar-vite-plugin') }}",
-{% if use_tailwind %}    "tailwindcss": "{{ package_version('tailwindcss') }}",
+{% if use_tailwind %}    "postcss": "{{ package_version('postcss') }}",
+    "tailwindcss": "{{ package_version('tailwindcss') }}",
 {% endif %}    "typescript": "{{ package_version('typescript') }}",
     "vite": "{{ package_version('vite') }}",
     "vue-tsc": "{{ package_version('vue-tsc') }}"

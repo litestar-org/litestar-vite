@@ -6,7 +6,7 @@ import tailwindcss from "@tailwindcss/vite";
 {% endif %}
 
 {% if enable_ssr %}
-export default defineConfig(({ ssrBuild }) => ({
+export default defineConfig(({ isSsrBuild }) => ({
 {% else %}
 export default defineConfig({
 {% endif %}
@@ -24,7 +24,7 @@ export default defineConfig({
 {% endif %}
     vue(),
     litestar({
-      input: ["{{ resource_dir }}/main.ts"],
+      input: ["{{ resource_dir }}/main.ts"{% if use_tailwind %}, "{{ resource_dir }}/tailwind.css"{% endif %}],
 {% if enable_ssr %}
       ssr: "{{ resource_dir }}/ssr.ts",
 {% endif %}
@@ -36,7 +36,7 @@ export default defineConfig({
 {% if enable_ssr %}
   build: {
     rolldownOptions: {
-      output: ssrBuild
+      output: isSsrBuild
         ? {
             entryFileNames: "ssr.js",
           }

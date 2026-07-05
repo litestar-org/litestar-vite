@@ -7,6 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
 
 const execAsync = promisify(exec)
 const repoRoot = process.cwd()
+const HEY_API_FALLBACK_TEST_TIMEOUT_MS = 15_000
 let cliPath = ""
 
 async function ensureCliBuilt(root: string): Promise<string> {
@@ -153,26 +154,29 @@ describe("typegen-cli", () => {
   })
 
   describe("OpenAPI type generation", () => {
-    it("generates types when openapi.json exists", async () => {
-      const outputDir = path.join(tmpDir, "generated")
-      fs.mkdirSync(outputDir, { recursive: true })
+    it(
+      "generates types when openapi.json exists",
+      async () => {
+        const outputDir = path.join(tmpDir, "generated")
+        fs.mkdirSync(outputDir, { recursive: true })
 
-      const openapi = {
-        openapi: "3.1.0",
-        info: { title: "Test API", version: "1.0.0" },
-        paths: {
-          "/test": {
-            get: {
-              operationId: "test_get",
-              responses: {
-                "200": {
-                  description: "Success",
-                  content: {
-                    "application/json": {
-                      schema: {
-                        type: "object",
-                        properties: {
-                          message: { type: "string" },
+        const openapi = {
+          openapi: "3.1.0",
+          info: { title: "Test API", version: "1.0.0" },
+          paths: {
+            "/test": {
+              get: {
+                operationId: "test_get",
+                responses: {
+                  "200": {
+                    description: "Success",
+                    content: {
+                      "application/json": {
+                        schema: {
+                          type: "object",
+                          properties: {
+                            message: { type: "string" },
+                          },
                         },
                       },
                     },
@@ -181,42 +185,43 @@ describe("typegen-cli", () => {
               },
             },
           },
-        },
-      }
-
-      fs.writeFileSync(path.join(tmpDir, "openapi.json"), JSON.stringify(openapi, null, 2))
-
-      const config = createConfig({
-        types: {
-          enabled: true,
-          output: outputDir,
-          openapiPath: path.join(tmpDir, "openapi.json"),
-          pagePropsPath: path.join(tmpDir, "inertia-pages.json"),
-          generateZod: false,
-          generateSdk: true,
-          generatePageProps: false,
-        },
-      })
-
-      fs.writeFileSync(path.join(tmpDir, ".litestar.json"), JSON.stringify(config, null, 2))
-
-      try {
-        const result = await execAsync(`node ${cliPath}`)
-        // Either @hey-api/openapi-ts is installed and types were generated,
-        // or it's not installed and we get a warning (but still succeed)
-        const hasTypes = result.stdout.includes("TypeScript artifacts updated")
-        const hasWarning = result.stdout.includes("@hey-api/openapi-ts not installed")
-        expect(hasTypes || hasWarning).toBe(true)
-      } catch (error: any) {
-        // May fail if @hey-api/openapi-ts is not installed, that's okay
-        const output = (error.stdout || "") + (error.stderr || "")
-        if (error.message?.includes("not installed") || output.includes("not installed")) {
-          expect(output).toContain("@hey-api/openapi-ts not installed")
-        } else {
-          throw error
         }
-      }
-    })
+
+        fs.writeFileSync(path.join(tmpDir, "openapi.json"), JSON.stringify(openapi, null, 2))
+
+        const config = createConfig({
+          types: {
+            enabled: true,
+            output: outputDir,
+            openapiPath: path.join(tmpDir, "openapi.json"),
+            pagePropsPath: path.join(tmpDir, "inertia-pages.json"),
+            generateZod: false,
+            generateSdk: true,
+            generatePageProps: false,
+          },
+        })
+
+        fs.writeFileSync(path.join(tmpDir, ".litestar.json"), JSON.stringify(config, null, 2))
+
+        try {
+          const result = await execAsync(`node ${cliPath}`)
+          // Either @hey-api/openapi-ts is installed and types were generated,
+          // or it's not installed and we get a warning (but still succeed)
+          const hasTypes = result.stdout.includes("TypeScript artifacts updated")
+          const hasWarning = result.stdout.includes("@hey-api/openapi-ts not installed")
+          expect(hasTypes || hasWarning).toBe(true)
+        } catch (error: any) {
+          // May fail if @hey-api/openapi-ts is not installed, that's okay
+          const output = (error.stdout || "") + (error.stderr || "")
+          if (error.message?.includes("not installed") || output.includes("not installed")) {
+            expect(output).toContain("@hey-api/openapi-ts not installed")
+          } else {
+            throw error
+          }
+        }
+      },
+      HEY_API_FALLBACK_TEST_TIMEOUT_MS,
+    )
   })
 
   describe("Page props generation", () => {
@@ -322,53 +327,57 @@ describe("typegen-cli", () => {
   })
 
   describe("Cache integration", () => {
-    it("always runs hey-api on every invocation (no caching)", async () => {
-      // CLI never uses caching - it always runs hey-api
-      // This matches the old _run_openapi_ts behavior in Python
-      // Caching is only used by the Vite plugin for HMR efficiency
-      const outputDir = path.join(tmpDir, "generated")
-      fs.mkdirSync(outputDir, { recursive: true })
+    it(
+      "always runs hey-api on every invocation (no caching)",
+      async () => {
+        // CLI never uses caching - it always runs hey-api
+        // This matches the old _run_openapi_ts behavior in Python
+        // Caching is only used by the Vite plugin for HMR efficiency
+        const outputDir = path.join(tmpDir, "generated")
+        fs.mkdirSync(outputDir, { recursive: true })
 
-      const openapi = {
-        openapi: "3.1.0",
-        info: { title: "Test API", version: "1.0.0" },
-        paths: {},
-      }
-
-      fs.writeFileSync(path.join(tmpDir, "openapi.json"), JSON.stringify(openapi, null, 2))
-
-      const config = createConfig({
-        types: {
-          enabled: true,
-          output: outputDir,
-          openapiPath: path.join(tmpDir, "openapi.json"),
-          pagePropsPath: path.join(tmpDir, "inertia-pages.json"),
-          generateZod: false,
-          generateSdk: true,
-          generatePageProps: false,
-        },
-      })
-
-      fs.writeFileSync(path.join(tmpDir, ".litestar.json"), JSON.stringify(config, null, 2))
-
-      try {
-        // First run - should generate
-        const result1 = await execAsync(`node ${cliPath}`)
-        expect(result1.stdout).toContain("Generating TypeScript types")
-
-        // Second run - should ALSO generate (no caching in CLI)
-        const result2 = await execAsync(`node ${cliPath}`)
-        expect(result2.stdout).toContain("Generating TypeScript types")
-      } catch (error: any) {
-        // Expected if @hey-api/openapi-ts is not installed
-        const output = (error.stdout || "") + (error.stderr || "")
-        if (error.message?.includes("not installed") || output.includes("not installed")) {
-          expect(output).toContain("@hey-api/openapi-ts not installed")
-        } else {
-          throw error
+        const openapi = {
+          openapi: "3.1.0",
+          info: { title: "Test API", version: "1.0.0" },
+          paths: {},
         }
-      }
-    })
+
+        fs.writeFileSync(path.join(tmpDir, "openapi.json"), JSON.stringify(openapi, null, 2))
+
+        const config = createConfig({
+          types: {
+            enabled: true,
+            output: outputDir,
+            openapiPath: path.join(tmpDir, "openapi.json"),
+            pagePropsPath: path.join(tmpDir, "inertia-pages.json"),
+            generateZod: false,
+            generateSdk: true,
+            generatePageProps: false,
+          },
+        })
+
+        fs.writeFileSync(path.join(tmpDir, ".litestar.json"), JSON.stringify(config, null, 2))
+
+        try {
+          // First run - should generate
+          const result1 = await execAsync(`node ${cliPath}`)
+          expect(result1.stdout).toContain("Generating TypeScript types")
+
+          // Second run - should ALSO generate (no caching in CLI)
+          const result2 = await execAsync(`node ${cliPath}`)
+          expect(result2.stdout).toContain("Generating TypeScript types")
+        } catch (error: any) {
+          // Expected if @hey-api/openapi-ts is not installed
+          const output = (error.stdout || "") + (error.stderr || "")
+          if (error.message?.includes("not installed") || output.includes("not installed")) {
+            expect(output).toContain("@hey-api/openapi-ts not installed")
+          } else {
+            throw error
+          }
+        }
+      },
+      HEY_API_FALLBACK_TEST_TIMEOUT_MS,
+    )
   })
 
   describe("CLI flags", () => {

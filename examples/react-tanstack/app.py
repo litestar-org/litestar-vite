@@ -5,9 +5,8 @@ All examples in this repository expose the same backend:
 - `/api/books` - list of books
 - `/api/books/{book_id}` - single book
 
-This example uses TanStack Router for file-based routing. The TypeGenConfig
-includes extra_commands to run `tsr generate` so that `routeTree.gen.ts`
-is always up-to-date during `litestar assets generate-types` and `build`.
+This example uses TanStack Router for file-based routing. The generated
+``routeTree.gen.ts`` placeholder is refreshed by the TanStack Router Vite plugin.
 """
 
 import os
@@ -97,14 +96,12 @@ class LibraryController(Controller):
 
 # [docs-start:tanstack-vite-config]
 # TanStack Router uses a Vite plugin that generates routeTree.gen.ts.
-# extra_commands ensures `tsr generate` runs during `generate-types` and `build`,
-# so `tsc --noEmit` passes without needing a full Vite dev/build cycle first.
 vite = VitePlugin(
     config=ViteConfig(
         mode="spa",
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here),
-        types=TypeGenConfig(extra_commands=[["tsr", "generate"]]),
+        types=TypeGenConfig(),
         runtime=RuntimeConfig(port=5005),
     )
 )

@@ -54,8 +54,9 @@ jobs:
       # Setup .npmrc file to publish to npm
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
       - run: npm ci
       - run: npm run build
       # For pre-releases (alpha, beta, rc), publish with appropriate npm tag
@@ -70,5 +71,3 @@ jobs:
             echo "tag=latest" >> $GITHUB_OUTPUT
           fi
       - run: npm publish --provenance --access public --tag ${{ steps.npm-tag.outputs.tag }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

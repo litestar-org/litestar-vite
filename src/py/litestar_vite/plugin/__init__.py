@@ -492,7 +492,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
             "opt": opt,
             "exception_handlers": {NotFoundException: static_not_found_handler},
         }
-        user_config = {k: v for k, v in self._static_files_config.items() if k != "opt"}
+        user_config = {k: v for k, v in self._static_files_config.items() if k != "opt" and v is not None}
         static_files_config: dict[str, Any] = {**base_config, **user_config}
         app_config.route_handlers.append(create_static_files_router(**static_files_config))
 

@@ -200,8 +200,41 @@ def _build_deploy_config(
     return deploy_config
 
 
+def _prepare_and_build(config: ViteConfig, root_dir: Path, console: Any, app: "Litestar | None", verbose: bool) -> None:
+    """Export metadata, run typegen, and execute the configured frontend build."""
+    generated_assets = _generate_schema_and_routes(app, config, console) if app is not None else False
+
+    if not (root_dir / "node_modules").exists():
+        console.print("[dim]Installing frontend dependencies (node_modules missing)...[/]")
+        config.executor.install(root_dir)
+
+    if generated_assets and isinstance(config.types, TypeGenConfig):
+        extra_commands_ok = _run_extra_commands(config, verbose)
+        _invoke_typegen_cli(config, verbose)
+        if not extra_commands_ok:
+            raise SystemExit(1)
+
+    if config.set_environment:
+        set_environment(config=config, asset_url_override=config.asset_url)
+    os.environ.setdefault("VITE_BASE_URL", config.base_url or "/")
+
+    ext = config.runtime.external_dev_server
+    if isinstance(ext, ExternalDevServer) and ext.enabled:
+        build_cmd = ext.build_command or config.executor.build_command
+        console.print(f"[dim]Running external build: {' '.join(build_cmd)}[/]")
+        config.executor.execute(build_cmd, cwd=root_dir)
+    else:
+        config.executor.execute(config.build_command, cwd=root_dir)
+
+
 def _run_vite_build(
-    config: ViteConfig, root_dir: Path, console: Any, no_build: bool, app: "Litestar | None" = None
+    config: ViteConfig,
+    root_dir: Path,
+    console: Any,
+    no_build: bool,
+    app: "Litestar | None" = None,
+    *,
+    verbose: bool = False,
 ) -> None:
     """Run Vite build unless skipped.
 
@@ -214,16 +247,9 @@ def _run_vite_build(
         console.print("[dim]Skipping Vite build (--no-build).[/]")
         return
 
-    # Export schema/routes if app is provided
-    if app is not None:
-        _generate_schema_and_routes(app, config, console)
-
     console.rule("Starting [blue]Vite[/] build process", align="left")
-    if config.set_environment:
-        set_environment(config=config, asset_url_override=config.asset_url)
-    os.environ.setdefault("VITE_BASE_URL", config.base_url or "/")
     try:
-        config.executor.execute(config.build_command, cwd=root_dir)
+        _prepare_and_build(config, root_dir, console, app, verbose)
         console.print("[bold green]✓ Build complete[/]")
     except ViteExecutionError as exc:
         msg = f"Build failed: {exc!s}"
@@ -347,20 +373,40 @@ def _prompt_for_options(
     if not tailwind and not no_prompt:
         tailwind = Confirm.ask("Add TailwindCSS?", default=False)
 
-    if not enable_types and not no_prompt:
-        enable_types = Confirm.ask("Enable TypeScript type generation?", default=True)
+    if not enable_types:
+        enable_types = True if no_prompt else Confirm.ask("Enable TypeScript type generation?", default=True)
 
     if enable_types:
         if not generate_zod and not no_prompt:
             generate_zod = Confirm.ask("Generate Zod schemas for validation?", default=False)
 
-        if not generate_client and not no_prompt:
-            generate_client = Confirm.ask("Generate API client?", default=True)
+        if not generate_client:
+            generate_client = True if no_prompt else Confirm.ask("Generate API client?", default=True)
     else:
         generate_zod = False
         generate_client = False
 
     return enable_ssr or False, tailwind, enable_types, generate_zod, generate_client
+
+
+def _find_scaffold_collisions(base: Path, resource_dir: str, bundle_dir: str, static_dir: str) -> list[Path]:
+    """Return existing paths that would make scaffold output unsafe without overwrite."""
+    generated_root_files = {
+        "angular.json",
+        "index.html",
+        "package.json",
+        "postcss.config.mjs",
+        "svelte.config.js",
+        "tsconfig.json",
+        "vite.config.ts",
+    }
+    candidates = {
+        base / resource_dir,
+        base / bundle_dir,
+        base / static_dir,
+        *(base / name for name in generated_root_files),
+    }
+    return sorted(path for path in candidates if path.exists())
 
 
 @vite_group.command(name="doctor", help="Diagnose and fix Vite configuration issues.")
@@ -539,10 +585,16 @@ def vite_init(
     static_path_str = str(static_path or config.static_dir)
 
     base = root_path / frontend_dir if frontend_dir != "." else root_path
+    collisions = _find_scaffold_collisions(base, resource_path_str, bundle_path_str, static_path_str)
     if (
-        any((base / p).exists() for p in [resource_path_str, bundle_path_str, static_path_str])
-        and not any([overwrite, no_prompt])
-        and not Confirm.ask("Files were found in the paths specified. Are you sure you wish to overwrite the contents?")
+        collisions
+        and not overwrite
+        and (
+            no_prompt
+            or not Confirm.ask(
+                "Files were found in the paths specified. Are you sure you wish to overwrite the contents?"
+            )
+        )
     ):
         console.print("Skipping Vite initialization")
         sys.exit(2)
@@ -554,8 +606,13 @@ def vite_init(
     project_name = root_path.name or "my-project"
     is_inertia = framework.type in {
         FrameworkType.REACT_INERTIA,
+        FrameworkType.REACT_INERTIA_JINJA,
         FrameworkType.VUE_INERTIA,
+        FrameworkType.VUE_INERTIA_SSR,
+        FrameworkType.VUE_INERTIA_JINJA,
+        FrameworkType.VUE_INERTIA_JINJA_SSR,
         FrameworkType.SVELTE_INERTIA,
+        FrameworkType.SVELTE_INERTIA_JINJA,
     }
     context = TemplateContext(
         project_name=project_name,
@@ -675,26 +732,9 @@ def vite_build(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
 
     if not quiet:
         console.rule("Starting [blue]Vite[/] build process", align="left")
-    generated_assets = _generate_schema_and_routes(app, plugin.config, console)
-    if plugin.config.set_environment:
-        set_environment(config=plugin.config)
-
-    executor = plugin.config.executor
     try:
         root_dir = plugin.config.root_dir or Path.cwd()
-        if not (Path(root_dir) / "node_modules").exists():
-            console.print("[dim]Installing frontend dependencies (node_modules missing)...[/]")
-            executor.install(Path(root_dir))
-        if generated_assets and isinstance(plugin.config.types, TypeGenConfig):
-            _run_extra_commands(plugin.config, verbose)
-            _invoke_typegen_cli(plugin.config, verbose)
-        ext = plugin.config.runtime.external_dev_server
-        if isinstance(ext, ExternalDevServer) and ext.enabled:
-            build_cmd = ext.build_command or executor.build_command
-            console.print(f"[dim]Running external build: {' '.join(build_cmd)}[/]")
-            executor.execute(build_cmd, cwd=root_dir)
-        else:
-            executor.execute(plugin.config.build_command, cwd=root_dir)
+        _prepare_and_build(plugin.config, Path(root_dir), console, app, verbose)
         console.print("[bold green]✓ Assets built[/]")
     except ViteExecutionError as e:
         console.print(f"[red]Vite build failed: {e!s}[/]")
@@ -747,8 +787,8 @@ def vite_deploy(
     bundle_dir = config.bundle_dir
 
     try:
-        _run_vite_build(config, root_dir, console, no_build, app=app)
-    except SystemExit as exc:
+        _run_vite_build(config, root_dir, console, no_build, app=app, verbose=verbose)
+    except (LitestarCLIException, SystemExit) as exc:
         console.print(f"[red]{exc}[/]")
         sys.exit(1)
 
@@ -933,7 +973,7 @@ def export_routes(
             raise LitestarCLIException(msg) from e
 
 
-def _get_package_executor_cmd(executor: "str | None", package: str) -> "list[str]":
+def _get_package_executor_cmd(executor: "str | None", binary: str, *, package_name: "str | None" = None) -> "list[str]":
     """Build package executor command list.
 
     Maps executor to its "npx equivalent" and returns a command list
@@ -941,22 +981,25 @@ def _get_package_executor_cmd(executor: "str | None", package: str) -> "list[str
 
     Args:
         executor: The JS runtime executor (node, bun, deno, yarn, pnpm).
-        package: The package to run.
+        binary: The binary to run.
+        package_name: Optional package that provides ``binary`` when different
+            from the binary name.
 
     Returns:
         Command list for subprocess.run.
     """
+    package = package_name or binary
     match executor:
         case "bun":
-            return ["bunx", package]
+            return ["bunx", "--package", package, binary] if package_name else ["bunx", binary]
         case "deno":
             return ["deno", "run", "-A", f"npm:{package}"]
         case "yarn":
-            return ["yarn", "dlx", package]
+            return ["yarn", "dlx", "--package", package, binary] if package_name else ["yarn", "dlx", binary]
         case "pnpm":
-            return ["pnpm", "dlx", package]
+            return ["pnpm", "--package", package, "dlx", binary] if package_name else ["pnpm", "dlx", binary]
         case _:
-            return ["npx", package]
+            return ["npx", "--package", package, binary] if package_name else ["npx", binary]
 
 
 def _get_local_binary_cmd(root_dir: Path, binary: str) -> "list[str] | None":
@@ -1001,7 +1044,9 @@ def _get_local_js_cli_cmd(root_dir: Path, binary: str) -> "list[str] | None":
     return None
 
 
-def _resolve_js_cli(root_dir: Path, executor: "str | None", binary: str) -> "list[str]":
+def _resolve_js_cli(
+    root_dir: Path, executor: "str | None", binary: str, *, package_name: "str | None" = None
+) -> "list[str]":
     """Resolve a JS CLI command, honoring the configured executor.
 
     Prefers a locally installed ``node_modules/.bin/<binary>``. When the
@@ -1024,18 +1069,22 @@ def _resolve_js_cli(root_dir: Path, executor: "str | None", binary: str) -> "lis
     """
     local = _get_local_binary_cmd(root_dir, binary)
     if local is None:
-        return _get_package_executor_cmd(executor, binary)
+        return _get_package_executor_cmd(executor, binary, package_name=package_name)
 
     match executor:
         case "bun":
             js_local = _get_local_js_cli_cmd(root_dir, binary)
-            return ["bun", "run", *js_local] if js_local is not None else _get_package_executor_cmd(executor, binary)
+            return (
+                ["bun", "run", *js_local]
+                if js_local is not None
+                else _get_package_executor_cmd(executor, binary, package_name=package_name)
+            )
         case "deno":
             js_local = _get_local_js_cli_cmd(root_dir, binary)
             return (
                 ["deno", "run", "-A", *js_local]
                 if js_local is not None
-                else _get_package_executor_cmd(executor, binary)
+                else _get_package_executor_cmd(executor, binary, package_name=package_name)
             )
         case _:
             return local
@@ -1118,7 +1167,7 @@ def _invoke_typegen_cli(config: Any, verbose: bool) -> None:
     executor = config.runtime.executor
 
     # Build the command to run the unified TypeScript CLI
-    pkg_cmd = _resolve_js_cli(root_dir, executor, "litestar-vite-typegen")
+    pkg_cmd = _resolve_js_cli(root_dir, executor, "litestar-vite-typegen", package_name="litestar-vite-plugin")
     cmd = [*pkg_cmd]
 
     if verbose:
@@ -1194,17 +1243,19 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
 
         if not result.exported_files and not result.unchanged_files:
             console.print("[yellow]! No files exported (OpenAPI may not be available)[/]")
-            return
+            raise SystemExit(1)
     except (OSError, TypeError, ValueError) as exc:
         console.print(f"[red]✗ Failed to export type metadata: {exc}[/]")
-        return
+        raise SystemExit(1) from exc
 
     # Run any extra code-generation commands (e.g., tsr generate for TanStack Router)
-    _run_extra_commands(config, verbose)
+    extra_commands_ok = _run_extra_commands(config, verbose)
 
     # Invoke the unified TypeScript type generation CLI
     # This handles both @hey-api/openapi-ts and page-props.ts generation
     _invoke_typegen_cli(config, verbose)
+    if not extra_commands_ok:
+        raise SystemExit(1)
 
 
 @vite_group.command(name="status", help="Check the status of the Vite integration.")

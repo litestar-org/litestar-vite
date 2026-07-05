@@ -88,3 +88,40 @@ export function resolvePackageExecutor(pkg: string, executor?: string): string {
       return `npx ${pkg}`
   }
 }
+
+/**
+ * Resolves the package executor command as argv.
+ *
+ * This is used for actual process execution so package arguments are never
+ * shell-joined. The string-returning ``resolvePackageExecutor`` remains the
+ * display/back-compat helper.
+ */
+export interface PackageExecutorArgvOptions {
+  /**
+   * Package spec to install for executors that support an explicit package
+   * separate from the command binary, e.g. npm exec --package.
+   */
+  packageSpec?: string
+  /** Binary command exposed by packageSpec. */
+  binName?: string
+}
+
+export function resolvePackageExecutorArgv(args: string[], executor?: string, options: PackageExecutorArgvOptions = {}): string[] {
+  const runtime = executor || detectExecutor()
+  const { packageSpec, binName } = options
+  switch (runtime) {
+    case "bun":
+      return ["bunx", ...(packageSpec ? [packageSpec, ...args] : args)]
+    case "deno":
+      return ["deno", "run", "-A", ...(packageSpec ? [`npm:${packageSpec}`, ...args] : args)]
+    case "pnpm":
+      return ["pnpm", "dlx", ...(packageSpec ? [packageSpec, ...args] : args)]
+    case "yarn":
+      return ["yarn", "dlx", ...(packageSpec ? [packageSpec, ...args] : args)]
+    default:
+      if (packageSpec && binName) {
+        return ["npm", "exec", "--yes", "--package", packageSpec, "--", binName, ...args]
+      }
+      return ["npx", ...args]
+  }
+}
