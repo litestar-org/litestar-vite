@@ -109,12 +109,8 @@ def get_headers(inertia_headers: "InertiaHeaderType") -> "dict[str, Any]":
     }
 
     header: "dict[str, Any]" = {}
-    response: "dict[str, Any]"
-    key: "str"
-    value: "Any"
-
     for key, value in inertia_headers.items():
-        if value is not None:
-            response = inertia_headers_dict[key](value)
-            header.update(response)
+        get_header = inertia_headers_dict.get(key)
+        if value is not None and get_header is not None:
+            header.update(get_header(value))
     return header

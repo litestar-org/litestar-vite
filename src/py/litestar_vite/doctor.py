@@ -210,7 +210,6 @@ class ViteDoctor:
 
         self._run_static_checks()
         if runtime_checks:
-            self._check_hotfile_presence()
             self._check_vite_server_reachable()
 
         self._print_report()

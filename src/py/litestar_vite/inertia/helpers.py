@@ -29,7 +29,7 @@ DEFAULT_DEFERRED_GROUP = "default"
 
 
 @overload
-def lazy(key: str, value_or_callable: "None") -> "StaticProp[str, None]": ...
+def lazy(key: str, value_or_callable: "None" = None) -> "StaticProp[str, None]": ...  # pyright: ignore[reportOverlappingOverload]
 
 
 @overload

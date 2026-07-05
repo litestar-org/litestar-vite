@@ -120,6 +120,24 @@ describe("htmx extension", () => {
         expect(container.querySelector("a")?.getAttribute("href")).toBe("/path")
       })
 
+      it("removes dangerous URL protocols from href bindings", () => {
+        container.innerHTML = '<a :href="url">Link</a>'
+        swapJson(container, { url: "javascript:alert(1)" })
+        expect(container.querySelector("a")?.hasAttribute("href")).toBe(false)
+      })
+
+      it("removes dangerous URL protocols from src bindings", () => {
+        container.innerHTML = '<img :src="url">'
+        swapJson(container, { url: "javascript:alert(1)" })
+        expect(container.querySelector("img")?.hasAttribute("src")).toBe(false)
+      })
+
+      it("removes dangerous URL protocols from action bindings", () => {
+        container.innerHTML = '<form :action="url"></form>'
+        swapJson(container, { url: "javascript:alert(1)" })
+        expect(container.querySelector("form")?.hasAttribute("action")).toBe(false)
+      })
+
       it("binds id with template literal", () => {
         container.innerHTML = '<div :id="`item-${id}`"></div>'
         swapJson(container, { id: 42 })
@@ -528,6 +546,27 @@ describe("htmx extension", () => {
 
     it("rejects import() expressions", () => {
       expect(__compileExpressionForTest("import('evil-module')")).toBeNull()
+    })
+
+    it("rejects blocked globals reconstructed by string concatenation", () => {
+      expect(__compileExpressionForTest("'doc' + 'ument'")).toBeNull()
+      expect(__compileExpressionForTest('"Fun" + "ction"')).toBeNull()
+      expect(__compileExpressionForTest("'con' + 'structor'")).toBeNull()
+    })
+
+    it("rejects blocked globals reconstructed with escaped string segments", () => {
+      expect(__compileExpressionForTest('"con\\u0073" + "tructor"')).toBeNull()
+      expect(__compileExpressionForTest('"doc\\x75" + "\\u006d" + "ent"')).toBeNull()
+    })
+
+    it("rejects blocked globals reconstructed across comments", () => {
+      expect(__compileExpressionForTest("'con' /* hidden */ + 'structor'")).toBeNull()
+      expect(__compileExpressionForTest("'Fun' // line break\n + 'ction'")).toBeNull()
+    })
+
+    it("allows safe string concatenation", () => {
+      expect(__compileExpressionForTest("'doc' + 'umentation'")).toBeTypeOf("function")
+      expect(__compileExpressionForTest("'Hello, ' + name")).toBeTypeOf("function")
     })
 
     it("rejects self/top/parent global access", () => {

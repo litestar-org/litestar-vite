@@ -271,7 +271,12 @@ const directives: Dir[] = [
         } else if (v == null || v === false) {
           el.removeAttribute(name)
         } else {
-          el.setAttribute(name, v === true ? "" : String(v))
+          const value = v === true ? "" : String(v)
+          if (isDangerousUrlAttribute(name, value)) {
+            el.removeAttribute(name)
+            return
+          }
+          el.setAttribute(name, value)
         }
       }
     },
@@ -548,7 +553,99 @@ function stripStrings(s: string): string {
     .replace(/'(?:[^'\\]|\\.)*'/g, "") // single-quoted strings
 }
 
+function readQuotedLiteral(s: string, start: number): { end: number; value: string } | null {
+  const quote = s[start]
+  if (quote !== "'" && quote !== '"' && quote !== "`") return null
+
+  let value = ""
+  for (let i = start + 1; i < s.length; i++) {
+    const ch = s[i]
+    if (ch === "\\") {
+      if (i + 1 >= s.length) return null
+      const escaped = readEscapedCharacter(s, i + 1)
+      if (!escaped) return null
+      value += escaped.value
+      i = escaped.end - 1
+      continue
+    }
+    if (quote === "`" && ch === "$" && s[i + 1] === "{") {
+      return null
+    }
+    if (ch === quote) {
+      return { end: i + 1, value }
+    }
+    value += ch
+  }
+  return null
+}
+
+function readEscapedCharacter(s: string, start: number): { end: number; value: string } | null {
+  const ch = s[start]
+  if (ch === "u") {
+    if (s[start + 1] === "{") {
+      const close = s.indexOf("}", start + 2)
+      if (close === -1) return null
+      const codePoint = Number.parseInt(s.slice(start + 2, close), 16)
+      return Number.isFinite(codePoint) ? { end: close + 1, value: String.fromCodePoint(codePoint) } : null
+    }
+    const codePoint = Number.parseInt(s.slice(start + 1, start + 5), 16)
+    return Number.isFinite(codePoint) ? { end: start + 5, value: String.fromCharCode(codePoint) } : null
+  }
+  if (ch === "x") {
+    const codePoint = Number.parseInt(s.slice(start + 1, start + 3), 16)
+    return Number.isFinite(codePoint) ? { end: start + 3, value: String.fromCharCode(codePoint) } : null
+  }
+  const escapes: Record<string, string> = { b: "\b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v" }
+  return { end: start + 1, value: escapes[ch] ?? ch }
+}
+
+function skipTrivia(s: string, start: number): number {
+  let i = start
+  while (i < s.length) {
+    while (/\s/.test(s[i] ?? "")) i += 1
+    if (s[i] === "/" && s[i + 1] === "/") {
+      i = s.indexOf("\n", i + 2)
+      if (i === -1) return s.length
+      continue
+    }
+    if (s[i] === "/" && s[i + 1] === "*") {
+      const close = s.indexOf("*/", i + 2)
+      if (close === -1) return s.length
+      i = close + 2
+      continue
+    }
+    break
+  }
+  return i
+}
+
+function hasBlockedStringConcatenation(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const first = readQuotedLiteral(s, i)
+    if (!first) continue
+
+    const parts = [first.value]
+    let cursor = skipTrivia(s, first.end)
+    while (s[cursor] === "+") {
+      const nextStart = skipTrivia(s, cursor + 1)
+      const next = readQuotedLiteral(s, nextStart)
+      if (!next) break
+      parts.push(next.value)
+      cursor = skipTrivia(s, next.end)
+    }
+
+    if (parts.length > 1 && BLOCKED_GLOBALS.includes(parts.join(""))) {
+      return true
+    }
+    i = first.end - 1
+  }
+  return false
+}
+
 function isExpressionSafe(s: string): boolean {
+  if (hasBlockedStringConcatenation(s)) {
+    return false
+  }
   const stripped = stripStrings(s)
   return !BLOCKED_RE.test(stripped)
 }
@@ -595,6 +692,11 @@ function compileTextExpr(t: string): ((c: Ctx) => unknown) | null {
 const DANGEROUS_TAGS = new Set(["script", "style", "iframe", "object", "embed", "form", "meta", "link", "base"])
 const DANGEROUS_ATTR_RE = /^on/i
 const DANGEROUS_PROTO_RE = /^\s*javascript\s*:/i
+const URL_ATTRS = new Set(["href", "src", "action"])
+
+function isDangerousUrlAttribute(name: string, value: string): boolean {
+  return URL_ATTRS.has(name.toLowerCase()) && DANGEROUS_PROTO_RE.test(value)
+}
 
 function sanitizeHtml(html: string): string {
   const tpl = document.createElement("template")
@@ -616,7 +718,7 @@ function sanitizeNode(node: Node): void {
       for (const attr of Array.from(el.attributes)) {
         if (DANGEROUS_ATTR_RE.test(attr.name)) {
           el.removeAttribute(attr.name)
-        } else if ((attr.name === "href" || attr.name === "src" || attr.name === "action") && DANGEROUS_PROTO_RE.test(attr.value)) {
+        } else if (isDangerousUrlAttribute(attr.name, attr.value)) {
           el.removeAttribute(attr.name)
         }
       }

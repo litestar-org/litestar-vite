@@ -105,6 +105,11 @@ def _check_h2_available() -> bool:
     return _h2_available
 
 
+def check_h2_available() -> bool:
+    """Check whether optional HTTP/2 support is available."""
+    return _check_h2_available()
+
+
 def create_proxy_client(
     http2: bool = True,
     timeout: float = 30.0,
@@ -495,7 +500,7 @@ def set_environment(config: "ViteConfig", asset_url_override: str | None = None)
     if config.is_dev_mode:
         os.environ.setdefault("VITE_DEV_MODE", str(config.is_dev_mode))
 
-    config_path = write_runtime_config_file(config, asset_url_override=asset_url_override)
+    config_path = write_runtime_config_file(config)
     os.environ["LITESTAR_VITE_CONFIG_PATH"] = config_path
 
 

@@ -1,9 +1,18 @@
 """Tests for Inertia types module."""
 
 from dataclasses import dataclass
+from typing import cast
 
+from litestar_vite.inertia._utils import get_headers
 from litestar_vite.inertia.helpers import extract_pagination_scroll_props, is_pagination_container
-from litestar_vite.inertia.types import to_camel_case
+from litestar_vite.inertia.types import InertiaHeaderType, to_camel_case
+
+
+def test_get_headers_ignores_unhandled_optional_keys() -> None:
+    """Unknown optional typed keys should not raise when absent from the header map."""
+    headers = get_headers(cast("InertiaHeaderType", {"enabled": True, "reset": "users"}))
+
+    assert headers == {"X-Inertia": "true"}
 
 
 def test_to_camel_case_simple() -> None:

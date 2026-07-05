@@ -2,7 +2,6 @@
 
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -43,31 +42,30 @@ async def test_proxy_uses_http2_by_default(monkeypatch: pytest.MonkeyPatch, hotf
 
     monkeypatch.setattr(proxy_module.httpx, "AsyncClient", MockAsyncClient)
 
-    # Mock h2 as available
-    mock_h2 = MagicMock()
-    with patch.dict("sys.modules", {"h2": mock_h2}):
-        sent: list[dict[str, object]] = []
+    monkeypatch.setattr(proxy_module, "check_h2_available", lambda: True)
 
-        async def receive() -> dict[str, object]:
-            return {"type": "http.request", "body": b"", "more_body": False}
+    sent: list[dict[str, object]] = []
 
-        async def send(message: dict[str, object]) -> None:
-            sent.append(message)
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
 
-        scope = {
-            "type": "http",
-            "path": "/@vite/client",
-            "raw_path": b"/@vite/client",
-            "query_string": b"",
-            "headers": [],
-            "method": "GET",
-        }
+    async def send(message: dict[str, object]) -> None:
+        sent.append(message)
 
-        async def downstream(_scope: Scope, _receive: Receive, _send: Send) -> None:
-            return None
+    scope = {
+        "type": "http",
+        "path": "/@vite/client",
+        "raw_path": b"/@vite/client",
+        "query_string": b"",
+        "headers": [],
+        "method": "GET",
+    }
 
-        middleware = ViteProxyMiddleware(downstream, hotfile_path=hotfile, http2=True)
-        await middleware(scope, receive, send)  # type: ignore[arg-type]
+    async def downstream(_scope: Scope, _receive: Receive, _send: Send) -> None:
+        return None
+
+    middleware = ViteProxyMiddleware(downstream, hotfile_path=hotfile, http2=True)
+    await middleware(scope, receive, send)  # type: ignore[arg-type]
 
     # HTTP/2 should be enabled
     assert captured_http2 == [True]
@@ -89,17 +87,7 @@ async def test_proxy_falls_back_when_h2_not_installed(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(proxy_module.httpx, "AsyncClient", MockAsyncClient)
 
-    # Mock h2 as NOT available by making import fail
-    import builtins
-
-    original_import = builtins.__import__
-
-    def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
-        if name == "h2":
-            raise ImportError("No module named 'h2'")
-        return original_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", mock_import)
+    monkeypatch.setattr(proxy_module, "check_h2_available", lambda: False)
 
     sent: list[dict[str, object]] = []
 

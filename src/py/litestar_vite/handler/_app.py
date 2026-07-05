@@ -32,6 +32,7 @@ from litestar_vite.utils import get_static_resource_path, read_hotfile_url
 
 if TYPE_CHECKING:
     from litestar.connection import Request
+    from litestar.handlers.http_handlers import HTTPRouteHandler
     from litestar.types import Guard  # pyright: ignore[reportUnknownVariableType]
 
     from litestar_vite.config import SPAConfig, ViteConfig
@@ -276,10 +277,7 @@ class AppHandler:
         Returns:
             Absolute path to the manifest file location.
         """
-        bundle_dir = self._config.bundle_dir
-        if not bundle_dir.is_absolute():
-            bundle_dir = self._config.root_dir / bundle_dir
-        return bundle_dir / self._config.manifest_name
+        return self._config.resolve_manifest_path()
 
     async def _load_manifest_async(self) -> None:
         """Asynchronously load the Vite manifest for asset URL transformation."""
@@ -619,7 +617,7 @@ class AppHandler:
 
         return f"{self._config.protocol}://{self._config.host}:{self._config.port}"
 
-    def create_route_handler(self) -> Any:
+    def create_route_handler(self) -> "HTTPRouteHandler":
         """Create a Litestar route handler for the SPA.
 
         Returns:

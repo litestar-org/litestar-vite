@@ -31,7 +31,7 @@ vi.mock("../../src/shared/typegen-core.js", () => ({
   runTypeGeneration: mocks.runTypeGeneration,
 }))
 
-import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig } from "../../src/shared/typegen-plugin"
+import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig } from "../../src/shared/typegen-plugin"
 
 const baseConfig: RequiredTypeGenConfig = {
   enabled: true,
@@ -83,6 +83,58 @@ function createResolvedConfig(command: "build" | "serve") {
     },
   }
 }
+
+describe("resolveTypesConfig", () => {
+  it("disables auto mode when Python did not enable type generation", () => {
+    expect(resolveTypesConfig({ requested: "auto", defaultOutput: "src/generated" })).toBe(false)
+  })
+
+  it("keeps explicit core JS object config authoritative", () => {
+    const resolved = resolveTypesConfig({
+      requested: { output: "js/generated" },
+      pythonConfig: { ...baseConfig, output: "python/generated", generateZod: true },
+      defaultOutput: "src/generated",
+    })
+
+    expect(resolved).toMatchObject({
+      output: "js/generated",
+      openapiPath: "js/generated/openapi.json",
+      generateZod: false,
+      generateSdk: true,
+    })
+  })
+
+  it("merges Python defaults for adapter object config", () => {
+    const resolved = resolveTypesConfig({
+      requested: { generateSdk: false },
+      pythonConfig: { ...baseConfig, output: "python/generated", generateZod: true },
+      defaultOutput: "src/generated",
+      mergePythonForObject: true,
+    })
+
+    expect(resolved).toMatchObject({
+      output: "python/generated",
+      openapiPath: "src/generated/openapi.json",
+      generateZod: true,
+      generateSdk: false,
+    })
+  })
+
+  it("merges Python defaults for adapter true config", () => {
+    const resolved = resolveTypesConfig({
+      requested: true,
+      pythonConfig: { ...baseConfig, output: "python/generated", generateZod: true },
+      defaultOutput: "src/generated",
+      mergePythonWhenTrue: true,
+    })
+
+    expect(resolved).toMatchObject({
+      output: "python/generated",
+      openapiPath: "src/generated/openapi.json",
+      generateZod: true,
+    })
+  })
+})
 
 describe("createLitestarTypeGenPlugin", () => {
   beforeEach(() => {
