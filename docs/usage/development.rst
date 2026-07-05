@@ -26,6 +26,8 @@ When `use_server_lifespan` is set to `True` (default when `dev_mode=True`), the 
 
     litestar run
 
+If the managed Vite process exits unexpectedly, Litestar Vite restarts it with capped backoff. If the command keeps failing, the restart loop stops and logs the command plus a ``litestar assets doctor`` hint. Normal shutdown through Litestar does not restart the process.
+
 Proxy vs Direct Modes
 ---------------------
 
@@ -33,6 +35,19 @@ Proxy vs Direct Modes
 - **Direct:** classic two-port setup; Vite is exposed on `VITE_HOST:VITE_PORT` and Litestar does not proxy it.
 
 Switch with `VITE_PROXY_MODE=proxy|direct` (or `ViteConfig.runtime.proxy_mode`).
+
+Route Prefix Fallbacks
+----------------------
+
+In SPA and framework proxy modes, backend route prefixes are excluded from the frontend fallback. Litestar Vite always preserves registered Litestar routes and OpenAPI paths, and keeps ``/api`` and ``/schema`` as fallback backend prefixes. ``/docs`` is not reserved by default; it is only excluded when Litestar registers docs there or when you opt in:
+
+.. code-block:: python
+
+    from litestar_vite import RuntimeConfig, ViteConfig
+
+    config = ViteConfig(
+        runtime=RuntimeConfig(extra_route_prefixes=("/docs", "/admin")),
+    )
 
 Origin Behavior in Development
 ------------------------------
