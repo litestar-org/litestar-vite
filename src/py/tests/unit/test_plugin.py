@@ -1,8 +1,11 @@
 """Tests for VitePlugin functionality and integration."""
 
 import gc
+import signal
 import sys
-from collections.abc import Generator
+import threading
+import time
+from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import Mock, patch
@@ -459,6 +462,54 @@ def test_vite_plugin_lifespan_defers_vite_process_initialization_until_needed(tm
 # =====================================================
 
 
+class _FakeProcess:
+    _next_pid = 32000
+
+    def __init__(self, *, returncode: int = 1, auto_exit_on_wait: bool = False) -> None:
+        type(self)._next_pid += 1
+        self.pid = type(self)._next_pid
+        self.returncode: int | None = None
+        self._target_returncode = returncode
+        self._auto_exit_on_wait = auto_exit_on_wait
+        self._exited = threading.Event()
+        self.wait_calls: list[float | None] = []
+
+    def poll(self) -> int | None:
+        return self.returncode if self._exited.is_set() else None
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        self.wait_calls.append(timeout)
+        if self._auto_exit_on_wait and not self._exited.is_set():
+            self.exit(self._target_returncode)
+        elif timeout is None:
+            self._exited.wait()
+        elif not self._exited.is_set():
+            self.exit(0)
+        return self.returncode
+
+    def communicate(self) -> tuple[bytes, bytes]:
+        return b"", b""
+
+    def terminate(self) -> None:
+        self.exit(0)
+
+    def kill(self) -> None:
+        self.exit(-9)
+
+    def exit(self, returncode: int | None = None) -> None:
+        self.returncode = self._target_returncode if returncode is None else returncode
+        self._exited.set()
+
+
+def _wait_until(condition: Callable[[], bool], *, timeout: float = 1.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return
+        time.sleep(0.01)
+    assert condition()
+
+
 def test_vite_process_initialization() -> None:
     """Test ViteProcess initialization."""
     executor = Mock()
@@ -466,6 +517,134 @@ def test_vite_process_initialization() -> None:
 
     assert process.process is None
     assert process._lock is not None
+
+
+def test_vite_process_uses_reentrant_lock_for_signal_cleanup() -> None:
+    """Signal cleanup can re-enter stop() while the same thread already holds the process lock."""
+    executor = Mock()
+    process = ViteProcess(executor)
+
+    assert isinstance(process._lock, type(threading.RLock()))
+
+
+def test_vite_process_start_creates_daemon_watcher() -> None:
+    """Successful starts create a private daemon watcher for process exits."""
+    mock_process = _FakeProcess()
+    executor = Mock()
+    executor.run.return_value = mock_process
+
+    process = ViteProcess(executor)
+    process.start(["npm", "run", "dev"], "/test/path")
+
+    watcher = process._watcher_thread
+    assert watcher is not None
+    assert watcher.daemon is True
+
+    process.stop()
+
+
+@patch("litestar_vite.plugin.os.killpg")
+def test_vite_process_restarts_unexpected_exit(mock_killpg: Mock, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unexpected process exits are restarted with the original command and cwd."""
+    monkeypatch.setattr(ViteProcess, "_RESTART_BACKOFFS", (0.0, 0.0, 0.0), raising=False)
+    first = _FakeProcess()
+    restarted = _FakeProcess()
+    executor = Mock()
+    executor.run.side_effect = [first, restarted]
+
+    process = ViteProcess(executor)
+    command = ["npm", "run", "dev"]
+    cwd = Path("/test/path")
+    process.start(command, cwd)
+
+    first.exit(1)
+    _wait_until(lambda: executor.run.call_count == 2 and process.process is restarted)
+
+    assert executor.run.call_args_list[1].args == (command, cwd)
+    assert process.process is restarted
+
+    process.stop()
+    assert mock_killpg.called
+
+
+@patch("litestar_vite.plugin._process.time.sleep", return_value=None)
+@patch("litestar_vite.plugin.os.killpg")
+def test_vite_process_crash_cleanup_escalates_before_restart(
+    mock_killpg: Mock, mock_sleep: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unexpected-exit cleanup terminates leftover process-group children before restart."""
+    monkeypatch.setattr(ViteProcess, "_RESTART_BACKOFFS", (0.0,), raising=False)
+    first = _FakeProcess()
+    restarted = _FakeProcess()
+    executor = Mock()
+    executor.run.side_effect = [first, restarted]
+
+    process = ViteProcess(executor)
+    process.start(["npm", "run", "dev"], "/test/path")
+
+    first.exit(1)
+    _wait_until(lambda: executor.run.call_count == 2 and process.process is restarted)
+
+    assert mock_killpg.call_args_list[0].args == (first.pid, signal.SIGTERM)
+    assert any(call.args == (0.5,) for call in mock_sleep.call_args_list)
+    assert any(call.args == (first.pid, signal.SIGKILL) for call in mock_killpg.call_args_list)
+
+    process.stop()
+
+
+@patch("litestar_vite.plugin._process.console")
+def test_vite_process_stops_after_capped_restart_retries(mock_console: Mock, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A permanently failing dev server stops after the capped retry sequence."""
+    monkeypatch.setattr(ViteProcess, "_RESTART_BACKOFFS", (0.0, 0.0, 0.0), raising=False)
+    executor = Mock()
+    executor.run.side_effect = [_FakeProcess(auto_exit_on_wait=True) for _ in range(4)]
+
+    process = ViteProcess(executor)
+    process.start(["npm", "run", "dev"], "/test/path")
+
+    _wait_until(lambda: executor.run.call_count == 4 and process.process is None)
+
+    assert process._restart_error is not None
+    assert "Vite process exited unexpectedly after 3 restart attempts" in str(process._restart_error)
+    assert mock_console.print.called
+
+
+@patch("litestar_vite.plugin.os.killpg")
+def test_vite_process_intentional_stop_does_not_restart(mock_killpg: Mock, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Intentional stop() must not be treated as a crash by the watcher."""
+    monkeypatch.setattr(ViteProcess, "_RESTART_BACKOFFS", (0.0, 0.0, 0.0), raising=False)
+    mock_process = _FakeProcess()
+    executor = Mock()
+    executor.run.return_value = mock_process
+
+    process = ViteProcess(executor)
+    process.start(["npm", "run", "dev"], "/test/path")
+    process.stop()
+    time.sleep(0.05)
+
+    executor.run.assert_called_once()
+    assert mock_killpg.called
+
+
+def test_vite_process_start_after_stop_is_tracked_for_cleanup() -> None:
+    """A stopped ViteProcess can be started again without losing global cleanup tracking."""
+    first = _FakeProcess()
+    second = _FakeProcess()
+    executor = Mock()
+    executor.run.side_effect = [first, second]
+
+    process = ViteProcess(executor)
+    process.start(["npm", "run", "dev"], "/test/path")
+    process.stop()
+
+    assert process not in ViteProcess._instances
+
+    process.start(["npm", "run", "dev"], "/test/path")
+
+    assert process in ViteProcess._instances
+    assert process.process is second
+
+    process.stop()
 
 
 @patch("litestar_vite.plugin.os.killpg")
@@ -478,7 +657,7 @@ def test_vite_process_stop_removes_stopped_instance(mock_killpg: Mock) -> None:
 
     executor = Mock()
     process = ViteProcess(executor)
-    process.process = mock_process
+    process.process = cast("Any", mock_process)
 
     assert process in ViteProcess._instances
 
@@ -490,8 +669,7 @@ def test_vite_process_stop_removes_stopped_instance(mock_killpg: Mock) -> None:
 
 def test_vite_process_start_success() -> None:
     """Test successful Vite process start."""
-    mock_process = Mock()
-    mock_process.poll.return_value = None  # Process is running
+    mock_process = _FakeProcess()
 
     executor = Mock()
     executor.run.return_value = mock_process
@@ -505,15 +683,16 @@ def test_vite_process_start_success() -> None:
     assert process.process == mock_process
     executor.run.assert_called_once_with(command, Path(cwd))
 
+    process.stop()
+
 
 def test_vite_process_start_already_running() -> None:
     """Test starting Vite process when already running."""
-    mock_process = Mock()
-    mock_process.poll.return_value = None  # Process is running
+    mock_process = _FakeProcess()
 
     executor = Mock()
     process = ViteProcess(executor)
-    process.process = mock_process
+    process.process = cast("Any", mock_process)
 
     command = ["npm", "run", "dev"]
     process.start(command, None)
@@ -1058,7 +1237,7 @@ def test_get_litestar_route_prefixes_with_multiple_routes() -> None:
     # Should include common API prefixes as fallback
     assert "/api" in prefixes
     assert "/schema" in prefixes
-    assert "/docs" in prefixes
+    assert "/docs" not in prefixes
 
 
 def test_get_litestar_route_prefixes_includes_openapi_config_path() -> None:
@@ -1123,7 +1302,7 @@ def test_get_litestar_route_prefixes_with_no_openapi() -> None:
     # Should still include fallback prefixes
     assert "/api" in prefixes
     assert "/schema" in prefixes
-    assert "/docs" in prefixes
+    assert "/docs" not in prefixes
 
 
 def test_get_litestar_route_prefixes_strips_trailing_slashes() -> None:
@@ -1142,6 +1321,43 @@ def test_get_litestar_route_prefixes_strips_trailing_slashes() -> None:
     # Should strip trailing slash
     assert "/users" in prefixes
     assert "/users/" not in prefixes
+
+
+def test_get_litestar_route_prefixes_preserves_configured_openapi_docs_path() -> None:
+    """Configured OpenAPI docs/schema paths remain Litestar prefixes without the fallback /docs."""
+    from litestar.openapi import OpenAPIConfig
+
+    from litestar_vite.plugin import get_litestar_route_prefixes, is_litestar_route
+
+    app = Litestar(route_handlers=[], openapi_config=OpenAPIConfig(title="Test API", version="1.0.0", path="/docs"))
+
+    prefixes = get_litestar_route_prefixes(app)
+
+    assert "/docs" in prefixes
+    assert "/docs/openapi.json" in prefixes
+    assert is_litestar_route("/docs/swagger", app) is True
+
+
+def test_get_litestar_route_prefixes_includes_extra_runtime_prefixes() -> None:
+    """RuntimeConfig.extra_route_prefixes deliberately re-adds custom backend prefixes."""
+    from litestar_vite.plugin import get_litestar_route_prefixes, is_litestar_route
+
+    config = ViteConfig(
+        runtime=RuntimeConfig(dev_mode=False, extra_route_prefixes=("/docs/", "admin", "", "/api", "/admin/reports/"))
+    )
+    plugin = VitePlugin(config=config)
+    app = Litestar(route_handlers=[], plugins=[plugin], openapi_config=None)
+
+    prefixes = get_litestar_route_prefixes(app)
+
+    assert "/admin/reports" in prefixes
+    assert "/docs" in prefixes
+    assert "/admin" in prefixes
+    assert prefixes.count("/api") == 1
+    assert "" not in prefixes
+    assert prefixes.index("/admin/reports") < prefixes.index("/admin")
+    assert is_litestar_route("/docs", app) is True
+    assert is_litestar_route("/docs/client-page", app) is True
 
 
 def test_get_litestar_route_prefixes_sorted_by_length() -> None:
@@ -1336,7 +1552,7 @@ def test_get_litestar_route_prefixes_with_empty_app() -> None:
     # Should still include common fallback prefixes
     assert "/api" in prefixes
     assert "/schema" in prefixes
-    assert "/docs" in prefixes
+    assert "/docs" not in prefixes
 
 
 # =====================================================

@@ -23,7 +23,10 @@ Litestar Vite Changelog
 - Fixed Vite dev-server resilience by revalidating hotfile targets by mtime, recovering after missing or replaced hotfiles, tolerating additive/corrupt bridge config files, aligning TLS certificate env vars, and preserving static-files defaults when user overrides leave fields unset. (#312, #314)
 - Fixed ``litestar assets init`` scaffold correctness for framework variants without dedicated directories, Tailwind CSS/PostCSS dependencies and entry inputs, current hey-api/TanStack/Vite template APIs, transactional writes, and non-interactive collision handling. (#313, #314)
 - Updated npm publishing to use trusted publishing with provenance and no npm token. (#314)
+- Fixed Vite dev-server lifecycle handling so unexpected exits are restarted with capped backoff and intentional shutdowns do not trigger restarts.
+- Changed SPA/proxy route-prefix fallbacks so ``/docs`` is no longer reserved unless Litestar actually registers docs there or ``RuntimeConfig.extra_route_prefixes`` includes it.
 - Added ``ViteConfig(enabled=...)`` and ``VITE_ENABLED`` so Vite routes and lifespans can be disabled in CLI, worker, and test contexts while keeping asset CLI commands available. (#301, #310)
+- Added ``RuntimeConfig.extra_route_prefixes`` for deliberately reserving custom backend prefixes from SPA/proxy fallbacks.
 - Fixed ``getCsrfToken()`` so SPA and HTMX helpers can fall back to the ``csrftoken`` or ``XSRF-TOKEN`` cookie when injected page-state sources are absent. (#299, #310)
 
 0.25.0 - 2026-06-25

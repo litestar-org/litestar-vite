@@ -3,8 +3,24 @@ from pathlib import Path
 import pytest
 from litestar.serialization import decode_json
 
-from litestar_vite.config import PathConfig, ViteConfig
+from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
 from litestar_vite.plugin._utils import _path_for_bridge, write_runtime_config_file
+
+
+def test_runtime_config_extra_route_prefixes_default_is_immutable() -> None:
+    first = RuntimeConfig()
+    second = RuntimeConfig()
+
+    assert first.extra_route_prefixes == ()
+    assert second.extra_route_prefixes == ()
+    assert isinstance(first.extra_route_prefixes, tuple)
+
+
+def test_runtime_config_extra_route_prefixes_normalizes_to_tuple() -> None:
+    config = RuntimeConfig(extra_route_prefixes=["/docs", "admin"])  # type: ignore[arg-type]
+
+    assert config.extra_route_prefixes == ("/docs", "admin")
+    assert isinstance(config.extra_route_prefixes, tuple)
 
 
 def test_runtime_config_includes_litestar_version(tmp_path: Path, monkeypatch: object) -> None:

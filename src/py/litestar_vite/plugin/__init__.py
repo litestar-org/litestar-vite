@@ -20,7 +20,7 @@ Example::
 """
 
 import os
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager, contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -631,6 +631,8 @@ class VitePlugin(InitPlugin, CLIPlugin):
             log_info("VitePlugin inert; skipping asset and route wiring")
             return app_config
 
+        self._set_route_prefix_state(app_config.state)
+
         from litestar import Response
         from litestar.connection import Request as LitestarRequest
 
@@ -697,6 +699,14 @@ class VitePlugin(InitPlugin, CLIPlugin):
         app_config.lifespan.append(self.lifespan)  # pyright: ignore[reportUnknownMemberType]
 
         return app_config
+
+    def _set_route_prefix_state(self, state: Any) -> None:
+        """Store route-prefix config on Litestar state for request-time helpers."""
+        extra_prefixes = self._config.runtime.extra_route_prefixes
+        if getattr(state, "litestar_vite_extra_route_prefixes", None) != extra_prefixes:
+            with suppress(AttributeError):
+                del state.litestar_vite_route_prefixes
+        state.litestar_vite_extra_route_prefixes = extra_prefixes
 
     def _check_health(self) -> None:
         """Check if the Vite dev server is running and ready.
@@ -813,6 +823,8 @@ class VitePlugin(InitPlugin, CLIPlugin):
             yield
             return
 
+        self._set_route_prefix_state(app.state)
+
         if self._config.is_dev_mode:
             self._ensure_proxy_target()
 
@@ -902,6 +914,8 @@ class VitePlugin(InitPlugin, CLIPlugin):
             None
         """
         from litestar_vite.loader import ViteAssetLoader
+
+        self._set_route_prefix_state(app.state)
 
         if self._config.set_environment:
             set_environment(config=self._config)
