@@ -140,12 +140,16 @@ export async function resolvePageComponent(path: string | string[], pages: Recor
  * Offset-based pagination props.
  *
  * Returned when a route returns Litestar's `OffsetPagination` type.
- * Contains items plus metadata for offset/limit pagination.
+ * Litestar-Vite flattens pagination metadata as top-level sibling props:
+ * the route prop contains the item array, and `total`, `limit`, and `offset`
+ * are emitted beside it.
  *
  * @example
  * ```ts
  * interface User { id: string; name: string }
- * const { items, total, limit, offset } = props.users as OffsetPaginationProps<User>
+ * type UsersPageProps = { users: User[] } & Omit<OffsetPaginationProps<User>, 'items'>
+ *
+ * const { users, total, limit, offset } = props as UsersPageProps
  * ```
  */
 export interface OffsetPaginationProps<T> {
@@ -163,12 +167,16 @@ export interface OffsetPaginationProps<T> {
  * Classic page-based pagination props.
  *
  * Returned when a route returns Litestar's `ClassicPagination` type.
- * Contains items plus metadata for page number pagination.
+ * Litestar-Vite flattens pagination metadata as top-level sibling props:
+ * the route prop contains the item array, and `currentPage`, `totalPages`,
+ * and `pageSize` are emitted beside it.
  *
  * @example
  * ```ts
  * interface Post { id: string; title: string }
- * const { items, currentPage, totalPages, pageSize } = props.posts as ClassicPaginationProps<Post>
+ * type PostsPageProps = { posts: Post[] } & Omit<ClassicPaginationProps<Post>, 'items'>
+ *
+ * const { posts, currentPage, totalPages, pageSize } = props as PostsPageProps
  * ```
  */
 export interface ClassicPaginationProps<T> {
@@ -186,12 +194,16 @@ export interface ClassicPaginationProps<T> {
  * Cursor-based pagination props.
  *
  * Used for cursor/keyset pagination, commonly with infinite scroll.
- * Contains items plus cursor tokens for navigation.
+ * Litestar-Vite flattens pagination metadata as top-level sibling props:
+ * the route prop contains the item array, and cursor metadata is emitted
+ * beside it.
  *
  * @example
  * ```ts
  * interface Message { id: string; content: string }
- * const { items, hasMore, nextCursor } = props.messages as CursorPaginationProps<Message>
+ * type MessagesPageProps = { messages: Message[] } & Omit<CursorPaginationProps<Message>, 'items'>
+ *
+ * const { messages, hasMore, nextCursor } = props as MessagesPageProps
  * if (hasMore && nextCursor) {
  *   // Fetch more with cursor
  * }
@@ -218,6 +230,11 @@ export interface CursorPaginationProps<T> {
  * Union type for any pagination props.
  *
  * Use when you need to handle multiple pagination styles.
+ * Because pagination metadata is flattened as sibling keys, two paginators in
+ * one response can collide on keys such as `total`, `limit`, `offset`,
+ * `currentPage`, or `pageSize`. Return one flattened paginator per response,
+ * or wrap additional paginators in explicit prop containers with distinct
+ * metadata.
  *
  * @example
  * ```ts
@@ -250,11 +267,12 @@ export type PaginationProps<T> = OffsetPaginationProps<T> | ClassicPaginationPro
  * import { usePage } from '@inertiajs/vue3'
  *
  * const page = usePage()
- * const scrollProps = page.props.scrollProps as ScrollProps
+ * const scrollProps = page.props.scrollProps as Record<string, ScrollProps> | undefined
+ * const postsScroll = scrollProps?.posts
  *
  * function loadMore() {
- *   if (scrollProps.nextPage) {
- *     router.get(url, { [scrollProps.pageName]: scrollProps.nextPage })
+ *   if (postsScroll?.nextPage) {
+ *     router.get(url, { [postsScroll.pageName]: postsScroll.nextPage })
  *   }
  * }
  * ```

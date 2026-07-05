@@ -299,7 +299,7 @@ class PageProps(Generic[T]):
     # v2.2.20+ protocol: Props that should only be resolved once and cached client-side
     once_props: "dict[str, dict[str, str | int | None]] | None" = None
 
-    scroll_props: "ScrollPropsConfig | None" = None
+    scroll_props: "dict[str, ScrollPropsConfig] | None" = None
 
     # v2.3+ protocol: Flash messages at top level (not in props)
     # This prevents flash from persisting in browser history state

@@ -20,6 +20,7 @@ from litestar.utils.scope.state import ScopeState
 from litestar_vite.html_transform import inject_head_html, replace_element_outer_html
 from litestar_vite.inertia._utils import get_headers
 from litestar_vite.inertia.helpers import (
+    PropFilter,
     _extract_once_prop_entries,  # pyright: ignore[reportPrivateUsage]
     build_once_props_metadata,
     extract_deferred_props,
@@ -71,6 +72,7 @@ class InertiaResponse(Response[T]):
         encrypt_history: "bool | None" = None,
         clear_history: bool = False,
         scroll_props: "ScrollPropsConfig | None" = None,
+        prop_filter: "PropFilter | None" = None,
     ) -> None:
         """Handle the rendering of a given template into a bytes string.
 
@@ -101,6 +103,8 @@ class InertiaResponse(Response[T]):
             scroll_props: Configuration for infinite scroll (v2 feature).
                 Provides next/previous page information for paginated data.
                 Use the scroll_props() helper to create this configuration.
+            prop_filter: Optional route-prop filter created with ``only()`` or
+                ``except_()``. Filters this response's route content keys only.
 
         Raises:
             ValueError: If both template_name and template_str are provided.
@@ -128,12 +132,15 @@ class InertiaResponse(Response[T]):
         self.encrypt_history = encrypt_history
         self.clear_history = clear_history
         self.scroll_props = scroll_props
+        self.prop_filter = prop_filter
         # Populated by :meth:`resolve_async_props` (called from the handler
         # frame so DI-scoped resources are still alive). ``_async_prepass_done``
         # short-circuits the deferral check in :meth:`to_asgi_response`;
         # ``_cached_ssr_payload`` lets ``_render_spa`` skip the SSR fetch.
         self._async_prepass_done: bool = False
+        self._cached_page_props: "PageProps[T] | None" = None
         self._cached_ssr_payload: "_InertiaSSRResult | None" = None
+        self._defer_status_to_handler: bool = False
 
     def create_template_context(
         self,
@@ -160,11 +167,12 @@ class InertiaResponse(Response[T]):
             "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
         }
 
-    def _build_page_props(  # noqa: PLR0915
+    def _build_page_props(
         self,
         request: "Request[UserT, AuthT, StateT]",
         partial_data: "set[str] | None",
         partial_except: "set[str] | None",
+        is_partial_render: bool,
         except_once_props: "set[str] | None",
         reset_keys: "set[str]",
         vite_plugin: "VitePlugin",
@@ -176,6 +184,7 @@ class InertiaResponse(Response[T]):
             request: The request object.
             partial_data: Set of partial data keys.
             partial_except: Set of partial except keys.
+            is_partial_render: Whether this response is for an Inertia partial reload.
             except_once_props: Set of cached once-prop keys sent by the client.
             reset_keys: Set of keys to reset.
             vite_plugin: The Vite plugin instance.
@@ -216,6 +225,10 @@ class InertiaResponse(Response[T]):
             filtered_content: Any = lazy_render(cast("Any", content), partial_data, partial_except, except_once_props)
             if filtered_content is not None:
                 route_content = filtered_content
+        elif isinstance(content, Mapping) and partial_data and partial_except:
+            route_content = lazy_render(
+                cast("Mapping[str, Any]", content), partial_data, partial_except, except_once_props
+            )
         elif should_render(content, partial_data, partial_except, except_once_props):
             route_content = cast("Any", content)
 
@@ -223,18 +236,17 @@ class InertiaResponse(Response[T]):
             if isinstance(route_content, Mapping):
                 mapping_content = cast("Mapping[str, Any]", route_content)
                 for key, value in mapping_content.items():
+                    if self.prop_filter is not None and not self.prop_filter.should_include(str(key)):
+                        continue
                     shared_props[key] = value
             elif is_pagination_container(route_content):
-                prop_key = (route_handler.opt.get("key", "items") if route_handler else "items") or "items"
+                prop_key = _get_route_prop_key(route_handler)
                 shared_props[prop_key] = route_content
             else:
                 shared_props["content"] = route_content
 
         # Drop keys this partial reload just resolved, or the client loops on loadDeferredProps.
-        if partial_data:
-            for key in partial_data:
-                _discard_deferred_prop_key(deferred_props_map, key)
-        deferred_props = deferred_props_map or None
+        deferred_props = _resolve_deferred_props(deferred_props_map, partial_data, is_partial_render)
         # Extract once props tracked during get_shared_props (already rendered)
         once_props_from_shared = shared_props.pop("_once_props", [])
         once_prop_entries = _dedupe_once_prop_entries(
@@ -245,28 +257,12 @@ class InertiaResponse(Response[T]):
         merge_props_list, prepend_props_list, deep_merge_props_list, match_props_on = extract_merge_props(shared_props)
         shared_props = unwrap_merge_props(shared_props)
 
-        extracted_scroll_props: "ScrollPropsConfig | None" = self.scroll_props
-        infinite_scroll_enabled = bool(route_handler and route_handler.opt.get("infinite_scroll", False))
+        scroll_props = _apply_pagination_props(
+            shared_props, route_handler=route_handler, explicit_scroll_props=self.scroll_props
+        )
 
-        for key in tuple(shared_props):
-            value = shared_props[key]
-            if is_pagination_container(value):
-                _, scroll = extract_pagination_scroll_props(value)
-                if extracted_scroll_props is None and scroll is not None and infinite_scroll_enabled:
-                    extracted_scroll_props = scroll
-
-                pagination_dict = pagination_to_dict(value)
-                shared_props[key] = pagination_dict.pop("items")
-                shared_props.update(pagination_dict)
-
-        encrypt_history = self.encrypt_history
-        if encrypt_history is None:
-            encrypt_history = inertia_plugin.config.encrypt_history
-
-        clear_history_flag = self.clear_history
-        if not clear_history_flag:
-            with contextlib.suppress(AttributeError, ImproperlyConfiguredException):
-                clear_history_flag = request.session.pop("_inertia_clear_history", False)  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
+        encrypt_history = _resolve_encrypt_history(self.encrypt_history, inertia_plugin)
+        clear_history_flag = _resolve_clear_history(self.clear_history, request)
 
         # v2.3+ protocol: Extract flash to top level (not in props)
         # This prevents flash from persisting in browser history state
@@ -286,7 +282,7 @@ class InertiaResponse(Response[T]):
             prepend_props=prepend_props_list or None,
             deep_merge_props=deep_merge_props_list or None,
             match_props_on=match_props_on or None,
-            scroll_props=extracted_scroll_props,
+            scroll_props=scroll_props,
             flash=flash_data,
         )
 
@@ -497,11 +493,31 @@ class InertiaResponse(Response[T]):
         if ssr_config is None:
             return
         page_props = self._build_page_props(
-            request, partial_data, partial_except, info.except_once_keys, info.reset_keys, vite_plugin, inertia_plugin
+            request,
+            partial_data,
+            partial_except,
+            info.is_partial_render,
+            info.except_once_keys,
+            info.reset_keys,
+            vite_plugin,
+            inertia_plugin,
         )
+        self._cached_page_props = page_props
+        type_encoders = self._resolve_type_encoders(request)
         self._cached_ssr_payload = await _render_inertia_ssr(
-            page_props.to_dict(), ssr_config.url, ssr_config.timeout, inertia_plugin.ssr_client
+            page_props.to_dict(),
+            ssr_config.url,
+            ssr_config.timeout,
+            inertia_plugin.ssr_client,
+            type_encoders=type_encoders,
         )
+
+    def _resolve_type_encoders(self, request: "Request[Any, Any, Any]") -> "TypeEncodersMap":
+        route_handler = cast("Any | None", request.scope.get("route_handler"))  # pyright: ignore[reportUnknownMemberType]
+        route_type_encoders: "TypeEncodersMap" = {}
+        if route_handler is not None:
+            route_type_encoders = cast("TypeEncodersMap", route_handler.resolve_type_encoders())
+        return {**route_type_encoders, **self.response_type_encoders}
 
     def to_asgi_response(
         self,
@@ -575,6 +591,11 @@ class InertiaResponse(Response[T]):
             {**type_encoders, **(self.response_type_encoders or {})} if type_encoders else self.response_type_encoders
         )
         serializer = get_serializer(type_encoders)
+        resolved_status_code = (
+            status_code
+            if self._defer_status_to_handler and status_code is not None
+            else (self.status_code or status_code)
+        )
 
         if not inertia_info.inertia_enabled:
             resolved_media_type = get_enum_string_value(self.media_type or media_type or MediaType.JSON)
@@ -587,7 +608,7 @@ class InertiaResponse(Response[T]):
                 headers=headers,
                 is_head_response=is_head_response,
                 media_type=resolved_media_type,
-                status_code=self.status_code or status_code,
+                status_code=resolved_status_code,
             )
 
         vite_plugin = request.app.plugins.get(VitePlugin)
@@ -606,14 +627,19 @@ class InertiaResponse(Response[T]):
             else None
         )
 
-        page_props = self._build_page_props(
-            request,
-            partial_data,
-            partial_except,
-            inertia_info.except_once_keys,
-            inertia_info.reset_keys,
-            vite_plugin,
-            inertia_plugin,
+        page_props = (
+            self._cached_page_props
+            if self._cached_page_props is not None
+            else self._build_page_props(
+                request,
+                partial_data,
+                partial_except,
+                inertia_info.is_partial_render,
+                inertia_info.except_once_keys,
+                inertia_info.reset_keys,
+                vite_plugin,
+                inertia_plugin,
+            )
         )
 
         if inertia_info.is_inertia:
@@ -628,7 +654,7 @@ class InertiaResponse(Response[T]):
                 headers=headers,
                 is_head_response=is_head_response,
                 media_type=resolved_media_type,
-                status_code=self.status_code or status_code,
+                status_code=resolved_status_code,
             )
 
         resolved_media_type = self._determine_media_type(self.media_type)
@@ -647,7 +673,7 @@ class InertiaResponse(Response[T]):
             headers=headers,
             is_head_response=is_head_response,
             media_type=resolved_media_type,
-            status_code=self.status_code or status_code,
+            status_code=resolved_status_code,
         )
 
 
@@ -878,7 +904,12 @@ def _parse_inertia_ssr_payload(payload: Any, url: str) -> _InertiaSSRResult:
 
 
 async def _render_inertia_ssr(
-    page: dict[str, Any], url: str, timeout_seconds: float, client: "httpx.AsyncClient | None" = None
+    page: dict[str, Any],
+    url: str,
+    timeout_seconds: float,
+    client: "httpx.AsyncClient | None" = None,
+    *,
+    type_encoders: "TypeEncodersMap | None" = None,
 ) -> _InertiaSSRResult:
     """Call the Inertia SSR server asynchronously and return head/body HTML.
 
@@ -888,11 +919,12 @@ async def _render_inertia_ssr(
         timeout_seconds: Request timeout in seconds.
         client: Optional shared httpx.AsyncClient for connection pooling.
             If None, creates a new client per request (slower).
+        type_encoders: Optional type encoders used to serialize page props.
 
     Returns:
         An _InertiaSSRResult with head and body HTML.
     """
-    return await _do_ssr_request(page, url, timeout_seconds, client)
+    return await _do_ssr_request(page, url, timeout_seconds, client, type_encoders=type_encoders)
 
 
 @contextlib.asynccontextmanager
@@ -911,7 +943,12 @@ async def _acquire_ssr_client(client: "httpx.AsyncClient | None") -> "AsyncGener
 
 
 async def _do_ssr_request(
-    page: dict[str, Any], url: str, timeout_seconds: float, client: "httpx.AsyncClient | None"
+    page: dict[str, Any],
+    url: str,
+    timeout_seconds: float,
+    client: "httpx.AsyncClient | None",
+    *,
+    type_encoders: "TypeEncodersMap | None" = None,
 ) -> _InertiaSSRResult:
     """Execute the SSR request with optional client reuse.
 
@@ -920,6 +957,7 @@ async def _do_ssr_request(
         url: The SSR server URL.
         timeout_seconds: Request timeout in seconds.
         client: Optional shared httpx.AsyncClient.
+        type_encoders: Optional type encoders used to serialize page props.
 
     Raises:
         ImproperlyConfiguredException: If the SSR server is unreachable,
@@ -932,7 +970,7 @@ async def _do_ssr_request(
     # in handler return values serialize the same way as the regular Inertia render path
     # (response.render uses get_serializer too). httpx's default json= serializer falls
     # back to stdlib json.dumps and rejects Struct instances.
-    body = encode_json(page, serializer=get_serializer(None))
+    body = encode_json(page, serializer=get_serializer(type_encoders))
     headers = {"content-type": "application/json"}
 
     try:
@@ -1012,6 +1050,56 @@ def _get_relative_url(request: "Request[Any, Any, Any]") -> str:
 
 def _should_use_fragment_redirect(request: "Request[Any, Any, Any]", url: str) -> bool:
     return bool(InertiaDetails(request)) and bool(urlparse(url).fragment)
+
+
+def _get_route_prop_key(route_handler: Any) -> str:
+    return (route_handler.opt.get("key", "items") if route_handler else "items") or "items"
+
+
+def _apply_pagination_props(
+    shared_props: "dict[str, Any]", *, route_handler: Any, explicit_scroll_props: "ScrollPropsConfig | None"
+) -> "dict[str, ScrollPropsConfig] | None":
+    scroll_props_map: "dict[str, ScrollPropsConfig]" = {}
+    if explicit_scroll_props is not None:
+        scroll_props_map[_get_route_prop_key(route_handler)] = explicit_scroll_props
+
+    infinite_scroll_enabled = bool(route_handler and route_handler.opt.get("infinite_scroll", False))
+    for key in tuple(shared_props):
+        value = shared_props[key]
+        if is_pagination_container(value):
+            _, scroll = extract_pagination_scroll_props(value)
+            if scroll is not None and infinite_scroll_enabled and key not in scroll_props_map:
+                scroll_props_map[key] = scroll
+
+            pagination_dict = pagination_to_dict(value)
+            shared_props[key] = pagination_dict.pop("items")
+            shared_props.update(pagination_dict)
+
+    return scroll_props_map or None
+
+
+def _resolve_deferred_props(
+    deferred_props_map: "dict[str, list[str]]", partial_data: "set[str] | None", is_partial_render: bool
+) -> "dict[str, list[str]] | None":
+    if partial_data:
+        for key in partial_data:
+            _discard_deferred_prop_key(deferred_props_map, key)
+    return None if is_partial_render else deferred_props_map or None
+
+
+def _resolve_encrypt_history(encrypt_history: "bool | None", inertia_plugin: "InertiaPlugin") -> bool:
+    return inertia_plugin.config.encrypt_history if encrypt_history is None else encrypt_history
+
+
+def _resolve_clear_history(clear_history: bool, request: "Request[Any, Any, Any]") -> bool:
+    if clear_history:
+        return True
+    with contextlib.suppress(AttributeError, ImproperlyConfiguredException):
+        return cast(
+            "bool",
+            request.session.pop("_inertia_clear_history", False),  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
+        )
+    return False
 
 
 def _merge_deferred_props(target: "dict[str, list[str]]", source: "Mapping[str, list[str]]") -> None:

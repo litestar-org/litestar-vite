@@ -3,7 +3,7 @@
 from typing import Any
 
 import pytest
-from litestar import Request, get
+from litestar import Request, delete, get, patch, post, put
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.params import FromQuery
 from litestar.stores.memory import MemoryStore
@@ -100,6 +100,49 @@ async def test_version_mismatch_does_not_execute_route_handler(
 
         assert response.status_code == 409
         assert response.headers[InertiaHeaders.LOCATION.value] == "http://testserver.local/"
+
+
+async def test_version_mismatch_ignored_for_non_get_requests(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test that stale versions do not downgrade non-GET submissions into 409 redirects."""
+    ran: list[str] = []
+
+    @post("/submit", component="Form")
+    async def submit() -> dict[str, str]:
+        ran.append("post")
+        return {"ok": "post"}
+
+    @put("/submit", component="Form")
+    async def replace() -> dict[str, str]:
+        ran.append("put")
+        return {"ok": "put"}
+
+    @patch("/submit", component="Form")
+    async def update() -> dict[str, str]:
+        ran.append("patch")
+        return {"ok": "patch"}
+
+    @delete("/submit", component="Form")
+    async def remove() -> None:
+        ran.append("delete")
+
+    with create_test_client(
+        route_handlers=[submit, replace, update, remove],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        headers = {InertiaHeaders.ENABLED.value: "true", InertiaHeaders.VERSION.value: "stale-version"}
+        for method_name in ("post", "put", "patch", "delete"):
+            response = getattr(client, method_name)("/submit", headers=headers, follow_redirects=False)
+            assert response.status_code != 409
+            assert InertiaHeaders.LOCATION.value not in response.headers
+
+    assert ran == ["post", "put", "patch", "delete"]
 
 
 async def test_non_inertia_request_bypasses_version_check(

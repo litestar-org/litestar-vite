@@ -334,6 +334,39 @@ async def test_partial_reload_with_partial_except(
         assert "settings" not in props
 
 
+async def test_optional_prop_included_under_partial_except(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """optional() behaves like lazy() for partial-except reloads."""
+    from litestar_vite.inertia.helpers import optional
+
+    @get("/", component="Home")
+    async def handler() -> dict[str, Any]:
+        return {"a": 1, "opt": optional("opt", lambda: "v")}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_EXCEPT.value: "a",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+            },
+        )
+
+    props = response.json()["props"]
+    assert props["opt"] == "v"
+    assert "a" not in props
+
+
 # =====================================================
 # pagination_to_dict() Helper Tests
 # =====================================================
@@ -567,6 +600,98 @@ async def test_share_returns_true_with_session(
         assert data["props"]["user"] == {"name": "Alice"}
 
 
+async def test_share_materializes_sync_special_prop_before_session_write(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test share() writes rendered values for sync special props."""
+    from litestar_vite.inertia.helpers import always, merge, once, share
+
+    captured: dict[str, Any] = {}
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        share(request, "count", once("count", lambda: 42))
+        share(request, "flag", always("flag", "y"))
+        share(request, "posts", merge("posts", [1, 2]))
+        captured["shared"] = dict(request.session["_shared"])
+        return {}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert response.status_code == 200
+
+    assert captured["shared"]["count"] == 42
+    assert isinstance(captured["shared"]["count"], int)
+    assert captured["shared"]["flag"] == "y"
+    assert captured["shared"]["posts"] == [1, 2]
+
+
+async def test_share_skips_async_special_prop(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test share() skips async special props that cannot be stored in session."""
+    from litestar_vite.inertia.helpers import defer, share
+
+    captured: dict[str, Any] = {}
+
+    async def fetch() -> int:
+        return 1
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        captured["result"] = share(request, "slow", defer("slow", fetch))
+        captured["shared"] = dict(request.session.get("_shared", {}))
+        return {}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert response.status_code == 200
+
+    assert captured["result"] is False
+    assert "slow" not in captured["shared"]
+
+
+async def test_share_special_prop_survives_redirect(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Test shared sync special props do not break session serialization on redirects."""
+    from litestar_vite.inertia import InertiaRedirect
+    from litestar_vite.inertia.helpers import once, share
+
+    @get("/")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaRedirect:
+        share(request, "cfg", once("cfg", lambda: {"a": 1}))
+        return InertiaRedirect(request, "/next")
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", follow_redirects=False)
+        assert response.status_code == 307
+
+
 def test_share_returns_false_when_session_fails() -> None:
     """Test share() returns False when session access fails."""
     from unittest.mock import MagicMock
@@ -730,6 +855,16 @@ def test_optional_only_included_when_requested() -> None:
 
     # Only render when explicitly requested
     assert should_render(prop, partial_data={"comments"}) is True
+
+
+def test_optional_should_render_respects_partial_except() -> None:
+    """optional() props are included by partial-except unless excluded."""
+    from litestar_vite.inertia.helpers import optional, should_render
+
+    prop = optional("opt", lambda: 1)
+
+    assert should_render(prop, partial_except={"opt"}, key="opt") is False
+    assert should_render(prop, partial_except={"other"}, key="opt") is True
 
 
 def test_optional_callback_only_called_when_needed() -> None:

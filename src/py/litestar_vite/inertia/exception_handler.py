@@ -69,9 +69,89 @@ def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "E
             return cast("Response[Any]", create_exception_response(request, exc))
         if request.app.debug:
             return cast("Response[Any]", create_debug_response(request, exc))
-        detail = str(exc.__cause__) if exc.__cause__ is not None else str(exc)
-        return cast("Response[Any]", create_exception_response(request, InternalServerException(detail=detail)))
+        # Production (non-debug, non-HTTPException): never embed raw exception text.
+        # Debug rendering is already returned above by create_debug_response.
+        return cast("Response[Any]", create_exception_response(request, InternalServerException()))
     return create_inertia_exception_response(request, exc)
+
+
+def _exception_detail_for_response(request: "Request[Any, Any, Any]", exc: Exception) -> Any:
+    if isinstance(exc, HTTPException):
+        return exc.detail
+    if request.app.debug:
+        return str(exc)
+    return "Internal Server Error"
+
+
+def _exception_extra(exc: Exception) -> Any:
+    if not isinstance(exc, HTTPException):
+        return None
+    try:
+        return exc.extra  # pyright: ignore[reportUnknownMemberType]
+    except AttributeError:
+        return None
+
+
+def _get_inertia_plugin(request: "Request[Any, Any, Any]") -> "InertiaPlugin | None":
+    try:
+        return request.app.plugins.get("InertiaPlugin")
+    except KeyError:
+        return None
+
+
+def _store_field_errors(request: "Request[Any, Any, Any]", extras: Any, detail: Any) -> None:
+    if not extras or not isinstance(extras, (list, tuple)) or len(extras) < 1:  # pyright: ignore[reportUnknownArgumentType]
+        return
+    first_extra = extras[0]  # pyright: ignore[reportUnknownVariableType]
+    if not isinstance(first_extra, dict):
+        return
+    message: dict[str, str] = cast("dict[str, str]", first_extra)
+    key_value = message.get("key")
+    default_field = f"root.{key_value}" if key_value is not None else "root"
+    error_detail = str(message.get("message", detail) or detail)
+    match = FIELD_ERR_RE.search(error_detail)
+    field = match.group(1) if match else default_field
+    error(request, field, error_detail or str(detail))
+
+
+def _create_exception_page_response(
+    *,
+    content: dict[str, Any],
+    preferred_type: MediaType,
+    route_component: str | None,
+    is_inertia: bool,
+    status_code: int,
+) -> "Response[Any]":
+    if is_inertia and route_component is None:
+        return Response[Any](content=content, media_type=MediaType.JSON, status_code=status_code)
+    return InertiaResponse[Any](media_type=preferred_type, content=content, status_code=status_code)
+
+
+def _append_error_query(redirect_to: str, detail: Any) -> str:
+    parsed = urlparse(redirect_to)
+    error_param = f"error={quote(str(detail), safe='')}"
+    query = f"{parsed.query}&{error_param}" if parsed.query else error_param
+    return urlunparse(parsed._replace(query=query))
+
+
+def _create_unauthorized_response(
+    request: "Request[Any, Any, Any]",
+    *,
+    detail: Any,
+    flash_succeeded: bool,
+    inertia_plugin: "InertiaPlugin",
+    status_code: int,
+    exc: Exception,
+) -> "Response[Any] | None":
+    is_unauthorized = status_code == HTTP_401_UNAUTHORIZED or isinstance(exc, NotAuthorizedException)
+    redirect_to_login = inertia_plugin.config.redirect_unauthorized_to
+    if not is_unauthorized or redirect_to_login is None:
+        return None
+    if request.url.path != redirect_to_login:
+        if not flash_succeeded and detail:
+            redirect_to_login = _append_error_query(redirect_to_login, detail)
+        return InertiaRedirect(request, redirect_to=redirect_to_login)
+    return InertiaBack(request)
 
 
 def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", exc: "Exception") -> "Response[Any]":
@@ -95,23 +175,14 @@ def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", 
     """
     is_inertia_header = request.headers.get("x-inertia", "").lower() == "true"
     is_inertia = request.is_inertia if isinstance(request, InertiaRequest) else is_inertia_header
+    route_component = request.inertia.route_component if isinstance(request, InertiaRequest) else None
 
     status_code = exc.status_code if isinstance(exc, HTTPException) else HTTP_500_INTERNAL_SERVER_ERROR
     preferred_type = MediaType.HTML if not is_inertia else MediaType.JSON
-    detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
-    extras: Any = None
-    if isinstance(exc, HTTPException):
-        try:
-            extras = exc.extra  # pyright: ignore[reportUnknownMemberType]
-        except AttributeError:
-            extras = None
+    detail = _exception_detail_for_response(request, exc)
+    extras = _exception_extra(exc)
     content: dict[str, Any] = {"status_code": status_code, "message": detail}
-
-    inertia_plugin: "InertiaPlugin | None"
-    try:
-        inertia_plugin = request.app.plugins.get("InertiaPlugin")
-    except KeyError:
-        inertia_plugin = None
+    inertia_plugin = _get_inertia_plugin(request)
 
     if extras:
         content.update({"extra": extras})
@@ -120,16 +191,7 @@ def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", 
     if detail:
         flash_succeeded = flash(request, detail, category="error")
 
-    if extras and isinstance(extras, (list, tuple)) and len(extras) >= 1:  # pyright: ignore[reportUnknownArgumentType]
-        first_extra = extras[0]  # pyright: ignore[reportUnknownVariableType]
-        if isinstance(first_extra, dict):
-            message: dict[str, str] = cast("dict[str, str]", first_extra)
-            key_value = message.get("key")
-            default_field = f"root.{key_value}" if key_value is not None else "root"
-            error_detail = str(message.get("message", detail) or detail)
-            match = FIELD_ERR_RE.search(error_detail)
-            field = match.group(1) if match else default_field
-            error(request, field, error_detail or detail)
+    _store_field_errors(request, extras, detail)
 
     if status_code in {HTTP_422_UNPROCESSABLE_ENTITY, HTTP_400_BAD_REQUEST} or isinstance(
         exc, PermissionDeniedException
@@ -137,29 +199,37 @@ def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", 
         return InertiaBack(request)
 
     if inertia_plugin is None:
-        return InertiaResponse[Any](media_type=preferred_type, content=content, status_code=status_code)
+        return _create_exception_page_response(
+            content=content,
+            preferred_type=preferred_type,
+            route_component=route_component,
+            is_inertia=is_inertia,
+            status_code=status_code,
+        )
 
-    is_unauthorized = status_code == HTTP_401_UNAUTHORIZED or isinstance(exc, NotAuthorizedException)
-    redirect_to_login = inertia_plugin.config.redirect_unauthorized_to
-    if is_unauthorized and redirect_to_login is not None:
-        if request.url.path != redirect_to_login:
-            # If flash failed (no session), pass error message via query param
-            if not flash_succeeded and detail:
-                parsed = urlparse(redirect_to_login)
-                error_param = f"error={quote(detail, safe='')}"
-                query = f"{parsed.query}&{error_param}" if parsed.query else error_param
-                redirect_to_login = urlunparse(parsed._replace(query=query))
-            return InertiaRedirect(request, redirect_to=redirect_to_login)
-        # Already on login page - redirect back so Inertia processes flash messages
-        # (Inertia.js shows 4xx responses in a modal instead of updating page state)
-        return InertiaBack(request)
+    unauthorized_response = _create_unauthorized_response(
+        request,
+        detail=detail,
+        flash_succeeded=flash_succeeded,
+        inertia_plugin=inertia_plugin,
+        status_code=status_code,
+        exc=exc,
+    )
+    if unauthorized_response is not None:
+        return unauthorized_response
 
     if status_code in {HTTP_404_NOT_FOUND, HTTP_405_METHOD_NOT_ALLOWED} and (
         inertia_plugin.config.redirect_404 is not None and request.url.path != inertia_plugin.config.redirect_404
     ):
         return InertiaRedirect(request, redirect_to=inertia_plugin.config.redirect_404)
 
-    return InertiaResponse[Any](media_type=preferred_type, content=content, status_code=status_code)
+    return _create_exception_page_response(
+        content=content,
+        preferred_type=preferred_type,
+        route_component=route_component,
+        is_inertia=is_inertia,
+        status_code=status_code,
+    )
 
 
 def _register_exception_handlers(  # pyright: ignore[reportUnusedFunction]

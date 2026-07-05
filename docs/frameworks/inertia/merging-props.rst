@@ -219,10 +219,12 @@ Merge props are indicated in the response:
      "props": {"posts": ["Post 1", "Post 2"]},
      "mergeProps": ["posts"],
      "scrollProps": {
-       "pageName": "page",
-       "currentPage": 1,
-       "nextPage": 2,
-       "previousPage": null
+       "posts": {
+         "pageName": "page",
+         "currentPage": 1,
+         "nextPage": 2,
+         "previousPage": null
+       }
      }
    }
 

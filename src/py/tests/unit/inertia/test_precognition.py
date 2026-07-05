@@ -1,15 +1,22 @@
 """Tests for Precognition support (real-time form validation)."""
 
+from dataclasses import dataclass
 from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
-from litestar import Request
+from litestar import Request, post
 from litestar.exceptions import ValidationException
+from litestar.middleware.session.server_side import ServerSideSessionConfig
+from litestar.plugins.jinja import JinjaTemplateEngine
 from litestar.status_codes import HTTP_204_NO_CONTENT, HTTP_422_UNPROCESSABLE_ENTITY
+from litestar.stores.memory import MemoryStore
+from litestar.template.config import TemplateConfig
+from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
 from litestar.types import HTTPScope
 
-from litestar_vite.inertia import InertiaHeaders
+from litestar_vite.config import InertiaConfig
+from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
 from litestar_vite.inertia.precognition import (
     PrecognitionResponse,
     create_precognition_exception_handler,
@@ -17,6 +24,7 @@ from litestar_vite.inertia.precognition import (
     precognition,
 )
 from litestar_vite.inertia.request import InertiaDetails, InertiaRequest
+from litestar_vite.plugin import VitePlugin
 
 # =====================================================
 # normalize_validation_errors() Tests
@@ -324,6 +332,37 @@ def test_precognition_decorator_request_in_kwargs() -> None:
     result = my_handler(request=mock_request)
 
     assert isinstance(result, PrecognitionResponse)
+
+
+def test_precognition_decorator_uses_middleware_context_without_request_parameter(
+    vite_plugin: VitePlugin, template_config: TemplateConfig[JinjaTemplateEngine]
+) -> None:
+    @dataclass
+    class UserPayload:
+        email: str
+
+    calls: list[str] = []
+
+    @post("/users")
+    @precognition
+    async def create_user(data: UserPayload) -> dict[str, str]:
+        calls.append(data.email)
+        return {"result": "executed"}
+
+    with create_test_client(
+        route_handlers=[create_user],
+        plugins=[InertiaPlugin(config=InertiaConfig(precognition=True)), vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.post(
+            "/users", headers={InertiaHeaders.PRECOGNITION.value: "true"}, json={"email": "sally@example.com"}
+        )
+
+    assert response.status_code == HTTP_204_NO_CONTENT
+    assert response.headers[InertiaHeaders.PRECOGNITION_SUCCESS.value] == "true"
+    assert calls == []
 
 
 # =====================================================
