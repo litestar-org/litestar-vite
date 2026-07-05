@@ -299,6 +299,74 @@ def test_scaffolding_generate_project_htmx_uses_current_extension_shell(tmp_path
     assert 'body hx-ext="litestar"' in base_template
 
 
+def test_scaffolding_react_tanstack_raw_package_template_does_not_duplicate_default_api_deps() -> None:
+    """Ensure TanStack package deps are unique before generated files are written."""
+    from litestar_vite.scaffolding import TemplateContext
+    from litestar_vite.scaffolding.generator import render_template
+    from litestar_vite.scaffolding.templates import FrameworkType, get_template
+
+    root = Path(__file__).resolve().parents[4]
+    framework = get_template(FrameworkType.REACT_TANSTACK)
+    assert framework is not None
+
+    context = TemplateContext(
+        project_name="tanstack-lite", framework=framework, use_tailwind=True, generate_zod=True, generate_client=True
+    )
+
+    package_text = render_template(
+        root / "src" / "py" / "litestar_vite" / "templates" / "base" / "package.json.j2", context.to_dict()
+    )
+
+    assert package_text.count('"zod"') == 1
+    assert package_text.count('"@hey-api/openapi-ts"') == 1
+
+
+def test_scaffolding_generate_project_react_tanstack_has_unique_default_api_deps(tmp_path: Path) -> None:
+    """Ensure generated TanStack package.json parses and keeps default API deps once."""
+    from litestar_vite.scaffolding import TemplateContext, generate_project
+    from litestar_vite.scaffolding.templates import FrameworkType, get_template
+
+    framework = get_template(FrameworkType.REACT_TANSTACK)
+    assert framework is not None
+
+    context = TemplateContext(
+        project_name="tanstack-lite", framework=framework, use_tailwind=True, generate_zod=True, generate_client=True
+    )
+
+    generate_project(tmp_path, context)
+
+    package_text = (tmp_path / "package.json").read_text()
+    package_json = decode_json(package_text)
+
+    assert package_text.count('"zod"') == 1
+    assert package_text.count('"@hey-api/openapi-ts"') == 1
+    assert package_json["dependencies"]["zod"] == V["zod"]
+    assert package_json["devDependencies"]["@hey-api/openapi-ts"] == V["@hey-api/openapi-ts"]
+
+
+def test_scaffolding_generate_project_react_tanstack_keeps_default_api_deps_when_flags_disabled(tmp_path: Path) -> None:
+    """Ensure TanStack keeps its API deps under the template-default contract."""
+    from litestar_vite.scaffolding import TemplateContext, generate_project
+    from litestar_vite.scaffolding.templates import FrameworkType, get_template
+
+    framework = get_template(FrameworkType.REACT_TANSTACK)
+    assert framework is not None
+
+    context = TemplateContext(
+        project_name="tanstack-lite", framework=framework, generate_zod=False, generate_client=False
+    )
+
+    generate_project(tmp_path, context)
+
+    package_text = (tmp_path / "package.json").read_text()
+    package_json = decode_json(package_text)
+
+    assert package_text.count('"zod"') == 1
+    assert package_text.count('"@hey-api/openapi-ts"') == 1
+    assert package_json["dependencies"]["zod"] == V["zod"]
+    assert package_json["devDependencies"]["@hey-api/openapi-ts"] == V["@hey-api/openapi-ts"]
+
+
 def test_scaffolding_generated_package_manifests_pin_dependency_versions(tmp_path: Path) -> None:
     """Ensure scaffold and example package manifests do not emit floating `latest` versions."""
     root = Path(__file__).resolve().parents[4]
