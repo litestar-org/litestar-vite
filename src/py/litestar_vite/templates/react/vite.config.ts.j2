@@ -20,7 +20,7 @@ export default defineConfig({
 {% endif %}
     react(),
     litestar({
-      input: ["{{ resource_dir }}/main.tsx"],
+      input: ["{{ resource_dir }}/main.tsx"{% if use_tailwind %}, "{{ resource_dir }}/tailwind.css"{% endif %}],
 {% if enable_types %}
       types: "auto",
 {% endif %}

@@ -35,3 +35,11 @@ export const DEFAULT_ASSET_URL = "/static/"
  * is specified in Python bridge config or plugin options.
  */
 export const DEFAULT_TYPES_OUTPUT = "src/generated"
+
+/**
+ * Pinned fallback package spec for @hey-api/openapi-ts.
+ *
+ * Keep this in sync with CURRENT_NPM_VERSION_RANGES in the Python scaffold
+ * registry and the optional peer dependency range in package.json.
+ */
+export const HEY_API_PINNED_SPEC = "@hey-api/openapi-ts@0.98.2"

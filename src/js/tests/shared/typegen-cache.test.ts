@@ -77,6 +77,27 @@ describe("typegen-cache", () => {
       expect(shouldRun2).toBe(false)
     })
 
+    it("returns true when expected output files are missing", async () => {
+      const openapiPath = path.join(tmpDir, "openapi.json")
+      const outputPath = path.join(tmpDir, "generated", "api", "types.gen.ts")
+      fs.writeFileSync(openapiPath, JSON.stringify({ openapi: "3.1.0" }))
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+      fs.writeFileSync(outputPath, "export {}")
+
+      const options = {
+        generateSdk: true,
+        generateZod: false,
+        plugins: ["@hey-api/typescript", "@hey-api/schemas"],
+        outputPaths: [outputPath],
+      }
+
+      await updateOpenApiTsCache(openapiPath, null, options)
+      expect(await shouldRunOpenApiTs(openapiPath, null, options)).toBe(false)
+
+      fs.rmSync(outputPath)
+      expect(await shouldRunOpenApiTs(openapiPath, null, options)).toBe(true)
+    })
+
     it("uses metadata fast-path to skip hashing when metadata is unchanged", async () => {
       const openapiPath = path.join(tmpDir, "openapi.json")
       fs.writeFileSync(openapiPath, JSON.stringify({ openapi: "3.1.0" }))
@@ -233,6 +254,20 @@ describe("typegen-cache", () => {
       // Second check - should skip
       const shouldRegen2 = await shouldRegeneratePageProps(filePath)
       expect(shouldRegen2).toBe(false)
+    })
+
+    it("returns true when page props output is missing", async () => {
+      const filePath = path.join(tmpDir, "inertia-pages.json")
+      const outputPath = path.join(tmpDir, "generated", "page-props.ts")
+      fs.writeFileSync(filePath, JSON.stringify({ pages: {} }))
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+      fs.writeFileSync(outputPath, "export {}")
+
+      await updatePagePropsCache(filePath)
+      expect(await shouldRegeneratePageProps(filePath, outputPath)).toBe(false)
+
+      fs.rmSync(outputPath)
+      expect(await shouldRegeneratePageProps(filePath, outputPath)).toBe(true)
     })
 
     it("uses metadata fast-path to skip hashing when input metadata is unchanged", async () => {

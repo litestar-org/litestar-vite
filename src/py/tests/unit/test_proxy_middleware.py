@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -353,12 +354,7 @@ def test_proxy_target_returns_none_when_neither_present(tmp_path: Path, monkeypa
 
 
 def test_proxy_target_cache_invariant(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Second call to _get_target_base_url must not re-read the hotfile.
-
-    The middleware-level ``_cache_initialized`` flag ensures target resolution
-    happens at most once per middleware instance lifetime. The hotfile is the
-    upstream target source and readiness signal.
-    """
+    """The proxy reuses the hotfile target until the hotfile mtime changes."""
     import litestar_vite.plugin._proxy as proxy_module
 
     read_bridge_config.cache_clear()
@@ -385,4 +381,25 @@ def test_proxy_target_cache_invariant(tmp_path: Path, monkeypatch: pytest.Monkey
     middleware._get_target_base_url()
 
     assert call_count == 1
+
+    hotfile.write_text("http://changed:1234")
+    current_mtime = hotfile.stat().st_mtime_ns
+    os.utime(hotfile, ns=(current_mtime + 1_000_000, current_mtime + 1_000_000))
+
+    assert middleware._get_target_base_url() == "http://changed:1234"
+    assert call_count == 2
     read_bridge_config.cache_clear()
+
+
+def test_proxy_target_recovers_after_initial_missing_hotfile(tmp_path: Path) -> None:
+    async def noop(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    hotfile = tmp_path / "hot"
+    middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile)
+
+    assert middleware._get_target_base_url() is None
+
+    hotfile.write_text("http://localhost:5173")
+
+    assert middleware._get_target_base_url() == "http://localhost:5173"

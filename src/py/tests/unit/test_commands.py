@@ -292,11 +292,15 @@ def test_scaffolding_generate_project_htmx_uses_current_extension_shell(tmp_path
 
     assert package_json["dependencies"]["htmx.org"] == V["htmx.org"]
     assert package_json["devDependencies"]["@tailwindcss/vite"] == V["@tailwindcss/vite"]
+    assert package_json["devDependencies"]["@tailwindcss/postcss"] == V["@tailwindcss/postcss"]
+    assert package_json["devDependencies"]["postcss"] == V["postcss"]
     assert package_json["devDependencies"]["tailwindcss"] == V["tailwindcss"]
     assert package_json["devDependencies"]["typescript"] == V["typescript"]
     assert package_json["devDependencies"]["vite"] == V["vite"]
     assert 'meta name="csrf-token"' in base_template
     assert 'body hx-ext="litestar"' in base_template
+    assert (tmp_path / "resources" / "tailwind.css").exists()
+    assert '"resources/tailwind.css"' in (tmp_path / "vite.config.ts").read_text()
 
 
 def test_scaffolding_react_tanstack_raw_package_template_does_not_duplicate_default_api_deps() -> None:
@@ -343,6 +347,13 @@ def test_scaffolding_generate_project_react_tanstack_has_unique_default_api_deps
     assert package_json["dependencies"]["zod"] == V["zod"]
     assert package_json["devDependencies"]["@hey-api/openapi-ts"] == V["@hey-api/openapi-ts"]
 
+    openapi_config = (tmp_path / "openapi-ts.config.ts").read_text()
+    vite_config = (tmp_path / "vite.config.ts").read_text()
+    assert "client:" not in openapi_config
+    assert '"@hey-api/client-fetch"' in openapi_config
+    assert "tanstackRouter" in vite_config
+    assert "TanStackRouterVite" not in vite_config
+
 
 def test_scaffolding_generate_project_react_tanstack_keeps_default_api_deps_when_flags_disabled(tmp_path: Path) -> None:
     """Ensure TanStack keeps its API deps under the template-default contract."""
@@ -384,6 +395,64 @@ def test_scaffolding_generate_project_react_inertia_jinja_has_unique_vite_dev_de
 
     assert package_text.count('    "vite":') == 1
     assert package_json["devDependencies"]["vite"] == V["vite"]
+
+
+def test_scaffolding_dirless_variants_use_family_templates(tmp_path: Path) -> None:
+    """Registered variants without a directory should still render usable family templates."""
+    from litestar_vite.scaffolding import TemplateContext, generate_project
+    from litestar_vite.scaffolding.templates import FrameworkType, get_template
+
+    variants = [
+        (FrameworkType.REACT_INERTIA_JINJA, "resources/main.tsx"),
+        (FrameworkType.VUE_INERTIA_SSR, "resources/main.ts"),
+        (FrameworkType.VUE_INERTIA_JINJA, "resources/main.ts"),
+        (FrameworkType.VUE_INERTIA_JINJA_SSR, "resources/main.ts"),
+        (FrameworkType.SVELTE_INERTIA_JINJA, "resources/main.ts"),
+        (FrameworkType.JINJA_HTMX, "resources/main.js"),
+        (FrameworkType.HTMX_NO_JINJA, "resources/main.js"),
+    ]
+
+    for framework_type, expected_file in variants:
+        target = tmp_path / framework_type.value
+        framework = get_template(framework_type)
+        assert framework is not None
+        generate_project(
+            target,
+            TemplateContext(
+                project_name=framework_type.value,
+                framework=framework,
+                resource_dir=framework.resource_dir,
+                enable_ssr=framework.has_ssr,
+                enable_inertia=framework.inertia_compatible,
+            ),
+        )
+
+        assert (target / expected_file).exists()
+        assert (target / "package.json").exists()
+
+
+def test_scaffolding_render_failure_leaves_no_partial_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed render should not write earlier files from the same scaffold."""
+    from litestar_vite.scaffolding import TemplateContext, generate_project
+    from litestar_vite.scaffolding import generator as generator_module
+    from litestar_vite.scaffolding.templates import FrameworkType, get_template
+
+    framework = get_template(FrameworkType.REACT)
+    assert framework is not None
+
+    real_render = generator_module.render_template
+
+    def fail_on_vite_config(template_path: Path, context: dict[str, object]) -> str:
+        if template_path.name == "vite.config.ts.j2":
+            raise RuntimeError("boom")
+        return real_render(template_path, context)
+
+    monkeypatch.setattr(generator_module, "render_template", fail_on_vite_config)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        generate_project(tmp_path, TemplateContext(project_name="broken", framework=framework))
+
+    assert not any(tmp_path.iterdir())
 
 
 def test_scaffolding_generated_package_manifests_pin_dependency_versions(tmp_path: Path) -> None:

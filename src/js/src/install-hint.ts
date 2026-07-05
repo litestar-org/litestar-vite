@@ -88,3 +88,26 @@ export function resolvePackageExecutor(pkg: string, executor?: string): string {
       return `npx ${pkg}`
   }
 }
+
+/**
+ * Resolves the package executor command as argv.
+ *
+ * This is used for actual process execution so package arguments are never
+ * shell-joined. The string-returning ``resolvePackageExecutor`` remains the
+ * display/back-compat helper.
+ */
+export function resolvePackageExecutorArgv(args: string[], executor?: string): string[] {
+  const runtime = executor || detectExecutor()
+  switch (runtime) {
+    case "bun":
+      return ["bunx", ...args]
+    case "deno":
+      return ["deno", "run", "-A", ...args]
+    case "pnpm":
+      return ["pnpm", "dlx", ...args]
+    case "yarn":
+      return ["yarn", "dlx", ...args]
+    default:
+      return ["npx", ...args]
+  }
+}

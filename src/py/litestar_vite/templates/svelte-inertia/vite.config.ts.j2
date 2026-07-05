@@ -20,7 +20,7 @@ export default defineConfig({
 {% endif %}
     svelte(),
     litestar({
-      input: ["{{ resource_dir }}/main.ts"],
+      input: ["{{ resource_dir }}/main.ts"{% if use_tailwind %}, "{{ resource_dir }}/tailwind.css"{% endif %}],
 {% if enable_types %}
       types: "auto",
 {% endif %}

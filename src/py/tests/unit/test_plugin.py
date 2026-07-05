@@ -78,6 +78,20 @@ def test_vite_plugin_initialization_with_static_files_config() -> None:
     assert "tags" in plugin._static_files_config
 
 
+def test_vite_plugin_static_files_config_ignores_none_overrides() -> None:
+    """Unset user static config fields should not clobber plugin defaults."""
+    static_config = StaticFilesConfig(exception_handlers=None, tags=["static"])
+    plugin = VitePlugin(static_files_config=static_config)
+    app_config = AppConfig()
+
+    with patch("litestar_vite.plugin.create_static_files_router") as create_router:
+        plugin._configure_static_files(app_config)
+
+    kwargs = create_router.call_args.kwargs
+    assert kwargs["exception_handlers"]
+    assert kwargs["tags"] == ["static"]
+
+
 def test_vite_plugin_config_property() -> None:
     """Test config property accessor."""
     config = ViteConfig(runtime=RuntimeConfig(port=3000))

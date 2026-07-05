@@ -1,5 +1,6 @@
 """TypeScript conversion helpers for code generation."""
 
+import json
 import re
 from pathlib import PurePosixPath
 from typing import Any, cast
@@ -123,8 +124,8 @@ def ts_type_from_openapi(schema_dict: dict[str, Any], components_schemas: dict[s
 
     result = "any"
     match schema_dict:
-        case {"const": const} if const is not None:
-            result = "any" if const is False else ts_literal(const)
+        case {"const": const}:
+            result = ts_literal(const)
         case {"enum": enum} if isinstance(enum, list) and enum:
             enum_values = cast("list[Any]", enum)
             result = " | ".join(ts_literal(v) for v in enum_values)
@@ -305,6 +306,5 @@ def ts_literal(value: Any) -> str:
     if isinstance(value, int | float):
         return str(value)
     if isinstance(value, str):
-        escaped = value.replace("\\\\", "\\\\\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
+        return json.dumps(value)
     return "any"

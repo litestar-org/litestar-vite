@@ -20,6 +20,7 @@ _PATH_PARAM_EXTRACT_PATTERN = re.compile(r"\{([^:}]+)(?::([^}]+))?\}")
 
 # HTTP methods in priority order for Inertia router integration
 _HTTP_METHOD_PRIORITY = ["GET", "POST", "PUT", "PATCH", "DELETE"]
+_TS_IDENTIFIER_PATTERN = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
 
 
 def pick_primary_method(methods: list[str]) -> str:
@@ -64,6 +65,60 @@ def str_dict_factory() -> dict[str, str]:
         An empty dictionary.
     """
     return {}
+
+
+def _resolve_component_schema(ref: str, components_schemas: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Resolve an OpenAPI component schema reference."""
+    if not components_schemas:
+        return None
+
+    prefix = "#/components/schemas/"
+    if not ref.startswith(prefix):
+        return None
+
+    ref_name = ref[len(prefix) :]
+    if ref_name in components_schemas and isinstance(components_schemas[ref_name], dict):
+        return cast("dict[str, Any]", components_schemas[ref_name])
+
+    parts = ref_name.split("_")
+    for i in range(len(parts)):
+        candidate = "_".join(parts[i:])
+        schema = components_schemas.get(candidate)
+        if isinstance(schema, dict):
+            return cast("dict[str, Any]", schema)
+    return None
+
+
+def _schema_contains_ref(schema: Any) -> bool:
+    if isinstance(schema, dict):
+        schema_dict = cast("dict[str, Any]", schema)
+        if isinstance(schema_dict.get("$ref"), str):
+            return True
+        return any(_schema_contains_ref(value) for value in schema_dict.values())
+    if isinstance(schema, list):
+        return any(_schema_contains_ref(value) for value in cast("list[Any]", schema))
+    return False
+
+
+def _schema_ref_resolves_to_enum(schema: Any, components_schemas: dict[str, Any] | None) -> bool:
+    if isinstance(schema, dict):
+        schema_dict = cast("dict[str, Any]", schema)
+        ref = schema_dict.get("$ref")
+        if isinstance(ref, str):
+            resolved = _resolve_component_schema(ref, components_schemas)
+            return isinstance(resolved, dict) and isinstance(resolved.get("enum"), list) and bool(resolved["enum"])
+        return any(_schema_ref_resolves_to_enum(value, components_schemas) for value in schema_dict.values())
+    if isinstance(schema, list):
+        return any(_schema_ref_resolves_to_enum(value, components_schemas) for value in cast("list[Any]", schema))
+    return False
+
+
+def _route_param_type_from_schema(schema_dict: dict[str, Any], components_schemas: dict[str, Any] | None) -> str:
+    """Return a URL-safe TypeScript type for a route path parameter."""
+    ts_type = ts_type_from_openapi(schema_dict, components_schemas=components_schemas)
+    if _schema_contains_ref(schema_dict) and not _schema_ref_resolves_to_enum(schema_dict, components_schemas):
+        return "string"
+    return ts_type
 
 
 @dataclass
@@ -141,9 +196,13 @@ def extract_params_from_litestar(
 
         for param in params:
             schema_dict = param.schema.to_schema() if param.schema else None
-            ts_type = (
-                ts_type_from_openapi(schema_dict or {}, components_schemas=components_schemas) if schema_dict else "any"
-            )
+            ts_type = "any"
+            if schema_dict:
+                ts_type = (
+                    _route_param_type_from_schema(schema_dict, components_schemas)
+                    if param.param_in == "path"
+                    else ts_type_from_openapi(schema_dict, components_schemas=components_schemas)
+                )
             # For URL generation, `null` is not a meaningful value (it would stringify to "null").
             # Treat `null` as "missing" rather than emitting `| null` into route parameter types.
             ts_type = ts_type.replace(" | null", "").replace("null | ", "")
@@ -185,7 +244,11 @@ def _update_params_from_openapi(
                 query_params.clear()
                 for param in op["parameters"]:
                     schema_dict = param.get("schema", {})
-                    ts_type = ts_type_from_openapi(schema_dict, components_schemas=components_schemas)
+                    ts_type = (
+                        _route_param_type_from_schema(schema_dict, components_schemas)
+                        if param.get("in") == "path"
+                        else ts_type_from_openapi(schema_dict, components_schemas=components_schemas)
+                    )
                     ts_type = ts_type.replace(" | null", "").replace("null | ", "")
 
                     if not param.get("required") and ts_type != "any" and "undefined" not in ts_type:
@@ -764,7 +827,7 @@ export function isCurrentRoute(pattern: string): boolean {{
 
 
 def collect_semantic_aliases(type_expr: str) -> set[str]:
-    return {alias for alias in _TS_SEMANTIC_ALIASES if alias in type_expr}
+    return {token for token in _TS_IDENTIFIER_PATTERN.findall(type_expr) if token in _TS_SEMANTIC_ALIASES}
 
 
 def render_semantic_aliases(aliases: set[str]) -> str:

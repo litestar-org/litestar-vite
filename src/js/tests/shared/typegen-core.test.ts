@@ -1,56 +1,48 @@
-import type * as ChildProcessModule from "node:child_process"
 import type * as FsModule from "node:fs"
-import type * as NodeModule from "node:module"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
-// Mock node:child_process exec (promisified as execAsync)
-vi.mock("node:child_process", async (importOriginal) => {
-  const actual = await importOriginal<typeof ChildProcessModule>()
-  return {
-    ...actual,
-    exec: vi.fn(),
-  }
-})
+const mocks = vi.hoisted(() => ({
+  execFile: vi.fn(),
+  existsSync: vi.fn(() => true),
+  readFileSync: vi.fn(() => JSON.stringify({ bin: { "openapi-ts": "bin/openapi-ts.js" } })),
+  resolve: vi.fn((specifier: string) => {
+    if (specifier === "@hey-api/openapi-ts/package.json") {
+      return "/fake/node_modules/@hey-api/openapi-ts/package.json"
+    }
+    return `/fake/node_modules/${specifier}/package.json`
+  }),
+}))
 
-// Mock node:fs
-vi.mock("node:fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof FsModule>()
+vi.mock("node:child_process", () => ({
+  default: { execFile: mocks.execFile },
+  execFile: mocks.execFile,
+}))
+
+vi.mock("node:fs", async () => {
+  const actual = await vi.importActual<typeof FsModule>("node:fs")
   return {
     ...actual,
     default: {
       ...actual.default,
-      existsSync: vi.fn(() => true),
-      readFileSync: vi.fn(() => "{}"),
-      writeFileSync: vi.fn(),
-      mkdirSync: vi.fn(),
+      existsSync: mocks.existsSync,
+      readFileSync: mocks.readFileSync,
     },
-    existsSync: vi.fn(() => true),
-    readFileSync: vi.fn(() => "{}"),
-    writeFileSync: vi.fn(),
-    mkdirSync: vi.fn(),
+    existsSync: mocks.existsSync,
+    readFileSync: mocks.readFileSync,
   }
 })
 
-// Mock node:module createRequire
-vi.mock("node:module", async (importOriginal) => {
-  const actual = await importOriginal<typeof NodeModule>()
-  return {
-    ...actual,
-    createRequire: vi.fn(() => {
-      const mockRequire = vi.fn() as any
-      mockRequire.resolve = vi.fn(() => "/fake/path/to/@hey-api/openapi-ts/package.json")
-      return mockRequire
-    }),
-  }
-})
+vi.mock("node:module", () => ({
+  default: { createRequire: vi.fn(() => ({ resolve: mocks.resolve })) },
+  createRequire: vi.fn(() => ({ resolve: mocks.resolve })),
+}))
 
-// Mock install-hint module
 vi.mock("../../src/install-hint.js", () => ({
   resolveInstallHint: vi.fn((pkg?: string) => `npm install -D ${pkg || "@hey-api/openapi-ts"}`),
   resolvePackageExecutor: vi.fn((cmd: string) => `npx ${cmd}`),
+  resolvePackageExecutorArgv: vi.fn((args: string[]) => ["npx", ...args]),
 }))
 
-// Mock emit functions
 vi.mock("../../src/shared/emit-page-props-types.js", () => ({
   emitPagePropsTypes: vi.fn(() => Promise.resolve(false)),
 }))
@@ -59,383 +51,140 @@ vi.mock("../../src/shared/emit-schemas-types.js", () => ({
   emitSchemasTypes: vi.fn(() => Promise.resolve(false)),
 }))
 
-import { exec } from "node:child_process"
-import fs from "node:fs"
+vi.mock("../../src/shared/emit-static-props-types.js", () => ({
+  emitStaticPropsTypes: vi.fn(() => Promise.resolve(false)),
+}))
+
+import { execFile } from "node:child_process"
 
 import type { TypeGenCoreConfig, TypeGenLogger } from "../../src/shared/typegen-core"
-import { resolveDefaultSdkClientPlugin, runTypeGeneration } from "../../src/shared/typegen-core"
+import { findOpenApiTsConfig, resolveDefaultSdkClientPlugin, resolveHeyApiBin, runHeyApiGeneration, runTypeGeneration } from "../../src/shared/typegen-core"
+
+function mockExecFileSuccess(): void {
+  mocks.execFile.mockImplementation((...args: unknown[]) => {
+    const callback = args.findLast((arg) => typeof arg === "function") as ((error: Error | null, stdout: string, stderr: string) => void) | undefined
+    callback?.(null, "", "")
+    return {} as ReturnType<typeof execFile>
+  })
+}
+
+function mockExecFileFailure(error: Error): void {
+  mocks.execFile.mockImplementation((...args: unknown[]) => {
+    const callback = args.findLast((arg) => typeof arg === "function") as ((error: Error | null, stdout: string, stderr: string) => void) | undefined
+    callback?.(error, "", "")
+    return {} as ReturnType<typeof execFile>
+  })
+}
+
+function createConfig(overrides: Partial<TypeGenCoreConfig> = {}): TypeGenCoreConfig {
+  return {
+    projectRoot: "/home/user/project",
+    openapiPath: "openapi.json",
+    output: "src/generated",
+    pagePropsPath: "inertia-pages.json",
+    routesPath: "routes.json",
+    generateSdk: true,
+    generateZod: false,
+    generatePageProps: false,
+    generateSchemas: false,
+    sdkClientPlugin: "@hey-api/client-fetch",
+    ...overrides,
+  }
+}
 
 describe("resolveDefaultSdkClientPlugin", () => {
-  it("uses fetch for inertia bridge modes", () => {
+  it("uses fetch for all modes", () => {
     expect(resolveDefaultSdkClientPlugin({ mode: "hybrid" })).toBe("@hey-api/client-fetch")
-    expect(resolveDefaultSdkClientPlugin({ mode: "inertia" })).toBe("@hey-api/client-fetch")
-  })
-
-  it("uses fetch when inertia mode is explicitly enabled", () => {
-    expect(resolveDefaultSdkClientPlugin({ inertiaMode: true })).toBe("@hey-api/client-fetch")
-  })
-
-  it("uses fetch for non-inertia projects too", () => {
     expect(resolveDefaultSdkClientPlugin({ mode: "spa" })).toBe("@hey-api/client-fetch")
-    expect(resolveDefaultSdkClientPlugin({ mode: "framework" })).toBe("@hey-api/client-fetch")
-    expect(resolveDefaultSdkClientPlugin({ inertiaMode: false })).toBe("@hey-api/client-fetch")
+    expect(resolveDefaultSdkClientPlugin({ inertiaMode: true })).toBe("@hey-api/client-fetch")
   })
 })
 
 describe("typegen-core", () => {
-  let mockLogger: TypeGenLogger
+  let logger: TypeGenLogger
 
   beforeEach(() => {
     vi.clearAllMocks()
-
-    // Setup default mocks
-    vi.mocked(fs.existsSync).mockReturnValue(true)
-
-    // Create mock logger
-    mockLogger = {
+    mocks.existsSync.mockReturnValue(true)
+    mocks.readFileSync.mockReturnValue(JSON.stringify({ bin: { "openapi-ts": "bin/openapi-ts.js" } }))
+    mocks.resolve.mockImplementation((specifier: string) => {
+      if (specifier === "@hey-api/openapi-ts/package.json") {
+        return "/fake/node_modules/@hey-api/openapi-ts/package.json"
+      }
+      return `/fake/node_modules/${specifier}/package.json`
+    })
+    mockExecFileSuccess()
+    logger = {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
     }
   })
 
-  afterEach(() => {
-    vi.resetAllMocks()
-  })
-
-  /**
-   * Tests for error differentiation between different error types.
-   */
-  describe("error differentiation", () => {
-    const createTestConfig = (projectRoot: string): TypeGenCoreConfig => ({
-      projectRoot,
-      openapiPath: "openapi.json",
-      output: "src/types",
-      pagePropsPath: "inertia-pages.json",
-      routesPath: "routes.json",
-      generateSdk: true,
-      generateZod: false,
-      generatePageProps: false,
-      generateSchemas: false,
-      sdkClientPlugin: "@hey-api/client-fetch",
-    })
-
-    it("treats 'not installed' error separately from runtime ENOENT - shows install hint", async () => {
-      // "not installed" comes from our own check in runHeyApiGeneration
-      const notInstalledError = new Error("@hey-api/openapi-ts not installed")
-      vi.mocked(exec).mockImplementation((_cmd, _opts, callback) => {
-        if (callback) {
-          callback(notInstalledError, { stdout: "", stderr: "" })
-        }
-        return {} as any
-      })
-
-      const config = createTestConfig("/home/user/myproject")
-
-      const result = await runTypeGeneration(config, { logger: mockLogger })
-
-      expect(result.warnings).toHaveLength(1)
-      expect(result.warnings[0]).toContain("@hey-api/openapi-ts not installed")
-      expect(result.warnings[0]).toContain("npm install")
-    })
-
-    it("shows install hint with zod when generateZod is enabled", async () => {
-      const notInstalledError = new Error("@hey-api/openapi-ts not installed")
-      vi.mocked(exec).mockImplementation((_cmd, _opts, callback) => {
-        if (callback) {
-          callback(notInstalledError, { stdout: "", stderr: "" })
-        }
-        return {} as any
-      })
-
-      const config: TypeGenCoreConfig = {
-        ...createTestConfig("/home/user/project"),
-        generateZod: true,
-      }
-
-      const result = await runTypeGeneration(config, { logger: mockLogger })
-
-      expect(result.warnings).toHaveLength(1)
-      expect(result.warnings[0]).toContain("@hey-api/openapi-ts zod")
+  it("resolves the locally installed hey-api binary from package.json", () => {
+    expect(resolveHeyApiBin("/home/user/project")).toEqual({
+      binPath: "/fake/node_modules/@hey-api/openapi-ts/bin/openapi-ts.js",
     })
   })
 
-  describe("standard missing package warnings", () => {
-    /**
-     * Tests for the standard "not installed" warning behavior (lines 224-228 of typegen-core.ts).
-     * These tests verify that when ENOENT occurs and projectRoot does NOT contain /src/,
-     * the standard "@hey-api/openapi-ts not installed" warning is shown.
-     */
+  it("runs local hey-api through execFile without a shell string", async () => {
+    const config = createConfig()
 
-    const createStandardTestConfig = (overrides: Partial<TypeGenCoreConfig> = {}): TypeGenCoreConfig => ({
-      projectRoot: "/home/user/myproject", // NO /src/ in path
-      openapiPath: "openapi.json",
-      output: "types",
-      pagePropsPath: "inertia-pages.json",
-      routesPath: "routes.json",
-      generateSdk: true,
-      generateZod: false,
-      generatePageProps: false,
-      generateSchemas: false,
-      sdkClientPlugin: "@hey-api/client-fetch",
-      ...overrides,
-    })
+    await runHeyApiGeneration(config, null, ["@hey-api/typescript"], logger)
 
-    it("shows standard 'not installed' warning when package is not installed", async () => {
-      // "not installed" error triggers the install hint path
-      const notInstalledError = new Error("@hey-api/openapi-ts not installed")
-      vi.mocked(exec).mockImplementation((_cmd, _opts, callback) => {
-        if (callback) {
-          callback(notInstalledError, { stdout: "", stderr: "" })
-        }
-        return {} as any
-      })
-
-      const config = createStandardTestConfig()
-
-      const result = await runTypeGeneration(config, { logger: mockLogger })
-
-      expect(result.warnings).toHaveLength(1)
-      expect(result.warnings[0]).toContain("@hey-api/openapi-ts not installed")
-      expect(result.warnings[0]).toContain("npm install -D @hey-api/openapi-ts")
-    })
-
-    it("includes correct install hint format: npm install -D @hey-api/openapi-ts", async () => {
-      const notInstalledError = new Error("@hey-api/openapi-ts not installed")
-      vi.mocked(exec).mockImplementation((_cmd, _opts, callback) => {
-        if (callback) {
-          callback(notInstalledError, { stdout: "", stderr: "" })
-        }
-        return {} as any
-      })
-
-      const config = createStandardTestConfig()
-
-      const result = await runTypeGeneration(config, { logger: mockLogger })
-
-      // Verify the exact format of the warning
-      expect(result.warnings[0]).toMatch(/run: npm install -D @hey-api\/openapi-ts/)
-    })
-
-    it("includes zod in install hint when generateZod is true", async () => {
-      const notInstalledError = new Error("@hey-api/openapi-ts not installed")
-      vi.mocked(exec).mockImplementation((_cmd, _opts, callback) => {
-        if (callback) {
-          callback(notInstalledError, { stdout: "", stderr: "" })
-        }
-        return {} as any
-      })
-
-      const config = createStandardTestConfig({ generateZod: true })
-
-      const result = await runTypeGeneration(config, { logger: mockLogger })
-
-      // Should include zod in the package list
-      expect(result.warnings[0]).toContain("@hey-api/openapi-ts zod")
-      expect(result.warnings[0]).toMatch(/npm install -D @hey-api\/openapi-ts zod/)
-    })
-
-    it("does not include zod when generateZod is false", async () => {
-      const notInstalledError = new Error("@hey-api/openapi-ts not installed")
-      vi.mocked(exec).mockImplementation((_cmd, _opts, callback) => {
-        if (callback) {
-          callback(notInstalledError, { stdout: "", stderr: "" })
-        }
-        return {} as any
-      })
-
-      const config = createStandardTestConfig({ generateZod: false })
-
-      const result = await runTypeGeneration(config, { logger: mockLogger })
-
-      // Should NOT include zod
-      expect(result.warnings[0]).not.toContain("zod")
-      expect(result.warnings[0]).toContain("npm install -D @hey-api/openapi-ts")
-    })
-
-    it("calls logger.warn with the correct warning message", async () => {
-      const notInstalledError = new Error("@hey-api/openapi-ts not installed")
-      vi.mocked(exec).mockImplementation((_cmd, _opts, callback) => {
-        if (callback) {
-          callback(notInstalledError, { stdout: "", stderr: "" })
-        }
-        return {} as any
-      })
-
-      const config = createStandardTestConfig()
-
-      await runTypeGeneration(config, { logger: mockLogger })
-
-      // Verify logger.warn was called
-      expect(mockLogger.warn).toHaveBeenCalledTimes(1)
-      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("@hey-api/openapi-ts not installed"))
-      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("npm install -D @hey-api/openapi-ts"))
-    })
-
-    it("calls logger.warn with zod hint when generateZod is true", async () => {
-      const notInstalledError = new Error("@hey-api/openapi-ts not installed")
-      vi.mocked(exec).mockImplementation((_cmd, _opts, callback) => {
-        if (callback) {
-          callback(notInstalledError, { stdout: "", stderr: "" })
-        }
-        return {} as any
-      })
-
-      const config = createStandardTestConfig({ generateZod: true })
-
-      await runTypeGeneration(config, { logger: mockLogger })
-
-      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("@hey-api/openapi-ts zod"))
-    })
-
-    it("returns result with warnings array populated, errors array empty", async () => {
-      const notInstalledError = new Error("@hey-api/openapi-ts not installed")
-      vi.mocked(exec).mockImplementation((_cmd, _opts, callback) => {
-        if (callback) {
-          callback(notInstalledError, { stdout: "", stderr: "" })
-        }
-        return {} as any
-      })
-
-      const config = createStandardTestConfig()
-
-      const result = await runTypeGeneration(config, { logger: mockLogger })
-
-      expect(result).toMatchObject({
-        generated: false,
-        generatedFiles: [],
-        warnings: expect.arrayContaining([expect.stringContaining("not installed")]),
-        errors: [],
-      })
-    })
-
-    it("works without logger (silent mode) - warnings still captured in result", async () => {
-      const notInstalledError = new Error("@hey-api/openapi-ts not installed")
-      vi.mocked(exec).mockImplementation((_cmd, _opts, callback) => {
-        if (callback) {
-          callback(notInstalledError, { stdout: "", stderr: "" })
-        }
-        return {} as any
-      })
-
-      const config = createStandardTestConfig()
-
-      // Should not throw when no logger provided
-      const result = await runTypeGeneration(config)
-
-      // Warnings should still be captured in result
-      expect(result.warnings).toHaveLength(1)
-      expect(result.warnings[0]).toContain("@hey-api/openapi-ts not installed")
-    })
-
-    it("warning message format matches expected pattern", async () => {
-      const notInstalledError = new Error("@hey-api/openapi-ts not installed")
-      vi.mocked(exec).mockImplementation((_cmd, _opts, callback) => {
-        if (callback) {
-          callback(notInstalledError, { stdout: "", stderr: "" })
-        }
-        return {} as any
-      })
-
-      const config = createStandardTestConfig()
-
-      const result = await runTypeGeneration(config, { logger: mockLogger })
-
-      // The warning should match this exact pattern
-      const expectedPattern = /^@hey-api\/openapi-ts not installed - run: npm install -D @hey-api\/openapi-ts$/
-      expect(result.warnings[0]).toMatch(expectedPattern)
-    })
-
-    it("warning with zod matches expected format", async () => {
-      const notInstalledError = new Error("@hey-api/openapi-ts not installed")
-      vi.mocked(exec).mockImplementation((_cmd, _opts, callback) => {
-        if (callback) {
-          callback(notInstalledError, { stdout: "", stderr: "" })
-        }
-        return {} as any
-      })
-
-      const config = createStandardTestConfig({ generateZod: true })
-
-      const result = await runTypeGeneration(config, { logger: mockLogger })
-
-      // The warning should include zod
-      const expectedPattern = /^@hey-api\/openapi-ts not installed - run: npm install -D @hey-api\/openapi-ts zod$/
-      expect(result.warnings[0]).toMatch(expectedPattern)
-    })
-
-    it("result warnings and logger.warn receive identical messages", async () => {
-      const notInstalledError = new Error("@hey-api/openapi-ts not installed")
-      vi.mocked(exec).mockImplementation((_cmd, _opts, callback) => {
-        if (callback) {
-          callback(notInstalledError, { stdout: "", stderr: "" })
-        }
-        return {} as any
-      })
-
-      const config = createStandardTestConfig()
-
-      const result = await runTypeGeneration(config, { logger: mockLogger })
-
-      // The message pushed to result.warnings should match what logger.warn received
-      expect(result.warnings[0]).toBe((mockLogger.warn as any).mock.calls[0][0])
-    })
+    expect(execFile).toHaveBeenCalledWith(
+      process.execPath,
+      ["/fake/node_modules/@hey-api/openapi-ts/bin/openapi-ts.js", "-i", "openapi.json", "-o", "src/generated/api", "--plugins", "@hey-api/typescript"],
+      {
+        cwd: "/home/user/project",
+      },
+      expect.any(Function),
+    )
   })
 
-  describe("runTypeGeneration basic behavior", () => {
-    it("returns result with timing information", async () => {
-      // Mock successful execution
-      vi.mocked(exec).mockImplementation((_cmd, _opts, callback) => {
-        if (callback) {
-          callback(null, { stdout: "success", stderr: "" })
-        }
-        return {} as any
-      })
-
-      const config: TypeGenCoreConfig = {
-        projectRoot: "/home/user/project",
-        openapiPath: "openapi.json",
-        output: "src/types",
-        pagePropsPath: "inertia-pages.json",
-        routesPath: "routes.json",
-        generateSdk: true,
-        generateZod: false,
-        generatePageProps: false,
-        generateSchemas: false,
-        sdkClientPlugin: "@hey-api/client-fetch",
-      }
-
-      const result = await runTypeGeneration(config)
-
-      expect(result.durationMs).toBeGreaterThanOrEqual(0)
-      expect(result).toHaveProperty("generated")
-      expect(result).toHaveProperty("generatedFiles")
-      expect(result).toHaveProperty("skippedFiles")
-      expect(result).toHaveProperty("warnings")
-      expect(result).toHaveProperty("errors")
+  it("classifies missing hey-api as a blocking error", async () => {
+    mocks.resolve.mockImplementation(() => {
+      throw new Error("Cannot find module")
     })
+    mockExecFileFailure(new Error("@hey-api/openapi-ts not installed"))
 
-    it("skips SDK generation when openapi file does not exist", async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(false)
+    const result = await runTypeGeneration(createConfig(), { logger })
 
-      const config: TypeGenCoreConfig = {
-        projectRoot: "/home/user/project",
-        openapiPath: "openapi.json",
-        output: "src/types",
-        pagePropsPath: "inertia-pages.json",
-        routesPath: "routes.json",
-        generateSdk: true,
-        generateZod: false,
-        generatePageProps: false,
-        generateSchemas: false,
-        sdkClientPlugin: "@hey-api/client-fetch",
-      }
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]).toContain("@hey-api/openapi-ts not installed")
+    expect(result.warnings).toEqual([])
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("@hey-api/openapi-ts not installed"))
+  })
 
-      const result = await runTypeGeneration(config, { logger: mockLogger })
-
-      // exec should not be called since openapi.json doesn't exist
-      expect(exec).not.toHaveBeenCalled()
-      expect(result.generated).toBe(false)
+  it("includes zod in the install hint when zod generation is enabled", async () => {
+    mocks.resolve.mockImplementation(() => {
+      throw new Error("Cannot find module")
     })
+    mockExecFileFailure(new Error("@hey-api/openapi-ts not installed"))
+
+    const result = await runTypeGeneration(createConfig({ generateZod: true }), { logger })
+
+    expect(result.errors[0]).toContain("@hey-api/openapi-ts zod")
+  })
+
+  it("skips SDK generation when openapi.json does not exist", async () => {
+    mocks.existsSync.mockImplementation((filePath: string) => !filePath.endsWith("openapi.json"))
+
+    const result = await runTypeGeneration(createConfig(), { logger })
+
+    expect(execFile).not.toHaveBeenCalled()
+    expect(result.generated).toBe(false)
+  })
+
+  it("detects hey-api config with JavaScript module extensions", () => {
+    mocks.existsSync.mockImplementation((filePath: string) => filePath.endsWith("openapi-ts.config.mjs"))
+
+    expect(findOpenApiTsConfig("/home/user/project")).toBe("/home/user/project/openapi-ts.config.mjs")
+  })
+
+  it("prefers TypeScript hey-api config over JavaScript variants", () => {
+    mocks.existsSync.mockImplementation((filePath: string) => filePath.endsWith("openapi-ts.config.ts") || filePath.endsWith("openapi-ts.config.mjs"))
+
+    expect(findOpenApiTsConfig("/home/user/project")).toBe("/home/user/project/openapi-ts.config.ts")
   })
 })

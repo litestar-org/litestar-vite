@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { detectExecutor, resolveInstallHint, resolvePackageExecutor } from "../src/install-hint"
+import { detectExecutor, resolveInstallHint, resolvePackageExecutor, resolvePackageExecutorArgv } from "../src/install-hint"
 
 // Mock fs module
 vi.mock("node:fs", () => ({
@@ -331,6 +331,24 @@ describe("install-hint", () => {
       const executor = resolvePackageExecutor("@hey-api/openapi-ts")
 
       expect(executor).toBe("yarn dlx @hey-api/openapi-ts")
+    })
+  })
+
+  describe("resolvePackageExecutorArgv", () => {
+    it("returns argv for node package execution without shell joining", () => {
+      expect(resolvePackageExecutorArgv(["@hey-api/openapi-ts@0.98.2", "-i", "schema.json"])).toEqual(["npx", "@hey-api/openapi-ts@0.98.2", "-i", "schema.json"])
+    })
+
+    it("returns package-manager specific argv without changing resolvePackageExecutor string output", () => {
+      expect(resolvePackageExecutorArgv(["@hey-api/openapi-ts@0.98.2", "--file", "openapi-ts.config.ts"], "pnpm")).toEqual([
+        "pnpm",
+        "dlx",
+        "@hey-api/openapi-ts@0.98.2",
+        "--file",
+        "openapi-ts.config.ts",
+      ])
+      expect(resolvePackageExecutorArgv(["@hey-api/openapi-ts@0.98.2"], "bun")).toEqual(["bunx", "@hey-api/openapi-ts@0.98.2"])
+      expect(resolvePackageExecutorArgv(["@hey-api/openapi-ts@0.98.2"], "yarn")).toEqual(["yarn", "dlx", "@hey-api/openapi-ts@0.98.2"])
     })
   })
 })

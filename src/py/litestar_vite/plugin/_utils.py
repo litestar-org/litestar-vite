@@ -422,6 +422,7 @@ def write_runtime_config_file(
             "generatePageProps": types.generate_page_props,
             "generateSchemas": types.generate_schemas,
             "globalRoute": types.global_route,
+            "failOnError": types.fail_on_error,
         }
         if types
         else None,

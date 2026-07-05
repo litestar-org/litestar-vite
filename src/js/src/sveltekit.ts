@@ -36,7 +36,7 @@ import type { ViteDevServer } from "vite"
 import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema.js"
 import { DEBOUNCE_MS } from "./shared/constants.js"
 import { normalizeHost, resolveHotFilePath, resolveLitestarPort } from "./shared/network.js"
-import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
+import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig } from "./shared/typegen-plugin.js"
 import { hmrServerConfig } from "./shared/vite-compat.js"
 
 /**
@@ -129,6 +129,13 @@ export interface SvelteKitTypesConfig {
   globalRoute?: boolean
 
   /**
+   * Fail Vite when type generation fails.
+   *
+   * Defaults to true during build and false during dev.
+   */
+  failOnError?: boolean
+
+  /**
    * Debounce time in milliseconds for type regeneration.
    *
    * @default 300
@@ -189,7 +196,7 @@ export interface LitestarSvelteKitConfig {
 interface ResolvedConfig {
   apiProxy: string
   apiPrefix: string
-  types: Required<SvelteKitTypesConfig> | false
+  types: RequiredTypeGenConfig | false
   verbose: boolean
   hotFile?: string
   proxyMode: "vite" | "direct" | "proxy" | null
@@ -252,7 +259,7 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
     litestarPort = resolvedLitestarPort
   }
 
-  let typesConfig: Required<SvelteKitTypesConfig> | false = false
+  let typesConfig: RequiredTypeGenConfig | false = false
 
   const defaultTypesOutput = "src/lib/generated"
   const buildTypeDefaults = (output: string) => ({
@@ -280,6 +287,7 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
       generatePageProps: pythonTypesConfig?.generatePageProps ?? true,
       generateSchemas: pythonTypesConfig?.generateSchemas ?? true,
       globalRoute: pythonTypesConfig?.globalRoute ?? false,
+      failOnError: pythonTypesConfig?.failOnError,
       debounce: DEBOUNCE_MS,
     }
   } else if (typeof config.types === "object" && config.types !== null) {
@@ -305,6 +313,7 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
       generatePageProps: config.types.generatePageProps ?? pythonTypesConfig?.generatePageProps ?? true,
       generateSchemas: config.types.generateSchemas ?? pythonTypesConfig?.generateSchemas ?? true,
       globalRoute: config.types.globalRoute ?? pythonTypesConfig?.globalRoute ?? false,
+      failOnError: config.types.failOnError ?? pythonTypesConfig?.failOnError,
       debounce: config.types.debounce ?? DEBOUNCE_MS,
     }
   } else if (config.types !== false && pythonTypesConfig?.enabled) {
@@ -324,6 +333,7 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedConfig {
       generatePageProps: pythonTypesConfig.generatePageProps ?? true,
       generateSchemas: pythonTypesConfig.generateSchemas ?? true,
       globalRoute: pythonTypesConfig.globalRoute ?? false,
+      failOnError: pythonTypesConfig.failOnError,
       debounce: DEBOUNCE_MS,
     }
   }

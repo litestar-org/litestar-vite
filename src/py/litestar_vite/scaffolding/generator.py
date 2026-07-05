@@ -103,7 +103,9 @@ class TemplateContext:
 
         dev_dependencies_map: dict[str, str] = {name: resolve(name) for name in self.framework.dev_dependencies}
         if self.use_tailwind:
+            dev_dependencies_map["@tailwindcss/postcss"] = resolve("@tailwindcss/postcss")
             dev_dependencies_map["@tailwindcss/vite"] = resolve("@tailwindcss/vite")
+            dev_dependencies_map["postcss"] = resolve("postcss")
             dev_dependencies_map["tailwindcss"] = resolve("tailwindcss")
         if self.generate_client:
             dev_dependencies_map["@hey-api/openapi-ts"] = resolve("@hey-api/openapi-ts")
@@ -143,6 +145,24 @@ class TemplateContext:
         return context
 
 
+@dataclass(frozen=True)
+class _RenderedTemplate:
+    template_path: Path
+    output_path: Path
+    content: str
+
+
+_TEMPLATE_DIR_ALIASES: dict[str, str] = {
+    "react-inertia-jinja": "react-inertia",
+    "vue-inertia-ssr": "vue-inertia",
+    "vue-inertia-jinja": "vue-inertia",
+    "vue-inertia-jinja-ssr": "vue-inertia",
+    "svelte-inertia-jinja": "svelte-inertia",
+    "jinja-htmx": "htmx",
+    "htmx-no-jinja": "htmx",
+}
+
+
 def get_template_dir() -> Path:
     """Get the directory containing framework templates.
 
@@ -177,7 +197,12 @@ def render_template(template_path: Path, context: dict[str, Any]) -> str:
     return template.render(**context)
 
 
-def _process_templates(
+def _resolve_framework_template_dir(template_root: Path, framework_value: str) -> Path:
+    """Resolve the on-disk template directory for a registered framework."""
+    return template_root / _TEMPLATE_DIR_ALIASES.get(framework_value, framework_value)
+
+
+def _collect_templates(
     template_dir: Path,
     output_dir: Path,
     context_dict: dict[str, Any],
@@ -185,8 +210,8 @@ def _process_templates(
     *,
     overwrite: bool,
     skip_paths: "set[Path] | None" = None,
-) -> list[Path]:
-    """Process templates from a directory and generate output files.
+) -> list[_RenderedTemplate]:
+    """Render templates from a directory without writing them.
 
     This function rewrites template paths so frameworks can customize the output
     directory layout:
@@ -205,11 +230,11 @@ def _process_templates(
         skip_paths: Set of relative paths to skip.
 
     Returns:
-        List of generated file paths.
+        List of rendered file descriptors.
     """
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
-    generated_files: list[Path] = []
+    rendered_files: list[_RenderedTemplate] = []
     skip_paths = skip_paths or set()
     enable_ssr = bool(context_dict.get("enable_ssr"))
 
@@ -239,8 +264,22 @@ def _process_templates(
             console.print(f"[yellow]Skipping {output_path} (exists)[/]")
             continue
 
-        _render_and_write(template_file, output_path, context_dict)
-        generated_files.append(output_path)
+        content = render_template(template_file, context_dict)
+        rendered_files.append(_RenderedTemplate(template_path=template_file, output_path=output_path, content=content))
+
+    return rendered_files
+
+
+def _write_rendered_templates(rendered_files: list[_RenderedTemplate]) -> list[Path]:
+    """Write rendered templates after all template rendering succeeds."""
+    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+
+    generated_files: list[Path] = []
+    for rendered in rendered_files:
+        rendered.output_path.parent.mkdir(parents=True, exist_ok=True)
+        rendered.output_path.write_text(rendered.content, encoding="utf-8")
+        console.print(f"[green]Created {rendered.output_path}[/]")
+        generated_files.append(rendered.output_path)
 
     return generated_files
 
@@ -259,10 +298,10 @@ def generate_project(output_dir: Path, context: TemplateContext, *, overwrite: b
     from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
     template_dir = get_template_dir()
-    framework_dir = template_dir / context.framework.type.value
+    framework_dir = _resolve_framework_template_dir(template_dir, context.framework.type.value)
     base_dir = template_dir / "base"
     context_dict = context.to_dict()
-    generated_files: list[Path] = []
+    rendered_files: list[_RenderedTemplate] = []
 
     framework_overrides: set[Path] = set()
     if framework_dir.exists():
@@ -271,11 +310,10 @@ def generate_project(output_dir: Path, context: TemplateContext, *, overwrite: b
         }
 
     actual_output_dir = output_dir / context.base_dir if context.base_dir not in {"", "."} else output_dir
-    actual_output_dir.mkdir(parents=True, exist_ok=True)
 
     if context.framework.uses_vite and base_dir.exists():
-        generated_files.extend(
-            _process_templates(
+        rendered_files.extend(
+            _collect_templates(
                 base_dir,
                 actual_output_dir,
                 context_dict,
@@ -286,8 +324,8 @@ def generate_project(output_dir: Path, context: TemplateContext, *, overwrite: b
         )
 
     if framework_dir.exists():
-        generated_files.extend(
-            _process_templates(
+        rendered_files.extend(
+            _collect_templates(
                 framework_dir, actual_output_dir, context_dict, context.resource_dir, overwrite=overwrite
             )
         )
@@ -297,27 +335,10 @@ def generate_project(output_dir: Path, context: TemplateContext, *, overwrite: b
     if context.use_tailwind:
         tailwind_dir = template_dir / "addons" / "tailwindcss"
         if tailwind_dir.exists():
-            generated_files.extend(
-                _process_templates(
+            rendered_files.extend(
+                _collect_templates(
                     tailwind_dir, actual_output_dir, context_dict, context.resource_dir, overwrite=overwrite
                 )
             )
 
-    return generated_files
-
-
-def _render_and_write(template_path: Path, output_path: Path, context: dict[str, Any]) -> None:
-    """Render a template and write to output file.
-
-    Args:
-        template_path: Path to the template file.
-        output_path: Path to write the rendered content.
-        context: Template context dictionary.
-    """
-    from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    content = render_template(template_path, context)
-    output_path.write_text(content, encoding="utf-8")
-    console.print(f"[green]Created {output_path}[/]")
+    return _write_rendered_templates(rendered_files)

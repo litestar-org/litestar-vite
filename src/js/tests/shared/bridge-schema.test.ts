@@ -1,5 +1,8 @@
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 import { describe, expect, it } from "vitest"
-import { parseBridgeSchema } from "../../src/shared/bridge-schema"
+import { parseBridgeSchema, readBridgeConfig } from "../../src/shared/bridge-schema"
 
 const baseBridgeConfig = {
   assetUrl: "/static",
@@ -73,5 +76,56 @@ describe("bridge schema litestarPort", () => {
 
   it("rejects non-integer litestarPort", () => {
     expect(() => parseBridgeSchema({ ...baseBridgeConfig, litestarPort: "8000" })).toThrow(/litestarPort/)
+  })
+})
+
+describe("bridge schema additive fields", () => {
+  it("warns and ignores unknown top-level keys", () => {
+    const config = parseBridgeSchema({ ...baseBridgeConfig, futureField: true })
+
+    expect(config.assetUrl).toBe("/static")
+    expect("futureField" in config).toBe(false)
+  })
+
+  it("returns null for corrupt bridge JSON", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "litestar-bridge-"))
+    const configPath = path.join(tmpDir, ".litestar.json")
+    fs.writeFileSync(configPath, "{")
+
+    try {
+      expect(readBridgeConfig(configPath)).toBeNull()
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("bridge schema typegen failOnError", () => {
+  const types = {
+    enabled: true,
+    output: "src/generated",
+    openapiPath: "src/generated/openapi.json",
+    routesPath: "src/generated/routes.json",
+    pagePropsPath: "src/generated/inertia-pages.json",
+    generateZod: false,
+    generateSdk: true,
+    generateRoutes: true,
+    generatePageProps: true,
+    generateSchemas: true,
+    globalRoute: false,
+  }
+
+  it("parses an explicit failOnError value", () => {
+    const config = parseBridgeSchema({ ...baseBridgeConfig, types: { ...types, failOnError: false } })
+
+    expect(config.types?.failOnError).toBe(false)
+  })
+
+  it("preserves failOnError as undefined when the bridge omits it or writes null", () => {
+    const omitted = parseBridgeSchema({ ...baseBridgeConfig, types })
+    const nullValue = parseBridgeSchema({ ...baseBridgeConfig, types: { ...types, failOnError: null } })
+
+    expect(omitted.types?.failOnError).toBeUndefined()
+    expect(nullValue.types?.failOnError).toBeUndefined()
   })
 })

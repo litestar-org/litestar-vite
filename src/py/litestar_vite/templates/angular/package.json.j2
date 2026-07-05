@@ -23,6 +23,8 @@
     "@angular/build": "{{ package_version('@angular/build') }}",
     "@angular/compiler-cli": "{{ package_version('@angular/compiler-cli') }}",
 {% if use_tailwind %}    "@tailwindcss/vite": "{{ package_version('@tailwindcss/vite') }}",
+    "@tailwindcss/postcss": "{{ package_version('@tailwindcss/postcss') }}",
+    "postcss": "{{ package_version('postcss') }}",
 {% endif %}{% if generate_client %}    "@hey-api/openapi-ts": "{{ package_version('@hey-api/openapi-ts') }}",
 {% endif %}    "@types/node": "{{ package_version('@types/node') }}",
     "litestar-vite-plugin": "{{ package_version('litestar-vite-plugin') }}",

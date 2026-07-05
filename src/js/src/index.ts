@@ -12,7 +12,7 @@ import { DEBOUNCE_MS } from "./shared/constants.js"
 import { createLogger } from "./shared/logger.js"
 import { resolveLitestarPort } from "./shared/network.js"
 import { resolveDefaultSdkClientPlugin } from "./shared/typegen-core.js"
-import { createLitestarTypeGenPlugin } from "./shared/typegen-plugin.js"
+import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig } from "./shared/typegen-plugin.js"
 import { buildInputOptions, hmrServerConfig, resolveUserBuildInput } from "./shared/vite-compat.js"
 
 /**
@@ -110,6 +110,12 @@ export interface TypesConfig {
    * @default false
    */
   globalRoute?: boolean
+  /**
+   * Fail Vite when type generation fails.
+   *
+   * Defaults to true during `vite build` and false during `vite serve`.
+   */
+  failOnError?: boolean
   /**
    * Debounce time in milliseconds for type regeneration.
    * Prevents regeneration from running too frequently when
@@ -284,12 +290,12 @@ interface RefreshConfig {
 
 /**
  * Resolved plugin configuration with all defaults applied.
- * Note: `types` is resolved to `Required<TypesConfig> | false` instead of `boolean | TypesConfig`
+ * Note: `types` is resolved to `RequiredTypeGenConfig | false` instead of `boolean | TypesConfig`
  * Note: `executor` remains optional - undefined means auto-detect from env
  * Note: `inertiaMode` is resolved to boolean (auto-detected from .litestar.json Inertia metadata)
  */
 interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor" | "inertiaMode" | "deployAssetUrl"> {
-  types: Required<TypesConfig> | false
+  types: RequiredTypeGenConfig | false
   executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
   /** Optional asset URL to use for production builds (overrides assetUrl during build) */
   deployAssetUrl?: string
@@ -1059,7 +1065,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
   // - true: use hardcoded defaults (ignore .litestar.json)
   // - false: disabled
   // - object: use explicit config (ignore .litestar.json for types)
-  let typesConfig: Required<TypesConfig> | false = false
+  let typesConfig: RequiredTypeGenConfig | false = false
   const defaultTypesOutput = "src/generated"
   const defaultOpenapiPath = path.join(defaultTypesOutput, "openapi.json")
   const defaultRoutesPath = path.join(defaultTypesOutput, "routes.json")
@@ -1083,6 +1089,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
       generatePageProps: true,
       generateSchemas: true,
       globalRoute: false,
+      failOnError: undefined,
       debounce: DEBOUNCE_MS,
     }
   } else if (resolvedConfig.types === "auto" || typeof resolvedConfig.types === "undefined") {
@@ -1101,6 +1108,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
         generatePageProps: pythonDefaults.types.generatePageProps,
         generateSchemas: pythonDefaults.types.generateSchemas ?? true,
         globalRoute: pythonDefaults.types.globalRoute,
+        failOnError: pythonDefaults.types.failOnError,
         debounce: DEBOUNCE_MS,
       }
     }
@@ -1112,7 +1120,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     const userProvidedPageProps = Object.hasOwn(resolvedConfig.types, "pagePropsPath")
     const userProvidedSchemasTs = Object.hasOwn(resolvedConfig.types, "schemasTsPath")
 
-    typesConfig = {
+    const resolvedTypesConfig: RequiredTypeGenConfig = {
       enabled: resolvedConfig.types.enabled ?? true,
       output: resolvedConfig.types.output ?? defaultTypesOutput,
       openapiPath: resolvedConfig.types.openapiPath ?? (resolvedConfig.types.output ? path.join(resolvedConfig.types.output, "openapi.json") : defaultOpenapiPath),
@@ -1125,22 +1133,24 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
       generatePageProps: resolvedConfig.types.generatePageProps ?? true,
       generateSchemas: resolvedConfig.types.generateSchemas ?? true,
       globalRoute: resolvedConfig.types.globalRoute ?? false,
+      failOnError: resolvedConfig.types.failOnError ?? pythonDefaults?.types?.failOnError,
       debounce: resolvedConfig.types.debounce ?? DEBOUNCE_MS,
     }
 
     // If the user only set output (not openapi/routes/pageProps), cascade them under output for consistency
     if (!userProvidedOpenapi && resolvedConfig.types.output) {
-      typesConfig.openapiPath = path.join(typesConfig.output, "openapi.json")
+      resolvedTypesConfig.openapiPath = path.join(resolvedTypesConfig.output, "openapi.json")
     }
     if (!userProvidedRoutes && resolvedConfig.types.output) {
-      typesConfig.routesPath = path.join(typesConfig.output, "routes.json")
+      resolvedTypesConfig.routesPath = path.join(resolvedTypesConfig.output, "routes.json")
     }
     if (!userProvidedPageProps && resolvedConfig.types.output) {
-      typesConfig.pagePropsPath = path.join(typesConfig.output, "inertia-pages.json")
+      resolvedTypesConfig.pagePropsPath = path.join(resolvedTypesConfig.output, "inertia-pages.json")
     }
     if (!userProvidedSchemasTs && resolvedConfig.types.output) {
-      typesConfig.schemasTsPath = path.join(typesConfig.output, "schemas.ts")
+      resolvedTypesConfig.schemasTsPath = path.join(resolvedTypesConfig.output, "schemas.ts")
     }
+    typesConfig = resolvedTypesConfig
   }
 
   // Auto-detect Inertia from .litestar.json if not explicitly set.
@@ -1480,8 +1490,8 @@ function resolveEnvironmentServerConfig(env: Record<string, string>):
   return {
     host,
     https: {
-      key: fs.readFileSync(env.VITE_DEV_SERVER_KEY),
-      cert: fs.readFileSync(env.VITE_DEV_SERVER_CERT),
+      key: fs.readFileSync(env.VITE_SERVER_KEY),
+      cert: fs.readFileSync(env.VITE_SERVER_CERT),
     },
   }
 }

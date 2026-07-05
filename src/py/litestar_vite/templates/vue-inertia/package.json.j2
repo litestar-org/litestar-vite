@@ -36,7 +36,9 @@
     "typescript": "{{ package_version('typescript') }}",
     "vue-tsc": "{{ package_version('vue-tsc') }}",
 {%- if use_tailwind %}
+    "@tailwindcss/postcss": "{{ package_version('@tailwindcss/postcss') }}",
     "@tailwindcss/vite": "{{ package_version('@tailwindcss/vite') }}",
+    "postcss": "{{ package_version('postcss') }}",
     "tailwindcss": "{{ package_version('tailwindcss') }}",
 {%- endif %}
 {%- if generate_client %}

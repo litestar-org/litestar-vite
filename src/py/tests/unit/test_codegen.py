@@ -7,7 +7,12 @@ from litestar import Litestar, get, post
 from litestar.params import FromPath, FromQuery
 
 from litestar_vite.codegen import escape_ts_string, generate_routes_ts, is_type_required, ts_type_for_param
-from litestar_vite.codegen._routes import extract_path_params, extract_route_metadata, make_unique_name
+from litestar_vite.codegen._routes import (
+    collect_semantic_aliases,
+    extract_path_params,
+    extract_route_metadata,
+    make_unique_name,
+)
 from litestar_vite.codegen._ts import (
     collect_ref_names,
     join_union,
@@ -399,9 +404,8 @@ def testts_type_from_openapi_const() -> None:
     assert ts_type_from_openapi({"const": "active"}) == '"active"'
     assert ts_type_from_openapi({"const": 42}) == "42"
     assert ts_type_from_openapi({"const": True}) == "true"
-    # Note: const=False returns "any" due to Litestar's falsy check bug
-    # See: litestar/_openapi/typescript_converter/schema_parsing.py line ~117
-    assert ts_type_from_openapi({"const": False}) == "any"
+    assert ts_type_from_openapi({"const": False}) == "false"
+    assert ts_type_from_openapi({"const": None}) == "null"
 
 
 def testts_literal_helper() -> None:
@@ -412,6 +416,8 @@ def testts_literal_helper() -> None:
     assert ts_literal(1) == "1"
     assert ts_literal(1.5) == "1.5"
     assert ts_literal("x") == '"x"'
+    assert ts_literal("x\\y") == '"x\\\\y"'
+    assert ts_literal("x\ny") == '"x\\ny"'
     assert ts_literal({"a": 1}) == "any"
 
 
@@ -516,6 +522,11 @@ def test_collect_ref_names_nested() -> None:
         "anyOf": [{"$ref": "#/components/schemas/A"}, {"type": "null"}],
     }
     assert collect_ref_names(schema) == {"User", "Tag", "A"}
+
+
+def test_collect_semantic_aliases_matches_whole_identifiers() -> None:
+    """Semantic alias collection should not match substrings of larger identifiers."""
+    assert collect_semantic_aliases("UUID | DateTime | NotUUID | DateTimeRange") == {"UUID", "DateTime"}
 
 
 def test_ts_helpers_union_and_array_wrapping() -> None:
@@ -860,3 +871,35 @@ def test_generate_routes_ts_str_enum_query_params_emit_literal_unions() -> None:
     ts_content = generate_routes_ts(app, openapi_schema=schema)
     assert 'granularity?: "hour" | "day" | "month";' in ts_content
     assert "__main___Granularity" not in ts_content
+
+
+def test_generate_routes_ts_path_param_non_enum_ref_degrades_to_string() -> None:
+    """Non-enum schema refs are not valid URL parameter value types."""
+
+    @get("/widgets/{widget_id:str}", name="widget.detail", sync_to_thread=False)
+    def widget_detail(widget_id: FromPath[str]) -> str:
+        return widget_id
+
+    app = Litestar([widget_detail])
+    schema: dict[str, Any] = {
+        "components": {"schemas": {"WidgetIdentifier": {"type": "object", "properties": {"id": {"type": "string"}}}}},
+        "paths": {
+            "/widgets/{widget_id}": {
+                "get": {
+                    "parameters": [
+                        {
+                            "name": "widget_id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"$ref": "#/components/schemas/WidgetIdentifier"},
+                        }
+                    ]
+                }
+            }
+        },
+    }
+
+    content = generate_routes_ts(app, openapi_schema=schema)
+
+    assert "widget_id: string;" in content
+    assert "widget_id: WidgetIdentifier;" not in content

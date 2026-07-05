@@ -537,6 +537,7 @@ class ViteConfig:
         auto_dev_mode = os.getenv("VITE_AUTO_DEV_MODE", "True") in TRUE_VALUES
         if auto_dev_mode and not self.runtime.dev_mode and self.wants_spa_config and not self.has_built_assets():
             self.runtime.dev_mode = True
+            self._apply_proxy_mode_defaults()
 
     def _warn_missing_assets(self) -> None:
         """Warn if running in production mode without built assets."""

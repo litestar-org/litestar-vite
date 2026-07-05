@@ -24,6 +24,13 @@ interface CacheData {
   [key: string]: CacheEntry
 }
 
+interface OpenApiTsCacheOptions {
+  generateSdk: boolean
+  generateZod: boolean
+  plugins: string[]
+  outputPaths?: string[]
+}
+
 /**
  * Load cache from disk.
  */
@@ -91,6 +98,10 @@ function isOptionalMetadataMatch(a: FileMetadata | null, b: FileMetadata | null)
   return isMetadataMatch(a, b)
 }
 
+function areExpectedOutputsPresent(outputPaths: string[] | undefined): boolean {
+  return !outputPaths?.some((outputPath) => !fs.existsSync(outputPath))
+}
+
 /**
  * Compute SHA-256 hash of an object.
  * Keys are sorted for deterministic hashing.
@@ -108,11 +119,11 @@ function hashObject(obj: object): string {
  * @param options - Generator options
  * @returns true if generation should run, false if cached
  */
-export async function shouldRunOpenApiTs(
-  openapiPath: string,
-  configPath: string | null,
-  options: { generateSdk: boolean; generateZod: boolean; plugins: string[] },
-): Promise<boolean> {
+export async function shouldRunOpenApiTs(openapiPath: string, configPath: string | null, options: OpenApiTsCacheOptions): Promise<boolean> {
+  if (!areExpectedOutputsPresent(options.outputPaths)) {
+    return true
+  }
+
   const cache = await loadCache()
   const optionsHash = hashObject(options)
 
@@ -149,11 +160,7 @@ export async function shouldRunOpenApiTs(
  * @param configPath - Path to config file (or null)
  * @param options - Generator options
  */
-export async function updateOpenApiTsCache(
-  openapiPath: string,
-  configPath: string | null,
-  options: { generateSdk: boolean; generateZod: boolean; plugins: string[] },
-): Promise<void> {
+export async function updateOpenApiTsCache(openapiPath: string, configPath: string | null, options: OpenApiTsCacheOptions): Promise<void> {
   const cache = await loadCache()
   cache["openapi-ts"] = {
     inputHash: await hashFile(openapiPath),
@@ -182,7 +189,11 @@ export async function computePagePropsHash(pagePropsPath: string): Promise<strin
  * @param pagePropsPath - Path to inertia-pages.json
  * @returns true if generation should run, false if cached
  */
-export async function shouldRegeneratePageProps(pagePropsPath: string): Promise<boolean> {
+export async function shouldRegeneratePageProps(pagePropsPath: string, outputPath?: string): Promise<boolean> {
+  if (outputPath && !fs.existsSync(outputPath)) {
+    return true
+  }
+
   const cache = await loadCache()
   const currentMetadata = await readFileMetadata(pagePropsPath)
 

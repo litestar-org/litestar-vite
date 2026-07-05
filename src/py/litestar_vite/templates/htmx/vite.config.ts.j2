@@ -17,7 +17,7 @@ export default defineConfig({
     tailwindcss(),
 {% endif %}
     litestar({
-      input: ["{{ resource_dir }}/main.js"],
+      input: ["{{ resource_dir }}/main.js"{% if use_tailwind %}, "{{ resource_dir }}/tailwind.css"{% endif %}],
     }),
   ],
   build: {

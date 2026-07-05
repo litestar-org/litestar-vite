@@ -35,6 +35,9 @@ class TypeGenConfig:
         global_route: Register route() function globally on window object.
             When True, adds ``window.route = route`` to generated routes.ts,
             providing global access without imports.
+        fail_on_error: Control whether frontend type generation failures are
+            blocking. ``None`` uses the JS plugin default: fail during build,
+            warn during serve.
         fallback_type: Fallback value type for untyped containers in generated Inertia props.
             Controls whether untyped dict/list become `unknown` (default) or `any`.
         type_import_paths: Map schema/type names to TypeScript import paths for props types
@@ -89,6 +92,12 @@ class TypeGenConfig:
         // declare const route: typeof import('@/generated/routes').route
 
     Default is False to encourage explicit imports for better tree-shaking.
+    """
+    fail_on_error: "bool | None" = None
+    """Whether type generation failures should fail the Vite command.
+
+    ``None`` preserves the JS-side behavioral default: fail during production
+    builds and warn during dev server runs.
     """
     fallback_type: "Literal['unknown', 'any']" = "unknown"
     type_import_paths: dict[str, str] = field(default_factory=lambda: cast("dict[str, str]", {}))

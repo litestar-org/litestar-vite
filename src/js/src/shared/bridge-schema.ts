@@ -30,6 +30,7 @@ export interface BridgeTypesConfig {
   generatePageProps: boolean
   generateSchemas: boolean
   globalRoute: boolean
+  failOnError?: boolean
 }
 
 export interface BridgeSpaConfig {
@@ -114,6 +115,11 @@ const allowedLogLevels: ReadonlySet<string> = new Set(["quiet", "normal", "verbo
 
 function fail(message: string): never {
   throw new Error(`litestar-vite-plugin: invalid .litestar.json - ${message}`)
+}
+
+function warn(message: string): void {
+  // eslint-disable-next-line no-console
+  console.warn(`litestar-vite-plugin: invalid .litestar.json - ${message}`)
 }
 
 function assertObject(value: unknown, label: string): Record<string, unknown> {
@@ -221,6 +227,8 @@ function parseTypesConfig(value: unknown): BridgeTypesConfig | null {
   const generatePageProps = assertBoolean(obj, "generatePageProps")
   const generateSchemas = assertOptionalBoolean(obj, "generateSchemas", true) // Default to true for backward compatibility
   const globalRoute = assertBoolean(obj, "globalRoute")
+  const rawFailOnError = obj.failOnError
+  const failOnError = rawFailOnError === undefined || rawFailOnError === null ? undefined : assertBoolean(obj, "failOnError")
 
   return {
     enabled,
@@ -236,6 +244,7 @@ function parseTypesConfig(value: unknown): BridgeTypesConfig | null {
     generatePageProps,
     generateSchemas,
     globalRoute,
+    failOnError,
   }
 }
 
@@ -271,7 +280,7 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
 
   for (const key of Object.keys(obj)) {
     if (!allowedTopLevelKeys.has(key)) {
-      fail(`unknown top-level key "${key}"`)
+      warn(`unknown top-level key "${key}" ignored`)
     }
   }
 
@@ -329,12 +338,22 @@ export function readBridgeConfig(explicitPath?: string): BridgeSchema | null {
     if (!fs.existsSync(envPath)) {
       return null
     }
-    return readBridgeConfigFile(envPath)
+    try {
+      return readBridgeConfigFile(envPath)
+    } catch (error) {
+      warn(error instanceof Error ? error.message : String(error))
+      return null
+    }
   }
 
   const defaultPath = path.join(process.cwd(), ".litestar.json")
   if (fs.existsSync(defaultPath)) {
-    return readBridgeConfigFile(defaultPath)
+    try {
+      return readBridgeConfigFile(defaultPath)
+    } catch (error) {
+      warn(error instanceof Error ? error.message : String(error))
+      return null
+    }
   }
 
   return null
