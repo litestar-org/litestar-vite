@@ -80,6 +80,14 @@ class TemplateContext:
     generate_client: bool = False
     extra: dict[str, Any] = field(default_factory=_DictStrAnyFactory)
 
+    def has_dependency(self, package_name: str) -> bool:
+        """Check whether the selected framework declares a package dependency."""
+        return package_name in self.framework.dependencies
+
+    def has_dev_dependency(self, package_name: str) -> bool:
+        """Check whether the selected framework declares a dev dependency."""
+        return package_name in self.framework.dev_dependencies
+
     def to_dict(self) -> dict[str, Any]:
         """Convert context to dictionary for Jinja2 rendering.
 
@@ -87,7 +95,8 @@ class TemplateContext:
             Dictionary of template variables.
         """
         package_versions = _build_package_version_map()
-        return {
+
+        context: dict[str, Any] = {
             "project_name": self.project_name,
             "framework": self.framework.type.value,
             "framework_name": self.framework.name,
@@ -113,6 +122,9 @@ class TemplateContext:
             "package_version": _package_version_resolver(package_versions),
             **self.extra,
         }
+        context["has_dependency"] = self.has_dependency
+        context["has_dev_dependency"] = self.has_dev_dependency
+        return context
 
 
 def get_template_dir() -> Path:
