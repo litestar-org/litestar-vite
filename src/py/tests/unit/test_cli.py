@@ -244,6 +244,28 @@ def test_cli_run_vite_build_executes(tmp_path: Path) -> None:
     assert fake_executor.executes
 
 
+def test_cli_prepare_and_build_writes_bridge_before_extra_commands(tmp_path: Path) -> None:
+    app = _make_app(tmp_path, types=True)
+    config = app.plugins.get(VitePlugin).config
+    fake_executor = FakeExecutor()
+    config._executor_instance = fake_executor
+    (tmp_path / "node_modules").mkdir()
+
+    def assert_bridge_exists(config_arg: ViteConfig, verbose: bool) -> bool:
+        del verbose
+        assert config_arg is config
+        assert (tmp_path / ".litestar.json").exists()
+        assert os.environ["LITESTAR_VITE_CONFIG_PATH"] == str(tmp_path / ".litestar.json")
+        return True
+
+    with (
+        patch("litestar_vite.cli._generate_schema_and_routes", return_value=True),
+        patch("litestar_vite.cli._run_extra_commands", side_effect=assert_bridge_exists),
+        patch("litestar_vite.cli._invoke_typegen_cli"),
+    ):
+        _run_vite_build(config, tmp_path, Mock(), no_build=False, app=app)
+
+
 def test_cli_run_vite_build_skips_js_build_typegen_after_cli_typegen(tmp_path: Path) -> None:
     app = _make_app(tmp_path, types=True)
     config = app.plugins.get(VitePlugin).config

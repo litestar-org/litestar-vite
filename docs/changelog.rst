@@ -7,6 +7,11 @@ Notable changes to this project are documented in this file.
 Litestar Vite Changelog
 ^^^^^^^^^^^^^^^^^^^^^^^
 
+0.26.1 - 2026-07-06
+-------------------
+
+- Fixed ``litestar assets build`` so ``.litestar.json`` is written before pre-build code generators and the JS typegen CLI read the Vite bridge.
+
 0.26.0 - 2026-07-05
 -------------------
 

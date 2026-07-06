@@ -216,6 +216,9 @@ def _build_deploy_config(
 
 def _prepare_and_build(config: ViteConfig, root_dir: Path, console: Any, app: "Litestar | None", verbose: bool) -> None:
     """Export metadata, run typegen, and execute the configured frontend build."""
+    if config.set_environment:
+        set_environment(config=config)
+
     generated_assets = _generate_schema_and_routes(app, config, console) if app is not None else False
 
     if not (root_dir / "node_modules").exists():
@@ -228,8 +231,6 @@ def _prepare_and_build(config: ViteConfig, root_dir: Path, console: Any, app: "L
         if not extra_commands_ok:
             raise SystemExit(1)
 
-    if config.set_environment:
-        set_environment(config=config)
     os.environ.setdefault("VITE_BASE_URL", config.base_url or "/")
 
     env_manager = (

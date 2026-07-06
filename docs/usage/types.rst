@@ -148,13 +148,14 @@ Generate all types with a single command:
 
 This runs the full pipeline:
 
-1. Exports OpenAPI schema to ``src/generated/openapi.json``
-2. Exports route metadata to ``src/generated/routes.json`` and ``routes.ts`` (if enabled)
-3. Runs any ``extra_commands`` (e.g., ``tsr generate`` for TanStack Router)
-4. Runs ``litestar-vite-typegen`` (invokes ``@hey-api/openapi-ts`` and generates ``schemas.ts`` / page props types)
+1. Writes or refreshes ``.litestar.json`` so JS-side generators can read the Python config
+2. Exports OpenAPI schema to ``src/generated/openapi.json``
+3. Exports route metadata to ``src/generated/routes.json`` and ``routes.ts`` (if enabled)
+4. Runs any ``extra_commands`` (e.g., ``tsr generate`` for TanStack Router)
+5. Runs ``litestar-vite-typegen`` (invokes ``@hey-api/openapi-ts`` and generates ``schemas.ts`` / page props types)
 
-The command also writes/updates ``.litestar.json`` and reports whether it was
-updated or unchanged, matching the output style for other generated files.
+The command reports whether ``.litestar.json`` was updated or unchanged,
+matching the output style for other generated files.
 
 You can also export routes separately:
 
