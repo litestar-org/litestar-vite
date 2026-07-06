@@ -4,6 +4,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from litestar import Request, get
+from litestar.exceptions import ImproperlyConfiguredException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
@@ -40,6 +41,27 @@ def test_get_shared_props_includes_csrf_token_from_scope() -> None:
     shared_props = get_shared_props(request)
 
     assert shared_props["csrf_token"] == "scope-csrf-token"
+
+
+def test_get_shared_props_includes_scope_props_when_session_is_unavailable() -> None:
+    """Request-scope shared props should survive requests excluded from session middleware."""
+    from litestar_vite.inertia.helpers import _RAW_SHARED_SCOPE_KEY, get_shared_props
+
+    request = MagicMock()
+    request.headers.get.return_value = None
+    request.session.pop.side_effect = ImproperlyConfiguredException("No session")
+    request.scope = {_RAW_SHARED_SCOPE_KEY: {"auth": {"user": "Ada"}}}
+    request.logger = MagicMock()
+
+    inertia_plugin = MagicMock()
+    inertia_plugin.config.extra_static_page_props = {}
+    inertia_plugin.config.extra_session_page_props = []
+    request.app.plugins.get.return_value = inertia_plugin
+
+    shared_props = get_shared_props(request)
+
+    assert shared_props["auth"] == {"user": "Ada"}
+    assert _RAW_SHARED_SCOPE_KEY not in request.scope
 
 
 def test_scroll_props_helper_creates_config() -> None:
@@ -255,7 +277,7 @@ async def test_partial_reload_filters_shared_props(
         share(request, "user", {"name": "Alice"})
         share(request, "settings", {"theme": "dark"})
         share(request, "notifications", ["msg1", "msg2"])
-        # Route handler props are always included
+        # Route handler props are filtered by the same partial-data keys
         return {"posts": [1, 2, 3], "comments": [4, 5, 6]}
 
     with create_test_client(
@@ -286,9 +308,9 @@ async def test_partial_reload_filters_shared_props(
         partial_props = partial_response.json()["props"]
         # user is requested and present in shared props
         assert "user" in partial_props
-        # Route handler props are always included (posts, comments)
+        # Route handler props follow partial-data filtering
         assert "posts" in partial_props
-        assert "comments" in partial_props
+        assert "comments" not in partial_props
         # Shared props not requested are filtered out
         assert "settings" not in partial_props
         assert "notifications" not in partial_props

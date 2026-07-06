@@ -208,6 +208,7 @@ class InertiaResponse(Response[T]):
         content: Any = self.content
         route_content: Any | None = None
         route_once_props: "list[tuple[str, str]]" = []
+        route_prop_keys: list[str] = []
 
         # v2.2+ protocol: Extract deferred props metadata before filtering.
         # Route props override shared props with the same key, so discard any
@@ -225,7 +226,7 @@ class InertiaResponse(Response[T]):
             filtered_content: Any = lazy_render(cast("Any", content), partial_data, partial_except, except_once_props)
             if filtered_content is not None:
                 route_content = filtered_content
-        elif isinstance(content, Mapping) and partial_data and partial_except:
+        elif isinstance(content, Mapping) and (partial_data or partial_except):
             route_content = lazy_render(
                 cast("Mapping[str, Any]", content), partial_data, partial_except, except_once_props
             )
@@ -239,11 +240,14 @@ class InertiaResponse(Response[T]):
                     if self.prop_filter is not None and not self.prop_filter.should_include(str(key)):
                         continue
                     shared_props[key] = value
+                    route_prop_keys.append(str(key))
             elif is_pagination_container(route_content):
                 prop_key = _get_route_prop_key(route_handler)
                 shared_props[prop_key] = route_content
+                route_prop_keys.append(prop_key)
             else:
                 shared_props["content"] = route_content
+                route_prop_keys.append("content")
 
         # Drop keys this partial reload just resolved, or the client loops on loadDeferredProps.
         deferred_props = _resolve_deferred_props(deferred_props_map, partial_data, is_partial_render)
@@ -259,7 +263,10 @@ class InertiaResponse(Response[T]):
             shared_props = unwrap_merge_props(shared_props)
 
         scroll_props = _apply_pagination_props(
-            shared_props, route_handler=route_handler, explicit_scroll_props=self.scroll_props
+            shared_props,
+            route_handler=route_handler,
+            explicit_scroll_props=self.scroll_props,
+            explicit_scroll_props_key=_get_explicit_scroll_props_key(route_prop_keys, route_handler),
         )
 
         encrypt_history = _resolve_encrypt_history(self.encrypt_history, inertia_plugin)
@@ -1057,12 +1064,22 @@ def _get_route_prop_key(route_handler: Any) -> str:
     return (route_handler.opt.get("key", "items") if route_handler else "items") or "items"
 
 
+def _get_explicit_scroll_props_key(route_prop_keys: list[str], route_handler: Any) -> str:
+    if len(route_prop_keys) == 1:
+        return route_prop_keys[0]
+    return _get_route_prop_key(route_handler)
+
+
 def _apply_pagination_props(
-    shared_props: "dict[str, Any]", *, route_handler: Any, explicit_scroll_props: "ScrollPropsConfig | None"
+    shared_props: "dict[str, Any]",
+    *,
+    route_handler: Any,
+    explicit_scroll_props: "ScrollPropsConfig | None",
+    explicit_scroll_props_key: str,
 ) -> "dict[str, ScrollPropsConfig] | None":
     scroll_props_map: "dict[str, ScrollPropsConfig]" = {}
     if explicit_scroll_props is not None:
-        scroll_props_map[_get_route_prop_key(route_handler)] = explicit_scroll_props
+        scroll_props_map[explicit_scroll_props_key] = explicit_scroll_props
 
     infinite_scroll_enabled = bool(route_handler and route_handler.opt.get("infinite_scroll", False))
     for key in tuple(shared_props):

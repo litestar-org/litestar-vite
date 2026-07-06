@@ -599,6 +599,12 @@ def test_cli_get_package_executor_cmd_variants() -> None:
 
 
 def test_cli_get_package_executor_cmd_uses_package_flag_for_typegen() -> None:
+    assert _get_package_executor_cmd("deno", "litestar-vite-typegen", package_name="litestar-vite-plugin") == [
+        "deno",
+        "run",
+        "-A",
+        "npm:litestar-vite-plugin/litestar-vite-typegen",
+    ]
     assert _get_package_executor_cmd("pnpm", "litestar-vite-typegen", package_name="litestar-vite-plugin") == [
         "pnpm",
         "--package",
@@ -639,6 +645,9 @@ def test_cli_resolve_js_cli_fallback_names_plugin_package(tmp_path: Path) -> Non
 
     assert command == ["npx", "--package", "litestar-vite-plugin", "litestar-vite-typegen"]
     assert command != ["npx", "litestar-vite-typegen"]
+
+    deno_command = _resolve_js_cli(tmp_path, "deno", "litestar-vite-typegen", package_name="litestar-vite-plugin")
+    assert deno_command == ["deno", "run", "-A", "npm:litestar-vite-plugin/litestar-vite-typegen"]
 
 
 def test_cli_resolve_js_cli_bun_wraps_local_bin(tmp_path: Path) -> None:

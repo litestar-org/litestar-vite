@@ -29,6 +29,7 @@ class ViteProcess:
     _signals_registered: bool = False
     _original_handlers: "dict[int, Any]" = {}
     _RESTART_BACKOFFS: ClassVar[tuple[float, ...]] = (1.0, 2.0, 4.0)
+    _RESTART_STABILITY_SECONDS: ClassVar[float] = 5.0
 
     def __init__(self, executor: "JSExecutor") -> None:
         """Initialize the Vite process manager.
@@ -200,7 +201,9 @@ class ViteProcess:
                 command = self._restart_command
                 cwd = self._restart_cwd
 
+            wait_started = time.monotonic()
             exit_code = process.wait()
+            process_runtime = time.monotonic() - wait_started
             self._terminate_exited_process_group(process, timeout=0.5)
 
             with self._lock:
@@ -209,6 +212,10 @@ class ViteProcess:
                 self.process = None
                 if command is None or cwd is None:
                     return
+
+            if process_runtime >= self._RESTART_STABILITY_SECONDS:
+                attempts = 0
+                last_error = None
 
             restarted = False
             while attempts < len(self._RESTART_BACKOFFS):

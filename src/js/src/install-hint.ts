@@ -106,6 +106,23 @@ export interface PackageExecutorArgvOptions {
   binName?: string
 }
 
+function getPackageNameFromSpec(packageSpec: string): string {
+  if (packageSpec.startsWith("@")) {
+    const versionIndex = packageSpec.indexOf("@", packageSpec.indexOf("/") + 1)
+    return versionIndex === -1 ? packageSpec : packageSpec.slice(0, versionIndex)
+  }
+  const versionIndex = packageSpec.indexOf("@")
+  return versionIndex === -1 ? packageSpec : packageSpec.slice(0, versionIndex)
+}
+
+function resolveDenoPackageSpec(packageSpec: string, binName?: string): string {
+  if (!binName) return packageSpec
+
+  const packageName = getPackageNameFromSpec(packageSpec)
+  const defaultBinName = packageName.split("/").pop()
+  return defaultBinName === binName ? packageSpec : `${packageSpec}/${binName}`
+}
+
 export function resolvePackageExecutorArgv(args: string[], executor?: string, options: PackageExecutorArgvOptions = {}): string[] {
   const runtime = executor || detectExecutor()
   const { packageSpec, binName } = options
@@ -113,7 +130,7 @@ export function resolvePackageExecutorArgv(args: string[], executor?: string, op
     case "bun":
       return ["bunx", ...(packageSpec ? [packageSpec, ...args] : args)]
     case "deno":
-      return ["deno", "run", "-A", ...(packageSpec ? [`npm:${packageSpec}`, ...args] : args)]
+      return ["deno", "run", "-A", ...(packageSpec ? [`npm:${resolveDenoPackageSpec(packageSpec, binName)}`, ...args] : args)]
     case "pnpm":
       return ["pnpm", "dlx", ...(packageSpec ? [packageSpec, ...args] : args)]
     case "yarn":
