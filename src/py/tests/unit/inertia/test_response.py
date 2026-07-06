@@ -101,6 +101,38 @@ async def test_component_inertia_header_enabled(
         assert "content" not in data["props"]
 
 
+async def test_component_inertia_partial_except_excludes_plain_route_content(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Partial-except reloads should filter plain dict route props, not only lazy/shared props."""
+
+    @get("/", component="Dashboard")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"stats": {"views": 100}, "posts": [1, 2, 3]}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Dashboard",
+                InertiaHeaders.PARTIAL_EXCEPT.value: "stats",
+            },
+        )
+
+    props = response.json()["props"]
+    assert props["posts"] == [1, 2, 3]
+    assert "stats" not in props
+
+
 async def test_response_skips_merge_unwrap_when_no_merge_props(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
@@ -1797,6 +1829,36 @@ async def test_scroll_props_parameter(
         assert scroll_config["currentPage"] == 2
         assert scroll_config["previousPage"] == 1
         assert scroll_config["nextPage"] == 3
+
+
+async def test_scroll_props_parameter_uses_route_content_key_without_route_opt(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Explicit scroll props should be keyed by the data prop the client reads."""
+    from litestar_vite.inertia.helpers import scroll_props
+    from litestar_vite.inertia.response import InertiaResponse
+
+    @get("/feed", component="Feed")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaResponse[dict[str, list[str]]]:
+        return InertiaResponse(
+            {"posts": ["post1", "post2"]}, scroll_props=scroll_props(current_page=2, previous_page=1, next_page=3)
+        )
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/feed", headers={InertiaHeaders.ENABLED.value: "true"})
+        data = response.json()
+
+    assert data["props"]["posts"] == ["post1", "post2"]
+    assert "items" not in data["scrollProps"]
+    assert data["scrollProps"]["posts"] == {"pageName": "page", "currentPage": 2, "previousPage": 1, "nextPage": 3}
 
 
 async def test_scroll_props_first_page(

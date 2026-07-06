@@ -1013,7 +1013,8 @@ def _get_package_executor_cmd(executor: "str | None", binary: str, *, package_na
         case "bun":
             return ["bunx", "--package", package, binary] if package_name else ["bunx", binary]
         case "deno":
-            return ["deno", "run", "-A", f"npm:{package}"]
+            deno_package = f"{package}/{binary}" if package != binary else package
+            return ["deno", "run", "-A", f"npm:{deno_package}"]
         case "yarn":
             return ["yarn", "dlx", "--package", package, binary] if package_name else ["yarn", "dlx", binary]
         case "pnpm":

@@ -1375,15 +1375,28 @@ def get_shared_props(
     once_props_entries: "list[_OncePropEntry]" = []
     error_bag = request.headers.get("X-Inertia-Error-Bag", None)
 
+    session_available = True
+    session_shared_props: Mapping[str, Any] = {}
+    scope_shared_props = cast("dict[str, Any]", request.scope).pop(_RAW_SHARED_SCOPE_KEY, {})
     try:
         errors = request.session.pop("_errors", {})
-        session_shared_props = request.session.pop("_shared", {})
-        scope_shared_props = cast("dict[str, Any]", request.scope).pop(_RAW_SHARED_SCOPE_KEY, {})
-        shared_props = (
-            {**cast("Mapping[str, Any]", session_shared_props), **cast("Mapping[str, Any]", scope_shared_props)}
-            if isinstance(session_shared_props, Mapping) and isinstance(scope_shared_props, Mapping)
-            else cast("dict[str,Any]", session_shared_props)
+        raw_session_shared_props = request.session.pop("_shared", {})
+    except (AttributeError, ImproperlyConfiguredException):
+        session_available = False
+        msg = "Unable to generate all shared props.  A valid session was not found for this request."
+        request.logger.warning(msg)
+    else:
+        session_shared_props = (
+            cast("Mapping[str, Any]", raw_session_shared_props) if isinstance(raw_session_shared_props, Mapping) else {}
         )
+
+    shared_props = (
+        {**session_shared_props, **cast("Mapping[str, Any]", scope_shared_props)}
+        if isinstance(scope_shared_props, Mapping)
+        else dict(session_shared_props)
+    )
+
+    try:
         inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
 
         once_props_entries = _extract_once_prop_entries(shared_props, partial_data, partial_except)
@@ -1407,20 +1420,22 @@ def get_shared_props(
             else:
                 props[key] = value
 
-        for message in cast("list[dict[str,Any]]", request.session.pop("_messages", [])):
-            flash[message["category"]].append(message["message"])
+        if session_available:
+            for message in cast("list[dict[str,Any]]", request.session.pop("_messages", [])):
+                flash[message["category"]].append(message["message"])
 
         for key, value in inertia_plugin.config.extra_static_page_props.items():
             if should_render(value, partial_data, partial_except, key=key):
                 props[key] = value
 
-        for session_prop in inertia_plugin.config.extra_session_page_props:
-            if (
-                session_prop not in props
-                and session_prop in request.session
-                and should_render(None, partial_data, partial_except, key=session_prop)
-            ):
-                props[session_prop] = request.session.get(session_prop)
+        if session_available:
+            for session_prop in inertia_plugin.config.extra_session_page_props:
+                if (
+                    session_prop not in props
+                    and session_prop in request.session
+                    and should_render(None, partial_data, partial_except, key=session_prop)
+                ):
+                    props[session_prop] = request.session.get(session_prop)
 
     except (AttributeError, ImproperlyConfiguredException):
         msg = "Unable to generate all shared props.  A valid session was not found for this request."

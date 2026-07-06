@@ -10,20 +10,32 @@ Litestar Vite Changelog
 0.26.0 - 2026-07-05
 -------------------
 
+Migration notes
+~~~~~~~~~~~~~~~
+
+- Inertia asset-version mismatches now follow the protocol more strictly: stale ``GET`` visits receive the ``409`` refresh response, while stale non-``GET`` submissions continue to their handlers. Review handlers that relied on non-``GET`` mismatch short-circuiting.
+- Inertia infinite-scroll metadata is now emitted as ``scrollProps`` keyed by data prop name. Frontend code that read a single flat scroll config should read ``scrollProps.<propName>`` instead.
+- Type generation now fails production builds by default when generation fails. Set ``TypeGenConfig(fail_on_error=False)`` or ``types.failOnError = false`` to keep warn-only build behavior.
+
 - Fixed Inertia asset-version mismatch handling so only ``GET`` requests can return the protocol ``409`` refresh response; non-GET submissions now continue to their handlers instead of being downgraded and losing the request body. (#306)
 - Fixed ``share()`` with Inertia redirects so top-level sync special props are materialized before session storage and async special props are skipped instead of crashing session serialization. (#306)
+- Fixed request-scope Inertia shared props so they are still rendered on routes without session middleware.
 - Fixed Inertia infinite-scroll ``scrollProps`` to emit a record keyed by data prop name, matching the official client protocol. (#306)
+- Fixed explicit Inertia ``scroll_props=`` responses so metadata is keyed by the returned data prop when there is a single route prop.
 - Fixed auto-wrapped Inertia responses so non-Inertia JSON handlers preserve Litestar's resolved ``201``/``204`` status codes while user-created ``InertiaResponse`` statuses still win. (#306)
 - Fixed Precognition validation success handling for handlers without an explicit ``request`` parameter by using the middleware request context. (#306)
 - Fixed Inertia SSR serialization so app, handler, and response type encoders are honored for custom page prop values. (#306)
 - Fixed Inertia partial reloads so ``deferredProps`` metadata is omitted on partial responses while initial responses still advertise deferred props. (#306)
+- Fixed Inertia partial reloads so plain dict route props honor ``X-Inertia-Partial-Data`` and ``X-Inertia-Partial-Except`` independently.
 - Fixed ``litestar assets init`` so generated ``package.json`` files no longer emit duplicate dependency keys. (#302, #303)
 - Fixed type generation so the JS plugin resolves local ``@hey-api/openapi-ts`` installs first, uses a pinned package-manager fallback when needed, fails production builds loudly by default, and lets ``TypeGenConfig(fail_on_error=False)`` or ``types.failOnError = false`` opt out. (#311, #314)
+- Fixed Deno type-generation fallback execution when the providing npm package exposes a binary with a different name.
 - Fixed type generation reliability for generated outputs by preserving queued dev regenerations, checking that expected output files exist before reusing caches, watching ``routes.json``, emitting ``static-props.ts`` from the shared CLI path, and handling semantic aliases and nested hey-api operation types. (#311, #314)
 - Fixed Vite dev-server resilience by revalidating hotfile targets by mtime, recovering after missing or replaced hotfiles, tolerating additive/corrupt bridge config files, aligning TLS certificate env vars, and preserving static-files defaults when user overrides leave fields unset. (#312, #314)
 - Fixed ``litestar assets init`` scaffold correctness for framework variants without dedicated directories, Tailwind CSS/PostCSS dependencies and entry inputs, current hey-api/TanStack/Vite template APIs, transactional writes, and non-interactive collision handling. (#313, #314)
 - Updated npm publishing to use trusted publishing with provenance and no npm token. (#314)
 - Fixed Vite dev-server lifecycle handling so unexpected exits are restarted with capped backoff and intentional shutdowns do not trigger restarts. (#317)
+- Fixed Vite dev-server auto-restart so each recovered crash gets a fresh retry budget instead of exhausting the lifetime budget.
 - Changed SPA/proxy route-prefix fallbacks so ``/docs`` is no longer reserved unless Litestar actually registers docs there or ``RuntimeConfig.extra_route_prefixes`` includes it. (#317)
 - Added ``ViteConfig(enabled=...)`` and ``VITE_ENABLED`` so Vite routes and lifespans can be disabled in CLI, worker, and test contexts while keeping asset CLI commands available. (#301, #310)
 - Added ``RuntimeConfig.extra_route_prefixes`` for deliberately reserving custom backend prefixes from SPA/proxy fallbacks. (#317)

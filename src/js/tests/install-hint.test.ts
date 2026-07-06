@@ -387,5 +387,14 @@ describe("install-hint", () => {
         "openapi-ts.config.ts",
       ])
     })
+
+    it("uses the package binary path for deno when package name and bin differ", () => {
+      expect(
+        resolvePackageExecutorArgv(["--verbose"], "deno", {
+          packageSpec: "litestar-vite-plugin",
+          binName: "litestar-vite-typegen",
+        }),
+      ).toEqual(["deno", "run", "-A", "npm:litestar-vite-plugin/litestar-vite-typegen", "--verbose"])
+    })
   })
 })

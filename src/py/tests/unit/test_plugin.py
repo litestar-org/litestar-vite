@@ -601,6 +601,35 @@ def test_vite_process_restarts_unexpected_exit(mock_killpg: Mock, monkeypatch: p
     assert mock_killpg.called
 
 
+@patch("litestar_vite.plugin.os.killpg")
+def test_vite_process_resets_restart_attempts_after_recovered_crash(
+    mock_killpg: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each independent crash after a successful restart should get a fresh retry budget."""
+    monkeypatch.setattr(ViteProcess, "_RESTART_BACKOFFS", (0.0,), raising=False)
+    monkeypatch.setattr(ViteProcess, "_RESTART_STABILITY_SECONDS", 0.0, raising=False)
+    first = _FakeProcess()
+    second = _FakeProcess()
+    third = _FakeProcess()
+    executor = Mock()
+    executor.run.side_effect = [first, second, third]
+
+    process = ViteProcess(executor)
+    command = ["npm", "run", "dev"]
+    cwd = Path("/test/path")
+    process.start(command, cwd)
+
+    first.exit(1)
+    _wait_until(lambda: executor.run.call_count == 2 and process.process is second)
+    second.exit(1)
+    _wait_until(lambda: executor.run.call_count == 3 and process.process is third)
+
+    assert process._restart_error is None
+
+    process.stop()
+    assert mock_killpg.called
+
+
 @patch("litestar_vite.plugin._process.time.sleep", return_value=None)
 @patch("litestar_vite.plugin.os.killpg")
 def test_vite_process_crash_cleanup_escalates_before_restart(
