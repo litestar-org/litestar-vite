@@ -129,7 +129,8 @@ Runtime Bridge File (``.litestar.json``)
 
 Litestar writes a deterministic ``.litestar.json`` file from your Python config.
 The Vite plugin reads it to avoid duplicating configuration values on the JS side.
-The file is created or updated on app startup and when running
+The file is created or updated during app startup and before these commands use
+the frontend bridge: ``litestar assets serve``, ``litestar assets build``, and
 ``litestar assets generate-types``.
 
 Python Configuration (`ViteConfig`)
