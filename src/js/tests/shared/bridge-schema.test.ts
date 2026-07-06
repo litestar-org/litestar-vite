@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { parseBridgeSchema, readBridgeConfig } from "../../src/shared/bridge-schema"
 
 const baseBridgeConfig = {
@@ -95,6 +95,29 @@ describe("bridge schema additive fields", () => {
     try {
       expect(readBridgeConfig(configPath)).toBeNull()
     } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it("memoizes bridge file reads until path mtime changes", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "litestar-bridge-"))
+    const configPath = path.join(tmpDir, ".litestar.json")
+    fs.writeFileSync(configPath, JSON.stringify(baseBridgeConfig))
+    const readSpy = vi.spyOn(fs, "readFileSync")
+
+    try {
+      expect(readBridgeConfig(configPath)?.port).toBe(5173)
+      expect(readBridgeConfig(configPath)?.port).toBe(5173)
+      expect(readSpy).toHaveBeenCalledTimes(1)
+
+      fs.writeFileSync(configPath, JSON.stringify({ ...baseBridgeConfig, port: 5174 }))
+      const mtime = new Date(Date.now() + 1000)
+      fs.utimesSync(configPath, mtime, mtime)
+
+      expect(readBridgeConfig(configPath)?.port).toBe(5174)
+      expect(readSpy).toHaveBeenCalledTimes(2)
+    } finally {
+      readSpy.mockRestore()
       fs.rmSync(tmpDir, { recursive: true, force: true })
     }
   })

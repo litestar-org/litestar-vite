@@ -48,6 +48,20 @@ FRAMEWORK_CHOICES = [
 ]
 
 
+@contextlib.contextmanager
+def _temporary_env_var(name: str, value: str) -> "Any":
+    """Temporarily set an environment variable."""
+    previous = os.environ.get(name)
+    os.environ[name] = value
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = previous
+
+
 def _format_command(command: "list[str] | None") -> str:
     """Join a command list for display.
 
@@ -218,13 +232,19 @@ def _prepare_and_build(config: ViteConfig, root_dir: Path, console: Any, app: "L
         set_environment(config=config)
     os.environ.setdefault("VITE_BASE_URL", config.base_url or "/")
 
-    ext = config.runtime.external_dev_server
-    if isinstance(ext, ExternalDevServer) and ext.enabled:
-        build_cmd = ext.build_command or config.executor.build_command
-        console.print(f"[dim]Running external build: {' '.join(build_cmd)}[/]")
-        config.executor.execute(build_cmd, cwd=root_dir)
-    else:
-        config.executor.execute(config.build_command, cwd=root_dir)
+    env_manager = (
+        _temporary_env_var("LITESTAR_VITE_SKIP_BUILD_TYPEGEN", "1")
+        if generated_assets and isinstance(config.types, TypeGenConfig)
+        else contextlib.nullcontext()
+    )
+    with env_manager:
+        ext = config.runtime.external_dev_server
+        if isinstance(ext, ExternalDevServer) and ext.enabled:
+            build_cmd = ext.build_command or config.executor.build_command
+            console.print(f"[dim]Running external build: {' '.join(build_cmd)}[/]")
+            config.executor.execute(build_cmd, cwd=root_dir)
+        else:
+            config.executor.execute(config.build_command, cwd=root_dir)
 
 
 def _run_vite_build(

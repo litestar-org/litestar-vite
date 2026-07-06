@@ -30,7 +30,7 @@ from litestar.middleware import DefineMiddleware
 from litestar.plugins import CLIPlugin, InitPlugin
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
 
-from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, ExternalDevServer
+from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, ExternalDevServer, TypeGenConfig
 from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.plugin._process import ViteProcess
 from litestar_vite.plugin._proxy import (
@@ -788,7 +788,13 @@ class VitePlugin(InitPlugin, CLIPlugin):
         Args:
             app: The Litestar application instance.
         """
-        from litestar_vite.codegen import export_integration_assets
+        if not isinstance(self._config.types, TypeGenConfig):
+            return
+
+        from litestar_vite.codegen import export_integration_assets, typegen_outputs_requested
+
+        if not typegen_outputs_requested(self._config, self._config.types):
+            return
 
         try:
             result = export_integration_assets(app, self._config)
@@ -931,7 +937,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         await self._asset_loader.initialize()
 
         if self._spa_handler is not None and not self._spa_handler.is_initialized:
-            self._spa_handler.initialize_sync(vite_url=self._proxy_target)
+            await self._spa_handler.initialize_async(vite_url=self._proxy_target)
             log_success("SPA handler initialized")
 
         is_ssr_mode = self._config.wants_html_proxy

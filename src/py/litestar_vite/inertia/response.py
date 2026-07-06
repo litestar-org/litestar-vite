@@ -255,7 +255,8 @@ class InertiaResponse(Response[T]):
         once_props = build_once_props_metadata(once_prop_entries) or None
 
         merge_props_list, prepend_props_list, deep_merge_props_list, match_props_on = extract_merge_props(shared_props)
-        shared_props = unwrap_merge_props(shared_props)
+        if merge_props_list or prepend_props_list or deep_merge_props_list or match_props_on:
+            shared_props = unwrap_merge_props(shared_props)
 
         scroll_props = _apply_pagination_props(
             shared_props, route_handler=route_handler, explicit_scroll_props=self.scroll_props

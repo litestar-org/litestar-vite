@@ -7,27 +7,33 @@ Notable changes to this project are documented in this file.
 Litestar Vite Changelog
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-0.26.0 (unreleased)
+0.26.0 - 2026-07-05
 -------------------
 
-- Fixed Inertia asset-version mismatch handling so only ``GET`` requests can return the protocol ``409`` refresh response; non-GET submissions now continue to their handlers instead of being downgraded and losing the request body.
-- Fixed ``share()`` with Inertia redirects so top-level sync special props are materialized before session storage and async special props are skipped instead of crashing session serialization.
-- Fixed Inertia infinite-scroll ``scrollProps`` to emit a record keyed by data prop name, matching the official client protocol.
-- Fixed auto-wrapped Inertia responses so non-Inertia JSON handlers preserve Litestar's resolved ``201``/``204`` status codes while user-created ``InertiaResponse`` statuses still win.
-- Fixed Precognition validation success handling for handlers without an explicit ``request`` parameter by using the middleware request context.
-- Fixed Inertia SSR serialization so app, handler, and response type encoders are honored for custom page prop values.
-- Fixed Inertia partial reloads so ``deferredProps`` metadata is omitted on partial responses while initial responses still advertise deferred props.
+- Fixed Inertia asset-version mismatch handling so only ``GET`` requests can return the protocol ``409`` refresh response; non-GET submissions now continue to their handlers instead of being downgraded and losing the request body. (#306)
+- Fixed ``share()`` with Inertia redirects so top-level sync special props are materialized before session storage and async special props are skipped instead of crashing session serialization. (#306)
+- Fixed Inertia infinite-scroll ``scrollProps`` to emit a record keyed by data prop name, matching the official client protocol. (#306)
+- Fixed auto-wrapped Inertia responses so non-Inertia JSON handlers preserve Litestar's resolved ``201``/``204`` status codes while user-created ``InertiaResponse`` statuses still win. (#306)
+- Fixed Precognition validation success handling for handlers without an explicit ``request`` parameter by using the middleware request context. (#306)
+- Fixed Inertia SSR serialization so app, handler, and response type encoders are honored for custom page prop values. (#306)
+- Fixed Inertia partial reloads so ``deferredProps`` metadata is omitted on partial responses while initial responses still advertise deferred props. (#306)
 - Fixed ``litestar assets init`` so generated ``package.json`` files no longer emit duplicate dependency keys. (#302, #303)
 - Fixed type generation so the JS plugin resolves local ``@hey-api/openapi-ts`` installs first, uses a pinned package-manager fallback when needed, fails production builds loudly by default, and lets ``TypeGenConfig(fail_on_error=False)`` or ``types.failOnError = false`` opt out. (#311, #314)
 - Fixed type generation reliability for generated outputs by preserving queued dev regenerations, checking that expected output files exist before reusing caches, watching ``routes.json``, emitting ``static-props.ts`` from the shared CLI path, and handling semantic aliases and nested hey-api operation types. (#311, #314)
 - Fixed Vite dev-server resilience by revalidating hotfile targets by mtime, recovering after missing or replaced hotfiles, tolerating additive/corrupt bridge config files, aligning TLS certificate env vars, and preserving static-files defaults when user overrides leave fields unset. (#312, #314)
 - Fixed ``litestar assets init`` scaffold correctness for framework variants without dedicated directories, Tailwind CSS/PostCSS dependencies and entry inputs, current hey-api/TanStack/Vite template APIs, transactional writes, and non-interactive collision handling. (#313, #314)
 - Updated npm publishing to use trusted publishing with provenance and no npm token. (#314)
-- Fixed Vite dev-server lifecycle handling so unexpected exits are restarted with capped backoff and intentional shutdowns do not trigger restarts.
-- Changed SPA/proxy route-prefix fallbacks so ``/docs`` is no longer reserved unless Litestar actually registers docs there or ``RuntimeConfig.extra_route_prefixes`` includes it.
+- Fixed Vite dev-server lifecycle handling so unexpected exits are restarted with capped backoff and intentional shutdowns do not trigger restarts. (#317)
+- Changed SPA/proxy route-prefix fallbacks so ``/docs`` is no longer reserved unless Litestar actually registers docs there or ``RuntimeConfig.extra_route_prefixes`` includes it. (#317)
 - Added ``ViteConfig(enabled=...)`` and ``VITE_ENABLED`` so Vite routes and lifespans can be disabled in CLI, worker, and test contexts while keeping asset CLI commands available. (#301, #310)
-- Added ``RuntimeConfig.extra_route_prefixes`` for deliberately reserving custom backend prefixes from SPA/proxy fallbacks.
+- Added ``RuntimeConfig.extra_route_prefixes`` for deliberately reserving custom backend prefixes from SPA/proxy fallbacks. (#317)
 - Fixed ``getCsrfToken()`` so SPA and HTMX helpers can fall back to the ``csrftoken`` or ``XSRF-TOKEN`` cookie when injected page-state sources are absent. (#299, #310)
+- Hardened HTMX helper handling so dynamic ``href``, ``src``, and ``action`` attributes reject dangerous protocols and expression checks catch denied globals reconstructed through string concatenation. (#316)
+- Simplified Vite integration internals by consolidating type-config resolution, hotfile handling, proxy helpers, Inertia prop wrappers, and typing-only helper paths without removing public exports. (#316)
+- Reduced duplicate work in type generation, route metadata extraction, proxy header filtering, deploy diffing, bridge reads, placeholder probing, and Inertia response wrapping while preserving generated output paths and public behavior. (#315)
+- Fixed SPA startup so async lifespan initialization uses the async handler path and custom Inertia component option keys are preserved when startup wrappers are installed. (#315)
+- Fixed production SPA manifest resolution for Vite's default ``.vite/manifest.json`` path and recursive deploy change detection for nested bundle assets. (#315)
+- Updated Python dependencies: ``typing-extensions`` 4.16.0, ``prek`` 0.4.8, ``slotscheck`` 0.20.1, and ``coverage`` 7.15.0. (#309)
 
 0.25.0 - 2026-06-25
 -------------------

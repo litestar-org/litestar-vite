@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any, cast
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from litestar import Litestar, get
@@ -19,7 +19,7 @@ from litestar.params import FromPath
 from litestar.template.config import TemplateConfig
 from litestar.testing import TestClient
 
-from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
+from litestar_vite.config import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig
 from litestar_vite.plugin import ProxyHeadersMiddleware, StaticFilesConfig, VitePlugin, ViteProcess, ViteProxyMiddleware
 
 pytestmark = pytest.mark.anyio
@@ -370,6 +370,40 @@ def test_vite_plugin_lifespan_in_production_mode() -> None:
     # Should yield without starting Vite process in production
     with plugin.server_lifespan(app):
         pass  # Should complete without issues
+
+
+def test_vite_plugin_export_types_sync_skips_when_typegen_disabled(tmp_path: Path) -> None:
+    config = ViteConfig(paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=False))
+    plugin = VitePlugin(config=config)
+    plugin._config.types = False
+    app = Litestar(route_handlers=[])
+
+    with patch("litestar_vite.codegen.export_integration_assets") as export:
+        plugin._export_types_sync(app)
+
+    export.assert_not_called()
+
+
+def test_vite_plugin_export_types_sync_skips_when_no_typegen_outputs_requested(tmp_path: Path) -> None:
+    config = ViteConfig(
+        paths=PathConfig(root=tmp_path),
+        runtime=RuntimeConfig(dev_mode=False),
+        types=TypeGenConfig(
+            output=tmp_path / "generated",
+            generate_sdk=False,
+            generate_routes=False,
+            generate_page_props=False,
+            generate_schemas=False,
+            generate_zod=False,
+        ),
+    )
+    plugin = VitePlugin(config=config)
+    app = Litestar(route_handlers=[])
+
+    with patch("litestar_vite.codegen.export_integration_assets") as export:
+        plugin._export_types_sync(app)
+
+    export.assert_not_called()
 
 
 @patch("litestar_vite.plugin.set_environment")
@@ -1591,6 +1625,26 @@ async def test_vite_plugin_proxy_client_created_in_dev_mode_with_vite_proxy() ->
 
     # After lifespan, proxy_client should be closed and set to None
     assert plugin.proxy_client is None
+
+
+async def test_vite_plugin_lifespan_initializes_spa_handler_async() -> None:
+    """SPA handler setup must stay on the running event loop during async lifespan."""
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True), mode="spa")
+    plugin = VitePlugin(config=config)
+    plugin._asset_loader = Mock()
+    plugin._asset_loader.initialize = AsyncMock()
+    plugin._spa_handler = Mock()
+    plugin._spa_handler.is_initialized = False
+    plugin._spa_handler.initialize_async = AsyncMock()
+    plugin._spa_handler.initialize_sync = Mock()
+    plugin._spa_handler.shutdown_async = AsyncMock()
+    app = Litestar(route_handlers=[])
+
+    async with plugin.lifespan(app):
+        pass
+
+    plugin._spa_handler.initialize_async.assert_awaited_once_with(vite_url=plugin._proxy_target)
+    plugin._spa_handler.initialize_sync.assert_not_called()
 
 
 async def test_vite_plugin_proxy_client_created_in_dev_mode_with_ssr_proxy() -> None:

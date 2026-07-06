@@ -48,6 +48,18 @@ def fmt_path(path: Path) -> str:
         return str(path)
 
 
+def typegen_outputs_requested(config: "ViteConfig", types_config: "TypeGenConfig") -> bool:
+    """Return whether the typegen config asks for any generated artifact."""
+    del config
+    return any((
+        types_config.generate_sdk,
+        types_config.generate_zod,
+        types_config.generate_schemas,
+        types_config.generate_routes,
+        types_config.generate_page_props,
+    ))
+
+
 def export_integration_assets(
     app: "Litestar", config: "ViteConfig", *, serializer: "Callable[[Any], bytes] | None" = None
 ) -> ExportResult:
@@ -83,6 +95,8 @@ def export_integration_assets(
         return result
 
     types_config = config.types
+    if not typegen_outputs_requested(config, types_config):
+        return result
 
     # Check if OpenAPI is available
     openapi_plugin = next((p for p in app.plugins._plugins if isinstance(p, OpenAPIPlugin)), None)  # pyright: ignore[reportPrivateUsage]
@@ -122,12 +136,24 @@ def export_integration_assets(
     # Step 2: Export openapi.json
     export_openapi(schema_dict=schema_dict, types_config=types_config, serializer=serializer, result=result)
 
+    from litestar_vite.codegen._routes import extract_route_metadata
+
+    routes_metadata = extract_route_metadata(app, openapi_schema=schema_dict)
+
     # Step 3: Export routes.json (always pass openapi_schema for consistency)
-    export_routes_json(app=app, types_config=types_config, openapi_schema=schema_dict, result=result)
+    export_routes_json(
+        app=app, types_config=types_config, openapi_schema=schema_dict, routes_metadata=routes_metadata, result=result
+    )
 
     # Step 4: Export routes.ts (if enabled)
     if types_config.generate_routes:
-        export_routes_ts(app=app, types_config=types_config, openapi_schema=schema_dict, result=result)
+        export_routes_ts(
+            app=app,
+            types_config=types_config,
+            openapi_schema=schema_dict,
+            routes_metadata=routes_metadata,
+            result=result,
+        )
 
     # Step 5: Export inertia-pages.json (if enabled)
     if (
@@ -164,7 +190,12 @@ def export_openapi(
 
 
 def export_routes_json(
-    *, app: "Litestar", types_config: "TypeGenConfig", openapi_schema: "dict[str, Any]", result: ExportResult
+    *,
+    app: "Litestar",
+    types_config: "TypeGenConfig",
+    openapi_schema: "dict[str, Any]",
+    routes_metadata: "list[Any]",
+    result: ExportResult,
 ) -> None:
     """Export routes metadata to JSON file."""
     from litestar_vite.codegen._routes import generate_routes_json
@@ -182,7 +213,9 @@ def export_routes_json(
         routes_path = types_config.output / "routes.json"
 
     # Always pass openapi_schema for consistent output between CLI and plugin
-    routes_data = generate_routes_json(app, include_components=True, openapi_schema=openapi_schema)
+    routes_data = generate_routes_json(
+        app, include_components=True, openapi_schema=openapi_schema, routes_metadata=routes_metadata
+    )
     routes_data["litestar_version"] = litestar_version
 
     routes_content = encode_deterministic_json(routes_data)
@@ -194,7 +227,12 @@ def export_routes_json(
 
 
 def export_routes_ts(
-    *, app: "Litestar", types_config: "TypeGenConfig", openapi_schema: "dict[str, Any]", result: ExportResult
+    *,
+    app: "Litestar",
+    types_config: "TypeGenConfig",
+    openapi_schema: "dict[str, Any]",
+    routes_metadata: "list[Any]",
+    result: ExportResult,
 ) -> None:
     """Export typed routes TypeScript file."""
     from litestar_vite.codegen._routes import generate_routes_ts
@@ -205,7 +243,9 @@ def export_routes_ts(
         routes_ts_path = types_config.output / "routes.ts"
 
     # Always pass openapi_schema for consistent output
-    routes_ts_content = generate_routes_ts(app, openapi_schema=openapi_schema, global_route=types_config.global_route)
+    routes_ts_content = generate_routes_ts(
+        app, openapi_schema=openapi_schema, global_route=types_config.global_route, routes_metadata=routes_metadata
+    )
 
     if write_if_changed(routes_ts_path, routes_ts_content):
         result.exported_files.append(fmt_path(routes_ts_path))

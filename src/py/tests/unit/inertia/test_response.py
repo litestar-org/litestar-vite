@@ -101,6 +101,28 @@ async def test_component_inertia_header_enabled(
         assert "content" not in data["props"]
 
 
+async def test_response_skips_merge_unwrap_when_no_merge_props(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"thing": {"nested": "value"}}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        with patch("litestar_vite.inertia.response.unwrap_merge_props", side_effect=AssertionError("unused")):
+            response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+
+    assert response.json()["props"]["thing"] == {"nested": "value"}
+
+
 async def test_component_inertia_flash_header_enabled(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,

@@ -199,25 +199,33 @@ class ViteDeployer:
         Returns:
             Mapping of relative remote paths to file metadata.
         """
-
-        try:
-            entries = cast("list[dict[str, Any]]", self.fs.ls(self.remote_path, detail=True))
-        except (FileNotFoundError, OSError):
-            return {}
-
         remote_files: dict[str, FileInfo] = {}
         base = self.remote_path.rstrip("/")
-        for entry in entries:
+        for entry in self._iter_remote_entries(self.remote_path):
             name = entry.get("name")
             if name is None:
-                continue
-            if entry.get("type") == "directory":
                 continue
             rel_path = self._relative_remote_path(name, base)
             remote_files[rel_path] = FileInfo(
                 path=rel_path, size=int(entry.get("size", 0)), mtime=float(entry.get("mtime", 0.0))
             )
         return remote_files
+
+    def _iter_remote_entries(self, root: str) -> "Iterable[dict[str, Any]]":
+        """Yield remote file entries recursively from ``root``."""
+        try:
+            entries = cast("list[dict[str, Any]]", self.fs.ls(root, detail=True))
+        except (FileNotFoundError, OSError):
+            return
+
+        for entry in entries:
+            name = entry.get("name")
+            if name is None:
+                continue
+            if entry.get("type") == "directory":
+                yield from self._iter_remote_entries(str(name))
+                continue
+            yield entry
 
     @staticmethod
     def compute_diff(local: dict[str, FileInfo], remote: dict[str, FileInfo], delete_orphaned: bool) -> SyncPlan:

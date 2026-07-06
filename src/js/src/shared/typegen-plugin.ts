@@ -341,6 +341,10 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
     },
 
     async buildStart() {
+      if (resolvedConfig?.command === "build" && process.env.LITESTAR_VITE_SKIP_BUILD_TYPEGEN === "1") {
+        return
+      }
+
       if (typesConfig.enabled && hasPythonConfig === false) {
         const projectRoot = resolvedConfig?.root ?? process.cwd()
         const openapiPath = path.resolve(projectRoot, typesConfig.openapiPath)

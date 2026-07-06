@@ -392,6 +392,7 @@ def generate_routes_json(
     exclude: "list[str] | None" = None,
     include_components: bool = False,
     openapi_schema: dict[str, Any] | None = None,
+    routes_metadata: "list[RouteMetadata] | None" = None,
 ) -> dict[str, Any]:
     """Generate Ziggy-compatible routes JSON.
 
@@ -401,7 +402,11 @@ def generate_routes_json(
     Returns:
         A Ziggy-compatible routes payload as a dictionary with sorted keys.
     """
-    routes_metadata = extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
+    routes_metadata = (
+        routes_metadata
+        if routes_metadata is not None
+        else extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
+    )
 
     # Sort routes by name for deterministic output
     sorted_routes = sorted(routes_metadata, key=lambda r: r.name)
@@ -492,6 +497,7 @@ def generate_routes_ts(
     exclude: "list[str] | None" = None,
     openapi_schema: dict[str, Any] | None = None,
     global_route: bool = False,
+    routes_metadata: "list[RouteMetadata] | None" = None,
 ) -> str:
     """Generate typed routes TypeScript file (Ziggy-style).
 
@@ -501,7 +507,11 @@ def generate_routes_ts(
     Returns:
         The generated TypeScript source.
     """
-    routes_metadata = extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
+    routes_metadata = (
+        routes_metadata
+        if routes_metadata is not None
+        else extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
+    )
 
     # Sort routes by name for deterministic output
     sorted_routes = sorted(routes_metadata, key=lambda r: r.name)

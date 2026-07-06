@@ -10,7 +10,7 @@ Internal implementation details (OpenAPI integration, TypeScript conversion)
 are kept in private submodules to keep the public API clean.
 """
 
-from litestar_vite.codegen._export import ExportResult, export_integration_assets
+from litestar_vite.codegen._export import ExportResult, export_integration_assets, typegen_outputs_requested
 from litestar_vite.codegen._inertia import (
     InertiaPageMetadata,
     extract_inertia_pages,
@@ -44,5 +44,6 @@ __all__ = (
     "generate_routes_json",
     "generate_routes_ts",
     "strip_timestamp_for_comparison",
+    "typegen_outputs_requested",
     "write_if_changed",
 )
