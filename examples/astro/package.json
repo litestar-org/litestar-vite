@@ -18,8 +18,8 @@
   },
   "devDependencies": {
     "@astrojs/check": "0.9.9",
-    "@hey-api/openapi-ts": "0.98.2",
-    "@tailwindcss/postcss": "4.3.1",
+    "@hey-api/openapi-ts": "0.99.0",
+    "@tailwindcss/postcss": "4.3.2",
     "litestar-vite-plugin": "file:../..",
     "tailwindcss": "4.2.4",
     "typescript": "6.0.3",
