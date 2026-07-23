@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -107,7 +107,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -133,7 +133,7 @@ jobs:
     steps:
     - uses: actions/checkout@v7
     - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@v7
       with:
         node-version: ${{ matrix.node-version }}
     - run: npm ci
@@ -155,7 +155,7 @@ jobs:
     steps:
     - uses: actions/checkout@v7
     - name: Use Node.js 24
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@v7
       with:
         node-version: 24
     - run: npm ci
@@ -210,7 +210,7 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -260,7 +260,7 @@ jobs:
           }
 
       - name: Install Go (for VHS)
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: ">=1.24.0"
           check-latest: true
@@ -271,7 +271,7 @@ jobs:
           echo "$HOME/go/bin" >> $GITHUB_PATH
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
