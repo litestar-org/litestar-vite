@@ -10,23 +10,23 @@
     "generate-types": "openapi-ts --config openapi-ts.config.ts"
   },
   "dependencies": {
-    "@angular/common": "22.0.2",
-    "@angular/compiler": "22.0.2",
-    "@angular/core": "22.0.2",
-    "@angular/forms": "22.0.2",
-    "@angular/platform-browser": "22.0.2",
-    "@angular/router": "22.0.2",
+    "@angular/common": "22.0.8",
+    "@angular/compiler": "22.0.8",
+    "@angular/core": "22.0.8",
+    "@angular/forms": "22.0.8",
+    "@angular/platform-browser": "22.0.8",
+    "@angular/router": "22.0.8",
     "rxjs": "7.8.2"
   },
   "devDependencies": {
-    "@angular/build": "22.0.3",
-    "@angular/cli": "22.0.3",
-    "@angular/compiler-cli": "22.0.2",
-    "@hey-api/openapi-ts": "0.98.2",
-    "@tailwindcss/postcss": "4.3.1",
+    "@angular/build": "22.0.7",
+    "@angular/cli": "22.0.7",
+    "@angular/compiler-cli": "22.0.8",
+    "@hey-api/openapi-ts": "0.99.0",
+    "@tailwindcss/postcss": "4.3.3",
     "@types/node": "25.6.0",
     "litestar-vite-plugin": "file:../..",
-    "postcss": "8.5.15",
+    "postcss": "8.5.22",
     "tailwindcss": "4.2.4",
     "typescript": "6.0.3"
   }
