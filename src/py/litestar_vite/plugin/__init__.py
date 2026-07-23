@@ -23,11 +23,13 @@ import os
 from contextlib import asynccontextmanager, contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import urlsplit
 
 import httpx
-from litestar.exceptions import NotFoundException
+from litestar.exceptions import NotFoundException, SerializationException
 from litestar.middleware import DefineMiddleware
 from litestar.plugins import CLIPlugin, InitPlugin
+from litestar.serialization import decode_json
 from litestar.static_files import create_static_files_router  # pyright: ignore[reportUnknownVariableType]
 
 from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, ExternalDevServer, TypeGenConfig
@@ -44,7 +46,7 @@ from litestar_vite.plugin._proxy import (
     create_vite_hmr_handler,
 )
 from litestar_vite.plugin._proxy_headers import ProxyHeadersMiddleware, TrustedHosts
-from litestar_vite.plugin._static import StaticFilesConfig
+from litestar_vite.plugin._static import StaticFilesConfig, StaticServerConfig, StaticServerMount
 from litestar_vite.plugin._utils import (
     create_proxy_client,
     get_litestar_route_prefixes,
@@ -147,6 +149,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         "_spa_handler",
         "_ssr_process",
         "_static_files_config",
+        "_static_files_config_supplied",
         "_vite_process",
     )
 
@@ -172,6 +175,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         self._vite_process: "ViteProcess | None" = None
         self._ssr_process: "ViteProcess | None" = None
         self._static_files_config: dict[str, Any] = static_files_config.__dict__ if static_files_config else {}
+        self._static_files_config_supplied = static_files_config is not None
         self._proxy_target: "str | None" = None
         self._proxy_client: "httpx.AsyncClient | None" = None
         self._spa_handler: "AppHandler | None" = None
@@ -275,6 +279,81 @@ class VitePlugin(InitPlugin, CLIPlugin):
             The shared AsyncClient instance, or None if not initialized or not in dev mode.
         """
         return self._proxy_client
+
+    def get_static_server_config(self) -> StaticServerConfig:
+        """Return a native production mount when Vite's ASGI semantics can be preserved.
+
+        Returns:
+            A server-neutral static configuration containing one mount, or a reason to fall back to Litestar.
+        """
+        asset_url = self._config.asset_url
+        bundle_dir = self._resolve_bundle_dir()
+        fallback_reason = (
+            self._get_static_runtime_fallback_reason()
+            or self._get_static_semantics_fallback_reason(asset_url)
+            or self._get_static_bundle_fallback_reason(bundle_dir)
+        )
+        if fallback_reason is not None:
+            return StaticServerConfig(fallback_reason=fallback_reason)
+
+        return StaticServerConfig(
+            mounts=(StaticServerMount(route=asset_url.rstrip("/"), directory=bundle_dir.resolve()),)
+        )
+
+    def _get_static_runtime_fallback_reason(self) -> str | None:
+        """Return why the active Vite runtime cannot use native static serving."""
+        if self._config.enabled is False:
+            return "Vite plugin is disabled."
+        if self._config.is_dev_mode:
+            return "Vite development mode requires Litestar's proxy and static routes."
+        if self._config.wants_html_proxy:
+            return "Vite framework/SSR routing requires Litestar's application handler."
+        if not self._config.set_static_folders:
+            return "Vite automatic static routing is disabled."
+        return None
+
+    def _get_static_semantics_fallback_reason(self, asset_url: str) -> str | None:
+        """Return why Vite's Litestar routing semantics require ASGI serving."""
+        if self._static_files_config_supplied:
+            return "Vite has custom Litestar static configuration that native serving cannot preserve."
+        if not self._config.exclude_static_from_auth:
+            return "Vite protected static assets must remain behind Litestar authentication."
+
+        parsed_asset_url = urlsplit(asset_url)
+        if (
+            not asset_url.startswith("/")
+            or asset_url.startswith("//")
+            or asset_url == "/"
+            or parsed_asset_url.scheme
+            or parsed_asset_url.netloc
+            or parsed_asset_url.query
+            or parsed_asset_url.fragment
+        ):
+            return "Vite's asset URL must be a local absolute path below '/' for native serving."
+        return None
+
+    def _get_static_bundle_fallback_reason(self, bundle_dir: Path) -> str | None:
+        """Return why the configured bundle is not a ready production build."""
+        try:
+            if not bundle_dir.is_dir():
+                return "Vite's production bundle directory is missing or empty."
+            if next(bundle_dir.iterdir(), None) is None:
+                return "Vite's production bundle directory is missing or empty."
+        except OSError:
+            return "Vite's production bundle directory cannot be read."
+
+        manifest_path = next((path for path in self._config.candidate_manifest_paths() if path.is_file()), None)
+        if manifest_path is None:
+            return (
+                None
+                if (bundle_dir / "index.html").is_file()
+                else ("Vite's production bundle has no manifest or built index.html marker.")
+            )
+        try:
+            manifest = decode_json(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, SerializationException):
+            return "Vite's production manifest cannot be read or parsed."
+        return None if isinstance(manifest, dict) else "Vite's production manifest must contain a JSON object."
 
     def _resolve_bundle_dir(self) -> Path:
         """Resolve the bundle directory to an absolute path.
@@ -942,6 +1021,8 @@ __all__ = (
     "ProxyHeadersMiddleware",
     "SSRProxyMiddleware",
     "StaticFilesConfig",
+    "StaticServerConfig",
+    "StaticServerMount",
     "TrustedHosts",
     "VitePlugin",
     "ViteProcess",

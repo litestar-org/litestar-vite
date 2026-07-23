@@ -1,6 +1,7 @@
 """Static files configuration dataclass."""
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -16,6 +17,23 @@ if TYPE_CHECKING:
         Guard,  # pyright: ignore[reportUnknownVariableType]
         Middleware,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class StaticServerMount:
+    """Describe one static directory exposed to a native server."""
+
+    route: str
+    directory: Path
+    directory_index: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StaticServerConfig:
+    """Describe native static mounts or why Litestar must serve them."""
+
+    mounts: tuple[StaticServerMount, ...] = ()
+    fallback_reason: str | None = None
 
 
 @dataclass

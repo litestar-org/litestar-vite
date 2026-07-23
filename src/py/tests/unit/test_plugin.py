@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Generator
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
@@ -53,6 +54,7 @@ def test_vite_plugin_initialization_default_config() -> None:
     assert isinstance(plugin._config, ViteConfig)
     assert plugin._asset_loader is None
     assert plugin._static_files_config == {}
+    assert plugin._static_files_config_supplied is False
     assert plugin._config.executor is not None
     assert plugin._vite_process is None
 
@@ -79,6 +81,207 @@ def test_vite_plugin_initialization_with_static_files_config() -> None:
 
     assert plugin._static_files_config is not None
     assert "tags" in plugin._static_files_config
+    assert plugin._static_files_config_supplied is True
+
+
+def test_static_server_config_defaults_are_public() -> None:
+    """The server-neutral static contract is available from the package root."""
+    from litestar_vite import StaticServerConfig, StaticServerMount
+
+    config = StaticServerConfig()
+    mount = StaticServerMount(route="/assets", directory=Path("/tmp/assets"))
+
+    assert config.mounts == ()
+    assert config.fallback_reason is None
+    assert mount.directory_index is None
+    with pytest.raises(FrozenInstanceError):
+        mount.route = "/other"  # type: ignore[misc]
+
+
+def test_vite_plugin_get_static_server_config_returns_production_bundle_mount(tmp_path: Path) -> None:
+    """A valid production Vite bundle is eligible for native static serving."""
+    bundle_dir = tmp_path / "dist"
+    bundle_dir.mkdir()
+    (bundle_dir / "manifest.json").write_text('{"src/main.ts":{"file":"assets/main.js"}}', encoding="utf-8")
+
+    plugin = VitePlugin(
+        config=ViteConfig(
+            mode="template",
+            paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir, asset_url="/assets/"),
+            runtime=RuntimeConfig(dev_mode=False),
+        )
+    )
+
+    config = plugin.get_static_server_config()
+
+    assert config.fallback_reason is None
+    assert len(config.mounts) == 1
+    assert config.mounts[0].route == "/assets"
+    assert config.mounts[0].directory == bundle_dir.resolve()
+    assert config.mounts[0].directory_index is None
+
+
+def test_vite_plugin_get_static_server_config_accepts_nested_vite_manifest(tmp_path: Path) -> None:
+    """Vite's default nested manifest path is a valid production marker."""
+    bundle_dir = tmp_path / "dist"
+    (bundle_dir / ".vite").mkdir(parents=True)
+    (bundle_dir / ".vite" / "manifest.json").write_text("{}", encoding="utf-8")
+    plugin = VitePlugin(
+        config=ViteConfig(
+            mode="template",
+            paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir),
+            runtime=RuntimeConfig(dev_mode=False),
+        )
+    )
+
+    config = plugin.get_static_server_config()
+
+    assert config.fallback_reason is None
+    assert config.mounts[0].directory == bundle_dir.resolve()
+
+
+def test_vite_plugin_get_static_server_config_accepts_built_index_without_manifest(tmp_path: Path) -> None:
+    """Manifest-less static builds can use their built index as readiness evidence."""
+    bundle_dir = tmp_path / "dist"
+    bundle_dir.mkdir()
+    (bundle_dir / "index.html").write_text("<!doctype html>", encoding="utf-8")
+    plugin = VitePlugin(
+        config=ViteConfig(
+            mode="template",
+            paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir),
+            runtime=RuntimeConfig(dev_mode=False),
+        )
+    )
+
+    config = plugin.get_static_server_config()
+
+    assert config.fallback_reason is None
+    assert config.mounts[0].directory_index is None
+
+
+@pytest.mark.parametrize(
+    ("config_kwargs", "reason"),
+    [
+        ({"enabled": False}, "Vite plugin is disabled"),
+        ({"runtime": RuntimeConfig(dev_mode=True)}, "development mode"),
+        ({"mode": "framework"}, "framework/SSR routing"),
+        ({"runtime": RuntimeConfig(dev_mode=False, set_static_folders=False)}, "automatic static routing is disabled"),
+        ({"exclude_static_from_auth": False}, "protected static assets"),
+    ],
+)
+def test_vite_plugin_get_static_server_config_rejects_ineligible_runtime_config(
+    tmp_path: Path, config_kwargs: dict[str, Any], reason: str
+) -> None:
+    """Runtime and security semantics that native serving bypasses must fall back."""
+    resolved_kwargs = config_kwargs.copy()
+    bundle_dir = tmp_path / "dist"
+    bundle_dir.mkdir()
+    (bundle_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    mode = cast("Any", resolved_kwargs.pop("mode", "template"))
+    runtime = cast("RuntimeConfig", resolved_kwargs.pop("runtime", RuntimeConfig(dev_mode=False)))
+    plugin = VitePlugin(
+        config=ViteConfig(
+            mode=mode, paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir), runtime=runtime, **resolved_kwargs
+        )
+    )
+
+    config = plugin.get_static_server_config()
+
+    assert config.mounts == ()
+    assert config.fallback_reason is not None
+    assert reason in config.fallback_reason
+
+
+def test_vite_plugin_get_static_server_config_rejects_any_custom_static_config(tmp_path: Path) -> None:
+    """Even an all-default explicit StaticFilesConfig preserves user-owned ASGI semantics."""
+    bundle_dir = tmp_path / "dist"
+    bundle_dir.mkdir()
+    (bundle_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    plugin = VitePlugin(
+        config=ViteConfig(
+            mode="template",
+            paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir),
+            runtime=RuntimeConfig(dev_mode=False),
+        ),
+        static_files_config=StaticFilesConfig(),
+    )
+
+    config = plugin.get_static_server_config()
+
+    assert config.mounts == ()
+    assert config.fallback_reason is not None
+    assert "custom Litestar static configuration" in config.fallback_reason
+
+
+@pytest.mark.parametrize(
+    "asset_url",
+    ["/", "assets/", "//cdn.example.com/assets/", "https://cdn.example.com/assets/", "/assets/?v=1", "/assets/#v1"],
+)
+def test_vite_plugin_get_static_server_config_rejects_non_local_or_root_route(tmp_path: Path, asset_url: str) -> None:
+    """Native routes must be unambiguous local absolute URL paths below root."""
+    bundle_dir = tmp_path / "dist"
+    bundle_dir.mkdir()
+    (bundle_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    plugin = VitePlugin(
+        config=ViteConfig(
+            mode="template",
+            paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir, asset_url=asset_url),
+            runtime=RuntimeConfig(dev_mode=False),
+        )
+    )
+
+    config = plugin.get_static_server_config()
+
+    assert config.mounts == ()
+    assert config.fallback_reason is not None
+    assert "local absolute path below '/'" in config.fallback_reason
+
+
+@pytest.mark.parametrize("build_state", ["missing", "empty", "unmarked", "malformed", "non-object"])
+def test_vite_plugin_get_static_server_config_rejects_invalid_build(tmp_path: Path, build_state: str) -> None:
+    """Only a real, parseable Vite production build is eligible."""
+    bundle_dir = tmp_path / "dist"
+    if build_state != "missing":
+        bundle_dir.mkdir()
+    if build_state == "unmarked":
+        (bundle_dir / "app.js").write_text("compiled", encoding="utf-8")
+    elif build_state == "malformed":
+        (bundle_dir / "manifest.json").write_text("{", encoding="utf-8")
+    elif build_state == "non-object":
+        (bundle_dir / "manifest.json").write_text("[]", encoding="utf-8")
+    plugin = VitePlugin(
+        config=ViteConfig(
+            mode="template",
+            paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir),
+            runtime=RuntimeConfig(dev_mode=False),
+        )
+    )
+
+    config = plugin.get_static_server_config()
+
+    assert config.mounts == ()
+    assert config.fallback_reason is not None
+
+
+def test_vite_plugin_get_static_server_config_keeps_litestar_static_router(tmp_path: Path) -> None:
+    """Native eligibility never removes Litestar's server-neutral fallback route."""
+    bundle_dir = tmp_path / "dist"
+    bundle_dir.mkdir()
+    (bundle_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    plugin = VitePlugin(
+        config=ViteConfig(
+            mode="template",
+            paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir),
+            runtime=RuntimeConfig(dev_mode=False),
+        )
+    )
+    app_config = AppConfig()
+
+    assert plugin.get_static_server_config().fallback_reason is None
+    with patch("litestar_vite.plugin.create_static_files_router") as create_router:
+        plugin.on_app_init(app_config)
+
+    create_router.assert_called_once()
 
 
 def test_vite_plugin_static_files_config_ignores_none_overrides() -> None:
