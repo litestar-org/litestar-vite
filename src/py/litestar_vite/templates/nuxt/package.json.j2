@@ -18,6 +18,9 @@
     "vue": "{{ package_version('vue') }}"{% if generate_zod %},
     "zod": "{{ package_version('zod') }}"{% endif %}
   },
+  "overrides": {
+    "@vitejs/devtools": "{{ package_version('@vitejs/devtools') }}"
+  },
   "devDependencies": {
 {% if generate_client %}    "@hey-api/openapi-ts": "{{ package_version('@hey-api/openapi-ts') }}",
 {% endif %}{% if use_tailwind %}    "@tailwindcss/postcss": "{{ package_version('@tailwindcss/postcss') }}",

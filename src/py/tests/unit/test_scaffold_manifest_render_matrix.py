@@ -103,3 +103,12 @@ def test_typegen_fallback_pins_match_scaffold_registry() -> None:
         in constants_source
     )
     assert f'TYPESCRIPT_PINNED_SPEC = "typescript@{CURRENT_NPM_VERSION_RANGES["typescript"]}"' in constants_source
+
+
+def test_scaffold_nuxt_manifest_pins_vite_devtools_peer() -> None:
+    text = _render_package_json(
+        FrameworkType.NUXT,
+        {"use_tailwind": True, "enable_ssr": True, "enable_types": True, "generate_zod": True, "generate_client": True},
+    )
+
+    assert json.loads(text)["overrides"]["@vitejs/devtools"] == CURRENT_NPM_VERSION_RANGES["@vitejs/devtools"]

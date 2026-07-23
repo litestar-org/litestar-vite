@@ -51,6 +51,7 @@ def test_nuxt_example_uses_current_manifest_and_app_directory() -> None:
     assert f'"vue": "{V["vue"]}"' in package_text
     assert f'"@hey-api/openapi-ts": "{V["@hey-api/openapi-ts"]}"' in package_text
     assert f'"@tailwindcss/vite": "{V["@tailwindcss/vite"]}"' in package_text
+    assert f'"@vitejs/devtools": "{V["@vitejs/devtools"]}"' in package_text
     assert f'"tailwindcss": "{V["tailwindcss"]}"' in package_text
     assert f'"typescript": "{V["typescript"]}"' in package_text
     assert f'"vite": "{V["vite"]}"' in package_text
@@ -106,6 +107,7 @@ def test_meta_framework_templates_override_stale_base_files() -> None:
     assert '"litestar-vite-plugin": "{{ package_version(\'litestar-vite-plugin\') }}"' not in angular_cli_package
 
     assert nuxt_package.exists()
+    assert '"@vitejs/devtools": "{{ package_version(\'@vitejs/devtools\') }}"' in nuxt_package.read_text()
     assert nuxt_tsconfig.exists()
     assert 'compatibilityDate: "2026-03-06"' in nuxt_config
     assert 'css: ["~/assets/css/app.css"]' in nuxt_config
