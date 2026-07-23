@@ -197,8 +197,8 @@ class VitePlugin(InitPlugin, CLIPlugin):
     def _get_ssr_process(self) -> ViteProcess:
         """Get or create the SSR process manager lazily.
 
-        Returns a separate ViteProcess instance so SSR has its own signal-handler
-        registration, atexit cleanup, and stop() lifecycle independent of Vite.
+        Returns a separate ViteProcess instance so SSR has its own tracked cleanup
+        and stop() lifecycle independent of Vite.
         """
         if self._ssr_process is None:
             self._ssr_process = ViteProcess(executor=self._config.executor)

@@ -2,6 +2,7 @@
 
 import gc
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -756,8 +757,27 @@ def test_vite_process_initialization() -> None:
     assert process._lock is not None
 
 
-def test_vite_process_uses_reentrant_lock_for_signal_cleanup() -> None:
-    """Signal cleanup can re-enter stop() while the same thread already holds the process lock."""
+def test_vite_process_does_not_install_signal_handlers() -> None:
+    """The active ASGI server, not a Vite sidecar helper, owns top-level signals."""
+    with patch("litestar_vite.plugin._process.signal.signal") as register_signal:
+        ViteProcess(Mock())
+
+    register_signal.assert_not_called()
+
+
+def test_vite_process_registers_atexit_cleanup_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Atexit remains a single last-resort cleanup hook."""
+    monkeypatch.setattr(ViteProcess, "_atexit_registered", False, raising=False)
+
+    with patch("atexit.register") as register_atexit:
+        ViteProcess(Mock())
+        ViteProcess(Mock())
+
+    register_atexit.assert_called_once_with(ViteProcess._cleanup_all_instances)
+
+
+def test_vite_process_uses_reentrant_lock_for_cleanup() -> None:
+    """Cleanup can safely re-enter stop() while the same thread holds the process lock."""
     executor = Mock()
     process = ViteProcess(executor)
 
@@ -987,6 +1007,7 @@ def test_vite_process_stop_no_process() -> None:
 
     # Should not raise an exception
     process.stop()
+    process.stop()
 
 
 @patch("litestar_vite.plugin.os.killpg")
@@ -1002,6 +1023,7 @@ def test_vite_process_stop_graceful(mock_killpg: Mock) -> None:
     process = ViteProcess(executor)
     process.process = mock_process
 
+    process.stop()
     process.stop()
 
     # Process group termination is used on Unix
@@ -1032,6 +1054,48 @@ def test_vite_process_stop_force_kill(mock_killpg: Mock) -> None:
     mock_killpg.assert_any_call(12345, 15)  # SIGTERM
     mock_killpg.assert_any_call(12345, 9)  # SIGKILL
     assert mock_process.wait.call_count == 2
+
+
+@patch("litestar_vite.plugin._process.platform.system", return_value="Windows")
+def test_vite_process_stop_windows_sends_ctrl_break(mock_system: Mock, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Windows sidecars receive a graceful console break before any forced cleanup."""
+    monkeypatch.setattr("litestar_vite.plugin._process._CTRL_BREAK_EVENT", 1234, raising=False)
+    mock_process = Mock(pid=12345)
+    mock_process.poll.return_value = None
+    mock_process.wait.return_value = 0
+    process = ViteProcess(Mock())
+    process.process = mock_process
+
+    process.stop()
+
+    mock_process.send_signal.assert_called_once_with(1234)
+    mock_process.wait.assert_called_once_with(timeout=5.0)
+    mock_system.assert_called()
+
+
+@patch("litestar_vite.plugin._process.subprocess.run")
+@patch("litestar_vite.plugin._process.shutil.which", return_value="C:/Windows/System32/taskkill.exe")
+@patch("litestar_vite.plugin._process.platform.system", return_value="Windows")
+def test_vite_process_stop_windows_force_kills_tree(
+    mock_system: Mock, mock_which: Mock, mock_run: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stuck Windows sidecar is force-killed as a tree with a list command."""
+    monkeypatch.setattr("litestar_vite.plugin._process._CTRL_BREAK_EVENT", 1234, raising=False)
+    mock_process = Mock(pid=12345)
+    mock_process.poll.return_value = None
+    mock_process.wait.side_effect = [subprocess.TimeoutExpired("cmd", 2.5), 0]
+    process = ViteProcess(Mock())
+    process.process = mock_process
+
+    process.stop(timeout=2.5)
+
+    mock_process.send_signal.assert_called_once_with(1234)
+    mock_run.assert_called_once_with(
+        ["C:/Windows/System32/taskkill.exe", "/PID", "12345", "/T", "/F"], check=False, shell=False, capture_output=True
+    )
+    assert mock_process.wait.call_args_list[-1].kwargs == {"timeout": 1.0}
+    mock_system.assert_called()
+    mock_which.assert_called_once_with("taskkill")
 
 
 @patch("litestar_vite.plugin.os.killpg")

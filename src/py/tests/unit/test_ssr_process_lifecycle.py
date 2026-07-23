@@ -26,6 +26,7 @@ def _build_hybrid_plugin_with_ssr(
     auto_start: bool = True,
     health_check: bool = False,
     dev_mode: bool = True,
+    start_dev_server: bool = False,
 ) -> VitePlugin:
     resource_dir = tmp_path / "resources"
     resource_dir.mkdir()
@@ -37,7 +38,7 @@ def _build_hybrid_plugin_with_ssr(
         config=ViteConfig(
             mode="hybrid",
             paths=PathConfig(root=tmp_path, resource_dir=resource_dir),
-            runtime=RuntimeConfig(dev_mode=dev_mode, start_dev_server=False),
+            runtime=RuntimeConfig(dev_mode=dev_mode, start_dev_server=start_dev_server),
             spa=SPAConfig(app_selector="#app"),
             inertia=InertiaConfig(ssr=ssr_config),
         )
@@ -69,6 +70,29 @@ def test_server_lifespan_starts_and_stops_ssr_process_when_command_set(tmp_path:
             fake_process.start.assert_called_once_with(["npm", "run", "start:ssr"], plugin.config.root_dir)
             fake_process.stop.assert_not_called()
         fake_process.stop.assert_called_once()
+
+
+def test_server_lifespan_owns_vite_and_ssr_once_per_invocation(tmp_path: Path) -> None:
+    """A single server lifespan owns both child processes from startup through shutdown."""
+    plugin = _build_hybrid_plugin_with_ssr(
+        tmp_path, command=["npm", "run", "start:ssr"], auto_start=True, health_check=False, start_dev_server=True
+    )
+    app = Litestar(plugins=[plugin], middleware=[_SESSION])
+    vite_process = MagicMock(name="vite_process")
+    ssr_process = MagicMock(name="ssr_process")
+
+    with (
+        patch.object(VitePlugin, "_get_vite_process", return_value=vite_process),
+        patch.object(VitePlugin, "_get_ssr_process", return_value=ssr_process),
+    ):
+        with plugin.server_lifespan(app):
+            vite_process.start.assert_called_once()
+            ssr_process.start.assert_called_once()
+            vite_process.stop.assert_not_called()
+            ssr_process.stop.assert_not_called()
+
+    vite_process.stop.assert_called_once()
+    ssr_process.stop.assert_called_once()
 
 
 def test_server_lifespan_skips_ssr_start_when_auto_start_false(tmp_path: Path) -> None:
