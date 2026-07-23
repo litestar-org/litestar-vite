@@ -153,16 +153,31 @@ def test_set_environment_sets_vars(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert os.environ["LITESTAR_VITE_CONFIG_PATH"].endswith(".litestar.json")
 
 
-def test_log_helpers_print(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_log_helpers_tty_normal_uses_rich(monkeypatch: pytest.MonkeyPatch) -> None:
     printer = Mock()
-    monkeypatch.setattr(utils, "console", SimpleNamespace(print=printer))
+    monkeypatch.setattr(utils, "console", SimpleNamespace(is_terminal=True, print=printer))
+    utils.log_warn("warn_msg", level="normal")
+    utils.log_fail("fail_msg")
+    assert printer.call_count == 2
 
-    utils.log_success("ok")
-    utils.log_info("info")
-    utils.log_warn("warn")
-    utils.log_fail("fail")
 
-    assert printer.call_count == 4
+def test_log_helpers_tty_quiet_suppresses_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    printer = Mock()
+    monkeypatch.setattr(utils, "console", SimpleNamespace(is_terminal=True, print=printer))
+    utils.log_warn("warn_msg", level="quiet")
+    utils.log_fail("fail_msg")
+    assert printer.call_count == 1
+
+
+def test_log_helpers_non_tty_uses_logging(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    printer = Mock()
+    monkeypatch.setattr(utils, "console", SimpleNamespace(is_terminal=False, print=printer))
+    with caplog.at_level("WARNING", logger="litestar_vite"):
+        utils.log_warn("warn_msg", level="normal")
+        utils.log_fail("fail_msg")
+    assert printer.call_count == 0
+    assert "warn_msg" in caplog.text
+    assert "fail_msg" in caplog.text
 
 
 def test_route_prefix_cache_and_inertia_not_found(monkeypatch: pytest.MonkeyPatch) -> None:

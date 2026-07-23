@@ -147,8 +147,11 @@ def test_generate_asset_tags_missing_entry() -> None:
     loader = ViteAssetLoader(config)
     loader._manifest = {}
 
-    with pytest.raises(ImproperlyConfiguredException):
+    with pytest.raises(ImproperlyConfiguredException) as exc_info:
         loader.generate_asset_tags("missing.js")
+
+    assert "litestar assets build" in str(exc_info.value)
+    assert str(config.resolve_manifest_path()) not in str(exc_info.value)
 
 
 def test_get_static_asset_dev_mode(tmp_path: Path) -> None:
@@ -179,8 +182,11 @@ def test_get_static_asset_prod_mode_not_found() -> None:
     config = ViteConfig(runtime=RuntimeConfig(dev_mode=False))
     loader = ViteAssetLoader(config)
     loader._manifest = {}
-    with pytest.raises(AssetNotFoundError):
+    with pytest.raises(AssetNotFoundError) as exc_info:
         loader.get_static_asset("missing.png")
+
+    assert "litestar assets build" in str(exc_info.value)
+    assert str(config.resolve_manifest_path()) not in str(exc_info.value)
 
 
 def test_get_static_asset_with_absolute_asset_url() -> None:

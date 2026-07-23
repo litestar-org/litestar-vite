@@ -81,3 +81,19 @@ def test_plugin_explicit_true_beats_assets_cli_inference(monkeypatch: pytest.Mon
     out = plugin.on_app_init(AppConfig())
 
     assert len(out.lifespan) >= 1
+
+
+@pytest.mark.parametrize(
+    ("enabled", "argv"),
+    [(True, ["litestar", "run"]), (False, ["litestar", "run"]), (None, ["litestar", "assets", "build"])],
+)
+def test_plugin_on_app_init_captured_stdout_is_empty(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, enabled: bool | None, argv: list[str]
+) -> None:
+    monkeypatch.setattr(sys, "argv", argv)
+    config = ViteConfig() if enabled is None else ViteConfig(enabled=enabled)
+    plugin = VitePlugin(config=config)
+    plugin.on_app_init(AppConfig())
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""

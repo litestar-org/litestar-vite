@@ -11,8 +11,6 @@ __all__ = (
     "is_non_serving_context",
     "is_proxy_debug",
     "log_fail",
-    "log_info",
-    "log_success",
     "log_warn",
     "normalize_prefix",
     "pick_free_port",
@@ -23,6 +21,7 @@ __all__ = (
     "vite_not_found_handler",
     "write_runtime_config_file",
 )
+
 
 import importlib.metadata
 import logging
@@ -193,28 +192,25 @@ def is_non_serving_context() -> bool:
     return is_non_serving_assets_cli()
 
 
-def log_success(message: str) -> None:
-    """Print a success message with consistent styling."""
-
-    console.print(f"{_TICK} {message}")
+logger = logging.getLogger("litestar_vite")
 
 
-def log_info(message: str) -> None:
-    """Print an informational message with consistent styling."""
-
-    console.print(f"{_INFO} {message}")
-
-
-def log_warn(message: str) -> None:
-    """Print a warning message with consistent styling."""
-
-    console.print(f"{_WARN} {message}")
+def log_warn(message: str, *, level: str = "normal") -> None:
+    """Print a warning message with consistent styling, or log if non-TTY."""
+    if level == "quiet":
+        return
+    if getattr(console, "is_terminal", False):
+        console.print(f"{_WARN} {message}")
+    else:
+        logger.warning(message)
 
 
 def log_fail(message: str) -> None:
-    """Print an error message with consistent styling."""
-
-    console.print(f"{_FAIL} {message}")
+    """Print an error message with consistent styling, or log if non-TTY."""
+    if getattr(console, "is_terminal", False):
+        console.print(f"{_FAIL} {message}")
+    else:
+        logger.error(message)
 
 
 def _path_for_bridge(path: Path, root_dir: Path) -> str:

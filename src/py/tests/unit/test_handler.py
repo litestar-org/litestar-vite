@@ -109,6 +109,37 @@ def test_load_manifest_sync_reads_vite_default_manifest_path(tmp_path: Path) -> 
     assert handler._manifest == {"main.js": {"file": "assets/main.hash.js"}}
 
 
+def test_load_manifest_sync_absent_manifest_does_not_log_path(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    from litestar_vite.config import PathConfig, RuntimeConfig
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(root=tmp_path, resource_dir="resources", bundle_dir="public", static_dir="public"),
+        runtime=RuntimeConfig(dev_mode=False),
+    )
+    handler = AppHandler(config)
+    with caplog.at_level("WARNING"):
+        handler._load_manifest_sync()
+    assert str(config.resolve_manifest_path()) not in caplog.text
+
+
+@pytest.mark.anyio
+async def test_load_manifest_async_absent_manifest_does_not_log_path(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    from litestar_vite.config import PathConfig, RuntimeConfig
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(root=tmp_path, resource_dir="resources", bundle_dir="public", static_dir="public"),
+        runtime=RuntimeConfig(dev_mode=False),
+    )
+    handler = AppHandler(config)
+    with caplog.at_level("WARNING"):
+        await handler._load_manifest_async()
+    assert str(config.resolve_manifest_path()) not in caplog.text
+
+
 @pytest.fixture
 def spa_config_dev(temp_resource_dir: Path) -> ViteConfig:
     """Create a ViteConfig for SPA mode in development.
