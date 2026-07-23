@@ -464,8 +464,8 @@ class ViteAssetLoader:
 
         missing = [p for p in paths if p not in self._manifest]
         if missing:
-            msg = "Cannot find %s in Vite manifest at %s. Did you forget to build your assets after an update?"
-            raise ImproperlyConfiguredException(msg, missing, self._get_manifest_path())
+            msg = "Cannot find %s in the Vite manifest. Run 'litestar assets build' and retry."
+            raise ImproperlyConfiguredException(msg, missing)
 
         tags: list[str] = []
         manifest_entries = {p: self._manifest[p] for p in paths if p}

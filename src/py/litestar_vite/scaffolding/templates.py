@@ -68,6 +68,7 @@ CURRENT_NPM_VERSION_RANGES: dict[str, str] = {
     "@types/node": "25.6.0",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
+    "@vitejs/devtools": "0.3.4",
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-vue": "6.0.7",
     "@vue/tsconfig": "0.9.1",

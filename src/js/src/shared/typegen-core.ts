@@ -17,7 +17,7 @@ import path from "node:path"
 import { promisify } from "node:util"
 
 import { resolveInstallHint, resolvePackageExecutorArgv } from "../install-hint.js"
-import { HEY_API_PINNED_SPEC } from "./constants.js"
+import { HEY_API_PINNED_SPEC, TYPEGEN_FALLBACK_PACKAGE_SPECS, TYPESCRIPT_PINNED_SPEC } from "./constants.js"
 import { emitPagePropsTypes } from "./emit-page-props-types.js"
 import { emitSchemasTypes } from "./emit-schemas-types.js"
 import { emitStaticPropsTypes } from "./emit-static-props-types.js"
@@ -201,6 +201,7 @@ export async function runHeyApiGeneration(config: TypeGenCoreConfig, configPath:
 
   const fallback = resolvePackageExecutorArgv(args, executor, {
     packageSpec: HEY_API_PINNED_SPEC,
+    additionalPackageSpecs: [TYPESCRIPT_PINNED_SPEC],
     binName: "openapi-ts",
   })
   if (!fallback.length) {
@@ -281,8 +282,8 @@ export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunT
             !isPackageNotInstalled && (message.includes("ENOENT") || (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT"))
 
           if (isPackageNotInstalled) {
-            const zodHint = config.generateZod ? " zod" : ""
-            const errorMessage = `@hey-api/openapi-ts not installed - run: ${resolveInstallHint(`@hey-api/openapi-ts${zodHint}`)}`
+            const installPackages = config.generateZod ? [...TYPEGEN_FALLBACK_PACKAGE_SPECS, "zod"] : TYPEGEN_FALLBACK_PACKAGE_SPECS
+            const errorMessage = `@hey-api/openapi-ts not installed - run: ${resolveInstallHint(installPackages)}`
             result.errors.push(errorMessage)
             logger?.error(errorMessage)
           } else if (isRuntimeEnoent) {

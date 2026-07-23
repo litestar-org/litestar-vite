@@ -5,8 +5,20 @@ const mocks = vi.hoisted(() => ({
   execFile: vi.fn(),
   existsSync: vi.fn(() => true),
   readFileSync: vi.fn(() => JSON.stringify({ bin: { "openapi-ts": "bin/openapi-ts.js" } })),
-  resolvePackageExecutorArgv: vi.fn((args: string[], _executor?: string, options?: { packageSpec?: string; binName?: string }) =>
-    options?.packageSpec && options.binName ? ["npm", "exec", "--yes", "--package", options.packageSpec, "--", options.binName, ...args] : ["npx", ...args],
+  resolvePackageExecutorArgv: vi.fn((args: string[], _executor?: string, options?: { packageSpec?: string; additionalPackageSpecs?: readonly string[]; binName?: string }) =>
+    options?.packageSpec && options.binName
+      ? [
+          "npm",
+          "exec",
+          "--yes",
+          "--package",
+          options.packageSpec,
+          ...(options.additionalPackageSpecs ?? []).flatMap((packageSpec) => ["--package", packageSpec]),
+          "--",
+          options.binName,
+          ...args,
+        ]
+      : ["npx", ...args],
   ),
   resolve: vi.fn((specifier: string) => {
     if (specifier === "@hey-api/openapi-ts/package.json") {
@@ -41,7 +53,7 @@ vi.mock("node:module", () => ({
 }))
 
 vi.mock("../../src/install-hint.js", () => ({
-  resolveInstallHint: vi.fn((pkg?: string) => `npm install -D ${pkg || "@hey-api/openapi-ts"}`),
+  resolveInstallHint: vi.fn((pkg?: string | readonly string[]) => `npm install -D ${Array.isArray(pkg) ? pkg.join(" ") : pkg || "@hey-api/openapi-ts"}`),
   resolvePackageExecutor: vi.fn((cmd: string) => `npx ${cmd}`),
   resolvePackageExecutorArgv: mocks.resolvePackageExecutorArgv,
 }))
@@ -157,11 +169,27 @@ describe("typegen-core", () => {
 
     expect(mocks.resolvePackageExecutorArgv).toHaveBeenCalledWith(["-i", "openapi.json", "-o", "src/generated/api", "--plugins", "@hey-api/typescript"], undefined, {
       packageSpec: "@hey-api/openapi-ts@0.98.2",
+      additionalPackageSpecs: ["typescript@6.0.3"],
       binName: "openapi-ts",
     })
     expect(execFile).toHaveBeenCalledWith(
       "npm",
-      ["exec", "--yes", "--package", "@hey-api/openapi-ts@0.98.2", "--", "openapi-ts", "-i", "openapi.json", "-o", "src/generated/api", "--plugins", "@hey-api/typescript"],
+      [
+        "exec",
+        "--yes",
+        "--package",
+        "@hey-api/openapi-ts@0.98.2",
+        "--package",
+        "typescript@6.0.3",
+        "--",
+        "openapi-ts",
+        "-i",
+        "openapi.json",
+        "-o",
+        "src/generated/api",
+        "--plugins",
+        "@hey-api/typescript",
+      ],
       {
         cwd: "/home/user/project",
       },
@@ -191,7 +219,7 @@ describe("typegen-core", () => {
 
     const result = await runTypeGeneration(createConfig({ generateZod: true }), { logger })
 
-    expect(result.errors[0]).toContain("@hey-api/openapi-ts zod")
+    expect(result.errors[0]).toContain("@hey-api/openapi-ts@0.98.2 typescript@6.0.3 zod")
   })
 
   it("skips SDK generation when openapi.json does not exist", async () => {

@@ -280,7 +280,6 @@ class ViteConfig:
         self._normalize_deploy()
         self._ensure_spa_default()
         self._auto_enable_dev_mode()
-        self._warn_missing_assets()
 
     def _resolve_enabled(self) -> None:
         """Resolve VITE_ENABLED only when enabled was not set explicitly."""
@@ -538,45 +537,6 @@ class ViteConfig:
         if auto_dev_mode and not self.runtime.dev_mode and self.wants_spa_config and not self.has_built_assets():
             self.runtime.dev_mode = True
             self._apply_proxy_mode_defaults()
-
-    def _warn_missing_assets(self) -> None:
-        """Warn if running in production mode without built assets."""
-        import sys
-
-        if not self.wants_spa_config:
-            return
-        if self.runtime.dev_mode:
-            return
-        if self.has_built_assets():
-            return
-
-        cli_commands_skip_warning = {
-            "install",
-            "build",
-            "init",
-            "serve",
-            "deploy",
-            "doctor",
-            "generate-types",
-            "export-routes",
-            "status",
-        }
-        argv_str = " ".join(sys.argv)
-        if any(f"assets {cmd}" in argv_str for cmd in cli_commands_skip_warning):
-            return
-
-        if self.runtime.external_dev_server is not None:
-            return
-
-        candidates = self.candidate_manifest_paths()
-        manifest_locations = " or ".join(str(path) for path in candidates)
-        logger.warning(
-            "Vite manifest not found at %s. "
-            "Run 'litestar assets build' (or 'npm run build') to build assets, "
-            "or set dev_mode=True for development. "
-            "Assets will not load correctly without built files or a running Vite dev server.",
-            manifest_locations,
-        )
 
     def _detect_mode(self) -> Literal["spa", "template", "hybrid"]:
         """Auto-detect the serving mode based on project structure.

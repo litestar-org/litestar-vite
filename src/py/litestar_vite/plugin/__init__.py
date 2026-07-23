@@ -52,8 +52,6 @@ from litestar_vite.plugin._utils import (
     is_non_serving_assets_cli,
     is_non_serving_context,
     log_fail,
-    log_info,
-    log_success,
     log_warn,
     pick_free_port,
     resolve_litestar_version,
@@ -221,18 +219,18 @@ class VitePlugin(InitPlugin, CLIPlugin):
         # error means the server is up).
         parsed = urlparse(ssr_config.url)
         origin = f"{parsed.scheme}://{parsed.netloc}"
-        last_error: str = ""
         while time.monotonic() < deadline:
             try:
                 response = httpx.get(origin, timeout=2.0)
                 if response.status_code < 500:
-                    log_success(f"SSR /render server ready at {origin}")
                     return
-                last_error = f"HTTP {response.status_code}"
             except httpx.RequestError as exc:
-                last_error = str(exc)
+                str(exc)
             time.sleep(0.25)
-        log_warn(f"SSR /render server health check timed out at {origin} (last: {last_error})")
+        log_warn(
+            f"Inertia SSR server did not become ready within {ssr_config.health_check_timeout}s.",
+            level=self._config.logging_config.level,
+        )
 
     @property
     def config(self) -> "ViteConfig":
@@ -315,15 +313,11 @@ class VitePlugin(InitPlugin, CLIPlugin):
         """
         ext = self._config.runtime.external_dev_server
         if isinstance(ext, ExternalDevServer) and ext.enabled:
-            command = ext.command or self._config.executor.start_command
-            log_info(f"Starting external server: {' '.join(command)}")
-            return command
+            return ext.command or self._config.executor.start_command
 
         if self._config.hot_reload:
-            log_info("Starting Vite server with HMR")
             return self._config.run_command
 
-        log_info("Starting Vite watch build process")
         return self._config.build_watch_command
 
     def _ensure_proxy_target(self) -> None:
@@ -628,7 +622,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
             The modified application configuration.
         """
         if self._is_inert():
-            log_info("VitePlugin inert; skipping asset and route wiring")
             return app_config
 
         self._set_route_prefix_state(app_config.state)
@@ -722,9 +715,8 @@ class VitePlugin(InitPlugin, CLIPlugin):
             except httpx.HTTPError:
                 time.sleep(0.1)
             else:
-                log_success("Vite server responded to health check")
                 return
-        log_fail("Vite server health check failed")
+        log_fail("Vite dev server did not become ready.")
 
     def _run_health_check(self) -> None:
         """Run the appropriate health check based on proxy mode."""
@@ -750,17 +742,14 @@ class VitePlugin(InitPlugin, CLIPlugin):
         import time
 
         start = time.time()
-        last_url = None
 
         while time.time() - start < timeout:
             if hotfile_path.exists():
                 try:
                     url = read_hotfile_url(hotfile_path)
                     if url:
-                        last_url = url
                         resp = httpx.get(url, timeout=0.5, follow_redirects=True)
                         if resp.status_code < 500:
-                            log_success(f"SSR server ready at {url}")
                             return True
                 except OSError:
                     pass
@@ -769,10 +758,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
             time.sleep(0.1)
 
-        if last_url:
-            log_fail(f"SSR server at {last_url} did not respond within {timeout}s")
-        else:
-            log_fail(f"SSR hotfile not found at {hotfile_path} within {timeout}s")
+        log_fail(f"Inertia SSR server did not become ready within {timeout}s.")
         return False
 
     def _export_types_sync(self, app: "Litestar") -> None:
@@ -797,12 +783,12 @@ class VitePlugin(InitPlugin, CLIPlugin):
             return
 
         try:
-            result = export_integration_assets(app, self._config)
-
-            if result.exported_files:
-                log_success(f"Types exported → {', '.join(result.exported_files)}")
-        except (OSError, TypeError, ValueError, ImportError) as e:  # pragma: no cover
-            log_warn(f"Type export failed: {e}")
+            export_integration_assets(app, self._config)
+        except (OSError, TypeError, ValueError, ImportError):  # pragma: no cover
+            log_warn(
+                "Vite type metadata export failed; run 'litestar assets generate-types' for details.",
+                level=self._config.logging_config.level,
+            )
 
     @contextmanager
     def server_lifespan(self, app: "Litestar") -> "Generator[None, None, None]":
@@ -837,7 +823,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
         if self._config.set_environment:
             set_environment(config=self._config)
             set_app_environment(app)
-            log_info("Applied Vite environment variables")
 
         self._export_types_sync(app)
 
@@ -860,7 +845,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
             try:
                 vite_process = self._get_vite_process()
                 vite_process.start(command_to_run, self._config.root_dir)
-                log_success("Vite process started")
                 if self._config.health_check and not is_external:
                     self._run_health_check()
                 if ssr_should_start and ssr_config is not None:
@@ -870,7 +854,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
                 self._stop_ssr_process(ssr_process)
                 if vite_process is not None:
                     vite_process.stop()
-                log_info("Vite process stopped.")
         elif ssr_should_start and ssr_config is not None:
             try:
                 ssr_process = self._start_ssr_process(ssr_config)
@@ -888,7 +871,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
         process = self._get_ssr_process()
         cwd = ssr_config.cwd or self._config.root_dir
         process.start(ssr_config.command, cwd)
-        log_success(f"SSR /render process started: {' '.join(ssr_config.command)}")
         if ssr_config.health_check:
             self._run_ssr_health_check(ssr_config)
         return process
@@ -897,7 +879,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
         """Stop the SSR process if one was started."""
         if ssr_process is not None:
             ssr_process.stop()
-            log_info("SSR /render process stopped.")
 
     @asynccontextmanager
     async def lifespan(self, app: "Litestar") -> "AsyncGenerator[None, None]":
@@ -938,13 +919,13 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         if self._spa_handler is not None and not self._spa_handler.is_initialized:
             await self._spa_handler.initialize_async(vite_url=self._proxy_target)
-            log_success("SPA handler initialized")
 
         is_ssr_mode = self._config.wants_html_proxy
         if not self._config.is_dev_mode and not self._config.has_built_assets() and not is_ssr_mode:
             log_warn(
                 "Vite dev server is disabled (dev_mode=False) but no index.html was found. "
-                "Run your front-end build or set VITE_DEV_MODE=1 to enable HMR."
+                "Run your front-end build or set VITE_DEV_MODE=1 to enable HMR.",
+                level=self._config.logging_config.level,
             )
 
         try:

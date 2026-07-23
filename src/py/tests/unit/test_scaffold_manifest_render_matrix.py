@@ -2,12 +2,15 @@
 
 import itertools
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from litestar_vite.scaffolding.generator import TemplateContext, get_template_dir, render_template
-from litestar_vite.scaffolding.templates import FRAMEWORK_TEMPLATES, FrameworkType
+from litestar_vite.scaffolding.templates import CURRENT_NPM_VERSION_RANGES, FRAMEWORK_TEMPLATES, FrameworkType
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -71,3 +74,41 @@ def test_scaffold_manifest_dependency_versions_are_unique_and_preserved(framewor
         parsed = json.loads(text)
         rejecting = json.loads(text, object_pairs_hook=_reject_duplicate_keys)
         assert parsed == rejecting, f"{framework.value}: deduped content changed for flags={flags}"
+
+
+@pytest.mark.parametrize("framework", list(FrameworkType))
+def test_scaffold_manifest_typegen_dependencies_use_compatible_pins(framework: FrameworkType) -> None:
+    text = _render_package_json(
+        framework,
+        {
+            "use_tailwind": False,
+            "enable_ssr": True,
+            "enable_types": True,
+            "generate_zod": True,
+            "generate_client": True,
+        },
+    )
+    dev_dependencies = json.loads(text).get("devDependencies", {})
+
+    if "@hey-api/openapi-ts" in dev_dependencies:
+        assert dev_dependencies["@hey-api/openapi-ts"] == CURRENT_NPM_VERSION_RANGES["@hey-api/openapi-ts"]
+        assert dev_dependencies["typescript"] == CURRENT_NPM_VERSION_RANGES["typescript"]
+
+
+def test_typegen_fallback_pins_match_scaffold_registry() -> None:
+    constants_source = (REPOSITORY_ROOT / "src/js/src/shared/constants.ts").read_text()
+
+    assert (
+        f'HEY_API_PINNED_SPEC = "@hey-api/openapi-ts@{CURRENT_NPM_VERSION_RANGES["@hey-api/openapi-ts"]}"'
+        in constants_source
+    )
+    assert f'TYPESCRIPT_PINNED_SPEC = "typescript@{CURRENT_NPM_VERSION_RANGES["typescript"]}"' in constants_source
+
+
+def test_scaffold_nuxt_manifest_pins_vite_devtools_peer() -> None:
+    text = _render_package_json(
+        FrameworkType.NUXT,
+        {"use_tailwind": True, "enable_ssr": True, "enable_types": True, "generate_zod": True, "generate_client": True},
+    )
+
+    assert json.loads(text)["overrides"]["@vitejs/devtools"] == CURRENT_NPM_VERSION_RANGES["@vitejs/devtools"]

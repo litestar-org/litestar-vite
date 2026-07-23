@@ -108,6 +108,14 @@ describe("install-hint", () => {
       expect(hint).toBe("npm install -D @hey-api/openapi-ts zod")
     })
 
+    it("handles multiple package specs without losing deno npm prefixes", () => {
+      process.env.LITESTAR_VITE_RUNTIME = "deno"
+
+      const hint = resolveInstallHint(["@hey-api/openapi-ts@0.98.2", "typescript@6.0.3"])
+
+      expect(hint).toBe("deno add -d npm:@hey-api/openapi-ts@0.98.2 npm:typescript@6.0.3")
+    })
+
     it("returns bun add for bun runtime", () => {
       process.env.LITESTAR_VITE_RUNTIME = "bun"
 
@@ -346,6 +354,45 @@ describe("install-hint", () => {
           binName: "openapi-ts",
         }),
       ).toEqual(["npm", "exec", "--yes", "--package", "@hey-api/openapi-ts@0.98.2", "--", "openapi-ts", "-i", "schema.json"])
+    })
+
+    it("installs all fallback packages with npm exec", () => {
+      expect(
+        resolvePackageExecutorArgv(["-i", "schema.json"], "node", {
+          packageSpec: "@hey-api/openapi-ts@0.98.2",
+          additionalPackageSpecs: ["typescript@6.0.3"],
+          binName: "openapi-ts",
+        }),
+      ).toEqual(["npm", "exec", "--yes", "--package", "@hey-api/openapi-ts@0.98.2", "--package", "typescript@6.0.3", "--", "openapi-ts", "-i", "schema.json"])
+    })
+
+    it("installs all fallback packages with pnpm and yarn", () => {
+      const options = {
+        packageSpec: "@hey-api/openapi-ts@0.98.2",
+        additionalPackageSpecs: ["typescript@6.0.3"],
+        binName: "openapi-ts",
+      }
+
+      expect(resolvePackageExecutorArgv(["--help"], "pnpm", options)).toEqual([
+        "pnpm",
+        "dlx",
+        "--package=@hey-api/openapi-ts@0.98.2",
+        "--package=typescript@6.0.3",
+        "openapi-ts",
+        "--help",
+      ])
+      expect(resolvePackageExecutorArgv(["--help"], "yarn", options)).toEqual(["yarn", "dlx", "-p", "@hey-api/openapi-ts@0.98.2", "-p", "typescript@6.0.3", "openapi-ts", "--help"])
+    })
+
+    it("refuses unsafe multi-package fallbacks for bun and deno", () => {
+      const options = {
+        packageSpec: "@hey-api/openapi-ts@0.98.2",
+        additionalPackageSpecs: ["typescript@6.0.3"],
+        binName: "openapi-ts",
+      }
+
+      expect(resolvePackageExecutorArgv(["--help"], "bun", options)).toEqual([])
+      expect(resolvePackageExecutorArgv(["--help"], "deno", options)).toEqual([])
     })
 
     it("returns package-manager specific argv without changing resolvePackageExecutor string output", () => {

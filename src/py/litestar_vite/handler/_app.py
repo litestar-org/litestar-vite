@@ -287,12 +287,7 @@ class AppHandler:
                 content = await manifest_path.read_bytes()
                 self._manifest = decode_json(content)
             else:
-                logger.warning(
-                    "Vite manifest not found at %s. "
-                    "Asset URLs in index.html will not be transformed. "
-                    "Run 'litestar assets build' to generate the manifest.",
-                    manifest_path,
-                )
+                self._manifest = {}
         except OSError as exc:
             logger.warning("Failed to read Vite manifest file: %s", exc)
         except SerializationException as exc:
@@ -306,12 +301,7 @@ class AppHandler:
                 content = manifest_path.read_bytes()
                 self._manifest = decode_json(content)
             else:
-                logger.warning(
-                    "Vite manifest not found at %s. "
-                    "Asset URLs in index.html will not be transformed. "
-                    "Run 'litestar assets build' to generate the manifest.",
-                    manifest_path,
-                )
+                self._manifest = {}
         except OSError as exc:
             logger.warning("Failed to read Vite manifest file: %s", exc)
         except SerializationException as exc:
