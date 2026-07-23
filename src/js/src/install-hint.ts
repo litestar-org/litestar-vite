@@ -43,25 +43,27 @@ export function detectExecutor(): string {
   return "node"
 }
 
-export function resolveInstallHint(pkg = "@hey-api/openapi-ts"): string {
+export function resolveInstallHint(pkg: string | readonly string[] = "@hey-api/openapi-ts"): string {
   const runtime = detectExecutor()
+  const packageSpecs = typeof pkg === "string" ? [pkg] : pkg
+  const packageArgs = packageSpecs.join(" ")
   switch (runtime) {
     case "bun":
-      return `bun add -d ${pkg}`
+      return `bun add -d ${packageArgs}`
     case "deno":
-      return `deno add -d npm:${pkg}`
+      return `deno add -d ${packageSpecs.map((packageSpec) => `npm:${packageSpec}`).join(" ")}`
     case "pnpm":
-      return `pnpm add -D ${pkg}`
+      return `pnpm add -D ${packageArgs}`
     case "yarn":
-      return `yarn add -D ${pkg}`
+      return `yarn add -D ${packageArgs}`
   }
 
   const envInstall = process.env.LITESTAR_VITE_INSTALL_CMD?.trim()
   if (envInstall) {
-    return `${envInstall} -D ${pkg}`
+    return `${envInstall} -D ${packageArgs}`
   }
 
-  return `npm install -D ${pkg}`
+  return `npm install -D ${packageArgs}`
 }
 
 /**
@@ -102,6 +104,13 @@ export interface PackageExecutorArgvOptions {
    * separate from the command binary, e.g. npm exec --package.
    */
   packageSpec?: string
+  /**
+   * Additional package specs required in the temporary execution environment.
+   *
+   * npm, pnpm, and Yarn support this. Bun and Deno do not currently expose a
+   * reliable equivalent, so their resolver returns no fallback.
+   */
+  additionalPackageSpecs?: readonly string[]
   /** Binary command exposed by packageSpec. */
   binName?: string
 }
@@ -125,19 +134,29 @@ function resolveDenoPackageSpec(packageSpec: string, binName?: string): string {
 
 export function resolvePackageExecutorArgv(args: string[], executor?: string, options: PackageExecutorArgvOptions = {}): string[] {
   const runtime = executor || detectExecutor()
-  const { packageSpec, binName } = options
+  const { packageSpec, additionalPackageSpecs = [], binName } = options
+  const packageSpecs = packageSpec ? [packageSpec, ...additionalPackageSpecs] : []
+  const requiresMultiplePackages = packageSpecs.length > 1
   switch (runtime) {
     case "bun":
+      if (requiresMultiplePackages) return []
       return ["bunx", ...(packageSpec ? [packageSpec, ...args] : args)]
     case "deno":
+      if (requiresMultiplePackages) return []
       return ["deno", "run", "-A", ...(packageSpec ? [`npm:${resolveDenoPackageSpec(packageSpec, binName)}`, ...args] : args)]
     case "pnpm":
+      if (requiresMultiplePackages && binName) {
+        return ["pnpm", "dlx", ...packageSpecs.map((spec) => `--package=${spec}`), binName, ...args]
+      }
       return ["pnpm", "dlx", ...(packageSpec ? [packageSpec, ...args] : args)]
     case "yarn":
+      if (requiresMultiplePackages && binName) {
+        return ["yarn", "dlx", ...packageSpecs.flatMap((spec) => ["-p", spec]), binName, ...args]
+      }
       return ["yarn", "dlx", ...(packageSpec ? [packageSpec, ...args] : args)]
     default:
       if (packageSpec && binName) {
-        return ["npm", "exec", "--yes", "--package", packageSpec, "--", binName, ...args]
+        return ["npm", "exec", "--yes", ...packageSpecs.flatMap((spec) => ["--package", spec]), "--", binName, ...args]
       }
       return ["npx", ...args]
   }
