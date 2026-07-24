@@ -7,6 +7,14 @@ Notable changes to this project are documented in this file.
 Litestar Vite Changelog
 ^^^^^^^^^^^^^^^^^^^^^^^
 
+0.27.0 - Unreleased
+-------------------
+
+- Added a server-neutral production static-provider contract for optional Granian 0.16+ native serving while retaining Litestar's static route on every ASGI server.
+- Added safe fallback reasons for development, framework/SSR, protected or customized assets, unsafe routes, and invalid production builds.
+- Fixed Vite and Inertia SSR sidecar ownership so the Litestar server lifespan performs graceful process-group cleanup without installing competing global signal handlers.
+- Fixed Vite's run-environment handling so built-in Uvicorn and Granian-backed ``litestar run`` commands expose the same effective host and port to frontend sidecars and the ``.litestar.json`` bridge.
+
 0.26.1 - 2026-07-06
 -------------------
 

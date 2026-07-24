@@ -6,7 +6,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 
 - One-port dev: proxies Vite HTTP + WS/HMR through Litestar on a single ASGI port by default.
 - Framework-mode support: use `mode="framework"` (alias `mode="ssr"`) for Astro, Nuxt, and SvelteKit. Litestar proxies everything except your API routes.
-- Production assets: reads the Vite manifest from `public/manifest.json` (configurable) and serves under `asset_url`.
+- Production assets: keeps a Litestar static route on every ASGI server and can advertise safe bundles to Granian 0.16+ for native serving.
 - Type-safe frontends: optional OpenAPI/routes export plus `@hey-api/openapi-ts` via the Vite plugin.
 - Inertia support: Inertia v2/v3 protocol support with session middleware, script-element bootstrap by default, and optional SSR.
 
@@ -20,19 +20,10 @@ npm install litestar-vite-plugin
 ## Quick Start
 
 ```python
-import os
-from pathlib import Path
 from litestar import Litestar
-from litestar_vite import PathConfig, ViteConfig, VitePlugin
+from litestar_vite import VitePlugin
 
-DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
-
-app = Litestar(
-    plugins=[VitePlugin(config=ViteConfig(
-        dev_mode=DEV_MODE,
-        paths=PathConfig(root=Path(__file__).parent),
-    ))]
-)
+app = Litestar(plugins=[VitePlugin()])
 ```
 
 ```bash
@@ -41,11 +32,40 @@ litestar assets install
 litestar run --reload
 ```
 
+`VitePlugin()` detects development and production behavior without manual `VITE_DEV_MODE` parsing. The effective
+`litestar run --host/--port` values are also passed to the frontend environment and `.litestar.json` bridge.
+
+### Optional Granian native static serving
+
+Granian 0.16+ can serve eligible production bundle files before the request enters Python:
+
+```python
+from litestar import Litestar
+from litestar_granian import GranianPlugin
+from litestar_vite import VitePlugin
+
+app = Litestar(
+    plugins=[
+        VitePlugin(),
+        GranianPlugin(static="auto"),
+    ]
+)
+```
+
+This is an optimization, not a separate application configuration. The Litestar static route stays registered, so
+Uvicorn and other ASGI servers serve the same files. Granian automatically falls back to Litestar when assets are
+protected, customized, missing, or otherwise unsafe to intercept.
+
+Native hits bypass ASGI middleware, guards, compression, custom headers, and Python access logging. Keep protected or
+customized assets on the Litestar fallback path. See the
+[production guide](https://litestar-org.github.io/litestar-vite/latest/usage/production.html) for the server matrix and
+advanced configuration.
+
 ## Documentation
 
 - Get started: <https://litestar-org.github.io/litestar-vite/latest/usage/index.html>
 - Framework guides: <https://litestar-org.github.io/litestar-vite/latest/frameworks/index.html>
-- Inertia: <https://litestar-org.github.io/litestar-vite/latest/inertia/index.html>
+- Inertia: <https://litestar-org.github.io/litestar-vite/latest/frameworks/inertia/index.html>
 - API reference: <https://litestar-org.github.io/litestar-vite/latest/reference/index.html>
 - Changelog: <https://litestar-org.github.io/litestar-vite/latest/changelog.html>
 
