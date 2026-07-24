@@ -453,9 +453,13 @@ interface NuxtModuleFunction {
 }
 
 interface ListenInfo {
-  url: string
-  host: string
-  port: number
+  url?: string
+  address?: {
+    address?: string
+    port?: number
+  }
+  host?: string
+  port?: number
 }
 
 interface NuxtContext {
@@ -523,9 +527,10 @@ function litestarNuxtModule(userOptions: LitestarNuxtConfig, nuxt: NuxtContext):
     const hotFile = config.hotFile
     nuxt.hook("listen", (_server: unknown, listener: unknown) => {
       const info = listener as ListenInfo
-      if (info && typeof info.port === "number") {
-        const host = normalizeHost(info.host || "127.0.0.1")
-        const url = `http://${host}:${info.port}`
+      const port = info?.address?.port ?? info?.port
+      if (typeof port === "number") {
+        const host = normalizeHost(info.address?.address || info.host || "127.0.0.1")
+        const url = `http://${host}:${port}`
         fs.mkdirSync(path.dirname(hotFile), { recursive: true })
         fs.writeFileSync(hotFile, url)
         if (config.verbose) {

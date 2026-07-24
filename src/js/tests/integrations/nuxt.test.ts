@@ -56,7 +56,10 @@ describe("litestar-nuxt integration", () => {
       expect(writeFile).not.toHaveBeenCalled()
       expect(hook).toHaveBeenCalledWith("listen", expect.any(Function))
 
-      listenHook?.(undefined, { host: "0.0.0.0", port: 4789 })
+      listenHook?.(undefined, {
+        url: "http://localhost:4789/",
+        address: { address: "0.0.0.0", family: "IPv4", port: 4789 },
+      })
 
       expect(mkdir).toHaveBeenCalledWith(path.dirname(hotFile), { recursive: true })
       expect(writeFile).toHaveBeenCalledOnce()
