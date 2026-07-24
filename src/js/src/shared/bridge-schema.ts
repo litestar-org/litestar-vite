@@ -44,9 +44,9 @@ export interface BridgeSchema {
   appUrl: string | null
   /**
    * Litestar dev server port. Used by framework integrations to set
-   * `vite.server.hmr.clientPort`, ensuring the browser connects to Litestar
-   * (not the framework dev server) for HMR — preserving the single-port
-   * contract.
+   * `vite.server.ws.clientPort` on Vite 8.1+ (`vite.server.hmr.clientPort` on
+   * Vite 7 / 8.0), ensuring the browser connects to Litestar (not the framework
+   * dev server) for HMR — preserving the single-port contract.
    */
   litestarPort: number | null
   bundleDir: string

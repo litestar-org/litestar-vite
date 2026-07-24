@@ -14,6 +14,12 @@ Litestar Vite Changelog
 - Added an explicit native/ASGI placement result with a diagnostic reason for development, framework/SSR, protected or customized assets, unsafe routes, and invalid production builds.
 - Fixed Vite and Inertia SSR sidecar ownership so the Litestar server lifespan performs graceful process-group cleanup without installing competing global signal handlers.
 - Fixed Vite's run-environment handling so built-in Uvicorn and Granian-backed ``litestar run`` commands expose the same effective host and port to frontend sidecars and the ``.litestar.json`` bridge.
+- Changed Vite hotfile readiness so the JS plugin writes the hotfile only after the dev server is listening.
+  Python now pre-writes only user-asserted ``ExternalDevServer`` targets, so requests arriving during Vite
+  startup fall through to built assets instead of proxying to an unbound socket and returning ``502``.
+- Hardened Vite 8.1 HMR compatibility by emitting network options under ``server.ws.*`` on Vite 8.1+,
+  retaining ``server.hmr.*`` emission for Vite 7 / 8.0, and continuing to read either shape from user
+  configuration.
 
 0.26.1 - 2026-07-06
 -------------------
