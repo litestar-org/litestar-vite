@@ -517,31 +517,19 @@ function litestarNuxtModule(userOptions: LitestarNuxtConfig, nuxt: NuxtContext):
     console.log(JSON.stringify(nuxt.options.nitro.devProxy, null, 2))
   }
 
-  // Write hotfile for Litestar proxy to discover Nuxt server URL
-  // Use the port from NUXT_PORT env (set by Python) since that's what Nuxt will use
-  if (config.hotFile && config.devPort) {
-    const rawHost = process.env.NUXT_HOST || process.env.HOST || "127.0.0.1"
-    const host = normalizeHost(rawHost)
-    const url = `http://${host}:${config.devPort}`
-    fs.mkdirSync(path.dirname(config.hotFile), { recursive: true })
-    fs.writeFileSync(config.hotFile, url)
-    if (config.verbose) {
-      console.log(colors.cyan("[litestar-nuxt]"), colors.dim(`Hotfile written: ${config.hotFile} -> ${url}`))
-    }
-  }
-
-  // Also register Nuxt's 'listen' hook as a backup to update hotfile with actual server URL
-  // This fires when Nitro's main HTTP server starts (not Vite's internal HMR server)
+  // Nuxt's listen hook is the authoritative primary hotfile writer. It fires
+  // after Nitro's main HTTP server starts, so hotfile presence means ready.
   if (nuxt.hook && config.hotFile) {
+    const hotFile = config.hotFile
     nuxt.hook("listen", (_server: unknown, listener: unknown) => {
       const info = listener as ListenInfo
       if (info && typeof info.port === "number") {
         const host = normalizeHost(info.host || "127.0.0.1")
         const url = `http://${host}:${info.port}`
-        fs.mkdirSync(path.dirname(config.hotFile as string), { recursive: true })
-        fs.writeFileSync(config.hotFile as string, url)
+        fs.mkdirSync(path.dirname(hotFile), { recursive: true })
+        fs.writeFileSync(hotFile, url)
         if (config.verbose) {
-          console.log(colors.cyan("[litestar-nuxt]"), colors.dim(`Hotfile updated via listen hook: ${url}`))
+          console.log(colors.cyan("[litestar-nuxt]"), colors.dim(`Hotfile written after listen: ${hotFile} -> ${url}`))
         }
       }
     })
