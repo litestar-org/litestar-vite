@@ -255,8 +255,9 @@ interface ResolvedLitestarAstroConfig {
   /** Port for Vite dev server (from VITE_PORT env or runtime config) */
   port?: number
   /**
-   * Litestar dev server port. Used to set `vite.server.hmr.clientPort` so the
-   * browser opens HMR WebSockets against Litestar (single-port contract).
+   * Litestar dev server port. Used to set `vite.server.ws.clientPort` on Vite
+   * 8.1+ (`vite.server.hmr.clientPort` on Vite 7 / 8.0) so the browser opens HMR
+   * WebSockets against Litestar (single-port contract).
    */
   litestarPort?: number
   /** Asset URL prefix (e.g. ``/static``); used to build the HMR path. */
