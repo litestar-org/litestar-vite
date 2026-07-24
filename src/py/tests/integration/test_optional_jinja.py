@@ -85,7 +85,7 @@ def test_optional_jinja_plugin_without_jinja_template_engine() -> None:
     assert updated_config is not None
 
 
-@patch("litestar_vite.plugin.JINJA_INSTALLED", False)
+@patch("litestar_vite.plugin._core.JINJA_INSTALLED", False)
 def test_optional_jinja_plugin_import_without_jinja_contrib() -> None:
     """Test plugin behavior when litestar.plugins.jinja is not available."""
     # This test simulates the scenario where litestar[jinja] extra is not installed

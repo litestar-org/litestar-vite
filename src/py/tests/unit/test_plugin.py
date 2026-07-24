@@ -22,7 +22,14 @@ from litestar.template.config import TemplateConfig
 from litestar.testing import TestClient
 
 from litestar_vite.config import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig
-from litestar_vite.plugin import ProxyHeadersMiddleware, StaticFilesConfig, VitePlugin, ViteProcess, ViteProxyMiddleware
+from litestar_vite.plugin import (
+    ProxyHeadersMiddleware,
+    StaticFilesConfig,
+    StaticPlacement,
+    VitePlugin,
+    ViteProcess,
+    ViteProxyMiddleware,
+)
 
 pytestmark = pytest.mark.anyio
 
@@ -85,18 +92,38 @@ def test_vite_plugin_initialization_with_static_files_config() -> None:
     assert plugin._static_files_config_supplied is True
 
 
-def test_static_server_config_defaults_are_public() -> None:
-    """The server-neutral static contract is available from the package root."""
-    from litestar_vite import StaticServerConfig, StaticServerMount
+def test_static_server_config_placement_contract_is_public() -> None:
+    """The server-neutral placement contract is available from the package root."""
+    from litestar_vite import StaticPlacement, StaticServerConfig, StaticServerMount
 
-    config = StaticServerConfig()
     mount = StaticServerMount(route="/assets", directory=Path("/tmp/assets"))
+    asgi_config = StaticServerConfig(placement=StaticPlacement.ASGI, reason="development mode")
+    native_config = StaticServerConfig(placement=StaticPlacement.NATIVE, mounts=(mount,))
 
-    assert config.mounts == ()
-    assert config.fallback_reason is None
+    assert asgi_config.placement is StaticPlacement.ASGI
+    assert asgi_config.mounts == ()
+    assert asgi_config.reason == "development mode"
+    assert native_config.placement is StaticPlacement.NATIVE
+    assert native_config.reason is None
     assert mount.directory_index is None
     with pytest.raises(FrozenInstanceError):
         mount.route = "/other"  # type: ignore[misc]
+
+
+def test_static_server_config_native_without_mounts_raises() -> None:
+    """NATIVE placement is meaningless without at least one mount to serve."""
+    from litestar_vite import StaticPlacement, StaticServerConfig
+
+    with pytest.raises(ValueError, match="NATIVE placement requires at least one mount"):
+        StaticServerConfig(placement=StaticPlacement.NATIVE)
+
+
+def test_static_server_config_asgi_without_reason_raises() -> None:
+    """ASGI placement must explain why Litestar's static router serves."""
+    from litestar_vite import StaticPlacement, StaticServerConfig
+
+    with pytest.raises(ValueError, match="ASGI placement requires a non-empty reason"):
+        StaticServerConfig(placement=StaticPlacement.ASGI)
 
 
 def test_vite_plugin_get_static_server_config_returns_production_bundle_mount(tmp_path: Path) -> None:
@@ -115,7 +142,8 @@ def test_vite_plugin_get_static_server_config_returns_production_bundle_mount(tm
 
     config = plugin.get_static_server_config()
 
-    assert config.fallback_reason is None
+    assert config.placement is StaticPlacement.NATIVE
+    assert config.reason is None
     assert len(config.mounts) == 1
     assert config.mounts[0].route == "/assets"
     assert config.mounts[0].directory == bundle_dir.resolve()
@@ -137,7 +165,7 @@ def test_vite_plugin_get_static_server_config_accepts_nested_vite_manifest(tmp_p
 
     config = plugin.get_static_server_config()
 
-    assert config.fallback_reason is None
+    assert config.placement is StaticPlacement.NATIVE
     assert config.mounts[0].directory == bundle_dir.resolve()
 
 
@@ -156,7 +184,7 @@ def test_vite_plugin_get_static_server_config_accepts_built_index_without_manife
 
     config = plugin.get_static_server_config()
 
-    assert config.fallback_reason is None
+    assert config.placement is StaticPlacement.NATIVE
     assert config.mounts[0].directory_index is None
 
 
@@ -189,8 +217,9 @@ def test_vite_plugin_get_static_server_config_rejects_ineligible_runtime_config(
     config = plugin.get_static_server_config()
 
     assert config.mounts == ()
-    assert config.fallback_reason is not None
-    assert reason in config.fallback_reason
+    assert config.placement is StaticPlacement.ASGI
+    assert config.reason is not None
+    assert reason in config.reason
 
 
 def test_vite_plugin_get_static_server_config_rejects_any_custom_static_config(tmp_path: Path) -> None:
@@ -210,8 +239,9 @@ def test_vite_plugin_get_static_server_config_rejects_any_custom_static_config(t
     config = plugin.get_static_server_config()
 
     assert config.mounts == ()
-    assert config.fallback_reason is not None
-    assert "custom Litestar static configuration" in config.fallback_reason
+    assert config.placement is StaticPlacement.ASGI
+    assert config.reason is not None
+    assert "custom Litestar static configuration" in config.reason
 
 
 @pytest.mark.parametrize(
@@ -234,8 +264,9 @@ def test_vite_plugin_get_static_server_config_rejects_non_local_or_root_route(tm
     config = plugin.get_static_server_config()
 
     assert config.mounts == ()
-    assert config.fallback_reason is not None
-    assert "local absolute path below '/'" in config.fallback_reason
+    assert config.placement is StaticPlacement.ASGI
+    assert config.reason is not None
+    assert "local absolute path below '/'" in config.reason
 
 
 @pytest.mark.parametrize("build_state", ["missing", "empty", "unmarked", "malformed", "non-object"])
@@ -261,7 +292,8 @@ def test_vite_plugin_get_static_server_config_rejects_invalid_build(tmp_path: Pa
     config = plugin.get_static_server_config()
 
     assert config.mounts == ()
-    assert config.fallback_reason is not None
+    assert config.placement is StaticPlacement.ASGI
+    assert config.reason is not None
 
 
 def test_vite_plugin_get_static_server_config_keeps_litestar_static_router(tmp_path: Path) -> None:
@@ -278,8 +310,8 @@ def test_vite_plugin_get_static_server_config_keeps_litestar_static_router(tmp_p
     )
     app_config = AppConfig()
 
-    assert plugin.get_static_server_config().fallback_reason is None
-    with patch("litestar_vite.plugin.create_static_files_router") as create_router:
+    assert plugin.get_static_server_config().placement is StaticPlacement.NATIVE
+    with patch("litestar_vite.plugin._core.create_static_files_router") as create_router:
         plugin.on_app_init(app_config)
 
     create_router.assert_called_once()
@@ -291,7 +323,7 @@ def test_vite_plugin_static_files_config_ignores_none_overrides() -> None:
     plugin = VitePlugin(static_files_config=static_config)
     app_config = AppConfig()
 
-    with patch("litestar_vite.plugin.create_static_files_router") as create_router:
+    with patch("litestar_vite.plugin._core.create_static_files_router") as create_router:
         plugin._configure_static_files(app_config)
 
     kwargs = create_router.call_args.kwargs
@@ -389,7 +421,7 @@ def test_vite_plugin_app_init_without_jinja_template_engine(tmp_path: Path) -> N
     # Should handle non-Jinja engines gracefully
 
 
-@patch("litestar_vite.plugin.JINJA_INSTALLED", False)
+@patch("litestar_vite.plugin._core.JINJA_INSTALLED", False)
 def test_vite_plugin_app_init_when_jinja_unavailable() -> None:
     """Test app initialization when Jinja is not available."""
     plugin = VitePlugin()
@@ -610,7 +642,7 @@ def test_vite_plugin_export_types_sync_skips_when_no_typegen_outputs_requested(t
     export.assert_not_called()
 
 
-@patch("litestar_vite.plugin.set_environment")
+@patch("litestar_vite.plugin._core.set_environment")
 def test_vite_plugin_lifespan_with_environment_setup(mock_set_env: Mock) -> None:
     """Test server lifespan with environment variable setup."""
     config = ViteConfig(runtime=RuntimeConfig(set_environment=True, dev_mode=False, start_dev_server=False))
@@ -633,7 +665,7 @@ def test_vite_plugin_lifespan_with_vite_process_management(mock_console: Mock, t
     plugin._config.types = False
     app = Mock(spec=Litestar)
 
-    with patch("litestar_vite.plugin.ViteProcess") as mock_vite_process:
+    with patch("litestar_vite.plugin._core.ViteProcess") as mock_vite_process:
         mock_instance = Mock()
         mock_vite_process.return_value = mock_instance
         with patch.object(mock_instance, "start") as mock_start:
@@ -661,7 +693,7 @@ def test_vite_plugin_lifespan_with_watch_mode(mock_console: Mock, tmp_path: Path
     plugin._config.types = False
     app = Mock(spec=Litestar)
 
-    with patch("litestar_vite.plugin.ViteProcess") as mock_vite_process:
+    with patch("litestar_vite.plugin._core.ViteProcess") as mock_vite_process:
         mock_instance = Mock()
         mock_vite_process.return_value = mock_instance
         with patch.object(mock_instance, "start") as mock_start:
@@ -685,7 +717,7 @@ def test_vite_plugin_lifespan_defers_vite_process_initialization_until_needed(tm
 
     assert plugin._vite_process is None
 
-    with patch("litestar_vite.plugin.ViteProcess") as mock_process:
+    with patch("litestar_vite.plugin._core.ViteProcess") as mock_process:
         mock_instance = Mock()
         mock_process.return_value = mock_instance
 
@@ -800,7 +832,7 @@ def test_vite_process_start_creates_daemon_watcher() -> None:
     process.stop()
 
 
-@patch("litestar_vite.plugin.os.killpg")
+@patch("litestar_vite.plugin._core.os.killpg")
 def test_vite_process_restarts_unexpected_exit(mock_killpg: Mock, monkeypatch: pytest.MonkeyPatch) -> None:
     """Unexpected process exits are restarted with the original command and cwd."""
     monkeypatch.setattr(ViteProcess, "_RESTART_BACKOFFS", (0.0, 0.0, 0.0), raising=False)
@@ -824,7 +856,7 @@ def test_vite_process_restarts_unexpected_exit(mock_killpg: Mock, monkeypatch: p
     assert mock_killpg.called
 
 
-@patch("litestar_vite.plugin.os.killpg")
+@patch("litestar_vite.plugin._core.os.killpg")
 def test_vite_process_resets_restart_attempts_after_recovered_crash(
     mock_killpg: Mock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -854,7 +886,7 @@ def test_vite_process_resets_restart_attempts_after_recovered_crash(
 
 
 @patch("litestar_vite.plugin._process.time.sleep", return_value=None)
-@patch("litestar_vite.plugin.os.killpg")
+@patch("litestar_vite.plugin._core.os.killpg")
 def test_vite_process_crash_cleanup_escalates_before_restart(
     mock_killpg: Mock, mock_sleep: Mock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -871,9 +903,10 @@ def test_vite_process_crash_cleanup_escalates_before_restart(
     first.exit(1)
     _wait_until(lambda: executor.run.call_count == 2 and process.process is restarted)
 
-    assert mock_killpg.call_args_list[0].args == (first.pid, signal.SIGTERM)
+    first_process_signals = [call.args for call in mock_killpg.call_args_list if call.args[0] == first.pid]
+    assert first_process_signals[0] == (first.pid, signal.SIGTERM)
     assert any(call.args == (0.5,) for call in mock_sleep.call_args_list)
-    assert any(call.args == (first.pid, signal.SIGKILL) for call in mock_killpg.call_args_list)
+    assert (first.pid, signal.SIGKILL) in first_process_signals
 
     process.stop()
 
@@ -895,7 +928,7 @@ def test_vite_process_stops_after_capped_restart_retries(mock_console: Mock, mon
     assert mock_console.print.called
 
 
-@patch("litestar_vite.plugin.os.killpg")
+@patch("litestar_vite.plugin._core.os.killpg")
 def test_vite_process_intentional_stop_does_not_restart(mock_killpg: Mock, monkeypatch: pytest.MonkeyPatch) -> None:
     """Intentional stop() must not be treated as a crash by the watcher."""
     monkeypatch.setattr(ViteProcess, "_RESTART_BACKOFFS", (0.0, 0.0, 0.0), raising=False)
@@ -933,7 +966,7 @@ def test_vite_process_start_after_stop_is_tracked_for_cleanup() -> None:
     process.stop()
 
 
-@patch("litestar_vite.plugin.os.killpg")
+@patch("litestar_vite.plugin._core.os.killpg")
 def test_vite_process_stop_removes_stopped_instance(mock_killpg: Mock) -> None:
     """Test stopped ViteProcess instances are removed from instance tracking."""
     mock_process = Mock()
@@ -1010,7 +1043,7 @@ def test_vite_process_stop_no_process() -> None:
     process.stop()
 
 
-@patch("litestar_vite.plugin.os.killpg")
+@patch("litestar_vite.plugin._core.os.killpg")
 @patch("signal.SIGTERM", 15)
 def test_vite_process_stop_graceful(mock_killpg: Mock) -> None:
     """Test graceful process stop."""
@@ -1031,7 +1064,7 @@ def test_vite_process_stop_graceful(mock_killpg: Mock) -> None:
     mock_process.wait.assert_called_once()
 
 
-@patch("litestar_vite.plugin.os.killpg")
+@patch("litestar_vite.plugin._core.os.killpg")
 @patch("signal.SIGTERM", 15)
 @patch("signal.SIGKILL", 9)
 def test_vite_process_stop_force_kill(mock_killpg: Mock) -> None:
@@ -1118,7 +1151,7 @@ def test_vite_process_resolve_taskkill_uses_system_root(
     mock_which.assert_called_once_with("taskkill")
 
 
-@patch("litestar_vite.plugin.os.killpg")
+@patch("litestar_vite.plugin._core.os.killpg")
 @patch("litestar_vite.plugin._utils.console")
 def test_vite_process_stop_failure(mock_console: Mock, mock_killpg: Mock) -> None:
     """Test process stop failure handling."""
@@ -1186,7 +1219,7 @@ def test_vite_plugin_jinja_with_jinja_available(tmp_path: Path) -> None:
     assert result is app_config
 
 
-@patch("litestar_vite.plugin.JINJA_INSTALLED", False)
+@patch("litestar_vite.plugin._core.JINJA_INSTALLED", False)
 def test_vite_plugin_jinja_without_jinja_available() -> None:
     """Test plugin behavior when Jinja is not available."""
     plugin = VitePlugin()
@@ -1324,7 +1357,7 @@ def test_vite_plugin_optional_works_without_jinja_template_engine() -> None:
     assert plugin._config is not None
 
 
-@patch("litestar_vite.plugin.JINJA_INSTALLED", False)
+@patch("litestar_vite.plugin._core.JINJA_INSTALLED", False)
 def test_vite_plugin_optional_handles_missing_jinja_contrib_module() -> None:
     """Test plugin behavior when litestar.plugins.jinja module is not available."""
     plugin = VitePlugin()
@@ -1350,7 +1383,7 @@ def test_vite_plugin_optional_with_jinja_engine_when_available() -> None:
     assert result is app_config
 
 
-@patch("litestar_vite.plugin.JINJA_INSTALLED", False)
+@patch("litestar_vite.plugin._core.JINJA_INSTALLED", False)
 def test_vite_plugin_optional_graceful_degradation_without_jinja() -> None:
     """Test graceful degradation when Jinja is completely absent."""
     plugin = VitePlugin()
@@ -1417,7 +1450,7 @@ def test_template_mode_jinja_callables_matrix(
     from litestar.stores.memory import MemoryStore
     from litestar.types import Middleware
 
-    import litestar_vite.plugin as plugin_module
+    import litestar_vite.plugin._core as plugin_module
     from litestar_vite.config import _vite as vite_config_mod
 
     monkeypatch.setattr(vite_config_mod, "JINJA_INSTALLED", jinja_installed)

@@ -367,9 +367,9 @@ def _prompt_for_options(
     framework: "Any",
     enable_ssr: "bool | None",
     tailwind: bool,
-    enable_types: bool,
+    enable_types: "bool | None",
     generate_zod: bool,
-    generate_client: bool,
+    generate_client: "bool | None",
     no_prompt: bool,
 ) -> "tuple[bool, bool, bool, bool, bool]":
     """Prompt user for optional features if not specified.
@@ -378,9 +378,9 @@ def _prompt_for_options(
         framework: The framework template.
         enable_ssr: SSR flag or None.
         tailwind: TailwindCSS flag.
-        enable_types: Type generation flag.
+        enable_types: Type generation flag: ``True`` (opt in), ``False`` (opt out), or ``None`` (unset).
         generate_zod: Zod schema generation flag.
-        generate_client: API client generation flag.
+        generate_client: API client flag: ``True`` (opt in), ``False`` (opt out), or ``None`` (unset).
         no_prompt: Whether to skip prompts.
 
     Returns:
@@ -394,14 +394,14 @@ def _prompt_for_options(
     if not tailwind and not no_prompt:
         tailwind = Confirm.ask("Add TailwindCSS?", default=False)
 
-    if not enable_types:
+    if enable_types is None:
         enable_types = True if no_prompt else Confirm.ask("Enable TypeScript type generation?", default=True)
 
     if enable_types:
         if not generate_zod and not no_prompt:
             generate_zod = Confirm.ask("Generate Zod schemas for validation?", default=False)
 
-        if not generate_client:
+        if generate_client is None:
             generate_client = True if no_prompt else Confirm.ask("Generate API client?", default=True)
     else:
         generate_zod = False
@@ -521,11 +521,21 @@ def vite_doctor(
 )
 @option(
     "--enable-types",
-    type=bool,
-    help="Enable TypeScript type generation from routes.",
+    "enable_types",
+    flag_value=True,
+    default=None,
     required=False,
     show_default=False,
-    is_flag=True,
+    help="Enable TypeScript type generation from routes.",
+)
+@option(
+    "--no-enable-types",
+    "enable_types",
+    flag_value=False,
+    default=None,
+    required=False,
+    show_default=False,
+    help="Disable TypeScript type generation from routes.",
 )
 @option(
     "--generate-zod",
@@ -537,11 +547,21 @@ def vite_doctor(
 )
 @option(
     "--generate-client",
-    type=bool,
-    help="Generate API client from OpenAPI schema.",
+    "generate_client",
+    flag_value=True,
+    default=None,
     required=False,
     show_default=False,
-    is_flag=True,
+    help="Generate API client from OpenAPI schema.",
+)
+@option(
+    "--no-generate-client",
+    "generate_client",
+    flag_value=False,
+    default=None,
+    required=False,
+    show_default=False,
+    help="Disable API client generation from OpenAPI schema.",
 )
 @option("--overwrite", type=bool, help="Overwrite any files in place.", default=False, is_flag=True)
 @option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
@@ -575,9 +595,9 @@ def vite_init(
     resource_path: "Path | None",
     static_path: "Path | None",
     tailwind: "bool",
-    enable_types: "bool",
+    enable_types: "bool | None",
     generate_zod: "bool",
-    generate_client: "bool",
+    generate_client: "bool | None",
     overwrite: "bool",
     verbose: "bool",
     no_prompt: "bool",

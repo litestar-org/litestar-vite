@@ -27,8 +27,8 @@ from litestar_vite.plugin import StaticFilesConfig
 class _GranianStaticConfigShape(Protocol):
     """Structural provider result consumed by Granian 0.16 auto mode."""
 
+    placement: str
     mounts: Sequence[object]
-    fallback_reason: str | None
 
 
 class _StaticHeaderMiddleware:
@@ -122,7 +122,9 @@ def test_vite_provider_matches_granian_structural_contract(tmp_path: Path) -> No
     config = provider_method()
 
     assert isinstance(config, _GranianStaticConfigShape)
-    assert config.fallback_reason is None
+    # Pin the no-import consumer contract: a str-enum compares structurally against
+    # the literal "native" without importing litestar_vite's StaticPlacement.
+    assert config.placement == "native"
     assert len(config.mounts) == 1
     mount = config.mounts[0]
     assert getattr(mount, "route") == "/assets"
@@ -163,8 +165,10 @@ def test_real_litestar_run_serves_same_static_asset(tmp_path: Path, server: str)
             "",
             "vite = VitePlugin(config=ViteConfig(",
             "    mode='template',",
-            f"    paths=PathConfig(root=Path({str(tmp_path)!r}), "
-            f"bundle_dir=Path({str(bundle_dir)!r}), asset_url='/assets/'),",
+            (
+                f"    paths=PathConfig(root=Path({str(tmp_path)!r}), "
+                f"bundle_dir=Path({str(bundle_dir)!r}), asset_url='/assets/'),"
+            ),
             "    runtime=RuntimeConfig(dev_mode=False),",
             "))",
             f"app = Litestar(plugins={plugin_list})",

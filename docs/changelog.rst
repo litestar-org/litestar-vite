@@ -11,7 +11,7 @@ Litestar Vite Changelog
 -------------------
 
 - Added a server-neutral production static-provider contract for optional Granian 0.16+ native serving while retaining Litestar's static route on every ASGI server.
-- Added safe fallback reasons for development, framework/SSR, protected or customized assets, unsafe routes, and invalid production builds.
+- Added an explicit native/ASGI placement result with a diagnostic reason for development, framework/SSR, protected or customized assets, unsafe routes, and invalid production builds.
 - Fixed Vite and Inertia SSR sidecar ownership so the Litestar server lifespan performs graceful process-group cleanup without installing competing global signal handlers.
 - Fixed Vite's run-environment handling so built-in Uvicorn and Granian-backed ``litestar run`` commands expose the same effective host and port to frontend sidecars and the ``.litestar.json`` bridge.
 
@@ -29,6 +29,8 @@ Migration notes
 - Inertia asset-version mismatches now follow the protocol more strictly: stale ``GET`` visits receive the ``409`` refresh response, while stale non-``GET`` submissions continue to their handlers. Review handlers that relied on non-``GET`` mismatch short-circuiting.
 - Inertia infinite-scroll metadata is now emitted as ``scrollProps`` keyed by data prop name. Frontend code that read a single flat scroll config should read ``scrollProps.<propName>`` instead.
 - Type generation now fails production builds by default when generation fails. Set ``TypeGenConfig(fail_on_error=False)`` or ``types.failOnError = false`` to keep warn-only build behavior.
+- ``litestar assets init --no-prompt`` now defaults TypeScript type generation and API client generation ON (previously off). Pass the new ``--no-enable-types`` or ``--no-generate-client`` flags to restore the previous behavior non-interactively.
+- ``litestar assets init --no-prompt`` now aborts with exit code ``2`` when scaffold files (e.g. ``package.json``, ``vite.config.ts``) already exist, instead of proceeding and skipping them. Pass ``--overwrite`` to proceed non-interactively.
 
 - Fixed Inertia asset-version mismatch handling so only ``GET`` requests can return the protocol ``409`` refresh response; non-GET submissions now continue to their handlers instead of being downgraded and losing the request body. (#306)
 - Fixed ``share()`` with Inertia redirects so top-level sync special props are materialized before session storage and async special props are skipped instead of crashing session serialization. (#306)
@@ -52,6 +54,7 @@ Migration notes
 - Changed SPA/proxy route-prefix fallbacks so ``/docs`` is no longer reserved unless Litestar actually registers docs there or ``RuntimeConfig.extra_route_prefixes`` includes it. (#317)
 - Added ``ViteConfig(enabled=...)`` and ``VITE_ENABLED`` so Vite routes and lifespans can be disabled in CLI, worker, and test contexts while keeping asset CLI commands available. (#301, #310)
 - Added ``RuntimeConfig.extra_route_prefixes`` for deliberately reserving custom backend prefixes from SPA/proxy fallbacks. (#317)
+- Added ``--no-enable-types`` and ``--no-generate-client`` opt-out flags to ``litestar assets init`` so ``--no-prompt`` runs can disable TypeScript type generation and API client generation non-interactively.
 - Fixed ``getCsrfToken()`` so SPA and HTMX helpers can fall back to the ``csrftoken`` or ``XSRF-TOKEN`` cookie when injected page-state sources are absent. (#299, #310)
 - Hardened HTMX helper handling so dynamic ``href``, ``src``, and ``action`` attributes reject dangerous protocols and expression checks catch denied globals reconstructed through string concatenation. (#316)
 - Simplified Vite integration internals by consolidating type-config resolution, hotfile handling, proxy helpers, Inertia prop wrappers, and typing-only helper paths without removing public exports. (#316)

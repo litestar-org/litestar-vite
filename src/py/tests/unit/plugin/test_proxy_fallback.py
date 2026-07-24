@@ -111,7 +111,7 @@ def test_proxy_still_wins_when_hot_file_is_present(tmp_path: Path) -> None:
     (bundle / "hot").write_text("http://upstream")
     proxy_client = _DummyAsyncClient(httpx.Response(200, headers={"content-type": "text/javascript"}, text="upstream"))
 
-    with patch("litestar_vite.plugin.create_proxy_client", return_value=proxy_client):
+    with patch("litestar_vite.plugin._core.create_proxy_client", return_value=proxy_client):
         app = _build_vite_app(tmp_path)
         with TestClient(app=app) as client:
             response = client.get("/static/dist/assets/main.js")
