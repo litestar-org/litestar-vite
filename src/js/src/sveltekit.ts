@@ -34,6 +34,7 @@ import path from "node:path"
 import colors from "picocolors"
 import type { ViteDevServer } from "vite"
 import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema.js"
+import { installManagedShutdown } from "./shared/managed-shutdown.js"
 import { normalizeHost, resolveHotFilePath, resolveLitestarPort } from "./shared/network.js"
 import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig } from "./shared/typegen-plugin.js"
 import { hmrServerConfig } from "./shared/vite-compat.js"
@@ -375,6 +376,7 @@ export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): any
     },
 
     configureServer(server: ViteDevServer) {
+      installManagedShutdown(server)
       if (config.verbose) {
         server.middlewares.use((req: IncomingMessage, _res: ServerResponse, next: () => void) => {
           if (req.url?.startsWith(config.apiPrefix)) {

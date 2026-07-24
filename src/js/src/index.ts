@@ -9,6 +9,7 @@ import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-re
 import { checkBackendAvailability, type LitestarMeta, loadLitestarMeta } from "./litestar-meta.js"
 import { type BridgeSchema, readBridgeConfig } from "./shared/bridge-schema.js"
 import { createLogger } from "./shared/logger.js"
+import { installManagedShutdown } from "./shared/managed-shutdown.js"
 import { resolveLitestarPort } from "./shared/network.js"
 import { resolveDefaultSdkClientPlugin } from "./shared/typegen-core.js"
 import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig } from "./shared/typegen-plugin.js"
@@ -725,6 +726,9 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
 
       // Clean up hot file on exit
       if (!exitHandlersBound) {
+        installManagedShutdown(server, () => {
+          shuttingDown = true
+        })
         const clean = () => {
           if (pluginConfig.hotFile && fs.existsSync(pluginConfig.hotFile)) {
             // Check hotFile exists

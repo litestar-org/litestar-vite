@@ -15,8 +15,31 @@ from litestar.middleware.session.client_side import CookieBackendConfig
 
 from litestar_vite.config import InertiaConfig, InertiaSSRConfig, PathConfig, RuntimeConfig, SPAConfig, ViteConfig
 from litestar_vite.plugin import VitePlugin
+from litestar_vite.plugin._process import ViteProcess
 
 _SESSION = CookieBackendConfig(secret=b"x" * 32).middleware
+
+
+def test_stop_closes_stdin_before_signalling(tmp_path: Path) -> None:
+    """A managed sidecar gets a bounded cooperative shutdown before process-group signals."""
+    process = MagicMock(name="managed_sidecar")
+    process.poll.side_effect = [None, None]
+    process.stdin.closed = False
+    process.wait.return_value = 0
+    executor = MagicMock()
+    executor.run.return_value = process
+    manager = ViteProcess(executor)
+
+    with (
+        patch.object(ViteProcess, "_start_watcher"),
+        patch("litestar_vite.plugin._process.os.killpg") as kill_process_group,
+    ):
+        manager.start(["npm", "run", "dev"], tmp_path)
+        manager.stop(timeout=5.0)
+
+    process.stdin.close.assert_called_once_with()
+    process.wait.assert_called_once_with(timeout=2.0)
+    kill_process_group.assert_not_called()
 
 
 def _build_hybrid_plugin_with_ssr(

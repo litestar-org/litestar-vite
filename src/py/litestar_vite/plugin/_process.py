@@ -33,6 +33,7 @@ class ViteProcess:
     _atexit_registered: bool = False
     _RESTART_BACKOFFS: ClassVar[tuple[float, ...]] = (1.0, 2.0, 4.0)
     _RESTART_STABILITY_SECONDS: ClassVar[float] = 5.0
+    _COOPERATIVE_SHUTDOWN_SECONDS: ClassVar[float] = 2.0
 
     def __init__(self, executor: "JSExecutor") -> None:
         """Initialize the Vite process manager.
@@ -259,6 +260,17 @@ class ViteProcess:
             self.process = None
             return
         process = self.process
+        stdin = getattr(process, "stdin", None)
+        if stdin is not None and not getattr(stdin, "closed", False):
+            with suppress(Exception):
+                stdin.close()
+            try:
+                process.wait(timeout=max(0.0, min(timeout, self._COOPERATIVE_SHUTDOWN_SECONDS)))
+            except subprocess.TimeoutExpired:
+                pass
+            else:
+                self.process = None
+                return
         self._terminate_specific_process_group(process, timeout)
         self.process = None
 

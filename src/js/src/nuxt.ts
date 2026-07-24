@@ -28,6 +28,7 @@ import path from "node:path"
 import colors from "picocolors"
 import type { Plugin } from "vite"
 import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema.js"
+import { installManagedShutdown } from "./shared/managed-shutdown.js"
 import { normalizeHost, resolveHotFilePath, resolveLitestarPort } from "./shared/network.js"
 import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig } from "./shared/typegen-plugin.js"
 import { hmrServerConfig } from "./shared/vite-compat.js"
@@ -337,6 +338,7 @@ function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
       }
     },
     configureServer(server) {
+      installManagedShutdown(server)
       if (config.verbose) {
         server.middlewares.use((req, _res, next) => {
           if (req.url?.startsWith(config.apiPrefix)) {

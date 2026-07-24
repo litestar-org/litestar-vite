@@ -31,6 +31,7 @@ import type { IncomingMessage, ServerResponse } from "node:http"
 import path from "node:path"
 import type { Plugin, ViteDevServer } from "vite"
 import { readBridgeConfig } from "./shared/bridge-schema.js"
+import { installManagedShutdown } from "./shared/managed-shutdown.js"
 import { normalizeHost, resolveHotFilePath, resolveLitestarPort } from "./shared/network.js"
 import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig } from "./shared/typegen-plugin.js"
 import { hmrServerConfig } from "./shared/vite-compat.js"
@@ -369,6 +370,9 @@ function createProxyPlugin(config: ResolvedLitestarAstroConfig): Plugin {
           },
         },
       }
+    },
+    configureServer(server: ViteDevServer) {
+      installManagedShutdown(server)
     },
   }
 }
