@@ -6,7 +6,7 @@ Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA
 
 - One-port dev: proxies Vite HTTP + WS/HMR through Litestar on a single ASGI port by default.
 - Framework-mode support: use `mode="framework"` (alias `mode="ssr"`) for Astro, Nuxt, and SvelteKit. Litestar proxies everything except your API routes.
-- Production assets: keeps a Litestar static route on every ASGI server and can advertise safe bundles to Granian 0.16+ for native serving.
+- Production assets: reads the Vite manifest from `public/manifest.json` (configurable) and serves under `asset_url`.
 - Type-safe frontends: optional OpenAPI/routes export plus `@hey-api/openapi-ts` via the Vite plugin.
 - Inertia support: Inertia v2/v3 protocol support with session middleware, script-element bootstrap by default, and optional SSR.
 
