@@ -7,6 +7,9 @@ exercise the lifecycle without actually spawning a real Node process — the
 """
 
 import io
+import queue
+import subprocess
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -20,6 +23,25 @@ from litestar_vite.plugin import VitePlugin
 from litestar_vite.plugin._process import ViteProcess
 
 _SESSION = CookieBackendConfig(secret=b"x" * 32).middleware
+
+
+class _BlockingStderr:
+    """Controllable binary stderr stream for restart-generation tests."""
+
+    def __init__(self) -> None:
+        self._lines: queue.Queue[bytes] = queue.Queue()
+        self.started = threading.Event()
+        self.finished = threading.Event()
+
+    def readline(self) -> bytes:
+        self.started.set()
+        line = self._lines.get(timeout=1.0)
+        if not line:
+            self.finished.set()
+        return line
+
+    def feed(self, line: bytes) -> None:
+        self._lines.put(line)
 
 
 def test_stop_closes_stdin_before_signalling(tmp_path: Path) -> None:
@@ -44,6 +66,35 @@ def test_stop_closes_stdin_before_signalling(tmp_path: Path) -> None:
     kill_process_group.assert_not_called()
 
 
+def test_stop_shares_one_timeout_budget_across_shutdown_stages() -> None:
+    """Cooperative, signal, and forced waits consume one overall timeout."""
+    clock = [100.0]
+    wait_timeouts: list[float] = []
+    process = MagicMock(name="managed_sidecar", pid=12345)
+    process.poll.return_value = None
+    process.stdin.closed = False
+
+    def wait(*, timeout: float) -> int:
+        wait_timeouts.append(timeout)
+        clock[0] += timeout
+        if len(wait_timeouts) < 3:
+            raise subprocess.TimeoutExpired("npm", timeout)
+        return 0
+
+    process.wait.side_effect = wait
+    manager = ViteProcess(MagicMock())
+    manager.process = process
+
+    with (
+        patch("litestar_vite.plugin._process.time.monotonic", side_effect=lambda: clock[0]),
+        patch("litestar_vite.plugin._process.os.killpg") as kill_process_group,
+    ):
+        manager.stop(timeout=5.0)
+
+    assert wait_timeouts == pytest.approx([2.0, 3.0, 0.0])
+    assert kill_process_group.call_args_list == [((12345, 15),), ((12345, 9),)]
+
+
 def test_immediate_exit_error_captures_stderr(tmp_path: Path) -> None:
     """A sidecar that fails before startup reports its captured stderr."""
     process = MagicMock(name="failed_sidecar")
@@ -62,6 +113,34 @@ def test_immediate_exit_error_captures_stderr(tmp_path: Path) -> None:
         assert exc_info.value.stderr is not None
         assert "boom" in exc_info.value.stderr
         process.communicate.assert_not_called()
+    finally:
+        manager.stop()
+
+
+def test_restart_stderr_capture_excludes_stale_previous_generation() -> None:
+    """A late line from an old reader cannot contaminate a restarted process error."""
+    old_stderr = _BlockingStderr()
+    old_process = MagicMock(name="old_sidecar")
+    old_process.stderr = old_stderr
+    new_process = MagicMock(name="new_sidecar")
+    new_process.stderr = io.BytesIO(b"new failure\n")
+    new_process.returncode = 1
+    manager = ViteProcess(MagicMock())
+
+    try:
+        manager._start_stderr_drain(old_process)
+        assert old_stderr.started.wait(timeout=1.0)
+        manager._start_stderr_drain(new_process)
+
+        old_stderr.feed(b"stale previous process\n")
+        old_stderr.feed(b"")
+        assert old_stderr.finished.wait(timeout=1.0)
+
+        error = manager._build_immediate_exit_error(new_process, ["npm", "run", "dev"])
+
+        assert error.stderr is not None
+        assert "new failure" in error.stderr
+        assert "stale previous process" not in error.stderr
     finally:
         manager.stop()
 

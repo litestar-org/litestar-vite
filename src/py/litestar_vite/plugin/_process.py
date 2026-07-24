@@ -52,7 +52,7 @@ class ViteProcess:
         self._stopping = False
         self._watcher_generation = 0
         self._watcher_thread: "threading.Thread | None" = None
-        self._stderr_buffer: deque[str] = deque(maxlen=200)
+        self._stderr_captures: dict[int, tuple[deque[str], threading.Thread]] = {}
         self._stderr_thread: "threading.Thread | None" = None
 
         ViteProcess._instances.append(self)
@@ -148,10 +148,14 @@ class ViteProcess:
         return process
 
     def _build_immediate_exit_error(self, process: "subprocess.Popen[Any]", command: list[str]) -> ViteProcessError:
-        if self._stderr_thread is not None:
-            self._stderr_thread.join(timeout=0.5)
+        capture = self._stderr_captures.pop(id(process), None)
+        if capture is not None:
+            stderr_buffer, stderr_thread = capture
+            stderr_thread.join(timeout=0.5)
+        else:
+            stderr_buffer = deque[str]()
         out_str = ""
-        err_str = "".join(self._stderr_buffer)
+        err_str = "".join(stderr_buffer)
         console.print(
             "[red]Vite process exited immediately.[/]\n"
             f"[red]Command:[/] {' '.join(command)}\n"
@@ -169,15 +173,15 @@ class ViteProcess:
         if stderr is None:
             self._stderr_thread = None
             return
-        if self._stderr_thread is not None and self._stderr_thread.is_alive():
-            self._stderr_thread.join(timeout=0.5)
-        self._stderr_buffer.clear()
+        stderr_buffer: deque[str] = deque(maxlen=200)
         self._stderr_thread = threading.Thread(
-            target=self._drain_stderr, args=(stderr,), name="litestar-vite-stderr-drain", daemon=True
+            target=self._drain_stderr, args=(stderr, stderr_buffer), name="litestar-vite-stderr-drain", daemon=True
         )
+        self._stderr_captures[id(process)] = (stderr_buffer, self._stderr_thread)
         self._stderr_thread.start()
 
-    def _drain_stderr(self, stderr: Any) -> None:
+    @staticmethod
+    def _drain_stderr(stderr: Any, stderr_buffer: deque[str]) -> None:
         """Mirror stderr lines to the terminal and retain recent diagnostics."""
         with suppress(Exception):
             while True:
@@ -185,7 +189,7 @@ class ViteProcess:
                 if not isinstance(line, (bytes, str)) or not line:
                     return
                 text = line.decode(errors="replace") if isinstance(line, bytes) else str(line)
-                self._stderr_buffer.append(text)
+                stderr_buffer.append(text)
                 sys.stderr.write(text)
                 sys.stderr.flush()
 
@@ -215,6 +219,7 @@ class ViteProcess:
             exit_code = process.wait()
             process_runtime = time.monotonic() - wait_started
             self._terminate_exited_process_group(process, timeout=0.5)
+            self._stderr_captures.pop(id(process), None)
 
             with self._lock:
                 if self._watcher_generation != generation or self._stopping or process is not self.process:
@@ -288,26 +293,37 @@ class ViteProcess:
         (e.g., Vite spawning Node/SSR framework processes). The process is started with
         ``start_new_session=True`` so the process id is the group id.
         """
-        if not self.process or self.process.poll() is not None:
+        if not self.process:
             self.process = None
             return
         process = self.process
+        if process.poll() is not None:
+            self._stderr_captures.pop(id(process), None)
+            self.process = None
+            return
+        deadline = time.monotonic() + max(0.0, timeout)
         stdin = getattr(process, "stdin", None)
         if stdin is not None and not getattr(stdin, "closed", False):
             with suppress(Exception):
                 stdin.close()
             try:
-                process.wait(timeout=max(0.0, min(timeout, self._COOPERATIVE_SHUTDOWN_SECONDS)))
+                process.wait(timeout=min(self._COOPERATIVE_SHUTDOWN_SECONDS, self._remaining_timeout(deadline)))
             except subprocess.TimeoutExpired:
                 pass
             else:
+                self._stderr_captures.pop(id(process), None)
                 self.process = None
                 return
-        self._terminate_specific_process_group(process, timeout)
+        self._terminate_specific_process_group_until(process, deadline)
+        self._stderr_captures.pop(id(process), None)
         self.process = None
 
     def _terminate_specific_process_group(self, process: "subprocess.Popen[Any]", timeout: float) -> None:
         """Terminate one process group without changing manager state."""
+        self._terminate_specific_process_group_until(process, time.monotonic() + max(0.0, timeout))
+
+    def _terminate_specific_process_group_until(self, process: "subprocess.Popen[Any]", deadline: float) -> None:
+        """Terminate one process group within an existing shutdown deadline."""
         try:
             if platform.system() == "Windows":
                 process.send_signal(_CTRL_BREAK_EVENT)
@@ -316,10 +332,16 @@ class ViteProcess:
         except ProcessLookupError:
             pass
         try:
-            process.wait(timeout=timeout)
+            process.wait(timeout=self._remaining_timeout(deadline))
         except subprocess.TimeoutExpired:
             self._force_kill_specific_process_group(process)
-            process.wait(timeout=1.0)
+            with suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=min(1.0, self._remaining_timeout(deadline)))
+
+    @staticmethod
+    def _remaining_timeout(deadline: float) -> float:
+        """Return the non-negative time remaining in a shutdown budget."""
+        return max(0.0, deadline - time.monotonic())
 
     def _terminate_exited_process_group(self, process: "subprocess.Popen[Any]", *, timeout: float) -> None:
         """Best-effort cleanup for child processes left in an exited process group."""

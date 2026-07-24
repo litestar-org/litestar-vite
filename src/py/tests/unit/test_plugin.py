@@ -1151,7 +1151,8 @@ def test_vite_process_stop_windows_sends_ctrl_break(mock_system: Mock, monkeypat
     process.stop()
 
     mock_process.send_signal.assert_called_once_with(1234)
-    mock_process.wait.assert_called_once_with(timeout=5.0)
+    mock_process.wait.assert_called_once()
+    assert 0.0 < mock_process.wait.call_args.kwargs["timeout"] <= 5.0
     mock_system.assert_called()
 
 
@@ -1161,16 +1162,29 @@ def test_vite_process_stop_windows_sends_ctrl_break(mock_system: Mock, monkeypat
 def test_vite_process_stop_windows_force_kills_tree(
     mock_system: Mock, mock_which: Mock, mock_run: Mock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A stuck Windows sidecar is force-killed as a tree with a list command."""
+    """A stuck managed Windows sidecar escalates from stdin EOF to tree cleanup."""
+    clock = [100.0]
+    wait_timeouts: list[float] = []
     monkeypatch.setattr("litestar_vite.plugin._process._CTRL_BREAK_EVENT", 1234, raising=False)
+    monkeypatch.setattr("litestar_vite.plugin._process.time.monotonic", lambda: clock[0])
     mock_process = Mock(pid=12345)
     mock_process.poll.return_value = None
-    mock_process.wait.side_effect = [subprocess.TimeoutExpired("cmd", 2.5), 0]
+    mock_process.stdin.closed = False
+
+    def wait(*, timeout: float) -> int:
+        wait_timeouts.append(timeout)
+        clock[0] += timeout
+        if len(wait_timeouts) < 3:
+            raise subprocess.TimeoutExpired("cmd", timeout)
+        return 0
+
+    mock_process.wait.side_effect = wait
     process = ViteProcess(Mock())
     process.process = mock_process
 
     process.stop(timeout=2.5)
 
+    mock_process.stdin.close.assert_called_once_with()
     mock_process.send_signal.assert_called_once_with(1234)
     mock_run.assert_called_once_with(
         ["C:/Windows/System32/taskkill.exe", "/PID", "12345", "/T", "/F"],
@@ -1179,7 +1193,7 @@ def test_vite_process_stop_windows_force_kills_tree(
         capture_output=True,
         timeout=1.0,
     )
-    assert mock_process.wait.call_args_list[-1].kwargs == {"timeout": 1.0}
+    assert wait_timeouts == pytest.approx([2.0, 0.5, 0.0])
     mock_system.assert_called()
     mock_which.assert_called_once_with("taskkill")
 
