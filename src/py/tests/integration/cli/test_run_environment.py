@@ -15,9 +15,15 @@ from tests.integration.cli.conftest import CreateAppFileFixture
 
 @pytest.mark.parametrize("server", ["uvicorn", "granian"])
 def test_run_command_exports_effective_bind_for_vite(
-    server: str, runner: CliRunner, create_app_file: CreateAppFileFixture, root_command: LitestarGroup
+    server: str,
+    runner: CliRunner,
+    create_app_file: CreateAppFileFixture,
+    root_command: LitestarGroup,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Both Litestar run providers expose the same effective bind to Vite."""
+    for name in ("APP_URL", "LITESTAR_HOST", "LITESTAR_PORT", "PORT"):
+        monkeypatch.delenv(name, raising=False)
     granian_import = "from litestar_granian import GranianPlugin" if server == "granian" else ""
     plugin_list = "[vite, GranianPlugin()]" if server == "granian" else "[vite]"
     app_file = create_app_file(
