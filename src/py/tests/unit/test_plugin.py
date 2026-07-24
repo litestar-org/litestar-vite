@@ -1091,10 +1091,30 @@ def test_vite_process_stop_windows_force_kills_tree(
 
     mock_process.send_signal.assert_called_once_with(1234)
     mock_run.assert_called_once_with(
-        ["C:/Windows/System32/taskkill.exe", "/PID", "12345", "/T", "/F"], check=False, shell=False, capture_output=True
+        ["C:/Windows/System32/taskkill.exe", "/PID", "12345", "/T", "/F"],
+        check=False,
+        shell=False,
+        capture_output=True,
+        timeout=1.0,
     )
     assert mock_process.wait.call_args_list[-1].kwargs == {"timeout": 1.0}
     mock_system.assert_called()
+    mock_which.assert_called_once_with("taskkill")
+
+
+@patch("litestar_vite.plugin._process.shutil.which", return_value=None)
+def test_vite_process_resolve_taskkill_uses_system_root(
+    mock_which: Mock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows tree termination remains available when System32 is absent from PATH."""
+    taskkill = tmp_path / "System32" / "taskkill.exe"
+    taskkill.parent.mkdir()
+    taskkill.touch()
+    monkeypatch.setenv("SYSTEMROOT", str(tmp_path))
+
+    resolved = ViteProcess._resolve_taskkill()
+
+    assert resolved == str(taskkill)
     mock_which.assert_called_once_with("taskkill")
 
 

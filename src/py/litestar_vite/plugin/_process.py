@@ -298,19 +298,34 @@ class ViteProcess:
     def _force_kill_specific_process_group(self, process: "subprocess.Popen[Any]") -> None:
         """Force kill a specific process group if still alive."""
         if platform.system() == "Windows":
-            taskkill = shutil.which("taskkill")
+            taskkill = self._resolve_taskkill()
             if taskkill is None:
                 process.kill()
                 return
             try:
                 subprocess.run(
-                    [taskkill, "/PID", str(process.pid), "/T", "/F"], check=False, shell=False, capture_output=True
+                    [taskkill, "/PID", str(process.pid), "/T", "/F"],
+                    check=False,
+                    shell=False,
+                    capture_output=True,
+                    timeout=1.0,
                 )
-            except OSError:
+            except (OSError, subprocess.TimeoutExpired):
                 process.kill()
             return
         with suppress(ProcessLookupError):
             os.killpg(process.pid, signal.SIGKILL)
+
+    @staticmethod
+    def _resolve_taskkill() -> str | None:
+        """Resolve Windows tree termination without invoking a command shell."""
+        if taskkill := shutil.which("taskkill"):
+            return taskkill
+        if system_root := os.environ.get("SYSTEMROOT"):
+            candidate = Path(system_root) / "System32" / "taskkill.exe"
+            if candidate.is_file():
+                return str(candidate)
+        return None
 
     def _atexit_stop(self) -> None:
         """Best-effort stop on interpreter exit."""
