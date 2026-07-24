@@ -36,6 +36,7 @@ class ViteProcess:
     _RESTART_BACKOFFS: ClassVar[tuple[float, ...]] = (1.0, 2.0, 4.0)
     _RESTART_STABILITY_SECONDS: ClassVar[float] = 5.0
     _COOPERATIVE_SHUTDOWN_SECONDS: ClassVar[float] = 2.0
+    _WINDOWS_TREE_KILL_SECONDS: ClassVar[float] = 1.0
 
     def __init__(self, executor: "JSExecutor") -> None:
         """Initialize the Vite process manager.
@@ -325,15 +326,18 @@ class ViteProcess:
 
     def _terminate_specific_process_group_until(self, process: "subprocess.Popen[Any]", deadline: float) -> None:
         """Terminate one process group within an existing shutdown deadline."""
+        is_windows = platform.system() == "Windows"
         try:
-            if platform.system() == "Windows":
+            if is_windows:
                 process.send_signal(_CTRL_BREAK_EVENT)
             else:
                 os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
+        remaining_timeout = self._remaining_timeout(deadline)
+        tree_kill_reserve = min(self._WINDOWS_TREE_KILL_SECONDS, remaining_timeout) if is_windows else 0.0
         try:
-            process.wait(timeout=self._remaining_timeout(deadline))
+            process.wait(timeout=max(0.0, remaining_timeout - tree_kill_reserve))
         except subprocess.TimeoutExpired:
             self._force_kill_specific_process_group(process, timeout=self._remaining_timeout(deadline))
             with suppress(subprocess.TimeoutExpired):
@@ -369,7 +373,7 @@ class ViteProcess:
             if taskkill is None:
                 process.kill()
                 return
-            taskkill_timeout = max(0.0, min(1.0, timeout))
+            taskkill_timeout = max(0.0, min(self._WINDOWS_TREE_KILL_SECONDS, timeout))
             try:
                 subprocess.run(
                     [taskkill, "/PID", str(process.pid), "/T", "/F"],

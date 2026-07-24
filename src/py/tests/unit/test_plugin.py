@@ -1241,9 +1241,9 @@ def test_vite_process_stop_windows_force_kills_tree(
         check=False,
         shell=False,
         capture_output=True,
-        timeout=0.0,
+        timeout=0.5,
     )
-    assert wait_timeouts == pytest.approx([2.0, 0.5, 0.0])
+    assert wait_timeouts == pytest.approx([2.0, 0.0, 0.0])
     assert clock[0] == pytest.approx(102.5)
     mock_process.kill.assert_called_once_with()
     mock_system.assert_called()
