@@ -304,12 +304,16 @@ class ViteProcess:
             self.process = None
             return
         deadline = time.monotonic() + max(0.0, timeout)
+        tree_kill_reserve = (
+            min(self._WINDOWS_TREE_KILL_SECONDS, max(0.0, timeout)) if platform.system() == "Windows" else 0.0
+        )
         stdin = getattr(process, "stdin", None)
         if stdin is not None and not getattr(stdin, "closed", False):
             with suppress(Exception):
                 stdin.close()
             try:
-                process.wait(timeout=min(self._COOPERATIVE_SHUTDOWN_SECONDS, self._remaining_timeout(deadline)))
+                cooperative_timeout = max(0.0, self._remaining_timeout(deadline) - tree_kill_reserve)
+                process.wait(timeout=min(self._COOPERATIVE_SHUTDOWN_SECONDS, cooperative_timeout))
             except subprocess.TimeoutExpired:
                 pass
             else:

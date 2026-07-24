@@ -1204,8 +1204,25 @@ def test_vite_process_stop_windows_sends_ctrl_break(mock_system: Mock, monkeypat
 @patch("litestar_vite.plugin._process.subprocess.run")
 @patch("litestar_vite.plugin._process.shutil.which", return_value="C:/Windows/System32/taskkill.exe")
 @patch("litestar_vite.plugin._process.platform.system", return_value="Windows")
+@pytest.mark.parametrize(
+    ("stop_timeout", "cooperative_timeout", "signal_timeout", "taskkill_timeout"),
+    [
+        pytest.param(0.5, 0.0, 0.0, 0.5, id="half-second"),
+        pytest.param(1.0, 0.0, 0.0, 1.0, id="one-second"),
+        pytest.param(2.0, 1.0, 0.0, 1.0, id="two-seconds"),
+        pytest.param(2.5, 1.5, 0.0, 1.0, id="two-and-a-half-seconds"),
+        pytest.param(5.0, 2.0, 2.0, 1.0, id="five-seconds"),
+    ],
+)
 def test_vite_process_stop_windows_force_kills_tree(
-    mock_system: Mock, mock_which: Mock, mock_run: Mock, monkeypatch: pytest.MonkeyPatch
+    mock_system: Mock,
+    mock_which: Mock,
+    mock_run: Mock,
+    monkeypatch: pytest.MonkeyPatch,
+    stop_timeout: float,
+    cooperative_timeout: float,
+    signal_timeout: float,
+    taskkill_timeout: float,
 ) -> None:
     """A stuck managed Windows sidecar escalates from stdin EOF to tree cleanup."""
     clock = [100.0]
@@ -1232,7 +1249,7 @@ def test_vite_process_stop_windows_force_kills_tree(
     process = ViteProcess(Mock())
     process.process = mock_process
 
-    process.stop(timeout=2.5)
+    process.stop(timeout=stop_timeout)
 
     mock_process.stdin.close.assert_called_once_with()
     mock_process.send_signal.assert_called_once_with(1234)
@@ -1241,10 +1258,11 @@ def test_vite_process_stop_windows_force_kills_tree(
         check=False,
         shell=False,
         capture_output=True,
-        timeout=0.5,
+        timeout=taskkill_timeout,
     )
-    assert wait_timeouts == pytest.approx([2.0, 0.0, 0.0])
-    assert clock[0] == pytest.approx(102.5)
+    assert wait_timeouts == pytest.approx([cooperative_timeout, signal_timeout, 0.0])
+    assert taskkill_timeout > 0.0
+    assert clock[0] == pytest.approx(100.0 + stop_timeout)
     mock_process.kill.assert_called_once_with()
     mock_system.assert_called()
     mock_which.assert_called_once_with("taskkill")
