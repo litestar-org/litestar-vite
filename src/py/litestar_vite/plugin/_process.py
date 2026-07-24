@@ -6,8 +6,10 @@ import platform
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
+from collections import deque
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -50,6 +52,8 @@ class ViteProcess:
         self._stopping = False
         self._watcher_generation = 0
         self._watcher_thread: "threading.Thread | None" = None
+        self._stderr_buffer: deque[str] = deque(maxlen=200)
+        self._stderr_thread: "threading.Thread | None" = None
 
         ViteProcess._instances.append(self)
 
@@ -135,6 +139,7 @@ class ViteProcess:
     def _spawn_process(self, command: list[str], cwd: Path, *, raise_immediate_exit: bool) -> "subprocess.Popen[Any]":
         """Start a child process and optionally fail fast for immediate exits."""
         process = self._executor.run(command, cwd)
+        self._start_stderr_drain(process)
         if process and process.poll() is not None:
             error = self._build_immediate_exit_error(process, command)
             self._restart_error = error
@@ -143,9 +148,10 @@ class ViteProcess:
         return process
 
     def _build_immediate_exit_error(self, process: "subprocess.Popen[Any]", command: list[str]) -> ViteProcessError:
-        stdout, stderr = process.communicate()
-        out_str = stdout.decode(errors="ignore") if stdout else ""
-        err_str = stderr.decode(errors="ignore") if stderr else ""
+        if self._stderr_thread is not None:
+            self._stderr_thread.join(timeout=0.5)
+        out_str = ""
+        err_str = "".join(self._stderr_buffer)
         console.print(
             "[red]Vite process exited immediately.[/]\n"
             f"[red]Command:[/] {' '.join(command)}\n"
@@ -156,6 +162,32 @@ class ViteProcess:
         )
         msg = f"Vite process failed to start (exit {process.returncode})"
         return ViteProcessError(msg, command=command, exit_code=process.returncode, stderr=err_str, stdout=out_str)
+
+    def _start_stderr_drain(self, process: "subprocess.Popen[Any]") -> None:
+        """Continuously capture and mirror a sidecar's piped stderr."""
+        stderr = getattr(process, "stderr", None)
+        if stderr is None:
+            self._stderr_thread = None
+            return
+        if self._stderr_thread is not None and self._stderr_thread.is_alive():
+            self._stderr_thread.join(timeout=0.5)
+        self._stderr_buffer.clear()
+        self._stderr_thread = threading.Thread(
+            target=self._drain_stderr, args=(stderr,), name="litestar-vite-stderr-drain", daemon=True
+        )
+        self._stderr_thread.start()
+
+    def _drain_stderr(self, stderr: Any) -> None:
+        """Mirror stderr lines to the terminal and retain recent diagnostics."""
+        with suppress(Exception):
+            while True:
+                line = stderr.readline()
+                if not isinstance(line, (bytes, str)) or not line:
+                    return
+                text = line.decode(errors="replace") if isinstance(line, bytes) else str(line)
+                self._stderr_buffer.append(text)
+                sys.stderr.write(text)
+                sys.stderr.flush()
 
     def _start_watcher(self, generation: int) -> None:
         """Start a daemon watcher for unexpected process exits."""

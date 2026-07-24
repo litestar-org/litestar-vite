@@ -49,7 +49,7 @@ def _popen_server_kwargs(cwd: Path) -> dict[str, Any]:
         "env": {**os.environ, "LITESTAR_VITE_MANAGED": "1"},
         "stdin": subprocess.PIPE,
         "stdout": None,
-        "stderr": None,
+        "stderr": subprocess.PIPE,
         "shell": False,
     }
     if platform.system() == "Windows":

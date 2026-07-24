@@ -6,6 +6,7 @@ exercise the lifecycle without actually spawning a real Node process — the
 ``ViteProcess`` is patched to return mocks.
 """
 
+import io
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -14,6 +15,7 @@ from litestar import Litestar
 from litestar.middleware.session.client_side import CookieBackendConfig
 
 from litestar_vite.config import InertiaConfig, InertiaSSRConfig, PathConfig, RuntimeConfig, SPAConfig, ViteConfig
+from litestar_vite.exceptions import ViteProcessError
 from litestar_vite.plugin import VitePlugin
 from litestar_vite.plugin._process import ViteProcess
 
@@ -40,6 +42,51 @@ def test_stop_closes_stdin_before_signalling(tmp_path: Path) -> None:
     process.stdin.close.assert_called_once_with()
     process.wait.assert_called_once_with(timeout=2.0)
     kill_process_group.assert_not_called()
+
+
+def test_immediate_exit_error_captures_stderr(tmp_path: Path) -> None:
+    """A sidecar that fails before startup reports its captured stderr."""
+    process = MagicMock(name="failed_sidecar")
+    process.poll.return_value = 1
+    process.returncode = 1
+    process.stderr = io.BytesIO(b"boom\n")
+    process.communicate.return_value = (None, None)
+    executor = MagicMock()
+    executor.run.return_value = process
+    manager = ViteProcess(executor)
+
+    try:
+        with pytest.raises(ViteProcessError) as exc_info:
+            manager.start(["npm", "run", "dev"], tmp_path)
+
+        assert exc_info.value.stderr is not None
+        assert "boom" in exc_info.value.stderr
+        process.communicate.assert_not_called()
+    finally:
+        manager.stop()
+
+
+def test_running_sidecar_mirrors_stderr_to_terminal(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Continuously drained sidecar stderr remains visible in the parent terminal."""
+    process = MagicMock(name="running_sidecar")
+    process.poll.return_value = None
+    process.stderr = io.BytesIO(b"sidecar ready\n")
+    process.stdin.closed = False
+    process.wait.return_value = 0
+    executor = MagicMock()
+    executor.run.return_value = process
+    manager = ViteProcess(executor)
+
+    try:
+        with patch.object(ViteProcess, "_start_watcher"):
+            manager.start(["npm", "run", "dev"], tmp_path)
+        stderr_thread = getattr(manager, "_stderr_thread", None)
+        if stderr_thread is not None:
+            stderr_thread.join(timeout=1.0)
+
+        assert "sidecar ready" in capsys.readouterr().err
+    finally:
+        manager.stop()
 
 
 def _build_hybrid_plugin_with_ssr(

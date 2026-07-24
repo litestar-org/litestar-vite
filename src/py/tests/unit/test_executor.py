@@ -1,6 +1,7 @@
 """Tests for litestar_vite.executor module."""
 
 import os
+import subprocess
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -84,6 +85,7 @@ def test_executor_run_command(mock_which: Mock, mock_popen: Mock, monkeypatch: p
     assert kwargs["cwd"] == Path("/tmp")
     assert kwargs["shell"] is False
     assert kwargs["start_new_session"] is True
+    assert kwargs["stderr"] is subprocess.PIPE
     assert kwargs["env"]["LITESTAR_VITE_EXISTING"] == "preserved"
     assert kwargs["env"]["LITESTAR_VITE_MANAGED"] == "1"
     assert "LITESTAR_VITE_MANAGED" not in os.environ
