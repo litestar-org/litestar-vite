@@ -190,7 +190,7 @@ def test_cli_prompt_for_options_interactive(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr("litestar_vite.cli.Confirm.ask", Mock(side_effect=[True, True, True, False, True]))
 
     enable_ssr, tailwind, enable_types, generate_zod, generate_client = _prompt_for_options(
-        template, None, False, False, False, False, False
+        template, None, False, None, False, None, False
     )
 
     assert enable_ssr is True
@@ -198,6 +198,33 @@ def test_cli_prompt_for_options_interactive(monkeypatch: pytest.MonkeyPatch) -> 
     assert enable_types is True
     assert generate_zod is False
     assert generate_client is True
+
+
+def test_cli_prompt_for_options_no_prompt_defaults_types_and_client_on() -> None:
+    """``--no-prompt`` without opt-out flags keeps type and client generation enabled."""
+    template = FrameworkTemplate(
+        name="React", type=FrameworkType.REACT, description="React template", resource_dir="src", has_ssr=True
+    )
+
+    _, _, enable_types, _, generate_client = _prompt_for_options(template, None, False, None, False, None, True)
+
+    assert enable_types is True
+    assert generate_client is True
+
+
+def test_cli_prompt_for_options_no_prompt_opt_out_disables_types_and_client() -> None:
+    """``--no-prompt`` with the opt-out flags disables type and client generation non-interactively."""
+    template = FrameworkTemplate(
+        name="React", type=FrameworkType.REACT, description="React template", resource_dir="src", has_ssr=True
+    )
+
+    _, _, enable_types, generate_zod, generate_client = _prompt_for_options(
+        template, None, False, False, False, False, True
+    )
+
+    assert enable_types is False
+    assert generate_zod is False
+    assert generate_client is False
 
 
 def test_cli_build_deploy_config_errors() -> None:

@@ -1,6 +1,9 @@
 """Vite dev server process management."""
 
+import atexit
 import os
+import platform
+import shutil
 import signal
 import subprocess
 import threading
@@ -15,19 +18,19 @@ from litestar_vite.plugin._utils import console
 if TYPE_CHECKING:
     from litestar_vite.executor import JSExecutor
 
+_CTRL_BREAK_EVENT: int = getattr(signal, "CTRL_BREAK_EVENT", 1)
+
 
 class ViteProcess:
     """Manages the Vite development server process.
 
     This class handles starting and stopping the Vite dev server process,
-    with proper thread safety and graceful shutdown. It registers signal
-    handlers for SIGTERM and SIGINT to ensure child processes are terminated
-    even if Python is killed externally.
+    with proper thread safety and graceful shutdown. The active ASGI server owns
+    top-level signals; one atexit hook remains as a last-resort cleanup path.
     """
 
     _instances: "list[ViteProcess]" = []
-    _signals_registered: bool = False
-    _original_handlers: "dict[int, Any]" = {}
+    _atexit_registered: bool = False
     _RESTART_BACKOFFS: ClassVar[tuple[float, ...]] = (1.0, 2.0, 4.0)
     _RESTART_STABILITY_SECONDS: ClassVar[float] = 5.0
 
@@ -49,35 +52,9 @@ class ViteProcess:
 
         ViteProcess._instances.append(self)
 
-        if not ViteProcess._signals_registered:
-            self._register_signal_handlers()
-            ViteProcess._signals_registered = True
-
-            import atexit
-
+        if not ViteProcess._atexit_registered:
             atexit.register(ViteProcess._cleanup_all_instances)
-
-    @classmethod
-    def _register_signal_handlers(cls) -> None:
-        """Register signal handlers for graceful shutdown on SIGTERM/SIGINT."""
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            try:
-                original = signal.signal(sig, cls._signal_handler)
-                cls._original_handlers[sig] = original
-            except (OSError, ValueError):
-                pass
-
-    @classmethod
-    def _signal_handler(cls, signum: int, frame: Any) -> None:
-        """Handle termination signals by stopping all Vite processes first."""
-        cls._cleanup_all_instances()
-
-        original = cls._original_handlers.get(signum, signal.SIG_DFL)
-        if callable(original) and original not in {signal.SIG_IGN, signal.SIG_DFL}:
-            original(signum, frame)
-        elif original == signal.SIG_DFL:
-            signal.signal(signum, signal.SIG_DFL)
-            os.kill(os.getpid(), signum)
+            ViteProcess._atexit_registered = True
 
     @classmethod
     def _cleanup_all_instances(cls) -> None:
@@ -287,11 +264,11 @@ class ViteProcess:
 
     def _terminate_specific_process_group(self, process: "subprocess.Popen[Any]", timeout: float) -> None:
         """Terminate one process group without changing manager state."""
-        pid = process.pid
         try:
-            os.killpg(pid, signal.SIGTERM)
-        except AttributeError:
-            process.terminate()
+            if platform.system() == "Windows":
+                process.send_signal(_CTRL_BREAK_EVENT)
+            else:
+                os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
         try:
@@ -302,10 +279,11 @@ class ViteProcess:
 
     def _terminate_exited_process_group(self, process: "subprocess.Popen[Any]", *, timeout: float) -> None:
         """Best-effort cleanup for child processes left in an exited process group."""
+        if platform.system() == "Windows":
+            self._force_kill_specific_process_group(process)
+            return
         try:
             os.killpg(process.pid, signal.SIGTERM)
-        except AttributeError:
-            return
         except ProcessLookupError:
             return
         time.sleep(timeout)
@@ -319,13 +297,35 @@ class ViteProcess:
 
     def _force_kill_specific_process_group(self, process: "subprocess.Popen[Any]") -> None:
         """Force kill a specific process group if still alive."""
-        pid = process.pid
-        try:
-            os.killpg(pid, signal.SIGKILL)
-        except AttributeError:
-            process.kill()
-        except ProcessLookupError:
-            pass
+        if platform.system() == "Windows":
+            taskkill = self._resolve_taskkill()
+            if taskkill is None:
+                process.kill()
+                return
+            try:
+                subprocess.run(
+                    [taskkill, "/PID", str(process.pid), "/T", "/F"],
+                    check=False,
+                    shell=False,
+                    capture_output=True,
+                    timeout=1.0,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                process.kill()
+            return
+        with suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+
+    @staticmethod
+    def _resolve_taskkill() -> str | None:
+        """Resolve Windows tree termination without invoking a command shell."""
+        if taskkill := shutil.which("taskkill"):
+            return taskkill
+        if system_root := os.environ.get("SYSTEMROOT"):
+            candidate = Path(system_root) / "System32" / "taskkill.exe"
+            if candidate.is_file():
+                return str(candidate)
+        return None
 
     def _atexit_stop(self) -> None:
         """Best-effort stop on interpreter exit."""

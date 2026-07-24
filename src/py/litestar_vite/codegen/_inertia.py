@@ -61,7 +61,7 @@ def _pick_inertia_method(http_methods: "set[Any] | frozenset[Any] | None") -> st
     if "GET" in http_methods:
         return "GET"
     # Fallback to alphabetically first method for determinism
-    return sorted(http_methods)[0]
+    return min(http_methods)
 
 
 def normalize_type_name(type_name: str, openapi_schemas: set[str]) -> str:

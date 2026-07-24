@@ -5,6 +5,7 @@ __all__ = (
     "console",
     "create_proxy_client",
     "get_litestar_route_prefixes",
+    "infer_host_from_argv",
     "infer_port_from_argv",
     "is_litestar_route",
     "is_non_serving_assets_cli",
@@ -30,6 +31,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast, overload
 
+import click
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 
 from litestar_vite.codegen import write_if_changed as _write_if_changed
@@ -157,6 +159,49 @@ def infer_port_from_argv() -> str | None:
             if value.isdigit():
                 return value
     return None
+
+
+def infer_host_from_argv() -> str | None:
+    """Best-effort extraction of ``--host/-H`` from process argv.
+
+    Returns:
+        The host string if found, else None.
+    """
+    argv = sys.argv[1:]
+    for i, arg in enumerate(argv):
+        if arg in {"-H", "--host"} and i + 1 < len(argv) and argv[i + 1]:
+            return argv[i + 1]
+        if arg.startswith("--host="):
+            _, _, value = arg.partition("=")
+            return value or None
+    return None
+
+
+def _infer_bind_from_click_context() -> tuple[str | None, str | None]:
+    """Return the effective bind from an active Litestar ``run`` command."""
+    context = click.get_current_context(silent=True)
+    if context is None or (context.info_name != "run" and getattr(context.command, "name", None) != "run"):
+        return None, None
+
+    host_value = context.params.get("host")
+    port_value = context.params.get("port")
+    host = host_value if isinstance(host_value, str) and host_value else None
+    if isinstance(port_value, int) and 0 < port_value < 65536:
+        return host, str(port_value)
+    if isinstance(port_value, str) and port_value.isdigit() and 0 < int(port_value) < 65536:
+        return host, port_value
+    return host, None
+
+
+def _resolve_litestar_bind() -> tuple[str, str]:
+    """Resolve the effective backend host and port for frontend sidecars."""
+    context_host, context_port = _infer_bind_from_click_context()
+    if context_host is not None or context_port is not None:
+        return context_host or "127.0.0.1", context_port or "8000"
+
+    host = os.environ.get("LITESTAR_HOST") or infer_host_from_argv() or "127.0.0.1"
+    port = os.environ.get("LITESTAR_PORT") or os.environ.get("PORT") or infer_port_from_argv() or "8000"
+    return host, str(port)
 
 
 def is_non_serving_assets_cli() -> bool:
@@ -470,10 +515,9 @@ def set_environment(config: "ViteConfig", asset_url_override: str | None = None)
         os.environ.setdefault("VITE_BASE_URL", config.base_url)
     os.environ.setdefault("VITE_ALLOW_REMOTE", str(True))
 
-    backend_host = os.environ.get("LITESTAR_HOST") or "127.0.0.1"
-    backend_port = os.environ.get("LITESTAR_PORT") or os.environ.get("PORT") or infer_port_from_argv() or "8000"
+    backend_host, backend_port = _resolve_litestar_bind()
     os.environ["LITESTAR_HOST"] = backend_host
-    os.environ["LITESTAR_PORT"] = str(backend_port)
+    os.environ["LITESTAR_PORT"] = backend_port
     os.environ.setdefault("APP_URL", f"http://{_normalize_browser_host(backend_host)}:{backend_port}")
 
     os.environ.setdefault("VITE_PROTOCOL", config.protocol)

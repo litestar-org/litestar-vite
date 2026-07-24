@@ -20,19 +20,10 @@ npm install litestar-vite-plugin
 ## Quick Start
 
 ```python
-import os
-from pathlib import Path
 from litestar import Litestar
-from litestar_vite import PathConfig, ViteConfig, VitePlugin
+from litestar_vite import VitePlugin
 
-DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in ("true", "1", "yes")
-
-app = Litestar(
-    plugins=[VitePlugin(config=ViteConfig(
-        dev_mode=DEV_MODE,
-        paths=PathConfig(root=Path(__file__).parent),
-    ))]
-)
+app = Litestar(plugins=[VitePlugin()])
 ```
 
 ```bash
@@ -41,14 +32,42 @@ litestar assets install
 litestar run --reload
 ```
 
+`VitePlugin()` detects development and production behavior without manual `VITE_DEV_MODE` parsing. The effective
+`litestar run --host/--port` values are also passed to the frontend environment and `.litestar.json` bridge.
+
+### Optional Granian native static serving
+
+Granian 0.16+ can serve eligible production bundle files before the request enters Python:
+
+```python
+from litestar import Litestar
+from litestar_granian import GranianPlugin
+from litestar_vite import VitePlugin
+
+app = Litestar(
+    plugins=[
+        VitePlugin(),
+        GranianPlugin(static="auto"),
+    ]
+)
+```
+
+This is an optimization, not a separate application configuration. The Litestar static route stays registered, so
+Uvicorn and other ASGI servers serve the same files. Granian automatically falls back to Litestar when assets are
+protected, customized, missing, or otherwise unsafe to intercept.
+
+Native hits bypass ASGI middleware, guards, compression, custom headers, and Python access logging. Keep protected or
+customized assets on the Litestar fallback path. See the
+[production guide](https://litestar-org.github.io/litestar-vite/latest/usage/production.html) for the server matrix and
+advanced configuration.
+
 ## Documentation
 
-- **[Usage Guide](https://litestar-org.github.io/litestar-vite/usage/index.html)**: Core concepts, configuration, and type generation.
-- **[Inertia](https://litestar-org.github.io/litestar-vite/frameworks/inertia/index.html)**: Fullstack protocols and SSR.
-- **[Frameworks](https://litestar-org.github.io/litestar-vite/frameworks/index.html)**: Guides for React, Vue, Svelte, Angular, Astro, and Nuxt.
-- **[Reference](https://litestar-org.github.io/litestar-vite/reference/index.html)**: API and CLI documentation.
-
-For a full list of changes, see the [Changelog](https://litestar-org.github.io/litestar-vite/changelog.html).
+- Get started: <https://litestar-org.github.io/litestar-vite/latest/usage/index.html>
+- Framework guides: <https://litestar-org.github.io/litestar-vite/latest/frameworks/index.html>
+- Inertia: <https://litestar-org.github.io/litestar-vite/latest/frameworks/inertia/index.html>
+- API reference: <https://litestar-org.github.io/litestar-vite/latest/reference/index.html>
+- Changelog: <https://litestar-org.github.io/litestar-vite/latest/changelog.html>
 
 ## Common Commands
 
@@ -76,7 +95,7 @@ litestar-vite now defaults Inertia apps to script-element bootstrap. Inertia v3 
 
 ## Links
 
-- Docs: <https://litestar-org.github.io/litestar-vite/>
+- Docs: <https://litestar-org.github.io/litestar-vite/latest/>
 - Examples: `examples/` (React, Vue, Svelte, HTMX, Inertia, Astro, Nuxt, SvelteKit, Angular)
 - Real-world example: [litestar-fullstack](https://github.com/litestar-org/litestar-fullstack)
 - Issues: <https://github.com/litestar-org/litestar-vite/issues/>

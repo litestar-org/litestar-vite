@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
 
+import click
 import pytest
 from litestar import Litestar, get
 from litestar.connection import Request
@@ -80,6 +81,41 @@ def test_infer_port_from_argv(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(sys, "argv", ["litestar", "run", "--port=7070"])
     assert utils.infer_port_from_argv() == "7070"
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        (["litestar", "run", "--host", "0.0.0.0"], "0.0.0.0"),
+        (["litestar", "run", "-H", "::1"], "::1"),
+        (["litestar", "run", "--host=127.0.0.2"], "127.0.0.2"),
+    ],
+)
+def test_infer_host_from_argv(monkeypatch: pytest.MonkeyPatch, argv: list[str], expected: str) -> None:
+    monkeypatch.setattr(sys, "argv", argv)
+
+    assert utils.infer_host_from_argv() == expected
+
+
+def test_set_environment_uses_effective_litestar_run_bind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The active run command supplies the backend bind before sidecars start."""
+    config = ViteConfig(mode="spa", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=True))
+    context = SimpleNamespace(
+        command=SimpleNamespace(name="run"), info_name="run", params={"host": "0.0.0.0", "port": 9123}
+    )
+    monkeypatch.setattr(click, "get_current_context", lambda *, silent: context)
+    monkeypatch.setenv("LITESTAR_HOST", "127.0.0.2")
+    monkeypatch.setenv("LITESTAR_PORT", "8123")
+    monkeypatch.delenv("APP_URL", raising=False)
+
+    utils.set_environment(config)
+
+    bridge = decode_json((tmp_path / ".litestar.json").read_bytes())
+    assert os.environ["LITESTAR_HOST"] == "0.0.0.0"
+    assert os.environ["LITESTAR_PORT"] == "9123"
+    assert os.environ["APP_URL"] == "http://localhost:9123"
+    assert bridge["appUrl"] == "http://localhost:9123"
+    assert bridge["litestarPort"] == 9123
 
 
 def test_is_non_serving_assets_cli(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -41,7 +41,7 @@ from litestar_vite.config import (
     ViteConfig,
 )
 from litestar_vite.loader import ViteAssetLoader
-from litestar_vite.plugin import VitePlugin
+from litestar_vite.plugin import StaticPlacement, StaticServerConfig, StaticServerMount, VitePlugin
 
 __all__ = (
     "DeployConfig",
@@ -50,6 +50,9 @@ __all__ = (
     "InertiaSSRConfig",
     "PathConfig",
     "RuntimeConfig",
+    "StaticPlacement",
+    "StaticServerConfig",
+    "StaticServerMount",
     "TypeGenConfig",
     "ViteAssetLoader",
     "ViteConfig",

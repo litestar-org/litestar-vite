@@ -43,21 +43,10 @@ Quick Start
 .. code-block:: python
    :caption: app.py
 
-   from pathlib import Path
-
    from litestar import Litestar
-   from litestar_vite import PathConfig, ViteConfig, VitePlugin
+   from litestar_vite import VitePlugin
 
-   app = Litestar(
-       plugins=[
-           VitePlugin(
-               config=ViteConfig(
-                   dev_mode=True,
-                   paths=PathConfig(root=Path(__file__).parent),
-               )
-           )
-       ]
-   )
+   app = Litestar(plugins=[VitePlugin()])
 
 .. code-block:: bash
    :caption: bootstrap a frontend
@@ -65,6 +54,30 @@ Quick Start
    litestar assets init --template react-inertia
    litestar assets install
    litestar run --reload
+
+``VitePlugin()`` selects development or production behavior without application-side
+``VITE_DEV_MODE`` parsing. It also receives the effective host and port from either
+the built-in Uvicorn ``litestar run`` command or the Granian replacement.
+
+For optional Rust-native production static serving with Granian 0.16+, add
+``GranianPlugin(static="auto")`` without changing the Vite configuration:
+
+.. code-block:: python
+   :caption: app.py
+
+   from litestar import Litestar
+   from litestar_granian import GranianPlugin
+   from litestar_vite import VitePlugin
+
+   app = Litestar(
+       plugins=[
+           VitePlugin(),
+           GranianPlugin(static="auto"),
+       ]
+   )
+
+The Litestar static route remains available on every server. See
+:doc:`production` for eligibility, fallback behavior, and the server matrix.
 
 .. toctree::
    :titlesonly:

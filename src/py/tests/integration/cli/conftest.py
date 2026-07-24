@@ -12,7 +12,7 @@ from click.testing import CliRunner
 from litestar.cli._utils import _path_to_dotted_path  # pyright: ignore[reportPrivateUsage]
 from pytest_mock import MockerFixture
 
-from tests.integration.cli import APP_BASIC_NO_ROUTES_FILE_CONTENT, APP_DEFAULT_CONFIG_FILE_CONTENT
+from tests.integration.cli.app_fixtures import APP_BASIC_NO_ROUTES_FILE_CONTENT, APP_DEFAULT_CONFIG_FILE_CONTENT
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock

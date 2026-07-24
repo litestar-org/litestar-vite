@@ -44,12 +44,10 @@ def _popen_server_kwargs(cwd: Path) -> dict[str, Any]:
     Returns:
         Keyword arguments for ``subprocess.Popen`` suitable for long-lived dev servers.
     """
-    kwargs: dict[str, Any] = {"cwd": cwd, "stdin": subprocess.PIPE, "stdout": None, "stderr": None}
+    kwargs: dict[str, Any] = {"cwd": cwd, "stdin": subprocess.PIPE, "stdout": None, "stderr": None, "shell": False}
     if platform.system() == "Windows":
-        kwargs["shell"] = True
         kwargs["creationflags"] = _create_new_process_group
     else:
-        kwargs["shell"] = False
         kwargs["start_new_session"] = True
     return kwargs
 
@@ -187,7 +185,7 @@ class CommandExecutor(JSExecutor):
     def install(self, cwd: Path) -> None:
         executable = self._resolve_executable()
         command = [executable, "install"]
-        process = subprocess.run(command, cwd=cwd, shell=platform.system() == "Windows", check=False)
+        process = subprocess.run(command, cwd=cwd, shell=False, check=False)
         if process.returncode != 0:
             raise ViteExecutionError(command, process.returncode, "package install failed")
 
@@ -196,7 +194,7 @@ class CommandExecutor(JSExecutor):
         command = [executable, self.update_command]
         if latest and self.update_latest_flag:
             command.append(self.update_latest_flag)
-        process = subprocess.run(command, cwd=cwd, shell=platform.system() == "Windows", check=False)
+        process = subprocess.run(command, cwd=cwd, shell=False, check=False)
         if process.returncode != 0:
             raise ViteExecutionError(command, process.returncode, "package update failed")
 
@@ -211,13 +209,7 @@ class CommandExecutor(JSExecutor):
         args = self._apply_silent_flag(args)
         command = _normalize_command(executable, args, binary_name=self.bin_name)
         process = subprocess.run(
-            command,
-            cwd=cwd,
-            shell=platform.system() == "Windows",
-            check=False,
-            stdin=subprocess.PIPE,
-            stdout=None,
-            stderr=subprocess.PIPE,
+            command, cwd=cwd, shell=False, check=False, stdin=subprocess.PIPE, stdout=None, stderr=subprocess.PIPE
         )
         if process.returncode != 0:
             stderr = process.stderr.decode() if process.stderr else ""
@@ -329,7 +321,7 @@ class NodeenvExecutor(JSExecutor):
         command = [npm_path, "update"]
         if latest:
             command.append("--save")
-        process = subprocess.run(command, cwd=cwd, shell=platform.system() == "Windows", check=False)
+        process = subprocess.run(command, cwd=cwd, shell=False, check=False)
         if process.returncode != 0:
             raise ViteExecutionError(command, process.returncode, "package update failed")
 
@@ -343,9 +335,7 @@ class NodeenvExecutor(JSExecutor):
         npm_path = self._find_npm_in_venv()
         args = self._apply_silent_flag(args)
         command = _normalize_command(npm_path, args, binary_name="npm")
-        process = subprocess.run(
-            command, cwd=cwd, shell=platform.system() == "Windows", check=False, capture_output=True
-        )
+        process = subprocess.run(command, cwd=cwd, shell=False, check=False, capture_output=True)
         if process.returncode != 0:
             raise ViteExecutionError(command, process.returncode, process.stderr.decode())
 
