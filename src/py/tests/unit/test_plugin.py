@@ -820,6 +820,19 @@ class _FakeProcess:
         self._exited.set()
 
 
+class _ObservedWaitProcess(_FakeProcess):
+    """Fake process that exposes when its watcher is blocked in wait()."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.watcher_waiting = threading.Event()
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        if timeout is None:
+            self.watcher_waiting.set()
+        return super().wait(timeout)
+
+
 def _wait_until(condition: Callable[[], bool], *, timeout: float = 1.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -992,6 +1005,38 @@ def test_vite_process_intentional_stop_does_not_restart(mock_killpg: Mock, monke
 
     executor.run.assert_called_once()
     assert mock_killpg.called
+
+
+def test_vite_process_intentional_stop_watcher_skips_crash_cleanup() -> None:
+    """A watcher awakened by stop() must not clean the intentionally stopped process group."""
+    child = _ObservedWaitProcess()
+    executor = Mock()
+    executor.run.return_value = child
+    manager = ViteProcess(executor)
+    manager.start(["npm", "run", "dev"], "/test/path")
+    watcher = manager._watcher_thread
+
+    assert watcher is not None
+    assert child.watcher_waiting.wait(timeout=1.0)
+
+    def finish_intentional_stop(_timeout: float) -> None:
+        child.exit(0)
+        manager.process = None
+
+    with (
+        patch.object(manager, "_terminate_process_group", side_effect=finish_intentional_stop),
+        patch.object(
+            manager, "_terminate_exited_process_group", wraps=manager._terminate_exited_process_group
+        ) as cleanup_exited_group,
+        patch("litestar_vite.plugin._process.time.sleep", return_value=None),
+        patch("litestar_vite.plugin._process.os.killpg") as kill_process_group,
+    ):
+        manager.stop()
+        watcher.join(timeout=1.0)
+
+    assert not watcher.is_alive()
+    cleanup_exited_group.assert_not_called()
+    kill_process_group.assert_not_called()
 
 
 def test_vite_process_start_after_stop_is_tracked_for_cleanup() -> None:
@@ -1178,7 +1223,12 @@ def test_vite_process_stop_windows_force_kills_tree(
             raise subprocess.TimeoutExpired("cmd", timeout)
         return 0
 
+    def run_taskkill(*_args: Any, timeout: float, **_kwargs: Any) -> None:
+        clock[0] += timeout
+        raise subprocess.TimeoutExpired("taskkill", timeout)
+
     mock_process.wait.side_effect = wait
+    mock_run.side_effect = run_taskkill
     process = ViteProcess(Mock())
     process.process = mock_process
 
@@ -1191,9 +1241,11 @@ def test_vite_process_stop_windows_force_kills_tree(
         check=False,
         shell=False,
         capture_output=True,
-        timeout=1.0,
+        timeout=0.0,
     )
     assert wait_timeouts == pytest.approx([2.0, 0.5, 0.0])
+    assert clock[0] == pytest.approx(102.5)
+    mock_process.kill.assert_called_once_with()
     mock_system.assert_called()
     mock_which.assert_called_once_with("taskkill")
 

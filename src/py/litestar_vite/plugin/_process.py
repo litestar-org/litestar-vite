@@ -218,15 +218,16 @@ class ViteProcess:
             wait_started = time.monotonic()
             exit_code = process.wait()
             process_runtime = time.monotonic() - wait_started
-            self._terminate_exited_process_group(process, timeout=0.5)
-            self._stderr_captures.pop(id(process), None)
 
             with self._lock:
                 if self._watcher_generation != generation or self._stopping or process is not self.process:
                     return
                 self.process = None
-                if command is None or cwd is None:
-                    return
+
+            self._terminate_exited_process_group(process, timeout=0.5)
+            self._stderr_captures.pop(id(process), None)
+            if command is None or cwd is None:
+                return
 
             if process_runtime >= self._RESTART_STABILITY_SECONDS:
                 attempts = 0
@@ -334,7 +335,7 @@ class ViteProcess:
         try:
             process.wait(timeout=self._remaining_timeout(deadline))
         except subprocess.TimeoutExpired:
-            self._force_kill_specific_process_group(process)
+            self._force_kill_specific_process_group(process, timeout=self._remaining_timeout(deadline))
             with suppress(subprocess.TimeoutExpired):
                 process.wait(timeout=min(1.0, self._remaining_timeout(deadline)))
 
@@ -361,20 +362,21 @@ class ViteProcess:
             return
         self._force_kill_specific_process_group(self.process)
 
-    def _force_kill_specific_process_group(self, process: "subprocess.Popen[Any]") -> None:
+    def _force_kill_specific_process_group(self, process: "subprocess.Popen[Any]", *, timeout: float = 1.0) -> None:
         """Force kill a specific process group if still alive."""
         if platform.system() == "Windows":
             taskkill = self._resolve_taskkill()
             if taskkill is None:
                 process.kill()
                 return
+            taskkill_timeout = max(0.0, min(1.0, timeout))
             try:
                 subprocess.run(
                     [taskkill, "/PID", str(process.pid), "/T", "/F"],
                     check=False,
                     shell=False,
                     capture_output=True,
-                    timeout=1.0,
+                    timeout=taskkill_timeout,
                 )
             except (OSError, subprocess.TimeoutExpired):
                 process.kill()
