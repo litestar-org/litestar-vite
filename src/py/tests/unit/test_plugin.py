@@ -21,7 +21,7 @@ from litestar.params import FromPath
 from litestar.template.config import TemplateConfig
 from litestar.testing import TestClient
 
-from litestar_vite.config import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig
+from litestar_vite.config import ExternalDevServer, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig
 from litestar_vite.plugin import (
     ProxyHeadersMiddleware,
     StaticFilesConfig,
@@ -655,6 +655,55 @@ def test_vite_plugin_lifespan_with_environment_setup(mock_set_env: Mock) -> None
 
     # Should call set_environment when enabled
     mock_set_env.assert_called_once_with(config=config)
+
+
+def test_server_lifespan_does_not_prewrite_hotfile_in_vite_mode(tmp_path: Path) -> None:
+    """Vite's listening callback is the sole hotfile writer for Vite-based flows."""
+    config = ViteConfig(
+        enabled=True,
+        paths=PathConfig(root=tmp_path, bundle_dir=tmp_path),
+        runtime=RuntimeConfig(dev_mode=True, health_check=True, set_environment=False),
+    )
+    plugin = VitePlugin(config=config)
+    plugin._config.types = False
+    app = Mock(spec=Litestar)
+    vite_process = Mock()
+    plugin._vite_process = vite_process
+
+    with patch.object(VitePlugin, "_run_health_check") as run_health_check:
+        with plugin.server_lifespan(app):
+            assert not (tmp_path / config.hot_file).exists()
+
+    run_health_check.assert_called_once_with()
+    vite_process.start.assert_called_once()
+    vite_process.stop.assert_called_once_with()
+
+
+def test_server_lifespan_prewrites_hotfile_only_for_external_target(tmp_path: Path) -> None:
+    """External targets remain discoverable when no Litestar Vite JS plugin runs."""
+    target = "http://localhost:4200"
+    config = ViteConfig(
+        enabled=True,
+        mode="framework",
+        paths=PathConfig(root=tmp_path, bundle_dir=tmp_path),
+        runtime=RuntimeConfig(
+            dev_mode=True,
+            external_dev_server=ExternalDevServer(target=target),
+            health_check=False,
+            set_environment=False,
+        ),
+    )
+    plugin = VitePlugin(config=config)
+    plugin._config.types = False
+    app = Mock(spec=Litestar)
+    vite_process = Mock()
+    plugin._vite_process = vite_process
+
+    with plugin.server_lifespan(app):
+        assert (tmp_path / config.hot_file).read_text(encoding="utf-8") == target
+
+    vite_process.start.assert_called_once()
+    vite_process.stop.assert_called_once_with()
 
 
 @patch("litestar_vite.plugin._utils.console")

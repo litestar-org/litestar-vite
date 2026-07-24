@@ -864,8 +864,9 @@ class VitePlugin(InitPlugin, CLIPlugin):
         Note: SPA handler and asset loader initialization happens in the per-worker
         `lifespan` method, which is auto-registered in `on_app_init`.
 
-        Hotfile behavior: the hotfile is written before starting the dev server to ensure proxy
-        middleware and SPA handlers can resolve a target URL immediately on first request.
+        Hotfile behavior: the JS plugin's listening callback writes the authoritative target once
+        the Vite socket is ready. Python pre-writes only user-asserted external targets whose dev
+        servers do not run the JS plugin.
 
         Args:
             app: The Litestar application instance.
@@ -899,9 +900,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
             command_to_run = self._resolve_dev_command()
             if is_external and isinstance(ext, ExternalDevServer) and ext.target:
                 self._write_hotfile(ext.target)
-            elif not is_external:
-                target_url = f"{self._config.protocol}://{self._config.host}:{self._config.port}"
-                self._write_hotfile(target_url)
 
             vite_process: ViteProcess | None = None
             try:
