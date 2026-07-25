@@ -48,9 +48,8 @@ def fmt_path(path: Path) -> str:
         return str(path)
 
 
-def typegen_outputs_requested(config: "ViteConfig", types_config: "TypeGenConfig") -> bool:
+def typegen_outputs_requested(types_config: "TypeGenConfig") -> bool:
     """Return whether the typegen config asks for any generated artifact."""
-    del config
     return any((
         types_config.generate_sdk,
         types_config.generate_zod,
@@ -95,7 +94,7 @@ def export_integration_assets(
         return result
 
     types_config = config.types
-    if not typegen_outputs_requested(config, types_config):
+    if not typegen_outputs_requested(types_config):
         return result
 
     # Check if OpenAPI is available

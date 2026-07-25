@@ -840,7 +840,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         from litestar_vite.codegen import export_integration_assets, typegen_outputs_requested
 
-        if not typegen_outputs_requested(self._config, self._config.types):
+        if not typegen_outputs_requested(self._config.types):
             return
 
         try:
