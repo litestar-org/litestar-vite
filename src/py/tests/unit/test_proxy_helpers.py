@@ -194,10 +194,12 @@ def test_normalize_proxy_prefixes(tmp_path: Path) -> None:
     assert "/static/" in prefixes
 
 
-def test_target_url_getter_caches(tmp_path: Path) -> None:
+def test_target_url_getter_caches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     hotfile = tmp_path / "hot"
     hotfile.write_text("http://localhost:5173")
     cached: list[str | None] = [None]
+    fake_time = [1000.0]
+    monkeypatch.setattr("litestar_vite.plugin._proxy.time.monotonic", lambda: fake_time[0])
     getter = create_target_url_getter(None, hotfile, cached)
 
     assert getter() == "http://localhost:5173"
@@ -207,19 +209,72 @@ def test_target_url_getter_caches(tmp_path: Path) -> None:
     current_mtime = hotfile.stat().st_mtime_ns
     os.utime(hotfile, ns=(current_mtime + 1_000_000, current_mtime + 1_000_000))
 
+    fake_time[0] += 1.0
     assert getter() == "http://changed:1234"
 
 
-def test_target_url_getter_recovers_after_initial_missing_hotfile(tmp_path: Path) -> None:
+def test_target_url_getter_recovers_after_initial_missing_hotfile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     hotfile = tmp_path / "hot"
     cached: list[str | None] = [None]
+    fake_time = [1000.0]
+    monkeypatch.setattr("litestar_vite.plugin._proxy.time.monotonic", lambda: fake_time[0])
     getter = create_target_url_getter(None, hotfile, cached)
 
     assert getter() is None
 
     hotfile.write_text("http://localhost:5173")
 
+    fake_time[0] += 1.0
     assert getter() == "http://localhost:5173"
+
+
+def test_target_url_getter_throttles_stat_within_ttl_window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://localhost:5173")
+    cached: list[str | None] = [None]
+    fake_time = [1000.0]
+    monkeypatch.setattr("litestar_vite.plugin._proxy.time.monotonic", lambda: fake_time[0])
+    stat_calls = 0
+    real_stat = Path.stat
+
+    def counting_stat(self: Path, *args: object, **kwargs: object) -> object:
+        nonlocal stat_calls
+        stat_calls += 1
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", counting_stat)
+    getter = create_target_url_getter(None, hotfile, cached)
+
+    for _ in range(5):
+        assert getter() == "http://localhost:5173"
+
+    assert stat_calls == 1
+
+
+def test_target_url_getter_caches_negative_result_without_reread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://localhost:5173")
+    cached: list[str | None] = [None]
+    fake_time = [1000.0]
+    monkeypatch.setattr("litestar_vite.plugin._proxy.time.monotonic", lambda: fake_time[0])
+    read_calls = 0
+
+    def failing_read(_path: Path) -> str:
+        nonlocal read_calls
+        read_calls += 1
+        raise OSError("simulated malformed hotfile read")
+
+    monkeypatch.setattr("litestar_vite.plugin._proxy.read_hotfile_url", failing_read)
+    getter = create_target_url_getter(None, hotfile, cached)
+
+    assert getter() is None
+    fake_time[0] += 1.0
+    assert getter() is None
+    assert read_calls == 1
 
 
 def test_hmr_target_getter_caches(tmp_path: Path) -> None:

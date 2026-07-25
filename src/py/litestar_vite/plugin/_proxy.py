@@ -1,6 +1,7 @@
 """HTTP/WebSocket proxy middleware and HMR handlers."""
 
 import logging
+import time
 from collections.abc import AsyncGenerator, Awaitable, Iterable
 from contextlib import suppress
 from pathlib import Path
@@ -113,6 +114,12 @@ _WS_REQUEST_SKIP_HEADERS = _REQUEST_SKIP_HEADERS | {
 }
 
 _LOGGER = logging.getLogger(__name__)
+
+# Bounds how often create_target_url_getter/create_hmr_target_getter re-stat() the hotfile.
+# Keeps the proxy hot path free of a syscall on every proxied request while still picking up
+# a dev-server restart (new hotfile mtime) within one TTL window. Not a correctness cache: a
+# change is always observed within _HOTFILE_REVALIDATE_TTL_SECONDS, never "forever stale".
+_HOTFILE_REVALIDATE_TTL_SECONDS = 0.3
 
 
 def _normalize_header_key(raw_key: Any) -> str:
@@ -613,10 +620,18 @@ def create_target_url_getter(
 ) -> "Callable[[], str | None]":
     """Create a function that returns the current target URL with mtime-revalidated caching.
 
+    Re-stats the hotfile at most once per ``_HOTFILE_REVALIDATE_TTL_SECONDS`` (a monotonic-clock
+    TTL); within that window the last resolved result -- including "no target" from a missing or
+    unreadable hotfile -- is returned without touching the filesystem. A dev-server restart (new
+    hotfile mtime) is still observed on the next check after the TTL elapses, so cached results
+    are never permanently stale.
+
     Returns:
         A callable that returns the target URL or None if unavailable.
     """
     cached_mtime_ns: list[int | None] = [None]
+    has_cached_result: list[bool] = [False]
+    last_checked_at: list[float] = [0.0]
 
     def _get_target_url() -> str | None:
         if target is not None:
@@ -624,27 +639,34 @@ def create_target_url_getter(
         if hotfile_path is None:
             return None
 
+        now = time.monotonic()
+        if has_cached_result[0] and (now - last_checked_at[0]) < _HOTFILE_REVALIDATE_TTL_SECONDS:
+            return cached_target[0].rstrip("/") if cached_target[0] else None
+
         try:
             hotfile_stat = hotfile_path.stat()
         except (FileNotFoundError, OSError):
             cached_target[0] = None
             cached_mtime_ns[0] = None
+            has_cached_result[0] = True
+            last_checked_at[0] = now
             return None
 
-        if cached_target[0] is not None and cached_mtime_ns[0] == hotfile_stat.st_mtime_ns:
+        if has_cached_result[0] and cached_mtime_ns[0] == hotfile_stat.st_mtime_ns:
+            last_checked_at[0] = now
             return cached_target[0].rstrip("/") if cached_target[0] else None
 
         try:
-            url = read_hotfile_url(hotfile_path)
-            cached_target[0] = url
-            cached_mtime_ns[0] = hotfile_stat.st_mtime_ns
+            cached_target[0] = read_hotfile_url(hotfile_path)
             if is_proxy_debug():
-                console.print(f"[dim][{debug_label}] Dynamic target: {url}[/]")
-            return url.rstrip("/")
+                console.print(f"[dim][{debug_label}] Dynamic target: {cached_target[0]}[/]")
         except (FileNotFoundError, OSError):
             cached_target[0] = None
-            cached_mtime_ns[0] = None
-            return None
+
+        cached_mtime_ns[0] = hotfile_stat.st_mtime_ns
+        has_cached_result[0] = True
+        last_checked_at[0] = now
+        return cached_target[0].rstrip("/") if cached_target[0] else None
 
     return _get_target_url
 
