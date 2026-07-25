@@ -250,6 +250,176 @@ describe("createEventStream websocket transport", () => {
     expect(onEvent).toHaveBeenCalledOnce()
   })
 
+  it("keeps a contiguous sequence chain silent", () => {
+    const onGap = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      onEvent: vi.fn(),
+      onGap,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":1}')
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":2}')
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":3}')
+
+    expect(onGap).not.toHaveBeenCalled()
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":5}')
+    expect(onGap).toHaveBeenCalledWith({
+      stream: "task-1:1",
+      from: 3,
+      to: 5,
+      missing: 1,
+    })
+  })
+
+  it("reports a sequence jump exactly once", () => {
+    const onGap = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      onEvent: vi.fn(),
+      onGap,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":5}')
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":8}')
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":9}')
+
+    expect(onGap).toHaveBeenCalledOnce()
+    expect(onGap).toHaveBeenCalledWith({
+      stream: "task-1:1",
+      from: 5,
+      to: 8,
+      missing: 2,
+    })
+  })
+
+  it("ignores null sequence frames without breaking the chain", () => {
+    const onGap = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      onEvent: vi.fn(),
+      onGap,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":5}')
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":null,"type":"task.completed"}')
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":6}')
+
+    expect(onGap).not.toHaveBeenCalled()
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":8}')
+    expect(onGap).toHaveBeenCalledWith({
+      stream: "task-1:1",
+      from: 6,
+      to: 8,
+      missing: 1,
+    })
+  })
+
+  it("tracks retry attempts as separate sequence chains", () => {
+    const onGap = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      onEvent: vi.fn(),
+      onGap,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":7}')
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":2,"sequence":1}')
+
+    expect(onGap).not.toHaveBeenCalled()
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":2,"sequence":3}')
+    expect(onGap).toHaveBeenCalledWith({
+      stream: "task-1:2",
+      from: 1,
+      to: 3,
+      missing: 1,
+    })
+  })
+
+  it("ignores non-advancing sequence values", () => {
+    const onGap = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      onEvent: vi.fn(),
+      onGap,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":5}')
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":4}')
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":6}')
+
+    expect(onGap).not.toHaveBeenCalled()
+    FakeWebSocket.instances[0].simulateMessage('{"taskId":"task-1","attempt":1,"sequence":8}')
+    expect(onGap).toHaveBeenCalledWith({
+      stream: "task-1:1",
+      from: 6,
+      to: 8,
+      missing: 1,
+    })
+  })
+
+  it("stays silent when reconnect replay covers the sequence", () => {
+    const onEvent = vi.fn()
+    const onGap = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      onEvent,
+      onGap,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateMessage('{"id":"event-1","taskId":"task-1","attempt":1,"sequence":1}')
+    FakeWebSocket.instances[0].simulateMessage('{"id":"event-2","taskId":"task-1","attempt":1,"sequence":2}')
+    FakeWebSocket.instances[0].simulateClose(1006)
+    vi.advanceTimersByTime(500)
+    FakeWebSocket.instances[1].simulateMessage('{"id":"event-1","taskId":"task-1","attempt":1,"sequence":1}')
+    FakeWebSocket.instances[1].simulateMessage('{"id":"event-2","taskId":"task-1","attempt":1,"sequence":2}')
+    FakeWebSocket.instances[1].simulateMessage('{"id":"event-3","taskId":"task-1","attempt":1,"sequence":3}')
+
+    expect(onGap).not.toHaveBeenCalled()
+    expect(onEvent).toHaveBeenCalledTimes(3)
+    FakeWebSocket.instances[1].simulateMessage('{"id":"event-5","taskId":"task-1","attempt":1,"sequence":5}')
+    expect(onGap).toHaveBeenCalledWith({
+      stream: "task-1:1",
+      from: 3,
+      to: 5,
+      missing: 1,
+    })
+  })
+
+  it("supports a custom sequence selector", () => {
+    const onGap = vi.fn()
+    const stream = createEventStream<{ chain: string; offset: number }>({
+      buildUrl: () => "ws://example.test/events",
+      getSequence: (frame) => ({ stream: frame.chain, value: frame.offset }),
+      onEvent: vi.fn(),
+      onGap,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateMessage('{"chain":"workspace-1","offset":2}')
+    FakeWebSocket.instances[0].simulateMessage('{"chain":"workspace-1","offset":4}')
+
+    expect(onGap).toHaveBeenCalledWith({
+      stream: "workspace-1",
+      from: 2,
+      to: 4,
+      missing: 1,
+    })
+  })
+
   it("grows and caps full-jitter backoff, then resets after opening", () => {
     vi.spyOn(Math, "random").mockReturnValue(1)
     const stream = createEventStream({

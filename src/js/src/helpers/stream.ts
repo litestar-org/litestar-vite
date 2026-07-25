@@ -11,9 +11,11 @@ export interface EventStreamOptions<TFrame = unknown> {
   sseEvents?: readonly string[]
   onEvent: (frame: TFrame) => void
   onHealthChange?: (healthy: boolean) => void
+  onGap?: (gap: StreamGap) => void
   shouldReconnect?: (closeCode: number) => boolean
   isHeartbeat?: (frame: TFrame) => boolean
   getEventKey?: (frame: TFrame) => string | undefined
+  getSequence?: (frame: TFrame) => { stream: string; value: number } | undefined
   baseDelayMs?: number
   maxDelayMs?: number
   dedupWindow?: number
@@ -58,6 +60,20 @@ function defaultGetEventKey(frame: unknown): string | undefined {
   return typeof key === "string" ? key : undefined
 }
 
+function defaultGetSequence(frame: unknown): { stream: string; value: number } | undefined {
+  const record = asRecord(frame)
+  const sequence = record?.sequence
+  const taskId = record?.taskId
+  const attempt = record?.attempt
+  if (typeof sequence !== "number" || !Number.isFinite(sequence) || typeof taskId !== "string" || (typeof attempt !== "string" && typeof attempt !== "number")) {
+    return undefined
+  }
+  return {
+    stream: `${taskId}:${attempt}`,
+    value: sequence,
+  }
+}
+
 export function createEventStream<TFrame = unknown>(options: EventStreamOptions<TFrame>): EventStream {
   const {
     buildUrl,
@@ -65,9 +81,11 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
     sseEvents = DEFAULT_SSE_EVENTS,
     onEvent,
     onHealthChange,
+    onGap,
     shouldReconnect = (closeCode) => closeCode !== 1000,
     isHeartbeat = defaultIsHeartbeat,
     getEventKey = defaultGetEventKey,
+    getSequence = defaultGetSequence,
     baseDelayMs = DEFAULT_BASE_DELAY_MS,
     maxDelayMs = DEFAULT_MAX_DELAY_MS,
     dedupWindow = DEFAULT_DEDUP_WINDOW,
@@ -80,6 +98,7 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
   let lastHealthy: boolean | null = null
   const seenKeys: string[] = []
   const seenKeySet = new Set<string>()
+  const sequenceByStream = new Map<string, number>()
 
   function emitHealth(healthy: boolean): void {
     if (lastHealthy === healthy) {
@@ -132,6 +151,24 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
         const evicted = seenKeys.shift()
         if (evicted !== undefined) {
           seenKeySet.delete(evicted)
+        }
+      }
+    }
+
+    const sequence = getSequence(frame)
+    if (sequence !== undefined && Number.isFinite(sequence.value)) {
+      const last = sequenceByStream.get(sequence.stream)
+      if (last === undefined) {
+        sequenceByStream.set(sequence.stream, sequence.value)
+      } else if (sequence.value > last) {
+        sequenceByStream.set(sequence.stream, sequence.value)
+        if (sequence.value > last + 1) {
+          onGap?.({
+            stream: sequence.stream,
+            from: last,
+            to: sequence.value,
+            missing: sequence.value - last - 1,
+          })
         }
       }
     }
