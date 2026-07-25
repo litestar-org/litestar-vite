@@ -2,7 +2,7 @@
 
 import logging
 import time
-from collections.abc import AsyncGenerator, Awaitable, Iterable
+from collections.abc import AsyncGenerator, Awaitable
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -121,6 +121,8 @@ _LOGGER = logging.getLogger(__name__)
 # change is always observed within _HOTFILE_REVALIDATE_TTL_SECONDS, never "forever stale".
 _HOTFILE_REVALIDATE_TTL_SECONDS = 0.3
 
+_NO_CONNECTION_TOKENS: "frozenset[str]" = frozenset()
+
 
 def _normalize_header_key(raw_key: Any) -> str:
     """Normalize a raw header key to a lower-cased string."""
@@ -136,13 +138,21 @@ def _normalize_header_value(raw_value: Any) -> str:
     return str(raw_value)
 
 
-def _collect_connection_tokens(headers: Any) -> set[str]:
-    """Collect header names listed in Connection headers."""
-    tokens: set[str] = set()
+def _collect_connection_tokens(headers: Any) -> "frozenset[str]":
+    """Collect header names listed in Connection headers.
+
+    Returns:
+        A frozenset of the additional lower-cased header names to treat as hop-by-hop, or the
+        shared ``_NO_CONNECTION_TOKENS`` sentinel when no ``Connection`` header is present (the
+        common case) so callers can skip copying the base skip-set into a mutable set.
+    """
+    tokens: "set[str] | None" = None
     for key, value in headers:
         if _normalize_header_key(key) == "connection":
+            if tokens is None:
+                tokens = set()
             tokens.update(token.strip().lower() for token in _normalize_header_value(value).split(",") if token.strip())
-    return tokens
+    return frozenset(tokens) if tokens else _NO_CONNECTION_TOKENS
 
 
 def _filter_hop_by_hop_headers(headers: Any) -> list[tuple[str, str]]:
@@ -150,19 +160,23 @@ def _filter_hop_by_hop_headers(headers: Any) -> list[tuple[str, str]]:
     return _extract_request_headers(headers)
 
 
-def _extract_request_headers(
-    headers: Any, extra_skip_headers: "Iterable[bytes | str] | None" = None
-) -> list[tuple[str, str]]:
-    """Extract request headers, excluding hop-by-hop and optional additional skip headers."""
+def _extract_request_headers(headers: Any, extra_skip_headers: "frozenset[str] | None" = None) -> list[tuple[str, str]]:
+    """Extract request headers, excluding hop-by-hop and optional additional skip headers.
+
+    ``extra_skip_headers``, when given, must already be a normalized (lower-cased) frozenset
+    constant (e.g. ``_WS_REQUEST_SKIP_HEADERS``) -- this hot-path function trusts the caller
+    and does no per-call re-normalization or frozenset re-allocation for the base skip set. A
+    mutable copy is made only when the request actually carries dynamic ``Connection`` tokens
+    (RFC 7230 §6.1), which is the uncommon case; otherwise the frozenset is used directly for
+    membership tests.
+    """
     if not headers:
         return []
 
-    skip = _REQUEST_SKIP_HEADERS
-    if extra_skip_headers is not None:
-        skip = skip | frozenset(_normalize_header_key(name) for name in extra_skip_headers)
+    skip = extra_skip_headers if extra_skip_headers is not None else _REQUEST_SKIP_HEADERS
 
-    hop_by_hop = set(skip)
-    hop_by_hop.update(_collect_connection_tokens(headers))
+    connection_tokens = _collect_connection_tokens(headers)
+    hop_by_hop: "frozenset[str] | set[str]" = skip | connection_tokens if connection_tokens else skip
 
     filtered: list[tuple[str, str]] = []
     for key, value in headers:

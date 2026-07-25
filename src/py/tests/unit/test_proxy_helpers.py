@@ -182,6 +182,37 @@ def test_extract_forward_headers_drops_connection_derived_headers() -> None:
     assert extract_forward_headers(scope) == [("X-Test", "value")]
 
 
+def test_collect_connection_tokens_returns_shared_empty_sentinel_when_absent() -> None:
+    """No Connection header returns the shared sentinel instead of allocating a set."""
+    from litestar_vite.plugin._proxy import _NO_CONNECTION_TOKENS, _collect_connection_tokens
+
+    result = _collect_connection_tokens([(b"host", b"example.com"), (b"x-test", b"value")])
+
+    assert result is _NO_CONNECTION_TOKENS
+
+
+def test_extract_request_headers_avoids_set_copy_without_connection_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No Connection header uses the immutable skip set directly."""
+    from litestar_vite.plugin._proxy import _extract_request_headers
+
+    set_calls = 0
+    real_set = set
+
+    class _CountingSet(real_set):
+        def __new__(cls, *args: object, **kwargs: object) -> Self:
+            nonlocal set_calls
+            set_calls += 1
+            return real_set.__new__(cls, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.set", _CountingSet)
+
+    headers = [(b"X-Test", b"value"), (b"Host", b"example.com")]
+    result = _extract_request_headers(headers)
+
+    assert result == [("X-Test", "value"), ("Host", "example.com")]
+    assert set_calls == 0, f"expected zero set() allocations with no Connection header, got {set_calls}"
+
+
 def test_normalize_proxy_prefixes(tmp_path: Path) -> None:
     prefixes = normalize_proxy_prefixes(
         ("/@vite",),
