@@ -217,7 +217,7 @@ def _build_deploy_config(
 def _prepare_and_build(config: ViteConfig, root_dir: Path, console: Any, app: "Litestar | None", verbose: bool) -> None:
     """Export metadata, run typegen, and execute the configured frontend build."""
     if config.set_environment:
-        set_environment(config=config)
+        set_environment(config=config, app=app)
 
     generated_assets = _generate_schema_and_routes(app, config, console) if app is not None else False
 
@@ -888,7 +888,7 @@ def vite_serve(app: "Litestar", verbose: "bool", quiet: "bool", production: "boo
 
     _apply_cli_log_level(plugin.config, verbose=verbose, quiet=quiet)
     if plugin.config.set_environment:
-        set_environment(config=plugin.config)
+        set_environment(config=plugin.config, app=app)
 
     use_production_server = production or not plugin.config.dev_mode
 

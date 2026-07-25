@@ -884,7 +884,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
             self._ensure_proxy_target()
 
         if self._config.set_environment:
-            set_environment(config=self._config)
+            set_environment(config=self._config, app=app)
             set_app_environment(app)
 
         self._export_types_sync(app)
@@ -965,7 +965,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         self._set_route_prefix_state(app.state)
 
         if self._config.set_environment:
-            set_environment(config=self._config)
+            set_environment(config=self._config, app=app)
             set_app_environment(app)
 
         # Initialize shared proxy client for ViteProxyMiddleware/SSRProxyController

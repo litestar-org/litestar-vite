@@ -10,6 +10,7 @@ from unittest.mock import Mock
 import click
 import pytest
 from litestar import Litestar, get
+from litestar.config.csrf import CSRFConfig
 from litestar.connection import Request
 from litestar.serialization import decode_json
 
@@ -116,6 +117,28 @@ def test_set_environment_uses_effective_litestar_run_bind(tmp_path: Path, monkey
     assert os.environ["APP_URL"] == "http://localhost:9123"
     assert bridge["appUrl"] == "http://localhost:9123"
     assert bridge["litestarPort"] == 9123
+
+
+def test_set_environment_threads_csrf_config_into_bridge(tmp_path: Path) -> None:
+    """set_environment must derive csrfCookieName/csrfHeaderName from app.csrf_config."""
+    config = ViteConfig(mode="spa", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=True))
+    app = Litestar(csrf_config=CSRFConfig(secret="s", cookie_name="custom_cookie", header_name="x-custom-header"))
+
+    utils.set_environment(config, app=app)
+
+    bridge = decode_json((tmp_path / ".litestar.json").read_bytes())
+    assert bridge["csrfCookieName"] == "custom_cookie"
+    assert bridge["csrfHeaderName"] == "x-custom-header"
+
+
+def test_set_environment_csrf_names_null_without_app(tmp_path: Path) -> None:
+    config = ViteConfig(mode="spa", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=True))
+
+    utils.set_environment(config)
+
+    bridge = decode_json((tmp_path / ".litestar.json").read_bytes())
+    assert bridge["csrfCookieName"] is None
+    assert bridge["csrfHeaderName"] is None
 
 
 def test_is_non_serving_assets_cli(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -402,17 +402,33 @@ def _derive_bridge_litestar_port() -> int | None:
 
 
 @overload
-def write_runtime_config_file(config: "ViteConfig", *, asset_url_override: str | None = None) -> str: ...
+def write_runtime_config_file(
+    config: "ViteConfig",
+    *,
+    asset_url_override: str | None = None,
+    csrf_cookie_name: str | None = None,
+    csrf_header_name: str | None = None,
+) -> str: ...
 
 
 @overload
 def write_runtime_config_file(
-    config: "ViteConfig", *, asset_url_override: str | None = None, return_status: bool
+    config: "ViteConfig",
+    *,
+    asset_url_override: str | None = None,
+    csrf_cookie_name: str | None = None,
+    csrf_header_name: str | None = None,
+    return_status: bool,
 ) -> tuple[str, bool]: ...
 
 
 def write_runtime_config_file(
-    config: "ViteConfig", *, asset_url_override: str | None = None, return_status: bool = False
+    config: "ViteConfig",
+    *,
+    asset_url_override: str | None = None,
+    csrf_cookie_name: str | None = None,
+    csrf_header_name: str | None = None,
+    return_status: bool = False,
 ) -> str | tuple[str, bool]:
     """Write a JSON handoff file for the Vite plugin and return its path.
 
@@ -451,6 +467,8 @@ def write_runtime_config_file(
         "manifest": config.manifest_name,
         "mode": config.mode,
         "proxyMode": config.proxy_mode,
+        "csrfCookieName": csrf_cookie_name,
+        "csrfHeaderName": csrf_header_name,
         "port": config.port,
         "host": config.host,
         "ssrOutDir": ssr_out_dir_value,
@@ -497,7 +515,7 @@ def write_runtime_config_file(
     return str(path)
 
 
-def set_environment(config: "ViteConfig", asset_url_override: str | None = None) -> None:
+def set_environment(config: "ViteConfig", asset_url_override: str | None = None, app: "Litestar | None" = None) -> None:
     """Configure environment variables for Vite integration.
 
     Sets environment variables that can be used by both the Python backend
@@ -506,6 +524,7 @@ def set_environment(config: "ViteConfig", asset_url_override: str | None = None)
     Args:
         config: The Vite configuration.
         asset_url_override: Optional asset URL to force (e.g., CDN base during build).
+        app: Optional Litestar app supplying the configured CSRF names.
     """
     litestar_version = os.environ.get("LITESTAR_VERSION") or resolve_litestar_version()
     asset_url = asset_url_override or config.asset_url
@@ -540,7 +559,12 @@ def set_environment(config: "ViteConfig", asset_url_override: str | None = None)
     if config.is_dev_mode:
         os.environ.setdefault("VITE_DEV_MODE", str(config.is_dev_mode))
 
-    config_path = write_runtime_config_file(config)
+    csrf_config = app.csrf_config if app is not None else None
+    csrf_cookie_name = csrf_config.cookie_name if csrf_config is not None else None
+    csrf_header_name = csrf_config.header_name if csrf_config is not None else None
+    config_path = write_runtime_config_file(
+        config, csrf_cookie_name=csrf_cookie_name, csrf_header_name=csrf_header_name
+    )
     os.environ["LITESTAR_VITE_CONFIG_PATH"] = config_path
 
 

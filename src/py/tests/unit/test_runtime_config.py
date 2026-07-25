@@ -107,6 +107,28 @@ def test_bridge_app_url_null_when_unknown(tmp_path: Path, monkeypatch: pytest.Mo
     assert data["appUrl"] is None
 
 
+def test_bridge_csrf_names_included_when_provided(tmp_path: Path) -> None:
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg, csrf_cookie_name="custom_cookie", csrf_header_name="x-custom-header")
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["csrfCookieName"] == "custom_cookie"
+    assert data["csrfHeaderName"] == "x-custom-header"
+
+
+def test_bridge_csrf_names_null_by_default(tmp_path: Path) -> None:
+    cfg = ViteConfig()
+    cfg.paths.root = tmp_path
+
+    path_str = write_runtime_config_file(cfg)
+    data = decode_json(Path(path_str).read_text())
+
+    assert data["csrfCookieName"] is None
+    assert data["csrfHeaderName"] is None
+
+
 def test_bridge_litestar_port_from_app_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Bridge MUST emit litestarPort parsed from APP_URL so framework integrations can route HMR through it."""
     monkeypatch.setenv("APP_URL", "https://api.example.com:9876")
