@@ -5,6 +5,9 @@ import re
 from pathlib import PurePosixPath
 from typing import Any, cast
 
+from litestar_vite.codegen._refs import extract_schema_ref_name as _extract_schema_ref_name
+from litestar_vite.codegen._refs import resolve_component_schema_name as _resolve_component_schema_name
+
 _PATH_PARAM_TYPE_PATTERN = re.compile(r"\{([^:}]+):[^}]+\}")
 
 _OPENAPI_STRING_FORMAT_TO_TS_ALIAS: dict[str, str] = {
@@ -35,43 +38,6 @@ def normalize_path(path: str) -> str:
     if not path or path == "/":
         return path
     return _PATH_PARAM_TYPE_PATTERN.sub(r"{\1}", str(PurePosixPath(path)))
-
-
-def _extract_schema_ref_name(ref: str) -> str | None:
-    """Return the schema name from a ``#/components/schemas/<name>`` ref or None.
-
-    Returns:
-        The trailing schema name when ``ref`` is a components-schemas pointer; None otherwise.
-    """
-    prefix = "#/components/schemas/"
-    if ref.startswith(prefix):
-        return ref[len(prefix) :]
-    return None
-
-
-def _resolve_component_schema_name(name: str, components_schemas: dict[str, Any]) -> str | None:
-    """Resolve Litestar's mangled schema names back to a key in ``components.schemas``.
-
-    Litestar emits fully-qualified module paths in ``$ref`` targets (e.g.
-    ``app_domain_insight_schemas__base_Granularity``) when nested types collide,
-    but ``components.schemas`` is keyed on the short name (``Granularity``).
-    Strip leading underscore-separated segments until a matching key is found.
-
-    Returns:
-        The resolved key from ``components_schemas``, or None when no match is found.
-    """
-    if name in components_schemas:
-        return name
-
-    if "_" not in name:
-        return None
-
-    parts = name.split("_")
-    for i in range(len(parts)):
-        candidate = "_".join(parts[i:])
-        if candidate in components_schemas:
-            return candidate
-    return None
 
 
 def ts_type_from_openapi(schema_dict: dict[str, Any], components_schemas: dict[str, Any] | None = None) -> str:

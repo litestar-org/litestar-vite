@@ -14,6 +14,7 @@ from litestar._openapi.parameters import (  # pyright: ignore[reportPrivateUsage
 from litestar.handlers import HTTPRouteHandler
 from litestar.routes import HTTPRoute
 
+from litestar_vite.codegen._refs import extract_schema_ref_name, resolve_component_schema_name
 from litestar_vite.codegen._ts import normalize_path, ts_type_from_openapi
 
 _PATH_PARAM_EXTRACT_PATTERN = re.compile(r"\{([^:}]+)(?::([^}]+))?\}")
@@ -71,22 +72,14 @@ def _resolve_component_schema(ref: str, components_schemas: dict[str, Any] | Non
     """Resolve an OpenAPI component schema reference."""
     if not components_schemas:
         return None
-
-    prefix = "#/components/schemas/"
-    if not ref.startswith(prefix):
+    ref_name = extract_schema_ref_name(ref)
+    if ref_name is None:
         return None
-
-    ref_name = ref[len(prefix) :]
-    if ref_name in components_schemas and isinstance(components_schemas[ref_name], dict):
-        return cast("dict[str, Any]", components_schemas[ref_name])
-
-    parts = ref_name.split("_")
-    for i in range(len(parts)):
-        candidate = "_".join(parts[i:])
-        schema = components_schemas.get(candidate)
-        if isinstance(schema, dict):
-            return cast("dict[str, Any]", schema)
-    return None
+    resolved_name = resolve_component_schema_name(ref_name, components_schemas)
+    if resolved_name is None:
+        return None
+    schema = components_schemas.get(resolved_name)
+    return cast("dict[str, Any]", schema) if isinstance(schema, dict) else None
 
 
 def _schema_contains_ref(schema: Any) -> bool:
