@@ -45,3 +45,5 @@ export { csrfFetch, csrfHeaders, getCsrfToken } from "./csrf.js"
 export { addDirective, registerHtmxExtension, setDebug as setHtmxDebug, swapJson } from "./htmx.js"
 // Route matching utilities
 export { createRouteHelpers, currentRoute, isCurrentRoute, isRoute, type RouteDefinition, type RouteDefinitions, type RouteHelpers, toRoute } from "./routes.js"
+// Realtime stream utilities
+export { createEventStream, type EventStream, type EventStreamOptions, type StreamGap } from "./stream.js"

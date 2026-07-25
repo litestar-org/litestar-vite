@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import * as helperExports from "../../src/helpers"
 import { createEventStream } from "../../src/helpers/stream"
 
 class FakeWebSocket {
@@ -100,6 +101,12 @@ const DEFAULT_SSE_EVENTS = [
   "worker.heartbeat",
   "worker.stale_recovery",
 ]
+
+describe("stream helper exports", () => {
+  it("exports createEventStream from the helpers entry point", () => {
+    expect((helperExports as Record<string, unknown>).createEventStream).toBe(createEventStream)
+  })
+})
 
 describe("createEventStream websocket transport", () => {
   const originalWindow = globalThis.window

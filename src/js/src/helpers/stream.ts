@@ -1,3 +1,24 @@
+/**
+ * Resilient WebSocket and SSE helpers for Litestar event streams.
+ *
+ * @example
+ * ```ts
+ * import { createEventStream } from "litestar-vite-plugin/helpers"
+ *
+ * const stream = createEventStream({
+ *   buildUrl: () => {
+ *     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
+ *     return `${protocol}//${window.location.host}/events`
+ *   },
+ *   onEvent: (event) => console.log(event),
+ * })
+ *
+ * stream.connect()
+ * ```
+ *
+ * @module
+ */
+
 export interface StreamGap {
   stream: string
   from: number
@@ -75,6 +96,12 @@ function defaultGetSequence(frame: unknown): { stream: string; value: number } |
   }
 }
 
+/**
+ * Create a reconnecting, transport-agnostic Litestar event stream.
+ *
+ * @param options - Stream transport, lifecycle, and frame-processing options.
+ * @returns A disposable stream that connects only when `connect()` is called.
+ */
 export function createEventStream<TFrame = unknown>(options: EventStreamOptions<TFrame>): EventStream {
   const {
     buildUrl,
