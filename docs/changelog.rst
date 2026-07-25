@@ -29,6 +29,9 @@ Litestar Vite Changelog
 - Hardened Vite 8.1 HMR compatibility by emitting network options under ``server.ws.*`` on Vite 8.1+,
   retaining ``server.hmr.*`` emission for Vite 7 / 8.0, and continuing to read either shape from user
   configuration.
+- Added ``csrfCookieName`` and ``csrfHeaderName`` to the ``.litestar.json`` bridge and injected browser
+  state. ``getCsrfToken()``, ``getCsrfHeaderName()``, ``csrfHeaders()``, ``csrfFetch()``, and the HTMX
+  extension now follow custom ``CSRFConfig(cookie_name=..., header_name=...)`` values automatically.
 
 0.26.1 - 2026-07-06
 -------------------
