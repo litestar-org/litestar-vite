@@ -683,17 +683,32 @@ def create_hmr_target_getter(
         2. Main hotfile contents — actual upstream target resolved by the
            frontend side, preserving scheme and normalized host.
 
+    The ``.hmr`` sibling ``Path`` is built once here (not per call). Both candidates are
+    re-stat'd at most once per ``_HOTFILE_REVALIDATE_TTL_SECONDS`` -- including when the
+    ``.hmr`` sibling is absent (the common case) -- so a missing sibling does not cost a
+    stat() on every proxied/HMR-connect request.
+
     Returns:
         A callable that returns the HMR target URL or None if unavailable.
     """
-    cached_mtime_ns: list[int | None] = [None]
-    cached_path: list[Path | None] = [None]
+    if hotfile_path is None:
 
-    def _get_hmr_target_url() -> str | None:
-        if hotfile_path is None:
+        def _no_hmr_target_url() -> str | None:
             return None
 
-        hmr_path = Path(f"{hotfile_path}.hmr")
+        return _no_hmr_target_url
+
+    hmr_path = Path(f"{hotfile_path}.hmr")
+    cached_mtime_ns: list[int | None] = [None]
+    cached_path: list[Path | None] = [None]
+    has_cached_result: list[bool] = [False]
+    last_checked_at: list[float] = [0.0]
+
+    def _get_hmr_target_url() -> str | None:
+        now = time.monotonic()
+        if has_cached_result[0] and (now - last_checked_at[0]) < _HOTFILE_REVALIDATE_TTL_SECONDS:
+            return cached_hmr_target[0].rstrip("/") if cached_hmr_target[0] else None
+
         for candidate, label in ((hmr_path, "HMR target"), (hotfile_path, "HMR target fallback")):
             try:
                 candidate_stat = candidate.stat()
@@ -701,11 +716,12 @@ def create_hmr_target_getter(
                 continue
 
             if (
-                cached_path[0] == candidate
-                and cached_hmr_target[0] is not None
+                has_cached_result[0]
+                and cached_path[0] == candidate
                 and cached_mtime_ns[0] == candidate_stat.st_mtime_ns
             ):
-                return cached_hmr_target[0].rstrip("/")
+                last_checked_at[0] = now
+                return cached_hmr_target[0].rstrip("/") if cached_hmr_target[0] else None
 
             try:
                 url = read_hotfile_url(candidate)
@@ -715,6 +731,8 @@ def create_hmr_target_getter(
             cached_path[0] = candidate
             cached_mtime_ns[0] = candidate_stat.st_mtime_ns
             cached_hmr_target[0] = url
+            has_cached_result[0] = True
+            last_checked_at[0] = now
             if is_proxy_debug():
                 console.print(f"[dim][ssr-proxy] {label}: {url}[/]")
             return url.rstrip("/")
@@ -722,6 +740,8 @@ def create_hmr_target_getter(
         cached_path[0] = None
         cached_mtime_ns[0] = None
         cached_hmr_target[0] = None
+        has_cached_result[0] = True
+        last_checked_at[0] = now
         return None
 
     return _get_hmr_target_url

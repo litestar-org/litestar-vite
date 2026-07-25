@@ -277,6 +277,46 @@ def test_target_url_getter_caches_negative_result_without_reread(
     assert read_calls == 1
 
 
+def test_hmr_target_getter_hoists_hmr_path_once(tmp_path: Path) -> None:
+    """The '<hotfile>.hmr' Path must be constructed once per getter, not once per call."""
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://localhost:5173")
+    (tmp_path / "hot.hmr").write_text("http://127.0.0.1:24678")
+
+    with patch("litestar_vite.plugin._proxy.Path", wraps=Path) as path_spy:
+        getter = create_hmr_target_getter(hotfile, [None])
+        for _ in range(5):
+            assert getter() == "http://127.0.0.1:24678"
+
+    assert path_spy.call_count == 1, (
+        f"expected Path(...) to be constructed once for the .hmr sibling, got {path_spy.call_count}"
+    )
+
+
+def test_hmr_target_getter_ttls_negative_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When no '.hmr' sibling exists, repeated calls within the TTL window must not re-stat either candidate."""
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://localhost:5173")
+    fake_time = [1000.0]
+    monkeypatch.setattr("litestar_vite.plugin._proxy.time.monotonic", lambda: fake_time[0])
+
+    stat_calls = 0
+    real_stat = Path.stat
+
+    def counting_stat(self: Path, *args: object, **kwargs: object) -> object:
+        nonlocal stat_calls
+        stat_calls += 1
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", counting_stat)
+
+    getter = create_hmr_target_getter(hotfile, [None])
+    for _ in range(5):
+        assert getter() == "http://localhost:5173"
+
+    assert stat_calls == 2, f"expected exactly 2 stat() calls across 5 getter() calls, got {stat_calls}"
+
+
 def test_hmr_target_getter_caches(tmp_path: Path) -> None:
     hotfile = tmp_path / "hot"
     hotfile.write_text("http://localhost:5173")
