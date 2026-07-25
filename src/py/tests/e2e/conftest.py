@@ -63,8 +63,6 @@ def _cleanup_processes_after_session() -> Generator[None, None, None]:
     yield
 
     # Stop all cached servers
-    from .conftest import _dev_servers, _prod_servers
-
     for server in list(_dev_servers.values()):
         try:
             server.stop()

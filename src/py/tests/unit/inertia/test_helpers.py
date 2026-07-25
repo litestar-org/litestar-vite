@@ -662,9 +662,13 @@ async def test_share_does_not_execute_discarded_deferred_callable(
 
     calls: list[int] = []
 
+    def load_slow_prop() -> dict[str, int]:
+        calls.append(1)
+        return {"x": 1}
+
     @get("/", component="Home")
     async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
-        share(request, "slow", defer("slow", lambda: (calls.append(1), {"x": 1})[1]))
+        share(request, "slow", defer("slow", load_slow_prop))
         return {"eager": "ok"}
 
     with create_test_client(

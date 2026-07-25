@@ -21,9 +21,13 @@ async def test_shared_prop_survives_exception_redirect(
     calls: list[int] = []
     inertia_plugin.config.redirect_unauthorized_to = "/login"
 
+    def load_auth() -> dict[str, str]:
+        calls.append(1)
+        return {"user": "Ada"}
+
     @get("/protected", component="Protected")
     async def protected(request: Request[Any, Any, Any]) -> dict[str, Any]:
-        share(request, "auth", once("auth", lambda: (calls.append(1), {"user": "Ada"})[1]))
+        share(request, "auth", once("auth", load_auth))
         raise NotAuthorizedException
 
     @get("/login", component="Login")

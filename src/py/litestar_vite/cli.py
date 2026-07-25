@@ -422,7 +422,7 @@ def _find_scaffold_collisions(
     use_tailwind: bool,
 ) -> list[Path]:
     """Return existing paths that would make scaffold output unsafe without overwrite."""
-    from litestar_vite.scaffolding.generator import _resolve_framework_template_dir, get_template_dir
+    from litestar_vite.scaffolding.generator import get_template_dir, resolve_framework_template_dir
 
     template_dir = get_template_dir()
     root_files: set[str] = set()
@@ -438,7 +438,7 @@ def _find_scaffold_collisions(
 
     if framework.uses_vite:
         _add_root_files(template_dir / "base")
-    _add_root_files(_resolve_framework_template_dir(template_dir, framework.type.value))
+    _add_root_files(resolve_framework_template_dir(template_dir, framework.type.value))
     if use_tailwind:
         _add_root_files(template_dir / "addons" / "tailwindcss")
 
@@ -1272,6 +1272,9 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     Args:
         app: The Litestar application instance.
         verbose: Whether to enable verbose output.
+
+    Raises:
+        SystemExit: If type generation fails or no files are exported.
     """
     from litestar_vite.codegen import export_integration_assets
     from litestar_vite.plugin._utils import write_runtime_config_file

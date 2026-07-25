@@ -2184,10 +2184,10 @@ async def test_vite_plugin_lifespan_parses_manifest_once_across_loader_and_handl
 
     decode_calls = 0
 
-    def counting_decode_json(*args: object, **kwargs: object) -> object:
+    def counting_decode_json(value: str | bytes, strict: bool = True) -> Any:
         nonlocal decode_calls
         decode_calls += 1
-        return real_decode_json(*args, **kwargs)
+        return real_decode_json(value, strict=strict)
 
     with (
         patch("litestar_vite.loader.decode_json", counting_decode_json),

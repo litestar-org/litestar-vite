@@ -99,8 +99,7 @@ def _check_h2_available() -> bool:
     global _h2_available  # noqa: PLW0603
     if _h2_available is None:
         try:
-            import h2  # noqa: F401  # pyright: ignore[reportMissingImports,reportUnusedImport]
-
+            __import__("h2")
             _h2_available = True
         except ImportError:
             _h2_available = False
@@ -439,6 +438,8 @@ def write_runtime_config_file(
     Returns:
         The path to the written config file.
     """
+    import msgspec
+    from litestar.serialization import encode_json
 
     root = config.root_dir or Path.cwd()
     path = Path(root) / ".litestar.json"
@@ -505,9 +506,6 @@ def write_runtime_config_file(
         "litestarVersion": litestar_version,
         "staticProps": config.static_props or None,
     }
-
-    import msgspec
-    from litestar.serialization import encode_json
 
     content = msgspec.json.format(encode_json(payload), indent=2)
     changed = _write_if_changed(path, content)
@@ -639,7 +637,16 @@ def _route_is_vite_spa(route: Any) -> bool:
     return False
 
 
-def _build_litestar_route_prefixes(app: "Litestar", extra_route_prefixes: tuple[str, ...] = ()) -> tuple[str, ...]:
+def _route_is_vite_static(route: Any) -> bool:
+    """Return whether a route belongs to the Vite-managed static router."""
+    handlers = getattr(route, "route_handlers", None)
+    if not handlers:
+        single = getattr(route, "route_handler", None)
+        handlers = [single] if single is not None else []
+    return any(bool((opt := getattr(handler, "opt", None)) and opt.get("_vite_static_handler")) for handler in handlers)
+
+
+def build_litestar_route_prefixes(app: "Litestar", extra_route_prefixes: tuple[str, ...] = ()) -> tuple[str, ...]:
     """Build Litestar route prefixes from registered routes and explicit configuration.
 
     This function collects all registered route paths from the Litestar application.
@@ -671,7 +678,7 @@ def _build_litestar_route_prefixes(app: "Litestar", extra_route_prefixes: tuple[
         # the prefix list would make is_litestar_route() self-exclude the SPA — non-root
         # spa_path values like "/ui" become unreachable. Identify SPA routes via the
         # _vite_spa_handler marker AppHandler.create_route_handler sets on opt.
-        if _route_is_vite_spa(route):
+        if _route_is_vite_spa(route) or _route_is_vite_static(route):
             continue
         prefix = _normalize_route_prefix(route.path)
         if prefix is not None:
@@ -718,10 +725,10 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
 
     try:
         plugin = app.plugins.get(VitePlugin)
-    except KeyError:
-        result = _build_litestar_route_prefixes(app)
+    except (AttributeError, KeyError):
+        result = build_litestar_route_prefixes(app)
     else:
-        result = plugin._get_route_prefixes(app)
+        result = plugin.get_route_prefixes(app)
 
     if is_proxy_debug():
         console.print(f"[dim][route-detection] Cached prefixes: {result}[/]")
@@ -776,8 +783,8 @@ def vite_not_found_handler(request: "Request[Any, Any, Any]", exc: "NotFoundExce
     """
     from litestar import Response
 
-    if request.headers.get("x-inertia", "").lower() == "true":
-        from litestar_vite.inertia.exception_handler import exception_to_http_response
+    from litestar_vite.inertia.exception_handler import exception_to_http_response
 
+    if request.headers.get("x-inertia", "").lower() == "true":
         return exception_to_http_response(request, exc)
     return Response(status_code=404, content=b"")

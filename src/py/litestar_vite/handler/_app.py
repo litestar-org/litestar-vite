@@ -28,6 +28,7 @@ from litestar_vite.html_transform import (
     set_data_attribute,
     transform_asset_urls,
 )
+from litestar_vite.plugin._utils import check_h2_available
 from litestar_vite.utils import get_static_resource_path, read_hotfile_url
 
 if TYPE_CHECKING:
@@ -162,12 +163,7 @@ class AppHandler:
         """Initialize HTTP clients for dev mode proxying."""
         self._vite_url = vite_url or self._resolve_vite_url()
 
-        http2_enabled = self._config.http2
-        if http2_enabled:
-            try:
-                import h2  # noqa: F401  # pyright: ignore[reportMissingImports,reportUnusedImport]
-            except ImportError:
-                http2_enabled = False
+        http2_enabled = self._config.http2 and check_h2_available()
 
         self._http_client = httpx.AsyncClient(timeout=httpx.Timeout(5.0), http2=http2_enabled)
         self._http_client_sync = httpx.Client(timeout=httpx.Timeout(5.0))

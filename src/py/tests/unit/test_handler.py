@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import httpx
 import pytest
 from litestar import Litestar, get
+from litestar.connection import Request
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.params import FromPath, FromQuery
 from litestar.testing import AsyncTestClient
@@ -14,6 +15,7 @@ from litestar.testing import AsyncTestClient
 from litestar_vite.config import ViteConfig
 from litestar_vite.handler import AppHandler
 from litestar_vite.handler import _app as app_module
+from litestar_vite.plugin import is_litestar_route
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
@@ -204,8 +206,6 @@ async def test_spa_handler_production_mode(spa_config: ViteConfig) -> None:
         # Create a mock request by making an actual request
         await client.get("/")
         # Get the request from the app's request scope
-        from litestar.connection import Request
-
         mock_request = Mock(spec=Request)
         mock_request.app = app
 
@@ -1432,8 +1432,6 @@ async def test_spa_handler_serves_non_root_spa_path(temp_resource_dir: Path, mon
         return {"book_id": book_id}
 
     app = Litestar(route_handlers=[get_book, route])
-
-    from litestar_vite.plugin import is_litestar_route
 
     # The SPA's own paths must not be classified as Litestar (non-SPA) routes.
     assert is_litestar_route("/ui", app) is False

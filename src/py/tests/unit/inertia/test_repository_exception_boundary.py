@@ -16,6 +16,7 @@ from litestar.stores.memory import MemoryStore
 from litestar.testing import create_test_client
 from litestar.utils.deprecation import LitestarDeprecationWarning
 
+from litestar_vite import _typing as lv_typing
 from litestar_vite.config import InertiaConfig, ViteConfig
 
 
@@ -30,6 +31,7 @@ def _repository_error(name: str, base: type[Exception] = Exception) -> type[Exce
 
 
 def _install_advanced_alchemy_exceptions(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
+    """Install Advanced Alchemy exception stand-ins."""
     exceptions = ModuleType("advanced_alchemy.exceptions")
 
     repository_error = _repository_error("RepositoryError", _RepositoryException)
@@ -39,8 +41,6 @@ def _install_advanced_alchemy_exceptions(monkeypatch: pytest.MonkeyPatch) -> Mod
     exceptions.IntegrityError = integrity_error
     exceptions.DuplicateKeyError = _repository_error("DuplicateKeyError", integrity_error)
     exceptions.ForeignKeyError = _repository_error("ForeignKeyError", integrity_error)
-
-    import litestar_vite._typing as lv_typing
 
     monkeypatch.setattr(lv_typing, "ADVANCED_ALCHEMY_INSTALLED", True)
     monkeypatch.setattr(lv_typing, "AdvancedAlchemyRepositoryError", exceptions.RepositoryError)
@@ -52,6 +52,7 @@ def _install_advanced_alchemy_exceptions(monkeypatch: pytest.MonkeyPatch) -> Mod
 
 
 def _install_sqlspec_exceptions(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
+    """Install SQLSpec exception stand-ins."""
     exceptions = ModuleType("sqlspec.exceptions")
 
     repository_error = _repository_error("RepositoryError", _RepositoryException)
@@ -63,8 +64,6 @@ def _install_sqlspec_exceptions(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     exceptions.ForeignKeyViolationError = _repository_error("ForeignKeyViolationError", integrity_error)
     exceptions.CheckViolationError = _repository_error("CheckViolationError", integrity_error)
     exceptions.NotNullViolationError = _repository_error("NotNullViolationError", integrity_error)
-
-    import litestar_vite._typing as lv_typing
 
     monkeypatch.setattr(lv_typing, "SQLSPEC_INSTALLED", True)
     monkeypatch.setattr(lv_typing, "SQLSpecRepositoryError", exceptions.RepositoryError)

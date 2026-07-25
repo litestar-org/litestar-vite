@@ -3,6 +3,7 @@ from typing import Any
 import pytest
 from litestar import MediaType, Request, get
 from litestar.middleware.session.server_side import ServerSideSessionConfig
+from litestar.serialization import decode_json
 from litestar.status_codes import HTTP_200_OK
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
@@ -514,8 +515,6 @@ async def test_page_with_empty_string_value(
         stores={"sessions": MemoryStore()},
     ) as client:
         # With Inertia header, should return JSON
-        from litestar.serialization import decode_json
-
         response = client.get("/empty", headers={InertiaHeaders.ENABLED.value: "true"})
         data = decode_json(response.text)
         # Empty page should fallback to component

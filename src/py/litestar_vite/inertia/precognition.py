@@ -261,6 +261,8 @@ def _find_request(args: tuple[Any, ...], kwargs: "dict[str, Any]") -> "Request[A
     """
     from litestar import Request
 
+    from litestar_vite.inertia.middleware import get_current_inertia_request
+
     # Check kwargs first (named 'request' parameter)
     if "request" in kwargs:
         req = kwargs["request"]
@@ -271,7 +273,5 @@ def _find_request(args: tuple[Any, ...], kwargs: "dict[str, Any]") -> "Request[A
     for arg in args:
         if isinstance(arg, Request):  # pyright: ignore[reportUnknownVariableType]
             return arg  # pyright: ignore[reportUnknownVariableType]
-
-    from litestar_vite.inertia.middleware import get_current_inertia_request
 
     return get_current_inertia_request()

@@ -59,9 +59,13 @@ async def test_share_sync_special_prop_delivered_across_redirect(
     """A shared sync prop is materialized once when an in-frame redirect needs it."""
     calls: list[int] = []
 
+    def load_config() -> dict[str, int]:
+        calls.append(1)
+        return {"a": 1}
+
     @get("/")
     async def redirect_handler(request: Request[Any, Any, Any]) -> InertiaRedirect:
-        share(request, "cfg", once("cfg", lambda: (calls.append(1), {"a": 1})[1]))
+        share(request, "cfg", once("cfg", load_config))
         return InertiaRedirect(request, "/next")
 
     @get("/next", component="Next")
@@ -2812,8 +2816,6 @@ async def test_inertia_plugin_ssr_client_lifecycle() -> None:
     # (depends on when lifespan runs)
 
     # Use test client to run the lifespan
-    from litestar.testing import create_test_client
-
     with create_test_client(
         route_handlers=[handler],
         plugins=[inertia_plugin, vite_plugin],

@@ -196,13 +196,12 @@ def test_extract_request_headers_avoids_set_copy_without_connection_header(monke
     from litestar_vite.plugin._proxy import _extract_request_headers
 
     set_calls = 0
-    real_set = set
 
-    class _CountingSet(real_set):
+    class _CountingSet(set[object]):
         def __new__(cls, *args: object, **kwargs: object) -> Self:
             nonlocal set_calls
             set_calls += 1
-            return real_set.__new__(cls, *args, **kwargs)
+            return super().__new__(cls)
 
     monkeypatch.setattr("builtins.set", _CountingSet)
 
@@ -270,10 +269,10 @@ def test_target_url_getter_throttles_stat_within_ttl_window(tmp_path: Path, monk
     stat_calls = 0
     real_stat = Path.stat
 
-    def counting_stat(self: Path, *args: object, **kwargs: object) -> object:
+    def counting_stat(self: Path, *, follow_symlinks: bool = True) -> os.stat_result:
         nonlocal stat_calls
         stat_calls += 1
-        return real_stat(self, *args, **kwargs)
+        return real_stat(self, follow_symlinks=follow_symlinks)
 
     monkeypatch.setattr(Path, "stat", counting_stat)
     getter = create_target_url_getter(None, hotfile, cached)
@@ -334,10 +333,10 @@ def test_hmr_target_getter_ttls_negative_result(tmp_path: Path, monkeypatch: pyt
     stat_calls = 0
     real_stat = Path.stat
 
-    def counting_stat(self: Path, *args: object, **kwargs: object) -> object:
+    def counting_stat(self: Path, *, follow_symlinks: bool = True) -> os.stat_result:
         nonlocal stat_calls
         stat_calls += 1
-        return real_stat(self, *args, **kwargs)
+        return real_stat(self, follow_symlinks=follow_symlinks)
 
     monkeypatch.setattr(Path, "stat", counting_stat)
 

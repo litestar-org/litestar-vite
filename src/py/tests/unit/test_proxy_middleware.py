@@ -362,6 +362,7 @@ def test_proxy_target_cache_invariant(tmp_path: Path, monkeypatch: pytest.Monkey
     hotfile.write_text("http://bridge")
 
     call_count = 0
+    fake_time = [1000.0]
     real_read = proxy_module.read_hotfile_url
 
     def counting_read(hotfile_path: Path) -> str:
@@ -370,6 +371,7 @@ def test_proxy_target_cache_invariant(tmp_path: Path, monkeypatch: pytest.Monkey
         return real_read(hotfile_path)
 
     monkeypatch.setattr(proxy_module, "read_hotfile_url", counting_read)
+    monkeypatch.setattr(proxy_module.time, "monotonic", lambda: fake_time[0])
 
     async def noop(scope: Scope, receive: Receive, send: Send) -> None:
         return None
@@ -385,21 +387,27 @@ def test_proxy_target_cache_invariant(tmp_path: Path, monkeypatch: pytest.Monkey
     hotfile.write_text("http://changed:1234")
     current_mtime = hotfile.stat().st_mtime_ns
     os.utime(hotfile, ns=(current_mtime + 1_000_000, current_mtime + 1_000_000))
+    fake_time[0] += 1.0
 
     assert middleware._get_target_base_url() == "http://changed:1234"
     assert call_count == 2
     read_bridge_config.cache_clear()
 
 
-def test_proxy_target_recovers_after_initial_missing_hotfile(tmp_path: Path) -> None:
+def test_proxy_target_recovers_after_initial_missing_hotfile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import litestar_vite.plugin._proxy as proxy_module
+
     async def noop(scope: Scope, receive: Receive, send: Send) -> None:
         return None
 
     hotfile = tmp_path / "hot"
+    fake_time = [1000.0]
+    monkeypatch.setattr(proxy_module.time, "monotonic", lambda: fake_time[0])
     middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile)
 
     assert middleware._get_target_base_url() is None
 
     hotfile.write_text("http://localhost:5173")
+    fake_time[0] += 1.0
 
     assert middleware._get_target_base_url() == "http://localhost:5173"

@@ -11,6 +11,7 @@ Both CLI and Plugin should call this function to guarantee byte-identical output
 
 from dataclasses import dataclass, field
 from functools import partial
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -86,6 +87,7 @@ def export_integration_assets(
     from litestar.serialization import encode_json, get_serializer
 
     from litestar_vite.codegen._inertia import generate_inertia_pages_json
+    from litestar_vite.codegen._routes import extract_route_metadata
     from litestar_vite.config import InertiaConfig, InertiaTypeGenConfig, TypeGenConfig
 
     result = ExportResult()
@@ -134,8 +136,6 @@ def export_integration_assets(
 
     # Step 2: Export openapi.json
     export_openapi(schema_dict=schema_dict, types_config=types_config, serializer=serializer, result=result)
-
-    from litestar_vite.codegen._routes import extract_route_metadata
 
     routes_metadata = extract_route_metadata(app, openapi_schema=schema_dict)
 
@@ -201,10 +201,8 @@ def export_routes_json(
     from litestar_vite.codegen._utils import encode_deterministic_json, write_if_changed
 
     try:
-        from litestar import __version__ as _version
-
-        litestar_version = str(_version)
-    except ImportError:
+        litestar_version = version("litestar")
+    except PackageNotFoundError:
         litestar_version = "unknown"
 
     routes_path = types_config.routes_path
