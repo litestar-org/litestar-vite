@@ -1014,6 +1014,21 @@ def export_routes(
             raise LitestarCLIException(msg) from e
 
 
+def _default_bin_name_from_package_spec(package_spec: str) -> str:
+    """Return the default binary name for an npm package spec.
+
+    Returns:
+        The last package-name segment with any version suffix removed.
+    """
+    if package_spec.startswith("@"):
+        slash_index = package_spec.index("/")
+        at_index = package_spec.find("@", slash_index + 1)
+    else:
+        at_index = package_spec.find("@")
+    name = package_spec if at_index == -1 else package_spec[:at_index]
+    return name.rsplit("/", 1)[-1]
+
+
 def _get_package_executor_cmd(executor: "str | None", binary: str, *, package_name: "str | None" = None) -> "list[str]":
     """Build package executor command list.
 
@@ -1034,7 +1049,8 @@ def _get_package_executor_cmd(executor: "str | None", binary: str, *, package_na
         case "bun":
             return ["bunx", "--package", package, binary] if package_name else ["bunx", binary]
         case "deno":
-            deno_package = f"{package}/{binary}" if package != binary else package
+            default_bin = _default_bin_name_from_package_spec(package)
+            deno_package = package if default_bin == binary else f"{package}/{binary}"
             return ["deno", "run", "-A", f"npm:{deno_package}"]
         case "yarn":
             return ["yarn", "dlx", "--package", package, binary] if package_name else ["yarn", "dlx", binary]

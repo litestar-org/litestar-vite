@@ -1,4 +1,5 @@
 import inspect
+import json
 import os
 import subprocess
 from collections.abc import Callable
@@ -668,6 +669,30 @@ def test_cli_get_package_executor_cmd_uses_package_flag_for_typegen() -> None:
         "litestar-vite-typegen",
     ]
     assert _get_package_executor_cmd(None, "tsr") == ["npx", "tsr"]
+
+
+def test_cli_get_package_executor_cmd_deno_skips_suffix_when_package_default_bin_matches() -> None:
+    assert _get_package_executor_cmd("deno", "openapi-ts", package_name="@hey-api/openapi-ts@0.98.2") == [
+        "deno",
+        "run",
+        "-A",
+        "npm:@hey-api/openapi-ts@0.98.2",
+    ]
+    assert _get_package_executor_cmd("deno", "litestar-vite-typegen", package_name="litestar-vite-plugin") == [
+        "deno",
+        "run",
+        "-A",
+        "npm:litestar-vite-plugin/litestar-vite-typegen",
+    ]
+
+
+def test_executor_argv_parity_fixture() -> None:
+    fixture_path = Path(__file__).resolve().parents[4] / "src/js/tests/__fixtures__/executor-argv-parity.json"
+    cases = json.loads(fixture_path.read_text())["cases"]
+    for case in cases:
+        executor = None if case["executor"] == "node" else case["executor"]
+        result = _get_package_executor_cmd(executor, case["binary"], package_name=case["package_name"])
+        assert result == case["python"], case["label"]
 
 
 def _make_local_bin(root_dir: Path, name: str) -> Path:

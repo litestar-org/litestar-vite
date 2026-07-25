@@ -1,0 +1,60 @@
+{
+  "cases": [
+    {
+      "label": "bare_binary_npm",
+      "executor": "node",
+      "binary": "vite",
+      "package_name": null,
+      "python": ["npx", "vite"],
+      "js": ["npx", "vite"]
+    },
+    {
+      "label": "bare_binary_bun",
+      "executor": "bun",
+      "binary": "vite",
+      "package_name": null,
+      "python": ["bunx", "vite"],
+      "js": ["bunx", "vite"]
+    },
+    {
+      "label": "bare_binary_deno",
+      "executor": "deno",
+      "binary": "vite",
+      "package_name": null,
+      "python": ["deno", "run", "-A", "npm:vite"],
+      "js": ["deno", "run", "-A", "npm:vite"]
+    },
+    {
+      "label": "bare_binary_yarn",
+      "executor": "yarn",
+      "binary": "vite",
+      "package_name": null,
+      "python": ["yarn", "dlx", "vite"],
+      "js": ["yarn", "dlx", "vite"]
+    },
+    {
+      "label": "bare_binary_pnpm",
+      "executor": "pnpm",
+      "binary": "vite",
+      "package_name": null,
+      "python": ["pnpm", "dlx", "vite"],
+      "js": ["pnpm", "dlx", "vite"]
+    },
+    {
+      "label": "deno_default_bin_matches_scoped_package",
+      "executor": "deno",
+      "binary": "openapi-ts",
+      "package_name": "@hey-api/openapi-ts@0.98.2",
+      "python": ["deno", "run", "-A", "npm:@hey-api/openapi-ts@0.98.2"],
+      "js": ["deno", "run", "-A", "npm:@hey-api/openapi-ts@0.98.2"]
+    },
+    {
+      "label": "deno_default_bin_differs",
+      "executor": "deno",
+      "binary": "litestar-vite-typegen",
+      "package_name": "litestar-vite-plugin",
+      "python": ["deno", "run", "-A", "npm:litestar-vite-plugin/litestar-vite-typegen"],
+      "js": ["deno", "run", "-A", "npm:litestar-vite-plugin/litestar-vite-typegen"]
+    }
+  ]
+}

@@ -96,6 +96,7 @@ def test_scaffold_manifest_typegen_dependencies_use_compatible_pins(framework: F
 
 
 def test_typegen_fallback_pins_match_scaffold_registry() -> None:
+    """Keep the Python scaffold registry and shipped JS fallback pins in parity."""
     constants_source = (REPOSITORY_ROOT / "src/js/src/shared/constants.ts").read_text()
 
     assert (
