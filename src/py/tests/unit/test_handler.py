@@ -1017,6 +1017,45 @@ def test_app_handler_loads_manifest_from_vite_dir(tmp_path: Path) -> None:
     assert handler._manifest == {"src/main.ts": {"file": "assets/main.js"}}
 
 
+async def test_app_handler_initialize_async_uses_shared_manifest_without_reparsing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A supplied parsed manifest is used without reading manifest.json again."""
+    from litestar_vite.config import PathConfig, RuntimeConfig
+
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<html><body><div id='app'></div></body></html>")
+
+    bundle_dir = tmp_path / "public"
+    manifest_dir = bundle_dir / ".vite"
+    manifest_dir.mkdir(parents=True)
+    (manifest_dir / "manifest.json").write_text('{"main.js": {"file": "assets/main.js"}}')
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(root=tmp_path, resource_dir="resources", bundle_dir="public", static_dir="public"),
+        runtime=RuntimeConfig(dev_mode=False),
+    )
+    handler = AppHandler(config)
+
+    load_calls = 0
+    original = AppHandler._load_manifest_async
+
+    async def counting_load_manifest_async(self: AppHandler) -> None:
+        nonlocal load_calls
+        load_calls += 1
+        await original(self)
+
+    monkeypatch.setattr(AppHandler, "_load_manifest_async", counting_load_manifest_async)
+
+    shared_manifest = {"main.js": {"file": "assets/DIFFERENT.js"}}
+    await handler.initialize_async(manifest=shared_manifest)
+
+    assert load_calls == 0, "handler must not re-parse manifest.json when a manifest is supplied"
+    assert handler._manifest == shared_manifest
+
+
 def test_transform_asset_urls_in_html_uses_manifest(spa_config: ViteConfig) -> None:
     handler = AppHandler(spa_config)
     handler._manifest = {"entry": {"file": "assets/main.js"}}

@@ -2152,8 +2152,51 @@ async def test_vite_plugin_lifespan_initializes_spa_handler_async() -> None:
     async with plugin.lifespan(app):
         pass
 
-    plugin._spa_handler.initialize_async.assert_awaited_once_with(vite_url=plugin._proxy_target)
+    plugin._spa_handler.initialize_async.assert_awaited_once_with(
+        vite_url=plugin._proxy_target, manifest=plugin._asset_loader.manifest
+    )
     plugin._spa_handler.initialize_sync.assert_not_called()
+
+
+async def test_vite_plugin_lifespan_parses_manifest_once_across_loader_and_handler(tmp_path: Path) -> None:
+    """The loader and SPA handler decode manifest.json only once during worker startup."""
+    from litestar.serialization import decode_json as real_decode_json
+
+    from litestar_vite.handler import AppHandler
+
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<html><body><div id='app'></div></body></html>")
+
+    bundle_dir = tmp_path / "public"
+    manifest_dir = bundle_dir / ".vite"
+    manifest_dir.mkdir(parents=True)
+    (manifest_dir / "manifest.json").write_text('{"main.js": {"file": "assets/main.js"}}')
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(root=tmp_path, resource_dir="resources", bundle_dir="public", static_dir="public"),
+        runtime=RuntimeConfig(dev_mode=False),
+    )
+    plugin = VitePlugin(config=config)
+    plugin._spa_handler = AppHandler(config)
+    app = Litestar(route_handlers=[])
+
+    decode_calls = 0
+
+    def counting_decode_json(*args: object, **kwargs: object) -> object:
+        nonlocal decode_calls
+        decode_calls += 1
+        return real_decode_json(*args, **kwargs)
+
+    with (
+        patch("litestar_vite.loader.decode_json", counting_decode_json),
+        patch("litestar_vite.handler._app.decode_json", counting_decode_json),
+    ):
+        async with plugin.lifespan(app):
+            pass
+
+    assert decode_calls == 1, f"expected manifest.json to be decoded exactly once, got {decode_calls}"
 
 
 async def test_vite_plugin_proxy_client_created_in_dev_mode_with_ssr_proxy() -> None:

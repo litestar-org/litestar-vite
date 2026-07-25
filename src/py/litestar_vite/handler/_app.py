@@ -120,17 +120,23 @@ class AppHandler:
         """
         return self._initialized
 
-    async def initialize_async(self, vite_url: "str | None" = None) -> None:
+    async def initialize_async(self, vite_url: "str | None" = None, manifest: "dict[str, Any] | None" = None) -> None:
         """Initialize the handler asynchronously.
 
         Args:
             vite_url: Optional Vite server URL to use for proxying.
+            manifest: Optional pre-parsed manifest from the shared asset loader. This avoids
+                reading and parsing the same file again during worker startup. It is ignored
+                when hot development or an external development server skips manifest loading.
         """
         if self._initialized:
             return
 
         if self._config.is_dev_mode and self._config.hot_reload:
             self._init_http_clients(vite_url)
+        elif manifest is not None and self._config.runtime.external_dev_server is None:
+            self._manifest = manifest
+            await self._load_index_html_async()
         else:
             await self._load_production_assets_async()
 

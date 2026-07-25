@@ -22,6 +22,17 @@ def test_parse_manifest_when_file_exists(tmp_path: Path) -> None:
     assert loader._manifest == {"main.js": {"file": "assets/main.123456.js"}}
 
 
+def test_asset_loader_manifest_property_exposes_parsed_dict(tmp_path: Path) -> None:
+    bundle_dir = tmp_path / "public"
+    bundle_dir.mkdir()
+    (bundle_dir / "manifest.json").write_text('{"main.js": {"file": "assets/main.123456.js"}}')
+
+    config = ViteConfig(paths=PathConfig(bundle_dir=bundle_dir), runtime=RuntimeConfig(dev_mode=False))
+    loader = ViteAssetLoader.initialize_loader(config=config)
+
+    assert loader.manifest == {"main.js": {"file": "assets/main.123456.js"}}
+
+
 def test_parse_manifest_when_file_exists_in_vite_dir(tmp_path: Path) -> None:
     bundle_dir = tmp_path / "public"
     (bundle_dir / ".vite").mkdir(parents=True)

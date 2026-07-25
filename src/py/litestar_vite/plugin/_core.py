@@ -973,7 +973,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         await self._asset_loader.initialize()
 
         if self._spa_handler is not None and not self._spa_handler.is_initialized:
-            await self._spa_handler.initialize_async(vite_url=self._proxy_target)
+            await self._spa_handler.initialize_async(vite_url=self._proxy_target, manifest=self._asset_loader.manifest)
 
         is_ssr_mode = self._config.wants_html_proxy
         if not self._config.is_dev_mode and not self._config.has_built_assets() and not is_ssr_mode:
