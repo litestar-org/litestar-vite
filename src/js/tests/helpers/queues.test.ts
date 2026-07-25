@@ -196,6 +196,22 @@ describe("createQueueEventStream", () => {
     expect(eventTypes.filter((eventType) => eventType !== "open" && eventType !== "error")).toEqual(["custom.event"])
   })
 
+  it("accepts a direct endpoint while retaining queue defaults", () => {
+    const onEvent = vi.fn()
+    const stream = createQueueEventStream({
+      url: "/custom/queue-events",
+      onEvent,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateMessage('{"type":"ping"}')
+    FakeWebSocket.instances[0].simulateMessage('{"id":"event-1"}')
+
+    expect(new URL(FakeWebSocket.instances[0].url).pathname).toBe("/custom/queue-events")
+    expect(onEvent).toHaveBeenCalledOnce()
+  })
+
   it("re-evaluates target values and transforms the URL on reconnect", () => {
     let taskId = "task-1"
     let token = "token-1"

@@ -51,3 +51,5 @@ export { createQueueEventStream, QUEUE_SSE_EVENTS, type QueueEventStreamOptions,
 export { createRouteHelpers, currentRoute, isCurrentRoute, isRoute, type RouteDefinition, type RouteDefinitions, type RouteHelpers, toRoute } from "./routes.js"
 // Realtime stream utilities
 export { createEventStream, type EventStream, type EventStreamOptions, type StreamGap } from "./stream.js"
+// Declarative realtime stream element
+export { defineStreamElement, LitestarStreamElement, type StreamElementOptions } from "./stream-element.js"

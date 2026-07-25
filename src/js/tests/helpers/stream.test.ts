@@ -222,6 +222,26 @@ describe("createEventStream websocket transport", () => {
     })
   })
 
+  it("reports the resolved URL on open and closes once on disposal", () => {
+    const onOpen = vi.fn()
+    const onClose = vi.fn()
+    const stream = createEventStream({
+      url: "/events",
+      onClose,
+      onEvent: vi.fn(),
+      onOpen,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateOpen()
+    stream.dispose()
+    FakeWebSocket.instances[0].simulateClose(1000)
+
+    expect(onOpen).toHaveBeenCalledWith("ws://localhost:3000/events")
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
   it("filters heartbeat frames before delivery", () => {
     const onEvent = vi.fn()
     const stream = createEventStream({

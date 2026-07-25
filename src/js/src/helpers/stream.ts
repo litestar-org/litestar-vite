@@ -30,6 +30,8 @@ export interface EventStreamConfig<TFrame = unknown> {
   transport?: "websocket" | "sse"
   sseEvents?: readonly string[]
   onEvent: (frame: TFrame) => void
+  onOpen?: (url: string) => void
+  onClose?: () => void
   onHealthChange?: (healthy: boolean) => void
   onReconnect?: () => void
   onGap?: (gap: StreamGap) => void
@@ -111,6 +113,8 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
     transport = "websocket",
     sseEvents = DEFAULT_SSE_EVENTS,
     onEvent,
+    onOpen,
+    onClose,
     onHealthChange,
     onReconnect,
     onGap,
@@ -162,10 +166,11 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
     }, delay)
   }
 
-  function handleOpen(): void {
+  function handleOpen(url: string): void {
     attempt = 0
     clearTimer()
     emitHealth(true)
+    onOpen?.(url)
     if (hasOpened) {
       onReconnect?.()
     } else {
@@ -223,10 +228,11 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
 
   function openWebSocket(): void {
     const WebSocketCtor = options.WebSocketCtor ?? window.WebSocket
-    const next = new WebSocketCtor(buildConnectionUrl())
+    const url = buildConnectionUrl()
+    const next = new WebSocketCtor(url)
     connection = next
     next.addEventListener("open", () => {
-      handleOpen()
+      handleOpen(url)
     })
     next.addEventListener("message", (event) => {
       handleMessage(event)
@@ -236,6 +242,7 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
         return
       }
       connection = null
+      onClose?.()
       emitHealth(false)
       if (disposed || !shouldReconnect(event.code)) {
         return
@@ -249,10 +256,11 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
 
   function openEventSource(): void {
     const EventSourceCtor = options.EventSourceCtor ?? window.EventSource
-    const next = new EventSourceCtor(buildConnectionUrl())
+    const url = buildConnectionUrl()
+    const next = new EventSourceCtor(url)
     connection = next
     next.addEventListener("open", () => {
-      handleOpen()
+      handleOpen(url)
     })
     for (const eventType of sseEvents) {
       next.addEventListener(eventType, (event) => {
@@ -265,6 +273,7 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
       }
       connection = null
       next.close()
+      onClose?.()
       emitHealth(false)
       if (disposed || !shouldReconnect(1006)) {
         return
@@ -298,7 +307,11 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
       clearTimer()
       const current = connection
       connection = null
-      current?.close()
+      if (current !== null) {
+        onClose?.()
+        emitHealth(false)
+        current.close()
+      }
     },
     get healthy(): boolean {
       return lastHealthy ?? false

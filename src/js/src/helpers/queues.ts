@@ -16,7 +16,7 @@
  * @module
  */
 
-import { createEventStream, type EventStream, type EventStreamConfig, type EventStreamTransport, resolveStreamUrl } from "./stream.js"
+import { createEventStream, type EventStream, type EventStreamConfig, type EventStreamTransport, type StreamUrl, resolveStreamUrl } from "./stream.js"
 
 export const QUEUE_SSE_EVENTS = [
   "task.started",
@@ -40,8 +40,26 @@ export type QueueStreamTarget =
   | { scope: "global" }
   | { scope: "custom"; scopeKey: QueueStreamValue }
 
+type QueueRouteStreamOptions = QueueStreamTarget & {
+  url?: never
+  buildUrl?: never
+  basePath?: string
+}
+
+type QueueDirectStreamOptions =
+  | {
+      url: StreamUrl
+      buildUrl?: never
+      basePath?: never
+    }
+  | {
+      url?: never
+      buildUrl: () => string | URL
+      basePath?: never
+    }
+
 export type QueueEventStreamOptions<TFrame = unknown> = EventStreamConfig<TFrame> &
-  QueueStreamTarget & {
+  (QueueRouteStreamOptions | QueueDirectStreamOptions) & {
     basePath?: string
     transformUrl?: (url: URL) => string | URL
   }
@@ -113,8 +131,10 @@ export function createQueueEventStream<TFrame = unknown>(options: QueueEventStre
     isHeartbeat = defaultQueueIsHeartbeat,
     maxDelayMs,
     onEvent,
+    onClose,
     onGap,
     onHealthChange,
+    onOpen,
     onReconnect,
     parseFrame,
     shouldReconnect,
@@ -127,7 +147,15 @@ export function createQueueEventStream<TFrame = unknown>(options: QueueEventStre
   return createEventStream({
     baseDelayMs,
     buildUrl: () => {
-      const url = queueStreamUrl(options, basePath, transport)
+      let endpoint: string | URL
+      if ("buildUrl" in options && options.buildUrl !== undefined) {
+        endpoint = options.buildUrl()
+      } else if ("url" in options && options.url !== undefined) {
+        endpoint = typeof options.url === "function" ? options.url() : options.url
+      } else {
+        endpoint = queueStreamUrl(options as QueueStreamTarget, basePath, transport)
+      }
+      const url = new URL(resolveStreamUrl(endpoint, transport))
       return transformUrl?.(url) ?? url
     },
     dedupWindow,
@@ -137,8 +165,10 @@ export function createQueueEventStream<TFrame = unknown>(options: QueueEventStre
     isHeartbeat,
     maxDelayMs,
     onEvent,
+    onClose,
     onGap,
     onHealthChange,
+    onOpen,
     onReconnect,
     parseFrame,
     shouldReconnect,
