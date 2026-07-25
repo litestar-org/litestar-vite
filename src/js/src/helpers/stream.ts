@@ -6,10 +6,7 @@
  * import { createEventStream } from "litestar-vite-plugin/helpers"
  *
  * const stream = createEventStream({
- *   buildUrl: () => {
- *     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
- *     return `${protocol}//${window.location.host}/events`
- *   },
+ *   url: "/events",
  *   onEvent: (event) => console.log(event),
  * })
  *
@@ -26,8 +23,10 @@ export interface StreamGap {
   missing: number
 }
 
-export interface EventStreamOptions<TFrame = unknown> {
-  buildUrl: () => string
+export type EventStreamTransport = "websocket" | "sse"
+export type StreamUrl = string | URL | (() => string | URL)
+
+export interface EventStreamConfig<TFrame = unknown> {
   transport?: "websocket" | "sse"
   sseEvents?: readonly string[]
   onEvent: (frame: TFrame) => void
@@ -41,9 +40,22 @@ export interface EventStreamOptions<TFrame = unknown> {
   baseDelayMs?: number
   maxDelayMs?: number
   dedupWindow?: number
+  parseFrame?: (data: string) => TFrame
   WebSocketCtor?: typeof WebSocket
   EventSourceCtor?: typeof EventSource
 }
+
+export type EventStreamOptions<TFrame = unknown> = EventStreamConfig<TFrame> &
+  (
+    | {
+        url: StreamUrl
+        buildUrl?: never
+      }
+    | {
+        url?: never
+        buildUrl: () => string | URL
+      }
+  )
 
 export interface EventStream {
   connect(): void
@@ -54,46 +66,38 @@ export interface EventStream {
 const DEFAULT_BASE_DELAY_MS = 1000
 const DEFAULT_MAX_DELAY_MS = 10_000
 const DEFAULT_DEDUP_WINDOW = 1024
-const DEFAULT_SSE_EVENTS = [
-  "task.started",
-  "task.progress",
-  "task.log",
-  "task.event",
-  "task.completed",
-  "task.failed",
-  "task.cancelled",
-  "task.claim_lost",
-  "task.stale_failed",
-  "worker.heartbeat",
-  "worker.stale_recovery",
-] as const
+const DEFAULT_SSE_EVENTS = ["message"] as const
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined
-}
-
-function defaultIsHeartbeat(frame: unknown): boolean {
-  return asRecord(frame)?.type === "ping"
-}
-
-function defaultGetEventKey(frame: unknown): string | undefined {
-  const record = asRecord(frame)
-  const key = record?.eventKey ?? record?.id
-  return typeof key === "string" ? key : undefined
-}
-
-function defaultGetSequence(frame: unknown): { stream: string; value: number } | undefined {
-  const record = asRecord(frame)
-  const sequence = record?.sequence
-  const taskId = record?.taskId
-  const attempt = record?.attempt
-  if (typeof sequence !== "number" || !Number.isFinite(sequence) || typeof taskId !== "string" || (typeof attempt !== "string" && typeof attempt !== "number")) {
-    return undefined
+function defaultParseFrame(data: string): unknown {
+  try {
+    return JSON.parse(data)
+  } catch {
+    return data
   }
-  return {
-    stream: `${taskId}:${attempt}`,
-    value: sequence,
+}
+
+/**
+ * Resolve a stream endpoint against the browser origin.
+ *
+ * @param value - Absolute or same-origin relative endpoint.
+ * @param transport - Transport whose URL protocol should be used.
+ * @param baseUrl - Resolution base. Defaults to the current browser location.
+ * @returns An absolute transport URL.
+ */
+export function resolveStreamUrl(value: string | URL, transport: EventStreamTransport, baseUrl: string | URL = window.location.href): string {
+  const resolved = new URL(value, baseUrl)
+  if (transport === "websocket") {
+    if (resolved.protocol === "http:") {
+      resolved.protocol = "ws:"
+    } else if (resolved.protocol === "https:") {
+      resolved.protocol = "wss:"
+    }
+  } else if (resolved.protocol === "ws:") {
+    resolved.protocol = "http:"
+  } else if (resolved.protocol === "wss:") {
+    resolved.protocol = "https:"
   }
+  return resolved.toString()
 }
 
 /**
@@ -104,7 +108,6 @@ function defaultGetSequence(frame: unknown): { stream: string; value: number } |
  */
 export function createEventStream<TFrame = unknown>(options: EventStreamOptions<TFrame>): EventStream {
   const {
-    buildUrl,
     transport = "websocket",
     sseEvents = DEFAULT_SSE_EVENTS,
     onEvent,
@@ -112,12 +115,13 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
     onReconnect,
     onGap,
     shouldReconnect = (closeCode) => closeCode !== 1000,
-    isHeartbeat = defaultIsHeartbeat,
-    getEventKey = defaultGetEventKey,
-    getSequence = defaultGetSequence,
+    isHeartbeat = () => false,
+    getEventKey = () => undefined,
+    getSequence = () => undefined,
     baseDelayMs = DEFAULT_BASE_DELAY_MS,
     maxDelayMs = DEFAULT_MAX_DELAY_MS,
     dedupWindow = DEFAULT_DEDUP_WINDOW,
+    parseFrame = defaultParseFrame as (data: string) => TFrame,
   } = options
 
   let connection: WebSocket | EventSource | null = null
@@ -170,7 +174,7 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
   }
 
   function handleMessage(event: MessageEvent): void {
-    const frame = JSON.parse(String(event.data)) as TFrame
+    const frame = parseFrame(String(event.data))
     if (isHeartbeat(frame)) {
       return
     }
@@ -211,9 +215,15 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
     onEvent(frame)
   }
 
+  function buildConnectionUrl(): string {
+    const value = options.buildUrl === undefined ? options.url : options.buildUrl()
+    const endpoint = typeof value === "function" ? value() : value
+    return resolveStreamUrl(endpoint, transport)
+  }
+
   function openWebSocket(): void {
     const WebSocketCtor = options.WebSocketCtor ?? window.WebSocket
-    const next = new WebSocketCtor(buildUrl())
+    const next = new WebSocketCtor(buildConnectionUrl())
     connection = next
     next.addEventListener("open", () => {
       handleOpen()
@@ -239,7 +249,7 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
 
   function openEventSource(): void {
     const EventSourceCtor = options.EventSourceCtor ?? window.EventSource
-    const next = new EventSourceCtor(buildUrl())
+    const next = new EventSourceCtor(buildConnectionUrl())
     connection = next
     next.addEventListener("open", () => {
       handleOpen()

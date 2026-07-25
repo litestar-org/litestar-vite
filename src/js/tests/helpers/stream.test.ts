@@ -88,19 +88,23 @@ class FakeEventSource {
 
 const EventSourceCtor = FakeEventSource as unknown as typeof EventSource
 
-const DEFAULT_SSE_EVENTS = [
-  "task.started",
-  "task.progress",
-  "task.log",
-  "task.event",
-  "task.completed",
-  "task.failed",
-  "task.cancelled",
-  "task.claim_lost",
-  "task.stale_failed",
-  "worker.heartbeat",
-  "worker.stale_recovery",
-]
+function queueIsHeartbeat(frame: unknown): boolean {
+  return (frame as { type?: string }).type === "ping"
+}
+
+function queueGetEventKey(frame: unknown): string | undefined {
+  const value = frame as { eventKey?: unknown; id?: unknown }
+  const key = value.eventKey ?? value.id
+  return typeof key === "string" ? key : undefined
+}
+
+function queueGetSequence(frame: unknown): { stream: string; value: number } | undefined {
+  const value = frame as { attempt?: unknown; sequence?: unknown; taskId?: unknown }
+  if (typeof value.sequence !== "number" || typeof value.taskId !== "string" || (typeof value.attempt !== "string" && typeof value.attempt !== "number")) {
+    return undefined
+  }
+  return { stream: `${value.taskId}:${value.attempt}`, value: value.sequence }
+}
 
 describe("stream helper exports", () => {
   it("exports createEventStream from the helpers entry point", () => {
@@ -143,6 +147,50 @@ describe("createEventStream websocket transport", () => {
     expect(FakeWebSocket.instances[1]?.url).toContain("token=rotated")
   })
 
+  it("resolves a relative url against the browser origin for every attempt", () => {
+    const stream = createEventStream({
+      url: "/events",
+      onEvent: vi.fn(),
+      WebSocketCtor,
+    })
+
+    stream.connect()
+
+    expect(FakeWebSocket.instances[0]?.url).toBe("ws://localhost:3000/events")
+  })
+
+  it("delivers raw text frames when they are not JSON", () => {
+    const onEvent = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "/events",
+      onEvent,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateMessage("plain text")
+
+    expect(onEvent).toHaveBeenCalledWith("plain text")
+  })
+
+  it("does not apply queue envelope semantics by default", () => {
+    const onEvent = vi.fn()
+    const onGap = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "/events",
+      onEvent,
+      onGap,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateMessage('{"type":"ping","id":"same","taskId":"task-1","attempt":1,"sequence":1}')
+    FakeWebSocket.instances[0].simulateMessage('{"type":"ping","id":"same","taskId":"task-1","attempt":1,"sequence":3}')
+
+    expect(onEvent).toHaveBeenCalledTimes(2)
+    expect(onGap).not.toHaveBeenCalled()
+  })
+
   it("does not reconnect after a normal close by default", () => {
     const stream = createEventStream({
       buildUrl: () => "ws://example.test/events",
@@ -178,6 +226,7 @@ describe("createEventStream websocket transport", () => {
     const onEvent = vi.fn()
     const stream = createEventStream({
       buildUrl: () => "ws://example.test/events",
+      isHeartbeat: queueIsHeartbeat,
       onEvent,
       WebSocketCtor,
     })
@@ -192,6 +241,7 @@ describe("createEventStream websocket transport", () => {
     const onEvent = vi.fn()
     const stream = createEventStream({
       buildUrl: () => "ws://example.test/events",
+      getEventKey: queueGetEventKey,
       onEvent,
       WebSocketCtor,
     })
@@ -207,6 +257,7 @@ describe("createEventStream websocket transport", () => {
     const onEvent = vi.fn()
     const stream = createEventStream({
       buildUrl: () => "ws://example.test/events",
+      getEventKey: queueGetEventKey,
       onEvent,
       WebSocketCtor,
     })
@@ -225,6 +276,7 @@ describe("createEventStream websocket transport", () => {
     const stream = createEventStream({
       buildUrl: () => "ws://example.test/events",
       dedupWindow: 2,
+      getEventKey: queueGetEventKey,
       onEvent,
       WebSocketCtor,
     })
@@ -261,6 +313,7 @@ describe("createEventStream websocket transport", () => {
     const onGap = vi.fn()
     const stream = createEventStream({
       buildUrl: () => "ws://example.test/events",
+      getSequence: queueGetSequence,
       onEvent: vi.fn(),
       onGap,
       WebSocketCtor,
@@ -285,6 +338,7 @@ describe("createEventStream websocket transport", () => {
     const onGap = vi.fn()
     const stream = createEventStream({
       buildUrl: () => "ws://example.test/events",
+      getSequence: queueGetSequence,
       onEvent: vi.fn(),
       onGap,
       WebSocketCtor,
@@ -308,6 +362,7 @@ describe("createEventStream websocket transport", () => {
     const onGap = vi.fn()
     const stream = createEventStream({
       buildUrl: () => "ws://example.test/events",
+      getSequence: queueGetSequence,
       onEvent: vi.fn(),
       onGap,
       WebSocketCtor,
@@ -332,6 +387,7 @@ describe("createEventStream websocket transport", () => {
     const onGap = vi.fn()
     const stream = createEventStream({
       buildUrl: () => "ws://example.test/events",
+      getSequence: queueGetSequence,
       onEvent: vi.fn(),
       onGap,
       WebSocketCtor,
@@ -355,6 +411,7 @@ describe("createEventStream websocket transport", () => {
     const onGap = vi.fn()
     const stream = createEventStream({
       buildUrl: () => "ws://example.test/events",
+      getSequence: queueGetSequence,
       onEvent: vi.fn(),
       onGap,
       WebSocketCtor,
@@ -380,6 +437,8 @@ describe("createEventStream websocket transport", () => {
     const onGap = vi.fn()
     const stream = createEventStream({
       buildUrl: () => "ws://example.test/events",
+      getEventKey: queueGetEventKey,
+      getSequence: queueGetSequence,
       onEvent,
       onGap,
       WebSocketCtor,
@@ -569,7 +628,7 @@ describe("createEventStream SSE transport", () => {
     vi.restoreAllMocks()
   })
 
-  it("listens for every named Litestar Queue event by default", () => {
+  it("listens for unnamed message events by default", () => {
     const stream = createEventStream({
       buildUrl: () => "/events",
       EventSourceCtor,
@@ -580,7 +639,7 @@ describe("createEventStream SSE transport", () => {
     stream.connect()
 
     const registeredTypes = FakeEventSource.instances[0].eventTypes()
-    expect(registeredTypes.filter((eventType) => eventType !== "open" && eventType !== "error")).toEqual(DEFAULT_SSE_EVENTS)
+    expect(registeredTypes.filter((eventType) => eventType !== "open" && eventType !== "error")).toEqual(["message"])
   })
 
   it("replaces the default event names with caller-supplied names", () => {
