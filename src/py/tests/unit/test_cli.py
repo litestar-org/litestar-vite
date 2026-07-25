@@ -16,6 +16,7 @@ from litestar_vite.cli import (
     _apply_cli_log_level,
     _build_deploy_config,
     _coerce_option_value,
+    _find_scaffold_collisions,
     _format_command,
     _generate_schema_and_routes,
     _get_package_executor_cmd,
@@ -182,6 +183,44 @@ def test_cli_select_template_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("litestar_vite.cli.get_template", lambda *_: None)
     with pytest.raises(SystemExit):
         _select_framework_template("missing", no_prompt=True)
+
+
+def test_cli_is_inertia_framework_matches_commands_py_logic() -> None:
+    from litestar_vite.cli import _is_inertia_framework
+    from litestar_vite.scaffolding.templates import FRAMEWORK_TEMPLATES, FrameworkType
+
+    inertia_types = {
+        FrameworkType.REACT_INERTIA,
+        FrameworkType.REACT_INERTIA_JINJA,
+        FrameworkType.VUE_INERTIA,
+        FrameworkType.VUE_INERTIA_SSR,
+        FrameworkType.VUE_INERTIA_JINJA,
+        FrameworkType.VUE_INERTIA_JINJA_SSR,
+        FrameworkType.SVELTE_INERTIA,
+        FrameworkType.SVELTE_INERTIA_JINJA,
+    }
+    for framework_type, template in FRAMEWORK_TEMPLATES.items():
+        assert _is_inertia_framework(template) == (framework_type in inertia_types), framework_type
+
+
+def test_cli_find_scaffold_collisions_includes_nuxt_root_files(tmp_path: Path) -> None:
+    from litestar_vite.scaffolding.templates import FRAMEWORK_TEMPLATES, FrameworkType
+
+    (tmp_path / "nuxt.config.ts").write_text("", encoding="utf-8")
+    collisions = _find_scaffold_collisions(
+        tmp_path, "src", "public", "public", framework=FRAMEWORK_TEMPLATES[FrameworkType.NUXT], use_tailwind=False
+    )
+    assert tmp_path / "nuxt.config.ts" in collisions
+
+
+def test_cli_find_scaffold_collisions_no_longer_flags_postcss_without_tailwind(tmp_path: Path) -> None:
+    from litestar_vite.scaffolding.templates import FRAMEWORK_TEMPLATES, FrameworkType
+
+    (tmp_path / "postcss.config.mjs").write_text("", encoding="utf-8")
+    collisions = _find_scaffold_collisions(
+        tmp_path, "src", "public", "public", framework=FRAMEWORK_TEMPLATES[FrameworkType.REACT], use_tailwind=False
+    )
+    assert tmp_path / "postcss.config.mjs" not in collisions
 
 
 def test_cli_prompt_for_options_interactive(monkeypatch: pytest.MonkeyPatch) -> None:
