@@ -45,6 +45,8 @@ export { csrfFetch, csrfHeaders, getCsrfToken } from "./csrf.js"
 export { createChannelsStream, type ChannelName, type ChannelsStreamOptions } from "./channels.js"
 // HTMX utilities
 export { addDirective, registerHtmxExtension, setDebug as setHtmxDebug, swapJson } from "./htmx.js"
+// Litestar Queues utilities
+export { createQueueEventStream, QUEUE_SSE_EVENTS, type QueueEventStreamOptions, type QueueStreamTarget, type QueueStreamValue } from "./queues.js"
 // Route matching utilities
 export { createRouteHelpers, currentRoute, isCurrentRoute, isRoute, type RouteDefinition, type RouteDefinitions, type RouteHelpers, toRoute } from "./routes.js"
 // Realtime stream utilities
