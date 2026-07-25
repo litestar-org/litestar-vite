@@ -511,6 +511,30 @@ describe("createEventStream websocket transport", () => {
     expect(onHealthChange.mock.calls).toEqual([[false], [true], [false]])
   })
 
+  it("calls onReconnect only after the first successful open", () => {
+    const onReconnect = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      onEvent: vi.fn(),
+      onReconnect,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateOpen()
+    expect(onReconnect).not.toHaveBeenCalled()
+
+    FakeWebSocket.instances[0].simulateClose(1006)
+    vi.advanceTimersByTime(500)
+    FakeWebSocket.instances[1].simulateOpen()
+    expect(onReconnect).toHaveBeenCalledOnce()
+
+    FakeWebSocket.instances[1].simulateClose(1006)
+    vi.advanceTimersByTime(500)
+    FakeWebSocket.instances[2].simulateOpen()
+    expect(onReconnect).toHaveBeenCalledTimes(2)
+  })
+
   it("does not connect during server-side rendering", () => {
     // @ts-expect-error - Testing SSR without a window global.
     globalThis.window = undefined

@@ -11,6 +11,7 @@ export interface EventStreamOptions<TFrame = unknown> {
   sseEvents?: readonly string[]
   onEvent: (frame: TFrame) => void
   onHealthChange?: (healthy: boolean) => void
+  onReconnect?: () => void
   onGap?: (gap: StreamGap) => void
   shouldReconnect?: (closeCode: number) => boolean
   isHeartbeat?: (frame: TFrame) => boolean
@@ -81,6 +82,7 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
     sseEvents = DEFAULT_SSE_EVENTS,
     onEvent,
     onHealthChange,
+    onReconnect,
     onGap,
     shouldReconnect = (closeCode) => closeCode !== 1000,
     isHeartbeat = defaultIsHeartbeat,
@@ -96,6 +98,7 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
   let timer: ReturnType<typeof setTimeout> | null = null
   let disposed = false
   let lastHealthy: boolean | null = null
+  let hasOpened = false
   const seenKeys: string[] = []
   const seenKeySet = new Set<string>()
   const sequenceByStream = new Map<string, number>()
@@ -132,6 +135,11 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
     attempt = 0
     clearTimer()
     emitHealth(true)
+    if (hasOpened) {
+      onReconnect?.()
+    } else {
+      hasOpened = true
+    }
   }
 
   function handleMessage(event: MessageEvent): void {
