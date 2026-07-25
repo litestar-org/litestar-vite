@@ -42,12 +42,77 @@ from litestar_vite.inertia.helpers import (
 from litestar_vite.inertia.response import (
     InertiaBack,
     InertiaExternalRedirect,
+    InertiaRedirect,
     InertiaResponse,
     _InertiaSSRResult,
     _parse_inertia_ssr_payload,
     _render_inertia_ssr,
 )
 from litestar_vite.plugin import VitePlugin
+
+
+async def test_share_sync_special_prop_delivered_across_redirect(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """A shared sync prop is materialized once when an in-frame redirect needs it."""
+    calls: list[int] = []
+
+    @get("/")
+    async def redirect_handler(request: Request[Any, Any, Any]) -> InertiaRedirect:
+        share(request, "cfg", once("cfg", lambda: (calls.append(1), {"a": 1})[1]))
+        return InertiaRedirect(request, "/next")
+
+    @get("/next", component="Next")
+    async def next_handler() -> dict[str, Any]:
+        return {}
+
+    with create_test_client(
+        route_handlers=[redirect_handler, next_handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=True)
+
+    assert response.status_code == 200
+    assert response.json()["props"]["cfg"] == {"a": 1}
+    assert calls == [1]
+
+
+async def test_share_async_special_prop_not_persisted_across_redirect(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """An async shared special prop remains request-local across redirects."""
+
+    async def fetch_slow() -> dict[str, int]:
+        return {"a": 1}
+
+    @get("/")
+    async def redirect_handler(request: Request[Any, Any, Any]) -> InertiaRedirect:
+        share(request, "slow", defer("slow", fetch_slow))
+        return InertiaRedirect(request, "/next")
+
+    @get("/next", component="Next")
+    async def next_handler() -> dict[str, Any]:
+        return {}
+
+    with create_test_client(
+        route_handlers=[redirect_handler, next_handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        redirect_response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=False)
+        assert redirect_response.status_code == 307
+        response = client.get("/next", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=True)
+
+    assert "slow" not in response.json()["props"]
 
 
 async def test_component_enabled(

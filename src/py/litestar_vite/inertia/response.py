@@ -33,6 +33,7 @@ from litestar_vite.inertia.helpers import (
     is_or_contains_special_prop,
     is_pagination_container,
     lazy_render,
+    materialize_shared_props_to_session,
     pagination_to_dict,
     resolve_async_props,
     should_render,
@@ -706,6 +707,7 @@ class InertiaExternalRedirect(Response[Any]):
             redirect_to: The URL to redirect to (can be external).
             **kwargs: Additional keyword arguments passed to the Response constructor.
         """
+        materialize_shared_props_to_session(request)
         super().__init__(
             content=b"",
             status_code=HTTP_409_CONFLICT,
@@ -733,6 +735,7 @@ class InertiaRedirect(Redirect):
             redirect_to: The URL to redirect to. Must be same-origin or relative.
             **kwargs: Additional keyword arguments passed to the Redirect constructor.
         """
+        materialize_shared_props_to_session(request)
         safe_url = _get_redirect_url(request, redirect_to)
         if _should_use_fragment_redirect(request, safe_url):
             self._uses_inertia_fragment_redirect = True

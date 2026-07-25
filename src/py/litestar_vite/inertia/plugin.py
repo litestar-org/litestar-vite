@@ -234,15 +234,15 @@ def _as_inertia_prop_mapping(data: "Any") -> "Mapping[str, Any] | None":
 
 
 async def _resolve_inertia_response_data(data: "Any", request: "Request[Any, Any, Any]") -> "Any":
+    from litestar_vite.inertia.helpers import is_pagination_container, materialize_shared_props_to_session
     from litestar_vite.inertia.response import InertiaResponse
 
     if isinstance(data, InertiaResponse):
         await data.resolve_async_props(request)
         return cast("InertiaResponse[Any]", data)
     if isinstance(data, Response):
+        materialize_shared_props_to_session(request)
         return cast("Response[Any]", data)
-
-    from litestar_vite.inertia.helpers import is_pagination_container
 
     content: "Any"
     if data is None or isinstance(data, Mapping) or is_pagination_container(data):

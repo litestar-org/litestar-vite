@@ -1474,6 +1474,30 @@ def _materialize_shared_value(value: "Any") -> "Any":
     return value
 
 
+def materialize_shared_props_to_session(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
+    """Flush scope-stored shared props into the session as serializable values.
+
+    This is called in the handler frame when a redirect or other non-Inertia response needs
+    shared values to survive the next request. Sync special props render here; async special
+    props remain request-local because they cannot be materialized synchronously.
+
+    Args:
+        connection: The current ASGI connection.
+    """
+    scope_shared = _get_scope_shared_props(connection)
+    if not scope_shared:
+        return
+    try:
+        session_shared = connection.session.setdefault("_shared", {})
+    except (AttributeError, ImproperlyConfiguredException):
+        return
+    for key, value in scope_shared.items():
+        materialized = _materialize_shared_value(value)
+        if materialized is _UNMATERIALIZABLE_SHARED:
+            continue
+        session_shared[key] = materialized
+
+
 def share(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", value: "Any") -> "bool":
     """Share a value in the session.
 
