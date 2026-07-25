@@ -7,7 +7,7 @@ Notable changes to this project are documented in this file.
 Litestar Vite Changelog
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-0.28.0 - Unreleased
+0.28.0 - 2026-07-25
 -------------------
 
 - Added zero-dependency browser stream helpers for generic WebSocket/SSE routes,
