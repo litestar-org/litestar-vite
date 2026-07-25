@@ -39,9 +39,10 @@ export function normalizeHost(host: string): string {
  * Resolve the Litestar dev server port for HMR routing.
  *
  * Framework integrations (Astro/Nuxt/SvelteKit) need this port to set
- * `vite.server.hmr.clientPort` so the browser opens the HMR WebSocket against
- * Litestar — NOT the framework dev server's port — preserving the
- * single-port-via-ASGI contract.
+ * `vite.server.ws.clientPort` on Vite 8.1+ (`vite.server.hmr.clientPort` on
+ * Vite 7 / 8.0) so the browser opens the HMR WebSocket against Litestar — NOT
+ * the framework dev server's port — preserving the single-port-via-ASGI
+ * contract.
  *
  * Resolution order:
  *   1. `bridge.litestarPort` (preferred; written by Python ≥0.23.0).

@@ -44,7 +44,14 @@ def _popen_server_kwargs(cwd: Path) -> dict[str, Any]:
     Returns:
         Keyword arguments for ``subprocess.Popen`` suitable for long-lived dev servers.
     """
-    kwargs: dict[str, Any] = {"cwd": cwd, "stdin": subprocess.PIPE, "stdout": None, "stderr": None, "shell": False}
+    kwargs: dict[str, Any] = {
+        "cwd": cwd,
+        "env": {**os.environ, "LITESTAR_VITE_MANAGED": "1"},
+        "stdin": subprocess.PIPE,
+        "stdout": None,
+        "stderr": subprocess.PIPE,
+        "shell": False,
+    }
     if platform.system() == "Windows":
         kwargs["creationflags"] = _create_new_process_group
     else:

@@ -60,9 +60,13 @@ Dev URL Derivation
 ------------------
 
 - `server.origin` (explicit) wins and is written as-is.
-- Otherwise host precedence is: `server.hmr.host` -> `server.host` -> remote-mode loopback fallback (`127.0.0.1` / `[::1]`) -> bound server address.
-- Port precedence is: `server.hmr.clientPort` -> Vite listening port.
-- Protocol precedence is: `server.hmr.protocol` (`wss` => `https`) -> Vite HTTPS setting.
+- Otherwise host precedence is: HMR network ``host`` (``server.ws.host`` on Vite 8.1+;
+  ``server.hmr.host`` on Vite 7 / 8.0) -> ``server.host`` -> remote-mode loopback fallback
+  (``127.0.0.1`` / ``[::1]``) -> bound server address.
+- Port precedence is: HMR network ``clientPort`` (``server.ws.clientPort`` on Vite 8.1+;
+  ``server.hmr.clientPort`` on Vite 7 / 8.0) -> Vite listening port.
+- Protocol precedence is: HMR network ``protocol`` (``server.ws.protocol`` on Vite 8.1+;
+  ``server.hmr.protocol`` on Vite 7 / 8.0; ``wss`` => ``https``) -> Vite HTTPS setting.
 
 Manual Vite Workflow
 --------------------

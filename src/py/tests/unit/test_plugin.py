@@ -21,7 +21,7 @@ from litestar.params import FromPath
 from litestar.template.config import TemplateConfig
 from litestar.testing import TestClient
 
-from litestar_vite.config import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig
+from litestar_vite.config import ExternalDevServer, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig
 from litestar_vite.plugin import (
     ProxyHeadersMiddleware,
     StaticFilesConfig,
@@ -657,6 +657,55 @@ def test_vite_plugin_lifespan_with_environment_setup(mock_set_env: Mock) -> None
     mock_set_env.assert_called_once_with(config=config)
 
 
+def test_server_lifespan_does_not_prewrite_hotfile_in_vite_mode(tmp_path: Path) -> None:
+    """Vite's listening callback is the sole hotfile writer for Vite-based flows."""
+    config = ViteConfig(
+        enabled=True,
+        paths=PathConfig(root=tmp_path, bundle_dir=tmp_path),
+        runtime=RuntimeConfig(dev_mode=True, health_check=True, set_environment=False),
+    )
+    plugin = VitePlugin(config=config)
+    plugin._config.types = False
+    app = Mock(spec=Litestar)
+    vite_process = Mock()
+    plugin._vite_process = vite_process
+
+    with patch.object(VitePlugin, "_run_health_check") as run_health_check:
+        with plugin.server_lifespan(app):
+            assert not (tmp_path / config.hot_file).exists()
+
+    run_health_check.assert_called_once_with()
+    vite_process.start.assert_called_once()
+    vite_process.stop.assert_called_once_with()
+
+
+def test_server_lifespan_prewrites_hotfile_only_for_external_target(tmp_path: Path) -> None:
+    """External targets remain discoverable when no Litestar Vite JS plugin runs."""
+    target = "http://localhost:4200"
+    config = ViteConfig(
+        enabled=True,
+        mode="framework",
+        paths=PathConfig(root=tmp_path, bundle_dir=tmp_path),
+        runtime=RuntimeConfig(
+            dev_mode=True,
+            external_dev_server=ExternalDevServer(target=target),
+            health_check=False,
+            set_environment=False,
+        ),
+    )
+    plugin = VitePlugin(config=config)
+    plugin._config.types = False
+    app = Mock(spec=Litestar)
+    vite_process = Mock()
+    plugin._vite_process = vite_process
+
+    with plugin.server_lifespan(app):
+        assert (tmp_path / config.hot_file).read_text(encoding="utf-8") == target
+
+    vite_process.start.assert_called_once()
+    vite_process.stop.assert_called_once_with()
+
+
 @patch("litestar_vite.plugin._utils.console")
 def test_vite_plugin_lifespan_with_vite_process_management(mock_console: Mock, tmp_path: Path) -> None:
     """Test server lifespan with Vite process management."""
@@ -769,6 +818,19 @@ class _FakeProcess:
     def exit(self, returncode: int | None = None) -> None:
         self.returncode = self._target_returncode if returncode is None else returncode
         self._exited.set()
+
+
+class _ObservedWaitProcess(_FakeProcess):
+    """Fake process that exposes when its watcher is blocked in wait()."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.watcher_waiting = threading.Event()
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        if timeout is None:
+            self.watcher_waiting.set()
+        return super().wait(timeout)
 
 
 def _wait_until(condition: Callable[[], bool], *, timeout: float = 1.0) -> None:
@@ -945,6 +1007,38 @@ def test_vite_process_intentional_stop_does_not_restart(mock_killpg: Mock, monke
     assert mock_killpg.called
 
 
+def test_vite_process_intentional_stop_watcher_skips_crash_cleanup() -> None:
+    """A watcher awakened by stop() must not clean the intentionally stopped process group."""
+    child = _ObservedWaitProcess()
+    executor = Mock()
+    executor.run.return_value = child
+    manager = ViteProcess(executor)
+    manager.start(["npm", "run", "dev"], "/test/path")
+    watcher = manager._watcher_thread
+
+    assert watcher is not None
+    assert child.watcher_waiting.wait(timeout=1.0)
+
+    def finish_intentional_stop(_timeout: float) -> None:
+        child.exit(0)
+        manager.process = None
+
+    with (
+        patch.object(manager, "_terminate_process_group", side_effect=finish_intentional_stop),
+        patch.object(
+            manager, "_terminate_exited_process_group", wraps=manager._terminate_exited_process_group
+        ) as cleanup_exited_group,
+        patch("litestar_vite.plugin._process.time.sleep", return_value=None),
+        patch("litestar_vite.plugin._process.os.killpg") as kill_process_group,
+    ):
+        manager.stop()
+        watcher.join(timeout=1.0)
+
+    assert not watcher.is_alive()
+    cleanup_exited_group.assert_not_called()
+    kill_process_group.assert_not_called()
+
+
 def test_vite_process_start_after_stop_is_tracked_for_cleanup() -> None:
     """A stopped ViteProcess can be started again without losing global cleanup tracking."""
     first = _FakeProcess()
@@ -1102,35 +1196,74 @@ def test_vite_process_stop_windows_sends_ctrl_break(mock_system: Mock, monkeypat
     process.stop()
 
     mock_process.send_signal.assert_called_once_with(1234)
-    mock_process.wait.assert_called_once_with(timeout=5.0)
+    mock_process.wait.assert_called_once()
+    assert 0.0 < mock_process.wait.call_args.kwargs["timeout"] <= 5.0
     mock_system.assert_called()
 
 
 @patch("litestar_vite.plugin._process.subprocess.run")
 @patch("litestar_vite.plugin._process.shutil.which", return_value="C:/Windows/System32/taskkill.exe")
 @patch("litestar_vite.plugin._process.platform.system", return_value="Windows")
+@pytest.mark.parametrize(
+    ("stop_timeout", "cooperative_timeout", "signal_timeout", "taskkill_timeout"),
+    [
+        pytest.param(0.5, 0.0, 0.0, 0.5, id="half-second"),
+        pytest.param(1.0, 0.0, 0.0, 1.0, id="one-second"),
+        pytest.param(2.0, 1.0, 0.0, 1.0, id="two-seconds"),
+        pytest.param(2.5, 1.5, 0.0, 1.0, id="two-and-a-half-seconds"),
+        pytest.param(5.0, 2.0, 2.0, 1.0, id="five-seconds"),
+    ],
+)
 def test_vite_process_stop_windows_force_kills_tree(
-    mock_system: Mock, mock_which: Mock, mock_run: Mock, monkeypatch: pytest.MonkeyPatch
+    mock_system: Mock,
+    mock_which: Mock,
+    mock_run: Mock,
+    monkeypatch: pytest.MonkeyPatch,
+    stop_timeout: float,
+    cooperative_timeout: float,
+    signal_timeout: float,
+    taskkill_timeout: float,
 ) -> None:
-    """A stuck Windows sidecar is force-killed as a tree with a list command."""
+    """A stuck managed Windows sidecar escalates from stdin EOF to tree cleanup."""
+    clock = [100.0]
+    wait_timeouts: list[float] = []
     monkeypatch.setattr("litestar_vite.plugin._process._CTRL_BREAK_EVENT", 1234, raising=False)
+    monkeypatch.setattr("litestar_vite.plugin._process.time.monotonic", lambda: clock[0])
     mock_process = Mock(pid=12345)
     mock_process.poll.return_value = None
-    mock_process.wait.side_effect = [subprocess.TimeoutExpired("cmd", 2.5), 0]
+    mock_process.stdin.closed = False
+
+    def wait(*, timeout: float) -> int:
+        wait_timeouts.append(timeout)
+        clock[0] += timeout
+        if len(wait_timeouts) < 3:
+            raise subprocess.TimeoutExpired("cmd", timeout)
+        return 0
+
+    def run_taskkill(*_args: Any, timeout: float, **_kwargs: Any) -> None:
+        clock[0] += timeout
+        raise subprocess.TimeoutExpired("taskkill", timeout)
+
+    mock_process.wait.side_effect = wait
+    mock_run.side_effect = run_taskkill
     process = ViteProcess(Mock())
     process.process = mock_process
 
-    process.stop(timeout=2.5)
+    process.stop(timeout=stop_timeout)
 
+    mock_process.stdin.close.assert_called_once_with()
     mock_process.send_signal.assert_called_once_with(1234)
     mock_run.assert_called_once_with(
         ["C:/Windows/System32/taskkill.exe", "/PID", "12345", "/T", "/F"],
         check=False,
         shell=False,
         capture_output=True,
-        timeout=1.0,
+        timeout=taskkill_timeout,
     )
-    assert mock_process.wait.call_args_list[-1].kwargs == {"timeout": 1.0}
+    assert wait_timeouts == pytest.approx([cooperative_timeout, signal_timeout, 0.0])
+    assert taskkill_timeout > 0.0
+    assert clock[0] == pytest.approx(100.0 + stop_timeout)
+    mock_process.kill.assert_called_once_with()
     mock_system.assert_called()
     mock_which.assert_called_once_with("taskkill")
 

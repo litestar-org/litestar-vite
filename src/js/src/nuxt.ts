@@ -28,6 +28,7 @@ import path from "node:path"
 import colors from "picocolors"
 import type { Plugin } from "vite"
 import { type BridgeTypesConfig, readBridgeConfig } from "./shared/bridge-schema.js"
+import { installManagedShutdown } from "./shared/managed-shutdown.js"
 import { normalizeHost, resolveHotFilePath, resolveLitestarPort } from "./shared/network.js"
 import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig } from "./shared/typegen-plugin.js"
 import { hmrServerConfig } from "./shared/vite-compat.js"
@@ -196,8 +197,9 @@ interface ResolvedNuxtConfig {
   /** Preferred dev server port (provided by Python via VITE_PORT) */
   devPort?: number
   /**
-   * Litestar dev server port. Used to set `vite.server.hmr.clientPort` so the
-   * browser opens HMR WebSockets against Litestar (single-port contract).
+   * Litestar dev server port. Used to set `vite.server.ws.clientPort` on Vite
+   * 8.1+ (`vite.server.hmr.clientPort` on Vite 7 / 8.0) so the browser opens HMR
+   * WebSockets against Litestar (single-port contract).
    */
   litestarPort?: number
   /** Asset URL prefix (e.g. ``/static``); used to build the HMR path. */
@@ -337,6 +339,7 @@ function createProxyPlugin(config: ResolvedNuxtConfig): Plugin {
       }
     },
     configureServer(server) {
+      installManagedShutdown(server)
       if (config.verbose) {
         server.middlewares.use((req, _res, next) => {
           if (req.url?.startsWith(config.apiPrefix)) {
@@ -450,9 +453,13 @@ interface NuxtModuleFunction {
 }
 
 interface ListenInfo {
-  url: string
-  host: string
-  port: number
+  url?: string
+  address?: {
+    address?: string
+    port?: number
+  }
+  host?: string
+  port?: number
 }
 
 interface NuxtContext {
@@ -514,31 +521,20 @@ function litestarNuxtModule(userOptions: LitestarNuxtConfig, nuxt: NuxtContext):
     console.log(JSON.stringify(nuxt.options.nitro.devProxy, null, 2))
   }
 
-  // Write hotfile for Litestar proxy to discover Nuxt server URL
-  // Use the port from NUXT_PORT env (set by Python) since that's what Nuxt will use
-  if (config.hotFile && config.devPort) {
-    const rawHost = process.env.NUXT_HOST || process.env.HOST || "127.0.0.1"
-    const host = normalizeHost(rawHost)
-    const url = `http://${host}:${config.devPort}`
-    fs.mkdirSync(path.dirname(config.hotFile), { recursive: true })
-    fs.writeFileSync(config.hotFile, url)
-    if (config.verbose) {
-      console.log(colors.cyan("[litestar-nuxt]"), colors.dim(`Hotfile written: ${config.hotFile} -> ${url}`))
-    }
-  }
-
-  // Also register Nuxt's 'listen' hook as a backup to update hotfile with actual server URL
-  // This fires when Nitro's main HTTP server starts (not Vite's internal HMR server)
+  // Nuxt's listen hook is the authoritative primary hotfile writer. It fires
+  // after Nitro's main HTTP server starts, so hotfile presence means ready.
   if (nuxt.hook && config.hotFile) {
+    const hotFile = config.hotFile
     nuxt.hook("listen", (_server: unknown, listener: unknown) => {
       const info = listener as ListenInfo
-      if (info && typeof info.port === "number") {
-        const host = normalizeHost(info.host || "127.0.0.1")
-        const url = `http://${host}:${info.port}`
-        fs.mkdirSync(path.dirname(config.hotFile as string), { recursive: true })
-        fs.writeFileSync(config.hotFile as string, url)
+      const port = info?.address?.port ?? info?.port
+      if (typeof port === "number") {
+        const host = normalizeHost(info.address?.address || info.host || "127.0.0.1")
+        const url = `http://${host}:${port}`
+        fs.mkdirSync(path.dirname(hotFile), { recursive: true })
+        fs.writeFileSync(hotFile, url)
         if (config.verbose) {
-          console.log(colors.cyan("[litestar-nuxt]"), colors.dim(`Hotfile updated via listen hook: ${url}`))
+          console.log(colors.cyan("[litestar-nuxt]"), colors.dim(`Hotfile written after listen: ${hotFile} -> ${url}`))
         }
       }
     })

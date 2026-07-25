@@ -430,6 +430,84 @@ describe("litestar-vite-plugin", () => {
     }
   })
 
+  it("closes server on stdin end when LITESTAR_VITE_MANAGED is set", async () => {
+    process.env.LITESTAR_VITE_MANAGED = "1"
+    vi.resetModules()
+    const { default: freshLitestar } = await import("../src")
+    const plugin = freshLitestar({ input: "resources/js/app.ts" })[0]
+    const resolvedConfig = plugin.config({}, { command: "serve", mode: "development" })
+    const stdinHandlers = new Map<string, () => Promise<void>>()
+    const stdinOn = vi.spyOn(process.stdin, "on").mockImplementation(((event: string, handler: () => Promise<void>) => {
+      stdinHandlers.set(event, handler)
+      return process.stdin
+    }) as any)
+    const stdinResume = vi.spyOn(process.stdin, "resume").mockReturnValue(process.stdin)
+    const exit = vi.spyOn(process, "exit").mockImplementation(((code?: string | number | null) => {
+      throw new Error(`process.exit:${code}`)
+    }) as never)
+    const close = vi.fn().mockResolvedValue(undefined)
+    const mockServer = {
+      close,
+      config: {
+        root: process.cwd(),
+        envDir: process.cwd(),
+        mode: "development",
+        command: "serve",
+        base: "/static/",
+        server: { https: false, ws: resolvedConfig.server?.ws },
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      },
+      httpServer: {
+        once: vi.fn(),
+        address: vi.fn(),
+      },
+      middlewares: { use: vi.fn() },
+      transformIndexHtml: vi.fn(),
+    }
+
+    plugin.configResolved?.(mockServer.config as any)
+    await plugin.configureServer?.(mockServer as any)
+
+    expect(stdinOn).toHaveBeenCalledWith("end", expect.any(Function))
+    expect(stdinOn).toHaveBeenCalledWith("close", expect.any(Function))
+    expect(stdinResume).toHaveBeenCalledOnce()
+    await expect(stdinHandlers.get("end")?.()).rejects.toThrow("process.exit:0")
+    expect(close).toHaveBeenCalledOnce()
+    expect(close.mock.invocationCallOrder[0]).toBeLessThan(exit.mock.invocationCallOrder[0])
+  })
+
+  it("ignores stdin end when LITESTAR_VITE_MANAGED is unset", async () => {
+    delete process.env.LITESTAR_VITE_MANAGED
+    vi.resetModules()
+    const { default: freshLitestar } = await import("../src")
+    const plugin = freshLitestar({ input: "resources/js/app.ts" })[0]
+    const resolvedConfig = plugin.config({}, { command: "serve", mode: "development" })
+    const stdinOn = vi.spyOn(process.stdin, "on")
+    const mockServer = {
+      close: vi.fn(),
+      config: {
+        root: process.cwd(),
+        envDir: process.cwd(),
+        mode: "development",
+        command: "serve",
+        base: "/static/",
+        server: { https: false, ws: resolvedConfig.server?.ws },
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      },
+      httpServer: {
+        once: vi.fn(),
+        address: vi.fn(),
+      },
+      middlewares: { use: vi.fn() },
+      transformIndexHtml: vi.fn(),
+    }
+
+    plugin.configResolved?.(mockServer.config as any)
+    await plugin.configureServer?.(mockServer as any)
+
+    expect(stdinOn).not.toHaveBeenCalled()
+  })
+
   it("writes hotFile using actual dev server URL even with explicit server.origin override", async () => {
     const configPath = createRuntimeConfig({
       proxyMode: "vite",

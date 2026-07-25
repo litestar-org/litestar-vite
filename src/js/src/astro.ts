@@ -31,6 +31,7 @@ import type { IncomingMessage, ServerResponse } from "node:http"
 import path from "node:path"
 import type { Plugin, ViteDevServer } from "vite"
 import { readBridgeConfig } from "./shared/bridge-schema.js"
+import { installManagedShutdown } from "./shared/managed-shutdown.js"
 import { normalizeHost, resolveHotFilePath, resolveLitestarPort } from "./shared/network.js"
 import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig } from "./shared/typegen-plugin.js"
 import { hmrServerConfig } from "./shared/vite-compat.js"
@@ -254,8 +255,9 @@ interface ResolvedLitestarAstroConfig {
   /** Port for Vite dev server (from VITE_PORT env or runtime config) */
   port?: number
   /**
-   * Litestar dev server port. Used to set `vite.server.hmr.clientPort` so the
-   * browser opens HMR WebSockets against Litestar (single-port contract).
+   * Litestar dev server port. Used to set `vite.server.ws.clientPort` on Vite
+   * 8.1+ (`vite.server.hmr.clientPort` on Vite 7 / 8.0) so the browser opens HMR
+   * WebSockets against Litestar (single-port contract).
    */
   litestarPort?: number
   /** Asset URL prefix (e.g. ``/static``); used to build the HMR path. */
@@ -369,6 +371,9 @@ function createProxyPlugin(config: ResolvedLitestarAstroConfig): Plugin {
           },
         },
       }
+    },
+    configureServer(server: ViteDevServer) {
+      installManagedShutdown(server)
     },
   }
 }

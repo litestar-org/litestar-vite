@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildBundlerOptions, buildInputOptions, isVite8Plus, resolveUserBuildInput } from "../src/shared/vite-compat"
+import { buildBundlerOptions, buildInputOptions, hmrServerConfig, isVite81Plus, isVite8Plus, resolveUserBuildInput } from "../src/shared/vite-compat"
 
 // Vite 8+ uses Rolldown (`rolldownOptions`); Vite 7 uses Rollup (`rollupOptions`).
 const bundlerKey = isVite8Plus ? "rolldownOptions" : "rollupOptions"
@@ -37,6 +37,12 @@ describe("vite-compat", () => {
   describe("buildBundlerOptions", () => {
     it("wraps options under the version-appropriate bundler key", () => {
       expect(buildBundlerOptions({ input: "app.ts", treeshake: true })).toEqual({ [bundlerKey]: { input: "app.ts", treeshake: true } })
+    })
+  })
+
+  describe("hmrServerConfig", () => {
+    it("wraps network options under server.ws on Vite 8.1+", () => {
+      expect(hmrServerConfig({ clientPort: 1 })).toEqual(isVite81Plus ? { ws: { clientPort: 1 } } : { hmr: { clientPort: 1 } })
     })
   })
 })
