@@ -7,12 +7,15 @@ export interface StreamGap {
 
 export interface EventStreamOptions<TFrame = unknown> {
   buildUrl: () => string
+  transport?: "websocket" | "sse"
+  sseEvents?: readonly string[]
   onEvent: (frame: TFrame) => void
   onHealthChange?: (healthy: boolean) => void
   shouldReconnect?: (closeCode: number) => boolean
   baseDelayMs?: number
   maxDelayMs?: number
   WebSocketCtor?: typeof WebSocket
+  EventSourceCtor?: typeof EventSource
 }
 
 export interface EventStream {
@@ -23,11 +26,33 @@ export interface EventStream {
 
 const DEFAULT_BASE_DELAY_MS = 1000
 const DEFAULT_MAX_DELAY_MS = 10_000
+const DEFAULT_SSE_EVENTS = [
+  "task.started",
+  "task.progress",
+  "task.log",
+  "task.event",
+  "task.completed",
+  "task.failed",
+  "task.cancelled",
+  "task.claim_lost",
+  "task.stale_failed",
+  "worker.heartbeat",
+  "worker.stale_recovery",
+] as const
 
 export function createEventStream<TFrame = unknown>(options: EventStreamOptions<TFrame>): EventStream {
-  const { buildUrl, onEvent, onHealthChange, shouldReconnect = (closeCode) => closeCode !== 1000, baseDelayMs = DEFAULT_BASE_DELAY_MS, maxDelayMs = DEFAULT_MAX_DELAY_MS } = options
+  const {
+    buildUrl,
+    transport = "websocket",
+    sseEvents = DEFAULT_SSE_EVENTS,
+    onEvent,
+    onHealthChange,
+    shouldReconnect = (closeCode) => closeCode !== 1000,
+    baseDelayMs = DEFAULT_BASE_DELAY_MS,
+    maxDelayMs = DEFAULT_MAX_DELAY_MS,
+  } = options
 
-  let socket: WebSocket | null = null
+  let connection: WebSocket | EventSource | null = null
   let attempt = 0
   let timer: ReturnType<typeof setTimeout> | null = null
   let disposed = false
@@ -61,28 +86,31 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
     }, delay)
   }
 
-  function open(): void {
-    if (disposed || typeof window === "undefined") {
-      return
-    }
+  function handleOpen(): void {
+    attempt = 0
+    clearTimer()
+    emitHealth(true)
+  }
 
+  function handleMessage(event: MessageEvent): void {
+    onEvent(JSON.parse(String(event.data)) as TFrame)
+  }
+
+  function openWebSocket(): void {
     const WebSocketCtor = options.WebSocketCtor ?? window.WebSocket
     const next = new WebSocketCtor(buildUrl())
-    socket = next
-
+    connection = next
     next.addEventListener("open", () => {
-      attempt = 0
-      clearTimer()
-      emitHealth(true)
+      handleOpen()
     })
     next.addEventListener("message", (event) => {
-      onEvent(JSON.parse(String(event.data)) as TFrame)
+      handleMessage(event)
     })
     next.addEventListener("close", (event) => {
-      if (socket !== next) {
+      if (connection !== next) {
         return
       }
-      socket = null
+      connection = null
       emitHealth(false)
       if (disposed || !shouldReconnect(event.code)) {
         return
@@ -92,6 +120,43 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
     next.addEventListener("error", () => {
       emitHealth(false)
     })
+  }
+
+  function openEventSource(): void {
+    const EventSourceCtor = options.EventSourceCtor ?? window.EventSource
+    const next = new EventSourceCtor(buildUrl())
+    connection = next
+    next.addEventListener("open", () => {
+      handleOpen()
+    })
+    for (const eventType of sseEvents) {
+      next.addEventListener(eventType, (event) => {
+        handleMessage(event as MessageEvent)
+      })
+    }
+    next.addEventListener("error", () => {
+      if (connection !== next) {
+        return
+      }
+      connection = null
+      next.close()
+      emitHealth(false)
+      if (disposed || !shouldReconnect(1006)) {
+        return
+      }
+      scheduleReconnect()
+    })
+  }
+
+  function open(): void {
+    if (disposed || typeof window === "undefined") {
+      return
+    }
+    if (transport === "sse") {
+      openEventSource()
+      return
+    }
+    openWebSocket()
   }
 
   return {
@@ -106,8 +171,8 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
     dispose(): void {
       disposed = true
       clearTimer()
-      const current = socket
-      socket = null
+      const current = connection
+      connection = null
       current?.close()
     },
     get healthy(): boolean {

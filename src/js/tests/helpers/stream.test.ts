@@ -44,6 +44,63 @@ class FakeWebSocket {
 
 const WebSocketCtor = FakeWebSocket as unknown as typeof WebSocket
 
+class FakeEventSource {
+  static instances: FakeEventSource[] = []
+
+  readonly url: string
+  close = vi.fn()
+  private readonly listeners = new Map<string, Set<EventListener>>()
+
+  constructor(url: string | URL) {
+    this.url = String(url)
+    FakeEventSource.instances.push(this)
+  }
+
+  addEventListener(type: string, listener: EventListener): void {
+    const listeners = this.listeners.get(type) ?? new Set<EventListener>()
+    listeners.add(listener)
+    this.listeners.set(type, listeners)
+  }
+
+  eventTypes(): string[] {
+    return [...this.listeners.keys()]
+  }
+
+  simulateError(): void {
+    this.dispatch("error", new Event("error"))
+  }
+
+  simulateEvent(type: string, data: string): void {
+    this.dispatch(type, new MessageEvent(type, { data }))
+  }
+
+  simulateOpen(): void {
+    this.dispatch("open", new Event("open"))
+  }
+
+  private dispatch(type: string, event: Event): void {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener(event)
+    }
+  }
+}
+
+const EventSourceCtor = FakeEventSource as unknown as typeof EventSource
+
+const DEFAULT_SSE_EVENTS = [
+  "task.started",
+  "task.progress",
+  "task.log",
+  "task.event",
+  "task.completed",
+  "task.failed",
+  "task.cancelled",
+  "task.claim_lost",
+  "task.stale_failed",
+  "worker.heartbeat",
+  "worker.stale_recovery",
+]
+
 describe("createEventStream websocket transport", () => {
   const originalWindow = globalThis.window
 
@@ -213,5 +270,85 @@ describe("createEventStream websocket transport", () => {
     stream.connect()
 
     expect(FakeWebSocket.instances).toHaveLength(0)
+  })
+})
+
+describe("createEventStream SSE transport", () => {
+  beforeEach(() => {
+    FakeEventSource.instances = []
+    vi.useFakeTimers()
+    vi.spyOn(Math, "random").mockReturnValue(0.5)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it("listens for every named Litestar Queue event by default", () => {
+    const stream = createEventStream({
+      buildUrl: () => "/events",
+      EventSourceCtor,
+      onEvent: vi.fn(),
+      transport: "sse",
+    })
+
+    stream.connect()
+
+    const registeredTypes = FakeEventSource.instances[0].eventTypes()
+    expect(registeredTypes.filter((eventType) => eventType !== "open" && eventType !== "error")).toEqual(DEFAULT_SSE_EVENTS)
+  })
+
+  it("replaces the default event names with caller-supplied names", () => {
+    const stream = createEventStream({
+      buildUrl: () => "/events",
+      EventSourceCtor,
+      onEvent: vi.fn(),
+      sseEvents: ["custom.started", "custom.finished"],
+      transport: "sse",
+    })
+
+    stream.connect()
+
+    const registeredTypes = FakeEventSource.instances[0].eventTypes()
+    expect(registeredTypes.filter((eventType) => eventType !== "open" && eventType !== "error")).toEqual(["custom.started", "custom.finished"])
+  })
+
+  it("parses named SSE messages and forwards the frame", () => {
+    const onEvent = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "/events",
+      EventSourceCtor,
+      onEvent,
+      sseEvents: ["custom.progress"],
+      transport: "sse",
+    })
+
+    stream.connect()
+    FakeEventSource.instances[0].simulateEvent("custom.progress", '{"type":"custom.progress","payload":{"percent":75}}')
+
+    expect(onEvent).toHaveBeenCalledWith({
+      type: "custom.progress",
+      payload: { percent: 75 },
+    })
+  })
+
+  it("closes the native EventSource and schedules one library-owned reconnect", () => {
+    const stream = createEventStream({
+      buildUrl: () => "/events",
+      EventSourceCtor,
+      onEvent: vi.fn(),
+      transport: "sse",
+    })
+
+    stream.connect()
+    FakeEventSource.instances[0].simulateError()
+    FakeEventSource.instances[0].simulateError()
+
+    expect(FakeEventSource.instances[0].close).toHaveBeenCalledOnce()
+    vi.advanceTimersByTime(499)
+    expect(FakeEventSource.instances).toHaveLength(1)
+    vi.advanceTimersByTime(1)
+    expect(FakeEventSource.instances).toHaveLength(2)
   })
 })
