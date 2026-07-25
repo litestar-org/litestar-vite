@@ -12,8 +12,11 @@ export interface EventStreamOptions<TFrame = unknown> {
   onEvent: (frame: TFrame) => void
   onHealthChange?: (healthy: boolean) => void
   shouldReconnect?: (closeCode: number) => boolean
+  isHeartbeat?: (frame: TFrame) => boolean
+  getEventKey?: (frame: TFrame) => string | undefined
   baseDelayMs?: number
   maxDelayMs?: number
+  dedupWindow?: number
   WebSocketCtor?: typeof WebSocket
   EventSourceCtor?: typeof EventSource
 }
@@ -26,6 +29,7 @@ export interface EventStream {
 
 const DEFAULT_BASE_DELAY_MS = 1000
 const DEFAULT_MAX_DELAY_MS = 10_000
+const DEFAULT_DEDUP_WINDOW = 1024
 const DEFAULT_SSE_EVENTS = [
   "task.started",
   "task.progress",
@@ -40,6 +44,20 @@ const DEFAULT_SSE_EVENTS = [
   "worker.stale_recovery",
 ] as const
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined
+}
+
+function defaultIsHeartbeat(frame: unknown): boolean {
+  return asRecord(frame)?.type === "ping"
+}
+
+function defaultGetEventKey(frame: unknown): string | undefined {
+  const record = asRecord(frame)
+  const key = record?.eventKey ?? record?.id
+  return typeof key === "string" ? key : undefined
+}
+
 export function createEventStream<TFrame = unknown>(options: EventStreamOptions<TFrame>): EventStream {
   const {
     buildUrl,
@@ -48,8 +66,11 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
     onEvent,
     onHealthChange,
     shouldReconnect = (closeCode) => closeCode !== 1000,
+    isHeartbeat = defaultIsHeartbeat,
+    getEventKey = defaultGetEventKey,
     baseDelayMs = DEFAULT_BASE_DELAY_MS,
     maxDelayMs = DEFAULT_MAX_DELAY_MS,
+    dedupWindow = DEFAULT_DEDUP_WINDOW,
   } = options
 
   let connection: WebSocket | EventSource | null = null
@@ -57,6 +78,8 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
   let timer: ReturnType<typeof setTimeout> | null = null
   let disposed = false
   let lastHealthy: boolean | null = null
+  const seenKeys: string[] = []
+  const seenKeySet = new Set<string>()
 
   function emitHealth(healthy: boolean): void {
     if (lastHealthy === healthy) {
@@ -93,7 +116,27 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
   }
 
   function handleMessage(event: MessageEvent): void {
-    onEvent(JSON.parse(String(event.data)) as TFrame)
+    const frame = JSON.parse(String(event.data)) as TFrame
+    if (isHeartbeat(frame)) {
+      return
+    }
+
+    const eventKey = getEventKey(frame)
+    if (eventKey !== undefined && dedupWindow > 0) {
+      if (seenKeySet.has(eventKey)) {
+        return
+      }
+      seenKeys.push(eventKey)
+      seenKeySet.add(eventKey)
+      if (seenKeys.length > dedupWindow) {
+        const evicted = seenKeys.shift()
+        if (evicted !== undefined) {
+          seenKeySet.delete(evicted)
+        }
+      }
+    }
+
+    onEvent(frame)
   }
 
   function openWebSocket(): void {

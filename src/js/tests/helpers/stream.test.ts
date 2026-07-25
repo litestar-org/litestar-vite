@@ -167,6 +167,89 @@ describe("createEventStream websocket transport", () => {
     })
   })
 
+  it("filters heartbeat frames before delivery", () => {
+    const onEvent = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      onEvent,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateMessage('{"type":"ping","id":"heartbeat-1"}')
+
+    expect(onEvent).not.toHaveBeenCalled()
+  })
+
+  it("drops duplicate event keys", () => {
+    const onEvent = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      onEvent,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateMessage('{"type":"task.progress","eventKey":"event-1","payload":{"percent":25}}')
+    FakeWebSocket.instances[0].simulateMessage('{"type":"task.progress","eventKey":"event-1","payload":{"percent":25}}')
+
+    expect(onEvent).toHaveBeenCalledOnce()
+  })
+
+  it("keeps the deduplication window across reconnects", () => {
+    const onEvent = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      onEvent,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateMessage('{"type":"task.progress","id":"event-1"}')
+    FakeWebSocket.instances[0].simulateClose(1006)
+    vi.advanceTimersByTime(500)
+    FakeWebSocket.instances[1].simulateMessage('{"type":"task.progress","id":"event-1"}')
+
+    expect(onEvent).toHaveBeenCalledOnce()
+  })
+
+  it("evicts deduplication keys in FIFO order", () => {
+    const onEvent = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      dedupWindow: 2,
+      onEvent,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateMessage('{"type":"task.progress","id":"event-1"}')
+    FakeWebSocket.instances[0].simulateMessage('{"type":"task.progress","id":"event-2"}')
+    FakeWebSocket.instances[0].simulateMessage('{"type":"task.progress","id":"event-3"}')
+    FakeWebSocket.instances[0].simulateMessage('{"type":"task.progress","id":"event-2"}')
+    FakeWebSocket.instances[0].simulateMessage('{"type":"task.progress","id":"event-1"}')
+
+    expect(onEvent).toHaveBeenCalledTimes(4)
+  })
+
+  it("supports custom heartbeat and event-key selectors", () => {
+    const onEvent = vi.fn()
+    const stream = createEventStream<{ event_type: string; idempotency_key?: string }>({
+      buildUrl: () => "ws://example.test/events",
+      getEventKey: (frame) => frame.idempotency_key,
+      isHeartbeat: (frame) => frame.event_type === "heartbeat",
+      onEvent,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateMessage('{"event_type":"heartbeat","idempotency_key":"ping-1"}')
+    FakeWebSocket.instances[0].simulateMessage('{"event_type":"progress","idempotency_key":"event-1"}')
+    FakeWebSocket.instances[0].simulateMessage('{"event_type":"progress","idempotency_key":"event-1"}')
+
+    expect(onEvent).toHaveBeenCalledOnce()
+  })
+
   it("grows and caps full-jitter backoff, then resets after opening", () => {
     vi.spyOn(Math, "random").mockReturnValue(1)
     const stream = createEventStream({
