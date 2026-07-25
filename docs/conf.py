@@ -186,7 +186,7 @@ html_show_sourcelink = True
 html_copy_source = True
 html_title = "Litestar Vite"
 html_baseurl = "https://litestar-org.github.io/litestar-vite/latest/"
-html_favicon = "_static/favicon.ico"
+html_favicon = "_static/favicon.svg"
 html_context = {
     "source_type": "github",
     "source_user": "litestar-org",
@@ -200,8 +200,8 @@ html_sidebars = {"**": []}
 
 html_theme_options: dict[str, Any] = {
     "logo_target": docs_base_path,
-    "light_logo": "_static/header-star-light.svg",
-    "dark_logo": "_static/header-star-dark.svg",
+    "light_logo": "_static/logo-icon.svg",
+    "dark_logo": "_static/logo-icon.svg",
     "accent_color": "amber",
     "page_layout": "default",
     "globaltoc_expand_depth": 0,
