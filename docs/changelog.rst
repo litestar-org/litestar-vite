@@ -35,6 +35,10 @@ Litestar Vite Changelog
 - Changed SPA/proxy route derivation so ``/api`` and ``/schema`` are reserved only when registered
   Litestar routes, OpenAPI configuration, or ``RuntimeConfig.extra_route_prefixes`` claim them. Add
   ``extra_route_prefixes=("/api",)`` if an application relied on the old guessed fallback.
+- Changed Inertia ``share()`` so top-level ``defer()``, ``optional()``, ``once()``, and ``always()``
+  callables run only when the current response renders them or when a redirect needs to persist
+  them. The ``True``/``False`` return contract is unchanged, and async special props still return
+  ``False`` because they cannot be persisted synchronously across redirects.
 
 0.26.1 - 2026-07-06
 -------------------

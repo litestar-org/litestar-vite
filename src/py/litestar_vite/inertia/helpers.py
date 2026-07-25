@@ -1477,9 +1477,10 @@ def _materialize_shared_value(value: "Any") -> "Any":
 def materialize_shared_props_to_session(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
     """Flush scope-stored shared props into the session as serializable values.
 
-    This is called in the handler frame when a redirect or other non-Inertia response needs
-    shared values to survive the next request. Sync special props render here; async special
-    props remain request-local because they cannot be materialized synchronously.
+    In-frame redirect construction and wrapped non-Inertia responses call this while handler
+    dependencies are alive. Exception-produced redirects use the same path after dependency
+    cleanup, where synchronous special props render on a best-effort basis. Async special props
+    are always skipped because they cannot be materialized synchronously.
 
     Args:
         connection: The current ASGI connection.
@@ -1504,10 +1505,12 @@ def share(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", value: "
     Shared values are included in the props of every Inertia response for
     the current request. This is useful for data that should be available
     to all components (e.g., authenticated user, permissions, settings).
-    Top-level special props are materialized before storage; nested special
-    props inside a shared dict or list are not supported. Async top-level
-    special props cannot be persisted to the session, but remain available
-    to the current response from request scope.
+    Top-level special props remain raw in request scope and are materialized lazily in the
+    handler frame only when the response includes them. A redirect materializes synchronous
+    special props into the session so the next request can consume them; exception-produced
+    redirects perform the same work best-effort after dependency cleanup. Async top-level
+    special props cannot be persisted synchronously, return ``False``, and remain available only
+    to the current response. Nested special props inside a shared dict or list are not supported.
 
     Args:
         connection: The ASGI connection.
