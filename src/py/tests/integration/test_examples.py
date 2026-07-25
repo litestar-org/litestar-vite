@@ -27,6 +27,7 @@ EXAMPLES = [
     ("angular-cli", True, False, False),
     ("astro", False, False, True),  # SSR framework - no SPA mode
     ("jinja-htmx", False, False, False),  # Template mode (HTMX)
+    ("htmx-stream", False, False, False),  # Template mode (WebSocket + SSE)
     ("nuxt", False, False, True),  # SSR framework - no SPA mode
     ("react", True, False, False),
     ("react-tanstack", True, False, False),
@@ -84,6 +85,14 @@ def get_vite_plugin(app: Litestar) -> VitePlugin | None:
         if isinstance(plugin, VitePlugin):
             return plugin
     return None
+
+
+def test_stream_example_contains_no_hand_written_queue_adapter() -> None:
+    """Keep parsing, heartbeat filtering, and swapping inside the helper."""
+    source = (EXAMPLES_DIR / "htmx-stream" / "resources" / "main.ts").read_text()
+    assert "JSON.parse" not in source
+    assert "preventDefault" not in source
+    assert '"ping"' not in source
 
 
 @pytest.mark.parametrize("example_name,has_spa,has_inertia,is_ssr", EXAMPLES)

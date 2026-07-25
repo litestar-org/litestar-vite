@@ -115,6 +115,14 @@ Vue Component
 Running
 -------
 
+Realtime streams
+----------------
+
+Use ``useEventStream()`` from ``litestar-vite-plugin/vue`` for custom routes,
+or ``useQueueEventStream()`` for Litestar Queues event envelopes. The
+composables expose refs for health, the latest event and gap, and a bounded
+event buffer. See :doc:`/usage/streams`.
+
 .. code-block:: bash
 
     # Recommended: Litestar proxies Vite automatically in dev mode
@@ -141,4 +149,5 @@ See Also
 
 - :doc:`inertia/index` - Vue with Inertia.js for server-side routing
 - :doc:`/usage/types` - TypeScript type generation
+- :doc:`/usage/streams` - WebSocket and SSE helpers
 - `Example: vue <https://github.com/litestar-org/litestar-vite/tree/main/examples/vue>`_

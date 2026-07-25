@@ -1,0 +1,14 @@
+{
+  "name": "template-htmx-stream",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite"
+  },
+  "devDependencies": {
+    "litestar-vite-plugin": "file:../..",
+    "typescript": "6.0.3",
+    "vite": "8.1.0"
+  }
+}
