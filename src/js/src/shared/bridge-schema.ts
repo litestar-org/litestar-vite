@@ -42,6 +42,8 @@ export interface BridgeSchema {
   assetUrl: string
   deployAssetUrl: string | null
   appUrl: string | null
+  csrfCookieName: string | null
+  csrfHeaderName: string | null
   /**
    * Litestar dev server port. Used by framework integrations to set
    * `vite.server.ws.clientPort` on Vite 8.1+ (`vite.server.hmr.clientPort` on
@@ -89,6 +91,8 @@ const allowedTopLevelKeys: ReadonlySet<string> = new Set([
   "assetUrl",
   "deployAssetUrl",
   "appUrl",
+  "csrfCookieName",
+  "csrfHeaderName",
   "litestarPort",
   "bundleDir",
   "resourceDir",
@@ -287,6 +291,8 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
   const assetUrl = assertString(obj, "assetUrl")
   const deployAssetUrl = assertNullableString(obj, "deployAssetUrl")
   const appUrl = assertOptionalNullableString(obj, "appUrl")
+  const csrfCookieName = assertOptionalNullableString(obj, "csrfCookieName")
+  const csrfHeaderName = assertOptionalNullableString(obj, "csrfHeaderName")
   const litestarPort = assertOptionalNullableInteger(obj, "litestarPort")
   const bundleDir = assertString(obj, "bundleDir")
   const resourceDir = assertString(obj, "resourceDir")
@@ -312,6 +318,8 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
     assetUrl,
     deployAssetUrl,
     appUrl,
+    csrfCookieName,
+    csrfHeaderName,
     litestarPort,
     bundleDir,
     resourceDir,

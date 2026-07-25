@@ -79,6 +79,34 @@ describe("bridge schema litestarPort", () => {
   })
 })
 
+describe("bridge schema csrf names", () => {
+  it("accepts string csrfCookieName/csrfHeaderName", () => {
+    const config = parseBridgeSchema({
+      ...baseBridgeConfig,
+      csrfCookieName: "custom_cookie",
+      csrfHeaderName: "x-custom-header",
+    })
+    expect(config.csrfCookieName).toBe("custom_cookie")
+    expect(config.csrfHeaderName).toBe("x-custom-header")
+  })
+
+  it("accepts null csrfCookieName/csrfHeaderName", () => {
+    const config = parseBridgeSchema({
+      ...baseBridgeConfig,
+      csrfCookieName: null,
+      csrfHeaderName: null,
+    })
+    expect(config.csrfCookieName).toBeNull()
+    expect(config.csrfHeaderName).toBeNull()
+  })
+
+  it("treats missing csrfCookieName/csrfHeaderName as null for older bridge files", () => {
+    const config = parseBridgeSchema(baseBridgeConfig)
+    expect(config.csrfCookieName).toBeNull()
+    expect(config.csrfHeaderName).toBeNull()
+  })
+})
+
 describe("bridge schema additive fields", () => {
   it("warns and ignores unknown top-level keys", () => {
     const config = parseBridgeSchema({ ...baseBridgeConfig, futureField: true })
