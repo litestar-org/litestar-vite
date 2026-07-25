@@ -1,0 +1,3 @@
+This is a proving example for the reusable stream APIs, not a distinct
+frontend framework or scaffold choice. It remains registered in integration
+and live transport tests.

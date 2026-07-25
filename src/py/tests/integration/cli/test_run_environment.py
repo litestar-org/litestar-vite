@@ -57,7 +57,7 @@ def test_run_command_exports_effective_bind_for_vite(
         bridge_path = Path(os.environ["LITESTAR_VITE_CONFIG_PATH"])
         captured["bridge"] = decode_json(bridge_path.read_bytes())
 
-    patch_target = "litestar_granian.cli._run_granian_in_subprocess" if server == "granian" else "uvicorn.run"
+    patch_target = "litestar_granian.cli._GranianSupervisor.run" if server == "granian" else "uvicorn.run"
     with patch(patch_target, side_effect=capture_bind) as run_server:
         result = runner.invoke(
             root_command, ["--app", f"{app_file.stem}:app", "run", "--host", "0.0.0.0", "--port", "9123"]

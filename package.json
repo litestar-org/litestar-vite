@@ -1,6 +1,6 @@
 {
   "name": "litestar-vite-plugin",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "type": "module",
   "description": "Litestar plugin for Vite.",
   "keywords": [
@@ -29,6 +29,18 @@
     "./inertia-helpers": {
       "types": "./dist/js/inertia-helpers/index.d.ts",
       "import": "./dist/js/inertia-helpers/index.js"
+    },
+    "./react": {
+      "types": "./dist/js/react/index.d.ts",
+      "import": "./dist/js/react/index.js"
+    },
+    "./vue": {
+      "types": "./dist/js/vue/index.d.ts",
+      "import": "./dist/js/vue/index.js"
+    },
+    "./svelte": {
+      "types": "./dist/js/svelte/index.d.ts",
+      "import": "./dist/js/svelte/index.js"
     },
     "./astro": {
       "types": "./dist/js/astro.d.ts",
@@ -59,6 +71,15 @@
       "inertia-helpers": [
         "./dist/js/inertia-helpers/index.d.ts"
       ],
+      "react": [
+        "./dist/js/react/index.d.ts"
+      ],
+      "vue": [
+        "./dist/js/vue/index.d.ts"
+      ],
+      "svelte": [
+        "./dist/js/svelte/index.d.ts"
+      ],
       "astro": [
         "./dist/js/astro.d.ts"
       ],
@@ -85,7 +106,7 @@
     "litestar-vite-typegen": "dist/js/typegen-cli.js"
   },
   "scripts": {
-    "build": "npm run build-plugin && npm run build-helpers && npm run build-inertia-helpers && npm run build-integrations && npm run build-static-pages",
+    "build": "npm run build-plugin && npm run build-helpers && npm run build-inertia-helpers && npm run build-adapters && npm run build-integrations && npm run build-static-pages",
     "build-static-pages": "vite build --config src/js/src/server-starting/vite.config.ts && mv src/py/litestar_vite/static/index.html src/py/litestar_vite/static/server-starting.html",
     "build-plugin": "rm -rf dist/js && npm run build-plugin-types && npm run build-plugin-esm && npm run build-dev-server",
     "build-dev-server": "vite build --config src/js/src/dev-server/vite.config.ts && mv dist/js/index.html dist/js/dev-server-index.html",
@@ -93,6 +114,7 @@
     "build-plugin-esm": "esbuild src/js/src/index.ts --platform=node --format=esm --outfile=dist/js/index.js && esbuild src/js/src/install-hint.ts --platform=node --format=esm --outfile=dist/js/install-hint.js && esbuild src/js/src/litestar-meta.ts --platform=node --format=esm --outfile=dist/js/litestar-meta.js && esbuild src/js/src/typegen-cli.ts --platform=node --format=esm --outfile=dist/js/typegen-cli.js --banner:js='#!/usr/bin/env node' && chmod +x dist/js/typegen-cli.js && mkdir -p dist/js/shared && esbuild src/js/src/shared/bridge-schema.ts src/js/src/shared/constants.ts src/js/src/shared/debounce.ts src/js/src/shared/format-path.ts src/js/src/shared/logger.ts src/js/src/shared/managed-shutdown.ts src/js/src/shared/emit-page-props-types.ts src/js/src/shared/emit-schemas-types.ts src/js/src/shared/emit-static-props-types.ts src/js/src/shared/typegen-plugin.ts src/js/src/shared/typegen-core.ts src/js/src/shared/write-if-changed.ts src/js/src/shared/typegen-cache.ts src/js/src/shared/network.ts src/js/src/shared/vite-compat.ts --platform=node --format=esm --outdir=dist/js/shared",
     "build-helpers": "rm -rf dist/js/helpers && tsc --project src/js/tsconfig.helpers.json",
     "build-inertia-helpers": "rm -rf dist/js/inertia-helpers && tsc --project src/js/tsconfig.inertia-helpers.json",
+    "build-adapters": "rm -rf dist/js/react dist/js/vue dist/js/svelte && tsc --project src/js/tsconfig.react.json && tsc --project src/js/tsconfig.vue.json && tsc --project src/js/tsconfig.svelte.json",
     "build-integrations": "esbuild src/js/src/astro.ts src/js/src/sveltekit.ts src/js/src/nuxt.ts src/js/src/inertia-types.ts --platform=node --format=esm --outdir=dist/js",
     "lint": "oxlint src/js/src src/js/tests",
     "lint:examples": "oxlint examples",
@@ -104,24 +126,45 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
     "@types/node": "^26.0.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "@vitest/coverage-v8": "^4.1.8",
     "esbuild": "0.28.1",
     "happy-dom": "^20.0.2",
     "oxfmt": "^0.56.0",
     "oxlint": "^1.66.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "svelte": "^5.56.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^6.0.3",
     "vite": "^8.1.0",
     "vite-plugin-singlefile": "^2.3.0",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "vue": "^3.5.40"
   },
   "peerDependencies": {
     "@hey-api/openapi-ts": "^0.98.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "svelte": "^5.0.0",
+    "vue": "^3.5.0",
     "vite": "^7.0.0 || ^8.0.0"
   },
   "peerDependenciesMeta": {
     "@hey-api/openapi-ts": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "svelte": {
+      "optional": true
+    },
+    "vue": {
       "optional": true
     }
   },

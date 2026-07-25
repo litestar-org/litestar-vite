@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Litestar realtime streams</title>
+    {{ vite_hmr() }}
+    {{ vite("resources/main.ts") }}
+  </head>
+  <body>
+    <main>
+      <header>
+        <p>Litestar · Vite</p>
+        <h1>WebSocket and SSE streams without client adapters</h1>
+        <p>
+          Ordinary Channels traffic uses <code>createChannelsStream()</code>.
+          Queue-shaped custom routes opt into the queue preset explicitly.
+        </p>
+      </header>
+
+      <section>
+        <h2>Regular ChannelsPlugin route</h2>
+        <p><code>ws://…/channels/demo</code></p>
+        <output id="channel-output">waiting</output>
+      </section>
+
+      <div class="streams">
+        <section>
+          <h2>Queue-shaped WebSocket</h2>
+          <p data-health>connecting</p>
+          <p data-gap></p>
+          <litestar-stream preset="queues" url="/events/ws" swap="json">
+            <template ls-if="message">
+              <output>${message}</output>
+            </template>
+          </litestar-stream>
+        </section>
+
+        <section>
+          <h2>Queue-shaped SSE</h2>
+          <p data-health>connecting</p>
+          <p data-gap></p>
+          <litestar-stream preset="queues" url="/events/sse" transport="sse" swap="json">
+            <template ls-if="message">
+              <output>${message}</output>
+            </template>
+          </litestar-stream>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

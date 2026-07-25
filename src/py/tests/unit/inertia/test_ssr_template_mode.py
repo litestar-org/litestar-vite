@@ -8,7 +8,7 @@ from typing import Any, Literal
 from unittest.mock import AsyncMock, patch
 
 from litestar import Request, get
-from litestar.di import Provide
+from litestar.di import NamedDependency, Provide
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.plugins.jinja import JinjaTemplateEngine
 from litestar.stores.memory import MemoryStore
@@ -303,7 +303,7 @@ async def test_template_mode_async_props_resolve_inside_di_scope(tmp_path: Path)
     released_observations: list[bool] = []
 
     @get("/", component="Home", dependencies={"conn": Provide(_provide_conn)})
-    async def handler(request: Request[Any, Any, Any], conn: _FakeConnection) -> dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any], conn: NamedDependency[_FakeConnection]) -> dict[str, Any]:
         def fetch_recent() -> str:
             released_observations.append(conn.released)
             return conn.fetch()

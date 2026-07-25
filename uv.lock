@@ -592,14 +592,14 @@ wheels = [
 
 [[package]]
 name = "faker"
-version = "40.35.0"
+version = "40.36.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fe/a1/79278f517de8437a51af4cbce9cb86b0085fc22554e7ebffc6cb43bcb957/faker-40.35.0.tar.gz", hash = "sha256:13495348ec6f80d22c8c1654906ffeae336d485fea476544642ea24b120d9e13", size = 2025535, upload-time = "2026-07-22T17:18:42.589Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/98/d2/026af1e002bbc6df534d1f8262b18ec79a974f928e9290bfbfdfe7c7b2af/faker-40.36.0.tar.gz", hash = "sha256:754048c76c03afa7de83eee8f4bcee3cf668cbb7d995f54a4e9678db7f110308", size = 2025903, upload-time = "2026-07-24T21:11:33.088Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8c/c4/d217ea24d07fbdb00c81c83325fc814ee72ed93c70978ea5d4150604c305/faker-40.35.0-py3-none-any.whl", hash = "sha256:804224bc4ea6644256dd2ef5c951563bea318cb19be3505461c9c424c90181ec", size = 2062734, upload-time = "2026-07-22T17:18:40.919Z" },
+    { url = "https://files.pythonhosted.org/packages/50/9a/b947ed175ce9a0dcb070ccf3607f0ce8720cfb5ed1a36166a150b2acd5af/faker-40.36.0-py3-none-any.whl", hash = "sha256:82b9497d9cfe017048075bcf969298a74b1b6e39f5e4dad1211085d1133f7b62", size = 2062829, upload-time = "2026-07-24T21:11:31.37Z" },
 ]
 
 [[package]]
@@ -701,11 +701,13 @@ wheels = [
 ]
 
 [package.optional-dependencies]
-pname = [
+all = [
+    { name = "python-dotenv" },
     { name = "setproctitle" },
-]
-reload = [
     { name = "watchfiles" },
+]
+uvloop = [
+    { name = "uvloop", marker = "platform_python_implementation == 'CPython' and sys_platform != 'win32'" },
 ]
 
 [[package]]
@@ -1049,22 +1051,20 @@ standard = [
 
 [[package]]
 name = "litestar-granian"
-version = "0.15.0"
+version = "0.16.0b2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "granian", extra = ["pname", "reload"] },
-    { name = "httptools" },
+    { name = "granian", extra = ["all"] },
     { name = "litestar" },
-    { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/af/3d/3d938ffe09154c2da674f431dbf044ad4694ade17ad83284d57a60aa5367/litestar_granian-0.15.0.tar.gz", hash = "sha256:50092e471f6b5308e45fbc2eb0270f819947e2a32da49e55aed31bcac4bf7425", size = 198803, upload-time = "2026-04-18T23:15:31.433Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/79/e0/bd9a747c056d61a98b678dba345c5cb9d3b2b93e742f479298d6b7bf9917/litestar_granian-0.16.0b2.tar.gz", hash = "sha256:ab9a4b74871d318cb2c0fe975c38607496dc2547bcf284ddf0f89e49f5782fb1", size = 223035, upload-time = "2026-07-25T02:21:57.06Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7c/62/8a1ce31098edb2349efa3635dc0db9084e0e1290317add0c4941cfbbc533/litestar_granian-0.15.0-py3-none-any.whl", hash = "sha256:206c20979bb5602b9ed893aea58fb1d7b0227b86dca9efbcfac5fb14d6abc97f", size = 15925, upload-time = "2026-04-18T23:15:30.255Z" },
+    { url = "https://files.pythonhosted.org/packages/55/4e/af24319cf616013ac798ed648760462e63c4e603cd505afa8ba36aeb3f9e/litestar_granian-0.16.0b2-py3-none-any.whl", hash = "sha256:561ca9aca3754af792072485bcc99faad6c4d9d27f6fe09158720aaeecab2ffc", size = 24801, upload-time = "2026-07-25T02:21:55.847Z" },
 ]
 
 [package.optional-dependencies]
 uvloop = [
-    { name = "uvloop", marker = "platform_python_implementation == 'CPython' and sys_platform != 'win32'" },
+    { name = "granian", extra = ["uvloop"] },
 ]
 
 [[package]]
@@ -1078,7 +1078,7 @@ wheels = [
 
 [[package]]
 name = "litestar-vite"
-version = "0.27.0"
+version = "0.28.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -1206,7 +1206,7 @@ dev = [
     { name = "httpx", specifier = ">=0.24.1" },
     { name = "jsx-lexer" },
     { name = "litestar", extras = ["standard", "cryptography", "jwt", "jinja"] },
-    { name = "litestar-granian", extras = ["uvloop"] },
+    { name = "litestar-granian", extras = ["uvloop"], specifier = ">=0.16.0b2" },
     { name = "mypy", specifier = ">=1.5.1" },
     { name = "prek", specifier = ">=0.4.3" },
     { name = "pygments" },
@@ -1261,7 +1261,7 @@ test = [
     { name = "fsspec" },
     { name = "httpx", specifier = ">=0.24.1" },
     { name = "litestar", extras = ["standard", "cryptography", "jwt", "jinja"] },
-    { name = "litestar-granian", extras = ["uvloop"] },
+    { name = "litestar-granian", extras = ["uvloop"], specifier = ">=0.16.0b2" },
     { name = "pytest", specifier = ">=7.4.1" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },

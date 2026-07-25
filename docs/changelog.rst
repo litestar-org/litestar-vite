@@ -7,9 +7,18 @@ Notable changes to this project are documented in this file.
 Litestar Vite Changelog
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-0.27.0 - Unreleased
+0.28.0 - 2026-07-25
 -------------------
 
+- Added zero-dependency browser stream helpers for generic WebSocket/SSE routes,
+  regular Litestar Channels routes, and Litestar Queues routes, including
+  reconnect backoff, health, heartbeat filtering, deduplication, and gap
+  warnings.
+- Added the light-DOM ``<litestar-stream>`` custom element with optional JSON
+  template swapping. For JSON streams it replaces ``htmx-ext-ws`` and
+  ``htmx-ext-sse`` rather than layering a second reconnect policy.
+- Added optional ``litestar-vite-plugin/react``, ``/vue``, and ``/svelte``
+  adapters with both generic and queue-specific bindings.
 - Added a server-neutral production static-provider contract for optional Granian 0.16+ native serving while retaining Litestar's static route on every ASGI server.
 - Added an explicit native/ASGI placement result with a diagnostic reason for development, framework/SSR, protected or customized assets, unsafe routes, and invalid production builds.
 - Fixed Vite and Inertia SSR sidecar ownership so the Litestar server lifespan performs graceful process-group cleanup without installing competing global signal handlers.

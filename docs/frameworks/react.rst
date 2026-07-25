@@ -114,6 +114,14 @@ React Component
 Running
 -------
 
+Realtime streams
+----------------
+
+Use ``useEventStream()`` from ``litestar-vite-plugin/react`` for custom routes,
+or ``useQueueEventStream()`` for Litestar Queues event envelopes. Both expose
+health, the latest event and gap, and a bounded event buffer without
+reconnecting for inline callback identity changes. See :doc:`/usage/streams`.
+
 .. code-block:: bash
 
     # Recommended: Litestar proxies Vite automatically in dev mode
@@ -140,4 +148,5 @@ See Also
 
 - :doc:`inertia/index` - React with Inertia.js for server-side routing
 - :doc:`/usage/types` - TypeScript type generation
+- :doc:`/usage/streams` - WebSocket and SSE helpers
 - `Example: react <https://github.com/litestar-org/litestar-vite/tree/main/examples/react>`_

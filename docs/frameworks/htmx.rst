@@ -92,6 +92,23 @@ Key points:
 - ``registerHtmxExtension()`` wires in CSRF header injection and JSON templating support
 - ``htmx.process(document.body)`` activates declarative HTMX behavior after the bundle loads
 
+JSON event streams
+------------------
+
+For a JSON WebSocket or SSE endpoint, register ``<litestar-stream>`` instead of
+adding ``htmx-ext-ws`` or ``htmx-ext-sse``:
+
+.. code-block:: typescript
+
+   import { defineStreamElement } from "litestar-vite-plugin/helpers"
+
+   defineStreamElement()
+
+The element binds the connection to DOM lifetime and can render frames through
+the existing ``swap="json"`` template engine. It replaces the htmx stream
+extensions rather than layering another reconnect policy on top of them. See
+:doc:`/usage/streams`.
+
 HTMX Fragments
 --------------
 

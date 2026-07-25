@@ -41,7 +41,15 @@
 
 // CSRF utilities
 export { csrfFetch, csrfHeaders, getCsrfToken } from "./csrf.js"
+// Litestar Channels utilities
+export { createChannelsStream, type ChannelName, type ChannelsStreamOptions } from "./channels.js"
 // HTMX utilities
 export { addDirective, registerHtmxExtension, setDebug as setHtmxDebug, swapJson } from "./htmx.js"
+// Litestar Queues utilities
+export { createQueueEventStream, QUEUE_SSE_EVENTS, type QueueEventStreamOptions, type QueueStreamTarget, type QueueStreamValue } from "./queues.js"
 // Route matching utilities
 export { createRouteHelpers, currentRoute, isCurrentRoute, isRoute, type RouteDefinition, type RouteDefinitions, type RouteHelpers, toRoute } from "./routes.js"
+// Realtime stream utilities
+export { createEventStream, type EventStream, type EventStreamOptions, type StreamGap } from "./stream.js"
+// Declarative realtime stream element
+export { defineStreamElement, LitestarStreamElement, type StreamElementOptions } from "./stream-element.js"

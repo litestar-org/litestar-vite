@@ -77,6 +77,7 @@ EXAMPLE_PORTS: dict[str, int] = {
     "astro": 5051,
     "jinja-htmx": 5050,
     "htmx-no-jinja": 5060,
+    "htmx-stream": 5070,
 }
 
 # External dev server target ports for CLI examples

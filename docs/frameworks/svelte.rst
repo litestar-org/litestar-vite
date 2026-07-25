@@ -110,6 +110,14 @@ Svelte Component
 Running
 -------
 
+Realtime streams
+----------------
+
+Use ``createEventStreamStore()`` from ``litestar-vite-plugin/svelte`` for
+custom routes, or ``createQueueEventStreamStore()`` for Litestar Queues event
+envelopes. The readable store shares one connection across subscribers and
+disposes it after the last unsubscribe. See :doc:`/usage/streams`.
+
 .. code-block:: bash
 
     # Recommended: Litestar proxies Vite automatically in dev mode
@@ -136,4 +144,5 @@ See Also
 
 - :doc:`inertia/index` - Svelte with Inertia.js for server-side routing
 - :doc:`/usage/types` - TypeScript type generation
+- :doc:`/usage/streams` - WebSocket and SSE helpers
 - `Example: svelte <https://github.com/litestar-org/litestar-vite/tree/main/examples/svelte>`_

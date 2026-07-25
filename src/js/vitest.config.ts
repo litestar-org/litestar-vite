@@ -7,6 +7,9 @@ export default defineConfig({
       // Map package paths to source files for testing
       "litestar-vite-plugin/helpers": path.resolve(__dirname, "src/helpers/index.ts"),
       "litestar-vite-plugin/inertia-helpers": path.resolve(__dirname, "src/inertia-helpers/index.ts"),
+      "litestar-vite-plugin/react": path.resolve(__dirname, "src/react/index.ts"),
+      "litestar-vite-plugin/svelte": path.resolve(__dirname, "src/svelte/index.ts"),
+      "litestar-vite-plugin/vue": path.resolve(__dirname, "src/vue/index.ts"),
       "litestar-vite-plugin": path.resolve(__dirname, "src/index.ts"),
     },
   },

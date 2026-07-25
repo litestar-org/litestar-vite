@@ -148,20 +148,33 @@ def test_production_static_websocket_miss_closes_cleanly(tmp_path: Path) -> None
 
 @pytest.mark.parametrize("server", ["uvicorn", "granian"])
 def test_real_litestar_run_serves_same_static_asset(tmp_path: Path, server: str) -> None:
-    """Both Litestar run command providers serve the plugin-owned fallback route."""
+    """Granian auto mode serves eligible assets natively while Uvicorn uses Litestar."""
     bundle_dir = tmp_path / "dist"
     bundle_dir.mkdir()
     (bundle_dir / "manifest.json").write_text('{"src/main.ts":{"file":"main.js"}}', encoding="utf-8")
     (bundle_dir / "main.js").write_text("console.log('litestar-run-asgi');", encoding="utf-8")
     granian_import = "from litestar_granian import GranianPlugin" if server == "granian" else ""
-    plugin_list = "[vite, GranianPlugin()]" if server == "granian" else "[vite]"
+    plugin_list = "[vite, GranianPlugin(static='auto')]" if server == "granian" else "[vite]"
     module_name = f"{server}_static_app"
     (tmp_path / f"{module_name}.py").write_text(
         "\n".join([
             "from pathlib import Path",
             "from litestar import Litestar",
+            "from litestar.middleware import DefineMiddleware",
             "from litestar_vite import PathConfig, RuntimeConfig, ViteConfig, VitePlugin",
             granian_import,
+            "",
+            "class MarkLitestarResponse:",
+            "    def __init__(self, app):",
+            "        self.app = app",
+            "",
+            "    async def __call__(self, scope, receive, send):",
+            "        async def send_with_header(message):",
+            "            if message['type'] == 'http.response.start':",
+            "                message['headers'] = [*message['headers'], (b'x-litestar-static', b'active')]",
+            "            await send(message)",
+            "",
+            "        await self.app(scope, receive, send_with_header)",
             "",
             "vite = VitePlugin(config=ViteConfig(",
             "    mode='template',",
@@ -171,7 +184,7 @@ def test_real_litestar_run_serves_same_static_asset(tmp_path: Path, server: str)
             ),
             "    runtime=RuntimeConfig(dev_mode=False),",
             "))",
-            f"app = Litestar(plugins={plugin_list})",
+            f"app = Litestar(plugins={plugin_list}, middleware=[DefineMiddleware(MarkLitestarResponse)])",
         ]),
         encoding="utf-8",
     )
@@ -215,6 +228,7 @@ def test_real_litestar_run_serves_same_static_asset(tmp_path: Path, server: str)
         assert response is not None
         assert response.status_code == 200
         assert response.text == "console.log('litestar-run-asgi');"
+        assert response.headers.get("x-litestar-static") == ("active" if server == "uvicorn" else None)
     finally:
         if process.poll() is None:
             process.terminate()

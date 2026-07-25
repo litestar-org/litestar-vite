@@ -12,16 +12,28 @@ def _example_dir_names() -> set[str]:
 
 
 def test_framework_type_enum_includes_all_examples() -> None:
-    """Every example/ subdirectory must have a matching FrameworkType enum value.
+    """Every scaffold-backed example must have a matching FrameworkType value.
 
     Examples without enum entries are invisible to scaffolding lookups and risk
-    drifting out of e2e parametrization (which discovers by directory name).
+    drifting out of e2e parametrization. Proving-only examples opt out
+    explicitly with a non-empty ``.scaffold-ignore`` explanation.
     """
     from litestar_vite.scaffolding.templates import FrameworkType
 
     enum_values = {ft.value for ft in FrameworkType}
-    missing_in_enum = _example_dir_names() - enum_values
+    scaffold_examples = {
+        name for name in _example_dir_names() if not (EXAMPLES_ROOT / name / ".scaffold-ignore").exists()
+    }
+    missing_in_enum = scaffold_examples - enum_values
     assert not missing_in_enum, f"Examples without FrameworkType entries: {missing_in_enum}"
+
+
+def test_non_scaffold_examples_explain_their_classification() -> None:
+    """A proving-only example must document why it is not a scaffold choice."""
+    for name in _example_dir_names():
+        marker = EXAMPLES_ROOT / name / ".scaffold-ignore"
+        if marker.exists():
+            assert marker.read_text().strip(), f"{name}: .scaffold-ignore must explain the classification"
 
 
 def test_framework_templates_covers_all_enum_values() -> None:
