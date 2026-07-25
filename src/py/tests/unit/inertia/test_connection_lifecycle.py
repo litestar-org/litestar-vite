@@ -28,7 +28,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from litestar import Request, get
-from litestar.di import Provide
+from litestar.di import NamedDependency, Provide
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
@@ -95,7 +95,7 @@ async def test_async_prop_callback_runs_inside_di_scope(
     """
 
     @get("/", component="Home", dependencies={"conn": Provide(_provide_conn)})
-    async def handler(request: Request[Any, Any, Any], conn: _FakeConnection) -> "dict[str, Any]":
+    async def handler(request: Request[Any, Any, Any], conn: NamedDependency[_FakeConnection]) -> "dict[str, Any]":
         async def fetch_recent() -> str:
             return await conn.fetch()
 
@@ -121,7 +121,7 @@ async def test_defer_async_callback_runs_inside_di_scope(
     """Same lifecycle requirement, but for ``defer()`` on a partial reload."""
 
     @get("/", component="Home", dependencies={"conn": Provide(_provide_conn)})
-    async def handler(request: Request[Any, Any, Any], conn: _FakeConnection) -> "dict[str, Any]":
+    async def handler(request: Request[Any, Any, Any], conn: NamedDependency[_FakeConnection]) -> "dict[str, Any]":
         async def fetch_stats() -> str:
             return await conn.fetch()
 
@@ -151,7 +151,7 @@ async def test_async_prop_callback_runs_inside_di_scope_without_request_paramete
     """
 
     @get("/", component="Home", dependencies={"conn": Provide(_provide_conn)})
-    async def handler(conn: _FakeConnection) -> "dict[str, Any]":
+    async def handler(conn: NamedDependency[_FakeConnection]) -> "dict[str, Any]":
         async def fetch_recent() -> str:
             return await conn.fetch()
 
@@ -179,7 +179,7 @@ async def test_shared_async_prop_callback_runs_inside_di_scope(
     """
 
     @get("/", component="Home", dependencies={"conn": Provide(_provide_conn)})
-    async def handler(request: Request[Any, Any, Any], conn: _FakeConnection) -> "dict[str, Any]":
+    async def handler(request: Request[Any, Any, Any], conn: NamedDependency[_FakeConnection]) -> "dict[str, Any]":
         async def fetch_recent() -> str:
             return await conn.fetch()
 
@@ -211,7 +211,7 @@ async def test_handler_after_request_override_does_not_bypass_resolution(
         return response
 
     @get("/", component="Home", after_request=user_after_request, dependencies={"conn": Provide(_provide_conn)})
-    async def handler(request: Request[Any, Any, Any], conn: _FakeConnection) -> "dict[str, Any]":
+    async def handler(request: Request[Any, Any, Any], conn: NamedDependency[_FakeConnection]) -> "dict[str, Any]":
         async def fetch_recent() -> str:
             return await conn.fetch()
 

@@ -6,7 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from litestar import Request, get
-from litestar.di import Provide
+from litestar.di import NamedDependency, Provide
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.stores.memory import MemoryStore
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
@@ -74,7 +74,7 @@ async def test_dict_handler_sync_once_prop_runs_inside_di_scope(tmp_path: Path) 
     released_observations: list[bool] = []
 
     @get("/", component="Home", dependencies={"conn": Provide(_provide_conn)})
-    async def handler(request: Request[Any, Any, Any], conn: _FakeConnection) -> dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any], conn: NamedDependency[_FakeConnection]) -> dict[str, Any]:
         def fetch_recent() -> str:
             released_observations.append(conn.released)
             return conn.fetch()
@@ -106,7 +106,7 @@ async def test_dict_handler_sync_defer_prop_runs_inside_di_scope(tmp_path: Path)
     released_observations: list[bool] = []
 
     @get("/", component="Home", dependencies={"conn": Provide(_provide_conn)})
-    async def handler(request: Request[Any, Any, Any], conn: _FakeConnection) -> dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any], conn: NamedDependency[_FakeConnection]) -> dict[str, Any]:
         def fetch_stats() -> str:
             released_observations.append(conn.released)
             return conn.fetch()
@@ -132,7 +132,7 @@ async def test_dict_handler_sync_optional_prop_runs_inside_di_scope_on_partial_r
     released_observations: list[bool] = []
 
     @get("/", component="Home", dependencies={"conn": Provide(_provide_conn)})
-    async def handler(request: Request[Any, Any, Any], conn: _FakeConnection) -> dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any], conn: NamedDependency[_FakeConnection]) -> dict[str, Any]:
         def fetch_recent() -> str:
             released_observations.append(conn.released)
             return conn.fetch()
@@ -158,7 +158,7 @@ async def test_dict_handler_shared_props_close_over_di_dep(tmp_path: Path) -> No
     released_observations: list[bool] = []
 
     @get("/", component="Home", dependencies={"conn": Provide(_provide_conn)})
-    async def handler(request: Request[Any, Any, Any], conn: _FakeConnection) -> dict[str, Any]:
+    async def handler(request: Request[Any, Any, Any], conn: NamedDependency[_FakeConnection]) -> dict[str, Any]:
         def fetch_user() -> str:
             released_observations.append(conn.released)
             return conn.fetch()
@@ -190,7 +190,9 @@ async def test_explicit_inertia_response_path_unchanged(tmp_path: Path) -> None:
     released_observations: list[bool] = []
 
     @get("/", component="Home", dependencies={"conn": Provide(_provide_conn)})
-    async def handler(request: Request[Any, Any, Any], conn: _FakeConnection) -> InertiaResponse[dict[str, Any]]:
+    async def handler(
+        request: Request[Any, Any, Any], conn: NamedDependency[_FakeConnection]
+    ) -> InertiaResponse[dict[str, Any]]:
         def fetch_recent() -> str:
             released_observations.append(conn.released)
             return conn.fetch()
