@@ -29,7 +29,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, cast, overload
+from typing import TYPE_CHECKING, Any, cast, overload
 
 import click
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
@@ -611,11 +611,6 @@ def normalize_prefix(prefix: str) -> str:
     return prefix
 
 
-class _RoutePrefixesState(Protocol):
-    litestar_vite_route_prefixes: tuple[str, ...]
-    litestar_vite_extra_route_prefixes: tuple[str, ...]
-
-
 def _normalize_route_prefix(prefix: str) -> str | None:
     """Normalize route prefixes for SPA/proxy route exclusion."""
     normalized = prefix.strip()
@@ -644,30 +639,23 @@ def _route_is_vite_spa(route: Any) -> bool:
     return False
 
 
-def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
-    """Build a cached list of Litestar route prefixes for the given app.
+def _build_litestar_route_prefixes(app: "Litestar", extra_route_prefixes: tuple[str, ...] = ()) -> tuple[str, ...]:
+    """Build Litestar route prefixes from registered routes and explicit configuration.
 
-    This function collects all registered route paths from the Litestar application
-    and caches them for efficient lookup. The cache is stored in app.state to ensure
-    it's automatically cleaned up when the app is garbage collected.
+    This function collects all registered route paths from the Litestar application.
 
     Includes:
     - All registered Litestar route paths
     - OpenAPI schema/docs paths registered by Litestar
-    - RuntimeConfig.extra_route_prefixes values attached by VitePlugin
+    - Explicit RuntimeConfig.extra_route_prefixes values
 
     Args:
         app: The Litestar application instance.
+        extra_route_prefixes: Explicit backend prefixes configured on VitePlugin.
 
     Returns:
         A tuple of route prefix strings (without trailing slashes).
     """
-    state = cast("_RoutePrefixesState", app.state)
-    try:
-        return state.litestar_vite_route_prefixes
-    except AttributeError:
-        pass
-
     from litestar.routes import WebSocketRoute
 
     prefixes: list[str] = []
@@ -688,6 +676,14 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
         prefix = _normalize_route_prefix(route.path)
         if prefix is not None:
             prefixes.append(prefix)
+            static_segments = [segment for segment in prefix.split("/") if segment and not segment.startswith("{")]
+            parameter_index = next(
+                (index for index, segment in enumerate(prefix.split("/")) if segment.startswith("{")), None
+            )
+            if parameter_index is not None and static_segments:
+                static_prefix = _normalize_route_prefix("/".join(prefix.split("/")[:parameter_index]))
+                if static_prefix is not None:
+                    prefixes.append(static_prefix)
         elif route.path == "/":
             has_root_route = True
 
@@ -700,17 +696,32 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
                 prefixes.append(prefix)
 
     prefixes.extend(
-        prefix
-        for raw_prefix in getattr(state, "litestar_vite_extra_route_prefixes", ())
-        if (prefix := _normalize_route_prefix(raw_prefix)) is not None
+        prefix for raw_prefix in extra_route_prefixes if (prefix := _normalize_route_prefix(raw_prefix)) is not None
     )
 
     unique_prefixes = sorted(set(prefixes), key=len, reverse=True)
     if has_root_route:
         unique_prefixes.append("/")
-    result = tuple(unique_prefixes)
+    return tuple(unique_prefixes)
 
-    state.litestar_vite_route_prefixes = result
+
+def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
+    """Return route prefixes, using VitePlugin-owned caching when available.
+
+    Args:
+        app: The Litestar application instance.
+
+    Returns:
+        A tuple of route prefix strings (without trailing slashes).
+    """
+    from litestar_vite.plugin._core import VitePlugin
+
+    try:
+        plugin = app.plugins.get(VitePlugin)
+    except KeyError:
+        result = _build_litestar_route_prefixes(app)
+    else:
+        result = plugin._get_route_prefixes(app)
 
     if is_proxy_debug():
         console.print(f"[dim][route-detection] Cached prefixes: {result}[/]")

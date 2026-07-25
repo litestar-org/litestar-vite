@@ -1805,27 +1805,29 @@ def test_get_litestar_route_prefixes_includes_openapi_config_path() -> None:
 
 
 def test_get_litestar_route_prefixes_caches_by_app() -> None:
-    """Test that route prefixes are cached per app instance."""
+    """Route prefixes are cached on each Vite plugin, never on app.state."""
     from litestar_vite.plugin import get_litestar_route_prefixes
 
     @get("/users")
     async def get_users() -> dict[str, str]:
         return {"message": "users"}
 
-    app1 = Litestar(route_handlers=[get_users])
-    app2 = Litestar(route_handlers=[get_users])
+    plugin1 = VitePlugin()
+    plugin2 = VitePlugin()
+    app1 = Litestar(route_handlers=[get_users], plugins=[plugin1])
+    app2 = Litestar(route_handlers=[get_users], plugins=[plugin2])
 
-    # First call should populate cache in app.state
     prefixes1 = get_litestar_route_prefixes(app1)
+    assert plugin1._route_prefix_cache is prefixes1
+    assert not hasattr(app1.state, "litestar_vite_route_prefixes")
+    assert not hasattr(app1.state, "litestar_vite_extra_route_prefixes")
 
-    # Second call with same app should return cached result
     prefixes1_again = get_litestar_route_prefixes(app1)
-    assert prefixes1 is prefixes1_again  # Same object (tuple is immutable)
+    assert prefixes1 is prefixes1_again
 
-    # Different app should have separate cache entry
     prefixes2 = get_litestar_route_prefixes(app2)
-    assert prefixes1 == prefixes2  # Same content
-    assert prefixes1 is not prefixes2  # Different objects (separate app instances)
+    assert prefixes1 == prefixes2
+    assert prefixes1 is not prefixes2
 
 
 def test_get_litestar_route_prefixes_with_no_openapi() -> None:
@@ -1956,7 +1958,7 @@ def test_is_litestar_route_prefix_match() -> None:
 
     # Prefix match should return True
     assert is_litestar_route("/api/users/123", app) is True
-    assert is_litestar_route("/api/v1/items", app) is True  # Matches /api fallback
+    assert is_litestar_route("/api/v1/items", app) is False
 
 
 def test_is_litestar_route_non_match() -> None:
@@ -2004,9 +2006,9 @@ def test_is_litestar_route_with_path_parameters() -> None:
 
     app = Litestar(route_handlers=[get_user])
 
-    # Should match based on /api prefix (from fallback)
+    # The concrete static parent is derived from the registered parameterized route.
     assert is_litestar_route("/api/users/123", app) is True
-    assert is_litestar_route("/api/posts/456", app) is True
+    assert is_litestar_route("/api/posts/456", app) is False
 
 
 def test_is_litestar_route_case_sensitive() -> None:
@@ -2046,7 +2048,8 @@ def test_is_litestar_route_root_absent_when_no_root_handler() -> None:
     async def get_users() -> dict[str, str]:
         return {"message": "users"}
 
-    app = Litestar(route_handlers=[get_users])
+    plugin = VitePlugin()
+    app = Litestar(route_handlers=[get_users], plugins=[plugin])
 
     assert is_litestar_route("/", app) is False
     assert is_litestar_route("/api/users", app) is True
@@ -2066,7 +2069,8 @@ def test_is_litestar_route_cache_performance() -> None:
     async def get_users() -> dict[str, str]:
         return {"message": "users"}
 
-    app = Litestar(route_handlers=[get_users])
+    plugin = VitePlugin()
+    app = Litestar(route_handlers=[get_users], plugins=[plugin])
 
     # Prime the cache
     prefixes_before = get_litestar_route_prefixes(app)

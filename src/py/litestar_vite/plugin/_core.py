@@ -5,7 +5,7 @@ module so ``litestar_vite.plugin`` stays a thin re-export surface.
 """
 
 import os
-from contextlib import asynccontextmanager, contextmanager, suppress
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
@@ -30,6 +30,7 @@ from litestar_vite.plugin._proxy import (
 from litestar_vite.plugin._proxy_headers import ProxyHeadersMiddleware
 from litestar_vite.plugin._static import StaticPlacement, StaticServerConfig, StaticServerMount
 from litestar_vite.plugin._utils import (
+    _build_litestar_route_prefixes,
     create_proxy_client,
     is_non_serving_assets_cli,
     is_non_serving_context,
@@ -126,6 +127,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         "_config",
         "_proxy_client",
         "_proxy_target",
+        "_route_prefix_cache",
         "_spa_handler",
         "_ssr_process",
         "_static_files_config",
@@ -158,6 +160,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         self._static_files_config_supplied = static_files_config is not None
         self._proxy_target: "str | None" = None
         self._proxy_client: "httpx.AsyncClient | None" = None
+        self._route_prefix_cache: tuple[str, ...] | None = None
         self._spa_handler: "AppHandler | None" = None
 
     def _get_vite_process(self) -> ViteProcess:
@@ -686,8 +689,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
         if self._is_inert():
             return app_config
 
-        self._set_route_prefix_state(app_config.state)
-
         from litestar import Response
         from litestar.connection import Request as LitestarRequest
 
@@ -755,13 +756,11 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         return app_config
 
-    def _set_route_prefix_state(self, state: Any) -> None:
-        """Store route-prefix config on Litestar state for request-time helpers."""
-        extra_prefixes = self._config.runtime.extra_route_prefixes
-        if getattr(state, "litestar_vite_extra_route_prefixes", None) != extra_prefixes:
-            with suppress(AttributeError):
-                del state.litestar_vite_route_prefixes
-        state.litestar_vite_extra_route_prefixes = extra_prefixes
+    def _get_route_prefixes(self, app: "Litestar") -> tuple[str, ...]:
+        """Return the immutable route-prefix cache owned by this plugin."""
+        if self._route_prefix_cache is None:
+            self._route_prefix_cache = _build_litestar_route_prefixes(app, self._config.runtime.extra_route_prefixes)
+        return self._route_prefix_cache
 
     def _check_health(self) -> None:
         """Check if the Vite dev server is running and ready.
@@ -878,8 +877,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
             yield
             return
 
-        self._set_route_prefix_state(app.state)
-
         if self._config.is_dev_mode:
             self._ensure_proxy_target()
 
@@ -961,8 +958,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
             None
         """
         from litestar_vite.loader import ViteAssetLoader
-
-        self._set_route_prefix_state(app.state)
 
         if self._config.set_environment:
             set_environment(config=self._config, app=app)
