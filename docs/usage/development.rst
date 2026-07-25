@@ -39,14 +39,18 @@ Switch with `VITE_PROXY_MODE=proxy|direct` (or `ViteConfig.runtime.proxy_mode`).
 Route Prefix Fallbacks
 ----------------------
 
-In SPA and framework proxy modes, backend route prefixes are excluded from the frontend fallback. Litestar Vite always preserves registered Litestar routes and OpenAPI paths, and keeps ``/api`` and ``/schema`` as fallback backend prefixes. ``/docs`` is not reserved by default; it is only excluded when Litestar registers docs there or when you opt in:
+In SPA and framework proxy modes, backend route prefixes are excluded from the
+frontend fallback. Litestar Vite derives those prefixes from registered
+Litestar routes and the configured OpenAPI path. It does not guess that
+``/api``, ``/schema``, or ``/docs`` belong to the backend. Reserve an otherwise
+unclaimed prefix explicitly when another backend component owns it:
 
 .. code-block:: python
 
     from litestar_vite import RuntimeConfig, ViteConfig
 
     config = ViteConfig(
-        runtime=RuntimeConfig(extra_route_prefixes=("/docs", "/admin")),
+        runtime=RuntimeConfig(extra_route_prefixes=("/api", "/docs", "/admin")),
     )
 
 Origin Behavior in Development
