@@ -741,6 +741,88 @@ async def test_spa_handler_csrf_injection_sync(temp_resource_dir: Path, monkeypa
     assert "Test SPA" in html
 
 
+async def test_spa_handler_csrf_names_injection(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Configured CSRF cookie/header names are injected alongside the token."""
+    from litestar.config.csrf import CSRFConfig
+
+    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(inject_csrf=True, csrf_var_name="__LITESTAR_CSRF__"),
+    )
+    handler = AppHandler(
+        config, csrf_config=CSRFConfig(secret="s", cookie_name="custom_cookie", header_name="x-custom-header")
+    )
+    await handler.initialize_async()
+    mock_scope_state = Mock()
+    mock_scope_state.csrf_token = "tok"
+
+    with patch("litestar.utils.scope.state.ScopeState.from_scope", return_value=mock_scope_state):
+        html = await handler.get_html(Mock())
+
+    assert 'window.__LITESTAR_CSRF_HEADER_NAME__ = "x-custom-header";' in html
+    assert 'window.__LITESTAR_CSRF_COOKIE_NAME__ = "custom_cookie";' in html
+
+
+async def test_spa_handler_csrf_names_injection_uses_litestar_defaults(
+    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Litestar's default configured names are injected explicitly."""
+    from litestar.config.csrf import CSRFConfig
+
+    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(inject_csrf=True, csrf_var_name="__LITESTAR_CSRF__"),
+    )
+    handler = AppHandler(config, csrf_config=CSRFConfig(secret="s"))
+    await handler.initialize_async()
+    mock_scope_state = Mock()
+    mock_scope_state.csrf_token = "tok"
+
+    with patch("litestar.utils.scope.state.ScopeState.from_scope", return_value=mock_scope_state):
+        html = await handler.get_html(Mock())
+
+    assert 'window.__LITESTAR_CSRF_HEADER_NAME__ = "x-csrftoken";' in html
+    assert 'window.__LITESTAR_CSRF_COOKIE_NAME__ = "csrftoken";' in html
+
+
+async def test_spa_handler_csrf_names_absent_without_csrf_config(
+    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No configured CSRF names are injected when CSRF is disabled."""
+    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(inject_csrf=True, csrf_var_name="__LITESTAR_CSRF__"),
+    )
+    handler = AppHandler(config)
+    await handler.initialize_async()
+    mock_scope_state = Mock()
+    mock_scope_state.csrf_token = "tok"
+
+    with patch("litestar.utils.scope.state.ScopeState.from_scope", return_value=mock_scope_state):
+        html = await handler.get_html(Mock())
+
+    assert "__LITESTAR_CSRF_HEADER_NAME__" not in html
+    assert "__LITESTAR_CSRF_COOKIE_NAME__" not in html
+
+
 # ============================================================================
 # SPA Handler Route Exclusion Tests (Vite Proxy Route Exclusion Fix)
 # ============================================================================

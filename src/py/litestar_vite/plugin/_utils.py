@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any, Protocol, cast, overload
 
 import click
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+from litestar.config.csrf import CSRFConfig
 
 from litestar_vite.codegen import write_if_changed as _write_if_changed
 from litestar_vite.config import InertiaConfig, TypeGenConfig
@@ -559,7 +560,7 @@ def set_environment(config: "ViteConfig", asset_url_override: str | None = None,
     if config.is_dev_mode:
         os.environ.setdefault("VITE_DEV_MODE", str(config.is_dev_mode))
 
-    csrf_config = app.csrf_config if app is not None else None
+    csrf_config = app.csrf_config if app is not None and isinstance(app.csrf_config, CSRFConfig) else None
     csrf_cookie_name = csrf_config.cookie_name if csrf_config is not None else None
     csrf_header_name = csrf_config.header_name if csrf_config is not None else None
     config_path = write_runtime_config_file(

@@ -742,14 +742,14 @@ class VitePlugin(InitPlugin, CLIPlugin):
         if use_spa_handler:
             from litestar_vite.handler import AppHandler
 
-            self._spa_handler = AppHandler(self._config)
+            self._spa_handler = AppHandler(self._config, csrf_config=app_config.csrf_config)
             app_config.route_handlers.append(self._spa_handler.create_route_handler())
         elif self._config.mode == "hybrid":
             # Hybrid mode prebuilds AppHandler so InertiaResponse._render_spa can reuse it.
             # Template + Inertia uses _render_template (Jinja-direct) and does not need this.
             from litestar_vite.handler import AppHandler
 
-            self._spa_handler = AppHandler(self._config)
+            self._spa_handler = AppHandler(self._config, csrf_config=app_config.csrf_config)
 
         app_config.lifespan.append(self.lifespan)  # pyright: ignore[reportUnknownMemberType]
 

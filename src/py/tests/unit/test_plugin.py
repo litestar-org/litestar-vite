@@ -483,6 +483,32 @@ def test_vite_plugin_app_init_static_directories_configuration(tmp_path: Path) -
     assert len(app_config.route_handlers) > 0
 
 
+def test_vite_plugin_app_init_threads_csrf_config_to_spa_handler(tmp_path: Path) -> None:
+    from litestar.config.csrf import CSRFConfig
+
+    plugin = VitePlugin(config=ViteConfig(mode="spa", paths=PathConfig(root=tmp_path)))
+    app_config = AppConfig(
+        csrf_config=CSRFConfig(secret="s", cookie_name="custom_cookie", header_name="x-custom-header")
+    )
+
+    plugin.on_app_init(app_config)
+
+    assert plugin._spa_handler is not None
+    assert plugin._spa_handler._csrf_cookie_name == "custom_cookie"
+    assert plugin._spa_handler._csrf_header_name == "x-custom-header"
+
+
+def test_vite_plugin_app_init_csrf_names_none_when_csrf_config_absent(tmp_path: Path) -> None:
+    plugin = VitePlugin(config=ViteConfig(mode="spa", paths=PathConfig(root=tmp_path)))
+    app_config = AppConfig()
+
+    plugin.on_app_init(app_config)
+
+    assert plugin._spa_handler is not None
+    assert plugin._spa_handler._csrf_cookie_name is None
+    assert plugin._spa_handler._csrf_header_name is None
+
+
 def test_vite_plugin_production_stale_hmr_websocket_closes_cleanly(tmp_path: Path) -> None:
     """Stale dev clients reconnecting to HMR in production must not hit Litestar's static HTTP route.
 
@@ -654,7 +680,7 @@ def test_vite_plugin_lifespan_with_environment_setup(mock_set_env: Mock) -> None
         pass
 
     # Should call set_environment when enabled
-    mock_set_env.assert_called_once_with(config=config)
+    mock_set_env.assert_called_once_with(config=config, app=app)
 
 
 def test_server_lifespan_does_not_prewrite_hotfile_in_vite_mode(tmp_path: Path) -> None:

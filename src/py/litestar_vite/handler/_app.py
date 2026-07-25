@@ -31,6 +31,7 @@ from litestar_vite.html_transform import (
 from litestar_vite.utils import get_static_resource_path, read_hotfile_url
 
 if TYPE_CHECKING:
+    from litestar.config.csrf import CSRFConfig
     from litestar.connection import Request
     from litestar.handlers.http_handlers import HTTPRouteHandler
     from litestar.types import Guard  # pyright: ignore[reportUnknownVariableType]
@@ -80,6 +81,8 @@ class AppHandler:
         "_cached_html",
         "_cached_transformed_html",
         "_config",
+        "_csrf_cookie_name",
+        "_csrf_header_name",
         "_http_client",
         "_http_client_sync",
         "_initialized",
@@ -88,14 +91,17 @@ class AppHandler:
         "_vite_url",
     )
 
-    def __init__(self, config: "ViteConfig") -> None:
+    def __init__(self, config: "ViteConfig", *, csrf_config: "CSRFConfig | None" = None) -> None:
         """Initialize the SPA handler.
 
         Args:
             config: The Vite configuration.
+            csrf_config: The app's Litestar CSRF configuration, if enabled.
         """
         self._config = config
         self._spa_config: "SPAConfig | None" = config.spa_config
+        self._csrf_cookie_name = csrf_config.cookie_name if csrf_config is not None else None
+        self._csrf_header_name = csrf_config.header_name if csrf_config is not None else None
         self._cached_html: "str | None" = None
         self._cached_bytes: "bytes | None" = None
         self._cached_transformed_html: "str | None" = None
@@ -198,7 +204,12 @@ class AppHandler:
             return html
 
         if self._spa_config.inject_csrf and csrf_token:
-            script = f'window.{self._spa_config.csrf_var_name} = "{csrf_token}";'
+            script_lines = [f'window.{self._spa_config.csrf_var_name} = "{csrf_token}";']
+            if self._csrf_header_name:
+                script_lines.append(f'window.__LITESTAR_CSRF_HEADER_NAME__ = "{self._csrf_header_name}";')
+            if self._csrf_cookie_name:
+                script_lines.append(f'window.__LITESTAR_CSRF_COOKIE_NAME__ = "{self._csrf_cookie_name}";')
+            script = "\n".join(script_lines)
             html = inject_head_script(html, script, escape=False, nonce=self._config.csp_nonce)
 
         if page_data is not None:
