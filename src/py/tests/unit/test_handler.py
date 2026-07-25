@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import httpx
 import pytest
 from litestar import Litestar, get
+from litestar.connection import Request
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.params import FromPath, FromQuery
 from litestar.testing import AsyncTestClient
@@ -14,6 +15,7 @@ from litestar.testing import AsyncTestClient
 from litestar_vite.config import ViteConfig
 from litestar_vite.handler import AppHandler
 from litestar_vite.handler import _app as app_module
+from litestar_vite.plugin import is_litestar_route
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
@@ -204,8 +206,6 @@ async def test_spa_handler_production_mode(spa_config: ViteConfig) -> None:
         # Create a mock request by making an actual request
         await client.get("/")
         # Get the request from the app's request scope
-        from litestar.connection import Request
-
         mock_request = Mock(spec=Request)
         mock_request.app = app
 
@@ -741,6 +741,88 @@ async def test_spa_handler_csrf_injection_sync(temp_resource_dir: Path, monkeypa
     assert "Test SPA" in html
 
 
+async def test_spa_handler_csrf_names_injection(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Configured CSRF cookie/header names are injected alongside the token."""
+    from litestar.config.csrf import CSRFConfig
+
+    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(inject_csrf=True, csrf_var_name="__LITESTAR_CSRF__"),
+    )
+    handler = AppHandler(
+        config, csrf_config=CSRFConfig(secret="s", cookie_name="custom_cookie", header_name="x-custom-header")
+    )
+    await handler.initialize_async()
+    mock_scope_state = Mock()
+    mock_scope_state.csrf_token = "tok"
+
+    with patch("litestar.utils.scope.state.ScopeState.from_scope", return_value=mock_scope_state):
+        html = await handler.get_html(Mock())
+
+    assert 'window.__LITESTAR_CSRF_HEADER_NAME__ = "x-custom-header";' in html
+    assert 'window.__LITESTAR_CSRF_COOKIE_NAME__ = "custom_cookie";' in html
+
+
+async def test_spa_handler_csrf_names_injection_uses_litestar_defaults(
+    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Litestar's default configured names are injected explicitly."""
+    from litestar.config.csrf import CSRFConfig
+
+    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(inject_csrf=True, csrf_var_name="__LITESTAR_CSRF__"),
+    )
+    handler = AppHandler(config, csrf_config=CSRFConfig(secret="s"))
+    await handler.initialize_async()
+    mock_scope_state = Mock()
+    mock_scope_state.csrf_token = "tok"
+
+    with patch("litestar.utils.scope.state.ScopeState.from_scope", return_value=mock_scope_state):
+        html = await handler.get_html(Mock())
+
+    assert 'window.__LITESTAR_CSRF_HEADER_NAME__ = "x-csrftoken";' in html
+    assert 'window.__LITESTAR_CSRF_COOKIE_NAME__ = "csrftoken";' in html
+
+
+async def test_spa_handler_csrf_names_absent_without_csrf_config(
+    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No configured CSRF names are injected when CSRF is disabled."""
+    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(inject_csrf=True, csrf_var_name="__LITESTAR_CSRF__"),
+    )
+    handler = AppHandler(config)
+    await handler.initialize_async()
+    mock_scope_state = Mock()
+    mock_scope_state.csrf_token = "tok"
+
+    with patch("litestar.utils.scope.state.ScopeState.from_scope", return_value=mock_scope_state):
+        html = await handler.get_html(Mock())
+
+    assert "__LITESTAR_CSRF_HEADER_NAME__" not in html
+    assert "__LITESTAR_CSRF_COOKIE_NAME__" not in html
+
+
 # ============================================================================
 # SPA Handler Route Exclusion Tests (Vite Proxy Route Exclusion Fix)
 # ============================================================================
@@ -822,6 +904,15 @@ async def test_spa_handler_route_exclusion_api_path(spa_config: ViteConfig) -> N
 
         # SPA routes should still work
         response = await client.get("/dashboard")
+        assert response.status_code == 200
+        assert "Test SPA" in response.text
+
+    spa_only_handler = AppHandler(spa_config)
+    await spa_only_handler.initialize_async()
+    spa_only_app = Litestar(route_handlers=[spa_only_handler.create_route_handler()], openapi_config=None)
+    async with AsyncTestClient(app=spa_only_app) as client:
+        # With no backend route claiming /api, it remains available to the SPA.
+        response = await client.get("/api/playground")
         assert response.status_code == 200
         assert "Test SPA" in response.text
 
@@ -924,6 +1015,45 @@ def test_app_handler_loads_manifest_from_vite_dir(tmp_path: Path) -> None:
     handler.initialize_sync()
 
     assert handler._manifest == {"src/main.ts": {"file": "assets/main.js"}}
+
+
+async def test_app_handler_initialize_async_uses_shared_manifest_without_reparsing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A supplied parsed manifest is used without reading manifest.json again."""
+    from litestar_vite.config import PathConfig, RuntimeConfig
+
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<html><body><div id='app'></div></body></html>")
+
+    bundle_dir = tmp_path / "public"
+    manifest_dir = bundle_dir / ".vite"
+    manifest_dir.mkdir(parents=True)
+    (manifest_dir / "manifest.json").write_text('{"main.js": {"file": "assets/main.js"}}')
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(root=tmp_path, resource_dir="resources", bundle_dir="public", static_dir="public"),
+        runtime=RuntimeConfig(dev_mode=False),
+    )
+    handler = AppHandler(config)
+
+    load_calls = 0
+    original = AppHandler._load_manifest_async
+
+    async def counting_load_manifest_async(self: AppHandler) -> None:
+        nonlocal load_calls
+        load_calls += 1
+        await original(self)
+
+    monkeypatch.setattr(AppHandler, "_load_manifest_async", counting_load_manifest_async)
+
+    shared_manifest = {"main.js": {"file": "assets/DIFFERENT.js"}}
+    await handler.initialize_async(manifest=shared_manifest)
+
+    assert load_calls == 0, "handler must not re-parse manifest.json when a manifest is supplied"
+    assert handler._manifest == shared_manifest
 
 
 def test_transform_asset_urls_in_html_uses_manifest(spa_config: ViteConfig) -> None:
@@ -1302,8 +1432,6 @@ async def test_spa_handler_serves_non_root_spa_path(temp_resource_dir: Path, mon
         return {"book_id": book_id}
 
     app = Litestar(route_handlers=[get_book, route])
-
-    from litestar_vite.plugin import is_litestar_route
 
     # The SPA's own paths must not be classified as Litestar (non-SPA) routes.
     assert is_litestar_route("/ui", app) is False

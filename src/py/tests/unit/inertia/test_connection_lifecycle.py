@@ -35,7 +35,7 @@ from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
 
 from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
-from litestar_vite.inertia.helpers import optional, share
+from litestar_vite.inertia.helpers import defer, optional, share
 from litestar_vite.plugin import VitePlugin
 
 
@@ -124,8 +124,6 @@ async def test_defer_async_callback_runs_inside_di_scope(
     async def handler(request: Request[Any, Any, Any], conn: NamedDependency[_FakeConnection]) -> "dict[str, Any]":
         async def fetch_stats() -> str:
             return await conn.fetch()
-
-        from litestar_vite.inertia.helpers import defer
 
         return {"stats": defer("stats", fetch_stats)}
 

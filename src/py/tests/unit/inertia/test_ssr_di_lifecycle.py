@@ -184,6 +184,33 @@ async def test_dict_handler_shared_props_close_over_di_dep(tmp_path: Path) -> No
     assert released_observations == [False]
 
 
+async def test_shared_sync_prop_renders_in_di_scope_without_ssr(tmp_path: Path) -> None:
+    """Lazy shared sync props render before yielded dependencies are released."""
+    inertia_plugin, vite_plugin = _build_hybrid_plugins(tmp_path)
+    released_observations: list[bool] = []
+
+    @get("/", component="Home", dependencies={"conn": Provide(_provide_conn)})
+    async def handler(request: Request[Any, Any, Any], conn: NamedDependency[_FakeConnection]) -> dict[str, Any]:
+        def fetch_user() -> str:
+            released_observations.append(conn.released)
+            return conn.fetch()
+
+        share(request, "user", once("user", fetch_user))
+        return {"message": "ok"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["props"]["user"] == "ok"
+    assert released_observations == [False]
+
+
 async def test_explicit_inertia_response_path_unchanged(tmp_path: Path) -> None:
     """Explicit InertiaResponse returns should keep their existing DI-safe path."""
     inertia_plugin, vite_plugin = _build_hybrid_plugins(tmp_path)

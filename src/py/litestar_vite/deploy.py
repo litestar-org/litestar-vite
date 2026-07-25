@@ -6,6 +6,7 @@ DeployConfig is defined in litestar_vite.config and passed into ViteDeployer.
 
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportMissingTypeStubs=false
 
+import importlib
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,8 +56,8 @@ def _import_fsspec(storage_backend: "str | None") -> tuple[Any, Callable[..., tu
         msg = "fsspec"
         raise MissingDependencyError(msg, install_package=_suggest_install_extra(storage_backend))
 
-    import fsspec  # pyright: ignore
-    from fsspec.core import url_to_fs  # pyright: ignore
+    fsspec = importlib.import_module("fsspec")
+    url_to_fs = importlib.import_module("fsspec.core").url_to_fs
 
     return fsspec, url_to_fs
 

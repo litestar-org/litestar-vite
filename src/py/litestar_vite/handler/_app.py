@@ -28,9 +28,11 @@ from litestar_vite.html_transform import (
     set_data_attribute,
     transform_asset_urls,
 )
+from litestar_vite.plugin._utils import check_h2_available
 from litestar_vite.utils import get_static_resource_path, read_hotfile_url
 
 if TYPE_CHECKING:
+    from litestar.config.csrf import CSRFConfig
     from litestar.connection import Request
     from litestar.handlers.http_handlers import HTTPRouteHandler
     from litestar.types import Guard  # pyright: ignore[reportUnknownVariableType]
@@ -80,6 +82,8 @@ class AppHandler:
         "_cached_html",
         "_cached_transformed_html",
         "_config",
+        "_csrf_cookie_name",
+        "_csrf_header_name",
         "_http_client",
         "_http_client_sync",
         "_initialized",
@@ -88,14 +92,17 @@ class AppHandler:
         "_vite_url",
     )
 
-    def __init__(self, config: "ViteConfig") -> None:
+    def __init__(self, config: "ViteConfig", *, csrf_config: "CSRFConfig | None" = None) -> None:
         """Initialize the SPA handler.
 
         Args:
             config: The Vite configuration.
+            csrf_config: The app's Litestar CSRF configuration, if enabled.
         """
         self._config = config
         self._spa_config: "SPAConfig | None" = config.spa_config
+        self._csrf_cookie_name = csrf_config.cookie_name if csrf_config is not None else None
+        self._csrf_header_name = csrf_config.header_name if csrf_config is not None else None
         self._cached_html: "str | None" = None
         self._cached_bytes: "bytes | None" = None
         self._cached_transformed_html: "str | None" = None
@@ -114,17 +121,23 @@ class AppHandler:
         """
         return self._initialized
 
-    async def initialize_async(self, vite_url: "str | None" = None) -> None:
+    async def initialize_async(self, vite_url: "str | None" = None, manifest: "dict[str, Any] | None" = None) -> None:
         """Initialize the handler asynchronously.
 
         Args:
             vite_url: Optional Vite server URL to use for proxying.
+            manifest: Optional pre-parsed manifest from the shared asset loader. This avoids
+                reading and parsing the same file again during worker startup. It is ignored
+                when hot development or an external development server skips manifest loading.
         """
         if self._initialized:
             return
 
         if self._config.is_dev_mode and self._config.hot_reload:
             self._init_http_clients(vite_url)
+        elif manifest is not None and self._config.runtime.external_dev_server is None:
+            self._manifest = manifest
+            await self._load_index_html_async()
         else:
             await self._load_production_assets_async()
 
@@ -150,12 +163,7 @@ class AppHandler:
         """Initialize HTTP clients for dev mode proxying."""
         self._vite_url = vite_url or self._resolve_vite_url()
 
-        http2_enabled = self._config.http2
-        if http2_enabled:
-            try:
-                import h2  # noqa: F401  # pyright: ignore[reportMissingImports,reportUnusedImport]
-            except ImportError:
-                http2_enabled = False
+        http2_enabled = self._config.http2 and check_h2_available()
 
         self._http_client = httpx.AsyncClient(timeout=httpx.Timeout(5.0), http2=http2_enabled)
         self._http_client_sync = httpx.Client(timeout=httpx.Timeout(5.0))
@@ -198,7 +206,12 @@ class AppHandler:
             return html
 
         if self._spa_config.inject_csrf and csrf_token:
-            script = f'window.{self._spa_config.csrf_var_name} = "{csrf_token}";'
+            script_lines = [f'window.{self._spa_config.csrf_var_name} = "{csrf_token}";']
+            if self._csrf_header_name:
+                script_lines.append(f'window.__LITESTAR_CSRF_HEADER_NAME__ = "{self._csrf_header_name}";')
+            if self._csrf_cookie_name:
+                script_lines.append(f'window.__LITESTAR_CSRF_COOKIE_NAME__ = "{self._csrf_cookie_name}";')
+            script = "\n".join(script_lines)
             html = inject_head_script(html, script, escape=False, nonce=self._config.csp_nonce)
 
         if page_data is not None:

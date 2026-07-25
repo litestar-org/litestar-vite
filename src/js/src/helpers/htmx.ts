@@ -28,7 +28,8 @@
  * @module
  */
 
-import { DEFAULT_CSRF_HEADER_NAME, getCsrfToken } from "./csrf.js"
+import { getCsrfHeaderName, getCsrfToken } from "./csrf.js"
+import { compileExpression } from "./expression.js"
 
 /** Type for route function - matches generated routes.ts */
 type RouteFn = (name: string, params?: Record<string, string | number>) => string
@@ -72,7 +73,7 @@ interface Ctx {
   $parent?: Ctx
   $index?: number
   $key?: string
-  $event?: Event
+  $event?: Readonly<Record<string, unknown>>
   route?: RouteFn
   navigate?: (name: string, params?: Record<string, string | number>) => void
   [key: string]: unknown
@@ -124,10 +125,11 @@ export function registerHtmxExtension(): void {
     onEvent(name, evt) {
       if (name === "htmx:configRequest") {
         const token = getCsrfToken()
+        const headerName = getCsrfHeaderName()
         const headers = getHeadersFromConfigRequestEvent(evt)
         if (token && headers) {
-          if (headers instanceof Headers) headers.set(DEFAULT_CSRF_HEADER_NAME, token)
-          else headers[DEFAULT_CSRF_HEADER_NAME] = token
+          if (headers instanceof Headers) headers.set(headerName, token)
+          else headers[headerName] = token
         }
       }
       return true
@@ -256,6 +258,28 @@ interface Dir {
   create: (el: Element, a: Attr) => Handler | null
 }
 
+function wrapEvent(event: Event): Readonly<Record<string, unknown>> {
+  const eventTarget = event.target
+  let target: Readonly<Record<string, unknown>> | null = null
+  if (eventTarget instanceof HTMLInputElement || eventTarget instanceof HTMLSelectElement || eventTarget instanceof HTMLTextAreaElement) {
+    target = Object.freeze({
+      value: eventTarget.value,
+      name: eventTarget.name,
+      checked: eventTarget instanceof HTMLInputElement ? eventTarget.checked : false,
+      id: eventTarget.id,
+      type: eventTarget instanceof HTMLInputElement ? eventTarget.type : "",
+    })
+  } else if (eventTarget instanceof Element) {
+    target = Object.freeze({ value: "", name: "", checked: false, id: eventTarget.id, type: "" })
+  }
+  return Object.freeze({
+    type: event.type,
+    target,
+    preventDefault: () => event.preventDefault(),
+    stopPropagation: () => event.stopPropagation(),
+  })
+}
+
 const directives: Dir[] = [
   // :attr="expr" - attribute binding
   {
@@ -305,7 +329,7 @@ const directives: Dir[] = [
           const current = memoStore.get(el)?.[ctxKey] as Ctx | undefined
           if (!current) return
           const eventCtx = Object.create(current) as Ctx
-          eventCtx.$event = e
+          eventCtx.$event = wrapEvent(e)
           g(eventCtx)
         })
       }
@@ -523,133 +547,6 @@ function childCtx(parent: Ctx, data: unknown, index?: number, key?: string): Ctx
 // Expression Compiler
 // =============================================================================
 
-/** Identifiers that must never appear as standalone words in expressions */
-const BLOCKED_GLOBALS = [
-  "window",
-  "document",
-  "globalThis",
-  "self",
-  "top",
-  "frames",
-  "Function",
-  "eval",
-  "setTimeout",
-  "setInterval",
-  "constructor",
-  "__proto__",
-  "prototype",
-  "import",
-  "require",
-]
-
-/** Build a single regex: matches any blocked word at a word boundary */
-const BLOCKED_RE = new RegExp(`\\b(${BLOCKED_GLOBALS.join("|")})\\b`)
-
-/** Strip string literals and template strings before checking for blocked patterns */
-function stripStrings(s: string): string {
-  return s
-    .replace(/`(?:[^`\\]|\\.)*`/g, "") // template literals
-    .replace(/"(?:[^"\\]|\\.)*"/g, "") // double-quoted strings
-    .replace(/'(?:[^'\\]|\\.)*'/g, "") // single-quoted strings
-}
-
-function readQuotedLiteral(s: string, start: number): { end: number; value: string } | null {
-  const quote = s[start]
-  if (quote !== "'" && quote !== '"' && quote !== "`") return null
-
-  let value = ""
-  for (let i = start + 1; i < s.length; i++) {
-    const ch = s[i]
-    if (ch === "\\") {
-      if (i + 1 >= s.length) return null
-      const escaped = readEscapedCharacter(s, i + 1)
-      if (!escaped) return null
-      value += escaped.value
-      i = escaped.end - 1
-      continue
-    }
-    if (quote === "`" && ch === "$" && s[i + 1] === "{") {
-      return null
-    }
-    if (ch === quote) {
-      return { end: i + 1, value }
-    }
-    value += ch
-  }
-  return null
-}
-
-function readEscapedCharacter(s: string, start: number): { end: number; value: string } | null {
-  const ch = s[start]
-  if (ch === "u") {
-    if (s[start + 1] === "{") {
-      const close = s.indexOf("}", start + 2)
-      if (close === -1) return null
-      const codePoint = Number.parseInt(s.slice(start + 2, close), 16)
-      return Number.isFinite(codePoint) ? { end: close + 1, value: String.fromCodePoint(codePoint) } : null
-    }
-    const codePoint = Number.parseInt(s.slice(start + 1, start + 5), 16)
-    return Number.isFinite(codePoint) ? { end: start + 5, value: String.fromCharCode(codePoint) } : null
-  }
-  if (ch === "x") {
-    const codePoint = Number.parseInt(s.slice(start + 1, start + 3), 16)
-    return Number.isFinite(codePoint) ? { end: start + 3, value: String.fromCharCode(codePoint) } : null
-  }
-  const escapes: Record<string, string> = { b: "\b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v" }
-  return { end: start + 1, value: escapes[ch] ?? ch }
-}
-
-function skipTrivia(s: string, start: number): number {
-  let i = start
-  while (i < s.length) {
-    while (/\s/.test(s[i] ?? "")) i += 1
-    if (s[i] === "/" && s[i + 1] === "/") {
-      i = s.indexOf("\n", i + 2)
-      if (i === -1) return s.length
-      continue
-    }
-    if (s[i] === "/" && s[i + 1] === "*") {
-      const close = s.indexOf("*/", i + 2)
-      if (close === -1) return s.length
-      i = close + 2
-      continue
-    }
-    break
-  }
-  return i
-}
-
-function hasBlockedStringConcatenation(s: string): boolean {
-  for (let i = 0; i < s.length; i++) {
-    const first = readQuotedLiteral(s, i)
-    if (!first) continue
-
-    const parts = [first.value]
-    let cursor = skipTrivia(s, first.end)
-    while (s[cursor] === "+") {
-      const nextStart = skipTrivia(s, cursor + 1)
-      const next = readQuotedLiteral(s, nextStart)
-      if (!next) break
-      parts.push(next.value)
-      cursor = skipTrivia(s, next.end)
-    }
-
-    if (parts.length > 1 && BLOCKED_GLOBALS.includes(parts.join(""))) {
-      return true
-    }
-    i = first.end - 1
-  }
-  return false
-}
-
-function isExpressionSafe(s: string): boolean {
-  if (hasBlockedStringConcatenation(s)) {
-    return false
-  }
-  const stripped = stripStrings(s)
-  return !BLOCKED_RE.test(stripped)
-}
-
 function expr(s: string | null): ((c: Ctx) => unknown) | null {
   if (!s) return null
   const cached = expressionCache.get(s)
@@ -660,21 +557,15 @@ function expr(s: string | null): ((c: Ctx) => unknown) | null {
     return cached
   }
 
-  if (!isExpressionSafe(s)) {
+  const compiled = compileExpression(s)
+  if (!compiled) {
     if (debug) console.warn(`[litestar] blocked expression: ${s}`)
     cacheExpression(s, null)
     return null
   }
-
-  try {
-    // Expression validated by isExpressionSafe() above — dangerous globals/constructors blocked
-    const fn = new Function("ctx", `with(ctx){return(${s})}`) as (c: Ctx) => unknown
-    cacheExpression(s, fn)
-    return fn
-  } catch {
-    cacheExpression(s, null)
-    return null
-  }
+  const fn = (context: Ctx) => compiled(context)
+  cacheExpression(s, fn)
+  return fn
 }
 
 /** Compile text with ${expr} interpolation - escapes backticks and backslashes */

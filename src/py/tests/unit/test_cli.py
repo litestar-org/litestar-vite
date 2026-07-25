@@ -1,4 +1,5 @@
 import inspect
+import json
 import os
 import subprocess
 from collections.abc import Callable
@@ -15,6 +16,7 @@ from litestar_vite.cli import (
     _apply_cli_log_level,
     _build_deploy_config,
     _coerce_option_value,
+    _find_scaffold_collisions,
     _format_command,
     _generate_schema_and_routes,
     _get_package_executor_cmd,
@@ -181,6 +183,44 @@ def test_cli_select_template_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("litestar_vite.cli.get_template", lambda *_: None)
     with pytest.raises(SystemExit):
         _select_framework_template("missing", no_prompt=True)
+
+
+def test_cli_is_inertia_framework_matches_commands_py_logic() -> None:
+    from litestar_vite.cli import _is_inertia_framework
+    from litestar_vite.scaffolding.templates import FRAMEWORK_TEMPLATES, FrameworkType
+
+    inertia_types = {
+        FrameworkType.REACT_INERTIA,
+        FrameworkType.REACT_INERTIA_JINJA,
+        FrameworkType.VUE_INERTIA,
+        FrameworkType.VUE_INERTIA_SSR,
+        FrameworkType.VUE_INERTIA_JINJA,
+        FrameworkType.VUE_INERTIA_JINJA_SSR,
+        FrameworkType.SVELTE_INERTIA,
+        FrameworkType.SVELTE_INERTIA_JINJA,
+    }
+    for framework_type, template in FRAMEWORK_TEMPLATES.items():
+        assert _is_inertia_framework(template) == (framework_type in inertia_types), framework_type
+
+
+def test_cli_find_scaffold_collisions_includes_nuxt_root_files(tmp_path: Path) -> None:
+    from litestar_vite.scaffolding.templates import FRAMEWORK_TEMPLATES, FrameworkType
+
+    (tmp_path / "nuxt.config.ts").write_text("", encoding="utf-8")
+    collisions = _find_scaffold_collisions(
+        tmp_path, "src", "public", "public", framework=FRAMEWORK_TEMPLATES[FrameworkType.NUXT], use_tailwind=False
+    )
+    assert tmp_path / "nuxt.config.ts" in collisions
+
+
+def test_cli_find_scaffold_collisions_no_longer_flags_postcss_without_tailwind(tmp_path: Path) -> None:
+    from litestar_vite.scaffolding.templates import FRAMEWORK_TEMPLATES, FrameworkType
+
+    (tmp_path / "postcss.config.mjs").write_text("", encoding="utf-8")
+    collisions = _find_scaffold_collisions(
+        tmp_path, "src", "public", "public", framework=FRAMEWORK_TEMPLATES[FrameworkType.REACT], use_tailwind=False
+    )
+    assert tmp_path / "postcss.config.mjs" not in collisions
 
 
 def test_cli_prompt_for_options_interactive(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -668,6 +708,30 @@ def test_cli_get_package_executor_cmd_uses_package_flag_for_typegen() -> None:
         "litestar-vite-typegen",
     ]
     assert _get_package_executor_cmd(None, "tsr") == ["npx", "tsr"]
+
+
+def test_cli_get_package_executor_cmd_deno_skips_suffix_when_package_default_bin_matches() -> None:
+    assert _get_package_executor_cmd("deno", "openapi-ts", package_name="@hey-api/openapi-ts@0.98.2") == [
+        "deno",
+        "run",
+        "-A",
+        "npm:@hey-api/openapi-ts@0.98.2",
+    ]
+    assert _get_package_executor_cmd("deno", "litestar-vite-typegen", package_name="litestar-vite-plugin") == [
+        "deno",
+        "run",
+        "-A",
+        "npm:litestar-vite-plugin/litestar-vite-typegen",
+    ]
+
+
+def test_executor_argv_parity_fixture() -> None:
+    fixture_path = Path(__file__).resolve().parents[4] / "src/js/tests/__fixtures__/executor-argv-parity.json"
+    cases = json.loads(fixture_path.read_text())["cases"]
+    for case in cases:
+        executor = None if case["executor"] == "node" else case["executor"]
+        result = _get_package_executor_cmd(executor, case["binary"], package_name=case["package_name"])
+        assert result == case["python"], case["label"]
 
 
 def _make_local_bin(root_dir: Path, name: str) -> Path:

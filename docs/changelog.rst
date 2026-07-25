@@ -7,6 +7,27 @@ Notable changes to this project are documented in this file.
 Litestar Vite Changelog
 ^^^^^^^^^^^^^^^^^^^^^^^
 
+0.28.1 - 2026-07-25
+-------------------
+
+- Added ``csrfCookieName`` and ``csrfHeaderName`` to the ``.litestar.json`` bridge and injected browser
+  state. ``getCsrfToken()``, ``getCsrfHeaderName()``, ``csrfHeaders()``, ``csrfFetch()``, and the HTMX
+  extension now follow custom ``CSRFConfig(cookie_name=..., header_name=...)`` values automatically.
+- Changed SPA/proxy route derivation so ``/api`` and ``/schema`` are reserved only when registered
+  Litestar routes, OpenAPI configuration, or ``RuntimeConfig.extra_route_prefixes`` claim them. Add
+  ``extra_route_prefixes=("/api",)`` if an application relied on the old guessed fallback.
+- Changed Inertia ``share()`` so top-level ``defer()``, ``optional()``, ``once()``, and ``always()``
+  callables run only when the current response renders them or when a redirect needs to persist
+  them. The ``True``/``False`` return contract is unchanged, and async special props still return
+  ``False`` because they cannot be persisted synchronously across redirects.
+- Replaced HTMX JSON-template expression evaluation with a CSP-safe allowlist interpreter. Assignment,
+  ``new``, functions/arrows, computed indexing, array literals, and globals other than ``JSON`` and
+  ``Math`` are no longer supported. Reserved data-field names include ``constructor``, ``__proto__``,
+  ``prototype``, ``apply``, ``call``, ``bind``, ``arguments``, ``callee``, ``caller``, and the
+  ``__define*``/``__lookup*`` names; rename those fields before using them in expressions.
+  ``@event`` now exposes a sanitized ``$event`` wrapper instead of the raw DOM event. Applications may
+  remove CSP ``script-src 'unsafe-eval'`` when no other code requires it.
+
 0.28.0 - 2026-07-25
 -------------------
 

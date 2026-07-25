@@ -199,6 +199,8 @@ class RuntimeConfig:
         http2: Enable HTTP/2 for proxy HTTP requests (better multiplexing).
             WebSocket traffic (HMR) uses a separate connection and is unaffected.
         extra_route_prefixes: Additional backend route prefixes excluded from SPA/proxy fallbacks.
+            Registered routes and the OpenAPI path are derived automatically. Use this only to
+            reserve an otherwise unclaimed prefix such as ``"/api"`` or ``"/docs"``.
     """
 
     dev_mode: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)

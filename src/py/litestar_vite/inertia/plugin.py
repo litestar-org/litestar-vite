@@ -125,6 +125,7 @@ class InertiaPlugin(InitPlugin):
         )
         from litestar_vite.inertia.helpers import DeferredProp, StaticProp
         from litestar_vite.inertia.middleware import InertiaMiddleware
+        from litestar_vite.inertia.precognition import create_precognition_exception_handler
         from litestar_vite.inertia.request import InertiaRequest
         from litestar_vite.inertia.response import InertiaBack, InertiaResponse
 
@@ -151,8 +152,6 @@ class InertiaPlugin(InitPlugin):
         # For successful validation to return 204 (without executing the handler),
         # use the @precognition decorator on your route handlers.
         if self.config.precognition:
-            from litestar_vite.inertia.precognition import create_precognition_exception_handler
-
             exception_handlers[ValidationException] = create_precognition_exception_handler(
                 fallback_handler=exception_to_http_response
             )
@@ -194,11 +193,11 @@ class InertiaPlugin(InitPlugin):
 
 
 def _request_from_context(kwargs: "dict[str, Any]") -> "Request[Any, Any, Any] | None":
+    from litestar_vite.inertia.middleware import get_current_inertia_request
+
     request = kwargs.get("request")
     if request is not None:
         return cast("Request[Any, Any, Any]", request)
-
-    from litestar_vite.inertia.middleware import get_current_inertia_request
 
     return get_current_inertia_request()
 
@@ -234,15 +233,15 @@ def _as_inertia_prop_mapping(data: "Any") -> "Mapping[str, Any] | None":
 
 
 async def _resolve_inertia_response_data(data: "Any", request: "Request[Any, Any, Any]") -> "Any":
+    from litestar_vite.inertia.helpers import is_pagination_container, materialize_shared_props_to_session
     from litestar_vite.inertia.response import InertiaResponse
 
     if isinstance(data, InertiaResponse):
         await data.resolve_async_props(request)
         return cast("InertiaResponse[Any]", data)
     if isinstance(data, Response):
+        materialize_shared_props_to_session(request)
         return cast("Response[Any]", data)
-
-    from litestar_vite.inertia.helpers import is_pagination_container
 
     content: "Any"
     if data is None or isinstance(data, Mapping) or is_pagination_container(data):

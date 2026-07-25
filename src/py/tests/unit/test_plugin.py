@@ -483,6 +483,32 @@ def test_vite_plugin_app_init_static_directories_configuration(tmp_path: Path) -
     assert len(app_config.route_handlers) > 0
 
 
+def test_vite_plugin_app_init_threads_csrf_config_to_spa_handler(tmp_path: Path) -> None:
+    from litestar.config.csrf import CSRFConfig
+
+    plugin = VitePlugin(config=ViteConfig(mode="spa", paths=PathConfig(root=tmp_path)))
+    app_config = AppConfig(
+        csrf_config=CSRFConfig(secret="s", cookie_name="custom_cookie", header_name="x-custom-header")
+    )
+
+    plugin.on_app_init(app_config)
+
+    assert plugin._spa_handler is not None
+    assert plugin._spa_handler._csrf_cookie_name == "custom_cookie"
+    assert plugin._spa_handler._csrf_header_name == "x-custom-header"
+
+
+def test_vite_plugin_app_init_csrf_names_none_when_csrf_config_absent(tmp_path: Path) -> None:
+    plugin = VitePlugin(config=ViteConfig(mode="spa", paths=PathConfig(root=tmp_path)))
+    app_config = AppConfig()
+
+    plugin.on_app_init(app_config)
+
+    assert plugin._spa_handler is not None
+    assert plugin._spa_handler._csrf_cookie_name is None
+    assert plugin._spa_handler._csrf_header_name is None
+
+
 def test_vite_plugin_production_stale_hmr_websocket_closes_cleanly(tmp_path: Path) -> None:
     """Stale dev clients reconnecting to HMR in production must not hit Litestar's static HTTP route.
 
@@ -654,7 +680,7 @@ def test_vite_plugin_lifespan_with_environment_setup(mock_set_env: Mock) -> None
         pass
 
     # Should call set_environment when enabled
-    mock_set_env.assert_called_once_with(config=config)
+    mock_set_env.assert_called_once_with(config=config, app=app)
 
 
 def test_server_lifespan_does_not_prewrite_hotfile_in_vite_mode(tmp_path: Path) -> None:
@@ -1750,8 +1776,8 @@ def test_get_litestar_route_prefixes_with_multiple_routes() -> None:
     assert "/users" in prefixes
     assert "/posts/{post_id:int}" in prefixes
     assert "/api/v1/items" in prefixes
-    # Should include common API prefixes as fallback
-    assert "/api" in prefixes
+    # Only registered routes and the configured OpenAPI path are reserved.
+    assert "/api" not in prefixes
     assert "/schema" in prefixes
     assert "/docs" not in prefixes
 
@@ -1775,32 +1801,33 @@ def test_get_litestar_route_prefixes_includes_openapi_config_path() -> None:
 
     # Should include custom schema path
     assert "/custom-schema" in prefixes
-    # Should still include fallback schema path
-    assert "/schema" in prefixes
+    assert "/schema" not in prefixes
 
 
 def test_get_litestar_route_prefixes_caches_by_app() -> None:
-    """Test that route prefixes are cached per app instance."""
+    """Route prefixes are cached on each Vite plugin, never on app.state."""
     from litestar_vite.plugin import get_litestar_route_prefixes
 
     @get("/users")
     async def get_users() -> dict[str, str]:
         return {"message": "users"}
 
-    app1 = Litestar(route_handlers=[get_users])
-    app2 = Litestar(route_handlers=[get_users])
+    plugin1 = VitePlugin()
+    plugin2 = VitePlugin()
+    app1 = Litestar(route_handlers=[get_users], plugins=[plugin1])
+    app2 = Litestar(route_handlers=[get_users], plugins=[plugin2])
 
-    # First call should populate cache in app.state
     prefixes1 = get_litestar_route_prefixes(app1)
+    assert plugin1._route_prefix_cache is prefixes1
+    assert not hasattr(app1.state, "litestar_vite_route_prefixes")
+    assert not hasattr(app1.state, "litestar_vite_extra_route_prefixes")
 
-    # Second call with same app should return cached result
     prefixes1_again = get_litestar_route_prefixes(app1)
-    assert prefixes1 is prefixes1_again  # Same object (tuple is immutable)
+    assert prefixes1 is prefixes1_again
 
-    # Different app should have separate cache entry
     prefixes2 = get_litestar_route_prefixes(app2)
-    assert prefixes1 == prefixes2  # Same content
-    assert prefixes1 is not prefixes2  # Different objects (separate app instances)
+    assert prefixes1 == prefixes2
+    assert prefixes1 is not prefixes2
 
 
 def test_get_litestar_route_prefixes_with_no_openapi() -> None:
@@ -1815,9 +1842,8 @@ def test_get_litestar_route_prefixes_with_no_openapi() -> None:
 
     prefixes = get_litestar_route_prefixes(app)
 
-    # Should still include fallback prefixes
-    assert "/api" in prefixes
-    assert "/schema" in prefixes
+    assert "/api" not in prefixes
+    assert "/schema" not in prefixes
     assert "/docs" not in prefixes
 
 
@@ -1932,7 +1958,7 @@ def test_is_litestar_route_prefix_match() -> None:
 
     # Prefix match should return True
     assert is_litestar_route("/api/users/123", app) is True
-    assert is_litestar_route("/api/v1/items", app) is True  # Matches /api fallback
+    assert is_litestar_route("/api/v1/items", app) is False
 
 
 def test_is_litestar_route_non_match() -> None:
@@ -1980,9 +2006,9 @@ def test_is_litestar_route_with_path_parameters() -> None:
 
     app = Litestar(route_handlers=[get_user])
 
-    # Should match based on /api prefix (from fallback)
+    # The concrete static parent is derived from the registered parameterized route.
     assert is_litestar_route("/api/users/123", app) is True
-    assert is_litestar_route("/api/posts/456", app) is True
+    assert is_litestar_route("/api/posts/456", app) is False
 
 
 def test_is_litestar_route_case_sensitive() -> None:
@@ -2022,7 +2048,8 @@ def test_is_litestar_route_root_absent_when_no_root_handler() -> None:
     async def get_users() -> dict[str, str]:
         return {"message": "users"}
 
-    app = Litestar(route_handlers=[get_users])
+    plugin = VitePlugin()
+    app = Litestar(route_handlers=[get_users], plugins=[plugin])
 
     assert is_litestar_route("/", app) is False
     assert is_litestar_route("/api/users", app) is True
@@ -2042,7 +2069,8 @@ def test_is_litestar_route_cache_performance() -> None:
     async def get_users() -> dict[str, str]:
         return {"message": "users"}
 
-    app = Litestar(route_handlers=[get_users])
+    plugin = VitePlugin()
+    app = Litestar(route_handlers=[get_users], plugins=[plugin])
 
     # Prime the cache
     prefixes_before = get_litestar_route_prefixes(app)
@@ -2065,8 +2093,7 @@ def test_get_litestar_route_prefixes_with_empty_app() -> None:
 
     prefixes = get_litestar_route_prefixes(app)
 
-    # Should still include common fallback prefixes
-    assert "/api" in prefixes
+    assert "/api" not in prefixes
     assert "/schema" in prefixes
     assert "/docs" not in prefixes
 
@@ -2125,8 +2152,51 @@ async def test_vite_plugin_lifespan_initializes_spa_handler_async() -> None:
     async with plugin.lifespan(app):
         pass
 
-    plugin._spa_handler.initialize_async.assert_awaited_once_with(vite_url=plugin._proxy_target)
+    plugin._spa_handler.initialize_async.assert_awaited_once_with(
+        vite_url=plugin._proxy_target, manifest=plugin._asset_loader.manifest
+    )
     plugin._spa_handler.initialize_sync.assert_not_called()
+
+
+async def test_vite_plugin_lifespan_parses_manifest_once_across_loader_and_handler(tmp_path: Path) -> None:
+    """The loader and SPA handler decode manifest.json only once during worker startup."""
+    from litestar.serialization import decode_json as real_decode_json
+
+    from litestar_vite.handler import AppHandler
+
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<html><body><div id='app'></div></body></html>")
+
+    bundle_dir = tmp_path / "public"
+    manifest_dir = bundle_dir / ".vite"
+    manifest_dir.mkdir(parents=True)
+    (manifest_dir / "manifest.json").write_text('{"main.js": {"file": "assets/main.js"}}')
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(root=tmp_path, resource_dir="resources", bundle_dir="public", static_dir="public"),
+        runtime=RuntimeConfig(dev_mode=False),
+    )
+    plugin = VitePlugin(config=config)
+    plugin._spa_handler = AppHandler(config)
+    app = Litestar(route_handlers=[])
+
+    decode_calls = 0
+
+    def counting_decode_json(value: str | bytes, strict: bool = True) -> Any:
+        nonlocal decode_calls
+        decode_calls += 1
+        return real_decode_json(value, strict=strict)
+
+    with (
+        patch("litestar_vite.loader.decode_json", counting_decode_json),
+        patch("litestar_vite.handler._app.decode_json", counting_decode_json),
+    ):
+        async with plugin.lifespan(app):
+            pass
+
+    assert decode_calls == 1, f"expected manifest.json to be decoded exactly once, got {decode_calls}"
 
 
 async def test_vite_plugin_proxy_client_created_in_dev_mode_with_ssr_proxy() -> None:

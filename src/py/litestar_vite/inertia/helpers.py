@@ -1452,6 +1452,16 @@ def get_shared_props(
 _UNMATERIALIZABLE_SHARED = object()
 
 
+def _is_async_special_prop(value: "Any") -> bool:
+    """Return whether a top-level special prop wraps an async callback."""
+    if is_optional_prop(value):
+        return inspect.iscoroutinefunction(value._callback)  # pyright: ignore[reportPrivateUsage]
+    if is_deferred_prop(value) or is_once_prop(value):
+        callback = value._value  # pyright: ignore[reportPrivateUsage]
+        return callable(callback) and inspect.iscoroutinefunction(callback)
+    return False
+
+
 def _materialize_shared_value(value: "Any") -> "Any":
     """Convert top-level special props into session-serializable values for share()."""
     if is_merge_prop(value):
@@ -1464,16 +1474,43 @@ def _materialize_shared_value(value: "Any") -> "Any":
     return value
 
 
+def materialize_shared_props_to_session(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
+    """Flush scope-stored shared props into the session as serializable values.
+
+    In-frame redirect construction and wrapped non-Inertia responses call this while handler
+    dependencies are alive. Exception-produced redirects use the same path after dependency
+    cleanup, where synchronous special props render on a best-effort basis. Async special props
+    are always skipped because they cannot be materialized synchronously.
+
+    Args:
+        connection: The current ASGI connection.
+    """
+    scope_shared = _get_scope_shared_props(connection)
+    if not scope_shared:
+        return
+    try:
+        session_shared = connection.session.setdefault("_shared", {})
+    except (AttributeError, ImproperlyConfiguredException):
+        return
+    for key, value in scope_shared.items():
+        materialized = _materialize_shared_value(value)
+        if materialized is _UNMATERIALIZABLE_SHARED:
+            continue
+        session_shared[key] = materialized
+
+
 def share(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", value: "Any") -> "bool":
     """Share a value in the session.
 
     Shared values are included in the props of every Inertia response for
     the current request. This is useful for data that should be available
     to all components (e.g., authenticated user, permissions, settings).
-    Top-level special props are materialized before storage; nested special
-    props inside a shared dict or list are not supported. Async top-level
-    special props cannot be persisted to the session, but remain available
-    to the current response from request scope.
+    Top-level special props remain raw in request scope and are materialized lazily in the
+    handler frame only when the response includes them. A redirect materializes synchronous
+    special props into the session so the next request can consume them; exception-produced
+    redirects perform the same work best-effort after dependency cleanup. Async top-level
+    special props cannot be persisted synchronously, return ``False``, and remain available only
+    to the current response. Nested special props inside a shared dict or list are not supported.
 
     Args:
         connection: The ASGI connection.
@@ -1483,23 +1520,25 @@ def share(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", value: "
     Returns:
         True if the value was successfully shared, False otherwise.
     """
-    materialized = _materialize_shared_value(value)
-    if materialized is _UNMATERIALIZABLE_SHARED:
+    if is_special_prop(value) or is_merge_prop(value):
         _set_scope_shared_prop(connection, key, value)
-        connection.logger.warning(
-            "Cannot persist shared prop %r: async special props cannot be materialized for session storage.", key
-        )
-        return False
+        if _is_async_special_prop(value):
+            connection.logger.warning(
+                "Cannot persist shared prop %r across redirects: async special props "
+                "cannot be materialized for session storage.",
+                key,
+            )
+            return False
+        return True
 
     try:
-        connection.session.setdefault("_shared", {}).update({key: materialized})
+        connection.session.setdefault("_shared", {}).update({key: value})
     except (AttributeError, ImproperlyConfiguredException):
         msg = "Unable to share value: session not accessible (user may be unauthenticated)."
         connection.logger.debug(msg)
         return False
-    else:
-        _set_scope_shared_prop(connection, key, value)
-        return True
+    _set_scope_shared_prop(connection, key, value)
+    return True
 
 
 def error(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", message: "str") -> "bool":

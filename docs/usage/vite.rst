@@ -330,7 +330,7 @@ You configure the Litestar backend using the `ViteConfig` object passed to the `
      - Auto-register catch-all SPA route when mode="spa". Defaults to `True`.
    * - `extra_route_prefixes`
      - `tuple[str, ...]`
-     - Additional backend prefixes excluded from SPA/proxy fallbacks. Use this to reserve custom paths or deliberately re-add ``"/docs"`` when your backend serves docs there. Defaults to ``()``.
+     - Additional backend prefixes excluded from SPA/proxy fallbacks. Registered routes and the configured OpenAPI path are derived automatically. Use this only to reserve an otherwise unclaimed path such as ``"/api"`` or ``"/docs"``. Defaults to ``()``.
    * - `set_environment`
      - `bool`
      - Set Vite-related environment variables and write `.litestar.json` on startup. Defaults to `True`.

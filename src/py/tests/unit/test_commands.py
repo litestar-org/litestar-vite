@@ -6,6 +6,8 @@ from unittest.mock import patch
 import pytest
 from litestar.serialization import decode_json
 
+from litestar_vite.commands import init_vite
+from litestar_vite.exceptions import MissingDependencyError
 from litestar_vite.scaffolding.templates import CURRENT_NPM_VERSION_RANGES as V
 
 pytestmark = pytest.mark.anyio
@@ -63,11 +65,7 @@ def test_init_vite_with_framework(tmp_path: Path) -> None:
 @patch("litestar_vite.commands.JINJA_INSTALLED", False)
 def test_init_vite_error_when_jinja_missing(tmp_path: Path) -> None:
     """Test init_vite raises appropriate error when Jinja is missing."""
-    from litestar_vite.exceptions import MissingDependencyError
-
     with pytest.raises(MissingDependencyError) as exc_info:
-        from litestar_vite.commands import init_vite
-
         init_vite(
             root_path=tmp_path,
             resource_path=Path("resources"),

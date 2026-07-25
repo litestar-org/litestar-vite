@@ -179,6 +179,8 @@ def get_return_type_name(handler: HTTPRouteHandler) -> "str | None":
 
 def _filter_page_props_response_types(field_definition: FieldDefinition) -> FieldDefinition | None:
     """Filter response wrapper types out of a handler return annotation."""
+    from typing import Union
+
     if not field_definition.is_union:
         return field_definition
 
@@ -194,8 +196,6 @@ def _filter_page_props_response_types(field_definition: FieldDefinition) -> Fiel
         return None
     if len(props_types) == 1:
         return FieldDefinition.from_annotation(props_types[0])
-
-    from typing import Union
 
     props_types.sort(key=lambda t: getattr(t, "__qualname__", str(t)))
     union_type = Union[tuple(props_types)]  # type: ignore[valid-type] # noqa: UP007

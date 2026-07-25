@@ -29,10 +29,11 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, cast, overload
+from typing import TYPE_CHECKING, Any, cast, overload
 
 import click
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
+from litestar.config.csrf import CSRFConfig
 
 from litestar_vite.codegen import write_if_changed as _write_if_changed
 from litestar_vite.config import InertiaConfig, TypeGenConfig
@@ -98,8 +99,7 @@ def _check_h2_available() -> bool:
     global _h2_available  # noqa: PLW0603
     if _h2_available is None:
         try:
-            import h2  # noqa: F401  # pyright: ignore[reportMissingImports,reportUnusedImport]
-
+            __import__("h2")
             _h2_available = True
         except ImportError:
             _h2_available = False
@@ -402,17 +402,33 @@ def _derive_bridge_litestar_port() -> int | None:
 
 
 @overload
-def write_runtime_config_file(config: "ViteConfig", *, asset_url_override: str | None = None) -> str: ...
+def write_runtime_config_file(
+    config: "ViteConfig",
+    *,
+    asset_url_override: str | None = None,
+    csrf_cookie_name: str | None = None,
+    csrf_header_name: str | None = None,
+) -> str: ...
 
 
 @overload
 def write_runtime_config_file(
-    config: "ViteConfig", *, asset_url_override: str | None = None, return_status: bool
+    config: "ViteConfig",
+    *,
+    asset_url_override: str | None = None,
+    csrf_cookie_name: str | None = None,
+    csrf_header_name: str | None = None,
+    return_status: bool,
 ) -> tuple[str, bool]: ...
 
 
 def write_runtime_config_file(
-    config: "ViteConfig", *, asset_url_override: str | None = None, return_status: bool = False
+    config: "ViteConfig",
+    *,
+    asset_url_override: str | None = None,
+    csrf_cookie_name: str | None = None,
+    csrf_header_name: str | None = None,
+    return_status: bool = False,
 ) -> str | tuple[str, bool]:
     """Write a JSON handoff file for the Vite plugin and return its path.
 
@@ -422,6 +438,8 @@ def write_runtime_config_file(
     Returns:
         The path to the written config file.
     """
+    import msgspec
+    from litestar.serialization import encode_json
 
     root = config.root_dir or Path.cwd()
     path = Path(root) / ".litestar.json"
@@ -451,6 +469,8 @@ def write_runtime_config_file(
         "manifest": config.manifest_name,
         "mode": config.mode,
         "proxyMode": config.proxy_mode,
+        "csrfCookieName": csrf_cookie_name,
+        "csrfHeaderName": csrf_header_name,
         "port": config.port,
         "host": config.host,
         "ssrOutDir": ssr_out_dir_value,
@@ -487,9 +507,6 @@ def write_runtime_config_file(
         "staticProps": config.static_props or None,
     }
 
-    import msgspec
-    from litestar.serialization import encode_json
-
     content = msgspec.json.format(encode_json(payload), indent=2)
     changed = _write_if_changed(path, content)
     if return_status:
@@ -497,7 +514,7 @@ def write_runtime_config_file(
     return str(path)
 
 
-def set_environment(config: "ViteConfig", asset_url_override: str | None = None) -> None:
+def set_environment(config: "ViteConfig", asset_url_override: str | None = None, app: "Litestar | None" = None) -> None:
     """Configure environment variables for Vite integration.
 
     Sets environment variables that can be used by both the Python backend
@@ -506,6 +523,7 @@ def set_environment(config: "ViteConfig", asset_url_override: str | None = None)
     Args:
         config: The Vite configuration.
         asset_url_override: Optional asset URL to force (e.g., CDN base during build).
+        app: Optional Litestar app supplying the configured CSRF names.
     """
     litestar_version = os.environ.get("LITESTAR_VERSION") or resolve_litestar_version()
     asset_url = asset_url_override or config.asset_url
@@ -540,7 +558,12 @@ def set_environment(config: "ViteConfig", asset_url_override: str | None = None)
     if config.is_dev_mode:
         os.environ.setdefault("VITE_DEV_MODE", str(config.is_dev_mode))
 
-    config_path = write_runtime_config_file(config)
+    csrf_config = app.csrf_config if app is not None and isinstance(app.csrf_config, CSRFConfig) else None
+    csrf_cookie_name = csrf_config.cookie_name if csrf_config is not None else None
+    csrf_header_name = csrf_config.header_name if csrf_config is not None else None
+    config_path = write_runtime_config_file(
+        config, csrf_cookie_name=csrf_cookie_name, csrf_header_name=csrf_header_name
+    )
     os.environ["LITESTAR_VITE_CONFIG_PATH"] = config_path
 
 
@@ -586,11 +609,6 @@ def normalize_prefix(prefix: str) -> str:
     return prefix
 
 
-class _RoutePrefixesState(Protocol):
-    litestar_vite_route_prefixes: tuple[str, ...]
-    litestar_vite_extra_route_prefixes: tuple[str, ...]
-
-
 def _normalize_route_prefix(prefix: str) -> str | None:
     """Normalize route prefixes for SPA/proxy route exclusion."""
     normalized = prefix.strip()
@@ -619,31 +637,32 @@ def _route_is_vite_spa(route: Any) -> bool:
     return False
 
 
-def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
-    """Build a cached list of Litestar route prefixes for the given app.
+def _route_is_vite_static(route: Any) -> bool:
+    """Return whether a route belongs to the Vite-managed static router."""
+    handlers = getattr(route, "route_handlers", None)
+    if not handlers:
+        single = getattr(route, "route_handler", None)
+        handlers = [single] if single is not None else []
+    return any(bool((opt := getattr(handler, "opt", None)) and opt.get("_vite_static_handler")) for handler in handlers)
 
-    This function collects all registered route paths from the Litestar application
-    and caches them for efficient lookup. The cache is stored in app.state to ensure
-    it's automatically cleaned up when the app is garbage collected.
+
+def build_litestar_route_prefixes(app: "Litestar", extra_route_prefixes: tuple[str, ...] = ()) -> tuple[str, ...]:
+    """Build Litestar route prefixes from registered routes and explicit configuration.
+
+    This function collects all registered route paths from the Litestar application.
 
     Includes:
     - All registered Litestar route paths
     - OpenAPI schema/docs paths registered by Litestar
-    - Common API prefixes as fallback (/api, /schema)
-    - RuntimeConfig.extra_route_prefixes values attached by VitePlugin
+    - Explicit RuntimeConfig.extra_route_prefixes values
 
     Args:
         app: The Litestar application instance.
+        extra_route_prefixes: Explicit backend prefixes configured on VitePlugin.
 
     Returns:
         A tuple of route prefix strings (without trailing slashes).
     """
-    state = cast("_RoutePrefixesState", app.state)
-    try:
-        return state.litestar_vite_route_prefixes
-    except AttributeError:
-        pass
-
     from litestar.routes import WebSocketRoute
 
     prefixes: list[str] = []
@@ -659,11 +678,19 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
         # the prefix list would make is_litestar_route() self-exclude the SPA — non-root
         # spa_path values like "/ui" become unreachable. Identify SPA routes via the
         # _vite_spa_handler marker AppHandler.create_route_handler sets on opt.
-        if _route_is_vite_spa(route):
+        if _route_is_vite_spa(route) or _route_is_vite_static(route):
             continue
         prefix = _normalize_route_prefix(route.path)
         if prefix is not None:
             prefixes.append(prefix)
+            static_segments = [segment for segment in prefix.split("/") if segment and not segment.startswith("{")]
+            parameter_index = next(
+                (index for index, segment in enumerate(prefix.split("/")) if segment.startswith("{")), None
+            )
+            if parameter_index is not None and static_segments:
+                static_prefix = _normalize_route_prefix("/".join(prefix.split("/")[:parameter_index]))
+                if static_prefix is not None:
+                    prefixes.append(static_prefix)
         elif route.path == "/":
             has_root_route = True
 
@@ -675,19 +702,33 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
             if prefix is not None:
                 prefixes.append(prefix)
 
-    prefixes.extend(["/api", "/schema"])
     prefixes.extend(
-        prefix
-        for raw_prefix in getattr(state, "litestar_vite_extra_route_prefixes", ())
-        if (prefix := _normalize_route_prefix(raw_prefix)) is not None
+        prefix for raw_prefix in extra_route_prefixes if (prefix := _normalize_route_prefix(raw_prefix)) is not None
     )
 
     unique_prefixes = sorted(set(prefixes), key=len, reverse=True)
     if has_root_route:
         unique_prefixes.append("/")
-    result = tuple(unique_prefixes)
+    return tuple(unique_prefixes)
 
-    state.litestar_vite_route_prefixes = result
+
+def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
+    """Return route prefixes, using VitePlugin-owned caching when available.
+
+    Args:
+        app: The Litestar application instance.
+
+    Returns:
+        A tuple of route prefix strings (without trailing slashes).
+    """
+    from litestar_vite.plugin._core import VitePlugin
+
+    try:
+        plugin = app.plugins.get(VitePlugin)
+    except (AttributeError, KeyError):
+        result = build_litestar_route_prefixes(app)
+    else:
+        result = plugin.get_route_prefixes(app)
 
     if is_proxy_debug():
         console.print(f"[dim][route-detection] Cached prefixes: {result}[/]")
@@ -742,8 +783,8 @@ def vite_not_found_handler(request: "Request[Any, Any, Any]", exc: "NotFoundExce
     """
     from litestar import Response
 
-    if request.headers.get("x-inertia", "").lower() == "true":
-        from litestar_vite.inertia.exception_handler import exception_to_http_response
+    from litestar_vite.inertia.exception_handler import exception_to_http_response
 
+    if request.headers.get("x-inertia", "").lower() == "true":
         return exception_to_http_response(request, exc)
     return Response(status_code=404, content=b"")

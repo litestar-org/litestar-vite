@@ -1,6 +1,7 @@
 """Tests for optional Jinja dependency support."""
 
 import gc
+import importlib
 import sys
 import time
 from pathlib import Path
@@ -10,6 +11,7 @@ import pytest
 from litestar.config.app import AppConfig
 from litestar.template.config import TemplateConfig
 
+from litestar_vite.commands import init_vite
 from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
 from litestar_vite.exceptions import MissingDependencyError
 
@@ -35,8 +37,6 @@ def test_optional_jinja_init_vite_without_jinja_raises_clear_error(tmp_path: Pat
     """Test init_vite raises clear error when Jinja is missing."""
     # This should raise MissingDependencyError with helpful message
     with pytest.raises(MissingDependencyError, match="Package 'jinja2' is not installed but required"):
-        from litestar_vite.commands import init_vite
-
         init_vite(
             root_path=tmp_path,
             resource_path=tmp_path / "resources",
@@ -103,8 +103,6 @@ def test_optional_jinja_plugin_import_without_jinja_contrib() -> None:
 def test_optional_jinja_cli_without_jinja_shows_helpful_error(tmp_path: Path) -> None:
     """Test CLI commands show helpful error messages when Jinja features are used without dependency."""
     with pytest.raises(MissingDependencyError) as exc_info:
-        from litestar_vite.commands import init_vite
-
         init_vite(
             root_path=tmp_path,
             resource_path=tmp_path / "resources",
@@ -282,9 +280,7 @@ def test_conditional_imports_runtime_imports_fail_gracefully() -> None:
     with patch.dict(sys.modules, {"jinja2": None}):
         with pytest.raises((ImportError, ModuleNotFoundError)):
             # This should fail when trying to actually use jinja2
-            from jinja2 import Environment
-
-            Environment()
+            importlib.import_module("jinja2")
 
 
 # =====================================================
@@ -499,13 +495,13 @@ def test_production_serverless_environment_scenario() -> None:
     start_time = time.time()
 
     # Fast cold start simulation
-    from litestar_vite import ViteConfig, VitePlugin
+    package = importlib.import_module("litestar_vite")
 
     cold_start_time = time.time() - start_time
 
     # Should start quickly for serverless environments
     assert cold_start_time < 0.5, f"Cold start too slow for serverless: {cold_start_time}s"
 
-    config = ViteConfig()
-    plugin = VitePlugin(config=config)
+    config = package.ViteConfig()
+    plugin = package.VitePlugin(config=config)
     assert plugin is not None

@@ -26,6 +26,15 @@ from litestar_vite.codegen._ts import (
 from litestar_vite.config import PathConfig, TypeGenConfig, ViteConfig
 
 
+def test_typegen_outputs_requested_signature_has_no_dead_config_param() -> None:
+    import inspect
+
+    from litestar_vite.codegen._export import typegen_outputs_requested
+
+    params = list(inspect.signature(typegen_outputs_requested).parameters)
+    assert params == ["types_config"], params
+
+
 def testts_type_for_param_basic_types() -> None:
     """Test TypeScript type mapping for basic types."""
     assert ts_type_for_param("string") == "string"

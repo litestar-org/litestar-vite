@@ -2161,9 +2161,6 @@ describe("inertia-helpers", () => {
 
   beforeEach(() => {
     vi.resetModules()
-    vi.mock("./__data__/dummy.ts", () => ({
-      default: "Dummy File",
-    }))
   })
 
   it("pass glob value to resolvePageComponent", async () => {

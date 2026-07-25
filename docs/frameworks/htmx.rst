@@ -164,10 +164,23 @@ Template directives:
 - ``ls-key="item.id"`` - Unique key for efficient updates
 - ``ls-if="condition"`` - Conditional rendering
 - ``ls-else`` - Else branch for conditionals
-- ``${expression}`` - Interpolate values (JavaScript template literal syntax)
+- ``${expression}`` - Interpolate values with the fixed expression grammar
 
 This enables hybrid rendering: server-side HTML for initial load, client-side
 templating for dynamic updates from JSON APIs.
+
+The expression grammar supports property access, arithmetic, comparisons,
+logical and ternary operators, string template and object literals, method
+calls on values, calls to context functions, and the ``JSON`` and ``Math``
+namespaces. Assignment, ``new``, function and arrow expressions, computed
+indexing such as ``obj[key]``, array literals, and arbitrary browser globals
+are intentionally unsupported.
+
+In ``@event`` handlers, ``$event`` is a sanitized plain object rather than the
+raw DOM event. It exposes ``type``, ``target.value``, ``target.name``,
+``target.checked``, ``target.id``, ``target.type``, ``preventDefault()``, and
+``stopPropagation()``. Host-object paths such as ``$event.view`` and
+``$event.target.ownerDocument`` are intentionally unavailable.
 
 HTMX Patterns
 -------------

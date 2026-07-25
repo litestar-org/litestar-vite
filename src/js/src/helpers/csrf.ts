@@ -13,6 +13,8 @@
 declare global {
   interface Window {
     __LITESTAR_CSRF__?: string
+    __LITESTAR_CSRF_HEADER_NAME__?: string
+    __LITESTAR_CSRF_COOKIE_NAME__?: string
   }
 }
 
@@ -26,6 +28,13 @@ interface CsrfTokenCache {
 
 let csrfTokenCache: CsrfTokenCache | null = null
 export const DEFAULT_CSRF_HEADER_NAME = "X-CSRFToken"
+
+export function getCsrfHeaderName(): string {
+  if (typeof window !== "undefined" && typeof window.__LITESTAR_CSRF_HEADER_NAME__ === "string" && window.__LITESTAR_CSRF_HEADER_NAME__.length > 0) {
+    return window.__LITESTAR_CSRF_HEADER_NAME__
+  }
+  return DEFAULT_CSRF_HEADER_NAME
+}
 
 function getWindowToken(): string | undefined {
   if (typeof window !== "undefined") {
@@ -88,6 +97,12 @@ function getCookie(name: string): string | undefined {
 }
 
 function getCookieToken(): string | undefined {
+  if (typeof window !== "undefined" && typeof window.__LITESTAR_CSRF_COOKIE_NAME__ === "string" && window.__LITESTAR_CSRF_COOKIE_NAME__.length > 0) {
+    const configured = getCookie(window.__LITESTAR_CSRF_COOKIE_NAME__)
+    if (configured !== undefined) {
+      return configured
+    }
+  }
   return getCookie("csrftoken") ?? getCookie("XSRF-TOKEN")
 }
 
@@ -156,20 +171,20 @@ export function getCsrfToken(): string {
   return token
 }
 
-function hasCsrfHeader(headers: HeadersInit | undefined): boolean {
+function hasCsrfHeader(headers: HeadersInit | undefined, headerName: string): boolean {
   if (headers == null) {
     return false
   }
 
   if (headers instanceof Headers) {
-    return headers.has(DEFAULT_CSRF_HEADER_NAME)
+    return headers.has(headerName)
   }
 
   if (Array.isArray(headers)) {
-    return headers.some((entry) => Array.isArray(entry) && entry.length >= 2 && typeof entry[0] === "string" && entry[0].toLowerCase() === DEFAULT_CSRF_HEADER_NAME.toLowerCase())
+    return headers.some((entry) => Array.isArray(entry) && entry.length >= 2 && typeof entry[0] === "string" && entry[0].toLowerCase() === headerName.toLowerCase())
   }
 
-  return Object.keys(headers as Record<string, string>).some((key) => key.toLowerCase() === DEFAULT_CSRF_HEADER_NAME.toLowerCase())
+  return Object.keys(headers as Record<string, string>).some((key) => key.toLowerCase() === headerName.toLowerCase())
 }
 
 /**
@@ -195,14 +210,15 @@ export function csrfHeaders(additionalHeaders: Record<string, string> = {}): Rec
     return additionalHeaders
   }
 
-  const existingTokenHeader = Object.keys(additionalHeaders).find((key) => key.toLowerCase() === DEFAULT_CSRF_HEADER_NAME.toLowerCase())
+  const headerName = getCsrfHeaderName()
+  const existingTokenHeader = Object.keys(additionalHeaders).find((key) => key.toLowerCase() === headerName.toLowerCase())
   if (existingTokenHeader !== undefined) {
     return additionalHeaders
   }
 
   return {
     ...additionalHeaders,
-    [DEFAULT_CSRF_HEADER_NAME]: token,
+    [headerName]: token,
   }
 }
 
@@ -231,11 +247,12 @@ export function csrfFetch(input: RequestInfo | URL, init?: RequestInit): Promise
     return fetch(input, init)
   }
 
-  if (!hasCsrfHeader(init?.headers)) {
+  const headerName = getCsrfHeaderName()
+  if (!hasCsrfHeader(init?.headers, headerName)) {
     if (!init || typeof init.headers === "undefined") {
       return fetch(input, {
         ...init,
-        headers: { [DEFAULT_CSRF_HEADER_NAME]: token },
+        headers: { [headerName]: token },
       })
     }
 
@@ -243,7 +260,7 @@ export function csrfFetch(input: RequestInfo | URL, init?: RequestInit): Promise
       if (Array.isArray(init.headers)) {
         return fetch(input, {
           ...init,
-          headers: [...init.headers, [DEFAULT_CSRF_HEADER_NAME, token]],
+          headers: [...init.headers, [headerName, token]],
         })
       }
 
@@ -251,14 +268,14 @@ export function csrfFetch(input: RequestInfo | URL, init?: RequestInit): Promise
         ...init,
         headers: {
           ...init.headers,
-          [DEFAULT_CSRF_HEADER_NAME]: token,
+          [headerName]: token,
         },
       })
     }
 
     if (init.headers instanceof Headers) {
       const headers = new Headers(init.headers)
-      headers.set(DEFAULT_CSRF_HEADER_NAME, token)
+      headers.set(headerName, token)
       return fetch(input, {
         ...init,
         headers,

@@ -182,6 +182,36 @@ def test_extract_forward_headers_drops_connection_derived_headers() -> None:
     assert extract_forward_headers(scope) == [("X-Test", "value")]
 
 
+def test_collect_connection_tokens_returns_shared_empty_sentinel_when_absent() -> None:
+    """No Connection header returns the shared sentinel instead of allocating a set."""
+    from litestar_vite.plugin._proxy import _NO_CONNECTION_TOKENS, _collect_connection_tokens
+
+    result = _collect_connection_tokens([(b"host", b"example.com"), (b"x-test", b"value")])
+
+    assert result is _NO_CONNECTION_TOKENS
+
+
+def test_extract_request_headers_avoids_set_copy_without_connection_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No Connection header uses the immutable skip set directly."""
+    from litestar_vite.plugin._proxy import _extract_request_headers
+
+    set_calls = 0
+
+    class _CountingSet(set[object]):
+        def __new__(cls, *args: object, **kwargs: object) -> Self:
+            nonlocal set_calls
+            set_calls += 1
+            return super().__new__(cls)
+
+    monkeypatch.setattr("builtins.set", _CountingSet)
+
+    headers = [(b"X-Test", b"value"), (b"Host", b"example.com")]
+    result = _extract_request_headers(headers)
+
+    assert result == [("X-Test", "value"), ("Host", "example.com")]
+    assert set_calls == 0, f"expected zero set() allocations with no Connection header, got {set_calls}"
+
+
 def test_normalize_proxy_prefixes(tmp_path: Path) -> None:
     prefixes = normalize_proxy_prefixes(
         ("/@vite",),
@@ -194,10 +224,12 @@ def test_normalize_proxy_prefixes(tmp_path: Path) -> None:
     assert "/static/" in prefixes
 
 
-def test_target_url_getter_caches(tmp_path: Path) -> None:
+def test_target_url_getter_caches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     hotfile = tmp_path / "hot"
     hotfile.write_text("http://localhost:5173")
     cached: list[str | None] = [None]
+    fake_time = [1000.0]
+    monkeypatch.setattr("litestar_vite.plugin._proxy.time.monotonic", lambda: fake_time[0])
     getter = create_target_url_getter(None, hotfile, cached)
 
     assert getter() == "http://localhost:5173"
@@ -207,19 +239,112 @@ def test_target_url_getter_caches(tmp_path: Path) -> None:
     current_mtime = hotfile.stat().st_mtime_ns
     os.utime(hotfile, ns=(current_mtime + 1_000_000, current_mtime + 1_000_000))
 
+    fake_time[0] += 1.0
     assert getter() == "http://changed:1234"
 
 
-def test_target_url_getter_recovers_after_initial_missing_hotfile(tmp_path: Path) -> None:
+def test_target_url_getter_recovers_after_initial_missing_hotfile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     hotfile = tmp_path / "hot"
     cached: list[str | None] = [None]
+    fake_time = [1000.0]
+    monkeypatch.setattr("litestar_vite.plugin._proxy.time.monotonic", lambda: fake_time[0])
     getter = create_target_url_getter(None, hotfile, cached)
 
     assert getter() is None
 
     hotfile.write_text("http://localhost:5173")
 
+    fake_time[0] += 1.0
     assert getter() == "http://localhost:5173"
+
+
+def test_target_url_getter_throttles_stat_within_ttl_window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://localhost:5173")
+    cached: list[str | None] = [None]
+    fake_time = [1000.0]
+    monkeypatch.setattr("litestar_vite.plugin._proxy.time.monotonic", lambda: fake_time[0])
+    stat_calls = 0
+    real_stat = Path.stat
+
+    def counting_stat(self: Path, *, follow_symlinks: bool = True) -> os.stat_result:
+        nonlocal stat_calls
+        stat_calls += 1
+        return real_stat(self, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(Path, "stat", counting_stat)
+    getter = create_target_url_getter(None, hotfile, cached)
+
+    for _ in range(5):
+        assert getter() == "http://localhost:5173"
+
+    assert stat_calls == 1
+
+
+def test_target_url_getter_caches_negative_result_without_reread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://localhost:5173")
+    cached: list[str | None] = [None]
+    fake_time = [1000.0]
+    monkeypatch.setattr("litestar_vite.plugin._proxy.time.monotonic", lambda: fake_time[0])
+    read_calls = 0
+
+    def failing_read(_path: Path) -> str:
+        nonlocal read_calls
+        read_calls += 1
+        raise OSError("simulated malformed hotfile read")
+
+    monkeypatch.setattr("litestar_vite.plugin._proxy.read_hotfile_url", failing_read)
+    getter = create_target_url_getter(None, hotfile, cached)
+
+    assert getter() is None
+    fake_time[0] += 1.0
+    assert getter() is None
+    assert read_calls == 1
+
+
+def test_hmr_target_getter_hoists_hmr_path_once(tmp_path: Path) -> None:
+    """The '<hotfile>.hmr' Path must be constructed once per getter, not once per call."""
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://localhost:5173")
+    (tmp_path / "hot.hmr").write_text("http://127.0.0.1:24678")
+
+    with patch("litestar_vite.plugin._proxy.Path", wraps=Path) as path_spy:
+        getter = create_hmr_target_getter(hotfile, [None])
+        for _ in range(5):
+            assert getter() == "http://127.0.0.1:24678"
+
+    assert path_spy.call_count == 1, (
+        f"expected Path(...) to be constructed once for the .hmr sibling, got {path_spy.call_count}"
+    )
+
+
+def test_hmr_target_getter_ttls_negative_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When no '.hmr' sibling exists, repeated calls within the TTL window must not re-stat either candidate."""
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://localhost:5173")
+    fake_time = [1000.0]
+    monkeypatch.setattr("litestar_vite.plugin._proxy.time.monotonic", lambda: fake_time[0])
+
+    stat_calls = 0
+    real_stat = Path.stat
+
+    def counting_stat(self: Path, *, follow_symlinks: bool = True) -> os.stat_result:
+        nonlocal stat_calls
+        stat_calls += 1
+        return real_stat(self, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(Path, "stat", counting_stat)
+
+    getter = create_hmr_target_getter(hotfile, [None])
+    for _ in range(5):
+        assert getter() == "http://localhost:5173"
+
+    assert stat_calls == 2, f"expected exactly 2 stat() calls across 5 getter() calls, got {stat_calls}"
 
 
 def test_hmr_target_getter_caches(tmp_path: Path) -> None:

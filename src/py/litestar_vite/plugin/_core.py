@@ -4,8 +4,9 @@ Houses :class:`VitePlugin` and its route-inspection helper. Kept as a private
 module so ``litestar_vite.plugin`` stays a thin re-export surface.
 """
 
+import importlib
 import os
-from contextlib import asynccontextmanager, contextmanager, suppress
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
@@ -30,6 +31,7 @@ from litestar_vite.plugin._proxy import (
 from litestar_vite.plugin._proxy_headers import ProxyHeadersMiddleware
 from litestar_vite.plugin._static import StaticPlacement, StaticServerConfig, StaticServerMount
 from litestar_vite.plugin._utils import (
+    build_litestar_route_prefixes,
     create_proxy_client,
     is_non_serving_assets_cli,
     is_non_serving_context,
@@ -126,6 +128,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         "_config",
         "_proxy_client",
         "_proxy_target",
+        "_route_prefix_cache",
         "_spa_handler",
         "_ssr_process",
         "_static_files_config",
@@ -158,6 +161,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         self._static_files_config_supplied = static_files_config is not None
         self._proxy_target: "str | None" = None
         self._proxy_client: "httpx.AsyncClient | None" = None
+        self._route_prefix_cache: tuple[str, ...] | None = None
         self._spa_handler: "AppHandler | None" = None
 
     def _get_vite_process(self) -> ViteProcess:
@@ -505,9 +509,9 @@ class VitePlugin(InitPlugin, CLIPlugin):
         template_config = app_config.template_config  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
         if template_config is None:
             return False
-        from litestar.plugins.jinja import JinjaTemplateEngine
+        jinja_template_engine = importlib.import_module("litestar.plugins.jinja").JinjaTemplateEngine
 
-        return isinstance(template_config.engine_instance, JinjaTemplateEngine)  # pyright: ignore[reportUnknownMemberType]
+        return isinstance(template_config.engine_instance, jinja_template_engine)  # pyright: ignore[reportUnknownMemberType]
 
     def _configure_static_files(self, app_config: "AppConfig") -> None:
         """Configure static file serving for Vite assets.
@@ -538,6 +542,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         user_opt = self._static_files_config.get("opt", {})
         if user_opt:
             opt = {**opt, **user_opt}
+        opt["_vite_static_handler"] = True
 
         base_config: dict[str, Any] = {
             "directories": (static_dirs if self._config.is_dev_mode else [bundle_dir]),
@@ -683,13 +688,13 @@ class VitePlugin(InitPlugin, CLIPlugin):
         Returns:
             The modified application configuration.
         """
-        if self._is_inert():
-            return app_config
-
-        self._set_route_prefix_state(app_config.state)
-
         from litestar import Response
         from litestar.connection import Request as LitestarRequest
+
+        from litestar_vite.handler import AppHandler
+
+        if self._is_inert():
+            return app_config
 
         app_config.signature_namespace["Response"] = Response
         app_config.signature_namespace["Request"] = LitestarRequest
@@ -697,8 +702,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
         # Register proxy headers middleware FIRST if configured
         # This must run before other middleware to ensure correct scheme/client in scope
         if self._config.trusted_proxies is not None:
-            from litestar_vite.plugin._proxy_headers import ProxyHeadersMiddleware
-
             app_config.middleware.insert(
                 0,  # Insert at beginning for early processing
                 DefineMiddleware(ProxyHeadersMiddleware, trusted_hosts=self._config.trusted_proxies),
@@ -740,28 +743,22 @@ class VitePlugin(InitPlugin, CLIPlugin):
             and self._config.runtime.external_dev_server is not None
         )
         if use_spa_handler:
-            from litestar_vite.handler import AppHandler
-
-            self._spa_handler = AppHandler(self._config)
+            self._spa_handler = AppHandler(self._config, csrf_config=app_config.csrf_config)
             app_config.route_handlers.append(self._spa_handler.create_route_handler())
         elif self._config.mode == "hybrid":
             # Hybrid mode prebuilds AppHandler so InertiaResponse._render_spa can reuse it.
             # Template + Inertia uses _render_template (Jinja-direct) and does not need this.
-            from litestar_vite.handler import AppHandler
-
-            self._spa_handler = AppHandler(self._config)
+            self._spa_handler = AppHandler(self._config, csrf_config=app_config.csrf_config)
 
         app_config.lifespan.append(self.lifespan)  # pyright: ignore[reportUnknownMemberType]
 
         return app_config
 
-    def _set_route_prefix_state(self, state: Any) -> None:
-        """Store route-prefix config on Litestar state for request-time helpers."""
-        extra_prefixes = self._config.runtime.extra_route_prefixes
-        if getattr(state, "litestar_vite_extra_route_prefixes", None) != extra_prefixes:
-            with suppress(AttributeError):
-                del state.litestar_vite_route_prefixes
-        state.litestar_vite_extra_route_prefixes = extra_prefixes
+    def get_route_prefixes(self, app: "Litestar") -> tuple[str, ...]:
+        """Return the immutable route-prefix cache owned by this plugin."""
+        if self._route_prefix_cache is None:
+            self._route_prefix_cache = build_litestar_route_prefixes(app, self._config.runtime.extra_route_prefixes)
+        return self._route_prefix_cache
 
     def _check_health(self) -> None:
         """Check if the Vite dev server is running and ready.
@@ -836,12 +833,12 @@ class VitePlugin(InitPlugin, CLIPlugin):
         Args:
             app: The Litestar application instance.
         """
+        from litestar_vite.codegen import export_integration_assets, typegen_outputs_requested
+
         if not isinstance(self._config.types, TypeGenConfig):
             return
 
-        from litestar_vite.codegen import export_integration_assets, typegen_outputs_requested
-
-        if not typegen_outputs_requested(self._config, self._config.types):
+        if not typegen_outputs_requested(self._config.types):
             return
 
         try:
@@ -878,13 +875,11 @@ class VitePlugin(InitPlugin, CLIPlugin):
             yield
             return
 
-        self._set_route_prefix_state(app.state)
-
         if self._config.is_dev_mode:
             self._ensure_proxy_target()
 
         if self._config.set_environment:
-            set_environment(config=self._config)
+            set_environment(config=self._config, app=app)
             set_app_environment(app)
 
         self._export_types_sync(app)
@@ -962,10 +957,8 @@ class VitePlugin(InitPlugin, CLIPlugin):
         """
         from litestar_vite.loader import ViteAssetLoader
 
-        self._set_route_prefix_state(app.state)
-
         if self._config.set_environment:
-            set_environment(config=self._config)
+            set_environment(config=self._config, app=app)
             set_app_environment(app)
 
         # Initialize shared proxy client for ViteProxyMiddleware/SSRProxyController
@@ -978,7 +971,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         await self._asset_loader.initialize()
 
         if self._spa_handler is not None and not self._spa_handler.is_initialized:
-            await self._spa_handler.initialize_async(vite_url=self._proxy_target)
+            await self._spa_handler.initialize_async(vite_url=self._proxy_target, manifest=self._asset_loader.manifest)
 
         is_ssr_mode = self._config.wants_html_proxy
         if not self._config.is_dev_mode and not self._config.has_built_assets() and not is_ssr_mode:

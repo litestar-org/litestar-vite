@@ -2,14 +2,51 @@
 
 from typing import Any
 
-from litestar import get
+from litestar import Request, get
+from litestar.exceptions import NotAuthorizedException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client
 
 from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
+from litestar_vite.inertia.helpers import once, share
 from litestar_vite.plugin import VitePlugin
+
+
+async def test_shared_prop_survives_exception_redirect(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig[Any]
+) -> None:
+    """Exception-produced redirects best-effort materialize shared sync props."""
+    calls: list[int] = []
+    inertia_plugin.config.redirect_unauthorized_to = "/login"
+
+    def load_auth() -> dict[str, str]:
+        calls.append(1)
+        return {"user": "Ada"}
+
+    @get("/protected", component="Protected")
+    async def protected(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        share(request, "auth", once("auth", load_auth))
+        raise NotAuthorizedException
+
+    @get("/login", component="Login")
+    async def login() -> dict[str, Any]:
+        return {}
+
+    with create_test_client(
+        route_handlers=[protected, login],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+        raise_server_exceptions=False,
+    ) as client:
+        response = client.get("/protected", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=True)
+
+    assert response.status_code == 200
+    assert response.json()["props"]["auth"] == {"user": "Ada"}
+    assert calls == [1]
 
 
 async def test_production_500_body_omits_exception_detail(

@@ -38,7 +38,9 @@ reads the token from injected page state instead of the cookie itself.
 .. note::
    If you intentionally use a client library that reads the CSRF cookie directly,
    such as a legacy Axios XSRF-cookie setup, keep ``cookie_httponly=False`` and
-   align the cookie/header names explicitly for that client.
+   align the cookie/header names explicitly for that client. Consumers of
+   ``litestar-vite-plugin/helpers`` do not need manual alignment: configured names
+   are injected into browser state and used automatically.
 
 Token in Templates
 ------------------
@@ -119,12 +121,18 @@ The ``litestar-vite-plugin/helpers`` package provides utility functions for CSRF
 
 .. code-block:: typescript
 
-   import { getCsrfToken, csrfHeaders, csrfFetch } from 'litestar-vite-plugin/helpers';
+   import {
+     csrfFetch,
+     csrfHeaders,
+     getCsrfHeaderName,
+     getCsrfToken,
+   } from 'litestar-vite-plugin/helpers';
 
    // Get CSRF token (from window.__LITESTAR_CSRF__, meta tag, or Inertia props)
    const token = getCsrfToken();
 
-   // Get headers object with Litestar's default X-CSRFToken header
+   // Get the configured header name and a ready-to-use headers object
+   const headerName = getCsrfHeaderName();
    const headers = csrfHeaders();
 
    // Make a fetch request with CSRF token automatically included
@@ -133,7 +141,11 @@ The ``litestar-vite-plugin/helpers`` package provides utility functions for CSRF
      body: JSON.stringify(data),
    });
 
-These helpers work in both SPA and template modes, automatically detecting the token source.
+These helpers work in both SPA and template modes, automatically detecting the
+token source. When ``CSRFConfig`` customizes ``cookie_name`` or ``header_name``,
+the HTML handler injects ``window.__LITESTAR_CSRF_COOKIE_NAME__`` and
+``window.__LITESTAR_CSRF_HEADER_NAME__`` alongside the token, so no separate
+JavaScript configuration is required.
 
 Legacy Cookie-Readable Clients
 ------------------------------
@@ -149,6 +161,10 @@ configure the middleware for that flow explicitly:
        header_name="X-XSRF-TOKEN",
        cookie_httponly=False,
    )
+
+The Litestar Vite helpers automatically follow those configured names. Manual
+cookie/header alignment is still required for clients that bypass the helpers,
+such as a raw Axios XSRF-cookie configuration.
 
 Excluding Routes
 ----------------
@@ -170,7 +186,10 @@ Troubleshooting
 1. Verify the request sends Litestar's default CSRF header (``x-csrftoken`` / ``X-CSRFToken``)
 2. Verify the CSRF cookie is set on the correct domain/path
 3. If you use a cookie-readable client, verify ``cookie_httponly=False``
-4. If you customized ``header_name``, make sure your client sends the same header
+4. If you customized ``header_name``, the provided helpers follow it
+   automatically. For hand-written fetch/XHR clients that do not use
+   ``csrfHeaders()`` or ``csrfFetch()``, make sure the client sends the same
+   header.
 
 **Token not found**:
 

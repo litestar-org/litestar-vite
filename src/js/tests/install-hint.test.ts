@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { detectExecutor, resolveInstallHint, resolvePackageExecutor, resolvePackageExecutorArgv } from "../src/install-hint"
+import fixtureData from "./__fixtures__/executor-argv-parity.json"
 
 // Mock fs module
 vi.mock("node:fs", () => ({
@@ -12,6 +13,14 @@ vi.mock("node:fs", () => ({
 }))
 
 import fs from "node:fs"
+
+describe("executor argv parity fixture", () => {
+  it.each(fixtureData.cases)("$label", (testCase) => {
+    const options = testCase.package_name ? { packageSpec: testCase.package_name, binName: testCase.binary } : {}
+    const args = testCase.package_name ? [] : [testCase.binary]
+    expect(resolvePackageExecutorArgv(args, testCase.executor, options)).toEqual(testCase.js)
+  })
+})
 
 describe("install-hint", () => {
   const originalEnv = { ...process.env }

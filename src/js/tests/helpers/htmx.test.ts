@@ -194,6 +194,21 @@ describe("htmx extension", () => {
         expect(second).toHaveBeenCalledWith(2)
         expect(first).toHaveBeenCalledTimes(1)
       })
+
+      it("exposes a sanitized plain-object event wrapper", () => {
+        container.innerHTML = '<input name="q" @input="capture($event)">'
+        const capture = vi.fn()
+        swapJson(container, { capture })
+
+        const input = container.querySelector("input") as HTMLInputElement
+        input.value = "search"
+        input.dispatchEvent(new Event("input"))
+
+        const event = capture.mock.calls[0]?.[0] as Record<string, unknown>
+        expect((event.target as Record<string, unknown>).value).toBe("search")
+        expect(event.preventDefault).toBeTypeOf("function")
+        expect(event.view).toBeUndefined()
+      })
     })
 
     describe("ls-show/ls-hide", () => {
@@ -469,7 +484,7 @@ describe("htmx extension", () => {
 
   // ===== Expression Security =====
 
-  describe("expression validation (injection prevention)", () => {
+  describe("expression sandbox (allowlist evaluator)", () => {
     beforeEach(() => {
       __clearExpressionCache()
     })
@@ -516,6 +531,28 @@ describe("htmx extension", () => {
       expect(__compileExpressionForTest("onClick(id)")).toBeTypeOf("function")
     })
 
+    it("blocks indirect-this IIFE reaching globals", () => {
+      expect(__compileExpressionForTest("(function(){return this})().fetch('/x')")).toBeNull()
+    })
+
+    it("blocks bare this reaching globalThis", () => {
+      expect(__compileExpressionForTest("this.fetch('/x')")).toBeNull()
+    })
+
+    it("blocks array and computed member access", () => {
+      expect(__compileExpressionForTest("['win','dow'].join('')")).toBeNull()
+      expect(__compileExpressionForTest("[].map.constructor")).toBeNull()
+      expect(__compileExpressionForTest("$data['constructor']")).toBeNull()
+    })
+
+    it("blocks reserved prototype identifiers and reflection paths", () => {
+      expect(__compileExpressionForTest("constructor")).toBeNull()
+      expect(__compileExpressionForTest("__proto__")).toBeNull()
+      expect(__compileExpressionForTest("prototype")).toBeNull()
+      expect(__compileExpressionForTest("constructor.defineProperty(constructor.getPrototypeOf({}), 'polluted', { value: true })")).toBeNull()
+      expect(__compileExpressionForTest("constructor.getOwnPropertyDescriptor(constructor.getPrototypeOf(constructor), 'constructor').value")).toBeNull()
+    })
+
     it("rejects constructor access", () => {
       expect(__compileExpressionForTest("constructor.constructor('alert(1)')()")).toBeNull()
     })
@@ -528,40 +565,8 @@ describe("htmx extension", () => {
       expect(__compileExpressionForTest("Object.prototype.x = 1")).toBeNull()
     })
 
-    it("rejects window access", () => {
-      expect(__compileExpressionForTest("window.location")).toBeNull()
-    })
-
-    it("rejects document access", () => {
-      expect(__compileExpressionForTest("document.cookie")).toBeNull()
-    })
-
-    it("rejects globalThis access", () => {
-      expect(__compileExpressionForTest("globalThis.fetch('/')")).toBeNull()
-    })
-
-    it("rejects Function constructor", () => {
-      expect(__compileExpressionForTest("Function('return this')()")).toBeNull()
-    })
-
     it("rejects import() expressions", () => {
       expect(__compileExpressionForTest("import('evil-module')")).toBeNull()
-    })
-
-    it("rejects blocked globals reconstructed by string concatenation", () => {
-      expect(__compileExpressionForTest("'doc' + 'ument'")).toBeNull()
-      expect(__compileExpressionForTest('"Fun" + "ction"')).toBeNull()
-      expect(__compileExpressionForTest("'con' + 'structor'")).toBeNull()
-    })
-
-    it("rejects blocked globals reconstructed with escaped string segments", () => {
-      expect(__compileExpressionForTest('"con\\u0073" + "tructor"')).toBeNull()
-      expect(__compileExpressionForTest('"doc\\x75" + "\\u006d" + "ent"')).toBeNull()
-    })
-
-    it("rejects blocked globals reconstructed across comments", () => {
-      expect(__compileExpressionForTest("'con' /* hidden */ + 'structor'")).toBeNull()
-      expect(__compileExpressionForTest("'Fun' // line break\n + 'ction'")).toBeNull()
     })
 
     it("allows safe string concatenation", () => {
@@ -569,9 +574,61 @@ describe("htmx extension", () => {
       expect(__compileExpressionForTest("'Hello, ' + name")).toBeTypeOf("function")
     })
 
-    it("rejects self/top/parent global access", () => {
-      expect(__compileExpressionForTest("self.location")).toBeNull()
-      expect(__compileExpressionForTest("top.location")).toBeNull()
+    for (const src of ["window.location", "document.cookie", "globalThis.fetch('/')", "self.location", "top.location", "Function('return this')()"]) {
+      it(`renders ${src} inert (no global reach)`, () => {
+        const fn = __compileExpressionForTest(src)
+        expect(fn).toBeTypeOf("function")
+        expect(fn?.({ $data: {} } as never)).toBeUndefined()
+      })
+    }
+
+    it("does not leak Object.prototype members through bare identifiers", () => {
+      for (const src of ["hasOwnProperty", "valueOf", "toString", "isPrototypeOf"]) {
+        const fn = __compileExpressionForTest(src)
+        expect(fn).toBeTypeOf("function")
+        expect(fn?.({ $data: {} } as never)).toBeUndefined()
+      }
+    })
+
+    it("treats string-reconstructed names as inert strings", () => {
+      const fn = __compileExpressionForTest("'doc' + 'ument'")
+      expect(fn?.({ $data: {} } as never)).toBe("document")
+    })
+
+    it("rejects member access on non-plain host receivers", () => {
+      const win = { eval: () => "PWNED", fetch: () => "PWNED", cookie: "secret" }
+      const eventTargetProto = {}
+      const eventProto = Object.create(eventTargetProto) as Record<string, unknown>
+      Object.defineProperty(eventProto, "view", { get: () => win })
+      Object.defineProperty(eventProto, "target", {
+        get: () => ({ ownerDocument: { defaultView: win, cookie: "secret" } }),
+      })
+      const hostLikeEvent = Object.create(eventProto) as Record<string, unknown>
+      const ctx = { $data: {}, $event: hostLikeEvent } as never
+      for (const src of ["$event.view", "$event.view.fetch", "$event.target.ownerDocument.defaultView", "$event.target.ownerDocument.cookie"]) {
+        const fn = __compileExpressionForTest(src)
+        expect(fn).toBeTypeOf("function")
+        expect(fn?.(ctx)).toBeUndefined()
+      }
+    })
+
+    it("preserves supported expression semantics", () => {
+      const ctx = {
+        $data: {},
+        a: 2,
+        b: "fallback",
+        user: { tags: ["one", "two"] },
+        isActive: true,
+      } as never
+      expect(__compileExpressionForTest("1 + 2 * 3 === 7")?.(ctx)).toBe(true)
+      expect(__compileExpressionForTest("false && missingFn()")?.(ctx)).toBe(false)
+      expect(__compileExpressionForTest("missing ?? b")?.(ctx)).toBe("fallback")
+      expect(__compileExpressionForTest("user.tags.join('/')")?.(ctx)).toBe("one/two")
+      expect(__compileExpressionForTest("{ active: isActive, hidden: false }")?.(ctx)).toEqual({
+        active: true,
+        hidden: false,
+      })
+      expect(__compileExpressionForTest("`x-${a}-${b}`")?.(ctx)).toBe("x-2-fallback")
     })
 
     it("does not false-positive on property names containing blocked words", () => {
@@ -651,6 +708,25 @@ describe("htmx extension", () => {
       ext.onEvent?.("htmx:configRequest", evt)
 
       expect(detail.headers["X-CSRFToken"]).toBe("csrf-token")
+    })
+
+    it("uses the configured header name when injected", () => {
+      const defineExtension = vi.fn()
+      ;(window as unknown as Record<string, unknown>).__LITESTAR_CSRF__ = "csrf-token"
+      ;(window as unknown as Record<string, unknown>).__LITESTAR_CSRF_HEADER_NAME__ = "x-custom-header"
+      ;(window as unknown as Record<string, unknown>).htmx = { defineExtension, process: vi.fn() }
+
+      registerHtmxExtension()
+
+      const ext = defineExtension.mock.calls[0]?.[1] as { onEvent?: (name: string, evt: CustomEvent) => void }
+      const detail = { headers: {} as Record<string, string> }
+      const evt = new CustomEvent("htmx:configRequest", { detail })
+      ext.onEvent?.("htmx:configRequest", evt)
+
+      expect(detail.headers["x-custom-header"]).toBe("csrf-token")
+      expect(detail.headers["X-CSRFToken"]).toBeUndefined()
+
+      delete (window as unknown as Record<string, unknown>).__LITESTAR_CSRF_HEADER_NAME__
     })
 
     it("does not throw if event detail is missing/invalid", () => {

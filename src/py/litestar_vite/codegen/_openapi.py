@@ -193,6 +193,8 @@ def _filter_response_types_from_union(field_definition: FieldDefinition) -> Fiel
     Returns:
         Filtered FieldDefinition with response types removed, or None if all types are responses.
     """
+    from typing import Union
+
     # Not a union - return as-is (caller handles response type check)
     if not field_definition.is_union:
         return field_definition
@@ -226,8 +228,6 @@ def _filter_response_types_from_union(field_definition: FieldDefinition) -> Fiel
     props_types.sort(key=lambda t: getattr(t, "__qualname__", str(t)))
 
     # Rebuild union type
-    from typing import Union
-
     union_type = Union[tuple(props_types)]  # type: ignore[valid-type] # noqa: UP007
     return FieldDefinition.from_annotation(union_type)
 

@@ -4,6 +4,7 @@ from typing import Any, cast
 import pytest
 
 from litestar_vite.config import (
+    JINJA_INSTALLED,
     DeployConfig,
     ExternalDevServer,
     PathConfig,
@@ -13,6 +14,7 @@ from litestar_vite.config import (
     ViteConfig,
 )
 from litestar_vite.config._inertia import InertiaConfig, InertiaSSRConfig
+from litestar_vite.config._runtime import _cached_resolve_proxy_mode
 from litestar_vite.executor import BunExecutor, NodeenvExecutor, NodeExecutor
 
 # C2 narrowed ViteConfig.mode to a Literal union; parametrize over `str` for
@@ -176,8 +178,6 @@ def test_resolve_proxy_mode_cached_by_env(monkeypatch: pytest.MonkeyPatch) -> No
     """Verify proxy-mode env parsing is cached by normalized value."""
     monkeypatch.setenv("VITE_PROXY_MODE", "vite")
 
-    from litestar_vite.config._runtime import _cached_resolve_proxy_mode
-
     _cached_resolve_proxy_mode.cache_clear()
 
     RuntimeConfig()
@@ -311,8 +311,6 @@ def test_mode_auto_detection_template_with_jinja(tmp_path: Path) -> None:
     config = ViteConfig(paths=PathConfig(resource_dir=resource_dir))
 
     # Should default to template if Jinja2 is available, otherwise spa
-    from litestar_vite.config import JINJA_INSTALLED
-
     if JINJA_INSTALLED:
         assert config.mode == "template"
     else:

@@ -75,20 +75,7 @@ export function resolveInstallHint(pkg: string | readonly string[] = "@hey-api/o
  * @returns The full command string (e.g., "npx @hey-api/openapi-ts ..." or "bunx @hey-api/openapi-ts ...")
  */
 export function resolvePackageExecutor(pkg: string, executor?: string): string {
-  // Use || to treat empty string as falsy, triggering detection
-  const runtime = executor || detectExecutor()
-  switch (runtime) {
-    case "bun":
-      return `bunx ${pkg}`
-    case "deno":
-      return `deno run -A npm:${pkg}`
-    case "pnpm":
-      return `pnpm dlx ${pkg}`
-    case "yarn":
-      return `yarn dlx ${pkg}`
-    default:
-      return `npx ${pkg}`
-  }
+  return resolvePackageExecutorArgv(pkg.split(" "), executor).join(" ")
 }
 
 /**
@@ -141,9 +128,14 @@ export function resolvePackageExecutorArgv(args: string[], executor?: string, op
     case "bun":
       if (requiresMultiplePackages) return []
       return ["bunx", ...(packageSpec ? [packageSpec, ...args] : args)]
-    case "deno":
+    case "deno": {
       if (requiresMultiplePackages) return []
-      return ["deno", "run", "-A", ...(packageSpec ? [`npm:${resolveDenoPackageSpec(packageSpec, binName)}`, ...args] : args)]
+      if (packageSpec) {
+        return ["deno", "run", "-A", `npm:${resolveDenoPackageSpec(packageSpec, binName)}`, ...args]
+      }
+      const [firstArg, ...restArgs] = args
+      return firstArg ? ["deno", "run", "-A", `npm:${firstArg}`, ...restArgs] : ["deno", "run", "-A"]
+    }
     case "pnpm":
       if (requiresMultiplePackages && binName) {
         return ["pnpm", "dlx", ...packageSpecs.map((spec) => `--package=${spec}`), binName, ...args]

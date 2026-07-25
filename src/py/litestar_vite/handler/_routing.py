@@ -74,9 +74,10 @@ def get_spa_handler_from_request(request: "Request[Any, Any, Any]") -> "AppHandl
     Raises:
         ImproperlyConfiguredException: If the SPA handler is not available on the route metadata.
     """
+    from litestar_vite.handler._app import AppHandler
+
     opt = get_route_opt(request)
     handler = opt.get("_vite_spa_handler") if opt is not None else None
-    from litestar_vite.handler._app import AppHandler
 
     if isinstance(handler, AppHandler):
         return handler

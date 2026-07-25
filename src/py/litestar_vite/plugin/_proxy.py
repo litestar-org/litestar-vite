@@ -1,7 +1,8 @@
 """HTTP/WebSocket proxy middleware and HMR handlers."""
 
 import logging
-from collections.abc import AsyncGenerator, Awaitable, Iterable
+import time
+from collections.abc import AsyncGenerator, Awaitable
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -114,6 +115,14 @@ _WS_REQUEST_SKIP_HEADERS = _REQUEST_SKIP_HEADERS | {
 
 _LOGGER = logging.getLogger(__name__)
 
+# Bounds how often create_target_url_getter/create_hmr_target_getter re-stat() the hotfile.
+# Keeps the proxy hot path free of a syscall on every proxied request while still picking up
+# a dev-server restart (new hotfile mtime) within one TTL window. Not a correctness cache: a
+# change is always observed within _HOTFILE_REVALIDATE_TTL_SECONDS, never "forever stale".
+_HOTFILE_REVALIDATE_TTL_SECONDS = 0.3
+
+_NO_CONNECTION_TOKENS: "frozenset[str]" = frozenset()
+
 
 def _normalize_header_key(raw_key: Any) -> str:
     """Normalize a raw header key to a lower-cased string."""
@@ -129,13 +138,21 @@ def _normalize_header_value(raw_value: Any) -> str:
     return str(raw_value)
 
 
-def _collect_connection_tokens(headers: Any) -> set[str]:
-    """Collect header names listed in Connection headers."""
-    tokens: set[str] = set()
+def _collect_connection_tokens(headers: Any) -> "frozenset[str]":
+    """Collect header names listed in Connection headers.
+
+    Returns:
+        A frozenset of the additional lower-cased header names to treat as hop-by-hop, or the
+        shared ``_NO_CONNECTION_TOKENS`` sentinel when no ``Connection`` header is present (the
+        common case) so callers can skip copying the base skip-set into a mutable set.
+    """
+    tokens: "set[str] | None" = None
     for key, value in headers:
         if _normalize_header_key(key) == "connection":
+            if tokens is None:
+                tokens = set()
             tokens.update(token.strip().lower() for token in _normalize_header_value(value).split(",") if token.strip())
-    return tokens
+    return frozenset(tokens) if tokens else _NO_CONNECTION_TOKENS
 
 
 def _filter_hop_by_hop_headers(headers: Any) -> list[tuple[str, str]]:
@@ -143,19 +160,23 @@ def _filter_hop_by_hop_headers(headers: Any) -> list[tuple[str, str]]:
     return _extract_request_headers(headers)
 
 
-def _extract_request_headers(
-    headers: Any, extra_skip_headers: "Iterable[bytes | str] | None" = None
-) -> list[tuple[str, str]]:
-    """Extract request headers, excluding hop-by-hop and optional additional skip headers."""
+def _extract_request_headers(headers: Any, extra_skip_headers: "frozenset[str] | None" = None) -> list[tuple[str, str]]:
+    """Extract request headers, excluding hop-by-hop and optional additional skip headers.
+
+    ``extra_skip_headers``, when given, must already be a normalized (lower-cased) frozenset
+    constant (e.g. ``_WS_REQUEST_SKIP_HEADERS``) -- this hot-path function trusts the caller
+    and does no per-call re-normalization or frozenset re-allocation for the base skip set. A
+    mutable copy is made only when the request actually carries dynamic ``Connection`` tokens
+    (RFC 7230 §6.1), which is the uncommon case; otherwise the frozenset is used directly for
+    membership tests.
+    """
     if not headers:
         return []
 
-    skip = _REQUEST_SKIP_HEADERS
-    if extra_skip_headers is not None:
-        skip = skip | frozenset(_normalize_header_key(name) for name in extra_skip_headers)
+    skip = extra_skip_headers if extra_skip_headers is not None else _REQUEST_SKIP_HEADERS
 
-    hop_by_hop = set(skip)
-    hop_by_hop.update(_collect_connection_tokens(headers))
+    connection_tokens = _collect_connection_tokens(headers)
+    hop_by_hop: "frozenset[str] | set[str]" = skip | connection_tokens if connection_tokens else skip
 
     filtered: list[tuple[str, str]] = []
     for key, value in headers:
@@ -613,10 +634,18 @@ def create_target_url_getter(
 ) -> "Callable[[], str | None]":
     """Create a function that returns the current target URL with mtime-revalidated caching.
 
+    Re-stats the hotfile at most once per ``_HOTFILE_REVALIDATE_TTL_SECONDS`` (a monotonic-clock
+    TTL); within that window the last resolved result -- including "no target" from a missing or
+    unreadable hotfile -- is returned without touching the filesystem. A dev-server restart (new
+    hotfile mtime) is still observed on the next check after the TTL elapses, so cached results
+    are never permanently stale.
+
     Returns:
         A callable that returns the target URL or None if unavailable.
     """
     cached_mtime_ns: list[int | None] = [None]
+    has_cached_result: list[bool] = [False]
+    last_checked_at: list[float] = [0.0]
 
     def _get_target_url() -> str | None:
         if target is not None:
@@ -624,27 +653,34 @@ def create_target_url_getter(
         if hotfile_path is None:
             return None
 
+        now = time.monotonic()
+        if has_cached_result[0] and (now - last_checked_at[0]) < _HOTFILE_REVALIDATE_TTL_SECONDS:
+            return cached_target[0].rstrip("/") if cached_target[0] else None
+
         try:
             hotfile_stat = hotfile_path.stat()
         except (FileNotFoundError, OSError):
             cached_target[0] = None
             cached_mtime_ns[0] = None
+            has_cached_result[0] = True
+            last_checked_at[0] = now
             return None
 
-        if cached_target[0] is not None and cached_mtime_ns[0] == hotfile_stat.st_mtime_ns:
+        if has_cached_result[0] and cached_mtime_ns[0] == hotfile_stat.st_mtime_ns:
+            last_checked_at[0] = now
             return cached_target[0].rstrip("/") if cached_target[0] else None
 
         try:
-            url = read_hotfile_url(hotfile_path)
-            cached_target[0] = url
-            cached_mtime_ns[0] = hotfile_stat.st_mtime_ns
+            cached_target[0] = read_hotfile_url(hotfile_path)
             if is_proxy_debug():
-                console.print(f"[dim][{debug_label}] Dynamic target: {url}[/]")
-            return url.rstrip("/")
+                console.print(f"[dim][{debug_label}] Dynamic target: {cached_target[0]}[/]")
         except (FileNotFoundError, OSError):
             cached_target[0] = None
-            cached_mtime_ns[0] = None
-            return None
+
+        cached_mtime_ns[0] = hotfile_stat.st_mtime_ns
+        has_cached_result[0] = True
+        last_checked_at[0] = now
+        return cached_target[0].rstrip("/") if cached_target[0] else None
 
     return _get_target_url
 
@@ -661,17 +697,32 @@ def create_hmr_target_getter(
         2. Main hotfile contents — actual upstream target resolved by the
            frontend side, preserving scheme and normalized host.
 
+    The ``.hmr`` sibling ``Path`` is built once here (not per call). Both candidates are
+    re-stat'd at most once per ``_HOTFILE_REVALIDATE_TTL_SECONDS`` -- including when the
+    ``.hmr`` sibling is absent (the common case) -- so a missing sibling does not cost a
+    stat() on every proxied/HMR-connect request.
+
     Returns:
         A callable that returns the HMR target URL or None if unavailable.
     """
-    cached_mtime_ns: list[int | None] = [None]
-    cached_path: list[Path | None] = [None]
+    if hotfile_path is None:
 
-    def _get_hmr_target_url() -> str | None:
-        if hotfile_path is None:
+        def _no_hmr_target_url() -> str | None:
             return None
 
-        hmr_path = Path(f"{hotfile_path}.hmr")
+        return _no_hmr_target_url
+
+    hmr_path = Path(f"{hotfile_path}.hmr")
+    cached_mtime_ns: list[int | None] = [None]
+    cached_path: list[Path | None] = [None]
+    has_cached_result: list[bool] = [False]
+    last_checked_at: list[float] = [0.0]
+
+    def _get_hmr_target_url() -> str | None:
+        now = time.monotonic()
+        if has_cached_result[0] and (now - last_checked_at[0]) < _HOTFILE_REVALIDATE_TTL_SECONDS:
+            return cached_hmr_target[0].rstrip("/") if cached_hmr_target[0] else None
+
         for candidate, label in ((hmr_path, "HMR target"), (hotfile_path, "HMR target fallback")):
             try:
                 candidate_stat = candidate.stat()
@@ -679,11 +730,12 @@ def create_hmr_target_getter(
                 continue
 
             if (
-                cached_path[0] == candidate
-                and cached_hmr_target[0] is not None
+                has_cached_result[0]
+                and cached_path[0] == candidate
                 and cached_mtime_ns[0] == candidate_stat.st_mtime_ns
             ):
-                return cached_hmr_target[0].rstrip("/")
+                last_checked_at[0] = now
+                return cached_hmr_target[0].rstrip("/") if cached_hmr_target[0] else None
 
             try:
                 url = read_hotfile_url(candidate)
@@ -693,6 +745,8 @@ def create_hmr_target_getter(
             cached_path[0] = candidate
             cached_mtime_ns[0] = candidate_stat.st_mtime_ns
             cached_hmr_target[0] = url
+            has_cached_result[0] = True
+            last_checked_at[0] = now
             if is_proxy_debug():
                 console.print(f"[dim][ssr-proxy] {label}: {url}[/]")
             return url.rstrip("/")
@@ -700,6 +754,8 @@ def create_hmr_target_getter(
         cached_path[0] = None
         cached_mtime_ns[0] = None
         cached_hmr_target[0] = None
+        has_cached_result[0] = True
+        last_checked_at[0] = now
         return None
 
     return _get_hmr_target_url

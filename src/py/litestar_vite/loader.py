@@ -347,6 +347,15 @@ class ViteAssetLoader:
         """
         self._manifest_content = value
 
+    @property
+    def manifest(self) -> "dict[str, Any]":
+        """The parsed Vite manifest.
+
+        Returns:
+            The parsed manifest dict, or an empty dict in hot-dev mode or before initialization.
+        """
+        return self._manifest
+
     @cached_property
     def version_id(self) -> str:
         """Get the version ID of the manifest.

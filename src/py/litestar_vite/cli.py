@@ -24,10 +24,12 @@ from litestar_vite.doctor import ViteDoctor
 from litestar_vite.exceptions import ViteExecutionError
 from litestar_vite.plugin import VitePlugin, set_environment
 from litestar_vite.scaffolding import TemplateContext, generate_project, get_available_templates
-from litestar_vite.scaffolding.templates import FrameworkType, get_template
+from litestar_vite.scaffolding.templates import get_template
 
 if TYPE_CHECKING:
     from litestar import Litestar
+
+    from litestar_vite.scaffolding.templates import FrameworkTemplate
 
 
 FRAMEWORK_CHOICES = [
@@ -217,7 +219,7 @@ def _build_deploy_config(
 def _prepare_and_build(config: ViteConfig, root_dir: Path, console: Any, app: "Litestar | None", verbose: bool) -> None:
     """Export metadata, run typegen, and execute the configured frontend build."""
     if config.set_environment:
-        set_environment(config=config)
+        set_environment(config=config, app=app)
 
     generated_assets = _generate_schema_and_routes(app, config, console) if app is not None else False
 
@@ -410,24 +412,43 @@ def _prompt_for_options(
     return enable_ssr or False, tailwind, enable_types, generate_zod, generate_client
 
 
-def _find_scaffold_collisions(base: Path, resource_dir: str, bundle_dir: str, static_dir: str) -> list[Path]:
+def _find_scaffold_collisions(
+    base: Path,
+    resource_dir: str,
+    bundle_dir: str,
+    static_dir: str,
+    *,
+    framework: "FrameworkTemplate",
+    use_tailwind: bool,
+) -> list[Path]:
     """Return existing paths that would make scaffold output unsafe without overwrite."""
-    generated_root_files = {
-        "angular.json",
-        "index.html",
-        "package.json",
-        "postcss.config.mjs",
-        "svelte.config.js",
-        "tsconfig.json",
-        "vite.config.ts",
-    }
-    candidates = {
-        base / resource_dir,
-        base / bundle_dir,
-        base / static_dir,
-        *(base / name for name in generated_root_files),
-    }
+    from litestar_vite.scaffolding.generator import get_template_dir, resolve_framework_template_dir
+
+    template_dir = get_template_dir()
+    root_files: set[str] = set()
+
+    def _add_root_files(directory: Path) -> None:
+        if not directory.exists():
+            return
+        for template_file in directory.glob("**/*.j2"):
+            relative = template_file.relative_to(directory)
+            if relative.parts and relative.parts[0] in {"resources", "public"}:
+                continue
+            root_files.add(str(relative).removesuffix(".j2"))
+
+    if framework.uses_vite:
+        _add_root_files(template_dir / "base")
+    _add_root_files(resolve_framework_template_dir(template_dir, framework.type.value))
+    if use_tailwind:
+        _add_root_files(template_dir / "addons" / "tailwindcss")
+
+    candidates = {base / resource_dir, base / bundle_dir, base / static_dir, *(base / name for name in root_files)}
     return sorted(path for path in candidates if path.exists())
+
+
+def _is_inertia_framework(framework: "FrameworkTemplate") -> bool:
+    """Return whether a framework template should default to Inertia mode."""
+    return framework.inertia_compatible and "inertia" in framework.type.value
 
 
 @vite_group.command(name="doctor", help="Diagnose and fix Vite configuration issues.")
@@ -626,16 +647,13 @@ def vite_init(
     static_path_str = str(static_path or config.static_dir)
 
     base = root_path / frontend_dir if frontend_dir != "." else root_path
-    collisions = _find_scaffold_collisions(base, resource_path_str, bundle_path_str, static_path_str)
+    collisions = _find_scaffold_collisions(
+        base, resource_path_str, bundle_path_str, static_path_str, framework=framework, use_tailwind=tailwind
+    )
     if (
         collisions
         and not overwrite
-        and (
-            no_prompt
-            or not Confirm.ask(
-                "Files were found in the paths specified. Are you sure you wish to overwrite the contents?"
-            )
-        )
+        and (no_prompt or not Confirm.ask("Files were found in the paths specified. Continue and skip existing files?"))
     ):
         console.print("Skipping Vite initialization")
         sys.exit(2)
@@ -645,16 +663,7 @@ def vite_init(
     )
 
     project_name = root_path.name or "my-project"
-    is_inertia = framework.type in {
-        FrameworkType.REACT_INERTIA,
-        FrameworkType.REACT_INERTIA_JINJA,
-        FrameworkType.VUE_INERTIA,
-        FrameworkType.VUE_INERTIA_SSR,
-        FrameworkType.VUE_INERTIA_JINJA,
-        FrameworkType.VUE_INERTIA_JINJA_SSR,
-        FrameworkType.SVELTE_INERTIA,
-        FrameworkType.SVELTE_INERTIA_JINJA,
-    }
+    is_inertia = _is_inertia_framework(framework)
     context = TemplateContext(
         project_name=project_name,
         framework=framework,
@@ -888,7 +897,7 @@ def vite_serve(app: "Litestar", verbose: "bool", quiet: "bool", production: "boo
 
     _apply_cli_log_level(plugin.config, verbose=verbose, quiet=quiet)
     if plugin.config.set_environment:
-        set_environment(config=plugin.config)
+        set_environment(config=plugin.config, app=app)
 
     use_production_server = production or not plugin.config.dev_mode
 
@@ -1014,6 +1023,21 @@ def export_routes(
             raise LitestarCLIException(msg) from e
 
 
+def _default_bin_name_from_package_spec(package_spec: str) -> str:
+    """Return the default binary name for an npm package spec.
+
+    Returns:
+        The last package-name segment with any version suffix removed.
+    """
+    if package_spec.startswith("@"):
+        slash_index = package_spec.index("/")
+        at_index = package_spec.find("@", slash_index + 1)
+    else:
+        at_index = package_spec.find("@")
+    name = package_spec if at_index == -1 else package_spec[:at_index]
+    return name.rsplit("/", 1)[-1]
+
+
 def _get_package_executor_cmd(executor: "str | None", binary: str, *, package_name: "str | None" = None) -> "list[str]":
     """Build package executor command list.
 
@@ -1034,7 +1058,8 @@ def _get_package_executor_cmd(executor: "str | None", binary: str, *, package_na
         case "bun":
             return ["bunx", "--package", package, binary] if package_name else ["bunx", binary]
         case "deno":
-            deno_package = f"{package}/{binary}" if package != binary else package
+            default_bin = _default_bin_name_from_package_spec(package)
+            deno_package = package if default_bin == binary else f"{package}/{binary}"
             return ["deno", "run", "-A", f"npm:{deno_package}"]
         case "yarn":
             return ["yarn", "dlx", "--package", package, binary] if package_name else ["yarn", "dlx", binary]
@@ -1247,6 +1272,9 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     Args:
         app: The Litestar application instance.
         verbose: Whether to enable verbose output.
+
+    Raises:
+        SystemExit: If type generation fails or no files are exported.
     """
     from litestar_vite.codegen import export_integration_assets
     from litestar_vite.plugin._utils import write_runtime_config_file
