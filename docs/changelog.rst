@@ -39,6 +39,13 @@ Litestar Vite Changelog
   callables run only when the current response renders them or when a redirect needs to persist
   them. The ``True``/``False`` return contract is unchanged, and async special props still return
   ``False`` because they cannot be persisted synchronously across redirects.
+- Replaced HTMX JSON-template expression evaluation with a CSP-safe allowlist interpreter. Assignment,
+  ``new``, functions/arrows, computed indexing, array literals, and globals other than ``JSON`` and
+  ``Math`` are no longer supported. Reserved data-field names include ``constructor``, ``__proto__``,
+  ``prototype``, ``apply``, ``call``, ``bind``, ``arguments``, ``callee``, ``caller``, and the
+  ``__define*``/``__lookup*`` names; rename those fields before using them in expressions.
+  ``@event`` now exposes a sanitized ``$event`` wrapper instead of the raw DOM event. Applications may
+  remove CSP ``script-src 'unsafe-eval'`` when no other code requires it.
 
 0.26.1 - 2026-07-06
 -------------------
