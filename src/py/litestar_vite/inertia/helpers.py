@@ -1452,6 +1452,16 @@ def get_shared_props(
 _UNMATERIALIZABLE_SHARED = object()
 
 
+def _is_async_special_prop(value: "Any") -> bool:
+    """Return whether a top-level special prop wraps an async callback."""
+    if is_optional_prop(value):
+        return inspect.iscoroutinefunction(value._callback)  # pyright: ignore[reportPrivateUsage]
+    if is_deferred_prop(value) or is_once_prop(value):
+        callback = value._value  # pyright: ignore[reportPrivateUsage]
+        return callable(callback) and inspect.iscoroutinefunction(callback)
+    return False
+
+
 def _materialize_shared_value(value: "Any") -> "Any":
     """Convert top-level special props into session-serializable values for share()."""
     if is_merge_prop(value):
@@ -1483,23 +1493,25 @@ def share(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", value: "
     Returns:
         True if the value was successfully shared, False otherwise.
     """
-    materialized = _materialize_shared_value(value)
-    if materialized is _UNMATERIALIZABLE_SHARED:
+    if is_special_prop(value) or is_merge_prop(value):
         _set_scope_shared_prop(connection, key, value)
-        connection.logger.warning(
-            "Cannot persist shared prop %r: async special props cannot be materialized for session storage.", key
-        )
-        return False
+        if _is_async_special_prop(value):
+            connection.logger.warning(
+                "Cannot persist shared prop %r across redirects: async special props "
+                "cannot be materialized for session storage.",
+                key,
+            )
+            return False
+        return True
 
     try:
-        connection.session.setdefault("_shared", {}).update({key: materialized})
+        connection.session.setdefault("_shared", {}).update({key: value})
     except (AttributeError, ImproperlyConfiguredException):
         msg = "Unable to share value: session not accessible (user may be unauthenticated)."
         connection.logger.debug(msg)
         return False
-    else:
-        _set_scope_shared_prop(connection, key, value)
-        return True
+    _set_scope_shared_prop(connection, key, value)
+    return True
 
 
 def error(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", message: "str") -> "bool":

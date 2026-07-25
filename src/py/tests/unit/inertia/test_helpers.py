@@ -622,22 +622,20 @@ async def test_share_returns_true_with_session(
         assert data["props"]["user"] == {"name": "Alice"}
 
 
-async def test_share_materializes_sync_special_prop_before_session_write(
+async def test_share_defers_sync_special_prop_materialization(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
-    """Test share() writes rendered values for sync special props."""
-    from litestar_vite.inertia.helpers import always, merge, once, share
+    """Sync special props remain scope-only until the response consumes them."""
+    from litestar_vite.inertia.helpers import once, share
 
     captured: dict[str, Any] = {}
 
     @get("/", component="Home")
     async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
         share(request, "count", once("count", lambda: 42))
-        share(request, "flag", always("flag", "y"))
-        share(request, "posts", merge("posts", [1, 2]))
-        captured["shared"] = dict(request.session["_shared"])
+        captured["shared"] = dict(request.session.get("_shared", {}))
         return {}
 
     with create_test_client(
@@ -650,10 +648,37 @@ async def test_share_materializes_sync_special_prop_before_session_write(
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
         assert response.status_code == 200
 
-    assert captured["shared"]["count"] == 42
-    assert isinstance(captured["shared"]["count"], int)
-    assert captured["shared"]["flag"] == "y"
-    assert captured["shared"]["posts"] == [1, 2]
+    assert "count" not in captured["shared"]
+    assert response.json()["props"]["count"] == 42
+
+
+async def test_share_does_not_execute_discarded_deferred_callable(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """A withheld shared deferred prop is not rendered at share() time."""
+    from litestar_vite.inertia.helpers import defer, share
+
+    calls: list[int] = []
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        share(request, "slow", defer("slow", lambda: (calls.append(1), {"x": 1})[1]))
+        return {"eager": "ok"}
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert response.status_code == 200
+        assert "slow" not in response.json()["props"]
+
+    assert calls == []
 
 
 async def test_share_skips_async_special_prop(
