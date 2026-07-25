@@ -32,6 +32,9 @@ Litestar Vite Changelog
 - Added ``csrfCookieName`` and ``csrfHeaderName`` to the ``.litestar.json`` bridge and injected browser
   state. ``getCsrfToken()``, ``getCsrfHeaderName()``, ``csrfHeaders()``, ``csrfFetch()``, and the HTMX
   extension now follow custom ``CSRFConfig(cookie_name=..., header_name=...)`` values automatically.
+- Changed SPA/proxy route derivation so ``/api`` and ``/schema`` are reserved only when registered
+  Litestar routes, OpenAPI configuration, or ``RuntimeConfig.extra_route_prefixes`` claim them. Add
+  ``extra_route_prefixes=("/api",)`` if an application relied on the old guessed fallback.
 
 0.26.1 - 2026-07-06
 -------------------

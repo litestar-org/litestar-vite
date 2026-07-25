@@ -654,7 +654,6 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
     Includes:
     - All registered Litestar route paths
     - OpenAPI schema/docs paths registered by Litestar
-    - Common API prefixes as fallback (/api, /schema)
     - RuntimeConfig.extra_route_prefixes values attached by VitePlugin
 
     Args:
@@ -700,7 +699,6 @@ def get_litestar_route_prefixes(app: "Litestar") -> tuple[str, ...]:
             if prefix is not None:
                 prefixes.append(prefix)
 
-    prefixes.extend(["/api", "/schema"])
     prefixes.extend(
         prefix
         for raw_prefix in getattr(state, "litestar_vite_extra_route_prefixes", ())

@@ -907,6 +907,15 @@ async def test_spa_handler_route_exclusion_api_path(spa_config: ViteConfig) -> N
         assert response.status_code == 200
         assert "Test SPA" in response.text
 
+    spa_only_handler = AppHandler(spa_config)
+    await spa_only_handler.initialize_async()
+    spa_only_app = Litestar(route_handlers=[spa_only_handler.create_route_handler()], openapi_config=None)
+    async with AsyncTestClient(app=spa_only_app) as client:
+        # With no backend route claiming /api, it remains available to the SPA.
+        response = await client.get("/api/playground")
+        assert response.status_code == 200
+        assert "Test SPA" in response.text
+
 
 def test_server_starting_html_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(app_module, "_SERVER_STARTING_PATH", tmp_path / "missing.html")

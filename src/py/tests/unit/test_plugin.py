@@ -1776,8 +1776,8 @@ def test_get_litestar_route_prefixes_with_multiple_routes() -> None:
     assert "/users" in prefixes
     assert "/posts/{post_id:int}" in prefixes
     assert "/api/v1/items" in prefixes
-    # Should include common API prefixes as fallback
-    assert "/api" in prefixes
+    # Only registered routes and the configured OpenAPI path are reserved.
+    assert "/api" not in prefixes
     assert "/schema" in prefixes
     assert "/docs" not in prefixes
 
@@ -1801,8 +1801,7 @@ def test_get_litestar_route_prefixes_includes_openapi_config_path() -> None:
 
     # Should include custom schema path
     assert "/custom-schema" in prefixes
-    # Should still include fallback schema path
-    assert "/schema" in prefixes
+    assert "/schema" not in prefixes
 
 
 def test_get_litestar_route_prefixes_caches_by_app() -> None:
@@ -1841,9 +1840,8 @@ def test_get_litestar_route_prefixes_with_no_openapi() -> None:
 
     prefixes = get_litestar_route_prefixes(app)
 
-    # Should still include fallback prefixes
-    assert "/api" in prefixes
-    assert "/schema" in prefixes
+    assert "/api" not in prefixes
+    assert "/schema" not in prefixes
     assert "/docs" not in prefixes
 
 
@@ -2091,8 +2089,7 @@ def test_get_litestar_route_prefixes_with_empty_app() -> None:
 
     prefixes = get_litestar_route_prefixes(app)
 
-    # Should still include common fallback prefixes
-    assert "/api" in prefixes
+    assert "/api" not in prefixes
     assert "/schema" in prefixes
     assert "/docs" not in prefixes
 
