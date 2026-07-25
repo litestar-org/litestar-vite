@@ -653,6 +653,25 @@ describe("htmx extension", () => {
       expect(detail.headers["X-CSRFToken"]).toBe("csrf-token")
     })
 
+    it("uses the configured header name when injected", () => {
+      const defineExtension = vi.fn()
+      ;(window as unknown as Record<string, unknown>).__LITESTAR_CSRF__ = "csrf-token"
+      ;(window as unknown as Record<string, unknown>).__LITESTAR_CSRF_HEADER_NAME__ = "x-custom-header"
+      ;(window as unknown as Record<string, unknown>).htmx = { defineExtension, process: vi.fn() }
+
+      registerHtmxExtension()
+
+      const ext = defineExtension.mock.calls[0]?.[1] as { onEvent?: (name: string, evt: CustomEvent) => void }
+      const detail = { headers: {} as Record<string, string> }
+      const evt = new CustomEvent("htmx:configRequest", { detail })
+      ext.onEvent?.("htmx:configRequest", evt)
+
+      expect(detail.headers["x-custom-header"]).toBe("csrf-token")
+      expect(detail.headers["X-CSRFToken"]).toBeUndefined()
+
+      delete (window as unknown as Record<string, unknown>).__LITESTAR_CSRF_HEADER_NAME__
+    })
+
     it("does not throw if event detail is missing/invalid", () => {
       const defineExtension = vi.fn()
       ;(window as unknown as Record<string, unknown>).__LITESTAR_CSRF__ = "csrf-token"

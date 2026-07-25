@@ -47,6 +47,40 @@ describe("csrf helpers", () => {
     vi.restoreAllMocks()
   })
 
+  describe("configured CSRF names from injected runtime state", () => {
+    it("uses the configured header name in csrfHeaders", () => {
+      globalThis.window.__LITESTAR_CSRF__ = "tok"
+      ;(globalThis.window as unknown as Record<string, unknown>).__LITESTAR_CSRF_HEADER_NAME__ = "x-custom-header"
+
+      expect(csrfHeaders()).toEqual({ "x-custom-header": "tok" })
+    })
+
+    it("falls back to the default header name when no global is injected", () => {
+      globalThis.window.__LITESTAR_CSRF__ = "tok"
+
+      expect(csrfHeaders()).toEqual({ "X-CSRFToken": "tok" })
+    })
+
+    it("uses the configured header name in csrfFetch", async () => {
+      globalThis.window.__LITESTAR_CSRF__ = "tok"
+      ;(globalThis.window as unknown as Record<string, unknown>).__LITESTAR_CSRF_HEADER_NAME__ = "x-custom-header"
+      ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(new Response())
+
+      await csrfFetch("/api/submit")
+
+      const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+      expect(getHeaderValue(callArgs[1].headers, "x-custom-header")).toBe("tok")
+    })
+
+    it("uses the configured cookie name as the first cookie fallback", () => {
+      globalThis.window.__LITESTAR_CSRF__ = undefined
+      ;(globalThis.window as unknown as Record<string, unknown>).__LITESTAR_CSRF_COOKIE_NAME__ = "custom_cookie"
+      ;(globalThis.document as unknown as { cookie: string }).cookie = "custom_cookie=custom-cookie-value; csrftoken=default-value"
+
+      expect(getCsrfToken()).toBe("custom-cookie-value")
+    })
+  })
+
   describe("getCsrfToken", () => {
     it("returns token from window.__LITESTAR_CSRF__ (SPA mode)", () => {
       globalThis.window.__LITESTAR_CSRF__ = "spa-csrf-token-123"
