@@ -41,6 +41,8 @@
 
 // CSRF utilities
 export { csrfFetch, csrfHeaders, getCsrfToken } from "./csrf.js"
+// Litestar Channels utilities
+export { createChannelsStream, type ChannelName, type ChannelsStreamOptions } from "./channels.js"
 // HTMX utilities
 export { addDirective, registerHtmxExtension, setDebug as setHtmxDebug, swapJson } from "./htmx.js"
 // Route matching utilities
