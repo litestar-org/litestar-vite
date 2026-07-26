@@ -1351,7 +1351,7 @@ def get_raw_shared_props(request: "ASGIConnection[Any, Any, Any, Any]") -> "Mapp
     return {**session_shared, **_get_scope_shared_props(request)}
 
 
-def _consume_legacy_session_state(
+def _consume_session_handoff_state(
     request: "ASGIConnection[Any, Any, Any, Any]",
 ) -> "tuple[dict[str, Any] | None, Mapping[str, Any], dict[str, Any], list[dict[str, Any]]]":
     try:
@@ -1396,7 +1396,7 @@ def get_shared_props(
     once_props_entries: "list[_OncePropEntry]" = []
     error_bag = request.headers.get("X-Inertia-Error-Bag", None)
 
-    session, session_shared_props, errors, session_messages = _consume_legacy_session_state(request)
+    session, session_shared_props, errors, session_messages = _consume_session_handoff_state(request)
     local_shared_props = consume_shared(request)
     local_flash = consume_flash(request)
     local_errors = consume_errors(request)

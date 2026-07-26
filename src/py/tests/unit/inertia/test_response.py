@@ -127,7 +127,7 @@ async def test_transient_state_delivered_across_session_backed_redirect(
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
-    """Supported local state should use the legacy session keys across PRG."""
+    """Supported local state should use the session handoff keys across PRG."""
 
     @post("/submit")
     async def submit_handler(request: Request[Any, Any, Any]) -> InertiaRedirect:

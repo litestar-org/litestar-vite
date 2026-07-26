@@ -59,7 +59,7 @@ def test_persist_transient_state_without_transport_consumes_and_warns_once(caplo
     assert "direct Inertia response" in caplog.text
 
 
-def test_persist_transient_state_writes_legacy_session_keys_without_warning(caplog: pytest.LogCaptureFixture) -> None:
+def test_persist_transient_state_writes_session_handoff_keys_without_warning(caplog: pytest.LogCaptureFixture) -> None:
     session: dict[str, Any] = {}
     connection = _connection({"session": session})
     stage_shared(connection, "auth", {"user": "Ada"})

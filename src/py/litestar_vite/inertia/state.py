@@ -187,7 +187,7 @@ def has_redirect_state_transport(connection: "ASGIConnection[Any, Any, Any, Any]
 
 
 def persist_transient_state_for_redirect(connection: "ASGIConnection[Any, Any, Any, Any]") -> RedirectStatePersistence:
-    """Persist supported transient state into the legacy session wire keys."""
+    """Persist supported transient state into the session handoff keys."""
     state = peek_transient_state(connection)
     had_pending = bool(state and (state.shared or state.flash or state.errors or state.clear_history))
     if not had_pending or state is None:

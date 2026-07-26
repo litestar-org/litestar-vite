@@ -115,12 +115,12 @@ async def test_transient_helpers_render_direct_response_without_route_session(
     warning.assert_not_called()
 
 
-async def test_transient_state_overrides_legacy_session_without_eager_persistence(
+async def test_transient_state_overrides_session_handoff_without_eager_persistence(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
-    """Local state wins while legacy incoming flash keeps stable ordering."""
+    """Local state wins while incoming session-handoff flash keeps stable ordering."""
     from litestar_vite.inertia.helpers import error, flash, share
 
     captured_session: dict[str, Any] = {}
