@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
@@ -7,6 +8,8 @@ from litestar.exceptions import ImproperlyConfiguredException
 if TYPE_CHECKING:
     from litestar.connection import ASGIConnection
 
+
+logger = logging.getLogger("litestar_vite")
 
 _TRANSIENT_STATE_SCOPE_KEY = "_litestar_vite_inertia_shared"
 
@@ -157,10 +160,25 @@ def consume_clear_history(connection: "ASGIConnection[Any, Any, Any, Any]") -> b
 
 
 def _session(connection: "ASGIConnection[Any, Any, Any, Any]") -> "dict[str, Any] | None":
-    try:
-        return connection.session
-    except (AttributeError, ImproperlyConfiguredException):
-        return None
+    session = _scope(connection).get("session")
+    return cast("dict[str, Any]", session) if isinstance(session, dict) else None
+
+
+def _warn_redirect_state_loss(result: RedirectStatePersistence) -> None:
+    if not result.had_pending or result.persisted:
+        return
+    if result.dropped_keys:
+        logger.warning(
+            "Inertia redirect dropped shared prop(s) that cannot be materialized synchronously: %s. "
+            "Async shared props cannot cross redirects; return a direct Inertia response or share serializable values.",
+            ", ".join(result.dropped_keys),
+        )
+        return
+    logger.warning(
+        "Inertia redirect discarded pending transient state because this request has no writable Litestar session. "
+        "Add CookieBackendConfig(...).middleware for server-store-free redirect persistence, or return a direct "
+        "Inertia response."
+    )
 
 
 def has_redirect_state_transport(connection: "ASGIConnection[Any, Any, Any, Any]") -> bool:
@@ -177,7 +195,10 @@ def persist_transient_state_for_redirect(connection: "ASGIConnection[Any, Any, A
 
     session = _session(connection)
     if session is None:
-        return RedirectStatePersistence(had_pending=True, persisted=False)
+        consume_transient_state(connection)
+        result = RedirectStatePersistence(had_pending=True, persisted=False)
+        _warn_redirect_state_loss(result)
+        return result
 
     from litestar_vite.inertia.helpers import (
         _UNMATERIALIZABLE_SHARED,  # pyright: ignore[reportPrivateUsage]
@@ -217,4 +238,6 @@ def persist_transient_state_for_redirect(connection: "ASGIConnection[Any, Any, A
 
     consume_transient_state(connection)
     dropped = tuple(dropped_keys)
-    return RedirectStatePersistence(had_pending=True, persisted=not dropped, dropped_keys=dropped)
+    result = RedirectStatePersistence(had_pending=True, persisted=not dropped, dropped_keys=dropped)
+    _warn_redirect_state_loss(result)
+    return result
