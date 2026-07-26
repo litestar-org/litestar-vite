@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from time import sleep
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from litestar import Request, delete, get, post
@@ -12,6 +12,7 @@ from litestar.middleware.session.client_side import CookieBackendConfig
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.params import FromPath, FromQuery
 from litestar.plugins.jinja import JinjaTemplateEngine
+from litestar.response import Response
 from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED, HTTP_202_ACCEPTED, HTTP_204_NO_CONTENT
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
@@ -42,6 +43,7 @@ from litestar_vite.inertia.helpers import (
     share,
     should_render,
 )
+from litestar_vite.inertia.plugin import _resolve_inertia_response_data
 from litestar_vite.inertia.response import (
     InertiaBack,
     InertiaExternalRedirect,
@@ -261,6 +263,18 @@ async def test_sessionless_redirect_without_pending_state_is_quiet(
 
     assert response.status_code == 307
     warning.assert_not_called()
+
+
+async def test_plain_response_does_not_attempt_redirect_persistence() -> None:
+    """Plain responses should not probe redirect transport for request-local state."""
+    request = MagicMock(spec=Request)
+    response = Response({"ok": True})
+
+    with patch("litestar_vite.inertia.state.persist_transient_state_for_redirect") as persist:
+        result = await _resolve_inertia_response_data(response, request)
+
+    assert result is response
+    persist.assert_not_called()
 
 
 async def test_component_enabled(
@@ -547,7 +561,7 @@ async def test_unauthenticated_redirect_with_query_param_fallback(
 ) -> None:
     """Test that sessionless unauthorized redirects retain the query fallback.
 
-    Local flash staging cannot cross a redirect without a request transport.
+    The fallback is selected before local flash state is staged.
     """
 
     @get("/protected", component="Protected")
@@ -575,8 +589,7 @@ async def test_unauthenticated_redirect_with_query_param_fallback(
     assert "/login" in location
     assert "error=" in location
     assert "Authentication%20required" in location or "Authentication+required" in location
-    warning.assert_called_once()
-    assert "no writable Litestar session" in warning.call_args.args[0]
+    warning.assert_not_called()
 
 
 async def test_unauthenticated_redirect_no_query_param_when_flash_succeeds(

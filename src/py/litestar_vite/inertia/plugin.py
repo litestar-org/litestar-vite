@@ -218,13 +218,11 @@ def _as_inertia_prop_mapping(data: "Any") -> "Mapping[str, Any] | None":
 async def _resolve_inertia_response_data(data: "Any", request: "Request[Any, Any, Any]") -> "Any":
     from litestar_vite.inertia.helpers import is_pagination_container
     from litestar_vite.inertia.response import InertiaResponse
-    from litestar_vite.inertia.state import persist_transient_state_for_redirect
 
     if isinstance(data, InertiaResponse):
         await data.resolve_async_props(request)
         return cast("InertiaResponse[Any]", data)
     if isinstance(data, Response):
-        persist_transient_state_for_redirect(request)
         return cast("Response[Any]", data)
 
     content: "Any"

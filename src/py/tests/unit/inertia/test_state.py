@@ -55,8 +55,8 @@ def test_persist_transient_state_without_transport_consumes_and_warns_once(caplo
     assert peek_transient_state(connection) is None
     assert len(caplog.records) == 1
     assert "no writable Litestar session" in caplog.text
-    assert "CookieBackendConfig" in caplog.text
-    assert "direct Inertia response" in caplog.text
+    assert "session middleware covers this route" in caplog.text
+    assert "CookieBackendConfig" not in caplog.text
 
 
 def test_persist_transient_state_writes_session_handoff_keys_without_warning(caplog: pytest.LogCaptureFixture) -> None:

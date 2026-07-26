@@ -162,9 +162,8 @@ def _warn_redirect_state_loss(result: RedirectStatePersistence) -> None:
         )
         return
     logger.warning(
-        "Inertia redirect discarded pending transient state because this request has no writable Litestar session. "
-        "Add CookieBackendConfig(...).middleware for server-store-free redirect persistence, or return a direct "
-        "Inertia response."
+        "Inertia redirect could not persist staged state because this request has no writable Litestar session. "
+        "Ensure the configured Litestar session middleware covers this route."
     )
 
 
