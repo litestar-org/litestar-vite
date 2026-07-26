@@ -100,6 +100,28 @@ def test_inertia_envelope_returned_when_auto_registered(
         assert data["props"]["thing"] == "value"
 
 
+def test_inertia_envelope_returned_without_session_middleware(
+    inertia_vite_config: ViteConfig, template_config_inertia: TemplateConfig[Any]
+) -> None:
+    """Core Inertia wiring should not require cross-request persistence."""
+
+    @get("/", component="Home")
+    async def handler() -> dict[str, str]:
+        return {"thing": "value"}
+
+    with create_test_client(
+        plugins=[VitePlugin(config=inertia_vite_config)],
+        route_handlers=[handler],
+        template_config=template_config_inertia,
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+
+    data = response.json()
+    assert data["component"] == "Home"
+    assert data["props"]["thing"] == "value"
+    assert data["flash"] == {}
+
+
 def test_inertia_envelope_uses_custom_component_opt_keys(
     test_app_path: Path, template_config_inertia: TemplateConfig[Any]
 ) -> None:
@@ -267,6 +289,22 @@ def test_inertia_plugin_on_app_init_is_idempotent(inertia_vite_config: ViteConfi
 
     config = AppConfig(middleware=[ServerSideSessionConfig().middleware], stores={"sessions": MemoryStore()})
     config = plugin.on_app_init(config)
+    middleware_count_after_first = len(config.middleware)
+    lifespan_count_after_first = len(config.lifespan)
+    on_startup_count_after_first = len(config.on_startup)
+
+    config = plugin.on_app_init(config)
+
+    assert len(config.middleware) == middleware_count_after_first
+    assert len(config.lifespan) == lifespan_count_after_first
+    assert len(config.on_startup) == on_startup_count_after_first
+
+
+def test_inertia_plugin_on_app_init_is_session_optional_and_idempotent(inertia_vite_config: ViteConfig) -> None:
+    """Direct plugin setup should succeed without any session middleware."""
+    plugin = InertiaPlugin(config=inertia_vite_config.inertia)  # type: ignore[arg-type]
+
+    config = plugin.on_app_init(AppConfig())
     middleware_count_after_first = len(config.middleware)
     lifespan_count_after_first = len(config.lifespan)
     on_startup_count_after_first = len(config.on_startup)
