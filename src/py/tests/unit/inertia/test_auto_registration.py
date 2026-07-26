@@ -22,11 +22,8 @@ from typing import Any
 import pytest
 from litestar import Request, get
 from litestar.config.app import AppConfig
-from litestar.exceptions import ImproperlyConfiguredException
-from litestar.middleware.session.client_side import CookieBackendConfig
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.plugins import InitPlugin
-from litestar.security.session_auth import SessionAuth
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
@@ -107,7 +104,9 @@ def test_inertia_envelope_returned_when_auto_registered(
 def test_inertia_envelope_returned_without_session_middleware(
     inertia_vite_config: ViteConfig, template_config_inertia: TemplateConfig[Any]
 ) -> None:
-    """Core Inertia wiring should not require cross-request persistence."""
+    """Core Inertia wiring should omit unavailable configured session props."""
+    assert isinstance(inertia_vite_config.inertia, InertiaConfig)
+    inertia_vite_config.inertia.extra_session_page_props = {"locale"}
 
     @get("/", component="Home")
     async def handler() -> dict[str, str]:
@@ -123,6 +122,7 @@ def test_inertia_envelope_returned_without_session_middleware(
     data = response.json()
     assert data["component"] == "Home"
     assert data["props"]["thing"] == "value"
+    assert "locale" not in data["props"]
     assert data["flash"] == {}
 
 
@@ -321,43 +321,12 @@ def test_inertia_plugin_on_app_init_is_session_optional_and_idempotent(inertia_v
 
 
 @pytest.mark.parametrize("preconfigured_response", [False, True], ids=["default-response", "inertia-response"])
-def test_extra_session_page_props_requires_session_integration(preconfigured_response: bool) -> None:
-    """Explicit session props should fail with an option-specific startup error."""
+def test_extra_session_page_props_allow_sessionless_startup(preconfigured_response: bool) -> None:
+    """Configured session props should not make a sessionless app fail startup."""
     plugin = InertiaPlugin(config=InertiaConfig(extra_session_page_props={"locale"}))
     app_config = AppConfig(response_class=InertiaResponse) if preconfigured_response else AppConfig()
 
-    with pytest.raises(ImproperlyConfiguredException) as exc_info:
-        plugin.on_app_init(app_config)
-
-    assert exc_info.value.detail == (
-        "InertiaConfig.extra_session_page_props requires Litestar session middleware. "
-        "Add CookieBackendConfig(...).middleware or ServerSideSessionConfig(...).middleware, "
-        "or clear extra_session_page_props."
-    )
-
-
-async def _retrieve_test_user(_: Any, __: Any) -> None:
-    return None
-
-
-@pytest.mark.parametrize(
-    "middleware",
-    [
-        pytest.param(ServerSideSessionConfig().middleware, id="server-side"),
-        pytest.param(CookieBackendConfig(secret=b"x" * 32).middleware, id="encrypted-cookie"),
-        pytest.param(
-            SessionAuth(
-                session_backend_config=CookieBackendConfig(secret=b"x" * 32), retrieve_user_handler=_retrieve_test_user
-            ).middleware,
-            id="session-auth",
-        ),
-    ],
-)
-def test_extra_session_page_props_accepts_supported_session_integrations(middleware: Any) -> None:
-    """All first-party Litestar session integration shapes should satisfy validation."""
-    plugin = InertiaPlugin(config=InertiaConfig(extra_session_page_props={"locale"}))
-
-    config = plugin.on_app_init(AppConfig(middleware=[middleware]))
+    config = plugin.on_app_init(app_config)
 
     assert config.response_class is InertiaResponse
 

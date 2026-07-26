@@ -1,4 +1,5 @@
 import inspect
+import warnings
 from collections import defaultdict
 from collections.abc import Callable, Coroutine, Iterable, Iterator, Mapping
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from litestar_vite.inertia.state import (
     consume_flash,
     consume_shared,
     peek_transient_state,
+    persist_transient_state_for_redirect,
     stage_clear_history,
     stage_error,
     stage_flash,
@@ -1456,6 +1458,25 @@ def _materialize_shared_value(value: "Any") -> "Any":  # pyright: ignore[reportU
         except RuntimeError:
             return _UNMATERIALIZABLE_SHARED
     return value
+
+
+def materialize_shared_props_to_session(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
+    """Persist staged Inertia state through the compatibility session handoff.
+
+    Deprecated:
+        This compatibility shim will be removed in v0.30.0. Redirect responses
+        persist transient state automatically.
+
+    Args:
+        connection: The current ASGI connection.
+    """
+    warnings.warn(
+        "materialize_shared_props_to_session() is deprecated and will be removed in v0.30.0; "
+        "redirect responses persist transient Inertia state automatically.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    persist_transient_state_for_redirect(connection)
 
 
 def share(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", value: "Any") -> "bool":

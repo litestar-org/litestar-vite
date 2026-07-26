@@ -125,9 +125,10 @@ class InertiaConfig:
     extra_session_page_props: "set[str] | dict[str, type]" = field(default_factory=empty_set_factory)
     """Session props to include in page responses.
 
-    This option requires a Litestar session middleware integration. Use
-    ``CookieBackendConfig`` for encrypted, server-store-free redirect persistence,
-    or ``ServerSideSessionConfig`` with a Litestar store.
+    Keys are copied when the current request exposes a Litestar session. They are
+    omitted from sessionless responses. Use ``CookieBackendConfig`` for encrypted,
+    server-store-free persistence, or ``ServerSideSessionConfig`` with a Litestar
+    store.
 
     Can be either:
     - A set of session key names (types will be 'unknown')

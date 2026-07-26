@@ -3,6 +3,7 @@
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
 from litestar import Request, get
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
@@ -14,6 +15,24 @@ from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
 from litestar_vite.inertia.helpers import clear_history, lazy, scroll_props, should_render
 from litestar_vite.inertia.response import InertiaResponse
 from litestar_vite.plugin import VitePlugin
+
+
+def test_materialize_shared_props_to_session_is_deprecated_compatibility_shim(recwarn: pytest.WarningsRecorder) -> None:
+    """The former materializer should persist staged state for one deprecation cycle."""
+    from litestar_vite.inertia.helpers import materialize_shared_props_to_session, share
+    from litestar_vite.inertia.state import peek_transient_state
+
+    request = MagicMock()
+    request.scope = {"session": {}}
+    share(request, "auth", {"user": "Ada"})
+
+    materialize_shared_props_to_session(request)
+
+    assert request.scope["session"]["_shared"] == {"auth": {"user": "Ada"}}
+    assert peek_transient_state(request) is None
+    warning = recwarn.pop(DeprecationWarning)
+    assert "will be removed in v0.30.0" in str(warning.message)
+
 
 # =====================================================
 # scroll_props() Helper Tests
