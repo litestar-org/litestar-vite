@@ -74,11 +74,11 @@ async def test_transient_helpers_render_direct_response_without_route_session(
 
     @get("/current", component="Current")
     async def current_handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        clear_history(request)
         return {
             "share_result": share(request, "auth", {"user": "Ada"}),
             "flash_result": flash(request, "Saved", "success"),
             "error_result": error(request, "email", "Invalid email"),
-            "clear_result": clear_history(request),
         }
 
     @get("/next", component="Next")
