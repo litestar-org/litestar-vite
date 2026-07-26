@@ -7,9 +7,14 @@ from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 import msgspec
+from litestar.exceptions import ImproperlyConfiguredException
 from litestar.handlers.http_handlers.base import HTTPRouteHandler
+from litestar.middleware import DefineMiddleware
+from litestar.middleware.session import SessionMiddleware
 from litestar.plugins import InitPlugin
 from litestar.response import Response
+from litestar.security.session_auth.middleware import MiddlewareWrapper
+from litestar.utils.predicates import is_class_and_subclass
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -18,6 +23,21 @@ if TYPE_CHECKING:
     from litestar.config.app import AppConfig
 
     from litestar_vite.config import InertiaConfig
+
+
+_EXTRA_SESSION_PAGE_PROPS_SESSION_MSG = (
+    "InertiaConfig.extra_session_page_props requires Litestar session middleware. "
+    "Add CookieBackendConfig(...).middleware or ServerSideSessionConfig(...).middleware, "
+    "or clear extra_session_page_props."
+)
+
+
+def _has_session_integration(app_config: "AppConfig") -> bool:
+    return any(
+        isinstance(middleware, DefineMiddleware)
+        and is_class_and_subclass(middleware.middleware, (MiddlewareWrapper, SessionMiddleware))
+        for middleware in app_config.middleware
+    )
 
 
 class InertiaPlugin(InitPlugin):
@@ -120,6 +140,9 @@ class InertiaPlugin(InitPlugin):
         from litestar_vite.inertia.precognition import create_precognition_exception_handler
         from litestar_vite.inertia.request import InertiaRequest
         from litestar_vite.inertia.response import InertiaBack, InertiaResponse
+
+        if self.config.extra_session_page_props and not _has_session_integration(app_config):
+            raise ImproperlyConfiguredException(_EXTRA_SESSION_PAGE_PROPS_SESSION_MSG)
 
         if app_config.response_class is InertiaResponse:  # pyright: ignore[reportUnknownMemberType]
             return app_config
