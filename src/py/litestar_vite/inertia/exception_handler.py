@@ -31,6 +31,7 @@ from litestar.status_codes import (
 from litestar_vite.inertia.helpers import error, flash
 from litestar_vite.inertia.request import InertiaRequest
 from litestar_vite.inertia.response import InertiaBack, InertiaRedirect, InertiaResponse
+from litestar_vite.inertia.state import has_redirect_state_transport
 
 if TYPE_CHECKING:
     from litestar.connection.base import AuthT, StateT, UserT
@@ -135,20 +136,14 @@ def _append_error_query(redirect_to: str, detail: Any) -> str:
 
 
 def _create_unauthorized_response(
-    request: "Request[Any, Any, Any]",
-    *,
-    detail: Any,
-    flash_succeeded: bool,
-    inertia_plugin: "InertiaPlugin",
-    status_code: int,
-    exc: Exception,
+    request: "Request[Any, Any, Any]", *, detail: Any, inertia_plugin: "InertiaPlugin", status_code: int, exc: Exception
 ) -> "Response[Any] | None":
     is_unauthorized = status_code == HTTP_401_UNAUTHORIZED or isinstance(exc, NotAuthorizedException)
     redirect_to_login = inertia_plugin.config.redirect_unauthorized_to
     if not is_unauthorized or redirect_to_login is None:
         return None
     if request.url.path != redirect_to_login:
-        if not flash_succeeded and detail:
+        if not has_redirect_state_transport(request) and detail:
             redirect_to_login = _append_error_query(redirect_to_login, detail)
         return InertiaRedirect(request, redirect_to=redirect_to_login)
     return InertiaBack(request)
@@ -187,9 +182,8 @@ def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", 
     if extras:
         content.update({"extra": extras})
 
-    flash_succeeded = False
     if detail:
-        flash_succeeded = flash(request, detail, category="error")
+        flash(request, detail, category="error")
 
     _store_field_errors(request, extras, detail)
 
@@ -208,12 +202,7 @@ def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", 
         )
 
     unauthorized_response = _create_unauthorized_response(
-        request,
-        detail=detail,
-        flash_succeeded=flash_succeeded,
-        inertia_plugin=inertia_plugin,
-        status_code=status_code,
-        exc=exc,
+        request, detail=detail, inertia_plugin=inertia_plugin, status_code=status_code, exc=exc
     )
     if unauthorized_response is not None:
         return unauthorized_response
