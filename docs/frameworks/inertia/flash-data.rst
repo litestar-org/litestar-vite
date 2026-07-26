@@ -34,6 +34,10 @@ Use the ``flash()`` helper to queue messages for the next Inertia response:
 Flash categories are grouped under their category name (``success``, ``error``,
 ``warning``, ``info``). Each category contains a list of messages.
 
+.. note::
+   Litestar's ``FlashPlugin`` is optional. If it is already configured, its
+   session-backed messages work with Inertia too.
+
 Frontend Usage
 --------------
 

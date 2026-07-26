@@ -20,6 +20,11 @@ Litestar Vite Changelog
   callables run only when the current response renders them or when a redirect needs to persist
   them. The ``True``/``False`` return contract is unchanged, and async special props still return
   ``False`` because they cannot be persisted synchronously across redirects.
+- Changed Inertia transient state to stay request-local when the current response can consume it
+  and to use the configured session automatically when state must survive a redirect. Existing
+  session-backed application setup remains compatible.
+- Deprecated ``materialize_shared_props_to_session()`` for removal in v0.30.0; Inertia redirect
+  responses now perform the compatible session handoff automatically.
 - Replaced HTMX JSON-template expression evaluation with a CSP-safe allowlist interpreter. Assignment,
   ``new``, functions/arrows, computed indexing, array literals, and globals other than ``JSON`` and
   ``Math`` are no longer supported. Reserved data-field names include ``constructor``, ``__proto__``,

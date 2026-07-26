@@ -79,7 +79,12 @@ Minimal Configuration
    from typing import Any
 
    from litestar import Litestar, get
+   from litestar.middleware.session.client_side import CookieBackendConfig
    from litestar_vite import ViteConfig, VitePlugin
+
+   session_backend = CookieBackendConfig(
+       secret=b"development-only-secret-32-chars",
+   )
 
    @get("/", component="Home")
    async def home() -> dict[str, Any]:
@@ -93,9 +98,11 @@ Minimal Configuration
                inertia=True,  # Enables Inertia with defaults
            )),
        ],
+       middleware=[session_backend.middleware],
    )
 
 The ``inertia=True`` shortcut enables Inertia with sensible defaults.
+Load the session secret from application configuration in production.
 For custom configuration, see :doc:`configuration`.
 
 See Also
