@@ -45,13 +45,15 @@ def test_get_shared_props_includes_csrf_token_from_scope() -> None:
 
 def test_get_shared_props_includes_scope_props_when_session_is_unavailable() -> None:
     """Request-scope shared props should survive requests excluded from session middleware."""
-    from litestar_vite.inertia.helpers import _RAW_SHARED_SCOPE_KEY, get_shared_props
+    from litestar_vite.inertia.helpers import get_shared_props, share
+    from litestar_vite.inertia.state import peek_transient_state
 
     request = MagicMock()
     request.headers.get.return_value = None
     request.session.pop.side_effect = ImproperlyConfiguredException("No session")
-    request.scope = {_RAW_SHARED_SCOPE_KEY: {"auth": {"user": "Ada"}}}
+    request.scope = {}
     request.logger = MagicMock()
+    share(request, "auth", {"user": "Ada"})
 
     inertia_plugin = MagicMock()
     inertia_plugin.config.extra_static_page_props = {}
@@ -61,7 +63,7 @@ def test_get_shared_props_includes_scope_props_when_session_is_unavailable() -> 
     shared_props = get_shared_props(request)
 
     assert shared_props["auth"] == {"user": "Ada"}
-    assert _RAW_SHARED_SCOPE_KEY not in request.scope
+    assert peek_transient_state(request) is None
 
 
 async def test_transient_helpers_render_direct_response_without_route_session(

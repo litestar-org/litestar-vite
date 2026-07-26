@@ -1,5 +1,4 @@
 import logging
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
@@ -53,19 +52,11 @@ def _scope(connection: "ASGIConnection[Any, Any, Any, Any]") -> "dict[str, Any]"
     return cast("dict[str, Any]", scope)
 
 
-def _coerce_transient_state(value: Any) -> "InertiaTransientState | None":
-    if isinstance(value, InertiaTransientState):
-        return value
-    if isinstance(value, Mapping):
-        return InertiaTransientState(shared=dict(cast("Mapping[str, Any]", value)))
-    return None
-
-
 def get_transient_state(connection: "ASGIConnection[Any, Any, Any, Any]") -> InertiaTransientState:
     """Return the connection's transient state, creating it when absent."""
     scope = _scope(connection)
-    state = _coerce_transient_state(scope.get(_TRANSIENT_STATE_SCOPE_KEY))
-    if state is None:
+    state = scope.get(_TRANSIENT_STATE_SCOPE_KEY)
+    if not isinstance(state, InertiaTransientState):
         state = InertiaTransientState()
     scope[_TRANSIENT_STATE_SCOPE_KEY] = state
     return state
@@ -73,18 +64,14 @@ def get_transient_state(connection: "ASGIConnection[Any, Any, Any, Any]") -> Ine
 
 def peek_transient_state(connection: "ASGIConnection[Any, Any, Any, Any]") -> "InertiaTransientState | None":
     """Return transient state without creating or consuming it."""
-    scope = _scope(connection)
-    value = scope.get(_TRANSIENT_STATE_SCOPE_KEY)
-    state = _coerce_transient_state(value)
-    if state is not None and state is not value:
-        scope[_TRANSIENT_STATE_SCOPE_KEY] = state
-    return state
+    state = _scope(connection).get(_TRANSIENT_STATE_SCOPE_KEY)
+    return state if isinstance(state, InertiaTransientState) else None
 
 
 def consume_transient_state(connection: "ASGIConnection[Any, Any, Any, Any]") -> InertiaTransientState:
     """Remove and return all transient state from the connection."""
-    value = _scope(connection).pop(_TRANSIENT_STATE_SCOPE_KEY, None)
-    return _coerce_transient_state(value) or InertiaTransientState()
+    state = _scope(connection).pop(_TRANSIENT_STATE_SCOPE_KEY, None)
+    return state if isinstance(state, InertiaTransientState) else InertiaTransientState()
 
 
 def _discard_empty_state(connection: "ASGIConnection[Any, Any, Any, Any]", state: InertiaTransientState) -> None:

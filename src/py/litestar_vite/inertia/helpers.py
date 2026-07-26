@@ -9,12 +9,10 @@ from litestar.utils.empty import value_or_default
 from litestar.utils.scope.state import ScopeState
 
 from litestar_vite.inertia.state import (
-    _TRANSIENT_STATE_SCOPE_KEY,  # pyright: ignore[reportPrivateUsage]
     consume_errors,
     consume_flash,
     consume_shared,
     peek_transient_state,
-    persist_transient_state_for_redirect,
     stage_clear_history,
     stage_error,
     stage_flash,
@@ -1322,18 +1320,6 @@ async def resolve_async_props(
     await _resolve_one(value, partial_data, partial_except, except_once_props, _key)
 
 
-_RAW_SHARED_SCOPE_KEY = _TRANSIENT_STATE_SCOPE_KEY
-
-
-def _get_scope_shared_props(request: "ASGIConnection[Any, Any, Any, Any]") -> "Mapping[str, Any]":
-    state = peek_transient_state(request)
-    return state.shared if state is not None else {}
-
-
-def _set_scope_shared_prop(connection: "ASGIConnection[Any, Any, Any, Any]", key: str, value: "Any") -> None:
-    stage_shared(connection, key, value)
-
-
 def get_raw_shared_props(request: "ASGIConnection[Any, Any, Any, Any]") -> "Mapping[str, Any]":
     """Return the unrendered shared props stored on the request session.
 
@@ -1348,7 +1334,8 @@ def get_raw_shared_props(request: "ASGIConnection[Any, Any, Any, Any]") -> "Mapp
     session_shared: Mapping[str, Any] = (
         cast("Mapping[str, Any]", shared_props) if isinstance(shared_props, Mapping) else {}
     )
-    return {**session_shared, **_get_scope_shared_props(request)}
+    state = peek_transient_state(request)
+    return {**session_shared, **(state.shared if state is not None else {})}
 
 
 def _consume_session_handoff_state(
@@ -1471,20 +1458,6 @@ def _materialize_shared_value(value: "Any") -> "Any":  # pyright: ignore[reportU
     return value
 
 
-def materialize_shared_props_to_session(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
-    """Persist transient state through the request's session when available.
-
-    In-frame redirect construction and wrapped non-Inertia responses call this while handler
-    dependencies are alive. Exception-produced redirects use the same path after dependency
-    cleanup, where synchronous special props render on a best-effort basis. Async special props
-    are always skipped because they cannot be materialized synchronously.
-
-    Args:
-        connection: The current ASGI connection.
-    """
-    persist_transient_state_for_redirect(connection)
-
-
 def share(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", value: "Any") -> "bool":
     """Stage a shared value for the current Inertia response.
 
@@ -1504,7 +1477,7 @@ def share(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", value: "
     Returns:
         True when the value was staged for the current request.
     """
-    _set_scope_shared_prop(connection, key, value)
+    stage_shared(connection, key, value)
     return True
 
 
