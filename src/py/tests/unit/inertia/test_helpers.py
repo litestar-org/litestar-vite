@@ -1,8 +1,9 @@
 """Tests for Inertia helper functions (scroll_props, clear_history, should_render)."""
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
 from litestar import Request, get
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
@@ -14,6 +15,24 @@ from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
 from litestar_vite.inertia.helpers import clear_history, lazy, scroll_props, should_render
 from litestar_vite.inertia.response import InertiaResponse
 from litestar_vite.plugin import VitePlugin
+
+
+def test_materialize_shared_props_to_session_is_deprecated_compatibility_shim(recwarn: pytest.WarningsRecorder) -> None:
+    """The former materializer should persist staged state for one deprecation cycle."""
+    from litestar_vite.inertia.helpers import materialize_shared_props_to_session, share
+    from litestar_vite.inertia.state import peek_transient_state
+
+    request = MagicMock()
+    request.scope = {"session": {}}
+    share(request, "auth", {"user": "Ada"})
+
+    materialize_shared_props_to_session(request)
+
+    assert request.scope["session"]["_shared"] == {"auth": {"user": "Ada"}}
+    assert peek_transient_state(request) is None
+    warning = recwarn.pop(DeprecationWarning)
+    assert "will be removed in v0.30.0" in str(warning.message)
+
 
 # =====================================================
 # scroll_props() Helper Tests
@@ -45,13 +64,15 @@ def test_get_shared_props_includes_csrf_token_from_scope() -> None:
 
 def test_get_shared_props_includes_scope_props_when_session_is_unavailable() -> None:
     """Request-scope shared props should survive requests excluded from session middleware."""
-    from litestar_vite.inertia.helpers import _RAW_SHARED_SCOPE_KEY, get_shared_props
+    from litestar_vite.inertia.helpers import get_shared_props, share
+    from litestar_vite.inertia.state import peek_transient_state
 
     request = MagicMock()
     request.headers.get.return_value = None
     request.session.pop.side_effect = ImproperlyConfiguredException("No session")
-    request.scope = {_RAW_SHARED_SCOPE_KEY: {"auth": {"user": "Ada"}}}
+    request.scope = {}
     request.logger = MagicMock()
+    share(request, "auth", {"user": "Ada"})
 
     inertia_plugin = MagicMock()
     inertia_plugin.config.extra_static_page_props = {}
@@ -61,7 +82,111 @@ def test_get_shared_props_includes_scope_props_when_session_is_unavailable() -> 
     shared_props = get_shared_props(request)
 
     assert shared_props["auth"] == {"user": "Ada"}
-    assert _RAW_SHARED_SCOPE_KEY not in request.scope
+    assert peek_transient_state(request) is None
+
+
+async def test_transient_helpers_render_direct_response_without_route_session(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Current-request state should not require a session-enabled route."""
+    from litestar_vite.inertia.helpers import error, flash, share
+
+    @get("/current", component="Current")
+    async def current_handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        clear_history(request)
+        return {
+            "share_result": share(request, "auth", {"user": "Ada"}),
+            "flash_result": flash(request, "Saved", "success"),
+            "error_result": error(request, "email", "Invalid email"),
+        }
+
+    @get("/next", component="Next")
+    async def next_handler() -> dict[str, str]:
+        return {"page": "next"}
+
+    with (
+        patch("litestar_vite.inertia.state.logger.warning") as warning,
+        create_test_client(
+            route_handlers=[current_handler, next_handler],
+            template_config=template_config,
+            plugins=[inertia_plugin, vite_plugin],
+            middleware=[ServerSideSessionConfig(exclude=["/current", "/next"]).middleware],
+            stores={"sessions": MemoryStore()},
+        ) as client,
+    ):
+        current_response = client.get("/current", headers={InertiaHeaders.ENABLED.value: "true"})
+        next_response = client.get("/next", headers={InertiaHeaders.ENABLED.value: "true"})
+
+    current_page = current_response.json()
+    assert current_page["props"]["auth"] == {"user": "Ada"}
+    assert current_page["props"]["errors"] == {"email": "Invalid email"}
+    assert current_page["flash"] == {"success": ["Saved"]}
+    assert current_page["clearHistory"] is True
+    assert current_page["props"]["share_result"] is True
+    assert current_page["props"]["flash_result"] is True
+    assert current_page["props"]["error_result"] is True
+
+    next_page = next_response.json()
+    assert "auth" not in next_page["props"]
+    assert next_page["props"]["errors"] == {}
+    assert next_page["flash"] == {}
+    assert "clearHistory" not in next_page
+    warning.assert_not_called()
+
+
+async def test_transient_state_overrides_session_handoff_without_eager_persistence(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Local state wins while incoming session-handoff flash keeps stable ordering."""
+    from litestar_vite.inertia.helpers import error, flash, share
+
+    captured_session: dict[str, Any] = {}
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, bool]:
+        request.session.update({
+            "_shared": {"auth": {"user": "Grace"}},
+            "_errors": {"email": "Legacy error"},
+            "_messages": [{"category": "success", "message": "Legacy"}],
+        })
+        results = {
+            "share_result": share(request, "auth", {"user": "Ada"}),
+            "flash_result": flash(request, "Saved", "success"),
+            "error_result": error(request, "email", "Invalid email"),
+        }
+        clear_history(request)
+        captured_session.update({
+            "_shared": dict(request.session["_shared"]),
+            "_errors": dict(request.session["_errors"]),
+            "_messages": list(request.session["_messages"]),
+            "clear_history": request.session.get("_inertia_clear_history"),
+        })
+        return results
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+
+    page = response.json()
+    assert page["props"]["auth"] == {"user": "Ada"}
+    assert page["props"]["errors"] == {"email": "Invalid email"}
+    assert page["flash"] == {"success": ["Legacy", "Saved"]}
+    assert page["clearHistory"] is True
+    assert captured_session == {
+        "_shared": {"auth": {"user": "Grace"}},
+        "_errors": {"email": "Legacy error"},
+        "_messages": [{"category": "success", "message": "Legacy"}],
+        "clear_history": None,
+    }
 
 
 def test_scroll_props_helper_creates_config() -> None:
@@ -544,8 +669,8 @@ async def test_flash_returns_true_with_session(
         assert data["flash"] == {"success": ["Test message"]}
 
 
-def test_flash_returns_false_when_session_access_fails() -> None:
-    """Test flash() returns False when session access fails (GitHub #164).
+def test_flash_stages_locally_when_session_access_fails() -> None:
+    """Test flash() succeeds locally when session access fails.
 
     This simulates the scenario where session middleware is configured but
     the session itself is not accessible (e.g., for unauthenticated users
@@ -559,34 +684,34 @@ def test_flash_returns_false_when_session_access_fails() -> None:
 
     # Create a mock connection where session access raises an exception
     mock_connection = MagicMock()
+    mock_connection.scope = {}
     mock_connection.session.setdefault.side_effect = ImproperlyConfiguredException("No session")
     mock_connection.logger = MagicMock()
 
     result = flash(mock_connection, "Test message", "error")
 
-    # flash should have failed and returned False
-    assert result is False
-    # Should log at debug level (not warning)
-    mock_connection.logger.debug.assert_called_once()
+    assert result is True
+    mock_connection.session.setdefault.assert_not_called()
+    mock_connection.logger.debug.assert_not_called()
 
 
-def test_flash_returns_false_when_session_setdefault_raises_attribute_error() -> None:
-    """Test flash() returns False when session.setdefault raises AttributeError."""
+def test_flash_stages_locally_without_accessing_session_setdefault() -> None:
+    """Test flash() does not touch a broken session mapping."""
     from unittest.mock import MagicMock
 
     from litestar_vite.inertia.helpers import flash
 
     # Create a mock connection where session.setdefault raises AttributeError
     mock_connection = MagicMock()
+    mock_connection.scope = {}
     mock_connection.session.setdefault.side_effect = AttributeError("session attribute error")
     mock_connection.logger = MagicMock()
 
     result = flash(mock_connection, "Test message", "error")
 
-    # flash should have failed and returned False
-    assert result is False
-    # Should log at debug level
-    mock_connection.logger.debug.assert_called_once()
+    assert result is True
+    mock_connection.session.setdefault.assert_not_called()
+    mock_connection.logger.debug.assert_not_called()
 
 
 # =====================================================
@@ -685,12 +810,12 @@ async def test_share_does_not_execute_discarded_deferred_callable(
     assert calls == []
 
 
-async def test_share_skips_async_special_prop(
+async def test_share_stages_async_special_prop_for_current_response(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
     template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
 ) -> None:
-    """Test share() skips async special props that cannot be stored in session."""
+    """Async special props stage locally even though redirects cannot persist them."""
     from litestar_vite.inertia.helpers import defer, share
 
     captured: dict[str, Any] = {}
@@ -714,7 +839,7 @@ async def test_share_skips_async_special_prop(
         response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
         assert response.status_code == 200
 
-    assert captured["result"] is False
+    assert captured["result"] is True
     assert "slow" not in captured["shared"]
 
 
@@ -743,8 +868,8 @@ async def test_share_special_prop_survives_redirect(
         assert response.status_code == 307
 
 
-def test_share_returns_false_when_session_fails() -> None:
-    """Test share() returns False when session access fails."""
+def test_share_stages_locally_when_session_fails() -> None:
+    """Test share() succeeds locally when session access fails."""
     from unittest.mock import MagicMock
 
     from litestar.exceptions import ImproperlyConfiguredException
@@ -752,13 +877,15 @@ def test_share_returns_false_when_session_fails() -> None:
     from litestar_vite.inertia.helpers import share
 
     mock_connection = MagicMock()
+    mock_connection.scope = {}
     mock_connection.session.setdefault.side_effect = ImproperlyConfiguredException("No session")
     mock_connection.logger = MagicMock()
 
     result = share(mock_connection, "key", "value")
 
-    assert result is False
-    mock_connection.logger.debug.assert_called_once()
+    assert result is True
+    mock_connection.session.setdefault.assert_not_called()
+    mock_connection.logger.debug.assert_not_called()
 
 
 # =====================================================
@@ -794,8 +921,8 @@ async def test_error_returns_true_with_session(
         assert data["props"]["errors"]["email"] == "Invalid email format"
 
 
-def test_error_returns_false_when_session_fails() -> None:
-    """Test error() returns False when session access fails."""
+def test_error_stages_locally_when_session_fails() -> None:
+    """Test error() succeeds locally when session access fails."""
     from unittest.mock import MagicMock
 
     from litestar.exceptions import ImproperlyConfiguredException
@@ -803,13 +930,15 @@ def test_error_returns_false_when_session_fails() -> None:
     from litestar_vite.inertia.helpers import error
 
     mock_connection = MagicMock()
+    mock_connection.scope = {}
     mock_connection.session.setdefault.side_effect = ImproperlyConfiguredException("No session")
     mock_connection.logger = MagicMock()
 
     result = error(mock_connection, "field", "Error message")
 
-    assert result is False
-    mock_connection.logger.debug.assert_called_once()
+    assert result is True
+    mock_connection.session.setdefault.assert_not_called()
+    mock_connection.logger.debug.assert_not_called()
 
 
 # =====================================================

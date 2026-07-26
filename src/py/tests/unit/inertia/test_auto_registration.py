@@ -32,6 +32,7 @@ from litestar_vite.config import InertiaConfig, PathConfig, RuntimeConfig, ViteC
 from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
 from litestar_vite.inertia.middleware import InertiaMiddleware
 from litestar_vite.inertia.plugin import _wrap_app_handlers
+from litestar_vite.inertia.response import InertiaResponse
 from litestar_vite.plugin import VitePlugin
 
 
@@ -98,6 +99,31 @@ def test_inertia_envelope_returned_when_auto_registered(
         assert data["url"] == "/"
         assert "version" in data
         assert data["props"]["thing"] == "value"
+
+
+def test_inertia_envelope_returned_without_session_middleware(
+    inertia_vite_config: ViteConfig, template_config_inertia: TemplateConfig[Any]
+) -> None:
+    """Core Inertia wiring should omit unavailable configured session props."""
+    assert isinstance(inertia_vite_config.inertia, InertiaConfig)
+    inertia_vite_config.inertia.extra_session_page_props = {"locale"}
+
+    @get("/", component="Home")
+    async def handler() -> dict[str, str]:
+        return {"thing": "value"}
+
+    with create_test_client(
+        plugins=[VitePlugin(config=inertia_vite_config)],
+        route_handlers=[handler],
+        template_config=template_config_inertia,
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+
+    data = response.json()
+    assert data["component"] == "Home"
+    assert data["props"]["thing"] == "value"
+    assert "locale" not in data["props"]
+    assert data["flash"] == {}
 
 
 def test_inertia_envelope_uses_custom_component_opt_keys(
@@ -276,6 +302,33 @@ def test_inertia_plugin_on_app_init_is_idempotent(inertia_vite_config: ViteConfi
     assert len(config.middleware) == middleware_count_after_first
     assert len(config.lifespan) == lifespan_count_after_first
     assert len(config.on_startup) == on_startup_count_after_first
+
+
+def test_inertia_plugin_on_app_init_is_session_optional_and_idempotent(inertia_vite_config: ViteConfig) -> None:
+    """Direct plugin setup should succeed without any session middleware."""
+    plugin = InertiaPlugin(config=inertia_vite_config.inertia)  # type: ignore[arg-type]
+
+    config = plugin.on_app_init(AppConfig())
+    middleware_count_after_first = len(config.middleware)
+    lifespan_count_after_first = len(config.lifespan)
+    on_startup_count_after_first = len(config.on_startup)
+
+    config = plugin.on_app_init(config)
+
+    assert len(config.middleware) == middleware_count_after_first
+    assert len(config.lifespan) == lifespan_count_after_first
+    assert len(config.on_startup) == on_startup_count_after_first
+
+
+@pytest.mark.parametrize("preconfigured_response", [False, True], ids=["default-response", "inertia-response"])
+def test_extra_session_page_props_allow_sessionless_startup(preconfigured_response: bool) -> None:
+    """Configured session props should not make a sessionless app fail startup."""
+    plugin = InertiaPlugin(config=InertiaConfig(extra_session_page_props={"locale"}))
+    app_config = AppConfig(response_class=InertiaResponse) if preconfigured_response else AppConfig()
+
+    config = plugin.on_app_init(app_config)
+
+    assert config.response_class is InertiaResponse
 
 
 # Quiet pyright about an unused import -- Iterator is reserved for future params.

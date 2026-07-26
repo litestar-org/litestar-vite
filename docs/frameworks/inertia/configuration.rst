@@ -228,7 +228,7 @@ Flash data is now sent as a **top-level** ``page.flash`` property instead of ``p
 
    @post("/submit")
    async def submit_form(request: Request) -> InertiaBack:
-       flash(request, "success", "Form submitted!")
+       flash(request, "Form submitted!", "success")
        return InertiaBack(request)
 
 **Client side** (accessing flash data):

@@ -24,7 +24,7 @@ class InertiaPlugin(InitPlugin):
     """Inertia plugin.
 
     This plugin configures Litestar for Inertia.js support, including:
-    - Session middleware requirement validation
+    - Optional session-backed redirect state
     - Exception handler for Inertia responses
     - InertiaRequest and InertiaResponse as default classes
     - Type encoders for StaticProp and DeferredProp
@@ -52,7 +52,6 @@ class InertiaPlugin(InitPlugin):
 
         app = Litestar(
             plugins=[InertiaPlugin(InertiaConfig())],
-            middleware=[ServerSideSessionConfig().middleware],
         )
     """
 
@@ -107,17 +106,10 @@ class InertiaPlugin(InitPlugin):
         Args:
             app_config: The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
 
-        Raises:
-            ImproperlyConfiguredException: If the Inertia plugin is not properly configured.
-
         Returns:
             The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
         """
-        from litestar.exceptions import HTTPException, ImproperlyConfiguredException, ValidationException
-        from litestar.middleware import DefineMiddleware
-        from litestar.middleware.session import SessionMiddleware
-        from litestar.security.session_auth.middleware import MiddlewareWrapper
-        from litestar.utils.predicates import is_class_and_subclass
+        from litestar.exceptions import HTTPException, ValidationException
 
         from litestar_vite.inertia.exception_handler import (
             _register_exception_handlers,  # pyright: ignore[reportPrivateUsage]
@@ -131,15 +123,6 @@ class InertiaPlugin(InitPlugin):
 
         if app_config.response_class is InertiaResponse:  # pyright: ignore[reportUnknownMemberType]
             return app_config
-
-        for mw in app_config.middleware:
-            if isinstance(mw, DefineMiddleware) and is_class_and_subclass(
-                mw.middleware, (MiddlewareWrapper, SessionMiddleware)
-            ):
-                break
-        else:
-            msg = "The Inertia plugin require a session middleware."
-            raise ImproperlyConfiguredException(msg)
 
         # Register exception handlers
         exception_handlers: "dict[type[Exception] | int, Any]" = {
@@ -233,14 +216,13 @@ def _as_inertia_prop_mapping(data: "Any") -> "Mapping[str, Any] | None":
 
 
 async def _resolve_inertia_response_data(data: "Any", request: "Request[Any, Any, Any]") -> "Any":
-    from litestar_vite.inertia.helpers import is_pagination_container, materialize_shared_props_to_session
+    from litestar_vite.inertia.helpers import is_pagination_container
     from litestar_vite.inertia.response import InertiaResponse
 
     if isinstance(data, InertiaResponse):
         await data.resolve_async_props(request)
         return cast("InertiaResponse[Any]", data)
     if isinstance(data, Response):
-        materialize_shared_props_to_session(request)
         return cast("Response[Any]", data)
 
     content: "Any"

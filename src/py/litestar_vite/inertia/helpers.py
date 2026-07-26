@@ -1,4 +1,5 @@
 import inspect
+import warnings
 from collections import defaultdict
 from collections.abc import Callable, Coroutine, Iterable, Iterator, Mapping
 from dataclasses import dataclass
@@ -8,6 +9,17 @@ from litestar.exceptions import ImproperlyConfiguredException
 from litestar.utils.empty import value_or_default
 from litestar.utils.scope.state import ScopeState
 
+from litestar_vite.inertia.state import (
+    consume_errors,
+    consume_flash,
+    consume_shared,
+    peek_transient_state,
+    persist_transient_state_for_redirect,
+    stage_clear_history,
+    stage_error,
+    stage_flash,
+    stage_shared,
+)
 from litestar_vite.inertia.types import ScrollPropsConfig
 
 if TYPE_CHECKING:
@@ -1310,25 +1322,6 @@ async def resolve_async_props(
     await _resolve_one(value, partial_data, partial_except, except_once_props, _key)
 
 
-_RAW_SHARED_SCOPE_KEY = "_litestar_vite_inertia_shared"
-
-
-def _get_scope_shared_props(request: "ASGIConnection[Any, Any, Any, Any]") -> "Mapping[str, Any]":
-    scope = cast("dict[str, Any]", request.scope)
-    scope_shared = scope.get(_RAW_SHARED_SCOPE_KEY)
-    return cast("Mapping[str, Any]", scope_shared) if isinstance(scope_shared, Mapping) else {}
-
-
-def _set_scope_shared_prop(connection: "ASGIConnection[Any, Any, Any, Any]", key: str, value: "Any") -> None:
-    scope = getattr(connection, "scope", None)
-    if not isinstance(scope, dict):
-        return
-    scope_dict = cast("dict[str, Any]", scope)
-    shared = scope_dict.setdefault(_RAW_SHARED_SCOPE_KEY, {})
-    if isinstance(shared, dict):
-        shared[key] = value
-
-
 def get_raw_shared_props(request: "ASGIConnection[Any, Any, Any, Any]") -> "Mapping[str, Any]":
     """Return the unrendered shared props stored on the request session.
 
@@ -1343,7 +1336,25 @@ def get_raw_shared_props(request: "ASGIConnection[Any, Any, Any, Any]") -> "Mapp
     session_shared: Mapping[str, Any] = (
         cast("Mapping[str, Any]", shared_props) if isinstance(shared_props, Mapping) else {}
     )
-    return {**session_shared, **_get_scope_shared_props(request)}
+    state = peek_transient_state(request)
+    return {**session_shared, **(state.shared if state is not None else {})}
+
+
+def _consume_session_handoff_state(
+    request: "ASGIConnection[Any, Any, Any, Any]",
+) -> "tuple[dict[str, Any] | None, Mapping[str, Any], dict[str, Any], list[dict[str, Any]]]":
+    try:
+        session = request.session
+        raw_shared: Any = session.pop("_shared", {})
+        raw_errors: Any = session.pop("_errors", {})
+        raw_messages: Any = session.pop("_messages", [])
+    except (AttributeError, ImproperlyConfiguredException):
+        return None, {}, {}, []
+
+    shared: Mapping[str, Any] = cast("Mapping[str, Any]", raw_shared) if isinstance(raw_shared, Mapping) else {}
+    errors = dict(cast("Mapping[str, Any]", raw_errors)) if isinstance(raw_errors, Mapping) else {}
+    messages = cast("list[dict[str, Any]]", raw_messages) if isinstance(raw_messages, list) else []
+    return session, shared, errors, messages
 
 
 def get_shared_props(
@@ -1371,30 +1382,15 @@ def get_shared_props(
     """
     props: "dict[str, Any]" = {}
     flash: "dict[str, list[str]]" = defaultdict(list)
-    errors: "dict[str, Any]" = {}
     once_props_entries: "list[_OncePropEntry]" = []
     error_bag = request.headers.get("X-Inertia-Error-Bag", None)
 
-    session_available = True
-    session_shared_props: Mapping[str, Any] = {}
-    scope_shared_props = cast("dict[str, Any]", request.scope).pop(_RAW_SHARED_SCOPE_KEY, {})
-    try:
-        errors = request.session.pop("_errors", {})
-        raw_session_shared_props = request.session.pop("_shared", {})
-    except (AttributeError, ImproperlyConfiguredException):
-        session_available = False
-        msg = "Unable to generate all shared props.  A valid session was not found for this request."
-        request.logger.warning(msg)
-    else:
-        session_shared_props = (
-            cast("Mapping[str, Any]", raw_session_shared_props) if isinstance(raw_session_shared_props, Mapping) else {}
-        )
-
-    shared_props = (
-        {**session_shared_props, **cast("Mapping[str, Any]", scope_shared_props)}
-        if isinstance(scope_shared_props, Mapping)
-        else dict(session_shared_props)
-    )
+    session, session_shared_props, errors, session_messages = _consume_session_handoff_state(request)
+    local_shared_props = consume_shared(request)
+    local_flash = consume_flash(request)
+    local_errors = consume_errors(request)
+    errors.update(local_errors)
+    shared_props = {**session_shared_props, **local_shared_props}
 
     try:
         inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
@@ -1420,26 +1416,26 @@ def get_shared_props(
             else:
                 props[key] = value
 
-        if session_available:
-            for message in cast("list[dict[str,Any]]", request.session.pop("_messages", [])):
-                flash[message["category"]].append(message["message"])
+        for message in session_messages:
+            flash[message["category"]].append(message["message"])
+        for category, messages in local_flash.items():
+            flash[category].extend(messages)
 
         for key, value in inertia_plugin.config.extra_static_page_props.items():
             if should_render(value, partial_data, partial_except, key=key):
                 props[key] = value
 
-        if session_available:
+        if session is not None:
             for session_prop in inertia_plugin.config.extra_session_page_props:
                 if (
                     session_prop not in props
-                    and session_prop in request.session
+                    and session_prop in session
                     and should_render(None, partial_data, partial_except, key=session_prop)
                 ):
-                    props[session_prop] = request.session.get(session_prop)
+                    props[session_prop] = session.get(session_prop)
 
-    except (AttributeError, ImproperlyConfiguredException):
-        msg = "Unable to generate all shared props.  A valid session was not found for this request."
-        request.logger.warning(msg)
+    except (AttributeError, ImproperlyConfiguredException, KeyError):
+        pass
 
     props["flash"] = flash
     props["errors"] = {error_bag: errors} if error_bag is not None else errors
@@ -1452,17 +1448,7 @@ def get_shared_props(
 _UNMATERIALIZABLE_SHARED = object()
 
 
-def _is_async_special_prop(value: "Any") -> bool:
-    """Return whether a top-level special prop wraps an async callback."""
-    if is_optional_prop(value):
-        return inspect.iscoroutinefunction(value._callback)  # pyright: ignore[reportPrivateUsage]
-    if is_deferred_prop(value) or is_once_prop(value):
-        callback = value._value  # pyright: ignore[reportPrivateUsage]
-        return callable(callback) and inspect.iscoroutinefunction(callback)
-    return False
-
-
-def _materialize_shared_value(value: "Any") -> "Any":
+def _materialize_shared_value(value: "Any") -> "Any":  # pyright: ignore[reportUnusedFunction]
     """Convert top-level special props into session-serializable values for share()."""
     if is_merge_prop(value):
         return unwrap_merge_props(value)
@@ -1475,42 +1461,34 @@ def _materialize_shared_value(value: "Any") -> "Any":
 
 
 def materialize_shared_props_to_session(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
-    """Flush scope-stored shared props into the session as serializable values.
+    """Persist staged Inertia state through the compatibility session handoff.
 
-    In-frame redirect construction and wrapped non-Inertia responses call this while handler
-    dependencies are alive. Exception-produced redirects use the same path after dependency
-    cleanup, where synchronous special props render on a best-effort basis. Async special props
-    are always skipped because they cannot be materialized synchronously.
+    Deprecated:
+        This compatibility shim will be removed in v0.30.0. Redirect responses
+        persist transient state automatically.
 
     Args:
         connection: The current ASGI connection.
     """
-    scope_shared = _get_scope_shared_props(connection)
-    if not scope_shared:
-        return
-    try:
-        session_shared = connection.session.setdefault("_shared", {})
-    except (AttributeError, ImproperlyConfiguredException):
-        return
-    for key, value in scope_shared.items():
-        materialized = _materialize_shared_value(value)
-        if materialized is _UNMATERIALIZABLE_SHARED:
-            continue
-        session_shared[key] = materialized
+    warnings.warn(
+        "materialize_shared_props_to_session() is deprecated and will be removed in v0.30.0; "
+        "redirect responses persist transient Inertia state automatically.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    persist_transient_state_for_redirect(connection)
 
 
 def share(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", value: "Any") -> "bool":
-    """Share a value in the session.
+    """Stage a shared value for the current Inertia response.
 
     Shared values are included in the props of every Inertia response for
     the current request. This is useful for data that should be available
     to all components (e.g., authenticated user, permissions, settings).
     Top-level special props remain raw in request scope and are materialized lazily in the
-    handler frame only when the response includes them. A redirect materializes synchronous
-    special props into the session so the next request can consume them; exception-produced
-    redirects perform the same work best-effort after dependency cleanup. Async top-level
-    special props cannot be persisted synchronously, return ``False``, and remain available only
-    to the current response. Nested special props inside a shared dict or list are not supported.
+    handler frame only when the response includes them. Redirect responses persist supported
+    synchronous values when the request exposes a session transport. Async special props remain
+    available to the current response but cannot cross a redirect.
 
     Args:
         connection: The ASGI connection.
@@ -1518,31 +1496,14 @@ def share(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", value: "
         value: The value to store.
 
     Returns:
-        True if the value was successfully shared, False otherwise.
+        True when the value was staged for the current request.
     """
-    if is_special_prop(value) or is_merge_prop(value):
-        _set_scope_shared_prop(connection, key, value)
-        if _is_async_special_prop(value):
-            connection.logger.warning(
-                "Cannot persist shared prop %r across redirects: async special props "
-                "cannot be materialized for session storage.",
-                key,
-            )
-            return False
-        return True
-
-    try:
-        connection.session.setdefault("_shared", {}).update({key: value})
-    except (AttributeError, ImproperlyConfiguredException):
-        msg = "Unable to share value: session not accessible (user may be unauthenticated)."
-        connection.logger.debug(msg)
-        return False
-    _set_scope_shared_prop(connection, key, value)
+    stage_shared(connection, key, value)
     return True
 
 
 def error(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", message: "str") -> "bool":
-    """Set an error message in the session.
+    """Stage an error message for the current Inertia response.
 
     Error messages are included in the ``errors`` prop of Inertia responses,
     typically used for form validation errors. The key usually corresponds
@@ -1554,24 +1515,17 @@ def error(connection: "ASGIConnection[Any, Any, Any, Any]", key: "str", message:
         message: The error message.
 
     Returns:
-        True if the error was successfully stored, False otherwise.
+        True when the error was staged for the current request.
     """
-    try:
-        connection.session.setdefault("_errors", {}).update({key: message})
-    except (AttributeError, ImproperlyConfiguredException):
-        msg = "Unable to set error: session not accessible (user may be unauthenticated)."
-        connection.logger.debug(msg)
-        return False
-    else:
-        return True
+    stage_error(connection, key, message)
+    return True
 
 
 def flash(connection: "ASGIConnection[Any, Any, Any, Any]", message: "str", category: "str" = "info") -> "bool":
-    """Add a flash message to the session.
+    """Stage a flash message for the current Inertia response.
 
-    Flash messages are stored in the session and passed to the frontend
-    via the `flash` prop in every Inertia response. They're automatically
-    cleared after being displayed (pop semantics).
+    Flash messages are consumed into the top-level ``flash`` page field. Redirect responses
+    persist them when the request exposes a session transport.
 
     This function works without requiring Litestar's FlashPlugin or
     any Jinja2 template configuration, making it ideal for SPA-only
@@ -1584,7 +1538,7 @@ def flash(connection: "ASGIConnection[Any, Any, Any, Any]", message: "str", cate
                   Defaults to "info".
 
     Returns:
-        True if the flash message was successfully stored, False otherwise.
+        True when the flash message was staged for the current request.
 
     Example::
 
@@ -1595,34 +1549,22 @@ def flash(connection: "ASGIConnection[Any, Any, Any, Any]", message: "str", cate
             flash(request, "Item created successfully!", "success")
             return InertiaResponse(...)
     """
-    try:
-        messages = connection.session.setdefault("_messages", [])
-        messages.append({"category": category, "message": message})
-    except (AttributeError, ImproperlyConfiguredException):
-        msg = "Unable to flash message: session not accessible (user may be unauthenticated)."
-        connection.logger.debug(msg)
-        return False
-    else:
-        return True
+    stage_flash(connection, message, category)
+    return True
 
 
 def clear_history(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
     """Mark that the next response should clear client history encryption keys.
 
-    This function sets a session flag that will be consumed by the next
-    InertiaResponse, causing it to include `clearHistory: true` in the page
-    object. The Inertia client will then regenerate its encryption key,
-    invalidating all previously encrypted history entries.
+    This function stages a request-local flag consumed by the current
+    InertiaResponse. Redirect responses persist the flag when the request
+    exposes a session transport.
 
     This should typically be called during logout to ensure sensitive data
     cannot be recovered from browser history after a user logs out.
 
     Args:
         connection: The ASGI connection (Request).
-
-    Note:
-        Requires session middleware to be configured.
-        See: https://inertiajs.com/history-encryption
 
     Example::
 
@@ -1634,11 +1576,7 @@ def clear_history(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
             clear_history(request)
             return InertiaRedirect(request, redirect_to="/login")
     """
-    try:
-        connection.session["_inertia_clear_history"] = True
-    except (AttributeError, ImproperlyConfiguredException):
-        msg = "Unable to set clear_history flag. A valid session was not found for this request."
-        connection.logger.warning(msg)
+    stage_clear_history(connection)
 
 
 def is_pagination_container(value: "Any") -> bool:

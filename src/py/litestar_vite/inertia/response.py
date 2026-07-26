@@ -33,7 +33,6 @@ from litestar_vite.inertia.helpers import (
     is_or_contains_special_prop,
     is_pagination_container,
     lazy_render,
-    materialize_shared_props_to_session,
     pagination_to_dict,
     resolve_async_props,
     should_render,
@@ -41,6 +40,7 @@ from litestar_vite.inertia.helpers import (
 )
 from litestar_vite.inertia.plugin import InertiaPlugin
 from litestar_vite.inertia.request import InertiaDetails, InertiaRequest
+from litestar_vite.inertia.state import consume_clear_history, persist_transient_state_for_redirect
 from litestar_vite.inertia.types import InertiaHeaderType, PageProps, ScrollPropsConfig
 from litestar_vite.plugin import VitePlugin
 
@@ -707,7 +707,7 @@ class InertiaExternalRedirect(Response[Any]):
             redirect_to: The URL to redirect to (can be external).
             **kwargs: Additional keyword arguments passed to the Response constructor.
         """
-        materialize_shared_props_to_session(request)
+        persist_transient_state_for_redirect(request)
         super().__init__(
             content=b"",
             status_code=HTTP_409_CONFLICT,
@@ -735,7 +735,7 @@ class InertiaRedirect(Redirect):
             redirect_to: The URL to redirect to. Must be same-origin or relative.
             **kwargs: Additional keyword arguments passed to the Redirect constructor.
         """
-        materialize_shared_props_to_session(request)
+        persist_transient_state_for_redirect(request)
         safe_url = _get_redirect_url(request, redirect_to)
         if _should_use_fragment_redirect(request, safe_url):
             self._uses_inertia_fragment_redirect = True
@@ -1113,14 +1113,14 @@ def _resolve_encrypt_history(encrypt_history: "bool | None", inertia_plugin: "In
 
 
 def _resolve_clear_history(clear_history: bool, request: "Request[Any, Any, Any]") -> bool:
-    if clear_history:
-        return True
+    local_clear_history = consume_clear_history(request)
+    session_clear_history = False
     with contextlib.suppress(AttributeError, ImproperlyConfiguredException):
-        return cast(
+        session_clear_history = cast(
             "bool",
             request.session.pop("_inertia_clear_history", False),  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
         )
-    return False
+    return clear_history or local_clear_history or session_clear_history
 
 
 def _merge_deferred_props(target: "dict[str, list[str]]", source: "Mapping[str, list[str]]") -> None:
