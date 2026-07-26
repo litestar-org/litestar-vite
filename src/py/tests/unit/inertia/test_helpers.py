@@ -1,7 +1,7 @@
 """Tests for Inertia helper functions (scroll_props, clear_history, should_render)."""
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from litestar import Request, get
 from litestar.exceptions import ImproperlyConfiguredException
@@ -85,13 +85,16 @@ async def test_transient_helpers_render_direct_response_without_route_session(
     async def next_handler() -> dict[str, str]:
         return {"page": "next"}
 
-    with create_test_client(
-        route_handlers=[current_handler, next_handler],
-        template_config=template_config,
-        plugins=[inertia_plugin, vite_plugin],
-        middleware=[ServerSideSessionConfig(exclude=["/current", "/next"]).middleware],
-        stores={"sessions": MemoryStore()},
-    ) as client:
+    with (
+        patch("litestar_vite.inertia.state.logger.warning") as warning,
+        create_test_client(
+            route_handlers=[current_handler, next_handler],
+            template_config=template_config,
+            plugins=[inertia_plugin, vite_plugin],
+            middleware=[ServerSideSessionConfig(exclude=["/current", "/next"]).middleware],
+            stores={"sessions": MemoryStore()},
+        ) as client,
+    ):
         current_response = client.get("/current", headers={InertiaHeaders.ENABLED.value: "true"})
         next_response = client.get("/next", headers={InertiaHeaders.ENABLED.value: "true"})
 
@@ -109,6 +112,7 @@ async def test_transient_helpers_render_direct_response_without_route_session(
     assert next_page["props"]["errors"] == {}
     assert next_page["flash"] == {}
     assert "clearHistory" not in next_page
+    warning.assert_not_called()
 
 
 async def test_transient_state_overrides_legacy_session_without_eager_persistence(
