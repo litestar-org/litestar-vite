@@ -1468,3 +1468,39 @@ def test_determine_media_type_honours_explicit_response_media_type() -> None:
     """Explicit ``media_type`` set on ``InertiaResponse`` is preserved."""
     resp: InertiaResponse[dict[str, Any]] = InertiaResponse(content={}, media_type="application/xhtml+xml")
     assert resp._determine_media_type(resp.media_type) == "application/xhtml+xml"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_declaring_shared_prop_types_does_not_change_the_wire(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: "TemplateConfig[Any]"
+) -> None:
+    """Typing some share() props must not stop undeclared ones from being sent.
+
+    shared_page_prop_types only feeds type generation, so adopting it gradually has
+    to leave every undeclared prop reaching the response untouched.
+    """
+    from dataclasses import dataclass
+
+    from litestar_vite.inertia.helpers import share
+
+    @dataclass
+    class AuthProps:
+        is_authenticated: bool
+
+    inertia_plugin.config.shared_page_prop_types = {"auth": AuthProps}
+
+    @get("/mixed", component="Mixed", sync_to_thread=False)
+    def mixed(request: Request[Any, Any, Any]) -> dict[str, str]:
+        share(request, "auth", {"isAuthenticated": True})
+        share(request, "locale", "en")
+        share(request, "featureFlags", {"beta": True})
+        return {"page": "mixed"}
+
+    with create_test_client(
+        route_handlers=[mixed], template_config=template_config, plugins=[inertia_plugin, vite_plugin]
+    ) as client:
+        page = client.get("/mixed", headers={InertiaHeaders.ENABLED.value: "true"}).json()
+
+    props = page["props"]
+    assert props["auth"] == {"isAuthenticated": True}, "declared prop must still be sent"
+    assert props["locale"] == "en", "undeclared prop must still be sent"
+    assert props["featureFlags"] == {"beta": True}, "undeclared prop must still be sent"
