@@ -342,6 +342,78 @@ describe("Page Props Type Generation", () => {
       expect(emitted).not.toContain("errors?: Record<string, string[]>")
     })
 
+    it("declares flashDataType so page.flash is typed instead of unknown", async () => {
+      const tmpDir = _createTempDir()
+      const pagesPath = _createTestPagesJson(tmpDir, {
+        pages: {},
+        sharedProps: {},
+        typeGenConfig: { includeDefaultAuth: false, includeDefaultFlash: true },
+        generatedAt: new Date().toISOString(),
+      })
+
+      const outputDir = path.join(tmpDir, "generated")
+      const { emitPagePropsTypes } = await import("../src/shared/emit-page-props-types.js")
+
+      await emitPagePropsTypes(pagesPath, outputDir)
+
+      const declaration = fs.readFileSync(path.join(outputDir, "inertia.d.ts"), "utf-8")
+      expect(declaration).toContain('declare module "@inertiajs/core"')
+      expect(declaration).toContain("flashDataType: FlashMessages")
+
+      // The declaration is ambient, so it only applies if TypeScript resolves it. Consumer
+      // tsconfigs commonly exclude the generated directory, so page-props.ts (which user
+      // code imports) pulls it in explicitly.
+      const emitted = fs.readFileSync(path.join(outputDir, "page-props.ts"), "utf-8")
+      expect(emitted).toContain('/// <reference path="./inertia.d.ts" />')
+    })
+
+    it("omits the flash declaration when default flash types are disabled", async () => {
+      const tmpDir = _createTempDir()
+      const pagesPath = _createTestPagesJson(tmpDir, {
+        pages: {},
+        sharedProps: {},
+        typeGenConfig: { includeDefaultAuth: false, includeDefaultFlash: false },
+        generatedAt: new Date().toISOString(),
+      })
+
+      const outputDir = path.join(tmpDir, "generated")
+      const { emitPagePropsTypes } = await import("../src/shared/emit-page-props-types.js")
+
+      await emitPagePropsTypes(pagesPath, outputDir)
+
+      expect(fs.existsSync(path.join(outputDir, "inertia.d.ts"))).toBe(false)
+      const emitted = fs.readFileSync(path.join(outputDir, "page-props.ts"), "utf-8")
+      expect(emitted).not.toContain("inertia.d.ts")
+    })
+
+    it("removes a stale flash declaration when default flash types are turned off", async () => {
+      const tmpDir = _createTempDir()
+      const outputDir = path.join(tmpDir, "generated")
+      const { emitPagePropsTypes } = await import("../src/shared/emit-page-props-types.js")
+
+      const enabled = _createTestPagesJson(tmpDir, {
+        pages: {},
+        sharedProps: {},
+        typeGenConfig: { includeDefaultAuth: false, includeDefaultFlash: true },
+        generatedAt: new Date().toISOString(),
+      })
+      await emitPagePropsTypes(enabled, outputDir)
+      expect(fs.existsSync(path.join(outputDir, "inertia.d.ts"))).toBe(true)
+
+      fs.writeFileSync(
+        enabled,
+        JSON.stringify({
+          pages: {},
+          sharedProps: {},
+          typeGenConfig: { includeDefaultAuth: false, includeDefaultFlash: false },
+          generatedAt: new Date().toISOString(),
+        }),
+      )
+      await emitPagePropsTypes(enabled, outputDir)
+
+      expect(fs.existsSync(path.join(outputDir, "inertia.d.ts"))).toBe(false)
+    })
+
     it("generates SharedProps interface", () => {
       const json: InertiaPagePropsJson = {
         pages: {},
