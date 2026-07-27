@@ -10,6 +10,16 @@ Litestar Vite Changelog
 0.29.0 - 2026-07-27
 -------------------
 
+- Added ``InertiaConfig.shared_page_prop_types`` for typing props pushed at request time with
+  ``share()``. Guards and middleware have no naming site the generator can read, so ``auth`` and
+  similar props previously fell back to a synthesized ``AuthData`` shape. Declared annotations are
+  registered against the same OpenAPI schema registry as route props, so nested models resolve to the
+  identical generated TypeScript type instead of a hand-maintained duplicate. Plain models, containers,
+  and unions are all accepted. The field holds types only and never values.
+- Added a generated ``inertia.d.ts`` that fills Inertia's ``flashDataType`` configuration slot with the
+  generated ``FlashMessages`` interface, making ``page.flash.success`` a ``string[]`` rather than
+  ``unknown``. It is referenced from ``page-props.ts`` so it still applies when a ``tsconfig.json``
+  excludes the generated directory. ``include_default_flash=False`` skips it and removes any stale copy.
 - Added ``csrfCookieName`` and ``csrfHeaderName`` to the ``.litestar.json`` bridge and injected browser
   state. ``getCsrfToken()``, ``getCsrfHeaderName()``, ``csrfHeaders()``, ``csrfFetch()``, and the HTMX
   extension now follow custom ``CSRFConfig(cookie_name=..., header_name=...)`` values automatically.
@@ -19,6 +29,9 @@ Litestar Vite Changelog
 - Fixed the install hints in ``MissingDependencyError``. The direct-install hint named the extra instead
   of the distribution (``pip install jinja`` rather than ``pip install jinja2``), and storage backends
   suggested a ``litestar-vite[gcsfs]``-style extra that does not exist.
+- Fixed the empty generated ``static-props.ts`` describing itself as "currently empty" while pointing at
+  ``ViteConfig.static_props``. Inertia applications typically use the unrelated
+  ``InertiaConfig.extra_static_page_props``, so an empty file read like a generation failure.
 - Fixed the Astro integration silently ignoring a user-supplied ``executor``; the Nuxt and SvelteKit
   integrations already honored it. ``LitestarAstroConfig`` now accepts ``executor`` like the others.
 - Fixed ``AssetNotFoundError`` and ``ManifestNotFoundError`` discarding the paths passed to them. The
@@ -64,6 +77,14 @@ Litestar Vite Changelog
 - **Breaking**: Removed ``inject_body_content()``, ``inject_json_script()``, and
   ``set_element_inner_html()`` from ``litestar_vite.html_transform``, along with the unused
   ``InertiaProps`` type. ``html_transform`` now declares an explicit ``__all__``.
+- **Breaking**: ``flash`` and ``errors`` are no longer generated into ``GeneratedSharedProps``. Inertia
+  carries both on the page object, and the runtime has always sent them that way, so the generated types
+  were the only thing that disagreed. ``page.props.flash`` never held a value at runtime and now fails to
+  compile; read ``page.flash`` instead. ``page.props.errors`` keeps working because Inertia declares it,
+  and gains the accurate ``string`` value type in place of the ``string[]`` that was generated before.
+- **Breaking**: ``include_default_flash`` no longer emits an ``auth`` prop as a side effect. Applications
+  running ``include_default_auth=False`` with ``include_default_flash=True`` previously received a
+  generated ``auth`` entry anyway; set ``include_default_auth=True`` to keep it.
 
 0.28.0 - 2026-07-25
 -------------------

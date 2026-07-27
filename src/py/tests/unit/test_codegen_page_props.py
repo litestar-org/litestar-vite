@@ -680,6 +680,21 @@ def test_generate_inertia_pages_json_shared_page_prop_types_unset_is_unchanged(
     assert with_field == baseline
 
 
+def test_generate_inertia_pages_json_shared_page_prop_types_resolves_generic_container() -> None:
+    """A container annotation resolves to a TypeScript array, not the bare origin name."""
+    app = _shared_prop_types_app()
+    openapi_schema = app.openapi_schema.to_schema()
+    result = generate_inertia_pages_json(
+        app,
+        openapi_schema=openapi_schema,
+        inertia_config=InertiaConfig(shared_page_prop_types={"recent": list[SharedUser]}),
+    )
+
+    recent = result["sharedProps"]["recent"]
+    assert recent["type"] == "SharedUser[]", f"expected an array type, got {recent['type']!r}"
+    assert any(name.endswith("SharedUser") for name in openapi_schema["components"]["schemas"])
+
+
 def test_generate_inertia_pages_json_shared_page_prop_types_ignores_empty_key() -> None:
     """Empty keys are skipped, matching existing static/session prop behavior."""
     app = _shared_prop_types_app()

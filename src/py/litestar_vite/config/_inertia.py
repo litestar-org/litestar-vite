@@ -140,7 +140,7 @@ class InertiaConfig:
     Example without types (legacy):
         extra_session_page_props={"currentTeam"}
     """
-    shared_page_prop_types: "dict[str, type] | None" = None
+    shared_page_prop_types: "dict[str, Any] | None" = None
     """Python types for props pushed at request time with ``share()``.
 
     This declares *types only* and never carries values, unlike
@@ -152,10 +152,17 @@ class InertiaConfig:
     used for route props, so nested models resolve to the identical generated
     TypeScript type rather than a duplicate.
 
+    Values are annotations, so containers and unions are accepted alongside plain
+    models. Anything the schema generator cannot resolve falls back to the
+    configured fallback type.
+
     Example:
         A guard pushing ``share(connection, "auth", {...})``::
 
-            shared_page_prop_types={"auth": AuthProps}
+            shared_page_prop_types={
+                "auth": AuthProps,
+                "notifications": list[Notification],
+            }
 
     Leave as ``None`` to keep the generated defaults.
     """
