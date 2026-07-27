@@ -22,12 +22,21 @@ Default generated ``page-props.ts``:
 
 .. code-block:: typescript
 
-   // Built-in props (always present)
+   // Built-in props
    export interface GeneratedSharedProps {
-     flash: FlashMessages;
-     errors: Record<string, string>;
-     csrf_token: string;
+     csrf_token?: string;
+     auth?: AuthData;
    }
+
+Flash and validation errors are **not** props. Inertia carries them on the page
+object itself, so they are typed by ``@inertiajs/core`` rather than generated here:
+
+.. code-block:: typescript
+
+   const page = usePage()
+
+   page.flash          // top-level, NOT page.props.flash
+   page.props.errors   // typed by Inertia as Errors & ErrorBag
 
    // Default user interface - extend via module augmentation
    export interface User {

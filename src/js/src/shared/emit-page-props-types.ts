@@ -143,15 +143,12 @@ export interface FlashMessages {}
 `
   }
 
+  // Mirrors build_inertia_shared_props on the Python side. flash and errors are page-object
+  // concerns: the runtime sends flash at the page top level to match `Page.flash`, and
+  // @inertiajs/core declares `Page.props.errors` itself as `Errors & ErrorBag`.
   const defaultGeneratedSharedProps: InertiaPagePropsJson["sharedProps"] = {
-    errors: { type: "Record<string, string[]>", optional: true },
     csrf_token: { type: "string", optional: true },
-    ...(includeDefaultAuth || includeDefaultFlash
-      ? {
-          auth: { type: "AuthData", optional: true },
-          flash: { type: "FlashMessages", optional: true },
-        }
-      : {}),
+    ...(includeDefaultAuth ? { auth: { type: "AuthData", optional: true } } : {}),
   }
 
   const generatedSharedProps = Object.keys(json.sharedProps ?? {}).length > 0 ? json.sharedProps : defaultGeneratedSharedProps

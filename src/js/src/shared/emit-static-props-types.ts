@@ -105,8 +105,12 @@ export async function emitStaticPropsTypes(outputDir: string, projectRoot = proc
 /* eslint-disable */
 
 /**
- * Static props configured in Python ViteConfig.static_props.
- * Currently empty - add static_props to your ViteConfig to generate types.
+ * Build-time constants from Python ViteConfig.static_props, inlined into the bundle.
+ *
+ * No static props are configured, so this file is empty. This is not an error.
+ *
+ * Looking for values sent on every Inertia response? Those come from
+ * InertiaConfig.extra_static_page_props and are typed in page-props.ts, not here.
  *
  * @example
  * config = ViteConfig(

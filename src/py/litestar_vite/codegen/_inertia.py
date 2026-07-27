@@ -538,7 +538,6 @@ def build_inertia_shared_props(
     *,
     openapi_schema: dict[str, Any] | None,
     include_default_auth: bool,
-    include_default_flash: bool,
     inertia_config: "InertiaConfig | None",
     types_config: "TypeGenConfig | None",
     openapi_support: OpenAPISupport | None = None,
@@ -549,7 +548,6 @@ def build_inertia_shared_props(
         app: Litestar application instance.
         openapi_schema: Optional OpenAPI schema dict.
         include_default_auth: Include default auth shared prop.
-        include_default_flash: Include default flash shared prop.
         inertia_config: Optional Inertia configuration.
         types_config: Optional type generation configuration.
         openapi_support: Optional shared OpenAPISupport instance. If not provided,
@@ -560,14 +558,15 @@ def build_inertia_shared_props(
     """
     fallback_ts_type = get_fallback_ts_type(types_config)
 
-    shared_props: dict[str, dict[str, Any]] = {
-        "errors": {"type": "Record<string, string[]>", "optional": True},
-        "csrf_token": {"type": "string", "optional": True},
-    }
+    # flash and errors are page-object concerns, not props. The runtime sends flash at
+    # the page top level to match `Page.flash` (inertia/response.py), and @inertiajs/core
+    # declares `Page.props.errors` itself as `Errors & ErrorBag`. Generating either here
+    # promised a `props.flash` that is never present and an error value type
+    # (`string[]`) that disagrees with the `str` values the runtime actually sends.
+    shared_props: dict[str, dict[str, Any]] = {"csrf_token": {"type": "string", "optional": True}}
 
-    if include_default_auth or include_default_flash:
+    if include_default_auth:
         shared_props["auth"] = {"type": "AuthData", "optional": True}
-        shared_props["flash"] = {"type": "FlashMessages", "optional": True}
 
     if inertia_config is None:
         return shared_props
@@ -675,7 +674,6 @@ def generate_inertia_pages_json(
         app,
         openapi_schema=openapi_schema,
         include_default_auth=include_default_auth,
-        include_default_flash=include_default_flash,
         inertia_config=inertia_config,
         types_config=types_config,
         openapi_support=openapi_support,

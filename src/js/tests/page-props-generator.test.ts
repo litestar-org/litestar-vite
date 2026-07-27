@@ -318,21 +318,28 @@ describe("Page Props Type Generation", () => {
       expect(emitted).toContain("requestId: UUID")
     })
 
-    it("generates GeneratedSharedProps interface", () => {
-      const json: InertiaPagePropsJson = {
+    it("generates GeneratedSharedProps through the real generator without page-object props", async () => {
+      const tmpDir = _createTempDir()
+      const pagesPath = _createTestPagesJson(tmpDir, {
         pages: {},
         sharedProps: {},
         typeGenConfig: { includeDefaultAuth: true, includeDefaultFlash: true },
         generatedAt: new Date().toISOString(),
-      }
+      })
 
-      const output = generatePagePropsOutput(json)
+      const outputDir = path.join(tmpDir, "generated")
+      const { emitPagePropsTypes } = await import("../src/shared/emit-page-props-types.js")
 
-      expect(output).toContain("export interface GeneratedSharedProps")
-      expect(output).toContain("errors?: Record<string, string[]>")
-      expect(output).toContain("auth?: AuthData")
-      expect(output).toContain("flash?: FlashMessages")
-      expect(output).toContain("csrf_token?: string")
+      await emitPagePropsTypes(pagesPath, outputDir)
+
+      const emitted = fs.readFileSync(path.join(outputDir, "page-props.ts"), "utf-8")
+      expect(emitted).toContain("export interface GeneratedSharedProps")
+      expect(emitted).toContain("auth?: AuthData")
+      expect(emitted).toContain("csrf_token?: string")
+      // flash is sent at the page top level (Page.flash) and @inertiajs/core declares
+      // Page.props.errors itself, so neither is a generated prop.
+      expect(emitted).not.toContain("flash?: FlashMessages")
+      expect(emitted).not.toContain("errors?: Record<string, string[]>")
     })
 
     it("generates SharedProps interface", () => {
