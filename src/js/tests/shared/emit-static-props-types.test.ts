@@ -74,7 +74,11 @@ describe("emitStaticPropsTypes", () => {
     const content = fs.readFileSync(outFile, "utf-8")
     expect(content).toContain("export interface StaticProps {}")
     expect(content).toContain("export const staticProps: StaticProps = {}")
-    expect(content).toContain("Currently empty")
+    // An empty file is a valid state, not a failure, and must not be mistaken for
+    // the separate InertiaConfig.extra_static_page_props feature.
+    expect(content).not.toContain("Currently empty")
+    expect(content).toContain("This is not an error")
+    expect(content).toContain("InertiaConfig.extra_static_page_props")
   })
 
   it("generates typed interface for simple props", async () => {

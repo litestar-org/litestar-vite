@@ -934,6 +934,31 @@ def test_get_litestar_route_prefixes_excludes_websocket_only_routes() -> None:
     )
 
 
+def test_ssr_proxy_should_proxy_get_root_when_only_websocket_routes_claim_it() -> None:
+    """GET / must still proxy when only a WebSocket handler is registered at '/'.
+
+    Regression for the 405 fall-through: a framework HMR WebSocket at '/' used to
+    poison the HTTP prefix list, making SSRProxyMiddleware skip the proxy and hand
+    GET / to a WebSocket handler that has no HTTP method.
+    """
+    from typing import Any
+
+    from litestar import Controller, Litestar, WebSocket, websocket
+
+    from litestar_vite.plugin._proxy import SSRProxyMiddleware
+
+    class _WSOnly(Controller):
+        @websocket(path=["/", "/{path:path}"], name="ws_only")
+        async def handler(self, socket: WebSocket[Any, Any, Any]) -> None:  # pragma: no cover
+            await socket.accept()
+
+    app = Litestar(route_handlers=[_WSOnly])
+    middleware = SSRProxyMiddleware.__new__(SSRProxyMiddleware)
+    scope = {"type": "http", "method": "GET", "path": "/", "app": app}
+
+    assert middleware._should_proxy(cast("Any", scope)) is True  # pyright: ignore[reportPrivateUsage]
+
+
 # ===== Bridge-config preference for HMR target (litestar-vite-c1t) =====
 
 

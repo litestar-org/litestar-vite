@@ -22,11 +22,10 @@ Default generated ``page-props.ts``:
 
 .. code-block:: typescript
 
-   // Built-in props (always present)
+   // Built-in props
    export interface GeneratedSharedProps {
-     flash: FlashMessages;
-     errors: Record<string, string>;
-     csrf_token: string;
+     csrf_token?: string;
+     auth?: AuthData;
    }
 
    // Default user interface - extend via module augmentation
@@ -52,6 +51,38 @@ Default generated ``page-props.ts``:
 
    // Combined type
    export type FullSharedProps = GeneratedSharedProps & SharedProps;
+
+Flash and validation errors are **not** props. Inertia carries them on the page
+object itself, so they are typed by ``@inertiajs/core`` rather than generated here:
+
+.. code-block:: typescript
+
+   const page = usePage()
+
+   page.flash          // top-level, NOT page.props.flash
+   page.props.errors   // typed by Inertia as Errors & ErrorBag
+
+Errors need nothing extra — Inertia types error values as ``string``, which is
+exactly what the runtime sends.
+
+Flash does. Inertia leaves ``page.flash`` as ``{ [key: string]: unknown }`` by
+default and exposes a ``flashDataType`` slot to narrow it, so an ``inertia.d.ts``
+is generated alongside ``page-props.ts`` to fill that slot:
+
+.. code-block:: typescript
+
+   // generated/inertia.d.ts
+   declare module "@inertiajs/core" {
+     interface InertiaConfig {
+       flashDataType: FlashMessages
+     }
+   }
+
+With it, ``page.flash.success`` is ``string[]`` instead of ``unknown``. The
+declaration is ambient, so ``page-props.ts`` references it directly — that way it
+still applies when a ``tsconfig.json`` excludes the generated directory.
+
+Setting ``include_default_flash=False`` skips the declaration entirely.
 
 Extending Interfaces
 --------------------

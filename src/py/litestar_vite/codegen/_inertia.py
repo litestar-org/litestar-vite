@@ -504,12 +504,50 @@ def process_session_props(
             shared_props.setdefault(key, {"type": fallback_ts_type, "optional": True})
 
 
+def process_shared_prop_types(
+    shared_prop_types: "dict[str, Any]",
+    shared_props: dict[str, dict[str, Any]],
+    shared_schema_keys: dict[str, tuple[str, ...]],
+    shared_schema_dicts: dict[str, dict[str, Any]],
+    openapi_support: OpenAPISupport,
+    fallback_ts_type: str,
+) -> None:
+    """Register declared ``share()`` prop annotations.
+
+    Named models register as references and resolve to their generated name later.
+    Containers and unions have no component of their own, so their inline schema is
+    kept and rendered once nested references can be resolved.
+
+    Unlike session props these overwrite any generated default, because an explicit
+    Python annotation is more accurate than the synthesized convention it replaces.
+    """
+    for key, annotation in shared_prop_types.items():
+        if not key:
+            continue
+
+        type_name = fallback_ts_type
+        if openapi_support.enabled and openapi_support.schema_creator:
+            try:
+                field_def = FieldDefinition.from_annotation(annotation)
+                schema_result = openapi_support.schema_creator.for_field_definition(field_def)
+                if isinstance(schema_result, Reference):
+                    shared_schema_keys[key] = _get_normalized_schema_key(field_def)
+                    type_name = getattr(annotation, "__name__", fallback_ts_type)
+                else:
+                    shared_schema_dicts[key] = schema_result.to_schema()
+            except (AttributeError, TypeError, ValueError):  # pragma: no cover - defensive
+                type_name = fallback_ts_type
+        else:
+            type_name = getattr(annotation, "__name__", fallback_ts_type)
+
+        shared_props[key] = {"type": type_name, "optional": True}
+
+
 def build_inertia_shared_props(
     app: "Litestar",
     *,
     openapi_schema: dict[str, Any] | None,
     include_default_auth: bool,
-    include_default_flash: bool,
     inertia_config: "InertiaConfig | None",
     types_config: "TypeGenConfig | None",
     openapi_support: OpenAPISupport | None = None,
@@ -520,7 +558,6 @@ def build_inertia_shared_props(
         app: Litestar application instance.
         openapi_schema: Optional OpenAPI schema dict.
         include_default_auth: Include default auth shared prop.
-        include_default_flash: Include default flash shared prop.
         inertia_config: Optional Inertia configuration.
         types_config: Optional type generation configuration.
         openapi_support: Optional shared OpenAPISupport instance. If not provided,
@@ -531,14 +568,15 @@ def build_inertia_shared_props(
     """
     fallback_ts_type = get_fallback_ts_type(types_config)
 
-    shared_props: dict[str, dict[str, Any]] = {
-        "errors": {"type": "Record<string, string[]>", "optional": True},
-        "csrf_token": {"type": "string", "optional": True},
-    }
+    # flash and errors are page-object concerns, not props. The runtime sends flash at
+    # the page top level to match `Page.flash` (inertia/response.py), and @inertiajs/core
+    # declares `Page.props.errors` itself as `Errors & ErrorBag`. Generating either here
+    # promised a `props.flash` that is never present and an error value type
+    # (`string[]`) that disagrees with the `str` values the runtime actually sends.
+    shared_props: dict[str, dict[str, Any]] = {"csrf_token": {"type": "string", "optional": True}}
 
-    if include_default_auth or include_default_flash:
+    if include_default_auth:
         shared_props["auth"] = {"type": "AuthData", "optional": True}
-        shared_props["flash"] = {"type": "FlashMessages", "optional": True}
 
     if inertia_config is None:
         return shared_props
@@ -567,11 +605,22 @@ def build_inertia_shared_props(
         inertia_config.extra_session_page_props, shared_props, shared_schema_keys, openapi_support, fallback_ts_type
     )
 
+    shared_schema_dicts: dict[str, dict[str, Any]] = {}
+    if inertia_config.shared_page_prop_types:
+        process_shared_prop_types(
+            inertia_config.shared_page_prop_types,
+            shared_props,
+            shared_schema_keys,
+            shared_schema_dicts,
+            openapi_support,
+            fallback_ts_type,
+        )
+
     if not (
         openapi_support.context
         and openapi_support.schema_creator
         and isinstance(openapi_schema, dict)
-        and shared_schema_keys
+        and (shared_schema_keys or shared_schema_dicts)
     ):
         return shared_props
 
@@ -583,6 +632,11 @@ def build_inertia_shared_props(
         type_name = name_map.get(schema_key)
         if type_name:
             shared_props[prop_name]["type"] = type_name
+
+    # Containers and unions render from their inline schema once nested $refs resolve.
+    openapi_schema_names = set(openapi_components_schemas(openapi_schema)) | set(generated_components)
+    for prop_name, schema_dict in shared_schema_dicts.items():
+        shared_props[prop_name]["type"] = normalize_type_string(ts_type_from_openapi(schema_dict), openapi_schema_names)
 
     return shared_props
 
@@ -641,7 +695,6 @@ def generate_inertia_pages_json(
         app,
         openapi_schema=openapi_schema,
         include_default_auth=include_default_auth,
-        include_default_flash=include_default_flash,
         inertia_config=inertia_config,
         types_config=types_config,
         openapi_support=openapi_support,

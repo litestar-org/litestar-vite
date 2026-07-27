@@ -140,6 +140,32 @@ class InertiaConfig:
     Example without types (legacy):
         extra_session_page_props={"currentTeam"}
     """
+    shared_page_prop_types: "dict[str, Any] | None" = None
+    """Python types for props pushed at request time with ``share()``.
+
+    This declares *types only* and never carries values, unlike
+    ``extra_static_page_props``. It exists because ``share()`` calls in guards and
+    middleware have no naming site the type generator can read, so without a
+    declaration those props fall back to a synthesized default type.
+
+    Declared annotations are registered against the same OpenAPI schema registry
+    used for route props, so nested models resolve to the identical generated
+    TypeScript type rather than a duplicate.
+
+    Values are annotations, so containers and unions are accepted alongside plain
+    models. Anything the schema generator cannot resolve falls back to the
+    configured fallback type.
+
+    Example:
+        A guard pushing ``share(connection, "auth", {...})``::
+
+            shared_page_prop_types={
+                "auth": AuthProps,
+                "notifications": list[Notification],
+            }
+
+    Leave as ``None`` to keep the generated defaults.
+    """
     encrypt_history: bool = False
     """Enable browser history encryption globally (v2 feature).
 

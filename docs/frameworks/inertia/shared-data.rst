@@ -115,6 +115,46 @@ Automatically include session keys as props:
 
    # These are automatically included in every page's props
 
+Typing Shared Props
+-------------------
+
+Static props infer their type from the value, and session props can declare one
+directly. Props pushed with :func:`share` have neither, so the type generator
+falls back to a synthesized default.
+
+Declare their types with ``shared_page_prop_types``:
+
+.. code-block:: python
+
+   import msgspec
+
+
+   class AuthProps(msgspec.Struct, rename="camel"):
+       is_authenticated: bool
+       user: User | None = None
+
+
+   InertiaConfig(
+       shared_page_prop_types={"auth": AuthProps},
+   )
+
+This mapping holds *types only*, never values — unlike ``extra_static_page_props``,
+which sends the value itself on every response.
+
+Declared types are registered against the same OpenAPI schema registry used for
+route props, so a nested model such as ``User`` resolves to the identical
+generated TypeScript type instead of a duplicate:
+
+.. code-block:: typescript
+
+   // generated/page-props.ts
+   export interface GeneratedSharedProps {
+     auth?: AuthProps  // full nested User, resolved from your Python model
+   }
+
+Without a declaration, ``auth`` falls back to the built-in ``AuthData`` convention
+described in :doc:`shared-props-typing`.
+
 Frontend Usage
 --------------
 
