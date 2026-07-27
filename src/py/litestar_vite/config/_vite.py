@@ -2,7 +2,6 @@
 
 import logging
 import os
-import warnings
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
@@ -138,9 +137,9 @@ class ViteConfig:
     - Explicit mode parameter overrides auto-detection
 
     Attributes:
-        mode: Serving mode. Four canonical values plus five aliases (one deprecated)
-            that normalize to canonical values at ``__post_init__`` (so downstream code
-            only ever switches on canonical values).
+        mode: Serving mode. Four canonical values plus five aliases that normalize to
+            canonical values at ``__post_init__`` (so downstream code only ever switches
+            on canonical values).
 
             Canonical (4):
                 - "spa": Litestar serves a single index.html catch-all; client-side router
@@ -159,8 +158,7 @@ class ViteConfig:
                 - "inertia" → "hybrid"
                 - "htmx" → "template"
                 - "ssr" / "ssg" → "framework"
-                - "external" → "framework" (DEPRECATED; emits ``DeprecationWarning``. Use
-                  ``mode='framework'`` with ``external_dev_server`` instead.)
+                - "external" → "framework" (requires ``runtime.external_dev_server``)
 
             Auto-detected if not set.
         paths: File system paths configuration.
@@ -322,7 +320,7 @@ class ViteConfig:
         Canonical modes (4): ``spa``, ``template``, ``hybrid``, ``framework``.
 
         Aliases collapse to the canonical mode at construction so downstream code
-        only ever switches on canonical values:
+        only ever switches on canonical values. All are permanent and none warn.
 
         - 'ssr' / 'ssg' → 'framework': Static Site Generation (SSG) uses the same
           dev-time proxy behavior as SSR — forward non-API routes to the framework
@@ -338,11 +336,10 @@ class ViteConfig:
           HTMX-specific runtime behavior (HTMXPlugin, HTMXRequest, HTMXResponse)
           lives in the litestar-htmx package and is orthogonal to ViteConfig.mode.
 
-        - 'external' → 'framework' (DEPRECATED): the legacy ``external`` mode is
-          a flavor of ``framework`` distinguished only by ``external_dev_server``
-          being set. Emits ``DeprecationWarning`` and collapses to ``framework``
-          when an external dev server is configured. Raises ``ValueError`` when
-          ``external_dev_server`` is missing — without it the proxy has no target.
+        - 'external' → 'framework': names the non-Vite-toolchain flavor of ``framework``
+          (Angular CLI and similar), which is distinguished only by ``external_dev_server``
+          being set. Requires ``external_dev_server`` — without it the proxy has no target,
+          so it raises ``ValueError`` rather than silently proxying nowhere.
 
         Raises:
             ValueError: When ``mode='external'`` is provided without ``external_dev_server``.
@@ -356,16 +353,11 @@ class ViteConfig:
         elif self.mode == "external":
             if self.runtime.external_dev_server is None:
                 msg = (
-                    "mode='external' is deprecated and requires external_dev_server. "
-                    "Use mode='framework' with external_dev_server=ExternalDevServer(...) instead."
+                    "mode='external' requires external_dev_server. Set "
+                    "runtime=RuntimeConfig(external_dev_server=ExternalDevServer(...)), or use "
+                    "mode='framework' for a Vite-based framework dev server."
                 )
                 raise ValueError(msg)
-            warnings.warn(
-                "mode='external' is deprecated; use mode='framework' with "
-                "external_dev_server=ExternalDevServer(...). The mode now auto-translates to 'framework'.",
-                DeprecationWarning,
-                stacklevel=3,
-            )
             self.mode = "framework"
 
     def _normalize_types(self) -> None:

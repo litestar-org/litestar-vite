@@ -30,10 +30,10 @@ import fs from "node:fs"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import path from "node:path"
 import type { Plugin, ViteDevServer } from "vite"
-import { readBridgeConfig } from "./shared/bridge-schema.js"
+import { type LitestarIntegrationConfig, resolveIntegrationConfig, type ResolvedIntegrationConfig } from "./shared/integration-config.js"
 import { installManagedShutdown } from "./shared/managed-shutdown.js"
-import { normalizeHost, resolveHotFilePath, resolveLitestarPort } from "./shared/network.js"
-import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig } from "./shared/typegen-plugin.js"
+import { normalizeHost } from "./shared/network.js"
+import { createLitestarTypeGenPlugin, type TypesConfigShape } from "./shared/typegen-plugin.js"
 import { hmrServerConfig } from "./shared/vite-compat.js"
 
 /**
@@ -100,241 +100,29 @@ interface AstroIntegrationLogger {
 }
 
 /**
- * Configuration for TypeScript type generation in Astro.
+ * Configuration for TypeScript type generation.
+ *
+ * Alias of the shared {@link TypesConfigShape} so every integration accepts an identical
+ * `types` option. Retained as a named export for backwards compatibility.
  */
-export interface AstroTypesConfig {
-  /**
-   * Enable type generation.
-   *
-   * @default false
-   */
-  enabled?: boolean
-
-  /**
-   * Path to output generated TypeScript types.
-   * Relative to the Astro project root.
-   *
-   * @default 'src/generated'
-   */
-  output?: string
-
-  /**
-   * Path where the OpenAPI schema is exported by Litestar.
-   *
-   * @default `${output}/openapi.json`
-   */
-  openapiPath?: string
-
-  /**
-   * Path where route metadata is exported by Litestar.
-   *
-   * @default `${output}/routes.json`
-   */
-  routesPath?: string
-
-  /**
-   * Optional path for the generated schemas.ts helper file.
-   *
-   * @default `${output}/schemas.ts`
-   */
-  schemasTsPath?: string
-
-  /**
-   * Path where Inertia page props metadata is exported by Litestar.
-   *
-   * @default `${output}/inertia-pages.json`
-   */
-  pagePropsPath?: string
-
-  /**
-   * Generate Zod schemas in addition to TypeScript types.
-   *
-   * @default false
-   */
-  generateZod?: boolean
-
-  /**
-   * Generate SDK client functions for API calls.
-   *
-   * @default true
-   */
-  generateSdk?: boolean
-
-  /**
-   * Generate typed routes.ts from routes.json metadata.
-   *
-   * @default true
-   */
-  generateRoutes?: boolean
-
-  /**
-   * Generate Inertia page props types from inertia-pages.json metadata.
-   *
-   * @default true
-   */
-  generatePageProps?: boolean
-
-  /**
-   * Generate schemas.ts with ergonomic form/response type helpers.
-   *
-   * @default true
-   */
-  generateSchemas?: boolean
-
-  /**
-   * Register route() globally on window object.
-   *
-   * @default false
-   */
-  globalRoute?: boolean
-
-  /**
-   * Fail Vite when type generation fails.
-   *
-   * Defaults to true during build and false during dev.
-   */
-  failOnError?: boolean
-
-  /**
-   * Debounce time in milliseconds for type regeneration.
-   *
-   * @default 300
-   */
-  debounce?: number
-}
+export type AstroTypesConfig = TypesConfigShape
 
 /**
- * Configuration options for the Litestar Astro integration.
+ * Configuration options for the Litestar integration.
+ *
+ * Alias of the shared {@link LitestarIntegrationConfig}. Retained as a named export for
+ * backwards compatibility.
  */
-export interface LitestarAstroConfig {
-  /**
-   * URL of the Litestar API backend for proxying requests during development.
-   *
-   * @example 'http://127.0.0.1:8000'
-   * @default 'http://localhost:8000'
-   */
-  apiProxy?: string
+export type LitestarAstroConfig = LitestarIntegrationConfig
 
-  /**
-   * API route prefix to proxy to the Litestar backend.
-   * Requests matching this prefix will be forwarded to the apiProxy URL.
-   *
-   * @example '/api'
-   * @default '/api'
-   */
-  apiPrefix?: string
-
-  /**
-   * Enable and configure TypeScript type generation.
-   *
-   * When set to `true`, enables type generation with default settings.
-   * When set to an AstroTypesConfig object, enables type generation with custom settings.
-   *
-   * @default false
-   */
-  types?: boolean | AstroTypesConfig
-
-  /**
-   * Enable verbose logging for debugging.
-   *
-   * @default false
-   */
-  verbose?: boolean
-}
-
-/**
- * Resolved configuration with all defaults applied.
- */
-interface ResolvedLitestarAstroConfig {
-  apiProxy: string
-  apiPrefix: string
-  types: RequiredTypeGenConfig | false
-  verbose: boolean
-  hotFile?: string
-  proxyMode: "vite" | "direct" | "proxy" | null
-  /** Port for Vite dev server (from VITE_PORT env or runtime config) */
-  port?: number
-  /**
-   * Litestar dev server port. Used to set `vite.server.ws.clientPort` on Vite
-   * 8.1+ (`vite.server.hmr.clientPort` on Vite 7 / 8.0) so the browser opens HMR
-   * WebSockets against Litestar (single-port contract).
-   */
-  litestarPort?: number
-  /** Asset URL prefix (e.g. ``/static``); used to build the HMR path. */
-  assetUrl?: string
-  /** JavaScript runtime executor for package commands */
-  executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
-  /** Whether .litestar.json was found */
-  hasPythonConfig: boolean
-}
-
-/**
- * Resolve configuration with defaults.
- */
-function resolveConfig(config: LitestarAstroConfig = {}): ResolvedLitestarAstroConfig {
-  let hotFile: string | undefined
-  let proxyMode: "vite" | "direct" | "proxy" | null = "vite"
-  let port: number | undefined
-  let pythonTypesConfig: NonNullable<ReturnType<typeof readBridgeConfig>>["types"] | undefined
-  let pythonExecutor: "node" | "bun" | "deno" | "yarn" | "pnpm" | undefined
-  let hasPythonConfig = false
-
-  // Read port from VITE_PORT environment variable (set by Python)
-  const envPort = process.env.VITE_PORT
-  if (envPort) {
-    port = Number.parseInt(envPort, 10)
-    if (Number.isNaN(port)) {
-      port = undefined
-    }
-  }
-
-  const runtime = readBridgeConfig()
-  let assetUrl: string | undefined
-  let litestarPort: number | undefined
-  if (runtime) {
-    hasPythonConfig = true
-    const hot = runtime.hotFile
-    hotFile = resolveHotFilePath(runtime.bundleDir, hot)
-    proxyMode = runtime.proxyMode
-    port = runtime.port
-    pythonExecutor = runtime.executor
-    assetUrl = runtime.assetUrl
-    if (runtime.types) {
-      pythonTypesConfig = runtime.types
-    }
-  }
-  const resolvedLitestarPort = resolveLitestarPort(runtime?.litestarPort, runtime?.appUrl)
-  if (resolvedLitestarPort !== null) {
-    litestarPort = resolvedLitestarPort
-  }
-
-  const typesConfig = resolveTypesConfig({
-    requested: config.types,
-    pythonConfig: pythonTypesConfig ?? undefined,
-    defaultOutput: "src/generated",
-    mergePythonWhenTrue: true,
-    mergePythonForObject: true,
-  })
-
-  return {
-    apiProxy: config.apiProxy ?? "http://localhost:8000",
-    apiPrefix: config.apiPrefix ?? "/api",
-    types: typesConfig,
-    verbose: config.verbose ?? false,
-    hotFile,
-    proxyMode,
-    port,
-    litestarPort,
-    assetUrl,
-    executor: pythonExecutor,
-    hasPythonConfig,
-  }
+function resolveConfig(config: LitestarAstroConfig = {}): ResolvedIntegrationConfig {
+  return resolveIntegrationConfig(config, "src/generated")
 }
 
 /**
  * Create a Vite plugin for API proxying and server configuration.
  */
-function createProxyPlugin(config: ResolvedLitestarAstroConfig): Plugin {
+function createProxyPlugin(config: ResolvedIntegrationConfig): Plugin {
   return {
     name: "litestar-astro-proxy",
     config() {

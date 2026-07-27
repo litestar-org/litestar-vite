@@ -22,6 +22,8 @@ from rich.table import Table
 from litestar_vite.config import ExternalDevServer, TypeGenConfig
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from litestar_vite.config import ViteConfig
 
 
@@ -233,32 +235,51 @@ class ViteDoctor:
         return not errors
 
     def _run_static_checks(self) -> None:
-        """Run diagnostics that only inspect local configuration and files."""
-        self._check_litestar_plugin_config()
-        self._check_bridge_file()
-        self._check_paths_exist()
-        self._check_asset_url()
-        self._check_hot_file()
-        self._check_proxy_mode_origin_override()
-        self._check_bundle_dir()
-        self._check_resource_dir()
-        self._check_static_dir()
-        self._check_inertia_mode()
-        self._check_types_setting_alignment()
-        self._check_input_paths()
-        self._check_typegen_paths()
-        self._check_typegen_flags()
-        self._check_plugin_spread()
-        self._check_dist_files()
-        self._check_hotfile_presence()
-        self._check_manifest_presence()
-        self._check_typegen_artifacts()
-        self._check_env_alignment()
-        self._check_mode_inertia_conflicts()
-        self._check_ssr_reachability()
-        self._check_static_props_secrets()
-        self._check_typegen_package_dependencies()
-        self._check_node_modules()
+        """Run diagnostics that only inspect local configuration and files.
+
+        Each check is isolated: a check that raises is reported as a warning and the remaining
+        checks still run, so one unexpected failure cannot blind the whole diagnostic.
+        """
+        checks: "tuple[Callable[[], None], ...]" = (
+            self._check_litestar_plugin_config,
+            self._check_bridge_file,
+            self._check_paths_exist,
+            self._check_asset_url,
+            self._check_hot_file,
+            self._check_proxy_mode_origin_override,
+            self._check_bundle_dir,
+            self._check_resource_dir,
+            self._check_static_dir,
+            self._check_inertia_mode,
+            self._check_types_setting_alignment,
+            self._check_input_paths,
+            self._check_typegen_paths,
+            self._check_typegen_flags,
+            self._check_plugin_spread,
+            self._check_dist_files,
+            self._check_hotfile_presence,
+            self._check_manifest_presence,
+            self._check_typegen_artifacts,
+            self._check_env_alignment,
+            self._check_mode_inertia_conflicts,
+            self._check_ssr_reachability,
+            self._check_static_props_secrets,
+            self._check_typegen_package_dependencies,
+            self._check_node_modules,
+        )
+        for check in checks:
+            name = getattr(check, "__name__", "unknown").removeprefix("_check_")
+            try:
+                check()
+            except Exception as exc:  # noqa: BLE001
+                self.issues.append(
+                    DoctorIssue(
+                        check=name,
+                        severity="warning",
+                        message=f"Diagnostic check {name!r} could not complete: {exc}",
+                        fix_hint="This is a doctor bug, not a project misconfiguration. Please report it.",
+                    )
+                )
 
     def _locate_vite_config(self) -> None:
         """Find and parse the vite.config file."""

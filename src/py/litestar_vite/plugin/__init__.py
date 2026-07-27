@@ -26,8 +26,6 @@ from litestar_vite.plugin._proxy import (
     ViteProxyMiddleware,
     create_disabled_vite_hmr_handlers,
     create_ssr_http_proxy_handler,
-    create_ssr_proxy_controller,
-    create_ssr_websocket_handler,
     create_ssr_ws_proxy_handler,
     create_vite_hmr_handler,
 )
@@ -54,8 +52,6 @@ __all__ = (
     "ViteProxyMiddleware",
     "create_disabled_vite_hmr_handlers",
     "create_ssr_http_proxy_handler",
-    "create_ssr_proxy_controller",
-    "create_ssr_websocket_handler",
     "create_ssr_ws_proxy_handler",
     "create_vite_hmr_handler",
     "get_litestar_route_prefixes",

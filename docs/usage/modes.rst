@@ -166,6 +166,11 @@ The External mode is for non-Vite toolchains (Angular CLI or another standalone 
 - No Vite manifest dependency.
 - External dev server configuration support.
 
+``mode="external"`` normalizes to ``framework`` and requires ``external_dev_server`` --
+without a target there is nothing to proxy to, so omitting it raises ``ValueError``.
+``mode="framework"`` with the same ``external_dev_server`` is equivalent; use whichever
+reads better for your project.
+
 **Configuration:**
 
 .. code-block:: python
@@ -190,10 +195,10 @@ The External mode is for non-Vite toolchains (Angular CLI or another standalone 
 Mode Aliases
 ------------
 
-For backward compatibility and semantic clarity, some modes have aliases:
+Some modes have alternate spellings. All are permanent and none emit warnings.
 
 .. list-table::
-   :widths: 25 25 50
+   :widths: 22 22 56
    :header-rows: 1
 
    * - Primary Mode
@@ -205,6 +210,12 @@ For backward compatibility and semantic clarity, some modes have aliases:
    * - ``framework``
      - ``ssr`` / ``ssg``
      - Aliases for framework proxy mode
+   * - ``template``
+     - ``htmx``
+     - HTMX is a client-side concern; server-rendered Jinja is ``template`` mode
+   * - ``framework``
+     - ``external``
+     - Non-Vite toolchains; requires ``runtime.external_dev_server``
 
 See Also
 --------

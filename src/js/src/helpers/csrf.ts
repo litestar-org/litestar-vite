@@ -27,7 +27,7 @@ interface CsrfTokenCache {
 }
 
 let csrfTokenCache: CsrfTokenCache | null = null
-export const DEFAULT_CSRF_HEADER_NAME = "X-CSRFToken"
+const DEFAULT_CSRF_HEADER_NAME = "X-CSRFToken"
 
 export function getCsrfHeaderName(): string {
   if (typeof window !== "undefined" && typeof window.__LITESTAR_CSRF_HEADER_NAME__ === "string" && window.__LITESTAR_CSRF_HEADER_NAME__.length > 0) {

@@ -24,8 +24,8 @@ __all__ = ("FileInfo", "SyncPlan", "SyncResult", "ViteDeployer", "format_bytes")
 AbstractFileSystem = Any
 
 
-def _suggest_install_extra(storage_backend: "str | None") -> str:
-    """Suggest an install target based on backend scheme.
+def _suggest_install_package(storage_backend: "str | None") -> str:
+    """Suggest the PyPI package to install based on backend scheme.
 
     Args:
         storage_backend: The storage backend URL.
@@ -53,8 +53,7 @@ def _import_fsspec(storage_backend: "str | None") -> tuple[Any, Callable[..., tu
         MissingDependencyError: If fsspec is not installed.
     """
     if not FSSPEC_INSTALLED:
-        msg = "fsspec"
-        raise MissingDependencyError(msg, install_package=_suggest_install_extra(storage_backend))
+        raise MissingDependencyError(package=_suggest_install_package(storage_backend))
 
     fsspec = importlib.import_module("fsspec")
     url_to_fs = importlib.import_module("fsspec.core").url_to_fs

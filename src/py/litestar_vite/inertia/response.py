@@ -18,7 +18,7 @@ from litestar.utils.helpers import get_enum_string_value
 from litestar.utils.scope.state import ScopeState
 
 from litestar_vite.html_transform import inject_head_html, replace_element_outer_html
-from litestar_vite.inertia._utils import get_headers
+from litestar_vite.inertia._utils import InertiaHeaders, get_headers
 from litestar_vite.inertia.helpers import (
     PropFilter,
     _extract_once_prop_entries,  # pyright: ignore[reportPrivateUsage]
@@ -623,7 +623,7 @@ class InertiaResponse(Response[T]):
         vite_plugin = request.app.plugins.get(VitePlugin)
         inertia_plugin = request.app.plugins.get(InertiaPlugin)
         headers.update({
-            "Vary": "X-Inertia",
+            "Vary": InertiaHeaders.ENABLED.value,
             **get_headers(InertiaHeaderType(enabled=True, version=vite_plugin.asset_loader.version_id)),
         })
 
@@ -711,7 +711,7 @@ class InertiaExternalRedirect(Response[Any]):
         super().__init__(
             content=b"",
             status_code=HTTP_409_CONFLICT,
-            headers={"X-Inertia-Location": quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")},
+            headers={InertiaHeaders.LOCATION.value: quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")},
             **kwargs,
         )
 
@@ -743,7 +743,7 @@ class InertiaRedirect(Redirect):
                 self,
                 content=b"",
                 status_code=HTTP_409_CONFLICT,
-                headers={"X-Inertia-Redirect": quote(safe_url, safe="/#%[]=:;$&()+,!?*@'~")},
+                headers={InertiaHeaders.REDIRECT.value: quote(safe_url, safe="/#%[]=:;$&()+,!?*@'~")},
                 **kwargs,
             )
         else:
@@ -815,7 +815,7 @@ class InertiaBack(InertiaRedirect):
             request: The request object.
             **kwargs: Additional keyword arguments passed to the Redirect constructor.
         """
-        safe_url = _get_redirect_url(request, request.headers.get("Referer"))
+        safe_url = _get_redirect_url(request, request.headers.get(InertiaHeaders.REFERER.value))
         super().__init__(request=request, redirect_to=safe_url, **kwargs)
 
 

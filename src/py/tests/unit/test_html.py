@@ -5,9 +5,7 @@ import pytest
 from litestar_vite.html_transform import (
     _escape_attr,
     _escape_script,
-    inject_body_content,
     inject_head_script,
-    inject_json_script,
     inject_page_script,
     inject_vite_dev_scripts,
     replace_element_outer_html,
@@ -115,43 +113,6 @@ def test_inject_head_script_empty() -> None:
     assert result == html
 
 
-def test_inject_body_content_end() -> None:
-    """Test injecting content at the end of body."""
-    html = "<html><head></head><body><div>existing</div></body></html>"
-    content = '<div id="portal"></div>'
-    result = inject_body_content(html, content, position="end")
-
-    assert '<div id="portal"></div>' in result
-    assert result.index("</body>") > result.index('<div id="portal"></div>')
-
-
-def test_inject_body_content_start() -> None:
-    """Test injecting content at the start of body."""
-    html = "<html><head></head><body><div>existing</div></body></html>"
-    content = '<div id="top"></div>'
-    result = inject_body_content(html, content, position="start")
-
-    assert '<div id="top"></div>' in result
-    assert result.index('<div id="top"></div>') < result.index("<div>existing</div>")
-
-
-def test_inject_body_content_case_insensitive() -> None:
-    """Test body content injection is case-insensitive."""
-    html = "<HTML><HEAD></HEAD><BODY></BODY></HTML>"
-    content = '<div id="test"></div>'
-    result = inject_body_content(html, content, position="end")
-
-    assert '<div id="test"></div>' in result
-
-
-def test_inject_body_content_empty() -> None:
-    """Test injecting empty content returns unchanged HTML."""
-    html = "<html><head></head><body></body></html>"
-    result = inject_body_content(html, "", position="end")
-
-    assert result == html
-
-
 def test_set_data_attribute_id_selector() -> None:
     """Test setting data attribute with ID selector."""
     html = '<html><body><div id="app">content</div></body></html>'
@@ -201,30 +162,6 @@ def test_set_data_attribute_empty_selector() -> None:
     assert result == html
 
 
-def test_inject_json_script() -> None:
-    """Test injecting JSON data as a script."""
-    html = "<html><head></head><body></body></html>"
-    data = {"routes": {"home": "/", "about": "/about"}, "user": {"id": 1, "name": "Test"}}
-    result = inject_json_script(html, "__ROUTES__", data)
-
-    assert "window.__ROUTES__" in result
-    assert '{"routes":' in result
-    assert "home" in result
-    assert "/about" in result
-
-
-def test_inject_json_script_with_unicode() -> None:
-    """Test JSON injection preserves unicode characters."""
-    html = "<html><head></head><body></body></html>"
-    data = {"message": "Hello 世界 🌍"}
-    result = inject_json_script(html, "__DATA__", data)
-
-    assert "window.__DATA__" in result
-    # Unicode should be preserved (ensure_ascii=False)
-    assert "世界" in result
-    assert "🌍" in result
-
-
 def test_complex_html_transformation() -> None:
     """Test multiple transformations on the same HTML."""
     html = """
@@ -240,24 +177,19 @@ def test_complex_html_transformation() -> None:
     </html>
     """
 
-    # Inject routes metadata
-    routes = {"home": "/", "users": "/users"}
-    html = inject_json_script(html, "__ROUTES__", routes)
-
     # Inject head script
     html = inject_head_script(html, "console.log('init');")
 
     # Set data attribute
     html = set_data_attribute(html, "#app", "data-page", '{"component":"Home"}')
 
-    # Inject body content
-    html = inject_body_content(html, '<div id="portal"></div>', position="end")
+    # Inject page data as a JSON script element
+    html = inject_page_script(html, '{"component":"Home","props":{}}')
 
     # Verify all transformations
-    assert "window.__ROUTES__" in html
     assert "console.log('init');" in html
     assert "data-page=" in html
-    assert '<div id="portal"></div>' in html
+    assert '<script type="application/json" id="app_page"' in html
 
 
 def test_malformed_html_handling() -> None:

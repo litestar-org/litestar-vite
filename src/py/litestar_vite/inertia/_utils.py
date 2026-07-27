@@ -19,6 +19,7 @@ class InertiaHeaders(str, Enum):
     ENABLED = "X-Inertia"
     VERSION = "X-Inertia-Version"
     LOCATION = "X-Inertia-Location"
+    REDIRECT = "X-Inertia-Redirect"
     REFERER = "Referer"
 
     PARTIAL_DATA = "X-Inertia-Partial-Data"

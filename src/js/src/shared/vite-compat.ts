@@ -3,9 +3,9 @@ import { version } from "vite"
 const [viteMajorRaw, viteMinorRaw] = version.split(".")
 
 /** Parsed major version of the running Vite instance. */
-export const viteMajor = Number(viteMajorRaw)
+const viteMajor = Number(viteMajorRaw)
 /** Parsed minor version of the running Vite instance. */
-export const viteMinor = Number(viteMinorRaw)
+const viteMinor = Number(viteMinorRaw)
 
 /**
  * Whether the running Vite version is 8+, which uses Rolldown and exposes

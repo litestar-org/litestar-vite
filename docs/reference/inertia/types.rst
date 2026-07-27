@@ -16,9 +16,6 @@ PageProps
     Includes support for v2 features like history encryption, merge props,
     deferred loading, and infinite scroll.
 
-InertiaProps
-    Wrapper type for Inertia props.
-
 InertiaHeaderType
     TypedDict for Inertia request/response headers.
 

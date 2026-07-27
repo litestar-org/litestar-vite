@@ -12,9 +12,9 @@
 import fs from "node:fs"
 import path from "node:path"
 
-export type BridgeMode = "spa" | "template" | "hybrid" | "framework" | "external"
-export type BridgeProxyMode = "vite" | "direct" | "proxy" | null
-export type BridgeExecutor = "node" | "bun" | "deno" | "yarn" | "pnpm"
+type BridgeMode = "spa" | "template" | "hybrid" | "framework" | "external"
+type BridgeProxyMode = "vite" | "direct" | "proxy" | null
+type BridgeExecutor = "node" | "bun" | "deno" | "yarn" | "pnpm"
 
 export interface BridgeTypesConfig {
   enabled: boolean
@@ -33,7 +33,7 @@ export interface BridgeTypesConfig {
   failOnError?: boolean
 }
 
-export interface BridgeSpaConfig {
+interface BridgeSpaConfig {
   /** Use script element instead of data-page attribute for Inertia page data */
   useScriptElement: boolean
 }

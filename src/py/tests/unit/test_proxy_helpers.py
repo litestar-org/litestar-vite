@@ -21,8 +21,7 @@ from litestar_vite.plugin._proxy import (
     build_proxy_url,
     check_http2_support,
     create_hmr_target_getter,
-    create_ssr_proxy_controller,
-    create_ssr_websocket_handler,
+    create_ssr_ws_proxy_handler,
     create_target_url_getter,
     create_vite_hmr_handler,
     extract_forward_headers,
@@ -786,18 +785,19 @@ async def test_ssr_proxy_middleware_post_still_sends_body() -> None:
     assert kwargs["content"] is not None, "SSR proxy POST requests must still send a request body"
 
 
-async def test_create_ssr_proxy_controller_emits_deprecation_warning(recwarn: pytest.WarningsRecorder) -> None:
-    """create_ssr_proxy_controller is deprecated; the alias still returns a WS-only Controller."""
-    handler_class = create_ssr_proxy_controller(target="http://localhost:3000")
+def test_create_ssr_ws_proxy_handler_defaults_to_catch_all_paths() -> None:
+    """The WS HMR factory registers both ``/`` and the catch-all so no HMR path 404s."""
+    handler = create_ssr_ws_proxy_handler(target="http://localhost:3000")
 
-    assert handler_class.__name__ == "SSRProxyWebSocketHandler"
-    assert any(issubclass(w.category, DeprecationWarning) for w in recwarn.list)
+    assert handler.paths == {"/", "/{path:path}"}
+    assert handler.opt.get("exclude_from_auth") is True
 
 
-def test_create_ssr_websocket_handler_returns_ws_only_controller() -> None:
-    """create_ssr_websocket_handler returns a Controller hosting only the WS handler."""
-    handler_class = create_ssr_websocket_handler(target="http://localhost:3000")
-    assert handler_class.__name__ == "SSRProxyWebSocketHandler"
+def test_create_ssr_ws_proxy_handler_honors_explicit_paths() -> None:
+    """Callers can narrow the WS paths when the framework uses a single HMR endpoint."""
+    handler = create_ssr_ws_proxy_handler(target="http://localhost:3000", paths=["/_hmr"])
+
+    assert handler.paths == {"/_hmr"}
 
 
 def test_ssr_proxy_middleware_falls_through_to_user_root_route(monkeypatch: pytest.MonkeyPatch) -> None:

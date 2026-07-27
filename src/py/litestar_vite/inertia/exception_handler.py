@@ -247,7 +247,7 @@ def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", 
 def _register_exception_handlers(  # pyright: ignore[reportUnusedFunction]
     exception_handlers: dict[type[Exception] | int, Any], default_handler: ExceptionHandler
 ) -> None:
-    from litestar_vite._typing import (
+    from litestar_vite.typing import (
         ADVANCED_ALCHEMY_INSTALLED,
         SQLSPEC_INSTALLED,
         AdvancedAlchemyDuplicateKeyError,

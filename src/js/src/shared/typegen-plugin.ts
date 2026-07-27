@@ -48,20 +48,104 @@ export interface TypeGenPluginOptions {
   hasPythonConfig?: boolean
 }
 
+/**
+ * Configuration for TypeScript type generation.
+ *
+ * This is the single source of truth for the `types` option across the core Vite plugin and
+ * every framework integration (Astro, Nuxt, SvelteKit), which re-export it under their own
+ * names. Paths default relative to `output`, whose default is framework-specific.
+ *
+ * Type generation works as follows:
+ * 1. Python's Litestar exports openapi.json and routes.json on startup (and reload)
+ * 2. The Vite plugin watches these files for changes
+ * 3. When they change, it runs @hey-api/openapi-ts to generate TypeScript types
+ * 4. An HMR event is sent to notify the client
+ */
 export interface TypesConfigShape {
+  /**
+   * Enable type generation.
+   *
+   * @default false
+   */
   enabled?: boolean
+  /** Directory for generated TypeScript output. Framework-specific default. */
   output?: string
+  /**
+   * Path where the OpenAPI schema is exported by Litestar. The plugin watches this file
+   * and runs @hey-api/openapi-ts when it changes.
+   *
+   * @default `${output}/openapi.json`
+   */
   openapiPath?: string
+  /**
+   * Path where route metadata is exported by Litestar. Watched for route helper generation.
+   *
+   * @default `${output}/routes.json`
+   */
   routesPath?: string
+  /**
+   * Path where Inertia page props metadata is exported by Litestar.
+   *
+   * @default `${output}/inertia-pages.json`
+   */
   pagePropsPath?: string
+  /**
+   * Path for the generated `schemas.ts` helper file.
+   *
+   * @default `${output}/schemas.ts`
+   */
   schemasTsPath?: string
+  /**
+   * Generate Zod schemas in addition to TypeScript types.
+   *
+   * @default false
+   */
   generateZod?: boolean
+  /**
+   * Generate a typed SDK client in addition to types.
+   *
+   * @default true
+   */
   generateSdk?: boolean
+  /**
+   * Generate typed `routes.ts` from routes.json metadata. Mirrors Python
+   * `TypeGenConfig.generate_routes`.
+   *
+   * @default true
+   */
   generateRoutes?: boolean
+  /**
+   * Generate Inertia page props types from inertia-pages.json metadata. Mirrors Python
+   * `TypeGenConfig.generate_page_props`.
+   *
+   * @default true
+   */
   generatePageProps?: boolean
+  /**
+   * Generate `schemas.ts` with ergonomic form/response type helpers, such as
+   * `FormInput<'api:login'>` and `FormResponse<'api:login', 201>`.
+   *
+   * @default true
+   */
   generateSchemas?: boolean
+  /**
+   * Register the generated `route()` function on `window`, similar to Laravel's Ziggy,
+   * so it can be used without an import.
+   *
+   * @default false
+   */
   globalRoute?: boolean
+  /**
+   * Fail Vite when type generation fails. Defaults to `true` during `vite build` and
+   * `false` during `vite serve`.
+   */
   failOnError?: boolean
+  /**
+   * Debounce window in milliseconds for regeneration, so a burst of file writes triggers
+   * a single run.
+   *
+   * @default 300
+   */
   debounce?: number
 }
 

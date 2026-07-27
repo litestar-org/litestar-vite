@@ -279,6 +279,41 @@ def _run_vite_build(
         raise SystemExit(msg) from exc
 
 
+def _export_and_report(app: "Litestar", config: ViteConfig, console: Any) -> bool:
+    """Export integration assets and print a per-file updated/unchanged report.
+
+    Shared by ``assets build`` and ``assets generate-types`` so both report identically;
+    each caller decides how to escalate a failure.
+
+    Args:
+        app: The Litestar application.
+        config: Resolved Vite configuration.
+        console: Rich console used for reporting.
+
+    Returns:
+        ``True`` when assets were exported or confirmed unchanged, ``False`` when the
+        export produced nothing (typically because OpenAPI is unavailable).
+
+    Raises:
+        OSError: Propagated from the export for the caller to translate.
+        TypeError: Propagated from the export for the caller to translate.
+        ValueError: Propagated from the export for the caller to translate.
+    """
+    from litestar_vite.codegen import export_integration_assets
+
+    result = export_integration_assets(app, config)
+
+    for file in result.exported_files:
+        console.print(f"[green]✓ Exported {file}[/] [dim](updated)[/]")
+    for file in result.unchanged_files:
+        console.print(f"[dim]✓ {file} (unchanged)[/]")
+
+    if not result.exported_files and not result.unchanged_files:
+        console.print("[yellow]! No files exported (OpenAPI may not be available)[/]")
+        return False
+    return True
+
+
 def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: Any) -> bool:
     """Export OpenAPI schema, routes, and Inertia page props prior to running a build.
 
@@ -293,31 +328,16 @@ def _generate_schema_and_routes(app: "Litestar", config: ViteConfig, console: An
     Raises:
         LitestarCLIException: If export fails.
     """
-    from litestar_vite.codegen import export_integration_assets
-
-    types_config = config.types
-    if not isinstance(types_config, TypeGenConfig):
+    if not isinstance(config.types, TypeGenConfig):
         return False
 
     console.print("[dim]Preparing OpenAPI schema and routes...[/]")
 
     try:
-        result = export_integration_assets(app, config)
-
-        # Report results with detailed status
-        for file in result.exported_files:
-            console.print(f"[green]✓ Exported {file}[/] [dim](updated)[/]")
-        for file in result.unchanged_files:
-            console.print(f"[dim]✓ {file} (unchanged)[/]")
-
-        if not result.exported_files and not result.unchanged_files:
-            console.print("[yellow]! No files exported (OpenAPI may not be available)[/]")
-            return False
+        return _export_and_report(app, config, console)
     except (OSError, TypeError, ValueError) as exc:
         msg = f"Failed to export type metadata: {exc}"
         raise LitestarCLIException(msg) from exc
-
-    return True
 
 
 @group(cls=LitestarGroup, name="assets")
@@ -1276,7 +1296,6 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     Raises:
         SystemExit: If type generation fails or no files are exported.
     """
-    from litestar_vite.codegen import export_integration_assets
     from litestar_vite.plugin._utils import write_runtime_config_file
 
     if verbose:
@@ -1303,20 +1322,12 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
 
     # Export all integration assets using the shared function
     try:
-        result = export_integration_assets(app, config)
-
-        # Report results with detailed status
-        for file in result.exported_files:
-            console.print(f"[green]✓ Exported {file}[/] [dim](updated)[/]")
-        for file in result.unchanged_files:
-            console.print(f"[dim]✓ {file} (unchanged)[/]")
-
-        if not result.exported_files and not result.unchanged_files:
-            console.print("[yellow]! No files exported (OpenAPI may not be available)[/]")
-            raise SystemExit(1)
+        exported = _export_and_report(app, config, console)
     except (OSError, TypeError, ValueError) as exc:
         console.print(f"[red]✗ Failed to export type metadata: {exc}[/]")
         raise SystemExit(1) from exc
+    if not exported:
+        raise SystemExit(1)
 
     # Run any extra code-generation commands (e.g., tsr generate for TanStack Router)
     extra_commands_ok = _run_extra_commands(config, verbose)

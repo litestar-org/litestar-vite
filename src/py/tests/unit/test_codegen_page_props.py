@@ -6,13 +6,8 @@ from typing import Any, TypedDict
 from litestar import Litestar, get
 from litestar.params import FromPath
 
-from litestar_vite.codegen import (
-    InertiaPageMetadata,
-    extract_inertia_pages,
-    generate_inertia_pages_json,
-    get_openapi_schema_ref,
-    get_return_type_name,
-)
+from litestar_vite.codegen import InertiaPageMetadata, extract_inertia_pages, generate_inertia_pages_json
+from litestar_vite.codegen._inertia import get_openapi_schema_ref, get_return_type_name
 from litestar_vite.config import TypeGenConfig
 
 # =============================================================================

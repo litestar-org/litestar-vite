@@ -8,10 +8,10 @@ compare structurally (``config.placement == "native"``) without importing this
 package. This module deliberately carries no litestar-granian import.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -84,7 +84,8 @@ class StaticServerConfig:
 class StaticFilesConfig:
     """Configuration for static file serving.
 
-    This configuration is passed to Litestar's static files router.
+    Field names must match keyword parameters of Litestar's ``create_static_files_router``;
+    :meth:`as_router_kwargs` forwards the set fields to it.
     """
 
     after_request: "AfterRequestHookHandler | None" = None
@@ -97,3 +98,23 @@ class StaticFilesConfig:
     opt: "dict[str, Any] | None" = None
     security: "Sequence[SecurityRequirement] | None" = None
     tags: "Sequence[str] | None" = None
+
+    _NOT_ROUTER_KWARGS: "ClassVar[frozenset[str]]" = frozenset({"opt"})
+
+    def as_router_kwargs(self) -> "dict[str, Any]":
+        """Return the explicitly-set fields as ``create_static_files_router`` keyword arguments.
+
+        ``opt`` is excluded because the plugin merges it with its own options. Unset fields
+        are omitted so Litestar's defaults apply.
+
+        Returns:
+            Keyword arguments for ``create_static_files_router``.
+        """
+        kwargs: "dict[str, Any]" = {}
+        for field_info in fields(self):
+            if field_info.name in self._NOT_ROUTER_KWARGS:
+                continue
+            value: "Any" = getattr(self, field_info.name)
+            if value is not None:
+                kwargs[field_info.name] = value
+        return kwargs

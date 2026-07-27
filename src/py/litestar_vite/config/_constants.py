@@ -1,17 +1,13 @@
 """Constants and utility functions for configuration."""
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import Any
 
-from litestar_vite._typing import FSSPEC_INSTALLED, JINJA_INSTALLED
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
+from litestar_vite.typing import FSSPEC_INSTALLED, JINJA_INSTALLED
 
 __all__ = (
     "FSSPEC_INSTALLED",
     "JINJA_INSTALLED",
     "TRUE_VALUES",
-    "PaginationContainer",
     "default_content_types",
     "default_storage_options",
     "empty_dict_factory",
@@ -19,31 +15,6 @@ __all__ = (
 )
 
 TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
-
-
-@runtime_checkable
-class PaginationContainer(Protocol):
-    """Protocol for pagination containers that can be unwrapped for Inertia scroll.
-
-    Any type that has `items` and pagination metadata can implement this protocol.
-    The response will extract items and calculate scroll_props automatically.
-
-    Built-in support:
-    - litestar.pagination.OffsetPagination
-    - litestar.pagination.ClassicPagination
-    - advanced_alchemy.service.OffsetPagination
-
-    Custom types can implement this protocol::
-
-        @dataclass
-        class MyPagination:
-            items: list[T]
-            total: int
-            limit: int
-            offset: int
-    """
-
-    items: "Sequence[Any]"
 
 
 def empty_dict_factory() -> dict[str, Any]:

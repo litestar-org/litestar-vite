@@ -9,7 +9,8 @@ Common use cases:
 - Inject CSRF tokens
 - Inject Inertia.js page props
 - Add data attributes to elements
-- Inject JSON data as global variables
+- Inject Vite dev-server scripts for HMR
+- Rewrite asset URLs for a configured asset prefix
 
 .. automodule:: litestar_vite.html_transform
     :members:

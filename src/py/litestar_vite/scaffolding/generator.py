@@ -12,7 +12,9 @@ if TYPE_CHECKING:
     from litestar_vite.scaffolding.templates import FrameworkTemplate
 
 from litestar_vite.__metadata__ import __version__ as litestar_vite_version
+from litestar_vite.exceptions import MissingDependencyError
 from litestar_vite.scaffolding.templates import CURRENT_NPM_VERSION_RANGES
+from litestar_vite.typing import JINJA_INSTALLED
 
 
 def _dict_factory() -> dict[str, Any]:
@@ -184,7 +186,13 @@ def render_template(template_path: Path, context: dict[str, Any]) -> str:
 
     Returns:
         Rendered template content.
+
+    Raises:
+        MissingDependencyError: If Jinja2 is not installed.
     """
+    if not JINJA_INSTALLED:
+        raise MissingDependencyError(package="jinja2", extra="jinja")
+
     from jinja2 import Environment, FileSystemLoader
 
     template_dir = template_path.parent
