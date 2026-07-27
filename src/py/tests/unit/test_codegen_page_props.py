@@ -3,12 +3,13 @@
 from dataclasses import dataclass
 from typing import Any, TypedDict
 
+import pytest
 from litestar import Litestar, get
 from litestar.params import FromPath
 
 from litestar_vite.codegen import InertiaPageMetadata, extract_inertia_pages, generate_inertia_pages_json
 from litestar_vite.codegen._inertia import get_openapi_schema_ref, get_return_type_name
-from litestar_vite.config import TypeGenConfig
+from litestar_vite.config import InertiaConfig, TypeGenConfig
 
 # =============================================================================
 # Test Models
@@ -28,6 +29,23 @@ class UserProps:
 
     name: str
     email: str
+
+
+@dataclass
+class SharedUser:
+    """Nested model shared through a guard, also returned by a route."""
+
+    id: str
+    email: str
+    is_verified: bool = False
+
+
+@dataclass
+class AuthProps:
+    """Shape pushed by an authentication guard via share()."""
+
+    is_authenticated: bool
+    user: "SharedUser | None" = None
 
 
 # =============================================================================
@@ -516,6 +534,109 @@ def test_generate_inertia_pages_json_empty_app() -> None:
 
 # Note: test_generate_inertia_pages_json_generated_at_is_iso was removed
 # because generatedAt timestamp was removed for deterministic builds.
+
+
+# =============================================================================
+# Tests for shared_page_prop_types
+# =============================================================================
+
+
+def _shared_prop_types_app() -> Litestar:
+    """Build an app whose OpenAPI schema already carries SharedUser via a route.
+
+    Returns:
+        An app with one plain Inertia page and one route returning ``SharedUser``.
+    """
+
+    @get("/", opt={"component": "Home"}, sync_to_thread=False)
+    def home() -> dict[str, str]:
+        return {}
+
+    @get("/me", opt={"component": "Me"}, sync_to_thread=False)
+    def me() -> SharedUser:
+        return SharedUser(id="1", email="a@b.c")
+
+    return Litestar([home, me])
+
+
+def test_generate_inertia_pages_json_shared_page_prop_types_resolves_annotation() -> None:
+    """A declared share() prop resolves to its Python annotation instead of a synthesized type."""
+    app = _shared_prop_types_app()
+    result = generate_inertia_pages_json(
+        app,
+        openapi_schema=app.openapi_schema.to_schema(),
+        inertia_config=InertiaConfig(shared_page_prop_types={"auth": AuthProps}),
+    )
+
+    auth = result["sharedProps"]["auth"]
+    assert auth["type"] == "AuthProps"
+    assert auth["optional"] is True
+
+
+def test_generate_inertia_pages_json_shared_page_prop_types_reuses_route_schema() -> None:
+    """A nested model already registered by a route is reused, not duplicated."""
+    app = _shared_prop_types_app()
+    openapi_schema = app.openapi_schema.to_schema()
+    generate_inertia_pages_json(
+        app, openapi_schema=openapi_schema, inertia_config=InertiaConfig(shared_page_prop_types={"auth": AuthProps})
+    )
+
+    schemas = openapi_schema["components"]["schemas"]
+    shared_user_names = [name for name in schemas if name.endswith("SharedUser")]
+    assert len(shared_user_names) == 1, f"SharedUser registered more than once: {shared_user_names}"
+    assert any(name.endswith("AuthProps") for name in schemas)
+
+
+def test_generate_inertia_pages_json_shared_page_prop_types_overrides_default_auth() -> None:
+    """An explicit declaration wins over the synthesized AuthData convention."""
+    app = _shared_prop_types_app()
+    result = generate_inertia_pages_json(
+        app,
+        openapi_schema=app.openapi_schema.to_schema(),
+        include_default_auth=True,
+        inertia_config=InertiaConfig(shared_page_prop_types={"auth": AuthProps}),
+    )
+
+    assert result["sharedProps"]["auth"]["type"] == "AuthProps"
+
+
+@pytest.mark.parametrize("include_default_auth", [True, False])
+@pytest.mark.parametrize("include_default_flash", [True, False])
+def test_generate_inertia_pages_json_shared_page_prop_types_unset_is_unchanged(
+    include_default_auth: bool, include_default_flash: bool
+) -> None:
+    """Leaving the field unset produces byte-identical output for every boolean combination."""
+    baseline_app = _shared_prop_types_app()
+    baseline = generate_inertia_pages_json(
+        baseline_app,
+        openapi_schema=baseline_app.openapi_schema.to_schema(),
+        include_default_auth=include_default_auth,
+        include_default_flash=include_default_flash,
+        inertia_config=InertiaConfig(),
+    )
+
+    declared_app = _shared_prop_types_app()
+    with_field = generate_inertia_pages_json(
+        declared_app,
+        openapi_schema=declared_app.openapi_schema.to_schema(),
+        include_default_auth=include_default_auth,
+        include_default_flash=include_default_flash,
+        inertia_config=InertiaConfig(shared_page_prop_types=None),
+    )
+
+    assert with_field == baseline
+
+
+def test_generate_inertia_pages_json_shared_page_prop_types_ignores_empty_key() -> None:
+    """Empty keys are skipped, matching existing static/session prop behavior."""
+    app = _shared_prop_types_app()
+    result = generate_inertia_pages_json(
+        app,
+        openapi_schema=app.openapi_schema.to_schema(),
+        inertia_config=InertiaConfig(shared_page_prop_types={"": AuthProps}),
+    )
+
+    assert "" not in result["sharedProps"]
 
 
 # =============================================================================

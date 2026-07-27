@@ -76,6 +76,9 @@ InertiaConfig Reference
    * - ``extra_session_page_props``
      - ``set[str] | dict[str, type]``
      - Session keys to include in page props. Default: ``set()``
+   * - ``shared_page_prop_types``
+     - ``dict[str, type] | None``
+     - Types (not values) for props pushed with ``share()``. Default: ``None``
    * - ``encrypt_history``
      - ``bool``
      - Enable history encryption globally. Default: ``False``

@@ -504,6 +504,35 @@ def process_session_props(
             shared_props.setdefault(key, {"type": fallback_ts_type, "optional": True})
 
 
+def process_shared_prop_types(
+    shared_prop_types: "dict[str, type]",
+    shared_props: dict[str, dict[str, Any]],
+    shared_schema_keys: dict[str, tuple[str, ...]],
+    openapi_support: OpenAPISupport,
+    fallback_ts_type: str,
+) -> None:
+    """Register declared ``share()`` prop annotations.
+
+    Unlike session props these overwrite any generated default, because an explicit
+    Python annotation is more accurate than the synthesized convention it replaces.
+    """
+    for key, prop_type_class in shared_prop_types.items():
+        if not key:
+            continue
+
+        type_name = prop_type_class.__name__ if hasattr(prop_type_class, "__name__") else fallback_ts_type
+        if openapi_support.enabled and openapi_support.schema_creator:
+            try:
+                field_def = FieldDefinition.from_annotation(prop_type_class)
+                schema_result = openapi_support.schema_creator.for_field_definition(field_def)
+                if isinstance(schema_result, Reference):
+                    shared_schema_keys[key] = _get_normalized_schema_key(field_def)
+            except (AttributeError, TypeError, ValueError):  # pragma: no cover - defensive
+                type_name = fallback_ts_type
+
+        shared_props[key] = {"type": type_name, "optional": True}
+
+
 def build_inertia_shared_props(
     app: "Litestar",
     *,
@@ -566,6 +595,11 @@ def build_inertia_shared_props(
     process_session_props(
         inertia_config.extra_session_page_props, shared_props, shared_schema_keys, openapi_support, fallback_ts_type
     )
+
+    if inertia_config.shared_page_prop_types:
+        process_shared_prop_types(
+            inertia_config.shared_page_prop_types, shared_props, shared_schema_keys, openapi_support, fallback_ts_type
+        )
 
     if not (
         openapi_support.context
