@@ -7,9 +7,12 @@ Notable changes to this project are documented in this file.
 Litestar Vite Changelog
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-0.29.0 - unreleased
+0.29.0 - 2026-07-27
 -------------------
 
+- Added ``csrfCookieName`` and ``csrfHeaderName`` to the ``.litestar.json`` bridge and injected browser
+  state. ``getCsrfToken()``, ``getCsrfHeaderName()``, ``csrfHeaders()``, ``csrfFetch()``, and the HTMX
+  extension now follow custom ``CSRFConfig(cookie_name=..., header_name=...)`` values automatically.
 - Fixed ``litestar assets init`` failing with a bare ``ModuleNotFoundError`` when the ``jinja`` extra was
   not installed. Scaffolding now raises ``MissingDependencyError`` with install instructions from every
   entry point, and writes no files before failing.
@@ -21,6 +24,16 @@ Litestar Vite Changelog
 - Fixed ``AssetNotFoundError`` and ``ManifestNotFoundError`` discarding the paths passed to them. The
   messages still omit filesystem paths, which are now available as ``file_path`` and ``manifest_path``
   attributes.
+- Changed SPA/proxy route derivation so ``/api`` and ``/schema`` are reserved only when registered
+  Litestar routes, OpenAPI configuration, or ``RuntimeConfig.extra_route_prefixes`` claim them. Add
+  ``extra_route_prefixes=("/api",)`` if an application relied on the old guessed fallback.
+- Changed Inertia ``share()`` so top-level ``defer()``, ``optional()``, ``once()``, and ``always()``
+  callables run only when the current response renders them or when a redirect needs to persist
+  them. The ``True``/``False`` return contract is unchanged, and async special props still return
+  ``False`` because they cannot be persisted synchronously across redirects.
+- Changed Inertia transient state to stay request-local when the current response can consume it
+  and to use the configured session automatically when state must survive a redirect. Existing
+  session-backed application setup remains compatible.
 - Changed ``mode="external"`` back to a fully supported alias of ``mode="framework"``. It no longer emits
   a ``DeprecationWarning``, and still requires ``runtime.external_dev_server``. All five mode aliases
   (``inertia``, ``htmx``, ``ssr``, ``ssg``, ``external``) are permanent and silent.
@@ -31,6 +44,15 @@ Litestar Vite Changelog
 - Changed the per-framework ``AstroTypesConfig``, ``NuxtTypesConfig``, ``SvelteKitTypesConfig``, and
   ``TypesConfig`` types into aliases of one shared definition. The names and accepted fields are
   unchanged; the integrations can no longer drift apart.
+- Deprecated ``materialize_shared_props_to_session()`` for removal in v0.30.0; Inertia redirect
+  responses now perform the compatible session handoff automatically.
+- Replaced HTMX JSON-template expression evaluation with a CSP-safe allowlist interpreter. Assignment,
+  ``new``, functions/arrows, computed indexing, array literals, and globals other than ``JSON`` and
+  ``Math`` are no longer supported. Reserved data-field names include ``constructor``, ``__proto__``,
+  ``prototype``, ``apply``, ``call``, ``bind``, ``arguments``, ``callee``, ``caller``, and the
+  ``__define*``/``__lookup*`` names; rename those fields before using them in expressions.
+  ``@event`` now exposes a sanitized ``$event`` wrapper instead of the raw DOM event. Applications may
+  remove CSP ``script-src 'unsafe-eval'`` when no other code requires it.
 - **Breaking**: ``MissingDependencyError`` takes ``extra`` in place of ``install_package``. ``extra`` names
   a ``litestar-vite`` extra and may be omitted for dependencies that are not exposed as one.
 - **Breaking**: Removed ``litestar_vite.commands`` and ``init_vite()``. Use ``litestar_vite.scaffolding``
@@ -42,32 +64,6 @@ Litestar Vite Changelog
 - **Breaking**: Removed ``inject_body_content()``, ``inject_json_script()``, and
   ``set_element_inner_html()`` from ``litestar_vite.html_transform``, along with the unused
   ``InertiaProps`` type. ``html_transform`` now declares an explicit ``__all__``.
-
-0.28.1 - 2026-07-25
--------------------
-
-- Added ``csrfCookieName`` and ``csrfHeaderName`` to the ``.litestar.json`` bridge and injected browser
-  state. ``getCsrfToken()``, ``getCsrfHeaderName()``, ``csrfHeaders()``, ``csrfFetch()``, and the HTMX
-  extension now follow custom ``CSRFConfig(cookie_name=..., header_name=...)`` values automatically.
-- Changed SPA/proxy route derivation so ``/api`` and ``/schema`` are reserved only when registered
-  Litestar routes, OpenAPI configuration, or ``RuntimeConfig.extra_route_prefixes`` claim them. Add
-  ``extra_route_prefixes=("/api",)`` if an application relied on the old guessed fallback.
-- Changed Inertia ``share()`` so top-level ``defer()``, ``optional()``, ``once()``, and ``always()``
-  callables run only when the current response renders them or when a redirect needs to persist
-  them. The ``True``/``False`` return contract is unchanged, and async special props still return
-  ``False`` because they cannot be persisted synchronously across redirects.
-- Changed Inertia transient state to stay request-local when the current response can consume it
-  and to use the configured session automatically when state must survive a redirect. Existing
-  session-backed application setup remains compatible.
-- Deprecated ``materialize_shared_props_to_session()`` for removal in v0.30.0; Inertia redirect
-  responses now perform the compatible session handoff automatically.
-- Replaced HTMX JSON-template expression evaluation with a CSP-safe allowlist interpreter. Assignment,
-  ``new``, functions/arrows, computed indexing, array literals, and globals other than ``JSON`` and
-  ``Math`` are no longer supported. Reserved data-field names include ``constructor``, ``__proto__``,
-  ``prototype``, ``apply``, ``call``, ``bind``, ``arguments``, ``callee``, ``caller``, and the
-  ``__define*``/``__lookup*`` names; rename those fields before using them in expressions.
-  ``@event`` now exposes a sanitized ``$event`` wrapper instead of the raw DOM event. Applications may
-  remove CSP ``script-src 'unsafe-eval'`` when no other code requires it.
 
 0.28.0 - 2026-07-25
 -------------------
