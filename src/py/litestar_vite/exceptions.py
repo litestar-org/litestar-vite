@@ -1,6 +1,6 @@
 """Litestar-Vite exception classes."""
 
-__all__ = [
+__all__ = (
     "AssetNotFoundError",
     "LitestarViteError",
     "ManifestNotFoundError",
@@ -8,7 +8,7 @@ __all__ = [
     "ViteExecutableNotFoundError",
     "ViteExecutionError",
     "ViteProcessError",
-]
+)
 
 
 class LitestarViteError(Exception):
@@ -18,18 +18,18 @@ class LitestarViteError(Exception):
 class MissingDependencyError(LitestarViteError, ImportError):
     """Raised when a package is not installed but required."""
 
-    def __init__(self, package: str, install_package: "str | None" = None) -> None:
+    def __init__(self, package: str, extra: "str | None" = None) -> None:
         """Initialize the exception.
 
         Args:
-            package: The name of the missing package.
-            install_package: Optional alternative package name for installation.
+            package: PyPI distribution name of the missing package (e.g. ``"jinja2"``).
+            extra: Optional ``litestar-vite`` extra providing ``package`` (e.g. ``"jinja"``).
+                When omitted, only the direct install hint is shown.
         """
-        super().__init__(
-            f"Package {package!r} is not installed but required. You can install it by running "
-            f"'pip install litestar-vite[{install_package or package}]' to install litestar-vite with the required extra "
-            f"or 'pip install {install_package or package}' to install the package separately"
-        )
+        hint = f"'pip install {package}'"
+        if extra is not None:
+            hint = f"'pip install litestar-vite[{extra}]' to install litestar-vite with the required extra, or {hint}"
+        super().__init__(f"Package {package!r} is not installed but required. You can install it by running {hint}")
 
 
 class ViteExecutableNotFoundError(LitestarViteError):
@@ -50,7 +50,14 @@ class ManifestNotFoundError(LitestarViteError):
     """Raised when the manifest file is not found."""
 
     def __init__(self, manifest_path: str | None = None) -> None:
+        """Initialize the exception.
+
+        Args:
+            manifest_path: Path the manifest was searched for. Kept out of the message so
+                filesystem paths do not leak into error pages; exposed as an attribute.
+        """
         super().__init__("Vite manifest file not found. Run 'litestar assets build' and retry.")
+        self.manifest_path = manifest_path
 
 
 class ViteProcessError(LitestarViteError):
@@ -75,4 +82,13 @@ class AssetNotFoundError(LitestarViteError):
     """Raised when an asset is not found in the manifest."""
 
     def __init__(self, file_path: str, manifest_path: str | None = None) -> None:
+        """Initialize the exception.
+
+        Args:
+            file_path: The asset path that was requested.
+            manifest_path: Path of the manifest searched. Kept out of the message so
+                filesystem paths do not leak into error pages; exposed as an attribute.
+        """
         super().__init__(f"Asset {file_path!r} not found in Vite manifest. Run 'litestar assets build' and retry.")
+        self.file_path = file_path
+        self.manifest_path = manifest_path

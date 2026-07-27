@@ -975,13 +975,24 @@ def test_vite_config_aliases_normalize_to_canonical(input_mode: str, canonical_m
     assert config.mode == canonical_mode
 
 
-def test_vite_config_external_mode_with_dev_server_deprecates(recwarn: pytest.WarningsRecorder) -> None:
-    """mode='external' + external_dev_server: warns deprecation, normalizes to framework."""
+def test_vite_config_external_mode_with_dev_server_normalizes_silently(recwarn: pytest.WarningsRecorder) -> None:
+    """mode='external' is a permanent alias: normalizes to framework without warning."""
     config = ViteConfig(
         mode="external", runtime=RuntimeConfig(external_dev_server=ExternalDevServer(target="http://localhost:4200"))
     )
     assert config.mode == "framework"
-    assert any(issubclass(w.category, DeprecationWarning) for w in recwarn.list)
+    assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
+
+
+def test_vite_config_external_mode_matches_framework_with_dev_server() -> None:
+    """``mode='external'`` and ``mode='framework'`` are equivalent given the same dev server."""
+    dev_server = ExternalDevServer(target="http://localhost:4200")
+    external = ViteConfig(mode="external", runtime=RuntimeConfig(external_dev_server=dev_server))
+    framework = ViteConfig(mode="framework", runtime=RuntimeConfig(external_dev_server=dev_server))
+
+    assert external.mode == framework.mode == "framework"
+    assert external.runtime.external_dev_server == framework.runtime.external_dev_server
+    assert external.proxy_mode == framework.proxy_mode
 
 
 def test_vite_config_external_mode_without_dev_server_raises() -> None:

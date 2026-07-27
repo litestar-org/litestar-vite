@@ -12,119 +12,16 @@ import { createLogger } from "./shared/logger.js"
 import { installManagedShutdown } from "./shared/managed-shutdown.js"
 import { resolveLitestarPort } from "./shared/network.js"
 import { resolveDefaultSdkClientPlugin } from "./shared/typegen-core.js"
-import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig } from "./shared/typegen-plugin.js"
+import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig, type TypesConfigShape } from "./shared/typegen-plugin.js"
 import { buildInputOptions, hmrServerConfig, resolveUserBuildInput } from "./shared/vite-compat.js"
 
 /**
  * Configuration for TypeScript type generation.
  *
- * Type generation works as follows:
- * 1. Python's Litestar exports openapi.json and routes.json on startup (and reload)
- * 2. The Vite plugin watches these files for changes
- * 3. When they change, it runs @hey-api/openapi-ts to generate TypeScript types
- * 4. HMR event is sent to notify the client
+ * Alias of the shared {@link TypesConfigShape}, which every framework integration also
+ * re-exports, so the `types` option is identical everywhere. Retained as a named export.
  */
-export interface TypesConfig {
-  /**
-   * Enable type generation.
-   *
-   * @default false
-   */
-  enabled?: boolean
-  /**
-   * Path to output generated TypeScript types.
-   *
-   * @default 'src/generated'
-   */
-  output?: string
-  /**
-   * Path where the OpenAPI schema is exported by Litestar.
-   * The Vite plugin watches this file and runs @hey-api/openapi-ts when it changes.
-   *
-   * @default 'src/generated/openapi.json'
-   */
-  openapiPath?: string
-  /**
-   * Path where route metadata is exported by Litestar.
-   * The Vite plugin watches this file for route helper generation.
-   *
-   * @default 'src/generated/routes.json'
-   */
-  routesPath?: string
-  /**
-   * Optional path for the generated schemas.ts helper file.
-   * Defaults to `${output}/schemas.ts` when not set.
-   */
-  schemasTsPath?: string
-  /**
-   * Path where Inertia page props metadata is exported by Litestar.
-   * The Vite plugin watches this file for page props type generation.
-   *
-   * @default 'src/generated/inertia-pages.json'
-   */
-  pagePropsPath?: string
-  /**
-   * Generate Zod schemas in addition to TypeScript types.
-   *
-   * @default false
-   */
-  generateZod?: boolean
-  /**
-   * Generate a typed SDK client in addition to types.
-   *
-   * @default true
-   */
-  generateSdk?: boolean
-  /**
-   * Generate typed routes.ts from routes.json metadata.
-   *
-   * Mirrors Python TypeGenConfig.generate_routes.
-   *
-   * @default true
-   */
-  generateRoutes?: boolean
-  /**
-   * Generate Inertia page props types from inertia-pages.json metadata.
-   *
-   * Mirrors Python TypeGenConfig.generate_page_props.
-   *
-   * @default true
-   */
-  generatePageProps?: boolean
-  /**
-   * Generate schemas.ts with ergonomic form/response type helpers.
-   *
-   * Creates helper types like FormInput<'api:login'> and FormResponse<'api:login', 201>
-   * that wrap hey-api generated types with cleaner DX.
-   *
-   * @default true
-   */
-  generateSchemas?: boolean
-  /**
-   * Register route() function globally on window object.
-   *
-   * When true, the generated routes.ts will include code that registers
-   * the type-safe route() function on `window.route`, similar to Laravel's
-   * Ziggy library. This allows using route() without imports.
-   *
-   * @default false
-   */
-  globalRoute?: boolean
-  /**
-   * Fail Vite when type generation fails.
-   *
-   * Defaults to true during `vite build` and false during `vite serve`.
-   */
-  failOnError?: boolean
-  /**
-   * Debounce time in milliseconds for type regeneration.
-   * Prevents regeneration from running too frequently when
-   * multiple files are written in quick succession.
-   *
-   * @default 300
-   */
-  debounce?: number
-}
+export type TypesConfig = TypesConfigShape
 
 export interface PluginConfig {
   /**

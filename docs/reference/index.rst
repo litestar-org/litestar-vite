@@ -51,7 +51,6 @@ Reference Paths
    :hidden:
 
    cli
-   commands
    config
    deploy
    exceptions

@@ -829,7 +829,7 @@ class SSRProxyMiddleware(AbstractMiddleware):
     Falls back to the next ASGI app when the framework dev server is unavailable, mirroring
     ``ViteProxyMiddleware`` post-#248 behavior.
 
-    HTTP only. WebSocket HMR proxying is handled by ``create_ssr_websocket_handler``.
+    HTTP only. WebSocket HMR proxying is handled by ``create_ssr_ws_proxy_handler``.
     """
 
     scopes = {ScopeType.HTTP}
@@ -1098,77 +1098,6 @@ def create_ssr_ws_proxy_handler(
         await _proxy_ssr_websocket_from_socket(socket, get_target_url, get_hmr_target_url)
 
     return ws_proxy
-
-
-def create_ssr_websocket_handler(target: "str | None" = None, hotfile_path: "Path | None" = None) -> type:
-    """Create a Controller that hosts only the SSR WebSocket HMR proxy handler.
-
-    .. deprecated:: 0.23.0
-        Use :func:`~litestar_vite.plugin.create_ssr_ws_proxy_handler` for the WebSocket
-        handler and :func:`~litestar_vite.plugin.create_ssr_http_proxy_handler` for the
-        HTTP catch-all. The plugin no longer registers this Controller; the function is
-        retained for any external callers.
-
-    Args:
-        target: Static target URL (for frameworks with a known dev URL).
-        hotfile_path: Path to the hotfile for dynamic target discovery.
-
-    Returns:
-        A Litestar Controller class with a single WebSocket handler.
-    """
-    from litestar import Controller, WebSocket, websocket
-
-    cached_target: list[str | None] = [target]
-    get_target_url = create_target_url_getter(target, hotfile_path, cached_target)
-    get_hmr_target_url = create_hmr_target_getter(hotfile_path, [None])
-
-    class SSRProxyWebSocketHandler(Controller):
-        """Controller hosting only the WebSocket HMR proxy for framework dev servers."""
-
-        include_in_schema = False
-        opt = {"exclude_from_auth": True}
-
-        @websocket(path=["/", "/{path:path}"], name="ssr_proxy_ws")
-        async def ws_proxy(self, socket: "WebSocket[Any, Any, Any]") -> None:
-            """Proxy WebSocket connections to the SSR framework dev server (HMR)."""
-            await _proxy_ssr_websocket_from_socket(socket, get_target_url, get_hmr_target_url)
-
-    return SSRProxyWebSocketHandler
-
-
-def create_ssr_proxy_controller(
-    target: "str | None" = None,
-    hotfile_path: "Path | None" = None,
-    http2: bool = True,
-    plugin: "VitePlugin | None" = None,
-) -> type:
-    """Create a Controller that proxies to an SSR framework dev server.
-
-    .. deprecated:: 0.23.0
-        Use :class:`SSRProxyMiddleware` for HTTP and :func:`create_ssr_websocket_handler`
-        for WebSocket HMR. This factory now returns the WebSocket-only Controller and
-        emits a ``DeprecationWarning``; HTTP catch-all is no longer registered here.
-
-    Args:
-        target: Static target URL to proxy to. If None, uses hotfile for dynamic discovery.
-        hotfile_path: Path to the hotfile for dynamic target discovery.
-        http2: Retained for API compatibility; ignored (WS HMR does not use HTTP/2).
-        plugin: Retained for API compatibility; ignored.
-
-    Returns:
-        A Litestar Controller class with the WebSocket HMR proxy handler.
-    """
-    import warnings
-
-    del http2, plugin
-    warnings.warn(
-        "create_ssr_proxy_controller is deprecated. Use SSRProxyMiddleware (HTTP) and "
-        "create_ssr_websocket_handler (WS) instead. The HTTP catch-all has moved to middleware "
-        "to eliminate /-route collisions.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return create_ssr_websocket_handler(target=target, hotfile_path=hotfile_path)
 
 
 def normalize_proxy_prefixes(

@@ -320,13 +320,6 @@ class PageProps(Generic[T]):
         return data
 
 
-@dataclass
-class InertiaProps(Generic[T]):
-    """Inertia Props Type."""
-
-    page: PageProps[T]
-
-
 class InertiaHeaderType(TypedDict, total=False):
     """Type for inertia_headers parameter in get_headers()."""
 

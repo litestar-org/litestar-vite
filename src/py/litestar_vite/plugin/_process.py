@@ -364,12 +364,6 @@ class ViteProcess:
         time.sleep(timeout)
         self._force_kill_specific_process_group(process)
 
-    def _force_kill_process_group(self) -> None:
-        """Force kill the process group if still alive."""
-        if not self.process:
-            return
-        self._force_kill_specific_process_group(self.process)
-
     def _force_kill_specific_process_group(self, process: "subprocess.Popen[Any]", *, timeout: float = 1.0) -> None:
         """Force kill a specific process group if still alive."""
         if platform.system() == "Windows":
@@ -402,8 +396,3 @@ class ViteProcess:
             if candidate.is_file():
                 return str(candidate)
         return None
-
-    def _atexit_stop(self) -> None:
-        """Best-effort stop on interpreter exit."""
-        with suppress(Exception):
-            self.stop()

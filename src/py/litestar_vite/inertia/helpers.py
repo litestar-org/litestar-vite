@@ -9,6 +9,7 @@ from litestar.exceptions import ImproperlyConfiguredException
 from litestar.utils.empty import value_or_default
 from litestar.utils.scope.state import ScopeState
 
+from litestar_vite.inertia._utils import InertiaHeaders
 from litestar_vite.inertia.state import (
     consume_errors,
     consume_flash,
@@ -1383,7 +1384,7 @@ def get_shared_props(
     props: "dict[str, Any]" = {}
     flash: "dict[str, list[str]]" = defaultdict(list)
     once_props_entries: "list[_OncePropEntry]" = []
-    error_bag = request.headers.get("X-Inertia-Error-Bag", None)
+    error_bag = request.headers.get(InertiaHeaders.ERROR_BAG.value, None)
 
     session, session_shared_props, errors, session_messages = _consume_session_handoff_state(request)
     local_shared_props = consume_shared(request)
@@ -1449,7 +1450,18 @@ _UNMATERIALIZABLE_SHARED = object()
 
 
 def _materialize_shared_value(value: "Any") -> "Any":  # pyright: ignore[reportUnusedFunction]
-    """Convert top-level special props into session-serializable values for share()."""
+    """Convert top-level special props into session-serializable values for share().
+
+    Called by ``inertia.state.persist_transient_state_for_redirect`` via a function-local
+    import, so static analysers report it as unused.
+
+    Args:
+        value: A staged shared prop value.
+
+    Returns:
+        A session-serializable value, or ``_UNMATERIALIZABLE_SHARED`` when the value cannot
+        be resolved outside a live request.
+    """
     if is_merge_prop(value):
         return unwrap_merge_props(value)
     if is_special_prop(value):

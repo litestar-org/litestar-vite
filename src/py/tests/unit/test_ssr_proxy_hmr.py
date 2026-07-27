@@ -6,7 +6,7 @@ import pytest
 from litestar import WebSocket
 from litestar.exceptions import WebSocketDisconnect
 
-from litestar_vite.plugin import create_ssr_websocket_handler
+from litestar_vite.plugin import create_ssr_ws_proxy_handler
 
 pytestmark = pytest.mark.anyio
 
@@ -36,11 +36,9 @@ def hmr_hotfile(hotfile: Path) -> Path:
 
 
 async def test_ssr_proxy_uses_hmr_target_when_available(hotfile: Path, hmr_hotfile: Path) -> None:
-    """Test that SSRProxyController.ws_proxy uses the HMR target from hot.hmr."""
+    """The WS HMR proxy prefers the ``hot.hmr`` target over the main dev-server target."""
 
-    # Create the controller class
-    ControllerClass = create_ssr_websocket_handler(hotfile_path=hotfile)
-    controller = ControllerClass(owner=MagicMock())
+    handler = create_ssr_ws_proxy_handler(hotfile_path=hotfile)
 
     # Mock WebSocket
     socket = MagicMock(spec=WebSocket)
@@ -54,8 +52,7 @@ async def test_ssr_proxy_uses_hmr_target_when_available(hotfile: Path, hmr_hotfi
     with patch("litestar_vite.plugin._proxy.websockets.connect") as mock_connect:
         mock_connect.return_value.__aenter__.return_value = AsyncMock()
 
-        # Call ws_proxy
-        await controller.ws_proxy.fn(controller, socket)
+        await handler.fn(socket)
 
         # Verify it connected to the HMR target (24678) not the main target (3000)
         mock_connect.assert_called_once()
@@ -65,16 +62,14 @@ async def test_ssr_proxy_uses_hmr_target_when_available(hotfile: Path, hmr_hotfi
 
 
 async def test_ssr_proxy_falls_back_to_main_target_when_hmr_missing(hotfile: Path) -> None:
-    """Test that SSRProxyController.ws_proxy falls back to main target if hot.hmr is missing."""
+    """The WS HMR proxy falls back to the main target when ``hot.hmr`` is absent."""
 
     # Ensure no hmr file
     hmr_path = anyio.Path(f"{hotfile}.hmr")
     if await hmr_path.exists():
         await hmr_path.unlink()
 
-    # Create the controller class
-    ControllerClass = create_ssr_websocket_handler(hotfile_path=hotfile)
-    controller = ControllerClass(owner=MagicMock())
+    handler = create_ssr_ws_proxy_handler(hotfile_path=hotfile)
 
     # Mock WebSocket
     socket = MagicMock(spec=WebSocket)
@@ -87,8 +82,7 @@ async def test_ssr_proxy_falls_back_to_main_target_when_hmr_missing(hotfile: Pat
     with patch("litestar_vite.plugin._proxy.websockets.connect") as mock_connect:
         mock_connect.return_value.__aenter__.return_value = AsyncMock()
 
-        # Call ws_proxy
-        await controller.ws_proxy.fn(controller, socket)
+        await handler.fn(socket)
 
         # Verify it connected to the main target (3000)
         mock_connect.assert_called_once()

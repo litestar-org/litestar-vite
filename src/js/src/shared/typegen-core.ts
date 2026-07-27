@@ -83,7 +83,7 @@ export interface TypeGenLogger {
   error(message: string): void
 }
 
-export interface TypeGenCacheHooks {
+interface TypeGenCacheHooks {
   shouldRunOpenApiTs(
     openapiPath: string,
     configPath: string | null,
@@ -129,7 +129,7 @@ export function findOpenApiTsConfig(projectRoot: string): string | null {
 /**
  * Build the list of plugins for @hey-api/openapi-ts.
  */
-export function buildHeyApiPlugins(config: { generateSdk: boolean; generateZod: boolean; sdkClientPlugin: string }): string[] {
+function buildHeyApiPlugins(config: { generateSdk: boolean; generateZod: boolean; sdkClientPlugin: string }): string[] {
   const plugins = ["@hey-api/typescript", "@hey-api/schemas"]
   if (config.generateSdk) {
     plugins.push("@hey-api/sdk", config.sdkClientPlugin)

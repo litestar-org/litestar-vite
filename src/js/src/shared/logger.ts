@@ -20,7 +20,7 @@ export interface LoggingConfig {
 /**
  * Default logging configuration.
  */
-export const defaultLoggingConfig: LoggingConfig = {
+const defaultLoggingConfig: LoggingConfig = {
   level: "normal",
   showPathsAbsolute: false,
   suppressNpmOutput: false,

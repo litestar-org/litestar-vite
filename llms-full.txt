@@ -449,7 +449,7 @@ Key methods:
 - validate_mode() -> None (raises ValueError on invalid combinations)
 - reset_executor() -> None  (call after mutating logging config to refresh executor instance)
 
-`PaginationContainer` protocol is also exported from `litestar_vite.config._vite`.
+`PaginationContainer` protocol is exported from `litestar_vite.config`.
 Any type with an `items` attribute satisfies it; built-in support covers
 `litestar.pagination.OffsetPagination`, `ClassicPagination`, and
 `advanced_alchemy.service.OffsetPagination`.
@@ -1185,7 +1185,7 @@ import staticProps from 'virtual:litestar-static-props'
 | `framework` | Meta-framework mode (Astro, Nuxt, SvelteKit). Dev: proxy to framework dev server. Prod: serve built output. |
 | `external` | DEPRECATED alias for `framework` (requires `external_dev_server`). For non-Vite frameworks (e.g. Angular CLI), use `mode="framework"` with `external_dev_server`. |
 
-Mode aliases (normalized at construction): `"ssr"`/`"ssg"` -> `"framework"`, `"inertia"` -> `"hybrid"`, `"htmx"` -> `"template"`, `"external"` -> `"framework"` (deprecated). Canonical modes: `spa`, `template`, `hybrid`, `framework`.
+Mode aliases (normalized at construction): `"ssr"`/`"ssg"` -> `"framework"`, `"inertia"` -> `"hybrid"`, `"htmx"` -> `"template"`, `"external"` -> `"framework"` (requires `external_dev_server`). Canonical modes: `spa`, `template`, `hybrid`, `framework`.
 
 ## Proxy Modes
 
@@ -1421,7 +1421,6 @@ litestar_vite.codegen._routes
 litestar_vite.codegen._ts
 litestar_vite.codegen._utils
 litestar_vite.cli
-litestar_vite.commands
 litestar_vite.deploy
 litestar_vite.doctor
 litestar_vite.exceptions

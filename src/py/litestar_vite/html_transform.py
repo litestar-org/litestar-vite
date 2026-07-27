@@ -7,14 +7,21 @@ import re
 from functools import lru_cache, partial
 from typing import Any
 
-from litestar.serialization import encode_json
+__all__ = (
+    "inject_head_html",
+    "inject_head_script",
+    "inject_page_script",
+    "inject_vite_dev_scripts",
+    "replace_element_outer_html",
+    "set_data_attribute",
+    "transform_asset_urls",
+)
 
 _VALID_SELECTOR_RE = re.compile(r"^#?[a-zA-Z][a-zA-Z0-9_-]*$")
 _VALID_ATTR_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_-]*$")
 
 _HEAD_END_PATTERN = re.compile(r"</head\s*>", re.IGNORECASE)
 _BODY_END_PATTERN = re.compile(r"</body\s*>", re.IGNORECASE)
-_BODY_START_PATTERN = re.compile(r"<body[^>]*>", re.IGNORECASE)
 _HTML_END_PATTERN = re.compile(r"</html\s*>", re.IGNORECASE)
 _SCRIPT_SRC_PATTERN = re.compile(r'(<script[^>]*\s+src\s*=\s*["\'])([^"\']+)(["\'][^>]*>)', re.IGNORECASE)
 _LINK_HREF_PATTERN = re.compile(r'(<link[^>]*\s+href\s*=\s*["\'])([^"\']+)(["\'][^>]*>)', re.IGNORECASE)
@@ -126,19 +133,6 @@ def _set_attribute_replacer(
     return opening + closing
 
 
-def _set_inner_html_replacer(match: re.Match[str], *, content: str) -> str:
-    """Replace inner HTML for an ID-targeted element match.
-
-    Args:
-        match: Regex match from ``_get_id_element_with_content_pattern``.
-        content: Raw HTML to inject as the element's inner HTML.
-
-    Returns:
-        Updated HTML fragment with replaced inner content.
-    """
-    return match.group(1) + content + match.group(5)
-
-
 def _replace_outer_html_replacer(match: re.Match[str], *, content: str) -> str:
     """Replace an entire element match with raw HTML content."""
     return content
@@ -214,39 +208,6 @@ def inject_head_html(html: str, content: str) -> str:
     return html + "\n" + content
 
 
-def inject_body_content(html: str, content: str, *, position: str = "end") -> str:
-    """Inject content into the body element.
-
-    Args:
-        html: The HTML document.
-        content: The content to inject (can include HTML tags).
-        position: Where to inject - "start" (after <body>) or "end" (before </body>).
-
-    Returns:
-        The HTML with the injected content. Returns the original HTML unchanged
-        if ``content`` is empty or if no ``<body>`` tag is found.
-
-    Example:
-        html = inject_body_content(html, '<div id="portal"></div>', position="end")
-    """
-    if not content:
-        return html
-
-    if position == "end":
-        body_end_match = _BODY_END_PATTERN.search(html)
-        if body_end_match:
-            pos = body_end_match.start()
-            return html[:pos] + content + "\n" + html[pos:]
-
-    elif position == "start":
-        body_start_match = _BODY_START_PATTERN.search(html)
-        if body_start_match:
-            pos = body_start_match.end()
-            return html[:pos] + "\n" + content + html[pos:]
-
-    return html
-
-
 def set_data_attribute(html: str, selector: str, attr: str, value: str) -> str:
     """Set a data attribute on an element matching the selector.
 
@@ -292,29 +253,6 @@ def set_data_attribute(html: str, selector: str, attr: str, value: str) -> str:
 
     element_name = selector.lower()
     pattern = _get_element_selector_pattern(element_name)
-    return pattern.sub(replacer, html, count=1)
-
-
-def set_element_inner_html(html: str, selector: str, content: str) -> str:
-    """Replace the inner HTML of an element matching the selector.
-
-    Supports only simple ID selectors (``#app``). This is intentionally limited to avoid
-    the overhead and edge cases of a full HTML parser.
-
-    Args:
-        html: The HTML document.
-        selector: The selector (only ``#id`` supported).
-        content: The raw HTML to set as the element's innerHTML.
-
-    Returns:
-        Updated HTML. If no matching element is found, returns the original HTML.
-    """
-    if not selector or not selector.startswith("#"):
-        return html
-
-    element_id = selector[1:]
-    pattern = _get_id_element_with_content_pattern(element_id)
-    replacer = partial(_set_inner_html_replacer, content=content)
     return pattern.sub(replacer, html, count=1)
 
 
@@ -386,36 +324,6 @@ def inject_page_script(
         return html[:pos] + script_tag + html[pos:]
 
     return html + "\n" + script_tag
-
-
-def inject_json_script(html: str, var_name: str, data: dict[str, Any], *, nonce: str | None = None) -> str:
-    """Inject a script that sets a global JavaScript variable to JSON data.
-
-    This is a convenience function for injecting structured data into the page.
-    The data is serialized with compact JSON (no extra whitespace) and non-ASCII
-    characters are preserved.
-
-    Args:
-        html: The HTML document.
-        var_name: The global variable name (e.g., "__LITESTAR_ROUTES__").
-        data: The data to serialize as JSON.
-        nonce: Optional CSP nonce to add to the injected ``<script>`` tag.
-
-    Returns:
-        The HTML with the injected script in the ``<head>`` section. Falls back
-        to injecting before ``</html>`` or at the end if no ``</head>`` is found.
-
-    Note:
-        The script content is NOT escaped to preserve valid JSON. Ensure that
-        ``data`` does not contain user-controlled content that could include
-        malicious ``</script>`` sequences.
-
-    Example:
-        html = inject_json_script(html, "__ROUTES__", {"home": "/", "about": "/about"})
-    """
-    json_data = encode_json(data).decode("utf-8")
-    script = f"window.{var_name} = {json_data};"
-    return inject_head_script(html, script, escape=False, nonce=nonce)
 
 
 def inject_vite_dev_scripts(

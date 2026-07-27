@@ -61,7 +61,7 @@ def test_vite_plugin_initialization_default_config() -> None:
     assert plugin._config is not None
     assert isinstance(plugin._config, ViteConfig)
     assert plugin._asset_loader is None
-    assert plugin._static_files_config == {}
+    assert plugin._static_files_config is None
     assert plugin._static_files_config_supplied is False
     assert plugin._config.executor is not None
     assert plugin._vite_process is None
@@ -88,7 +88,7 @@ def test_vite_plugin_initialization_with_static_files_config() -> None:
     plugin = VitePlugin(static_files_config=static_config)
 
     assert plugin._static_files_config is not None
-    assert "tags" in plugin._static_files_config
+    assert plugin._static_files_config.as_router_kwargs()["tags"] == ["static"]
     assert plugin._static_files_config_supplied is True
 
 
@@ -1684,7 +1684,7 @@ def test_vite_plugin_optional_static_files_config_independent_of_jinja() -> None
 
     # Static files should work regardless of Jinja availability
     assert plugin._static_files_config is not None
-    assert plugin._static_files_config.get("tags") == ["static"]
+    assert plugin._static_files_config.tags == ["static"]
 
     app_config = AppConfig()
     result = plugin.on_app_init(app_config)

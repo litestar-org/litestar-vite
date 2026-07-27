@@ -441,3 +441,37 @@ def test_doctor_apply_vite_key_fix(tmp_path: Path) -> None:
     assert ok is True
     content = (tmp_path / "vite.config.ts").read_text()
     assert "assetUrl: '/static/'" in content
+
+
+def test_doctor_isolates_a_crashing_check(doctor: ViteDoctor, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """One check raising is reported as a warning without aborting the remaining checks."""
+    monkeypatch.chdir(tmp_path)
+    doctor.config.paths.root = tmp_path
+    _prepare_frontend_dirs(tmp_path)
+    (tmp_path / "vite.config.ts").write_text("""
+    export default defineConfig({
+        plugins: [litestar({
+            assetUrl: '/static/',
+        })]
+    })
+    """)
+
+    def _boom() -> None:
+        msg = "synthetic check failure"
+        raise RuntimeError(msg)
+
+    with (
+        patch.object(doctor, "_check_paths_exist", _boom),
+        patch.object(doctor, "_check_dist_files"),
+        patch.object(doctor, "_check_node_modules"),
+        patch.object(doctor, "_check_manifest_presence"),
+        patch.object(doctor, "_check_typegen_artifacts"),
+        patch.object(doctor, "_check_env_alignment"),
+        patch.object(doctor, "_check_vite_server_reachable"),
+    ):
+        doctor.run()
+
+    crash_issues = [i for i in doctor.issues if "could not complete" in i.message]
+    assert len(crash_issues) == 1
+    assert crash_issues[0].severity == "warning"
+    assert "synthetic check failure" in crash_issues[0].message

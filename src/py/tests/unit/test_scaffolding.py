@@ -1,4 +1,4 @@
-"""Tests for litestar_vite.commands module."""
+"""Tests for litestar_vite.scaffolding."""
 
 from pathlib import Path
 from unittest.mock import patch
@@ -6,7 +6,6 @@ from unittest.mock import patch
 import pytest
 from litestar.serialization import decode_json
 
-from litestar_vite.commands import init_vite
 from litestar_vite.exceptions import MissingDependencyError
 from litestar_vite.scaffolding.templates import CURRENT_NPM_VERSION_RANGES as V
 
@@ -14,75 +13,83 @@ pytestmark = pytest.mark.anyio
 
 
 # =====================================================
-# init_vite Function Tests
+# Jinja2 Optional-Dependency Guard
 # =====================================================
 
 
-def test_init_vite_creates_project(tmp_path: Path) -> None:
-    """Test that init_vite creates a project with the new scaffolding system."""
-    from litestar_vite.commands import init_vite
+@patch("litestar_vite.scaffolding.generator.JINJA_INSTALLED", False)
+def test_scaffolding_generate_project_error_when_jinja_missing(tmp_path: Path) -> None:
+    """Scaffolding raises a helpful MissingDependencyError when jinja2 is absent.
 
-    init_vite(
-        root_path=tmp_path,
-        resource_path=Path("src"),
-        asset_url="/static/",
-        static_path=Path("public"),
-        bundle_path=Path("dist"),
-        enable_ssr=False,
-        vite_port=5173,
-        litestar_port=8000,
+    The guard lives beside the ``jinja2`` import in ``render_template`` so every
+    scaffolding entry point -- ``litestar assets init`` included -- gets it.
+    """
+    from litestar_vite.scaffolding import TemplateContext, generate_project
+    from litestar_vite.scaffolding.templates import get_template
+
+    framework = get_template("react")
+    assert framework is not None
+
+    context = TemplateContext(
+        project_name="test-project", framework=framework, use_typescript=True, vite_port=5173, litestar_port=8000
     )
 
-    # Check that core files were created
-    assert (tmp_path / "vite.config.ts").exists()
-    assert (tmp_path / "package.json").exists()
-    # React template creates main.tsx
-    assert (tmp_path / "src" / "main.tsx").exists()
-
-
-def test_init_vite_with_framework(tmp_path: Path) -> None:
-    """Test init_vite with different framework templates."""
-    from litestar_vite.commands import init_vite
-
-    init_vite(
-        root_path=tmp_path,
-        resource_path=Path("src"),
-        asset_url="/static/",
-        static_path=Path("public"),
-        bundle_path=Path("dist"),
-        enable_ssr=False,
-        vite_port=5173,
-        litestar_port=8000,
-        framework="vue",
-    )
-
-    # Check that Vue-specific files were created
-    assert (tmp_path / "vite.config.ts").exists()
-    assert (tmp_path / "src" / "main.ts").exists()
-    assert (tmp_path / "src" / "App.vue").exists()
-
-
-@patch("litestar_vite.commands.JINJA_INSTALLED", False)
-def test_init_vite_error_when_jinja_missing(tmp_path: Path) -> None:
-    """Test init_vite raises appropriate error when Jinja is missing."""
     with pytest.raises(MissingDependencyError) as exc_info:
-        init_vite(
-            root_path=tmp_path,
-            resource_path=Path("resources"),
-            asset_url="/static/",
-            static_path=Path("public"),
-            bundle_path=Path("dist"),
-            enable_ssr=False,
-            vite_port=5173,
-            litestar_port=8000,
-        )
+        generate_project(tmp_path, context)
 
-    assert "jinja" in str(exc_info.value).lower()
+    message = str(exc_info.value)
+    assert "'jinja2' is not installed" in message
+    assert "pip install litestar-vite[jinja]" in message
+    assert "pip install jinja2" in message
+
+
+@patch("litestar_vite.scaffolding.generator.JINJA_INSTALLED", False)
+def test_scaffolding_generate_project_writes_nothing_when_jinja_missing(tmp_path: Path) -> None:
+    """The jinja2 guard fires before any file is written."""
+    from litestar_vite.scaffolding import TemplateContext, generate_project
+    from litestar_vite.scaffolding.templates import get_template
+
+    framework = get_template("react")
+    assert framework is not None
+
+    context = TemplateContext(
+        project_name="test-project", framework=framework, use_typescript=True, vite_port=5173, litestar_port=8000
+    )
+
+    with pytest.raises(MissingDependencyError):
+        generate_project(tmp_path, context)
+
+    assert list(tmp_path.iterdir()) == []
 
 
 # =====================================================
 # Scaffolding Module Tests
 # =====================================================
+
+
+def test_scaffolding_generate_project_vue(tmp_path: Path) -> None:
+    """generate_project lays out Vue-specific entry files."""
+    from litestar_vite.scaffolding import TemplateContext, generate_project
+    from litestar_vite.scaffolding.templates import get_template
+
+    framework = get_template("vue")
+    assert framework is not None
+
+    context = TemplateContext(
+        project_name="test-project",
+        framework=framework,
+        use_typescript=True,
+        vite_port=5173,
+        litestar_port=8000,
+        resource_dir="src",
+    )
+
+    generate_project(tmp_path, context)
+
+    assert (tmp_path / "vite.config.ts").exists()
+    assert (tmp_path / "package.json").exists()
+    assert (tmp_path / "src" / "main.ts").exists()
+    assert (tmp_path / "src" / "App.vue").exists()
 
 
 def test_scaffolding_get_available_templates() -> None:

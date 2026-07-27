@@ -157,7 +157,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         self._asset_loader = asset_loader
         self._vite_process: "ViteProcess | None" = None
         self._ssr_process: "ViteProcess | None" = None
-        self._static_files_config: dict[str, Any] = static_files_config.__dict__ if static_files_config else {}
+        self._static_files_config: "StaticFilesConfig | None" = static_files_config
         self._static_files_config_supplied = static_files_config is not None
         self._proxy_target: "str | None" = None
         self._proxy_client: "httpx.AsyncClient | None" = None
@@ -539,7 +539,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         opt: dict[str, Any] = {}
         if self._config.exclude_static_from_auth:
             opt["exclude_from_auth"] = True
-        user_opt = self._static_files_config.get("opt", {})
+        user_opt = self._static_files_config.opt if self._static_files_config else None
         if user_opt:
             opt = {**opt, **user_opt}
         opt["_vite_static_handler"] = True
@@ -553,7 +553,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
             "opt": opt,
             "exception_handlers": {NotFoundException: static_not_found_handler},
         }
-        user_config = {k: v for k, v in self._static_files_config.items() if k != "opt" and v is not None}
+        user_config = self._static_files_config.as_router_kwargs() if self._static_files_config else {}
         static_files_config: dict[str, Any] = {**base_config, **user_config}
         app_config.route_handlers.append(create_static_files_router(**static_files_config))
 

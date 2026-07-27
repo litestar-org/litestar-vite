@@ -16,7 +16,7 @@ from litestar.stores.memory import MemoryStore
 from litestar.testing import create_test_client
 from litestar.utils.deprecation import LitestarDeprecationWarning
 
-from litestar_vite import _typing as lv_typing
+from litestar_vite import typing as lv_typing
 from litestar_vite.config import InertiaConfig, ViteConfig
 
 
@@ -104,7 +104,7 @@ def test_repository_exception_handlers_are_not_registered_without_supported_libr
 ) -> None:
     """Optional repository handlers are skipped when supported libraries are absent."""
 
-    import litestar_vite._typing as lv_typing
+    from litestar_vite import typing as lv_typing
     from litestar_vite.inertia import InertiaHeaders
     from litestar_vite.plugin import VitePlugin
 
