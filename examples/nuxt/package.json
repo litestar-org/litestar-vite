@@ -21,12 +21,12 @@
     "@vitejs/devtools": "0.3.4"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "0.98.2",
+    "@hey-api/openapi-ts": "0.99.0",
     "@tailwindcss/vite": "4.2.4",
     "litestar-vite-plugin": "file:../..",
     "tailwindcss": "4.2.4",
     "typescript": "6.0.3",
     "vite": "8.1.0",
-    "vue-tsc": "3.3.5"
+    "vue-tsc": "3.3.8"
   }
 }
