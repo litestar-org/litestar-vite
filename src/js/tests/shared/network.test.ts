@@ -1,5 +1,6 @@
+import path from "node:path"
 import { describe, expect, it } from "vitest"
-import { normalizeHost, resolveLitestarPort } from "../../src/shared/network"
+import { normalizeHost, resolveHotFilePath, resolveLitestarPort } from "../../src/shared/network"
 
 describe("normalizeHost", () => {
   it("collapses bind-all and localhost addresses", () => {
@@ -56,5 +57,29 @@ describe("resolveLitestarPort", () => {
   it("rejects non-positive or non-integer bridgeLitestarPort and falls through", () => {
     expect(resolveLitestarPort(0, "http://localhost:9999")).toBe(9999)
     expect(resolveLitestarPort(-1, null, { PORT: "8000" })).toBe(8000)
+  })
+})
+
+describe("resolveHotFilePath", () => {
+  const rootDir = path.resolve("vite-root")
+
+  it("preserves an absolute hot file path", () => {
+    const hotFile = path.resolve("custom", "hot")
+
+    expect(resolveHotFilePath("public", hotFile, rootDir)).toBe(hotFile)
+  })
+
+  it("resolves a relative hot file beneath a relative bundle directory", () => {
+    expect(resolveHotFilePath("public", "hot", rootDir)).toBe(path.resolve(rootDir, "public", "hot"))
+  })
+
+  it("does not duplicate an already-prefixed relative bundle directory", () => {
+    expect(resolveHotFilePath("public", "public/hot", rootDir)).toBe(path.resolve(rootDir, "public", "hot"))
+  })
+
+  it("resolves a relative hot file directly beneath an absolute bundle directory", () => {
+    const bundleDir = path.resolve("absolute-bundle")
+
+    expect(resolveHotFilePath(bundleDir, "hot", rootDir)).toBe(path.join(bundleDir, "hot"))
   })
 })

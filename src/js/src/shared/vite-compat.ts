@@ -56,3 +56,14 @@ export function buildBundlerOptions(options: Record<string, unknown>): Record<st
 export function hmrServerConfig(network: Record<string, unknown>): Record<string, unknown> {
   return isVite81Plus ? { ws: network } : { hmr: network }
 }
+
+/** Merge HMR network options without allowing undefined proxy values to erase defaults. */
+export function mergeDefinedHmrOptions(...sources: Array<object | undefined>): Record<string, unknown> {
+  const merged: Record<string, unknown> = {}
+  for (const source of sources) {
+    for (const [key, value] of Object.entries(source ?? {})) {
+      if (value !== undefined) merged[key] = value
+    }
+  }
+  return merged
+}
