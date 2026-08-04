@@ -14,12 +14,12 @@ import { buildBundlerOptions } from "../shared/vite-compat.js"
 
 export default defineConfig({
   plugins: [tailwindcss(), viteSingleFile()],
-  root: __dirname,
+  root: import.meta.dirname,
   build: {
-    outDir: path.resolve(__dirname, "../../../py/litestar_vite/static"),
+    outDir: path.resolve(import.meta.dirname, "../../../py/litestar_vite/static"),
     emptyDir: false,
     ...buildBundlerOptions({
-      input: path.resolve(__dirname, "index.html"),
+      input: path.resolve(import.meta.dirname, "index.html"),
     }),
     minify: true,
   },
