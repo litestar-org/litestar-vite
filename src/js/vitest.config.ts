@@ -5,12 +5,12 @@ export default defineConfig({
   resolve: {
     alias: {
       // Map package paths to source files for testing
-      "litestar-vite-plugin/helpers": path.resolve(__dirname, "src/helpers/index.ts"),
-      "litestar-vite-plugin/inertia-helpers": path.resolve(__dirname, "src/inertia-helpers/index.ts"),
-      "litestar-vite-plugin/react": path.resolve(__dirname, "src/react/index.ts"),
-      "litestar-vite-plugin/svelte": path.resolve(__dirname, "src/svelte/index.ts"),
-      "litestar-vite-plugin/vue": path.resolve(__dirname, "src/vue/index.ts"),
-      "litestar-vite-plugin": path.resolve(__dirname, "src/index.ts"),
+      "litestar-vite-plugin/helpers": path.resolve(import.meta.dirname, "src/helpers/index.ts"),
+      "litestar-vite-plugin/inertia-helpers": path.resolve(import.meta.dirname, "src/inertia-helpers/index.ts"),
+      "litestar-vite-plugin/react": path.resolve(import.meta.dirname, "src/react/index.ts"),
+      "litestar-vite-plugin/svelte": path.resolve(import.meta.dirname, "src/svelte/index.ts"),
+      "litestar-vite-plugin/vue": path.resolve(import.meta.dirname, "src/vue/index.ts"),
+      "litestar-vite-plugin": path.resolve(import.meta.dirname, "src/index.ts"),
     },
   },
   test: {

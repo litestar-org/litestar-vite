@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildBundlerOptions, buildInputOptions, hmrServerConfig, isVite81Plus, isVite8Plus, resolveUserBuildInput } from "../src/shared/vite-compat"
+import { buildBundlerOptions, buildInputOptions, hmrServerConfig, isVite81Plus, isVite8Plus, mergeDefinedHmrOptions, resolveUserBuildInput } from "../src/shared/vite-compat"
 
 // Vite 8+ uses Rolldown (`rolldownOptions`); Vite 7 uses Rollup (`rollupOptions`).
 const bundlerKey = isVite8Plus ? "rolldownOptions" : "rollupOptions"
@@ -43,6 +43,24 @@ describe("vite-compat", () => {
   describe("hmrServerConfig", () => {
     it("wraps network options under server.ws on Vite 8.1+", () => {
       expect(hmrServerConfig({ clientPort: 1 })).toEqual(isVite81Plus ? { ws: { clientPort: 1 } } : { hmr: { clientPort: 1 } })
+    })
+  })
+
+  describe("mergeDefinedHmrOptions", () => {
+    it("ignores undefined values while later defined sources win", () => {
+      expect(mergeDefinedHmrOptions({ path: "vite-hmr", host: "default" }, { path: undefined, host: "explicit" })).toEqual({
+        path: "vite-hmr",
+        host: "explicit",
+      })
+    })
+
+    it("preserves deliberate falsy and null values", () => {
+      expect(mergeDefinedHmrOptions({ enabled: true }, { enabled: false, port: 0, path: "", server: null })).toEqual({
+        enabled: false,
+        port: 0,
+        path: "",
+        server: null,
+      })
     })
   })
 })

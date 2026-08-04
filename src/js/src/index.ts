@@ -10,10 +10,10 @@ import { checkBackendAvailability, type LitestarMeta, loadLitestarMeta } from ".
 import { type BridgeSchema, readBridgeConfig } from "./shared/bridge-schema.js"
 import { createLogger } from "./shared/logger.js"
 import { installManagedShutdown } from "./shared/managed-shutdown.js"
-import { resolveLitestarPort } from "./shared/network.js"
+import { resolveHotFilePath } from "./shared/network.js"
 import { resolveDefaultSdkClientPlugin } from "./shared/typegen-core.js"
 import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig, type TypesConfigShape } from "./shared/typegen-plugin.js"
-import { buildInputOptions, hmrServerConfig, resolveUserBuildInput } from "./shared/vite-compat.js"
+import { buildInputOptions, hmrServerConfig, mergeDefinedHmrOptions, resolveUserBuildInput } from "./shared/vite-compat.js"
 
 /**
  * Configuration for TypeScript type generation.
@@ -331,7 +331,6 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       const buildAssetUrl = pluginConfig.deployAssetUrl ?? runtimeAssetUrl
       const serverConfig = command === "serve" ? (resolveDevelopmentEnvironmentServerConfig(pluginConfig.detectTls) ?? resolveEnvironmentServerConfig(env)) : undefined
       const effectiveAppUrl = normalizeAppUrl(env.APP_URL || pythonDefaults?.appUrl || undefined).url ?? undefined
-      const proxyHmrClientPort = pythonDefaults?.proxyMode === "vite" ? resolveLitestarPort(pythonDefaults.litestarPort, effectiveAppUrl, process.env) : null
 
       type ServerProxyConfig = NonNullable<NonNullable<UserConfig["server"]>["proxy"]>
       const withProxyErrorSilencer = (proxyConfig: ServerProxyConfig | undefined): ServerProxyConfig | undefined => {
@@ -391,13 +390,13 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           // Note: Vite prepends `base` to the path, so we use "vite-hmr" => "/static/vite-hmr".
           ...(userConfig.server?.hmr === false || userConfig.server?.ws === false
             ? { hmr: false }
-            : hmrServerConfig({
-                path: "vite-hmr",
-                ...(proxyHmrClientPort ? { clientPort: proxyHmrClientPort } : {}),
-                ...(serverConfig?.host ? { host: serverConfig.host } : {}),
-                ...(typeof userConfig.server?.ws === "object" ? userConfig.server.ws : {}),
-                ...(typeof userConfig.server?.hmr === "object" ? userConfig.server.hmr : {}),
-              })),
+            : hmrServerConfig(
+                mergeDefinedHmrOptions(
+                  { path: "vite-hmr", host: serverConfig?.host },
+                  typeof userConfig.server?.ws === "object" ? userConfig.server.ws : undefined,
+                  typeof userConfig.server?.hmr === "object" ? userConfig.server.hmr : undefined,
+                ),
+              )),
           // Auto-configure proxy to forward API requests to Litestar backend
           // This allows the app to work when accessing Vite directly (not through Litestar proxy)
           // Only proxies /api and /schema routes - everything else is handled by Vite
@@ -512,15 +511,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
       const normalizedAppUrl = normalizeAppUrl(rawAppUrl, envWithApp.LITESTAR_PORT)
       const appUrl = normalizedAppUrl.url ?? rawAppUrl
 
-      // Resolve hotFile path relative to bundleDir (unless user already included it).
-      // This keeps JS + Python aligned (Python reads bundleDir/hot by default).
-      if (pluginConfig.hotFile && !path.isAbsolute(pluginConfig.hotFile)) {
-        const normalizedHot = pluginConfig.hotFile.replace(/^\/+/, "")
-        const normalizedBundle = pluginConfig.bundleDir?.replace(/^\/+/, "").replace(/\/+$/, "")
-        const hotUnderBundle = normalizedBundle ? normalizedHot.startsWith(`${normalizedBundle}/`) : false
-        const baseDir = hotUnderBundle ? server.config.root : path.resolve(server.config.root, normalizedBundle ?? "")
-        pluginConfig.hotFile = path.resolve(baseDir, normalizedHot)
-      }
+      pluginConfig.hotFile = resolveHotFilePath(pluginConfig.bundleDir, pluginConfig.hotFile, server.config.root)
 
       // Find index.html path *once* when server starts for logging purposes
       const initialIndexPath = await findIndexHtmlPath(server, pluginConfig)

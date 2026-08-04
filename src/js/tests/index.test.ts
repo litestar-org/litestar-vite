@@ -2,9 +2,11 @@ import type * as FsModule from "fs"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { mergeConfig } from "vite"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import litestar from "../src"
 import { resolvePageComponent } from "../src/inertia-helpers"
+import { isVite81Plus } from "../src/shared/vite-compat"
 import { getBuildInput, getHmrNetworkConfig } from "./__fixtures__/mock-vite-config"
 
 // Mock the fs module. The plugin imports `node:fs`; Vitest 4 no longer aliases
@@ -319,7 +321,7 @@ describe("litestar-vite-plugin", () => {
     }
   })
 
-  it("routes default HMR client connections through the Litestar port in proxy mode", () => {
+  it("lets Vite infer the default HMR client port from the served client origin", () => {
     const configPath = createRuntimeConfig({
       proxyMode: "vite",
       appUrl: "http://localhost:5006",
@@ -330,13 +332,42 @@ describe("litestar-vite-plugin", () => {
       const plugin = litestar({ input: "resources/js/app.ts" })[0]
       const config = plugin.config({}, { command: "serve", mode: "development" })
 
+      expect(getHmrNetworkConfig(config)).toMatchObject({ path: "vite-hmr" })
+      expect(getHmrNetworkConfig(config)).not.toHaveProperty("clientPort")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it.skipIf(!isVite81Plus)("preserves defaults and explicit overrides through Vite's HMR compatibility proxy", () => {
+    const configPath = createRuntimeConfig({
+      proxyMode: "vite",
+      appUrl: "http://localhost:5006",
+      litestarPort: 5006,
+    })
+
+    try {
+      const userConfig = mergeConfig({ server: { ws: { host: "hmr.example.test", clientPort: 4300 } } }, { server: { hmr: { protocol: "wss" } } })
+      const plugin = litestar({ input: "resources/js/app.ts" })[0]
+      const config = plugin.config(userConfig, { command: "serve", mode: "development" })
+
       expect(getHmrNetworkConfig(config)).toMatchObject({
         path: "vite-hmr",
-        clientPort: 5006,
+        host: "hmr.example.test",
+        clientPort: 4300,
+        protocol: "wss",
       })
     } finally {
       cleanupRuntimeConfig(configPath)
     }
+  })
+
+  it.each([{ hmr: false }, { ws: false }])("preserves the $key HMR disable flag", (server) => {
+    const plugin = litestar({ input: "resources/js/app.ts" })[0]
+    const config = plugin.config({ server }, { command: "serve", mode: "development" })
+
+    expect(config.server?.hmr).toBe(false)
+    expect(getHmrNetworkConfig(config)).toBeUndefined()
   })
 
   it("leaves server.origin undefined in proxy mode when bridge appUrl is null", () => {
@@ -655,6 +686,50 @@ describe("litestar-vite-plugin", () => {
       expect(writeSpy).toHaveBeenCalledWith(path.resolve(process.cwd(), "public", "hot"), "http://127.0.0.1:4789")
     } finally {
       cleanupRuntimeConfig(configPath)
+    }
+  })
+
+  it("writes a relative hot file beneath an absolute bundle directory", async () => {
+    const bundleRoot = fs.mkdtempSync(path.join(os.tmpdir(), "litestar-vite-bundle-"))
+    const bundleDir = path.join(bundleRoot, "nested", "bundle")
+    const viteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "litestar-vite-root-"))
+    fs.mkdirSync(bundleDir, { recursive: true })
+
+    try {
+      const plugin = litestar({ input: "resources/js/app.ts", bundleDir, hotFile: "hot" })[0]
+      plugin.config({}, { command: "serve", mode: "development" })
+
+      const writeSpy = vi.spyOn(fs, "writeFileSync")
+      const listeningHandlers: Array<() => void> = []
+      const mockServer = {
+        config: {
+          root: viteRoot,
+          envDir: viteRoot,
+          mode: "development",
+          command: "serve",
+          base: "/static/",
+          server: { https: false, ws: {} },
+          logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        },
+        httpServer: {
+          once: vi.fn((event: string, callback: () => void) => {
+            if (event === "listening") listeningHandlers.push(callback)
+            return undefined
+          }),
+          address: vi.fn(() => ({ address: "127.0.0.1", family: "IPv4", port: 4789 })),
+        },
+        middlewares: { use: vi.fn() },
+        transformIndexHtml: vi.fn(),
+      }
+
+      plugin.configResolved?.(mockServer.config as any)
+      await plugin.configureServer?.(mockServer as any)
+      listeningHandlers.forEach((handler) => handler())
+
+      expect(writeSpy).toHaveBeenCalledWith(path.join(bundleDir, "hot"), "http://127.0.0.1:4789")
+    } finally {
+      fs.rmSync(bundleRoot, { recursive: true, force: true })
+      fs.rmSync(viteRoot, { recursive: true, force: true })
     }
   })
 

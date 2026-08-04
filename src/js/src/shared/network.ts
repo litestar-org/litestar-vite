@@ -87,6 +87,10 @@ export function resolveHotFilePath(bundleDir: string, hotFile: string, rootDir: 
   }
 
   const normalizedHot = hotFile.replace(/^\/+/, "")
+  if (path.isAbsolute(bundleDir)) {
+    return path.resolve(bundleDir, normalizedHot)
+  }
+
   const normalizedBundle = bundleDir.replace(/^\/+/, "").replace(/\/+$/, "")
 
   if (normalizedBundle && normalizedHot.startsWith(`${normalizedBundle}/`)) {

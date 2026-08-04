@@ -7,6 +7,23 @@ Notable changes to this project are documented in this file.
 Litestar Vite Changelog
 ^^^^^^^^^^^^^^^^^^^^^^^
 
+0.29.1 - 2026-08-04
+-------------------
+
+- Fixed relative hot-file paths being rebased against the Vite root when ``bundleDir`` is absolute.
+  The core plugin and framework integrations now share the same resolver, so the hot file is written
+  directly beneath the configured bundle directory. (`#341 <https://github.com/litestar-org/litestar-vite/issues/341>`_,
+  `#343 <https://github.com/litestar-org/litestar-vite/pull/343>`_)
+- Fixed Vite 8.1 and newer compatibility proxies erasing HMR defaults with enumerable ``undefined``
+  values. HMR options now merge only defined values, explicit overrides and disable flags are preserved,
+  and proxy mode lets Vite infer the browser client port from ``@vite/client`` instead of synthesizing a
+  potentially stale Litestar port. (`#342 <https://github.com/litestar-org/litestar-vite/issues/342>`_,
+  `#343 <https://github.com/litestar-org/litestar-vite/pull/343>`_)
+- Changed the internal Vite build and test configurations to use ``import.meta.dirname`` so they work
+  with Vite's native config loader without compatibility warnings.
+- Updated the release metadata to 0.29.1 and refreshed the Python and JavaScript dependency locks,
+  including ``bump-my-version`` 1.5.0 and ``fsspec`` 2026.7.0. (`#340 <https://github.com/litestar-org/litestar-vite/pull/340>`_)
+
 0.29.0 - 2026-07-27
 -------------------
 
