@@ -40,12 +40,14 @@ from litestar_vite.config import (
     TypeGenConfig,
     ViteConfig,
 )
+from litestar_vite.exceptions import HTMLEntryResolutionError
 from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.plugin import StaticPlacement, StaticServerConfig, StaticServerMount, VitePlugin
 
 __all__ = (
     "DeployConfig",
     "ExternalDevServer",
+    "HTMLEntryResolutionError",
     "InertiaConfig",
     "InertiaSSRConfig",
     "PathConfig",

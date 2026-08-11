@@ -1,11 +1,13 @@
 import json
 from pathlib import Path
+from urllib.parse import urlparse
 
+import httpx
 import pytest
 from litestar.exceptions import ImproperlyConfiguredException
 
 from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
-from litestar_vite.exceptions import AssetNotFoundError
+from litestar_vite.exceptions import AssetNotFoundError, HTMLEntryResolutionError
 from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.utils import read_bridge_config
 
@@ -353,3 +355,179 @@ def test_vite_server_url_ignores_bridge_when_appurl_null(tmp_path: Path, monkeyp
 
     assert url.startswith("http://hot:5006"), url
     read_bridge_config.cache_clear()
+
+
+# ===== Secondary HTML entry resolution =====
+
+
+@pytest.mark.anyio
+async def test_vite_asset_loader_resolve_html_entry_returns_production_file_without_hot_target(tmp_path: Path) -> None:
+    production = tmp_path / "dist" / "offline.html"
+    production.parent.mkdir()
+    production.write_text("<html>offline</html>")
+    loader = ViteAssetLoader(
+        ViteConfig(paths=PathConfig(root=tmp_path, bundle_dir="dist"), runtime=RuntimeConfig(dev_mode=True))
+    )
+
+    assert (
+        await loader.resolve_html_entry("/offline.html", production_path="dist/offline.html") == "<html>offline</html>"
+    )
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "https://example.com/offline.html",
+        "//example.com/offline.html",
+        "offline.html?x=1",
+        "offline.html#x",
+        "../offline.html",
+        "%2e%2e/offline.html",
+        "%252e%252e/offline.html",
+        "nested\\offline.html",
+        "offline.js",
+        "offline.html\x00",
+    ],
+)
+def test_vite_asset_loader_resolve_html_entry_rejects_unsafe_entry(tmp_path: Path, entry: str) -> None:
+    loader = ViteAssetLoader(ViteConfig(paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=False)))
+
+    with pytest.raises(ValueError):
+        loader.resolve_html_entry_sync(entry, production_path="offline.html")
+
+
+@pytest.mark.anyio
+async def test_vite_asset_loader_resolve_html_entry_rereads_hot_file_and_posts_exact_entry(tmp_path: Path) -> None:
+    bundle = tmp_path / "dist"
+    bundle.mkdir()
+    (bundle / "offline.html").write_text("production")
+    hot = bundle / "hot"
+    requests: list[httpx.Request] = []
+
+    async def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, text="<html>development</html>")
+
+    loader = ViteAssetLoader(
+        ViteConfig(paths=PathConfig(root=tmp_path, bundle_dir="dist"), runtime=RuntimeConfig(dev_mode=True))
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        loader._bind_http_client(client)
+        assert (
+            await loader.resolve_html_entry("pages/offline.html", production_path="dist/offline.html") == "production"
+        )
+        hot.write_text("https://[::1]:43123")
+        assert await loader.resolve_html_entry("pages/offline.html", production_path="dist/offline.html") == (
+            "<html>development</html>"
+        )
+
+    assert urlparse(str(requests[0].url)).netloc == "[::1]:43123"
+    assert json.loads(requests[0].content) == {"entry": "pages/offline.html"}
+
+
+@pytest.mark.anyio
+async def test_vite_asset_loader_resolve_html_entry_raises_for_active_stale_server(tmp_path: Path) -> None:
+    bundle = tmp_path / "dist"
+    bundle.mkdir()
+    (bundle / "hot").write_text("http://127.0.0.1:9")
+    production = bundle / "offline.html"
+    production.write_text("production")
+    loader = ViteAssetLoader(
+        ViteConfig(paths=PathConfig(root=tmp_path, bundle_dir="dist"), runtime=RuntimeConfig(dev_mode=True))
+    )
+
+    with pytest.raises(HTMLEntryResolutionError) as exc_info:
+        await loader.resolve_html_entry("offline.html", production_path=production)
+
+    assert str(production) not in str(exc_info.value)
+    assert "127.0.0.1" not in str(exc_info.value)
+    assert exc_info.value.development_url == "http://127.0.0.1:9"
+    assert isinstance(exc_info.value.cause, httpx.ConnectError)
+
+
+@pytest.mark.anyio
+async def test_vite_asset_loader_resolve_html_entry_reports_upstream_status_without_fallback(tmp_path: Path) -> None:
+    bundle = tmp_path / "dist"
+    bundle.mkdir()
+    (bundle / "hot").write_text("https://vite.example.test")
+    production = bundle / "offline.html"
+    production.write_text("production")
+
+    async def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, request=request)
+
+    loader = ViteAssetLoader(
+        ViteConfig(paths=PathConfig(root=tmp_path, bundle_dir="dist"), runtime=RuntimeConfig(dev_mode=True))
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        loader._bind_http_client(client)
+        with pytest.raises(HTMLEntryResolutionError) as exc_info:
+            await loader.resolve_html_entry("offline.html", production_path=production)
+
+    assert exc_info.value.status_code == 404
+    assert "vite.example.test" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize("hot_value", ["", "not-a-url", "ftp://localhost/offline", "http://[invalid"])
+def test_vite_asset_loader_resolve_html_entry_malformed_hot_file_uses_production(
+    tmp_path: Path, hot_value: str
+) -> None:
+    bundle = tmp_path / "dist"
+    bundle.mkdir()
+    (bundle / "hot").write_text(hot_value)
+    production = bundle / "offline.html"
+    production.write_text("production")
+    loader = ViteAssetLoader(
+        ViteConfig(paths=PathConfig(root=tmp_path, bundle_dir="dist"), runtime=RuntimeConfig(dev_mode=True))
+    )
+
+    assert loader.resolve_html_entry_sync("offline.html", production_path=production) == "production"
+
+
+def test_vite_asset_loader_resolve_html_entry_sync_rewrites_only_vite_assets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    read_bridge_config.cache_clear()
+    bundle = tmp_path / "dist"
+    bundle.mkdir()
+    (bundle / "hot").write_text("https://vite.internal:5173")
+    bridge = _write_bridge_config(tmp_path, {"appUrl": "https://app.example.com:8443"})
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(bridge))
+    production = bundle / "offline.html"
+    production.write_text("production")
+    html = """<script type="module" src="/src/app.ts"></script>
+<script type="module">import RefreshRuntime from '/@react-refresh'</script>
+<link rel="stylesheet" href="/src/app.css"><link rel="modulepreload" href="/@vite/client">
+<a href="/account">Account</a><form action="/submit"></form><img src="/logo.svg">"""
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=html)
+
+    loader = ViteAssetLoader(
+        ViteConfig(paths=PathConfig(root=tmp_path, bundle_dir="dist"), runtime=RuntimeConfig(dev_mode=True))
+    )
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        loader._http_client_sync = client
+        result = loader.resolve_html_entry_sync(
+            "offline.html", production_path=production, absolute_dev_asset_urls=True
+        )
+
+    assert 'src="https://app.example.com:8443/src/app.ts"' in result
+    assert "from 'https://app.example.com:8443/@react-refresh'" in result
+    assert 'href="https://app.example.com:8443/src/app.css"' in result
+    assert 'href="https://app.example.com:8443/@vite/client"' in result
+    assert '<a href="/account">' in result
+    assert '<form action="/submit">' in result
+    assert '<img src="/logo.svg">' in result
+    read_bridge_config.cache_clear()
+
+
+def test_vite_asset_loader_resolve_html_entry_missing_production_file_has_safe_error(tmp_path: Path) -> None:
+    production = tmp_path / "secret" / "offline.html"
+    loader = ViteAssetLoader(ViteConfig(paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=False)))
+
+    with pytest.raises(HTMLEntryResolutionError) as exc_info:
+        loader.resolve_html_entry_sync("offline.html", production_path=production)
+
+    assert str(production) not in str(exc_info.value)
+    assert exc_info.value.production_path == production

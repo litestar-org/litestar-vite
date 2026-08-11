@@ -1908,6 +1908,49 @@ describe("litestar-vite-plugin", () => {
       expect(mockNext).not.toHaveBeenCalled()
     })
 
+    it("reads and transforms an exact secondary HTML entry", async () => {
+      await setupServer()
+      const entryPath = path.join(testRootDir, "pages", "offline.html")
+      vi.spyOn(fs.promises, "readFile").mockImplementation(async (filePath) => {
+        if (filePath === entryPath) return "<html>offline</html>"
+        throw Object.assign(new Error("missing"), { code: "ENOENT" })
+      })
+
+      await mockMiddleware(createTransformRequest("POST", { entry: "/pages/offline.html" }), mockRes, mockNext)
+
+      expect(fs.promises.readFile).toHaveBeenCalledWith(entryPath, "utf-8")
+      expect(mockServer.transformIndexHtml).toHaveBeenCalledWith("/pages/offline.html", "<html>offline</html>", "/pages/offline.html")
+      expect(mockRes.statusCode).toBe(200)
+    })
+
+    it.each(["../offline.html", "%2e%2e/offline.html", "https://example.com/offline.html", "offline.js"])("rejects invalid secondary HTML entry %s", async (entry) => {
+      await setupServer()
+      await mockMiddleware(createTransformRequest("POST", { entry }), mockRes, mockNext)
+      expect(mockRes.statusCode).toBe(400)
+      expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+    })
+
+    it("returns not found for a missing secondary HTML entry", async () => {
+      await setupServer()
+      vi.spyOn(fs.promises, "readFile").mockRejectedValue(Object.assign(new Error("missing"), { code: "ENOENT" }))
+      await mockMiddleware(createTransformRequest("POST", { entry: "offline.html" }), mockRes, mockNext)
+      expect(mockRes.statusCode).toBe(404)
+    })
+
+    it("returns server error when a secondary HTML entry cannot be read", async () => {
+      await setupServer()
+      vi.spyOn(fs.promises, "readFile").mockRejectedValue(Object.assign(new Error("denied"), { code: "EACCES" }))
+      await mockMiddleware(createTransformRequest("POST", { entry: "offline.html" }), mockRes, mockNext)
+      expect(mockRes.statusCode).toBe(500)
+    })
+
+    it("rejects payloads containing both raw HTML and an entry", async () => {
+      await setupServer()
+      await mockMiddleware(createTransformRequest("POST", { entry: "offline.html", html: "<html></html>", url: "/" }), mockRes, mockNext)
+      expect(mockRes.statusCode).toBe(400)
+      expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+    })
+
     it("rejects non-POST transform-index requests", async () => {
       await setupServer()
       await mockMiddleware(createTransformRequest("GET"), mockRes, mockNext)
