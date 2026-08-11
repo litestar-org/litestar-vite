@@ -10,6 +10,9 @@ Litestar Vite Changelog
 0.30.0 - Unreleased
 -------------------
 
+- Fixed direct ``msgspec.Struct`` Inertia handler returns to use serialized top-level field names,
+  including struct ``rename=`` rules and explicit ``msgspec.field(name=...)`` aliases.
+  (`#345 <https://github.com/litestar-org/litestar-vite/issues/345>`_)
 - Added async and synchronous ``ViteAssetLoader`` APIs for resolving exact secondary Vite HTML
   entries in development and their explicit artifacts in production. The paired npm endpoint safely
   reads entries beneath the configured Vite root, and optional absolute development asset URLs support

@@ -209,7 +209,7 @@ def _as_inertia_prop_mapping(data: "Any") -> "Mapping[str, Any] | None":
     if model_fields is not None and hasattr(obj, "model_dump"):
         return {name: getattr(obj, name) for name in model_fields}
     if isinstance(obj, msgspec.Struct):
-        return {field: getattr(obj, field) for field in obj.__struct_fields__}
+        return {field.encode_name: getattr(obj, field.name) for field in msgspec.structs.fields(obj)}
     if is_dataclass(obj) and not isinstance(obj, type):
         return {field.name: getattr(obj, field.name) for field in fields(obj)}
     return None
