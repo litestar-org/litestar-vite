@@ -13,18 +13,20 @@ Key features:
 
 import hashlib
 import html
+import re
 from functools import cached_property
 from pathlib import Path
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urljoin
+from urllib.parse import unquote, urljoin, urlsplit
 
 import anyio
+import httpx
 import markupsafe
 from litestar.exceptions import SerializationException
 from litestar.serialization import decode_json
 
-from litestar_vite.exceptions import AssetNotFoundError, ManifestNotFoundError
+from litestar_vite.exceptions import AssetNotFoundError, HTMLEntryResolutionError, ManifestNotFoundError
 from litestar_vite.utils import read_bridge_config
 
 if TYPE_CHECKING:
@@ -225,6 +227,175 @@ class ViteAssetLoader:
         self._vite_base_path: "str | None" = None
         self._initialized: bool = False
         self._is_hot_dev = self._config.hot_reload and self._config.is_dev_mode
+        self._http_client: httpx.AsyncClient | None = None
+        self._http_client_sync: httpx.Client | None = None
+
+    def _bind_http_client(self, client: httpx.AsyncClient | None) -> None:
+        """Bind the plugin's lifespan-managed asynchronous HTTP client."""
+        self._http_client = client
+
+    @staticmethod
+    def _validate_html_entry(entry: str) -> str:
+        """Validate and normalize a local Vite HTML entry path."""
+        if not entry or "\x00" in entry or "\\" in entry:
+            msg = "HTML entry must be a non-empty local .html path."
+            raise ValueError(msg)
+        decoded = entry
+        for _ in range(10):
+            next_value = unquote(decoded)
+            if next_value == decoded:
+                break
+            decoded = next_value
+        else:
+            msg = "HTML entry is encoded too deeply."
+            raise ValueError(msg)
+        if "\x00" in decoded or "\\" in decoded:
+            msg = "HTML entry contains invalid path characters."
+            raise ValueError(msg)
+        parsed = urlsplit(decoded)
+        if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment or decoded.startswith("//"):
+            msg = "HTML entry must not be a URL or contain query or fragment components."
+            raise ValueError(msg)
+        normalized = decoded.lstrip("/")
+        parts = Path(normalized).parts
+        if not normalized or any(part in {"", ".", ".."} for part in parts) or not normalized.lower().endswith(".html"):
+            msg = "HTML entry must be a nested local .html path without traversal."
+            raise ValueError(msg)
+        return normalized.replace("//", "/")
+
+    def _read_hot_target(self) -> str | None:
+        """Read and validate the current hot-file target without caching it."""
+        try:
+            value = self._get_hot_file_path().read_text(encoding="utf-8").strip()
+            parsed = urlsplit(value)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.query or parsed.fragment:
+                return None
+            _ = parsed.hostname
+        except (OSError, UnicodeDecodeError, ValueError):
+            return None
+        return value.rstrip("/")
+
+    def _resolve_production_path(self, production_path: Path | str) -> Path:
+        path = Path(production_path)
+        return path if path.is_absolute() else self._config.root_dir / path
+
+    def _read_production_html(self, entry: str, production_path: Path | str) -> str:
+        path = self._resolve_production_path(production_path)
+        try:
+            return path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise HTMLEntryResolutionError(entry, production_path=path, cause=exc) from exc
+
+    async def _read_production_html_async(self, entry: str, production_path: Path | str) -> str:
+        path = self._resolve_production_path(production_path)
+        try:
+            return await anyio.Path(path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise HTMLEntryResolutionError(entry, production_path=path, cause=exc) from exc
+
+    @staticmethod
+    def _browser_origin(hot_target: str) -> str:
+        bridge = read_bridge_config()
+        app_url = bridge.get("appUrl") if bridge is not None else None
+        candidate = app_url if isinstance(app_url, str) and app_url else hot_target
+        parsed = urlsplit(candidate)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            parsed = urlsplit(hot_target)
+        return f"{parsed.scheme}://{parsed.netloc}"
+
+    @classmethod
+    def _rewrite_dev_asset_urls(cls, value: str, origin: str) -> str:
+        def absolute(url: str) -> str:
+            parsed = urlsplit(url)
+            if parsed.scheme or parsed.netloc or url.startswith(("//", "#")):
+                return url
+            return urljoin(f"{origin}/", url.lstrip("/"))
+
+        def rewrite_tag(match: re.Match[str]) -> str:
+            tag = match.group(0)
+            lowered = tag.lower()
+            is_module_script = lowered.startswith("<script") and re.search(
+                r"\btype\s*=\s*(['\"])module\1", tag, re.IGNORECASE
+            )
+            rel_match = re.search(r"\brel\s*=\s*(['\"])([^'\"]+)\1", tag, re.IGNORECASE)
+            is_asset_link = (
+                lowered.startswith("<link")
+                and rel_match is not None
+                and any(item.lower() in {"stylesheet", "modulepreload"} for item in rel_match.group(2).split())
+            )
+            attribute = "src" if is_module_script else "href" if is_asset_link else None
+            if attribute is None:
+                return tag
+            return re.sub(
+                rf"\b{attribute}\s*=\s*(['\"])([^'\"]+)\1",
+                lambda attr: f"{attribute}={attr.group(1)}{absolute(attr.group(2))}{attr.group(1)}",
+                tag,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+
+        value = re.sub(r"<(?:script|link)\b[^>]*>", rewrite_tag, value, flags=re.IGNORECASE)
+        return re.sub(
+            r"(\bfrom\s+)(['\"])(/@react-refresh(?:[^'\"]*)?)\2",
+            lambda match: f"{match.group(1)}{match.group(2)}{absolute(match.group(3))}{match.group(2)}",
+            value,
+        )
+
+    async def resolve_html_entry(
+        self, entry: str, *, production_path: Path | str, absolute_dev_asset_urls: bool = False
+    ) -> str:
+        """Resolve an exact Vite HTML entry from development or production."""
+        normalized_entry = self._validate_html_entry(entry)
+        hot_target = self._read_hot_target() if self._is_hot_dev else None
+        if hot_target is None:
+            return await self._read_production_html_async(normalized_entry, production_path)
+        endpoint = f"{hot_target}/__litestar__/transform-index"
+        try:
+            if self._http_client is not None:
+                response = await self._http_client.post(endpoint, json={"entry": normalized_entry}, timeout=5.0)
+            else:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.post(endpoint, json={"entry": normalized_entry})
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            status_code = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+            raise HTMLEntryResolutionError(
+                normalized_entry, development_url=hot_target, status_code=status_code, cause=exc
+            ) from exc
+        result = response.text
+        return (
+            self._rewrite_dev_asset_urls(result, self._browser_origin(hot_target))
+            if absolute_dev_asset_urls
+            else result
+        )
+
+    def resolve_html_entry_sync(
+        self, entry: str, *, production_path: Path | str, absolute_dev_asset_urls: bool = False
+    ) -> str:
+        """Synchronously resolve an exact Vite HTML entry."""
+        normalized_entry = self._validate_html_entry(entry)
+        hot_target = self._read_hot_target() if self._is_hot_dev else None
+        if hot_target is None:
+            return self._read_production_html(normalized_entry, production_path)
+        endpoint = f"{hot_target}/__litestar__/transform-index"
+        try:
+            if self._http_client_sync is not None:
+                response = self._http_client_sync.post(endpoint, json={"entry": normalized_entry}, timeout=5.0)
+            else:
+                with httpx.Client(timeout=5.0) as client:
+                    response = client.post(endpoint, json={"entry": normalized_entry})
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            status_code = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+            raise HTMLEntryResolutionError(
+                normalized_entry, development_url=hot_target, status_code=status_code, cause=exc
+            ) from exc
+        result = response.text
+        return (
+            self._rewrite_dev_asset_urls(result, self._browser_origin(hot_target))
+            if absolute_dev_asset_urls
+            else result
+        )
 
     @classmethod
     def initialize_loader(cls, config: "ViteConfig") -> "ViteAssetLoader":

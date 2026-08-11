@@ -1,7 +1,10 @@
 """Litestar-Vite exception classes."""
 
+from pathlib import Path
+
 __all__ = (
     "AssetNotFoundError",
+    "HTMLEntryResolutionError",
     "LitestarViteError",
     "ManifestNotFoundError",
     "MissingDependencyError",
@@ -13,6 +16,36 @@ __all__ = (
 
 class LitestarViteError(Exception):
     """Base exception for Litestar-Vite related errors."""
+
+
+class HTMLEntryResolutionError(LitestarViteError):
+    """Raised when a Vite HTML entry cannot be resolved."""
+
+    def __init__(
+        self,
+        entry: str,
+        *,
+        production_path: Path | None = None,
+        development_url: str | None = None,
+        status_code: int | None = None,
+        cause: Exception | None = None,
+    ) -> None:
+        """Initialize the exception without exposing local or upstream locations.
+
+        Args:
+            entry: Validated HTML entry requested by the caller.
+            production_path: Production artifact that could not be read.
+            development_url: Active Vite development origin.
+            status_code: Upstream HTTP status, when a response was received.
+            cause: Underlying filesystem or HTTP exception.
+        """
+        source = "development server" if development_url is not None else "production artifact"
+        super().__init__(f"Unable to resolve Vite HTML entry {entry!r} from the {source}.")
+        self.entry = entry
+        self.production_path = production_path
+        self.development_url = development_url
+        self.status_code = status_code
+        self.cause = cause
 
 
 class MissingDependencyError(LitestarViteError, ImportError):

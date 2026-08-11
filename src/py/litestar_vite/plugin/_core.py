@@ -968,6 +968,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader(config=self._config)
+        self._asset_loader._bind_http_client(self._proxy_client)  # pyright: ignore[reportPrivateUsage]
         await self._asset_loader.initialize()
 
         if self._spa_handler is not None and not self._spa_handler.is_initialized:
@@ -984,6 +985,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         try:
             yield
         finally:
+            self._asset_loader._bind_http_client(None)  # pyright: ignore[reportPrivateUsage]
             if self._proxy_client is not None:
                 await self._proxy_client.aclose()
                 self._proxy_client = None

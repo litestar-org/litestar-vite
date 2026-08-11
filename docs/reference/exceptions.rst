@@ -31,6 +31,11 @@ ManifestNotFoundError
 AssetNotFoundError
     Raised when a requested asset is not found in the manifest.
 
+HTMLEntryResolutionError
+    Raised when a production HTML artifact cannot be read or an active Vite server cannot transform
+    an exact HTML entry. Safe messages omit filesystem paths and upstream URLs; diagnostic attributes
+    retain the entry, production path, development URL, and HTTP status when available.
+
 .. automodule:: litestar_vite.exceptions
     :members:
     :show-inheritance:

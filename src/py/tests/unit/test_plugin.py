@@ -2131,9 +2131,11 @@ async def test_vite_plugin_proxy_client_created_in_dev_mode_with_vite_proxy() ->
         # During lifespan, proxy_client should be created
         assert plugin.proxy_client is not None
         assert isinstance(plugin.proxy_client, httpx.AsyncClient)
+        assert plugin.asset_loader._http_client is plugin.proxy_client
 
     # After lifespan, proxy_client should be closed and set to None
     assert plugin.proxy_client is None
+    assert plugin.asset_loader._http_client is None
 
 
 async def test_vite_plugin_lifespan_initializes_spa_handler_async() -> None:

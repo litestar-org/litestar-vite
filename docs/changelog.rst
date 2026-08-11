@@ -7,6 +7,14 @@ Notable changes to this project are documented in this file.
 Litestar Vite Changelog
 ^^^^^^^^^^^^^^^^^^^^^^^
 
+0.30.0 - Unreleased
+-------------------
+
+- Added async and synchronous ``ViteAssetLoader`` APIs for resolving exact secondary Vite HTML
+  entries in development and their explicit artifacts in production. The paired npm endpoint safely
+  reads entries beneath the configured Vite root, and optional absolute development asset URLs support
+  documents opened outside the application origin. (`#346 <https://github.com/litestar-org/litestar-vite/issues/346>`_)
+
 0.29.1 - 2026-08-04
 -------------------
 

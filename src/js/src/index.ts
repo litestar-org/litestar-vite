@@ -704,24 +704,84 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
 
           try {
             const body = await readBody()
-            let payload: { html?: string; url?: string }
+            let payload: { entry?: string; html?: string; url?: string }
             try {
-              payload = JSON.parse(body) as { html?: string; url?: string }
+              payload = JSON.parse(body) as { entry?: string; html?: string; url?: string }
             } catch {
               res.statusCode = 400
               res.setHeader("Content-Type", "text/plain")
               res.end("Invalid payload")
               return
             }
-            if (!payload.html || typeof payload.html !== "string") {
+            const hasEntry = typeof payload.entry === "string"
+            const hasHtml = typeof payload.html === "string" && payload.html.length > 0
+            if (hasEntry === hasHtml) {
               res.statusCode = 400
               res.setHeader("Content-Type", "text/plain")
               res.end("Invalid payload")
               return
             }
 
-            const url = typeof payload.url === "string" && payload.url ? payload.url : "/"
-            const transformedHtml = await server.transformIndexHtml(url, payload.html, url)
+            let url: string
+            let html: string
+            if (hasEntry) {
+              let decodedEntry = payload.entry as string
+              for (let index = 0; index < 10; index += 1) {
+                let nextEntry: string
+                try {
+                  nextEntry = decodeURIComponent(decodedEntry)
+                } catch {
+                  res.statusCode = 400
+                  res.setHeader("Content-Type", "text/plain")
+                  res.end("Invalid entry")
+                  return
+                }
+                if (nextEntry === decodedEntry) break
+                decodedEntry = nextEntry
+              }
+              const entry = decodedEntry.replace(/^\/+/, "")
+              const parsedEntry = path.posix.normalize(entry)
+              if (
+                !entry ||
+                decodedEntry.startsWith("//") ||
+                entry.includes("\\") ||
+                entry.includes("\0") ||
+                entry.includes("?") ||
+                entry.includes("#") ||
+                entry.startsWith("//") ||
+                /^[a-z][a-z\d+.-]*:/i.test(entry) ||
+                parsedEntry === ".." ||
+                parsedEntry.startsWith("../") ||
+                !entry.toLowerCase().endsWith(".html")
+              ) {
+                res.statusCode = 400
+                res.setHeader("Content-Type", "text/plain")
+                res.end("Invalid entry")
+                return
+              }
+              const root = path.resolve(server.config.root)
+              const entryPath = path.resolve(root, parsedEntry)
+              if (entryPath !== root && !entryPath.startsWith(`${root}${path.sep}`)) {
+                res.statusCode = 400
+                res.setHeader("Content-Type", "text/plain")
+                res.end("Invalid entry")
+                return
+              }
+              url = `/${parsedEntry.split(path.sep).join("/")}`
+              try {
+                html = await fs.promises.readFile(entryPath, "utf-8")
+              } catch (error) {
+                const code = error instanceof Error && "code" in error ? (error as NodeJS.ErrnoException).code : undefined
+                res.statusCode = code === "ENOENT" ? 404 : 500
+                res.setHeader("Content-Type", "text/plain")
+                res.end(code === "ENOENT" ? "Not Found" : "Error reading HTML entry")
+                return
+              }
+            } else {
+              url = typeof payload.url === "string" && payload.url ? payload.url : "/"
+              html = payload.html as string
+            }
+            const transformedHtml = await server.transformIndexHtml(url, html, url)
             res.statusCode = 200
             res.setHeader("Content-Type", "text/html")
             res.end(transformedHtml)
