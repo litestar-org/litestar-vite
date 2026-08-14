@@ -100,7 +100,6 @@ class StaticFilesConfig:
     tags: "Sequence[str] | None" = None
 
     _NOT_ROUTER_KWARGS: "ClassVar[frozenset[str]]" = frozenset({"opt"})
-    _METADATA_FIELDS: "ClassVar[frozenset[str]]" = frozenset({"opt", "tags", "security"})
     _ASGI_BEHAVIOR_FIELDS: "ClassVar[frozenset[str]]" = frozenset({
         "after_request",
         "after_response",

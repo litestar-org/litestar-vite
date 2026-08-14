@@ -62,7 +62,6 @@ def test_vite_plugin_initialization_default_config() -> None:
     assert isinstance(plugin._config, ViteConfig)
     assert plugin._asset_loader is None
     assert plugin._static_files_config is None
-    assert plugin._static_files_config_supplied is False
     assert plugin._config.executor is not None
     assert plugin._vite_process is None
 
@@ -89,7 +88,6 @@ def test_vite_plugin_initialization_with_static_files_config() -> None:
 
     assert plugin._static_files_config is not None
     assert plugin._static_files_config.as_router_kwargs()["tags"] == ["static"]
-    assert plugin._static_files_config_supplied is True
 
 
 def test_static_server_config_placement_contract_is_public() -> None:
@@ -2340,7 +2338,9 @@ def test_static_router_emits_opt_on_individual_route_handlers(tmp_path: Path) ->
 
 
 def test_static_router_strict_auth_inspection_compatibility(tmp_path: Path) -> None:
-    """Test that strict auth validators inspecting handler.opt directly find exclude_from_auth."""
+    """Strict auth validators require exclude_from_auth on handlers only, never on parent layers."""
+    from collections.abc import Mapping
+
     from litestar.routes import HTTPRoute
 
     bundle_dir = tmp_path / "dist"
@@ -2366,5 +2366,10 @@ def test_static_router_strict_auth_inspection_compatibility(tmp_path: Path) -> N
     ]
     assert len(static_handlers) > 0
     for handler in static_handlers:
-        if not handler.opt.get("exclude_from_auth"):
-            raise ValueError("Strict auth validation failed: handler missing exclude_from_auth")
+        assert handler.opt.get("exclude_from_auth") is True
+        # Mirrors litestar-security's layer check: exclude_from_auth on any parent
+        # layer (router/app) fails app startup even when the handler also has it.
+        for layer in handler.ownership_layers[:-1]:
+            layer_opt = getattr(layer, "opt", None)
+            if isinstance(layer_opt, Mapping):
+                assert "exclude_from_auth" not in layer_opt

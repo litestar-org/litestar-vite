@@ -132,7 +132,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
         "_spa_handler",
         "_ssr_process",
         "_static_files_config",
-        "_static_files_config_supplied",
         "_vite_process",
     )
 
@@ -158,7 +157,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
         self._vite_process: "ViteProcess | None" = None
         self._ssr_process: "ViteProcess | None" = None
         self._static_files_config: "StaticFilesConfig | None" = static_files_config
-        self._static_files_config_supplied = static_files_config is not None
         self._proxy_target: "str | None" = None
         self._proxy_client: "httpx.AsyncClient | None" = None
         self._route_prefix_cache: tuple[str, ...] | None = None
@@ -549,12 +547,13 @@ class VitePlugin(InitPlugin, CLIPlugin):
             "name": "vite",
             "html_mode": False,
             "include_in_schema": False,
-            "opt": opt,
             "exception_handlers": {NotFoundException: static_not_found_handler},
         }
         user_config = self._static_files_config.as_router_kwargs() if self._static_files_config else {}
         static_files_config: dict[str, Any] = {**base_config, **user_config}
         router = create_static_files_router(**static_files_config)
+        # Emit opts only at handler level: strict auth integrations reject
+        # exclude_from_auth on parent layers (router/app).
         for route in router.routes:
             for handler in getattr(route, "route_handlers", []):
                 handler.opt.update(opt)
