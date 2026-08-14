@@ -237,12 +237,6 @@ class ViteConfig:
     opt={"exclude_from_auth": True}, which tells auth middleware to skip
     authentication for asset requests. Set to False to omit that opt so auth
     middleware treats asset requests like any other route.
-
-    This flag only controls route metadata; it does not affect native static
-    serving eligibility. To guarantee assets pass through auth middleware
-    (e.g. under Granian's ``static="auto"``), configure
-    ``StaticFilesConfig`` with guards or middleware, which forces ASGI
-    serving.
     """
     spa_path: "str | None" = None
     """Path where the SPA handler serves index.html.

@@ -303,6 +303,10 @@ class VitePlugin(InitPlugin, CLIPlugin):
             overrides = ", ".join(self._static_files_config.asgi_override_fields())
             return f"Vite static configuration contains ASGI-dependent options ({overrides}) that native serving cannot preserve."
 
+        user_opt = self._static_files_config.opt if self._static_files_config else None
+        if user_opt and user_opt.get("exclude_from_auth", True) is not True:
+            return "Vite static assets explicitly opt into Litestar authentication."
+
         parsed_asset_url = urlsplit(asset_url)
         if (
             not asset_url.startswith("/")
