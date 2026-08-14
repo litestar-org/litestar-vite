@@ -293,7 +293,7 @@ def test_vite_plugin_get_static_server_config_rejects_opt_requesting_auth(tmp_pa
         (StaticFilesConfig(after_request=lambda res: res), "after_request"),
         (StaticFilesConfig(after_response=lambda res: None), "after_response"),
         (StaticFilesConfig(cache_control=CacheControlHeader(max_age=3600)), "cache_control"),
-        (StaticFilesConfig(exception_handlers={ValueError: lambda req, exc: None}), "exception_handlers"),  # type: ignore[dict-item]
+        (StaticFilesConfig(exception_handlers={ValueError: lambda req, exc: None}), "exception_handlers"),  # type: ignore[dict-item,return-value]
     ],
 )
 def test_vite_plugin_get_static_server_config_rejects_asgi_altering_static_config(
