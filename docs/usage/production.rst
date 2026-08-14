@@ -61,8 +61,11 @@ Granian 0.16+ can add native static serving as an optimization:
 
 ``static="auto"`` discovers Vite's server-neutral production bundle description.
 An eligible build has one local, non-root asset route, a non-empty bundle with a
-valid manifest or built ``index.html``, public assets, and no custom
-``StaticFilesConfig``. Vite advertises no directory index, matching its existing
+valid manifest or built ``index.html``, and no ASGI-dependent
+``StaticFilesConfig`` options (such as guards, middleware, request/response hooks,
+custom cache control, or exception handlers). Metadata-only customizations
+(``opt``, ``tags``, ``security``) and ``exclude_static_from_auth=False`` remain
+eligible for native serving. Vite advertises no directory index, matching its existing
 Litestar static route; SPA fallback remains the application handler's job.
 
 Granian uses native serving only when these semantics are safe. Otherwise it
@@ -73,9 +76,9 @@ continues to the retained Litestar route and normal error handling.
 
    A Granian-native file hit does not enter ASGI. It bypasses Litestar
    middleware, guards, compression, custom response headers, exception
-   handlers, and Python access logging. Protected assets
-   (``exclude_static_from_auth=False``) and any user-supplied
-   ``StaticFilesConfig`` automatically stay on the Litestar path.
+   handlers, and Python access logging. Static configurations specifying
+   ASGI hooks, guards, middleware, custom cache control, or exception handlers
+   automatically stay on the Litestar path.
 
 Server Matrix
 ~~~~~~~~~~~~~

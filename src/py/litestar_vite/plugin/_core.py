@@ -301,10 +301,9 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
     def _get_static_semantics_fallback_reason(self, asset_url: str) -> str | None:
         """Return why Vite's Litestar routing semantics require ASGI serving."""
-        if self._static_files_config_supplied:
-            return "Vite has custom Litestar static configuration that native serving cannot preserve."
-        if not self._config.exclude_static_from_auth:
-            return "Vite protected static assets must remain behind Litestar authentication."
+        if self._static_files_config is not None and self._static_files_config.has_asgi_overrides():
+            overrides = ", ".join(self._static_files_config.asgi_override_fields())
+            return f"Vite static configuration contains ASGI-dependent options ({overrides}) that native serving cannot preserve."
 
         parsed_asset_url = urlsplit(asset_url)
         if (
@@ -555,7 +554,11 @@ class VitePlugin(InitPlugin, CLIPlugin):
         }
         user_config = self._static_files_config.as_router_kwargs() if self._static_files_config else {}
         static_files_config: dict[str, Any] = {**base_config, **user_config}
-        app_config.route_handlers.append(create_static_files_router(**static_files_config))
+        router = create_static_files_router(**static_files_config)
+        for route in router.routes:
+            for handler in getattr(route, "route_handlers", []):
+                handler.opt.update(opt)
+        app_config.route_handlers.append(router)
 
     def _configure_dev_proxy(self, app_config: "AppConfig") -> None:
         """Configure dev proxy middleware and handlers based on the canonical mode.

@@ -100,6 +100,16 @@ class StaticFilesConfig:
     tags: "Sequence[str] | None" = None
 
     _NOT_ROUTER_KWARGS: "ClassVar[frozenset[str]]" = frozenset({"opt"})
+    _METADATA_FIELDS: "ClassVar[frozenset[str]]" = frozenset({"opt", "tags", "security"})
+    _ASGI_BEHAVIOR_FIELDS: "ClassVar[frozenset[str]]" = frozenset({
+        "after_request",
+        "after_response",
+        "before_request",
+        "cache_control",
+        "exception_handlers",
+        "guards",
+        "middleware",
+    })
 
     def as_router_kwargs(self) -> "dict[str, Any]":
         """Return the explicitly-set fields as ``create_static_files_router`` keyword arguments.
@@ -118,3 +128,23 @@ class StaticFilesConfig:
             if value is not None:
                 kwargs[field_info.name] = value
         return kwargs
+
+    def asgi_override_fields(self) -> list[str]:
+        """Return the list of configured fields that require ASGI request/response serving.
+
+        Returns:
+            Names of fields with non-None values that modify runtime ASGI behavior.
+        """
+        return [
+            field_info.name
+            for field_info in fields(self)
+            if field_info.name in self._ASGI_BEHAVIOR_FIELDS and getattr(self, field_info.name) is not None
+        ]
+
+    def has_asgi_overrides(self) -> bool:
+        """Return True if any configured field alters runtime ASGI request/response behavior.
+
+        Returns:
+            True if any ASGI-dependent field is set, False if the configuration is pure metadata.
+        """
+        return bool(self.asgi_override_fields())

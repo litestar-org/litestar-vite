@@ -113,6 +113,16 @@ def test_litestar_fallback_preserves_static_guard_middleware_and_errors(tmp_path
     assert missing.headers["x-static-middleware"] == "active"
 
 
+def test_metadata_only_static_config_remains_native_eligible(tmp_path: Path) -> None:
+    """Metadata-only StaticFilesConfig (opt, tags, security) remains eligible for native serving."""
+    static_config = StaticFilesConfig(opt={"custom_key": "val"}, tags=["static"], security=[])
+    plugin, _ = _build_production_plugin(tmp_path, static_files_config=static_config)
+    config = plugin.get_static_server_config()
+
+    assert config.placement == "native"
+    assert len(config.mounts) == 1
+
+
 def test_vite_provider_matches_granian_structural_contract(tmp_path: Path) -> None:
     """The public result has the attributes Granian consumes, without a Granian import."""
     plugin, bundle_dir = _build_production_plugin(tmp_path)
