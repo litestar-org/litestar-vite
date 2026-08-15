@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Generator
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, fields
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from litestar import Litestar, get
 from litestar.config.app import AppConfig
+from litestar.datastructures import CacheControlHeader
 from litestar.exceptions import WebSocketDisconnect
 from litestar.middleware import DefineMiddleware
 from litestar.params import FromPath
@@ -62,7 +63,6 @@ def test_vite_plugin_initialization_default_config() -> None:
     assert isinstance(plugin._config, ViteConfig)
     assert plugin._asset_loader is None
     assert plugin._static_files_config is None
-    assert plugin._static_files_config_supplied is False
     assert plugin._config.executor is not None
     assert plugin._vite_process is None
 
@@ -89,7 +89,6 @@ def test_vite_plugin_initialization_with_static_files_config() -> None:
 
     assert plugin._static_files_config is not None
     assert plugin._static_files_config.as_router_kwargs()["tags"] == ["static"]
-    assert plugin._static_files_config_supplied is True
 
 
 def test_static_server_config_placement_contract_is_public() -> None:
@@ -195,7 +194,6 @@ def test_vite_plugin_get_static_server_config_accepts_built_index_without_manife
         ({"runtime": RuntimeConfig(dev_mode=True)}, "development mode"),
         ({"mode": "framework"}, "framework/SSR routing"),
         ({"runtime": RuntimeConfig(dev_mode=False, set_static_folders=False)}, "automatic static routing is disabled"),
-        ({"exclude_static_from_auth": False}, "protected static assets"),
     ],
 )
 def test_vite_plugin_get_static_server_config_rejects_ineligible_runtime_config(
@@ -222,18 +220,62 @@ def test_vite_plugin_get_static_server_config_rejects_ineligible_runtime_config(
     assert reason in config.reason
 
 
-def test_vite_plugin_get_static_server_config_rejects_any_custom_static_config(tmp_path: Path) -> None:
-    """Even an all-default explicit StaticFilesConfig preserves user-owned ASGI semantics."""
+def _build_manifest_only_plugin(
+    tmp_path: Path, static_files_config: "StaticFilesConfig | None" = None, **config_kwargs: Any
+) -> VitePlugin:
+    """Build a plugin over a minimal production bundle (manifest.json only)."""
     bundle_dir = tmp_path / "dist"
-    bundle_dir.mkdir()
+    bundle_dir.mkdir(exist_ok=True)
     (bundle_dir / "manifest.json").write_text("{}", encoding="utf-8")
-    plugin = VitePlugin(
+    return VitePlugin(
         config=ViteConfig(
             mode="template",
             paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir),
             runtime=RuntimeConfig(dev_mode=False),
+            **config_kwargs,
         ),
-        static_files_config=StaticFilesConfig(),
+        static_files_config=static_files_config,
+    )
+
+
+def test_vite_plugin_get_static_server_config_accepts_exclude_static_from_auth_false(tmp_path: Path) -> None:
+    """Decoupled auth flag preserves native static serving eligibility."""
+    plugin = _build_manifest_only_plugin(tmp_path, exclude_static_from_auth=False)
+
+    config = plugin.get_static_server_config()
+
+    assert config.placement is StaticPlacement.NATIVE
+    assert len(config.mounts) == 1
+
+
+def test_vite_plugin_get_static_server_config_accepts_metadata_only_static_config(tmp_path: Path) -> None:
+    """Metadata-only StaticFilesConfig (opt, tags, security) preserves native static serving."""
+    plugin = _build_manifest_only_plugin(
+        tmp_path, static_files_config=StaticFilesConfig(opt={"custom": "val"}, tags=["static"], security=[])
+    )
+
+    config = plugin.get_static_server_config()
+
+    assert config.placement is StaticPlacement.NATIVE
+    assert len(config.mounts) == 1
+
+
+def test_vite_plugin_get_static_server_config_accepts_empty_asgi_containers(tmp_path: Path) -> None:
+    """Empty guard/middleware/handler containers configure nothing and stay native-eligible."""
+    plugin = _build_manifest_only_plugin(
+        tmp_path, static_files_config=StaticFilesConfig(guards=[], middleware=[], exception_handlers={})
+    )
+
+    config = plugin.get_static_server_config()
+
+    assert config.placement is StaticPlacement.NATIVE
+    assert len(config.mounts) == 1
+
+
+def test_vite_plugin_get_static_server_config_rejects_opt_requesting_auth(tmp_path: Path) -> None:
+    """An explicit exclude_from_auth=False opt keeps assets on the authenticated ASGI path."""
+    plugin = _build_manifest_only_plugin(
+        tmp_path, static_files_config=StaticFilesConfig(opt={"exclude_from_auth": False})
     )
 
     config = plugin.get_static_server_config()
@@ -241,7 +283,41 @@ def test_vite_plugin_get_static_server_config_rejects_any_custom_static_config(t
     assert config.mounts == ()
     assert config.placement is StaticPlacement.ASGI
     assert config.reason is not None
-    assert "custom Litestar static configuration" in config.reason
+    assert "authentication" in config.reason
+
+
+_ASGI_FIELD_CASES = [
+    (StaticFilesConfig(guards=[lambda conn, handler: None]), "guards"),
+    (StaticFilesConfig(middleware=[lambda app: app]), "middleware"),
+    (StaticFilesConfig(before_request=lambda req: None), "before_request"),
+    (StaticFilesConfig(after_request=lambda res: res), "after_request"),
+    (StaticFilesConfig(after_response=lambda res: None), "after_response"),
+    (StaticFilesConfig(cache_control=CacheControlHeader(max_age=3600)), "cache_control"),
+    (StaticFilesConfig(exception_handlers={ValueError: lambda req, exc: None}), "exception_handlers"),  # type: ignore[dict-item,return-value]
+]
+
+
+def test_static_files_config_field_classification_is_exhaustive() -> None:
+    """Every StaticFilesConfig field is either metadata or covered by the ASGI rejection cases."""
+    all_fields = {field_info.name for field_info in fields(StaticFilesConfig)}
+    tested_asgi_fields = {field_name for _, field_name in _ASGI_FIELD_CASES}
+
+    assert all_fields == set(StaticFilesConfig._METADATA_FIELDS) | tested_asgi_fields
+
+
+@pytest.mark.parametrize(("static_config", "field_name"), _ASGI_FIELD_CASES)
+def test_vite_plugin_get_static_server_config_rejects_asgi_altering_static_config(
+    tmp_path: Path, static_config: StaticFilesConfig, field_name: str
+) -> None:
+    """Configuring ASGI-dependent options requires in-process ASGI fallback."""
+    plugin = _build_manifest_only_plugin(tmp_path, static_files_config=static_config)
+
+    config = plugin.get_static_server_config()
+
+    assert config.mounts == ()
+    assert config.placement is StaticPlacement.ASGI
+    assert config.reason is not None
+    assert field_name in config.reason
 
 
 @pytest.mark.parametrize(
@@ -2253,3 +2329,35 @@ async def test_vite_plugin_proxy_client_none_when_no_proxy_mode() -> None:
     app = Litestar(route_handlers=[])
     async with plugin.lifespan(app):
         assert plugin.proxy_client is None
+
+
+def test_static_router_emits_opt_on_handlers_only(tmp_path: Path) -> None:
+    """Static route opts (default + user) land on individual handlers, never on parent layers."""
+    from collections.abc import Mapping
+
+    from litestar.routes import HTTPRoute
+
+    plugin = _build_manifest_only_plugin(
+        tmp_path,
+        static_files_config=StaticFilesConfig(opt={"custom_opt_key": "custom_val"}),
+        exclude_static_from_auth=True,
+    )
+
+    app = Litestar(plugins=[plugin])
+    static_handlers = [
+        h
+        for route in app.routes
+        if isinstance(route, HTTPRoute)
+        for h in getattr(route, "route_handlers", [])
+        if h.opt.get("_vite_static_handler")
+    ]
+    assert len(static_handlers) > 0
+    for handler in static_handlers:
+        assert handler.opt.get("exclude_from_auth") is True
+        assert handler.opt.get("custom_opt_key") == "custom_val"
+        # Mirrors litestar-security's layer check: exclude_from_auth on any parent
+        # layer (router/app) fails app startup even when the handler also has it.
+        for layer in handler.ownership_layers[:-1]:
+            layer_opt = getattr(layer, "opt", None)
+            if isinstance(layer_opt, Mapping):
+                assert "exclude_from_auth" not in layer_opt
