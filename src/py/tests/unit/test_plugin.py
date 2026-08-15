@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Generator
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, fields
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
@@ -220,7 +220,7 @@ def test_vite_plugin_get_static_server_config_rejects_ineligible_runtime_config(
     assert reason in config.reason
 
 
-def _build_production_plugin(
+def _build_manifest_only_plugin(
     tmp_path: Path, static_files_config: "StaticFilesConfig | None" = None, **config_kwargs: Any
 ) -> VitePlugin:
     """Build a plugin over a minimal production bundle (manifest.json only)."""
@@ -240,7 +240,7 @@ def _build_production_plugin(
 
 def test_vite_plugin_get_static_server_config_accepts_exclude_static_from_auth_false(tmp_path: Path) -> None:
     """Decoupled auth flag preserves native static serving eligibility."""
-    plugin = _build_production_plugin(tmp_path, exclude_static_from_auth=False)
+    plugin = _build_manifest_only_plugin(tmp_path, exclude_static_from_auth=False)
 
     config = plugin.get_static_server_config()
 
@@ -250,7 +250,7 @@ def test_vite_plugin_get_static_server_config_accepts_exclude_static_from_auth_f
 
 def test_vite_plugin_get_static_server_config_accepts_metadata_only_static_config(tmp_path: Path) -> None:
     """Metadata-only StaticFilesConfig (opt, tags, security) preserves native static serving."""
-    plugin = _build_production_plugin(
+    plugin = _build_manifest_only_plugin(
         tmp_path, static_files_config=StaticFilesConfig(opt={"custom": "val"}, tags=["static"], security=[])
     )
 
@@ -262,7 +262,7 @@ def test_vite_plugin_get_static_server_config_accepts_metadata_only_static_confi
 
 def test_vite_plugin_get_static_server_config_accepts_empty_asgi_containers(tmp_path: Path) -> None:
     """Empty guard/middleware/handler containers configure nothing and stay native-eligible."""
-    plugin = _build_production_plugin(
+    plugin = _build_manifest_only_plugin(
         tmp_path, static_files_config=StaticFilesConfig(guards=[], middleware=[], exception_handlers={})
     )
 
@@ -274,7 +274,9 @@ def test_vite_plugin_get_static_server_config_accepts_empty_asgi_containers(tmp_
 
 def test_vite_plugin_get_static_server_config_rejects_opt_requesting_auth(tmp_path: Path) -> None:
     """An explicit exclude_from_auth=False opt keeps assets on the authenticated ASGI path."""
-    plugin = _build_production_plugin(tmp_path, static_files_config=StaticFilesConfig(opt={"exclude_from_auth": False}))
+    plugin = _build_manifest_only_plugin(
+        tmp_path, static_files_config=StaticFilesConfig(opt={"exclude_from_auth": False})
+    )
 
     config = plugin.get_static_server_config()
 
@@ -284,23 +286,31 @@ def test_vite_plugin_get_static_server_config_rejects_opt_requesting_auth(tmp_pa
     assert "authentication" in config.reason
 
 
-@pytest.mark.parametrize(
-    ("static_config", "field_name"),
-    [
-        (StaticFilesConfig(guards=[lambda conn, handler: None]), "guards"),
-        (StaticFilesConfig(middleware=[lambda app: app]), "middleware"),
-        (StaticFilesConfig(before_request=lambda req: None), "before_request"),
-        (StaticFilesConfig(after_request=lambda res: res), "after_request"),
-        (StaticFilesConfig(after_response=lambda res: None), "after_response"),
-        (StaticFilesConfig(cache_control=CacheControlHeader(max_age=3600)), "cache_control"),
-        (StaticFilesConfig(exception_handlers={ValueError: lambda req, exc: None}), "exception_handlers"),  # type: ignore[dict-item,return-value]
-    ],
-)
+_ASGI_FIELD_CASES = [
+    (StaticFilesConfig(guards=[lambda conn, handler: None]), "guards"),
+    (StaticFilesConfig(middleware=[lambda app: app]), "middleware"),
+    (StaticFilesConfig(before_request=lambda req: None), "before_request"),
+    (StaticFilesConfig(after_request=lambda res: res), "after_request"),
+    (StaticFilesConfig(after_response=lambda res: None), "after_response"),
+    (StaticFilesConfig(cache_control=CacheControlHeader(max_age=3600)), "cache_control"),
+    (StaticFilesConfig(exception_handlers={ValueError: lambda req, exc: None}), "exception_handlers"),  # type: ignore[dict-item,return-value]
+]
+
+
+def test_static_files_config_field_classification_is_exhaustive() -> None:
+    """Every StaticFilesConfig field is either metadata or covered by the ASGI rejection cases."""
+    all_fields = {field_info.name for field_info in fields(StaticFilesConfig)}
+    tested_asgi_fields = {field_name for _, field_name in _ASGI_FIELD_CASES}
+
+    assert all_fields == set(StaticFilesConfig._METADATA_FIELDS) | tested_asgi_fields
+
+
+@pytest.mark.parametrize(("static_config", "field_name"), _ASGI_FIELD_CASES)
 def test_vite_plugin_get_static_server_config_rejects_asgi_altering_static_config(
     tmp_path: Path, static_config: StaticFilesConfig, field_name: str
 ) -> None:
     """Configuring ASGI-dependent options requires in-process ASGI fallback."""
-    plugin = _build_production_plugin(tmp_path, static_files_config=static_config)
+    plugin = _build_manifest_only_plugin(tmp_path, static_files_config=static_config)
 
     config = plugin.get_static_server_config()
 
@@ -2327,7 +2337,7 @@ def test_static_router_emits_opt_on_handlers_only(tmp_path: Path) -> None:
 
     from litestar.routes import HTTPRoute
 
-    plugin = _build_production_plugin(
+    plugin = _build_manifest_only_plugin(
         tmp_path,
         static_files_config=StaticFilesConfig(opt={"custom_opt_key": "custom_val"}),
         exclude_static_from_auth=True,

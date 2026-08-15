@@ -108,10 +108,18 @@ Advanced Configurations
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 Keep using the nested ``ViteConfig``, ``PathConfig``, ``RuntimeConfig``, and
-``StaticFilesConfig`` options for nonstandard roots, CDN URLs, protected files,
-custom static hooks, framework/SSR routing, and raw server flags. External or
-root asset URLs, framework mode, custom static behavior, and protected assets
-deliberately use Litestar rather than native interception.
+``StaticFilesConfig`` options for nonstandard roots, CDN URLs, custom static
+hooks, framework/SSR routing, and raw server flags. External or root asset
+URLs, framework mode, and ASGI-dependent static behavior deliberately use
+Litestar rather than native interception.
+
+``exclude_static_from_auth=False`` only controls how the exclusion is declared
+on the static route handlers — typical when the auth layer already excludes
+asset paths itself (for example via litestar-security path patterns) — and no
+longer affects native-serving eligibility. An application that instead wants
+assets authenticated in-process opts in explicitly with
+``StaticFilesConfig(opt={"exclude_from_auth": False})``, which keeps them on
+the Litestar path.
 
 Deploying Assets (`litestar assets deploy`)
 -------------------------------------------
