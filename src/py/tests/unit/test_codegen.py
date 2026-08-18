@@ -273,6 +273,38 @@ def test_generate_routes_ts_has_api_url_config() -> None:
     assert "API_URL" in ts_content
 
 
+def test_generate_routes_ts_default_csrf_constants() -> None:
+    """Test that generated TypeScript includes default CSRF cookie and header names."""
+
+    @get("/test", name="test", sync_to_thread=False)
+    def test_route() -> str:
+        return "test"
+
+    app = Litestar([test_route])
+    ts_content = generate_routes_ts(app)
+
+    assert "export const CSRF_COOKIE_NAME = 'csrftoken';" in ts_content
+    assert "export const CSRF_HEADER_NAME = 'x-csrftoken';" in ts_content
+
+
+def test_generate_routes_ts_custom_csrf_constants() -> None:
+    """Test that generated TypeScript includes configured CSRF cookie and header names."""
+    from litestar.config.csrf import CSRFConfig
+
+    @get("/test", name="test", sync_to_thread=False)
+    def test_route() -> str:
+        return "test"
+
+    csrf_config = CSRFConfig(
+        secret="test-secret-key-12345", cookie_name="my_custom_csrf_cookie", header_name="X-My-CSRF-Header"
+    )
+    app = Litestar([test_route], csrf_config=csrf_config)
+    ts_content = generate_routes_ts(app)
+
+    assert "export const CSRF_COOKIE_NAME = 'my_custom_csrf_cookie';" in ts_content
+    assert "export const CSRF_HEADER_NAME = 'X-My-CSRF-Header';" in ts_content
+
+
 def test_generate_routes_ts_type_overloads() -> None:
     """Test that route function has proper TypeScript overloads."""
 

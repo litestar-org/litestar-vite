@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { csrfFetch, csrfHeaders, getCsrfToken } from "../../src/helpers/csrf"
+import { csrfFetch, csrfHeaders, getCsrfHeaderName, getCsrfToken } from "../../src/helpers/csrf"
 
 function getHeaderValue(headers: HeadersInit | undefined, header: string): string | null | undefined {
   if (!headers) {
@@ -487,6 +487,117 @@ describe("csrf helpers", () => {
       const headers = callArgs[1].headers as Headers
       expect(headers.get("Authorization")).toBe("Bearer xyz")
       expect(headers.get("X-CSRFToken")).toBe("fetch-token")
+    })
+  })
+
+  describe("static fallback options", () => {
+    describe("getCsrfHeaderName with fallback", () => {
+      it("returns custom fallback when window global is undefined", () => {
+        expect(getCsrfHeaderName("X-Custom-CSRF")).toBe("X-Custom-CSRF")
+      })
+
+      it("prefers window global over fallback argument", () => {
+        ;(globalThis.window as unknown as Record<string, unknown>).__LITESTAR_CSRF_HEADER_NAME__ = "x-injected-header"
+        expect(getCsrfHeaderName("X-Custom-CSRF")).toBe("x-injected-header")
+      })
+    })
+
+    describe("getCsrfToken with cookie name fallback", () => {
+      it("reads custom fallback cookie when provided as a string", () => {
+        globalThis.window.__LITESTAR_CSRF__ = undefined
+        ;(globalThis.document as unknown as { cookie: string }).cookie = "my_cookie=my-token-123"
+
+        expect(getCsrfToken("my_cookie")).toBe("my-token-123")
+      })
+
+      it("reads custom fallback cookie when provided via CsrfOptions object", () => {
+        globalThis.window.__LITESTAR_CSRF__ = undefined
+        ;(globalThis.document as unknown as { cookie: string }).cookie = "my_cookie=my-token-456"
+
+        expect(getCsrfToken({ cookieName: "my_cookie" })).toBe("my-token-456")
+      })
+
+      it("prefers window.__LITESTAR_CSRF_COOKIE_NAME__ over fallback cookie name", () => {
+        globalThis.window.__LITESTAR_CSRF__ = undefined
+        ;(globalThis.window as unknown as Record<string, unknown>).__LITESTAR_CSRF_COOKIE_NAME__ = "injected_cookie"
+        ;(globalThis.document as unknown as { cookie: string }).cookie = "injected_cookie=injected-val; fallback_cookie=fallback-val"
+
+        expect(getCsrfToken("fallback_cookie")).toBe("injected-val")
+      })
+    })
+
+    describe("csrfHeaders with static fallbacks", () => {
+      it("uses fallback header and cookie names when window globals are absent", () => {
+        globalThis.window.__LITESTAR_CSRF__ = undefined
+        ;(globalThis.document as unknown as { cookie: string }).cookie = "static_cookie=token-abc"
+
+        const headers = csrfHeaders({ Accept: "application/json" }, "X-Static-Header", "static_cookie")
+        expect(headers).toEqual({
+          Accept: "application/json",
+          "X-Static-Header": "token-abc",
+        })
+      })
+
+      it("uses options object for fallback header and cookie names", () => {
+        globalThis.window.__LITESTAR_CSRF__ = undefined
+        ;(globalThis.document as unknown as { cookie: string }).cookie = "static_cookie=token-xyz"
+
+        const headers = csrfHeaders(
+          { Accept: "application/json" },
+          {
+            headerName: "X-Static-Header",
+            cookieName: "static_cookie",
+          },
+        )
+        expect(headers).toEqual({
+          Accept: "application/json",
+          "X-Static-Header": "token-xyz",
+        })
+      })
+    })
+
+    describe("csrfFetch with static fallbacks", () => {
+      it("uses fallback options in csrfFetch", async () => {
+        globalThis.window.__LITESTAR_CSRF__ = undefined
+        ;(globalThis.document as unknown as { cookie: string }).cookie = "static_cookie=fetch-token-xyz"
+        const mockResponse = new Response("OK", { status: 200 })
+        ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse)
+
+        await csrfFetch(
+          "/api/submit",
+          { method: "POST" },
+          {
+            headerName: "X-Static-Header",
+            cookieName: "static_cookie",
+          },
+        )
+
+        const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+        expect(callArgs[1].headers).toEqual({
+          "X-Static-Header": "fetch-token-xyz",
+        })
+      })
+
+      it("prefers window globals over csrfFetch fallback options", async () => {
+        globalThis.window.__LITESTAR_CSRF__ = "runtime-global-token"
+        ;(globalThis.window as unknown as Record<string, unknown>).__LITESTAR_CSRF_HEADER_NAME__ = "X-Runtime-Header"
+        const mockResponse = new Response("OK", { status: 200 })
+        ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse)
+
+        await csrfFetch(
+          "/api/submit",
+          { method: "POST" },
+          {
+            headerName: "X-Static-Header",
+            cookieName: "static_cookie",
+          },
+        )
+
+        const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+        expect(callArgs[1].headers).toEqual({
+          "X-Runtime-Header": "runtime-global-token",
+        })
+      })
     })
   })
 })

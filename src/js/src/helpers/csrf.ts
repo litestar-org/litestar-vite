@@ -18,6 +18,20 @@ declare global {
   }
 }
 
+export interface CsrfOptions {
+  /**
+   * Fallback header name to use if window.__LITESTAR_CSRF_HEADER_NAME__ is undefined.
+   * @default "X-CSRFToken"
+   */
+  headerName?: string
+  /**
+   * Fallback cookie name to check if window.__LITESTAR_CSRF_COOKIE_NAME__ is undefined.
+   */
+  cookieName?: string
+}
+
+export interface CsrfFetchOptions extends CsrfOptions {}
+
 interface CsrfTokenCache {
   token: string
   windowToken?: string
@@ -29,11 +43,20 @@ interface CsrfTokenCache {
 let csrfTokenCache: CsrfTokenCache | null = null
 const DEFAULT_CSRF_HEADER_NAME = "X-CSRFToken"
 
-export function getCsrfHeaderName(): string {
+/**
+ * Get the configured CSRF header name.
+ *
+ * Checks `window.__LITESTAR_CSRF_HEADER_NAME__` first, then falls back to `fallback`
+ * (defaults to "X-CSRFToken").
+ *
+ * @param fallback - Optional fallback header name
+ * @returns The CSRF header name
+ */
+export function getCsrfHeaderName(fallback: string = DEFAULT_CSRF_HEADER_NAME): string {
   if (typeof window !== "undefined" && typeof window.__LITESTAR_CSRF_HEADER_NAME__ === "string" && window.__LITESTAR_CSRF_HEADER_NAME__.length > 0) {
     return window.__LITESTAR_CSRF_HEADER_NAME__
   }
-  return DEFAULT_CSRF_HEADER_NAME
+  return fallback
 }
 
 function getWindowToken(): string | undefined {
@@ -96,11 +119,17 @@ function getCookie(name: string): string | undefined {
   return undefined
 }
 
-function getCookieToken(): string | undefined {
+function getCookieToken(cookieNameFallback?: string): string | undefined {
   if (typeof window !== "undefined" && typeof window.__LITESTAR_CSRF_COOKIE_NAME__ === "string" && window.__LITESTAR_CSRF_COOKIE_NAME__.length > 0) {
     const configured = getCookie(window.__LITESTAR_CSRF_COOKIE_NAME__)
     if (configured !== undefined) {
       return configured
+    }
+  }
+  if (typeof cookieNameFallback === "string" && cookieNameFallback.length > 0) {
+    const fallbackCookie = getCookie(cookieNameFallback)
+    if (fallbackCookie !== undefined) {
+      return fallbackCookie
     }
   }
   return getCookie("csrftoken") ?? getCookie("XSRF-TOKEN")
@@ -113,8 +142,9 @@ function getCookieToken(): string | undefined {
  * 1. window.__LITESTAR_CSRF__ (injected by SPA handler)
  * 2. <meta name="csrf-token"> element
  * 3. Inertia page props (if Inertia is present)
- * 4. csrftoken / XSRF-TOKEN cookie
+ * 4. csrftoken / XSRF-TOKEN cookie (or custom cookieName fallback)
  *
+ * @param cookieNameFallbackOrOptions - Optional fallback cookie name or options object
  * @returns The CSRF token or empty string if not found
  *
  * @example
@@ -130,7 +160,10 @@ function getCookieToken(): string | undefined {
  * })
  * ```
  */
-export function getCsrfToken(): string {
+export function getCsrfToken(cookieNameFallbackOrOptions?: string | CsrfOptions): string {
+  const cookieNameFallback =
+    typeof cookieNameFallbackOrOptions === "object" && cookieNameFallbackOrOptions !== null ? cookieNameFallbackOrOptions.cookieName : cookieNameFallbackOrOptions
+
   const windowToken = getWindowToken()
   if (windowToken) {
     if (csrfTokenCache?.windowToken === windowToken && csrfTokenCache.token === windowToken) {
@@ -146,7 +179,7 @@ export function getCsrfToken(): string {
 
   const metaToken = getMetaToken()
   const inertiaToken = getInertiaToken()
-  const cookieToken = getCookieToken()
+  const cookieToken = getCookieToken(cookieNameFallback)
   const token = metaToken ?? inertiaToken ?? cookieToken ?? ""
 
   if (
@@ -191,6 +224,8 @@ function hasCsrfHeader(headers: HeadersInit | undefined, headerName: string): bo
  * Create headers object with CSRF token included.
  *
  * @param additionalHeaders - Additional headers to include
+ * @param optionsOrHeaderFallback - Optional header name fallback or CsrfOptions object
+ * @param cookieNameFallback - Optional cookie name fallback when optionsOrHeaderFallback is a header name string
  * @returns Headers object with Litestar's default CSRF header set
  *
  * @example
@@ -204,13 +239,21 @@ function hasCsrfHeader(headers: HeadersInit | undefined, headerName: string): bo
  * })
  * ```
  */
-export function csrfHeaders(additionalHeaders: Record<string, string> = {}): Record<string, string> {
-  const token = getCsrfToken()
+export function csrfHeaders(additionalHeaders: Record<string, string> = {}, optionsOrHeaderFallback?: string | CsrfOptions, cookieNameFallback?: string): Record<string, string> {
+  const options: CsrfOptions =
+    typeof optionsOrHeaderFallback === "object" && optionsOrHeaderFallback !== null
+      ? optionsOrHeaderFallback
+      : {
+          headerName: typeof optionsOrHeaderFallback === "string" ? optionsOrHeaderFallback : undefined,
+          cookieName: cookieNameFallback,
+        }
+
+  const token = getCsrfToken(options.cookieName)
   if (!token) {
     return additionalHeaders
   }
 
-  const headerName = getCsrfHeaderName()
+  const headerName = getCsrfHeaderName(options.headerName ?? DEFAULT_CSRF_HEADER_NAME)
   const existingTokenHeader = Object.keys(additionalHeaders).find((key) => key.toLowerCase() === headerName.toLowerCase())
   if (existingTokenHeader !== undefined) {
     return additionalHeaders
@@ -227,6 +270,7 @@ export function csrfHeaders(additionalHeaders: Record<string, string> = {}): Rec
  *
  * @param input - Request URL or Request object
  * @param init - Request options
+ * @param options - Optional CSRF configuration options (headerName and/or cookieName fallbacks)
  * @returns Fetch response promise
  *
  * @example
@@ -240,14 +284,14 @@ export function csrfHeaders(additionalHeaders: Record<string, string> = {}): Rec
  * })
  * ```
  */
-export function csrfFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const token = getCsrfToken()
+export function csrfFetch(input: RequestInfo | URL, init?: RequestInit, options?: CsrfFetchOptions): Promise<Response> {
+  const token = getCsrfToken(options?.cookieName)
 
   if (!token) {
     return fetch(input, init)
   }
 
-  const headerName = getCsrfHeaderName()
+  const headerName = getCsrfHeaderName(options?.headerName ?? DEFAULT_CSRF_HEADER_NAME)
   if (!hasCsrfHeader(init?.headers, headerName)) {
     if (!init || typeof init.headers === "undefined") {
       return fetch(input, {
