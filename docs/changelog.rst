@@ -7,7 +7,27 @@ Notable changes to this project are documented in this file.
 Litestar Vite Changelog
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-0.30.0 - Unreleased
+0.31.0 - Unreleased
+-------------------
+
+- Emitted configured CSRF cookie and header names (``CSRF_COOKIE_NAME`` and ``CSRF_HEADER_NAME``)
+  as static constants in generated TypeScript route definitions (``routes.ts``) sourced from
+  ``app.csrf_config``. (`#353 <https://github.com/litestar-org/litestar-vite/issues/353>`_)
+- Added static fallback support to frontend CSRF helpers (``getCsrfHeaderName``, ``getCookieToken``,
+  ``getCsrfToken``, ``csrfHeaders``, and ``csrfFetch``) so generated constants can be passed in
+  non-server-rendered contexts (e.g. standalone SPA dev servers, unit tests, and API clients)
+  while preserving runtime window global precedence. (`#353 <https://github.com/litestar-org/litestar-vite/issues/353>`_)
+- Updated dependencies and version metadata for 0.31.0.
+
+0.30.1 - 2026-08-15
+-------------------
+
+- Fixed static route authentication metadata emission at handler level and decoupled native static
+  serving eligibility. (`#349 <https://github.com/litestar-org/litestar-vite/issues/349>`_,
+  `#350 <https://github.com/litestar-org/litestar-vite/issues/350>`_,
+  `#351 <https://github.com/litestar-org/litestar-vite/pull/351>`_)
+
+0.30.0 - 2026-08-11
 -------------------
 
 - Fixed direct ``msgspec.Struct`` Inertia handler returns to use serialized top-level field names,

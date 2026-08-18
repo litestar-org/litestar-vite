@@ -40,7 +40,7 @@
  */
 
 // CSRF utilities
-export { csrfFetch, csrfHeaders, getCsrfHeaderName, getCsrfToken } from "./csrf.js"
+export { csrfFetch, csrfHeaders, getCsrfHeaderName, getCsrfToken, type CsrfFetchOptions, type CsrfOptions } from "./csrf.js"
 // Litestar Channels utilities
 export { createChannelsStream, type ChannelName, type ChannelsStreamOptions } from "./channels.js"
 // HTMX utilities

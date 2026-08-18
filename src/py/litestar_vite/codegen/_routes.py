@@ -483,6 +483,52 @@ def escape_ts_string(s: str) -> str:
     return s.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"')
 
 
+def _extract_csrf_names(app: Litestar) -> tuple[str, str]:
+    """Extract and escape CSRF cookie and header names from application configuration.
+
+    Args:
+        app: The Litestar application.
+
+    Returns:
+        A tuple of (cookie_name, header_name).
+    """
+    csrf_config = getattr(app, "csrf_config", None)
+    cookie_name = escape_ts_string(csrf_config.cookie_name) if csrf_config is not None else "csrftoken"
+    header_name = escape_ts_string(csrf_config.header_name) if csrf_config is not None else "x-csrftoken"
+    return cookie_name, header_name
+
+
+def _format_route_entry(
+    route: RouteMetadata, sorted_params: dict[str, str], sorted_query_params: dict[str, str]
+) -> str:
+    """Format TypeScript route definition entry lines.
+
+    Args:
+        route: The route metadata.
+        sorted_params: Deterministically sorted path parameters.
+        sorted_query_params: Deterministically sorted query parameters.
+
+    Returns:
+        The formatted route definition string.
+    """
+    methods_str = ", ".join(f"'{m}'" for m in sorted(route.methods))
+    route_entry_lines = [
+        f"  '{route.name}': {{",
+        f"    path: '{escape_ts_string(route.path)}',",
+        f"    methods: [{methods_str}] as const,",
+        f"    method: '{route.method}',",
+    ]
+    param_names_str = ", ".join(f"'{p}'" for p in sorted_params) if sorted_params else ""
+    route_entry_lines.append(f"    pathParams: [{param_names_str}] as const,")
+
+    query_names_str = ", ".join(f"'{p}'" for p in sorted_query_params) if sorted_query_params else ""
+    route_entry_lines.append(f"    queryParams: [{query_names_str}] as const,")
+    if route.component:
+        route_entry_lines.append(f"    component: '{escape_ts_string(route.component)}',")
+    route_entry_lines.append("  },")
+    return "\n".join(route_entry_lines)
+
+
 def generate_routes_ts(
     app: Litestar,
     *,
@@ -549,27 +595,14 @@ def generate_routes_ts(
         else:
             query_params_entries.append(f"  '{route_name}': Record<string, never>;")
 
-        methods_str = ", ".join(f"'{m}'" for m in sorted(route.methods))
-        route_entry_lines = [
-            f"  '{route_name}': {{",
-            f"    path: '{escape_ts_string(route.path)}',",
-            f"    methods: [{methods_str}] as const,",
-            f"    method: '{route.method}',",
-        ]
-        param_names_str = ", ".join(f"'{p}'" for p in sorted_params) if sorted_params else ""
-        route_entry_lines.append(f"    pathParams: [{param_names_str}] as const,")
-
-        query_names_str = ", ".join(f"'{p}'" for p in sorted_query_params) if sorted_query_params else ""
-        route_entry_lines.append(f"    queryParams: [{query_names_str}] as const,")
-        if route.component:
-            route_entry_lines.append(f"    component: '{escape_ts_string(route.component)}',")
-        route_entry_lines.append("  },")
-        routes_entries.append("\n".join(route_entry_lines))
+        routes_entries.append(_format_route_entry(route, sorted_params, sorted_query_params))
 
     route_names_union = "\n  | ".join(f"'{name}'" for name in route_names) if route_names else "never"
 
     alias_block = render_semantic_aliases(used_aliases)
     alias_preamble = f"{alias_block}\n\n" if alias_block else ""
+
+    csrf_cookie_name, csrf_header_name = _extract_csrf_names(app)
 
     global_route_snippet = ""
     if global_route:
@@ -586,6 +619,12 @@ def generate_routes_ts(
 // API base URL - only needed for separate dev servers
 // Set VITE_API_URL=http://localhost:8000 when running Vite separately
 const API_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) ?? '';
+
+/** Configured CSRF cookie name (static fallback) */
+export const CSRF_COOKIE_NAME = '{csrf_cookie_name}';
+
+/** Configured CSRF header name (static fallback) */
+export const CSRF_HEADER_NAME = '{csrf_header_name}';
 
 {alias_preamble}
 /** All available route names */
