@@ -556,8 +556,8 @@ class VitePlugin(InitPlugin, CLIPlugin):
         user_config = self._static_files_config.as_router_kwargs() if self._static_files_config else {}
         static_files_config: dict[str, Any] = {**base_config, **user_config}
         router = create_static_files_router(**static_files_config)
-        # Emit opts only at handler level: strict auth integrations reject
-        # exclude_from_auth on parent layers (router/app).
+        # Emit opts at handler level: strict auth integrations inspect handler `opt` at
+        # application startup, so the keys have to be present on each handler itself.
         for route in router.routes:
             for handler in getattr(route, "route_handlers", []):
                 handler.opt.update(opt)
