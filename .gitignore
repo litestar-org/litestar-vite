@@ -184,6 +184,7 @@ examples/*/frontend/package-lock.json
 # AI Agent Systems (Gemini & Claude)
 # All AI infrastructure is local-only and not tracked in git
 specs/
+plans/
 .gemini/
 .claude/
 AGENTS.md
