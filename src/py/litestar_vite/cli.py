@@ -30,7 +30,7 @@ from litestar_vite.doctor import ViteDoctor
 from litestar_vite.exceptions import ViteExecutionError
 from litestar_vite.plugin import VitePlugin, set_environment
 from litestar_vite.scaffolding import TemplateContext, generate_project, get_available_templates
-from litestar_vite.scaffolding.templates import get_template
+from litestar_vite.scaffolding.templates import FrameworkType, get_template
 
 if TYPE_CHECKING:
     from litestar import Litestar
@@ -38,22 +38,7 @@ if TYPE_CHECKING:
     from litestar_vite.scaffolding.templates import FrameworkTemplate
 
 
-FRAMEWORK_CHOICES = [
-    "react",
-    "react-router",
-    "react-tanstack",
-    "react-inertia",
-    "vue",
-    "vue-inertia",
-    "svelte",
-    "svelte-inertia",
-    "sveltekit",
-    "nuxt",
-    "astro",
-    "htmx",
-    "angular",
-    "angular-cli",
-]
+FRAMEWORK_CHOICES = [t.value for t in FrameworkType]
 
 
 @contextlib.contextmanager
