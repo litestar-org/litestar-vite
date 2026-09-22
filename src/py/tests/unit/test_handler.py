@@ -1534,3 +1534,64 @@ async def test_spa_handler_no_cache_when_spa_config_disabled(
 
     # With spa=False, cache_duration defaults to 0 (no caching)
     assert not hasattr(route, "cache") or route.cache is None or route.cache == 0
+
+
+async def test_spa_handler_prod_injects_csrf(temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Production SPA route handler should inject CSRF token and names when CSRF is enabled."""
+    from litestar.config.csrf import CSRFConfig
+
+    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    csrf_config = CSRFConfig(secret="test-secret-key-12345", cookie_name="my_csrf_cookie", header_name="x-my-csrf")
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(inject_csrf=True, csrf_var_name="__LITESTAR_CSRF__"),
+    )
+    handler = AppHandler(config, csrf_config=csrf_config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+    app = Litestar(route_handlers=[route], csrf_config=csrf_config)
+
+    async with AsyncTestClient(app=app) as client:
+        response = await client.get("/")
+        assert response.status_code == 200
+        assert 'window.__LITESTAR_CSRF__ = "' in response.text
+        assert 'window.__LITESTAR_CSRF_COOKIE_NAME__ = "my_csrf_cookie";' in response.text
+        assert 'window.__LITESTAR_CSRF_HEADER_NAME__ = "x-my-csrf";' in response.text
+
+
+async def test_spa_handler_prod_skips_csrf_when_inject_csrf_disabled(
+    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Production SPA route handler should not inject CSRF token when inject_csrf=False."""
+    from litestar.config.csrf import CSRFConfig
+
+    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
+
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    csrf_config = CSRFConfig(secret="test-secret-key-12345")
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(inject_csrf=False),
+    )
+    handler = AppHandler(config, csrf_config=csrf_config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+    app = Litestar(route_handlers=[route], csrf_config=csrf_config)
+
+    async with AsyncTestClient(app=app) as client:
+        response = await client.get("/")
+        assert response.status_code == 200
+        assert "window.__LITESTAR_CSRF__" not in response.text
+

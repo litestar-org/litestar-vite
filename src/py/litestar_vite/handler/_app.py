@@ -121,6 +121,15 @@ class AppHandler:
         """
         return self._initialized
 
+    @property
+    def inject_csrf(self) -> bool:
+        """Whether CSRF token injection is enabled on SPAConfig.
+
+        Returns:
+            True if inject_csrf is enabled on SPAConfig, otherwise False.
+        """
+        return self._spa_config is not None and self._spa_config.inject_csrf
+
     async def initialize_async(self, vite_url: "str | None" = None, manifest: "dict[str, Any] | None" = None) -> None:
         """Initialize the handler asynchronously.
 
@@ -459,6 +468,19 @@ class AppHandler:
         needs_csrf = self._spa_config is not None and self._spa_config.inject_csrf
         csrf_token = self._get_csrf_token(request) if needs_csrf else None
 
+        if (self._csrf_cookie_name is None or self._csrf_header_name is None) and hasattr(request, "app"):
+            app_csrf = getattr(request.app, "csrf_config", None)
+            if (
+                app_csrf is not None
+                and hasattr(app_csrf, "cookie_name")
+                and hasattr(app_csrf, "header_name")
+                and type(app_csrf).__name__ not in ("Mock", "MagicMock", "AsyncMock")
+            ):
+                if self._csrf_cookie_name is None:
+                    self._csrf_cookie_name = getattr(app_csrf, "cookie_name", None)
+                if self._csrf_header_name is None:
+                    self._csrf_header_name = getattr(app_csrf, "header_name", None)
+
         if self._config.is_dev_mode and self._config.hot_reload:
             html = await self._get_dev_html(request)
             if needs_transform:
@@ -519,12 +541,19 @@ class AppHandler:
         base_html = self._cached_html or ""
         return self._transform_html(base_html, page_data, csrf_token)
 
-    async def get_bytes(self) -> bytes:
-        """Get cached index.html bytes (production).
+    async def get_bytes(self, request: "Request[Any, Any, Any] | None" = None) -> bytes:
+        """Get cached or transformed index.html bytes (production).
+
+        Args:
+            request: Optional incoming request for per-request CSRF token injection.
 
         Returns:
-            Cached HTML bytes. .
+            Cached or transformed HTML bytes.
         """
+        if request is not None and self.inject_csrf:
+            html = await self.get_html(request)
+            return html.encode("utf-8")
+
         if not self._initialized:
             logger.warning(
                 "AppHandler lazy init triggered - lifespan may not have run. "

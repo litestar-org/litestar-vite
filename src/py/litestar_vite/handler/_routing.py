@@ -121,11 +121,11 @@ async def spa_handler_dev(request: "Request[Any, Any, Any]") -> Response[str]:
 
 
 async def spa_handler_prod(request: "Request[Any, Any, Any]") -> Response[bytes]:
-    """Serve the SPA HTML (production - cached).
+    """Serve the SPA HTML (production - cached or transformed).
 
     Returns:
-        HTML bytes response from the cached SPA handler.
+        HTML bytes response from the cached or transformed SPA handler.
     """
     spa_handler = _resolve_spa_route(request)
-    body = await spa_handler.get_bytes()
+    body = await spa_handler.get_bytes(request)
     return Response(content=body, status_code=200, media_type=_HTML_MEDIA_TYPE)
