@@ -10,6 +10,17 @@ Internal implementation details (OpenAPI integration, TypeScript conversion)
 are kept in private submodules to keep the public API clean.
 """
 
+from litestar_vite.codegen._asyncapi import (
+    AsyncAPIChannel,
+    AsyncAPIComponents,
+    AsyncAPIDocument,
+    AsyncAPIInfo,
+    AsyncAPIMessage,
+    AsyncAPIOperation,
+    AsyncAPIParameter,
+    AsyncAPIServer,
+    extract_websocket_routes,
+)
 from litestar_vite.codegen._export import ExportResult, export_integration_assets, typegen_outputs_requested
 from litestar_vite.codegen._inertia import InertiaPageMetadata, extract_inertia_pages, generate_inertia_pages_json
 from litestar_vite.codegen._routes import (
@@ -21,6 +32,14 @@ from litestar_vite.codegen._routes import (
 from litestar_vite.codegen._utils import encode_deterministic_json, strip_timestamp_for_comparison, write_if_changed
 
 __all__ = (
+    "AsyncAPIChannel",
+    "AsyncAPIComponents",
+    "AsyncAPIDocument",
+    "AsyncAPIInfo",
+    "AsyncAPIMessage",
+    "AsyncAPIOperation",
+    "AsyncAPIParameter",
+    "AsyncAPIServer",
     "ExportResult",
     "InertiaPageMetadata",
     "RouteMetadata",
@@ -28,6 +47,7 @@ __all__ = (
     "export_integration_assets",
     "extract_inertia_pages",
     "extract_route_metadata",
+    "extract_websocket_routes",
     "generate_inertia_pages_json",
     "generate_routes_json",
     "generate_routes_ts",
