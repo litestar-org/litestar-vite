@@ -617,12 +617,22 @@ class ViteAssetLoader:
                 """)
         return ""
 
-    def generate_asset_tags(self, path: "str | list[str]", scripts_attrs: "dict[str, str] | None" = None) -> str:
+    def generate_asset_tags(
+        self,
+        path: "str | list[str]",
+        scripts_attrs: "dict[str, str] | None" = None,
+        _visited: "set[str] | None" = None,
+    ) -> str:
         """Generate all asset tags for the specified file(s).
+
+        Tracks visited manifest entries across recursive import traversals
+        to prevent infinite loops on circular dependencies and avoid duplicate
+        asset tags.
 
         Args:
             path: Path or list of paths to assets.
             scripts_attrs: Optional attributes for script tags.
+            _visited: Optional set of already visited paths for cycle prevention.
 
         Returns:
             HTML string with all necessary script and link tags.
@@ -647,6 +657,7 @@ class ViteAssetLoader:
             msg = "Cannot find %s in the Vite manifest. Run 'litestar assets build' and retry."
             raise ImproperlyConfiguredException(msg, missing)
 
+        visited: set[str] = set() if _visited is None else _visited
         tags: list[str] = []
         manifest_entries = {p: self._manifest[p] for p in paths if p}
 
@@ -655,14 +666,19 @@ class ViteAssetLoader:
 
         asset_url_base = self._config.asset_url
 
-        for manifest in manifest_entries.values():
+        for asset_key, manifest in manifest_entries.items():
+            if asset_key in visited:
+                continue
+            visited.add(asset_key)
+
             if "css" in manifest:
                 tags.extend(self._style_tag(urljoin(asset_url_base, css_path)) for css_path in manifest.get("css", []))
 
             if "imports" in manifest:
                 tags.extend(
-                    self.generate_asset_tags(vendor_path, scripts_attrs=scripts_attrs)
+                    self.generate_asset_tags(vendor_path, scripts_attrs=scripts_attrs, _visited=visited)
                     for vendor_path in manifest.get("imports", [])
+                    if vendor_path not in visited
                 )
 
             file_path = manifest.get("file", "")
