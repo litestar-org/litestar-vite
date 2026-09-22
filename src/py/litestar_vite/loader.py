@@ -215,6 +215,18 @@ class ViteAssetLoader:
         html = loader.render_asset_tag("src/main.ts")
     """
 
+    __slots__ = (
+        "__dict__",
+        "_config",
+        "_http_client",
+        "_http_client_sync",
+        "_initialized",
+        "_is_hot_dev",
+        "_manifest",
+        "_manifest_content",
+        "_vite_base_path",
+    )
+
     def __init__(self, config: "ViteConfig") -> None:
         """Initialize the asset loader.
 

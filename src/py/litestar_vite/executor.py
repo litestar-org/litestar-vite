@@ -88,6 +88,7 @@ class JSExecutor(ABC):
 
     bin_name: ClassVar[str]
     silent_flag: ClassVar[str] = "--silent"
+    __slots__ = ("_resolved_executable", "executable_path", "silent")
 
     def __init__(self, executable_path: "Path | str | None" = None, *, silent: bool = False) -> None:
         self.executable_path = executable_path
@@ -185,6 +186,7 @@ class JSExecutor(ABC):
 class CommandExecutor(JSExecutor):
     """Generic command executor."""
 
+    __slots__ = ()
     update_command: ClassVar[str] = "update"
     update_latest_flag: ClassVar[str] = "--latest"
 
@@ -225,6 +227,7 @@ class CommandExecutor(JSExecutor):
 class NodeExecutor(CommandExecutor):
     """Node.js executor."""
 
+    __slots__ = ()
     bin_name = "npm"
     update_latest_flag: ClassVar[str] = "--save"
 
@@ -232,12 +235,14 @@ class NodeExecutor(CommandExecutor):
 class BunExecutor(CommandExecutor):
     """Bun executor."""
 
+    __slots__ = ()
     bin_name = "bun"
 
 
 class DenoExecutor(CommandExecutor):
     """Deno executor."""
 
+    __slots__ = ()
     bin_name = "deno"
     silent_flag: ClassVar[str] = ""
     update_latest_flag: ClassVar[str] = ""
@@ -253,6 +258,7 @@ class DenoExecutor(CommandExecutor):
 class YarnExecutor(CommandExecutor):
     """Yarn executor."""
 
+    __slots__ = ()
     bin_name = "yarn"
     update_command: ClassVar[str] = "upgrade"
 
@@ -260,6 +266,7 @@ class YarnExecutor(CommandExecutor):
 class PnpmExecutor(CommandExecutor):
     """PNPM executor."""
 
+    __slots__ = ()
     bin_name = "pnpm"
 
 
@@ -271,6 +278,7 @@ class NodeenvExecutor(JSExecutor):
     """
 
     bin_name = "nodeenv"
+    __slots__ = ("_detect_nodeenv", "config")
 
     @runtime_checkable
     class _SupportsDetectNodeenv(Protocol):
