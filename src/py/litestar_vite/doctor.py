@@ -426,7 +426,13 @@ class ViteDoctor:
     def _apply_vite_key_fix(self, content: str, *, key: str, expected: Any) -> tuple[str, bool]:
         expected_literal = _format_ts_literal(expected)
         expected_str = str(expected)
-        expected_bool = "true" if expected is True else "false" if expected is False else None
+        expected_bool = (
+            "true"
+            if expected is True or expected == "true"
+            else "false"
+            if expected is False or expected == "false"
+            else None
+        )
 
         bool_pattern = rf"({key}\s*:\s*)(true|false)\b"
         if expected_bool is not None and re.search(bool_pattern, content):
@@ -435,7 +441,10 @@ class ViteDoctor:
 
         quoted_pattern = rf"({key}\s*:\s*['\"])([^'\"]+)(['\"])"
         if re.search(quoted_pattern, content):
-            content = re.sub(quoted_pattern, rf"\g<1>{expected_str}\g<3>", content, count=1)
+            if expected_bool is not None:
+                content = re.sub(rf"{key}\s*:\s*['\"][^'\"]+['\"]", f"{key}: {expected_bool}", content, count=1)
+            else:
+                content = re.sub(quoted_pattern, rf"\g<1>{expected_str}\g<3>", content, count=1)
             return content, True
 
         insert_match = _LITESTAR_CONFIG_START.search(content)
@@ -874,7 +883,7 @@ class ViteDoctor:
                         message=f"Python generate_zod={py_zod} != JS generateZod={js_zod}",
                         fix_hint=f"Update vite.config generateZod to {str(py_zod).lower()}",
                         auto_fixable=True,
-                        context={"key": "generateZod", "expected": str(py_zod).lower()},
+                        context={"key": "generateZod", "expected": py_zod},
                     )
                 )
 
@@ -889,7 +898,7 @@ class ViteDoctor:
                         message=f"Python generate_sdk={py_sdk} != JS generateSdk={js_sdk}",
                         fix_hint=f"Update vite.config generateSdk to {str(py_sdk).lower()}",
                         auto_fixable=True,
-                        context={"key": "generateSdk", "expected": str(py_sdk).lower()},
+                        context={"key": "generateSdk", "expected": py_sdk},
                     )
                 )
 

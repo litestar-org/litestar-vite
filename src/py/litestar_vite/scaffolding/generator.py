@@ -260,6 +260,13 @@ def _collect_templates(
         ):
             continue
 
+        framework_slug = str(context_dict.get("framework", ""))
+        if relative_path.parts and relative_path.parts[0] == "templates":
+            if "inertia" in framework_slug and "jinja" not in framework_slug:
+                continue
+            if framework_slug == "htmx-no-jinja":
+                continue
+
         if relative_path.parts and relative_path.parts[0] == "resources":
             relative_path = Path(resource_dir, *relative_path.parts[1:])
 
