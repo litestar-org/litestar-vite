@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -180,3 +181,112 @@ def test_sync_dry_run_detects_nested_remote_orphans(tmp_path: Path) -> None:
     result = deployer.sync(dry_run=True)
 
     assert result.deleted == ["assets/nested/old.js"]
+
+
+def test_deployer_raises_when_bundle_dir_missing(tmp_path: Path) -> None:
+    """Deployer must raise FileNotFoundError if bundle directory does not exist."""
+    missing_bundle = tmp_path / "nonexistent"
+    with pytest.raises(FileNotFoundError, match=r"Bundle directory .* does not exist"):
+        ViteDeployer(
+            bundle_dir=missing_bundle,
+            manifest_name="manifest.json",
+            deploy_config=DeployConfig(enabled=True, storage_backend="memory://deploy"),
+        )
+
+
+def test_deployer_raises_when_bundle_dir_not_a_directory(tmp_path: Path) -> None:
+    """Deployer must raise NotADirectoryError if bundle path is a regular file."""
+    bundle_file = tmp_path / "file.txt"
+    bundle_file.write_text("hello")
+    with pytest.raises(NotADirectoryError, match=r"Bundle path .* is not a directory"):
+        ViteDeployer(
+            bundle_dir=bundle_file,
+            manifest_name="manifest.json",
+            deploy_config=DeployConfig(enabled=True, storage_backend="memory://deploy"),
+        )
+
+
+def test_sync_refuses_to_wipe_remote_on_empty_bundle(tmp_path: Path) -> None:
+    """Sync must abort if local bundle directory has no files and remote files exist."""
+    empty_bundle = tmp_path / "empty_dist"
+    empty_bundle.mkdir()
+    fs = MemoryFileSystem()
+    fs.pipe_file("deploy/existing.js", b"console.log('keep me')")
+    deployer = ViteDeployer(
+        bundle_dir=empty_bundle,
+        manifest_name="manifest.json",
+        deploy_config=DeployConfig(enabled=True, storage_backend="memory://deploy", delete_orphaned=True),
+        fs=fs,
+        remote_path="deploy",
+    )
+    with pytest.raises(ValueError, match=r"Cannot sync bundle: local bundle directory .* produced 0 deployable files"):
+        deployer.sync()
+    assert fs.exists("deploy/existing.js")
+
+
+def test_collect_remote_files_handles_none_size_and_datetime_mtime(tmp_path: Path) -> None:
+    """Remote files parser must gracefully coerce None sizes and datetime modification times."""
+    bundle = tmp_path / "dist"
+    bundle.mkdir()
+    fs = MemoryFileSystem()
+    deployer = ViteDeployer(
+        bundle_dir=bundle,
+        manifest_name="manifest.json",
+        deploy_config=DeployConfig(enabled=True, storage_backend="memory://deploy"),
+        fs=fs,
+        remote_path="deploy",
+    )
+    mock_entries = [
+        {"name": "deploy/file1.js", "size": None, "mtime": datetime(2026, 1, 1, tzinfo=timezone.utc), "type": "file"},
+        {"name": "deploy/file2.js", "size": "100", "LastModified": datetime(2026, 1, 2, tzinfo=timezone.utc), "type": "file"},
+    ]
+    with patch.object(deployer, "_iter_remote_entries", return_value=mock_entries):
+        remote = deployer.collect_remote_files()
+        assert remote["file1.js"].size == 0
+        assert remote["file1.js"].mtime > 0
+        assert remote["file2.js"].size == 100
+        assert remote["file2.js"].mtime > 0
+
+
+def test_sync_passes_content_type_for_s3(tmp_path: Path) -> None:
+    """S3 backend uploads must supply capitalized ContentType parameter."""
+    bundle = tmp_path / "dist"
+    bundle.mkdir()
+    (bundle / "app.js").write_text("console.log('hi')")
+    fs = MemoryFileSystem()
+    deployer = ViteDeployer(
+        bundle_dir=bundle,
+        manifest_name="manifest.json",
+        deploy_config=DeployConfig(
+            enabled=True,
+            storage_backend="s3://bucket/assets",
+            content_types={".js": "application/javascript"},
+        ),
+        fs=fs,
+        remote_path="deploy",
+    )
+    with patch.object(fs, "put") as mock_put:
+        deployer.sync()
+        mock_put.assert_called_once()
+        _, kwargs = mock_put.call_args
+        assert kwargs.get("ContentType") == "application/javascript"
+
+
+def test_collect_local_files_includes_sourcemaps(tmp_path: Path) -> None:
+    """Sourcemap files corresponding to manifest assets must be included in local files."""
+    bundle = tmp_path / "dist"
+    bundle.mkdir()
+    (bundle / "assets").mkdir()
+    (bundle / "assets" / "main.js").write_text("console.log('hi')")
+    (bundle / "assets" / "main.js.map").write_text("{}")
+    manifest = bundle / "manifest.json"
+    manifest.write_text('{"entry":{"file":"assets/main.js"}}')
+    deployer = ViteDeployer(
+        bundle_dir=bundle,
+        manifest_name="manifest.json",
+        deploy_config=DeployConfig(enabled=True, storage_backend="memory://deploy"),
+    )
+    files = deployer.collect_local_files()
+    assert "assets/main.js" in files
+    assert "assets/main.js.map" in files
+
