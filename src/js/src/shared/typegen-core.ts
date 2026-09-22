@@ -254,7 +254,7 @@ export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunT
         generateSdk: config.generateSdk,
         generateZod: config.generateZod,
         plugins,
-        outputPaths: [path.join(projectRoot, sdkOutput, "types.gen.ts")],
+        outputPaths: [path.resolve(projectRoot, sdkOutput, "types.gen.ts")],
       }
       const shouldRun = cache ? await cache.shouldRunOpenApiTs(absoluteOpenapiPath, configPath, cacheOptions) : true
 

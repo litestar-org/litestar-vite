@@ -242,4 +242,28 @@ describe("typegen-core", () => {
 
     expect(findOpenApiTsConfig("/home/user/project")).toBe("/home/user/project/openapi-ts.config.ts")
   })
+
+  it("resolves absolute output directory correctly in cache options", async () => {
+    mocks.existsSync.mockImplementation((filePath: string) => filePath.endsWith("openapi.json"))
+    const shouldRunOpenApiTs = vi.fn(() => Promise.resolve(false))
+    const cache = {
+      shouldRunOpenApiTs,
+      updateOpenApiTsCache: vi.fn(() => Promise.resolve()),
+      shouldRegeneratePageProps: vi.fn(() => Promise.resolve(false)),
+      updatePagePropsCache: vi.fn(() => Promise.resolve()),
+    }
+    const config = createConfig({
+      output: "/custom/absolute/output",
+    })
+
+    await runTypeGeneration(config, { cache, logger })
+
+    expect(shouldRunOpenApiTs).toHaveBeenCalledWith(
+      "/home/user/project/openapi.json",
+      null,
+      expect.objectContaining({
+        outputPaths: ["/custom/absolute/output/api/types.gen.ts"],
+      }),
+    )
+  })
 })

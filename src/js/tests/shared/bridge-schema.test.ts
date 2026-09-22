@@ -180,3 +180,30 @@ describe("bridge schema typegen failOnError", () => {
     expect(nullValue.types?.failOnError).toBeUndefined()
   })
 })
+
+describe("bridge schema null routesTsPath and schemasTsPath", () => {
+  it("accepts null routesTsPath and schemasTsPath from Python config", () => {
+    const config = parseBridgeSchema({
+      ...baseBridgeConfig,
+      types: {
+        enabled: true,
+        output: "src/generated",
+        openapiPath: "openapi.json",
+        routesPath: "routes.json",
+        pagePropsPath: "inertia-pages.json",
+        routesTsPath: null,
+        schemasTsPath: null,
+        generateZod: false,
+        generateSdk: true,
+        generateRoutes: true,
+        generatePageProps: true,
+        generateSchemas: true,
+        globalRoute: false,
+      },
+    })
+
+    expect(config.types?.routesTsPath).toBeNull()
+    expect(config.types?.schemasTsPath).toBeNull()
+  })
+})
+
