@@ -2,6 +2,9 @@
 WebSocket and SSE event streams
 ===============================
 
+.. seealso::
+   For complete AsyncAPI 3.0 schema generation, strongly typed contracts (``channels.ts``), and React/Vue/Svelte composables, see the dedicated :doc:`../realtime/index` guide.
+
 Litestar Vite includes browser helpers for JSON event streams. They own
 connection lifecycle, reconnect backoff, heartbeat filtering, duplicate
 suppression, and sequence-gap warnings. Your application still owns

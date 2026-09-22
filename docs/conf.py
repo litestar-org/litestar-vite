@@ -230,6 +230,11 @@ html_theme_options: dict[str, Any] = {
                     "summary": "React, Vue, Svelte, Angular, HTMX, Inertia, and SSR framework guides.",
                 },
                 {
+                    "title": "Realtime & AsyncAPI",
+                    "url": "realtime/index",
+                    "summary": "WebSockets, ChannelsPlugin, SSE, AsyncAPI 3.0 schema, and typed frontend client streams.",
+                },
+                {
                     "title": "API Reference",
                     "url": "reference/index",
                     "summary": "Configuration, CLI, plugin, loader, and codegen reference.",
