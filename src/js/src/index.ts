@@ -1366,7 +1366,7 @@ function resolveHostFromEnv(env: Record<string, string>): string | undefined {
 }
 
 /**
- * Resolve the Herd or Valet server config for the given host.
+ * Resolve the local development TLS server config for the given host.
  */
 function resolveDevelopmentEnvironmentServerConfig(host: string | boolean | null):
   | {
@@ -1385,7 +1385,7 @@ function resolveDevelopmentEnvironmentServerConfig(host: string | boolean | null
   }
 
   if (typeof configPath === "undefined") {
-    throw Error("Unable to find the Herd or Valet configuration directory. Please check they are correctly installed.")
+    throw Error("Unable to find the development TLS configuration directory.")
   }
 
   const resolvedHost = host === true || host === null ? `${path.basename(process.cwd())}.${resolveDevelopmentEnvironmentTld(configPath)}` : host
