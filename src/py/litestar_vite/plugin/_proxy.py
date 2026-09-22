@@ -386,13 +386,21 @@ class ViteProxyMiddleware(AbstractMiddleware):
         # Use shared client from plugin when available (connection pooling)
         client = self._plugin.proxy_client if self._plugin is not None else None
 
+        response_started = False
+
+        async def _safe_send(message: dict[str, Any]) -> None:
+            nonlocal response_started
+            if message.get("type") == "http.response.start":
+                response_started = True
+            await send(message)
+
         try:
             if client is not None:
                 # Use shared client (connection pooling, HTTP/2 multiplexing)
                 async with client.stream(
                     method, url, headers=headers, content=request_body, timeout=10.0, follow_redirects=False
                 ) as upstream_resp:
-                    await _proxy_stream_response(upstream_resp, send)
+                    await _proxy_stream_response(upstream_resp, _safe_send)
             else:
                 # Fallback: per-request client (graceful degradation)
                 http2_enabled = check_http2_support(self.http2)
@@ -402,10 +410,13 @@ class ViteProxyMiddleware(AbstractMiddleware):
                         method, url, headers=headers, content=request_body, timeout=10.0, follow_redirects=False
                     ) as upstream_resp,
                 ):
-                    await _proxy_stream_response(upstream_resp, send)
+                    await _proxy_stream_response(upstream_resp, _safe_send)
         except Exception as exc:  # noqa: BLE001  # pragma: no cover - catch all cleanup errors
-            await send({"type": "http.response.start", "status": 502, "headers": [(b"content-type", b"text/plain")]})
-            await send({"type": "http.response.body", "body": f"Upstream error: {exc}".encode(), "more_body": False})
+            if not response_started:
+                await send({"type": "http.response.start", "status": 502, "headers": [(b"content-type", b"text/plain")]})
+                await send({"type": "http.response.body", "body": f"Upstream error: {exc}".encode(), "more_body": False})
+            else:
+                await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
 def build_hmr_target_url(hotfile_path: Path, scope: dict[str, Any], hmr_path: str, asset_url: str) -> "str | None":
@@ -910,12 +921,20 @@ class SSRProxyMiddleware(AbstractMiddleware):
 
         client = self._plugin.proxy_client if self._plugin is not None else None
 
+        response_started = False
+
+        async def _safe_send(message: dict[str, Any]) -> None:
+            nonlocal response_started
+            if message.get("type") == "http.response.start":
+                response_started = True
+            await send(message)
+
         try:
             if client is not None:
                 async with client.stream(
                     method, url, headers=headers, content=request_body, timeout=30.0, follow_redirects=False
                 ) as upstream_resp:
-                    await _proxy_stream_response(upstream_resp, send)
+                    await _proxy_stream_response(upstream_resp, _safe_send)
             else:
                 http2_enabled = check_http2_support(self._http2)
                 async with (
@@ -924,17 +943,23 @@ class SSRProxyMiddleware(AbstractMiddleware):
                         method, url, headers=headers, content=request_body, timeout=30.0, follow_redirects=False
                     ) as upstream_resp,
                 ):
-                    await _proxy_stream_response(upstream_resp, send)
+                    await _proxy_stream_response(upstream_resp, _safe_send)
         except httpx.ConnectError:
-            await send({"type": "http.response.start", "status": 503, "headers": [(b"content-type", b"text/plain")]})
-            await send({
-                "type": "http.response.body",
-                "body": f"SSR server not running at {target_base_url}".encode(),
-                "more_body": False,
-            })
+            if not response_started:
+                await send({"type": "http.response.start", "status": 503, "headers": [(b"content-type", b"text/plain")]})
+                await send({
+                    "type": "http.response.body",
+                    "body": f"SSR server not running at {target_base_url}".encode(),
+                    "more_body": False,
+                })
+            else:
+                await send({"type": "http.response.body", "body": b"", "more_body": False})
         except Exception as exc:  # noqa: BLE001
-            await send({"type": "http.response.start", "status": 502, "headers": [(b"content-type", b"text/plain")]})
-            await send({"type": "http.response.body", "body": f"Upstream error: {exc}".encode(), "more_body": False})
+            if not response_started:
+                await send({"type": "http.response.start", "status": 502, "headers": [(b"content-type", b"text/plain")]})
+                await send({"type": "http.response.body", "body": f"Upstream error: {exc}".encode(), "more_body": False})
+            else:
+                await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
 def create_ssr_http_proxy_handler(
