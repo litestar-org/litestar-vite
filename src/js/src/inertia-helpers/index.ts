@@ -109,9 +109,30 @@ function wrapComponent<T>(module: T): T {
  * })
  * ```
  */
-export async function resolvePageComponent<T>(path: string | string[], pages: Record<string, Promise<{ default: T }> | (() => Promise<{ default: T }>)>): Promise<T>
-export async function resolvePageComponent<T>(path: string | string[], pages: Record<string, Promise<T> | (() => Promise<T>)>): Promise<T>
-export async function resolvePageComponent(path: string | string[], pages: Record<string, Promise<unknown> | (() => Promise<unknown>)>): Promise<unknown> {
+export interface ResolvePageComponentOptions {
+  /**
+   * Preserve the module object `{ default: Component }` without extracting `.default`.
+   * Essential for `@inertiajs/svelte` and Svelte 5 apps where the Inertia router
+   * expects the raw module namespace.
+   */
+  rawModule?: boolean
+}
+
+export async function resolvePageComponent<T>(
+  path: string | string[],
+  pages: Record<string, Promise<{ default: T }> | (() => Promise<{ default: T }>)>,
+  options?: ResolvePageComponentOptions,
+): Promise<T | { default: T }>
+export async function resolvePageComponent<T>(
+  path: string | string[],
+  pages: Record<string, Promise<T> | (() => Promise<T>)>,
+  options?: ResolvePageComponentOptions,
+): Promise<T>
+export async function resolvePageComponent(
+  path: string | string[],
+  pages: Record<string, Promise<unknown> | (() => Promise<unknown>)>,
+  options?: ResolvePageComponentOptions,
+): Promise<unknown> {
   for (const p of Array.isArray(path) ? path : [path]) {
     const page = pages[p]
 
@@ -122,6 +143,11 @@ export async function resolvePageComponent(path: string | string[], pages: Recor
     const resolved = typeof page === "function" ? await page() : await page
     const wrapped = wrapComponent(resolved)
 
+    const isSvelte = typeof p === "string" && p.endsWith(".svelte")
+    if (options?.rawModule || isSvelte) {
+      return wrapped
+    }
+
     if (wrapped != null && typeof wrapped === "object" && "default" in (wrapped as Record<string, unknown>)) {
       return (wrapped as Record<string, unknown>).default
     }
@@ -130,6 +156,23 @@ export async function resolvePageComponent(path: string | string[], pages: Recor
   }
 
   throw new Error(`Page not found: ${path}`)
+}
+
+/**
+ * Resolve a page module from a glob import, preserving the module `{ default: Component }` shape.
+ *
+ * Specifically designed for `@inertiajs/svelte` and Svelte 5 Inertia apps where Inertia
+ * expects the page resolver to return a module namespace containing `default`.
+ *
+ * @param path - Component path or array of paths to try
+ * @param pages - Glob import result (e.g. import.meta.glob('./pages/**\/*.svelte'))
+ * @returns Promise resolving to the module object with `{ default: Component }`
+ */
+export async function resolvePageModule<T>(
+  path: string | string[],
+  pages: Record<string, Promise<{ default: T }> | (() => Promise<{ default: T }>)>,
+): Promise<{ default: T }> {
+  return resolvePageComponent(path, pages, { rawModule: true }) as Promise<{ default: T }>
 }
 
 // ============================================================================

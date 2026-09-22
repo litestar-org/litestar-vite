@@ -152,4 +152,52 @@ describe("litestar-nuxt integration", () => {
       },
     })
   })
+
+  it("creates parent directories before writing hmrHotFile", async () => {
+    const hotFile = path.resolve(process.cwd(), "nested", "sub", "public", "hot")
+    vi.spyOn(fs, "existsSync").mockReturnValue(true)
+    vi.spyOn(fs, "readFileSync").mockReturnValue(
+      JSON.stringify({
+        assetUrl: "/static",
+        deployAssetUrl: null,
+        appUrl: "http://127.0.0.1:8000",
+        litestarPort: 8000,
+        bundleDir: "nested/sub/public",
+        resourceDir: "resources",
+        staticDir: "public",
+        hotFile: "hot",
+        manifest: "manifest.json",
+        mode: "framework",
+        proxyMode: "vite",
+        host: "localhost",
+        port: 5173,
+        ssrOutDir: null,
+        types: null,
+        executor: "node",
+        logging: null,
+        litestarVersion: "2.18.0",
+      }),
+    )
+    const mkdir = vi.spyOn(fs, "mkdirSync").mockImplementation(() => undefined)
+    const writeFile = vi.spyOn(fs, "writeFileSync").mockImplementation(() => undefined)
+    process.env.LITESTAR_VITE_CONFIG_PATH = "/tmp/.litestar.json"
+    const nuxt = { options: { vite: {}, runtimeConfig: {}, nitro: {} }, hook: vi.fn() }
+
+    try {
+      litestarNuxtModule({ hotFile: "nested/sub/public/hot" }, nuxt as any)
+
+      const vitePlugins = (nuxt.options.vite as any).plugins as any[]
+      const proxyPlugin = vitePlugins.find((p) => p.name === "litestar-nuxt-proxy")
+      await proxyPlugin.config()
+      const mockServer = { middlewares: { use: vi.fn() } }
+      proxyPlugin.configureServer(mockServer)
+
+      expect(mkdir).toHaveBeenCalledWith(path.dirname(`${hotFile}.hmr`), { recursive: true })
+      expect(writeFile).toHaveBeenCalledWith(`${hotFile}.hmr`, expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+$/))
+    } finally {
+      vi.restoreAllMocks()
+      delete process.env.LITESTAR_VITE_CONFIG_PATH
+    }
+  })
 })
+
