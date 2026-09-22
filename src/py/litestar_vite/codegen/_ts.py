@@ -133,9 +133,10 @@ def python_type_to_typescript(py_type: str, *, fallback: str = "unknown") -> tup
         return fallback, False
 
     normalized = py_type.replace("typing.", "").replace("types.", "")
-    optional = "None" in normalized or "NoneType" in normalized or "Optional[" in normalized
+    optional = bool(re.search(r"\b(None|NoneType)\b", normalized)) or "Optional[" in normalized
 
-    normalized = normalized.replace("NoneType", "None").replace("None", "null")
+    normalized = re.sub(r"\bNoneType\b", "null", normalized)
+    normalized = re.sub(r"\bNone\b", "null", normalized)
 
     mapping: dict[str, str] = {
         "str": "string",

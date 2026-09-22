@@ -578,6 +578,13 @@ def test_python_type_to_typescript_basic_mappings() -> None:
     assert python_type_to_typescript("List", fallback="Foo") == ("Foo[]", False)
 
 
+def test_python_type_to_typescript_preserves_none_substrings() -> None:
+    """Ensure identifiers containing 'None' are not mangled into 'null'."""
+    assert python_type_to_typescript("NoneOption") == ("NoneOption", False)
+    assert python_type_to_typescript("NoneableConfig") == ("NoneableConfig", False)
+    assert python_type_to_typescript("Noneable[str]") == ("Noneable[str]", False)
+
+
 def test_collect_ref_names_nested() -> None:
     """Test collection of referenced schema names."""
     schema: dict[str, Any] = {

@@ -1,5 +1,6 @@
 """Utilities for deterministic code generation and file output."""
 
+import contextlib
 import hashlib
 import json
 import os
@@ -104,19 +105,20 @@ def write_if_changed(
             pass
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    # Atomic write: write to temp file in same directory, then rename.
-    # os.replace() is atomic on POSIX and near-atomic on Windows,
-    # preventing partial reads of .litestar.json or generated files.
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    closed = False
     try:
         if isinstance(content, str):
             os.write(fd, content.encode(encoding))
         else:
             os.write(fd, content)
         os.close(fd)
+        closed = True
         Path(tmp_path).replace(path)
     except BaseException:
-        os.close(fd)
+        if not closed:
+            with contextlib.suppress(OSError):
+                os.close(fd)
         Path(tmp_path).unlink(missing_ok=True)
         raise
     return True
