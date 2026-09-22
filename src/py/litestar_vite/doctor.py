@@ -260,6 +260,7 @@ class ViteDoctor:
             self._check_hotfile_presence,
             self._check_manifest_presence,
             self._check_typegen_artifacts,
+            self._check_realtime_config,
             self._check_env_alignment,
             self._check_mode_inertia_conflicts,
             self._check_ssr_reachability,
@@ -1104,6 +1105,46 @@ class ViteDoctor:
                     auto_fixable=False,
                 )
             )
+
+    def _check_realtime_config(self) -> None:
+        """Verify realtime configuration and asset alignment."""
+        if not isinstance(self.config.types, TypeGenConfig):
+            return
+
+        if self.config.types.generate_channels:
+            output_dir = self.config.types.output
+            if not output_dir.is_absolute():
+                output_dir = self.config.paths.root / output_dir
+
+            asyncapi_path = self.config.types.asyncapi_path or (output_dir / "asyncapi.json")
+            if not asyncapi_path.is_absolute():
+                asyncapi_path = self.config.paths.root / asyncapi_path
+
+            channels_ts_path = self.config.types.channels_ts_path or (output_dir / "channels.ts")
+            if not channels_ts_path.is_absolute():
+                channels_ts_path = self.config.paths.root / channels_ts_path
+
+            if not asyncapi_path.exists():
+                self.issues.append(
+                    DoctorIssue(
+                        check="AsyncAPI Export Missing",
+                        severity="warning",
+                        message=f"AsyncAPI schema not found at {asyncapi_path}",
+                        fix_hint="Run `litestar assets export-asyncapi` or enable type generation during dev",
+                        auto_fixable=False,
+                    )
+                )
+
+            if not channels_ts_path.exists():
+                self.issues.append(
+                    DoctorIssue(
+                        check="Channels Types Missing",
+                        severity="warning",
+                        message=f"Realtime channel types not found at {channels_ts_path}",
+                        fix_hint="Run `litestar assets generate-types` to generate channels.ts",
+                        auto_fixable=False,
+                    )
+                )
 
     def _check_mode_inertia_conflicts(self) -> None:
         """Warn when mode and inertia settings are incompatible."""
