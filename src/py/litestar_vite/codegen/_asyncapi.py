@@ -36,18 +36,18 @@ def _clean_dict(d: dict[str, Any]) -> dict[str, Any]:
         if value is None:
             continue
         if isinstance(value, dict):
-            typed_dict = cast(dict[str, Any], value)
+            typed_dict = cast("dict[str, Any]", value)
             sub_dict = _clean_dict(typed_dict)
             if sub_dict:
                 cleaned[key] = sub_dict
         elif isinstance(value, list):
             sub_list: list[Any] = []
-            typed_list = cast(list[Any], value)
+            typed_list = cast("list[Any]", value)
             for item in typed_list:
                 if item is None:
                     continue
                 if isinstance(item, dict):
-                    typed_item = cast(dict[str, Any], item)
+                    typed_item = cast("dict[str, Any]", item)
                     sub_list.append(_clean_dict(typed_item))
                 else:
                     sub_list.append(item)
@@ -261,41 +261,205 @@ _SCALAR_SCHEMA_MAP: dict[Any, dict[str, Any]] = {
     "bool": {"type": "boolean"},
     bytes: {"type": "string", "contentMediaType": "application/octet-stream"},
     "bytes": {"type": "string", "contentMediaType": "application/octet-stream"},
+    dict: {"type": "object"},
+    "dict": {"type": "object"},
+    list: {"type": "array"},
+    "list": {"type": "array"},
 }
 
 
-def _py_type_to_schema(annotation: Any) -> dict[str, Any]:
-    """Map a Python type annotation to a basic JSON Schema dictionary.
+def _rewrite_schema_refs(obj: Any) -> Any:
+    """Rewrite schema reference paths from defs to AsyncAPI components.
 
     Args:
-        annotation: Python type annotation.
+        obj: JSON Schema fragment or collection to rewrite.
 
     Returns:
-        JSON Schema dictionary.
+        The rewritten JSON Schema structure.
     """
-    if annotation in _SCALAR_SCHEMA_MAP:
-        return _SCALAR_SCHEMA_MAP[annotation].copy()
+    defs_prefix = "#/$defs/"
+    legacy_prefix = "#/definitions/"
+    if isinstance(obj, dict):
+        typed_dict = cast("dict[str, Any]", obj)
+        result: dict[str, Any] = {}
+        for key, value in typed_dict.items():
+            if key == "$ref" and isinstance(value, str):
+                if value.startswith(defs_prefix):
+                    result[key] = f"#/components/schemas/{value[len(defs_prefix) :]}"
+                elif value.startswith(legacy_prefix):
+                    result[key] = f"#/components/schemas/{value[len(legacy_prefix) :]}"
+                else:
+                    result[key] = value
+            else:
+                result[key] = _rewrite_schema_refs(value)
+        return result
+    if isinstance(obj, list):
+        typed_list = cast("list[Any]", obj)
+        return [_rewrite_schema_refs(item) for item in typed_list]
+    return obj
 
-    origin = get_origin(annotation)
+
+def _extract_union_schema(args: tuple[Any, ...], components_schemas: dict[str, Any] | None) -> dict[str, Any]:
+    """Extract JSON Schema for Union or UnionType annotations.
+
+    Args:
+        args: Type arguments of the Union.
+        components_schemas: Optional dictionary to collect named component schemas.
+
+    Returns:
+        JSON Schema representation of the union.
+    """
+    union_args = [arg for arg in args if arg not in (None, NoneType)]
+    has_null = len(union_args) < len(args)
+    if len(union_args) == 1:
+        base_schema = extract_payload_schema(union_args[0], components_schemas)
+        if has_null:
+            return {"anyOf": [base_schema, {"type": "null"}]}
+        return base_schema
+    schemas = [extract_payload_schema(arg, components_schemas) for arg in union_args]
+    if has_null:
+        schemas.append({"type": "null"})
+    return {"anyOf": schemas}
+
+
+def _extract_container_schema(
+    origin: Any, annotation: Any, components_schemas: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """Extract JSON Schema for list or dict container types.
+
+    Args:
+        origin: The typing origin type.
+        annotation: The full type annotation.
+        components_schemas: Optional dictionary to collect named component schemas.
+
+    Returns:
+        JSON Schema representation or None if not a supported container.
+    """
     if origin is list:
         args = get_args(annotation)
-        items_schema = _py_type_to_schema(args[0]) if args else {}
+        items_schema = extract_payload_schema(args[0], components_schemas) if args else {}
         return {"type": "array", "items": items_schema}
-
-    if origin in (Union, UnionType):
-        union_args = [arg for arg in get_args(annotation) if arg is not NoneType]
-        if len(union_args) == 1:
-            return _py_type_to_schema(union_args[0])
-        return {"anyOf": [_py_type_to_schema(arg) for arg in union_args]}
-
-    return {"type": "object"}
+    if origin is dict:
+        args = get_args(annotation)
+        val_schema = extract_payload_schema(args[1], components_schemas) if len(args) > 1 else {}
+        return {"type": "object", "additionalProperties": val_schema}
+    return None
 
 
-def extract_websocket_routes(app: "Litestar") -> tuple[dict[str, AsyncAPIChannel], dict[str, AsyncAPIOperation]]:
+def _extract_msgspec_schema(annotation: Any, components_schemas: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Extract JSON Schema for msgspec Structs, dataclasses, TypedDicts, and Enums.
+
+    Args:
+        annotation: Python type to introspect with msgspec.
+        components_schemas: Optional dictionary to collect named component schemas.
+
+    Returns:
+        JSON Schema structure or None if introspection fails.
+    """
+    defs_prefix = "#/$defs/"
+    try:
+        import msgspec
+
+        raw_schema = msgspec.json.schema(annotation)
+        defs = raw_schema.get("$defs", {})
+        if components_schemas is not None:
+            for name, def_schema in defs.items():
+                if name not in components_schemas:
+                    components_schemas[name] = _rewrite_schema_refs(def_schema)
+            model_name = getattr(annotation, "__name__", None)
+            if model_name and model_name in components_schemas:
+                return {"$ref": f"#/components/schemas/{model_name}"}
+            ref = raw_schema.get("$ref")
+            if ref and isinstance(ref, str) and ref.startswith(defs_prefix):
+                return {"$ref": f"#/components/schemas/{ref[len(defs_prefix) :]}"}
+        return cast("dict[str, Any]", _rewrite_schema_refs(raw_schema))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def _extract_pydantic_schema(annotation: Any, components_schemas: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Extract JSON Schema for Pydantic v1 and v2 models.
+
+    Args:
+        annotation: Potential Pydantic model type.
+        components_schemas: Optional dictionary to collect named component schemas.
+
+    Returns:
+        JSON Schema structure or None if not a Pydantic model.
+    """
+    if not isinstance(annotation, type):
+        return None
+    model_json_schema_attr = getattr(annotation, "model_json_schema", None)
+    if callable(model_json_schema_attr):
+        callable_v2 = cast("Any", model_json_schema_attr)
+        pydantic_v2_schema = cast("dict[str, Any]", callable_v2())
+        defs = cast("dict[str, Any]", pydantic_v2_schema.pop("$defs", {}))
+        model_name = annotation.__name__
+        if components_schemas is not None:
+            for def_name, def_body in defs.items():
+                if def_name not in components_schemas:
+                    components_schemas[def_name] = _rewrite_schema_refs(def_body)
+            components_schemas[model_name] = _rewrite_schema_refs(pydantic_v2_schema)
+            return {"$ref": f"#/components/schemas/{model_name}"}
+        return cast("dict[str, Any]", _rewrite_schema_refs(pydantic_v2_schema))
+    schema_attr = getattr(annotation, "schema", None)
+    if callable(schema_attr):
+        callable_v1 = cast("Any", schema_attr)
+        pydantic_v1_schema = cast("dict[str, Any]", callable_v1())
+        defs = cast("dict[str, Any]", pydantic_v1_schema.pop("definitions", {}))
+        model_name = annotation.__name__
+        if components_schemas is not None:
+            for def_name, def_body in defs.items():
+                if def_name not in components_schemas:
+                    components_schemas[def_name] = _rewrite_schema_refs(def_body)
+            components_schemas[model_name] = _rewrite_schema_refs(pydantic_v1_schema)
+            return {"$ref": f"#/components/schemas/{model_name}"}
+        return cast("dict[str, Any]", _rewrite_schema_refs(pydantic_v1_schema))
+    return None
+
+
+def extract_payload_schema(annotation: Any, components_schemas: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Convert a Python type annotation to a JSON Schema for AsyncAPI message payloads.
+
+    Supports primitives, containers, unions, msgspec.Struct, dataclasses,
+    Pydantic models, TypedDicts, and Enums. Registers complex schemas
+    in components_schemas when provided.
+
+    Args:
+        annotation: The type annotation to convert.
+        components_schemas: Optional dictionary to collect named component schemas.
+
+    Returns:
+        JSON Schema representation or $ref dictionary for the payload.
+    """
+    if annotation in (None, NoneType):
+        schema = {"type": "null"}
+    elif annotation in _SCALAR_SCHEMA_MAP:
+        schema = _SCALAR_SCHEMA_MAP[annotation].copy()
+    elif (origin := get_origin(annotation)) in (Union, UnionType):
+        schema = _extract_union_schema(get_args(annotation), components_schemas)
+    elif container_schema := _extract_container_schema(origin, annotation, components_schemas):
+        schema = container_schema
+    elif msgspec_schema := _extract_msgspec_schema(annotation, components_schemas):
+        schema = msgspec_schema
+    elif pydantic_schema := _extract_pydantic_schema(annotation, components_schemas):
+        schema = pydantic_schema
+    else:
+        schema = {"type": "object"}
+    return schema
+
+
+_py_type_to_schema = extract_payload_schema
+
+
+def extract_websocket_routes(
+    app: "Litestar", components_schemas: dict[str, Any] | None = None
+) -> tuple[dict[str, AsyncAPIChannel], dict[str, AsyncAPIOperation]]:
     """Extract WebSocket routes from a Litestar application into AsyncAPI channels and operations.
 
     Args:
         app: The Litestar application instance.
+        components_schemas: Optional dictionary to collect named component schemas.
 
     Returns:
         Tuple of (channels_mapping, operations_mapping).
@@ -338,7 +502,7 @@ def extract_websocket_routes(app: "Litestar") -> tuple[dict[str, AsyncAPIChannel
 
             if data_field is not None and getattr(data_field, "annotation", None) is not None:
                 inbound_msg_name = f"{channel_key}Inbound"
-                inbound_payload = _py_type_to_schema(data_field.annotation)
+                inbound_payload = extract_payload_schema(data_field.annotation, components_schemas=components_schemas)
                 inbound_msg = AsyncAPIMessage(
                     name=inbound_msg_name, title=f"{handler_name} Inbound Message", payload=inbound_payload
                 )
@@ -355,7 +519,9 @@ def extract_websocket_routes(app: "Litestar") -> tuple[dict[str, AsyncAPIChannel
 
             if return_field is not None and getattr(return_field, "annotation", None) not in (None, NoneType):
                 outbound_msg_name = f"{channel_key}Outbound"
-                outbound_payload = _py_type_to_schema(return_field.annotation)
+                outbound_payload = extract_payload_schema(
+                    return_field.annotation, components_schemas=components_schemas
+                )
                 outbound_msg = AsyncAPIMessage(
                     name=outbound_msg_name, title=f"{handler_name} Outbound Message", payload=outbound_payload
                 )
@@ -589,11 +755,14 @@ def extract_sse_routes(app: "Litestar") -> tuple[dict[str, AsyncAPIChannel], dic
     return channels, operations
 
 
-def extract_realtime_channels(app: "Litestar") -> tuple[dict[str, AsyncAPIChannel], dict[str, AsyncAPIOperation]]:
+def extract_realtime_channels(
+    app: "Litestar", components_schemas: dict[str, Any] | None = None
+) -> tuple[dict[str, AsyncAPIChannel], dict[str, AsyncAPIOperation]]:
     """Extract all real-time channels from WebSocket routes, ChannelsPlugin, and SSE routes.
 
     Args:
         app: The Litestar application instance.
+        components_schemas: Optional dictionary to collect named component schemas.
 
     Returns:
         Tuple of (channels_mapping, operations_mapping).
@@ -601,7 +770,7 @@ def extract_realtime_channels(app: "Litestar") -> tuple[dict[str, AsyncAPIChanne
     channels: dict[str, AsyncAPIChannel] = {}
     operations: dict[str, AsyncAPIOperation] = {}
 
-    ws_channels, ws_ops = extract_websocket_routes(app)
+    ws_channels, ws_ops = extract_websocket_routes(app, components_schemas=components_schemas)
     channels.update(ws_channels)
     operations.update(ws_ops)
 
@@ -637,6 +806,8 @@ def create_asyncapi_document(
     Returns:
         A populated AsyncAPIDocument instance.
     """
-    channels, operations = extract_realtime_channels(app)
+    components_schemas: dict[str, Any] = {}
+    channels, operations = extract_realtime_channels(app, components_schemas=components_schemas)
     info = AsyncAPIInfo(title=title, version=version, description=description)
-    return AsyncAPIDocument(info=info, channels=channels, operations=operations)
+    components = AsyncAPIComponents(schemas=components_schemas) if components_schemas else None
+    return AsyncAPIDocument(info=info, channels=channels, operations=operations, components=components)

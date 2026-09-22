@@ -36,6 +36,9 @@ class ExportResult:
     openapi_schema: "dict[str, Any] | None" = None
     """The OpenAPI schema dict (for downstream use)."""
 
+    asyncapi_schema: "dict[str, Any] | None" = None
+    """The AsyncAPI 3.0 schema dict (for downstream use)."""
+
 
 def fmt_path(path: Path) -> str:
     """Format path for display, using relative path when possible.
@@ -57,6 +60,7 @@ def typegen_outputs_requested(types_config: "TypeGenConfig") -> bool:
         types_config.generate_schemas,
         types_config.generate_routes,
         types_config.generate_page_props,
+        types_config.generate_channels,
     ))
 
 
@@ -163,6 +167,9 @@ def export_integration_assets(
     ):
         export_inertia_pages(pages_data=inertia_pages_data, types_config=types_config, result=result)
 
+    if types_config.generate_channels:
+        export_asyncapi(app=app, types_config=types_config, serializer=serializer, result=result)
+
     return result
 
 
@@ -264,3 +271,37 @@ def export_inertia_pages(*, pages_data: "dict[str, Any]", types_config: "TypeGen
         result.exported_files.append(fmt_path(page_props_path))
     else:
         result.unchanged_files.append("inertia-pages.json")
+
+
+def export_asyncapi(
+    *,
+    app: "Litestar",
+    types_config: "TypeGenConfig",
+    serializer: "Callable[[Any], bytes] | None" = None,
+    result: ExportResult,
+) -> None:
+    """Export AsyncAPI 3.0 schema to file.
+
+    Args:
+        app: The Litestar application instance.
+        types_config: The type generation configuration.
+        serializer: Optional custom serializer for JSON encoding.
+        result: ExportResult accumulator for exported or unchanged files.
+    """
+    from litestar_vite.codegen._asyncapi import create_asyncapi_document
+    from litestar_vite.codegen._utils import encode_deterministic_json, write_if_changed
+
+    asyncapi_path = types_config.asyncapi_path
+    if asyncapi_path is None:
+        asyncapi_path = types_config.output / "asyncapi.json"
+
+    doc = create_asyncapi_document(app)
+    schema_dict = doc.to_dict()
+    result.asyncapi_schema = schema_dict
+
+    schema_content = encode_deterministic_json(schema_dict, serializer=serializer)
+
+    if write_if_changed(asyncapi_path, schema_content):
+        result.exported_files.append(f"asyncapi: {fmt_path(asyncapi_path)}")
+    else:
+        result.unchanged_files.append("asyncapi.json")

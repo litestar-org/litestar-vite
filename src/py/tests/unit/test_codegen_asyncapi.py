@@ -1,14 +1,20 @@
 """Unit tests for AsyncAPI 3.0 codegen models and WebSocket route introspection."""
 
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+from typing import Any, TypedDict
 
+import msgspec
 from litestar import Litestar, get, websocket, websocket_listener
 from litestar.channels import ChannelsPlugin
 from litestar.channels.backends.memory import MemoryChannelsBackend
 from litestar.connection import WebSocket
 from litestar.response import ServerSentEvent
 
-from litestar_vite.codegen._asyncapi import (
+from litestar_vite import PathConfig, ViteConfig, VitePlugin
+from litestar_vite.codegen import (
     AsyncAPIChannel,
     AsyncAPIComponents,
     AsyncAPIDocument,
@@ -17,12 +23,17 @@ from litestar_vite.codegen._asyncapi import (
     AsyncAPIOperation,
     AsyncAPIParameter,
     AsyncAPIServer,
+    ExportResult,
     create_asyncapi_document,
+    export_asyncapi,
+    export_integration_assets,
     extract_channels_plugin_channels,
+    extract_payload_schema,
     extract_realtime_channels,
     extract_sse_routes,
     extract_websocket_routes,
 )
+from litestar_vite.config import TypeGenConfig
 
 
 def test_asyncapi_info_and_server_models() -> None:
@@ -280,3 +291,162 @@ def test_extract_realtime_channels_and_create_asyncapi_document() -> None:
     assert "ws_chat" in doc_dict["channels"]
     assert "sse_metrics" in doc_dict["channels"]
     assert "ws_broadcasts" in doc_dict["channels"]
+
+
+def test_extract_payload_schema_primitives_and_containers() -> None:
+    """Test extract_payload_schema with primitive scalars and container types."""
+    comps: dict[str, Any] = {}
+
+    assert extract_payload_schema(str, comps) == {"type": "string"}
+    assert extract_payload_schema(int, comps) == {"type": "integer"}
+    assert extract_payload_schema(float, comps) == {"type": "number"}
+    assert extract_payload_schema(bool, comps) == {"type": "boolean"}
+    assert extract_payload_schema(bytes, comps) == {"type": "string", "contentMediaType": "application/octet-stream"}
+    assert extract_payload_schema(list[int], comps) == {"type": "array", "items": {"type": "integer"}}
+    assert extract_payload_schema(dict[str, float], comps) == {
+        "type": "object",
+        "additionalProperties": {"type": "number"},
+    }
+    assert extract_payload_schema(str | None, comps) == {"anyOf": [{"type": "string"}, {"type": "null"}]}
+    assert extract_payload_schema(int | str, comps) == {"anyOf": [{"type": "integer"}, {"type": "string"}]}
+
+
+def test_extract_payload_schema_dataclass_and_msgspec() -> None:
+    """Test extract_payload_schema with dataclasses and msgspec Structs."""
+
+    @dataclass
+    class Location:
+        lat: float
+        lon: float
+
+    class UserPresence(msgspec.Struct):
+        user_id: str
+        location: Location
+        active: bool
+
+    comps: dict[str, Any] = {}
+    loc_ref = extract_payload_schema(Location, comps)
+    presence_ref = extract_payload_schema(UserPresence, comps)
+
+    assert loc_ref == {"$ref": "#/components/schemas/Location"}
+    assert presence_ref == {"$ref": "#/components/schemas/UserPresence"}
+    assert "Location" in comps
+    assert "UserPresence" in comps
+    assert comps["Location"]["type"] == "object"
+    assert "lat" in comps["Location"]["properties"]
+    assert comps["UserPresence"]["type"] == "object"
+    assert comps["UserPresence"]["properties"]["location"] == {"$ref": "#/components/schemas/Location"}
+
+
+def test_extract_payload_schema_enums_and_typeddicts() -> None:
+    """Test extract_payload_schema with Enums and TypedDicts."""
+
+    class EventType(str, Enum):
+        JOIN = "join"
+        LEAVE = "leave"
+
+    class EventPayload(TypedDict):
+        event: EventType
+        timestamp: int
+
+    comps: dict[str, Any] = {}
+    payload_ref = extract_payload_schema(EventPayload, comps)
+
+    assert payload_ref == {"$ref": "#/components/schemas/EventPayload"}
+    assert "EventPayload" in comps
+    assert "EventType" in comps
+    assert comps["EventType"]["enum"] == ["join", "leave"]
+
+
+def test_create_asyncapi_document_with_typed_listener() -> None:
+    """Test create_asyncapi_document collects schemas from websocket listeners into components."""
+
+    @dataclass
+    class InboundData:
+        room: str
+        message: str
+
+    class OutboundData(msgspec.Struct):
+        echo: str
+        timestamp: int
+
+    @websocket_listener("/ws/typed-chat")
+    def typed_chat_handler(data: InboundData) -> OutboundData:
+        """Typed chat listener handler."""
+        return OutboundData(echo=data.message, timestamp=123456)
+
+    app = Litestar(route_handlers=[typed_chat_handler])
+    doc = create_asyncapi_document(app, title="Typed Chat Service", version="1.0.0")
+
+    doc_dict = doc.to_dict()
+    assert doc_dict["asyncapi"] == "3.0.0"
+    assert "components" in doc_dict
+    assert "schemas" in doc_dict["components"]
+    assert "InboundData" in doc_dict["components"]["schemas"]
+    assert "OutboundData" in doc_dict["components"]["schemas"]
+
+    channel = doc_dict["channels"]["ws_typed-chat"]
+    assert channel["messages"]["inbound"]["payload"] == {"$ref": "#/components/schemas/InboundData"}
+    assert channel["messages"]["outbound"]["payload"] == {"$ref": "#/components/schemas/OutboundData"}
+
+
+def test_export_asyncapi_pipeline(tmp_path: Path) -> None:
+    """Test export_asyncapi function writes asyncapi.json and detects unchanged content."""
+
+    @dataclass
+    class Ping:
+        msg: str
+
+    @websocket_listener("/ws/ping")
+    def ping_handler(data: Ping) -> Ping:
+        """Ping listener handler."""
+        return data
+
+    app = Litestar(route_handlers=[ping_handler])
+    types_config = TypeGenConfig(output=tmp_path / "types_out")
+
+    result = ExportResult()
+    export_asyncapi(app=app, types_config=types_config, result=result)
+
+    asyncapi_file = tmp_path / "types_out" / "asyncapi.json"
+    assert asyncapi_file.exists()
+    assert len(result.exported_files) == 1
+    assert "asyncapi" in result.exported_files[0]
+    assert result.asyncapi_schema is not None
+    assert "ws_ping" in result.asyncapi_schema["channels"]
+
+    result2 = ExportResult()
+    export_asyncapi(app=app, types_config=types_config, result=result2)
+    assert len(result2.exported_files) == 0
+    assert result2.unchanged_files == ["asyncapi.json"]
+
+
+def test_export_integration_assets_includes_asyncapi(tmp_path: Path) -> None:
+    """Test export_integration_assets includes asyncapi.json export."""
+
+    @get("/api/health")
+    async def health_check() -> dict[str, str]:
+        """Health check endpoint."""
+        return {"status": "ok"}
+
+    @dataclass
+    class FeedData:
+        item: str
+
+    @websocket_listener("/ws/feed")
+    def feed_handler(data: FeedData) -> FeedData:
+        """Feed listener."""
+        return data
+
+    types_config = TypeGenConfig(output=tmp_path / "sdk", generate_channels=True)
+    vite_config = ViteConfig(paths=PathConfig(bundle_dir=tmp_path / "public"), types=types_config)
+    plugin = VitePlugin(config=vite_config)
+
+    app = Litestar(route_handlers=[health_check, feed_handler], plugins=[plugin])
+
+    result = export_integration_assets(app=app, config=vite_config)
+
+    assert result.asyncapi_schema is not None
+    assert "ws_feed" in result.asyncapi_schema["channels"]
+    asyncapi_file = tmp_path / "sdk" / "asyncapi.json"
+    assert asyncapi_file.exists()
