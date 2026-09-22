@@ -42,6 +42,9 @@ function useStream<TFrame>(factory: StreamFactory, options: AdapterOptions<TFram
   const start = (): void => {
     stop()
     healthy.value = false
+    lastEvent.value = null
+    lastGap.value = null
+    events.value = []
     const { bufferSize: _bufferSize, key: _key, ...streamOptions } = options
     stream = factory({
       ...streamOptions,

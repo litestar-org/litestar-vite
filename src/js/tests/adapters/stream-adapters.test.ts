@@ -118,9 +118,14 @@ describe("Vue stream adapters", () => {
     await nextTick()
     expect(FakeWebSocket.instances).toHaveLength(1)
 
+    FakeWebSocket.instances[0].simulateMessage('{"id":"event-1"}')
+    await nextTick()
+    expect(container.textContent).toContain('{"id":"event-1"}')
+
     key.value = "two"
     await nextTick()
     expect(FakeWebSocket.instances).toHaveLength(2)
+    expect(container.textContent).toBe("[]")
 
     app.unmount()
     expect(FakeWebSocket.instances[1].close).toHaveBeenCalledOnce()
