@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import ts from "typescript"
 import { afterEach, describe, expect, it } from "vitest"
 
 import { emitSchemasTypes } from "../../src/shared/emit-schemas-types"
@@ -150,5 +151,66 @@ describe("emitSchemasTypes", () => {
     expect(content).toContain("'api:users_create': UsersCreateData")
     expect(content).toContain("'api:users_create': UsersCreateResponses")
   })
+
+  it("preserves optional schema types in FormInput and QueryParams without collapsing to never", async () => {
+    const tmpDir = createTmpDir()
+    const outputDir = path.join(tmpDir, "generated")
+    const apiDir = path.join(outputDir, "api")
+    fs.mkdirSync(apiDir, { recursive: true })
+
+    const routesPath = path.join(tmpDir, "routes.json")
+    const routesJson = {
+      routes: {
+        "api:search": {
+          uri: "/api/search",
+          method: "POST",
+          methods: ["POST"],
+        },
+      },
+    }
+    fs.writeFileSync(routesPath, JSON.stringify(routesJson, null, 2))
+
+    const typesGen = [
+      "export type SearchData = {",
+      "  url: '/api/search';",
+      "  body?: { query?: string };",
+      "  query?: { limit?: number };",
+      "  path?: { scope?: string };",
+      "}",
+      "export type SearchResponses = { 200: { results: string[] } }",
+      "",
+    ].join("\n")
+    fs.writeFileSync(path.join(apiDir, "types.gen.ts"), typesGen)
+
+    const changed = await emitSchemasTypes(routesPath, outputDir)
+    expect(changed).toBe(true)
+
+    const schemasPath = path.join(outputDir, "schemas.ts")
+    const testUsagePath = path.join(outputDir, "test-usage.ts")
+    const testUsage = [
+      'import type { FormInput, QueryParams, PathParams, HasBody, HasQueryParams, HasPathParams } from "./schemas"',
+      'type Input = FormInput<"api:search">',
+      'type Query = QueryParams<"api:search">',
+      'type Path = PathParams<"api:search">',
+      'const _input: Input = { query: "test" }',
+      'const _query: Query = { limit: 10 }',
+      'const _path: Path = { scope: "global" }',
+      'const _hasBody: HasBody<"api:search"> = true',
+      'const _hasQuery: HasQueryParams<"api:search"> = true',
+      'const _hasPath: HasPathParams<"api:search"> = true',
+    ].join("\n")
+    fs.writeFileSync(testUsagePath, testUsage)
+
+    const program = ts.createProgram([testUsagePath, schemasPath], {
+      noEmit: true,
+      strict: true,
+      exactOptionalPropertyTypes: true,
+      target: ts.ScriptTarget.ES2022,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+    })
+    const diagnostics = ts.getPreEmitDiagnostics(program)
+    expect(diagnostics).toHaveLength(0)
+  })
 })
+
 
