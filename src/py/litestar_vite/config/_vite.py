@@ -486,6 +486,8 @@ class ViteConfig:
         default_openapi = default_rel / "openapi.json"
         default_routes = default_rel / "routes.json"
         default_page_props = default_rel / "inertia-pages.json"
+        default_asyncapi = default_rel / "asyncapi.json"
+        default_channels_ts = default_rel / "channels.ts"
 
         if types.openapi_path == default_openapi and types.output != default_rel:
             types.openapi_path = types.output / "openapi.json"
@@ -493,6 +495,10 @@ class ViteConfig:
             types.routes_path = types.output / "routes.json"
         if types.page_props_path == default_page_props and types.output != default_rel:
             types.page_props_path = types.output / "inertia-pages.json"
+        if types.asyncapi_path == default_asyncapi and types.output != default_rel:
+            types.asyncapi_path = types.output / "asyncapi.json"
+        if types.channels_ts_path == default_channels_ts and types.output != default_rel:
+            types.channels_ts_path = types.output / "channels.ts"
 
         if types.routes_ts_path is None or (
             types.routes_ts_path == default_rel / "routes.ts" and types.output != default_rel
@@ -513,6 +519,12 @@ class ViteConfig:
             _to_root_path(root_dir, types.page_props_path)
             if types.page_props_path
             else types.output / "inertia-pages.json"
+        )
+        types.asyncapi_path = (
+            _to_root_path(root_dir, types.asyncapi_path) if types.asyncapi_path else types.output / "asyncapi.json"
+        )
+        types.channels_ts_path = (
+            _to_root_path(root_dir, types.channels_ts_path) if types.channels_ts_path else types.output / "channels.ts"
         )
 
     def _ensure_spa_default(self) -> None:

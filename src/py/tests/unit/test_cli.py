@@ -28,6 +28,7 @@ from litestar_vite.cli import (
     _run_extra_commands,
     _run_vite_build,
     _select_framework_template,
+    export_asyncapi_command,
     export_routes,
     generate_types,
     vite_build,
@@ -677,6 +678,80 @@ def test_cli_export_routes_json_and_ts(tmp_path: Path) -> None:
         _unwrap_command(export_routes)(
             app, output=output_ts, only="home", exclude=None, include_components=True, typescript=True, verbose=False
         )
+
+
+def test_cli_export_asyncapi_default(tmp_path: Path) -> None:
+    app = _make_app(tmp_path)
+
+    _unwrap_command(export_asyncapi_command)(app, output=None, title=None, api_version=None, verbose=False)
+    output_file = tmp_path / "src" / "generated" / "asyncapi.json"
+    assert output_file.exists()
+    data = json.loads(output_file.read_text())
+    assert data["asyncapi"] == "3.0.0"
+    assert data["info"]["title"] == "Litestar Realtime API"
+    assert data["info"]["version"] == "1.0.0"
+
+
+def test_cli_export_asyncapi_custom_args_and_routes(tmp_path: Path) -> None:
+    from litestar import websocket_listener
+    from msgspec import Struct
+
+    class RoomEvent(Struct):
+        text: str
+
+    @websocket_listener("/ws/chat")
+    def chat_handler(data: RoomEvent) -> RoomEvent:
+        """Chat message handler."""
+        return data
+
+    (tmp_path / "src").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "public").mkdir(parents=True, exist_ok=True)
+
+    types_config = TypeGenConfig(output=tmp_path / "src" / "generated")
+    config = ViteConfig(
+        mode="spa",
+        dev_mode=True,
+        paths=PathConfig(root=tmp_path, resource_dir="src", bundle_dir="public", static_dir="public"),
+        types=types_config,
+    )
+    plugin = VitePlugin(config=config)
+    app = Litestar(route_handlers=[chat_handler], plugins=[plugin])
+
+    custom_output = tmp_path / "custom" / "realtime.json"
+    _unwrap_command(export_asyncapi_command)(
+        app, output=custom_output, title="Chat Service", api_version="2.0.0", verbose=True
+    )
+
+    assert custom_output.exists()
+    data = json.loads(custom_output.read_text())
+    assert data["asyncapi"] == "3.0.0"
+    assert data["info"]["title"] == "Chat Service"
+    assert data["info"]["version"] == "2.0.0"
+    assert "ws_chat" in data["channels"]
+    assert "send_ws_chat" in data["operations"]
+    assert "receive_ws_chat" in data["operations"]
+
+
+def test_cli_export_asyncapi_fallback_output(tmp_path: Path) -> None:
+    app = _make_app(tmp_path, types=False)
+    with (
+        patch("litestar_vite.cli.create_asyncapi_document") as mock_doc,
+        patch("litestar_vite.cli.write_if_changed", return_value=True) as mock_write,
+    ):
+        mock_doc.return_value.to_dict.return_value = {"asyncapi": "3.0.0", "channels": {}, "operations": {}}
+        _unwrap_command(export_asyncapi_command)(app, output=None, title=None, api_version=None, verbose=False)
+        mock_write.assert_called_once()
+        written_path, _ = mock_write.call_args[0]
+        assert written_path == Path("asyncapi.json")
+
+
+def test_cli_export_asyncapi_oserror_raises_cli_exception(tmp_path: Path) -> None:
+    app = _make_app(tmp_path)
+    with (
+        patch("litestar_vite.cli.write_if_changed", side_effect=OSError("Disk full")),
+        pytest.raises(LitestarCLIException, match="Failed to write AsyncAPI schema"),
+    ):
+        _unwrap_command(export_asyncapi_command)(app, output=None, title=None, api_version=None, verbose=False)
 
 
 def test_cli_get_package_executor_cmd_variants() -> None:
