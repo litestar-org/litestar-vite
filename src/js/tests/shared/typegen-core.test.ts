@@ -66,6 +66,10 @@ vi.mock("../../src/shared/emit-schemas-types.js", () => ({
   emitSchemasTypes: vi.fn(() => Promise.resolve(false)),
 }))
 
+vi.mock("../../src/shared/emit-channels-types.js", () => ({
+  emitChannelsTypes: vi.fn(() => Promise.resolve(true)),
+}))
+
 vi.mock("../../src/shared/emit-static-props-types.js", () => ({
   emitStaticPropsTypes: vi.fn(() => Promise.resolve(false)),
 }))
@@ -265,5 +269,25 @@ describe("typegen-core", () => {
         outputPaths: ["/custom/absolute/output/api/types.gen.ts"],
       }),
     )
+  })
+
+  it("invokes emitChannelsTypes when asyncapiPath exists and generateChannels is enabled", async () => {
+    mocks.existsSync.mockImplementation((filePath: string) => filePath.endsWith("asyncapi.json"))
+    const { emitChannelsTypes } = await import("../../src/shared/emit-channels-types.js")
+
+    const config = createConfig({
+      asyncapiPath: "asyncapi.json",
+      channelsTsPath: "custom-channels.ts",
+      generateChannels: true,
+    })
+
+    const result = await runTypeGeneration(config, { logger })
+    expect(emitChannelsTypes).toHaveBeenCalledWith(
+      "/home/user/project/asyncapi.json",
+      "src/generated",
+      "custom-channels.ts",
+      "/home/user/project",
+    )
+    expect(result.generatedFiles).toContain("custom-channels.ts")
   })
 })

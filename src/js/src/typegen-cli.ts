@@ -68,9 +68,12 @@ async function main(): Promise<void> {
     output: typesConfig.output,
     pagePropsPath: typesConfig.pagePropsPath,
     routesPath: typesConfig.routesPath,
+    asyncapiPath: typesConfig.asyncapiPath ?? undefined,
+    channelsTsPath: typesConfig.channelsTsPath ?? undefined,
     generateSdk: typesConfig.generateSdk,
     generateZod: typesConfig.generateZod,
     generatePageProps: typesConfig.generatePageProps,
+    generateChannels: typesConfig.generateChannels ?? true,
     generateSchemas: typesConfig.generateSchemas ?? true, // Default to true
     schemasTsPath: typesConfig.schemasTsPath,
     sdkClientPlugin: resolveDefaultSdkClientPlugin({ mode: bridgeConfig.mode }),

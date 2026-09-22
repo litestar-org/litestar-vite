@@ -24,11 +24,14 @@ export interface BridgeTypesConfig {
   pagePropsPath: string
   routesTsPath?: string | null
   schemasTsPath?: string | null
+  asyncapiPath?: string | null
+  channelsTsPath?: string | null
   generateZod: boolean
   generateSdk: boolean
   generateRoutes: boolean
   generatePageProps: boolean
   generateSchemas: boolean
+  generateChannels?: boolean
   globalRoute: boolean
   failOnError?: boolean
 }
@@ -216,10 +219,13 @@ function parseTypesConfig(value: unknown): BridgeTypesConfig | null {
   const pagePropsPath = assertString(obj, "pagePropsPath")
   const routesTsPath = assertOptionalNullableString(obj, "routesTsPath")
   const schemasTsPath = assertOptionalNullableString(obj, "schemasTsPath")
+  const asyncapiPath = assertOptionalNullableString(obj, "asyncapiPath")
+  const channelsTsPath = assertOptionalNullableString(obj, "channelsTsPath")
   const generateZod = assertBoolean(obj, "generateZod")
   const generateSdk = assertBoolean(obj, "generateSdk")
   const generateRoutes = assertBoolean(obj, "generateRoutes")
   const generatePageProps = assertBoolean(obj, "generatePageProps")
+  const generateChannels = assertOptionalBoolean(obj, "generateChannels", true)
   const generateSchemas = assertOptionalBoolean(obj, "generateSchemas", true) // Default to true for backward compatibility
   const globalRoute = assertBoolean(obj, "globalRoute")
   const rawFailOnError = obj.failOnError
@@ -233,10 +239,13 @@ function parseTypesConfig(value: unknown): BridgeTypesConfig | null {
     pagePropsPath,
     routesTsPath,
     schemasTsPath,
+    asyncapiPath,
+    channelsTsPath,
     generateZod,
     generateSdk,
     generateRoutes,
     generatePageProps,
+    generateChannels,
     generateSchemas,
     globalRoute,
     failOnError,

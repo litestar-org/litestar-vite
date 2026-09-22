@@ -205,5 +205,31 @@ describe("bridge schema null routesTsPath and schemasTsPath", () => {
     expect(config.types?.routesTsPath).toBeNull()
     expect(config.types?.schemasTsPath).toBeNull()
   })
+
+  it("accepts asyncapiPath, channelsTsPath, and generateChannels from Python config", () => {
+    const config = parseBridgeSchema({
+      ...baseBridgeConfig,
+      types: {
+        enabled: true,
+        output: "src/generated",
+        openapiPath: "src/generated/openapi.json",
+        routesPath: "src/generated/routes.json",
+        pagePropsPath: "src/generated/inertia-pages.json",
+        asyncapiPath: "src/generated/asyncapi.json",
+        channelsTsPath: "src/generated/channels.ts",
+        generateZod: false,
+        generateSdk: true,
+        generateRoutes: true,
+        generatePageProps: true,
+        generateChannels: true,
+        generateSchemas: true,
+        globalRoute: false,
+      },
+    })
+
+    expect(config.types?.asyncapiPath).toBe("src/generated/asyncapi.json")
+    expect(config.types?.channelsTsPath).toBe("src/generated/channels.ts")
+    expect(config.types?.generateChannels).toBe(true)
+  })
 })
 
