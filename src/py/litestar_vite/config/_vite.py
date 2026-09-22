@@ -577,11 +577,7 @@ class ViteConfig:
         Raises:
             ValueError: If the configuration is invalid for the selected mode.
         """
-        # Validate mode+inertia conflicts first (before file checks)
         inertia_enabled = isinstance(self.inertia, InertiaConfig)
-        # template mode + Inertia is supported: Jinja template hosts the Inertia
-        # page payload via {{ inertia|safe }}, and _render_template injects the
-        # SSR-rendered body into the configured target_selector. See #243.
         if inertia_enabled and not self.inertia_compatible:
             msg = (
                 f"Inertia.js cannot be used with mode={self.mode!r}. "
@@ -591,14 +587,12 @@ class ViteConfig:
             )
             raise ValueError(msg)
 
-        # Validate SSR config when Inertia is enabled
         if isinstance(self.inertia, InertiaConfig):
             ssr_config = self.inertia.ssr_config
             if ssr_config is not None and ssr_config.timeout <= 0:
                 msg = f"InertiaSSRConfig.timeout must be positive, got {ssr_config.timeout}."
                 raise ValueError(msg)
 
-        # Validate type generation requires inertia for page props
         types = self.types if isinstance(self.types, TypeGenConfig) else None
         if types and types.generate_page_props and not inertia_enabled:
             msg = (
@@ -607,7 +601,6 @@ class ViteConfig:
             )
             raise ValueError(msg)
 
-        # Mode-specific file/dependency checks
         if self.mode == "spa":
             index_candidates = self.candidate_index_html_paths()
             if not self.runtime.dev_mode and not any(path.exists() for path in index_candidates):
@@ -1012,10 +1005,6 @@ class ViteConfig:
             True if the SPA handler should be auto-registered, otherwise False.
         """
         return self.runtime.spa_handler
-
-    # ============================================================================
-    # Capability predicates (single source of truth for mode-conditional behavior)
-    # ============================================================================
 
     @property
     def serves_own_html(self) -> bool:

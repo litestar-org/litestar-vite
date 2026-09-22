@@ -21,7 +21,6 @@ def get_package_path(*parts: str) -> Path:
     spec = find_spec("litestar_vite")
     if spec and spec.origin:
         return Path(spec.origin).parent.joinpath(*parts)
-    # Fallback for uncommon import contexts.
     return Path(__file__).resolve().parent.joinpath(*parts)
 
 
@@ -59,10 +58,6 @@ def read_hotfile_url(hotfile_path: Path) -> str:
     return read_text_file(hotfile_path).strip()
 
 
-# Per-process cache for ``read_bridge_config``: ``{resolved_path: (mtime_ns, parsed_dict)}``.
-# Strategy: mtime-based revalidation per call (Decision Point 1 option (a)).
-# The ``Path.stat()`` cost is sub-microsecond; in exchange we kill the entire class of
-# "stale cache after dev restart" bugs and avoid forcing tests to call ``cache_clear``.
 _BRIDGE_CACHE: dict[str, tuple[int, dict[str, Any]]] = {}
 
 
@@ -139,5 +134,4 @@ def _cache_clear() -> None:
     _BRIDGE_CACHE.clear()
 
 
-# Mirror ``functools.lru_cache``'s ``cache_clear`` attribute for ergonomic test use.
 read_bridge_config.cache_clear = _cache_clear  # type: ignore[attr-defined]

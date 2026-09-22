@@ -185,7 +185,6 @@ class JSExecutor(ABC):
 class CommandExecutor(JSExecutor):
     """Generic command executor."""
 
-    # Subclasses override to customize update behavior
     update_command: ClassVar[str] = "update"
     update_latest_flag: ClassVar[str] = "--latest"
 
@@ -227,7 +226,6 @@ class NodeExecutor(CommandExecutor):
     """Node.js executor."""
 
     bin_name = "npm"
-    # npm doesn't have --latest; use --save to update package.json
     update_latest_flag: ClassVar[str] = "--save"
 
 
@@ -249,14 +247,13 @@ class DenoExecutor(CommandExecutor):
 
     def update(self, cwd: Path, *, latest: bool = False) -> None:
         """Deno doesn't have traditional package management."""
-        del cwd, latest  # unused
+        del cwd, latest
 
 
 class YarnExecutor(CommandExecutor):
     """Yarn executor."""
 
     bin_name = "yarn"
-    # yarn uses "upgrade" command (not "update")
     update_command: ClassVar[str] = "upgrade"
 
 

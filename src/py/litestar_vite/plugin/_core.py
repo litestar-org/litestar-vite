@@ -88,7 +88,6 @@ def _user_has_root_http_handler(route_handlers: "Iterable[ControllerRouterHandle
                     return True
             return False
         if isinstance(item, Router):
-            # Router.routes is the resolved route list with full paths.
             full_root = (prefix.rstrip("/") or "/").rstrip("/") or "/"
             for route in item.routes:
                 if isinstance(route, HTTPRoute):
@@ -201,8 +200,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
         from urllib.parse import urlparse
 
         deadline = time.monotonic() + ssr_config.health_check_timeout
-        # Poll the origin (a GET on /render typically returns 405; any non-connection
-        # error means the server is up).
         parsed = urlparse(ssr_config.url)
         origin = f"{parsed.scheme}://{parsed.netloc}"
         while time.monotonic() < deadline:
@@ -556,8 +553,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
         user_config = self._static_files_config.as_router_kwargs() if self._static_files_config else {}
         static_files_config: dict[str, Any] = {**base_config, **user_config}
         router = create_static_files_router(**static_files_config)
-        # Emit opts only at handler level: strict auth integrations reject
-        # exclude_from_auth on parent layers (router/app).
         for route in router.routes:
             for handler in getattr(route, "route_handlers", []):
                 handler.opt.update(opt)
@@ -705,12 +700,9 @@ class VitePlugin(InitPlugin, CLIPlugin):
         app_config.signature_namespace["Response"] = Response
         app_config.signature_namespace["Request"] = LitestarRequest
 
-        # Register proxy headers middleware FIRST if configured
-        # This must run before other middleware to ensure correct scheme/client in scope
         if self._config.trusted_proxies is not None:
             app_config.middleware.insert(
-                0,  # Insert at beginning for early processing
-                DefineMiddleware(ProxyHeadersMiddleware, trusted_hosts=self._config.trusted_proxies),
+                0, DefineMiddleware(ProxyHeadersMiddleware, trusted_hosts=self._config.trusted_proxies)
             )
 
         handlers: ExceptionHandlersMap = cast("ExceptionHandlersMap", app_config.exception_handlers or {})  # pyright: ignore
@@ -752,8 +744,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
             self._spa_handler = AppHandler(self._config, csrf_config=app_config.csrf_config)
             app_config.route_handlers.append(self._spa_handler.create_route_handler())
         elif self._config.mode == "hybrid":
-            # Hybrid mode prebuilds AppHandler so InertiaResponse._render_spa can reuse it.
-            # Template + Inertia uses _render_template (Jinja-direct) and does not need this.
             self._spa_handler = AppHandler(self._config, csrf_config=app_config.csrf_config)
 
         app_config.lifespan.append(self.lifespan)  # pyright: ignore[reportUnknownMemberType]
@@ -967,8 +957,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
             set_environment(config=self._config, app=app)
             set_app_environment(app)
 
-        # Initialize shared proxy client for ViteProxyMiddleware/SSRProxyController
-        # Uses connection pooling for better performance (HTTP/2 multiplexing, TLS reuse)
         if self._config.is_dev_mode and self._config.proxy_mode is not None:
             self._proxy_client = create_proxy_client(http2=self._config.http2)
 

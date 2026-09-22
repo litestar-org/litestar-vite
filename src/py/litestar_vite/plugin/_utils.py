@@ -86,7 +86,6 @@ def configure_proxy_logging() -> None:
 configure_proxy_logging()
 
 
-# Cache HTTP/2 availability check result
 _h2_available: bool | None = None
 
 
@@ -276,21 +275,14 @@ def _path_for_bridge(path: Path, root_dir: Path) -> str:
         a relative path using os.path.relpath (e.g., "../external").
     """
     if not path.is_absolute():
-        # Already relative, return as-is without any leading slash
-        # Force forward slashes for cross-platform consistency
         return str(path).lstrip("/").replace("\\", "/")
 
-    # Resolve both paths to handle symlinks consistently
     resolved_path = path.resolve()
     resolved_root = root_dir.resolve()
     try:
         relative = resolved_path.relative_to(resolved_root)
-        # Force forward slashes for cross-platform consistency
         return str(relative).replace("\\", "/")
     except ValueError:
-        # Path is outside root_dir - cannot make relative via relative_to
-        # Use os.path.relpath as fallback which handles "../" paths
-        # Force forward slashes for cross-platform consistency
         return os.path.relpath(resolved_path, resolved_root).replace("\\", "/")
 
 
@@ -381,10 +373,6 @@ def _derive_bridge_litestar_port() -> int | None:
         try:
             port = parsed.port
         except ValueError:
-            # Unexpanded shell-style placeholders like 'http://localhost:${LITESTAR_PORT}'
-            # leave a non-integer in the port slot. The user clearly intended a real port
-            # value; fall through to LITESTAR_PORT/PORT instead of pretending APP_URL had
-            # no port (which would yield a misleading scheme default of 80/443).
             pass
         else:
             if port is not None:
@@ -444,7 +432,6 @@ def write_runtime_config_file(
     root = config.root_dir or Path.cwd()
     path = Path(root) / ".litestar.json"
     types = config.types if isinstance(config.types, TypeGenConfig) else None
-    # Convert paths to relative strings for JS bridge
     resource_dir_value = _path_for_bridge(config.resource_dir, root)
     bundle_dir_value = _path_for_bridge(config.bundle_dir, root)
     static_dir_value = _path_for_bridge(config.static_dir, root)
@@ -671,16 +658,8 @@ def build_litestar_route_prefixes(app: "Litestar", extra_route_prefixes: tuple[s
     prefixes: list[str] = []
     has_root_route = False
     for route in app.routes:
-        # Proxy middlewares declare scopes={ScopeType.HTTP}; WebSocket-only routes must
-        # not poison the prefix list and cause HTTP requests at the same path to skip the
-        # proxy. Without this filter the framework HMR WebSocket at '/' makes GET / fall
-        # through to the WS handler and Litestar returns 405 Method Not Allowed.
         if isinstance(route, WebSocketRoute):
             continue
-        # The SPA handler itself is registered as a Litestar route; including its path in
-        # the prefix list would make is_litestar_route() self-exclude the SPA — non-root
-        # spa_path values like "/ui" become unreachable. Identify SPA routes via the
-        # _vite_spa_handler marker AppHandler.create_route_handler sets on opt.
         if _route_is_vite_spa(route) or _route_is_vite_static(route):
             continue
         prefix = _normalize_route_prefix(route.path)

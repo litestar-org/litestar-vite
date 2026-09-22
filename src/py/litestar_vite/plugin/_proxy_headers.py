@@ -58,17 +58,14 @@ class TrustedHosts:
 
             for host in hosts_list:
                 if "/" in host:
-                    # CIDR notation
                     try:
                         self.trusted_networks.add(ipaddress.ip_network(host, strict=False))
                     except ValueError:
-                        # Not a valid network, treat as literal
                         self.trusted_literals.add(host)
                 else:
                     try:
                         self.trusted_hosts.add(ipaddress.ip_address(host))
                     except ValueError:
-                        # Not a valid IP, treat as literal (e.g., Unix socket path)
                         self.trusted_literals.add(host)
 
     def __contains__(self, host: "str | None") -> bool:
@@ -80,7 +77,6 @@ class TrustedHosts:
         Returns:
             True if the host is trusted, False otherwise.
         """
-        # None and empty string are never trusted
         if not host:
             return False
         if self.always_trust:
@@ -114,16 +110,12 @@ class TrustedHosts:
             return ""
 
         if self.always_trust:
-            # When trusting all, return the leftmost (original client)
             return hosts[0]
 
-        # Each proxy appends to the list, so check in reverse
-        # Find the first untrusted host from the right
         for host in reversed(hosts):
             if host not in self:
                 return host
 
-        # All hosts are trusted - return the original client
         return hosts[0]
 
 
@@ -193,20 +185,16 @@ class ProxyHeadersMiddleware(AbstractMiddleware):
         client_host = client_addr[0] if client_addr else None
 
         if client_host in self.trusted_hosts:
-            # Build a dict of headers for efficient lookup
             headers: dict[bytes, bytes] = {}
             for key, value in scope.get("headers", []):  # pyright: ignore[reportUnknownMemberType]
-                # Use first occurrence only (as per HTTP spec)
                 if key not in headers:
                     headers[key] = value
 
             scope_dict = cast("dict[str, Any]", scope)
 
-            # X-Forwarded-Proto -> scope["scheme"]
             if b"x-forwarded-proto" in headers:
                 proto = headers[b"x-forwarded-proto"].decode("latin-1").strip().lower()
                 if proto in {"http", "https", "ws", "wss"}:
-                    # For WebSocket, ensure ws/wss scheme
                     if scope["type"] == "websocket":
                         if proto == "https":
                             scope_dict["scheme"] = "wss"
@@ -217,17 +205,14 @@ class ProxyHeadersMiddleware(AbstractMiddleware):
                     else:
                         scope_dict["scheme"] = proto
 
-            # X-Forwarded-For -> scope["client"]
             if b"x-forwarded-for" in headers:
                 x_forwarded_for = headers[b"x-forwarded-for"].decode("latin-1")
                 real_client = self.trusted_hosts.get_trusted_client_host(x_forwarded_for)
                 if real_client:
                     scope_dict["client"] = (real_client, 0)
 
-            # X-Forwarded-Host -> replace Host header
             if self.handle_forwarded_host and b"x-forwarded-host" in headers:
                 forwarded_host = headers[b"x-forwarded-host"]
-                # Rebuild headers list with replaced Host
                 new_headers: list[tuple[bytes, bytes]] = []
                 host_replaced = False
                 for key, value in scope.get("headers", []):  # pyright: ignore[reportUnknownMemberType]
@@ -236,7 +221,6 @@ class ProxyHeadersMiddleware(AbstractMiddleware):
                         host_replaced = True
                     else:
                         new_headers.append((key, value))
-                # If no Host header existed, add it
                 if not host_replaced:
                     new_headers.append((b"host", forwarded_host))
                 scope_dict["headers"] = new_headers

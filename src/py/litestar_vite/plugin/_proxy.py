@@ -115,10 +115,6 @@ _WS_REQUEST_SKIP_HEADERS = _REQUEST_SKIP_HEADERS | {
 
 _LOGGER = logging.getLogger(__name__)
 
-# Bounds how often create_target_url_getter/create_hmr_target_getter re-stat() the hotfile.
-# Keeps the proxy hot path free of a syscall on every proxied request while still picking up
-# a dev-server restart (new hotfile mtime) within one TTL window. Not a correctness cache: a
-# change is always observed within _HOTFILE_REVALIDATE_TTL_SECONDS, never "forever stale".
 _HOTFILE_REVALIDATE_TTL_SECONDS = 0.3
 
 _NO_CONNECTION_TOKENS: "frozenset[str]" = frozenset()
@@ -198,7 +194,6 @@ def _extract_proxy_response_headers(headers: "httpx.Headers") -> list[tuple[byte
         A list of (header_name, header_value) tuples.
     """
     hop_by_hop = set(_HOP_BY_HOP_HEADERS)
-    # Collect dynamically-declared hop-by-hop headers from Connection header
     hop_by_hop.update(
         _collect_connection_tokens((key.decode("latin-1"), value.decode("latin-1")) for key, value in headers.raw)
     )
@@ -332,7 +327,6 @@ class ViteProxyMiddleware(AbstractMiddleware):
 
     def _should_proxy(self, path: str, scope: "Scope") -> bool:
         decoded = unquote(path) if "%" in path else path
-        # Double-decode to catch double-encoded traversal (%252e%252e)
         double_decoded = unquote(decoded) if "%" in decoded else decoded
 
         if self._has_path_traversal(decoded) or self._has_path_traversal(double_decoded):
@@ -377,13 +371,8 @@ class ViteProxyMiddleware(AbstractMiddleware):
             url = f"{url}?{query_string}"
 
         headers = _filter_hop_by_hop_headers(scope.get("headers", []))
-        # Only stream request body for methods that carry a body.
-        # Passing an async generator as content for GET/HEAD/OPTIONS causes httpx
-        # to add Transfer-Encoding: chunked, which Vite dev server rejects with 400.
-        # See: https://github.com/litestar-org/litestar-vite/issues/242
         request_body = _stream_request_body(receive) if method in _BODY_METHODS else None
 
-        # Use shared client from plugin when available (connection pooling)
         client = self._plugin.proxy_client if self._plugin is not None else None
 
         response_started = False
@@ -396,13 +385,11 @@ class ViteProxyMiddleware(AbstractMiddleware):
 
         try:
             if client is not None:
-                # Use shared client (connection pooling, HTTP/2 multiplexing)
                 async with client.stream(
                     method, url, headers=headers, content=request_body, timeout=10.0, follow_redirects=False
                 ) as upstream_resp:
                     await _proxy_stream_response(upstream_resp, _safe_send)
             else:
-                # Fallback: per-request client (graceful degradation)
                 http2_enabled = check_http2_support(self.http2)
                 async with (
                     httpx.AsyncClient(http2=http2_enabled) as fallback_client,
@@ -413,8 +400,16 @@ class ViteProxyMiddleware(AbstractMiddleware):
                     await _proxy_stream_response(upstream_resp, _safe_send)
         except Exception as exc:  # noqa: BLE001  # pragma: no cover - catch all cleanup errors
             if not response_started:
-                await send({"type": "http.response.start", "status": 502, "headers": [(b"content-type", b"text/plain")]})
-                await send({"type": "http.response.body", "body": f"Upstream error: {exc}".encode(), "more_body": False})
+                await send({
+                    "type": "http.response.start",
+                    "status": 502,
+                    "headers": [(b"content-type", b"text/plain")],
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": f"Upstream error: {exc}".encode(),
+                    "more_body": False,
+                })
             else:
                 await send({"type": "http.response.body", "body": b"", "more_body": False})
 
@@ -914,9 +909,6 @@ class SSRProxyMiddleware(AbstractMiddleware):
             console.print(f"[dim][ssr-proxy] {method} {raw_path} → {url}[/]")
 
         headers = _filter_hop_by_hop_headers(scope.get("headers", []))
-        # #246 invariant: only stream a body for methods that carry one. Sending an
-        # async generator as content for GET/HEAD/OPTIONS forces Transfer-Encoding: chunked,
-        # which Vite-style upstream servers reject with 400.
         request_body = _stream_request_body(receive) if method in _BODY_METHODS else None
 
         client = self._plugin.proxy_client if self._plugin is not None else None
@@ -946,7 +938,11 @@ class SSRProxyMiddleware(AbstractMiddleware):
                     await _proxy_stream_response(upstream_resp, _safe_send)
         except httpx.ConnectError:
             if not response_started:
-                await send({"type": "http.response.start", "status": 503, "headers": [(b"content-type", b"text/plain")]})
+                await send({
+                    "type": "http.response.start",
+                    "status": 503,
+                    "headers": [(b"content-type", b"text/plain")],
+                })
                 await send({
                     "type": "http.response.body",
                     "body": f"SSR server not running at {target_base_url}".encode(),
@@ -956,8 +952,16 @@ class SSRProxyMiddleware(AbstractMiddleware):
                 await send({"type": "http.response.body", "body": b"", "more_body": False})
         except Exception as exc:  # noqa: BLE001
             if not response_started:
-                await send({"type": "http.response.start", "status": 502, "headers": [(b"content-type", b"text/plain")]})
-                await send({"type": "http.response.body", "body": f"Upstream error: {exc}".encode(), "more_body": False})
+                await send({
+                    "type": "http.response.start",
+                    "status": 502,
+                    "headers": [(b"content-type", b"text/plain")],
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": f"Upstream error: {exc}".encode(),
+                    "more_body": False,
+                })
             else:
                 await send({"type": "http.response.body", "body": b"", "more_body": False})
 
@@ -1029,8 +1033,6 @@ def create_ssr_http_proxy_handler(
             console.print(f"[dim][ssr-proxy] {request.method} {req_path} → {url}[/]")
 
         headers_to_forward = _filter_hop_by_hop_headers(request.headers.items())
-        # #246 invariant: GET/HEAD/OPTIONS must not stream a body — Vite-style upstreams
-        # reject the resulting Transfer-Encoding: chunked with 400.
         request_body = request.stream() if request.method in _BODY_METHODS else None
 
         client = plugin.proxy_client if plugin is not None else None

@@ -733,6 +733,7 @@ def test_vite_plugin_export_types_sync_skips_when_no_typegen_outputs_requested(t
             generate_page_props=False,
             generate_schemas=False,
             generate_zod=False,
+            generate_channels=False,
         ),
     )
     plugin = VitePlugin(config=config)

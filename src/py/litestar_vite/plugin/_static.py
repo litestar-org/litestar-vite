@@ -35,8 +35,8 @@ class StaticPlacement(str, Enum):
     literal value (``config.placement == "native"``) without importing this package.
     """
 
-    NATIVE = "native"  # eligible: the web server may serve mounts directly
-    ASGI = "asgi"  # Litestar's static router must serve
+    NATIVE = "native"
+    ASGI = "asgi"
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,8 +100,6 @@ class StaticFilesConfig:
     tags: "Sequence[str] | None" = None
 
     _NOT_ROUTER_KWARGS: "ClassVar[frozenset[str]]" = frozenset({"opt"})
-    # Fields safe to ignore for native serving; any other set field forces ASGI,
-    # so newly added fields fail closed until classified here.
     _METADATA_FIELDS: "ClassVar[frozenset[str]]" = frozenset({"opt", "security", "tags"})
 
     def as_router_kwargs(self) -> "dict[str, Any]":

@@ -70,8 +70,6 @@ def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "E
             return cast("Response[Any]", create_exception_response(request, exc))
         if request.app.debug:
             return cast("Response[Any]", create_debug_response(request, exc))
-        # Production (non-debug, non-HTTPException): never embed raw exception text.
-        # Debug rendering is already returned above by create_debug_response.
         return cast("Response[Any]", create_exception_response(request, InternalServerException()))
     return create_inertia_exception_response(request, exc)
 

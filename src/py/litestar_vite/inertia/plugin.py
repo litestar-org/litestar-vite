@@ -72,21 +72,13 @@ class InertiaPlugin(InitPlugin):
         Yields:
             An asynchronous context manager.
         """
-        # Initialize shared SSR client with connection pooling
-        # These limits are tuned for typical SSR workloads:
-        # - max_keepalive_connections: 10 per-host keep-alive connections
-        # - max_connections: 20 total concurrent connections
-        # - keepalive_expiry: 30s idle timeout before closing
         limits = httpx.Limits(max_keepalive_connections=10, max_connections=20, keepalive_expiry=30.0)
-        self._ssr_client = httpx.AsyncClient(
-            limits=limits,
-            timeout=httpx.Timeout(10.0),  # Default timeout, can be overridden per-request
-        )
+        self._ssr_client = httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(10.0))
         try:
             yield
         finally:
             await self._ssr_client.aclose()
-            self._ssr_client = None  # Reset to signal client is closed
+            self._ssr_client = None
 
     @property
     def ssr_client(self) -> "httpx.AsyncClient | None":
@@ -124,16 +116,11 @@ class InertiaPlugin(InitPlugin):
         if app_config.response_class is InertiaResponse:  # pyright: ignore[reportUnknownMemberType]
             return app_config
 
-        # Register exception handlers
         exception_handlers: "dict[type[Exception] | int, Any]" = {
             Exception: exception_to_http_response,
             HTTPException: exception_to_http_response,
         }
 
-        # Add Precognition exception handler when enabled
-        # Note: The exception handler formats validation errors in Laravel's format.
-        # For successful validation to return 204 (without executing the handler),
-        # use the @precognition decorator on your route handlers.
         if self.config.precognition:
             exception_handlers[ValidationException] = create_precognition_exception_handler(
                 fallback_handler=exception_to_http_response
@@ -146,9 +133,6 @@ class InertiaPlugin(InitPlugin):
         app_config.response_class = InertiaResponse
         app_config.middleware.append(InertiaMiddleware)
         app_config.signature_types.extend([InertiaRequest, InertiaResponse, InertiaBack, StaticProp, DeferredProp])
-        # Type encoders for prop resolution. Async DeferredProp callbacks are
-        # pre-resolved on the request loop by InertiaResponse before the encoder
-        # ever runs, so render() short-circuits at the cached _result.
         app_config.type_encoders = {
             StaticProp: lambda val: val.render(),
             DeferredProp: lambda val: val.render(),
@@ -161,13 +145,6 @@ class InertiaPlugin(InitPlugin):
         ]
         app_config.lifespan.append(self.lifespan)  # pyright: ignore[reportUnknownMemberType]
 
-        # Wrap every HTTP route handler at app startup so async Inertia prop
-        # callbacks resolve inside Litestar's _call_handler_function
-        # AsyncExitStack frame (where DI-scoped resources are still alive).
-        # Runs at startup (NOT on_app_init) because the layered handler
-        # objects are only fully resolved with runtime attributes
-        # (has_sync_callable, signature_model, etc.) after route registration
-        # completes.
         app_config.on_startup.append(  # pyright: ignore[reportUnknownMemberType]
             functools.partial(_wrap_app_handlers, component_opt_keys=self.config.component_opt_keys)
         )
@@ -203,8 +180,6 @@ def _as_inertia_prop_mapping(data: "Any") -> "Mapping[str, Any] | None":
         recognized structured prop-bag type.
     """
     obj: "Any" = data
-    # pydantic BaseModel is an optional dependency; duck-type to avoid a hard import.
-    # Checked first so the dataclass TypeGuard below does not narrow ``type(obj)``.
     model_fields: "Any" = getattr(cast("Any", type(obj)), "model_fields", None)
     if model_fields is not None and hasattr(obj, "model_dump"):
         return {name: getattr(obj, name) for name in model_fields}
@@ -227,8 +202,6 @@ async def _resolve_inertia_response_data(data: "Any", request: "Request[Any, Any
 
     content: "Any"
     if data is None or isinstance(data, Mapping) or is_pagination_container(data):
-        # Pagination containers are wrapped raw so InertiaResponse._build_page_props
-        # can apply its dedicated pagination prop handling.
         content = cast("Any", data)
     else:
         content = _as_inertia_prop_mapping(data)
@@ -253,7 +226,7 @@ def _wrap_handler_fn(handler: "HTTPRouteHandler") -> None:
     ``async with stack:`` block in ``_call_handler_function`` where
     yield-based dependencies are still alive.
     """
-    if getattr(handler.fn, "_inertia_wrapped", False):  # idempotent guard
+    if getattr(handler.fn, "_inertia_wrapped", False):
         return
 
     original = handler.fn
@@ -271,7 +244,6 @@ def _wrap_handler_fn(handler: "HTTPRouteHandler") -> None:
         return await _resolve_inertia_response_data(result, request)
 
     wrapped._inertia_wrapped = True  # type: ignore[attr-defined]  # pyright: ignore[reportFunctionMemberAccess]
-    # ``handler.fn`` is a property; the backing attribute is ``_fn``.
     handler._fn = wrapped  # pyright: ignore[reportPrivateUsage]
     handler.has_sync_callable = False
 

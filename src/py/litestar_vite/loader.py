@@ -618,10 +618,7 @@ class ViteAssetLoader:
         return ""
 
     def generate_asset_tags(
-        self,
-        path: "str | list[str]",
-        scripts_attrs: "dict[str, str] | None" = None,
-        _visited: "set[str] | None" = None,
+        self, path: "str | list[str]", scripts_attrs: "dict[str, str] | None" = None, _visited: "set[str] | None" = None
     ) -> str:
         """Generate all asset tags for the specified file(s).
 
@@ -698,21 +695,11 @@ class ViteAssetLoader:
         Returns:
             Full URL to the asset on the dev server.
         """
-        # Bridge-config preference (litestar-vite-c1t): when ``.litestar.json``
-        # exists and carries a non-null ``appUrl``, anchor asset URLs at that
-        # value. This is the authoritative single-port-via-ASGI bridge URL and
-        # supersedes the hotfile contents, which are reserved for the actual
-        # upstream dev-server URL used by proxy/HMR consumers.
         bridge = read_bridge_config()
         app_url = bridge.get("appUrl") if bridge is not None else None
         if isinstance(app_url, str) and app_url:
             base_path = app_url
         else:
-            # Lazy retry: ``parse_manifest()`` runs once at loader init and races the JS
-            # plugin's hotfile write — if the file did not exist yet, ``_vite_base_path``
-            # stays ``None`` for the loader's lifetime and every asset URL silently leaks
-            # the raw Vite dev server origin (breaking the single-port-via-ASGI bridge
-            # contract). Re-reading on demand fixes the race without polling.
             if self._vite_base_path is None:
                 self._load_hot_file_sync()
             base_path = self._vite_base_path or f"{self._config.protocol}://{self._config.host}:{self._config.port}"

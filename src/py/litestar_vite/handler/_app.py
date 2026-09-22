@@ -50,7 +50,6 @@ def _load_server_starting_template() -> str:
     try:
         return _SERVER_STARTING_PATH.read_text()
     except (FileNotFoundError, IsADirectoryError, OSError):
-        # Fallback minimal HTML if the built file is missing
         logger.warning("Server starting page not found at %s", _SERVER_STARTING_PATH)
         return """<!DOCTYPE html>
 <html><head><meta http-equiv="refresh" content="2"><title>Starting...</title></head>
@@ -225,17 +224,14 @@ class AppHandler:
 
         if page_data is not None:
             json_data = encode_json(page_data).decode("utf-8")
-            # Check InertiaConfig for use_script_element (Inertia-specific setting)
             inertia = self._config.inertia
             use_script_element = isinstance(inertia, InertiaConfig) and inertia.use_script_element
             if use_script_element:
-                # v2.3+ Inertia protocol: Use script element for better performance (~37% smaller)
                 app_id = "app"
                 if self._spa_config.app_selector.startswith("#") and len(self._spa_config.app_selector) > 1:
                     app_id = self._spa_config.app_selector[1:]
                 html = inject_page_script(html, json_data, app_id=app_id, nonce=self._config.csp_nonce)
             else:
-                # Legacy: Use data-page attribute
                 html = set_data_attribute(html, self._spa_config.app_selector, "data-page", json_data)
 
         return html
@@ -399,8 +395,6 @@ class AppHandler:
         Returns:
             The HTML to serve in development.
         """
-        # Hybrid mode owns the prebuilt index.html + HMR-injection path. Template, SPA, and
-        # framework modes fall through to the dev-server proxy.
         if self._config.mode == "hybrid":
             if self._cached_html is None:
                 await self._load_index_html_async()
@@ -419,8 +413,6 @@ class AppHandler:
         Returns:
             The HTML to serve in development.
         """
-        # Hybrid mode owns the prebuilt index.html + HMR-injection path. Template, SPA, and
-        # framework modes fall through to the dev-server proxy.
         if self._config.mode == "hybrid":
             if self._cached_html is None:
                 self._load_index_html_sync()
@@ -593,7 +585,6 @@ class AppHandler:
             response = await self._http_client.get(target_url, follow_redirects=True)
             response.raise_for_status()
         except httpx.HTTPError:
-            # Return a friendly startup page instead of an error
             logger.debug("Vite server not ready at %s, showing startup page", target_url)
             return _get_server_starting_html(target_url)
         else:
@@ -623,7 +614,6 @@ class AppHandler:
             response = self._http_client_sync.get(target_url, follow_redirects=True)
             response.raise_for_status()
         except httpx.HTTPError:
-            # Return a friendly startup page instead of an error
             logger.debug("Vite server not ready at %s, showing startup page", target_url)
             return _get_server_starting_html(target_url)
         else:

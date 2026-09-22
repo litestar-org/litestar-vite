@@ -41,12 +41,9 @@ def strip_timestamp_for_comparison(content: bytes) -> bytes:
     """
     try:
         data = json.loads(content)
-        # Remove fields that change on every generation
         data.pop("generatedAt", None)
-        # Return sorted JSON for consistent comparison
         return json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
     except (json.JSONDecodeError, TypeError, AttributeError):
-        # If we can't parse the content, return as-is
         return content
 
 
@@ -74,7 +71,6 @@ def write_if_changed(
     Returns:
         True if file was written (content changed), False if skipped (unchanged).
     """
-    # Ensure trailing newline for POSIX compliance
     if isinstance(content, str):
         if not content.endswith("\n"):
             content += "\n"
@@ -88,7 +84,6 @@ def write_if_changed(
         try:
             existing = path.read_bytes()
 
-            # Normalize both for comparison if a normalizer is provided
             if normalize_for_comparison:
                 existing_normalized = normalize_for_comparison(existing)
                 new_normalized = normalize_for_comparison(content_bytes)
@@ -96,7 +91,6 @@ def write_if_changed(
                 existing_normalized = existing
                 new_normalized = content_bytes
 
-            # Compare using MD5 hash for efficiency
             existing_hash = hashlib.md5(existing_normalized).hexdigest()  # noqa: S324
             new_hash = hashlib.md5(new_normalized).hexdigest()  # noqa: S324
             if existing_hash == new_hash:
@@ -150,7 +144,6 @@ def encode_deterministic_json(
         content = msgspec.json.format(serializer(sorted_data), indent=indent)
     else:
         content = msgspec.json.format(encode_json(sorted_data), indent=indent)
-    # Ensure trailing newline for POSIX compliance
     if not content.endswith(b"\n"):
         content += b"\n"
     return content

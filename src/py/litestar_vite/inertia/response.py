@@ -134,10 +134,6 @@ class InertiaResponse(Response[T]):
         self.clear_history = clear_history
         self.scroll_props = scroll_props
         self.prop_filter = prop_filter
-        # Populated by :meth:`resolve_async_props` (called from the handler
-        # frame so DI-scoped resources are still alive). ``_async_prepass_done``
-        # short-circuits the deferral check in :meth:`to_asgi_response`;
-        # ``_cached_ssr_payload`` lets ``_render_spa`` skip the SSR fetch.
         self._async_prepass_done: bool = False
         self._cached_page_props: "PageProps[T] | None" = None
         self._cached_ssr_payload: "_InertiaSSRResult | None" = None
@@ -211,9 +207,6 @@ class InertiaResponse(Response[T]):
         route_once_props: "list[tuple[str, str]]" = []
         route_prop_keys: list[str] = []
 
-        # v2.2+ protocol: Extract deferred props metadata before filtering.
-        # Route props override shared props with the same key, so discard any
-        # shared metadata for those keys before adding route metadata.
         if isinstance(content, Mapping):
             content_mapping = cast("Mapping[str, Any]", content)
             for key in content_mapping:
@@ -250,9 +243,7 @@ class InertiaResponse(Response[T]):
                 shared_props["content"] = route_content
                 route_prop_keys.append("content")
 
-        # Drop keys this partial reload just resolved, or the client loops on loadDeferredProps.
         deferred_props = _resolve_deferred_props(deferred_props_map, partial_data, is_partial_render)
-        # Extract once props tracked during get_shared_props (already rendered)
         once_props_from_shared = shared_props.pop("_once_props", [])
         once_prop_entries = _dedupe_once_prop_entries(
             [*once_props_from_shared, *route_once_props], reset_keys=reset_keys
@@ -273,9 +264,6 @@ class InertiaResponse(Response[T]):
         encrypt_history = _resolve_encrypt_history(self.encrypt_history, inertia_plugin)
         clear_history_flag = _resolve_clear_history(self.clear_history, request)
 
-        # v2.3+ protocol: Extract flash to top level (not in props)
-        # This prevents flash from persisting in browser history state
-        # Always send {} for empty flash to support router.flash((current) => ({ ...current }))
         flash_data: "dict[str, list[str]]" = shared_props.pop("flash", None) or {}
 
         return PageProps[T](
@@ -332,9 +320,6 @@ class InertiaResponse(Response[T]):
             template = template_engine.get_template(template_name)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
             html = cast("str", template.render(**context))  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
 
-        # When SSR is configured and the prepass populated _cached_ssr_payload,
-        # inject the SSR-rendered body into the template's target_selector
-        # element and prepend any SSR head HTML. Mirrors _render_spa.
         if self._cached_ssr_payload is not None:
             ssr_config = inertia_plugin.config.ssr_config
             selector = ssr_config.target_selector if ssr_config is not None else "#app"
@@ -544,9 +529,6 @@ class InertiaResponse(Response[T]):
     ) -> "ASGIResponse":
         inertia_info = _get_inertia_request_info(cast("Request[Any, Any, Any]", request))
 
-        # Async prop callbacks must already be resolved by the handler wrapper,
-        # which runs inside Litestar's DI cleanup scope. SSR is the only async
-        # work that can still be safely deferred from this synchronous method.
         if not self._async_prepass_done:
             partial_data_for_check = (
                 inertia_info.partial_keys if inertia_info.is_partial_render and inertia_info.partial_keys else None
@@ -873,8 +855,6 @@ def _get_inertia_request_info(request: "Request[Any, Any, Any]") -> _InertiaRequ
     )
 
 
-# Maximum allowed size for SSR response body + head combined (10 MiB).
-# This prevents a malicious or misconfigured SSR server from causing OOM.
 _SSR_MAX_RESPONSE_BYTES = 10 * 1024 * 1024
 
 
@@ -977,10 +957,6 @@ async def _do_ssr_request(
     Returns:
         An _InertiaSSRResult with head and body HTML.
     """
-    # Use Litestar's msgspec encoder so msgspec Structs and other custom types embedded
-    # in handler return values serialize the same way as the regular Inertia render path
-    # (response.render uses get_serializer too). httpx's default json= serializer falls
-    # back to stdlib json.dumps and rejects Struct instances.
     body = encode_json(page, serializer=get_serializer(type_encoders))
     headers = {"content-type": "application/json"}
 

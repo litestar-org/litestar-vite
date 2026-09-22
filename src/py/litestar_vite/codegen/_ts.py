@@ -240,7 +240,6 @@ def wrap_for_array(type_expr: str) -> str:
         return "unknown"
     if expr.startswith("(") and expr.endswith(")"):
         return expr
-    # Parenthesize unions/intersections so `(A | B)[]` / `(A & B)[]` is emitted correctly.
     if " | " in expr or (" & " in expr and not expr.startswith("{")):
         return f"({expr})"
     return expr

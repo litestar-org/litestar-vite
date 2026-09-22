@@ -30,7 +30,6 @@ if TYPE_CHECKING:
 
     from litestar_vite.config import InertiaConfig, TypeGenConfig
 
-# Compiled regex for splitting TypeScript type strings on union/intersection operators
 _TYPE_OPERATOR_RE = re.compile(r"(\s*[|&]\s*)")
 
 
@@ -57,10 +56,8 @@ def _pick_inertia_method(http_methods: "set[Any] | frozenset[Any] | None") -> st
     """
     if not http_methods:
         return "GET"
-    # Prefer GET for Inertia page loads
     if "GET" in http_methods:
         return "GET"
-    # Fallback to alphabetically first method for determinism
     return min(http_methods)
 
 
@@ -85,20 +82,15 @@ def normalize_type_name(type_name: str, openapi_schemas: set[str]) -> str:
     if type_name in openapi_schemas:
         return type_name
 
-    # Check if this looks like a mangled module path (contains underscores)
     if "_" not in type_name:
         return type_name
 
-    # Try progressively shorter suffixes to find the class name
     parts = type_name.split("_")
     for i in range(len(parts)):
         short_name = "_".join(parts[i:])
-        # Prefer OpenAPI match, but if we get to the last part, use it anyway
         if short_name in openapi_schemas:
             return short_name
 
-    # Use the last part as the class name (e.g., 'NoProps' from 'app_lib_schema_NoProps')
-    # This is always better than the mangled name for error messages
     return parts[-1] if parts else type_name
 
 
@@ -115,22 +107,17 @@ def normalize_type_string(type_string: str, openapi_schemas: set[str]) -> str:
     Returns:
         The type string with all type names normalized.
     """
-    # Primitives and special types that should not be normalized
     skip_types = {"any", "unknown", "null", "undefined", "void", "never", "string", "number", "boolean", "object"}
 
-    # Split on | and & while preserving whitespace
     tokens = _TYPE_OPERATOR_RE.split(type_string)
     result_parts: list[str] = []
 
     for token in tokens:
         stripped = token.strip()
-        # Keep operators and whitespace as-is
         if stripped in {"|", "&", ""} or stripped in skip_types or stripped == "{}":
             result_parts.append(token)
-        # Normalize type names
         else:
             normalized = normalize_type_name(stripped, openapi_schemas)
-            # Preserve original whitespace around the type
             prefix = token[: len(token) - len(token.lstrip())]
             suffix = token[len(token.rstrip()) :]
             result_parts.append(prefix + normalized + suffix)
@@ -286,7 +273,6 @@ def finalize_inertia_pages(
     name_map = build_schema_name_map(context.schema_registry)
     openapi_components = openapi_components_schemas(openapi_support.openapi_schema)
 
-    # Build set of available OpenAPI schema names for type normalization
     openapi_schema_names: set[str] = set(openapi_components.keys())
     openapi_schema_names.update(generated_components.keys())
 
@@ -303,13 +289,10 @@ def finalize_inertia_pages(
             schema_name = name_map.get(schema_key)
 
         if schema_name:
-            # Normalize mangled type names (e.g., 'app_lib_schema_NoProps' -> 'NoProps')
             normalized_name = normalize_type_name(schema_name, openapi_schema_names)
             page.ts_type = normalized_name
             page.props_type = normalized_name
         elif page.props_type:
-            # Normalize type names in union/intersection type strings
-            # (e.g., 'any | app_lib_schema_NoProps' -> 'any | NoProps')
             page.props_type = normalize_type_string(page.props_type, openapi_schema_names)
 
         custom_types: set[str] = set()
@@ -331,7 +314,6 @@ def finalize_inertia_pages(
                 if registered:
                     custom_types.update(collect_ref_names(registered.schema.to_schema()))
 
-        # Normalize all custom type names
         page.custom_types = sorted(normalize_type_name(t, openapi_schema_names) for t in custom_types)
 
 
@@ -357,8 +339,6 @@ def extract_inertia_pages(
     Returns:
         List of InertiaPageMetadata for each discovered page.
     """
-    # Track seen components: component -> (metadata, is_get_handler)
-    # When multiple handlers map to the same component, prefer GET handlers
     seen_components: dict[str, tuple[InertiaPageMetadata, bool]] = {}
 
     if openapi_support is None:
@@ -397,14 +377,9 @@ def extract_inertia_pages(
             wrap_with_content=should_wrap_page_props_with_content(route_handler),
         )
 
-        # Prefer GET handlers when multiple handlers map to the same component
         existing = seen_components.get(component)
-        if existing is None:
+        if existing is None or (is_get_handler and not existing[1]):
             seen_components[component] = (page_metadata, is_get_handler)
-        elif is_get_handler and not existing[1]:
-            # New handler is GET, existing is not - prefer the GET handler
-            seen_components[component] = (page_metadata, is_get_handler)
-        # Otherwise keep existing (it's either GET or we prefer first-seen for determinism)
 
     pages = [entry[0] for entry in seen_components.values()]
 
@@ -432,7 +407,6 @@ def iter_route_handlers(app: "Litestar") -> "list[tuple[HTTPRoute, HTTPRouteHand
     for route in app.routes:
         if isinstance(route, HTTPRoute):
             handlers.extend((route, route_handler) for route_handler in route.route_handlers)
-    # Sort by route path, then handler name for deterministic ordering
     return sorted(handlers, key=lambda x: (str(x[0].path), x[1].handler_name or x[1].name or ""))
 
 
@@ -478,11 +452,9 @@ def process_session_props(
     Handles both set[str] (legacy) and dict[str, type] (new typed) formats.
     """
     if isinstance(session_props, dict):
-        # New behavior: dict maps prop names to Python types
         for key, prop_type_class in session_props.items():
             if not key:
                 continue
-            # Register the type with OpenAPI if possible
             if openapi_support.enabled and openapi_support.schema_creator:
                 try:
                     field_def = FieldDefinition.from_annotation(prop_type_class)
@@ -497,7 +469,6 @@ def process_session_props(
                 type_name = prop_type_class.__name__ if hasattr(prop_type_class, "__name__") else fallback_ts_type
                 shared_props.setdefault(key, {"type": type_name, "optional": True})
     else:
-        # Legacy behavior: set of prop names (types are unknown)
         for key in session_props:
             if not key:
                 continue
@@ -568,11 +539,6 @@ def build_inertia_shared_props(
     """
     fallback_ts_type = get_fallback_ts_type(types_config)
 
-    # flash and errors are page-object concerns, not props. The runtime sends flash at
-    # the page top level to match `Page.flash` (inertia/response.py), and @inertiajs/core
-    # declares `Page.props.errors` itself as `Errors & ErrorBag`. Generating either here
-    # promised a `props.flash` that is never present and an error value type
-    # (`string[]`) that disagrees with the `str` values the runtime actually sends.
     shared_props: dict[str, dict[str, Any]] = {"csrf_token": {"type": "string", "optional": True}}
 
     if include_default_auth:
@@ -600,7 +566,6 @@ def build_inertia_shared_props(
             except (AttributeError, TypeError, ValueError):  # pragma: no cover - defensive
                 pass
 
-    # Handle session props - can be set[str] or dict[str, type]
     process_session_props(
         inertia_config.extra_session_page_props, shared_props, shared_schema_keys, openapi_support, fallback_ts_type
     )
@@ -633,7 +598,6 @@ def build_inertia_shared_props(
         if type_name:
             shared_props[prop_name]["type"] = type_name
 
-    # Containers and unions render from their inline schema once nested $refs resolve.
     openapi_schema_names = set(openapi_components_schemas(openapi_schema)) | set(generated_components)
     for prop_name, schema_dict in shared_schema_dicts.items():
         shared_props[prop_name]["type"] = normalize_type_string(ts_type_from_openapi(schema_dict), openapi_schema_names)
@@ -662,9 +626,6 @@ def generate_inertia_pages_json(
     Returns:
         An Inertia pages metadata payload as a dictionary with sorted keys.
     """
-    # Create a single OpenAPISupport instance to share across the entire pipeline.
-    # This ensures consistent schema registration and prevents "split-brain" issues
-    # where separate registries could produce different schema names.
     openapi_support = OpenAPISupport.from_app(app, openapi_schema)
 
     pages_metadata = extract_inertia_pages(
@@ -700,8 +661,6 @@ def generate_inertia_pages_json(
         openapi_support=openapi_support,
     )
 
-    # Sort all dict keys for deterministic output
-    # Pages sorted by component name, shared props sorted by prop name
     sorted_pages = dict(sorted(pages_dict.items()))
     sorted_shared_props = dict(sorted(shared_props.items()))
 
@@ -713,5 +672,4 @@ def generate_inertia_pages_json(
         "typeImportPaths": types_config.type_import_paths if types_config is not None else None,
     }
 
-    # Remove None values for cleaner output
     return {k: v for k, v in root.items() if v is not None}

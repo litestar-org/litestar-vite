@@ -19,7 +19,6 @@ from litestar_vite.codegen._ts import normalize_path, ts_type_from_openapi
 
 _PATH_PARAM_EXTRACT_PATTERN = re.compile(r"\{([^:}]+)(?::([^}]+))?\}")
 
-# HTTP methods in priority order for Inertia router integration
 _HTTP_METHOD_PRIORITY = ["GET", "POST", "PUT", "PATCH", "DELETE"]
 _TS_IDENTIFIER_PATTERN = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
 
@@ -39,7 +38,6 @@ def pick_primary_method(methods: list[str]) -> str:
     for preferred in _HTTP_METHOD_PRIORITY:
         if preferred in methods:
             return preferred.lower()
-    # Fallback to first non-HEAD/OPTIONS method, or "get" if none
     for method in methods:
         if method not in {"HEAD", "OPTIONS"}:
             return method.lower()
@@ -121,7 +119,7 @@ class RouteMetadata:
     name: str
     path: str
     methods: list[str]
-    method: str  # Primary method for Inertia router (lowercase)
+    method: str
     params: dict[str, str] = field(default_factory=str_dict_factory)
     query_params: dict[str, str] = field(default_factory=str_dict_factory)
     component: "str | None" = None
@@ -155,7 +153,6 @@ def iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRoute
     for route in app.routes:
         if isinstance(route, HTTPRoute):
             handlers.extend((route, route_handler) for route_handler in route.route_handlers)
-    # Sort by route path, then handler name for deterministic ordering
     handlers.sort(key=lambda x: (str(x[0].path), x[1].handler_name or x[1].name or ""))
     yield from handlers
 
@@ -196,8 +193,6 @@ def extract_params_from_litestar(
                     if param.param_in == "path"
                     else ts_type_from_openapi(schema_dict, components_schemas=components_schemas)
                 )
-            # For URL generation, `null` is not a meaningful value (it would stringify to "null").
-            # Treat `null` as "missing" rather than emitting `| null` into route parameter types.
             ts_type = ts_type.replace(" | null", "").replace("null | ", "")
 
             if not param.required and ts_type != "any" and "undefined" not in ts_type:
@@ -401,7 +396,6 @@ def generate_routes_json(
         else extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
     )
 
-    # Sort routes by name for deterministic output
     sorted_routes = sorted(routes_metadata, key=lambda r: r.name)
 
     routes_dict: dict[str, Any] = {}
@@ -410,13 +404,11 @@ def generate_routes_json(
         route_data: dict[str, Any] = {"uri": route.path, "methods": route.methods, "method": route.method}
 
         if route.params:
-            # Sort params dict for deterministic output
             sorted_params = dict(sorted(route.params.items()))
             route_data["parameters"] = list(sorted_params.keys())
             route_data["parameterTypes"] = sorted_params
 
         if route.query_params:
-            # Sort query params for deterministic output
             route_data["queryParameters"] = dict(sorted(route.query_params.items()))
 
         if include_components and route.component:
@@ -552,7 +544,6 @@ def generate_routes_ts(
         else extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
     )
 
-    # Sort routes by name for deterministic output
     sorted_routes = sorted(routes_metadata, key=lambda r: r.name)
 
     route_names: list[str] = []
@@ -565,7 +556,6 @@ def generate_routes_ts(
         route_name = route.name
         route_names.append(route_name)
 
-        # Sort params for deterministic output
         sorted_params = dict(sorted(route.params.items())) if route.params else {}
         sorted_query_params = dict(sorted(route.query_params.items())) if route.query_params else {}
 

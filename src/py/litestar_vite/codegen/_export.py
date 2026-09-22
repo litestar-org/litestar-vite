@@ -103,14 +103,12 @@ def export_integration_assets(
     if not typegen_outputs_requested(types_config):
         return result
 
-    # Check if OpenAPI is available
     openapi_plugin = next((p for p in app.plugins._plugins if isinstance(p, OpenAPIPlugin)), None)  # pyright: ignore[reportPrivateUsage]
     has_openapi = openapi_plugin is not None and openapi_plugin._openapi_config is not None  # pyright: ignore[reportPrivateUsage]
 
     if not has_openapi:
         return result
 
-    # Get serializer for OpenAPI encoding
     if serializer is None:
         encoders: Any
         try:
@@ -119,11 +117,8 @@ def export_integration_assets(
             encoders = None
         serializer = partial(encode_json, serializer=get_serializer(encoders if isinstance(encoders, dict) else None))  # pyright: ignore[reportUnknownArgumentType]
 
-    # Step 1: Get OpenAPI schema and register Inertia types
     schema_dict = app.openapi_schema.to_schema()
 
-    # Register Inertia page prop types in OpenAPI schema BEFORE exporting
-    # This ensures types like EmailSent, NoProps, CurrentTeam are included
     inertia_pages_data: dict[str, Any] | None = None
     if isinstance(config.inertia, InertiaConfig) and types_config.generate_page_props:
         inertia_type_gen = config.inertia.type_gen or InertiaTypeGenConfig()
@@ -138,17 +133,14 @@ def export_integration_assets(
 
     result.openapi_schema = schema_dict
 
-    # Step 2: Export openapi.json
     export_openapi(schema_dict=schema_dict, types_config=types_config, serializer=serializer, result=result)
 
     routes_metadata = extract_route_metadata(app, openapi_schema=schema_dict)
 
-    # Step 3: Export routes.json (always pass openapi_schema for consistency)
     export_routes_json(
         app=app, types_config=types_config, openapi_schema=schema_dict, routes_metadata=routes_metadata, result=result
     )
 
-    # Step 4: Export routes.ts (if enabled)
     if types_config.generate_routes:
         export_routes_ts(
             app=app,
@@ -158,7 +150,6 @@ def export_integration_assets(
             result=result,
         )
 
-    # Step 5: Export inertia-pages.json (if enabled)
     if (
         isinstance(config.inertia, InertiaConfig)
         and types_config.generate_page_props
@@ -216,7 +207,6 @@ def export_routes_json(
     if routes_path is None:
         routes_path = types_config.output / "routes.json"
 
-    # Always pass openapi_schema for consistent output between CLI and plugin
     routes_data = generate_routes_json(
         app, include_components=True, openapi_schema=openapi_schema, routes_metadata=routes_metadata
     )
@@ -246,7 +236,6 @@ def export_routes_ts(
     if routes_ts_path is None:
         routes_ts_path = types_config.output / "routes.ts"
 
-    # Always pass openapi_schema for consistent output
     routes_ts_content = generate_routes_ts(
         app, openapi_schema=openapi_schema, global_route=types_config.global_route, routes_metadata=routes_metadata
     )
