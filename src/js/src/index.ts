@@ -1241,16 +1241,17 @@ function createStaticPropsPlugin(): Plugin {
         // Generate named exports for valid JavaScript identifiers
         const namedExports: string[] = []
         for (const key of Object.keys(staticProps)) {
-          // Check if key is a valid JS identifier
-          if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key)) {
+          // Check if key is a valid JS identifier (skip staticProps to avoid duplicate declaration)
+          if (key !== "staticProps" && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key)) {
             namedExports.push(`export const ${key} = ${JSON.stringify(staticProps[key])};`)
           }
         }
 
-        // Always export all props as default
+        // Always export all props as staticProps and as default
+        const staticPropsExport = `export const staticProps = ${JSON.stringify(staticProps)};`
         const defaultExport = `export default ${JSON.stringify(staticProps)};`
 
-        return [...namedExports, defaultExport].join("\n")
+        return [...namedExports, staticPropsExport, defaultExport].join("\n")
       }
       return undefined
     },
