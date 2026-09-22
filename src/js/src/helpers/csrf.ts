@@ -82,16 +82,45 @@ function getMetaToken(): string | undefined {
 }
 
 function getInertiaToken(): string | undefined {
-  if (typeof window === "undefined") {
-    return undefined
+  if (typeof window !== "undefined") {
+    const win = window as unknown as Record<string, unknown>
+    const inertiaPage = win.__INERTIA_PAGE__ as Record<string, unknown> | undefined
+    if (inertiaPage?.props) {
+      const props = inertiaPage.props as Record<string, unknown>
+      if (typeof props.csrf_token === "string") {
+        return props.csrf_token
+      }
+    }
   }
 
-  const win = window as unknown as Record<string, unknown>
-  const inertiaPage = win.__INERTIA_PAGE__ as Record<string, unknown> | undefined
-  if (inertiaPage?.props) {
-    const props = inertiaPage.props as Record<string, unknown>
-    if (typeof props.csrf_token === "string") {
-      return props.csrf_token
+  if (typeof document !== "undefined") {
+    const scriptEl = typeof document.getElementById === "function" ? document.getElementById("app_page") : null
+    if (scriptEl && scriptEl.textContent) {
+      try {
+        const page = JSON.parse(scriptEl.textContent)
+        if (page?.props?.csrf_token && typeof page.props.csrf_token === "string") {
+          return page.props.csrf_token
+        }
+      } catch {
+        // ignore JSON parse error
+      }
+    }
+
+    if (typeof document.querySelector === "function") {
+      const dataEl = document.querySelector("[data-page]")
+      if (dataEl) {
+        const raw = dataEl.getAttribute("data-page")
+        if (raw && raw !== "app") {
+          try {
+            const page = JSON.parse(raw)
+            if (page?.props?.csrf_token && typeof page.props.csrf_token === "string") {
+              return page.props.csrf_token
+            }
+          } catch {
+            // ignore JSON parse error
+          }
+        }
+      }
     }
   }
 

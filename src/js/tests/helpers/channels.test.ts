@@ -119,4 +119,47 @@ describe("createChannelsStream", () => {
 
     expect(onEvent.mock.calls).toEqual([[{ type: "notification", value: 1 }], ["plain notification"]])
   })
+
+  it("interpolates channel path parameters into WebSocket URL", () => {
+    const stream = createChannelsStream({
+      basePath: "/ws",
+      channel: "chat/{room_id}",
+      params: { room_id: 123 },
+      onEvent: vi.fn(),
+      WebSocketCtor,
+    })
+
+    stream.connect()
+
+    expect(FakeWebSocket.instances[0]?.url).toBe("ws://localhost:3000/ws/chat/123")
+  })
+
+  it("interpolates multiple channel parameters and URL encodes parameter values", () => {
+    const stream = createChannelsStream({
+      basePath: "/ws/",
+      channel: "rooms/{room_id}/messages/{user_id}",
+      params: { room_id: "general room", user_id: 42 },
+      onEvent: vi.fn(),
+      WebSocketCtor,
+    })
+
+    stream.connect()
+
+    expect(FakeWebSocket.instances[0]?.url).toBe("ws://localhost:3000/ws/rooms/general%20room/messages/42")
+  })
+
+  it("supports channel function with params", () => {
+    const stream = createChannelsStream({
+      basePath: "/ws",
+      channel: () => "topics/{topic}",
+      params: { topic: "tech" },
+      onEvent: vi.fn(),
+      WebSocketCtor,
+    })
+
+    stream.connect()
+
+    expect(FakeWebSocket.instances[0]?.url).toBe("ws://localhost:3000/ws/topics/tech")
+  })
 })
+
