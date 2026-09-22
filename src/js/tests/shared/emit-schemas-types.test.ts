@@ -99,4 +99,56 @@ describe("emitSchemasTypes", () => {
     expect(content).toContain("'api:profile_update': ProfileUpdateResponses")
     expect(content).toContain("export type FormInput<T extends OperationName>")
   })
+
+  it("maps multi-method routes on the same URL path without clobbering each other", async () => {
+    const tmpDir = createTmpDir()
+    const outputDir = path.join(tmpDir, "generated")
+    const apiDir = path.join(outputDir, "api")
+    fs.mkdirSync(apiDir, { recursive: true })
+
+    const routesPath = path.join(tmpDir, "routes.json")
+    const routesJson = {
+      routes: {
+        "api:users_list": {
+          uri: "/api/users",
+          method: "GET",
+          methods: ["GET"],
+        },
+        "api:users_create": {
+          uri: "/api/users",
+          method: "POST",
+          methods: ["POST"],
+        },
+      },
+    }
+    fs.writeFileSync(routesPath, JSON.stringify(routesJson, null, 2))
+
+    const typesGen = [
+      "export type UsersListData = {",
+      "  method: 'get';",
+      "  url: '/api/users';",
+      "  query: { limit?: number };",
+      "}",
+      "export type UsersListResponses = { 200: Array<{ id: string }> }",
+      "export type UsersCreateData = {",
+      "  method: 'post';",
+      "  url: '/api/users';",
+      "  body: { name: string };",
+      "}",
+      "export type UsersCreateResponses = { 201: { id: string; name: string } }",
+      "",
+    ].join("\n")
+    fs.writeFileSync(path.join(apiDir, "types.gen.ts"), typesGen)
+
+    const changed = await emitSchemasTypes(routesPath, outputDir)
+
+    expect(changed).toBe(true)
+
+    const content = fs.readFileSync(path.join(outputDir, "schemas.ts"), "utf-8")
+    expect(content).toContain("'api:users_list': UsersListData")
+    expect(content).toContain("'api:users_list': UsersListResponses")
+    expect(content).toContain("'api:users_create': UsersCreateData")
+    expect(content).toContain("'api:users_create': UsersCreateResponses")
+  })
 })
+

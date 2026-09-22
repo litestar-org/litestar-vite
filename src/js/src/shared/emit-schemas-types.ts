@@ -47,27 +47,51 @@ interface OperationMapping {
   errorsType: string | null
 }
 
-/**
- * Parse hey-api types.gen.ts to extract Data and Responses types with their URLs.
- *
- * Looks for patterns like:
- *   export type SomeOperationData = { body: {...}; url: '/api/path'; ... }
- *   export type SomeOperationResponses = { 200: {...}; ... }
- *   export type SomeOperationErrors = SomeOperationResponses[400 | 422]
- */
-function parseHeyApiTypes(content: string): {
+interface ParsedHeyApiTypes {
   responsesTypes: Set<string>
   errorsTypes: Set<string>
   urlToDataType: Map<string, string>
-} {
+  methodAndUrlToDataType: Map<string, string>
+  urlToDataTypes: Map<string, string[]>
+}
+
+/**
+ * Parse hey-api types.gen.ts to extract Data and Responses types with their URLs and methods.
+ *
+ * Looks for patterns like:
+ *   export type SomeOperationData = { body: {...}; url: '/api/path'; method?: 'get'; ... }
+ *   export type SomeOperationResponses = { 200: {...}; ... }
+ *   export type SomeOperationErrors = SomeOperationResponses[400 | 422]
+ */
+function parseHeyApiTypes(content: string): ParsedHeyApiTypes {
   const responsesTypes = new Set<string>()
   const errorsTypes = new Set<string>()
   const urlToDataType = new Map<string, string>()
+  const methodAndUrlToDataType = new Map<string, string>()
+  const urlToDataTypes = new Map<string, string[]>()
 
   for (const { typeName, body } of findExportedDataTypeBlocks(content)) {
     const urlMatch = body.match(/url:\s*['"]([^'"]+)['"]/)
     const url = urlMatch ? urlMatch[1] : null
     if (url) {
+      const methodMatch = body.match(/method:\s*['"]([A-Za-z]+)['"]/)
+      let method: string | null = methodMatch ? methodMatch[1].toUpperCase() : null
+
+      if (!method) {
+        const methodPrefixMatch = typeName.match(/^(Get|Post|Put|Patch|Delete|Head|Options)\b/i)
+        if (methodPrefixMatch) {
+          method = methodPrefixMatch[1].toUpperCase()
+        }
+      }
+
+      if (method) {
+        methodAndUrlToDataType.set(`${method}:${url}`, typeName)
+      }
+
+      const list = urlToDataTypes.get(url) || []
+      list.push(typeName)
+      urlToDataTypes.set(url, list)
+
       urlToDataType.set(url, typeName)
     }
   }
@@ -84,7 +108,7 @@ function parseHeyApiTypes(content: string): {
     errorsTypes.add(match[1])
   }
 
-  return { responsesTypes, errorsTypes, urlToDataType }
+  return { responsesTypes, errorsTypes, urlToDataType, methodAndUrlToDataType, urlToDataTypes }
 }
 
 function findExportedDataTypeBlocks(content: string): Array<{ typeName: string; body: string }> {
@@ -194,22 +218,85 @@ function normalizePath(routePath: string): string {
   return routePath.replace(/\{([^:}]+):[^}]+\}/g, "{$1}")
 }
 
+function findMatchingDataType(
+  routeName: string,
+  routeMethod: string,
+  normalizedPath: string,
+  parsedTypes: ParsedHeyApiTypes,
+): string | null {
+  const methodUpper = routeMethod.toUpperCase()
+
+  // 1. Direct method:path match
+  const directMatch = parsedTypes.methodAndUrlToDataType.get(`${methodUpper}:${normalizedPath}`)
+  if (directMatch) {
+    return directMatch
+  }
+
+  // 2. Candidate list for URL
+  const candidates = parsedTypes.urlToDataTypes.get(normalizedPath)
+  if (!candidates || candidates.length === 0) {
+    return parsedTypes.urlToDataType.get(normalizedPath) || null
+  }
+
+  if (candidates.length === 1) {
+    return candidates[0]
+  }
+
+  // Disambiguate when multiple Data types share the same URL
+  const cleanRouteName = routeName.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()
+
+  let bestCandidate: string | null = null
+  let bestScore = -1
+
+  for (const candidate of candidates) {
+    let score = 0
+    const baseName = candidate.replace(/Data$/, "")
+    const cleanCandidate = baseName.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()
+
+    if (cleanCandidate === cleanRouteName) {
+      score += 100
+    } else if (cleanCandidate.includes(cleanRouteName) || cleanRouteName.includes(cleanCandidate)) {
+      score += 50
+    }
+
+    if (candidate.toLowerCase().startsWith(methodUpper.toLowerCase())) {
+      score += 40
+    } else if (methodUpper === "GET" && (candidate.includes("List") || candidate.includes("Get") || candidate.includes("Find") || candidate.includes("Read"))) {
+      score += 30
+    } else if (methodUpper === "POST" && (candidate.includes("Create") || candidate.includes("Add") || candidate.includes("Post"))) {
+      score += 30
+    } else if (methodUpper === "PUT" && (candidate.includes("Update") || candidate.includes("Replace") || candidate.includes("Put"))) {
+      score += 30
+    } else if (methodUpper === "PATCH" && (candidate.includes("Patch") || candidate.includes("Update") || candidate.includes("Modify"))) {
+      score += 30
+    } else if (methodUpper === "DELETE" && (candidate.includes("Delete") || candidate.includes("Remove") || candidate.includes("Destroy"))) {
+      score += 30
+    }
+
+    if (score > bestScore) {
+      bestScore = score
+      bestCandidate = candidate
+    }
+  }
+
+  return bestCandidate || candidates[0]
+}
+
 /**
- * Create operation mappings by matching routes to hey-api types by URL.
+ * Create operation mappings by matching routes to hey-api types by URL and method.
  */
 function createOperationMappings(
   routes: Record<string, RouteDefinition>,
-  urlToDataType: Map<string, string>,
-  responsesTypes: Set<string>,
-  errorsTypes: Set<string>,
+  parsedTypes: ParsedHeyApiTypes,
 ): OperationMapping[] {
   const mappings: OperationMapping[] = []
 
   for (const [routeName, route] of Object.entries(routes)) {
     const normalizedPath = normalizePath(route.uri)
+    const routeMethod = route.method || (route.methods && route.methods[0]) || "GET"
 
-    // Try to find matching Data type by URL
-    const dataType = urlToDataType.get(normalizedPath) || null
+    // Try to find matching Data type by URL and method
+    const dataType = findMatchingDataType(routeName, routeMethod, normalizedPath, parsedTypes)
 
     // Derive Responses and Errors type names from Data type
     let responsesType: string | null = null
@@ -220,10 +307,10 @@ function createOperationMappings(
       const candidateResponses = `${baseName}Responses`
       const candidateErrors = `${baseName}Errors`
 
-      if (responsesTypes.has(candidateResponses)) {
+      if (parsedTypes.responsesTypes.has(candidateResponses)) {
         responsesType = candidateResponses
       }
-      if (errorsTypes.has(candidateErrors)) {
+      if (parsedTypes.errorsTypes.has(candidateErrors)) {
         errorsType = candidateErrors
       }
     }
@@ -542,10 +629,10 @@ export async function emitSchemasTypes(routesJsonPath: string, outputDir: string
 
   // Read and parse hey-api types
   const typesContent = await fs.promises.readFile(apiTypesPath, "utf-8")
-  const { urlToDataType, responsesTypes, errorsTypes } = parseHeyApiTypes(typesContent)
+  const parsedTypes = parseHeyApiTypes(typesContent)
 
   // Create operation mappings
-  const mappings = createOperationMappings(routesJson.routes, urlToDataType, responsesTypes, errorsTypes)
+  const mappings = createOperationMappings(routesJson.routes, parsedTypes)
 
   // Generate schemas.ts content
   const content = generateSchemasTs(mappings, apiTypesImportPath)
