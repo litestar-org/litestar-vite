@@ -123,6 +123,13 @@ describe("emitChannelsTypes", () => {
           },
         },
       },
+      operations: {
+        receive_ws_chat: { action: "receive", channel: { $ref: "#/channels/ws_chat" }, messages: [{ $ref: "#/channels/ws_chat/messages/inbound" }] },
+        send_ws_chat: { action: "send", channel: { $ref: "#/channels/ws_chat" }, messages: [{ $ref: "#/channels/ws_chat/messages/outbound" }] },
+        send_notifications: { action: "send", channel: { $ref: "#/channels/notifications" }, messages: [{ $ref: "#/channels/notifications/messages/message" }] },
+        receive_notifications: { action: "receive", channel: { $ref: "#/channels/notifications" }, messages: [{ $ref: "#/channels/notifications/messages/message" }] },
+        stream_stream_events: { action: "send", channel: { $ref: "#/channels/stream_events" }, messages: [{ $ref: "#/channels/stream_events/messages/event" }] },
+      },
     }
 
     fs.writeFileSync(asyncapiPath, JSON.stringify(doc, null, 2), "utf-8")
@@ -153,8 +160,8 @@ describe("emitChannelsTypes", () => {
     expect(content).toContain('address: "/ws/chat/{room_id}";')
     expect(content).toContain('protocol: "websocket";')
     expect(content).toContain("room_id: string;")
-    expect(content).toContain("send: OutboundMessage;")
-    expect(content).toContain("receive: InboundMessage;")
+    expect(content).toContain("send: InboundMessage;")
+    expect(content).toContain("receive: OutboundMessage;")
 
     expect(content).toContain('"notifications": {')
     expect(content).toContain('address: "notifications";')
@@ -166,8 +173,8 @@ describe("emitChannelsTypes", () => {
     expect(content).toContain('"stream_events": {')
     expect(content).toContain('address: "/stream/events";')
     expect(content).toContain('protocol: "sse";')
-    expect(content).toContain("send: ServerEvent;")
-    expect(content).toContain("receive: never;")
+    expect(content).toContain("send: never;")
+    expect(content).toContain("receive: ServerEvent;")
 
     // Helpers
     expect(content).toContain("export type ChannelKey = keyof RealtimeChannels;")
@@ -211,4 +218,81 @@ describe("emitChannelsTypes", () => {
     const secondRun = await emitChannelsTypes(asyncapiPath, tmpDir)
     expect(secondRun).toBe(false)
   })
+
+  it("falls back to a single message when the document has no operations", async () => {
+    const tmpDir = createTmpDir()
+    const asyncapiPath = path.join(tmpDir, "asyncapi.json")
+
+    const doc = {
+      asyncapi: "3.0.0",
+      channels: {
+        chat: {
+          address: "/chat",
+          bindings: { ws: {} },
+          messages: {
+            msg: {
+              name: "ChatMessage",
+              payload: { type: "string" },
+            },
+          },
+        },
+        sse_feed: {
+          address: "/sse/feed",
+          bindings: { http: {} },
+          messages: {
+            item: {
+              name: "FeedItem",
+              payload: { type: "number" },
+            },
+          },
+        },
+      },
+    }
+    fs.writeFileSync(asyncapiPath, JSON.stringify(doc, null, 2), "utf-8")
+
+    const changed = await emitChannelsTypes(asyncapiPath, tmpDir)
+    expect(changed).toBe(true)
+
+    const outFile = path.join(tmpDir, "channels.ts")
+    const content = fs.readFileSync(outFile, "utf-8")
+
+    expect(content).toContain('"chat": {')
+    expect(content).toContain("send: string;")
+    expect(content).toContain("receive: string;")
+
+    expect(content).toContain('"sse_feed": {')
+    expect(content).toContain("send: never;")
+    expect(content).toContain("receive: number;")
+  })
+
+  it("emits never for a channel with no resolvable operations or messages", async () => {
+    const tmpDir = createTmpDir()
+    const asyncapiPath = path.join(tmpDir, "asyncapi.json")
+
+    const doc = {
+      asyncapi: "3.0.0",
+      channels: {
+        empty_channel: {
+          address: "/empty",
+          bindings: { ws: {} },
+        },
+      },
+    }
+    fs.writeFileSync(asyncapiPath, JSON.stringify(doc, null, 2), "utf-8")
+
+    const changed = await emitChannelsTypes(asyncapiPath, tmpDir)
+    expect(changed).toBe(true)
+
+    const outFile = path.join(tmpDir, "channels.ts")
+    const content = fs.readFileSync(outFile, "utf-8")
+
+    expect(content).toContain('"empty_channel": {')
+    expect(content).toContain("send: never;")
+    expect(content).toContain("receive: never;")
+
+    const registryMatch = content.match(/export interface RealtimeChannels \{([\s\S]*?)\}/)
+    expect(registryMatch).not.toBeNull()
+    expect(registryMatch![1]).not.toContain("unknown")
+  })
 })
+

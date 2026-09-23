@@ -30,6 +30,12 @@ interface AsyncAPIChannelDoc {
   bindings?: Record<string, Record<string, unknown>>
 }
 
+interface AsyncAPIOperationDoc {
+  action?: "send" | "receive"
+  channel?: { $ref?: string }
+  messages?: { $ref?: string }[]
+}
+
 interface AsyncAPIDoc {
   asyncapi: string
   info?: {
@@ -38,6 +44,7 @@ interface AsyncAPIDoc {
     description?: string
   }
   channels?: Record<string, AsyncAPIChannelDoc>
+  operations?: Record<string, AsyncAPIOperationDoc>
   components?: {
     schemas?: Record<string, any>
   }
@@ -130,6 +137,78 @@ function renderComponentSchemas(schemas: Record<string, any>): string[] {
   return lines
 }
 
+/**
+ * Resolve client-perspective send and receive message keys for a channel.
+ *
+ * Operations in AsyncAPI 3.0 use application-relative action semantics:
+ * - `action: "receive"` means inbound to the server, which is client `send`.
+ * - `action: "send"` means outbound from the server, which is client `receive`.
+ *
+ * Fallback behavior when no operation in `doc.operations` references this channel:
+ * - If `channel.messages` has exactly one entry:
+ *   - If the channel has `bindings.http` (SSE, unidirectional server-to-client),
+ *     that single key is assigned to `clientReceiveKeys`, while `clientSendKeys` remains empty.
+ *   - Otherwise, that single key is assigned to both `clientSendKeys` and `clientReceiveKeys`.
+ * - If `channel.messages` has zero or multiple messages and no matching operations,
+ *   returns empty arrays for both directions (resulting in `never`).
+ */
+function resolveChannelDirections(
+  channelKey: string,
+  doc: AsyncAPIDoc,
+): { clientSendKeys: string[]; clientReceiveKeys: string[] } {
+  const operations = Object.entries(doc.operations ?? {})
+  const targetChannelRef = `#/channels/${channelKey}`
+  const targetMessagePrefix = `#/channels/${channelKey}/messages/`
+
+  const matchingOps = operations.filter(([, op]) => op.channel?.$ref === targetChannelRef)
+
+  if (matchingOps.length > 0) {
+    const sendKeySet = new Set<string>()
+    const receiveKeySet = new Set<string>()
+
+    for (const [, op] of matchingOps) {
+      const messageRefs = op.messages ?? []
+      for (const m of messageRefs) {
+        if (m.$ref && m.$ref.startsWith(targetMessagePrefix)) {
+          const msgKey = m.$ref.slice(targetMessagePrefix.length)
+          if (op.action === "receive") {
+            sendKeySet.add(msgKey)
+          } else if (op.action === "send") {
+            receiveKeySet.add(msgKey)
+          }
+        }
+      }
+    }
+
+    return {
+      clientSendKeys: [...sendKeySet].toSorted(),
+      clientReceiveKeys: [...receiveKeySet].toSorted(),
+    }
+  }
+
+  const channel = doc.channels?.[channelKey]
+  const messageEntries = Object.keys(channel?.messages ?? {})
+
+  if (messageEntries.length === 1) {
+    const singleKey = messageEntries[0]
+    if (channel?.bindings?.http) {
+      return {
+        clientSendKeys: [],
+        clientReceiveKeys: [singleKey],
+      }
+    }
+    return {
+      clientSendKeys: [singleKey],
+      clientReceiveKeys: [singleKey],
+    }
+  }
+
+  return {
+    clientSendKeys: [],
+    clientReceiveKeys: [],
+  }
+}
+
 export function generateChannelsTs(doc: AsyncAPIDoc): string {
   const sections: string[] = [
     "/**",
@@ -165,23 +244,24 @@ export function generateChannelsTs(doc: AsyncAPIDoc): string {
         ? `{\n${params.map((p) => `      ${formatPropName(p)}: string;`).join("\n")}\n    }`
         : "Record<string, never>"
 
-    let sendType = "unknown"
-    if (channel.messages?.outbound?.payload) {
-      sendType = jsonSchemaToTs(channel.messages.outbound.payload, 2)
-    } else if (channel.messages?.event?.payload) {
-      sendType = jsonSchemaToTs(channel.messages.event.payload, 2)
-    } else if (channel.messages?.message?.payload) {
-      sendType = jsonSchemaToTs(channel.messages.message.payload, 2)
+    const { clientSendKeys, clientReceiveKeys } = resolveChannelDirections(key, doc)
+
+    const payloadUnion = (messageKeys: string[]): string => {
+      const renderedTypes = new Set<string>()
+      for (const msgKey of messageKeys) {
+        const payload = channel.messages?.[msgKey]?.payload
+        if (payload !== undefined && payload !== null) {
+          renderedTypes.add(jsonSchemaToTs(payload, 2))
+        }
+      }
+      if (renderedTypes.size === 0) {
+        return "never"
+      }
+      return Array.from(renderedTypes).join(" | ")
     }
 
-    let receiveType = "unknown"
-    if (protocol === "sse") {
-      receiveType = "never"
-    } else if (channel.messages?.inbound?.payload) {
-      receiveType = jsonSchemaToTs(channel.messages.inbound.payload, 2)
-    } else if (channel.messages?.message?.payload) {
-      receiveType = jsonSchemaToTs(channel.messages.message.payload, 2)
-    }
+    const sendType = payloadUnion(clientSendKeys)
+    const receiveType = payloadUnion(clientReceiveKeys)
 
     channelEntries.push(
       `  ${JSON.stringify(key)}: {`,
