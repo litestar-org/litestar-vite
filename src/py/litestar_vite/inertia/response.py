@@ -1,5 +1,6 @@
 import contextlib
 import itertools
+import re
 from collections.abc import AsyncGenerator, Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -49,6 +50,8 @@ if TYPE_CHECKING:
     from litestar.connection.base import AuthT, StateT, UserT
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
 
+
+_INERTIA_PAGE_SCRIPT_PATTERN = re.compile(r"<script[^>]+(?:data-page=|id=[\"']app_page[\"'])", re.IGNORECASE)
 
 T = TypeVar("T")
 
@@ -347,7 +350,12 @@ class InertiaResponse(Response[T]):
         """Render the page using SPA mode (HTML transformation instead of templates).
 
         This method uses AppHandler to get the base HTML and injects
-        the page props as a data-page attribute on the app element.
+        the page props via page_data (which injects the page script into the document
+        when use_script_element is true, or sets data-page on the app element).
+        In SSR mode, the page payload is supplied to the shell so the client-side
+        bootstrap survives app-element replacement. If the SSR body payload already
+        contains an Inertia bootstrap script, passing page data to the shell is omitted
+        to prevent duplicate bootstrap tags.
 
         SSR (when configured) is fetched by the async pre-pass and stored on
         ``self._cached_ssr_payload``; this method just consumes it.
@@ -377,7 +385,8 @@ class InertiaResponse(Response[T]):
             ssr_payload = self._cached_ssr_payload
 
             csrf_token = self._get_csrf_token(request)
-            html = spa_handler.get_html_sync(csrf_token=csrf_token)
+            page_data = None if _INERTIA_PAGE_SCRIPT_PATTERN.search(ssr_payload.body) else page_dict
+            html = spa_handler.get_html_sync(page_data=page_data, csrf_token=csrf_token)
 
             selector = "#app"
             spa_config = spa_handler._spa_config  # pyright: ignore

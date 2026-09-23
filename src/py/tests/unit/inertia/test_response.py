@@ -17,6 +17,7 @@ from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED, HTTP_202_ACCEPT
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
+from litestar.utils.scope.state import ScopeState
 
 from litestar_vite.config import InertiaConfig, ViteConfig
 from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
@@ -53,6 +54,7 @@ from litestar_vite.inertia.response import (
     _parse_inertia_ssr_payload,
     _render_inertia_ssr,
 )
+from litestar_vite.inertia.types import PageProps
 from litestar_vite.plugin import VitePlugin
 
 
@@ -3451,4 +3453,33 @@ async def test_external_redirect_inertia_client_keeps_409(
 
     assert response.status_code == 409
     assert response.headers[InertiaHeaders.LOCATION.value] == "https://payments.example.com/checkout"
+
+
+def test_render_spa_ssr_branch_passes_page_data() -> None:
+    """The SSR branch of _render_spa supplies page_data to get_html_sync."""
+    response = InertiaResponse[dict[str, Any]]({"greeting": "hi"})
+    response._cached_ssr_payload = _InertiaSSRResult(
+        body='<div id="app">rendered</div>',
+        head=["<title>Home</title>"],
+    )
+    spa_handler = MagicMock()
+    spa_handler.get_html_sync.return_value = '<html><head></head><body><div id="app"></div></body></html>'
+    spa_handler._spa_config = None
+    vite_plugin = MagicMock(spa_handler=spa_handler)
+    request = MagicMock(spec=Request)
+    request.scope = {}
+    ScopeState.from_scope(request.scope).csrf_token = "csrf-token-123"
+    page_props = PageProps[dict[str, Any]](
+        component="Home",
+        url="/",
+        version="v1",
+        props={"greeting": "hi"},
+    )
+    result = response._render_spa(request, page_props, vite_plugin)
+    assert spa_handler.get_html_sync.call_args.kwargs.get("page_data") is not None
+    assert spa_handler.get_html_sync.call_args.kwargs["page_data"]["component"] == "Home"
+    assert spa_handler.get_html_sync.call_args.kwargs["csrf_token"] == "csrf-token-123"
+    assert b"rendered" in result
+    assert b"<title>Home</title>" in result
+
 
