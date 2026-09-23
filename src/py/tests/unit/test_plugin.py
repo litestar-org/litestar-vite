@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Generator
-from dataclasses import FrozenInstanceError, fields
+from dataclasses import FrozenInstanceError, dataclass, field, fields
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
@@ -2362,3 +2362,53 @@ def test_static_router_emits_opt_on_handlers_only(tmp_path: Path) -> None:
             layer_opt = getattr(layer, "opt", None)
             if isinstance(layer_opt, Mapping):
                 assert "exclude_from_auth" not in layer_opt
+
+
+@dataclass
+class _FakeDocsConfig:
+    path: str = "/asyncapi"
+
+
+@dataclass
+class _FakeAsyncAPIConfig:
+    docs: _FakeDocsConfig = field(default_factory=_FakeDocsConfig)
+
+
+class _FakeAsyncAPIRoutePlugin:
+    """Test double for litestar-asyncapi plugin to test route prefix reservation."""
+
+    def __init__(self, *, docs_path: str = "/asyncapi") -> None:
+        self.config = _FakeAsyncAPIConfig(docs=_FakeDocsConfig(path=docs_path))
+
+    def get_asyncapi_schema(self, app: Any) -> Any:
+        return {}
+
+
+def test_route_prefixes_include_asyncapi_docs_when_plugin_present() -> None:
+    """Test route prefixes include /asyncapi when an AsyncAPI plugin is registered."""
+    from litestar_vite.plugin._utils import build_litestar_route_prefixes
+
+    plugin = _FakeAsyncAPIRoutePlugin()
+    app = Litestar(plugins=[plugin])
+    prefixes = build_litestar_route_prefixes(app)
+    assert "/asyncapi" in prefixes
+
+
+def test_route_prefixes_include_custom_asyncapi_docs_path() -> None:
+    """Test route prefixes include both default and custom AsyncAPI documentation paths."""
+    from litestar_vite.plugin._utils import build_litestar_route_prefixes
+
+    plugin = _FakeAsyncAPIRoutePlugin(docs_path="/realtime-docs")
+    app = Litestar(plugins=[plugin])
+    prefixes = build_litestar_route_prefixes(app)
+    assert "/asyncapi" in prefixes
+    assert "/realtime-docs" in prefixes
+
+
+def test_route_prefixes_unchanged_without_asyncapi_plugin() -> None:
+    """Test route prefixes on a plain app without an AsyncAPI plugin remain unchanged."""
+    from litestar_vite.plugin._utils import build_litestar_route_prefixes
+
+    app = Litestar(route_handlers=[])
+    prefixes = build_litestar_route_prefixes(app)
+    assert "/asyncapi" not in prefixes

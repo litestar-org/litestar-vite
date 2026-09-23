@@ -1239,6 +1239,18 @@ standard = [
 ]
 
 [[package]]
+name = "litestar-asyncapi"
+version = "0.2.0"
+source = { registry = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/ah-3p-staging-python/simple/" }
+dependencies = [
+    { name = "litestar" },
+]
+sdist = { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/ah-3p-staging-python/litestar-asyncapi/litestar_asyncapi-0.2.0.tar.gz", hash = "sha256:d2caaa849e35edb0774e7f18cc91b4a7c38634b3506ef2979c237da4a5868520" }
+wheels = [
+    { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/ah-3p-staging-python/litestar-asyncapi/litestar_asyncapi-0.2.0-py3-none-any.whl", hash = "sha256:d66a84acad8f92f439f0e42539c110deb09eda132b6d709afb8a9770e3b88d96" },
+]
+
+[[package]]
 name = "litestar-granian"
 version = "0.16.0"
 source = { registry = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/ah-3p-staging-python/simple/" }
@@ -1278,6 +1290,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+asyncapi = [
+    { name = "litestar-asyncapi" },
+]
 http2 = [
     { name = "h2" },
 ]
@@ -1300,6 +1315,7 @@ dev = [
     { name = "httpx" },
     { name = "jsx-lexer" },
     { name = "litestar", extra = ["cryptography", "jinja", "jwt", "standard"] },
+    { name = "litestar-asyncapi" },
     { name = "litestar-granian", extra = ["uvloop"] },
     { name = "mypy" },
     { name = "prek" },
@@ -1363,6 +1379,7 @@ test = [
     { name = "fsspec" },
     { name = "httpx" },
     { name = "litestar", extra = ["cryptography", "jinja", "jwt", "standard"] },
+    { name = "litestar-asyncapi" },
     { name = "litestar-granian", extra = ["uvloop"] },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1380,11 +1397,12 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.24.1" },
     { name = "jinja2", marker = "extra == 'jinja'" },
     { name = "litestar", specifier = ">=2.22.0" },
+    { name = "litestar-asyncapi", marker = "extra == 'asyncapi'", specifier = ">=0.2.0" },
     { name = "nodeenv", marker = "extra == 'nodeenv'" },
     { name = "typing-extensions" },
     { name = "websockets", specifier = ">=12.0" },
 ]
-provides-extras = ["jinja", "nodeenv", "http2"]
+provides-extras = ["jinja", "nodeenv", "http2", "asyncapi"]
 
 [package.metadata.requires-dev]
 build = [{ name = "bump-my-version" }]
@@ -1396,6 +1414,7 @@ dev = [
     { name = "httpx", specifier = ">=0.24.1" },
     { name = "jsx-lexer" },
     { name = "litestar", extras = ["standard", "cryptography", "jwt", "jinja"] },
+    { name = "litestar-asyncapi", specifier = ">=0.2.0" },
     { name = "litestar-granian", extras = ["uvloop"], specifier = ">=0.16.0b2" },
     { name = "mypy", specifier = ">=1.5.1" },
     { name = "prek", specifier = ">=0.4.3" },
@@ -1451,6 +1470,7 @@ test = [
     { name = "fsspec" },
     { name = "httpx", specifier = ">=0.24.1" },
     { name = "litestar", extras = ["standard", "cryptography", "jwt", "jinja"] },
+    { name = "litestar-asyncapi", specifier = ">=0.2.0" },
     { name = "litestar-granian", extras = ["uvloop"], specifier = ">=0.16.0b2" },
     { name = "pytest", specifier = ">=7.4.1" },
     { name = "pytest-asyncio" },

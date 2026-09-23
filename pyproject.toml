@@ -44,6 +44,7 @@ Source = "https://github.com/litestar-org/litestar-vite"
 jinja = [ "jinja2"]
 nodeenv = ["nodeenv"]
 http2 = ["h2>=4.0.0"]
+asyncapi = ["litestar-asyncapi>=0.2.0"]
 
 [build-system]
 build-backend = "hatchling.build"
@@ -96,6 +97,7 @@ test = [
   "pytest-xdist>=3.6.1",
   "pytest-timeout>=2.0.0",
   "httpx>=0.24.1",
+  "litestar-asyncapi>=0.2.0",
 ]
 
 [tool.bumpversion]

@@ -147,12 +147,15 @@ nitpick_ignore = [
     (PY_CLASS, "httpx.AsyncClient"),
     # Codegen internal types (use public module path - remapping handles private paths)
     (PY_CLASS, "litestar_vite.codegen.OpenAPISupport"),
+    (PY_CLASS, "litestar_vite.codegen._asyncapi.AsyncAPISchemaContext"),
+    (PY_CLASS, "litestar_vite.codegen._asyncapi._ChannelKeyAllocator"),
 ]
 nitpick_ignore_regex = [
     (PY_RE, r"litestar_vite.*\.T"),
     (PY_RE, r"litestar\.template\.*\.T"),
     (PY_RE, r"litestar\.contrib\.*\.T"),
     (PY_RE, r"config\.app\.AppConfig"),
+    (PY_RE, r"litestar_vite\.codegen\._asyncapi\..*"),
 ]
 
 napoleon_google_docstring = True

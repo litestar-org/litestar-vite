@@ -35,6 +35,7 @@ import click
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 from litestar.config.csrf import CSRFConfig
 
+from litestar_vite.codegen import asyncapi_docs_paths
 from litestar_vite.codegen import write_if_changed as _write_if_changed
 from litestar_vite.config import InertiaConfig, TypeGenConfig
 
@@ -644,6 +645,7 @@ def build_litestar_route_prefixes(app: "Litestar", extra_route_prefixes: tuple[s
     Includes:
     - All registered Litestar route paths
     - OpenAPI schema/docs paths registered by Litestar
+    - AsyncAPI documentation paths (when an AsyncAPI plugin is registered)
     - Explicit RuntimeConfig.extra_route_prefixes values
 
     Args:
@@ -683,6 +685,11 @@ def build_litestar_route_prefixes(app: "Litestar", extra_route_prefixes: tuple[s
             prefix = _normalize_route_prefix(schema_path)
             if prefix is not None:
                 prefixes.append(prefix)
+
+    for asyncapi_path in asyncapi_docs_paths(app):
+        prefix = _normalize_route_prefix(asyncapi_path)
+        if prefix is not None:
+            prefixes.append(prefix)
 
     prefixes.extend(
         prefix for raw_prefix in extra_route_prefixes if (prefix := _normalize_route_prefix(raw_prefix)) is not None

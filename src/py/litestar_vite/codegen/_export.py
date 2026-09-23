@@ -39,6 +39,9 @@ class ExportResult:
     asyncapi_schema: "dict[str, Any] | None" = None
     """The AsyncAPI 3.0 schema dict (for downstream use)."""
 
+    asyncapi_source: "str | None" = None
+    """The authoritative source for the AsyncAPI schema ('litestar-asyncapi' or 'builtin')."""
+
 
 def fmt_path(path: Path) -> str:
     """Format path for display, using relative path when possible.
@@ -357,16 +360,16 @@ def export_asyncapi(
         serializer: Optional custom serializer for JSON encoding.
         result: ExportResult accumulator for exported or unchanged files.
     """
-    from litestar_vite.codegen._asyncapi import create_asyncapi_document
+    from litestar_vite.codegen._asyncapi_source import resolve_asyncapi_document
     from litestar_vite.codegen._utils import encode_deterministic_json, write_if_changed
 
     asyncapi_path = types_config.asyncapi_path
     if asyncapi_path is None:
         asyncapi_path = types_config.output / "asyncapi.json"
 
-    doc = create_asyncapi_document(app)
-    schema_dict = doc.to_dict()
+    schema_dict, source = resolve_asyncapi_document(app)
     result.asyncapi_schema = schema_dict
+    result.asyncapi_source = source
 
     schema_content = encode_deterministic_json(schema_dict, serializer=serializer)
 

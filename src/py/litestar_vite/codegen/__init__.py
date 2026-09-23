@@ -27,6 +27,13 @@ from litestar_vite.codegen._asyncapi import (
     extract_sse_routes,
     extract_websocket_routes,
 )
+from litestar_vite.codegen._asyncapi_source import (
+    ASYNCAPI_DOCS_DEFAULT_PATH,
+    asyncapi_docs_paths,
+    find_asyncapi_plugin,
+    normalize_asyncapi_document,
+    resolve_asyncapi_document,
+)
 from litestar_vite.codegen._export import (
     ExportResult,
     app_has_realtime_surface,
@@ -44,6 +51,7 @@ from litestar_vite.codegen._routes import (
 from litestar_vite.codegen._utils import encode_deterministic_json, strip_timestamp_for_comparison, write_if_changed
 
 __all__ = (
+    "ASYNCAPI_DOCS_DEFAULT_PATH",
     "ASYNCAPI_PAYLOAD_OPT_KEY",
     "AsyncAPIChannel",
     "AsyncAPIComponents",
@@ -57,6 +65,7 @@ __all__ = (
     "InertiaPageMetadata",
     "RouteMetadata",
     "app_has_realtime_surface",
+    "asyncapi_docs_paths",
     "create_asyncapi_document",
     "encode_deterministic_json",
     "export_asyncapi",
@@ -68,9 +77,12 @@ __all__ = (
     "extract_route_metadata",
     "extract_sse_routes",
     "extract_websocket_routes",
+    "find_asyncapi_plugin",
     "generate_inertia_pages_json",
     "generate_routes_json",
     "generate_routes_ts",
+    "normalize_asyncapi_document",
+    "resolve_asyncapi_document",
     "strip_timestamp_for_comparison",
     "typegen_outputs_requested",
     "write_if_changed",

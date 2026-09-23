@@ -4,7 +4,7 @@ import importlib
 import json
 import sys
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, TypedDict
@@ -1065,4 +1065,241 @@ def test_cli_imports_without_litestar_channels(monkeypatch: pytest.MonkeyPatch) 
     finally:
         monkeypatch.undo()
         importlib.reload(asyncapi_mod)
+
+
+@dataclass
+class _FakeDocsConfig:
+    path: str = "/asyncapi"
+
+
+@dataclass
+class _FakeAsyncAPIConfig:
+    docs: _FakeDocsConfig = field(default_factory=_FakeDocsConfig)
+
+
+class _FakeAsyncAPIPlugin:
+    """Test double for litestar-asyncapi plugin."""
+
+    def __init__(
+        self,
+        doc: dict[str, Any] | None = None,
+        *,
+        docs_path: str = "/asyncapi",
+        raise_err: bool = False,
+    ) -> None:
+        self.doc = doc
+        self.config = _FakeAsyncAPIConfig(docs=_FakeDocsConfig(path=docs_path))
+        self.raise_err = raise_err
+
+    def get_asyncapi_schema(self, app: Any) -> Any:
+        if self.raise_err:
+            raise TypeError("Simulated plugin exception")
+        return self.doc
+
+
+def test_resolve_document_uses_builtin_without_plugin() -> None:
+    """Test resolve_asyncapi_document falls back to builtin when no plugin is registered."""
+    from litestar_vite.codegen import normalize_asyncapi_document, resolve_asyncapi_document
+
+    @websocket_listener("/chat")
+    async def chat_handler(data: str) -> str:
+        return data
+
+    app = Litestar(route_handlers=[chat_handler])
+    resolved_doc, source = resolve_asyncapi_document(app)
+
+    expected_doc = normalize_asyncapi_document(create_asyncapi_document(app).to_dict())
+    assert source == "builtin"
+    assert resolved_doc == expected_doc
+
+
+def test_resolve_document_prefers_duck_typed_plugin() -> None:
+    """Test resolve_asyncapi_document uses duck-typed plugin document when available."""
+    from litestar_vite.codegen import resolve_asyncapi_document
+
+    raw_310_doc: dict[str, Any] = {
+        "asyncapi": "3.1.0",
+        "info": {"title": "Realtime Chat", "version": "1.0.0"},
+        "channels": {
+            "chat": {
+                "address": "/chat",
+                "bindings": {"ws": {}},
+                "messages": {
+                    "chatMessage": {
+                        "payload": {"$ref": "#/components/schemas/ChatMessage"},
+                    }
+                },
+            }
+        },
+        "operations": {
+            "receiveChatMessage": {
+                "action": "receive",
+                "channel": {"$ref": "#/channels/chat"},
+                "messages": [{"$ref": "#/channels/chat/messages/chatMessage"}],
+            },
+            "sendChatMessage": {
+                "action": "send",
+                "channel": {"$ref": "#/channels/chat"},
+                "messages": [{"$ref": "#/channels/chat/messages/chatMessage"}],
+            },
+        },
+        "components": {
+            "schemas": {
+                "ChatMessage": {
+                    "type": "object",
+                    "properties": {"text": {"type": "string"}},
+                    "required": ["text"],
+                }
+            }
+        },
+    }
+
+    plugin = _FakeAsyncAPIPlugin(doc=raw_310_doc, docs_path="/asyncapi")
+    app = Litestar(plugins=[plugin])
+
+    resolved_doc, source = resolve_asyncapi_document(app)
+
+    assert source == "litestar-asyncapi"
+    assert resolved_doc["asyncapi"] == "3.1.0"
+    assert "chat" in resolved_doc["channels"]
+    assert resolved_doc["operations"]["receiveChatMessage"]["channel"]["$ref"] == "#/channels/chat"
+    assert (
+        resolved_doc["operations"]["receiveChatMessage"]["messages"][0]["$ref"]
+        == "#/channels/chat/messages/chatMessage"
+    )
+    assert resolved_doc["operations"]["sendChatMessage"]["channel"]["$ref"] == "#/channels/chat"
+    assert (
+        resolved_doc["operations"]["sendChatMessage"]["messages"][0]["$ref"]
+        == "#/channels/chat/messages/chatMessage"
+    )
+
+
+def test_resolve_document_falls_back_when_plugin_returns_non_dict() -> None:
+    """Test resolve_asyncapi_document falls back to builtin without warnings when plugin returns non-dict."""
+    import warnings
+
+    from litestar_vite.codegen import resolve_asyncapi_document
+
+    plugin = _FakeAsyncAPIPlugin(doc=None)
+    app = Litestar(plugins=[plugin])
+
+    with warnings.catch_warnings(record=True) as recorded:
+        warnings.simplefilter("always")
+        resolved_doc, source = resolve_asyncapi_document(app)
+
+    assert source == "builtin"
+    assert isinstance(resolved_doc, dict)
+    assert len(recorded) == 0
+
+
+def test_resolve_document_falls_back_when_plugin_raises() -> None:
+    """Test resolve_asyncapi_document falls back to builtin when plugin raises TypeError."""
+    from litestar_vite.codegen import resolve_asyncapi_document
+
+    plugin = _FakeAsyncAPIPlugin(raise_err=True)
+    app = Litestar(plugins=[plugin])
+
+    resolved_doc, source = resolve_asyncapi_document(app)
+    assert source == "builtin"
+    assert isinstance(resolved_doc, dict)
+
+
+def test_normalized_documents_from_both_sources_agree() -> None:
+    """Test normalized documents from builtin generator and external plugin produce compatible structures."""
+    from litestar_vite.codegen import normalize_asyncapi_document, resolve_asyncapi_document
+
+    @websocket_listener("/chat")
+    async def chat_handler(data: str) -> str:
+        return data
+
+    app_builtin = Litestar(route_handlers=[chat_handler])
+    builtin_doc, builtin_source = resolve_asyncapi_document(app_builtin)
+    assert builtin_source == "builtin"
+
+    fake_doc: dict[str, Any] = {
+        "asyncapi": "3.1.0",
+        "info": {"title": "Test Chat", "version": "1.0.0"},
+        "channels": {
+            "custom_chat_key": {
+                "address": "/chat",
+                "bindings": {"ws": {}},
+                "messages": {"msg": {"payload": {"type": "string"}}},
+            }
+        },
+        "operations": {
+            "recv_op": {
+                "action": "receive",
+                "channel": {"$ref": "#/channels/custom_chat_key"},
+                "messages": [{"$ref": "#/channels/custom_chat_key/messages/msg"}],
+            },
+            "send_op": {
+                "action": "send",
+                "channel": {"$ref": "#/channels/custom_chat_key"},
+                "messages": [{"$ref": "#/channels/custom_chat_key/messages/msg"}],
+            },
+        },
+    }
+    normalized_fake = normalize_asyncapi_document(fake_doc)
+
+    assert set(builtin_doc["channels"].keys()) == set(normalized_fake["channels"].keys())
+    assert "chat" in builtin_doc["channels"]
+    assert builtin_doc["channels"]["chat"]["bindings"] == normalized_fake["channels"]["chat"]["bindings"]
+    assert "ws" in builtin_doc["channels"]["chat"]["bindings"]
+
+    builtin_actions = {op["action"] for op in builtin_doc["operations"].values()}
+    fake_actions = {op["action"] for op in normalized_fake["operations"].values()}
+    assert builtin_actions == fake_actions
+
+
+def test_export_records_asyncapi_source(tmp_path: Path) -> None:
+    """Test ExportResult records the authoritative asyncapi_source for both resolution paths."""
+    from litestar_vite.codegen import export_integration_assets
+    from litestar_vite.config import TypeGenConfig, ViteConfig
+
+    @websocket_listener("/chat")
+    async def chat_handler(data: str) -> str:
+        return data
+
+    app_builtin = Litestar(route_handlers=[chat_handler])
+    config_builtin = ViteConfig(types=TypeGenConfig(output=tmp_path / "builtin", generate_channels=True))
+    result_builtin = export_integration_assets(app_builtin, config_builtin)
+    assert result_builtin.asyncapi_source == "builtin"
+
+    fake_doc: dict[str, Any] = {
+        "asyncapi": "3.1.0",
+        "info": {"title": "Realtime", "version": "1.0.0"},
+        "channels": {
+            "chat": {
+                "address": "/chat",
+                "bindings": {"ws": {}},
+            }
+        },
+    }
+    plugin = _FakeAsyncAPIPlugin(doc=fake_doc)
+    app_plugin = Litestar(route_handlers=[chat_handler], plugins=[plugin])
+    config_plugin = ViteConfig(types=TypeGenConfig(output=tmp_path / "plugin", generate_channels=True))
+    result_plugin = export_integration_assets(app_plugin, config_plugin)
+    assert result_plugin.asyncapi_source == "litestar-asyncapi"
+
+
+def test_no_warnings_without_litestar_asyncapi_installed(tmp_path: Path) -> None:
+    """Test full asset export on realtime app produces zero warnings when no AsyncAPI plugin is registered."""
+    import warnings
+
+    from litestar_vite.codegen import export_integration_assets
+    from litestar_vite.config import TypeGenConfig, ViteConfig
+
+    @websocket_listener("/ws/chat")
+    async def chat_handler(data: str) -> str:
+        return data
+
+    app = Litestar(route_handlers=[chat_handler])
+    config = ViteConfig(types=TypeGenConfig(output=tmp_path / "nowarn", generate_channels=True))
+
+    with warnings.catch_warnings(record=True) as recorded:
+        warnings.simplefilter("always")
+        result = export_integration_assets(app, config)
+        assert result.asyncapi_source == "builtin"
+
+    assert len(recorded) == 0
 
