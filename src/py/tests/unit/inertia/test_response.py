@@ -3373,3 +3373,82 @@ def test_deferred_props_initial_response_still_advertises_all_keys() -> None:
         assert "b" not in body["props"]
         assert body["deferredProps"]["default"] == ["a"]
         assert body["deferredProps"]["other"] == ["b"]
+
+
+async def test_external_redirect_non_inertia_get_returns_307(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Non-Inertia GET receives a standard 307 redirect with Location header."""
+
+    @get("/pay", component="Pay")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaExternalRedirect:
+        return InertiaExternalRedirect(request, "https://payments.example.com/checkout")
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/pay", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "https://payments.example.com/checkout"
+    assert InertiaHeaders.LOCATION.value.lower() not in {k.lower() for k in response.headers}
+
+
+async def test_external_redirect_non_inertia_post_returns_303(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Non-Inertia non-GET receives a standard 303 redirect with Location header."""
+
+    @post("/pay", component="Pay")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaExternalRedirect:
+        return InertiaExternalRedirect(request, "https://payments.example.com/checkout")
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.post("/pay", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "https://payments.example.com/checkout"
+    assert InertiaHeaders.LOCATION.value.lower() not in {k.lower() for k in response.headers}
+
+
+async def test_external_redirect_inertia_client_keeps_409(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """Inertia XHR clients receive 409 Conflict with X-Inertia-Location."""
+
+    @get("/pay", component="Pay")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaExternalRedirect:
+        return InertiaExternalRedirect(request, "https://payments.example.com/checkout")
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/pay",
+            headers={InertiaHeaders.ENABLED.value: "true"},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 409
+    assert response.headers[InertiaHeaders.LOCATION.value] == "https://payments.example.com/checkout"
+

@@ -669,9 +669,17 @@ class InertiaResponse(Response[T]):
 
 
 class InertiaExternalRedirect(Response[Any]):
-    """External redirect via Inertia protocol (409 + X-Inertia-Location).
+    """External redirect via Inertia protocol or standard HTTP redirect.
 
-    This response type triggers a client-side hard redirect in Inertia.js.
+    For Inertia XHR requests, responds with a 409 Conflict status and an
+    X-Inertia-Location header containing the destination URL. Inertia.js intercepts
+    this response and triggers a client-side hard window.location redirect.
+
+    For standard non-Inertia clients (plain browser navigations, cURL, web crawlers,
+    OAuth callbacks), responds with a standard HTTP redirect (307 Temporary Redirect
+    for GET, 303 See Other for non-GET methods) and a Location header so non-Inertia
+    consumers can navigate normally.
+
     Unlike InertiaRedirect, this does NOT validate the redirect URL as same-origin
     because external redirects are explicitly intended for cross-origin navigation
     (e.g., OAuth callbacks, external payment pages).
@@ -682,7 +690,7 @@ class InertiaExternalRedirect(Response[Any]):
     """
 
     def __init__(self, request: "Request[Any, Any, Any]", redirect_to: "str", **kwargs: "Any") -> None:
-        """Initialize external redirect with 409 status and X-Inertia-Location header.
+        """Initialize external redirect.
 
         Args:
             request: The request object.
@@ -690,12 +698,21 @@ class InertiaExternalRedirect(Response[Any]):
             **kwargs: Additional keyword arguments passed to the Response constructor.
         """
         persist_transient_state_for_redirect(request)
-        super().__init__(
-            content=b"",
-            status_code=HTTP_409_CONFLICT,
-            headers={InertiaHeaders.LOCATION.value: quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")},
-            **kwargs,
-        )
+        location = quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")
+        if bool(InertiaDetails(request)):
+            super().__init__(
+                content=b"",
+                status_code=HTTP_409_CONFLICT,
+                headers={InertiaHeaders.LOCATION.value: location},
+                **kwargs,
+            )
+        else:
+            super().__init__(
+                content=b"",
+                status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
+                headers={"Location": location},
+                **kwargs,
+            )
 
 
 class InertiaRedirect(Redirect):
