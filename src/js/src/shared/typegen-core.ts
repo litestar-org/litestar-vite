@@ -359,13 +359,19 @@ export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunT
       const absoluteAsyncApiPath = path.resolve(projectRoot, asyncapiPath)
       if (fs.existsSync(absoluteAsyncApiPath)) {
         try {
-          const changed = await emitChannelsTypes(absoluteAsyncApiPath, output, channelsTsPath, projectRoot)
           const channelsOutput = channelsTsPath ?? path.join(output, "channels.ts")
-          if (changed) {
-            result.generatedFiles.push(channelsOutput)
-            result.generated = true
-          } else {
+          const rawContent = fs.readFileSync(absoluteAsyncApiPath, "utf-8")
+          const doc = JSON.parse(rawContent) as { channels?: Record<string, unknown> }
+          if (Object.keys(doc.channels ?? {}).length === 0) {
             result.skippedFiles.push(channelsOutput)
+          } else {
+            const changed = await emitChannelsTypes(absoluteAsyncApiPath, output, channelsTsPath, projectRoot)
+            if (changed) {
+              result.generatedFiles.push(channelsOutput)
+              result.generated = true
+            } else {
+              result.skippedFiles.push(channelsOutput)
+            }
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)

@@ -464,6 +464,17 @@ class ViteDoctor:
         root = self.config.root_dir or Path.cwd()
         return path if path.is_absolute() else (root / path)
 
+    def _resolve_under_root(self, path: Path) -> Path:
+        """Resolve a path relative to the configured root directory if not absolute.
+
+        Args:
+            path: Candidate filesystem path.
+
+        Returns:
+            The absolute path or path resolved under config.paths.root.
+        """
+        return path if path.is_absolute() else (self.config.paths.root / path)
+
     def _check_litestar_plugin_config(self) -> None:
         """Ensure the vite.config includes a litestar({ ... }) plugin config."""
         if not self.parsed_config:
@@ -1084,23 +1095,26 @@ class ViteDoctor:
         if routes_path is None:
             routes_path = self.config.types.output / "routes.json"
 
-        if not openapi_path.exists():
+        resolved_openapi = self._resolve_under_root(openapi_path)
+        resolved_routes = self._resolve_under_root(routes_path)
+
+        if not resolved_openapi.exists():
             self.issues.append(
                 DoctorIssue(
                     check="OpenAPI Export Missing",
                     severity="warning",
-                    message=f"{openapi_path} not found",
+                    message=f"{resolved_openapi} not found",
                     fix_hint="Run litestar assets generate-types (or start the app with types enabled)",
                     auto_fixable=False,
                 )
             )
 
-        if not routes_path.exists():
+        if not resolved_routes.exists():
             self.issues.append(
                 DoctorIssue(
                     check="Routes Export Missing",
                     severity="warning",
-                    message=f"{routes_path} not found",
+                    message=f"{resolved_routes} not found",
                     fix_hint="Run litestar assets generate-types (or start the app with types enabled)",
                     auto_fixable=False,
                 )
@@ -1111,40 +1125,41 @@ class ViteDoctor:
         if not isinstance(self.config.types, TypeGenConfig):
             return
 
-        if self.config.types.generate_channels:
-            output_dir = self.config.types.output
-            if not output_dir.is_absolute():
-                output_dir = self.config.paths.root / output_dir
+        if not self.config.types.generate_channels:
+            return
 
-            asyncapi_path = self.config.types.asyncapi_path or (output_dir / "asyncapi.json")
-            if not asyncapi_path.is_absolute():
-                asyncapi_path = self.config.paths.root / asyncapi_path
+        output_dir = self._resolve_under_root(self.config.types.output)
+        asyncapi_path = self._resolve_under_root(self.config.types.asyncapi_path or (output_dir / "asyncapi.json"))
+        channels_ts_path = self._resolve_under_root(self.config.types.channels_ts_path or (output_dir / "channels.ts"))
 
-            channels_ts_path = self.config.types.channels_ts_path or (output_dir / "channels.ts")
-            if not channels_ts_path.is_absolute():
-                channels_ts_path = self.config.paths.root / channels_ts_path
+        if not asyncapi_path.exists():
+            return
 
-            if not asyncapi_path.exists():
+        if not channels_ts_path.exists():
+            self.issues.append(
+                DoctorIssue(
+                    check="Channels Types Missing",
+                    severity="warning",
+                    message=f"Realtime channel types not found at {channels_ts_path}",
+                    fix_hint="Run `litestar assets generate-types` to generate channels.ts",
+                    auto_fixable=False,
+                )
+            )
+            return
+
+        try:
+            if channels_ts_path.stat().st_mtime < asyncapi_path.stat().st_mtime:
                 self.issues.append(
                     DoctorIssue(
-                        check="AsyncAPI Export Missing",
+                        check="Channels Types Stale",
                         severity="warning",
-                        message=f"AsyncAPI schema not found at {asyncapi_path}",
-                        fix_hint="Run `litestar assets export-asyncapi` or enable type generation during dev",
+                        message=f"{channels_ts_path} is older than {asyncapi_path}",
+                        fix_hint="Run `litestar assets generate-types` to regenerate channels.ts",
                         auto_fixable=False,
                     )
                 )
-
-            if not channels_ts_path.exists():
-                self.issues.append(
-                    DoctorIssue(
-                        check="Channels Types Missing",
-                        severity="warning",
-                        message=f"Realtime channel types not found at {channels_ts_path}",
-                        fix_hint="Run `litestar assets generate-types` to generate channels.ts",
-                        auto_fixable=False,
-                    )
-                )
+        except OSError:
+            return
 
     def _check_mode_inertia_conflicts(self) -> None:
         """Warn when mode and inertia settings are incompatible."""

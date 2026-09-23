@@ -64,6 +64,51 @@ def typegen_outputs_requested(types_config: "TypeGenConfig") -> bool:
     ))
 
 
+def app_has_realtime_surface(app: "Litestar") -> bool:
+    """Return whether the Litestar application defines any realtime surface.
+
+    A realtime surface includes:
+    - Any route in ``app.routes`` that is a ``litestar.routes.WebSocketRoute``.
+    - Any plugin in ``app.plugins`` that is a ``litestar.channels.ChannelsPlugin``.
+    - Any HTTP route handler whose return annotation represents a Server-Sent Event (SSE).
+
+    Args:
+        app: The Litestar application instance.
+
+    Returns:
+        True if any realtime route, plugin, or SSE handler is detected, otherwise False.
+    """
+    from litestar.routes import HTTPRoute, WebSocketRoute
+
+    for route in app.routes:
+        if isinstance(route, WebSocketRoute):
+            return True
+
+    try:
+        from litestar.channels import ChannelsPlugin
+
+        for plugin in app.plugins:
+            if isinstance(plugin, ChannelsPlugin):
+                return True
+    except ImportError:
+        pass
+
+    from litestar_vite.codegen._asyncapi import _is_sse_type  # pyright: ignore[reportPrivateUsage]
+
+    for route in app.routes:
+        if not isinstance(route, HTTPRoute):
+            continue
+        for handler in route.route_handlers:
+            return_field = getattr(handler, "parsed_return_field", None)
+            annotation = getattr(return_field, "annotation", None)
+            if annotation is None:
+                annotation = getattr(handler, "return_type", None)
+            if _is_sse_type(annotation):
+                return True
+
+    return False
+
+
 def _resolve_serializer(
     app: "Litestar", serializer: "Callable[[Any], bytes] | None" = None
 ) -> "Callable[[Any], bytes]":
@@ -99,8 +144,12 @@ def export_integration_assets(
     and Plugin startup should call this function to ensure byte-identical output.
 
     AsyncAPI export is independent of OpenAPI availability when channels are
-    enabled, whereas OpenAPI schema, route metadata, route definitions, and
-    Inertia page prop artifacts require an active OpenAPI configuration.
+    enabled and a realtime surface is present on the application (WebSocket routes,
+    ChannelsPlugin, or SSE handlers). The configuration flag generate_channels=True
+    is an opt-in ceiling rather than a mandate, so a REST-only application produces
+    no AsyncAPI artifacts even when generate_channels is true. OpenAPI schema, route
+    metadata, route definitions, and Inertia page prop artifacts require an active
+    OpenAPI configuration.
 
     The export order is critical:
     1. Register Inertia page prop types in OpenAPI schema (mutates schema_dict)
@@ -137,7 +186,7 @@ def export_integration_assets(
     has_openapi = openapi_plugin is not None and openapi_plugin._openapi_config is not None  # pyright: ignore[reportPrivateUsage]
 
     if not has_openapi:
-        if types_config.generate_channels:
+        if types_config.generate_channels and app_has_realtime_surface(app):
             export_asyncapi(
                 app=app, types_config=types_config, serializer=_resolve_serializer(app, serializer), result=result
             )
@@ -186,7 +235,7 @@ def export_integration_assets(
     ):
         export_inertia_pages(pages_data=inertia_pages_data, types_config=types_config, result=result)
 
-    if types_config.generate_channels:
+    if types_config.generate_channels and app_has_realtime_surface(app):
         export_asyncapi(app=app, types_config=types_config, serializer=serializer, result=result)
 
     return result

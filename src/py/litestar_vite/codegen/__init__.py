@@ -29,6 +29,7 @@ from litestar_vite.codegen._asyncapi import (
 )
 from litestar_vite.codegen._export import (
     ExportResult,
+    app_has_realtime_surface,
     export_asyncapi,
     export_integration_assets,
     typegen_outputs_requested,
@@ -55,6 +56,7 @@ __all__ = (
     "ExportResult",
     "InertiaPageMetadata",
     "RouteMetadata",
+    "app_has_realtime_surface",
     "create_asyncapi_document",
     "encode_deterministic_json",
     "export_asyncapi",

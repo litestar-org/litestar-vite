@@ -481,24 +481,28 @@ def test_doctor_isolates_a_crashing_check(doctor: ViteDoctor, tmp_path: Path, mo
     assert "synthetic check failure" in crash_issues[0].message
 
 
-def test_doctor_realtime_config_missing_artifacts(tmp_path: Path) -> None:
-    """Doctor warns when generate_channels is enabled but realtime artifacts are missing."""
+def test_realtime_check_warns_on_missing_channels_ts(tmp_path: Path) -> None:
+    """Doctor warns when asyncapi.json exists but channels.ts is missing."""
+    gen_dir = tmp_path / "src" / "generated"
+    gen_dir.mkdir(parents=True, exist_ok=True)
+    asyncapi_file = gen_dir / "asyncapi.json"
+    asyncapi_file.write_text("{}")
+
     config = ViteConfig(
         mode="spa",
         paths=PathConfig(root=tmp_path),
         types=TypeGenConfig(
             generate_channels=True,
-            output=tmp_path / "src" / "generated",
-            asyncapi_path=tmp_path / "src" / "generated" / "asyncapi.json",
-            channels_ts_path=tmp_path / "src" / "generated" / "channels.ts",
+            output=gen_dir,
+            asyncapi_path=asyncapi_file,
+            channels_ts_path=gen_dir / "channels.ts",
         ),
     )
     doctor = ViteDoctor(config=config)
     doctor._check_realtime_config()
 
     checks = [i.check for i in doctor.issues]
-    assert "AsyncAPI Export Missing" in checks
-    assert "Channels Types Missing" in checks
+    assert checks == ["Channels Types Missing"]
 
 
 def test_doctor_realtime_config_artifacts_present(tmp_path: Path) -> None:
@@ -519,6 +523,76 @@ def test_doctor_realtime_config_artifacts_present(tmp_path: Path) -> None:
         ),
     )
     doctor = ViteDoctor(config=config)
+    doctor._check_realtime_config()
+
+    assert len(doctor.issues) == 0
+
+
+def test_realtime_check_silent_without_asyncapi_json(tmp_path: Path) -> None:
+    """Test realtime check is silent when asyncapi.json does not exist."""
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(root=tmp_path),
+        types=TypeGenConfig(
+            generate_channels=True,
+            output=tmp_path / "src" / "generated",
+            asyncapi_path=tmp_path / "src" / "generated" / "asyncapi.json",
+            channels_ts_path=tmp_path / "src" / "generated" / "channels.ts",
+        ),
+    )
+    doctor = ViteDoctor(config=config)
+    doctor._check_realtime_config()
+
+    realtime_issues = [i for i in doctor.issues if i.check.startswith(("AsyncAPI", "Channels"))]
+    assert len(realtime_issues) == 0
+
+
+def test_realtime_check_warns_on_stale_channels_ts(tmp_path: Path) -> None:
+    """Test realtime check warns when channels.ts is older than asyncapi.json."""
+    gen_dir = tmp_path / "src" / "generated"
+    gen_dir.mkdir(parents=True, exist_ok=True)
+    asyncapi_file = gen_dir / "asyncapi.json"
+    channels_file = gen_dir / "channels.ts"
+
+    asyncapi_file.write_text("{}")
+    channels_file.write_text("export {}")
+
+    import os
+
+    os.utime(channels_file, (1000, 1000))
+    os.utime(asyncapi_file, (2000, 2000))
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(root=tmp_path),
+        types=TypeGenConfig(
+            generate_channels=True, output=gen_dir, asyncapi_path=asyncapi_file, channels_ts_path=channels_file
+        ),
+    )
+    doctor = ViteDoctor(config=config)
+    doctor._check_realtime_config()
+
+    stale_issues = [i for i in doctor.issues if i.check == "Channels Types Stale"]
+    assert len(stale_issues) == 1
+    assert "older than" in stale_issues[0].message
+
+
+def test_typegen_and_realtime_checks_resolve_relative_paths_identically(tmp_path: Path) -> None:
+    """Test typegen and realtime checks resolve relative paths against paths.root identically."""
+    gen_dir = tmp_path / "src" / "generated"
+    gen_dir.mkdir(parents=True, exist_ok=True)
+    (gen_dir / "openapi.json").write_text("{}")
+    (gen_dir / "routes.json").write_text("{}")
+    (gen_dir / "asyncapi.json").write_text("{}")
+    (gen_dir / "channels.ts").write_text("export {}")
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(root=tmp_path),
+        types=TypeGenConfig(generate_channels=True, output=Path("src/generated")),
+    )
+    doctor = ViteDoctor(config=config)
+    doctor._check_typegen_artifacts()
     doctor._check_realtime_config()
 
     assert len(doctor.issues) == 0

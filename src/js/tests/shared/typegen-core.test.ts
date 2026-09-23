@@ -4,7 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   execFile: vi.fn(),
   existsSync: vi.fn(() => true),
-  readFileSync: vi.fn(() => JSON.stringify({ bin: { "openapi-ts": "bin/openapi-ts.js" } })),
+  readFileSync: vi.fn((filePath?: string) => {
+    if (typeof filePath === "string" && filePath.endsWith("asyncapi.json")) {
+      return JSON.stringify({ asyncapi: "3.0.0", channels: { chat: {} } })
+    }
+    return JSON.stringify({ bin: { "openapi-ts": "bin/openapi-ts.js" } })
+  }),
   resolvePackageExecutorArgv: vi.fn((args: string[], _executor?: string, options?: { packageSpec?: string; additionalPackageSpecs?: readonly string[]; binName?: string }) =>
     options?.packageSpec && options.binName
       ? [
@@ -125,7 +130,12 @@ describe("typegen-core", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.existsSync.mockReturnValue(true)
-    mocks.readFileSync.mockReturnValue(JSON.stringify({ bin: { "openapi-ts": "bin/openapi-ts.js" } }))
+    mocks.readFileSync.mockImplementation((filePath?: string) => {
+      if (typeof filePath === "string" && filePath.endsWith("asyncapi.json")) {
+        return JSON.stringify({ asyncapi: "3.0.0", channels: { chat: {} } })
+      }
+      return JSON.stringify({ bin: { "openapi-ts": "bin/openapi-ts.js" } })
+    })
     mocks.resolve.mockImplementation((specifier: string) => {
       if (specifier === "@hey-api/openapi-ts/package.json") {
         return "/fake/node_modules/@hey-api/openapi-ts/package.json"
@@ -282,12 +292,31 @@ describe("typegen-core", () => {
     })
 
     const result = await runTypeGeneration(config, { logger })
-    expect(emitChannelsTypes).toHaveBeenCalledWith(
-      "/home/user/project/asyncapi.json",
-      "src/generated",
-      "custom-channels.ts",
-      "/home/user/project",
-    )
+    expect(emitChannelsTypes).toHaveBeenCalledWith("/home/user/project/asyncapi.json", "src/generated", "custom-channels.ts", "/home/user/project")
     expect(result.generatedFiles).toContain("custom-channels.ts")
+  })
+
+  it("skips channels.ts when the asyncapi document has no channels", async () => {
+    mocks.existsSync.mockImplementation((filePath: string) => filePath.endsWith("asyncapi.json"))
+    mocks.readFileSync.mockImplementation((filePath?: string) => {
+      if (typeof filePath === "string" && filePath.endsWith("asyncapi.json")) {
+        return JSON.stringify({ asyncapi: "3.0.0", channels: {} })
+      }
+      return JSON.stringify({ bin: { "openapi-ts": "bin/openapi-ts.js" } })
+    })
+    const { emitChannelsTypes } = await import("../../src/shared/emit-channels-types.js")
+    vi.mocked(emitChannelsTypes).mockClear()
+
+    const config = createConfig({
+      asyncapiPath: "asyncapi.json",
+      channelsTsPath: "custom-channels.ts",
+      generateChannels: true,
+    })
+
+    const result = await runTypeGeneration(config, { logger })
+    expect(emitChannelsTypes).not.toHaveBeenCalled()
+    expect(result.generatedFiles).not.toContain("custom-channels.ts")
+    expect(result.skippedFiles).toContain("custom-channels.ts")
+    expect(result.errors).toEqual([])
   })
 })

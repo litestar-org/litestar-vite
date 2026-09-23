@@ -933,3 +933,36 @@ def test_openapi_enabled_export_unchanged(tmp_path: Path) -> None:
     assert any("openapi:" in f for f in result.exported_files)
     assert any("routes.json" in f for f in result.exported_files)
     assert any("asyncapi:" in f for f in result.exported_files)
+
+
+def test_rest_only_app_exports_no_asyncapi(tmp_path: Path) -> None:
+    """Test REST-only app does not export asyncapi.json even with generate_channels=True."""
+
+    @get("/items")
+    async def get_items() -> str:
+        """Get items."""
+        return "items"
+
+    app = Litestar(route_handlers=[get_items])
+    config = ViteConfig(types=TypeGenConfig(output=tmp_path, generate_channels=True))
+
+    result = export_integration_assets(app, config)
+
+    assert not (tmp_path / "asyncapi.json").exists()
+    assert result.asyncapi_schema is None
+
+
+def test_realtime_app_still_exports_asyncapi(tmp_path: Path) -> None:
+    """Test realtime app exports asyncapi.json when generate_channels=True."""
+
+    @websocket_listener("/chat")
+    async def chat_listener(data: str) -> None:
+        """Chat listener."""
+
+    app = Litestar(route_handlers=[chat_listener])
+    config = ViteConfig(types=TypeGenConfig(output=tmp_path, generate_channels=True))
+
+    result = export_integration_assets(app, config)
+
+    assert (tmp_path / "asyncapi.json").exists()
+    assert result.asyncapi_schema is not None
