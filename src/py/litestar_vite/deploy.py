@@ -176,12 +176,49 @@ class ViteDeployer:
             stat = path.stat()
             files[rel_path] = FileInfo(path=rel_path, size=stat.st_size, mtime=stat.st_mtime)
 
+        if manifest_paths:
+            self._index_unmanaged_files(manifest_paths, files)
+
         index_html = self.bundle_dir / "index.html"
         if index_html.exists():
             stat = index_html.stat()
             files.setdefault("index.html", FileInfo(path="index.html", size=stat.st_size, mtime=stat.st_mtime))
 
         return files
+
+    def _index_unmanaged_files(self, manifest_paths: set[str], files: dict[str, FileInfo]) -> None:
+        """Index Vite public passthrough assets that are absent from the manifest.
+
+        Vite copies the contents of ``public/`` into the build output directory
+        verbatim without recording them in ``manifest.json``. When deploy sync operates
+        with ``delete_orphaned=True``, any local bundle file missing from the local
+        index is considered an orphan remotely and purged. To prevent deleting public
+        assets (such as ``favicon.ico``, ``robots.txt``, and static images) while still
+        excluding stale hashed build artifacts, this helper computes the top-level
+        directories managed by the manifest (e.g. ``assets/`` and ``.vite/``) and
+        indexes all non-directory files outside those directories.
+
+        Args:
+            manifest_paths: Relative file paths referenced by the Vite manifest.
+            files: Dictionary mapping relative paths to FileInfo objects to populate.
+        """
+        managed_dirs: set[str] = {".vite"}
+        for p in manifest_paths:
+            parts = Path(p.lstrip("/")).parts
+            if len(parts) > 1:
+                managed_dirs.add(parts[0])
+
+        for path in self.bundle_dir.rglob("*"):
+            if path.is_dir():
+                continue
+            if not path.exists():
+                continue
+            rel = path.relative_to(self.bundle_dir)
+            if rel.parts and rel.parts[0] in managed_dirs:
+                continue
+            rel_posix = rel.as_posix()
+            stat = path.stat()
+            files.setdefault(rel_posix, FileInfo(path=rel_posix, size=stat.st_size, mtime=stat.st_mtime))
 
     def _get_manifest_paths(self) -> set[str]:
         """Get manifest paths from cache when possible.
