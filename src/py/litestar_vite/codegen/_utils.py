@@ -13,6 +13,8 @@ from typing import Any
 def deep_sort_dict(obj: Any) -> Any:
     """Recursively sort all dictionary keys for deterministic JSON output.
 
+    Intentionally operates on arbitrary Any types for generic dict sorting.
+
     Args:
         obj: Any Python object (dict, list, or primitive).
 
@@ -20,7 +22,6 @@ def deep_sort_dict(obj: Any) -> Any:
         The object with all nested dict keys sorted.
     """
     if isinstance(obj, dict):
-        # pyright: ignore - intentionally working with Any types for generic dict sorting
         return {k: deep_sort_dict(v) for k, v in sorted(obj.items())}  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
     if isinstance(obj, list):
         return [deep_sort_dict(item) for item in obj]  # pyright: ignore[reportUnknownVariableType]

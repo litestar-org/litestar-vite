@@ -812,7 +812,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
             const placeholderContent = await loadDevServerPlaceholder()
             res.statusCode = 200
             res.setHeader("Content-Type", "text/html")
-            res.end(placeholderContent.replace(/{{ APP_URL }}/g, appUrl))
+            res.end(renderDevServerPlaceholder(placeholderContent, appUrl))
           } catch (e) {
             resolvedConfig.logger.error(`Error serving placeholder index.html: ${e instanceof Error ? e.message : e}`)
             res.statusCode = 404
@@ -848,7 +848,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           const placeholderContent = await loadDevServerPlaceholder()
           res.statusCode = 200
           res.setHeader("Content-Type", "text/html")
-          res.end(placeholderContent.replace(/{{ APP_URL }}/g, appUrl))
+          res.end(renderDevServerPlaceholder(placeholderContent, appUrl))
         } catch (e) {
           resolvedConfig.logger.error(`Error serving placeholder index.html: ${e instanceof Error ? e.message : e}`)
           res.statusCode = 404
@@ -1521,4 +1521,17 @@ function normalizeAssetUrl(url: string): string {
   const withLeading = trimmed.startsWith("/") ? `/${trimmed.replace(/^\/+/, "")}` : trimmed
   const withTrailing = withLeading.endsWith("/") ? withLeading : `${withLeading}/`
   return withTrailing
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+function renderDevServerPlaceholder(template: string, appUrl: string): string {
+  return template.replace(/{{ APP_URL }}/g, escapeHtml(appUrl))
 }
