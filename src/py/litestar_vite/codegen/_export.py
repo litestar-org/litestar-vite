@@ -64,6 +64,32 @@ def typegen_outputs_requested(types_config: "TypeGenConfig") -> bool:
     ))
 
 
+def _resolve_serializer(
+    app: "Litestar", serializer: "Callable[[Any], bytes] | None" = None
+) -> "Callable[[Any], bytes]":
+    """Resolve a JSON serializer using application type encoders when none is provided.
+
+    Args:
+        app: The Litestar application instance.
+        serializer: An optional custom serializer function.
+
+    Returns:
+        A callable serializer for encoding JSON.
+    """
+    if serializer is not None:
+        return serializer
+
+    encoders: Any
+    try:
+        encoders = app.type_encoders  # pyright: ignore[reportUnknownMemberType]
+    except AttributeError:
+        encoders = None
+
+    from litestar.serialization import encode_json, get_serializer
+
+    return partial(encode_json, serializer=get_serializer(encoders if isinstance(encoders, dict) else None))  # pyright: ignore[reportUnknownArgumentType]
+
+
 def export_integration_assets(
     app: "Litestar", config: "ViteConfig", *, serializer: "Callable[[Any], bytes] | None" = None
 ) -> ExportResult:
@@ -72,12 +98,17 @@ def export_integration_assets(
     This is the single source of truth for code generation. Both CLI commands
     and Plugin startup should call this function to ensure byte-identical output.
 
+    AsyncAPI export is independent of OpenAPI availability when channels are
+    enabled, whereas OpenAPI schema, route metadata, route definitions, and
+    Inertia page prop artifacts require an active OpenAPI configuration.
+
     The export order is critical:
     1. Register Inertia page prop types in OpenAPI schema (mutates schema_dict)
     2. Export openapi.json (now includes session prop types)
     3. Export routes.json (uses schema for component refs)
     4. Export routes.ts (if enabled)
     5. Export inertia-pages.json (if enabled)
+    6. Export asyncapi.json (if enabled)
 
     Args:
         app: The Litestar application instance.
@@ -88,7 +119,6 @@ def export_integration_assets(
         ExportResult with lists of exported and unchanged files.
     """
     from litestar._openapi.plugin import OpenAPIPlugin
-    from litestar.serialization import encode_json, get_serializer
 
     from litestar_vite.codegen._inertia import generate_inertia_pages_json
     from litestar_vite.codegen._routes import extract_route_metadata
@@ -107,15 +137,13 @@ def export_integration_assets(
     has_openapi = openapi_plugin is not None and openapi_plugin._openapi_config is not None  # pyright: ignore[reportPrivateUsage]
 
     if not has_openapi:
+        if types_config.generate_channels:
+            export_asyncapi(
+                app=app, types_config=types_config, serializer=_resolve_serializer(app, serializer), result=result
+            )
         return result
 
-    if serializer is None:
-        encoders: Any
-        try:
-            encoders = app.type_encoders  # pyright: ignore[reportUnknownMemberType]
-        except AttributeError:
-            encoders = None
-        serializer = partial(encode_json, serializer=get_serializer(encoders if isinstance(encoders, dict) else None))  # pyright: ignore[reportUnknownArgumentType]
+    serializer = _resolve_serializer(app, serializer)
 
     schema_dict = app.openapi_schema.to_schema()
 

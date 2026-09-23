@@ -838,10 +838,7 @@ def test_type_encoders_are_honoured() -> None:
     async def items_handler(data: Item) -> None:
         """Items listener."""
 
-    app = Litestar(
-        route_handlers=[get_items, items_handler],
-        type_encoders={CustomID: lambda v: str(v.val)},
-    )
+    app = Litestar(route_handlers=[get_items, items_handler], type_encoders={CustomID: lambda v: str(v.val)})
     doc = create_asyncapi_document(app).to_dict()
     openapi_doc = app.openapi_schema.to_schema()
 
@@ -851,7 +848,10 @@ def test_type_encoders_are_honoured() -> None:
 
     assert schema_name in doc["components"]["schemas"]
     item_schema = doc["components"]["schemas"][schema_name]
-    assert item_schema["properties"]["item_id"] == openapi_doc["components"]["schemas"][schema_name]["properties"]["item_id"]
+    assert (
+        item_schema["properties"]["item_id"]
+        == openapi_doc["components"]["schemas"][schema_name]["properties"]["item_id"]
+    )
     assert item_schema == openapi_doc["components"]["schemas"][schema_name]
 
 
@@ -875,3 +875,61 @@ def test_fallback_without_openapi_config() -> None:
     status_schema = doc["components"]["schemas"]["Status"]
     assert "active" in status_schema["properties"]
     assert "code" in status_schema["properties"]
+
+
+def test_export_asyncapi_without_openapi_config(tmp_path: Path) -> None:
+    """Test export_integration_assets exports asyncapi.json when openapi_config is None."""
+
+    @websocket_listener("/chat")
+    async def chat_listener(data: str) -> None:
+        """Chat listener."""
+
+    app = Litestar(route_handlers=[chat_listener], openapi_config=None)
+    config = ViteConfig(types=TypeGenConfig(output=tmp_path, generate_channels=True))
+
+    result = export_integration_assets(app, config)
+
+    assert (tmp_path / "asyncapi.json").exists()
+    assert not (tmp_path / "openapi.json").exists()
+    assert not (tmp_path / "routes.json").exists()
+    assert result.asyncapi_schema is not None
+    assert "chat" in result.asyncapi_schema["channels"]
+    assert any("asyncapi:" in f for f in result.exported_files)
+
+
+def test_export_skips_everything_when_channels_disabled_and_no_openapi(tmp_path: Path) -> None:
+    """Test export_integration_assets exports nothing when openapi is None and channels disabled."""
+
+    @websocket_listener("/chat")
+    async def chat_listener(data: str) -> None:
+        """Chat listener."""
+
+    app = Litestar(route_handlers=[chat_listener], openapi_config=None)
+    config = ViteConfig(types=TypeGenConfig(output=tmp_path, generate_channels=False, generate_routes=True))
+
+    result = export_integration_assets(app, config)
+
+    assert result.exported_files == []
+    assert not (tmp_path / "asyncapi.json").exists()
+    assert not (tmp_path / "openapi.json").exists()
+    assert not (tmp_path / "routes.json").exists()
+
+
+def test_openapi_enabled_export_unchanged(tmp_path: Path) -> None:
+    """Test export_integration_assets exports openapi, routes, and asyncapi when openapi enabled."""
+
+    @websocket_listener("/chat")
+    async def chat_listener(data: str) -> None:
+        """Chat listener."""
+
+    app = Litestar(route_handlers=[chat_listener])
+    config = ViteConfig(types=TypeGenConfig(output=tmp_path, generate_channels=True, generate_routes=True))
+
+    result = export_integration_assets(app, config)
+
+    assert (tmp_path / "openapi.json").exists()
+    assert (tmp_path / "routes.json").exists()
+    assert (tmp_path / "asyncapi.json").exists()
+    assert any("openapi:" in f for f in result.exported_files)
+    assert any("routes.json" in f for f in result.exported_files)
+    assert any("asyncapi:" in f for f in result.exported_files)
