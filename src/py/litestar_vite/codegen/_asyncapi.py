@@ -22,20 +22,31 @@ if TYPE_CHECKING:
     from litestar import Litestar
 
 
+_PRESERVED_SUBTREE_KEYS = frozenset({"payload", "bindings", "schemas"})
+
+
 def _clean_dict(d: dict[str, Any]) -> dict[str, Any]:
     """Recursively remove None values and empty collections from a dictionary.
+
+    Metadata keys are pruned for compactness. Keys present in
+    _PRESERVED_SUBTREE_KEYS (such as payload, bindings, and schemas) are
+    spec-significant JSON Schema or protocol structures where empty dictionaries
+    and lists carry semantic meaning and must round-trip byte-for-byte.
 
     Args:
         d: The dictionary to clean.
 
     Returns:
-        A cleaned dictionary with non-empty values.
+        A cleaned dictionary with non-empty values, preserving spec-significant
+        subtrees verbatim when non-None.
     """
     cleaned: dict[str, Any] = {}
     for key, value in d.items():
         if value is None:
             continue
-        if isinstance(value, dict):
+        if key in _PRESERVED_SUBTREE_KEYS:
+            cleaned[key] = value
+        elif isinstance(value, dict):
             typed_dict = cast("dict[str, Any]", value)
             sub_dict = _clean_dict(typed_dict)
             if sub_dict:
@@ -261,10 +272,10 @@ _SCALAR_SCHEMA_MAP: dict[Any, dict[str, Any]] = {
     "bool": {"type": "boolean"},
     bytes: {"type": "string", "contentMediaType": "application/octet-stream"},
     "bytes": {"type": "string", "contentMediaType": "application/octet-stream"},
-    dict: {"type": "object"},
-    "dict": {"type": "object"},
-    list: {"type": "array"},
-    "list": {"type": "array"},
+    dict: {"type": "object", "additionalProperties": {}},
+    "dict": {"type": "object", "additionalProperties": {}},
+    list: {"type": "array", "items": {}},
+    "list": {"type": "array", "items": {}},
 }
 
 
@@ -335,11 +346,11 @@ def _extract_container_schema(
     Returns:
         JSON Schema representation or None if not a supported container.
     """
-    if origin is list:
+    if origin is list or annotation in (list, "list"):
         args = get_args(annotation)
         items_schema = extract_payload_schema(args[0], components_schemas) if args else {}
         return {"type": "array", "items": items_schema}
-    if origin is dict:
+    if origin is dict or annotation in (dict, "dict"):
         args = get_args(annotation)
         val_schema = extract_payload_schema(args[1], components_schemas) if len(args) > 1 else {}
         return {"type": "object", "additionalProperties": val_schema}

@@ -450,3 +450,79 @@ def test_export_integration_assets_includes_asyncapi(tmp_path: Path) -> None:
     assert "ws_feed" in result.asyncapi_schema["channels"]
     asyncapi_file = tmp_path / "sdk" / "asyncapi.json"
     assert asyncapi_file.exists()
+
+
+def test_to_dict_preserves_dict_payload_additional_properties() -> None:
+    """Test to_dict preserves additionalProperties in dict payloads."""
+
+    @websocket_listener("/ws/kv")
+    def kv_handler(data: dict[str, str]) -> dict:
+        """Key-value listener."""
+        return data
+
+    app = Litestar(route_handlers=[kv_handler])
+    doc = create_asyncapi_document(app).to_dict()
+
+    channel = doc["channels"]["ws_kv"]
+    inbound_payload = channel["messages"]["inbound"]["payload"]
+    outbound_payload = channel["messages"]["outbound"]["payload"]
+
+    assert inbound_payload == {"type": "object", "additionalProperties": {"type": "string"}}
+    assert "additionalProperties" in outbound_payload
+    assert outbound_payload["additionalProperties"] == {}
+
+
+def test_to_dict_preserves_list_payload_items() -> None:
+    """Test to_dict preserves items in list payloads."""
+
+    @websocket_listener("/ws/items")
+    def items_handler(data: list) -> None:
+        """Items listener."""
+
+    app = Litestar(route_handlers=[items_handler])
+    doc = create_asyncapi_document(app).to_dict()
+
+    channel = doc["channels"]["ws_items"]
+    inbound_payload = channel["messages"]["inbound"]["payload"]
+
+    assert inbound_payload == {"type": "array", "items": {}}
+
+
+def test_to_dict_preserves_binding_markers() -> None:
+    """Test to_dict preserves empty binding markers for protocols."""
+
+    @get("/events")
+    def sse_handler() -> ServerSentEvent:
+        """SSE event feed."""
+        return ServerSentEvent(content="ping")
+
+    channels_plugin = ChannelsPlugin(
+        backend=MemoryChannelsBackend(),
+        channels=["broadcast"],
+        create_ws_route_handlers=True,
+    )
+    app = Litestar(route_handlers=[sse_handler], plugins=[channels_plugin])
+    doc = create_asyncapi_document(app).to_dict()
+
+    sse_channel = doc["channels"]["events"]
+    assert sse_channel["bindings"] == {"http": {}}
+
+    broadcast_channel = doc["channels"]["broadcast"]
+    assert broadcast_channel["bindings"]["ws"] == {}
+
+
+def test_to_dict_still_prunes_metadata_nulls() -> None:
+    """Test to_dict still prunes metadata None values and empty parameters."""
+
+    @websocket_listener("/ws/noparams")
+    def simple_handler(data: str) -> str:
+        """Simple listener with no parameters."""
+        return data
+
+    app = Litestar(route_handlers=[simple_handler])
+    doc = create_asyncapi_document(app).to_dict()
+
+    assert "description" not in doc["info"]
+    assert "parameters" not in doc["channels"]["ws_noparams"]
+
+
