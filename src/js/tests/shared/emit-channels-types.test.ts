@@ -353,4 +353,131 @@ describe("emitChannelsTypes", () => {
     expect(registryMatch).not.toBeNull()
     expect(registryMatch![1]).not.toContain("unknown")
   })
+
+  it("sanitises invalid characters in schema names", () => {
+    const doc = {
+      asyncapi: "3.0.0",
+      channels: {
+        chat: {
+          address: "/chat",
+          messages: {
+            msg: {
+              payload: { $ref: "#/components/schemas/Response[Item]" },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          "Response[Item]": {
+            type: "object",
+            properties: {
+              value: { type: "string" },
+            },
+          },
+        },
+      },
+    }
+    const content = generateChannelsTs(doc)
+    expect(content).toContain("export interface Response_Item {")
+    expect(content).toContain("receive: Response_Item;")
+    expect(content).not.toContain("Response[Item]")
+    expect(content).not.toMatch(/export\s+(interface|type)\s+[^{\n=]*[[\].-]/)
+  })
+
+  it("prefixes schema names that collide with emitter declarations", () => {
+    const doc = {
+      asyncapi: "3.0.0",
+      channels: {
+        chat: {
+          address: "/chat",
+          messages: {
+            msg: {
+              payload: { $ref: "#/components/schemas/RealtimeChannels" },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          RealtimeChannels: {
+            type: "object",
+            properties: {
+              room: { type: "string" },
+            },
+          },
+        },
+      },
+    }
+    const content = generateChannelsTs(doc)
+    expect(content).toContain("export interface Schema_RealtimeChannels {")
+    const matches = content.match(/export interface RealtimeChannels \{/g)
+    expect(matches).toHaveLength(1)
+  })
+
+  it("de-collides distinct schema names that sanitise identically", () => {
+    const doc = {
+      asyncapi: "3.0.0",
+      channels: {},
+      components: {
+        schemas: {
+          "A.B": {
+            type: "object",
+            properties: { a: { type: "string" } },
+          },
+          A_B: {
+            type: "object",
+            properties: { b: { type: "string" } },
+          },
+        },
+      },
+    }
+    const content = generateChannelsTs(doc)
+    expect(content).toContain("export interface A_B {")
+    expect(content).toContain("export interface A_B_2 {")
+  })
+
+  it("returns false and writes nothing for an unresolved $ref", async () => {
+    const tmpDir = createTmpDir()
+    const asyncapiPath = path.join(tmpDir, "asyncapi.json")
+    const doc = {
+      asyncapi: "3.0.0",
+      channels: {
+        chat: {
+          address: "/chat",
+          messages: {
+            msg: {
+              payload: { $ref: "#/components/schemas/Missing" },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {},
+      },
+    }
+    fs.writeFileSync(asyncapiPath, JSON.stringify(doc, null, 2), "utf-8")
+
+    const changed = await emitChannelsTypes(asyncapiPath, tmpDir)
+    expect(changed).toBe(false)
+    const outFile = path.join(tmpDir, "channels.ts")
+    expect(fs.existsSync(outFile)).toBe(false)
+  })
+
+  it("emits a valid identifier for a schema name starting with a digit", () => {
+    const doc = {
+      asyncapi: "3.0.0",
+      channels: {},
+      components: {
+        schemas: {
+          "2FAToken": {
+            type: "object",
+            properties: { token: { type: "string" } },
+          },
+        },
+      },
+    }
+    const content = generateChannelsTs(doc)
+    expect(content).toContain("export interface _2FAToken {")
+  })
 })

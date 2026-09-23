@@ -50,6 +50,76 @@ interface AsyncAPIDoc {
   }
 }
 
+const EMITTER_RESERVED_IDENTIFIERS = new Set([
+  "RealtimeChannels",
+  "ChannelKey",
+  "ChannelAddress",
+  "ChannelProtocol",
+  "ChannelParams",
+  "ChannelSendPayload",
+  "ChannelReceivePayload",
+  "ChannelMetadata",
+  "CHANNEL_METADATA",
+])
+
+const TS_RESERVED_WORDS = new Set([
+  "any",
+  "as",
+  "boolean",
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "declare",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "implements",
+  "import",
+  "in",
+  "instanceof",
+  "interface",
+  "let",
+  "never",
+  "new",
+  "null",
+  "number",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "return",
+  "static",
+  "string",
+  "super",
+  "switch",
+  "symbol",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "type",
+  "typeof",
+  "unknown",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield",
+])
+
 function formatPropName(name: string): string {
   if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) {
     return name
@@ -57,12 +127,51 @@ function formatPropName(name: string): string {
   return JSON.stringify(name)
 }
 
-function jsonSchemaToTs(schema: any, indentLevel = 0): string {
+function toTypeIdentifier(rawName: string): string {
+  let name = rawName.replace(/[^A-Za-z0-9_$]+/g, "_").replace(/_+$/, "")
+  if (!name || name === "_") {
+    return "Schema"
+  }
+  if (/^[0-9]/.test(name)) {
+    name = `_${name}`
+  }
+  if (EMITTER_RESERVED_IDENTIFIERS.has(name) || TS_RESERVED_WORDS.has(name)) {
+    name = `Schema_${name}`
+  }
+  return name
+}
+
+function buildSchemaNameRegistry(schemas: Record<string, any>): Map<string, string> {
+  const registry = new Map<string, string>()
+  const usedIdentifiers = new Set<string>(EMITTER_RESERVED_IDENTIFIERS)
+  const keys = Object.keys(schemas).toSorted()
+
+  for (const rawName of keys) {
+    const baseIdentifier = toTypeIdentifier(rawName)
+    let identifier = baseIdentifier
+    let counter = 2
+    while (usedIdentifiers.has(identifier)) {
+      identifier = `${baseIdentifier}_${counter}`
+      counter++
+    }
+    usedIdentifiers.add(identifier)
+    registry.set(rawName, identifier)
+  }
+
+  return registry
+}
+
+function jsonSchemaToTs(schema: any, indentLevel = 0, registry?: Map<string, string>): string {
   if (!schema || typeof schema !== "object") return "unknown"
 
   if (schema.$ref) {
     const ref = String(schema.$ref)
-    return ref.replace(/^#\/(components\/schemas|\$defs|definitions)\//, "")
+    const rawName = ref.replace(/^#\/(components\/schemas|\$defs|definitions)\//, "")
+    const resolved = registry?.get(rawName)
+    if (!resolved) {
+      throw new Error(`Unresolved AsyncAPI $ref: ${ref}`)
+    }
+    return resolved
   }
 
   if (schema.enum && Array.isArray(schema.enum)) {
@@ -70,15 +179,15 @@ function jsonSchemaToTs(schema: any, indentLevel = 0): string {
   }
 
   if (schema.anyOf && Array.isArray(schema.anyOf)) {
-    return schema.anyOf.map((s: any) => `(${jsonSchemaToTs(s, indentLevel)})`).join(" | ")
+    return schema.anyOf.map((s: any) => `(${jsonSchemaToTs(s, indentLevel, registry)})`).join(" | ")
   }
 
   if (schema.oneOf && Array.isArray(schema.oneOf)) {
-    return schema.oneOf.map((s: any) => `(${jsonSchemaToTs(s, indentLevel)})`).join(" | ")
+    return schema.oneOf.map((s: any) => `(${jsonSchemaToTs(s, indentLevel, registry)})`).join(" | ")
   }
 
   if (schema.allOf && Array.isArray(schema.allOf)) {
-    return schema.allOf.map((s: any) => `(${jsonSchemaToTs(s, indentLevel)})`).join(" & ")
+    return schema.allOf.map((s: any) => `(${jsonSchemaToTs(s, indentLevel, registry)})`).join(" & ")
   }
 
   const type = schema.type
@@ -88,7 +197,7 @@ function jsonSchemaToTs(schema: any, indentLevel = 0): string {
   if (type === "null") return "null"
 
   if (type === "array") {
-    const items = schema.items ? jsonSchemaToTs(schema.items, indentLevel) : "unknown"
+    const items = schema.items ? jsonSchemaToTs(schema.items, indentLevel, registry) : "unknown"
     return `(${items})[]`
   }
 
@@ -99,7 +208,7 @@ function jsonSchemaToTs(schema: any, indentLevel = 0): string {
 
     if (propKeys.length === 0) {
       if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
-        return `Record<string, ${jsonSchemaToTs(schema.additionalProperties, indentLevel)}>`
+        return `Record<string, ${jsonSchemaToTs(schema.additionalProperties, indentLevel, registry)}>`
       }
       return "Record<string, unknown>"
     }
@@ -108,7 +217,7 @@ function jsonSchemaToTs(schema: any, indentLevel = 0): string {
     const closingIndent = "  ".repeat(indentLevel)
     const lines = propKeys.map((key) => {
       const isReq = required.has(key)
-      const propTs = jsonSchemaToTs(props[key], indentLevel + 1)
+      const propTs = jsonSchemaToTs(props[key], indentLevel + 1, registry)
       return `${indent}${formatPropName(key)}${isReq ? "" : "?"}: ${propTs};`
     })
     return `{\n${lines.join("\n")}\n${closingIndent}}`
@@ -117,20 +226,23 @@ function jsonSchemaToTs(schema: any, indentLevel = 0): string {
   return "unknown"
 }
 
-function renderComponentSchemas(schemas: Record<string, any>): string[] {
+function renderComponentSchemas(schemas: Record<string, any>, registry: Map<string, string>): string[] {
   const lines: string[] = []
+  const keys = Object.keys(schemas).toSorted()
 
-  for (const [name, schema] of Object.entries(schemas)) {
+  for (const name of keys) {
+    const schema = schemas[name]
+    const identifier = registry.get(name) ?? toTypeIdentifier(name)
     if (schema.type === "object" && schema.properties && Object.keys(schema.properties).length > 0) {
       const required = Array.isArray(schema.required) ? new Set(schema.required) : new Set()
       const propLines = Object.keys(schema.properties).map((propName) => {
         const isReq = required.has(propName)
-        const propTs = jsonSchemaToTs(schema.properties[propName], 1)
+        const propTs = jsonSchemaToTs(schema.properties[propName], 1, registry)
         return `  ${formatPropName(propName)}${isReq ? "" : "?"}: ${propTs};`
       })
-      lines.push(`export interface ${name} {\n${propLines.join("\n")}\n}`, "")
+      lines.push(`export interface ${identifier} {\n${propLines.join("\n")}\n}`, "")
     } else {
-      lines.push(`export type ${name} = ${jsonSchemaToTs(schema)};`, "")
+      lines.push(`export type ${identifier} = ${jsonSchemaToTs(schema, 0, registry)};`, "")
     }
   }
 
@@ -152,10 +264,7 @@ function renderComponentSchemas(schemas: Record<string, any>): string[] {
  * - If `channel.messages` has zero or multiple messages and no matching operations,
  *   returns empty arrays for both directions (resulting in `never`).
  */
-function resolveChannelDirections(
-  channelKey: string,
-  doc: AsyncAPIDoc,
-): { clientSendKeys: string[]; clientReceiveKeys: string[] } {
+function resolveChannelDirections(channelKey: string, doc: AsyncAPIDoc): { clientSendKeys: string[]; clientReceiveKeys: string[] } {
   const operations = Object.entries(doc.operations ?? {})
   const targetChannelRef = `#/channels/${channelKey}`
   const targetMessagePrefix = `#/channels/${channelKey}/messages/`
@@ -219,10 +328,12 @@ export function generateChannelsTs(doc: AsyncAPIDoc): string {
     "",
   ]
 
+  const registry = buildSchemaNameRegistry(doc.components?.schemas ?? {})
+
   const schemas = doc.components?.schemas
   if (schemas && Object.keys(schemas).length > 0) {
     sections.push("// --- Component Schemas ---", "")
-    sections.push(...renderComponentSchemas(schemas))
+    sections.push(...renderComponentSchemas(schemas, registry))
   }
 
   const channels = doc.channels || {}
@@ -239,10 +350,7 @@ export function generateChannelsTs(doc: AsyncAPIDoc): string {
     }
 
     const params = Object.keys(channel.parameters || {})
-    const paramsType =
-      params.length > 0
-        ? `{\n${params.map((p) => `      ${formatPropName(p)}: string;`).join("\n")}\n    }`
-        : "Record<string, never>"
+    const paramsType = params.length > 0 ? `{\n${params.map((p) => `      ${formatPropName(p)}: string;`).join("\n")}\n    }` : "Record<string, never>"
 
     const { clientSendKeys, clientReceiveKeys } = resolveChannelDirections(key, doc)
 
@@ -251,7 +359,7 @@ export function generateChannelsTs(doc: AsyncAPIDoc): string {
       for (const msgKey of messageKeys) {
         const payload = channel.messages?.[msgKey]?.payload
         if (payload !== undefined && payload !== null) {
-          renderedTypes.add(jsonSchemaToTs(payload, 2))
+          renderedTypes.add(jsonSchemaToTs(payload, 2, registry))
         }
       }
       if (renderedTypes.size === 0) {
@@ -285,15 +393,15 @@ export function generateChannelsTs(doc: AsyncAPIDoc): string {
     "",
     "export type ChannelKey = keyof RealtimeChannels;",
     "",
-    "export type ChannelAddress = RealtimeChannels[ChannelKey][\"address\"];",
+    'export type ChannelAddress = RealtimeChannels[ChannelKey]["address"];',
     "",
-    "export type ChannelProtocol<K extends ChannelKey = ChannelKey> = RealtimeChannels[K][\"protocol\"];",
+    'export type ChannelProtocol<K extends ChannelKey = ChannelKey> = RealtimeChannels[K]["protocol"];',
     "",
-    "export type ChannelParams<K extends ChannelKey = ChannelKey> = RealtimeChannels[K][\"params\"];",
+    'export type ChannelParams<K extends ChannelKey = ChannelKey> = RealtimeChannels[K]["params"];',
     "",
-    "export type ChannelSendPayload<K extends ChannelKey = ChannelKey> = RealtimeChannels[K][\"send\"];",
+    'export type ChannelSendPayload<K extends ChannelKey = ChannelKey> = RealtimeChannels[K]["send"];',
     "",
-    "export type ChannelReceivePayload<K extends ChannelKey = ChannelKey> = RealtimeChannels[K][\"receive\"];",
+    'export type ChannelReceivePayload<K extends ChannelKey = ChannelKey> = RealtimeChannels[K]["receive"];',
     "",
     "export interface ChannelMetadata {",
     "  address: string;",
@@ -309,12 +417,7 @@ export function generateChannelsTs(doc: AsyncAPIDoc): string {
   return sections.join("\n")
 }
 
-export async function emitChannelsTypes(
-  asyncapiPath: string,
-  outputDir: string,
-  channelsTsPath?: string,
-  projectRoot?: string,
-): Promise<boolean> {
+export async function emitChannelsTypes(asyncapiPath: string, outputDir: string, channelsTsPath?: string, projectRoot?: string): Promise<boolean> {
   const root = projectRoot ?? process.cwd()
   const resolvedAsyncapiPath = path.isAbsolute(asyncapiPath) ? asyncapiPath : path.resolve(root, asyncapiPath)
 
@@ -330,7 +433,12 @@ export async function emitChannelsTypes(
     return false
   }
 
-  const content = generateChannelsTs(doc)
+  let content: string
+  try {
+    content = generateChannelsTs(doc)
+  } catch {
+    return false
+  }
 
   const outFile = channelsTsPath
     ? path.isAbsolute(channelsTsPath)
