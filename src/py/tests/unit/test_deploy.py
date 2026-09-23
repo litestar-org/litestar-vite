@@ -270,6 +270,83 @@ def test_sync_passes_content_type_for_s3(tmp_path: Path) -> None:
         mock_put.assert_called_once()
         _, kwargs = mock_put.call_args
         assert kwargs.get("ContentType") == "application/javascript"
+        assert "content_type" not in kwargs
+
+
+@pytest.mark.parametrize("storage_backend", ["s3://bucket/prefix", "s3a://bucket/prefix"])
+def test_s3_upload_sends_only_contenttype(tmp_path: Path, storage_backend: str) -> None:
+    """S3 and S3A uploads forward ContentType only, never lowercase content_type."""
+    bundle = tmp_path / "dist"
+    bundle.mkdir()
+    (bundle / "app.js").write_text("console.log('hi')")
+    fs = MemoryFileSystem()
+    deployer = ViteDeployer(
+        bundle_dir=bundle,
+        manifest_name="manifest.json",
+        deploy_config=DeployConfig(
+            enabled=True,
+            storage_backend=storage_backend,
+            content_types={".js": "application/javascript"},
+        ),
+        fs=fs,
+        remote_path="deploy",
+    )
+    with patch.object(fs, "put") as mock_put:
+        deployer.sync()
+        mock_put.assert_called_once()
+        _, kwargs = mock_put.call_args
+        assert kwargs.get("ContentType") == "application/javascript"
+        assert "content_type" not in kwargs
+
+
+def test_gcs_upload_sends_only_lowercase_content_type(tmp_path: Path) -> None:
+    """Non-S3 uploads forward lowercase content_type only, never ContentType."""
+    bundle = tmp_path / "dist"
+    bundle.mkdir()
+    (bundle / "app.js").write_text("console.log('hi')")
+    fs = MemoryFileSystem()
+    deployer = ViteDeployer(
+        bundle_dir=bundle,
+        manifest_name="manifest.json",
+        deploy_config=DeployConfig(
+            enabled=True,
+            storage_backend="gs://bucket/prefix",
+            content_types={".js": "application/javascript"},
+        ),
+        fs=fs,
+        remote_path="deploy",
+    )
+    with patch.object(fs, "put") as mock_put:
+        deployer.sync()
+        mock_put.assert_called_once()
+        _, kwargs = mock_put.call_args
+        assert kwargs.get("content_type") == "application/javascript"
+        assert "ContentType" not in kwargs
+
+
+def test_upload_without_known_content_type_sends_no_kwargs(tmp_path: Path) -> None:
+    """Uploads with unconfigured suffix forward neither content type keyword."""
+    bundle = tmp_path / "dist"
+    bundle.mkdir()
+    (bundle / "unknown.xyz").write_text("data")
+    fs = MemoryFileSystem()
+    deployer = ViteDeployer(
+        bundle_dir=bundle,
+        manifest_name="manifest.json",
+        deploy_config=DeployConfig(
+            enabled=True,
+            storage_backend="s3://bucket/prefix",
+            content_types={".js": "application/javascript"},
+        ),
+        fs=fs,
+        remote_path="deploy",
+    )
+    with patch.object(fs, "put") as mock_put:
+        deployer.sync()
+        mock_put.assert_called_once()
+        _, kwargs = mock_put.call_args
+        assert "ContentType" not in kwargs
+        assert "content_type" not in kwargs
 
 
 def test_collect_local_files_includes_sourcemaps(tmp_path: Path) -> None:

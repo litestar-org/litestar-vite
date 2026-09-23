@@ -23,6 +23,13 @@ __all__ = ("FileInfo", "SyncPlan", "SyncResult", "ViteDeployer", "format_bytes")
 
 AbstractFileSystem = Any
 
+_S3_SCHEMES: frozenset[str] = frozenset({"s3", "s3a"})
+"""Storage backend URL schemes that interact with S3-compatible APIs.
+
+boto3 and s3fs require the PascalCase 'ContentType' parameter, whereas GCS (gcsfs)
+and Azure (adlfs) expect the lowercase 'content_type' parameter.
+"""
+
 
 def _suggest_install_package(storage_backend: "str | None") -> str:
     """Suggest the PyPI package to install based on backend scheme.
@@ -311,6 +318,11 @@ class ViteDeployer:
     def sync(self, *, dry_run: bool = False, on_progress: Callable[[str, str], None] | None = None) -> SyncResult:
         """Sync local bundle to remote storage.
 
+        Uploads modified or missing local assets and removes remote orphaned assets
+        when configured. S3-compatible backends (s3, s3a) receive the PascalCase
+        'ContentType' parameter required by boto3, while other backends (such as GCS
+        or Azure Blob Storage) receive the lowercase 'content_type' parameter.
+
         Args:
             dry_run: When True, compute the plan without uploading or deleting.
             on_progress: Optional callback receiving an action and path for each step.
@@ -352,9 +364,10 @@ class ViteDeployer:
             put_kwargs: dict[str, Any] = {}
             if content_type:
                 scheme = (self.config.storage_backend or "").split("://", 1)[0].lower()
-                if scheme == "s3":
+                if scheme in _S3_SCHEMES:
                     put_kwargs["ContentType"] = content_type
-                put_kwargs["content_type"] = content_type
+                else:
+                    put_kwargs["content_type"] = content_type
             self.fs.put(local_path.as_posix(), remote_path, **put_kwargs)
             uploaded.append(path)
             uploaded_bytes += local_files[path].size
