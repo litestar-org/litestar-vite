@@ -85,11 +85,14 @@ def app_has_realtime_surface(app: "Litestar") -> bool:
             return True
 
     try:
-        from litestar.channels import ChannelsPlugin
+        from litestar_vite._typing import CHANNELS_INSTALLED
 
-        for plugin in app.plugins:
-            if isinstance(plugin, ChannelsPlugin):
-                return True
+        if CHANNELS_INSTALLED:
+            from litestar.channels import ChannelsPlugin
+
+            for plugin in app.plugins:
+                if isinstance(plugin, ChannelsPlugin):
+                    return True
     except ImportError:
         pass
 

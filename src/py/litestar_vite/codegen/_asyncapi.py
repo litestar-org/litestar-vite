@@ -12,7 +12,6 @@ from dataclasses import asdict, dataclass, field
 from types import UnionType
 from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin
 
-from litestar.channels import ChannelsPlugin
 from litestar.handlers import WebsocketListenerRouteHandler
 from litestar.openapi.spec import Reference
 from litestar.response import ServerSentEvent
@@ -20,6 +19,7 @@ from litestar.routes import HTTPRoute, WebSocketRoute
 from litestar.types.builtin_types import NoneType
 from litestar.typing import FieldDefinition
 
+from litestar_vite._typing import CHANNELS_INSTALLED
 from litestar_vite.codegen._openapi import (
     OpenAPISupport,
     asyncapi_schema_from_result,
@@ -38,6 +38,7 @@ if not getattr(ServerSentEvent, "__parameters__", None):
 
 if TYPE_CHECKING:
     from litestar import Litestar
+    from litestar.channels import ChannelsPlugin
 
 
 ASYNCAPI_PAYLOAD_OPT_KEY = "asyncapi_event_payload"
@@ -1012,8 +1013,15 @@ def extract_channels_plugin_channels(
         operation_ids: Optional set to ensure unique operation ids across sources.
 
     Returns:
-        Tuple of (channels_mapping, operations_mapping).
+        Tuple of (channels_mapping, operations_mapping). When litestar.channels
+        is unavailable, channel extraction degrades gracefully to an empty result
+        to keep the CLI importable.
     """
+    if not CHANNELS_INSTALLED:
+        return {}, {}
+
+    from litestar.channels import ChannelsPlugin
+
     if context is None:
         context = AsyncAPISchemaContext(
             components_schemas=components_schemas if components_schemas is not None else {}
@@ -1029,7 +1037,7 @@ def extract_channels_plugin_channels(
     channels: dict[str, AsyncAPIChannel] = {}
     operations: dict[str, AsyncAPIOperation] = {}
 
-    channels_plugin: ChannelsPlugin | None = None
+    channels_plugin: "ChannelsPlugin | None" = None
     for plugin in app.plugins:
         if isinstance(plugin, ChannelsPlugin):
             channels_plugin = plugin

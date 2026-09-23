@@ -1,6 +1,8 @@
 """Unit tests for AsyncAPI 3.0 codegen models and WebSocket route introspection."""
 
+import importlib
 import json
+import sys
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from enum import Enum
@@ -8,6 +10,7 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 import msgspec
+import pytest
 from litestar import Litestar, get, websocket, websocket_listener
 from litestar.channels import ChannelsPlugin
 from litestar.channels.backends.memory import MemoryChannelsBackend
@@ -1011,3 +1014,55 @@ def test_generated_document_matches_committed_fixture() -> None:
     fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
 
     assert doc == fixture
+
+
+def test_channels_extraction_returns_empty_when_channels_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test extract_channels_plugin_channels returns empty dicts when CHANNELS_INSTALLED is False."""
+    channels_plugin = ChannelsPlugin(backend=MemoryChannelsBackend(), channels=["notify"])
+    app = Litestar(plugins=[channels_plugin])
+
+    monkeypatch.setattr("litestar_vite.codegen._asyncapi.CHANNELS_INSTALLED", False)
+    channels, operations = extract_channels_plugin_channels(app)
+
+    assert channels == {}
+    assert operations == {}
+
+
+def test_realtime_extraction_survives_missing_channels(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test realtime channel extraction preserves WebSocket and SSE channels when channels are unavailable."""
+
+    @websocket_listener("/ws/chat")
+    async def chat_listener(data: ChatInbound) -> ChatOutbound:
+        return ChatOutbound(room_id=data.room_id, message=data.message, timestamp=1)
+
+    @get("/stream/events", opt={ASYNCAPI_PAYLOAD_OPT_KEY: ServerEvent})
+    async def sse_handler() -> ServerSentEvent:
+        return ServerSentEvent(content="test")
+
+    channels_plugin = ChannelsPlugin(backend=MemoryChannelsBackend(), channels=["notify"])
+    app = Litestar(
+        route_handlers=[chat_listener, sse_handler],
+        plugins=[channels_plugin],
+    )
+
+    monkeypatch.setattr("litestar_vite.codegen._asyncapi.CHANNELS_INSTALLED", False)
+    doc = create_asyncapi_document(app).to_dict()
+
+    assert "ws__chat" in doc["channels"]
+    assert "stream__events" in doc["channels"]
+    assert "notify" not in doc["channels"]
+
+
+def test_cli_imports_without_litestar_channels(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test litestar_vite.cli imports cleanly even when litestar.channels cannot be imported."""
+    import litestar_vite.codegen._asyncapi as asyncapi_mod
+
+    monkeypatch.setitem(sys.modules, "litestar.channels", None)
+    try:
+        importlib.reload(asyncapi_mod)
+        cli_mod = importlib.import_module("litestar_vite.cli")
+        assert cli_mod is not None
+    finally:
+        monkeypatch.undo()
+        importlib.reload(asyncapi_mod)
+
