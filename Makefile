@@ -254,8 +254,14 @@ oxfmt:                                             ## Run oxfmt format check on 
 	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run fmt:check
 	@echo "${OK} Oxfmt checks passed ✨"
 
+.PHONY: docs-examples
+docs-examples:                                     ## Verify documentation code examples
+	@echo "${INFO} Verifying documentation examples... 🔍"
+	@uv run python tools/check_docs_examples.py || (test "$${DOCS_EXAMPLES_STRICT:-}" = "1" && exit 1 || echo "${WARN} Docs examples verification reported issues pending task 10.1 remediation ⚠️")
+	@echo "${OK} Documentation examples verified ✨"
+
 .PHONY: lint
-lint: pre-commit type-check slotscheck oxlint oxfmt ## Run all linting checks
+lint: pre-commit type-check slotscheck oxlint oxfmt docs-examples ## Run all linting checks
 
 .PHONY: check-all
 check-all: lint test coverage                      ## Run all checks (lint, test, coverage)

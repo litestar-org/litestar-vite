@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "litestar-vite-plugin/helpers": ["../../src/js/src/helpers/index.ts"],
+      "litestar-vite-plugin/inertia-helpers": ["../../src/js/src/inertia-helpers/index.ts"],
+      "litestar-vite-plugin/react": ["../../src/js/src/react/index.ts"],
+      "litestar-vite-plugin/vue": ["../../src/js/src/vue/index.ts"],
+      "litestar-vite-plugin/svelte": ["../../src/js/src/svelte/index.ts"],
+      "litestar-vite-plugin": ["../../src/js/src/index.ts"]
+    }
+  }
+}

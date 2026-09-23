@@ -369,10 +369,9 @@ skip-magic-trailing-comma = true
   "UP006",
   "SLF001",
   "ERA001",
-  "RUF029"
-
+  "RUF029",
 ]
-"tools/*.py" = [ "PLR0911"]
+"tools/*.py" = ["PLR0911", "T201"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["litestar_vite", "tests"]
