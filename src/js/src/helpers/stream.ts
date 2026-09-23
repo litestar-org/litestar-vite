@@ -35,6 +35,7 @@ export interface EventStreamConfig<TFrame = unknown, TSend = never> {
   onHealthChange?: (healthy: boolean) => void
   onReconnect?: () => void
   onGap?: (gap: StreamGap) => void
+  onStale?: () => void
   shouldReconnect?: (closeCode: number) => boolean
   isHeartbeat?: (frame: TFrame) => boolean
   getEventKey?: (frame: TFrame) => string | undefined
@@ -42,6 +43,9 @@ export interface EventStreamConfig<TFrame = unknown, TSend = never> {
   baseDelayMs?: number
   maxDelayMs?: number
   dedupWindow?: number
+  heartbeatTimeoutMs?: number
+  heartbeatIntervalMs?: number
+  maxTrackedStreams?: number
   parseFrame?: (data: string) => TFrame
   serializeFrame?: (payload: TSend) => string
   WebSocketCtor?: typeof WebSocket
@@ -61,6 +65,14 @@ export type EventStreamOptions<TFrame = unknown, TSend = never> = EventStreamCon
   )
 
 export interface EventStream<TSend = never> {
+  /**
+   * Connect or reconnect the stream session.
+   *
+   * A manual `connect()` call starts a fresh session and resets deduplication
+   * and sequence tracking state. In contrast, automatic reconnects preserve
+   * tracking state so that message deduplication and gap detection function
+   * across transient disconnects.
+   */
   connect(): void
   dispose(): void
   /**
@@ -77,6 +89,7 @@ export interface EventStream<TSend = never> {
 const DEFAULT_BASE_DELAY_MS = 1000
 const DEFAULT_MAX_DELAY_MS = 10_000
 const DEFAULT_DEDUP_WINDOW = 1024
+const DEFAULT_MAX_TRACKED_STREAMS = 256
 const DEFAULT_SSE_EVENTS = ["message"] as const
 
 function defaultParseFrame(data: string): unknown {
@@ -117,9 +130,7 @@ export function resolveStreamUrl(value: string | URL, transport: EventStreamTran
  * @param options - Stream transport, lifecycle, and frame-processing options.
  * @returns A disposable stream that connects only when `connect()` is called.
  */
-export function createEventStream<TFrame = unknown, TSend = never>(
-  options: EventStreamOptions<TFrame, TSend>,
-): EventStream<TSend> {
+export function createEventStream<TFrame = unknown, TSend = never>(options: EventStreamOptions<TFrame, TSend>): EventStream<TSend> {
   const {
     transport = "websocket",
     sseEvents = DEFAULT_SSE_EVENTS,
@@ -129,6 +140,7 @@ export function createEventStream<TFrame = unknown, TSend = never>(
     onHealthChange,
     onReconnect,
     onGap,
+    onStale,
     shouldReconnect = (closeCode) => closeCode !== 1000,
     isHeartbeat = () => false,
     getEventKey = () => undefined,
@@ -136,6 +148,9 @@ export function createEventStream<TFrame = unknown, TSend = never>(
     baseDelayMs = DEFAULT_BASE_DELAY_MS,
     maxDelayMs = DEFAULT_MAX_DELAY_MS,
     dedupWindow = DEFAULT_DEDUP_WINDOW,
+    heartbeatTimeoutMs = 0,
+    heartbeatIntervalMs = heartbeatTimeoutMs > 0 ? Math.max(1000, Math.floor(heartbeatTimeoutMs / 2)) : 1000,
+    maxTrackedStreams = DEFAULT_MAX_TRACKED_STREAMS,
     parseFrame = defaultParseFrame as (data: string) => TFrame,
     serializeFrame = JSON.stringify as (payload: TSend) => string,
   } = options
@@ -143,6 +158,8 @@ export function createEventStream<TFrame = unknown, TSend = never>(
   let connection: WebSocket | EventSource | null = null
   let attempt = 0
   let timer: ReturnType<typeof setTimeout> | null = null
+  let watchdog: ReturnType<typeof setInterval> | null = null
+  let lastFrameAt = 0
   let disposed = false
   let lastHealthy: boolean | null = null
   let hasOpened = false
@@ -162,6 +179,57 @@ export function createEventStream<TFrame = unknown, TSend = never>(
     if (timer !== null) {
       clearTimeout(timer)
       timer = null
+    }
+  }
+
+  function clearWatchdog(): void {
+    if (watchdog !== null) {
+      clearInterval(watchdog)
+      watchdog = null
+    }
+  }
+
+  function closeCurrentConnection(): void {
+    clearWatchdog()
+    const current = connection
+    connection = null
+    if (current !== null) {
+      current.close()
+    }
+  }
+
+  function armWatchdog(): void {
+    if (heartbeatTimeoutMs <= 0) {
+      return
+    }
+    clearWatchdog()
+    lastFrameAt = Date.now()
+    watchdog = setInterval(() => {
+      if (Date.now() - lastFrameAt >= heartbeatTimeoutMs) {
+        onStale?.()
+        emitHealth(false)
+        clearWatchdog()
+        closeCurrentConnection()
+        if (!disposed) {
+          scheduleReconnect()
+        }
+      }
+    }, heartbeatIntervalMs)
+  }
+
+  function resetTracking(): void {
+    sequenceByStream.clear()
+    seenKeySet.clear()
+    seenKeys.length = 0
+  }
+
+  function evictOldestTrackedStreams(): void {
+    while (sequenceByStream.size > maxTrackedStreams) {
+      const oldest = sequenceByStream.keys().next().value
+      if (oldest === undefined) {
+        break
+      }
+      sequenceByStream.delete(oldest)
     }
   }
 
@@ -188,9 +256,11 @@ export function createEventStream<TFrame = unknown, TSend = never>(
     } else {
       hasOpened = true
     }
+    armWatchdog()
   }
 
   function handleMessage(event: MessageEvent): void {
+    lastFrameAt = Date.now()
     const frame = parseFrame(String(event.data))
     if (isHeartbeat(frame)) {
       return
@@ -216,8 +286,10 @@ export function createEventStream<TFrame = unknown, TSend = never>(
       const last = sequenceByStream.get(sequence.stream)
       if (last === undefined) {
         sequenceByStream.set(sequence.stream, sequence.value)
+        evictOldestTrackedStreams()
       } else if (sequence.value > last) {
         sequenceByStream.set(sequence.stream, sequence.value)
+        evictOldestTrackedStreams()
         if (sequence.value > last + 1) {
           onGap?.({
             stream: sequence.stream,
@@ -239,6 +311,7 @@ export function createEventStream<TFrame = unknown, TSend = never>(
   }
 
   function openWebSocket(): void {
+    closeCurrentConnection()
     const WebSocketCtor = options.WebSocketCtor ?? window.WebSocket
     const url = buildConnectionUrl()
     const next = new WebSocketCtor(url)
@@ -253,6 +326,7 @@ export function createEventStream<TFrame = unknown, TSend = never>(
       if (connection !== next) {
         return
       }
+      clearWatchdog()
       connection = null
       onClose?.()
       emitHealth(false)
@@ -267,6 +341,7 @@ export function createEventStream<TFrame = unknown, TSend = never>(
   }
 
   function openEventSource(): void {
+    closeCurrentConnection()
     const EventSourceCtor = options.EventSourceCtor ?? window.EventSource
     const url = buildConnectionUrl()
     const next = new EventSourceCtor(url)
@@ -283,6 +358,7 @@ export function createEventStream<TFrame = unknown, TSend = never>(
       if (connection !== next) {
         return
       }
+      clearWatchdog()
       connection = null
       next.close()
       onClose?.()
@@ -312,11 +388,14 @@ export function createEventStream<TFrame = unknown, TSend = never>(
       }
       attempt = 0
       clearTimer()
+      resetTracking()
       open()
     },
     dispose(): void {
       disposed = true
       clearTimer()
+      clearWatchdog()
+      resetTracking()
       const current = connection
       connection = null
       if (current !== null) {
