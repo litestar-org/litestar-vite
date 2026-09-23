@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 
-import { emitChannelsTypes } from "../../src/shared/emit-channels-types.js"
+import { emitChannelsTypes, generateChannelsTs } from "../../src/shared/emit-channels-types.js"
 
 const tmpDirs: string[] = []
 
@@ -10,6 +10,95 @@ const createTmpDir = (): string => {
   const dir = fs.mkdtempSync(path.join(process.cwd(), "vitest-channels-emit-"))
   tmpDirs.push(dir)
   return dir
+}
+
+const fixtureDoc = {
+  asyncapi: "3.0.0",
+  info: {
+    title: "Chat & Notifications Realtime API",
+    version: "2.1.0",
+  },
+  channels: {
+    ws_chat: {
+      address: "/ws/chat/{room_id}",
+      title: "chat_handler Channel",
+      parameters: {
+        room_id: { description: "Path parameter room_id" },
+      },
+      messages: {
+        inbound: {
+          name: "ws_chatInbound",
+          payload: { $ref: "#/components/schemas/InboundMessage" },
+        },
+        outbound: {
+          name: "ws_chatOutbound",
+          payload: { $ref: "#/components/schemas/OutboundMessage" },
+        },
+      },
+      bindings: {
+        ws: {},
+      },
+    },
+    notifications: {
+      address: "notifications",
+      title: "Notifications Channel",
+      messages: {
+        message: {
+          name: "notificationsMessage",
+          payload: { type: "string" },
+        },
+      },
+    },
+    stream_events: {
+      address: "/stream/events",
+      title: "Events SSE Stream",
+      messages: {
+        event: {
+          name: "stream_eventsEvent",
+          payload: { $ref: "#/components/schemas/ServerEvent" },
+        },
+      },
+      bindings: {
+        http: {},
+      },
+    },
+  },
+  components: {
+    schemas: {
+      InboundMessage: {
+        type: "object",
+        properties: {
+          room_id: { type: "string" },
+          content: { type: "string" },
+        },
+        required: ["room_id", "content"],
+      },
+      OutboundMessage: {
+        type: "object",
+        properties: {
+          id: { type: "integer" },
+          content: { type: "string" },
+          timestamp: { type: "number" },
+        },
+        required: ["id", "content"],
+      },
+      ServerEvent: {
+        type: "object",
+        properties: {
+          event_type: { enum: ["join", "leave", "alert"] },
+          metadata: { type: "object" },
+        },
+        required: ["event_type"],
+      },
+    },
+  },
+  operations: {
+    receive_ws_chat: { action: "receive", channel: { $ref: "#/channels/ws_chat" }, messages: [{ $ref: "#/channels/ws_chat/messages/inbound" }] },
+    send_ws_chat: { action: "send", channel: { $ref: "#/channels/ws_chat" }, messages: [{ $ref: "#/channels/ws_chat/messages/outbound" }] },
+    send_notifications: { action: "send", channel: { $ref: "#/channels/notifications" }, messages: [{ $ref: "#/channels/notifications/messages/message" }] },
+    receive_notifications: { action: "receive", channel: { $ref: "#/channels/notifications" }, messages: [{ $ref: "#/channels/notifications/messages/message" }] },
+    stream_stream_events: { action: "send", channel: { $ref: "#/channels/stream_events" }, messages: [{ $ref: "#/channels/stream_events/messages/event" }] },
+  },
 }
 
 afterEach(() => {
@@ -39,100 +128,18 @@ describe("emitChannelsTypes", () => {
     expect(result).toBe(false)
   })
 
+  it("emitted channels.ts matches the committed type fixture", () => {
+    const emitted = generateChannelsTs(fixtureDoc)
+    const fixturePath = path.resolve(import.meta.dirname, "../types/generated-channels.fixture.ts")
+    const fixtureContent = fs.readFileSync(fixturePath, "utf-8")
+    expect(emitted).toBe(fixtureContent)
+  })
+
   it("generates channels.ts from complete AsyncAPI document", async () => {
     const tmpDir = createTmpDir()
     const asyncapiPath = path.join(tmpDir, "asyncapi.json")
 
-    const doc = {
-      asyncapi: "3.0.0",
-      info: {
-        title: "Chat & Notifications Realtime API",
-        version: "2.1.0",
-      },
-      channels: {
-        ws_chat: {
-          address: "/ws/chat/{room_id}",
-          title: "chat_handler Channel",
-          parameters: {
-            room_id: { description: "Path parameter room_id" },
-          },
-          messages: {
-            inbound: {
-              name: "ws_chatInbound",
-              payload: { $ref: "#/components/schemas/InboundMessage" },
-            },
-            outbound: {
-              name: "ws_chatOutbound",
-              payload: { $ref: "#/components/schemas/OutboundMessage" },
-            },
-          },
-          bindings: {
-            ws: {},
-          },
-        },
-        notifications: {
-          address: "notifications",
-          title: "Notifications Channel",
-          messages: {
-            message: {
-              name: "notificationsMessage",
-              payload: { type: "string" },
-            },
-          },
-        },
-        stream_events: {
-          address: "/stream/events",
-          title: "Events SSE Stream",
-          messages: {
-            event: {
-              name: "stream_eventsEvent",
-              payload: { $ref: "#/components/schemas/ServerEvent" },
-            },
-          },
-          bindings: {
-            http: {},
-          },
-        },
-      },
-      components: {
-        schemas: {
-          InboundMessage: {
-            type: "object",
-            properties: {
-              room_id: { type: "string" },
-              content: { type: "string" },
-            },
-            required: ["room_id", "content"],
-          },
-          OutboundMessage: {
-            type: "object",
-            properties: {
-              id: { type: "integer" },
-              content: { type: "string" },
-              timestamp: { type: "number" },
-            },
-            required: ["id", "content"],
-          },
-          ServerEvent: {
-            type: "object",
-            properties: {
-              event_type: { enum: ["join", "leave", "alert"] },
-              metadata: { type: "object" },
-            },
-            required: ["event_type"],
-          },
-        },
-      },
-      operations: {
-        receive_ws_chat: { action: "receive", channel: { $ref: "#/channels/ws_chat" }, messages: [{ $ref: "#/channels/ws_chat/messages/inbound" }] },
-        send_ws_chat: { action: "send", channel: { $ref: "#/channels/ws_chat" }, messages: [{ $ref: "#/channels/ws_chat/messages/outbound" }] },
-        send_notifications: { action: "send", channel: { $ref: "#/channels/notifications" }, messages: [{ $ref: "#/channels/notifications/messages/message" }] },
-        receive_notifications: { action: "receive", channel: { $ref: "#/channels/notifications" }, messages: [{ $ref: "#/channels/notifications/messages/message" }] },
-        stream_stream_events: { action: "send", channel: { $ref: "#/channels/stream_events" }, messages: [{ $ref: "#/channels/stream_events/messages/event" }] },
-      },
-    }
-
-    fs.writeFileSync(asyncapiPath, JSON.stringify(doc, null, 2), "utf-8")
+    fs.writeFileSync(asyncapiPath, JSON.stringify(fixtureDoc, null, 2), "utf-8")
 
     const changed = await emitChannelsTypes(asyncapiPath, tmpDir)
     expect(changed).toBe(true)
@@ -295,4 +302,3 @@ describe("emitChannelsTypes", () => {
     expect(registryMatch![1]).not.toContain("unknown")
   })
 })
-

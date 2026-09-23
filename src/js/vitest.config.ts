@@ -17,12 +17,17 @@ export default defineConfig({
     globalSetup: ["./src/js/tests/global-setup.ts"],
     environment: "happy-dom",
     globals: true,
+    typecheck: {
+      enabled: true,
+      include: ["src/js/tests/**/*.test-d.ts"],
+      tsconfig: "./src/js/tsconfig.json",
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "lcov"],
       reportsDirectory: "./coverage",
       include: ["src/**/*.ts"],
-      exclude: ["src/**/*.d.ts", "src/**/types.ts", "**/__mocks__/**"],
+      exclude: ["src/**/*.d.ts", "src/**/types.ts", "**/__mocks__/**", "src/js/tests/**/*.test-d.ts"],
       thresholds: {
         global: {
           lines: 80,
