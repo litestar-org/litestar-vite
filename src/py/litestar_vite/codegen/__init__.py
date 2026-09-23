@@ -11,6 +11,7 @@ are kept in private submodules to keep the public API clean.
 """
 
 from litestar_vite.codegen._asyncapi import (
+    ASYNCAPI_PAYLOAD_OPT_KEY,
     AsyncAPIChannel,
     AsyncAPIComponents,
     AsyncAPIDocument,
@@ -42,6 +43,7 @@ from litestar_vite.codegen._routes import (
 from litestar_vite.codegen._utils import encode_deterministic_json, strip_timestamp_for_comparison, write_if_changed
 
 __all__ = (
+    "ASYNCAPI_PAYLOAD_OPT_KEY",
     "AsyncAPIChannel",
     "AsyncAPIComponents",
     "AsyncAPIDocument",

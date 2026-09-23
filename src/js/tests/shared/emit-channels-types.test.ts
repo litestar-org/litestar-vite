@@ -301,4 +301,56 @@ describe("emitChannelsTypes", () => {
     expect(registryMatch).not.toBeNull()
     expect(registryMatch![1]).not.toContain("unknown")
   })
+
+  it("resolves broadcast-keyed message with send operation to receive payload and send never", async () => {
+    const tmpDir = createTmpDir()
+    const asyncapiPath = path.join(tmpDir, "asyncapi.json")
+
+    const doc = {
+      asyncapi: "3.0.0",
+      channels: {
+        broadcast_topic: {
+          address: "/topics/broadcast",
+          bindings: { ws: {} },
+          messages: {
+            broadcast: {
+              name: "BroadcastEvent",
+              payload: {
+                type: "object",
+                properties: {
+                  event: { type: "string" },
+                  count: { type: "integer" },
+                },
+                required: ["event"],
+              },
+            },
+          },
+        },
+      },
+      operations: {
+        send_broadcast: {
+          action: "send",
+          channel: { $ref: "#/channels/broadcast_topic" },
+          messages: [{ $ref: "#/channels/broadcast_topic/messages/broadcast" }],
+        },
+      },
+    }
+    fs.writeFileSync(asyncapiPath, JSON.stringify(doc, null, 2), "utf-8")
+
+    const changed = await emitChannelsTypes(asyncapiPath, tmpDir)
+    expect(changed).toBe(true)
+
+    const outFile = path.join(tmpDir, "channels.ts")
+    const content = fs.readFileSync(outFile, "utf-8")
+
+    expect(content).toContain('"broadcast_topic": {')
+    expect(content).toContain("send: never;")
+    expect(content).toContain("receive: {")
+    expect(content).toContain("event: string;")
+    expect(content).toContain("count?: number;")
+
+    const registryMatch = content.match(/export interface RealtimeChannels \{([\s\S]*?)\}/)
+    expect(registryMatch).not.toBeNull()
+    expect(registryMatch![1]).not.toContain("unknown")
+  })
 })

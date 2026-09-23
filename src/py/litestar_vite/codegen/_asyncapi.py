@@ -6,6 +6,7 @@ and operations.
 """
 
 import re
+import types
 from dataclasses import asdict, dataclass, field
 from types import UnionType
 from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin
@@ -19,10 +20,18 @@ from litestar.types.builtin_types import NoneType
 from litestar_vite.codegen._routes import extract_path_params
 from litestar_vite.codegen._ts import normalize_path
 
+if not getattr(ServerSentEvent, "__parameters__", None):
+
+    def _sse_class_getitem(cls: type[Any], item: Any) -> types.GenericAlias:
+        return types.GenericAlias(cls, item)
+
+    setattr(ServerSentEvent, "__class_getitem__", classmethod(_sse_class_getitem))
+
 if TYPE_CHECKING:
     from litestar import Litestar
 
 
+ASYNCAPI_PAYLOAD_OPT_KEY = "asyncapi_event_payload"
 _PRESERVED_SUBTREE_KEYS = frozenset({"payload", "bindings", "schemas"})
 
 
@@ -732,6 +741,56 @@ def extract_websocket_routes(
     return channels, operations
 
 
+def _opt_payload_annotation(handler: Any) -> Any:
+    """Extract an explicit AsyncAPI payload annotation from route handler opt mapping.
+
+    Args:
+        handler: The route handler or websocket listener.
+
+    Returns:
+        The configured payload annotation or None if not specified.
+    """
+    opt: Any = getattr(handler, "opt", None)
+    if isinstance(opt, dict):
+        typed_opt = cast("dict[str, Any]", opt)
+        return typed_opt.get(ASYNCAPI_PAYLOAD_OPT_KEY)
+    fn: Any = getattr(handler, "fn", None)
+    if fn is not None:
+        fn_opt: Any = getattr(fn, "opt", None)
+        if isinstance(fn_opt, dict):
+            typed_fn_opt = cast("dict[str, Any]", fn_opt)
+            return typed_fn_opt.get(ASYNCAPI_PAYLOAD_OPT_KEY)
+    return None
+
+
+def _sse_payload_annotation(annotation: Any) -> Any:
+    """Unwrap a handler return annotation to find the stream element type.
+
+    Args:
+        annotation: Type annotation to inspect.
+
+    Returns:
+        The extracted model type or None if untyped or text-based.
+    """
+    if annotation is None or annotation is NoneType or annotation is ServerSentEvent:
+        return None
+    try:
+        if isinstance(annotation, type) and issubclass(annotation, (ServerSentEvent, str, bytes)):
+            return None
+    except TypeError:
+        pass
+
+    origin = get_origin(annotation)
+    if origin is not None:
+        for arg in get_args(annotation):
+            found: Any = _sse_payload_annotation(arg)
+            if found is not None:
+                return found
+        return None
+
+    return cast("Any", annotation)
+
+
 def _is_sse_type(annotation: Any) -> bool:
     """Determine whether a type annotation represents or contains a ServerSentEvent.
 
@@ -743,28 +802,35 @@ def _is_sse_type(annotation: Any) -> bool:
     """
     if annotation is None:
         return False
-    if annotation is ServerSentEvent:
+    target = get_origin(annotation) or annotation
+    if target is ServerSentEvent:
         return True
     try:
-        if isinstance(annotation, type) and issubclass(annotation, ServerSentEvent):
+        if isinstance(target, type) and issubclass(target, ServerSentEvent):
             return True
     except TypeError:
         pass
     origin = get_origin(annotation)
     if origin is not None:
-        for arg in get_args(annotation):
-            if _is_sse_type(arg):
-                return True
+        return any(_is_sse_type(arg) for arg in get_args(annotation))
     return False
 
 
 def extract_channels_plugin_channels(
-    app: "Litestar", *, allocator: _ChannelKeyAllocator | None = None, operation_ids: set[str] | None = None
+    app: "Litestar",
+    components_schemas: dict[str, Any] | None = None,
+    *,
+    allocator: _ChannelKeyAllocator | None = None,
+    operation_ids: set[str] | None = None,
 ) -> tuple[dict[str, AsyncAPIChannel], dict[str, AsyncAPIOperation]]:
     """Extract channels and operations defined in Litestar ChannelsPlugin.
 
+    Fallback payload schema is unconstrained ({}) rather than {"type": "object"}
+    because a ChannelsPlugin topic may carry arrays, strings, numbers, or bytes.
+
     Args:
         app: The Litestar application instance.
+        components_schemas: Optional dictionary to collect named component schemas.
         allocator: Optional allocator to ensure unique channel keys across sources.
         operation_ids: Optional set to ensure unique operation ids across sources.
 
@@ -808,13 +874,31 @@ def extract_channels_plugin_channels(
         for param_name in extract_path_params(pattern):
             parameters[param_name] = AsyncAPIParameter(description=f"Channel parameter {param_name}")
 
+        located_handler: Any = None
+        for route in app.routes:
+            if isinstance(route, WebSocketRoute) and (
+                route.path == channel_path or normalize_path(route.path) == normalized
+            ):
+                located_handler = getattr(route, "route_handler", None)
+                break
+
+        broadcast_payload: dict[str, Any] = {}
+        opt_payload = _opt_payload_annotation(located_handler) if located_handler is not None else None
+        if opt_payload is not None:
+            broadcast_payload = extract_payload_schema(opt_payload, components_schemas=components_schemas)
+        elif located_handler is not None:
+            ret_field = getattr(located_handler, "parsed_return_field", None)
+            ret_annotation = getattr(ret_field, "annotation", None)
+            if ret_annotation not in (None, NoneType):
+                broadcast_payload = extract_payload_schema(ret_annotation, components_schemas=components_schemas)
+
         broadcast_msg_name = f"{channel_key}Broadcast"
         broadcast_msg = AsyncAPIMessage(
             name=broadcast_msg_name,
             title=f"{pattern} Broadcast Message",
             summary=f"Event payload broadcast on {pattern}",
             content_type="application/json",
-            payload={"type": "object"},
+            payload=broadcast_payload,
         )
 
         channel_messages = {"broadcast": broadcast_msg}
@@ -828,14 +912,17 @@ def extract_channels_plugin_channels(
             messages=[{"$ref": f"#/channels/{channel_key}/messages/broadcast"}],
         )
 
-        receive_op_id = _allocate_operation_id("receive", channel_key, operation_ids)
-        operations[receive_op_id] = AsyncAPIOperation(
-            action="receive",
-            channel={"$ref": f"#/channels/{channel_key}"},
-            summary=f"Subscribe or publish events on {normalized}",
-            description=f"Receives subscriber connections and event publications on {pattern}.",
-            messages=[{"$ref": f"#/channels/{channel_key}/messages/broadcast"}],
-        )
+        data_field = getattr(located_handler, "parsed_data_field", None) if located_handler is not None else None
+        data_annotation = getattr(data_field, "annotation", None) if data_field is not None else None
+        if data_annotation not in (None, NoneType):
+            receive_op_id = _allocate_operation_id("receive", channel_key, operation_ids)
+            operations[receive_op_id] = AsyncAPIOperation(
+                action="receive",
+                channel={"$ref": f"#/channels/{channel_key}"},
+                summary=f"Subscribe or publish events on {normalized}",
+                description=f"Receives subscriber connections and event publications on {pattern}.",
+                messages=[{"$ref": f"#/channels/{channel_key}/messages/broadcast"}],
+            )
 
         channels[channel_key] = AsyncAPIChannel(
             address=normalized,
@@ -851,12 +938,17 @@ def extract_channels_plugin_channels(
 
 
 def extract_sse_routes(
-    app: "Litestar", *, allocator: _ChannelKeyAllocator | None = None, operation_ids: set[str] | None = None
+    app: "Litestar",
+    components_schemas: dict[str, Any] | None = None,
+    *,
+    allocator: _ChannelKeyAllocator | None = None,
+    operation_ids: set[str] | None = None,
 ) -> tuple[dict[str, AsyncAPIChannel], dict[str, AsyncAPIOperation]]:
     """Extract Server-Sent Event (SSE) routes from a Litestar application.
 
     Args:
         app: The Litestar application instance.
+        components_schemas: Optional dictionary to collect named component schemas.
         allocator: Optional allocator to ensure unique channel keys across sources.
         operation_ids: Optional set to ensure unique operation ids across sources.
 
@@ -905,6 +997,13 @@ def extract_sse_routes(
             if not handler_name:
                 handler_name = getattr(fn, "__name__", None) or f"{channel_key}_sse"
 
+            opt_payload = _opt_payload_annotation(handler)
+            resolved_type = opt_payload if opt_payload is not None else _sse_payload_annotation(annotation)
+            if resolved_type is not None:
+                payload = extract_payload_schema(resolved_type, components_schemas=components_schemas)
+            else:
+                payload = {"type": "string"}
+
             msg_name = f"{channel_key}Event"
             event_msg = AsyncAPIMessage(
                 name=msg_name,
@@ -912,7 +1011,7 @@ def extract_sse_routes(
                 summary=f"Server-Sent Event emitted by {handler_name}",
                 description=doc,
                 content_type="text/event-stream",
-                payload={"type": "string"},
+                payload=payload,
             )
 
             channel_messages = {"event": event_msg}
@@ -959,10 +1058,14 @@ def extract_realtime_channels(
         app, components_schemas=components_schemas, allocator=allocator, operation_ids=operation_ids
     )
 
-    cp_channels, cp_ops = extract_channels_plugin_channels(app, allocator=allocator, operation_ids=operation_ids)
+    cp_channels, cp_ops = extract_channels_plugin_channels(
+        app, components_schemas=components_schemas, allocator=allocator, operation_ids=operation_ids
+    )
     _merge_channels(channels, operations, cp_channels, cp_ops)
 
-    sse_channels, sse_ops = extract_sse_routes(app, allocator=allocator, operation_ids=operation_ids)
+    sse_channels, sse_ops = extract_sse_routes(
+        app, components_schemas=components_schemas, allocator=allocator, operation_ids=operation_ids
+    )
     _merge_channels(channels, operations, sse_channels, sse_ops)
 
     return channels, operations

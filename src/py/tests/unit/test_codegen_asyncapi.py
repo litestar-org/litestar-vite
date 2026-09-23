@@ -15,6 +15,7 @@ from litestar.response import ServerSentEvent
 
 from litestar_vite import PathConfig, ViteConfig, VitePlugin
 from litestar_vite.codegen import (
+    ASYNCAPI_PAYLOAD_OPT_KEY,
     AsyncAPIChannel,
     AsyncAPIComponents,
     AsyncAPIDocument,
@@ -165,9 +166,8 @@ def test_extract_channels_plugin_channels_predefined() -> None:
     assert "room_id" in room_channel.parameters
 
     assert "send_ws__notifications" in operations
-    assert "receive_ws__notifications" in operations
+    assert "receive_ws__notifications" not in operations
     assert operations["send_ws__notifications"].action == "send"
-    assert operations["receive_ws__notifications"].action == "receive"
 
 
 def test_extract_channels_plugin_channels_arbitrary() -> None:
@@ -650,3 +650,106 @@ def test_operation_ids_are_unique() -> None:
     op_ids = list(doc["operations"].keys())
     assert len(op_ids) == len(set(op_ids))
     _assert_refs_resolve(doc)
+
+
+def test_sse_payload_from_opt() -> None:
+    """Test SSE payload extracted from handler opt ASYNCAPI_PAYLOAD_OPT_KEY."""
+
+    @dataclass
+    class Alert:
+        level: str
+        message: str
+
+    @get("/stream/alerts", opt={ASYNCAPI_PAYLOAD_OPT_KEY: Alert})
+    async def alert_handler() -> ServerSentEvent:
+        """Stream alerts."""
+        return ServerSentEvent(content="alert")
+
+    app = Litestar(route_handlers=[alert_handler])
+    doc = create_asyncapi_document(app).to_dict()
+
+    assert "components" in doc
+    assert "schemas" in doc["components"]
+    assert "Alert" in doc["components"]["schemas"]
+    sse_channel = doc["channels"]["stream__alerts"]
+    assert sse_channel["messages"]["event"]["payload"] == {"$ref": "#/components/schemas/Alert"}
+
+
+def test_sse_payload_from_generator_annotation() -> None:
+    """Test SSE payload extracted from generator element annotation."""
+
+    @dataclass
+    class Metric:
+        name: str
+        value: float
+
+    @get("/stream/metrics")
+    async def metric_handler() -> AsyncGenerator[ServerSentEvent[Metric], None]:
+        """Stream metrics."""
+
+        async def gen() -> AsyncGenerator[ServerSentEvent[Metric], None]:
+            yield ServerSentEvent(content=Metric(name="cpu", value=42.0))
+
+        return gen()
+
+    app = Litestar(route_handlers=[metric_handler])
+    doc = create_asyncapi_document(app).to_dict()
+
+    assert "components" in doc
+    assert "schemas" in doc["components"]
+    assert "Metric" in doc["components"]["schemas"]
+    sse_channel = doc["channels"]["stream__metrics"]
+    assert sse_channel["messages"]["event"]["payload"] == {"$ref": "#/components/schemas/Metric"}
+
+
+def test_sse_payload_defaults_to_string() -> None:
+    """Test untyped SSE payload defaults to string."""
+
+    @get("/stream/raw")
+    async def raw_handler() -> ServerSentEvent:
+        """Stream raw text."""
+        return ServerSentEvent(content="raw text")
+
+    app = Litestar(route_handlers=[raw_handler])
+    doc = create_asyncapi_document(app).to_dict()
+
+    sse_channel = doc["channels"]["stream__raw"]
+    assert sse_channel["messages"]["event"]["payload"] == {"type": "string"}
+    assert sse_channel["messages"]["event"]["contentType"] == "text/event-stream"
+
+
+def test_channels_plugin_broadcast_payload_unconstrained() -> None:
+    """Test ChannelsPlugin broadcast payload is unconstrained when untyped."""
+    channels_plugin = ChannelsPlugin(
+        backend=MemoryChannelsBackend(), channels=["notify"], create_ws_route_handlers=True
+    )
+    app = Litestar(plugins=[channels_plugin])
+    doc = create_asyncapi_document(app).to_dict()
+
+    channel = doc["channels"]["notify"]
+    assert channel["messages"]["broadcast"]["payload"] == {}
+    ops = [
+        op_id for op_id in doc["operations"] if "notify" in op_id and doc["operations"][op_id]["action"] == "receive"
+    ]
+    assert ops == []
+
+
+def test_channels_plugin_receive_operation_when_handler_accepts_data() -> None:
+    """Test ChannelsPlugin emits receive operation when handler accepts data."""
+
+    @websocket_listener("/notify")
+    async def custom_listener(data: str) -> None:
+        """Listener with data parameter."""
+
+    channels_plugin = ChannelsPlugin(
+        backend=MemoryChannelsBackend(), channels=["notify"], create_ws_route_handlers=False
+    )
+    app = Litestar(route_handlers=[custom_listener], plugins=[channels_plugin])
+    _channels, operations = extract_channels_plugin_channels(app)
+
+    receive_ops = [
+        op_id for op_id, op in operations.items() if op.action == "receive" and "notify" in op.channel["$ref"]
+    ]
+    send_ops = [op_id for op_id, op in operations.items() if op.action == "send" and "notify" in op.channel["$ref"]]
+    assert len(receive_ops) == 1
+    assert len(send_ops) == 1
