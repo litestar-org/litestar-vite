@@ -179,15 +179,24 @@ function jsonSchemaToTs(schema: any, indentLevel = 0, registry?: Map<string, str
   }
 
   if (schema.anyOf && Array.isArray(schema.anyOf)) {
-    return schema.anyOf.map((s: any) => `(${jsonSchemaToTs(s, indentLevel, registry)})`).join(" | ")
+    return schema.anyOf
+      .map((s: any) => `(${jsonSchemaToTs(s, indentLevel, registry)})`)
+      .toSorted()
+      .join(" | ")
   }
 
   if (schema.oneOf && Array.isArray(schema.oneOf)) {
-    return schema.oneOf.map((s: any) => `(${jsonSchemaToTs(s, indentLevel, registry)})`).join(" | ")
+    return schema.oneOf
+      .map((s: any) => `(${jsonSchemaToTs(s, indentLevel, registry)})`)
+      .toSorted()
+      .join(" | ")
   }
 
   if (schema.allOf && Array.isArray(schema.allOf)) {
-    return schema.allOf.map((s: any) => `(${jsonSchemaToTs(s, indentLevel, registry)})`).join(" & ")
+    return schema.allOf
+      .map((s: any) => `(${jsonSchemaToTs(s, indentLevel, registry)})`)
+      .toSorted()
+      .join(" & ")
   }
 
   const type = schema.type
@@ -204,7 +213,7 @@ function jsonSchemaToTs(schema: any, indentLevel = 0, registry?: Map<string, str
   if (type === "object" || schema.properties) {
     const props = schema.properties || {}
     const required = Array.isArray(schema.required) ? new Set(schema.required) : new Set()
-    const propKeys = Object.keys(props)
+    const propKeys = Object.keys(props).toSorted()
 
     if (propKeys.length === 0) {
       if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
@@ -235,11 +244,13 @@ function renderComponentSchemas(schemas: Record<string, any>, registry: Map<stri
     const identifier = registry.get(name) ?? toTypeIdentifier(name)
     if (schema.type === "object" && schema.properties && Object.keys(schema.properties).length > 0) {
       const required = Array.isArray(schema.required) ? new Set(schema.required) : new Set()
-      const propLines = Object.keys(schema.properties).map((propName) => {
-        const isReq = required.has(propName)
-        const propTs = jsonSchemaToTs(schema.properties[propName], 1, registry)
-        return `  ${formatPropName(propName)}${isReq ? "" : "?"}: ${propTs};`
-      })
+      const propLines = Object.keys(schema.properties)
+        .toSorted()
+        .map((propName) => {
+          const isReq = required.has(propName)
+          const propTs = jsonSchemaToTs(schema.properties[propName], 1, registry)
+          return `  ${formatPropName(propName)}${isReq ? "" : "?"}: ${propTs};`
+        })
       lines.push(`export interface ${identifier} {\n${propLines.join("\n")}\n}`, "")
     } else {
       lines.push(`export type ${identifier} = ${jsonSchemaToTs(schema, 0, registry)};`, "")
@@ -339,8 +350,9 @@ export function generateChannelsTs(doc: AsyncAPIDoc): string {
   const channels = doc.channels || {}
   const channelEntries: string[] = []
   const metadataEntries: string[] = []
+  const sortedChannels = Object.entries(channels).toSorted(([a], [b]) => a.localeCompare(b))
 
-  for (const [key, channel] of Object.entries(channels)) {
+  for (const [key, channel] of sortedChannels) {
     const address = channel.address || key
     let protocol: "websocket" | "sse" | "channels" = "channels"
     if (channel.bindings?.ws) {
@@ -349,7 +361,7 @@ export function generateChannelsTs(doc: AsyncAPIDoc): string {
       protocol = "sse"
     }
 
-    const params = Object.keys(channel.parameters || {})
+    const params = Object.keys(channel.parameters || {}).toSorted()
     const paramsType = params.length > 0 ? `{\n${params.map((p) => `      ${formatPropName(p)}: string;`).join("\n")}\n    }` : "Record<string, never>"
 
     const { clientSendKeys, clientReceiveKeys } = resolveChannelDirections(key, doc)
@@ -365,7 +377,7 @@ export function generateChannelsTs(doc: AsyncAPIDoc): string {
       if (renderedTypes.size === 0) {
         return "never"
       }
-      return Array.from(renderedTypes).join(" | ")
+      return Array.from(renderedTypes).toSorted().join(" | ")
     }
 
     const sendType = payloadUnion(clientSendKeys)

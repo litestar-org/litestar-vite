@@ -7,68 +7,68 @@
 // --- Component Schemas ---
 
 export interface InboundMessage {
-  room_id: string;
-  content: string;
+  content: string
+  room_id: string
 }
 
 export interface OutboundMessage {
-  id: number;
-  content: string;
-  timestamp?: number;
+  content: string
+  id: number
+  timestamp?: number
 }
 
 export interface ServerEvent {
-  event_type: "join" | "leave" | "alert";
-  metadata?: Record<string, unknown>;
+  event_type: "join" | "leave" | "alert"
+  metadata?: Record<string, unknown>
 }
 
 // --- Realtime Channels Registry ---
 
 export interface RealtimeChannels {
-  "ws_chat": {
-    address: "/ws/chat/{room_id}";
-    protocol: "websocket";
+  notifications: {
+    address: "notifications"
+    protocol: "channels"
+    params: Record<string, never>
+    send: string
+    receive: string
+  }
+  stream_events: {
+    address: "/stream/events"
+    protocol: "sse"
+    params: Record<string, never>
+    send: never
+    receive: ServerEvent
+  }
+  ws_chat: {
+    address: "/ws/chat/{room_id}"
+    protocol: "websocket"
     params: {
-      room_id: string;
-    };
-    send: InboundMessage;
-    receive: OutboundMessage;
-  };
-  "notifications": {
-    address: "notifications";
-    protocol: "channels";
-    params: Record<string, never>;
-    send: string;
-    receive: string;
-  };
-  "stream_events": {
-    address: "/stream/events";
-    protocol: "sse";
-    params: Record<string, never>;
-    send: never;
-    receive: ServerEvent;
-  };
+      room_id: string
+    }
+    send: InboundMessage
+    receive: OutboundMessage
+  }
 }
 
-export type ChannelKey = keyof RealtimeChannels;
+export type ChannelKey = keyof RealtimeChannels
 
-export type ChannelAddress = RealtimeChannels[ChannelKey]["address"];
+export type ChannelAddress = RealtimeChannels[ChannelKey]["address"]
 
-export type ChannelProtocol<K extends ChannelKey = ChannelKey> = RealtimeChannels[K]["protocol"];
+export type ChannelProtocol<K extends ChannelKey = ChannelKey> = RealtimeChannels[K]["protocol"]
 
-export type ChannelParams<K extends ChannelKey = ChannelKey> = RealtimeChannels[K]["params"];
+export type ChannelParams<K extends ChannelKey = ChannelKey> = RealtimeChannels[K]["params"]
 
-export type ChannelSendPayload<K extends ChannelKey = ChannelKey> = RealtimeChannels[K]["send"];
+export type ChannelSendPayload<K extends ChannelKey = ChannelKey> = RealtimeChannels[K]["send"]
 
-export type ChannelReceivePayload<K extends ChannelKey = ChannelKey> = RealtimeChannels[K]["receive"];
+export type ChannelReceivePayload<K extends ChannelKey = ChannelKey> = RealtimeChannels[K]["receive"]
 
 export interface ChannelMetadata {
-  address: string;
-  protocol: "websocket" | "sse" | "channels";
+  address: string
+  protocol: "websocket" | "sse" | "channels"
 }
 
 export const CHANNEL_METADATA: Record<ChannelKey, ChannelMetadata> = {
-  "ws_chat": { address: "/ws/chat/{room_id}", protocol: "websocket" },
-  "notifications": { address: "notifications", protocol: "channels" },
-  "stream_events": { address: "/stream/events", protocol: "sse" },
-} as const;
+  notifications: { address: "notifications", protocol: "channels" },
+  stream_events: { address: "/stream/events", protocol: "sse" },
+  ws_chat: { address: "/ws/chat/{room_id}", protocol: "websocket" },
+} as const

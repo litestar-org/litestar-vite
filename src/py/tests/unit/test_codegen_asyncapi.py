@@ -1,5 +1,6 @@
 """Unit tests for AsyncAPI 3.0 codegen models and WebSocket route introspection."""
 
+import json
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from enum import Enum
@@ -966,3 +967,47 @@ def test_realtime_app_still_exports_asyncapi(tmp_path: Path) -> None:
 
     assert (tmp_path / "asyncapi.json").exists()
     assert result.asyncapi_schema is not None
+
+
+@dataclass
+class ChatInbound:
+    room_id: str
+    message: str
+
+
+@dataclass
+class ChatOutbound:
+    room_id: str
+    message: str
+    timestamp: int
+
+
+@dataclass
+class ServerEvent:
+    event_type: str
+    payload: str
+
+
+def test_generated_document_matches_committed_fixture() -> None:
+    """Test generated AsyncAPI document matches the committed full-realtime fixture."""
+
+    @websocket_listener("/ws/chat")
+    async def chat_listener(data: ChatInbound) -> ChatOutbound:
+        return ChatOutbound(room_id=data.room_id, message=data.message, timestamp=1)
+
+    @get("/stream/events", opt={ASYNCAPI_PAYLOAD_OPT_KEY: ServerEvent})
+    async def sse_handler() -> ServerSentEvent:
+        return ServerSentEvent(content="test")
+
+    channels_plugin = ChannelsPlugin(backend=MemoryChannelsBackend(), channels=["notify"])
+
+    app = Litestar(
+        route_handlers=[chat_listener, sse_handler],
+        plugins=[channels_plugin],
+    )
+
+    doc = create_asyncapi_document(app, title="Realtime Test App", version="1.0.0").to_dict()
+    fixture_path = Path("src/js/tests/fixtures/asyncapi/full-realtime.json")
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+
+    assert doc == fixture

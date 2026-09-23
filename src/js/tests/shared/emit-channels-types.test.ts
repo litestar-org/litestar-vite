@@ -480,4 +480,106 @@ describe("emitChannelsTypes", () => {
     const content = generateChannelsTs(doc)
     expect(content).toContain("export interface _2FAToken {")
   })
+
+  it("emits byte-identical output for key-shuffled documents", () => {
+    const docA = {
+      asyncapi: "3.0.0",
+      channels: {
+        channel_b: {
+          address: "/b",
+          bindings: { ws: {} },
+          messages: {
+            msg: {
+              payload: {
+                type: "object",
+                properties: {
+                  z: { type: "string" },
+                  a: { type: "number" },
+                },
+              },
+            },
+          },
+        },
+        channel_a: {
+          address: "/a",
+          bindings: { http: {} },
+          messages: {
+            msg: {
+              payload: { $ref: "#/components/schemas/SchemaZ" },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          SchemaZ: {
+            type: "object",
+            properties: {
+              field_2: { type: "string" },
+              field_1: { type: "number" },
+            },
+          },
+          SchemaA: {
+            type: "object",
+            properties: {
+              y: { type: "boolean" },
+              x: { type: "string" },
+            },
+          },
+        },
+      },
+    }
+
+    const docB = {
+      asyncapi: "3.0.0",
+      channels: {
+        channel_a: {
+          address: "/a",
+          bindings: { http: {} },
+          messages: {
+            msg: {
+              payload: { $ref: "#/components/schemas/SchemaZ" },
+            },
+          },
+        },
+        channel_b: {
+          address: "/b",
+          bindings: { ws: {} },
+          messages: {
+            msg: {
+              payload: {
+                type: "object",
+                properties: {
+                  a: { type: "number" },
+                  z: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          SchemaA: {
+            type: "object",
+            properties: {
+              x: { type: "string" },
+              y: { type: "boolean" },
+            },
+          },
+          SchemaZ: {
+            type: "object",
+            properties: {
+              field_1: { type: "number" },
+              field_2: { type: "string" },
+            },
+          },
+        },
+      },
+    }
+
+    const outputA = generateChannelsTs(docA)
+    const outputB = generateChannelsTs(docB)
+    expect(outputA).toBe(outputB)
+  })
 })

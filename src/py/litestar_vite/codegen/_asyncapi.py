@@ -765,6 +765,7 @@ def _extract_websocket_route_details(
         description=doc,
         parameters=parameters,
         messages=channel_messages,
+        bindings={"ws": {}},
     )
 
     return channel_key, channel, operations
