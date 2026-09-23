@@ -7,11 +7,17 @@ class FakeWebSocket {
 
   readonly url: string
   close = vi.fn()
+  readyState = 0
+  sent: string[] = []
   private readonly listeners = new Map<string, Set<EventListener>>()
 
   constructor(url: string | URL) {
     this.url = String(url)
     FakeWebSocket.instances.push(this)
+  }
+
+  send(data: string): void {
+    this.sent.push(data)
   }
 
   addEventListener(type: string, listener: EventListener): void {
@@ -21,6 +27,7 @@ class FakeWebSocket {
   }
 
   simulateClose(code: number): void {
+    this.readyState = 3
     this.dispatch("close", { code } as CloseEvent)
   }
 
@@ -33,6 +40,7 @@ class FakeWebSocket {
   }
 
   simulateOpen(): void {
+    this.readyState = 1
     this.dispatch("open", new Event("open"))
   }
 
@@ -713,5 +721,84 @@ describe("createEventStream SSE transport", () => {
     expect(FakeEventSource.instances).toHaveLength(1)
     vi.advanceTimersByTime(1)
     expect(FakeEventSource.instances).toHaveLength(2)
+  })
+})
+
+describe("createEventStream send", () => {
+  beforeEach(() => {
+    FakeWebSocket.instances = []
+    FakeEventSource.instances = []
+    vi.useFakeTimers()
+    vi.spyOn(Math, "random").mockReturnValue(0.5)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it("send writes a serialized frame to the open socket", () => {
+    const stream = createEventStream<{ id: string }, { text: string }>({
+      buildUrl: () => "/ws",
+      WebSocketCtor,
+      onEvent: vi.fn(),
+    })
+    stream.connect()
+    FakeWebSocket.instances[0].simulateOpen()
+    const result = stream.send({ text: "hi" })
+    expect(result).toBe(true)
+    expect(FakeWebSocket.instances[0].sent).toEqual([JSON.stringify({ text: "hi" })])
+  })
+
+  it("send returns false before the socket is open", () => {
+    const stream = createEventStream({
+      buildUrl: () => "/ws",
+      WebSocketCtor,
+      onEvent: vi.fn(),
+    })
+    stream.connect()
+    const result = (stream as any).send({ text: "hi" })
+    expect(result).toBe(false)
+    expect(FakeWebSocket.instances[0].sent).toHaveLength(0)
+  })
+
+  it("send returns false after dispose", () => {
+    const stream = createEventStream({
+      buildUrl: () => "/ws",
+      WebSocketCtor,
+      onEvent: vi.fn(),
+    })
+    stream.connect()
+    FakeWebSocket.instances[0].simulateOpen()
+    stream.dispose()
+    const result = (stream as any).send({ text: "hi" })
+    expect(result).toBe(false)
+  })
+
+  it("send returns false for the sse transport", () => {
+    const stream = createEventStream({
+      buildUrl: () => "/events",
+      EventSourceCtor,
+      onEvent: vi.fn(),
+      transport: "sse",
+    })
+    stream.connect()
+    FakeEventSource.instances[0].simulateOpen()
+    const result = (stream as any).send({ text: "hi" })
+    expect(result).toBe(false)
+  })
+
+  it("send honours a custom serializeFrame", () => {
+    const stream = createEventStream<unknown, { cmd: string }>({
+      buildUrl: () => "/ws",
+      WebSocketCtor,
+      onEvent: vi.fn(),
+      serializeFrame: (p) => `CMD:${p.cmd}`,
+    })
+    stream.connect()
+    FakeWebSocket.instances[0].simulateOpen()
+    const result = stream.send({ cmd: "ping" })
+    expect(result).toBe(true)
+    expect(FakeWebSocket.instances[0].sent).toEqual(["CMD:ping"])
   })
 })

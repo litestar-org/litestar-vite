@@ -26,7 +26,7 @@ export interface StreamGap {
 export type EventStreamTransport = "websocket" | "sse"
 export type StreamUrl = string | URL | (() => string | URL)
 
-export interface EventStreamConfig<TFrame = unknown> {
+export interface EventStreamConfig<TFrame = unknown, TSend = never> {
   transport?: "websocket" | "sse"
   sseEvents?: readonly string[]
   onEvent: (frame: TFrame) => void
@@ -43,11 +43,12 @@ export interface EventStreamConfig<TFrame = unknown> {
   maxDelayMs?: number
   dedupWindow?: number
   parseFrame?: (data: string) => TFrame
+  serializeFrame?: (payload: TSend) => string
   WebSocketCtor?: typeof WebSocket
   EventSourceCtor?: typeof EventSource
 }
 
-export type EventStreamOptions<TFrame = unknown> = EventStreamConfig<TFrame> &
+export type EventStreamOptions<TFrame = unknown, TSend = never> = EventStreamConfig<TFrame, TSend> &
   (
     | {
         url: StreamUrl
@@ -59,9 +60,17 @@ export type EventStreamOptions<TFrame = unknown> = EventStreamConfig<TFrame> &
       }
   )
 
-export interface EventStream {
+export interface EventStream<TSend = never> {
   connect(): void
   dispose(): void
+  /**
+   * Send a payload across the stream.
+   *
+   * @param payload - Outbound frame data to serialize and transmit.
+   * @returns true if the payload was handed to an open WebSocket; false if
+   *   the stream uses SSE, no connection is active, or the socket is not in OPEN state.
+   */
+  send(payload: TSend): boolean
   readonly healthy: boolean
 }
 
@@ -108,7 +117,9 @@ export function resolveStreamUrl(value: string | URL, transport: EventStreamTran
  * @param options - Stream transport, lifecycle, and frame-processing options.
  * @returns A disposable stream that connects only when `connect()` is called.
  */
-export function createEventStream<TFrame = unknown>(options: EventStreamOptions<TFrame>): EventStream {
+export function createEventStream<TFrame = unknown, TSend = never>(
+  options: EventStreamOptions<TFrame, TSend>,
+): EventStream<TSend> {
   const {
     transport = "websocket",
     sseEvents = DEFAULT_SSE_EVENTS,
@@ -126,6 +137,7 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
     maxDelayMs = DEFAULT_MAX_DELAY_MS,
     dedupWindow = DEFAULT_DEDUP_WINDOW,
     parseFrame = defaultParseFrame as (data: string) => TFrame,
+    serializeFrame = JSON.stringify as (payload: TSend) => string,
   } = options
 
   let connection: WebSocket | EventSource | null = null
@@ -312,6 +324,19 @@ export function createEventStream<TFrame = unknown>(options: EventStreamOptions<
         emitHealth(false)
         current.close()
       }
+    },
+    send(payload: TSend): boolean {
+      const current = connection
+      if (disposed || current === null || transport === "sse" || !("send" in current)) {
+        return false
+      }
+      const socket = current as WebSocket
+      // Numeric readyState 1 corresponds to WebSocket.OPEN without requiring global WebSocket
+      if (socket.readyState !== 1) {
+        return false
+      }
+      socket.send(serializeFrame(payload))
+      return true
     },
     get healthy(): boolean {
       return lastHealthy ?? false

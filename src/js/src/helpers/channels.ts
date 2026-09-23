@@ -18,12 +18,24 @@
 
 import { createEventStream, type EventStream, type EventStreamConfig, resolveStreamUrl } from "./stream.js"
 
-export type ChannelName = string | (() => string)
+export interface RealtimeChannelShape {
+  address: string
+  protocol: "websocket" | "sse" | "channels"
+  params: Record<string, string>
+  send: unknown
+  receive: unknown
+}
+
+export type ChannelMap = Record<string, RealtimeChannelShape>
+
+export type ChannelName<TChannels extends ChannelMap = ChannelMap> =
+  | (keyof TChannels & string)
+  | (() => keyof TChannels & string)
 
 export interface ChannelsStreamOptions<
   TFrame = unknown,
   TParams extends Record<string, string | number> = Record<string, string | number>,
-> extends Omit<EventStreamConfig<TFrame>, "EventSourceCtor" | "sseEvents" | "transport"> {
+> extends Omit<EventStreamConfig<TFrame, TFrame>, "EventSourceCtor" | "sseEvents" | "transport"> {
   channel: ChannelName
   params?: TParams
   basePath?: string
@@ -39,9 +51,9 @@ export interface ChannelsStreamOptions<
 export function createChannelsStream<
   TFrame = unknown,
   TParams extends Record<string, string | number> = Record<string, string | number>,
->(options: ChannelsStreamOptions<TFrame, TParams>): EventStream {
+>(options: ChannelsStreamOptions<TFrame, TParams>): EventStream<TFrame> {
   const { basePath = "/", channel, params, transformUrl, ...streamOptions } = options
-  return createEventStream({
+  return createEventStream<TFrame, TFrame>({
     ...streamOptions,
     buildUrl: () => {
       let channelName = typeof channel === "function" ? channel() : channel
@@ -71,4 +83,38 @@ export function createChannelsStream<
     },
     transport: "websocket",
   })
+}
+
+export interface TypedChannelOptions<TChannel extends RealtimeChannelShape>
+  extends Omit<EventStreamConfig<TChannel["receive"], TChannel["send"]>, "EventSourceCtor" | "sseEvents" | "transport"> {
+  params?: TChannel["params"]
+  basePath?: string
+  transformUrl?: (url: URL) => string | URL
+}
+
+/**
+ * Create a typed channel factory bound to a generated ChannelMap.
+ *
+ * @param defaults - Default connection options such as basePath.
+ * @returns A client factory with a typed `stream` method.
+ */
+export function createTypedChannels<TChannels extends ChannelMap>(defaults?: { basePath?: string }): {
+  stream<K extends keyof TChannels & string>(
+    channel: K,
+    options: TypedChannelOptions<TChannels[K]>,
+  ): EventStream<TChannels[K]["send"]>
+} {
+  return {
+    stream<K extends keyof TChannels & string>(
+      channel: K,
+      options: TypedChannelOptions<TChannels[K]>,
+    ): EventStream<TChannels[K]["send"]> {
+      const basePath = options.basePath ?? defaults?.basePath
+      return createChannelsStream({
+        ...options,
+        basePath,
+        channel,
+      }) as unknown as EventStream<TChannels[K]["send"]>
+    },
+  }
 }
