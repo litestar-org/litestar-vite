@@ -321,12 +321,22 @@ class NodeenvExecutor(JSExecutor):
         subprocess.run(command, cwd=cwd, check=False)
 
     def install(self, cwd: Path) -> None:
+        """Run npm install within the nodeenv environment.
+
+        Args:
+            cwd: The working directory for the installation.
+
+        Raises:
+            ViteExecutionError: If package installation exits with a non-zero status.
+        """
         if self._detect_nodeenv:
             self.install_nodeenv(cwd)
 
         npm_path = self._find_npm_in_venv()
         command = [npm_path, "install"]
-        subprocess.run(command, cwd=cwd, check=True)
+        process = subprocess.run(command, cwd=cwd, shell=False, check=False)
+        if process.returncode != 0:
+            raise ViteExecutionError(command, process.returncode, "package install failed")
 
     def update(self, cwd: Path, *, latest: bool = False) -> None:
         npm_path = self._find_npm_in_venv()

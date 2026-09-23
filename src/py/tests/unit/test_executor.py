@@ -353,6 +353,36 @@ def test_nodeenv_executor_install_with_detection(
 
 
 @patch("litestar_vite.executor.NodeenvExecutor._find_npm_in_venv")
+@patch("subprocess.run")
+def test_nodeenv_install_raises_vite_execution_error(mock_run: Mock, mock_find: Mock) -> None:
+    """Non-zero npm install returncode in NodeenvExecutor.install must raise ViteExecutionError."""
+    config = ViteConfig(runtime=RuntimeConfig(detect_nodeenv=False))
+    executor = NodeenvExecutor(config)
+    mock_find.return_value = "/venv/bin/npm"
+    mock_run.return_value = Mock(returncode=1)
+
+    with pytest.raises(ViteExecutionError) as exc_info:
+        executor.install(Path("/tmp/project"))
+
+    assert "['/venv/bin/npm', 'install']" in str(exc_info.value)
+    assert "return code 1" in str(exc_info.value)
+    assert "package install failed" in str(exc_info.value)
+
+
+@patch("litestar_vite.executor.NodeenvExecutor._find_npm_in_venv")
+@patch("subprocess.run")
+def test_nodeenv_install_succeeds_on_zero_returncode(mock_run: Mock, mock_find: Mock) -> None:
+    """Zero returncode in NodeenvExecutor.install succeeds without exception."""
+    config = ViteConfig(runtime=RuntimeConfig(detect_nodeenv=False))
+    executor = NodeenvExecutor(config)
+    mock_find.return_value = "/venv/bin/npm"
+    mock_run.return_value = Mock(returncode=0)
+
+    executor.install(Path("/tmp/project"))
+    assert mock_run.call_count == 1
+
+
+@patch("litestar_vite.executor.NodeenvExecutor._find_npm_in_venv")
 @patch("subprocess.Popen")
 def test_nodeenv_executor_run(mock_popen: Mock, mock_find: Mock) -> None:
     """Test NodeenvExecutor run command."""
