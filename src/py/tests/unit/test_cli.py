@@ -727,9 +727,9 @@ def test_cli_export_asyncapi_custom_args_and_routes(tmp_path: Path) -> None:
     assert data["asyncapi"] == "3.0.0"
     assert data["info"]["title"] == "Chat Service"
     assert data["info"]["version"] == "2.0.0"
-    assert "ws_chat" in data["channels"]
-    assert "send_ws_chat" in data["operations"]
-    assert "receive_ws_chat" in data["operations"]
+    assert "ws__chat" in data["channels"]
+    assert "send_ws__chat" in data["operations"]
+    assert "receive_ws__chat" in data["operations"]
 
 
 def test_cli_export_asyncapi_fallback_output(tmp_path: Path) -> None:

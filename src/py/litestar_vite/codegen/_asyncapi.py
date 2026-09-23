@@ -5,6 +5,7 @@ to introspect Litestar WebSocket routes and listeners into structured channels
 and operations.
 """
 
+import re
 from dataclasses import asdict, dataclass, field
 from types import UnionType
 from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin
@@ -463,113 +464,270 @@ def extract_payload_schema(annotation: Any, components_schemas: dict[str, Any] |
 _py_type_to_schema = extract_payload_schema
 
 
+def _slug_segment(segment: str) -> str:
+    """Sanitize a path segment for use in an AsyncAPI channel key.
+
+    Path parameter segments shaped {name} or {name:converter} return 'p_' followed
+    by the sanitized parameter name. Any other segment has every run of characters
+    outside [A-Za-z0-9] replaced by a single underscore.
+
+    Args:
+        segment: Path segment string.
+
+    Returns:
+        Sanitized segment string.
+    """
+    if segment.startswith("{") and segment.endswith("}"):
+        inner = segment[1:-1]
+        name = inner.split(":", 1)[0]
+        sanitized = re.sub(r"[^A-Za-z0-9]+", "_", name)
+        return f"p_{sanitized}"
+    return re.sub(r"[^A-Za-z0-9]+", "_", segment)
+
+
+def _channel_key_base(normalized_address: str) -> str:
+    """Build a deterministic base channel key from a route address.
+
+    Strips the leading slash, splits on slash, drops empty segments, applies
+    _slug_segment to each, and joins with double underscores. An empty result
+    returns 'root'.
+
+    Args:
+        normalized_address: The normalized route path.
+
+    Returns:
+        Deterministic base channel key.
+    """
+    segments = [_slug_segment(s) for s in normalized_address.lstrip("/").split("/") if s]
+    return "__".join(segments) or "root"
+
+
+@dataclass(slots=True)
+class _ChannelKeyAllocator:
+    """Allocate collision-safe channel keys across realtime sources."""
+
+    assigned: dict[tuple[str, str], str] = field(default_factory=dict[tuple[str, str], str])
+    taken: set[str] = field(default_factory=set[str])
+
+    def allocate(self, normalized_address: str, source: str) -> str:
+        """Allocate a unique channel key for a given route address and source.
+
+        Two different sources at the same address deliberately receive different
+        channel keys to prevent collisions and ensure intact operations.
+
+        Args:
+            normalized_address: The normalized route address string.
+            source: Realtime source identifier ('websocket', 'channels', or 'sse').
+
+        Returns:
+            Collision-safe unique channel key.
+        """
+        pair = (normalized_address, source)
+        if pair in self.assigned:
+            return self.assigned[pair]
+
+        base = _channel_key_base(normalized_address)
+        candidate = base
+        counter = 2
+        while candidate in self.taken:
+            candidate = f"{base}_{counter}"
+            counter += 1
+
+        self.taken.add(candidate)
+        self.assigned[pair] = candidate
+        return candidate
+
+
+def _allocate_operation_id(prefix: str, channel_key: str, taken: set[str]) -> str:
+    """Allocate a unique operation id for a channel action.
+
+    Args:
+        prefix: Operation action prefix (e.g. 'receive', 'send', 'operate', 'stream').
+        channel_key: The allocated channel key.
+        taken: Set of already allocated operation ids.
+
+    Returns:
+        Collision-safe unique operation id.
+    """
+    base = f"{prefix}_{channel_key}"
+    candidate = base
+    counter = 2
+    while candidate in taken:
+        candidate = f"{base}_{counter}"
+        counter += 1
+    taken.add(candidate)
+    return candidate
+
+
+def _merge_channels(
+    channels: dict[str, AsyncAPIChannel],
+    operations: dict[str, AsyncAPIOperation],
+    new_channels: dict[str, AsyncAPIChannel],
+    new_operations: dict[str, AsyncAPIOperation],
+) -> None:
+    """Merge newly extracted channels and operations into existing collections.
+
+    If an incoming channel key already exists in channels, any operations in
+    operations referencing that channel key are removed before overwriting to
+    prevent dangling references.
+
+    Args:
+        channels: Existing channels dictionary to mutate.
+        operations: Existing operations dictionary to mutate.
+        new_channels: New channels to add or overwrite.
+        new_operations: New operations to add.
+    """
+    for key in new_channels:
+        if key in channels:
+            target_ref = f"#/channels/{key}"
+            stale_ops = [op_id for op_id, op in operations.items() if op.channel.get("$ref") == target_ref]
+            for op_id in stale_ops:
+                operations.pop(op_id, None)
+    channels.update(new_channels)
+    operations.update(new_operations)
+
+
+def _extract_websocket_route_details(
+    route: WebSocketRoute,
+    components_schemas: dict[str, Any] | None,
+    allocator: _ChannelKeyAllocator,
+    operation_ids: set[str],
+) -> tuple[str, AsyncAPIChannel, dict[str, AsyncAPIOperation]] | None:
+    """Extract channel and operation details from a single WebSocketRoute.
+
+    Args:
+        route: The WebSocketRoute to extract.
+        components_schemas: Optional schema collection dictionary.
+        allocator: Allocator for collision-safe channel keys.
+        operation_ids: Registry for unique operation ids.
+
+    Returns:
+        Tuple of (channel_key, channel, operations), or None if skipped.
+    """
+    handler = getattr(route, "route_handler", None)
+    fn = getattr(handler, "fn", None)
+    if (fn is not None and getattr(fn, "__module__", "").startswith("litestar.channels")) or (
+        hasattr(fn, "fn") and getattr(getattr(fn, "fn", None), "__module__", "").startswith("litestar.channels")
+    ):
+        return None
+
+    raw_path = route.path
+    normalized = normalize_path(raw_path)
+    channel_key = allocator.allocate(normalized, "websocket")
+
+    parameters: dict[str, AsyncAPIParameter] = {}
+    for param_name in extract_path_params(raw_path):
+        parameters[param_name] = AsyncAPIParameter(description=f"Path parameter {param_name}")
+
+    handler_name = getattr(handler, "handler_name", None) or getattr(handler, "name", None)
+    doc = getattr(fn, "__doc__", None) or getattr(handler, "__doc__", None)
+
+    if fn is not None and hasattr(fn, "fn"):
+        inner_fn = getattr(fn, "fn", None)
+        doc = getattr(inner_fn, "__doc__", None) or doc
+        if not handler_name:
+            handler_name = getattr(inner_fn, "__name__", None)
+
+    if not handler_name:
+        handler_name = getattr(fn, "__name__", None) or f"{channel_key}_handler"
+
+    channel_messages: dict[str, AsyncAPIMessage] = {}
+    operations: dict[str, AsyncAPIOperation] = {}
+
+    is_listener = isinstance(handler, WebsocketListenerRouteHandler)
+    if is_listener:
+        data_field = getattr(handler, "parsed_data_field", None)
+        return_field = getattr(handler, "parsed_return_field", None)
+
+        if data_field is not None and getattr(data_field, "annotation", None) is not None:
+            inbound_msg_name = f"{channel_key}Inbound"
+            inbound_payload = extract_payload_schema(data_field.annotation, components_schemas=components_schemas)
+            channel_messages["inbound"] = AsyncAPIMessage(
+                name=inbound_msg_name, title=f"{handler_name} Inbound Message", payload=inbound_payload
+            )
+            op_id = _allocate_operation_id("receive", channel_key, operation_ids)
+            operations[op_id] = AsyncAPIOperation(
+                action="receive",
+                channel={"$ref": f"#/channels/{channel_key}"},
+                summary=f"Receive inbound messages on {normalized}",
+                description=doc,
+                messages=[{"$ref": f"#/channels/{channel_key}/messages/inbound"}],
+            )
+
+        if return_field is not None and getattr(return_field, "annotation", None) not in (None, NoneType):
+            outbound_msg_name = f"{channel_key}Outbound"
+            outbound_payload = extract_payload_schema(return_field.annotation, components_schemas=components_schemas)
+            channel_messages["outbound"] = AsyncAPIMessage(
+                name=outbound_msg_name, title=f"{handler_name} Outbound Message", payload=outbound_payload
+            )
+            op_id = _allocate_operation_id("send", channel_key, operation_ids)
+            operations[op_id] = AsyncAPIOperation(
+                action="send",
+                channel={"$ref": f"#/channels/{channel_key}"},
+                summary=f"Send outbound messages on {normalized}",
+                description=doc,
+                messages=[{"$ref": f"#/channels/{channel_key}/messages/outbound"}],
+            )
+    else:
+        default_msg_name = f"{channel_key}Message"
+        channel_messages["message"] = AsyncAPIMessage(
+            name=default_msg_name, title=f"{handler_name} Message", payload={"type": "string"}
+        )
+        op_id = _allocate_operation_id("operate", channel_key, operation_ids)
+        operations[op_id] = AsyncAPIOperation(
+            action="send",
+            channel={"$ref": f"#/channels/{channel_key}"},
+            summary=f"WebSocket operation on {normalized}",
+            description=doc,
+            messages=[{"$ref": f"#/channels/{channel_key}/messages/message"}],
+        )
+
+    channel = AsyncAPIChannel(
+        address=normalized,
+        title=f"{handler_name} Channel",
+        summary=f"WebSocket channel at {normalized}",
+        description=doc,
+        parameters=parameters,
+        messages=channel_messages,
+    )
+
+    return channel_key, channel, operations
+
+
 def extract_websocket_routes(
-    app: "Litestar", components_schemas: dict[str, Any] | None = None
+    app: "Litestar",
+    components_schemas: dict[str, Any] | None = None,
+    *,
+    allocator: _ChannelKeyAllocator | None = None,
+    operation_ids: set[str] | None = None,
 ) -> tuple[dict[str, AsyncAPIChannel], dict[str, AsyncAPIOperation]]:
     """Extract WebSocket routes from a Litestar application into AsyncAPI channels and operations.
 
     Args:
         app: The Litestar application instance.
         components_schemas: Optional dictionary to collect named component schemas.
+        allocator: Optional allocator to ensure unique channel keys across sources.
+        operation_ids: Optional set to ensure unique operation ids across sources.
 
     Returns:
         Tuple of (channels_mapping, operations_mapping).
     """
+    if allocator is None:
+        allocator = _ChannelKeyAllocator()
+    if operation_ids is None:
+        operation_ids = set()
+
     channels: dict[str, AsyncAPIChannel] = {}
     operations: dict[str, AsyncAPIOperation] = {}
 
     for route in app.routes:
         if not isinstance(route, WebSocketRoute):
             continue
-
-        raw_path = route.path
-        normalized = normalize_path(raw_path)
-        channel_key = normalized.lstrip("/").replace("/", "_").replace("{", "").replace("}", "") or "root"
-
-        parameters: dict[str, AsyncAPIParameter] = {}
-        for param_name in extract_path_params(raw_path):
-            parameters[param_name] = AsyncAPIParameter(description=f"Path parameter {param_name}")
-
-        handler = getattr(route, "route_handler", None)
-        handler_name = getattr(handler, "handler_name", None) or getattr(handler, "name", None)
-        fn = getattr(handler, "fn", None)
-        doc = getattr(fn, "__doc__", None) or getattr(handler, "__doc__", None)
-
-        if fn is not None and hasattr(fn, "fn"):
-            inner_fn = getattr(fn, "fn", None)
-            doc = getattr(inner_fn, "__doc__", None) or doc
-            if not handler_name:
-                handler_name = getattr(inner_fn, "__name__", None)
-
-        if not handler_name:
-            handler_name = getattr(fn, "__name__", None) or f"{channel_key}_handler"
-
-        channel_messages: dict[str, AsyncAPIMessage] = {}
-
-        is_listener = isinstance(handler, WebsocketListenerRouteHandler)
-        if is_listener:
-            data_field = getattr(handler, "parsed_data_field", None)
-            return_field = getattr(handler, "parsed_return_field", None)
-
-            if data_field is not None and getattr(data_field, "annotation", None) is not None:
-                inbound_msg_name = f"{channel_key}Inbound"
-                inbound_payload = extract_payload_schema(data_field.annotation, components_schemas=components_schemas)
-                inbound_msg = AsyncAPIMessage(
-                    name=inbound_msg_name, title=f"{handler_name} Inbound Message", payload=inbound_payload
-                )
-                channel_messages["inbound"] = inbound_msg
-
-                op_id = f"receive_{channel_key}"
-                operations[op_id] = AsyncAPIOperation(
-                    action="receive",
-                    channel={"$ref": f"#/channels/{channel_key}"},
-                    summary=f"Receive inbound messages on {normalized}",
-                    description=doc,
-                    messages=[{"$ref": f"#/channels/{channel_key}/messages/inbound"}],
-                )
-
-            if return_field is not None and getattr(return_field, "annotation", None) not in (None, NoneType):
-                outbound_msg_name = f"{channel_key}Outbound"
-                outbound_payload = extract_payload_schema(
-                    return_field.annotation, components_schemas=components_schemas
-                )
-                outbound_msg = AsyncAPIMessage(
-                    name=outbound_msg_name, title=f"{handler_name} Outbound Message", payload=outbound_payload
-                )
-                channel_messages["outbound"] = outbound_msg
-
-                op_id = f"send_{channel_key}"
-                operations[op_id] = AsyncAPIOperation(
-                    action="send",
-                    channel={"$ref": f"#/channels/{channel_key}"},
-                    summary=f"Send outbound messages on {normalized}",
-                    description=doc,
-                    messages=[{"$ref": f"#/channels/{channel_key}/messages/outbound"}],
-                )
-        else:
-            default_msg_name = f"{channel_key}Message"
-            default_msg = AsyncAPIMessage(
-                name=default_msg_name, title=f"{handler_name} Message", payload={"type": "string"}
-            )
-            channel_messages["message"] = default_msg
-
-            op_id = f"operate_{channel_key}"
-            operations[op_id] = AsyncAPIOperation(
-                action="send",
-                channel={"$ref": f"#/channels/{channel_key}"},
-                summary=f"WebSocket operation on {normalized}",
-                description=doc,
-                messages=[{"$ref": f"#/channels/{channel_key}/messages/message"}],
-            )
-
-        channels[channel_key] = AsyncAPIChannel(
-            address=normalized,
-            title=f"{handler_name} Channel",
-            summary=f"WebSocket channel at {normalized}",
-            description=doc,
-            parameters=parameters,
-            messages=channel_messages,
-        )
+        details = _extract_websocket_route_details(route, components_schemas, allocator, operation_ids)
+        if details is not None:
+            key, channel, route_ops = details
+            channels[key] = channel
+            operations.update(route_ops)
 
     return channels, operations
 
@@ -601,16 +759,23 @@ def _is_sse_type(annotation: Any) -> bool:
 
 
 def extract_channels_plugin_channels(
-    app: "Litestar",
+    app: "Litestar", *, allocator: _ChannelKeyAllocator | None = None, operation_ids: set[str] | None = None
 ) -> tuple[dict[str, AsyncAPIChannel], dict[str, AsyncAPIOperation]]:
     """Extract channels and operations defined in Litestar ChannelsPlugin.
 
     Args:
         app: The Litestar application instance.
+        allocator: Optional allocator to ensure unique channel keys across sources.
+        operation_ids: Optional set to ensure unique operation ids across sources.
 
     Returns:
         Tuple of (channels_mapping, operations_mapping).
     """
+    if allocator is None:
+        allocator = _ChannelKeyAllocator()
+    if operation_ids is None:
+        operation_ids = set()
+
     channels: dict[str, AsyncAPIChannel] = {}
     operations: dict[str, AsyncAPIOperation] = {}
 
@@ -637,7 +802,7 @@ def extract_channels_plugin_channels(
         clean_pattern = pattern.lstrip("/")
         channel_path = f"{clean_root}/{clean_pattern}" if clean_root else f"/{clean_pattern}"
         normalized = normalize_path(channel_path)
-        channel_key = normalized.lstrip("/").replace("/", "_").replace("{", "").replace("}", "") or "root"
+        channel_key = allocator.allocate(normalized, "channels")
 
         parameters: dict[str, AsyncAPIParameter] = {}
         for param_name in extract_path_params(pattern):
@@ -654,7 +819,7 @@ def extract_channels_plugin_channels(
 
         channel_messages = {"broadcast": broadcast_msg}
 
-        send_op_id = f"send_{channel_key}"
+        send_op_id = _allocate_operation_id("send", channel_key, operation_ids)
         operations[send_op_id] = AsyncAPIOperation(
             action="send",
             channel={"$ref": f"#/channels/{channel_key}"},
@@ -663,7 +828,7 @@ def extract_channels_plugin_channels(
             messages=[{"$ref": f"#/channels/{channel_key}/messages/broadcast"}],
         )
 
-        receive_op_id = f"receive_{channel_key}"
+        receive_op_id = _allocate_operation_id("receive", channel_key, operation_ids)
         operations[receive_op_id] = AsyncAPIOperation(
             action="receive",
             channel={"$ref": f"#/channels/{channel_key}"},
@@ -685,15 +850,24 @@ def extract_channels_plugin_channels(
     return channels, operations
 
 
-def extract_sse_routes(app: "Litestar") -> tuple[dict[str, AsyncAPIChannel], dict[str, AsyncAPIOperation]]:
+def extract_sse_routes(
+    app: "Litestar", *, allocator: _ChannelKeyAllocator | None = None, operation_ids: set[str] | None = None
+) -> tuple[dict[str, AsyncAPIChannel], dict[str, AsyncAPIOperation]]:
     """Extract Server-Sent Event (SSE) routes from a Litestar application.
 
     Args:
         app: The Litestar application instance.
+        allocator: Optional allocator to ensure unique channel keys across sources.
+        operation_ids: Optional set to ensure unique operation ids across sources.
 
     Returns:
         Tuple of (channels_mapping, operations_mapping).
     """
+    if allocator is None:
+        allocator = _ChannelKeyAllocator()
+    if operation_ids is None:
+        operation_ids = set()
+
     channels: dict[str, AsyncAPIChannel] = {}
     operations: dict[str, AsyncAPIOperation] = {}
 
@@ -712,7 +886,7 @@ def extract_sse_routes(app: "Litestar") -> tuple[dict[str, AsyncAPIChannel], dic
 
             raw_path = route.path
             normalized = normalize_path(raw_path)
-            channel_key = normalized.lstrip("/").replace("/", "_").replace("{", "").replace("}", "") or "root"
+            channel_key = allocator.allocate(normalized, "sse")
 
             parameters: dict[str, AsyncAPIParameter] = {}
             for param_name in extract_path_params(raw_path):
@@ -743,7 +917,7 @@ def extract_sse_routes(app: "Litestar") -> tuple[dict[str, AsyncAPIChannel], dic
 
             channel_messages = {"event": event_msg}
 
-            op_id = f"stream_{channel_key}"
+            op_id = _allocate_operation_id("stream", channel_key, operation_ids)
             operations[op_id] = AsyncAPIOperation(
                 action="send",
                 channel={"$ref": f"#/channels/{channel_key}"},
@@ -778,27 +952,18 @@ def extract_realtime_channels(
     Returns:
         Tuple of (channels_mapping, operations_mapping).
     """
-    channels: dict[str, AsyncAPIChannel] = {}
-    operations: dict[str, AsyncAPIOperation] = {}
+    allocator = _ChannelKeyAllocator()
+    operation_ids: set[str] = set()
 
-    ws_channels, ws_ops = extract_websocket_routes(app, components_schemas=components_schemas)
-    channels.update(ws_channels)
-    operations.update(ws_ops)
+    channels, operations = extract_websocket_routes(
+        app, components_schemas=components_schemas, allocator=allocator, operation_ids=operation_ids
+    )
 
-    cp_channels, cp_ops = extract_channels_plugin_channels(app)
-    for k, v in cp_channels.items():
-        if k in channels:
-            channels[k] = v
-            stale_ops = [op_id for op_id, op in operations.items() if op.channel.get("$ref") == f"#/channels/{k}"]
-            for op_id in stale_ops:
-                operations.pop(op_id, None)
-        else:
-            channels[k] = v
-    operations.update(cp_ops)
+    cp_channels, cp_ops = extract_channels_plugin_channels(app, allocator=allocator, operation_ids=operation_ids)
+    _merge_channels(channels, operations, cp_channels, cp_ops)
 
-    sse_channels, sse_ops = extract_sse_routes(app)
-    channels.update(sse_channels)
-    operations.update(sse_ops)
+    sse_channels, sse_ops = extract_sse_routes(app, allocator=allocator, operation_ids=operation_ids)
+    _merge_channels(channels, operations, sse_channels, sse_ops)
 
     return channels, operations
 

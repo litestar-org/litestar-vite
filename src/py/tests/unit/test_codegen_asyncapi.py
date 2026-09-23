@@ -152,22 +152,22 @@ def test_extract_channels_plugin_channels_predefined() -> None:
 
     channels, operations = extract_channels_plugin_channels(app)
 
-    assert "ws_notifications" in channels
-    assert "ws_room_room_id" in channels
+    assert "ws__notifications" in channels
+    assert "ws__room__p_room_id" in channels
 
-    notif_channel = channels["ws_notifications"]
+    notif_channel = channels["ws__notifications"]
     assert notif_channel.address == "/ws/notifications"
     assert "broadcast" in notif_channel.messages
     assert notif_channel.bindings["channels"]["channel"] == "notifications"
 
-    room_channel = channels["ws_room_room_id"]
+    room_channel = channels["ws__room__p_room_id"]
     assert room_channel.address == "/ws/room/{room_id}"
     assert "room_id" in room_channel.parameters
 
-    assert "send_ws_notifications" in operations
-    assert "receive_ws_notifications" in operations
-    assert operations["send_ws_notifications"].action == "send"
-    assert operations["receive_ws_notifications"].action == "receive"
+    assert "send_ws__notifications" in operations
+    assert "receive_ws__notifications" in operations
+    assert operations["send_ws__notifications"].action == "send"
+    assert operations["receive_ws__notifications"].action == "receive"
 
 
 def test_extract_channels_plugin_channels_arbitrary() -> None:
@@ -179,8 +179,8 @@ def test_extract_channels_plugin_channels_arbitrary() -> None:
 
     channels, _operations = extract_channels_plugin_channels(app)
 
-    assert "ws_channel" in channels
-    arbitrary_channel = channels["ws_channel"]
+    assert "ws__p_channel" in channels
+    arbitrary_channel = channels["ws__p_channel"]
     assert arbitrary_channel.address == "/ws/{channel}"
     assert "channel" in arbitrary_channel.parameters
 
@@ -220,7 +220,7 @@ def test_extract_sse_routes_single_and_stream() -> None:
     channels, operations = extract_sse_routes(app)
 
     assert "events" in channels
-    assert "stream_stream_id" in channels
+    assert "stream__p_stream_id" in channels
     assert "json-endpoint" not in channels
 
     events_channel = channels["events"]
@@ -229,14 +229,14 @@ def test_extract_sse_routes_single_and_stream() -> None:
     assert events_channel.messages["event"].content_type == "text/event-stream"
     assert "http" in events_channel.bindings
 
-    stream_channel = channels["stream_stream_id"]
+    stream_channel = channels["stream__p_stream_id"]
     assert stream_channel.address == "/stream/{stream_id}"
     assert "stream_id" in stream_channel.parameters
 
     assert "stream_events" in operations
     assert operations["stream_events"].action == "send"
-    assert "stream_stream_stream_id" in operations
-    assert operations["stream_stream_stream_id"].action == "send"
+    assert "stream_stream__p_stream_id" in operations
+    assert operations["stream_stream__p_stream_id"].action == "send"
 
 
 def test_extract_sse_routes_no_sse() -> None:
@@ -276,9 +276,9 @@ def test_extract_realtime_channels_and_create_asyncapi_document() -> None:
 
     channels, _operations = extract_realtime_channels(app)
 
-    assert "ws_chat" in channels
-    assert "sse_metrics" in channels
-    assert "ws_broadcasts" in channels
+    assert "ws__chat" in channels
+    assert "sse__metrics" in channels
+    assert "ws__broadcasts" in channels
 
     doc = create_asyncapi_document(
         app, title="Application Realtime API", version="2.1.0", description="Full realtime messaging catalog"
@@ -288,9 +288,9 @@ def test_extract_realtime_channels_and_create_asyncapi_document() -> None:
     assert doc_dict["asyncapi"] == "3.0.0"
     assert doc_dict["info"]["title"] == "Application Realtime API"
     assert doc_dict["info"]["version"] == "2.1.0"
-    assert "ws_chat" in doc_dict["channels"]
-    assert "sse_metrics" in doc_dict["channels"]
-    assert "ws_broadcasts" in doc_dict["channels"]
+    assert "ws__chat" in doc_dict["channels"]
+    assert "sse__metrics" in doc_dict["channels"]
+    assert "ws__broadcasts" in doc_dict["channels"]
 
 
 def test_extract_payload_schema_primitives_and_containers() -> None:
@@ -385,7 +385,7 @@ def test_create_asyncapi_document_with_typed_listener() -> None:
     assert "InboundData" in doc_dict["components"]["schemas"]
     assert "OutboundData" in doc_dict["components"]["schemas"]
 
-    channel = doc_dict["channels"]["ws_typed-chat"]
+    channel = doc_dict["channels"]["ws__typed_chat"]
     assert channel["messages"]["inbound"]["payload"] == {"$ref": "#/components/schemas/InboundData"}
     assert channel["messages"]["outbound"]["payload"] == {"$ref": "#/components/schemas/OutboundData"}
 
@@ -413,7 +413,7 @@ def test_export_asyncapi_pipeline(tmp_path: Path) -> None:
     assert len(result.exported_files) == 1
     assert "asyncapi" in result.exported_files[0]
     assert result.asyncapi_schema is not None
-    assert "ws_ping" in result.asyncapi_schema["channels"]
+    assert "ws__ping" in result.asyncapi_schema["channels"]
 
     result2 = ExportResult()
     export_asyncapi(app=app, types_config=types_config, result=result2)
@@ -447,7 +447,7 @@ def test_export_integration_assets_includes_asyncapi(tmp_path: Path) -> None:
     result = export_integration_assets(app=app, config=vite_config)
 
     assert result.asyncapi_schema is not None
-    assert "ws_feed" in result.asyncapi_schema["channels"]
+    assert "ws__feed" in result.asyncapi_schema["channels"]
     asyncapi_file = tmp_path / "sdk" / "asyncapi.json"
     assert asyncapi_file.exists()
 
@@ -463,7 +463,7 @@ def test_to_dict_preserves_dict_payload_additional_properties() -> None:
     app = Litestar(route_handlers=[kv_handler])
     doc = create_asyncapi_document(app).to_dict()
 
-    channel = doc["channels"]["ws_kv"]
+    channel = doc["channels"]["ws__kv"]
     inbound_payload = channel["messages"]["inbound"]["payload"]
     outbound_payload = channel["messages"]["outbound"]["payload"]
 
@@ -482,7 +482,7 @@ def test_to_dict_preserves_list_payload_items() -> None:
     app = Litestar(route_handlers=[items_handler])
     doc = create_asyncapi_document(app).to_dict()
 
-    channel = doc["channels"]["ws_items"]
+    channel = doc["channels"]["ws__items"]
     inbound_payload = channel["messages"]["inbound"]["payload"]
 
     assert inbound_payload == {"type": "array", "items": {}}
@@ -497,9 +497,7 @@ def test_to_dict_preserves_binding_markers() -> None:
         return ServerSentEvent(content="ping")
 
     channels_plugin = ChannelsPlugin(
-        backend=MemoryChannelsBackend(),
-        channels=["broadcast"],
-        create_ws_route_handlers=True,
+        backend=MemoryChannelsBackend(), channels=["broadcast"], create_ws_route_handlers=True
     )
     app = Litestar(route_handlers=[sse_handler], plugins=[channels_plugin])
     doc = create_asyncapi_document(app).to_dict()
@@ -523,6 +521,132 @@ def test_to_dict_still_prunes_metadata_nulls() -> None:
     doc = create_asyncapi_document(app).to_dict()
 
     assert "description" not in doc["info"]
-    assert "parameters" not in doc["channels"]["ws_noparams"]
+    assert "parameters" not in doc["channels"]["ws__noparams"]
 
 
+def _assert_refs_resolve(doc: dict[str, Any]) -> None:
+    """Verify all operation channel and message refs resolve to existing channel and message definitions."""
+    channels = doc.get("channels", {})
+    operations = doc.get("operations", {})
+
+    for op_id, op in operations.items():
+        channel_ref = op["channel"]["$ref"]
+        assert channel_ref.startswith("#/channels/"), f"Invalid channel $ref {channel_ref} in {op_id}"
+        channel_key = channel_ref[len("#/channels/") :]
+        assert channel_key in channels, f"Operation {op_id} references missing channel {channel_key}"
+
+        channel = channels[channel_key]
+        messages = channel.get("messages", {})
+        for msg in op.get("messages", []):
+            msg_ref = msg["$ref"]
+            expected_prefix = f"#/channels/{channel_key}/messages/"
+            assert msg_ref.startswith(expected_prefix), f"Invalid message $ref {msg_ref} in {op_id}"
+            msg_key = msg_ref[len(expected_prefix) :]
+            assert msg_key in messages, (
+                f"Operation {op_id} references missing message {msg_key} in channel {channel_key}"
+            )
+
+
+def test_distinct_paths_get_distinct_channel_keys() -> None:
+    """Test distinct paths produce distinct channel keys without collisions."""
+
+    @websocket("/ws/a/b")
+    async def handler_slash(socket: WebSocket) -> None:
+        """Handler for /ws/a/b."""
+        await socket.accept()
+        await socket.close()
+
+    @websocket("/ws/a_b")
+    async def handler_underscore(socket: WebSocket) -> None:
+        """Handler for /ws/a_b."""
+        await socket.accept()
+        await socket.close()
+
+    @websocket("/ws/{a:str}/b")
+    async def handler_param(socket: WebSocket, a: str) -> None:
+        """Handler for /ws/{a}/b."""
+        await socket.accept()
+        await socket.close()
+
+    app = Litestar(route_handlers=[handler_slash, handler_underscore, handler_param])
+    doc = create_asyncapi_document(app).to_dict()
+
+    assert len(doc["channels"]) == 3
+    assert len(set(doc["channels"].keys())) == 3
+    _assert_refs_resolve(doc)
+
+
+def test_websocket_and_sse_on_same_path_do_not_collide() -> None:
+    """Test WebSocket and SSE handlers on the same route path do not collide."""
+
+    @websocket("/feed")
+    async def ws_feed_handler(socket: WebSocket) -> None:
+        """WebSocket feed handler."""
+        await socket.accept()
+        await socket.close()
+
+    @get("/feed")
+    async def sse_feed_handler() -> ServerSentEvent:
+        """SSE feed handler."""
+        return ServerSentEvent(content="ping")
+
+    app = Litestar(route_handlers=[ws_feed_handler, sse_feed_handler])
+    doc = create_asyncapi_document(app).to_dict()
+
+    assert len(doc["channels"]) == 2
+    for channel_key in doc["channels"].keys():
+        referencing_ops = [
+            op for op in doc["operations"].values() if op["channel"]["$ref"] == f"#/channels/{channel_key}"
+        ]
+        assert len(referencing_ops) >= 1
+    _assert_refs_resolve(doc)
+
+
+def test_all_operation_refs_resolve() -> None:
+    """Test all operation channel and message references resolve across combined extractors."""
+
+    @websocket("/chat/{room:str}")
+    async def chat_handler(socket: WebSocket, room: str) -> None:
+        """Chat socket handler."""
+        await socket.accept()
+        await socket.close()
+
+    @get("/live/events")
+    async def sse_handler() -> ServerSentEvent:
+        """Live SSE handler."""
+        return ServerSentEvent(content="update")
+
+    channels_plugin = ChannelsPlugin(
+        backend=MemoryChannelsBackend(), channels=["system_broadcast"], create_ws_route_handlers=True
+    )
+
+    app = Litestar(route_handlers=[chat_handler, sse_handler], plugins=[channels_plugin])
+    doc = create_asyncapi_document(app).to_dict()
+
+    _assert_refs_resolve(doc)
+
+
+def test_operation_ids_are_unique() -> None:
+    """Test all operation ids across combined extractors are unique."""
+
+    @websocket("/events")
+    async def ws_events(socket: WebSocket) -> None:
+        """WS events."""
+        await socket.accept()
+        await socket.close()
+
+    @get("/events")
+    async def sse_events() -> ServerSentEvent:
+        """SSE events."""
+        return ServerSentEvent(content="event")
+
+    channels_plugin = ChannelsPlugin(
+        backend=MemoryChannelsBackend(), channels=["events"], create_ws_route_handlers=True
+    )
+
+    app = Litestar(route_handlers=[ws_events, sse_events], plugins=[channels_plugin])
+    doc = create_asyncapi_document(app).to_dict()
+
+    op_ids = list(doc["operations"].keys())
+    assert len(op_ids) == len(set(op_ids))
+    _assert_refs_resolve(doc)
