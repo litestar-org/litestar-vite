@@ -65,6 +65,7 @@ class InertiaResponse(Response[T]):
         *,
         template_name: "str | None" = None,
         template_str: "str | None" = None,
+        component: "str | None" = None,
         background: "BackgroundTask | BackgroundTasks | None" = None,
         context: "dict[str, Any] | None" = None,
         cookies: "ResponseCookies | None" = None,
@@ -84,6 +85,8 @@ class InertiaResponse(Response[T]):
             content: A value for the response body that will be rendered into bytes string.
             template_name: Path-like name for the template to be rendered, e.g. ``index.html``.
             template_str: A string representing the template, e.g. ``tmpl = "Hello <strong>World</strong>"``.
+            component: The Inertia page component name. When omitted, the component
+                registered on the route handler (``request.inertia.route_component``) is used.
             background: A :class:`BackgroundTask <.background_tasks.BackgroundTask>` instance or
                 :class:`BackgroundTasks <.background_tasks.BackgroundTasks>` to execute after the response is finished.
                 Defaults to ``None``.
@@ -137,6 +140,7 @@ class InertiaResponse(Response[T]):
         self.clear_history = clear_history
         self.scroll_props = scroll_props
         self.prop_filter = prop_filter
+        self.component = component
         self._async_prepass_done: bool = False
         self._cached_page_props: "PageProps[T] | None" = None
         self._cached_ssr_payload: "_InertiaSSRResult | None" = None
@@ -270,7 +274,7 @@ class InertiaResponse(Response[T]):
         flash_data: "dict[str, list[str]]" = shared_props.pop("flash", None) or {}
 
         return PageProps[T](
-            component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
+            component=self.component or request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
             props=shared_props,  # pyright: ignore[reportArgumentType]
             version=vite_plugin.asset_loader.version_id,
             url=_get_relative_url(request),

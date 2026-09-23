@@ -3483,3 +3483,49 @@ def test_render_spa_ssr_branch_passes_page_data() -> None:
     assert b"<title>Home</title>" in result
 
 
+async def test_inertia_response_component_override_wins(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """An explicit component argument on InertiaResponse takes precedence over the route component."""
+
+    @get("/profile", component="Users/Show")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaResponse[dict[str, Any]]:
+        return InertiaResponse({"user": "ada"}, component="Users/ShowArchived")
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/profile", headers={InertiaHeaders.ENABLED.value: "true"})
+
+    assert response.status_code == 200
+    assert response.json()["component"] == "Users/ShowArchived"
+
+
+async def test_inertia_response_component_defaults_to_route_component(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,  # pyright: ignore[reportUnknownParameterType,reportMissingTypeArgument]
+) -> None:
+    """When component is omitted on InertiaResponse, the route component is used."""
+
+    @get("/profile", component="Users/Show")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaResponse[dict[str, Any]]:
+        return InertiaResponse({"user": "ada"})
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/profile", headers={InertiaHeaders.ENABLED.value: "true"})
+
+    assert response.status_code == 200
+    assert response.json()["component"] == "Users/Show"
