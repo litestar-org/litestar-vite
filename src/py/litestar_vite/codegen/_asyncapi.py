@@ -5,6 +5,7 @@ to introspect Litestar WebSocket routes and listeners into structured channels
 and operations.
 """
 
+import contextlib
 import re
 import types
 from dataclasses import asdict, dataclass, field
@@ -13,10 +14,18 @@ from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin
 
 from litestar.channels import ChannelsPlugin
 from litestar.handlers import WebsocketListenerRouteHandler
+from litestar.openapi.spec import Reference
 from litestar.response import ServerSentEvent
 from litestar.routes import HTTPRoute, WebSocketRoute
 from litestar.types.builtin_types import NoneType
+from litestar.typing import FieldDefinition
 
+from litestar_vite.codegen._openapi import (
+    OpenAPISupport,
+    asyncapi_schema_from_result,
+    build_schema_name_map,
+    resolve_handler_field_schema,
+)
 from litestar_vite.codegen._routes import extract_path_params
 from litestar_vite.codegen._ts import normalize_path
 
@@ -473,6 +482,64 @@ def extract_payload_schema(annotation: Any, components_schemas: dict[str, Any] |
 _py_type_to_schema = extract_payload_schema
 
 
+@dataclass(slots=True)
+class AsyncAPISchemaContext:
+    """Context for resolving AsyncAPI schemas with optional OpenAPI and DTO parity.
+
+    When support is None or support.enabled is False, schema resolution selects
+    the zero-dependency fallback path using extract_payload_schema.
+    """
+
+    support: OpenAPISupport | None = None
+    components_schemas: dict[str, Any] = field(default_factory=dict[str, Any])
+    deferred_references: list[tuple[dict[str, Any], Reference]] = field(
+        default_factory=list[tuple[dict[str, Any], Reference]]
+    )
+
+
+def extract_field_schema(
+    handler: Any,
+    field_definition: Any,
+    context: AsyncAPISchemaContext,
+    *,
+    dto_attribute: str,
+) -> dict[str, Any]:
+    """Extract schema dictionary for a handler field with DTO and OpenAPI parity.
+
+    Args:
+        handler: The route handler owning the field.
+        field_definition: FieldDefinition or type annotation.
+        context: AsyncAPISchemaContext carrying OpenAPI support and collections.
+        dto_attribute: Attribute name for resolving the DTO ('resolve_dto' or 'resolve_return_dto').
+
+    Returns:
+        JSON Schema representation or $ref dictionary for the payload.
+    """
+    annotation = getattr(field_definition, "annotation", field_definition)
+    if annotation in _SCALAR_SCHEMA_MAP:
+        return _SCALAR_SCHEMA_MAP[annotation].copy()
+
+    if context.support is not None and context.support.enabled and context.support.schema_creator is not None:
+        try:
+            actual_field = (
+                field_definition
+                if isinstance(field_definition, FieldDefinition)
+                else FieldDefinition.from_annotation(field_definition)
+            )
+            result = resolve_handler_field_schema(
+                handler, actual_field, context.support.schema_creator, dto_attribute=dto_attribute
+            )
+            converted = asyncapi_schema_from_result(result)
+            if converted is not None:
+                if isinstance(result, Reference):
+                    context.deferred_references.append((converted, result))
+                return converted
+        except (AttributeError, TypeError, ValueError):
+            pass
+
+    return extract_payload_schema(annotation, context.components_schemas)
+
+
 def _slug_segment(segment: str) -> str:
     """Sanitize a path segment for use in an AsyncAPI channel key.
 
@@ -598,7 +665,7 @@ def _merge_channels(
 
 def _extract_websocket_route_details(
     route: WebSocketRoute,
-    components_schemas: dict[str, Any] | None,
+    context: AsyncAPISchemaContext,
     allocator: _ChannelKeyAllocator,
     operation_ids: set[str],
 ) -> tuple[str, AsyncAPIChannel, dict[str, AsyncAPIOperation]] | None:
@@ -606,7 +673,7 @@ def _extract_websocket_route_details(
 
     Args:
         route: The WebSocketRoute to extract.
-        components_schemas: Optional schema collection dictionary.
+        context: Schema context coordinating OpenAPI and DTO support.
         allocator: Allocator for collision-safe channel keys.
         operation_ids: Registry for unique operation ids.
 
@@ -650,7 +717,7 @@ def _extract_websocket_route_details(
 
         if data_field is not None and getattr(data_field, "annotation", None) is not None:
             inbound_msg_name = f"{channel_key}Inbound"
-            inbound_payload = extract_payload_schema(data_field.annotation, components_schemas=components_schemas)
+            inbound_payload = extract_field_schema(handler, data_field, context, dto_attribute="resolve_dto")
             channel_messages["inbound"] = AsyncAPIMessage(
                 name=inbound_msg_name, title=f"{handler_name} Inbound Message", payload=inbound_payload
             )
@@ -665,7 +732,7 @@ def _extract_websocket_route_details(
 
         if return_field is not None and getattr(return_field, "annotation", None) not in (None, NoneType):
             outbound_msg_name = f"{channel_key}Outbound"
-            outbound_payload = extract_payload_schema(return_field.annotation, components_schemas=components_schemas)
+            outbound_payload = extract_field_schema(handler, return_field, context, dto_attribute="resolve_return_dto")
             channel_messages["outbound"] = AsyncAPIMessage(
                 name=outbound_msg_name, title=f"{handler_name} Outbound Message", payload=outbound_payload
             )
@@ -707,6 +774,7 @@ def extract_websocket_routes(
     app: "Litestar",
     components_schemas: dict[str, Any] | None = None,
     *,
+    context: AsyncAPISchemaContext | None = None,
     allocator: _ChannelKeyAllocator | None = None,
     operation_ids: set[str] | None = None,
 ) -> tuple[dict[str, AsyncAPIChannel], dict[str, AsyncAPIOperation]]:
@@ -715,12 +783,20 @@ def extract_websocket_routes(
     Args:
         app: The Litestar application instance.
         components_schemas: Optional dictionary to collect named component schemas.
+        context: Optional schema context coordinating OpenAPI and DTO support.
         allocator: Optional allocator to ensure unique channel keys across sources.
         operation_ids: Optional set to ensure unique operation ids across sources.
 
     Returns:
         Tuple of (channels_mapping, operations_mapping).
     """
+    if context is None:
+        context = AsyncAPISchemaContext(
+            components_schemas=components_schemas if components_schemas is not None else {}
+        )
+    elif components_schemas is not None and not context.components_schemas:
+        context.components_schemas = components_schemas
+
     if allocator is None:
         allocator = _ChannelKeyAllocator()
     if operation_ids is None:
@@ -732,7 +808,7 @@ def extract_websocket_routes(
     for route in app.routes:
         if not isinstance(route, WebSocketRoute):
             continue
-        details = _extract_websocket_route_details(route, components_schemas, allocator, operation_ids)
+        details = _extract_websocket_route_details(route, context, allocator, operation_ids)
         if details is not None:
             key, channel, route_ops = details
             channels[key] = channel
@@ -816,10 +892,109 @@ def _is_sse_type(annotation: Any) -> bool:
     return False
 
 
+def _extract_channels_plugin_channel(
+    app: "Litestar",
+    pattern: str,
+    clean_root: str,
+    context: AsyncAPISchemaContext,
+    allocator: _ChannelKeyAllocator,
+    operation_ids: set[str],
+) -> tuple[str, AsyncAPIChannel, dict[str, AsyncAPIOperation]]:
+    """Extract a single ChannelsPlugin channel and associated operations.
+
+    Args:
+        app: The Litestar application instance.
+        pattern: The channel topic pattern string.
+        clean_root: Cleaned root path string.
+        context: Schema context coordinating OpenAPI and DTO support.
+        allocator: Allocator for collision-safe channel keys.
+        operation_ids: Registry for unique operation ids.
+
+    Returns:
+        Tuple of (channel_key, channel, operations).
+    """
+    clean_pattern = pattern.lstrip("/")
+    channel_path = f"{clean_root}/{clean_pattern}" if clean_root else f"/{clean_pattern}"
+    normalized = normalize_path(channel_path)
+    channel_key = allocator.allocate(normalized, "channels")
+
+    parameters: dict[str, AsyncAPIParameter] = {}
+    for param_name in extract_path_params(pattern):
+        parameters[param_name] = AsyncAPIParameter(description=f"Channel parameter {param_name}")
+
+    located_handler: Any = None
+    for route in app.routes:
+        if isinstance(route, WebSocketRoute) and (
+            route.path == channel_path or normalize_path(route.path) == normalized
+        ):
+            located_handler = getattr(route, "route_handler", None)
+            break
+
+    broadcast_payload: dict[str, Any] = {}
+    opt_payload = _opt_payload_annotation(located_handler) if located_handler is not None else None
+    if opt_payload is not None:
+        broadcast_payload = extract_field_schema(
+            located_handler, opt_payload, context, dto_attribute="resolve_return_dto"
+        )
+    elif located_handler is not None:
+        ret_field = getattr(located_handler, "parsed_return_field", None)
+        ret_annotation = getattr(ret_field, "annotation", None)
+        if ret_annotation not in (None, NoneType):
+            broadcast_payload = extract_field_schema(
+                located_handler, ret_field, context, dto_attribute="resolve_return_dto"
+            )
+
+    broadcast_msg_name = f"{channel_key}Broadcast"
+    broadcast_msg = AsyncAPIMessage(
+        name=broadcast_msg_name,
+        title=f"{pattern} Broadcast Message",
+        summary=f"Event payload broadcast on {pattern}",
+        content_type="application/json",
+        payload=broadcast_payload,
+    )
+
+    channel_messages = {"broadcast": broadcast_msg}
+    operations: dict[str, AsyncAPIOperation] = {}
+
+    send_op_id = _allocate_operation_id("send", channel_key, operation_ids)
+    operations[send_op_id] = AsyncAPIOperation(
+        action="send",
+        channel={"$ref": f"#/channels/{channel_key}"},
+        summary=f"Broadcast event to subscribers on {normalized}",
+        description=f"Publishes real-time events to subscribers connected to {pattern}.",
+        messages=[{"$ref": f"#/channels/{channel_key}/messages/broadcast"}],
+    )
+
+    data_field = getattr(located_handler, "parsed_data_field", None) if located_handler is not None else None
+    data_annotation = getattr(data_field, "annotation", None) if data_field is not None else None
+    if data_annotation not in (None, NoneType):
+        receive_op_id = _allocate_operation_id("receive", channel_key, operation_ids)
+        operations[receive_op_id] = AsyncAPIOperation(
+            action="receive",
+            channel={"$ref": f"#/channels/{channel_key}"},
+            summary=f"Subscribe or publish events on {normalized}",
+            description=f"Receives subscriber connections and event publications on {pattern}.",
+            messages=[{"$ref": f"#/channels/{channel_key}/messages/broadcast"}],
+        )
+
+    channel = AsyncAPIChannel(
+        address=normalized,
+        title=f"{pattern} Channel",
+        summary=f"ChannelsPlugin broadcast channel at {normalized}",
+        description=f"Managed Litestar channel for {pattern}.",
+        parameters=parameters,
+        messages=channel_messages,
+        bindings={"ws": {}, "channels": {"channel": pattern}},
+    )
+
+    return channel_key, channel, operations
+
+
 def extract_channels_plugin_channels(
     app: "Litestar",
     components_schemas: dict[str, Any] | None = None,
     *,
+    context: AsyncAPISchemaContext | None = None,
     allocator: _ChannelKeyAllocator | None = None,
     operation_ids: set[str] | None = None,
 ) -> tuple[dict[str, AsyncAPIChannel], dict[str, AsyncAPIOperation]]:
@@ -831,12 +1006,20 @@ def extract_channels_plugin_channels(
     Args:
         app: The Litestar application instance.
         components_schemas: Optional dictionary to collect named component schemas.
+        context: Optional schema context coordinating OpenAPI and DTO support.
         allocator: Optional allocator to ensure unique channel keys across sources.
         operation_ids: Optional set to ensure unique operation ids across sources.
 
     Returns:
         Tuple of (channels_mapping, operations_mapping).
     """
+    if context is None:
+        context = AsyncAPISchemaContext(
+            components_schemas=components_schemas if components_schemas is not None else {}
+        )
+    elif components_schemas is not None and not context.components_schemas:
+        context.components_schemas = components_schemas
+
     if allocator is None:
         allocator = _ChannelKeyAllocator()
     if operation_ids is None:
@@ -865,74 +1048,11 @@ def extract_channels_plugin_channels(
 
     clean_root = root_path.rstrip("/")
     for pattern in channel_patterns:
-        clean_pattern = pattern.lstrip("/")
-        channel_path = f"{clean_root}/{clean_pattern}" if clean_root else f"/{clean_pattern}"
-        normalized = normalize_path(channel_path)
-        channel_key = allocator.allocate(normalized, "channels")
-
-        parameters: dict[str, AsyncAPIParameter] = {}
-        for param_name in extract_path_params(pattern):
-            parameters[param_name] = AsyncAPIParameter(description=f"Channel parameter {param_name}")
-
-        located_handler: Any = None
-        for route in app.routes:
-            if isinstance(route, WebSocketRoute) and (
-                route.path == channel_path or normalize_path(route.path) == normalized
-            ):
-                located_handler = getattr(route, "route_handler", None)
-                break
-
-        broadcast_payload: dict[str, Any] = {}
-        opt_payload = _opt_payload_annotation(located_handler) if located_handler is not None else None
-        if opt_payload is not None:
-            broadcast_payload = extract_payload_schema(opt_payload, components_schemas=components_schemas)
-        elif located_handler is not None:
-            ret_field = getattr(located_handler, "parsed_return_field", None)
-            ret_annotation = getattr(ret_field, "annotation", None)
-            if ret_annotation not in (None, NoneType):
-                broadcast_payload = extract_payload_schema(ret_annotation, components_schemas=components_schemas)
-
-        broadcast_msg_name = f"{channel_key}Broadcast"
-        broadcast_msg = AsyncAPIMessage(
-            name=broadcast_msg_name,
-            title=f"{pattern} Broadcast Message",
-            summary=f"Event payload broadcast on {pattern}",
-            content_type="application/json",
-            payload=broadcast_payload,
+        channel_key, channel, channel_ops = _extract_channels_plugin_channel(
+            app, pattern, clean_root, context, allocator, operation_ids
         )
-
-        channel_messages = {"broadcast": broadcast_msg}
-
-        send_op_id = _allocate_operation_id("send", channel_key, operation_ids)
-        operations[send_op_id] = AsyncAPIOperation(
-            action="send",
-            channel={"$ref": f"#/channels/{channel_key}"},
-            summary=f"Broadcast event to subscribers on {normalized}",
-            description=f"Publishes real-time events to subscribers connected to {pattern}.",
-            messages=[{"$ref": f"#/channels/{channel_key}/messages/broadcast"}],
-        )
-
-        data_field = getattr(located_handler, "parsed_data_field", None) if located_handler is not None else None
-        data_annotation = getattr(data_field, "annotation", None) if data_field is not None else None
-        if data_annotation not in (None, NoneType):
-            receive_op_id = _allocate_operation_id("receive", channel_key, operation_ids)
-            operations[receive_op_id] = AsyncAPIOperation(
-                action="receive",
-                channel={"$ref": f"#/channels/{channel_key}"},
-                summary=f"Subscribe or publish events on {normalized}",
-                description=f"Receives subscriber connections and event publications on {pattern}.",
-                messages=[{"$ref": f"#/channels/{channel_key}/messages/broadcast"}],
-            )
-
-        channels[channel_key] = AsyncAPIChannel(
-            address=normalized,
-            title=f"{pattern} Channel",
-            summary=f"ChannelsPlugin broadcast channel at {normalized}",
-            description=f"Managed Litestar channel for {pattern}.",
-            parameters=parameters,
-            messages=channel_messages,
-            bindings={"ws": {}, "channels": {"channel": pattern}},
-        )
+        channels[channel_key] = channel
+        operations.update(channel_ops)
 
     return channels, operations
 
@@ -941,6 +1061,7 @@ def extract_sse_routes(
     app: "Litestar",
     components_schemas: dict[str, Any] | None = None,
     *,
+    context: AsyncAPISchemaContext | None = None,
     allocator: _ChannelKeyAllocator | None = None,
     operation_ids: set[str] | None = None,
 ) -> tuple[dict[str, AsyncAPIChannel], dict[str, AsyncAPIOperation]]:
@@ -949,12 +1070,20 @@ def extract_sse_routes(
     Args:
         app: The Litestar application instance.
         components_schemas: Optional dictionary to collect named component schemas.
+        context: Optional schema context coordinating OpenAPI and DTO support.
         allocator: Optional allocator to ensure unique channel keys across sources.
         operation_ids: Optional set to ensure unique operation ids across sources.
 
     Returns:
         Tuple of (channels_mapping, operations_mapping).
     """
+    if context is None:
+        context = AsyncAPISchemaContext(
+            components_schemas=components_schemas if components_schemas is not None else {}
+        )
+    elif components_schemas is not None and not context.components_schemas:
+        context.components_schemas = components_schemas
+
     if allocator is None:
         allocator = _ChannelKeyAllocator()
     if operation_ids is None:
@@ -1000,7 +1129,7 @@ def extract_sse_routes(
             opt_payload = _opt_payload_annotation(handler)
             resolved_type = opt_payload if opt_payload is not None else _sse_payload_annotation(annotation)
             if resolved_type is not None:
-                payload = extract_payload_schema(resolved_type, components_schemas=components_schemas)
+                payload = extract_field_schema(handler, resolved_type, context, dto_attribute="resolve_return_dto")
             else:
                 payload = {"type": "string"}
 
@@ -1040,31 +1169,42 @@ def extract_sse_routes(
 
 
 def extract_realtime_channels(
-    app: "Litestar", components_schemas: dict[str, Any] | None = None
+    app: "Litestar",
+    components_schemas: dict[str, Any] | None = None,
+    *,
+    context: AsyncAPISchemaContext | None = None,
 ) -> tuple[dict[str, AsyncAPIChannel], dict[str, AsyncAPIOperation]]:
     """Extract all real-time channels from WebSocket routes, ChannelsPlugin, and SSE routes.
 
     Args:
         app: The Litestar application instance.
         components_schemas: Optional dictionary to collect named component schemas.
+        context: Optional schema context coordinating OpenAPI and DTO support.
 
     Returns:
         Tuple of (channels_mapping, operations_mapping).
     """
+    if context is None:
+        context = AsyncAPISchemaContext(
+            components_schemas=components_schemas if components_schemas is not None else {}
+        )
+    elif components_schemas is not None and not context.components_schemas:
+        context.components_schemas = components_schemas
+
     allocator = _ChannelKeyAllocator()
     operation_ids: set[str] = set()
 
     channels, operations = extract_websocket_routes(
-        app, components_schemas=components_schemas, allocator=allocator, operation_ids=operation_ids
+        app, context=context, allocator=allocator, operation_ids=operation_ids
     )
 
     cp_channels, cp_ops = extract_channels_plugin_channels(
-        app, components_schemas=components_schemas, allocator=allocator, operation_ids=operation_ids
+        app, context=context, allocator=allocator, operation_ids=operation_ids
     )
     _merge_channels(channels, operations, cp_channels, cp_ops)
 
     sse_channels, sse_ops = extract_sse_routes(
-        app, components_schemas=components_schemas, allocator=allocator, operation_ids=operation_ids
+        app, context=context, allocator=allocator, operation_ids=operation_ids
     )
     _merge_channels(channels, operations, sse_channels, sse_ops)
 
@@ -1085,8 +1225,24 @@ def create_asyncapi_document(
     Returns:
         A populated AsyncAPIDocument instance.
     """
-    components_schemas: dict[str, Any] = {}
-    channels, operations = extract_realtime_channels(app, components_schemas=components_schemas)
+    openapi_schema: dict[str, Any] | None = None
+    if app.openapi_config is not None:
+        with contextlib.suppress(Exception):
+            openapi_schema = app.openapi_schema.to_schema()
+
+    support = OpenAPISupport.from_app(app, openapi_schema)
+    context = AsyncAPISchemaContext(support=support)
+    channels, operations = extract_realtime_channels(app, context=context)
+
+    if support.enabled and support.context is not None:
+        generated = support.context.schema_registry.generate_components_schemas()
+        _ = build_schema_name_map(support.context.schema_registry)
+        for name, schema in generated.items():
+            if name not in context.components_schemas:
+                context.components_schemas[name] = schema.to_schema()
+        for payload_dict, ref_obj in context.deferred_references:
+            payload_dict["$ref"] = ref_obj.ref
+
     info = AsyncAPIInfo(title=title, version=version, description=description)
-    components = AsyncAPIComponents(schemas=components_schemas) if components_schemas else None
+    components = AsyncAPIComponents(schemas=context.components_schemas) if context.components_schemas else None
     return AsyncAPIDocument(info=info, channels=channels, operations=operations, components=components)

@@ -11,7 +11,9 @@ from litestar import Litestar, get, websocket, websocket_listener
 from litestar.channels import ChannelsPlugin
 from litestar.channels.backends.memory import MemoryChannelsBackend
 from litestar.connection import WebSocket
+from litestar.dto import DataclassDTO, DTOConfig
 from litestar.response import ServerSentEvent
+from msgspec import Struct
 
 from litestar_vite import PathConfig, ViteConfig, VitePlugin
 from litestar_vite.codegen import (
@@ -358,17 +360,19 @@ def test_extract_payload_schema_enums_and_typeddicts() -> None:
     assert comps["EventType"]["enum"] == ["join", "leave"]
 
 
+@dataclass
+class InboundData:
+    room: str
+    message: str
+
+
+class OutboundData(msgspec.Struct):
+    echo: str
+    timestamp: int
+
+
 def test_create_asyncapi_document_with_typed_listener() -> None:
     """Test create_asyncapi_document collects schemas from websocket listeners into components."""
-
-    @dataclass
-    class InboundData:
-        room: str
-        message: str
-
-    class OutboundData(msgspec.Struct):
-        echo: str
-        timestamp: int
 
     @websocket_listener("/ws/typed-chat")
     def typed_chat_handler(data: InboundData) -> OutboundData:
@@ -652,13 +656,14 @@ def test_operation_ids_are_unique() -> None:
     _assert_refs_resolve(doc)
 
 
+@dataclass
+class Alert:
+    level: str
+    message: str
+
+
 def test_sse_payload_from_opt() -> None:
     """Test SSE payload extracted from handler opt ASYNCAPI_PAYLOAD_OPT_KEY."""
-
-    @dataclass
-    class Alert:
-        level: str
-        message: str
 
     @get("/stream/alerts", opt={ASYNCAPI_PAYLOAD_OPT_KEY: Alert})
     async def alert_handler() -> ServerSentEvent:
@@ -675,13 +680,14 @@ def test_sse_payload_from_opt() -> None:
     assert sse_channel["messages"]["event"]["payload"] == {"$ref": "#/components/schemas/Alert"}
 
 
+@dataclass
+class Metric:
+    name: str
+    value: float
+
+
 def test_sse_payload_from_generator_annotation() -> None:
     """Test SSE payload extracted from generator element annotation."""
-
-    @dataclass
-    class Metric:
-        name: str
-        value: float
 
     @get("/stream/metrics")
     async def metric_handler() -> AsyncGenerator[ServerSentEvent[Metric], None]:
@@ -753,3 +759,119 @@ def test_channels_plugin_receive_operation_when_handler_accepts_data() -> None:
     send_ops = [op_id for op_id, op in operations.items() if op.action == "send" and "notify" in op.channel["$ref"]]
     assert len(receive_ops) == 1
     assert len(send_ops) == 1
+
+
+def test_dto_projection_is_respected() -> None:
+    """Test DTO projection excludes configured fields from AsyncAPI schema."""
+
+    @dataclass
+    class Message:
+        text: str
+        secret: str
+
+    class MessageDTO(DataclassDTO[Message]):
+        config = DTOConfig(exclude={"secret"})
+
+    @websocket_listener("/chat", dto=MessageDTO)
+    async def chat_handler(data: Message) -> None:
+        """Chat listener."""
+
+    app = Litestar(route_handlers=[chat_handler])
+    doc = create_asyncapi_document(app).to_dict()
+
+    channel = doc["channels"]["chat"]
+    payload_ref = channel["messages"]["inbound"]["payload"]["$ref"]
+    schema_name = payload_ref.rsplit("/", 1)[-1]
+    assert schema_name in doc["components"]["schemas"]
+    schema = doc["components"]["schemas"][schema_name]
+    assert "text" in schema["properties"]
+    assert "secret" not in schema["properties"]
+
+
+def test_asyncapi_and_openapi_agree_on_component_names() -> None:
+    """Test AsyncAPI and OpenAPI share identical component names and schema definitions."""
+
+    @dataclass
+    class UserProfile:
+        id: int
+        username: str
+
+    @get("/users/{user_id:int}")
+    async def get_user(user_id: int) -> UserProfile:
+        """Get user profile."""
+        return UserProfile(id=user_id, username="alice")
+
+    @websocket_listener("/user_feed")
+    async def user_feed(data: UserProfile) -> None:
+        """User feed."""
+
+    app = Litestar(route_handlers=[get_user, user_feed])
+    doc = create_asyncapi_document(app).to_dict()
+    openapi_doc = app.openapi_schema.to_schema()
+
+    channel = doc["channels"]["user_feed"]
+    payload_ref = channel["messages"]["inbound"]["payload"]["$ref"]
+    schema_name = payload_ref.rsplit("/", 1)[-1]
+
+    assert schema_name in openapi_doc["components"]["schemas"]
+    assert doc["components"]["schemas"][schema_name] == openapi_doc["components"]["schemas"][schema_name]
+
+
+def test_type_encoders_are_honoured() -> None:
+    """Test app-level type_encoders are reflected in AsyncAPI schema."""
+
+    class CustomID:
+        def __init__(self, val: str) -> None:
+            self.val = val
+
+    @dataclass
+    class Item:
+        item_id: CustomID
+        name: str
+
+    @get("/items")
+    async def get_items() -> Item:
+        """Items route."""
+        return Item(item_id=CustomID("test"), name="test")
+
+    @websocket_listener("/items")
+    async def items_handler(data: Item) -> None:
+        """Items listener."""
+
+    app = Litestar(
+        route_handlers=[get_items, items_handler],
+        type_encoders={CustomID: lambda v: str(v.val)},
+    )
+    doc = create_asyncapi_document(app).to_dict()
+    openapi_doc = app.openapi_schema.to_schema()
+
+    channel = doc["channels"]["items"]
+    payload_ref = channel["messages"]["inbound"]["payload"]["$ref"]
+    schema_name = payload_ref.rsplit("/", 1)[-1]
+
+    assert schema_name in doc["components"]["schemas"]
+    item_schema = doc["components"]["schemas"][schema_name]
+    assert item_schema["properties"]["item_id"] == openapi_doc["components"]["schemas"][schema_name]["properties"]["item_id"]
+    assert item_schema == openapi_doc["components"]["schemas"][schema_name]
+
+
+def test_fallback_without_openapi_config() -> None:
+    """Test payload schema extraction falls back gracefully when openapi_config is None."""
+
+    class Status(Struct):
+        active: bool
+        code: int
+
+    @websocket_listener("/status")
+    async def status_handler(data: Status) -> None:
+        """Status listener."""
+
+    app = Litestar(route_handlers=[status_handler], openapi_config=None)
+    doc = create_asyncapi_document(app).to_dict()
+
+    channel = doc["channels"]["status"]
+    assert channel["messages"]["inbound"]["payload"] == {"$ref": "#/components/schemas/Status"}
+    assert "Status" in doc["components"]["schemas"]
+    status_schema = doc["components"]["schemas"]["Status"]
+    assert "active" in status_schema["properties"]
+    assert "code" in status_schema["properties"]

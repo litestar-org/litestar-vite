@@ -266,3 +266,56 @@ def resolve_page_props_field_definition(
         resolved_field = field_definition
 
     return resolved_field, schema_creator.for_field_definition(resolved_field)
+
+
+def asyncapi_schema_from_result(result: Schema | Reference | None) -> dict[str, Any] | None:
+    """Convert a Litestar Schema or Reference to an AsyncAPI schema mapping.
+
+    Args:
+        result: Schema or Reference produced by Litestar schema generation.
+
+    Returns:
+        AsyncAPI schema dict or None.
+    """
+    if result is None:
+        return None
+    if isinstance(result, Reference):
+        return {"$ref": result.ref}
+    return result.to_schema()
+
+
+def resolve_handler_field_schema(
+    handler: Any,
+    field_definition: FieldDefinition,
+    schema_creator: SchemaCreator,
+    *,
+    dto_attribute: str,
+) -> Schema | Reference | None:
+    """Resolve schema for a handler field definition using Litestar's SchemaCreator.
+
+    Args:
+        handler: Route handler instance.
+        field_definition: Litestar FieldDefinition for the payload.
+        schema_creator: Litestar SchemaCreator.
+        dto_attribute: DTO resolver attribute name ('resolve_dto' or 'resolve_return_dto').
+
+    Returns:
+        Schema or Reference produced by Litestar schema generation, or None.
+    """
+    resolve_dto: Any = None
+    with contextlib.suppress(AttributeError):
+        resolve_dto = getattr(handler, dto_attribute, None)
+        if resolve_dto is None and dto_attribute == "resolve_dto":
+            resolve_dto = getattr(handler, "resolve_data_dto", None)
+
+    dto = resolve_dto() if callable(resolve_dto) else None
+    if dto is not None:
+        dto_t = cast("type[AbstractDTO[Any]]", dto)
+        handler_id = getattr(handler, "handler_id", str(id(handler)))
+        return dto_t.create_openapi_schema(
+            field_definition=field_definition,
+            handler_id=handler_id,
+            schema_creator=schema_creator,
+        )
+
+    return schema_creator.for_field_definition(field_definition)
