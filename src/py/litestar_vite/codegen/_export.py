@@ -188,8 +188,16 @@ def export_integration_assets(
     if not typegen_outputs_requested(types_config):
         return result
 
-    openapi_plugin = next((p for p in app.plugins._plugins if isinstance(p, OpenAPIPlugin)), None)  # pyright: ignore[reportPrivateUsage]
-    has_openapi = openapi_plugin is not None and openapi_plugin._openapi_config is not None  # pyright: ignore[reportPrivateUsage]
+    from litestar.exceptions import ImproperlyConfiguredException
+
+    plugins = getattr(app, "plugins", ())
+    openapi_plugin = next((p for p in plugins if isinstance(p, OpenAPIPlugin)), None)
+    has_openapi = False
+    if openapi_plugin is not None:
+        try:
+            has_openapi = openapi_plugin.openapi_config is not None
+        except ImproperlyConfiguredException:
+            has_openapi = False
 
     if not has_openapi:
         if types_config.generate_channels and app_has_realtime_surface(app):

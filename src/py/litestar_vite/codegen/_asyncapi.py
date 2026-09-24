@@ -480,9 +480,6 @@ def extract_payload_schema(annotation: Any, components_schemas: dict[str, Any] |
     return schema
 
 
-_py_type_to_schema = extract_payload_schema
-
-
 @dataclass(slots=True)
 class AsyncAPISchemaContext:
     """Context for resolving AsyncAPI schemas with optional OpenAPI and DTO parity.

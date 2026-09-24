@@ -735,11 +735,14 @@ def test_cli_export_asyncapi_custom_args_and_routes(tmp_path: Path) -> None:
 def test_cli_export_asyncapi_fallback_output(tmp_path: Path) -> None:
     app = _make_app(tmp_path, types=False)
     with (
-        patch("litestar_vite.cli.create_asyncapi_document") as mock_doc,
+        patch(
+            "litestar_vite.cli.resolve_asyncapi_document",
+            return_value=({"asyncapi": "3.0.0", "channels": {}, "operations": {}}, "builtin"),
+        ) as mock_resolve,
         patch("litestar_vite.cli.write_if_changed", return_value=True) as mock_write,
     ):
-        mock_doc.return_value.to_dict.return_value = {"asyncapi": "3.0.0", "channels": {}, "operations": {}}
         _unwrap_command(export_asyncapi_command)(app, output=None, title=None, api_version=None, verbose=False)
+        mock_resolve.assert_called_once()
         mock_write.assert_called_once()
         written_path, _ = mock_write.call_args[0]
         assert written_path == Path("asyncapi.json")

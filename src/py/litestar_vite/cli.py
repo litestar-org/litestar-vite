@@ -18,10 +18,10 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
 from litestar_vite.codegen import (
-    create_asyncapi_document,
     encode_deterministic_json,
     generate_routes_json,
     generate_routes_ts,
+    resolve_asyncapi_document,
     write_if_changed,
 )
 from litestar_vite.config import DeployConfig, ExternalDevServer, LoggingConfig, TypeGenConfig, ViteConfig
@@ -1079,14 +1079,7 @@ def export_asyncapi_command(
 
     console.rule(f"[yellow]Exporting AsyncAPI schema to {output}[/]", align="left")
 
-    doc_kwargs: dict[str, Any] = {}
-    if title is not None:
-        doc_kwargs["title"] = title
-    if api_version is not None:
-        doc_kwargs["version"] = api_version
-
-    doc = create_asyncapi_document(app, **doc_kwargs)
-    schema_dict = doc.to_dict()
+    schema_dict, source = resolve_asyncapi_document(app, title=title, version=api_version)
 
     try:
         content = encode_deterministic_json(schema_dict)
@@ -1095,7 +1088,7 @@ def export_asyncapi_command(
         console.print(f"[green]✓ AsyncAPI schema exported to {output}[/] [dim]({status})[/]")
         channel_count = len(schema_dict.get("channels", {}))
         operation_count = len(schema_dict.get("operations", {}))
-        console.print(f"[dim]  {channel_count} channels, {operation_count} operations exported[/]")
+        console.print(f"[dim]  Source: {source} ({channel_count} channels, {operation_count} operations exported)[/]")
     except OSError as e:
         msg = f"Failed to write AsyncAPI schema to path {output}"
         raise LitestarCLIException(msg) from e

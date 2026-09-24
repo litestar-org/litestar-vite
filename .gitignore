@@ -228,3 +228,5 @@ src/py/tests/*/src/generated/
 .codex
 **/.astro
 examples/**/bootstrap/ssr/*
+uv.toml
+.npmrc

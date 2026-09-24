@@ -269,7 +269,9 @@ def normalize_asyncapi_document(document: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def resolve_asyncapi_document(app: "Litestar") -> tuple[dict[str, Any], str]:
+def resolve_asyncapi_document(
+    app: "Litestar", title: str | None = None, version: str | None = None
+) -> tuple[dict[str, Any], str]:
     """Resolve and normalize the AsyncAPI document for a Litestar application.
 
     Probes for a registered AsyncAPI plugin via find_asyncapi_plugin. When found,
@@ -282,11 +284,19 @@ def resolve_asyncapi_document(app: "Litestar") -> tuple[dict[str, Any], str]:
 
     Args:
         app: The Litestar application instance.
+        title: Optional title override for the AsyncAPI document.
+        version: Optional version override for the AsyncAPI document.
 
     Returns:
         Tuple of (normalized_document_dict, source_name) where source_name is
         either 'litestar-asyncapi' or 'builtin'.
     """
+    builtin_kwargs: dict[str, Any] = {}
+    if title is not None:
+        builtin_kwargs["title"] = title
+    if version is not None:
+        builtin_kwargs["version"] = version
+
     plugin = find_asyncapi_plugin(app)
     if plugin is not None:
         try:
@@ -300,9 +310,16 @@ def resolve_asyncapi_document(app: "Litestar") -> tuple[dict[str, Any], str]:
                 if isinstance(decoded, dict):
                     schema = cast("dict[str, Any]", decoded)
             if schema is not None:
-                return normalize_asyncapi_document(schema), "litestar-asyncapi"
+                normalized = normalize_asyncapi_document(schema)
+                if title or version:
+                    info = normalized.setdefault("info", {})
+                    if title:
+                        info["title"] = title
+                    if version:
+                        info["version"] = version
+                return normalized, "litestar-asyncapi"
         except (AttributeError, TypeError, ValueError):
             pass
 
-    builtin_doc = create_asyncapi_document(app).to_dict()
+    builtin_doc = create_asyncapi_document(app, **builtin_kwargs).to_dict()
     return normalize_asyncapi_document(builtin_doc), "builtin"

@@ -429,7 +429,13 @@ export function generateChannelsTs(doc: AsyncAPIDoc): string {
   return sections.join("\n")
 }
 
-export async function emitChannelsTypes(asyncapiPath: string, outputDir: string, channelsTsPath?: string, projectRoot?: string): Promise<boolean> {
+export async function emitChannelsTypes(
+  asyncapiPath: string,
+  outputDir: string,
+  channelsTsPath?: string,
+  projectRoot?: string,
+  logger?: { warn?: (msg: string) => void; error?: (msg: string) => void },
+): Promise<boolean> {
   const root = projectRoot ?? process.cwd()
   const resolvedAsyncapiPath = path.isAbsolute(asyncapiPath) ? asyncapiPath : path.resolve(root, asyncapiPath)
 
@@ -441,14 +447,28 @@ export async function emitChannelsTypes(asyncapiPath: string, outputDir: string,
   let doc: AsyncAPIDoc
   try {
     doc = JSON.parse(rawContent) as AsyncAPIDoc
-  } catch {
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    if (logger?.error) {
+      logger.error(`Failed to parse ${resolvedAsyncapiPath}: ${msg}`)
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn(`litestar-vite: Failed to parse ${resolvedAsyncapiPath}: ${msg}`)
+    }
     return false
   }
 
   let content: string
   try {
     content = generateChannelsTs(doc)
-  } catch {
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    if (logger?.error) {
+      logger.error(`Failed to generate channels.ts: ${msg}`)
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn(`litestar-vite: Failed to generate channels.ts: ${msg}`)
+    }
     return false
   }
 

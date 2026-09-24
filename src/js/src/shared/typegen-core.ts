@@ -365,7 +365,7 @@ export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunT
           if (Object.keys(doc.channels ?? {}).length === 0) {
             result.skippedFiles.push(channelsOutput)
           } else {
-            const changed = await emitChannelsTypes(absoluteAsyncApiPath, output, channelsTsPath, projectRoot)
+            const changed = await emitChannelsTypes(absoluteAsyncApiPath, output, channelsTsPath, projectRoot, logger)
             if (changed) {
               result.generatedFiles.push(channelsOutput)
               result.generated = true
