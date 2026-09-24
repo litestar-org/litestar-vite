@@ -369,7 +369,7 @@ def export_asyncapi(
         serializer: Optional custom serializer for JSON encoding.
         result: ExportResult accumulator for exported or unchanged files.
     """
-    from litestar_vite.codegen._asyncapi_source import resolve_asyncapi_document
+    from litestar_vite.codegen._asyncapi import resolve_asyncapi_document
     from litestar_vite.codegen._utils import encode_deterministic_json, write_if_changed
 
     asyncapi_path = types_config.asyncapi_path

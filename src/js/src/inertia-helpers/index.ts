@@ -121,8 +121,13 @@ export interface ResolvePageComponentOptions {
 export async function resolvePageComponent<T>(
   path: string | string[],
   pages: Record<string, Promise<{ default: T }> | (() => Promise<{ default: T }>)>,
-  options?: ResolvePageComponentOptions,
-): Promise<T | { default: T }>
+  options: { rawModule: true },
+): Promise<{ default: T }>
+export async function resolvePageComponent<T>(
+  path: string | string[],
+  pages: Record<string, Promise<{ default: T }> | (() => Promise<{ default: T }>)>,
+  options?: { rawModule?: false },
+): Promise<T>
 export async function resolvePageComponent<T>(path: string | string[], pages: Record<string, Promise<T> | (() => Promise<T>)>, options?: ResolvePageComponentOptions): Promise<T>
 export async function resolvePageComponent(
   path: string | string[],

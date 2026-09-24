@@ -130,7 +130,7 @@ Using in Components
    type Props = PageProps["Dashboard"] & FullSharedProps;
 
    export default function Dashboard() {
-     const { props } = usePage<{ props: Props }>();
+     const { props } = usePage<Props>();
 
      // Type-safe access to shared props
      const { auth, flash, locale } = props;

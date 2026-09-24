@@ -169,7 +169,7 @@ Using the Inertia ``usePage`` hook:
    type AllProps = PageProps["Dashboard"] & FullSharedProps;
 
    export default function Dashboard() {
-     const { props } = usePage<{ props: AllProps }>();
+     const { props } = usePage<AllProps>();
      return <p>Users: {props.userCount}</p>;
    }
 

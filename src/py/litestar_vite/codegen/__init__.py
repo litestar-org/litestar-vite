@@ -11,6 +11,7 @@ are kept in private submodules to keep the public API clean.
 """
 
 from litestar_vite.codegen._asyncapi import (
+    ASYNCAPI_DOCS_DEFAULT_PATH,
     ASYNCAPI_PAYLOAD_OPT_KEY,
     AsyncAPIChannel,
     AsyncAPIComponents,
@@ -20,16 +21,13 @@ from litestar_vite.codegen._asyncapi import (
     AsyncAPIOperation,
     AsyncAPIParameter,
     AsyncAPIServer,
+    asyncapi_docs_paths,
     create_asyncapi_document,
     extract_channels_plugin_channels,
     extract_payload_schema,
     extract_realtime_channels,
     extract_sse_routes,
     extract_websocket_routes,
-)
-from litestar_vite.codegen._asyncapi_source import (
-    ASYNCAPI_DOCS_DEFAULT_PATH,
-    asyncapi_docs_paths,
     find_asyncapi_plugin,
     normalize_asyncapi_document,
     resolve_asyncapi_document,

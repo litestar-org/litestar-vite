@@ -69,7 +69,7 @@ The ``csrf_token`` prop is automatically included in shared props:
      // ...other props
    }
 
-   const { csrf_token } = (usePage() as { props: SharedProps }).props;
+   const { csrf_token } = usePage<SharedProps>().props;
 
 Inertia Client Visits
 ---------------------
