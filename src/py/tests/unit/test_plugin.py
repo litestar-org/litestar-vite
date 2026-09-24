@@ -19,6 +19,7 @@ from litestar.datastructures import CacheControlHeader
 from litestar.exceptions import WebSocketDisconnect
 from litestar.middleware import DefineMiddleware
 from litestar.params import FromPath
+from litestar.plugins import InitPluginProtocol
 from litestar.template.config import TemplateConfig
 from litestar.testing import TestClient
 
@@ -2374,11 +2375,14 @@ class _FakeAsyncAPIConfig:
     docs: _FakeDocsConfig = field(default_factory=_FakeDocsConfig)
 
 
-class _FakeAsyncAPIRoutePlugin:
+class _FakeAsyncAPIRoutePlugin(InitPluginProtocol):
     """Test double for litestar-asyncapi plugin to test route prefix reservation."""
 
     def __init__(self, *, docs_path: str = "/asyncapi") -> None:
         self.config = _FakeAsyncAPIConfig(docs=_FakeDocsConfig(path=docs_path))
+
+    def on_app_init(self, app_config: AppConfig) -> AppConfig:
+        return app_config
 
     def get_asyncapi_schema(self, app: Any) -> Any:
         return {}

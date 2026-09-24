@@ -238,7 +238,12 @@ def test_collect_remote_files_handles_none_size_and_datetime_mtime(tmp_path: Pat
     )
     mock_entries = [
         {"name": "deploy/file1.js", "size": None, "mtime": datetime(2026, 1, 1, tzinfo=timezone.utc), "type": "file"},
-        {"name": "deploy/file2.js", "size": "100", "LastModified": datetime(2026, 1, 2, tzinfo=timezone.utc), "type": "file"},
+        {
+            "name": "deploy/file2.js",
+            "size": "100",
+            "LastModified": datetime(2026, 1, 2, tzinfo=timezone.utc),
+            "type": "file",
+        },
     ]
     with patch.object(deployer, "_iter_remote_entries", return_value=mock_entries):
         remote = deployer.collect_remote_files()
@@ -258,9 +263,7 @@ def test_sync_passes_content_type_for_s3(tmp_path: Path) -> None:
         bundle_dir=bundle,
         manifest_name="manifest.json",
         deploy_config=DeployConfig(
-            enabled=True,
-            storage_backend="s3://bucket/assets",
-            content_types={".js": "application/javascript"},
+            enabled=True, storage_backend="s3://bucket/assets", content_types={".js": "application/javascript"}
         ),
         fs=fs,
         remote_path="deploy",
@@ -284,9 +287,7 @@ def test_s3_upload_sends_only_contenttype(tmp_path: Path, storage_backend: str) 
         bundle_dir=bundle,
         manifest_name="manifest.json",
         deploy_config=DeployConfig(
-            enabled=True,
-            storage_backend=storage_backend,
-            content_types={".js": "application/javascript"},
+            enabled=True, storage_backend=storage_backend, content_types={".js": "application/javascript"}
         ),
         fs=fs,
         remote_path="deploy",
@@ -309,9 +310,7 @@ def test_gcs_upload_sends_only_lowercase_content_type(tmp_path: Path) -> None:
         bundle_dir=bundle,
         manifest_name="manifest.json",
         deploy_config=DeployConfig(
-            enabled=True,
-            storage_backend="gs://bucket/prefix",
-            content_types={".js": "application/javascript"},
+            enabled=True, storage_backend="gs://bucket/prefix", content_types={".js": "application/javascript"}
         ),
         fs=fs,
         remote_path="deploy",
@@ -334,9 +333,7 @@ def test_upload_without_known_content_type_sends_no_kwargs(tmp_path: Path) -> No
         bundle_dir=bundle,
         manifest_name="manifest.json",
         deploy_config=DeployConfig(
-            enabled=True,
-            storage_backend="s3://bucket/prefix",
-            content_types={".js": "application/javascript"},
+            enabled=True, storage_backend="s3://bucket/prefix", content_types={".js": "application/javascript"}
         ),
         fs=fs,
         remote_path="deploy",
@@ -443,4 +440,3 @@ def test_stale_hashed_assets_are_still_pruned(tmp_path: Path) -> None:
     )
     res = deployer.sync(dry_run=True)
     assert "assets/app-old999.js" in res.deleted
-

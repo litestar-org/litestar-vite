@@ -79,10 +79,7 @@ def asyncapi_docs_paths(app: "Litestar") -> tuple[str, ...]:
     return tuple(deduped)
 
 
-def _derive_channel_bindings(
-    ch: dict[str, Any],
-    ops_for_channel: list[dict[str, Any]],
-) -> dict[str, Any]:
+def _derive_channel_bindings(ch: dict[str, Any], ops_for_channel: list[dict[str, Any]]) -> dict[str, Any]:
     """Derive default protocol bindings for a channel when omitted.
 
     When bindings are absent on the channel, derives WebSocket bindings if any operation
@@ -104,9 +101,7 @@ def _derive_channel_bindings(
 
     has_send_only = bool(ops_for_channel) and all(op.get("action") == "send" for op in ops_for_channel)
     channel_messages: dict[str, Any] = (
-        cast("dict[str, Any]", ch.get("messages"))
-        if isinstance(ch.get("messages"), dict)
-        else {}
+        cast("dict[str, Any]", ch.get("messages")) if isinstance(ch.get("messages"), dict) else {}
     )
     has_sse_content_type = (
         ch.get("defaultContentType") == "text/event-stream"
@@ -129,9 +124,7 @@ def _derive_channel_bindings(
 
 
 def _prepare_channels(
-    raw_channels: dict[str, Any],
-    raw_operations: dict[str, Any],
-    allocator: _ChannelKeyAllocator,
+    raw_channels: dict[str, Any], raw_operations: dict[str, Any], allocator: _ChannelKeyAllocator
 ) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
     """Normalize and re-key channels with collision-safe names.
 
@@ -165,9 +158,7 @@ def _prepare_channels(
             ch["bindings"] = _derive_channel_bindings(ch, ops_for_channel)
 
         bindings_dict: dict[str, Any] = (
-            cast("dict[str, Any]", ch.get("bindings"))
-            if isinstance(ch.get("bindings"), dict)
-            else {}
+            cast("dict[str, Any]", ch.get("bindings")) if isinstance(ch.get("bindings"), dict) else {}
         )
         if "ws" in bindings_dict:
             source = "websocket"
@@ -185,10 +176,7 @@ def _prepare_channels(
     return prepared_channels, old_to_new_keys
 
 
-def _rewrite_operation_references(
-    raw_operations: dict[str, Any],
-    old_to_new_keys: dict[str, str],
-) -> dict[str, Any]:
+def _rewrite_operation_references(raw_operations: dict[str, Any], old_to_new_keys: dict[str, str]) -> dict[str, Any]:
     """Rewrite operation channel and message references to target normalized keys.
 
     Updates channel $ref and message $ref paths in each operation to use newly
@@ -268,14 +256,10 @@ def normalize_asyncapi_document(document: dict[str, Any]) -> dict[str, Any]:
     normalized["asyncapi"] = str(raw_version) if raw_version else "3.0.0"
 
     raw_channels: dict[str, Any] = (
-        cast("dict[str, Any]", document.get("channels"))
-        if isinstance(document.get("channels"), dict)
-        else {}
+        cast("dict[str, Any]", document.get("channels")) if isinstance(document.get("channels"), dict) else {}
     )
     raw_operations: dict[str, Any] = (
-        cast("dict[str, Any]", document.get("operations"))
-        if isinstance(document.get("operations"), dict)
-        else {}
+        cast("dict[str, Any]", document.get("operations")) if isinstance(document.get("operations"), dict) else {}
     )
 
     allocator = _ChannelKeyAllocator()

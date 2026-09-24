@@ -218,12 +218,7 @@ function normalizePath(routePath: string): string {
   return routePath.replace(/\{([^:}]+):[^}]+\}/g, "{$1}")
 }
 
-function findMatchingDataType(
-  routeName: string,
-  routeMethod: string,
-  normalizedPath: string,
-  parsedTypes: ParsedHeyApiTypes,
-): string | null {
+function findMatchingDataType(routeName: string, routeMethod: string, normalizedPath: string, parsedTypes: ParsedHeyApiTypes): string | null {
   const methodUpper = routeMethod.toUpperCase()
 
   // 1. Direct method:path match
@@ -285,10 +280,7 @@ function findMatchingDataType(
 /**
  * Create operation mappings by matching routes to hey-api types by URL and method.
  */
-function createOperationMappings(
-  routes: Record<string, RouteDefinition>,
-  parsedTypes: ParsedHeyApiTypes,
-): OperationMapping[] {
+function createOperationMappings(routes: Record<string, RouteDefinition>, parsedTypes: ParsedHeyApiTypes): OperationMapping[] {
   const mappings: OperationMapping[] = []
 
   for (const [routeName, route] of Object.entries(routes)) {

@@ -285,11 +285,7 @@ def asyncapi_schema_from_result(result: Schema | Reference | None) -> dict[str, 
 
 
 def resolve_handler_field_schema(
-    handler: Any,
-    field_definition: FieldDefinition,
-    schema_creator: SchemaCreator,
-    *,
-    dto_attribute: str,
+    handler: Any, field_definition: FieldDefinition, schema_creator: SchemaCreator, *, dto_attribute: str
 ) -> Schema | Reference | None:
     """Resolve schema for a handler field definition using Litestar's SchemaCreator.
 
@@ -313,9 +309,7 @@ def resolve_handler_field_schema(
         dto_t = cast("type[AbstractDTO[Any]]", dto)
         handler_id = getattr(handler, "handler_id", str(id(handler)))
         return dto_t.create_openapi_schema(
-            field_definition=field_definition,
-            handler_id=handler_id,
-            schema_creator=schema_creator,
+            field_definition=field_definition, handler_id=handler_id, schema_creator=schema_creator
         )
 
     return schema_creator.for_field_definition(field_definition)

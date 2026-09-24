@@ -232,4 +232,3 @@ describe("bridge schema null routesTsPath and schemasTsPath", () => {
     expect(config.types?.generateChannels).toBe(true)
   })
 })
-

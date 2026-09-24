@@ -123,11 +123,7 @@ export async function resolvePageComponent<T>(
   pages: Record<string, Promise<{ default: T }> | (() => Promise<{ default: T }>)>,
   options?: ResolvePageComponentOptions,
 ): Promise<T | { default: T }>
-export async function resolvePageComponent<T>(
-  path: string | string[],
-  pages: Record<string, Promise<T> | (() => Promise<T>)>,
-  options?: ResolvePageComponentOptions,
-): Promise<T>
+export async function resolvePageComponent<T>(path: string | string[], pages: Record<string, Promise<T> | (() => Promise<T>)>, options?: ResolvePageComponentOptions): Promise<T>
 export async function resolvePageComponent(
   path: string | string[],
   pages: Record<string, Promise<unknown> | (() => Promise<unknown>)>,
@@ -168,10 +164,7 @@ export async function resolvePageComponent(
  * @param pages - Glob import result (e.g. import.meta.glob('./pages/**\/*.svelte'))
  * @returns Promise resolving to the module object with `{ default: Component }`
  */
-export async function resolvePageModule<T>(
-  path: string | string[],
-  pages: Record<string, Promise<{ default: T }> | (() => Promise<{ default: T }>)>,
-): Promise<{ default: T }> {
+export async function resolvePageModule<T>(path: string | string[], pages: Record<string, Promise<{ default: T }> | (() => Promise<{ default: T }>)>): Promise<{ default: T }> {
   return resolvePageComponent(path, pages, { rawModule: true }) as Promise<{ default: T }>
 }
 

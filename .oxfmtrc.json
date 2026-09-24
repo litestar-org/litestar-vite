@@ -34,6 +34,7 @@
     "*.md",
     "package-lock.json",
     "pnpm-lock.yaml",
+    "**/*.fixture.ts",
     ".venv/"
   ]
 }

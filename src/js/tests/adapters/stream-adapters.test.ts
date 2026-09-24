@@ -79,9 +79,7 @@ describe("React stream adapters", () => {
   }
 
   function Harness({ callback, queue = false, streamKey = "stable" }: { callback: (frame: unknown) => void; queue?: boolean; streamKey?: string }): ReactNode {
-    return queue
-      ? createElement(QueueHarness, { callback, streamKey })
-      : createElement(StreamHarness, { callback, streamKey })
+    return queue ? createElement(QueueHarness, { callback, streamKey }) : createElement(StreamHarness, { callback, streamKey })
   }
 
   it("keeps one connection across callback changes and disposes on unmount", async () => {

@@ -3445,11 +3445,7 @@ async def test_external_redirect_inertia_client_keeps_409(
         middleware=[ServerSideSessionConfig().middleware],
         stores={"sessions": MemoryStore()},
     ) as client:
-        response = client.get(
-            "/pay",
-            headers={InertiaHeaders.ENABLED.value: "true"},
-            follow_redirects=False,
-        )
+        response = client.get("/pay", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=False)
 
     assert response.status_code == 409
     assert response.headers[InertiaHeaders.LOCATION.value] == "https://payments.example.com/checkout"
@@ -3458,10 +3454,7 @@ async def test_external_redirect_inertia_client_keeps_409(
 def test_render_spa_ssr_branch_passes_page_data() -> None:
     """The SSR branch of _render_spa supplies page_data to get_html_sync."""
     response = InertiaResponse[dict[str, Any]]({"greeting": "hi"})
-    response._cached_ssr_payload = _InertiaSSRResult(
-        body='<div id="app">rendered</div>',
-        head=["<title>Home</title>"],
-    )
+    response._cached_ssr_payload = _InertiaSSRResult(body='<div id="app">rendered</div>', head=["<title>Home</title>"])
     spa_handler = MagicMock()
     spa_handler.get_html_sync.return_value = '<html><head></head><body><div id="app"></div></body></html>'
     spa_handler._spa_config = None
@@ -3469,12 +3462,7 @@ def test_render_spa_ssr_branch_passes_page_data() -> None:
     request = MagicMock(spec=Request)
     request.scope = {}
     ScopeState.from_scope(request.scope).csrf_token = "csrf-token-123"
-    page_props = PageProps[dict[str, Any]](
-        component="Home",
-        url="/",
-        version="v1",
-        props={"greeting": "hi"},
-    )
+    page_props = PageProps[dict[str, Any]](component="Home", url="/", version="v1", props={"greeting": "hi"})
     result = response._render_spa(request, page_props, vite_plugin)
     assert spa_handler.get_html_sync.call_args.kwargs.get("page_data") is not None
     assert spa_handler.get_html_sync.call_args.kwargs["page_data"]["component"] == "Home"

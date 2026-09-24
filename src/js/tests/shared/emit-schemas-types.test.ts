@@ -193,7 +193,7 @@ describe("emitSchemasTypes", () => {
       'type Query = QueryParams<"api:search">',
       'type Path = PathParams<"api:search">',
       'const _input: Input = { query: "test" }',
-      'const _query: Query = { limit: 10 }',
+      "const _query: Query = { limit: 10 }",
       'const _path: Path = { scope: "global" }',
       'const _hasBody: HasBody<"api:search"> = true',
       'const _hasQuery: HasQueryParams<"api:search"> = true',
@@ -212,5 +212,3 @@ describe("emitSchemasTypes", () => {
     expect(diagnostics).toHaveLength(0)
   })
 })
-
-

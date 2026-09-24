@@ -288,4 +288,3 @@ describe("emitStaticPropsTypes", () => {
     expect(content).toContain("fromCustomRoot: boolean")
   })
 })
-

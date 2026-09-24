@@ -7,15 +7,17 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, Generic, TypedDict, TypeVar, cast
 
 import msgspec
 import pytest
 from litestar import Litestar, get, websocket, websocket_listener
 from litestar.channels import ChannelsPlugin
 from litestar.channels.backends.memory import MemoryChannelsBackend
+from litestar.config.app import AppConfig
 from litestar.connection import WebSocket
 from litestar.dto import DataclassDTO, DTOConfig
+from litestar.plugins import InitPluginProtocol
 from litestar.response import ServerSentEvent
 from msgspec import Struct
 
@@ -684,6 +686,13 @@ def test_sse_payload_from_opt() -> None:
     assert sse_channel["messages"]["event"]["payload"] == {"$ref": "#/components/schemas/Alert"}
 
 
+TMetric = TypeVar("TMetric")
+
+
+class _TypedServerSentEvent(ServerSentEvent, Generic[TMetric]):
+    """Generic test double for ServerSentEvent return annotation typing."""
+
+
 @dataclass
 class Metric:
     name: str
@@ -694,11 +703,11 @@ def test_sse_payload_from_generator_annotation() -> None:
     """Test SSE payload extracted from generator element annotation."""
 
     @get("/stream/metrics")
-    async def metric_handler() -> AsyncGenerator[ServerSentEvent[Metric], None]:
+    async def metric_handler() -> AsyncGenerator[_TypedServerSentEvent[Metric], None]:
         """Stream metrics."""
 
-        async def gen() -> AsyncGenerator[ServerSentEvent[Metric], None]:
-            yield ServerSentEvent(content=Metric(name="cpu", value=42.0))
+        async def gen() -> AsyncGenerator[_TypedServerSentEvent[Metric], None]:
+            yield _TypedServerSentEvent(content=cast(Any, Metric(name="cpu", value=42.0)))
 
         return gen()
 
@@ -1004,10 +1013,7 @@ def test_generated_document_matches_committed_fixture() -> None:
 
     channels_plugin = ChannelsPlugin(backend=MemoryChannelsBackend(), channels=["notify"])
 
-    app = Litestar(
-        route_handlers=[chat_listener, sse_handler],
-        plugins=[channels_plugin],
-    )
+    app = Litestar(route_handlers=[chat_listener, sse_handler], plugins=[channels_plugin])
 
     doc = create_asyncapi_document(app, title="Realtime Test App", version="1.0.0").to_dict()
     fixture_path = Path("src/js/tests/fixtures/asyncapi/full-realtime.json")
@@ -1040,10 +1046,7 @@ def test_realtime_extraction_survives_missing_channels(monkeypatch: pytest.Monke
         return ServerSentEvent(content="test")
 
     channels_plugin = ChannelsPlugin(backend=MemoryChannelsBackend(), channels=["notify"])
-    app = Litestar(
-        route_handlers=[chat_listener, sse_handler],
-        plugins=[channels_plugin],
-    )
+    app = Litestar(route_handlers=[chat_listener, sse_handler], plugins=[channels_plugin])
 
     monkeypatch.setattr("litestar_vite.codegen._asyncapi.CHANNELS_INSTALLED", False)
     doc = create_asyncapi_document(app).to_dict()
@@ -1077,19 +1080,18 @@ class _FakeAsyncAPIConfig:
     docs: _FakeDocsConfig = field(default_factory=_FakeDocsConfig)
 
 
-class _FakeAsyncAPIPlugin:
+class _FakeAsyncAPIPlugin(InitPluginProtocol):
     """Test double for litestar-asyncapi plugin."""
 
     def __init__(
-        self,
-        doc: dict[str, Any] | None = None,
-        *,
-        docs_path: str = "/asyncapi",
-        raise_err: bool = False,
+        self, doc: dict[str, Any] | None = None, *, docs_path: str = "/asyncapi", raise_err: bool = False
     ) -> None:
         self.doc = doc
         self.config = _FakeAsyncAPIConfig(docs=_FakeDocsConfig(path=docs_path))
         self.raise_err = raise_err
+
+    def on_app_init(self, app_config: AppConfig) -> AppConfig:
+        return app_config
 
     def get_asyncapi_schema(self, app: Any) -> Any:
         if self.raise_err:
@@ -1124,11 +1126,7 @@ def test_resolve_document_prefers_duck_typed_plugin() -> None:
             "chat": {
                 "address": "/chat",
                 "bindings": {"ws": {}},
-                "messages": {
-                    "chatMessage": {
-                        "payload": {"$ref": "#/components/schemas/ChatMessage"},
-                    }
-                },
+                "messages": {"chatMessage": {"payload": {"$ref": "#/components/schemas/ChatMessage"}}},
             }
         },
         "operations": {
@@ -1145,11 +1143,7 @@ def test_resolve_document_prefers_duck_typed_plugin() -> None:
         },
         "components": {
             "schemas": {
-                "ChatMessage": {
-                    "type": "object",
-                    "properties": {"text": {"type": "string"}},
-                    "required": ["text"],
-                }
+                "ChatMessage": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
             }
         },
     }
@@ -1169,8 +1163,7 @@ def test_resolve_document_prefers_duck_typed_plugin() -> None:
     )
     assert resolved_doc["operations"]["sendChatMessage"]["channel"]["$ref"] == "#/channels/chat"
     assert (
-        resolved_doc["operations"]["sendChatMessage"]["messages"][0]["$ref"]
-        == "#/channels/chat/messages/chatMessage"
+        resolved_doc["operations"]["sendChatMessage"]["messages"][0]["$ref"] == "#/channels/chat/messages/chatMessage"
     )
 
 
@@ -1268,12 +1261,7 @@ def test_export_records_asyncapi_source(tmp_path: Path) -> None:
     fake_doc: dict[str, Any] = {
         "asyncapi": "3.1.0",
         "info": {"title": "Realtime", "version": "1.0.0"},
-        "channels": {
-            "chat": {
-                "address": "/chat",
-                "bindings": {"ws": {}},
-            }
-        },
+        "channels": {"chat": {"address": "/chat", "bindings": {"ws": {}}}},
     }
     plugin = _FakeAsyncAPIPlugin(doc=fake_doc)
     app_plugin = Litestar(route_handlers=[chat_handler], plugins=[plugin])
@@ -1302,4 +1290,3 @@ def test_no_warnings_without_litestar_asyncapi_installed(tmp_path: Path) -> None
         assert result.asyncapi_source == "builtin"
 
     assert len(recorded) == 0
-

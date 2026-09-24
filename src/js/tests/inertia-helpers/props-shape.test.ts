@@ -109,4 +109,3 @@ describe("inertia-helpers props shape", () => {
     expect(typeof resolved.default).toBe("function")
   })
 })
-

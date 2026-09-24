@@ -200,4 +200,3 @@ describe("litestar-nuxt integration", () => {
     }
   })
 })
-

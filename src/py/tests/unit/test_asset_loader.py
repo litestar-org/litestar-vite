@@ -538,17 +538,10 @@ def test_generate_asset_tags_circular_imports_does_not_infinite_recurse() -> Non
     config = ViteConfig(paths=PathConfig(asset_url="/static/"), runtime=RuntimeConfig(dev_mode=False))
     loader = ViteAssetLoader(config)
     loader._manifest = {
-        "chunk-a.js": {
-            "file": "assets/chunk-a.js",
-            "imports": ["chunk-b.js"],
-        },
-        "chunk-b.js": {
-            "file": "assets/chunk-b.js",
-            "imports": ["chunk-a.js"],
-        },
+        "chunk-a.js": {"file": "assets/chunk-a.js", "imports": ["chunk-b.js"]},
+        "chunk-b.js": {"file": "assets/chunk-b.js", "imports": ["chunk-a.js"]},
     }
 
     tags = loader.generate_asset_tags("chunk-a.js")
     assert "/static/assets/chunk-a.js" in tags
     assert "/static/assets/chunk-b.js" in tags
-

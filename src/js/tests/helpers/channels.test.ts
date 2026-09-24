@@ -236,4 +236,3 @@ describe("createTypedChannels", () => {
     expect(FakeWebSocket.instances[0].sent).toEqual([JSON.stringify({ text: "hello world" })])
   })
 })
-

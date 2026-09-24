@@ -245,8 +245,4 @@ async def test_field_err_re_still_wins_per_entry(
 
     assert response.status_code == 200
     errors = response.json()["props"]["errors"]
-    assert errors == {
-        "email": "Validation error for field `email`",
-        "name": "Validation error for field `name`",
-    }
-
+    assert errors == {"email": "Validation error for field `email`", "name": "Validation error for field `name`"}

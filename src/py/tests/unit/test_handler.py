@@ -1594,4 +1594,3 @@ async def test_spa_handler_prod_skips_csrf_when_inject_csrf_disabled(
         response = await client.get("/")
         assert response.status_code == 200
         assert "window.__LITESTAR_CSRF__" not in response.text
-

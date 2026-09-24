@@ -499,11 +499,7 @@ class AsyncAPISchemaContext:
 
 
 def extract_field_schema(
-    handler: Any,
-    field_definition: Any,
-    context: AsyncAPISchemaContext,
-    *,
-    dto_attribute: str,
+    handler: Any, field_definition: Any, context: AsyncAPISchemaContext, *, dto_attribute: str
 ) -> dict[str, Any]:
     """Extract schema dictionary for a handler field with DTO and OpenAPI parity.
 
@@ -665,10 +661,7 @@ def _merge_channels(
 
 
 def _extract_websocket_route_details(
-    route: WebSocketRoute,
-    context: AsyncAPISchemaContext,
-    allocator: _ChannelKeyAllocator,
-    operation_ids: set[str],
+    route: WebSocketRoute, context: AsyncAPISchemaContext, allocator: _ChannelKeyAllocator, operation_ids: set[str]
 ) -> tuple[str, AsyncAPIChannel, dict[str, AsyncAPIOperation]] | None:
     """Extract channel and operation details from a single WebSocketRoute.
 
@@ -793,9 +786,7 @@ def extract_websocket_routes(
         Tuple of (channels_mapping, operations_mapping).
     """
     if context is None:
-        context = AsyncAPISchemaContext(
-            components_schemas=components_schemas if components_schemas is not None else {}
-        )
+        context = AsyncAPISchemaContext(components_schemas=components_schemas if components_schemas is not None else {})
     elif components_schemas is not None and not context.components_schemas:
         context.components_schemas = components_schemas
 
@@ -1023,9 +1014,7 @@ def extract_channels_plugin_channels(
     from litestar.channels import ChannelsPlugin
 
     if context is None:
-        context = AsyncAPISchemaContext(
-            components_schemas=components_schemas if components_schemas is not None else {}
-        )
+        context = AsyncAPISchemaContext(components_schemas=components_schemas if components_schemas is not None else {})
     elif components_schemas is not None and not context.components_schemas:
         context.components_schemas = components_schemas
 
@@ -1087,9 +1076,7 @@ def extract_sse_routes(
         Tuple of (channels_mapping, operations_mapping).
     """
     if context is None:
-        context = AsyncAPISchemaContext(
-            components_schemas=components_schemas if components_schemas is not None else {}
-        )
+        context = AsyncAPISchemaContext(components_schemas=components_schemas if components_schemas is not None else {})
     elif components_schemas is not None and not context.components_schemas:
         context.components_schemas = components_schemas
 
@@ -1178,10 +1165,7 @@ def extract_sse_routes(
 
 
 def extract_realtime_channels(
-    app: "Litestar",
-    components_schemas: dict[str, Any] | None = None,
-    *,
-    context: AsyncAPISchemaContext | None = None,
+    app: "Litestar", components_schemas: dict[str, Any] | None = None, *, context: AsyncAPISchemaContext | None = None
 ) -> tuple[dict[str, AsyncAPIChannel], dict[str, AsyncAPIOperation]]:
     """Extract all real-time channels from WebSocket routes, ChannelsPlugin, and SSE routes.
 
@@ -1194,9 +1178,7 @@ def extract_realtime_channels(
         Tuple of (channels_mapping, operations_mapping).
     """
     if context is None:
-        context = AsyncAPISchemaContext(
-            components_schemas=components_schemas if components_schemas is not None else {}
-        )
+        context = AsyncAPISchemaContext(components_schemas=components_schemas if components_schemas is not None else {})
     elif components_schemas is not None and not context.components_schemas:
         context.components_schemas = components_schemas
 
@@ -1212,9 +1194,7 @@ def extract_realtime_channels(
     )
     _merge_channels(channels, operations, cp_channels, cp_ops)
 
-    sse_channels, sse_ops = extract_sse_routes(
-        app, context=context, allocator=allocator, operation_ids=operation_ids
-    )
+    sse_channels, sse_ops = extract_sse_routes(app, context=context, allocator=allocator, operation_ids=operation_ids)
     _merge_channels(channels, operations, sse_channels, sse_ops)
 
     return channels, operations

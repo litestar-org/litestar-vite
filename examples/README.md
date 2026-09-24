@@ -30,6 +30,7 @@ from litestar import Controller, get
 from litestar.params import FromPath
 from msgspec import Struct
 
+
 class Book(Struct):
     id: int
     title: str
@@ -37,17 +38,20 @@ class Book(Struct):
     year: int
     tags: list[str]
 
+
 class Summary(Struct):
     app: str
     headline: str
     total_books: int
     featured: Book
 
+
 BOOKS: list[Book] = [
     Book(id=1, title="Async Python", author="C. Developer", year=2024, tags=["python", "async"]),
     Book(id=2, title="Type-Safe Web", author="J. Dev", year=2025, tags=["typescript", "api"]),
     Book(id=3, title="Frontend Patterns", author="A. Designer", year=2023, tags=["frontend", "ux"]),
 ]
+
 
 class LibraryController(Controller):
     @get("/api/summary")
@@ -75,16 +79,9 @@ class LibraryController(Controller):
 from litestar import Litestar
 from litestar_vite import ViteConfig, VitePlugin, PathConfig
 
-vite = VitePlugin(config=ViteConfig(
-    dev_mode=DEV_MODE,
-    paths=PathConfig(root=here),
-))
+vite = VitePlugin(config=ViteConfig(dev_mode=DEV_MODE, paths=PathConfig(root=here)))
 
-app = Litestar(
-    route_handlers=[LibraryController],
-    plugins=[vite],
-    debug=True,
-)
+app = Litestar(route_handlers=[LibraryController], plugins=[vite], debug=True)
 ```
 
 ### Frontend Requirements

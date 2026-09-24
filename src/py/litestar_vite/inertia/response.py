@@ -714,10 +714,7 @@ class InertiaExternalRedirect(Response[Any]):
         location = quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")
         if bool(InertiaDetails(request)):
             super().__init__(
-                content=b"",
-                status_code=HTTP_409_CONFLICT,
-                headers={InertiaHeaders.LOCATION.value: location},
-                **kwargs,
+                content=b"", status_code=HTTP_409_CONFLICT, headers={InertiaHeaders.LOCATION.value: location}, **kwargs
             )
         else:
             super().__init__(
