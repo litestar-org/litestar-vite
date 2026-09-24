@@ -71,6 +71,7 @@ def app_has_realtime_surface(app: "Litestar") -> bool:
     """Return whether the Litestar application defines any realtime surface.
 
     A realtime surface includes:
+    - Any plugin in ``app.plugins`` that provides AsyncAPI schemas.
     - Any route in ``app.routes`` that is a ``litestar.routes.WebSocketRoute``.
     - Any plugin in ``app.plugins`` that is a ``litestar.channels.ChannelsPlugin``.
     - Any HTTP route handler whose return annotation represents a Server-Sent Event (SSE).
@@ -81,6 +82,11 @@ def app_has_realtime_surface(app: "Litestar") -> bool:
     Returns:
         True if any realtime route, plugin, or SSE handler is detected, otherwise False.
     """
+    from litestar_vite.codegen._asyncapi import find_asyncapi_plugin
+
+    if find_asyncapi_plugin(app) is not None:
+        return True
+
     from litestar.routes import HTTPRoute, WebSocketRoute
 
     for route in app.routes:

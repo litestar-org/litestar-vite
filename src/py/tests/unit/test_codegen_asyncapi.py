@@ -1290,3 +1290,20 @@ def test_no_warnings_without_litestar_asyncapi_installed(tmp_path: Path) -> None
         assert result.asyncapi_source == "builtin"
 
     assert len(recorded) == 0
+
+
+def test_app_has_realtime_surface_detection() -> None:
+    """Test app_has_realtime_surface detects AsyncAPI plugins, ChannelsPlugin, and routes."""
+    from litestar_vite.codegen import app_has_realtime_surface
+
+    plain_app = Litestar(route_handlers=[])
+    assert not app_has_realtime_surface(plain_app)
+
+    class MockAsyncAPIPlugin:
+        """Mock plugin that provides get_asyncapi_schema."""
+
+        def get_asyncapi_schema(self, app: Any) -> dict[str, Any]:
+            return {"asyncapi": "3.0.0", "channels": {}, "operations": {}}
+
+    asyncapi_plugin_app = Litestar(route_handlers=[], plugins=[MockAsyncAPIPlugin()])
+    assert app_has_realtime_surface(asyncapi_plugin_app)

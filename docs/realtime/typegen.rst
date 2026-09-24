@@ -26,21 +26,10 @@ Enable channel generation in your ``ViteConfig``:
 CLI Commands
 ------------
 
-Export AsyncAPI 3.0 Schema
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+Generate All TypeScript Types and Schemas
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Export the introspected AsyncAPI 3.0 specification file directly:
-
-.. code-block:: bash
-
-   litestar assets export-asyncapi --output src/generated/asyncapi.json
-
-This produces a spec-compliant AsyncAPI 3.0 document containing all WebSocket endpoints, ``ChannelsPlugin`` topics, SSE endpoints, and their message schemas.
-
-Generate All TypeScript Types
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Generate both REST types (routes, OpenAPI models, SDK) and realtime channels in one command:
+Generate REST types (routes, OpenAPI models, SDK) and realtime channels in one command:
 
 .. code-block:: bash
 

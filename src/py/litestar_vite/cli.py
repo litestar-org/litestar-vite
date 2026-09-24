@@ -17,13 +17,7 @@ from litestar.cli._utils import (  # pyright: ignore[reportPrivateImportUsage]
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
-from litestar_vite.codegen import (
-    encode_deterministic_json,
-    generate_routes_json,
-    generate_routes_ts,
-    resolve_asyncapi_document,
-    write_if_changed,
-)
+from litestar_vite.codegen import encode_deterministic_json, generate_routes_json, generate_routes_ts, write_if_changed
 from litestar_vite.config import DeployConfig, ExternalDevServer, LoggingConfig, TypeGenConfig, ViteConfig
 from litestar_vite.deploy import ViteDeployer, format_bytes
 from litestar_vite.doctor import ViteDoctor
@@ -1031,67 +1025,6 @@ def export_routes(
         except OSError as e:  # pragma: no cover
             msg = f"Failed to write routes to path {output}"
             raise LitestarCLIException(msg) from e
-
-
-@vite_group.command(
-    name="export-asyncapi", help="Export AsyncAPI 3.0 schema for real-time WebSocket, SSE, and Channels endpoints."
-)
-@option(
-    "--output",
-    help="Output file path for asyncapi.json",
-    type=ClickPath(dir_okay=False, path_type=Path),
-    default=None,
-    show_default=False,
-)
-@option("--title", help="Title for the AsyncAPI specification document", type=str, default=None)
-@option(
-    "--version", "api_version", help="Version string for the AsyncAPI specification document", type=str, default=None
-)
-@option("--verbose", type=bool, help="Enable verbose output.", default=False, is_flag=True)
-def export_asyncapi_command(
-    app: "Litestar", output: "Path | None", title: "str | None", api_version: "str | None", verbose: "bool"
-) -> None:
-    """Export AsyncAPI 3.0 schema for real-time endpoints.
-
-    Args:
-        app: The Litestar application instance.
-        output: The path to the output file. Uses TypeGenConfig if not provided.
-        title: Optional title for the AsyncAPI document.
-        api_version: Optional version string for the AsyncAPI document.
-        verbose: Whether to enable verbose output.
-
-    Raises:
-        LitestarCLIException: If the output file cannot be written.
-    """
-    if verbose:
-        app.debug = True
-
-    plugin = app.plugins.get(VitePlugin)
-    config = plugin.config
-
-    if output is None:
-        if isinstance(config.types, TypeGenConfig) and config.types.asyncapi_path is not None:
-            output = config.types.asyncapi_path
-        elif isinstance(config.types, TypeGenConfig):
-            output = config.types.output / "asyncapi.json"
-        else:
-            output = Path("asyncapi.json")
-
-    console.rule(f"[yellow]Exporting AsyncAPI schema to {output}[/]", align="left")
-
-    schema_dict, source = resolve_asyncapi_document(app, title=title, version=api_version)
-
-    try:
-        content = encode_deterministic_json(schema_dict)
-        changed = write_if_changed(output, content)
-        status = "updated" if changed else "unchanged"
-        console.print(f"[green]✓ AsyncAPI schema exported to {output}[/] [dim]({status})[/]")
-        channel_count = len(schema_dict.get("channels", {}))
-        operation_count = len(schema_dict.get("operations", {}))
-        console.print(f"[dim]  Source: {source} ({channel_count} channels, {operation_count} operations exported)[/]")
-    except OSError as e:
-        msg = f"Failed to write AsyncAPI schema to path {output}"
-        raise LitestarCLIException(msg) from e
 
 
 def _default_bin_name_from_package_spec(package_spec: str) -> str:
