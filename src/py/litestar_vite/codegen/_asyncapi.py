@@ -6,6 +6,7 @@ and operations.
 """
 
 import contextlib
+import inspect
 import re
 import types
 from dataclasses import asdict, dataclass, field
@@ -657,6 +658,23 @@ def _merge_channels(
     operations.update(new_operations)
 
 
+def _clean_doc(doc: str | None) -> str | None:
+    """Normalize handler docstrings across Python versions.
+
+    Args:
+        doc: Raw docstring string.
+
+    Returns:
+        Cleaned docstring string ending with a newline, or None.
+    """
+    if not doc:
+        return None
+    cleaned = inspect.cleandoc(doc)
+    if not cleaned:
+        return None
+    return f"{cleaned}\n"
+
+
 def _extract_websocket_route_details(
     route: WebSocketRoute, context: AsyncAPISchemaContext, allocator: _ChannelKeyAllocator, operation_ids: set[str]
 ) -> tuple[str, AsyncAPIChannel, dict[str, AsyncAPIOperation]] | None:
@@ -694,6 +712,8 @@ def _extract_websocket_route_details(
         doc = getattr(inner_fn, "__doc__", None) or doc
         if not handler_name:
             handler_name = getattr(inner_fn, "__name__", None)
+
+    doc = _clean_doc(doc)
 
     if not handler_name:
         handler_name = getattr(fn, "__name__", None) or f"{channel_key}_handler"
@@ -840,19 +860,20 @@ def _sse_payload_annotation(annotation: Any) -> Any:
     """
     if annotation is None or annotation is NoneType or annotation is ServerSentEvent:
         return None
+
+    args = get_args(annotation)
+    if args:
+        for arg in args:
+            found: Any = _sse_payload_annotation(arg)
+            if found is not None:
+                return found
+        return None
+
     try:
         if isinstance(annotation, type) and issubclass(annotation, (ServerSentEvent, str, bytes)):
             return None
     except TypeError:
         pass
-
-    origin = get_origin(annotation)
-    if origin is not None:
-        for arg in get_args(annotation):
-            found: Any = _sse_payload_annotation(arg)
-            if found is not None:
-                return found
-        return None
 
     return cast("Any", annotation)
 
@@ -1115,6 +1136,8 @@ def extract_sse_routes(
                 doc = getattr(inner_fn, "__doc__", None) or doc
                 if not handler_name:
                     handler_name = getattr(inner_fn, "__name__", None)
+
+            doc = _clean_doc(doc)
 
             if not handler_name:
                 handler_name = getattr(fn, "__name__", None) or f"{channel_key}_sse"

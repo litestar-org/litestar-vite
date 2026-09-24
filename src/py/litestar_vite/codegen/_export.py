@@ -195,7 +195,8 @@ def export_integration_assets(
     has_openapi = False
     if openapi_plugin is not None:
         try:
-            has_openapi = openapi_plugin.openapi_config is not None
+            _ = openapi_plugin.openapi_config
+            has_openapi = True
         except ImproperlyConfiguredException:
             has_openapi = False
 
