@@ -7,7 +7,7 @@ Server-Sent Events (SSE) provide a lightweight, unidirectional stream from serve
 Basic SSE Stream Handler
 ------------------------
 
-Litestar routes can return an async generator yielding ``ServerSentEvent`` instances:
+Litestar routes can return a ``ServerSentEvent`` response wrapping an async generator:
 
 .. code-block:: python
 
@@ -16,47 +16,52 @@ Litestar routes can return an async generator yielding ``ServerSentEvent`` insta
    from dataclasses import dataclass
    from litestar import Litestar, get
    from litestar.response import ServerSentEvent
+   from litestar.response.sse import ServerSentEventMessage
 
    @dataclass
    class StockUpdate:
        symbol: str
        price: float
 
-   async def stock_ticker() -> AsyncGenerator[ServerSentEvent, None]:
+   async def stock_ticker() -> AsyncGenerator[ServerSentEventMessage, None]:
        prices = {"AAPL": 150.0, "GOOGL": 140.0}
        for i in range(10):
            await asyncio.sleep(1.0)
            prices["AAPL"] += 0.5
-           yield ServerSentEvent(
-               data=StockUpdate(symbol="AAPL", price=prices["AAPL"]),
+           yield ServerSentEventMessage(
+               data=f'{{"symbol": "AAPL", "price": {prices["AAPL"]}}}',
                event="quote",
-               event_id=str(i),
+               id=str(i),
            )
 
-   @get("/api/stocks", response_class=ServerSentEvent)
-   async def stream_stocks() -> AsyncGenerator[ServerSentEvent, None]:
-       return stock_ticker()
+   @get("/api/stocks")
+   async def stream_stocks() -> ServerSentEvent:
+       return ServerSentEvent(stock_ticker())
 
    app = Litestar(route_handlers=[stream_stocks])
 
 Custom Event Names & IDs
 ------------------------
 
-Each ``ServerSentEvent`` accepts metadata fields:
+Each ``ServerSentEvent`` response wrapper accepts default metadata fields:
 
-- **data**: Payload object (automatically JSON-serialized if a dataclass, msgspec Struct, or Pydantic model).
-- **event**: Custom event type string (e.g., ``"notification"``, ``"metric"``, ``"completed"``).
-- **event_id**: Unique tracking ID for resuming missed events after reconnects.
-- **retry_duration_milliseconds**: Reconnect interval hint sent to the browser.
-- **comment**: Comment line (often used as heartbeats/keepalives).
+- **content**: Positional payload stream or value (valid ``SSEData`` includes ``str``, ``int``, ``bytes``, ``dict``, or ``ServerSentEventMessage``).
+- **event_type**: Default event type string (e.g., ``"notification"``, ``"metric"``, ``"completed"``).
+- **event_id**: Tracking ID for resuming missed events after reconnects.
+- **retry_duration**: Reconnect interval hint sent to the browser in milliseconds.
+- **comment_message**: Comment line (often used as heartbeats/keepalives).
+
+When yielding individual messages from an async generator, use ``ServerSentEventMessage``:
 
 .. code-block:: python
 
-   yield ServerSentEvent(
-       data={"status": "processing", "progress": 42},
+   from litestar.response.sse import ServerSentEventMessage
+
+   yield ServerSentEventMessage(
+       data='{"status": "processing", "progress": 42}',
        event="job_progress",
-       event_id="evt_42",
-       retry_duration_milliseconds=5000,
+       id="evt_42",
+       retry=5000,
    )
 
 Heartbeats & Keep-Alive
@@ -66,12 +71,13 @@ Long-lived connections may be closed by intermediate proxies or load balancers i
 
 .. code-block:: python
 
-   yield ServerSentEvent(comment="ping")
+   yield ": ping"
 
 AsyncAPI 3.0 Documentation
 --------------------------
 
 ``litestar-vite`` detects routes returning ``ServerSentEvent``:
+
 - The endpoint path is registered as an AsyncAPI channel with the ``http`` protocol binding.
 - Message payloads yielded by the generator are inspected to build the message schema.
 - Event names are recorded in message headers or traits.
@@ -79,7 +85,7 @@ AsyncAPI 3.0 Documentation
 Consuming SSE in Browser Code
 -----------------------------
 
-Use the typed ``createEventStream`` helper from ``litestar-vite-plugin/helpers``:
+Use the typed ``createEventStream`` helper from ``litestar-vite-plugin/helpers``, specifying ``transport: "sse"`` explicitly:
 
 .. code-block:: typescript
 
@@ -92,14 +98,17 @@ Use the typed ``createEventStream`` helper from ``litestar-vite-plugin/helpers``
 
    const stream = createEventStream<StockQuote>({
      url: "/api/stocks",
+     transport: "sse",
      sseEvents: ["quote"],
-     onMessage: (quote) => {
+     onEvent: (quote: StockQuote) => {
        console.log(`Received quote for ${quote.symbol}: $${quote.price}`);
      },
    });
 
+   stream.connect();
+
    // To disconnect when unmounting:
-   stream.close();
+   stream.dispose();
 
 Next Steps
 ----------

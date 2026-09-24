@@ -11,7 +11,6 @@ In React applications, ``useQueueEventStream`` manages background task tracking 
 
 .. code-block:: tsx
 
-   import React from "react";
    import { useQueueEventStream } from "litestar-vite-plugin/react";
 
    interface ProcessingStatus {
@@ -20,30 +19,34 @@ In React applications, ``useQueueEventStream`` manages background task tracking 
    }
 
    export function JobTracker({ jobId }: { jobId: string }) {
-     const { data, status, error, isComplete } = useQueueEventStream<ProcessingStatus>({
+     const { healthy, lastEvent } = useQueueEventStream<ProcessingStatus>({
+       key: `job-${jobId}`,
+       scope: "task",
        taskId: jobId,
-       url: `/api/jobs/${jobId}/events`,
+       onEvent: (event: ProcessingStatus) => {
+         console.log("Job update:", event);
+       },
      });
 
-     if (error) {
-       return <div className="text-red-500">Error: {error.message}</div>;
+     if (!healthy) {
+       return <div className="text-yellow-500">Connecting to job feed...</div>;
      }
 
      return (
        <div className="p-4 border rounded">
-         <h3 className="font-bold">Job Status: {status}</h3>
-         {data && (
+         <h3 className="font-bold">Job Status: {lastEvent?.status ?? "Initializing"}</h3>
+         {lastEvent && (
            <div className="mt-2">
              <div className="w-full bg-gray-200 h-2 rounded">
                <div
                  className="bg-blue-600 h-2 rounded transition-all"
-                 style={{ width: `${data.percentage}%` }}
+                 style={{ width: `${lastEvent.percentage}%` }}
                />
              </div>
-             <p className="text-sm mt-1">{data.status} ({data.percentage}%)</p>
+             <p className="text-sm mt-1">{lastEvent.status} ({lastEvent.percentage}%)</p>
            </div>
          )}
-         {isComplete && <p className="text-green-600 mt-2">Processing finished!</p>}
+         {lastEvent?.percentage === 100 && <p className="text-green-600 mt-2">Processing finished!</p>}
        </div>
      );
    }
@@ -66,28 +69,32 @@ In Vue 3, ``useEventStream`` returns reactive ``ref`` values that update as even
      change: number;
    }
 
-   const { data, status, error, close } = useEventStream<MarketQuote>({
+   const { healthy, lastEvent } = useEventStream<MarketQuote>({
+     key: "market-feed",
      url: "/api/market/feed",
+     transport: "sse",
      sseEvents: ["quote"],
+     onEvent: (quote: MarketQuote) => {
+       console.log("Received quote:", quote);
+     },
    });
    </script>
 
    <template>
      <div class="market-card">
-       <h2>Live Market Ticker ({{ status }})</h2>
-       <div v-if="error" class="error">{{ error.message }}</div>
-       <div v-else-if="data" class="quote">
-         <span class="ticker">{{ data.ticker }}</span>
-         <span class="price">${{ data.price.toFixed(2) }}</span>
-         <span :class="data.change >= 0 ? 'up' : 'down'">
-           {{ data.change >= 0 ? '+' : '' }}{{ data.change.toFixed(2) }}%
+       <h2>Live Market Ticker ({{ healthy ? "Connected" : "Disconnected" }})</h2>
+       <div v-if="lastEvent" class="quote">
+         <span class="ticker">{{ lastEvent.ticker }}</span>
+         <span class="price">${{ lastEvent.price.toFixed(2) }}</span>
+         <span :class="lastEvent.change >= 0 ? 'up' : 'down'">
+           {{ lastEvent.change >= 0 ? '+' : '' }}{{ lastEvent.change.toFixed(2) }}%
          </span>
        </div>
        <div v-else>Connecting to feed...</div>
      </div>
    </template>
 
-The composable hooks into Vue's ``onScopeDispose()`` lifecycle to close the stream when the component unmounts.
+The composable hooks into Vue's ``onScopeDispose()`` lifecycle to clean up the stream when the component unmounts.
 
 Svelte 5: ``createEventStreamStore``
 ------------------------------------
@@ -105,16 +112,18 @@ In Svelte applications, ``createEventStreamStore`` returns a subscription store 
        body: string;
      }
 
-     const notifications = createEventStreamStore<Notification[]>({
+     const notifications = createEventStreamStore<Notification>({
        url: "/api/notifications/stream",
-       initialData: [],
+       onEvent: (item: Notification) => {
+         console.log("New notification:", item);
+       },
      });
    </script>
 
    <div class="notifications-panel">
-     <h3>Notifications ({$notifications.data.length})</h3>
+     <h3>Notifications ({$notifications.events.length})</h3>
      <ul>
-       {#each $notifications.data as item (item.id)}
+       {#each $notifications.events as item (item.id)}
          <li>
            <strong>{item.title}</strong>
            <p>{item.body}</p>

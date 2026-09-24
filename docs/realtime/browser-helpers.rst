@@ -7,7 +7,7 @@ The ``litestar-vite-plugin/helpers`` module provides strongly typed client utili
 Channels Streams (WebSockets)
 -----------------------------
 
-The ``createChannelsStream`` helper connects to Litestar WebSocket endpoints or ``ChannelsPlugin`` streams:
+The ``createChannelsStream`` helper connects to Litestar WebSocket endpoints or ``ChannelsPlugin`` streams. It returns a receive-only ``EventStream`` instance; teardown is performed via ``stream.dispose()``:
 
 .. code-block:: typescript
 
@@ -21,28 +21,22 @@ The ``createChannelsStream`` helper connects to Litestar WebSocket endpoints or 
    const stream = createChannelsStream<ChatMessage>({
      channel: "chat",
      basePath: "/ws",
-     onOpen: () => {
-       console.log("WebSocket connected");
+     onOpen: (url: string) => {
+       console.log("WebSocket connected to", url);
      },
-     onMessage: (message) => {
+     onEvent: (message: ChatMessage) => {
        console.log("New message:", message.text);
      },
-     onError: (error) => {
-       console.error("Stream error:", error);
+     onClose: () => {
+       console.log("Stream closed");
      },
-     onClose: (event) => {
-       console.log("Closed with code:", event.code);
-     },
-     reconnect: true,
-     reconnectAttempts: 5,
-     reconnectDelay: 1000,
    });
 
-   // Send a message over the stream:
-   stream.send({ user: "Alice", text: "Hello!" });
+   // Connect the stream:
+   stream.connect();
 
-   // Close connection when done:
-   stream.close();
+   // Disconnect and release resources when done:
+   stream.dispose();
 
 Channel Parameter Interpolation
 -------------------------------
@@ -51,13 +45,22 @@ When channels use dynamic path segments (e.g., ``/ws/rooms/{room_id}``), pass th
 
 .. code-block:: typescript
 
+   import { createChannelsStream } from "litestar-vite-plugin/helpers";
+
+   interface RoomEvent {
+     type: string;
+     payload: string;
+   }
+
    const roomStream = createChannelsStream<RoomEvent, { room_id: number }>({
      channel: "/ws/rooms/{room_id}",
      params: { room_id: 42 },
-     onMessage: (event) => {
+     onEvent: (event: RoomEvent) => {
        console.log("Room update:", event);
      },
    });
+
+   roomStream.connect();
 
 The helper replaces ``{room_id}`` with the URL-encoded value ``42``, resolving to ``/ws/rooms/42``.
 
@@ -81,15 +84,17 @@ Combine ``createChannelsStream`` with types from the generated ``channels.ts`` f
    const stream = createChannelsStream<RoomEvent, RoomParams>({
      channel: "room",
      params: { room_id: 101 },
-     onMessage: (msg) => {
-       // msg is strictly typed as ChannelReceivePayload<"room">
+     onEvent: (msg: RoomEvent) => {
+       console.log("Room message:", msg);
      },
    });
+
+   stream.connect();
 
 Server-Sent Event Streams
 -------------------------
 
-The ``createEventStream`` helper wraps browser ``EventSource`` with typed event parsing:
+The ``createEventStream`` helper wraps browser ``EventSource`` with typed event parsing. Set ``transport: "sse"`` explicitly when connecting to SSE endpoints:
 
 .. code-block:: typescript
 
@@ -102,19 +107,19 @@ The ``createEventStream`` helper wraps browser ``EventSource`` with typed event 
 
    const sse = createEventStream<OrderStatus>({
      url: "/api/orders/123/stream",
+     transport: "sse",
      sseEvents: ["status_update"],
-     onMessage: (update) => {
+     onEvent: (update: OrderStatus) => {
        console.log(`Order status is now: ${update.status}`);
      },
-     onError: (err) => {
-       console.warn("EventSource disconnected:", err);
-     },
    });
+
+   sse.connect();
 
 Queue Task Progress Streams
 ---------------------------
 
-For background job progress (such as tasks submitted through Litestar background tasks or queues), use ``createQueueEventStream``:
+For background job progress (such as tasks submitted through Litestar background tasks or queues), use ``createQueueEventStream`` with a discriminated scope target:
 
 .. code-block:: typescript
 
@@ -126,14 +131,14 @@ For background job progress (such as tasks submitted through Litestar background
    }
 
    const taskStream = createQueueEventStream<TaskProgress>({
+     scope: "task",
      taskId: "job-9876",
-     onProgress: (progress) => {
-       console.log(`Task ${progress.percentage}% complete`);
-     },
-     onComplete: (result) => {
-       console.log("Task finished:", result);
+     onEvent: (progress: TaskProgress) => {
+       console.log(`Task ${progress.percentage}% complete: ${progress.message}`);
      },
    });
+
+   taskStream.connect();
 
 Next Steps
 ----------

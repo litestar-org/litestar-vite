@@ -3,6 +3,7 @@ WebSockets
 ==========
 
 Litestar provides two ways to build WebSocket endpoints:
+
 1. Low-level ``@websocket`` route handlers for explicit lifecycle and stream management.
 2. Declarative ``websocket_listener`` handlers for automatic deserialization, validation, and response serialization.
 
@@ -36,6 +37,7 @@ The ``websocket_listener`` decorator is the recommended way to build WebSocket m
    app = Litestar(route_handlers=[handle_chat_message])
 
 When introspected by ``litestar-vite``:
+
 - The path ``/ws/chat`` becomes an AsyncAPI channel with address ``/ws/chat``.
 - The inbound message payload schema is generated from ``ChatMessage``.
 - The outbound response schema is generated from ``ChatResponse``.
@@ -73,11 +75,12 @@ WebSocket routes support URL parameters:
 
    @websocket("/ws/rooms/{room_id:int}")
    async def room_stream(socket: WebSocket, room_id: int) -> None:
+       """Manage an individual room stream."""
        await socket.accept()
        await socket.send_json({"room": room_id, "status": "connected"})
-       # ...
 
 In the generated AsyncAPI 3.0 schema:
+
 - The channel address is recorded as ``/ws/rooms/{room_id}``.
 - The ``room_id`` parameter is documented in the channel parameters dictionary with type ``integer``.
 - The emitted TypeScript definition in ``channels.ts`` types ``room_id`` as a required numeric parameter.
@@ -91,7 +94,7 @@ WebSocket connections can be guarded like HTTP endpoints:
 
    from litestar.connection import ASGIConnection
    from litestar.exceptions import NotAuthorizedException
-   from litestar.handlers import BaseRouteHandler
+   from litestar.handlers import BaseRouteHandler, websocket_listener
 
    def require_auth(connection: ASGIConnection, _: BaseRouteHandler) -> None:
        if not connection.scope.get("user"):

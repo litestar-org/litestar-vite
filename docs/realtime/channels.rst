@@ -26,14 +26,16 @@ Register the ``ChannelsPlugin`` with your chosen backend:
        plugins=[channels, VitePlugin()],
    )
 
-For multi-process or multi-server deployments, use the Redis or PostgreSQL channel backends:
+For multi-process or multi-server deployments, use a concrete Redis backend such as ``RedisChannelsPubSubBackend`` or ``RedisChannelsStreamBackend`` (note that the base ``RedisChannelsBackend`` is abstract and cannot be instantiated directly):
 
 .. code-block:: python
 
-   from litestar.channels.backends.redis import RedisChannelsBackend
+   from redis.asyncio import Redis
+   from litestar.channels import ChannelsPlugin
+   from litestar.channels.backends.redis import RedisChannelsPubSubBackend
 
    channels = ChannelsPlugin(
-       backend=RedisChannelsBackend(url="redis://localhost:6379"),
+       backend=RedisChannelsPubSubBackend(redis=Redis.from_url("redis://localhost:6379")),
        channels=["chat_{room_id}"],
    )
 
@@ -65,6 +67,9 @@ Channels can include dynamic segments such as user IDs or room IDs:
 
 .. code-block:: python
 
+   from litestar import post
+   from litestar.channels import ChannelsPlugin
+
    @post("/api/rooms/{room_id:int}/message")
    async def send_room_message(
        room_id: int,
@@ -78,19 +83,24 @@ Channels can include dynamic segments such as user IDs or room IDs:
 Subscribing via WebSockets
 --------------------------
 
-``ChannelsPlugin`` provides a built-in WebSocket handler stream:
+``ChannelsPlugin`` can automatically register WebSocket route handlers for configured channels by setting ``create_ws_route_handlers=True`` (which defaults to ``False``):
 
 .. code-block:: python
 
-   # Built-in handler streaming all channel messages to connected client:
-   route_handlers = [
-       channels.create_route_handler("/ws/events"),
-   ]
+   from litestar.channels import ChannelsPlugin
+   from litestar.channels.backends.memory import MemoryChannelsBackend
+
+   channels = ChannelsPlugin(
+       backend=MemoryChannelsBackend(),
+       channels=["notifications"],
+       create_ws_route_handlers=True,
+   )
 
 AsyncAPI 3.0 Introspection
 --------------------------
 
 When ``litestar-vite`` inspects your application:
+
 - All static channels listed in ``channels=[...]`` are extracted as individual AsyncAPI channels.
 - Dynamic channels with parameter patterns (e.g., ``chat_{room_id}``) are converted to parameterized AsyncAPI channel addresses.
 - Message payloads published through the plugin are introspected into schema definitions under AsyncAPI components.

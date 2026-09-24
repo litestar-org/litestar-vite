@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import contextlib
 import importlib
 import inspect
 import json
@@ -32,10 +33,50 @@ _VUE_SVELTE_LANGS = frozenset({"vue", "svelte"})
 _PY_LANGS = frozenset({"python", "py"})
 _TSC_DIAGNOSTIC_PATTERN = re.compile(r"^(.+?)(?:\((\d+),(\d+)\)|:(\d+):(\d+))(?:\s*-\s*)?:?\s+error\s+(TS\d+):\s*(.+)$")
 _RUFF_DIAGNOSTIC_PATTERN = re.compile(r"^(.+?):(\d+):(\d+):\s+(F821\s+.+)$")
+_OPTIONAL_EXTERNAL_MODULES = frozenset({"redis", "redis.asyncio", "asyncpg", "psycopg", "psycopg2"})
+
+
+class _StubSymbol:
+    """Fallback stub symbol for imports from optional external modules."""
+
+    __slots__ = ()
+
+    def __getattr__(self, name: str) -> Any:
+        return _StubSymbol()
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return _StubSymbol()
+
+
+class _StubModule:
+    """Fallback stub module for optional external packages not installed."""
+
+    __slots__ = ()
+
+    def __getattr__(self, name: str) -> Any:
+        return _StubSymbol()
+
 
 _AMBIENT_DECLARATIONS = """declare module "@/generated/*";
 declare module "@/generated/routes";
-declare module "@/generated/channels";
+declare module "@/generated/channels" {
+    export type ChannelKey = string;
+    export type ChannelAddress<K extends string = string> = string;
+    export type ChannelProtocol<K extends string = string> = "ws" | "channels" | "sse";
+    export type ChannelParams<K extends string = string> = Record<string, any>;
+    export type ChannelSendPayload<K extends string = string> = any;
+    export type ChannelReceivePayload<K extends string = string> = any;
+    export interface RealtimeChannels {
+        [key: string]: {
+            address: string;
+            protocol: string;
+            params: Record<string, any>;
+            sendPayload: any;
+            receivePayload: any;
+        };
+    }
+    export const CHANNEL_METADATA: Record<string, any>;
+}
 declare module "@/generated/page-props";
 declare module "@/generated/schemas";
 declare module "@/layouts/*";
@@ -52,6 +93,11 @@ declare module "@angular/*";
 declare module "@angular/core";
 declare module "@angular/router";
 declare module "@angular/common/http";
+declare type ChatMessage = any;
+declare type ChatResponse = any;
+declare type RoomEvent = any;
+declare type NotificationMessage = any;
+declare type NotificationPayload = any;
 """
 
 
@@ -423,6 +469,12 @@ def check_typescript_blocks(blocks: list[CodeBlock], workdir: Path, repo_root: P
     ts_dir = workdir / "ts"
     ts_dir.mkdir(parents=True, exist_ok=True)
 
+    node_modules_target = repo_root / "node_modules"
+    workdir_node_modules = workdir / "node_modules"
+    if node_modules_target.exists() and not workdir_node_modules.exists():
+        with contextlib.suppress(OSError):
+            workdir_node_modules.symlink_to(node_modules_target)
+
     block_map: dict[str, tuple[Path, int]] = {}
     for block in blocks:
         has_jsx = block.lang == "tsx" or bool(re.search(r"<[A-Za-z][A-Za-z0-9]*[\s/>]", block.code))
@@ -514,13 +566,16 @@ def _resolve_block_imports(
                     mod = importlib.import_module(alias.name)
                     imported_modules[alias.asname or alias.name] = mod
                 except (ImportError, ModuleNotFoundError):
-                    diagnostics.append(
-                        Diagnostic(
-                            rst_path=rst_path,
-                            line=first_body_line + node.lineno - 1,
-                            message=f"Unresolvable module: {alias.name}",
+                    if alias.name in _OPTIONAL_EXTERNAL_MODULES:
+                        imported_modules[alias.asname or alias.name] = _StubModule()
+                    else:
+                        diagnostics.append(
+                            Diagnostic(
+                                rst_path=rst_path,
+                                line=first_body_line + node.lineno - 1,
+                                message=f"Unresolvable module: {alias.name}",
+                            )
                         )
-                    )
         elif isinstance(node, ast.ImportFrom):
             module_name = node.module or ""
             try:
@@ -540,13 +595,18 @@ def _resolve_block_imports(
                         obj = getattr(mod, alias.name)
                         imported_symbols[alias.asname or alias.name] = obj
             except (ImportError, ModuleNotFoundError):
-                diagnostics.append(
-                    Diagnostic(
-                        rst_path=rst_path,
-                        line=first_body_line + node.lineno - 1,
-                        message=f"Unresolvable module: {module_name}",
+                if module_name in _OPTIONAL_EXTERNAL_MODULES:
+                    for alias in node.names:
+                        if alias.name != "*":
+                            imported_symbols[alias.asname or alias.name] = _StubSymbol()
+                else:
+                    diagnostics.append(
+                        Diagnostic(
+                            rst_path=rst_path,
+                            line=first_body_line + node.lineno - 1,
+                            message=f"Unresolvable module: {module_name}",
+                        )
                     )
-                )
 
     return imported_modules, imported_symbols, diagnostics
 

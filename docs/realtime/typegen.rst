@@ -16,9 +16,8 @@ Enable channel generation in your ``ViteConfig``:
 
    vite_config = ViteConfig(
        types=TypeGenConfig(
-           enabled=True,
            output=Path("src/generated"),
-           generate_channels=True,  # Default is True when types are configured
+           generate_channels=True,
            asyncapi_path=Path("src/generated/asyncapi.json"),
            channels_ts_path=Path("src/generated/channels.ts"),
        ),
@@ -34,7 +33,7 @@ Export the introspected AsyncAPI 3.0 specification file directly:
 
 .. code-block:: bash
 
-   litestar assets export-asyncapi --output src/generated/asyncapi.json --pretty
+   litestar assets export-asyncapi --output src/generated/asyncapi.json
 
 This produces a spec-compliant AsyncAPI 3.0 document containing all WebSocket endpoints, ``ChannelsPlugin`` topics, SSE endpoints, and their message schemas.
 
@@ -48,6 +47,7 @@ Generate both REST types (routes, OpenAPI models, SDK) and realtime channels in 
    litestar assets generate-types
 
 This runs the TypeGen pipeline, generating:
+
 - ``src/generated/openapi.json`` and ``src/generated/routes.json``
 - ``src/generated/asyncapi.json``
 - ``src/generated/channels.ts`` (Realtime contracts)
@@ -84,7 +84,7 @@ The emitted ``channels.ts`` file contains strongly typed interfaces mapping ever
        protocol: "channels";
        params: Record<string, never>;
        sendPayload: unknown;
-       receivePayload: NotificationMessage;
+       receivePayload: NotificationPayload;
      };
    }
 
