@@ -82,10 +82,10 @@ Realtime in ``litestar-vite`` operates on a unified contract pipeline:
        TS --> HELPERS
        HELPERS --> UI
 
-1. **Introspection**: Litestar inspects your WebSocket route handlers, registered channels, and SSE handlers.
-2. **Schema Emission**: ``litestar assets export-asyncapi`` generates a spec-compliant AsyncAPI 3.0 document.
-3. **TypeScript Generation**: TypeGen transforms channel addresses, message frames, and parameters into strongly typed TypeScript contracts.
-4. **Client Consumption**: The browser helpers and UI framework composables bind directly to the emitted types.
+1. **Introspection**: Litestar automatically inspects your WebSocket route handlers, registered channels, and SSE handlers.
+2. **Schema Emission**: During ``litestar assets build`` (or ``generate-types``), an AsyncAPI 3.0 document (``asyncapi.json``) is exported automatically alongside ``openapi.json``. A standalone ``litestar assets export-asyncapi`` command is also available for one-off schema export.
+3. **TypeScript Generation**: TypeGen emits strongly typed TypeScript contracts (``channels.ts``) directly into your frontend sources.
+4. **Client Consumption**: Browser helpers and UI framework composables bind directly to the emitted types.
 
 .. toctree::
    :maxdepth: 1
