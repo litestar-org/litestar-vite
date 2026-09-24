@@ -62,12 +62,14 @@ The ``csrf_token`` prop is automatically included in shared props:
 
 .. code-block:: tsx
 
+   import { usePage } from "@inertiajs/react";
+
    interface SharedProps {
      csrf_token: string;
      // ...other props
    }
 
-   const { csrf_token } = usePage<SharedProps>().props;
+   const { csrf_token } = (usePage() as { props: SharedProps }).props;
 
 Inertia Client Visits
 ---------------------
@@ -82,7 +84,7 @@ visit options so unsafe Inertia requests work with ``cookie_httponly=True``:
 
    createInertiaApp({
      defaults: {
-       visitOptions: (_href, options) => ({
+       visitOptions: (_href: string, options: Record<string, any>) => ({
          headers: csrfHeaders(options.headers ?? {}),
        }),
      },
@@ -114,6 +116,40 @@ Configure the variable name:
        ),
    )
 
+Token Resolution Order
+----------------------
+
+When ``getCsrfToken()`` is invoked on the client, it searches for a valid CSRF token in a strict,
+deterministic sequence:
+
+1. **SPA global injection short-circuit**: Checks ``window.__LITESTAR_CSRF__``. If present and truthy,
+   this value is **returned immediately**, short-circuiting all subsequent checks.
+2. **Multi-source fallback chain**: If ``window.__LITESTAR_CSRF__`` is not set, the helper evaluates
+   three candidate sources in order using nullish coalescing (``metaToken ?? inertiaToken ?? cookieToken ?? ""``):
+
+   a. **HTML meta tag**: Reads the ``content`` attribute of ``document.querySelector('meta[name="csrf-token"]')``.
+   b. **Inertia page state**: Evaluates three potential Inertia token locations in order:
+
+      - Global page state: ``window.__INERTIA_PAGE__.props.csrf_token`` (if present as a string).
+      - Default script transport: Parses JSON from ``document.getElementById("app_page")`` and reads ``page.props.csrf_token`` (parse failures fall through).
+      - Compatibility container: Parses JSON from ``document.querySelector("[data-page]")``. Note: if the element has ``data-page="app"`` (the sentinel pointer used in script-element mode), it is explicitly **skipped** to avoid JSON parse errors.
+
+   c. **Cookie fallback**: Inspects browser cookies in precedence order:
+
+      - Custom cookie name from ``window.__LITESTAR_CSRF_COOKIE_NAME__``.
+      - Explicit ``cookieName`` option passed to the helper.
+      - Default Litestar cookie name: ``csrftoken``.
+      - Standard legacy cookie name: ``XSRF-TOKEN``.
+
+3. **Empty string fallback**: If no token is found in any source, ``getCsrfToken()`` returns an empty string
+   (``""``) rather than throwing or returning ``undefined``.
+
+Header Name Resolution
+~~~~~~~~~~~~~~~~~~~~~~
+
+Header names are resolved independently via ``getCsrfHeaderName()``. It prefers the configured header name in
+``window.__LITESTAR_CSRF_HEADER_NAME__`` and falls back to the default ``"X-CSRFToken"`` header name.
+
 CSRF Helper Functions
 ---------------------
 
@@ -128,12 +164,14 @@ The ``litestar-vite-plugin/helpers`` package provides utility functions for CSRF
      getCsrfToken,
    } from 'litestar-vite-plugin/helpers';
 
-   // Get CSRF token (from window.__LITESTAR_CSRF__, meta tag, or Inertia props)
+   // Get CSRF token following the resolution order documented above (global, meta, Inertia, or cookie)
    const token = getCsrfToken();
 
    // Get the configured header name and a ready-to-use headers object
    const headerName = getCsrfHeaderName();
    const headers = csrfHeaders();
+
+   const data = { title: "Test" };
 
    // Make a fetch request with CSRF token automatically included
    await csrfFetch('/api/submit', {
@@ -155,6 +193,8 @@ configure the middleware for that flow explicitly:
 
 .. code-block:: python
 
+   from litestar.config.csrf import CSRFConfig
+
    CSRFConfig(
        secret="your-secret-key-min-32-chars-long",
        cookie_name="XSRF-TOKEN",
@@ -172,6 +212,8 @@ Excluding Routes
 Exclude specific routes from CSRF protection:
 
 .. code-block:: python
+
+   from litestar.config.csrf import CSRFConfig
 
    CSRFConfig(
        secret="...",
