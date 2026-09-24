@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["./src/index.ts", "./src/astro.ts", "./src/sveltekit.ts", "./src/nuxt.ts", "./src/inertia-types.ts", "./src/virtual.d.ts", "./tests/**/*.test-d.ts"]
+}
