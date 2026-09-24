@@ -41,7 +41,7 @@ Litestar provides rich real-time communication capabilities: full-duplex WebSock
       :link: browser-helpers
       :link-type: doc
 
-      Consume channels in browser environments with ``createChannelsStream`` and ``createEventStream``.
+      Bind generated channel contracts to browser streams and link onward to the full helper reference.
 
    .. grid-item-card:: :octicon:`apps` Framework Composables
       :link: frameworks

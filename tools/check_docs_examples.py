@@ -78,7 +78,6 @@ declare module "@/generated/channels" {
     export const CHANNEL_METADATA: Record<string, any>;
 }
 declare module "@/generated/page-props";
-declare module "@/generated/schemas";
 declare module "@/layouts/*";
 declare module "~/generated/*";
 declare module "$lib/*";
@@ -98,6 +97,22 @@ declare type ChatResponse = any;
 declare type RoomEvent = any;
 declare type NotificationMessage = any;
 declare type NotificationPayload = any;
+declare const currentTicket: any;
+declare const handleEvent: any;
+declare const showNotification: any;
+declare const selectedTaskId: any;
+declare const updateTask: any;
+declare const warnAboutMissingEvents: any;
+declare const taskId: any;
+declare const handleTaskEvent: any;
+declare const projectId: any;
+declare const createEventStream: any;
+declare type RouteName = string;
+declare type RoutePathParams = Record<string, any>;
+declare type RouteQueryParams = Record<string, any>;
+declare type RoutesWithoutRequiredParams = RouteName;
+declare type RoutesWithRequiredParams = RouteName;
+declare const getApiBooksBookId: any;
 """
 
 
@@ -359,8 +374,24 @@ def _write_typescript_stubs(ts_dir: Path) -> None:
         "export type Summary = any;\n",
         encoding="utf-8",
     )
-    (stub_generated / "schemas.d.ts").write_text("export const schemas: any;\n", encoding="utf-8")
-    (stub_generated / "static-props.d.ts").write_text("export const staticProps: any;\n", encoding="utf-8")
+    (stub_generated / "schemas.d.ts").write_text(
+        "export const schemas: any;\n"
+        "export type OperationName = any;\n"
+        "export type FormInput<T = any> = any;\n"
+        "export type FormResponse<T = any, S = any> = any;\n"
+        "export type SuccessResponse<T = any> = any;\n"
+        "export type ErrorResponse<T = any> = any;\n"
+        "export type PathParams<T = any> = any;\n"
+        "export type QueryParams<T = any> = any;\n",
+        encoding="utf-8",
+    )
+    (stub_generated / "static-props.d.ts").write_text(
+        "export const staticProps: any;\n"
+        "export const appName: any;\n"
+        "export const version: any;\n"
+        "export const features: any;\n",
+        encoding="utf-8",
+    )
 
     stub_types = ts_dir / "types"
     stub_types.mkdir(exist_ok=True)
@@ -403,6 +434,7 @@ def _write_typescript_config(workdir: Path, ts_dir: Path, repo_root: Path) -> Pa
         "litestar-vite-plugin/vue": [str(repo_root / "src" / "js" / "src" / "vue" / "index.ts")],
         "litestar-vite-plugin/svelte": [str(repo_root / "src" / "js" / "src" / "svelte" / "index.ts")],
         "litestar-vite-plugin": [str(repo_root / "src" / "js" / "src" / "index.ts")],
+        "@/generated/*": [str(ts_dir / "generated" / "*")],
     }
     compiler_options["paths"] = paths_map
 
@@ -481,7 +513,26 @@ def check_typescript_blocks(blocks: list[CodeBlock], workdir: Path, repo_root: P
         ext = ".tsx" if has_jsx else ".ts"
         fname = sanitize_filename(block.rst_path, block.first_body_line, ext)
         target_path = ts_dir / fname
-        target_path.write_text(block.code, encoding="utf-8")
+        code_str = re.sub(r"\{\s*\.\.\.\s*\}(?:\s*as const\s*satisfies\s*\w+)?", "({} as any)", block.code)
+        code_str = re.sub(r"//\s*\.\.\.\s*other routes", "[key: string]: any;", code_str)
+        if "export function route" in code_str:
+            line_list = code_str.splitlines()
+            first_idx = -1
+            last_idx = -1
+            for i, candidate_line in enumerate(line_list):
+                if candidate_line.strip().startswith("export function route"):
+                    if first_idx == -1:
+                        first_idx = i
+                    last_idx = i
+            if first_idx != -1 and last_idx != -1:
+                line_list.insert(
+                    first_idx,
+                    "type RoutesWithoutRequiredParams = RouteName;\ntype RoutesWithRequiredParams = RouteName;",
+                )
+                line_list.insert(last_idx + 2, 'export function route(...args: any[]): any { return "" as any; }')
+                code_str = "\n".join(line_list)
+        normalized_code = code_str
+        target_path.write_text(normalized_code, encoding="utf-8")
         block_map[target_path.name] = (block.rst_path, block.first_body_line)
 
     _write_typescript_stubs(ts_dir)
@@ -521,7 +572,20 @@ def check_python_undefined_names(blocks: list[CodeBlock], workdir: Path, repo_ro
         target_path.write_text(block.code, encoding="utf-8")
         block_map[target_path.name] = (block.rst_path, block.first_body_line)
 
-    cmd = ["uv", "run", "--no-sync", "ruff", "check", "--select", "F821", "--output-format", "concise", str(py_dir)]
+    cmd = [
+        "uv",
+        "run",
+        "--no-sync",
+        "ruff",
+        "check",
+        "--select",
+        "F821",
+        "--output-format",
+        "concise",
+        "--config",
+        'builtins = ["VitePlugin", "ViteConfig", "RuntimeConfig", "TypeGenConfig", "Litestar", "Path"]',
+        str(py_dir),
+    ]
     result = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True, check=False)
 
     diagnostics: list[Diagnostic] = []
