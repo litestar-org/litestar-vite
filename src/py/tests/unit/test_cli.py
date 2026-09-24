@@ -4,6 +4,7 @@ import os
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
+from textwrap import dedent
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock, patch
@@ -1203,3 +1204,95 @@ def test_cli_print_recommended_config_tanstack_includes_extra_commands(capsys: p
     assert "TypeGenConfig" in output
     assert "extra_commands" in output
     assert "tsr" in output
+
+
+def test_cli_print_recommended_config_enable_types_false(capsys: pytest.CaptureFixture[str]) -> None:
+    _print_recommended_config("react", "src", "public", enable_types=False)
+    output = capsys.readouterr().out
+    assert "types=False" in output
+    assert "types=True" not in output
+
+
+def test_cli_print_recommended_config_tanstack_enable_types_false_omits_typegen(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _print_recommended_config("react-tanstack", "src", "public", enable_types=False)
+    output = capsys.readouterr().out
+    assert "types=False" in output
+    assert "TypeGenConfig" not in output
+
+
+def test_cli_vite_init_auto_updates_vite_config(tmp_path: Path) -> None:
+    app_file = tmp_path / "app.py"
+    app_file.write_text(
+        dedent(
+            """\
+            from litestar import Litestar
+            from litestar_vite import VitePlugin, ViteConfig
+
+            vite_config = ViteConfig()
+            app = Litestar(plugins=[VitePlugin(config=vite_config)])
+            """
+        )
+    )
+    app = _make_app(tmp_path)
+    env = LitestarEnv(app_path="app:app", app=app, cwd=tmp_path)
+    ctx = SimpleNamespace(obj=env)
+
+    with patch("litestar_vite.cli.generate_project", return_value=[tmp_path / "file.txt"]):
+        _unwrap_command(vite_init)(
+            ctx,
+            template="react",
+            vite_port=None,
+            enable_ssr=None,
+            asset_url=None,
+            root_path=tmp_path,
+            frontend_dir=".",
+            bundle_path=None,
+            resource_path=None,
+            static_path=None,
+            tailwind=False,
+            enable_types=False,
+            generate_zod=False,
+            generate_client=False,
+            overwrite=True,
+            verbose=False,
+            no_prompt=True,
+            no_install=True,
+        )
+
+    content = app_file.read_text()
+    assert 'mode="template"' in content
+    assert "resource_dir=" in content
+
+
+def test_cli_vite_init_falls_back_when_no_vite_config(tmp_path: Path) -> None:
+    app_file = tmp_path / "app.py"
+    app_file.write_text("from litestar import Litestar\napp = Litestar()\n")
+    app = _make_app(tmp_path)
+    env = LitestarEnv(app_path="app:app", app=app, cwd=tmp_path)
+    ctx = SimpleNamespace(obj=env)
+
+    with patch("litestar_vite.cli._print_recommended_config") as mock_print:
+        with patch("litestar_vite.cli.generate_project", return_value=[tmp_path / "file.txt"]):
+            _unwrap_command(vite_init)(
+                ctx,
+                template="react",
+                vite_port=None,
+                enable_ssr=None,
+                asset_url=None,
+                root_path=tmp_path,
+                frontend_dir=".",
+                bundle_path=None,
+                resource_path=None,
+                static_path=None,
+                tailwind=False,
+                enable_types=False,
+                generate_zod=False,
+                generate_client=False,
+                overwrite=True,
+                verbose=False,
+                no_prompt=True,
+                no_install=True,
+            )
+        mock_print.assert_called_once()

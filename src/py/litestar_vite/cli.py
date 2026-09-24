@@ -19,6 +19,7 @@ from rich.prompt import Confirm, Prompt
 
 from litestar_vite.codegen import encode_deterministic_json, generate_routes_json, generate_routes_ts, write_if_changed
 from litestar_vite.config import DeployConfig, ExternalDevServer, LoggingConfig, TypeGenConfig, ViteConfig
+from litestar_vite.config_updater import find_app_file, format_vite_config, update_vite_config_in_file
 from litestar_vite.deploy import ViteDeployer, format_bytes
 from litestar_vite.doctor import ViteDoctor
 from litestar_vite.exceptions import ViteExecutionError
@@ -103,7 +104,9 @@ def _apply_cli_log_level(config: ViteConfig, *, verbose: bool = False, quiet: bo
         config.reset_executor()
 
 
-def _print_recommended_config(template_name: str, resource_dir: str, bundle_dir: str, frontend_dir: str = ".") -> None:
+def _print_recommended_config(
+    template_name: str, resource_dir: str, bundle_dir: str, frontend_dir: str = ".", enable_types: bool | None = None
+) -> None:
     """Print recommended ViteConfig for the scaffolded template.
 
     Args:
@@ -111,45 +114,78 @@ def _print_recommended_config(template_name: str, resource_dir: str, bundle_dir:
         resource_dir: The resource directory used.
         bundle_dir: The bundle directory used.
         frontend_dir: The subdirectory where the frontend is located.
+        enable_types: Explicit enable_types flag if provided.
     """
-    spa_templates = {"react-router", "react-tanstack"}
-    mode = "spa" if template_name in spa_templates else "template"
-
-    # Templates whose Vite plugins generate code outside the litestar pipeline
-    extra_commands_templates: dict[str, str] = {
-        "react-tanstack": '    types=TypeGenConfig(extra_commands=[["tsr", "generate"]]),'
-    }
-
-    root_path = "Path(__file__).parent"
-    if frontend_dir and frontend_dir != ".":
-        root_path = f'Path(__file__).parent / "{frontend_dir}"'
-
-    types_line = extra_commands_templates.get(template_name, "    types=True,")
+    need_typegen = enable_types is not False and template_name == "react-tanstack"
     imports = "from litestar_vite import ViteConfig, PathConfig"
-    if template_name in extra_commands_templates:
+    if need_typegen:
         imports = "from litestar_vite import ViteConfig, PathConfig, TypeGenConfig"
+
+    config_call = format_vite_config(
+        template_name=template_name,
+        resource_dir=resource_dir,
+        bundle_dir=bundle_dir,
+        frontend_dir=frontend_dir,
+        enable_types=enable_types,
+    )
 
     config_snippet = dedent(
         f"""\
         from pathlib import Path
         {imports}
 
-        vite_config = ViteConfig(
-            mode="{mode}",
-            dev_mode=True,
-        {types_line}
-            paths=PathConfig(
-                root={root_path},
-                resource_dir="{resource_dir}",
-                bundle_dir="{bundle_dir}",
-            ),
-        )
+        vite_config = {config_call}
         """
     )
 
     console.print("\n[bold cyan]Recommended ViteConfig:[/]")
     console.print(Panel(config_snippet, title="app.py", border_style="dim"))
     console.print("[dim]Note: set dev_mode=False in production; set types=False to disable TypeScript generation.[/]")
+
+
+def _apply_or_print_recommended_config(
+    env: "LitestarEnv",
+    template_name: str,
+    resource_dir: str,
+    bundle_dir: str,
+    frontend_dir: str = ".",
+    enable_types: bool | None = None,
+) -> None:
+    """Attempt to auto-update ViteConfig in entrypoint file; fall back to printing snippet.
+
+    Args:
+        env: Litestar CLI environment.
+        template_name: The name of the template that was scaffolded.
+        resource_dir: The resource directory used.
+        bundle_dir: The bundle directory used.
+        frontend_dir: The subdirectory where the frontend is located.
+        enable_types: Explicit enable_types flag if provided.
+    """
+    app_file = find_app_file(env)
+    updated = False
+    if app_file is not None:
+        try:
+            updated = update_vite_config_in_file(
+                file_path=app_file,
+                template_name=template_name,
+                resource_dir=resource_dir,
+                bundle_dir=bundle_dir,
+                frontend_dir=frontend_dir,
+                enable_types=enable_types,
+            )
+        except (OSError, SyntaxError, ValueError, TypeError):
+            updated = False
+
+    if updated and app_file is not None:
+        try:
+            rel_path = app_file.relative_to(env.cwd)
+        except ValueError:
+            rel_path = app_file
+        console.print(f"\n[bold green]✓ Updated ViteConfig in {rel_path}[/]")
+        console.print("[dim]Note: set dev_mode=False in production[/]")
+    else:
+        console.print("\n[dim]Could not automatically update ViteConfig in entrypoint file. Recommended config:[/]")
+        _print_recommended_config(template_name, resource_dir, bundle_dir, frontend_dir, enable_types=enable_types)
 
 
 def _coerce_option_value(value: str) -> object:
@@ -713,7 +749,14 @@ def vite_init(
 
     console.print("\n[bold green]Vite initialization complete![/]")
 
-    _print_recommended_config(template, context.resource_dir, context.bundle_dir, frontend_dir)
+    _apply_or_print_recommended_config(
+        env=env,
+        template_name=template,
+        resource_dir=context.resource_dir,
+        bundle_dir=context.bundle_dir,
+        frontend_dir=frontend_dir,
+        enable_types=enable_types,
+    )
 
     next_steps_cmd = _format_command(config.run_command)
     next_steps = f"\n[dim]Next steps:\n  cd {root_path}\n  {next_steps_cmd}"
