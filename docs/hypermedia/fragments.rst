@@ -92,7 +92,6 @@ Complete Litestar HTMX Controller
 
 The following complete controller demonstrates how to serve a base HTML shell, return server-rendered React and Vue component fragments on GET and POST requests, and handle HTMX partial updates:
 
-.. docs-example: skip
 .. code-block:: python
 
    from pathlib import Path

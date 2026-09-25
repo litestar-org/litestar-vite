@@ -2,6 +2,7 @@ import fs from "node:fs"
 import net from "node:net"
 import readline from "node:readline"
 import { PassThrough } from "node:stream"
+import { renderFragment } from "./fragments/renderer.js"
 
 interface IPCRequest {
   id?: number | string
@@ -16,6 +17,7 @@ interface IPCRequest {
   }
   component?: string
   props?: Record<string, unknown>
+  mode?: "static" | "island"
   entrypoint?: string
 }
 
@@ -33,6 +35,15 @@ async function handleRender(method: string, params?: Record<string, unknown>): P
   switch (method) {
     case "ping":
       return { status: "pong", timestamp: Date.now() }
+    case "render_fragment": {
+      const componentPath = typeof params?.component === "string" ? params.component : ""
+      if (!componentPath) {
+        throw new Error("render_fragment requires a 'component' parameter")
+      }
+      const props = (typeof params?.props === "object" && params?.props !== null ? params.props : {}) as Record<string, unknown>
+      const mode = params?.mode === "island" ? "island" : "static"
+      return await renderFragment({ componentPath, props, mode })
+    }
     case "render": {
       if (typeof params?.entrypoint === "string") {
         try {

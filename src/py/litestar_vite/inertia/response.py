@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from litestar.connection.base import AuthT, StateT, UserT
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
 
-    from litestar_vite.ipc.base import BaseIPCTransport
+    from litestar_vite.ipc import BaseIPCTransport
 
 logger = logging.getLogger("litestar_vite.inertia")
 _INERTIA_PAGE_SCRIPT_PATTERN = re.compile(r"<script[^>]+(?:data-page=|id=[\"']app_page[\"'])", re.IGNORECASE)
@@ -528,18 +528,23 @@ class InertiaResponse(Response[T]):
         if transport is None:
             transport = getattr(inertia_plugin, "_ipc_transport", None)
 
-        if transport is None and ssr_config.url:
-            transport = ssr_config.url
-        elif transport is None:
-            from litestar_vite.ipc import IPCTransportManager
+        if transport is None:
+            if ssr_config.transport == "uds" and ssr_config.socket_path is not None:
+                from litestar_vite.ipc import UnixSocketIPCTransport
 
-            transport = IPCTransportManager.create_transport(
-                mode=ssr_config.transport,
-                command=ssr_config.command,
-                socket_path=ssr_config.socket_path,
-                url=ssr_config.url,
-                cwd=ssr_config.cwd,
-            )
+                transport = UnixSocketIPCTransport(socket_path=ssr_config.socket_path)
+            elif ssr_config.url:
+                transport = ssr_config.url
+            else:
+                from litestar_vite.ipc import IPCTransportManager
+
+                transport = IPCTransportManager.create_transport(
+                    mode=ssr_config.transport,
+                    command=ssr_config.command,
+                    socket_path=ssr_config.socket_path,
+                    url=ssr_config.url,
+                    cwd=ssr_config.cwd,
+                )
 
         try:
             client = getattr(inertia_plugin, "ssr_client", None)
@@ -1029,34 +1034,41 @@ async def _do_ssr_request(
         An _InertiaSSRResult with head and body HTML.
     """
     if isinstance(transport, str):
-        from litestar_vite._typing import ensure_httpx
+        from litestar_vite._typing import HTTPX_INSTALLED
 
-        ensure_httpx("Inertia SSR")
-        import httpx
+        if client is not None or HTTPX_INSTALLED:
+            body = encode_json(page, serializer=get_serializer(type_encoders))
+            headers = {"content-type": "application/json"}
+            try:
+                async with _acquire_ssr_client(client) as resolved_client:
+                    response = await resolved_client.post(
+                        transport, content=body, headers=headers, timeout=timeout_seconds
+                    )
+                    response.raise_for_status()
+            except Exception as exc:
+                status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                if status_code is not None:
+                    msg = f"Inertia SSR server at {transport!r} returned HTTP {status_code}. Check the SSR server logs."
+                    raise ImproperlyConfiguredException(msg) from exc
+                if type(exc).__module__.startswith("httpx"):
+                    msg = (
+                        f"Inertia SSR is enabled but the SSR server is not reachable at {transport!r}. "
+                        "Start the SSR server (Node) or disable InertiaConfig.ssr."
+                    )
+                    raise ImproperlyConfiguredException(msg) from exc
+                raise
 
-        body = encode_json(page, serializer=get_serializer(type_encoders))
-        headers = {"content-type": "application/json"}
-        try:
-            async with _acquire_ssr_client(client) as resolved_client:
-                response = await resolved_client.post(transport, content=body, headers=headers, timeout=timeout_seconds)
-                response.raise_for_status()
-        except httpx.RequestError as exc:
-            msg = (
-                f"Inertia SSR is enabled but the SSR server is not reachable at {transport!r}. "
-                "Start the SSR server (Node) or disable InertiaConfig.ssr."
-            )
-            raise ImproperlyConfiguredException(msg) from exc
-        except httpx.HTTPStatusError as exc:
-            msg = f"Inertia SSR server at {transport!r} returned HTTP {exc.response.status_code}. Check the SSR server logs."
-            raise ImproperlyConfiguredException(msg) from exc
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                msg = f"Inertia SSR server at {transport!r} returned invalid JSON. Check the SSR server logs."
+                raise ImproperlyConfiguredException(msg) from exc
 
-        try:
-            payload = response.json()
-        except ValueError as exc:
-            msg = f"Inertia SSR server at {transport!r} returned invalid JSON. Check the SSR server logs."
-            raise ImproperlyConfiguredException(msg) from exc
+            return _parse_inertia_ssr_payload(payload, transport)
 
-        return _parse_inertia_ssr_payload(payload, transport)
+        from litestar_vite.ipc import IPCTransportManager
+
+        transport = IPCTransportManager.create_transport(mode="tcp", url=transport)
 
     serializer = get_serializer(type_encoders)
     encoded_page = decode_json(encode_json(page, serializer=serializer))

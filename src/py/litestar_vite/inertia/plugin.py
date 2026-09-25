@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from litestar.config.app import AppConfig
 
     from litestar_vite.config import InertiaConfig
-    from litestar_vite.ipc import BaseIPCTransport
+    from litestar_vite.ipc import BaseIPCTransport, SSRCircuitBreaker
 
 
 class InertiaPlugin(InitPlugin):
@@ -56,13 +56,14 @@ class InertiaPlugin(InitPlugin):
         )
     """
 
-    __slots__ = ("_ipc_transport", "_ssr_client", "config")
+    __slots__ = ("_circuit_breaker", "_ipc_transport", "_ssr_client", "config")
 
     def __init__(self, config: "InertiaConfig") -> None:
         """Initialize the plugin with Inertia configuration."""
         self.config = config
         self._ssr_client: "httpx.AsyncClient | None" = None
         self._ipc_transport: "BaseIPCTransport | None" = None
+        self._circuit_breaker: "SSRCircuitBreaker | None" = None
 
     @asynccontextmanager
     async def lifespan(self, app: "Litestar") -> "AsyncGenerator[None, None]":
@@ -83,27 +84,45 @@ class InertiaPlugin(InitPlugin):
             self._ssr_client = None
 
         ssr_config = self.config.ssr_config
-        if ssr_config is not None and ssr_config.command is not None and ssr_config.auto_start:
-            from litestar_vite.ipc import IPCTransportManager
+        if ssr_config is not None:
+            if ssr_config.circuit_breaker_enabled:
+                from litestar_vite.ipc import SSRCircuitBreaker
 
-            transport = IPCTransportManager.create_transport(
-                mode=ssr_config.transport,
-                command=ssr_config.command,
-                socket_path=ssr_config.socket_path,
-                url=ssr_config.url,
-                cwd=ssr_config.cwd,
-            )
-            await transport.start()
-            self._ipc_transport = transport
+                self._circuit_breaker = SSRCircuitBreaker(
+                    failure_threshold=ssr_config.circuit_breaker_failure_threshold,
+                    reset_timeout=ssr_config.circuit_breaker_reset_timeout,
+                )
+
+            if ssr_config.transport == "uds" and ssr_config.socket_path is not None:
+                from litestar_vite.ipc import UnixSocketIPCTransport
+
+                self._ipc_transport = UnixSocketIPCTransport(socket_path=ssr_config.socket_path)
+            elif (
+                ssr_config.transport == "stdio"
+                and ssr_config.command is not None
+                and ssr_config.auto_start
+                and ("--stdio" in ssr_config.command or ssr_config.url is None)
+            ):
+                from litestar_vite.ipc import StdioIPCTransport
+
+                transport = StdioIPCTransport(command=ssr_config.command, cwd=ssr_config.cwd)
+                await transport.start()
+                self._ipc_transport = transport
         try:
             yield
         finally:
             if self._ipc_transport is not None:
                 await self._ipc_transport.close()
                 self._ipc_transport = None
+            self._circuit_breaker = None
             if self._ssr_client is not None:
                 await self._ssr_client.aclose()
                 self._ssr_client = None
+
+    @property
+    def circuit_breaker(self) -> "SSRCircuitBreaker | None":
+        """Return the active SSRCircuitBreaker instance."""
+        return self._circuit_breaker
 
     @property
     def ipc_transport(self) -> "BaseIPCTransport | None":

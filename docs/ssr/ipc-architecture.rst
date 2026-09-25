@@ -135,7 +135,6 @@ Python Configuration Examples
 
 Configuring IPC SSR within a Litestar application is straightforward:
 
-.. docs-example: skip
 .. code-block:: python
 
    from pathlib import Path
@@ -158,20 +157,15 @@ Configuring IPC SSR within a Litestar application is straightforward:
 
 To customize the underlying IPC transport or worker parameters directly:
 
-.. docs-example: skip
 .. code-block:: python
 
    from litestar_vite.ipc import StdioIPCTransport, UnixSocketIPCTransport
 
-   # Stdio worker transport for local process management
    stdio_transport = StdioIPCTransport(
        command=["node", "resources/bootstrap/ssr/ssr.js", "--stdio"],
-       timeout=5.0,
-       max_retries=3,
+       max_restarts=3,
    )
 
-   # Unix Domain Socket transport for high-speed POSIX daemons
    uds_transport = UnixSocketIPCTransport(
        socket_path="/tmp/litestar-ssr.sock",
-       timeout=5.0,
    )

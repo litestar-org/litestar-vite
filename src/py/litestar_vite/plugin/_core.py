@@ -201,26 +201,43 @@ class VitePlugin(InitPlugin, CLIPlugin):
     def _run_ssr_health_check(self, ssr_config: "InertiaSSRConfig") -> None:
         """Poll the SSR url until it responds (or until timeout)."""
         import time
+        import urllib.error
+        import urllib.request
         from urllib.parse import urlparse
+
+        from litestar_vite._typing import HTTPX_INSTALLED
 
         deadline = time.monotonic() + ssr_config.health_check_timeout
         parsed = urlparse(str(ssr_config.url or ""))
         scheme = parsed.scheme.decode("ascii") if isinstance(parsed.scheme, bytes) else str(parsed.scheme)
         netloc = parsed.netloc.decode("ascii") if isinstance(parsed.netloc, bytes) else str(parsed.netloc)
         origin = f"{scheme}://{netloc}"
-        from litestar_vite._typing import ensure_httpx
 
-        ensure_httpx("Inertia SSR health check")
-        import httpx
+        if HTTPX_INSTALLED:
+            import httpx
 
-        while time.monotonic() < deadline:
-            try:
-                response = httpx.get(origin, timeout=2.0)
-                if response.status_code < 500:
-                    return
-            except httpx.RequestError:
-                pass
-            time.sleep(0.25)
+            while time.monotonic() < deadline:
+                try:
+                    response = httpx.get(origin, timeout=2.0)
+                    if response.status_code < 500:
+                        return
+                except httpx.RequestError:
+                    pass
+                time.sleep(0.25)
+        else:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            while time.monotonic() < deadline:
+                try:
+                    with opener.open(origin, timeout=2.0) as resp:
+                        if getattr(resp, "status", 200) < 500:
+                            return
+                except urllib.error.HTTPError as exc:
+                    if exc.code < 500:
+                        return
+                except OSError:
+                    pass
+                time.sleep(0.25)
+
         log_warn(
             f"Inertia SSR server did not become ready within {ssr_config.health_check_timeout}s.",
             level=self._config.logging_config.level,
@@ -820,20 +837,29 @@ class VitePlugin(InitPlugin, CLIPlugin):
         Polls the dev server URL for up to 5 seconds.
         """
         import time
+        import urllib.request
 
-        from litestar_vite._typing import ensure_httpx
-
-        ensure_httpx("Vite dev server health check")
-        import httpx
+        from litestar_vite._typing import HTTPX_INSTALLED
 
         url = f"{self._config.protocol}://{self._config.host}:{self._config.port}/__vite_ping"
-        for _ in range(50):
-            try:
-                httpx.get(url, timeout=0.1)
-            except httpx.HTTPError:
-                time.sleep(0.1)
-            else:
-                return
+        if HTTPX_INSTALLED:
+            import httpx
+
+            for _ in range(50):
+                try:
+                    httpx.get(url, timeout=0.1)
+                except httpx.HTTPError:
+                    time.sleep(0.1)
+                else:
+                    return
+        else:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            for _ in range(50):
+                try:
+                    with opener.open(url, timeout=0.1):
+                        return
+                except OSError:
+                    time.sleep(0.1)
         log_fail("Vite dev server did not become ready.")
 
     def _run_health_check(self) -> None:
@@ -858,28 +884,47 @@ class VitePlugin(InitPlugin, CLIPlugin):
             True if SSR server is ready, False if timeout reached.
         """
         import time
+        import urllib.error
+        import urllib.request
 
-        from litestar_vite._typing import ensure_httpx
-
-        ensure_httpx("SSR framework health check")
-        import httpx
+        from litestar_vite._typing import HTTPX_INSTALLED
 
         start = time.time()
 
-        while time.time() - start < timeout:
-            if hotfile_path.exists():
-                try:
-                    url = read_hotfile_url(hotfile_path)
-                    if url:
-                        resp = httpx.get(url, timeout=0.5, follow_redirects=True)
-                        if resp.status_code < 500:
-                            return True
-                except OSError:
-                    pass
-                except httpx.HTTPError:
-                    pass
+        if HTTPX_INSTALLED:
+            import httpx
 
-            time.sleep(0.1)
+            while time.time() - start < timeout:
+                if hotfile_path.exists():
+                    try:
+                        url = read_hotfile_url(hotfile_path)
+                        if url:
+                            resp = httpx.get(url, timeout=0.5, follow_redirects=True)
+                            if resp.status_code < 500:
+                                return True
+                    except OSError:
+                        pass
+                    except httpx.HTTPError:
+                        pass
+
+                time.sleep(0.1)
+        else:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            while time.time() - start < timeout:
+                if hotfile_path.exists():
+                    try:
+                        url = read_hotfile_url(hotfile_path)
+                        if url:
+                            with opener.open(url, timeout=0.5) as resp:
+                                if getattr(resp, "status", 200) < 500:
+                                    return True
+                    except urllib.error.HTTPError as exc:
+                        if exc.code < 500:
+                            return True
+                    except OSError:
+                        pass
+
+                time.sleep(0.1)
 
         log_fail(f"SSR framework server did not become ready within {timeout}s.")
         return False
@@ -949,7 +994,18 @@ class VitePlugin(InitPlugin, CLIPlugin):
         self._export_types_sync(app)
 
         ssr_config = self._resolved_ssr_config()
-        ssr_should_start = ssr_config is not None and ssr_config.command is not None and ssr_config.auto_start
+        ssr_uses_stdio_ipc = (
+            ssr_config is not None
+            and ssr_config.transport == "stdio"
+            and ssr_config.command is not None
+            and ("--stdio" in ssr_config.command or ssr_config.url is None)
+        )
+        ssr_should_start = (
+            ssr_config is not None
+            and ssr_config.command is not None
+            and ssr_config.auto_start
+            and not ssr_uses_stdio_ipc
+        )
         ssr_process: ViteProcess | None = None
 
         if self._config.is_dev_mode and self._config.runtime.start_dev_server:

@@ -887,7 +887,7 @@ class ViteProxyMiddleware(AbstractMiddleware):
         headers = _filter_hop_by_hop_headers(scope.get("headers", []))
         request_body = _stream_request_body(receive) if method in _BODY_METHODS else None
 
-        client = self._plugin.proxy_client if self._plugin is not None else None
+        client = getattr(self._plugin, "_proxy_client", None) if self._plugin is not None else None
 
         response_started = False
 
@@ -903,7 +903,7 @@ class ViteProxyMiddleware(AbstractMiddleware):
                     method, url, headers=headers, content=request_body, timeout=10.0, follow_redirects=False
                 ) as upstream_resp:
                     await _proxy_stream_response(upstream_resp, _safe_send)
-            elif httpx is not None and getattr(httpx.AsyncClient, "__name__", "") != "AsyncClient":
+            elif httpx is not None:
                 async with (
                     httpx.AsyncClient(http2=check_http2_support(self.http2), trust_env=False) as fallback_client,
                     fallback_client.stream(
@@ -1433,7 +1433,7 @@ class SSRProxyMiddleware(AbstractMiddleware):
         headers = _filter_hop_by_hop_headers(scope.get("headers", []))
         request_body = _stream_request_body(receive) if method in _BODY_METHODS else None
 
-        client = self._plugin.proxy_client if self._plugin is not None else None
+        client = getattr(self._plugin, "_proxy_client", None) if self._plugin is not None else None
 
         response_started = False
 
@@ -1449,7 +1449,7 @@ class SSRProxyMiddleware(AbstractMiddleware):
                     method, url, headers=headers, content=request_body, timeout=30.0, follow_redirects=False
                 ) as upstream_resp:
                     await _proxy_stream_response(upstream_resp, _safe_send)
-            elif httpx is not None and getattr(httpx.AsyncClient, "__name__", "") != "AsyncClient":
+            elif httpx is not None:
                 async with (
                     httpx.AsyncClient(
                         http2=check_http2_support(self._http2), timeout=30.0, trust_env=False
@@ -1557,7 +1557,7 @@ def create_ssr_http_proxy_handler(
         headers_to_forward = _filter_hop_by_hop_headers(request.headers.items())
         request_body = request.stream() if request.method in _BODY_METHODS else None
 
-        client = plugin.proxy_client if plugin is not None else None
+        client = getattr(plugin, "_proxy_client", None) if plugin is not None else None
 
         if client is not None and hasattr(client, "stream"):
             stream_context: Any = None
@@ -1599,7 +1599,7 @@ def create_ssr_http_proxy_handler(
 
             return asgi_response_app
 
-        if httpx is not None and getattr(httpx.AsyncClient, "__name__", "") != "AsyncClient":
+        if httpx is not None:
             http_client = httpx.AsyncClient(http2=check_http2_support(http2), timeout=30.0, trust_env=False)
             stream_context = http_client.stream(
                 request.method, url, headers=headers_to_forward, content=request_body, follow_redirects=False
@@ -1611,7 +1611,9 @@ def create_ssr_http_proxy_handler(
                 return cast(
                     "ASGIApp",
                     Response(
-                        content=str(exc).encode(),
+                        content=f"SSR server not running at {target_url}".encode()
+                        if isinstance(exc, _CONNECT_ERRORS)
+                        else str(exc).encode(),
                         status_code=503 if isinstance(exc, _CONNECT_ERRORS) else 502,
                         media_type="text/plain",
                     ),

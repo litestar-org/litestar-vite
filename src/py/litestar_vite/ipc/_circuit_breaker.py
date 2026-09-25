@@ -25,15 +25,16 @@ class SSRCircuitBreaker:
 
     __slots__ = ("_cooldown", "_failure_count", "_failure_threshold", "_last_state_change", "_lock", "_state")
 
-    def __init__(self, failure_threshold: int = 3, cooldown: float = 30.0) -> None:
+    def __init__(self, failure_threshold: int = 3, cooldown: float = 30.0, reset_timeout: float | None = None) -> None:
         """Initialize the circuit breaker.
 
         Args:
             failure_threshold: Number of consecutive failures before opening the circuit.
             cooldown: Time in seconds to wait in OPEN state before transitioning to HALF_OPEN.
+            reset_timeout: Optional alias for cooldown duration in seconds.
         """
         self._failure_threshold = failure_threshold
-        self._cooldown = cooldown
+        self._cooldown = reset_timeout if reset_timeout is not None else cooldown
         self._failure_count = 0
         self._last_state_change = 0.0
         self._state = CircuitState.CLOSED
@@ -79,6 +80,15 @@ class SSRCircuitBreaker:
         """
         return self._cooldown
 
+    @property
+    def reset_timeout(self) -> float:
+        """Return the configured reset timeout in seconds.
+
+        Returns:
+            Reset timeout duration in seconds.
+        """
+        return self._cooldown
+
     def can_execute(self) -> bool:
         """Determine whether an outbound request is permitted through the breaker.
 
@@ -88,13 +98,26 @@ class SSRCircuitBreaker:
         current_state = self.state
         return current_state in (CircuitState.CLOSED, CircuitState.HALF_OPEN)
 
+    def allow_request(self) -> bool:
+        """Return whether an outbound request is permitted through the circuit breaker.
+
+        Returns:
+            True if request is allowed, False if breaker is open.
+        """
+        return self.can_execute()
+
     def record_success(self) -> None:
         """Record a successful execution, resetting failures and closing the circuit."""
         self._failure_count = 0
         self._state = CircuitState.CLOSED
 
-    def record_failure(self) -> None:
-        """Record an execution failure, potentially tripping the circuit to OPEN."""
+    def record_failure(self, exc: BaseException | None = None) -> None:
+        """Record an execution failure, potentially tripping the circuit to OPEN.
+
+        Args:
+            exc: Optional exception that caused the failure.
+        """
+        _ = exc
         self._failure_count += 1
         if self._state == CircuitState.HALF_OPEN or self._failure_count >= self._failure_threshold:
             self._state = CircuitState.OPEN

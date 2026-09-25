@@ -8,7 +8,7 @@ from litestar.exceptions import ImproperlyConfiguredException
 
 if TYPE_CHECKING:
     from litestar_vite.config import ViteConfig
-    from litestar_vite.ipc.base import BaseIPCTransport
+    from litestar_vite.ipc import BaseIPCTransport
     from litestar_vite.loader import ViteAssetLoader
 
 __all__ = ("FragmentEngine",)
@@ -44,7 +44,7 @@ class FragmentEngine:
         """
         if self._transport is None:
             try:
-                from litestar_vite.ipc.manager import IPCTransportManager
+                from litestar_vite.ipc import IPCTransportManager
 
                 self._transport = IPCTransportManager.create_transport()
             except (ImportError, AttributeError) as exc:
@@ -89,10 +89,10 @@ class FragmentEngine:
         if not manifest:
             return []
 
-        normalized_key = Path(component).as_posix().lstrip("/")
+        normalized_key = Path(component.replace("\\", "/")).as_posix().lstrip("/")
         manifest_entry = manifest.get(normalized_key)
         if manifest_entry is None and hasattr(self._config, "resource_dir"):
-            resource_prefix = Path(self._config.resource_dir).as_posix().strip("/") + "/"
+            resource_prefix = Path(str(self._config.resource_dir).replace("\\", "/")).as_posix().strip("/") + "/"
             if not normalized_key.startswith(resource_prefix):
                 manifest_entry = manifest.get(f"{resource_prefix}{normalized_key}")
 

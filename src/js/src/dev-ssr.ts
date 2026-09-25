@@ -1,5 +1,6 @@
 import type { Plugin, ViteDevServer } from "vite"
 import { createServerModuleRunner } from "vite"
+import { renderFragment } from "./fragments/renderer.js"
 import { manageSsrCache } from "./shared/ssr-cache.js"
 import type { DevSsrOptions, SsrRenderRequest, SsrRenderResponse } from "./shared/ssr-types.js"
 
@@ -56,6 +57,30 @@ export function litestarViteSsrPlugin(options: DevSsrOptions = {}): Plugin {
             const rawBody = Buffer.concat(chunks).toString("utf-8")
             const payload: SsrRenderRequest = rawBody ? JSON.parse(rawBody) : {}
             requestId = payload.id
+
+            if (payload.method === "render_fragment" || payload.type === "fragment") {
+              const params = (payload.params ?? payload) as Record<string, unknown>
+              const rawComponent = typeof params.component === "string" ? params.component : ""
+              if (!rawComponent) {
+                throw new Error("render_fragment requires a 'component' parameter.")
+              }
+              const props = (typeof params.props === "object" && params.props !== null ? params.props : {}) as Record<string, unknown>
+              const mode = params.mode === "island" ? "island" : "static"
+              const fragmentRes = await renderFragment({ componentPath: rawComponent, props, mode }, (spec: string) => {
+                const normalized = spec.replace(/\\/g, "/")
+                const resolved = normalized.startsWith("/") ? normalized : `/${normalized}`
+                return runner.import(resolved)
+              })
+              const response: SsrRenderResponse = {
+                id: payload.id,
+                result: { ...fragmentRes },
+              }
+              res.statusCode = 200
+              res.setHeader("Content-Type", "application/json; charset=utf-8")
+              res.end(JSON.stringify(response))
+              return
+            }
+
             const rawEntry = payload.entrypoint ?? defaultEntrypoint
             const normalizedEntry = rawEntry.replace(/\\/g, "/")
             const resolvedEntry = normalizedEntry.startsWith("/") ? normalizedEntry : `/${normalizedEntry}`
@@ -66,7 +91,7 @@ export function litestarViteSsrPlugin(options: DevSsrOptions = {}): Plugin {
               throw new Error(`Module '${resolvedEntry}' does not export a default function or 'render' function.`)
             }
 
-            const pageOrProps = payload.page ?? payload.props ?? {}
+            const pageOrProps = payload.page ?? payload.props ?? (payload.params as Record<string, unknown> | undefined) ?? {}
             const result = await renderFn(pageOrProps)
 
             const response: SsrRenderResponse = {

@@ -83,7 +83,6 @@ With direct asset URLs enabled, Litestar only generates the HTML page shell cont
 
 To enable direct URLs in your configuration:
 
-.. docs-example: skip
 .. code-block:: python
 
    from pathlib import Path

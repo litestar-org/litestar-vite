@@ -143,16 +143,29 @@ class IPCTransportManager:
         Raises:
             UnsupportedPlatformError: If Unix domain socket is requested on Windows.
         """
-        if url:
-            parsed = urlparse(url)
-            port = parsed.port or (443 if parsed.scheme == "https" else 13714)
-            return TCPStreamIPCTransport(host=parsed.hostname or "127.0.0.1", port=port, path=parsed.path or "/render")
+        resolved_mode = mode
+        if resolved_mode == "auto":
+            if socket_path:
+                resolved_mode = "uds"
+            elif command:
+                resolved_mode = "stdio"
+            elif url:
+                resolved_mode = "tcp"
+            else:
+                resolved_mode = "stdio"
 
-        if socket_path:
+        if resolved_mode == "uds":
             if os.name == "nt":
                 msg = "Unix domain sockets are not supported on Windows. Configure a stdio command or TCP URL instead."
                 raise UnsupportedPlatformError(msg)
+            if socket_path is None:
+                msg = "Unix domain socket transport requires 'socket_path'."
+                raise ValueError(msg)
             return UnixSocketIPCTransport(socket_path=socket_path)
 
-        cmd = command or ["node", "ssr.js"]
-        return StdioIPCTransport(command=cmd, cwd=cwd)
+        if resolved_mode == "tcp":
+            parsed = urlparse(url or "http://127.0.0.1:13714/render")
+            port = parsed.port or (443 if parsed.scheme == "https" else 13714)
+            return TCPStreamIPCTransport(host=parsed.hostname or "127.0.0.1", port=port, path=parsed.path or "/render")
+
+        return StdioIPCTransport(command=command or ["node", "ssr.js"], cwd=cwd)

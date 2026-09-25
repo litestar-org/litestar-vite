@@ -17,7 +17,6 @@ Handler Usage
 
 Return a :class:`ComponentResponse` directly from any Litestar route handler:
 
-.. docs-example: skip
 .. code-block:: python
 
     from litestar import get

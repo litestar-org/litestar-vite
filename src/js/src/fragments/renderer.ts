@@ -14,9 +14,13 @@ export interface RenderFragmentResult {
   css: string[]
 }
 
+function dynamicImport(specifier: string): Promise<any> {
+  return import(/* @vite-ignore */ specifier)
+}
+
 export async function renderFragment(options: RenderFragmentOptions, customImporter?: (specifier: string) => Promise<any>): Promise<RenderFragmentResult> {
   const { componentPath, props = {}, mode = "static", islandId } = options
-  const importer = customImporter || ((spec: string) => import(spec))
+  const importer = customImporter || ((spec: string) => dynamicImport(spec))
   const ext = path.extname(componentPath).toLowerCase()
 
   const module = await importer(componentPath)
@@ -27,25 +31,25 @@ export async function renderFragment(options: RenderFragmentOptions, customImpor
   const css: string[] = []
 
   if (ext === ".tsx" || ext === ".jsx") {
-    const React = await import("react")
-    const ReactDOMServer = await import("react-dom/server")
+    const React = await dynamicImport("react")
+    const ReactDOMServer = await dynamicImport("react-dom/server")
     if (mode === "static" && typeof ReactDOMServer.renderToStaticMarkup === "function") {
       renderedHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(Component, props))
     } else {
       renderedHtml = ReactDOMServer.renderToString(React.createElement(Component, props))
     }
   } else if (ext === ".vue") {
-    const { createSSRApp } = await import("vue")
-    const { renderToString } = await import("vue/server-renderer")
+    const { createSSRApp } = await dynamicImport("vue")
+    const { renderToString } = await dynamicImport("vue/server-renderer")
     const app = createSSRApp(Component, props)
     renderedHtml = await renderToString(app)
   } else if (ext === ".svelte") {
-    const svelteServer = await import("svelte/server")
+    const svelteServer = await dynamicImport("svelte/server")
     const result = svelteServer.render(Component, { props })
     renderedHtml = result.html
     if (result.head) head.push(result.head)
   } else if (ext === ".astro") {
-    const { experimental_AstroContainer } = (await import("astro/container" as string)) as any
+    const { experimental_AstroContainer } = await dynamicImport("astro/container")
     const container = await experimental_AstroContainer.create()
     renderedHtml = await container.renderToString(Component, { props })
   } else {
