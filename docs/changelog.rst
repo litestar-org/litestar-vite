@@ -7,7 +7,34 @@ Notable changes to this project are documented in this file.
 Litestar Vite Changelog
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-0.31.0 - Unreleased
+0.32.0 - 2026-09-25
+-------------------
+
+- Added first-class AsyncAPI 3.0 generation and documentation support, including schema generation
+  for channels, operations, messages, and WebSocket/SSE bindings integrated directly into the
+  Litestar plugin registry. (`#368 <https://github.com/litestar-org/litestar-vite/pull/368>`_)
+- Added cross-platform multi-transport IPC subsystem (``litestar_vite.ipc``) supporting Stdio, Unix
+  Domain Sockets (with macOS 104-byte path mitigation and Windows safeguards), and TCP socket streams
+  with automatic circuit breaking (fail-open client-side hydration fallback). (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
+- Decoupled ``httpx`` from required runtime dependencies into an optional extra (``litestar-vite[proxy]``)
+  in preparation for Litestar 3, implementing a lightweight AnyIO raw byte-streaming reverse proxy fallback. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
+- Added dev-mode direct asset serving (``ViteConfig.dev_mode_direct_urls = True``) to serve assets and HMR
+  directly from the Vite dev server, eliminating the double-hop reverse proxy overhead during development. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
+- Added Vite 6+ ``ModuleRunner`` dev SSR plugin and recursive importer cache invalidation for instant
+  in-memory server-side rendering during development without external SSR daemon processes. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
+- Added server-side UI component fragment rendering engine (``ComponentResponse``, Jinja ``vite_fragment``
+  global, and ``<vite-island>`` custom element) with automatic scoped CSS chunk injection from ``manifest.json``
+  for HTMX partial swaps and Jinja templates. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
+- Migrated Inertia HTML transform to fast slot/token-based replacement (``<!--inertia-head-->`` and
+  ``<!--inertia-body-->``) with backward compatibility for ``#app`` selector replacement, and wired SSR
+  requests through the modern IPC transport layer. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
+- Formalized Vite 6+ floor in ``package.json`` and runtime checks, hardened all scaffolding templates
+  with Vite 8 compatibility and ``rolldownOptions``, and updated root JS package distribution to bundle
+  dev SSR, worker, and fragment entrypoints. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
+- Upgraded Python and JavaScript dependencies across the project and updated the Makefile upgrade workflow
+  to use ``prek update``.
+
+0.31.0 - 2026-08-17
 -------------------
 
 - Emitted configured CSRF cookie and header names (``CSRF_COOKIE_NAME`` and ``CSRF_HEADER_NAME``)

@@ -88,7 +88,7 @@ upgrade:                                            ## Upgrade all dependencies 
 	@uv lock --upgrade
 	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm update --no-fund
 	@echo "${OK} Dependencies updated 🔄"
-	@uv run prek auto-update
+	@uv run prek update
 	@echo "${OK} Updated Pre-commit hooks 🔄"
 
 .PHONY: lock
