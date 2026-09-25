@@ -45,7 +45,7 @@ export async function renderFragment(options: RenderFragmentOptions, customImpor
     renderedHtml = result.html
     if (result.head) head.push(result.head)
   } else if (ext === ".astro") {
-    const { experimental_AstroContainer } = await import("astro/container")
+    const { experimental_AstroContainer } = (await import("astro/container" as string)) as any
     const container = await experimental_AstroContainer.create()
     renderedHtml = await container.renderToString(Component, { props })
   } else {
