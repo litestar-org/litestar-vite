@@ -143,7 +143,7 @@ def create_proxy_client(
     limits = httpx.Limits(
         max_keepalive_connections=max_keepalive, max_connections=max_connections, keepalive_expiry=keepalive_expiry
     )
-    return httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(timeout), http2=http2_enabled)
+    return httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(timeout), http2=http2_enabled, trust_env=False)
 
 
 def infer_port_from_argv() -> str | None:

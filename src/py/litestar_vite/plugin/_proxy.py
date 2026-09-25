@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import unquote
 
 import anyio
-import httpx
 import websockets
 from litestar.enums import ScopeType
 from litestar.exceptions import WebSocketDisconnect
@@ -22,10 +21,16 @@ from litestar_vite.utils import read_hotfile_url
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    import httpx
     from litestar.types import ASGIApp, Receive, Scope, Send
     from websockets.typing import Subprotocol
 
     from litestar_vite.plugin import VitePlugin
+else:
+    try:
+        import httpx
+    except ImportError:
+        httpx = None
 
 _DISCONNECT_EXCEPTIONS = (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed)
 
@@ -185,7 +190,7 @@ def _extract_request_headers(headers: Any, extra_skip_headers: "frozenset[str] |
     return filtered
 
 
-def _extract_proxy_response_headers(headers: "httpx.Headers") -> list[tuple[bytes, bytes]]:
+def _extract_proxy_response_headers(headers: Any) -> list[tuple[bytes, bytes]]:
     """Extract response headers while preserving duplicates and filtering hop-by-hop headers.
 
     Uses the same hop-by-hop header set as request filtering, plus any headers
@@ -194,10 +199,10 @@ def _extract_proxy_response_headers(headers: "httpx.Headers") -> list[tuple[byte
     Returns:
         A list of (header_name, header_value) tuples.
     """
-    hop_by_hop = set(_HOP_BY_HOP_HEADERS)
-    hop_by_hop.update(
-        _collect_connection_tokens((key.decode("latin-1"), value.decode("latin-1")) for key, value in headers.raw)
+    connection_tokens = _collect_connection_tokens(
+        (key.decode("latin-1"), value.decode("latin-1")) for key, value in headers.raw
     )
+    hop_by_hop = _HOP_BY_HOP_HEADERS | connection_tokens if connection_tokens else _HOP_BY_HOP_HEADERS
 
     extracted: list[tuple[bytes, bytes]] = []
     for key, value in headers.raw:
@@ -562,6 +567,11 @@ class ViteProxyMiddleware(AbstractMiddleware):
         headers = _filter_hop_by_hop_headers(scope.get("headers", []))
         request_body = _stream_request_body(receive) if method in _BODY_METHODS else None
 
+        from litestar_vite._typing import ensure_httpx
+
+        ensure_httpx("Vite dev proxying")
+        import httpx
+
         client = self._plugin.proxy_client if self._plugin is not None else None
 
         response_started = False
@@ -581,7 +591,7 @@ class ViteProxyMiddleware(AbstractMiddleware):
             else:
                 http2_enabled = check_http2_support(self.http2)
                 async with (
-                    httpx.AsyncClient(http2=http2_enabled) as fallback_client,
+                    httpx.AsyncClient(http2=http2_enabled, trust_env=False) as fallback_client,
                     fallback_client.stream(
                         method, url, headers=headers, content=request_body, timeout=10.0, follow_redirects=False
                     ) as upstream_resp,
@@ -1100,6 +1110,11 @@ class SSRProxyMiddleware(AbstractMiddleware):
         headers = _filter_hop_by_hop_headers(scope.get("headers", []))
         request_body = _stream_request_body(receive) if method in _BODY_METHODS else None
 
+        from litestar_vite._typing import ensure_httpx
+
+        ensure_httpx("SSR proxying")
+        import httpx
+
         client = self._plugin.proxy_client if self._plugin is not None else None
 
         response_started = False
@@ -1119,7 +1134,7 @@ class SSRProxyMiddleware(AbstractMiddleware):
             else:
                 http2_enabled = check_http2_support(self._http2)
                 async with (
-                    httpx.AsyncClient(http2=http2_enabled, timeout=30.0) as fallback_client,
+                    httpx.AsyncClient(http2=http2_enabled, timeout=30.0, trust_env=False) as fallback_client,
                     fallback_client.stream(
                         method, url, headers=headers, content=request_body, timeout=30.0, follow_redirects=False
                     ) as upstream_resp,
@@ -1224,10 +1239,15 @@ def create_ssr_http_proxy_handler(
         headers_to_forward = _filter_hop_by_hop_headers(request.headers.items())
         request_body = request.stream() if request.method in _BODY_METHODS else None
 
+        from litestar_vite._typing import ensure_httpx
+
+        ensure_httpx("SSR proxying")
+        import httpx
+
         client = plugin.proxy_client if plugin is not None else None
 
         stream_context: Any = None
-        http_client: httpx.AsyncClient | None = None
+        http_client: "httpx.AsyncClient | None" = None
         try:
             if client is not None:
                 stream_context = client.stream(
@@ -1240,7 +1260,7 @@ def create_ssr_http_proxy_handler(
                 )
             else:
                 http2_enabled = check_http2_support(http2)
-                http_client = httpx.AsyncClient(http2=http2_enabled, timeout=30.0)
+                http_client = httpx.AsyncClient(http2=http2_enabled, timeout=30.0, trust_env=False)
                 stream_context = http_client.stream(
                     request.method, url, headers=headers_to_forward, content=request_body, follow_redirects=False
                 )
