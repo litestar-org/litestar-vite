@@ -22,13 +22,13 @@ from litestar_vite.config import JINJA_INSTALLED, TRUE_VALUES, ExternalDevServer
 from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.plugin._process import ViteProcess
 from litestar_vite.plugin._proxy import (
+    ProxyHeadersMiddleware,
     ViteProxyMiddleware,
     create_disabled_vite_hmr_handlers,
     create_ssr_http_proxy_handler,
     create_ssr_ws_proxy_handler,
     create_vite_hmr_handler,
 )
-from litestar_vite.plugin._proxy_headers import ProxyHeadersMiddleware
 from litestar_vite.plugin._static import StaticPlacement, StaticServerConfig, StaticServerMount
 from litestar_vite.plugin._utils import (
     build_litestar_route_prefixes,
