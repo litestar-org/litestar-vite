@@ -1046,10 +1046,16 @@ def extract_channels_plugin_channels(
     operations: dict[str, AsyncAPIOperation] = {}
 
     channels_plugin: "ChannelsPlugin | None" = None
-    for plugin in app.plugins:
-        if isinstance(plugin, ChannelsPlugin):
-            channels_plugin = plugin
-            break
+    plugins = getattr(app, "plugins", None)
+    if plugins is not None and hasattr(plugins, "get"):
+        with contextlib.suppress(KeyError, AttributeError):
+            channels_plugin = cast("ChannelsPlugin", plugins.get("ChannelsPlugin"))
+
+    if channels_plugin is None:
+        for plugin in getattr(app, "plugins", ()):
+            if isinstance(plugin, ChannelsPlugin):
+                channels_plugin = plugin
+                break
 
     if channels_plugin is None:
         return channels, operations
@@ -1264,10 +1270,9 @@ ASYNCAPI_DOCS_DEFAULT_PATH = "/asyncapi"
 def find_asyncapi_plugin(app: "Litestar") -> Any | None:
     """Find an AsyncAPI plugin registered on the Litestar application.
 
-    Detection is duck-typed per asyncapi-schema-export REQ-EXPORT-3: any plugin
-    exposing a get_asyncapi_schema attribute is treated as an AsyncAPI schema
-    provider. This avoids importing litestar_asyncapi in the common execution path
-    and keeps litestar-vite warning-free and error-free when the package is not installed.
+    First queries Litestar's plugin registry via ``app.plugins.get("AsyncAPIPlugin")``.
+    Also falls back to duck-typed inspection across all registered plugins for any
+    plugin providing a ``get_asyncapi_schema`` method.
 
     Args:
         app: The Litestar application instance.
@@ -1275,6 +1280,11 @@ def find_asyncapi_plugin(app: "Litestar") -> Any | None:
     Returns:
         The registered AsyncAPI plugin instance if found, otherwise None.
     """
+    plugins = getattr(app, "plugins", None)
+    if plugins is not None and hasattr(plugins, "get"):
+        with contextlib.suppress(KeyError, AttributeError):
+            return plugins.get("AsyncAPIPlugin")
+
     for plugin in getattr(app, "plugins", ()):
         if hasattr(plugin, "get_asyncapi_schema"):
             return plugin

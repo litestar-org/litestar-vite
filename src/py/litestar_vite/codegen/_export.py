@@ -9,6 +9,7 @@ This module provides a single entry point for exporting all integration artifact
 Both CLI and Plugin should call this function to guarantee byte-identical output.
 """
 
+import contextlib
 from dataclasses import dataclass, field
 from functools import partial
 from importlib.metadata import PackageNotFoundError, version
@@ -87,6 +88,12 @@ def app_has_realtime_surface(app: "Litestar") -> bool:
     if find_asyncapi_plugin(app) is not None:
         return True
 
+    plugins = getattr(app, "plugins", None)
+    if plugins is not None and hasattr(plugins, "get"):
+        with contextlib.suppress(KeyError, AttributeError):
+            if plugins.get("ChannelsPlugin") is not None:
+                return True
+
     from litestar.routes import HTTPRoute, WebSocketRoute
 
     for route in app.routes:
@@ -99,7 +106,7 @@ def app_has_realtime_surface(app: "Litestar") -> bool:
         if CHANNELS_INSTALLED:
             from litestar.channels import ChannelsPlugin
 
-            for plugin in app.plugins:
+            for plugin in getattr(app, "plugins", ()):
                 if isinstance(plugin, ChannelsPlugin):
                     return True
     except ImportError:

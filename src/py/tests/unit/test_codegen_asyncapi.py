@@ -1313,3 +1313,15 @@ def test_app_has_realtime_surface_detection() -> None:
 
     asyncapi_plugin_app = Litestar(route_handlers=[], plugins=[MockAsyncAPIPlugin()])
     assert app_has_realtime_surface(asyncapi_plugin_app)
+
+    class AsyncAPIPlugin(InitPluginProtocol):
+        """Mock plugin named AsyncAPIPlugin."""
+
+        def on_app_init(self, app_config: AppConfig) -> AppConfig:
+            return app_config
+
+        def get_asyncapi_schema(self, app: Any) -> dict[str, Any]:
+            return {"asyncapi": "3.0.0", "channels": {}, "operations": {}}
+
+    named_plugin_app = Litestar(route_handlers=[], plugins=[AsyncAPIPlugin()])
+    assert app_has_realtime_surface(named_plugin_app)
