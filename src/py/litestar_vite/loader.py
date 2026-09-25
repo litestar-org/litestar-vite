@@ -371,7 +371,7 @@ class ViteAssetLoader:
             if self._http_client is not None:
                 response = await self._http_client.post(endpoint, json={"entry": normalized_entry}, timeout=5.0)
             else:
-                async with httpx.AsyncClient(timeout=5.0) as client:
+                async with httpx.AsyncClient(timeout=5.0, trust_env=False) as client:
                     response = await client.post(endpoint, json={"entry": normalized_entry})
             response.raise_for_status()
         except httpx.HTTPError as exc:
@@ -404,7 +404,7 @@ class ViteAssetLoader:
             if self._http_client_sync is not None:
                 response = self._http_client_sync.post(endpoint, json={"entry": normalized_entry}, timeout=5.0)
             else:
-                with httpx.Client(timeout=5.0) as client:
+                with httpx.Client(timeout=5.0, trust_env=False) as client:
                     response = client.post(endpoint, json={"entry": normalized_entry})
             response.raise_for_status()
         except httpx.HTTPError as exc:
