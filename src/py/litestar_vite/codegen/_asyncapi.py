@@ -21,7 +21,7 @@ from litestar.routes import HTTPRoute, WebSocketRoute
 from litestar.types.builtin_types import NoneType
 from litestar.typing import FieldDefinition
 
-from litestar_vite._typing import CHANNELS_INSTALLED
+from litestar_vite._typing import ASYNCAPI_INSTALLED
 from litestar_vite.codegen._openapi import (
     OpenAPISupport,
     asyncapi_schema_from_result,
@@ -1023,15 +1023,9 @@ def extract_channels_plugin_channels(
         operation_ids: Optional set to ensure unique operation ids across sources.
 
     Returns:
-        Tuple of (channels_mapping, operations_mapping). When litestar.channels
-        is unavailable, channel extraction degrades gracefully to an empty result
-        to keep the CLI importable.
+        Tuple of (channels_mapping, operations_mapping). When ChannelsPlugin
+        is not registered on the application, channel extraction returns an empty result.
     """
-    if not CHANNELS_INSTALLED:
-        return {}, {}
-
-    from litestar.channels import ChannelsPlugin
-
     if context is None:
         context = AsyncAPISchemaContext(components_schemas=components_schemas if components_schemas is not None else {})
     elif components_schemas is not None and not context.components_schemas:
@@ -1045,17 +1039,16 @@ def extract_channels_plugin_channels(
     channels: dict[str, AsyncAPIChannel] = {}
     operations: dict[str, AsyncAPIOperation] = {}
 
-    channels_plugin: "ChannelsPlugin | None" = None
+    from litestar.channels import ChannelsPlugin
+
+    channels_plugin: ChannelsPlugin | None = None
     plugins = getattr(app, "plugins", None)
     if plugins is not None and hasattr(plugins, "get"):
         with contextlib.suppress(KeyError, AttributeError):
-            channels_plugin = cast("ChannelsPlugin", plugins.get("ChannelsPlugin"))
-
-    if channels_plugin is None:
-        for plugin in getattr(app, "plugins", ()):
-            if isinstance(plugin, ChannelsPlugin):
-                channels_plugin = plugin
-                break
+            channels_plugin = cast("ChannelsPlugin", plugins.get(ChannelsPlugin))
+        if channels_plugin is None:
+            with contextlib.suppress(KeyError, AttributeError):
+                channels_plugin = cast("ChannelsPlugin", plugins.get("ChannelsPlugin"))
 
     if channels_plugin is None:
         return channels, operations
@@ -1270,9 +1263,8 @@ ASYNCAPI_DOCS_DEFAULT_PATH = "/asyncapi"
 def find_asyncapi_plugin(app: "Litestar") -> Any | None:
     """Find an AsyncAPI plugin registered on the Litestar application.
 
-    First queries Litestar's plugin registry via ``app.plugins.get("AsyncAPIPlugin")``.
-    Also falls back to duck-typed inspection across all registered plugins for any
-    plugin providing a ``get_asyncapi_schema`` method.
+    Queries Litestar's plugin registry for a registered ``AsyncAPIPlugin``,
+    guarded by ``ASYNCAPI_INSTALLED``.
 
     Args:
         app: The Litestar application instance.
@@ -1280,14 +1272,17 @@ def find_asyncapi_plugin(app: "Litestar") -> Any | None:
     Returns:
         The registered AsyncAPI plugin instance if found, otherwise None.
     """
+    if not ASYNCAPI_INSTALLED:
+        return None
+
     plugins = getattr(app, "plugins", None)
     if plugins is not None and hasattr(plugins, "get"):
         with contextlib.suppress(KeyError, AttributeError):
-            return plugins.get("AsyncAPIPlugin")
+            from litestar_asyncapi import AsyncAPIPlugin
 
-    for plugin in getattr(app, "plugins", ()):
-        if hasattr(plugin, "get_asyncapi_schema"):
-            return plugin
+            return plugins.get(AsyncAPIPlugin)
+        with contextlib.suppress(KeyError, AttributeError):
+            return plugins.get("AsyncAPIPlugin")
     return None
 
 

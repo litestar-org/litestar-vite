@@ -3,6 +3,7 @@
 
 from litestar_vite._typing import (
     ADVANCED_ALCHEMY_INSTALLED,
+    ASYNCAPI_INSTALLED,
     CHANNELS_INSTALLED,
     FSSPEC_INSTALLED,
     JINJA_INSTALLED,
@@ -23,6 +24,7 @@ from litestar_vite._typing import (
 
 __all__ = (
     "ADVANCED_ALCHEMY_INSTALLED",
+    "ASYNCAPI_INSTALLED",
     "CHANNELS_INSTALLED",
     "FSSPEC_INSTALLED",
     "JINJA_INSTALLED",

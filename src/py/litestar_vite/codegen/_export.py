@@ -88,8 +88,13 @@ def app_has_realtime_surface(app: "Litestar") -> bool:
     if find_asyncapi_plugin(app) is not None:
         return True
 
+    from litestar.channels import ChannelsPlugin
+
     plugins = getattr(app, "plugins", None)
     if plugins is not None and hasattr(plugins, "get"):
+        with contextlib.suppress(KeyError, AttributeError):
+            if plugins.get(ChannelsPlugin) is not None:
+                return True
         with contextlib.suppress(KeyError, AttributeError):
             if plugins.get("ChannelsPlugin") is not None:
                 return True
@@ -99,18 +104,6 @@ def app_has_realtime_surface(app: "Litestar") -> bool:
     for route in app.routes:
         if isinstance(route, WebSocketRoute):
             return True
-
-    try:
-        from litestar_vite._typing import CHANNELS_INSTALLED
-
-        if CHANNELS_INSTALLED:
-            from litestar.channels import ChannelsPlugin
-
-            for plugin in getattr(app, "plugins", ()):
-                if isinstance(plugin, ChannelsPlugin):
-                    return True
-    except ImportError:
-        pass
 
     from litestar_vite.codegen._asyncapi import _is_sse_type  # pyright: ignore[reportPrivateUsage]
 

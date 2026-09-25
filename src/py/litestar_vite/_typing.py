@@ -6,6 +6,7 @@ from typing import Any
 
 __all__ = (
     "ADVANCED_ALCHEMY_INSTALLED",
+    "ASYNCAPI_INSTALLED",
     "CHANNELS_INSTALLED",
     "FSSPEC_INSTALLED",
     "JINJA_INSTALLED",
@@ -59,6 +60,7 @@ def _placeholder_exception_type(name: str, base: type[Exception] = Exception) ->
 
 JINJA_INSTALLED = _module_installed("jinja2")
 FSSPEC_INSTALLED = _module_installed("fsspec")
+ASYNCAPI_INSTALLED = _module_installed("litestar_asyncapi")
 CHANNELS_INSTALLED = _module_installed("litestar.channels")
 
 

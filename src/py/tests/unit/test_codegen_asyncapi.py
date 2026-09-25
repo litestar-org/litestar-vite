@@ -1,8 +1,6 @@
 """Unit tests for AsyncAPI 3.0 codegen models and WebSocket route introspection."""
 
-import importlib
 import json
-import sys
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from enum import Enum
@@ -1022,52 +1020,22 @@ def test_generated_document_matches_committed_fixture() -> None:
     assert doc == fixture
 
 
-def test_channels_extraction_returns_empty_when_channels_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test extract_channels_plugin_channels returns empty dicts when CHANNELS_INSTALLED is False."""
-    channels_plugin = ChannelsPlugin(backend=MemoryChannelsBackend(), channels=["notify"])
-    app = Litestar(plugins=[channels_plugin])
-
-    monkeypatch.setattr("litestar_vite.codegen._asyncapi.CHANNELS_INSTALLED", False)
+def test_channels_extraction_returns_empty_when_not_registered() -> None:
+    """Test extract_channels_plugin_channels returns empty dicts when ChannelsPlugin is not registered."""
+    app = Litestar(route_handlers=[])
     channels, operations = extract_channels_plugin_channels(app)
 
     assert channels == {}
     assert operations == {}
 
 
-def test_realtime_extraction_survives_missing_channels(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test realtime channel extraction preserves WebSocket and SSE channels when channels are unavailable."""
+def test_asyncapi_plugin_detection_when_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test find_asyncapi_plugin returns None when ASYNCAPI_INSTALLED is False."""
+    from litestar_vite.codegen._asyncapi import find_asyncapi_plugin
 
-    @websocket_listener("/ws/chat")
-    async def chat_listener(data: ChatInbound) -> ChatOutbound:
-        return ChatOutbound(room_id=data.room_id, message=data.message, timestamp=1)
-
-    @get("/stream/events", opt={ASYNCAPI_PAYLOAD_OPT_KEY: ServerEvent})
-    async def sse_handler() -> ServerSentEvent:
-        return ServerSentEvent(content="test")
-
-    channels_plugin = ChannelsPlugin(backend=MemoryChannelsBackend(), channels=["notify"])
-    app = Litestar(route_handlers=[chat_listener, sse_handler], plugins=[channels_plugin])
-
-    monkeypatch.setattr("litestar_vite.codegen._asyncapi.CHANNELS_INSTALLED", False)
-    doc = create_asyncapi_document(app).to_dict()
-
-    assert "ws__chat" in doc["channels"]
-    assert "stream__events" in doc["channels"]
-    assert "notify" not in doc["channels"]
-
-
-def test_cli_imports_without_litestar_channels(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test litestar_vite.cli imports cleanly even when litestar.channels cannot be imported."""
-    import litestar_vite.codegen._asyncapi as asyncapi_mod
-
-    monkeypatch.setitem(sys.modules, "litestar.channels", None)
-    try:
-        importlib.reload(asyncapi_mod)
-        cli_mod = importlib.import_module("litestar_vite.cli")
-        assert cli_mod is not None
-    finally:
-        monkeypatch.undo()
-        importlib.reload(asyncapi_mod)
+    monkeypatch.setattr("litestar_vite.codegen._asyncapi.ASYNCAPI_INSTALLED", False)
+    app = Litestar(plugins=[AsyncAPIPlugin()])
+    assert find_asyncapi_plugin(app) is None
 
 
 @dataclass
@@ -1080,7 +1048,7 @@ class _FakeAsyncAPIConfig:
     docs: _FakeDocsConfig = field(default_factory=_FakeDocsConfig)
 
 
-class _FakeAsyncAPIPlugin(InitPluginProtocol):
+class AsyncAPIPlugin(InitPluginProtocol):
     """Test double for litestar-asyncapi plugin."""
 
     def __init__(
@@ -1148,7 +1116,7 @@ def test_resolve_document_prefers_duck_typed_plugin() -> None:
         },
     }
 
-    plugin = _FakeAsyncAPIPlugin(doc=raw_310_doc, docs_path="/asyncapi")
+    plugin = AsyncAPIPlugin(doc=raw_310_doc, docs_path="/asyncapi")
     app = Litestar(plugins=[plugin])
 
     resolved_doc, source = resolve_asyncapi_document(app)
@@ -1173,7 +1141,7 @@ def test_resolve_document_falls_back_when_plugin_returns_non_dict() -> None:
 
     from litestar_vite.codegen import resolve_asyncapi_document
 
-    plugin = _FakeAsyncAPIPlugin(doc=None)
+    plugin = AsyncAPIPlugin(doc=None)
     app = Litestar(plugins=[plugin])
 
     with warnings.catch_warnings(record=True) as recorded:
@@ -1189,7 +1157,7 @@ def test_resolve_document_falls_back_when_plugin_raises() -> None:
     """Test resolve_asyncapi_document falls back to builtin when plugin raises TypeError."""
     from litestar_vite.codegen import resolve_asyncapi_document
 
-    plugin = _FakeAsyncAPIPlugin(raise_err=True)
+    plugin = AsyncAPIPlugin(raise_err=True)
     app = Litestar(plugins=[plugin])
 
     resolved_doc, source = resolve_asyncapi_document(app)
@@ -1263,7 +1231,7 @@ def test_export_records_asyncapi_source(tmp_path: Path) -> None:
         "info": {"title": "Realtime", "version": "1.0.0"},
         "channels": {"chat": {"address": "/chat", "bindings": {"ws": {}}}},
     }
-    plugin = _FakeAsyncAPIPlugin(doc=fake_doc)
+    plugin = AsyncAPIPlugin(doc=fake_doc)
     app_plugin = Litestar(route_handlers=[chat_handler], plugins=[plugin])
     config_plugin = ViteConfig(types=TypeGenConfig(output=tmp_path / "plugin", generate_channels=True))
     result_plugin = export_integration_assets(app_plugin, config_plugin)
@@ -1294,34 +1262,10 @@ def test_no_warnings_without_litestar_asyncapi_installed(tmp_path: Path) -> None
 
 def test_app_has_realtime_surface_detection() -> None:
     """Test app_has_realtime_surface detects AsyncAPI plugins, ChannelsPlugin, and routes."""
-    from litestar.config.app import AppConfig
-    from litestar.plugins import InitPluginProtocol
-
     from litestar_vite.codegen import app_has_realtime_surface
 
     plain_app = Litestar(route_handlers=[])
     assert not app_has_realtime_surface(plain_app)
-
-    class MockAsyncAPIPlugin(InitPluginProtocol):
-        """Mock plugin that provides get_asyncapi_schema."""
-
-        def on_app_init(self, app_config: AppConfig) -> AppConfig:
-            return app_config
-
-        def get_asyncapi_schema(self, app: Any) -> dict[str, Any]:
-            return {"asyncapi": "3.0.0", "channels": {}, "operations": {}}
-
-    asyncapi_plugin_app = Litestar(route_handlers=[], plugins=[MockAsyncAPIPlugin()])
-    assert app_has_realtime_surface(asyncapi_plugin_app)
-
-    class AsyncAPIPlugin(InitPluginProtocol):
-        """Mock plugin named AsyncAPIPlugin."""
-
-        def on_app_init(self, app_config: AppConfig) -> AppConfig:
-            return app_config
-
-        def get_asyncapi_schema(self, app: Any) -> dict[str, Any]:
-            return {"asyncapi": "3.0.0", "channels": {}, "operations": {}}
 
     named_plugin_app = Litestar(route_handlers=[], plugins=[AsyncAPIPlugin()])
     assert app_has_realtime_surface(named_plugin_app)
