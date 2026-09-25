@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote, urljoin, urlsplit
 
 import anyio
-import httpx
 import markupsafe
 from litestar.exceptions import SerializationException
 from litestar.serialization import decode_json
@@ -32,6 +31,7 @@ from litestar_vite.utils import read_bridge_config
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    import httpx
     from litestar.connection import Request
 
     from litestar_vite.config import ViteConfig
@@ -239,10 +239,10 @@ class ViteAssetLoader:
         self._vite_base_path: "str | None" = None
         self._initialized: bool = False
         self._is_hot_dev = self._config.hot_reload and self._config.is_dev_mode
-        self._http_client: httpx.AsyncClient | None = None
-        self._http_client_sync: httpx.Client | None = None
+        self._http_client: "httpx.AsyncClient | None" = None
+        self._http_client_sync: "httpx.Client | None" = None
 
-    def _bind_http_client(self, client: httpx.AsyncClient | None) -> None:
+    def _bind_http_client(self, client: "httpx.AsyncClient | None") -> None:
         """Bind the plugin's lifespan-managed asynchronous HTTP client."""
         self._http_client = client
 
@@ -361,6 +361,11 @@ class ViteAssetLoader:
         hot_target = self._read_hot_target() if self._is_hot_dev else None
         if hot_target is None:
             return await self._read_production_html_async(normalized_entry, production_path)
+        from litestar_vite._typing import ensure_httpx
+
+        ensure_httpx("dev-mode HTML entry resolution")
+        import httpx
+
         endpoint = f"{hot_target}/__litestar__/transform-index"
         try:
             if self._http_client is not None:
@@ -389,6 +394,11 @@ class ViteAssetLoader:
         hot_target = self._read_hot_target() if self._is_hot_dev else None
         if hot_target is None:
             return self._read_production_html(normalized_entry, production_path)
+        from litestar_vite._typing import ensure_httpx
+
+        ensure_httpx("dev-mode HTML entry resolution")
+        import httpx
+
         endpoint = f"{hot_target}/__litestar__/transform-index"
         try:
             if self._http_client_sync is not None:

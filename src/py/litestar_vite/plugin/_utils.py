@@ -134,6 +134,9 @@ def create_proxy_client(
     Returns:
         A configured httpx.AsyncClient with connection pooling.
     """
+    from litestar_vite._typing import ensure_httpx
+
+    ensure_httpx("dev-mode HTTP proxy")
     import httpx
 
     http2_enabled = http2 and _check_h2_available()

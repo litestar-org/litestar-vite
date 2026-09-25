@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from dataclasses import fields, is_dataclass
 from typing import TYPE_CHECKING, Any, cast
 
-import httpx
 import msgspec
 from litestar.handlers.http_handlers.base import HTTPRouteHandler
 from litestar.plugins import InitPlugin
@@ -14,6 +13,7 @@ from litestar.response import Response
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
+    import httpx
     from litestar import Litestar, Request
     from litestar.config.app import AppConfig
 
@@ -72,6 +72,11 @@ class InertiaPlugin(InitPlugin):
         Yields:
             An asynchronous context manager.
         """
+        from litestar_vite._typing import ensure_httpx
+
+        ensure_httpx("Inertia SSR client pooling")
+        import httpx
+
         limits = httpx.Limits(max_keepalive_connections=10, max_connections=20, keepalive_expiry=30.0)
         self._ssr_client = httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(10.0))
         try:

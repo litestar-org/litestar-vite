@@ -20,7 +20,6 @@ classifiers = [
 ]
 dependencies = [
   "litestar>=2.22.0",
-  "httpx>=0.24.1",
   "websockets>=12.0",
   "typing_extensions"
 ]
@@ -45,6 +44,7 @@ jinja = [ "jinja2"]
 nodeenv = ["nodeenv"]
 http2 = ["h2>=4.0.0"]
 asyncapi = ["litestar-asyncapi>=0.2.0"]
+proxy = ["httpx>=0.24.1"]
 
 [build-system]
 build-backend = "hatchling.build"

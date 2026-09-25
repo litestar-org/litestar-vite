@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 from urllib.parse import quote, urlparse
 
-import httpx
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
@@ -46,6 +45,7 @@ from litestar_vite.inertia.types import InertiaHeaderType, PageProps, ScrollProp
 from litestar_vite.plugin import VitePlugin
 
 if TYPE_CHECKING:
+    import httpx
     from litestar.background_tasks import BackgroundTask, BackgroundTasks
     from litestar.connection.base import AuthT, StateT, UserT
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
@@ -953,6 +953,11 @@ async def _acquire_ssr_client(client: "httpx.AsyncClient | None") -> "AsyncGener
         The shared client when supplied, or a fallback client whose lifecycle is
         bound to the context.
     """
+    from litestar_vite._typing import ensure_httpx
+
+    ensure_httpx("Inertia SSR")
+    import httpx
+
     if client is not None:
         yield client
     else:
@@ -986,6 +991,10 @@ async def _do_ssr_request(
     """
     body = encode_json(page, serializer=get_serializer(type_encoders))
     headers = {"content-type": "application/json"}
+    from litestar_vite._typing import ensure_httpx
+
+    ensure_httpx("Inertia SSR")
+    import httpx
 
     try:
         async with _acquire_ssr_client(client) as resolved_client:

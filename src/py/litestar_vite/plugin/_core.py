@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
 
-import httpx
 from litestar.exceptions import NotFoundException, SerializationException
 from litestar.middleware import DefineMiddleware
 from litestar.plugins import CLIPlugin, InitPlugin
@@ -48,6 +47,7 @@ from litestar_vite.utils import read_hotfile_url
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
 
+    import httpx
     from click import Group
     from litestar import Litestar
     from litestar.config.app import AppConfig
@@ -202,6 +202,11 @@ class VitePlugin(InitPlugin, CLIPlugin):
         deadline = time.monotonic() + ssr_config.health_check_timeout
         parsed = urlparse(ssr_config.url)
         origin = f"{parsed.scheme}://{parsed.netloc}"
+        from litestar_vite._typing import ensure_httpx
+
+        ensure_httpx("Inertia SSR health check")
+        import httpx
+
         while time.monotonic() < deadline:
             try:
                 response = httpx.get(origin, timeout=2.0)
@@ -257,6 +262,10 @@ class VitePlugin(InitPlugin, CLIPlugin):
         Returns:
             The shared AsyncClient instance, or None if not initialized or not in dev mode.
         """
+        if self._config.dev_mode:
+            from litestar_vite._typing import ensure_httpx
+
+            ensure_httpx("dev-mode HTTP proxy")
         return self._proxy_client
 
     def get_static_server_config(self) -> StaticServerConfig:
@@ -763,6 +772,11 @@ class VitePlugin(InitPlugin, CLIPlugin):
         """
         import time
 
+        from litestar_vite._typing import ensure_httpx
+
+        ensure_httpx("Vite dev server health check")
+        import httpx
+
         url = f"{self._config.protocol}://{self._config.host}:{self._config.port}/__vite_ping"
         for _ in range(50):
             try:
@@ -795,6 +809,11 @@ class VitePlugin(InitPlugin, CLIPlugin):
             True if SSR server is ready, False if timeout reached.
         """
         import time
+
+        from litestar_vite._typing import ensure_httpx
+
+        ensure_httpx("Inertia SSR health check")
+        import httpx
 
         start = time.time()
 

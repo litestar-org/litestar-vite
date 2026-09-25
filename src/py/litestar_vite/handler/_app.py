@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn
 
 import anyio
-import httpx
 from litestar import get
 from litestar.exceptions import ImproperlyConfiguredException, SerializationException
 from litestar.serialization import decode_json, encode_json
@@ -32,12 +31,18 @@ from litestar_vite.plugin._utils import check_h2_available
 from litestar_vite.utils import get_static_resource_path, read_hotfile_url
 
 if TYPE_CHECKING:
+    import httpx
     from litestar.config.csrf import CSRFConfig
     from litestar.connection import Request
     from litestar.handlers.http_handlers import HTTPRouteHandler
     from litestar.types import Guard  # pyright: ignore[reportUnknownVariableType]
 
     from litestar_vite.config import SPAConfig, ViteConfig
+else:
+    try:
+        import httpx
+    except ImportError:
+        httpx = None
 
 logger = logging.getLogger("litestar_vite")
 
@@ -169,6 +174,11 @@ class AppHandler:
 
     def _init_http_clients(self, vite_url: "str | None" = None) -> None:
         """Initialize HTTP clients for dev mode proxying."""
+        from litestar_vite._typing import ensure_httpx
+
+        ensure_httpx("SPA dev-mode HTTP client")
+        import httpx
+
         self._vite_url = vite_url or self._resolve_vite_url()
 
         http2_enabled = self._config.http2 and check_h2_available()
@@ -580,6 +590,7 @@ class AppHandler:
             raise ImproperlyConfiguredException(msg)
 
         target_url = f"{self._vite_url}/"
+        import httpx
 
         try:
             response = await self._http_client.get(target_url, follow_redirects=True)
@@ -609,6 +620,7 @@ class AppHandler:
             raise ImproperlyConfiguredException(msg)
 
         target_url = f"{self._vite_url}/"
+        import httpx
 
         try:
             response = self._http_client_sync.get(target_url, follow_redirects=True)
