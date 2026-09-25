@@ -92,7 +92,7 @@ function toInterfaceName(key: string): string {
  * @returns true if file was changed, false if unchanged
  */
 export async function emitStaticPropsTypes(outputDir: string, projectRoot = process.cwd()): Promise<boolean> {
-  const bridgeConfig = readBridgeConfig()
+  const bridgeConfig = readBridgeConfig(process.env.LITESTAR_VITE_CONFIG_PATH ?? path.join(projectRoot, ".litestar.json"))
   const staticProps = bridgeConfig?.staticProps ?? {}
 
   const outDir = path.resolve(projectRoot, outputDir)

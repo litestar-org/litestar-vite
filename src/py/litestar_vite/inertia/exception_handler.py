@@ -70,8 +70,6 @@ def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "E
             return cast("Response[Any]", create_exception_response(request, exc))
         if request.app.debug:
             return cast("Response[Any]", create_debug_response(request, exc))
-        # Production (non-debug, non-HTTPException): never embed raw exception text.
-        # Debug rendering is already returned above by create_debug_response.
         return cast("Response[Any]", create_exception_response(request, InternalServerException()))
     return create_inertia_exception_response(request, exc)
 
@@ -101,18 +99,31 @@ def _get_inertia_plugin(request: "Request[Any, Any, Any]") -> "InertiaPlugin | N
 
 
 def _store_field_errors(request: "Request[Any, Any, Any]", extras: Any, detail: Any) -> None:
-    if not extras or not isinstance(extras, (list, tuple)) or len(extras) < 1:  # pyright: ignore[reportUnknownArgumentType]
+    """Store field validation errors into request flash state.
+
+    Iterates over each entry in the exception's extra sequence and stages one
+    flashed error per valid dictionary entry. For each entry, field name derivation
+    prefers regex matching via FIELD_ERR_RE on the error message, falling back
+    to 'root.<key>' or 'root'. If multiple entries target the same field name,
+    the last write wins. Non-dictionary entries and empty sequences are ignored.
+
+    Args:
+        request: The request object.
+        extras: The extras sequence from the exception, typically a list or tuple of error dicts.
+        detail: The fallback error detail string or object.
+    """
+    if not extras or not isinstance(extras, (list, tuple)):  # pyright: ignore[reportUnknownArgumentType]
         return
-    first_extra = extras[0]  # pyright: ignore[reportUnknownVariableType]
-    if not isinstance(first_extra, dict):
-        return
-    message: dict[str, str] = cast("dict[str, str]", first_extra)
-    key_value = message.get("key")
-    default_field = f"root.{key_value}" if key_value is not None else "root"
-    error_detail = str(message.get("message", detail) or detail)
-    match = FIELD_ERR_RE.search(error_detail)
-    field = match.group(1) if match else default_field
-    error(request, field, error_detail or str(detail))
+    for item in extras:  # pyright: ignore[reportUnknownVariableType]
+        if not isinstance(item, dict):
+            continue
+        message: dict[str, str] = cast("dict[str, str]", item)
+        key_value = message.get("key")
+        default_field = f"root.{key_value}" if key_value is not None else "root"
+        error_detail = str(message.get("message", detail) or detail)
+        match = FIELD_ERR_RE.search(error_detail)
+        field = match.group(1) if match else default_field
+        error(request, field, error_detail or str(detail))
 
 
 def _create_exception_page_response(

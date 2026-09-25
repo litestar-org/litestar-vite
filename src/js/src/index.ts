@@ -812,7 +812,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
             const placeholderContent = await loadDevServerPlaceholder()
             res.statusCode = 200
             res.setHeader("Content-Type", "text/html")
-            res.end(placeholderContent.replace(/{{ APP_URL }}/g, appUrl))
+            res.end(renderDevServerPlaceholder(placeholderContent, appUrl))
           } catch (e) {
             resolvedConfig.logger.error(`Error serving placeholder index.html: ${e instanceof Error ? e.message : e}`)
             res.statusCode = 404
@@ -848,7 +848,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           const placeholderContent = await loadDevServerPlaceholder()
           res.statusCode = 200
           res.setHeader("Content-Type", "text/html")
-          res.end(placeholderContent.replace(/{{ APP_URL }}/g, appUrl))
+          res.end(renderDevServerPlaceholder(placeholderContent, appUrl))
         } catch (e) {
           resolvedConfig.logger.error(`Error serving placeholder index.html: ${e instanceof Error ? e.message : e}`)
           res.statusCode = 404
@@ -1241,16 +1241,17 @@ function createStaticPropsPlugin(): Plugin {
         // Generate named exports for valid JavaScript identifiers
         const namedExports: string[] = []
         for (const key of Object.keys(staticProps)) {
-          // Check if key is a valid JS identifier
-          if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key)) {
+          // Check if key is a valid JS identifier (skip staticProps to avoid duplicate declaration)
+          if (key !== "staticProps" && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key)) {
             namedExports.push(`export const ${key} = ${JSON.stringify(staticProps[key])};`)
           }
         }
 
-        // Always export all props as default
+        // Always export all props as staticProps and as default
+        const staticPropsExport = `export const staticProps = ${JSON.stringify(staticProps)};`
         const defaultExport = `export default ${JSON.stringify(staticProps)};`
 
-        return [...namedExports, defaultExport].join("\n")
+        return [...namedExports, staticPropsExport, defaultExport].join("\n")
       }
       return undefined
     },
@@ -1365,7 +1366,7 @@ function resolveHostFromEnv(env: Record<string, string>): string | undefined {
 }
 
 /**
- * Resolve the Herd or Valet server config for the given host.
+ * Resolve the local development TLS server config for the given host.
  */
 function resolveDevelopmentEnvironmentServerConfig(host: string | boolean | null):
   | {
@@ -1384,7 +1385,7 @@ function resolveDevelopmentEnvironmentServerConfig(host: string | boolean | null
   }
 
   if (typeof configPath === "undefined") {
-    throw Error("Unable to find the Herd or Valet configuration directory. Please check they are correctly installed.")
+    throw Error("Unable to find the development TLS configuration directory.")
   }
 
   const resolvedHost = host === true || host === null ? `${path.basename(process.cwd())}.${resolveDevelopmentEnvironmentTld(configPath)}` : host
@@ -1520,4 +1521,12 @@ function normalizeAssetUrl(url: string): string {
   const withLeading = trimmed.startsWith("/") ? `/${trimmed.replace(/^\/+/, "")}` : trimmed
   const withTrailing = withLeading.endsWith("/") ? withLeading : `${withLeading}/`
   return withTrailing
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;")
+}
+
+function renderDevServerPlaceholder(template: string, appUrl: string): string {
+  return template.replace(/{{ APP_URL }}/g, escapeHtml(appUrl))
 }

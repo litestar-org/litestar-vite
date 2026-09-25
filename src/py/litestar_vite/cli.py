@@ -24,7 +24,7 @@ from litestar_vite.doctor import ViteDoctor
 from litestar_vite.exceptions import ViteExecutionError
 from litestar_vite.plugin import VitePlugin, set_environment
 from litestar_vite.scaffolding import TemplateContext, generate_project, get_available_templates
-from litestar_vite.scaffolding.templates import get_template
+from litestar_vite.scaffolding.templates import FrameworkType, get_template
 
 if TYPE_CHECKING:
     from litestar import Litestar
@@ -32,22 +32,7 @@ if TYPE_CHECKING:
     from litestar_vite.scaffolding.templates import FrameworkTemplate
 
 
-FRAMEWORK_CHOICES = [
-    "react",
-    "react-router",
-    "react-tanstack",
-    "react-inertia",
-    "vue",
-    "vue-inertia",
-    "svelte",
-    "svelte-inertia",
-    "sveltekit",
-    "nuxt",
-    "astro",
-    "htmx",
-    "angular",
-    "angular-cli",
-]
+FRAMEWORK_CHOICES = [t.value for t in FrameworkType]
 
 
 @contextlib.contextmanager
@@ -115,7 +100,6 @@ def _print_recommended_config(template_name: str, resource_dir: str, bundle_dir:
     spa_templates = {"react-router", "react-tanstack"}
     mode = "spa" if template_name in spa_templates else "template"
 
-    # Templates whose Vite plugins generate code outside the litestar pipeline
     extra_commands_templates: dict[str, str] = {
         "react-tanstack": '    types=TypeGenConfig(extra_commands=[["tsr", "generate"]]),'
     }
@@ -1212,8 +1196,6 @@ def _run_extra_commands(config: ViteConfig, verbose: bool) -> bool:
         binary = cmd_list[0]
         args = cmd_list[1:]
 
-        # Resolve the binary through the project's JS executor,
-        # same pattern as _invoke_typegen_cli.
         resolved = _resolve_js_cli(root_dir, executor, binary)
         full_cmd = [*resolved, *args]
         display = " ".join(full_cmd)
@@ -1253,7 +1235,6 @@ def _invoke_typegen_cli(config: ViteConfig, verbose: bool) -> None:
     root_dir = config.root_dir or Path.cwd()
     executor = config.runtime.executor
 
-    # Build the command to run the unified TypeScript CLI
     pkg_cmd = _resolve_js_cli(root_dir, executor, "litestar-vite-typegen", package_name="litestar-vite-plugin")
     cmd = [*pkg_cmd]
 
@@ -1261,7 +1242,6 @@ def _invoke_typegen_cli(config: ViteConfig, verbose: bool) -> None:
         cmd.append("--verbose")
 
     try:
-        # Run the CLI, letting stdout/stderr pass through to the terminal
         result = subprocess.run(cmd, cwd=root_dir, check=False)
         if result.returncode != 0:
             msg = "TypeScript type generation failed"
@@ -1320,7 +1300,6 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     else:
         console.print(f"[dim]✓ {config_display} (unchanged)[/]")
 
-    # Export all integration assets using the shared function
     try:
         exported = _export_and_report(app, config, console)
     except (OSError, TypeError, ValueError) as exc:
@@ -1329,11 +1308,8 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
     if not exported:
         raise SystemExit(1)
 
-    # Run any extra code-generation commands (e.g., tsr generate for TanStack Router)
     extra_commands_ok = _run_extra_commands(config, verbose)
 
-    # Invoke the unified TypeScript type generation CLI
-    # This handles both @hey-api/openapi-ts and page-props.ts generation
     _invoke_typegen_cli(config, verbose)
     if not extra_commands_ok:
         raise SystemExit(1)

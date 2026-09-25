@@ -54,16 +54,32 @@ describe("React stream adapters", () => {
     }
   })
 
-  function Harness({ callback, queue = false, streamKey = "stable" }: { callback: (frame: unknown) => void; queue?: boolean; streamKey?: string }): ReactNode {
+  function QueueHarness(props: { callback: (frame: unknown) => void; streamKey?: string }): ReactNode {
     const options = {
       bufferSize: 2,
-      key: streamKey,
-      onEvent: callback,
+      key: props.streamKey ?? "stable",
+      onEvent: props.callback,
       url: "/events",
       WebSocketCtor,
     }
-    const state = queue ? useReactQueueEventStream(options) : useReactEventStream(options)
+    const state = useReactQueueEventStream(options)
     return createElement("output", null, JSON.stringify(state))
+  }
+
+  function StreamHarness(props: { callback: (frame: unknown) => void; streamKey?: string }): ReactNode {
+    const options = {
+      bufferSize: 2,
+      key: props.streamKey ?? "stable",
+      onEvent: props.callback,
+      url: "/events",
+      WebSocketCtor,
+    }
+    const state = useReactEventStream(options)
+    return createElement("output", null, JSON.stringify(state))
+  }
+
+  function Harness({ callback, queue = false, streamKey = "stable" }: { callback: (frame: unknown) => void; queue?: boolean; streamKey?: string }): ReactNode {
+    return queue ? createElement(QueueHarness, { callback, streamKey }) : createElement(StreamHarness, { callback, streamKey })
   }
 
   it("keeps one connection across callback changes and disposes on unmount", async () => {
@@ -118,9 +134,14 @@ describe("Vue stream adapters", () => {
     await nextTick()
     expect(FakeWebSocket.instances).toHaveLength(1)
 
+    FakeWebSocket.instances[0].simulateMessage('{"id":"event-1"}')
+    await nextTick()
+    expect(container.textContent).toContain('{"id":"event-1"}')
+
     key.value = "two"
     await nextTick()
     expect(FakeWebSocket.instances).toHaveLength(2)
+    expect(container.textContent).toBe("[]")
 
     app.unmount()
     expect(FakeWebSocket.instances[1].close).toHaveBeenCalledOnce()

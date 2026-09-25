@@ -260,6 +260,7 @@ class ViteDoctor:
             self._check_hotfile_presence,
             self._check_manifest_presence,
             self._check_typegen_artifacts,
+            self._check_realtime_config,
             self._check_env_alignment,
             self._check_mode_inertia_conflicts,
             self._check_ssr_reachability,
@@ -426,7 +427,13 @@ class ViteDoctor:
     def _apply_vite_key_fix(self, content: str, *, key: str, expected: Any) -> tuple[str, bool]:
         expected_literal = _format_ts_literal(expected)
         expected_str = str(expected)
-        expected_bool = "true" if expected is True else "false" if expected is False else None
+        expected_bool = (
+            "true"
+            if expected is True or expected == "true"
+            else "false"
+            if expected is False or expected == "false"
+            else None
+        )
 
         bool_pattern = rf"({key}\s*:\s*)(true|false)\b"
         if expected_bool is not None and re.search(bool_pattern, content):
@@ -435,7 +442,10 @@ class ViteDoctor:
 
         quoted_pattern = rf"({key}\s*:\s*['\"])([^'\"]+)(['\"])"
         if re.search(quoted_pattern, content):
-            content = re.sub(quoted_pattern, rf"\g<1>{expected_str}\g<3>", content, count=1)
+            if expected_bool is not None:
+                content = re.sub(rf"{key}\s*:\s*['\"][^'\"]+['\"]", f"{key}: {expected_bool}", content, count=1)
+            else:
+                content = re.sub(quoted_pattern, rf"\g<1>{expected_str}\g<3>", content, count=1)
             return content, True
 
         insert_match = _LITESTAR_CONFIG_START.search(content)
@@ -453,6 +463,17 @@ class ViteDoctor:
     def _resolve_to_root(self, path: Path) -> Path:
         root = self.config.root_dir or Path.cwd()
         return path if path.is_absolute() else (root / path)
+
+    def _resolve_under_root(self, path: Path) -> Path:
+        """Resolve a path relative to the configured root directory if not absolute.
+
+        Args:
+            path: Candidate filesystem path.
+
+        Returns:
+            The absolute path or path resolved under config.paths.root.
+        """
+        return path if path.is_absolute() else (self.config.paths.root / path)
 
     def _check_litestar_plugin_config(self) -> None:
         """Ensure the vite.config includes a litestar({ ... }) plugin config."""
@@ -874,7 +895,7 @@ class ViteDoctor:
                         message=f"Python generate_zod={py_zod} != JS generateZod={js_zod}",
                         fix_hint=f"Update vite.config generateZod to {str(py_zod).lower()}",
                         auto_fixable=True,
-                        context={"key": "generateZod", "expected": str(py_zod).lower()},
+                        context={"key": "generateZod", "expected": py_zod},
                     )
                 )
 
@@ -889,7 +910,7 @@ class ViteDoctor:
                         message=f"Python generate_sdk={py_sdk} != JS generateSdk={js_sdk}",
                         fix_hint=f"Update vite.config generateSdk to {str(py_sdk).lower()}",
                         auto_fixable=True,
-                        context={"key": "generateSdk", "expected": str(py_sdk).lower()},
+                        context={"key": "generateSdk", "expected": py_sdk},
                     )
                 )
 
@@ -1074,27 +1095,71 @@ class ViteDoctor:
         if routes_path is None:
             routes_path = self.config.types.output / "routes.json"
 
-        if not openapi_path.exists():
+        resolved_openapi = self._resolve_under_root(openapi_path)
+        resolved_routes = self._resolve_under_root(routes_path)
+
+        if not resolved_openapi.exists():
             self.issues.append(
                 DoctorIssue(
                     check="OpenAPI Export Missing",
                     severity="warning",
-                    message=f"{openapi_path} not found",
+                    message=f"{resolved_openapi} not found",
                     fix_hint="Run litestar assets generate-types (or start the app with types enabled)",
                     auto_fixable=False,
                 )
             )
 
-        if not routes_path.exists():
+        if not resolved_routes.exists():
             self.issues.append(
                 DoctorIssue(
                     check="Routes Export Missing",
                     severity="warning",
-                    message=f"{routes_path} not found",
+                    message=f"{resolved_routes} not found",
                     fix_hint="Run litestar assets generate-types (or start the app with types enabled)",
                     auto_fixable=False,
                 )
             )
+
+    def _check_realtime_config(self) -> None:
+        """Verify realtime configuration and asset alignment."""
+        if not isinstance(self.config.types, TypeGenConfig):
+            return
+
+        if not self.config.types.generate_channels:
+            return
+
+        output_dir = self._resolve_under_root(self.config.types.output)
+        asyncapi_path = self._resolve_under_root(self.config.types.asyncapi_path or (output_dir / "asyncapi.json"))
+        channels_ts_path = self._resolve_under_root(self.config.types.channels_ts_path or (output_dir / "channels.ts"))
+
+        if not asyncapi_path.exists():
+            return
+
+        if not channels_ts_path.exists():
+            self.issues.append(
+                DoctorIssue(
+                    check="Channels Types Missing",
+                    severity="warning",
+                    message=f"Realtime channel types not found at {channels_ts_path}",
+                    fix_hint="Run `litestar assets generate-types` to generate channels.ts",
+                    auto_fixable=False,
+                )
+            )
+            return
+
+        try:
+            if channels_ts_path.stat().st_mtime < asyncapi_path.stat().st_mtime:
+                self.issues.append(
+                    DoctorIssue(
+                        check="Channels Types Stale",
+                        severity="warning",
+                        message=f"{channels_ts_path} is older than {asyncapi_path}",
+                        fix_hint="Run `litestar assets generate-types` to regenerate channels.ts",
+                        auto_fixable=False,
+                    )
+                )
+        except OSError:
+            return
 
     def _check_mode_inertia_conflicts(self) -> None:
         """Warn when mode and inertia settings are incompatible."""

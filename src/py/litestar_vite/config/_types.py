@@ -48,10 +48,13 @@ class TypeGenConfig:
     openapi_path: "Path | None" = field(default=None)
     routes_path: "Path | None" = field(default=None)
     routes_ts_path: "Path | None" = field(default=None)
+    asyncapi_path: "Path | None" = field(default=None)
     generate_zod: bool = False
     generate_sdk: bool = True
     generate_routes: bool = True
     generate_page_props: bool = True
+    generate_channels: bool = True
+    channels_ts_path: "Path | None" = field(default=None)
     generate_schemas: bool = True
     """Generate schemas.ts with ergonomic form/response type helpers.
 
@@ -153,3 +156,11 @@ class TypeGenConfig:
             self.schemas_ts_path = self.output / "schemas.ts"
         elif isinstance(self.schemas_ts_path, str):
             self.schemas_ts_path = Path(self.schemas_ts_path)
+        if self.asyncapi_path is None:
+            self.asyncapi_path = self.output / "asyncapi.json"
+        elif isinstance(self.asyncapi_path, str):
+            self.asyncapi_path = Path(self.asyncapi_path)
+        if self.channels_ts_path is None:
+            self.channels_ts_path = self.output / "channels.ts"
+        elif isinstance(self.channels_ts_path, str):
+            self.channels_ts_path = Path(self.channels_ts_path)

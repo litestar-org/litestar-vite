@@ -55,6 +55,12 @@ Litestar Vite
 
          Follow the dedicated server-driven SPA guide without bouncing between framework and usage pages.
 
+      .. grid-item-card:: :octicon:`broadcast` Realtime & AsyncAPI
+         :link: realtime/index
+         :link-type: doc
+
+         Full-duplex WebSockets, ChannelsPlugin fan-out, SSE feeds, AsyncAPI 3.0 schema generation, and typed frontend streams.
+
       .. grid-item-card:: :octicon:`code` API Reference
          :link: reference/index
          :link-type: doc
@@ -115,6 +121,7 @@ Developer Resources
 
    usage/index
    frameworks/index
+   realtime/index
    reference/index
 
 .. toctree::

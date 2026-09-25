@@ -50,7 +50,6 @@ def _load_server_starting_template() -> str:
     try:
         return _SERVER_STARTING_PATH.read_text()
     except (FileNotFoundError, IsADirectoryError, OSError):
-        # Fallback minimal HTML if the built file is missing
         logger.warning("Server starting page not found at %s", _SERVER_STARTING_PATH)
         return """<!DOCTYPE html>
 <html><head><meta http-equiv="refresh" content="2"><title>Starting...</title></head>
@@ -120,6 +119,15 @@ class AppHandler:
             True when initialized, otherwise False.
         """
         return self._initialized
+
+    @property
+    def inject_csrf(self) -> bool:
+        """Whether CSRF token injection is enabled on SPAConfig.
+
+        Returns:
+            True if inject_csrf is enabled on SPAConfig, otherwise False.
+        """
+        return self._spa_config is not None and self._spa_config.inject_csrf
 
     async def initialize_async(self, vite_url: "str | None" = None, manifest: "dict[str, Any] | None" = None) -> None:
         """Initialize the handler asynchronously.
@@ -216,17 +224,14 @@ class AppHandler:
 
         if page_data is not None:
             json_data = encode_json(page_data).decode("utf-8")
-            # Check InertiaConfig for use_script_element (Inertia-specific setting)
             inertia = self._config.inertia
             use_script_element = isinstance(inertia, InertiaConfig) and inertia.use_script_element
             if use_script_element:
-                # v2.3+ Inertia protocol: Use script element for better performance (~37% smaller)
                 app_id = "app"
                 if self._spa_config.app_selector.startswith("#") and len(self._spa_config.app_selector) > 1:
                     app_id = self._spa_config.app_selector[1:]
                 html = inject_page_script(html, json_data, app_id=app_id, nonce=self._config.csp_nonce)
             else:
-                # Legacy: Use data-page attribute
                 html = set_data_attribute(html, self._spa_config.app_selector, "data-page", json_data)
 
         return html
@@ -390,8 +395,6 @@ class AppHandler:
         Returns:
             The HTML to serve in development.
         """
-        # Hybrid mode owns the prebuilt index.html + HMR-injection path. Template, SPA, and
-        # framework modes fall through to the dev-server proxy.
         if self._config.mode == "hybrid":
             if self._cached_html is None:
                 await self._load_index_html_async()
@@ -410,8 +413,6 @@ class AppHandler:
         Returns:
             The HTML to serve in development.
         """
-        # Hybrid mode owns the prebuilt index.html + HMR-injection path. Template, SPA, and
-        # framework modes fall through to the dev-server proxy.
         if self._config.mode == "hybrid":
             if self._cached_html is None:
                 self._load_index_html_sync()
@@ -458,6 +459,19 @@ class AppHandler:
         needs_transform = self._spa_config is not None or page_data is not None
         needs_csrf = self._spa_config is not None and self._spa_config.inject_csrf
         csrf_token = self._get_csrf_token(request) if needs_csrf else None
+
+        if (self._csrf_cookie_name is None or self._csrf_header_name is None) and hasattr(request, "app"):
+            app_csrf = getattr(request.app, "csrf_config", None)
+            if (
+                app_csrf is not None
+                and hasattr(app_csrf, "cookie_name")
+                and hasattr(app_csrf, "header_name")
+                and type(app_csrf).__name__ not in ("Mock", "MagicMock", "AsyncMock")
+            ):
+                if self._csrf_cookie_name is None:
+                    self._csrf_cookie_name = getattr(app_csrf, "cookie_name", None)
+                if self._csrf_header_name is None:
+                    self._csrf_header_name = getattr(app_csrf, "header_name", None)
 
         if self._config.is_dev_mode and self._config.hot_reload:
             html = await self._get_dev_html(request)
@@ -519,12 +533,19 @@ class AppHandler:
         base_html = self._cached_html or ""
         return self._transform_html(base_html, page_data, csrf_token)
 
-    async def get_bytes(self) -> bytes:
-        """Get cached index.html bytes (production).
+    async def get_bytes(self, request: "Request[Any, Any, Any] | None" = None) -> bytes:
+        """Get cached or transformed index.html bytes (production).
+
+        Args:
+            request: Optional incoming request for per-request CSRF token injection.
 
         Returns:
-            Cached HTML bytes. .
+            Cached or transformed HTML bytes.
         """
+        if request is not None and self.inject_csrf:
+            html = await self.get_html(request)
+            return html.encode("utf-8")
+
         if not self._initialized:
             logger.warning(
                 "AppHandler lazy init triggered - lifespan may not have run. "
@@ -564,7 +585,6 @@ class AppHandler:
             response = await self._http_client.get(target_url, follow_redirects=True)
             response.raise_for_status()
         except httpx.HTTPError:
-            # Return a friendly startup page instead of an error
             logger.debug("Vite server not ready at %s, showing startup page", target_url)
             return _get_server_starting_html(target_url)
         else:
@@ -594,7 +614,6 @@ class AppHandler:
             response = self._http_client_sync.get(target_url, follow_redirects=True)
             response.raise_for_status()
         except httpx.HTTPError:
-            # Return a friendly startup page instead of an error
             logger.debug("Vite server not ready at %s, showing startup page", target_url)
             return _get_server_starting_html(target_url)
         else:

@@ -195,25 +195,17 @@ def _filter_response_types_from_union(field_definition: FieldDefinition) -> Fiel
     """
     from typing import Union
 
-    # Not a union - return as-is (caller handles response type check)
     if not field_definition.is_union:
         return field_definition
 
-    # Filter inner types, keeping only non-response types
-    # IMPORTANT: Check order matters! LitestarResponse is a subclass of ASGIResponse,
-    # so we must check LitestarResponse FIRST to extract inner types before the
-    # general ASGIResponse check skips it entirely.
     props_types: list[type] = []
     for inner in field_definition.inner_types:
-        # Skip None types
         if inner.is_subclass_of(NoneType):
             continue
-        # For LitestarResponse[T], extract T as the props type
         if inner.is_subclass_of(LitestarResponse):
             if inner.inner_types:
                 props_types.append(inner.inner_types[0].annotation)
             continue
-        # Skip other ASGIResponse subtypes (Redirect, etc.)
         if inner.is_subclass_of(ASGIResponse):
             continue
         props_types.append(inner.annotation)
@@ -223,11 +215,8 @@ def _filter_response_types_from_union(field_definition: FieldDefinition) -> Fiel
     if len(props_types) == 1:
         return FieldDefinition.from_annotation(props_types[0])
 
-    # Sort types by qualified name for deterministic union construction
-    # This prevents cache key inconsistencies from type ordering
     props_types.sort(key=lambda t: getattr(t, "__qualname__", str(t)))
 
-    # Rebuild union type
     union_type = Union[tuple(props_types)]  # type: ignore[valid-type] # noqa: UP007
     return FieldDefinition.from_annotation(union_type)
 
@@ -249,7 +238,6 @@ def resolve_page_props_field_definition(
     """
     original_field = handler.parsed_fn_signature.return_type
 
-    # Filter response types from unions (e.g., InertiaRedirect | NoProps -> NoProps)
     field_definition = _filter_response_types_from_union(original_field)
     if field_definition is None:
         return None, None
@@ -278,3 +266,50 @@ def resolve_page_props_field_definition(
         resolved_field = field_definition
 
     return resolved_field, schema_creator.for_field_definition(resolved_field)
+
+
+def asyncapi_schema_from_result(result: Schema | Reference | None) -> dict[str, Any] | None:
+    """Convert a Litestar Schema or Reference to an AsyncAPI schema mapping.
+
+    Args:
+        result: Schema or Reference produced by Litestar schema generation.
+
+    Returns:
+        AsyncAPI schema dict or None.
+    """
+    if result is None:
+        return None
+    if isinstance(result, Reference):
+        return {"$ref": result.ref}
+    return result.to_schema()
+
+
+def resolve_handler_field_schema(
+    handler: Any, field_definition: FieldDefinition, schema_creator: SchemaCreator, *, dto_attribute: str
+) -> Schema | Reference | None:
+    """Resolve schema for a handler field definition using Litestar's SchemaCreator.
+
+    Args:
+        handler: Route handler instance.
+        field_definition: Litestar FieldDefinition for the payload.
+        schema_creator: Litestar SchemaCreator.
+        dto_attribute: DTO resolver attribute name ('resolve_dto' or 'resolve_return_dto').
+
+    Returns:
+        Schema or Reference produced by Litestar schema generation, or None.
+    """
+    resolve_dto: Any = None
+    with contextlib.suppress(AttributeError):
+        resolve_dto = getattr(handler, dto_attribute, None)
+        if resolve_dto is None and dto_attribute == "resolve_dto":
+            resolve_dto = getattr(handler, "resolve_data_dto", None)
+
+    dto = resolve_dto() if callable(resolve_dto) else None
+    if dto is not None:
+        dto_t = cast("type[AbstractDTO[Any]]", dto)
+        handler_id = getattr(handler, "handler_id", str(id(handler)))
+        return dto_t.create_openapi_schema(
+            field_definition=field_definition, handler_id=handler_id, schema_creator=schema_creator
+        )
+
+    return schema_creator.for_field_definition(field_definition)

@@ -180,3 +180,55 @@ describe("bridge schema typegen failOnError", () => {
     expect(nullValue.types?.failOnError).toBeUndefined()
   })
 })
+
+describe("bridge schema null routesTsPath and schemasTsPath", () => {
+  it("accepts null routesTsPath and schemasTsPath from Python config", () => {
+    const config = parseBridgeSchema({
+      ...baseBridgeConfig,
+      types: {
+        enabled: true,
+        output: "src/generated",
+        openapiPath: "openapi.json",
+        routesPath: "routes.json",
+        pagePropsPath: "inertia-pages.json",
+        routesTsPath: null,
+        schemasTsPath: null,
+        generateZod: false,
+        generateSdk: true,
+        generateRoutes: true,
+        generatePageProps: true,
+        generateSchemas: true,
+        globalRoute: false,
+      },
+    })
+
+    expect(config.types?.routesTsPath).toBeNull()
+    expect(config.types?.schemasTsPath).toBeNull()
+  })
+
+  it("accepts asyncapiPath, channelsTsPath, and generateChannels from Python config", () => {
+    const config = parseBridgeSchema({
+      ...baseBridgeConfig,
+      types: {
+        enabled: true,
+        output: "src/generated",
+        openapiPath: "src/generated/openapi.json",
+        routesPath: "src/generated/routes.json",
+        pagePropsPath: "src/generated/inertia-pages.json",
+        asyncapiPath: "src/generated/asyncapi.json",
+        channelsTsPath: "src/generated/channels.ts",
+        generateZod: false,
+        generateSdk: true,
+        generateRoutes: true,
+        generatePageProps: true,
+        generateChannels: true,
+        generateSchemas: true,
+        globalRoute: false,
+      },
+    })
+
+    expect(config.types?.asyncapiPath).toBe("src/generated/asyncapi.json")
+    expect(config.types?.channelsTsPath).toBe("src/generated/channels.ts")
+    expect(config.types?.generateChannels).toBe(true)
+  })
+})

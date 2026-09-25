@@ -88,6 +88,7 @@ class JSExecutor(ABC):
 
     bin_name: ClassVar[str]
     silent_flag: ClassVar[str] = "--silent"
+    __slots__ = ("_resolved_executable", "executable_path", "silent")
 
     def __init__(self, executable_path: "Path | str | None" = None, *, silent: bool = False) -> None:
         self.executable_path = executable_path
@@ -185,7 +186,7 @@ class JSExecutor(ABC):
 class CommandExecutor(JSExecutor):
     """Generic command executor."""
 
-    # Subclasses override to customize update behavior
+    __slots__ = ()
     update_command: ClassVar[str] = "update"
     update_latest_flag: ClassVar[str] = "--latest"
 
@@ -226,20 +227,22 @@ class CommandExecutor(JSExecutor):
 class NodeExecutor(CommandExecutor):
     """Node.js executor."""
 
+    __slots__ = ()
     bin_name = "npm"
-    # npm doesn't have --latest; use --save to update package.json
     update_latest_flag: ClassVar[str] = "--save"
 
 
 class BunExecutor(CommandExecutor):
     """Bun executor."""
 
+    __slots__ = ()
     bin_name = "bun"
 
 
 class DenoExecutor(CommandExecutor):
     """Deno executor."""
 
+    __slots__ = ()
     bin_name = "deno"
     silent_flag: ClassVar[str] = ""
     update_latest_flag: ClassVar[str] = ""
@@ -249,20 +252,21 @@ class DenoExecutor(CommandExecutor):
 
     def update(self, cwd: Path, *, latest: bool = False) -> None:
         """Deno doesn't have traditional package management."""
-        del cwd, latest  # unused
+        del cwd, latest
 
 
 class YarnExecutor(CommandExecutor):
     """Yarn executor."""
 
+    __slots__ = ()
     bin_name = "yarn"
-    # yarn uses "upgrade" command (not "update")
     update_command: ClassVar[str] = "upgrade"
 
 
 class PnpmExecutor(CommandExecutor):
     """PNPM executor."""
 
+    __slots__ = ()
     bin_name = "pnpm"
 
 
@@ -274,6 +278,7 @@ class NodeenvExecutor(JSExecutor):
     """
 
     bin_name = "nodeenv"
+    __slots__ = ("_detect_nodeenv", "config")
 
     @runtime_checkable
     class _SupportsDetectNodeenv(Protocol):
@@ -316,12 +321,22 @@ class NodeenvExecutor(JSExecutor):
         subprocess.run(command, cwd=cwd, check=False)
 
     def install(self, cwd: Path) -> None:
+        """Run npm install within the nodeenv environment.
+
+        Args:
+            cwd: The working directory for the installation.
+
+        Raises:
+            ViteExecutionError: If package installation exits with a non-zero status.
+        """
         if self._detect_nodeenv:
             self.install_nodeenv(cwd)
 
         npm_path = self._find_npm_in_venv()
         command = [npm_path, "install"]
-        subprocess.run(command, cwd=cwd, check=True)
+        process = subprocess.run(command, cwd=cwd, shell=False, check=False)
+        if process.returncode != 0:
+            raise ViteExecutionError(command, process.returncode, "package install failed")
 
     def update(self, cwd: Path, *, latest: bool = False) -> None:
         npm_path = self._find_npm_in_venv()

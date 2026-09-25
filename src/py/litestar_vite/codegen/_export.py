@@ -9,6 +9,7 @@ This module provides a single entry point for exporting all integration artifact
 Both CLI and Plugin should call this function to guarantee byte-identical output.
 """
 
+import contextlib
 from dataclasses import dataclass, field
 from functools import partial
 from importlib.metadata import PackageNotFoundError, version
@@ -36,6 +37,12 @@ class ExportResult:
     openapi_schema: "dict[str, Any] | None" = None
     """The OpenAPI schema dict (for downstream use)."""
 
+    asyncapi_schema: "dict[str, Any] | None" = None
+    """The AsyncAPI 3.0 schema dict (for downstream use)."""
+
+    asyncapi_source: "str | None" = None
+    """The authoritative source for the AsyncAPI schema ('litestar-asyncapi' or 'builtin')."""
+
 
 def fmt_path(path: Path) -> str:
     """Format path for display, using relative path when possible.
@@ -57,7 +64,87 @@ def typegen_outputs_requested(types_config: "TypeGenConfig") -> bool:
         types_config.generate_schemas,
         types_config.generate_routes,
         types_config.generate_page_props,
+        types_config.generate_channels,
     ))
+
+
+def app_has_realtime_surface(app: "Litestar") -> bool:
+    """Return whether the Litestar application defines any realtime surface.
+
+    A realtime surface includes:
+    - Any plugin in ``app.plugins`` that provides AsyncAPI schemas.
+    - Any route in ``app.routes`` that is a ``litestar.routes.WebSocketRoute``.
+    - Any plugin in ``app.plugins`` that is a ``litestar.channels.ChannelsPlugin``.
+    - Any HTTP route handler whose return annotation represents a Server-Sent Event (SSE).
+
+    Args:
+        app: The Litestar application instance.
+
+    Returns:
+        True if any realtime route, plugin, or SSE handler is detected, otherwise False.
+    """
+    from litestar_vite.codegen._asyncapi import find_asyncapi_plugin
+
+    if find_asyncapi_plugin(app) is not None:
+        return True
+
+    from litestar.channels import ChannelsPlugin
+
+    plugins = getattr(app, "plugins", None)
+    if plugins is not None and hasattr(plugins, "get"):
+        with contextlib.suppress(KeyError, AttributeError):
+            if plugins.get(ChannelsPlugin) is not None:
+                return True
+        with contextlib.suppress(KeyError, AttributeError):
+            if plugins.get("ChannelsPlugin") is not None:
+                return True
+
+    from litestar.routes import HTTPRoute, WebSocketRoute
+
+    for route in app.routes:
+        if isinstance(route, WebSocketRoute):
+            return True
+
+    from litestar_vite.codegen._asyncapi import _is_sse_type  # pyright: ignore[reportPrivateUsage]
+
+    for route in app.routes:
+        if not isinstance(route, HTTPRoute):
+            continue
+        for handler in route.route_handlers:
+            return_field = getattr(handler, "parsed_return_field", None)
+            annotation = getattr(return_field, "annotation", None)
+            if annotation is None:
+                annotation = getattr(handler, "return_type", None)
+            if _is_sse_type(annotation):
+                return True
+
+    return False
+
+
+def _resolve_serializer(
+    app: "Litestar", serializer: "Callable[[Any], bytes] | None" = None
+) -> "Callable[[Any], bytes]":
+    """Resolve a JSON serializer using application type encoders when none is provided.
+
+    Args:
+        app: The Litestar application instance.
+        serializer: An optional custom serializer function.
+
+    Returns:
+        A callable serializer for encoding JSON.
+    """
+    if serializer is not None:
+        return serializer
+
+    encoders: Any
+    try:
+        encoders = app.type_encoders  # pyright: ignore[reportUnknownMemberType]
+    except AttributeError:
+        encoders = None
+
+    from litestar.serialization import encode_json, get_serializer
+
+    return partial(encode_json, serializer=get_serializer(encoders if isinstance(encoders, dict) else None))  # pyright: ignore[reportUnknownArgumentType]
 
 
 def export_integration_assets(
@@ -68,12 +155,21 @@ def export_integration_assets(
     This is the single source of truth for code generation. Both CLI commands
     and Plugin startup should call this function to ensure byte-identical output.
 
+    AsyncAPI export is independent of OpenAPI availability when channels are
+    enabled and a realtime surface is present on the application (WebSocket routes,
+    ChannelsPlugin, or SSE handlers). The configuration flag generate_channels=True
+    is an opt-in ceiling rather than a mandate, so a REST-only application produces
+    no AsyncAPI artifacts even when generate_channels is true. OpenAPI schema, route
+    metadata, route definitions, and Inertia page prop artifacts require an active
+    OpenAPI configuration.
+
     The export order is critical:
     1. Register Inertia page prop types in OpenAPI schema (mutates schema_dict)
     2. Export openapi.json (now includes session prop types)
     3. Export routes.json (uses schema for component refs)
     4. Export routes.ts (if enabled)
     5. Export inertia-pages.json (if enabled)
+    6. Export asyncapi.json (if enabled)
 
     Args:
         app: The Litestar application instance.
@@ -84,7 +180,6 @@ def export_integration_assets(
         ExportResult with lists of exported and unchanged files.
     """
     from litestar._openapi.plugin import OpenAPIPlugin
-    from litestar.serialization import encode_json, get_serializer
 
     from litestar_vite.codegen._inertia import generate_inertia_pages_json
     from litestar_vite.codegen._routes import extract_route_metadata
@@ -99,27 +194,29 @@ def export_integration_assets(
     if not typegen_outputs_requested(types_config):
         return result
 
-    # Check if OpenAPI is available
-    openapi_plugin = next((p for p in app.plugins._plugins if isinstance(p, OpenAPIPlugin)), None)  # pyright: ignore[reportPrivateUsage]
-    has_openapi = openapi_plugin is not None and openapi_plugin._openapi_config is not None  # pyright: ignore[reportPrivateUsage]
+    from litestar.exceptions import ImproperlyConfiguredException
+
+    plugins = getattr(app, "plugins", ())
+    openapi_plugin = next((p for p in plugins if isinstance(p, OpenAPIPlugin)), None)
+    has_openapi = False
+    if openapi_plugin is not None:
+        try:
+            _ = openapi_plugin.openapi_config
+            has_openapi = True
+        except ImproperlyConfiguredException:
+            has_openapi = False
 
     if not has_openapi:
+        if types_config.generate_channels and app_has_realtime_surface(app):
+            export_asyncapi(
+                app=app, types_config=types_config, serializer=_resolve_serializer(app, serializer), result=result
+            )
         return result
 
-    # Get serializer for OpenAPI encoding
-    if serializer is None:
-        encoders: Any
-        try:
-            encoders = app.type_encoders  # pyright: ignore[reportUnknownMemberType]
-        except AttributeError:
-            encoders = None
-        serializer = partial(encode_json, serializer=get_serializer(encoders if isinstance(encoders, dict) else None))  # pyright: ignore[reportUnknownArgumentType]
+    serializer = _resolve_serializer(app, serializer)
 
-    # Step 1: Get OpenAPI schema and register Inertia types
     schema_dict = app.openapi_schema.to_schema()
 
-    # Register Inertia page prop types in OpenAPI schema BEFORE exporting
-    # This ensures types like EmailSent, NoProps, CurrentTeam are included
     inertia_pages_data: dict[str, Any] | None = None
     if isinstance(config.inertia, InertiaConfig) and types_config.generate_page_props:
         inertia_type_gen = config.inertia.type_gen or InertiaTypeGenConfig()
@@ -134,17 +231,14 @@ def export_integration_assets(
 
     result.openapi_schema = schema_dict
 
-    # Step 2: Export openapi.json
     export_openapi(schema_dict=schema_dict, types_config=types_config, serializer=serializer, result=result)
 
     routes_metadata = extract_route_metadata(app, openapi_schema=schema_dict)
 
-    # Step 3: Export routes.json (always pass openapi_schema for consistency)
     export_routes_json(
         app=app, types_config=types_config, openapi_schema=schema_dict, routes_metadata=routes_metadata, result=result
     )
 
-    # Step 4: Export routes.ts (if enabled)
     if types_config.generate_routes:
         export_routes_ts(
             app=app,
@@ -154,7 +248,6 @@ def export_integration_assets(
             result=result,
         )
 
-    # Step 5: Export inertia-pages.json (if enabled)
     if (
         isinstance(config.inertia, InertiaConfig)
         and types_config.generate_page_props
@@ -162,6 +255,9 @@ def export_integration_assets(
         and inertia_pages_data is not None
     ):
         export_inertia_pages(pages_data=inertia_pages_data, types_config=types_config, result=result)
+
+    if types_config.generate_channels and app_has_realtime_surface(app):
+        export_asyncapi(app=app, types_config=types_config, serializer=serializer, result=result)
 
     return result
 
@@ -209,7 +305,6 @@ def export_routes_json(
     if routes_path is None:
         routes_path = types_config.output / "routes.json"
 
-    # Always pass openapi_schema for consistent output between CLI and plugin
     routes_data = generate_routes_json(
         app, include_components=True, openapi_schema=openapi_schema, routes_metadata=routes_metadata
     )
@@ -239,7 +334,6 @@ def export_routes_ts(
     if routes_ts_path is None:
         routes_ts_path = types_config.output / "routes.ts"
 
-    # Always pass openapi_schema for consistent output
     routes_ts_content = generate_routes_ts(
         app, openapi_schema=openapi_schema, global_route=types_config.global_route, routes_metadata=routes_metadata
     )
@@ -264,3 +358,37 @@ def export_inertia_pages(*, pages_data: "dict[str, Any]", types_config: "TypeGen
         result.exported_files.append(fmt_path(page_props_path))
     else:
         result.unchanged_files.append("inertia-pages.json")
+
+
+def export_asyncapi(
+    *,
+    app: "Litestar",
+    types_config: "TypeGenConfig",
+    serializer: "Callable[[Any], bytes] | None" = None,
+    result: ExportResult,
+) -> None:
+    """Export AsyncAPI 3.0 schema to file.
+
+    Args:
+        app: The Litestar application instance.
+        types_config: The type generation configuration.
+        serializer: Optional custom serializer for JSON encoding.
+        result: ExportResult accumulator for exported or unchanged files.
+    """
+    from litestar_vite.codegen._asyncapi import resolve_asyncapi_document
+    from litestar_vite.codegen._utils import encode_deterministic_json, write_if_changed
+
+    asyncapi_path = types_config.asyncapi_path
+    if asyncapi_path is None:
+        asyncapi_path = types_config.output / "asyncapi.json"
+
+    schema_dict, source = resolve_asyncapi_document(app)
+    result.asyncapi_schema = schema_dict
+    result.asyncapi_source = source
+
+    schema_content = encode_deterministic_json(schema_dict, serializer=serializer)
+
+    if write_if_changed(asyncapi_path, schema_content):
+        result.exported_files.append(f"asyncapi: {fmt_path(asyncapi_path)}")
+    else:
+        result.unchanged_files.append("asyncapi.json")

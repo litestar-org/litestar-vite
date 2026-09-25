@@ -44,12 +44,7 @@ from litestar import Litestar
 from litestar_granian import GranianPlugin
 from litestar_vite import VitePlugin
 
-app = Litestar(
-    plugins=[
-        VitePlugin(),
-        GranianPlugin(static="auto"),
-    ]
-)
+app = Litestar(plugins=[VitePlugin(), GranianPlugin(static="auto")])
 ```
 
 This is an optimization, not a separate application configuration. The Litestar static route stays registered, so

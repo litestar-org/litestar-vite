@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from litestar_vite.plugin._proxy_headers import ProxyHeadersMiddleware, TrustedHosts
+from litestar_vite.plugin._proxy import ProxyHeadersMiddleware, TrustedHosts
 
 if TYPE_CHECKING:
     from litestar.types import Receive, Scope, Send

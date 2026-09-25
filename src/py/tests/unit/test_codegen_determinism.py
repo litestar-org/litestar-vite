@@ -7,7 +7,9 @@ for the same input data, regardless of Python dict insertion order.
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
+import pytest
 from litestar import Litestar, get, post
 from litestar.params import FromPath, FromQuery
 
@@ -169,6 +171,15 @@ def test_write_if_changed_handles_string_content() -> None:
         assert result is True
         # write_if_changed ensures trailing newline for POSIX compliance
         assert path.read_text() == content + "\n"
+
+
+def test_write_if_changed_handles_replace_failure_cleanly() -> None:
+    """Test that atomic write failure during rename does not raise Bad file descriptor."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir) / "test.txt"
+        with patch.object(Path, "replace", side_effect=PermissionError("Permission denied")):
+            with pytest.raises(PermissionError, match="Permission denied"):
+                write_if_changed(path, "some content")
 
 
 def test_encode_deterministic_json_produces_sorted_output() -> None:

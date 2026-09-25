@@ -199,8 +199,9 @@ class RuntimeConfig:
         http2: Enable HTTP/2 for proxy HTTP requests (better multiplexing).
             WebSocket traffic (HMR) uses a separate connection and is unaffected.
         extra_route_prefixes: Additional backend route prefixes excluded from SPA/proxy fallbacks.
-            Registered routes and the OpenAPI path are derived automatically. Use this only to
-            reserve an otherwise unclaimed prefix such as ``"/api"`` or ``"/docs"``.
+            Registered routes, the OpenAPI path, and the AsyncAPI documentation path (when an
+            AsyncAPI plugin is registered) are derived automatically. Use this only to reserve
+            an otherwise unclaimed prefix such as ``"/api"`` or ``"/docs"``.
     """
 
     dev_mode: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)
@@ -254,8 +255,10 @@ class RuntimeConfig:
     extra_route_prefixes: tuple[str, ...] = ()
     """Additional backend route prefixes for dev proxy and SPA fallback exclusion.
 
-    Use this to deliberately reserve custom backend paths such as ``"/admin"`` or
-    to re-add ``"/docs"`` when your app serves documentation there.
+    Registered routes, the OpenAPI path, and the AsyncAPI documentation path (when an
+    AsyncAPI plugin is registered) are derived automatically. Use this deliberately
+    to reserve custom backend paths such as ``"/admin"`` or to re-add ``"/docs"`` when
+    your app serves documentation there.
     """
 
     def __post_init__(self) -> None:

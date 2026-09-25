@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { resolvePageComponent, unwrapPageProps } from "../../src/inertia-helpers"
+import { resolvePageComponent, resolvePageModule, unwrapPageProps } from "../../src/inertia-helpers"
 
 describe("inertia-helpers props shape", () => {
   it("unwraps mapping content to top-level keys", () => {
@@ -71,5 +71,41 @@ describe("inertia-helpers props shape", () => {
     const second = await resolvePageComponent("./pages/Direct.tsx", pages)
 
     expect(first).toBe(second)
+  })
+
+  it("preserves module shape with default export for .svelte page components", async () => {
+    const SvelteComponent = (received: Record<string, unknown>) => received
+    const pages = {
+      "./pages/Home.svelte": Promise.resolve({ default: SvelteComponent }),
+    }
+
+    const resolved = (await resolvePageComponent("./pages/Home.svelte", pages)) as { default: unknown }
+
+    expect(resolved).toHaveProperty("default")
+    expect(typeof resolved.default).toBe("function")
+  })
+
+  it("preserves module shape when rawModule: true option is provided", async () => {
+    const Component = (received: Record<string, unknown>) => received
+    const pages = {
+      "./pages/Home.tsx": Promise.resolve({ default: Component }),
+    }
+
+    const resolved = (await resolvePageComponent("./pages/Home.tsx", pages, { rawModule: true })) as { default: unknown }
+
+    expect(resolved).toHaveProperty("default")
+    expect(typeof resolved.default).toBe("function")
+  })
+
+  it("resolvePageModule helper preserves module shape", async () => {
+    const Component = (received: Record<string, unknown>) => received
+    const pages = {
+      "./pages/About.svelte": Promise.resolve({ default: Component }),
+    }
+
+    const resolved = await resolvePageModule("./pages/About.svelte", pages)
+
+    expect(resolved).toHaveProperty("default")
+    expect(typeof resolved.default).toBe("function")
   })
 })

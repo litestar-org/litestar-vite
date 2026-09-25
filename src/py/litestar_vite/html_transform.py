@@ -308,8 +308,6 @@ def inject_page_script(
     if not json_data:
         return html
 
-    # Escape sequences that could break out of script element
-    # Replace </ with <\/ to prevent premature tag closure (XSS prevention)
     escaped_json = json_data.replace("</", r"<\/")
 
     nonce_attr = f' nonce="{_escape_attr(nonce)}"' if nonce else ""
@@ -370,13 +368,9 @@ def inject_vite_dev_scripts(
     Example:
         html = inject_vite_dev_scripts(html, "", asset_url="/static/", is_react=True)
     """
-    # Use relative URLs with asset_url prefix so requests go through Litestar's proxy
-    # This ensures proper base path handling (Vite expects /static/@vite/client, not /@vite/client)
     base = asset_url.rstrip("/")
     nonce_attr = f' nonce="{_escape_attr(csp_nonce)}"' if csp_nonce else ""
 
-    # Transform entry point script URLs to include the asset URL prefix
-    # This ensures /resources/main.tsx becomes /static/resources/main.tsx
     if resource_dir:
         resource_prefix = f"/{resource_dir.strip('/')}/"
 

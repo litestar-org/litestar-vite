@@ -1772,6 +1772,37 @@ describe("litestar-vite-plugin", () => {
       expect(mockNext).not.toHaveBeenCalled()
     })
 
+    it("escapes malicious characters in APP_URL to prevent HTML injection in placeholder", async () => {
+      const maliciousAppUrl = '" autofocus onfocus=alert(1) x="'
+      process.env.APP_URL = maliciousAppUrl
+      await setupServer()
+      mockFs(null)
+
+      await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
+
+      expect(mockRes.statusCode).toBe(200)
+      const html = mockRes.end.mock.calls[0][0] as string
+      expect(html).not.toContain('" autofocus onfocus=')
+      expect(html).not.toContain('href="" autofocus')
+      expect(html).toContain("&quot; autofocus onfocus=alert(1) x=&quot;")
+      expect(html).toContain('href="&quot; autofocus onfocus=alert(1) x=&quot;"')
+      expect(mockNext).not.toHaveBeenCalled()
+    })
+
+    it("renders well-formed APP_URL identically in placeholder", async () => {
+      const appUrl = "http://localhost:8000"
+      process.env.APP_URL = appUrl
+      await setupServer()
+      mockFs(null)
+
+      await mockMiddleware({ url: "/", originalUrl: "/" }, mockRes, mockNext)
+
+      expect(mockRes.statusCode).toBe(200)
+      const html = mockRes.end.mock.calls[0][0] as string
+      expect(html).toBe(actualPlaceholderContent.replace(/{{ APP_URL }}/g, appUrl))
+      expect(mockNext).not.toHaveBeenCalled()
+    })
+
     it("serves placeholder when bridge has Inertia config in hybrid mode", async () => {
       // Inertia is detected from bridge Inertia metadata, not from the mode value.
       // In inertia mode, the Vite dev server should always show the placeholder page.

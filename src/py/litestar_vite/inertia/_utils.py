@@ -32,7 +32,6 @@ class InertiaHeaders(str, Enum):
 
     INFINITE_SCROLL_MERGE_INTENT = "X-Inertia-Infinite-Scroll-Merge-Intent"
 
-    # Precognition headers (Laravel Precognition protocol)
     PRECOGNITION = "Precognition"
     PRECOGNITION_SUCCESS = "Precognition-Success"
     PRECOGNITION_VALIDATE_ONLY = "Precognition-Validate-Only"

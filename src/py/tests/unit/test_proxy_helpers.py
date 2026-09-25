@@ -83,6 +83,24 @@ class _DummyStreamingResponse:
         self.closed = True
 
 
+class _DummyFailingStreamingResponse:
+    """Mock streaming response that yields chunks then raises a mid-stream exception."""
+
+    def __init__(self, chunks: list[bytes], status_code: int = 200) -> None:
+        self.status_code = status_code
+        self.headers = httpx.Headers({"content-type": "text/plain"})
+        self._chunks = chunks
+        self.closed = False
+
+    async def aiter_bytes(self) -> AsyncGenerator[bytes, None]:
+        for chunk in self._chunks:
+            yield chunk
+        raise RuntimeError("simulated upstream stream drop")
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
 async def test_stream_request_body_reads_chunks_preserving_order() -> None:
     chunks: list[bytes] = []
 
@@ -391,6 +409,42 @@ async def test_proxy_http_with_plugin_client(tmp_path: Path) -> None:
     assert events[1]["body"] == b"ok"
     assert plugin_client.stream_context is not None
     assert plugin_client.stream_context.request_body_chunks == [b"up-", b"streaming"]
+
+
+async def test_proxy_http_does_not_duplicate_response_start_on_streaming_error(tmp_path: Path) -> None:
+    """Mid-stream exception after response headers are sent must not dispatch a second http.response.start."""
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://localhost:5173")
+
+    failing_response = _DummyFailingStreamingResponse([b"chunk1"])
+    plugin_client = DummyAsyncClient(cast("httpx.Response", failing_response))
+    plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", plugin_client)))
+
+    middleware = ViteProxyMiddleware(app=Mock(), hotfile_path=hotfile, asset_url="/static/", plugin=plugin)
+
+    scope = {
+        "method": "GET",
+        "raw_path": b"/@vite/client",
+        "query_string": b"",
+        "headers": [(b"host", b"example.com")],
+        "path": "/@vite/client",
+    }
+    events: list[dict[str, object]] = []
+
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(event: dict[str, object]) -> None:
+        events.append(event)
+
+    await middleware._proxy_http(scope, receive, send)
+
+    starts = [event for event in events if event.get("type") == "http.response.start"]
+    assert len(starts) == 1
+    assert starts[0]["status"] == 200
+
+    last_body = [event for event in events if event.get("type") == "http.response.body"][-1]
+    assert last_body["more_body"] is False
 
 
 async def test_proxy_http_no_target(tmp_path: Path) -> None:

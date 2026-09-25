@@ -6,12 +6,21 @@ class FakeWebSocket {
   static instances: FakeWebSocket[] = []
 
   readonly url: string
-  close = vi.fn()
+  closed = false
+  close = vi.fn(() => {
+    this.closed = true
+  })
+  readyState = 0
+  sent: string[] = []
   private readonly listeners = new Map<string, Set<EventListener>>()
 
   constructor(url: string | URL) {
     this.url = String(url)
     FakeWebSocket.instances.push(this)
+  }
+
+  send(data: string): void {
+    this.sent.push(data)
   }
 
   addEventListener(type: string, listener: EventListener): void {
@@ -21,6 +30,7 @@ class FakeWebSocket {
   }
 
   simulateClose(code: number): void {
+    this.readyState = 3
     this.dispatch("close", { code } as CloseEvent)
   }
 
@@ -33,6 +43,7 @@ class FakeWebSocket {
   }
 
   simulateOpen(): void {
+    this.readyState = 1
     this.dispatch("open", new Event("open"))
   }
 
@@ -49,7 +60,10 @@ class FakeEventSource {
   static instances: FakeEventSource[] = []
 
   readonly url: string
-  close = vi.fn()
+  closed = false
+  close = vi.fn(() => {
+    this.closed = true
+  })
   private readonly listeners = new Map<string, Set<EventListener>>()
 
   constructor(url: string | URL) {
@@ -574,8 +588,173 @@ describe("createEventStream websocket transport", () => {
     vi.runAllTimers()
 
     expect(FakeWebSocket.instances).toHaveLength(2)
+    expect(FakeWebSocket.instances[0].closed).toBe(true)
     expect(onHealthChange).toHaveBeenCalledOnce()
     expect(onHealthChange).toHaveBeenCalledWith(true)
+  })
+
+  it("closes the previous socket when connect is called twice", () => {
+    const onClose = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      onEvent: vi.fn(),
+      onClose,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    expect(FakeWebSocket.instances).toHaveLength(1)
+    expect(FakeWebSocket.instances[0].closed).toBe(false)
+
+    stream.connect()
+    expect(FakeWebSocket.instances).toHaveLength(2)
+    expect(FakeWebSocket.instances[0].closed).toBe(true)
+    expect(FakeWebSocket.instances[1].closed).toBe(false)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it("reconnects when the idle watchdog expires", () => {
+    const onStale = vi.fn()
+    const onHealthChange = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      onEvent: vi.fn(),
+      onStale,
+      onHealthChange,
+      heartbeatTimeoutMs: 5000,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateOpen()
+    expect(stream.healthy).toBe(true)
+    expect(onStale).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(5100)
+    expect(onStale).toHaveBeenCalledOnce()
+    expect(stream.healthy).toBe(false)
+    expect(FakeWebSocket.instances[0].closed).toBe(true)
+
+    // Advance past reconnect backoff
+    vi.runAllTimers()
+    expect(FakeWebSocket.instances).toHaveLength(2)
+  })
+
+  it("a heartbeat frame keeps the watchdog alive", () => {
+    const onStale = vi.fn()
+    const onEvent = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      onEvent,
+      onStale,
+      heartbeatTimeoutMs: 5000,
+      isHeartbeat: () => true,
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateOpen()
+
+    for (let i = 0; i < 5; i++) {
+      vi.advanceTimersByTime(2000)
+      FakeWebSocket.instances[0].simulateMessage('{"type":"ping"}')
+    }
+
+    expect(onEvent).not.toHaveBeenCalled()
+    expect(onStale).not.toHaveBeenCalled()
+    expect(FakeWebSocket.instances).toHaveLength(1)
+    expect(FakeWebSocket.instances[0].closed).toBe(false)
+  })
+
+  it("bounds the sequence tracking map", () => {
+    const onGap = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      onEvent: vi.fn(),
+      onGap,
+      maxTrackedStreams: 2,
+      getSequence: (frame: unknown) => {
+        const f = frame as { stream: string; seq: number }
+        return { stream: f.stream, value: f.seq }
+      },
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateOpen()
+
+    FakeWebSocket.instances[0].simulateMessage(JSON.stringify({ stream: "s1", seq: 1 }))
+    FakeWebSocket.instances[0].simulateMessage(JSON.stringify({ stream: "s2", seq: 1 }))
+    FakeWebSocket.instances[0].simulateMessage(JSON.stringify({ stream: "s3", seq: 1 }))
+
+    // s3 was not evicted (Map holds s2, s3), so seq 5 triggers onGap
+    FakeWebSocket.instances[0].simulateMessage(JSON.stringify({ stream: "s3", seq: 5 }))
+    expect(onGap).toHaveBeenCalledOnce()
+    expect(onGap).toHaveBeenCalledWith({
+      stream: "s3",
+      from: 1,
+      to: 5,
+      missing: 3,
+    })
+
+    // s1 was evicted when s3 arrived, so seq 10 is accepted as a new baseline without reporting a gap
+    FakeWebSocket.instances[0].simulateMessage(JSON.stringify({ stream: "s1", seq: 10 }))
+    expect(onGap).toHaveBeenCalledOnce()
+  })
+
+  it("clears tracking state on dispose and on a fresh connect", () => {
+    const onEvent = vi.fn()
+    const onGap = vi.fn()
+    const stream = createEventStream({
+      buildUrl: () => "ws://example.test/events",
+      onEvent,
+      onGap,
+      getEventKey: (frame: unknown) => (frame as { id: string }).id,
+      getSequence: (frame: unknown) => {
+        const f = frame as { stream: string; seq: number }
+        return { stream: f.stream, value: f.seq }
+      },
+      WebSocketCtor,
+    })
+
+    stream.connect()
+    FakeWebSocket.instances[0].simulateOpen()
+
+    FakeWebSocket.instances[0].simulateMessage(JSON.stringify({ id: "msg-1", stream: "s1", seq: 1 }))
+    expect(onEvent).toHaveBeenCalledTimes(1)
+
+    // Manual connect() resets tracking
+    stream.connect()
+    FakeWebSocket.instances[1].simulateOpen()
+
+    // msg-1 is received again because dedup was reset
+    FakeWebSocket.instances[1].simulateMessage(JSON.stringify({ id: "msg-1", stream: "s1", seq: 10 }))
+    expect(onEvent).toHaveBeenCalledTimes(2)
+    // No gap reported for s1 seq 10 because sequence state was reset
+    expect(onGap).not.toHaveBeenCalled()
+
+    stream.dispose()
+  })
+
+  it("closes the previous EventSource when connect is called twice", () => {
+    const onClose = vi.fn()
+    const stream = createEventStream({
+      transport: "sse",
+      buildUrl: () => "http://example.test/events",
+      onEvent: vi.fn(),
+      onClose,
+      EventSourceCtor,
+    })
+
+    stream.connect()
+    expect(FakeEventSource.instances).toHaveLength(1)
+    expect(FakeEventSource.instances[0].closed).toBe(false)
+
+    stream.connect()
+    expect(FakeEventSource.instances).toHaveLength(2)
+    expect(FakeEventSource.instances[0].closed).toBe(true)
+    expect(FakeEventSource.instances[1].closed).toBe(false)
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it("reports health only when the value changes", () => {
@@ -713,5 +892,84 @@ describe("createEventStream SSE transport", () => {
     expect(FakeEventSource.instances).toHaveLength(1)
     vi.advanceTimersByTime(1)
     expect(FakeEventSource.instances).toHaveLength(2)
+  })
+})
+
+describe("createEventStream send", () => {
+  beforeEach(() => {
+    FakeWebSocket.instances = []
+    FakeEventSource.instances = []
+    vi.useFakeTimers()
+    vi.spyOn(Math, "random").mockReturnValue(0.5)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it("send writes a serialized frame to the open socket", () => {
+    const stream = createEventStream<{ id: string }, { text: string }>({
+      buildUrl: () => "/ws",
+      WebSocketCtor,
+      onEvent: vi.fn(),
+    })
+    stream.connect()
+    FakeWebSocket.instances[0].simulateOpen()
+    const result = stream.send({ text: "hi" })
+    expect(result).toBe(true)
+    expect(FakeWebSocket.instances[0].sent).toEqual([JSON.stringify({ text: "hi" })])
+  })
+
+  it("send returns false before the socket is open", () => {
+    const stream = createEventStream({
+      buildUrl: () => "/ws",
+      WebSocketCtor,
+      onEvent: vi.fn(),
+    })
+    stream.connect()
+    const result = (stream as any).send({ text: "hi" })
+    expect(result).toBe(false)
+    expect(FakeWebSocket.instances[0].sent).toHaveLength(0)
+  })
+
+  it("send returns false after dispose", () => {
+    const stream = createEventStream({
+      buildUrl: () => "/ws",
+      WebSocketCtor,
+      onEvent: vi.fn(),
+    })
+    stream.connect()
+    FakeWebSocket.instances[0].simulateOpen()
+    stream.dispose()
+    const result = (stream as any).send({ text: "hi" })
+    expect(result).toBe(false)
+  })
+
+  it("send returns false for the sse transport", () => {
+    const stream = createEventStream({
+      buildUrl: () => "/events",
+      EventSourceCtor,
+      onEvent: vi.fn(),
+      transport: "sse",
+    })
+    stream.connect()
+    FakeEventSource.instances[0].simulateOpen()
+    const result = (stream as any).send({ text: "hi" })
+    expect(result).toBe(false)
+  })
+
+  it("send honours a custom serializeFrame", () => {
+    const stream = createEventStream<unknown, { cmd: string }>({
+      buildUrl: () => "/ws",
+      WebSocketCtor,
+      onEvent: vi.fn(),
+      serializeFrame: (p) => `CMD:${p.cmd}`,
+    })
+    stream.connect()
+    FakeWebSocket.instances[0].simulateOpen()
+    const result = stream.send({ cmd: "ping" })
+    expect(result).toBe(true)
+    expect(FakeWebSocket.instances[0].sent).toEqual(["CMD:ping"])
   })
 })

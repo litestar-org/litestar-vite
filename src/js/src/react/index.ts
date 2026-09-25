@@ -33,12 +33,19 @@ function initialState<TFrame>(): EventStreamState<TFrame> {
 
 function useStream<TFrame>(factory: StreamFactory, options: AdapterOptions<TFrame>): EventStreamState<TFrame> {
   const optionsRef = useRef(options)
-  optionsRef.current = options
+  useEffect(() => {
+    optionsRef.current = options
+  })
+
   const [state, setState] = useState<EventStreamState<TFrame>>(initialState)
-  const transport = options.transport ?? "websocket"
+  const [prevKey, setPrevKey] = useState(options.key)
+
+  if (options.key !== prevKey) {
+    setPrevKey(options.key)
+    setState(initialState())
+  }
 
   useEffect(() => {
-    setState(initialState)
     const { bufferSize: _bufferSize, key: _key, ...streamOptions } = optionsRef.current
     const stream = factory({
       ...streamOptions,
@@ -61,7 +68,8 @@ function useStream<TFrame>(factory: StreamFactory, options: AdapterOptions<TFram
     } as never)
     stream.connect()
     return () => stream.dispose()
-  }, [factory, options.key, transport])
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
+  }, [factory, options.key, options.transport])
 
   return state
 }

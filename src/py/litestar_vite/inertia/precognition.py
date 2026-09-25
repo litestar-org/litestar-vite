@@ -66,10 +66,6 @@ def normalize_validation_errors(exc: ValidationException, validate_only: "set[st
     """
     errors: "dict[str, list[str]]" = {}
 
-    # Litestar's ValidationException.detail can be:
-    # - A string message
-    # - A list of error dicts with 'key', 'message', and 'source'
-    # - Other structured data
     detail = exc.detail
 
     if isinstance(detail, list):
@@ -79,7 +75,6 @@ def normalize_validation_errors(exc: ValidationException, validate_only: "set[st
                 message: str = str(error.get("message", str(error)))  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
                 source: str = str(error.get("source", ""))  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
 
-                # Build field name from source and key
                 if source and key:
                     field_name = f"{source}.{key}" if source != "body" else key
                 elif key:
@@ -87,7 +82,6 @@ def normalize_validation_errors(exc: ValidationException, validate_only: "set[st
                 else:
                     field_name = "_root"
 
-                # Filter by validate_only if specified
                 if validate_only and field_name not in validate_only:
                     continue
 
@@ -130,12 +124,10 @@ def create_precognition_exception_handler(
     """
 
     def handler(request: "Request[Any, Any, Any]", exc: ValidationException) -> "Response[Any]":
-        # Check if this is a Precognition request
         precognition_header = request.headers.get(InertiaHeaders.PRECOGNITION.value.lower())
         is_precognition = precognition_header == "true"
 
         if is_precognition:
-            # Get validate_only fields for partial validation
             validate_only_header = request.headers.get(InertiaHeaders.PRECOGNITION_VALIDATE_ONLY.value.lower())
             validate_only = (
                 {field.strip() for field in validate_only_header.split(",") if field.strip()}
@@ -143,10 +135,8 @@ def create_precognition_exception_handler(
                 else None
             )
 
-            # Normalize errors to Laravel format
             error_data = normalize_validation_errors(exc, validate_only)
 
-            # If filtering removed all errors, return success (204)
             if validate_only and not error_data["errors"]:
                 return PrecognitionResponse()
 
@@ -157,11 +147,9 @@ def create_precognition_exception_handler(
                 headers={InertiaHeaders.PRECOGNITION.value: "true"},
             )
 
-        # Non-Precognition request - use fallback or default
         if fallback_handler is not None:
             return fallback_handler(request, exc)
 
-        # Default Litestar-style error response
         return Response(
             content={
                 "status_code": HTTP_422_UNPROCESSABLE_ENTITY,
@@ -212,38 +200,29 @@ def precognition(fn: "Callable[..., Any]") -> "Callable[..., Any]":
 
     @wraps(fn)
     def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-        # Find the request object in args or kwargs
         request = _find_request(args, kwargs)  # pyright: ignore[reportUnknownVariableType]
 
         if request is not None:
-            # Check for Precognition header
             precognition_header = request.headers.get(InertiaHeaders.PRECOGNITION.value.lower())
             if precognition_header == "true":
-                # Validation passed (we got here), return success
                 return PrecognitionResponse()
 
-        # Not a Precognition request, run handler normally
         return fn(*args, **kwargs)
 
     @wraps(fn)
     async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-        # Find the request object in args or kwargs
         request = _find_request(args, kwargs)  # pyright: ignore[reportUnknownVariableType]
 
         if request is not None:
-            # Check for Precognition header
             precognition_header = request.headers.get(InertiaHeaders.PRECOGNITION.value.lower())
             if precognition_header == "true":
-                # Validation passed (we got here), return success
                 return PrecognitionResponse()
 
-        # Not a Precognition request, run handler normally
         result = fn(*args, **kwargs)
         if asyncio.iscoroutine(result):
             return await result
         return result
 
-    # Return appropriate wrapper based on function type
     if inspect.iscoroutinefunction(fn):
         return async_wrapper
     return sync_wrapper
@@ -263,13 +242,11 @@ def _find_request(args: tuple[Any, ...], kwargs: "dict[str, Any]") -> "Request[A
 
     from litestar_vite.inertia.middleware import get_current_inertia_request
 
-    # Check kwargs first (named 'request' parameter)
     if "request" in kwargs:
         req = kwargs["request"]
         if isinstance(req, Request):  # pyright: ignore[reportUnknownVariableType]
             return req  # pyright: ignore[reportUnknownVariableType]
 
-    # Check positional args
     for arg in args:
         if isinstance(arg, Request):  # pyright: ignore[reportUnknownVariableType]
             return arg  # pyright: ignore[reportUnknownVariableType]

@@ -733,6 +733,7 @@ def test_vite_plugin_export_types_sync_skips_when_no_typegen_outputs_requested(t
             generate_page_props=False,
             generate_schemas=False,
             generate_zod=False,
+            generate_channels=False,
         ),
     )
     plugin = VitePlugin(config=config)
@@ -2361,3 +2362,37 @@ def test_static_router_emits_opt_on_handlers_only(tmp_path: Path) -> None:
             layer_opt = getattr(layer, "opt", None)
             if isinstance(layer_opt, Mapping):
                 assert "exclude_from_auth" not in layer_opt
+
+
+def test_route_prefixes_include_asyncapi_docs_when_plugin_present() -> None:
+    """Test route prefixes include /asyncapi when an AsyncAPI plugin is registered."""
+    from litestar_asyncapi import AsyncAPIPlugin
+
+    from litestar_vite.plugin._utils import build_litestar_route_prefixes
+
+    plugin = AsyncAPIPlugin()
+    app = Litestar(plugins=[plugin])
+    prefixes = build_litestar_route_prefixes(app)
+    assert "/asyncapi" in prefixes
+
+
+def test_route_prefixes_include_custom_asyncapi_docs_path() -> None:
+    """Test route prefixes include both default and custom AsyncAPI documentation paths."""
+    from litestar_asyncapi import AsyncAPIConfig, AsyncAPIPlugin, DocsConfig
+
+    from litestar_vite.plugin._utils import build_litestar_route_prefixes
+
+    plugin = AsyncAPIPlugin(config=AsyncAPIConfig(docs=DocsConfig(path="/realtime-docs")))
+    app = Litestar(plugins=[plugin])
+    prefixes = build_litestar_route_prefixes(app)
+    assert "/asyncapi" in prefixes
+    assert "/realtime-docs" in prefixes
+
+
+def test_route_prefixes_unchanged_without_asyncapi_plugin() -> None:
+    """Test route prefixes on a plain app without an AsyncAPI plugin remain unchanged."""
+    from litestar_vite.plugin._utils import build_litestar_route_prefixes
+
+    app = Litestar(route_handlers=[])
+    prefixes = build_litestar_route_prefixes(app)
+    assert "/asyncapi" not in prefixes

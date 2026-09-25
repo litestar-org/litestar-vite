@@ -1,5 +1,6 @@
 import contextlib
 import itertools
+import re
 from collections.abc import AsyncGenerator, Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -50,6 +51,8 @@ if TYPE_CHECKING:
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
 
 
+_INERTIA_PAGE_SCRIPT_PATTERN = re.compile(r"<script[^>]+(?:data-page=|id=[\"']app_page[\"'])", re.IGNORECASE)
+
 T = TypeVar("T")
 
 
@@ -62,6 +65,7 @@ class InertiaResponse(Response[T]):
         *,
         template_name: "str | None" = None,
         template_str: "str | None" = None,
+        component: "str | None" = None,
         background: "BackgroundTask | BackgroundTasks | None" = None,
         context: "dict[str, Any] | None" = None,
         cookies: "ResponseCookies | None" = None,
@@ -81,6 +85,8 @@ class InertiaResponse(Response[T]):
             content: A value for the response body that will be rendered into bytes string.
             template_name: Path-like name for the template to be rendered, e.g. ``index.html``.
             template_str: A string representing the template, e.g. ``tmpl = "Hello <strong>World</strong>"``.
+            component: The Inertia page component name. When omitted, the component
+                registered on the route handler (``request.inertia.route_component``) is used.
             background: A :class:`BackgroundTask <.background_tasks.BackgroundTask>` instance or
                 :class:`BackgroundTasks <.background_tasks.BackgroundTasks>` to execute after the response is finished.
                 Defaults to ``None``.
@@ -134,10 +140,7 @@ class InertiaResponse(Response[T]):
         self.clear_history = clear_history
         self.scroll_props = scroll_props
         self.prop_filter = prop_filter
-        # Populated by :meth:`resolve_async_props` (called from the handler
-        # frame so DI-scoped resources are still alive). ``_async_prepass_done``
-        # short-circuits the deferral check in :meth:`to_asgi_response`;
-        # ``_cached_ssr_payload`` lets ``_render_spa`` skip the SSR fetch.
+        self.component = component
         self._async_prepass_done: bool = False
         self._cached_page_props: "PageProps[T] | None" = None
         self._cached_ssr_payload: "_InertiaSSRResult | None" = None
@@ -211,9 +214,6 @@ class InertiaResponse(Response[T]):
         route_once_props: "list[tuple[str, str]]" = []
         route_prop_keys: list[str] = []
 
-        # v2.2+ protocol: Extract deferred props metadata before filtering.
-        # Route props override shared props with the same key, so discard any
-        # shared metadata for those keys before adding route metadata.
         if isinstance(content, Mapping):
             content_mapping = cast("Mapping[str, Any]", content)
             for key in content_mapping:
@@ -250,9 +250,7 @@ class InertiaResponse(Response[T]):
                 shared_props["content"] = route_content
                 route_prop_keys.append("content")
 
-        # Drop keys this partial reload just resolved, or the client loops on loadDeferredProps.
         deferred_props = _resolve_deferred_props(deferred_props_map, partial_data, is_partial_render)
-        # Extract once props tracked during get_shared_props (already rendered)
         once_props_from_shared = shared_props.pop("_once_props", [])
         once_prop_entries = _dedupe_once_prop_entries(
             [*once_props_from_shared, *route_once_props], reset_keys=reset_keys
@@ -273,13 +271,10 @@ class InertiaResponse(Response[T]):
         encrypt_history = _resolve_encrypt_history(self.encrypt_history, inertia_plugin)
         clear_history_flag = _resolve_clear_history(self.clear_history, request)
 
-        # v2.3+ protocol: Extract flash to top level (not in props)
-        # This prevents flash from persisting in browser history state
-        # Always send {} for empty flash to support router.flash((current) => ({ ...current }))
         flash_data: "dict[str, list[str]]" = shared_props.pop("flash", None) or {}
 
         return PageProps[T](
-            component=request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
+            component=self.component or request.inertia.route_component,  # type: ignore[attr-defined] # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType,reportAttributeAccessIssue]
             props=shared_props,  # pyright: ignore[reportArgumentType]
             version=vite_plugin.asset_loader.version_id,
             url=_get_relative_url(request),
@@ -332,9 +327,6 @@ class InertiaResponse(Response[T]):
             template = template_engine.get_template(template_name)  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
             html = cast("str", template.render(**context))  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
 
-        # When SSR is configured and the prepass populated _cached_ssr_payload,
-        # inject the SSR-rendered body into the template's target_selector
-        # element and prepend any SSR head HTML. Mirrors _render_spa.
         if self._cached_ssr_payload is not None:
             ssr_config = inertia_plugin.config.ssr_config
             selector = ssr_config.target_selector if ssr_config is not None else "#app"
@@ -362,7 +354,12 @@ class InertiaResponse(Response[T]):
         """Render the page using SPA mode (HTML transformation instead of templates).
 
         This method uses AppHandler to get the base HTML and injects
-        the page props as a data-page attribute on the app element.
+        the page props via page_data (which injects the page script into the document
+        when use_script_element is true, or sets data-page on the app element).
+        In SSR mode, the page payload is supplied to the shell so the client-side
+        bootstrap survives app-element replacement. If the SSR body payload already
+        contains an Inertia bootstrap script, passing page data to the shell is omitted
+        to prevent duplicate bootstrap tags.
 
         SSR (when configured) is fetched by the async pre-pass and stored on
         ``self._cached_ssr_payload``; this method just consumes it.
@@ -392,7 +389,8 @@ class InertiaResponse(Response[T]):
             ssr_payload = self._cached_ssr_payload
 
             csrf_token = self._get_csrf_token(request)
-            html = spa_handler.get_html_sync(csrf_token=csrf_token)
+            page_data = None if _INERTIA_PAGE_SCRIPT_PATTERN.search(ssr_payload.body) else page_dict
+            html = spa_handler.get_html_sync(page_data=page_data, csrf_token=csrf_token)
 
             selector = "#app"
             spa_config = spa_handler._spa_config  # pyright: ignore
@@ -544,9 +542,6 @@ class InertiaResponse(Response[T]):
     ) -> "ASGIResponse":
         inertia_info = _get_inertia_request_info(cast("Request[Any, Any, Any]", request))
 
-        # Async prop callbacks must already be resolved by the handler wrapper,
-        # which runs inside Litestar's DI cleanup scope. SSR is the only async
-        # work that can still be safely deferred from this synchronous method.
         if not self._async_prepass_done:
             partial_data_for_check = (
                 inertia_info.partial_keys if inertia_info.is_partial_render and inertia_info.partial_keys else None
@@ -687,9 +682,17 @@ class InertiaResponse(Response[T]):
 
 
 class InertiaExternalRedirect(Response[Any]):
-    """External redirect via Inertia protocol (409 + X-Inertia-Location).
+    """External redirect via Inertia protocol or standard HTTP redirect.
 
-    This response type triggers a client-side hard redirect in Inertia.js.
+    For Inertia XHR requests, responds with a 409 Conflict status and an
+    X-Inertia-Location header containing the destination URL. Inertia.js intercepts
+    this response and triggers a client-side hard window.location redirect.
+
+    For standard non-Inertia clients (plain browser navigations, cURL, web crawlers,
+    OAuth callbacks), responds with a standard HTTP redirect (307 Temporary Redirect
+    for GET, 303 See Other for non-GET methods) and a Location header so non-Inertia
+    consumers can navigate normally.
+
     Unlike InertiaRedirect, this does NOT validate the redirect URL as same-origin
     because external redirects are explicitly intended for cross-origin navigation
     (e.g., OAuth callbacks, external payment pages).
@@ -700,7 +703,7 @@ class InertiaExternalRedirect(Response[Any]):
     """
 
     def __init__(self, request: "Request[Any, Any, Any]", redirect_to: "str", **kwargs: "Any") -> None:
-        """Initialize external redirect with 409 status and X-Inertia-Location header.
+        """Initialize external redirect.
 
         Args:
             request: The request object.
@@ -708,12 +711,18 @@ class InertiaExternalRedirect(Response[Any]):
             **kwargs: Additional keyword arguments passed to the Response constructor.
         """
         persist_transient_state_for_redirect(request)
-        super().__init__(
-            content=b"",
-            status_code=HTTP_409_CONFLICT,
-            headers={InertiaHeaders.LOCATION.value: quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")},
-            **kwargs,
-        )
+        location = quote(redirect_to, safe="/#%[]=:;$&()+,!?*@'~")
+        if bool(InertiaDetails(request)):
+            super().__init__(
+                content=b"", status_code=HTTP_409_CONFLICT, headers={InertiaHeaders.LOCATION.value: location}, **kwargs
+            )
+        else:
+            super().__init__(
+                content=b"",
+                status_code=HTTP_307_TEMPORARY_REDIRECT if request.method == "GET" else HTTP_303_SEE_OTHER,
+                headers={"Location": location},
+                **kwargs,
+            )
 
 
 class InertiaRedirect(Redirect):
@@ -873,8 +882,6 @@ def _get_inertia_request_info(request: "Request[Any, Any, Any]") -> _InertiaRequ
     )
 
 
-# Maximum allowed size for SSR response body + head combined (10 MiB).
-# This prevents a malicious or misconfigured SSR server from causing OOM.
 _SSR_MAX_RESPONSE_BYTES = 10 * 1024 * 1024
 
 
@@ -977,10 +984,6 @@ async def _do_ssr_request(
     Returns:
         An _InertiaSSRResult with head and body HTML.
     """
-    # Use Litestar's msgspec encoder so msgspec Structs and other custom types embedded
-    # in handler return values serialize the same way as the regular Inertia render path
-    # (response.render uses get_serializer too). httpx's default json= serializer falls
-    # back to stdlib json.dumps and rejects Struct instances.
     body = encode_json(page, serializer=get_serializer(type_encoders))
     headers = {"content-type": "application/json"}
 

@@ -215,6 +215,18 @@ class ViteAssetLoader:
         html = loader.render_asset_tag("src/main.ts")
     """
 
+    __slots__ = (
+        "__dict__",
+        "_config",
+        "_http_client",
+        "_http_client_sync",
+        "_initialized",
+        "_is_hot_dev",
+        "_manifest",
+        "_manifest_content",
+        "_vite_base_path",
+    )
+
     def __init__(self, config: "ViteConfig") -> None:
         """Initialize the asset loader.
 
@@ -617,12 +629,19 @@ class ViteAssetLoader:
                 """)
         return ""
 
-    def generate_asset_tags(self, path: "str | list[str]", scripts_attrs: "dict[str, str] | None" = None) -> str:
+    def generate_asset_tags(
+        self, path: "str | list[str]", scripts_attrs: "dict[str, str] | None" = None, _visited: "set[str] | None" = None
+    ) -> str:
         """Generate all asset tags for the specified file(s).
+
+        Tracks visited manifest entries across recursive import traversals
+        to prevent infinite loops on circular dependencies and avoid duplicate
+        asset tags.
 
         Args:
             path: Path or list of paths to assets.
             scripts_attrs: Optional attributes for script tags.
+            _visited: Optional set of already visited paths for cycle prevention.
 
         Returns:
             HTML string with all necessary script and link tags.
@@ -647,6 +666,7 @@ class ViteAssetLoader:
             msg = "Cannot find %s in the Vite manifest. Run 'litestar assets build' and retry."
             raise ImproperlyConfiguredException(msg, missing)
 
+        visited: set[str] = set() if _visited is None else _visited
         tags: list[str] = []
         manifest_entries = {p: self._manifest[p] for p in paths if p}
 
@@ -655,14 +675,19 @@ class ViteAssetLoader:
 
         asset_url_base = self._config.asset_url
 
-        for manifest in manifest_entries.values():
+        for asset_key, manifest in manifest_entries.items():
+            if asset_key in visited:
+                continue
+            visited.add(asset_key)
+
             if "css" in manifest:
                 tags.extend(self._style_tag(urljoin(asset_url_base, css_path)) for css_path in manifest.get("css", []))
 
             if "imports" in manifest:
                 tags.extend(
-                    self.generate_asset_tags(vendor_path, scripts_attrs=scripts_attrs)
+                    self.generate_asset_tags(vendor_path, scripts_attrs=scripts_attrs, _visited=visited)
                     for vendor_path in manifest.get("imports", [])
+                    if vendor_path not in visited
                 )
 
             file_path = manifest.get("file", "")
@@ -682,21 +707,11 @@ class ViteAssetLoader:
         Returns:
             Full URL to the asset on the dev server.
         """
-        # Bridge-config preference (litestar-vite-c1t): when ``.litestar.json``
-        # exists and carries a non-null ``appUrl``, anchor asset URLs at that
-        # value. This is the authoritative single-port-via-ASGI bridge URL and
-        # supersedes the hotfile contents, which are reserved for the actual
-        # upstream dev-server URL used by proxy/HMR consumers.
         bridge = read_bridge_config()
         app_url = bridge.get("appUrl") if bridge is not None else None
         if isinstance(app_url, str) and app_url:
             base_path = app_url
         else:
-            # Lazy retry: ``parse_manifest()`` runs once at loader init and races the JS
-            # plugin's hotfile write — if the file did not exist yet, ``_vite_base_path``
-            # stays ``None`` for the loader's lifetime and every asset URL silently leaks
-            # the raw Vite dev server origin (breaking the single-port-via-ASGI bridge
-            # contract). Re-reading on demand fixes the race without polling.
             if self._vite_base_path is None:
                 self._load_hot_file_sync()
             base_path = self._vite_base_path or f"{self._config.protocol}://{self._config.host}:{self._config.port}"

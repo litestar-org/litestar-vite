@@ -1,5 +1,6 @@
 """HTTP/WebSocket proxy middleware and HMR handlers."""
 
+import ipaddress
 import logging
 import time
 from collections.abc import AsyncGenerator, Awaitable
@@ -115,10 +116,6 @@ _WS_REQUEST_SKIP_HEADERS = _REQUEST_SKIP_HEADERS | {
 
 _LOGGER = logging.getLogger(__name__)
 
-# Bounds how often create_target_url_getter/create_hmr_target_getter re-stat() the hotfile.
-# Keeps the proxy hot path free of a syscall on every proxied request while still picking up
-# a dev-server restart (new hotfile mtime) within one TTL window. Not a correctness cache: a
-# change is always observed within _HOTFILE_REVALIDATE_TTL_SECONDS, never "forever stale".
 _HOTFILE_REVALIDATE_TTL_SECONDS = 0.3
 
 _NO_CONNECTION_TOKENS: "frozenset[str]" = frozenset()
@@ -198,7 +195,6 @@ def _extract_proxy_response_headers(headers: "httpx.Headers") -> list[tuple[byte
         A list of (header_name, header_value) tuples.
     """
     hop_by_hop = set(_HOP_BY_HOP_HEADERS)
-    # Collect dynamically-declared hop-by-hop headers from Connection header
     hop_by_hop.update(
         _collect_connection_tokens((key.decode("latin-1"), value.decode("latin-1")) for key, value in headers.raw)
     )
@@ -257,6 +253,194 @@ async def _proxy_stream_response(
         await send({"type": "http.response.body", "body": chunk, "more_body": True})
 
     await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+
+class TrustedHosts:
+    """Container for trusted proxy hosts and networks.
+
+    Provides efficient lookup for IP addresses and CIDR networks.
+    Following Uvicorn's security model for proxy header validation.
+
+    Supports:
+        - Wildcard "*" to trust all hosts (for controlled environments)
+        - IPv4 addresses: "192.168.1.1"
+        - IPv6 addresses: "::1"
+        - CIDR notation: "10.0.0.0/8", "fd00::/8"
+        - Literals for non-IP hosts (e.g., Unix socket paths)
+    """
+
+    __slots__ = ("always_trust", "trusted_hosts", "trusted_literals", "trusted_networks")
+
+    def __init__(self, trusted_hosts: "list[str] | str") -> None:
+        """Initialize trusted hosts container.
+
+        Args:
+            trusted_hosts: A single host, comma-separated string, or list of hosts.
+                Use "*" to trust all hosts (only in controlled environments).
+        """
+        self.always_trust: bool = trusted_hosts in ("*", ["*"])
+        self.trusted_literals: set[str] = set()
+        self.trusted_hosts: set[ipaddress.IPv4Address | ipaddress.IPv6Address] = set()
+        self.trusted_networks: set[ipaddress.IPv4Network | ipaddress.IPv6Network] = set()
+
+        if not self.always_trust:
+            hosts_list: list[str]
+            if isinstance(trusted_hosts, str):
+                hosts_list = [h.strip() for h in trusted_hosts.split(",") if h.strip()]
+            else:
+                hosts_list = trusted_hosts
+
+            for host in hosts_list:
+                if "/" in host:
+                    try:
+                        self.trusted_networks.add(ipaddress.ip_network(host, strict=False))
+                    except ValueError:
+                        self.trusted_literals.add(host)
+                else:
+                    try:
+                        self.trusted_hosts.add(ipaddress.ip_address(host))
+                    except ValueError:
+                        self.trusted_literals.add(host)
+
+    def __contains__(self, host: "str | None") -> bool:
+        """Check if a host is trusted.
+
+        Args:
+            host: The host to check. Can be an IP address or literal.
+
+        Returns:
+            True if the host is trusted, False otherwise.
+        """
+        if not host:
+            return False
+        if self.always_trust:
+            return True
+
+        try:
+            ip = ipaddress.ip_address(host)
+            if ip in self.trusted_hosts:
+                return True
+            return any(ip in net for net in self.trusted_networks)
+        except ValueError:
+            return host in self.trusted_literals
+
+    def get_trusted_client_host(self, x_forwarded_for: str) -> str:
+        """Extract the real client IP from X-Forwarded-For header.
+
+        The X-Forwarded-For header contains a comma-separated list of IPs.
+        Each proxy appends the client IP to the list. We find the first
+        untrusted host (reading from right to left) which is the real client.
+
+        Args:
+            x_forwarded_for: The X-Forwarded-For header value.
+
+        Returns:
+            The first untrusted host in the chain, or the original client
+            if all hosts are trusted.
+        """
+        hosts = [h.strip() for h in x_forwarded_for.split(",") if h.strip()]
+
+        if not hosts:
+            return ""
+
+        if self.always_trust:
+            return hosts[0]
+
+        for host in reversed(hosts):
+            if host not in self:
+                return host
+
+        return hosts[0]
+
+
+class ProxyHeadersMiddleware(AbstractMiddleware):
+    """ASGI middleware for secure proxy header handling.
+
+    Only processes X-Forwarded-* headers when the direct caller (scope["client"])
+    is in the trusted hosts list. This prevents header spoofing attacks.
+
+    Handles:
+        - X-Forwarded-Proto: Sets scope["scheme"] (http/https/ws/wss)
+        - X-Forwarded-For: Sets scope["client"] to the real client IP
+        - X-Forwarded-Host: Optionally sets the Host header
+
+    Security:
+        Never blindly trusts headers from any client. Validates caller IP
+        against trusted hosts before reading headers. Validates scheme values
+        to only allow http/https/ws/wss.
+    """
+
+    scopes = {ScopeType.HTTP, ScopeType.WEBSOCKET}
+
+    def __init__(
+        self, app: "ASGIApp", trusted_hosts: "list[str] | str" = "127.0.0.1", handle_forwarded_host: bool = True
+    ) -> None:
+        """Initialize the proxy headers middleware.
+
+        Args:
+            app: The ASGI application to wrap.
+            trusted_hosts: Hosts to trust for X-Forwarded-* headers.
+                Defaults to "127.0.0.1" (localhost only).
+            handle_forwarded_host: Whether to handle X-Forwarded-Host header
+                for Host header rewriting. Defaults to True.
+        """
+        super().__init__(app)
+        self.trusted_hosts = TrustedHosts(trusted_hosts)
+        self.handle_forwarded_host = handle_forwarded_host
+
+    async def __call__(self, scope: "Scope", receive: "Receive", send: "Send") -> None:
+        """Process the request and apply proxy headers if trusted.
+
+        Args:
+            scope: The ASGI scope.
+            receive: The receive callable.
+            send: The send callable.
+        """
+        client_addr = scope.get("client")  # pyright: ignore[reportUnknownMemberType]
+        client_host = client_addr[0] if client_addr else None
+
+        if client_host in self.trusted_hosts:
+            headers: dict[bytes, bytes] = {}
+            for key, value in scope.get("headers", []):  # pyright: ignore[reportUnknownMemberType]
+                if key not in headers:
+                    headers[key] = value
+
+            scope_dict = cast("dict[str, Any]", scope)
+
+            if b"x-forwarded-proto" in headers:
+                proto = headers[b"x-forwarded-proto"].decode("latin-1").strip().lower()
+                if proto in {"http", "https", "ws", "wss"}:
+                    if scope["type"] == "websocket":
+                        if proto == "https":
+                            scope_dict["scheme"] = "wss"
+                        elif proto == "http":
+                            scope_dict["scheme"] = "ws"
+                        else:
+                            scope_dict["scheme"] = proto
+                    else:
+                        scope_dict["scheme"] = proto
+
+            if b"x-forwarded-for" in headers:
+                x_forwarded_for = headers[b"x-forwarded-for"].decode("latin-1")
+                real_client = self.trusted_hosts.get_trusted_client_host(x_forwarded_for)
+                if real_client:
+                    scope_dict["client"] = (real_client, 0)
+
+            if self.handle_forwarded_host and b"x-forwarded-host" in headers:
+                forwarded_host = headers[b"x-forwarded-host"]
+                new_headers: list[tuple[bytes, bytes]] = []
+                host_replaced = False
+                for key, value in scope.get("headers", []):  # pyright: ignore[reportUnknownMemberType]
+                    if key == b"host" and not host_replaced:
+                        new_headers.append((b"host", forwarded_host))
+                        host_replaced = True
+                    else:
+                        new_headers.append((key, value))
+                if not host_replaced:
+                    new_headers.append((b"host", forwarded_host))
+                scope_dict["headers"] = new_headers
+
+        await self.app(scope, receive, send)
 
 
 class ViteProxyMiddleware(AbstractMiddleware):
@@ -332,7 +516,6 @@ class ViteProxyMiddleware(AbstractMiddleware):
 
     def _should_proxy(self, path: str, scope: "Scope") -> bool:
         decoded = unquote(path) if "%" in path else path
-        # Double-decode to catch double-encoded traversal (%252e%252e)
         double_decoded = unquote(decoded) if "%" in decoded else decoded
 
         if self._has_path_traversal(decoded) or self._has_path_traversal(double_decoded):
@@ -377,24 +560,25 @@ class ViteProxyMiddleware(AbstractMiddleware):
             url = f"{url}?{query_string}"
 
         headers = _filter_hop_by_hop_headers(scope.get("headers", []))
-        # Only stream request body for methods that carry a body.
-        # Passing an async generator as content for GET/HEAD/OPTIONS causes httpx
-        # to add Transfer-Encoding: chunked, which Vite dev server rejects with 400.
-        # See: https://github.com/litestar-org/litestar-vite/issues/242
         request_body = _stream_request_body(receive) if method in _BODY_METHODS else None
 
-        # Use shared client from plugin when available (connection pooling)
         client = self._plugin.proxy_client if self._plugin is not None else None
+
+        response_started = False
+
+        async def _safe_send(message: dict[str, Any]) -> None:
+            nonlocal response_started
+            if message.get("type") == "http.response.start":
+                response_started = True
+            await send(message)
 
         try:
             if client is not None:
-                # Use shared client (connection pooling, HTTP/2 multiplexing)
                 async with client.stream(
                     method, url, headers=headers, content=request_body, timeout=10.0, follow_redirects=False
                 ) as upstream_resp:
-                    await _proxy_stream_response(upstream_resp, send)
+                    await _proxy_stream_response(upstream_resp, _safe_send)
             else:
-                # Fallback: per-request client (graceful degradation)
                 http2_enabled = check_http2_support(self.http2)
                 async with (
                     httpx.AsyncClient(http2=http2_enabled) as fallback_client,
@@ -402,10 +586,21 @@ class ViteProxyMiddleware(AbstractMiddleware):
                         method, url, headers=headers, content=request_body, timeout=10.0, follow_redirects=False
                     ) as upstream_resp,
                 ):
-                    await _proxy_stream_response(upstream_resp, send)
+                    await _proxy_stream_response(upstream_resp, _safe_send)
         except Exception as exc:  # noqa: BLE001  # pragma: no cover - catch all cleanup errors
-            await send({"type": "http.response.start", "status": 502, "headers": [(b"content-type", b"text/plain")]})
-            await send({"type": "http.response.body", "body": f"Upstream error: {exc}".encode(), "more_body": False})
+            if not response_started:
+                await send({
+                    "type": "http.response.start",
+                    "status": 502,
+                    "headers": [(b"content-type", b"text/plain")],
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": f"Upstream error: {exc}".encode(),
+                    "more_body": False,
+                })
+            else:
+                await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
 def build_hmr_target_url(hotfile_path: Path, scope: dict[str, Any], hmr_path: str, asset_url: str) -> "str | None":
@@ -903,19 +1098,24 @@ class SSRProxyMiddleware(AbstractMiddleware):
             console.print(f"[dim][ssr-proxy] {method} {raw_path} → {url}[/]")
 
         headers = _filter_hop_by_hop_headers(scope.get("headers", []))
-        # #246 invariant: only stream a body for methods that carry one. Sending an
-        # async generator as content for GET/HEAD/OPTIONS forces Transfer-Encoding: chunked,
-        # which Vite-style upstream servers reject with 400.
         request_body = _stream_request_body(receive) if method in _BODY_METHODS else None
 
         client = self._plugin.proxy_client if self._plugin is not None else None
+
+        response_started = False
+
+        async def _safe_send(message: dict[str, Any]) -> None:
+            nonlocal response_started
+            if message.get("type") == "http.response.start":
+                response_started = True
+            await send(message)
 
         try:
             if client is not None:
                 async with client.stream(
                     method, url, headers=headers, content=request_body, timeout=30.0, follow_redirects=False
                 ) as upstream_resp:
-                    await _proxy_stream_response(upstream_resp, send)
+                    await _proxy_stream_response(upstream_resp, _safe_send)
             else:
                 http2_enabled = check_http2_support(self._http2)
                 async with (
@@ -924,17 +1124,35 @@ class SSRProxyMiddleware(AbstractMiddleware):
                         method, url, headers=headers, content=request_body, timeout=30.0, follow_redirects=False
                     ) as upstream_resp,
                 ):
-                    await _proxy_stream_response(upstream_resp, send)
+                    await _proxy_stream_response(upstream_resp, _safe_send)
         except httpx.ConnectError:
-            await send({"type": "http.response.start", "status": 503, "headers": [(b"content-type", b"text/plain")]})
-            await send({
-                "type": "http.response.body",
-                "body": f"SSR server not running at {target_base_url}".encode(),
-                "more_body": False,
-            })
+            if not response_started:
+                await send({
+                    "type": "http.response.start",
+                    "status": 503,
+                    "headers": [(b"content-type", b"text/plain")],
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": f"SSR server not running at {target_base_url}".encode(),
+                    "more_body": False,
+                })
+            else:
+                await send({"type": "http.response.body", "body": b"", "more_body": False})
         except Exception as exc:  # noqa: BLE001
-            await send({"type": "http.response.start", "status": 502, "headers": [(b"content-type", b"text/plain")]})
-            await send({"type": "http.response.body", "body": f"Upstream error: {exc}".encode(), "more_body": False})
+            if not response_started:
+                await send({
+                    "type": "http.response.start",
+                    "status": 502,
+                    "headers": [(b"content-type", b"text/plain")],
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": f"Upstream error: {exc}".encode(),
+                    "more_body": False,
+                })
+            else:
+                await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
 def create_ssr_http_proxy_handler(
@@ -1004,8 +1222,6 @@ def create_ssr_http_proxy_handler(
             console.print(f"[dim][ssr-proxy] {request.method} {req_path} → {url}[/]")
 
         headers_to_forward = _filter_hop_by_hop_headers(request.headers.items())
-        # #246 invariant: GET/HEAD/OPTIONS must not stream a body — Vite-style upstreams
-        # reject the resulting Transfer-Encoding: chunked with 400.
         request_body = request.stream() if request.method in _BODY_METHODS else None
 
         client = plugin.proxy_client if plugin is not None else None

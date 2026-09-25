@@ -22,14 +22,15 @@ Example::
 from litestar_vite.plugin._core import VitePlugin
 from litestar_vite.plugin._process import ViteProcess
 from litestar_vite.plugin._proxy import (
+    ProxyHeadersMiddleware,
     SSRProxyMiddleware,
+    TrustedHosts,
     ViteProxyMiddleware,
     create_disabled_vite_hmr_handlers,
     create_ssr_http_proxy_handler,
     create_ssr_ws_proxy_handler,
     create_vite_hmr_handler,
 )
-from litestar_vite.plugin._proxy_headers import ProxyHeadersMiddleware, TrustedHosts
 from litestar_vite.plugin._static import StaticFilesConfig, StaticPlacement, StaticServerConfig, StaticServerMount
 from litestar_vite.plugin._utils import (
     get_litestar_route_prefixes,

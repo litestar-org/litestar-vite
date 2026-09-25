@@ -23,6 +23,13 @@ __all__ = ("FileInfo", "SyncPlan", "SyncResult", "ViteDeployer", "format_bytes")
 
 AbstractFileSystem = Any
 
+_S3_SCHEMES: frozenset[str] = frozenset({"s3", "s3a"})
+"""Storage backend URL schemes that interact with S3-compatible APIs.
+
+boto3 and s3fs require the PascalCase 'ContentType' parameter, whereas GCS (gcsfs)
+and Azure (adlfs) expect the lowercase 'content_type' parameter.
+"""
+
 
 def _suggest_install_package(storage_backend: "str | None") -> str:
     """Suggest the PyPI package to install based on backend scheme.
@@ -109,6 +116,13 @@ class ViteDeployer:
             msg = "DeployConfig.storage_backend is required (e.g. gcs://bucket/assets)."
             raise ValueError(msg)
 
+        if not bundle_dir.exists():
+            msg = f"Bundle directory '{bundle_dir}' does not exist. Run 'litestar assets build' before deploying."
+            raise FileNotFoundError(msg)
+        if not bundle_dir.is_dir():
+            msg = f"Bundle path '{bundle_dir}' is not a directory."
+            raise NotADirectoryError(msg)
+
         self.bundle_dir = bundle_dir
         manifest_rel = Path(manifest_name)
         manifest_path = bundle_dir / manifest_rel
@@ -149,7 +163,11 @@ class ViteDeployer:
         files: dict[str, FileInfo] = {}
 
         if manifest_paths:
-            candidate_paths: list[Path] = [self.bundle_dir / p for p in manifest_paths]
+            candidate_paths: list[Path] = [self.bundle_dir / p.lstrip("/") for p in manifest_paths]
+            for p in manifest_paths:
+                map_path = self.bundle_dir / f"{p.lstrip('/')}.map"
+                if map_path.exists():
+                    candidate_paths.append(map_path)
             if include_manifest:
                 candidate_paths.append(self.manifest_path)
             candidates: Iterable[Path] = candidate_paths
@@ -165,12 +183,49 @@ class ViteDeployer:
             stat = path.stat()
             files[rel_path] = FileInfo(path=rel_path, size=stat.st_size, mtime=stat.st_mtime)
 
+        if manifest_paths:
+            self._index_unmanaged_files(manifest_paths, files)
+
         index_html = self.bundle_dir / "index.html"
         if index_html.exists():
             stat = index_html.stat()
             files.setdefault("index.html", FileInfo(path="index.html", size=stat.st_size, mtime=stat.st_mtime))
 
         return files
+
+    def _index_unmanaged_files(self, manifest_paths: set[str], files: dict[str, FileInfo]) -> None:
+        """Index Vite public passthrough assets that are absent from the manifest.
+
+        Vite copies the contents of ``public/`` into the build output directory
+        verbatim without recording them in ``manifest.json``. When deploy sync operates
+        with ``delete_orphaned=True``, any local bundle file missing from the local
+        index is considered an orphan remotely and purged. To prevent deleting public
+        assets (such as ``favicon.ico``, ``robots.txt``, and static images) while still
+        excluding stale hashed build artifacts, this helper computes the top-level
+        directories managed by the manifest (e.g. ``assets/`` and ``.vite/``) and
+        indexes all non-directory files outside those directories.
+
+        Args:
+            manifest_paths: Relative file paths referenced by the Vite manifest.
+            files: Dictionary mapping relative paths to FileInfo objects to populate.
+        """
+        managed_dirs: set[str] = {".vite"}
+        for p in manifest_paths:
+            parts = Path(p.lstrip("/")).parts
+            if len(parts) > 1:
+                managed_dirs.add(parts[0])
+
+        for path in self.bundle_dir.rglob("*"):
+            if path.is_dir():
+                continue
+            if not path.exists():
+                continue
+            rel = path.relative_to(self.bundle_dir)
+            if rel.parts and rel.parts[0] in managed_dirs:
+                continue
+            rel_posix = rel.as_posix()
+            stat = path.stat()
+            files.setdefault(rel_posix, FileInfo(path=rel_posix, size=stat.st_size, mtime=stat.st_mtime))
 
     def _get_manifest_paths(self) -> set[str]:
         """Get manifest paths from cache when possible.
@@ -206,9 +261,19 @@ class ViteDeployer:
             if name is None:
                 continue
             rel_path = self._relative_remote_path(name, base)
-            remote_files[rel_path] = FileInfo(
-                path=rel_path, size=int(entry.get("size", 0)), mtime=float(entry.get("mtime", 0.0))
-            )
+            raw_size = entry.get("size")
+            size = int(raw_size) if raw_size is not None else 0
+            raw_mtime = entry.get("mtime") or entry.get("LastModified")
+            if raw_mtime is not None and hasattr(raw_mtime, "timestamp"):
+                mtime = float(raw_mtime.timestamp())
+            elif raw_mtime is not None:
+                try:
+                    mtime = float(raw_mtime)
+                except (ValueError, TypeError):
+                    mtime = 0.0
+            else:
+                mtime = 0.0
+            remote_files[rel_path] = FileInfo(path=rel_path, size=size, mtime=mtime)
         return remote_files
 
     def _iter_remote_entries(self, root: str) -> "Iterable[dict[str, Any]]":
@@ -253,6 +318,11 @@ class ViteDeployer:
     def sync(self, *, dry_run: bool = False, on_progress: Callable[[str, str], None] | None = None) -> SyncResult:
         """Sync local bundle to remote storage.
 
+        Uploads modified or missing local assets and removes remote orphaned assets
+        when configured. S3-compatible backends (s3, s3a) receive the PascalCase
+        'ContentType' parameter required by boto3, while other backends (such as GCS
+        or Azure Blob Storage) receive the lowercase 'content_type' parameter.
+
         Args:
             dry_run: When True, compute the plan without uploading or deleting.
             on_progress: Optional callback receiving an action and path for each step.
@@ -263,6 +333,14 @@ class ViteDeployer:
 
         local_files = self.collect_local_files()
         remote_files = self.collect_remote_files()
+
+        if not local_files and remote_files and self.config.delete_orphaned:
+            msg = (
+                f"Cannot sync bundle: local bundle directory '{self.bundle_dir}' produced 0 deployable files. "
+                "Aborting to prevent accidental deletion of all remote assets."
+            )
+            raise ValueError(msg)
+
         plan = self.compute_diff(local_files, remote_files, delete_orphaned=self.config.delete_orphaned)
 
         uploaded: list[str] = []
@@ -283,10 +361,14 @@ class ViteDeployer:
             local_path = self.bundle_dir / path
             remote_path = self._join_remote(path)
             content_type: str | None = self.config.content_types.get(Path(path).suffix)
+            put_kwargs: dict[str, Any] = {}
             if content_type:
-                self.fs.put(local_path.as_posix(), remote_path, content_type=content_type)
-            else:
-                self.fs.put(local_path.as_posix(), remote_path)
+                scheme = (self.config.storage_backend or "").split("://", 1)[0].lower()
+                if scheme in _S3_SCHEMES:
+                    put_kwargs["ContentType"] = content_type
+                else:
+                    put_kwargs["content_type"] = content_type
+            self.fs.put(local_path.as_posix(), remote_path, **put_kwargs)
             uploaded.append(path)
             uploaded_bytes += local_files[path].size
             if on_progress:
@@ -342,11 +424,11 @@ class ViteDeployer:
                     continue
                 file_path = value.get("file")
                 if isinstance(file_path, str):
-                    paths.add(file_path)
+                    paths.add(file_path.lstrip("/"))
                 for field in ("css", "assets"):
                     for item in value.get(field, []) or []:
                         if isinstance(item, str):
-                            paths.add(item)
+                            paths.add(item.lstrip("/"))
         return paths
 
     def _relative_remote_path(self, full_path: str, base: str) -> str:

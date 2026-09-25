@@ -296,14 +296,10 @@ class PageProps(Generic[T]):
 
     deferred_props: "dict[str, list[str]] | None" = None
 
-    # v2.2.20+ protocol: Props that should only be resolved once and cached client-side
     once_props: "dict[str, dict[str, str | int | None]] | None" = None
 
     scroll_props: "dict[str, ScrollPropsConfig] | None" = None
 
-    # v2.3+ protocol: Flash messages at top level (not in props)
-    # This prevents flash from persisting in browser history state
-    # Always send {} for empty flash to support router.flash((current) => ({ ...current }))
     flash: "dict[str, list[str]]" = field(default_factory=_empty_flash_factory)
 
     def to_dict(self) -> dict[str, Any]:

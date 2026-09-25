@@ -22,13 +22,16 @@ export interface BridgeTypesConfig {
   openapiPath: string
   routesPath: string
   pagePropsPath: string
-  routesTsPath?: string
-  schemasTsPath?: string
+  routesTsPath?: string | null
+  schemasTsPath?: string | null
+  asyncapiPath?: string | null
+  channelsTsPath?: string | null
   generateZod: boolean
   generateSdk: boolean
   generateRoutes: boolean
   generatePageProps: boolean
   generateSchemas: boolean
+  generateChannels?: boolean
   globalRoute: boolean
   failOnError?: boolean
 }
@@ -184,15 +187,6 @@ function assertOptionalNullableInteger(obj: Record<string, unknown>, key: string
   return value
 }
 
-function assertOptionalString(obj: Record<string, unknown>, key: string): string | undefined {
-  const value = obj[key]
-  if (value === undefined) return undefined
-  if (typeof value !== "string" || value.length === 0) {
-    fail(`"${key}" must be a non-empty string`)
-  }
-  return value
-}
-
 function assertEnum<T extends string>(value: unknown, key: string, allowed: ReadonlySet<string>): T {
   if (typeof value !== "string" || !allowed.has(value)) {
     fail(`"${key}" must be one of: ${Array.from(allowed).join(", ")}`)
@@ -223,12 +217,15 @@ function parseTypesConfig(value: unknown): BridgeTypesConfig | null {
   const openapiPath = assertString(obj, "openapiPath")
   const routesPath = assertString(obj, "routesPath")
   const pagePropsPath = assertString(obj, "pagePropsPath")
-  const routesTsPath = assertOptionalString(obj, "routesTsPath")
-  const schemasTsPath = assertOptionalString(obj, "schemasTsPath")
+  const routesTsPath = assertOptionalNullableString(obj, "routesTsPath")
+  const schemasTsPath = assertOptionalNullableString(obj, "schemasTsPath")
+  const asyncapiPath = assertOptionalNullableString(obj, "asyncapiPath")
+  const channelsTsPath = assertOptionalNullableString(obj, "channelsTsPath")
   const generateZod = assertBoolean(obj, "generateZod")
   const generateSdk = assertBoolean(obj, "generateSdk")
   const generateRoutes = assertBoolean(obj, "generateRoutes")
   const generatePageProps = assertBoolean(obj, "generatePageProps")
+  const generateChannels = assertOptionalBoolean(obj, "generateChannels", true)
   const generateSchemas = assertOptionalBoolean(obj, "generateSchemas", true) // Default to true for backward compatibility
   const globalRoute = assertBoolean(obj, "globalRoute")
   const rawFailOnError = obj.failOnError
@@ -242,10 +239,13 @@ function parseTypesConfig(value: unknown): BridgeTypesConfig | null {
     pagePropsPath,
     routesTsPath,
     schemasTsPath,
+    asyncapiPath,
+    channelsTsPath,
     generateZod,
     generateSdk,
     generateRoutes,
     generatePageProps,
+    generateChannels,
     generateSchemas,
     globalRoute,
     failOnError,

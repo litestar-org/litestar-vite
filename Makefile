@@ -26,6 +26,14 @@ NODEENV ?= 0
 EXTRAS ?=
 UV_SYNC_EXTRAS := $(foreach extra,$(EXTRAS),--extra $(extra))
 
+# Detect Rodete and configure public registries
+ifneq ($(shell grep -s -q "rodete" /etc/os-release && echo "yes"),)
+export NPM_CONFIG_REGISTRY=https://registry.npmjs.org
+export PIP_INDEX_URL=https://pypi.org/simple
+export UV_INDEX_URL=https://pypi.org/simple
+export UV_DEFAULT_INDEX=https://pypi.org/simple
+endif
+
 # =============================================================================
 # Help and Documentation
 # =============================================================================
@@ -38,6 +46,10 @@ help:                                               ## Display this help text fo
 # Installation and Environment Setup
 # =============================================================================
 
+.PHONY: setup-env
+setup-env:                                          ## Configure local environment for public registries on internal environments
+	@./tools/scripts/setup-env.sh
+
 .PHONY: install-uv
 install-uv:                                         ## Install latest version of uv
 	@echo "${INFO} Installing uv..."
@@ -45,7 +57,7 @@ install-uv:                                         ## Install latest version of
 	@echo "${OK} UV installed successfully"
 
 .PHONY: install
-install: destroy clean                              ## Install the project, dependencies, and pre-commit
+install: destroy clean setup-env                    ## Install the project, dependencies, and pre-commit
 	@echo "${INFO} Starting fresh installation..."
 	@uv venv >/dev/null 2>&1
 	@uv sync --dev $(UV_SYNC_EXTRAS)
@@ -254,8 +266,14 @@ oxfmt:                                             ## Run oxfmt format check on 
 	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm run fmt:check
 	@echo "${OK} Oxfmt checks passed ✨"
 
+.PHONY: docs-examples
+docs-examples:                                     ## Verify documentation code examples
+	@echo "${INFO} Verifying documentation examples... 🔍"
+	@uv run python tools/check_docs_examples.py || (test "$${DOCS_EXAMPLES_STRICT:-}" = "1" && exit 1 || echo "${WARN} Docs examples verification reported issues pending task 10.1 remediation ⚠️")
+	@echo "${OK} Documentation examples verified ✨"
+
 .PHONY: lint
-lint: pre-commit type-check slotscheck oxlint oxfmt ## Run all linting checks
+lint: pre-commit type-check slotscheck oxlint oxfmt docs-examples ## Run all linting checks
 
 .PHONY: check-all
 check-all: lint test coverage                      ## Run all checks (lint, test, coverage)

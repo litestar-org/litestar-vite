@@ -1,0 +1,179 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Realtime Test App",
+    "version": "1.0.0"
+  },
+  "channels": {
+    "ws__chat": {
+      "address": "/ws/chat",
+      "title": "ListenerHandler Channel",
+      "summary": "WebSocket channel at /ws/chat",
+      "description": "A websocket listener that automatically accepts a connection, handles disconnects,\ninvokes a callback function every time new data is received and sends any data\nreturned\n",
+      "messages": {
+        "inbound": {
+          "name": "ws__chatInbound",
+          "title": "ListenerHandler Inbound Message",
+          "contentType": "application/json",
+          "payload": {
+            "$ref": "#/components/schemas/ChatInbound"
+          }
+        },
+        "outbound": {
+          "name": "ws__chatOutbound",
+          "title": "ListenerHandler Outbound Message",
+          "contentType": "application/json",
+          "payload": {
+            "$ref": "#/components/schemas/ChatOutbound"
+          }
+        }
+      },
+      "bindings": {
+        "ws": {}
+      }
+    },
+    "notify": {
+      "address": "/notify",
+      "title": "notify Channel",
+      "summary": "ChannelsPlugin broadcast channel at /notify",
+      "description": "Managed Litestar channel for notify.",
+      "messages": {
+        "broadcast": {
+          "name": "notifyBroadcast",
+          "title": "notify Broadcast Message",
+          "summary": "Event payload broadcast on notify",
+          "contentType": "application/json",
+          "payload": {}
+        }
+      },
+      "bindings": {
+        "ws": {},
+        "channels": {
+          "channel": "notify"
+        }
+      }
+    },
+    "stream__events": {
+      "address": "/stream/events",
+      "title": "sse_handler SSE Stream",
+      "summary": "Server-Sent Events endpoint at /stream/events",
+      "description": "GET Route Decorator.\n\nUse this decorator to decorate an HTTP handler for GET requests.\n",
+      "messages": {
+        "event": {
+          "name": "stream__eventsEvent",
+          "title": "sse_handler Server-Sent Event",
+          "summary": "Server-Sent Event emitted by sse_handler",
+          "description": "GET Route Decorator.\n\nUse this decorator to decorate an HTTP handler for GET requests.\n",
+          "contentType": "text/event-stream",
+          "payload": {
+            "$ref": "#/components/schemas/ServerEvent"
+          }
+        }
+      },
+      "bindings": {
+        "http": {}
+      }
+    }
+  },
+  "operations": {
+    "receive_ws__chat": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/ws__chat"
+      },
+      "summary": "Receive inbound messages on /ws/chat",
+      "description": "A websocket listener that automatically accepts a connection, handles disconnects,\ninvokes a callback function every time new data is received and sends any data\nreturned\n",
+      "messages": [
+        {
+          "$ref": "#/channels/ws__chat/messages/inbound"
+        }
+      ]
+    },
+    "send_ws__chat": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/ws__chat"
+      },
+      "summary": "Send outbound messages on /ws/chat",
+      "description": "A websocket listener that automatically accepts a connection, handles disconnects,\ninvokes a callback function every time new data is received and sends any data\nreturned\n",
+      "messages": [
+        {
+          "$ref": "#/channels/ws__chat/messages/outbound"
+        }
+      ]
+    },
+    "send_notify": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/notify"
+      },
+      "summary": "Broadcast event to subscribers on /notify",
+      "description": "Publishes real-time events to subscribers connected to notify.",
+      "messages": [
+        {
+          "$ref": "#/channels/notify/messages/broadcast"
+        }
+      ]
+    },
+    "stream_stream__events": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/stream__events"
+      },
+      "title": "sse_handler Stream",
+      "summary": "Stream Server-Sent Events from /stream/events",
+      "description": "GET Route Decorator.\n\nUse this decorator to decorate an HTTP handler for GET requests.\n",
+      "messages": [
+        {
+          "$ref": "#/channels/stream__events/messages/event"
+        }
+      ]
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatInbound": {
+        "properties": {
+          "room_id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "required": ["message", "room_id"],
+        "title": "ChatInbound"
+      },
+      "ChatOutbound": {
+        "properties": {
+          "room_id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "integer"
+          }
+        },
+        "type": "object",
+        "required": ["message", "room_id", "timestamp"],
+        "title": "ChatOutbound"
+      },
+      "ServerEvent": {
+        "properties": {
+          "event_type": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "required": ["event_type", "payload"],
+        "title": "ServerEvent"
+      }
+    }
+  }
+}

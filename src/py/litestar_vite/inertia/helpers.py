@@ -982,7 +982,6 @@ def extract_deferred_props(props: "Mapping[str, Any]") -> "dict[str, list[str]]"
 
     for key, value in _iter_mapping_prop_paths(props):
         if is_deferred_prop(value):
-            # Exclude once props from deferred metadata
             if value.is_once:
                 continue
             group = value.group
@@ -1062,11 +1061,9 @@ def should_render(  # noqa: PLR0911
     Returns:
         bool: True if value should be rendered
     """
-    # AlwaysProp: Always render, bypass all filtering
     if is_always_prop(value):
         return True
 
-    # OptionalProp: identical to LazyProp under partial reloads (v2 alias of lazy)
     if is_optional_prop(value):
         if partial_data and not _matches_partial_data(value, partial_data, key):
             return False
@@ -1074,7 +1071,6 @@ def should_render(  # noqa: PLR0911
             return False
         return not (not partial_data and not partial_except)
 
-    # OnceProp: included on initial load, cached client-side; only-then-except on partials
     if is_once_prop(value):
         if partial_data and not _matches_partial_data(value, partial_data, key):
             return False
@@ -1084,7 +1080,6 @@ def should_render(  # noqa: PLR0911
             return not _matches_partial_except(value, except_once_props, key)
         return True
 
-    # LazyProp (StaticProp/DeferredProp): only render on partial reload; only-then-except
     if is_lazy_prop(value):
         if partial_data and not _matches_partial_data(value, partial_data, key):
             return False
@@ -1092,7 +1087,6 @@ def should_render(  # noqa: PLR0911
             return False
         return not (not partial_data and not partial_except)
 
-    # Regular values: apply `only` (partial_data) first, then `except` (partial_except).
     if key is not None:
         if partial_data and not _matches_partial_data(value, partial_data, key):
             return False
@@ -1204,7 +1198,6 @@ def lazy_render(  # noqa: PLR0911
             ),
         )
 
-    # Handle special prop types that need rendering
     if is_lazy_prop(value) and should_render(value, partial_data, partial_except, except_once_props, key=_key):
         return cast("T", value.render())
 
@@ -1403,9 +1396,6 @@ def get_shared_props(
                 value, Mapping
             ):
                 continue
-            # Render all special prop types. Async callbacks must already be
-            # pre-resolved by InertiaResponse's async pre-pass; render() raises
-            # otherwise.
             if isinstance(value, Mapping):
                 rendered: Any = lazy_render(
                     cast("Mapping[str, Any]", value), partial_data, partial_except, except_once_props, _key=key
@@ -1441,7 +1431,6 @@ def get_shared_props(
     props["flash"] = flash
     props["errors"] = {error_bag: errors} if error_bag is not None else errors
     props["csrf_token"] = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
-    # Store once props keys for later extraction (removed before serialization)
     props["_once_props"] = once_props_entries
     return props
 

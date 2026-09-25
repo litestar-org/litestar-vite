@@ -3,7 +3,7 @@
 from typing import Any
 
 from litestar import Request, get
-from litestar.exceptions import NotAuthorizedException
+from litestar.exceptions import NotAuthorizedException, ValidationException
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.stores.memory import MemoryStore
 from litestar.template.config import TemplateConfig
@@ -165,3 +165,84 @@ async def test_inertia_error_with_component_still_renders_page(
     body = response.json()
     assert body["component"] == "Page"
     assert body["props"]["message"] == "Internal Server Error"
+
+
+async def test_all_validation_errors_are_flashed(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig[Any]
+) -> None:
+    """Every validation error in extra is flashed to the client."""
+
+    @get("/register", component="Register")
+    async def register_handler() -> dict[str, Any]:
+        raise ValidationException(
+            detail="Validation failed",
+            extra=[
+                {"key": "name", "message": "Value error, name is required"},
+                {"key": "email", "message": "Value error, email is invalid"},
+                {"key": "age", "message": "Value error, age must be positive"},
+            ],
+        )
+
+    @get("/form", component="Form")
+    async def form_handler() -> dict[str, Any]:
+        return {}
+
+    with create_test_client(
+        route_handlers=[register_handler, form_handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+        raise_server_exceptions=False,
+    ) as client:
+        response = client.get(
+            "/register",
+            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "http://testserver.local/form"},
+            follow_redirects=True,
+        )
+
+    assert response.status_code == 200
+    errors = response.json()["props"]["errors"]
+    assert errors == {
+        "root.name": "Value error, name is required",
+        "root.email": "Value error, email is invalid",
+        "root.age": "Value error, age must be positive",
+    }
+
+
+async def test_field_err_re_still_wins_per_entry(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig[Any]
+) -> None:
+    """FIELD_ERR_RE regex extract wins over root.<key> per entry."""
+
+    @get("/register", component="Register")
+    async def register_handler() -> dict[str, Any]:
+        raise ValidationException(
+            detail="Validation failed",
+            extra=[
+                {"key": "user_email", "message": "Validation error for field `email`"},
+                {"key": "user_name", "message": "Validation error for field `name`"},
+            ],
+        )
+
+    @get("/form", component="Form")
+    async def form_handler() -> dict[str, Any]:
+        return {}
+
+    with create_test_client(
+        route_handlers=[register_handler, form_handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+        raise_server_exceptions=False,
+    ) as client:
+        response = client.get(
+            "/register",
+            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "http://testserver.local/form"},
+            follow_redirects=True,
+        )
+
+    assert response.status_code == 200
+    errors = response.json()["props"]["errors"]
+    assert errors == {"email": "Validation error for field `email`", "name": "Validation error for field `name`"}

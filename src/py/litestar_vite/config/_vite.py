@@ -486,6 +486,8 @@ class ViteConfig:
         default_openapi = default_rel / "openapi.json"
         default_routes = default_rel / "routes.json"
         default_page_props = default_rel / "inertia-pages.json"
+        default_asyncapi = default_rel / "asyncapi.json"
+        default_channels_ts = default_rel / "channels.ts"
 
         if types.openapi_path == default_openapi and types.output != default_rel:
             types.openapi_path = types.output / "openapi.json"
@@ -493,6 +495,10 @@ class ViteConfig:
             types.routes_path = types.output / "routes.json"
         if types.page_props_path == default_page_props and types.output != default_rel:
             types.page_props_path = types.output / "inertia-pages.json"
+        if types.asyncapi_path == default_asyncapi and types.output != default_rel:
+            types.asyncapi_path = types.output / "asyncapi.json"
+        if types.channels_ts_path == default_channels_ts and types.output != default_rel:
+            types.channels_ts_path = types.output / "channels.ts"
 
         if types.routes_ts_path is None or (
             types.routes_ts_path == default_rel / "routes.ts" and types.output != default_rel
@@ -513,6 +519,12 @@ class ViteConfig:
             _to_root_path(root_dir, types.page_props_path)
             if types.page_props_path
             else types.output / "inertia-pages.json"
+        )
+        types.asyncapi_path = (
+            _to_root_path(root_dir, types.asyncapi_path) if types.asyncapi_path else types.output / "asyncapi.json"
+        )
+        types.channels_ts_path = (
+            _to_root_path(root_dir, types.channels_ts_path) if types.channels_ts_path else types.output / "channels.ts"
         )
 
     def _ensure_spa_default(self) -> None:
@@ -565,11 +577,7 @@ class ViteConfig:
         Raises:
             ValueError: If the configuration is invalid for the selected mode.
         """
-        # Validate mode+inertia conflicts first (before file checks)
         inertia_enabled = isinstance(self.inertia, InertiaConfig)
-        # template mode + Inertia is supported: Jinja template hosts the Inertia
-        # page payload via {{ inertia|safe }}, and _render_template injects the
-        # SSR-rendered body into the configured target_selector. See #243.
         if inertia_enabled and not self.inertia_compatible:
             msg = (
                 f"Inertia.js cannot be used with mode={self.mode!r}. "
@@ -579,14 +587,12 @@ class ViteConfig:
             )
             raise ValueError(msg)
 
-        # Validate SSR config when Inertia is enabled
         if isinstance(self.inertia, InertiaConfig):
             ssr_config = self.inertia.ssr_config
             if ssr_config is not None and ssr_config.timeout <= 0:
                 msg = f"InertiaSSRConfig.timeout must be positive, got {ssr_config.timeout}."
                 raise ValueError(msg)
 
-        # Validate type generation requires inertia for page props
         types = self.types if isinstance(self.types, TypeGenConfig) else None
         if types and types.generate_page_props and not inertia_enabled:
             msg = (
@@ -595,7 +601,6 @@ class ViteConfig:
             )
             raise ValueError(msg)
 
-        # Mode-specific file/dependency checks
         if self.mode == "spa":
             index_candidates = self.candidate_index_html_paths()
             if not self.runtime.dev_mode and not any(path.exists() for path in index_candidates):
@@ -1000,10 +1005,6 @@ class ViteConfig:
             True if the SPA handler should be auto-registered, otherwise False.
         """
         return self.runtime.spa_handler
-
-    # ============================================================================
-    # Capability predicates (single source of truth for mode-conditional behavior)
-    # ============================================================================
 
     @property
     def serves_own_html(self) -> bool:

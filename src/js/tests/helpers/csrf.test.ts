@@ -115,6 +115,73 @@ describe("csrf helpers", () => {
       expect(token).toBe("inertia-csrf-token-789")
     })
 
+    it("returns token from script#app_page JSON payload", () => {
+      globalThis.window.__LITESTAR_CSRF__ = undefined
+      ;(globalThis.document.querySelector as ReturnType<typeof vi.fn>).mockReturnValue(null)
+      const scriptEl = {
+        textContent: JSON.stringify({
+          props: {
+            csrf_token: "script-csrf-token-123",
+          },
+        }),
+      }
+      globalThis.document.getElementById = vi.fn((id: string) => (id === "app_page" ? scriptEl : null)) as unknown as typeof document.getElementById
+
+      const token = getCsrfToken()
+
+      expect(token).toBe("script-csrf-token-123")
+      expect(globalThis.document.getElementById).toHaveBeenCalledWith("app_page")
+    })
+
+    it("returns token from [data-page] JSON payload", () => {
+      globalThis.window.__LITESTAR_CSRF__ = undefined
+      globalThis.document.getElementById = vi.fn(() => null) as unknown as typeof document.getElementById
+      const dataEl = {
+        getAttribute: vi.fn((attr: string) =>
+          attr === "data-page"
+            ? JSON.stringify({
+                props: {
+                  csrf_token: "data-page-csrf-token-456",
+                },
+              })
+            : null,
+        ),
+      }
+      globalThis.document.querySelector = vi.fn((selector: string) => (selector === "[data-page]" ? dataEl : null)) as unknown as typeof document.querySelector
+
+      const token = getCsrfToken()
+
+      expect(token).toBe("data-page-csrf-token-456")
+      expect(globalThis.document.querySelector).toHaveBeenCalledWith("[data-page]")
+    })
+
+    it("ignores [data-page='app'] placeholder and falls back to cookie", () => {
+      globalThis.window.__LITESTAR_CSRF__ = undefined
+      globalThis.document.getElementById = vi.fn(() => null) as unknown as typeof document.getElementById
+      const dataEl = {
+        getAttribute: vi.fn((attr: string) => (attr === "data-page" ? "app" : null)),
+      }
+      globalThis.document.querySelector = vi.fn((selector: string) => (selector === "[data-page]" ? dataEl : null)) as unknown as typeof document.querySelector
+      ;(globalThis.document as unknown as { cookie: string }).cookie = "csrftoken=cookie-fallback-tok"
+
+      const token = getCsrfToken()
+
+      expect(token).toBe("cookie-fallback-tok")
+    })
+
+    it("handles invalid JSON in script#app_page gracefully", () => {
+      globalThis.window.__LITESTAR_CSRF__ = undefined
+      ;(globalThis.document.querySelector as ReturnType<typeof vi.fn>).mockReturnValue(null)
+      const scriptEl = {
+        textContent: "invalid json",
+      }
+      globalThis.document.getElementById = vi.fn((id: string) => (id === "app_page" ? scriptEl : null)) as unknown as typeof document.getElementById
+
+      const token = getCsrfToken()
+
+      expect(token).toBe("")
+    })
+
     it("prioritizes window global over meta tag", () => {
       globalThis.window.__LITESTAR_CSRF__ = "window-token"
       const mockMeta = { getAttribute: vi.fn(() => "meta-token") }

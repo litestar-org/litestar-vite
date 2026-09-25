@@ -18,6 +18,7 @@ import { promisify } from "node:util"
 
 import { resolveInstallHint, resolvePackageExecutorArgv } from "../install-hint.js"
 import { HEY_API_PINNED_SPEC, TYPEGEN_FALLBACK_PACKAGE_SPECS, TYPESCRIPT_PINNED_SPEC } from "./constants.js"
+import { emitChannelsTypes } from "./emit-channels-types.js"
 import { emitPagePropsTypes } from "./emit-page-props-types.js"
 import { emitSchemasTypes } from "./emit-schemas-types.js"
 import { emitStaticPropsTypes } from "./emit-static-props-types.js"
@@ -39,6 +40,10 @@ export interface TypeGenCoreConfig {
   pagePropsPath: string
   /** Path to routes.json (relative or absolute) */
   routesPath: string
+  /** Path to asyncapi.json (relative or absolute) */
+  asyncapiPath?: string
+  /** Path for channels.ts output */
+  channelsTsPath?: string
   /** Whether to generate SDK client */
   generateSdk: boolean
   /** Whether to generate Zod schemas */
@@ -47,6 +52,8 @@ export interface TypeGenCoreConfig {
   generatePageProps: boolean
   /** Whether to generate schema helper types (schemas.ts) */
   generateSchemas: boolean
+  /** Whether to generate realtime channel types (channels.ts) */
+  generateChannels?: boolean
   /** Optional path for schemas.ts output */
   schemasTsPath?: string
   /** SDK client plugin (e.g., "@hey-api/client-fetch") */
@@ -254,7 +261,7 @@ export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunT
         generateSdk: config.generateSdk,
         generateZod: config.generateZod,
         plugins,
-        outputPaths: [path.join(projectRoot, sdkOutput, "types.gen.ts")],
+        outputPaths: [path.resolve(projectRoot, sdkOutput, "types.gen.ts")],
       }
       const shouldRun = cache ? await cache.shouldRunOpenApiTs(absoluteOpenapiPath, configPath, cacheOptions) : true
 
@@ -342,6 +349,34 @@ export async function runTypeGeneration(config: TypeGenCoreConfig, options: RunT
           const message = error instanceof Error ? error.message : String(error)
           result.errors.push(`Schema types generation failed: ${message}`)
           logger?.error(`Schema types generation failed: ${message}`)
+        }
+      }
+    }
+
+    // Generate realtime channel types from AsyncAPI spec
+    const { generateChannels = true, asyncapiPath, channelsTsPath } = config
+    if (generateChannels && asyncapiPath) {
+      const absoluteAsyncApiPath = path.resolve(projectRoot, asyncapiPath)
+      if (fs.existsSync(absoluteAsyncApiPath)) {
+        try {
+          const channelsOutput = channelsTsPath ?? path.join(output, "channels.ts")
+          const rawContent = fs.readFileSync(absoluteAsyncApiPath, "utf-8")
+          const doc = JSON.parse(rawContent) as { channels?: Record<string, unknown> }
+          if (Object.keys(doc.channels ?? {}).length === 0) {
+            result.skippedFiles.push(channelsOutput)
+          } else {
+            const changed = await emitChannelsTypes(absoluteAsyncApiPath, output, channelsTsPath, projectRoot, logger)
+            if (changed) {
+              result.generatedFiles.push(channelsOutput)
+              result.generated = true
+            } else {
+              result.skippedFiles.push(channelsOutput)
+            }
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          result.errors.push(`Channels types generation failed: ${message}`)
+          logger?.error(`Channels types generation failed: ${message}`)
         }
       }
     }

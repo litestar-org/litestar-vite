@@ -132,6 +132,8 @@ function createProxyPlugin(config: ResolvedIntegrationConfig): Plugin {
       if (config.hotFile) {
         const hmrHotFile = `${config.hotFile}.hmr`
         const hmrUrl = `http://127.0.0.1:${hmrPort}`
+        const hmrDir = path.dirname(hmrHotFile)
+        fs.mkdirSync(hmrDir, { recursive: true })
         fs.writeFileSync(hmrHotFile, hmrUrl)
         if (config.verbose) {
           console.log(colors.cyan("[litestar-nuxt]"), colors.dim(`HMR Hotfile written: ${hmrHotFile} -> ${hmrUrl}`))

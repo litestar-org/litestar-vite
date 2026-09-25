@@ -1,5 +1,6 @@
 """Utilities for deterministic code generation and file output."""
 
+import contextlib
 import hashlib
 import json
 import os
@@ -12,6 +13,8 @@ from typing import Any
 def deep_sort_dict(obj: Any) -> Any:
     """Recursively sort all dictionary keys for deterministic JSON output.
 
+    Intentionally operates on arbitrary Any types for generic dict sorting.
+
     Args:
         obj: Any Python object (dict, list, or primitive).
 
@@ -19,7 +22,6 @@ def deep_sort_dict(obj: Any) -> Any:
         The object with all nested dict keys sorted.
     """
     if isinstance(obj, dict):
-        # pyright: ignore - intentionally working with Any types for generic dict sorting
         return {k: deep_sort_dict(v) for k, v in sorted(obj.items())}  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
     if isinstance(obj, list):
         return [deep_sort_dict(item) for item in obj]  # pyright: ignore[reportUnknownVariableType]
@@ -40,12 +42,9 @@ def strip_timestamp_for_comparison(content: bytes) -> bytes:
     """
     try:
         data = json.loads(content)
-        # Remove fields that change on every generation
         data.pop("generatedAt", None)
-        # Return sorted JSON for consistent comparison
         return json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
     except (json.JSONDecodeError, TypeError, AttributeError):
-        # If we can't parse the content, return as-is
         return content
 
 
@@ -73,7 +72,6 @@ def write_if_changed(
     Returns:
         True if file was written (content changed), False if skipped (unchanged).
     """
-    # Ensure trailing newline for POSIX compliance
     if isinstance(content, str):
         if not content.endswith("\n"):
             content += "\n"
@@ -87,7 +85,6 @@ def write_if_changed(
         try:
             existing = path.read_bytes()
 
-            # Normalize both for comparison if a normalizer is provided
             if normalize_for_comparison:
                 existing_normalized = normalize_for_comparison(existing)
                 new_normalized = normalize_for_comparison(content_bytes)
@@ -95,7 +92,6 @@ def write_if_changed(
                 existing_normalized = existing
                 new_normalized = content_bytes
 
-            # Compare using MD5 hash for efficiency
             existing_hash = hashlib.md5(existing_normalized).hexdigest()  # noqa: S324
             new_hash = hashlib.md5(new_normalized).hexdigest()  # noqa: S324
             if existing_hash == new_hash:
@@ -104,19 +100,20 @@ def write_if_changed(
             pass
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    # Atomic write: write to temp file in same directory, then rename.
-    # os.replace() is atomic on POSIX and near-atomic on Windows,
-    # preventing partial reads of .litestar.json or generated files.
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    closed = False
     try:
         if isinstance(content, str):
             os.write(fd, content.encode(encoding))
         else:
             os.write(fd, content)
         os.close(fd)
+        closed = True
         Path(tmp_path).replace(path)
     except BaseException:
-        os.close(fd)
+        if not closed:
+            with contextlib.suppress(OSError):
+                os.close(fd)
         Path(tmp_path).unlink(missing_ok=True)
         raise
     return True
@@ -148,7 +145,6 @@ def encode_deterministic_json(
         content = msgspec.json.format(serializer(sorted_data), indent=indent)
     else:
         content = msgspec.json.format(encode_json(sorted_data), indent=indent)
-    # Ensure trailing newline for POSIX compliance
     if not content.endswith(b"\n"):
         content += b"\n"
     return content

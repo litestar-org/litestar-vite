@@ -107,6 +107,20 @@ describe("static props virtual module", () => {
     expect(moduleContent).toContain('export default {"appName":"Test App","version":"1.0.0"};')
   })
 
+  it("generates staticProps named export containing all static props", () => {
+    createRuntimeConfig({
+      staticProps: { appName: "Test App", version: "1.0.0" },
+    })
+
+    const plugins = litestar({ input: "resources/js/app.ts", types: false })
+    const staticPropsPlugin = plugins.find((p: any) => p.name === "litestar-vite-static-props")
+
+    const moduleContent = staticPropsPlugin?.load?.("\0virtual:litestar-static-props")
+
+    expect(moduleContent).toContain('export const staticProps = {"appName":"Test App","version":"1.0.0"};')
+    expect(moduleContent).toContain('export default {"appName":"Test App","version":"1.0.0"};')
+  })
+
   it("generates named exports for valid identifiers", () => {
     createRuntimeConfig({
       staticProps: { appName: "Test App", $special: "value", _private: true },

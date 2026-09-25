@@ -250,4 +250,41 @@ describe("emitStaticPropsTypes", () => {
     const content = fs.readFileSync(outFile, "utf-8")
     expect(content).toContain("export interface StaticProps {}")
   })
+
+  it("reads .litestar.json from custom projectRoot when LITESTAR_VITE_CONFIG_PATH is not set", async () => {
+    delete process.env.LITESTAR_VITE_CONFIG_PATH
+    const customRoot = createTmpDir()
+    const cfgPath = path.join(customRoot, ".litestar.json")
+    const config = {
+      assetUrl: "/static",
+      deployAssetUrl: null,
+      bundleDir: "public",
+      resourceDir: "resources",
+      staticDir: "public",
+      hotFile: "hot",
+      manifest: "manifest.json",
+      mode: "spa",
+      proxyMode: "vite",
+      host: "localhost",
+      port: 5173,
+      ssrOutDir: null,
+      types: null,
+      spa: null,
+      executor: "node",
+      logging: null,
+      litestarVersion: "2.18.0",
+      staticProps: {
+        fromCustomRoot: true,
+      },
+    }
+    fs.writeFileSync(cfgPath, JSON.stringify(config), "utf-8")
+
+    const outputDir = path.join(customRoot, "generated")
+    const changed = await emitStaticPropsTypes(outputDir, customRoot)
+
+    expect(changed).toBe(true)
+    const outFile = path.join(outputDir, "static-props.ts")
+    const content = fs.readFileSync(outFile, "utf-8")
+    expect(content).toContain("fromCustomRoot: boolean")
+  })
 })
