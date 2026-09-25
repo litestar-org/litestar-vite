@@ -24,6 +24,7 @@ _EXECUTOR_COMMANDS: dict[str, dict[str, tuple[str, ...]]] = {
         "build_watch": ("bun", "run", "watch"),
         "serve": ("bun", "run", "serve"),
         "install": ("bun", "install"),
+        "serve_ssr": ("bun", "run", "resources/ssr.tsx"),
     },
     "deno": {
         "run": ("deno", "task", "dev"),
@@ -175,6 +176,8 @@ class RuntimeConfig:
 
     Attributes:
         dev_mode: Enable development mode with HMR/watch.
+        dev_mode_direct_urls: Fetch static assets and HMR scripts directly from the Vite
+            dev server origin when True, or route through Litestar reverse proxy when False.
         proxy_mode: Proxy handling mode (auto-derived from ``ViteConfig.mode`` when None):
             - "vite": Proxy Vite assets only (allow list - SPA / hybrid / template modes)
             - "proxy": Proxy everything except Litestar routes (deny list - framework mode)
@@ -205,6 +208,9 @@ class RuntimeConfig:
     """
 
     dev_mode: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)
+    dev_mode_direct_urls: bool = field(
+        default_factory=lambda: os.getenv("VITE_DEV_MODE_DIRECT_URLS", "False") in TRUE_VALUES
+    )
     proxy_mode: "Literal['vite', 'proxy'] | None" = field(default_factory=resolve_proxy_mode)
     external_dev_server: "ExternalDevServer | str | None" = None
     host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "127.0.0.1"))

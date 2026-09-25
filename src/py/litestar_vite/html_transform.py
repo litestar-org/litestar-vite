@@ -10,6 +10,7 @@ from typing import Any
 __all__ = (
     "inject_head_html",
     "inject_head_script",
+    "inject_inertia_ssr_tags",
     "inject_page_script",
     "inject_vite_dev_scripts",
     "replace_element_outer_html",
@@ -272,6 +273,57 @@ def replace_element_outer_html(html: str, selector: str, content: str) -> str:
     return pattern.sub(replacer, html, count=1)
 
 
+_INERTIA_HEAD_TOKENS: tuple[str, ...] = ("<!--inertia-head-->", "<!-- inertia-head -->", "@inertiaHead")
+_INERTIA_BODY_TOKENS: tuple[str, ...] = (
+    "<!--inertia-body-->",
+    "<!-- inertia-body -->",
+    "@inertia",
+    "<!--inertia-->",
+    "<!-- inertia -->",
+)
+
+
+def inject_inertia_ssr_tags(html: str, *, head: list[str] | str, body: str, selector: str = "#app") -> str:
+    """Inject Inertia SSR head and body content into an HTML document.
+
+    Checks first for token/slot-based replacement tags. If no tokens are present,
+    falls back to backward-compatible selector outer HTML replacement and head injection.
+
+    Args:
+        html: The template or SPA HTML shell string.
+        head: List of head HTML tags or a pre-joined head string.
+        body: Rendered SSR body markup.
+        selector: Fallback CSS ID selector for outer HTML replacement.
+
+    Returns:
+        Transformed HTML document containing head and body markup.
+    """
+    newline = "\r\n" if "\r\n" in html else "\n"
+    head_content = newline.join(head) if isinstance(head, list) else head
+
+    head_token_found = False
+    for token in _INERTIA_HEAD_TOKENS:
+        if token in html:
+            html = html.replace(token, head_content, 1)
+            head_token_found = True
+            break
+
+    if not head_token_found and head_content:
+        html = inject_head_html(html, head_content)
+
+    body_token_found = False
+    for token in _INERTIA_BODY_TOKENS:
+        if token in html:
+            html = html.replace(token, body, 1)
+            body_token_found = True
+            break
+
+    if not body_token_found:
+        html = replace_element_outer_html(html, selector, body)
+
+    return html
+
+
 def inject_page_script(
     html: str, json_data: str, *, app_id: str = "app", nonce: str | None = None, script_id: str = "app_page"
 ) -> str:
@@ -332,6 +384,7 @@ def inject_vite_dev_scripts(
     is_react: bool = False,
     csp_nonce: str | None = None,
     resource_dir: str | None = None,
+    dev_mode_direct_urls: bool = False,
 ) -> str:
     """Inject Vite dev server scripts for HMR support.
 
@@ -342,33 +395,30 @@ def inject_vite_dev_scripts(
     For React apps, a preamble script is injected before the Vite client to
     enable React Fast Refresh.
 
-    Scripts are injected as relative URLs using the ``asset_url`` prefix. This
-    routes them through Litestar's proxy middleware, which forwards to Vite
-    with the correct base path handling.
+    Scripts are injected as relative URLs using the ``asset_url`` prefix when
+    ``dev_mode_direct_urls`` is False. When ``dev_mode_direct_urls`` is True,
+    scripts point directly to ``vite_url`` to bypass reverse proxying.
 
     When ``resource_dir`` is provided, entry point script URLs are also transformed
-    to include the asset URL prefix (e.g., ``/resources/main.tsx`` becomes
-    ``/static/resources/main.tsx``).
+    to include the asset URL prefix or direct dev server URL.
 
     Args:
         html: The HTML document.
-        vite_url: The Vite dev server URL (kept for backward compatibility, unused).
-        asset_url: The asset URL prefix (e.g., "/static/"). Scripts are served
-            at ``{asset_url}@vite/client`` etc.
+        vite_url: The Vite dev server URL.
+        asset_url: The asset URL prefix (e.g., "/static/").
         is_react: Whether to inject the React Fast Refresh preamble.
         csp_nonce: Optional CSP nonce to add to injected ``<script>`` tags.
         resource_dir: Optional resource directory name (e.g., "resources", "src").
-            When provided, script sources starting with ``/{resource_dir}/`` are
-            prefixed with ``asset_url``.
+        dev_mode_direct_urls: Whether to emit direct Vite dev server URLs.
 
     Returns:
         The HTML with Vite dev scripts injected. Scripts are inserted before
         ``</head>`` when present, otherwise before ``</html>`` or at the end.
 
     Example:
-        html = inject_vite_dev_scripts(html, "", asset_url="/static/", is_react=True)
+        html = inject_vite_dev_scripts(html, "http://localhost:5173", asset_url="/static/", is_react=True)
     """
-    base = asset_url.rstrip("/")
+    base = vite_url.rstrip("/") if dev_mode_direct_urls else asset_url.rstrip("/")
     nonce_attr = f' nonce="{_escape_attr(csp_nonce)}"' if csp_nonce else ""
 
     if resource_dir:

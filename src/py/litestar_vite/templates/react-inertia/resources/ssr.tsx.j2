@@ -1,26 +1,80 @@
-import createServer from "@inertiajs/react/server";
+import readline from "node:readline";
+import net from "node:net";
+import fs from "node:fs";
 import { createInertiaApp } from "@inertiajs/react";
 import type { ComponentType } from "react";
 import { renderToString } from "react-dom/server";
-
 import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
 
 const pages = import.meta.glob<{ default: ComponentType }>("./pages/**/*.tsx");
 
-createServer(
-  async (page) => {
-    const inertia = await createInertiaApp({
-      // litestar-vite defaults to the script-element bootstrap for Inertia.
-      // - Inertia v3 reads the #app_page payload automatically.
-      // - If you pin Inertia v2, mirror defaults.future.useScriptElementForInitialPage
-      //   here too or set use_script_element=False on the Python side.
-      page,
-      render: renderToString,
-      resolve: (name) => resolvePageComponent(`./pages/${name}.tsx`, pages),
-      setup: ({ App, props }) => <App {...props} />,
-    });
+async function renderPage(pagePayload: any): Promise<any> {
+  return createInertiaApp({
+    // litestar-vite defaults to the script-element bootstrap for Inertia.
+    // - Inertia v3 reads the #app_page payload automatically.
+    // - If you pin Inertia v2, mirror defaults.future.useScriptElementForInitialPage
+    //   here too or set use_script_element=False on the Python side.
+    page: pagePayload,
+    render: renderToString,
+    resolve: (name) => resolvePageComponent(`./pages/${name}.tsx`, pages),
+    setup: ({ App, props }) => <App {...props} />,
+  });
+}
 
-    return inertia;
-  },
-  Number.parseInt(process.env.INERTIA_SSR_PORT || "13714"),
-);
+const args = process.argv.slice(2);
+const socketArgIdx = args.indexOf("--socket");
+const socketPath = socketArgIdx !== -1 ? args[socketArgIdx + 1] : process.env.INERTIA_SSR_SOCKET;
+const portArgIdx = args.indexOf("--port");
+const port = portArgIdx !== -1 ? Number(args[portArgIdx + 1]) : (process.env.INERTIA_SSR_PORT ? Number(process.env.INERTIA_SSR_PORT) : null);
+const isStdio = args.includes("--stdio") || (!socketPath && !port);
+
+if (isStdio) {
+  const rl = readline.createInterface({ input: process.stdin, terminal: false });
+  rl.on("line", async (line) => {
+    if (!line.trim()) return;
+    try {
+      const request = JSON.parse(line);
+      const result = await renderPage(request.payload || request);
+      process.stdout.write(JSON.stringify({ id: request.id, result }) + "\n");
+    } catch (error: any) {
+      process.stdout.write(JSON.stringify({ id: null, error: error?.message || String(error) }) + "\n");
+    }
+  });
+  process.stdin.on("end", () => process.exit(0));
+} else if (socketPath) {
+  try {
+    if (fs.existsSync(socketPath)) {
+      fs.unlinkSync(socketPath);
+    }
+  } catch {}
+  const server = net.createServer((socket) => {
+    const rl = readline.createInterface({ input: socket, terminal: false });
+    rl.on("line", async (line) => {
+      if (!line.trim()) return;
+      try {
+        const request = JSON.parse(line);
+        const result = await renderPage(request.payload || request);
+        socket.write(JSON.stringify({ id: request.id, result }) + "\n");
+      } catch (error: any) {
+        socket.write(JSON.stringify({ id: null, error: error?.message || String(error) }) + "\n");
+      }
+    });
+  });
+  server.listen(socketPath);
+} else {
+  const listenPort = port || 13714;
+  const server = net.createServer((socket) => {
+    const rl = readline.createInterface({ input: socket, terminal: false });
+    rl.on("line", async (line) => {
+      if (!line.trim()) return;
+      try {
+        const request = JSON.parse(line);
+        const result = await renderPage(request.payload || request);
+        socket.write(JSON.stringify({ id: request.id, result }) + "\n");
+      } catch (error: any) {
+        socket.write(JSON.stringify({ id: null, error: error?.message || String(error) }) + "\n");
+      }
+    });
+  });
+  server.listen(listenPort);
+}

@@ -1189,7 +1189,7 @@ class ViteDoctor:
         ssr = self.config.inertia.ssr_config
         if ssr is None:
             return
-        if not ssr.url.startswith(("http://", "https://")):
+        if ssr.url is not None and not ssr.url.startswith(("http://", "https://")):
             self.issues.append(
                 DoctorIssue(
                     check="SSR URL Format",

@@ -46,6 +46,18 @@ Reference Paths
 
       Inertia request/response types, helpers, middleware, plugin hooks, and SSR-specific reference material.
 
+   .. grid-item-card:: :octicon:`sync` IPC Transports
+      :link: ipc
+      :link-type: doc
+
+      AnyIO-powered IPC transports, NDJSON Stdio workers, Unix domain sockets, and raw TCP streams.
+
+   .. grid-item-card:: :octicon:`stack` Component Fragments
+      :link: fragments
+      :link-type: doc
+
+      Server-side rendering of React, Vue, Svelte, and Astro component fragments for HTMX and Jinja.
+
 .. toctree::
    :titlesonly:
    :hidden:
@@ -54,8 +66,10 @@ Reference Paths
    config
    deploy
    exceptions
+   fragments
    html_transform
    inertia/index
+   ipc
    loader
    plugin
    spa

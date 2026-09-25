@@ -19,6 +19,14 @@ export const isVite6Plus: boolean = viteMajor >= 6
 export const isVite8Plus: boolean = viteMajor >= 8
 
 /**
+ * Returns the bundler options key for the running Vite version:
+ * `rolldownOptions` on Vite 8+, `rollupOptions` on Vite 7.
+ */
+export function bundlerOptionKey(): "rolldownOptions" | "rollupOptions" {
+  return isVite8Plus ? "rolldownOptions" : "rollupOptions"
+}
+
+/**
  * Whether the running Vite version is 8.1+, which moved the HMR network options
  * (`host`/`protocol`/`port`/`clientPort`/`path`/`timeout`) from `server.hmr.*`
  * to `server.ws.*`. On 8.1+ `server.hmr` only carries the enable/disable toggle.

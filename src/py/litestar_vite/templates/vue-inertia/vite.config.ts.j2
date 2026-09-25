@@ -40,7 +40,21 @@ export default defineConfig({
         ? {
             entryFileNames: "ssr.js",
           }
-        : undefined,
+        : {
+            entryFileNames: "assets/[name]-[hash].js",
+            chunkFileNames: "assets/[name]-[hash].js",
+            assetFileNames: "assets/[name]-[hash][extname]",
+          },
+    },
+  },
+{% else %}
+  build: {
+    rolldownOptions: {
+      output: {
+        entryFileNames: "assets/[name]-[hash].js",
+        chunkFileNames: "assets/[name]-[hash].js",
+        assetFileNames: "assets/[name]-[hash][extname]",
+      },
     },
   },
 {% endif %}

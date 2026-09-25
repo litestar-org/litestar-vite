@@ -149,6 +149,10 @@ nitpick_ignore = [
     (PY_CLASS, "litestar_vite.codegen.OpenAPISupport"),
     (PY_CLASS, "litestar_vite.codegen._asyncapi.AsyncAPISchemaContext"),
     (PY_CLASS, "litestar_vite.codegen._asyncapi._ChannelKeyAllocator"),
+    # Typing and deprecation
+    (PY_CLASS, "Deprecated"),
+    (PY_CLASS, "typing_extensions.Self"),
+    (PY_CLASS, "Self"),
 ]
 nitpick_ignore_regex = [
     (PY_RE, r"litestar_vite.*\.T"),
@@ -236,6 +240,21 @@ html_theme_options: dict[str, Any] = {
                     "title": "Realtime & AsyncAPI",
                     "url": "realtime/index",
                     "summary": "WebSockets, ChannelsPlugin, SSE, AsyncAPI 3.0 schema, and typed frontend client streams.",
+                },
+                {
+                    "title": "SSR & IPC Architecture",
+                    "url": "ssr/ipc-architecture",
+                    "summary": "Inter-process communication, Stdio workers, Unix domain sockets, and zero-HTTPX SSR.",
+                },
+                {
+                    "title": "Hypermedia & Fragments",
+                    "url": "hypermedia/fragments",
+                    "summary": "HTMX partial swaps, React/Vue/Svelte fragment rendering, and scoped CSS injection.",
+                },
+                {
+                    "title": "Vite 6/7/8 Architecture",
+                    "url": "guide/vite6-architecture",
+                    "summary": "Vite Environment API, Rolldown bundling, and zero-proxy direct asset serving.",
                 },
                 {
                     "title": "API Reference",

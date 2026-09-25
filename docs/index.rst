@@ -122,6 +122,9 @@ Developer Resources
    usage/index
    frameworks/index
    realtime/index
+   ssr/ipc-architecture
+   hypermedia/fragments
+   guide/vite6-architecture
    reference/index
 
 .. toctree::

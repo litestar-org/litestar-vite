@@ -41,12 +41,15 @@ from litestar_vite.config import (
     ViteConfig,
 )
 from litestar_vite.exceptions import HTMLEntryResolutionError
+from litestar_vite.fragments import ComponentResponse, FragmentEngine, render_fragment
 from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.plugin import StaticPlacement, StaticServerConfig, StaticServerMount, VitePlugin
 
 __all__ = (
+    "ComponentResponse",
     "DeployConfig",
     "ExternalDevServer",
+    "FragmentEngine",
     "HTMLEntryResolutionError",
     "InertiaConfig",
     "InertiaSSRConfig",
@@ -60,4 +63,5 @@ __all__ = (
     "ViteConfig",
     "VitePlugin",
     "inertia",
+    "render_fragment",
 )

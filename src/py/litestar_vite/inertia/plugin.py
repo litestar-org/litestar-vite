@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from litestar.config.app import AppConfig
 
     from litestar_vite.config import InertiaConfig
+    from litestar_vite.ipc import BaseIPCTransport
 
 
 class InertiaPlugin(InitPlugin):
@@ -55,16 +56,17 @@ class InertiaPlugin(InitPlugin):
         )
     """
 
-    __slots__ = ("_ssr_client", "config")
+    __slots__ = ("_ipc_transport", "_ssr_client", "config")
 
-    def __init__(self, config: "InertiaConfig") -> "None":
+    def __init__(self, config: "InertiaConfig") -> None:
         """Initialize the plugin with Inertia configuration."""
         self.config = config
         self._ssr_client: "httpx.AsyncClient | None" = None
+        self._ipc_transport: "BaseIPCTransport | None" = None
 
     @asynccontextmanager
     async def lifespan(self, app: "Litestar") -> "AsyncGenerator[None, None]":
-        """Lifespan to manage the shared SSR HTTP client.
+        """Lifespan to manage the shared SSR transport and optional legacy client.
 
         Args:
             app: The :class:`Litestar <litestar.app.Litestar>` instance.
@@ -72,24 +74,47 @@ class InertiaPlugin(InitPlugin):
         Yields:
             An asynchronous context manager.
         """
-        from litestar_vite._typing import ensure_httpx
+        try:
+            import httpx
 
-        ensure_httpx("Inertia SSR client pooling")
-        import httpx
+            limits = httpx.Limits(max_keepalive_connections=10, max_connections=20, keepalive_expiry=30.0)
+            self._ssr_client = httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(10.0))
+        except (ImportError, RuntimeError, OSError):
+            self._ssr_client = None
 
-        limits = httpx.Limits(max_keepalive_connections=10, max_connections=20, keepalive_expiry=30.0)
-        self._ssr_client = httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(10.0))
+        ssr_config = self.config.ssr_config
+        if ssr_config is not None and ssr_config.command is not None and ssr_config.auto_start:
+            from litestar_vite.ipc import IPCTransportManager
+
+            transport = IPCTransportManager.create_transport(
+                mode=ssr_config.transport,
+                command=ssr_config.command,
+                socket_path=ssr_config.socket_path,
+                url=ssr_config.url,
+                cwd=ssr_config.cwd,
+            )
+            await transport.start()
+            self._ipc_transport = transport
         try:
             yield
         finally:
-            await self._ssr_client.aclose()
-            self._ssr_client = None
+            if self._ipc_transport is not None:
+                await self._ipc_transport.close()
+                self._ipc_transport = None
+            if self._ssr_client is not None:
+                await self._ssr_client.aclose()
+                self._ssr_client = None
+
+    @property
+    def ipc_transport(self) -> "BaseIPCTransport | None":
+        """Return the active BaseIPCTransport instance."""
+        return self._ipc_transport
 
     @property
     def ssr_client(self) -> "httpx.AsyncClient | None":
-        """Return the shared httpx.AsyncClient for SSR requests.
+        """Return the shared httpx.AsyncClient for legacy SSR requests.
 
-        The client is initialized during app lifespan and provides connection
+        The client is initialized on demand and provides connection
         pooling, TLS session reuse, and HTTP/2 multiplexing benefits.
 
         Returns:

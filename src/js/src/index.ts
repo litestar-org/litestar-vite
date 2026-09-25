@@ -6,14 +6,19 @@ import colors from "picocolors"
 import { loadEnv, type Plugin, type PluginOption, type ProxyOptions, type ResolvedConfig, type SSROptions, type UserConfig, type ViteDevServer } from "vite"
 import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-reload"
 
+import { litestarViteSsrPlugin } from "./dev-ssr.js"
 import { checkBackendAvailability, type LitestarMeta, loadLitestarMeta } from "./litestar-meta.js"
 import { type BridgeSchema, readBridgeConfig } from "./shared/bridge-schema.js"
 import { createLogger } from "./shared/logger.js"
 import { installManagedShutdown } from "./shared/managed-shutdown.js"
 import { resolveHotFilePath } from "./shared/network.js"
+import type { DevSsrOptions, SsrRenderRequest, SsrRenderResponse } from "./shared/ssr-types.js"
 import { resolveDefaultSdkClientPlugin } from "./shared/typegen-core.js"
 import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig, type TypesConfigShape } from "./shared/typegen-plugin.js"
 import { buildInputOptions, hmrServerConfig, isVite6Plus, mergeDefinedHmrOptions, resolveUserBuildInput, viteMajor } from "./shared/vite-compat.js"
+
+export { litestarViteSsrPlugin }
+export type { DevSsrOptions, SsrRenderRequest, SsrRenderResponse }
 
 /**
  * Configuration for TypeScript type generation.
@@ -250,6 +255,12 @@ export default function litestar(config: string | string[] | PluginConfig): any[
   // This allows importing static data from Python config via virtual:litestar-static-props
   plugins.push(createStaticPropsPlugin())
 
+  // Add dev SSR plugin for Inertia or SSR entrypoints
+  const hasSsr = (typeof config === "object" && !Array.isArray(config) && Boolean(config.ssr)) || pluginConfig.inertiaMode
+  if (hasSsr) {
+    plugins.push(litestarViteSsrPlugin({ entrypoint: resolveSsrEntrypoint(pluginConfig) }))
+  }
+
   return plugins
 }
 
@@ -384,6 +395,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           assetsInlineLimit: userConfig.build?.assetsInlineLimit ?? 0,
         },
         server: {
+          cors: userConfig.server?.cors ?? { origin: true, credentials: true },
           origin: shouldForceDirectServerOrigin ? (explicitServerOrigin ?? "__litestar_vite_placeholder__") : proxyOriginDefault,
           // Auto-configure the HMR WebSocket to use a path that routes through the Litestar proxy.
           // Auto-configure the HMR WebSocket to route through the Litestar proxy.
@@ -1150,6 +1162,26 @@ function resolveInput(config: ResolvedPluginConfig, ssr: boolean): string | stri
   }
 
   return config.input
+}
+
+/**
+ * Resolve the SSR entrypoint path for ModuleRunner dev SSR.
+ */
+function resolveSsrEntrypoint(config: ResolvedPluginConfig): string | undefined {
+  if (typeof config.ssr === "string") {
+    return config.ssr
+  }
+  if (Array.isArray(config.ssr) && config.ssr.length > 0) {
+    return config.ssr[0]
+  }
+  if (config.inertiaMode) {
+    const candidates = [path.join(config.resourceDir, "ssr.tsx"), path.join(config.resourceDir, "ssr.ts"), "resources/ssr.tsx", "resources/ssr.ts", "src/ssr.tsx", "src/ssr.ts"]
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) return candidate
+    }
+    return path.join(config.resourceDir, "ssr.tsx")
+  }
+  return undefined
 }
 
 /**

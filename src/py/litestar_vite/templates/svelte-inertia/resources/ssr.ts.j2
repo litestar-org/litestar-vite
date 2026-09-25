@@ -1,0 +1,75 @@
+import readline from "node:readline";
+import net from "node:net";
+import fs from "node:fs";
+import { createInertiaApp } from "@inertiajs/svelte";
+import { render } from "svelte/server";
+import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
+
+const pages = import.meta.glob("./pages/**/*.svelte");
+
+async function renderPage(pagePayload: any): Promise<any> {
+  return createInertiaApp({
+    page: pagePayload,
+    render,
+    resolve: (name) => resolvePageComponent(`./pages/${name}.svelte`, pages),
+    setup: ({ App, props }) => render(App, { props }),
+  });
+}
+
+const args = process.argv.slice(2);
+const socketArgIdx = args.indexOf("--socket");
+const socketPath = socketArgIdx !== -1 ? args[socketArgIdx + 1] : process.env.INERTIA_SSR_SOCKET;
+const portArgIdx = args.indexOf("--port");
+const port = portArgIdx !== -1 ? Number(args[portArgIdx + 1]) : (process.env.INERTIA_SSR_PORT ? Number(process.env.INERTIA_SSR_PORT) : null);
+const isStdio = args.includes("--stdio") || (!socketPath && !port);
+
+if (isStdio) {
+  const rl = readline.createInterface({ input: process.stdin, terminal: false });
+  rl.on("line", async (line) => {
+    if (!line.trim()) return;
+    try {
+      const request = JSON.parse(line);
+      const result = await renderPage(request.payload || request);
+      process.stdout.write(JSON.stringify({ id: request.id, result }) + "\n");
+    } catch (error: any) {
+      process.stdout.write(JSON.stringify({ id: null, error: error?.message || String(error) }) + "\n");
+    }
+  });
+  process.stdin.on("end", () => process.exit(0));
+} else if (socketPath) {
+  try {
+    if (fs.existsSync(socketPath)) {
+      fs.unlinkSync(socketPath);
+    }
+  } catch {}
+  const server = net.createServer((socket) => {
+    const rl = readline.createInterface({ input: socket, terminal: false });
+    rl.on("line", async (line) => {
+      if (!line.trim()) return;
+      try {
+        const request = JSON.parse(line);
+        const result = await renderPage(request.payload || request);
+        socket.write(JSON.stringify({ id: request.id, result }) + "\n");
+      } catch (error: any) {
+        socket.write(JSON.stringify({ id: null, error: error?.message || String(error) }) + "\n");
+      }
+    });
+  });
+  server.listen(socketPath);
+} else {
+  const listenPort = port || 13714;
+  const server = net.createServer((socket) => {
+    const rl = readline.createInterface({ input: socket, terminal: false });
+    rl.on("line", async (line) => {
+      if (!line.trim()) return;
+      try {
+        const request = JSON.parse(line);
+        const result = await renderPage(request.payload || request);
+        socket.write(JSON.stringify({ id: request.id, result }) + "\n");
+      } catch (error: any) {
+        socket.write(JSON.stringify({ id: null, error: error?.message || String(error) }) + "\n");
+      }
+    });
+  });
+  server.listen(listenPort);
+}

@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from litestar.types import Guard  # pyright: ignore[reportUnknownVariableType]
 
     from litestar_vite.executor import JSExecutor
+    from litestar_vite.plugin._core import VitePlugin
 
 __all__ = (
     "FSSPEC_INSTALLED",
@@ -168,6 +169,7 @@ class ViteConfig:
         spa: SPA transformation settings (True enables with defaults, False disables).
         logging: Logging configuration (True enables with defaults, None uses defaults).
         dev_mode: Convenience shortcut for runtime.dev_mode.
+        dev_mode_direct_urls: Convenience shortcut for runtime.dev_mode_direct_urls.
         base_url: Base URL for the app entry point.
         deploy: Deployment configuration for CDN publishing.
         enabled: Whether VitePlugin actively wires serving routes and lifespans.
@@ -181,6 +183,7 @@ class ViteConfig:
     spa: "SPAConfig | bool | None" = None
     logging: "LoggingConfig | bool | None" = None
     dev_mode: bool = False
+    dev_mode_direct_urls: "bool | None" = None
     base_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
     deploy: "DeployConfig | bool" = False
     enabled: "bool | None" = None
@@ -404,8 +407,13 @@ class ViteConfig:
             self.logging = LoggingConfig()
 
     def _apply_dev_mode_shortcut(self) -> None:
+        """Apply dev mode shortcuts to the runtime configuration."""
         if self.dev_mode:
             self.runtime.dev_mode = True
+        if self.dev_mode_direct_urls is not None:
+            self.runtime.dev_mode_direct_urls = self.dev_mode_direct_urls
+        else:
+            self.dev_mode_direct_urls = self.runtime.dev_mode_direct_urls
 
     def _auto_detect_mode(self) -> None:
         if self.mode is None:
@@ -1153,3 +1161,15 @@ class ViteConfig:
         if isinstance(self.logging, LoggingConfig):
             return self.logging
         return LoggingConfig()
+
+    def create_plugin(self) -> "VitePlugin":
+        """Create a VitePlugin instance from this configuration.
+
+        Conforms to Litestar's InitPluginProtocol for config-based plugin instantiation.
+
+        Returns:
+            Configured VitePlugin instance.
+        """
+        from litestar_vite.plugin._core import VitePlugin
+
+        return VitePlugin(config=self)

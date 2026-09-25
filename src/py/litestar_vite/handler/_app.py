@@ -356,16 +356,17 @@ class AppHandler:
         """
         resource_dir = self._config.resource_dir
         try:
-            resource_dir_str = str(resource_dir.relative_to(self._config.root_dir))
+            resource_dir_str = resource_dir.relative_to(self._config.root_dir).as_posix()
         except ValueError:
             resource_dir_str = resource_dir.name
         return inject_vite_dev_scripts(
             html,
-            "",
+            self._vite_url or self._resolve_vite_url(),
             asset_url=self._config.asset_url,
             is_react=self._config.is_react,
             csp_nonce=self._config.csp_nonce,
             resource_dir=resource_dir_str,
+            dev_mode_direct_urls=self._config.runtime.dev_mode_direct_urls,
         )
 
     async def _transform_html_with_vite(self, html: str, url: str) -> str:

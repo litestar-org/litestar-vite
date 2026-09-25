@@ -5,7 +5,11 @@ import litestar from "litestar-vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 {% endif %}
 
+{% if enable_ssr %}
+export default defineConfig(({ isSsrBuild }) => ({
+{% else %}
 export default defineConfig({
+{% endif %}
   server: {
     host: "0.0.0.0",
     port: Number(process.env.VITE_PORT || "{{ vite_port }}"),
@@ -21,9 +25,41 @@ export default defineConfig({
     svelte(),
     litestar({
       input: ["{{ resource_dir }}/main.ts"{% if use_tailwind %}, "{{ resource_dir }}/tailwind.css"{% endif %}],
+{% if enable_ssr %}
+      ssr: "{{ resource_dir }}/ssr.ts",
+{% endif %}
 {% if enable_types %}
       types: "auto",
 {% endif %}
     }),
   ],
+{% if enable_ssr %}
+  build: {
+    rolldownOptions: {
+      output: isSsrBuild
+        ? {
+            entryFileNames: "ssr.js",
+          }
+        : {
+            entryFileNames: "assets/[name]-[hash].js",
+            chunkFileNames: "assets/[name]-[hash].js",
+            assetFileNames: "assets/[name]-[hash][extname]",
+          },
+    },
+  },
+{% else %}
+  build: {
+    rolldownOptions: {
+      output: {
+        entryFileNames: "assets/[name]-[hash].js",
+        chunkFileNames: "assets/[name]-[hash].js",
+        assetFileNames: "assets/[name]-[hash][extname]",
+      },
+    },
+  },
+{% endif %}
+{% if enable_ssr %}
+}));
+{% else %}
 });
+{% endif %}

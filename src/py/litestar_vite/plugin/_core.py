@@ -6,7 +6,7 @@ module so ``litestar_vite.plugin`` stays a thin re-export surface.
 
 import importlib
 import os
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager, contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
@@ -46,6 +46,7 @@ from litestar_vite.utils import read_hotfile_url
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
+    from typing import Literal
 
     import httpx
     from click import Group
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
 
     from litestar_vite.config import ViteConfig
     from litestar_vite.config._inertia import InertiaSSRConfig
+    from litestar_vite.fragments import FragmentEngine
     from litestar_vite.handler import AppHandler
     from litestar_vite.plugin._static import StaticFilesConfig
 
@@ -125,6 +127,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
     __slots__ = (
         "_asset_loader",
         "_config",
+        "_fragment_engine",
         "_proxy_client",
         "_proxy_target",
         "_route_prefix_cache",
@@ -153,6 +156,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
             config = ViteConfig()
         self._config = config
         self._asset_loader = asset_loader
+        self._fragment_engine: "FragmentEngine | None" = None
         self._vite_process: "ViteProcess | None" = None
         self._ssr_process: "ViteProcess | None" = None
         self._static_files_config: "StaticFilesConfig | None" = static_files_config
@@ -200,8 +204,10 @@ class VitePlugin(InitPlugin, CLIPlugin):
         from urllib.parse import urlparse
 
         deadline = time.monotonic() + ssr_config.health_check_timeout
-        parsed = urlparse(ssr_config.url)
-        origin = f"{parsed.scheme}://{parsed.netloc}"
+        parsed = urlparse(str(ssr_config.url or ""))
+        scheme = parsed.scheme.decode("ascii") if isinstance(parsed.scheme, bytes) else str(parsed.scheme)
+        netloc = parsed.netloc.decode("ascii") if isinstance(parsed.netloc, bytes) else str(parsed.netloc)
+        origin = f"{scheme}://{netloc}"
         from litestar_vite._typing import ensure_httpx
 
         ensure_httpx("Inertia SSR health check")
@@ -242,6 +248,47 @@ class VitePlugin(InitPlugin, CLIPlugin):
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader.initialize_loader(config=self._config)
         return self._asset_loader
+
+    @property
+    def fragment_engine(self) -> "FragmentEngine":
+        """Return the active FragmentEngine instance, initializing if needed."""
+        if self._fragment_engine is None:
+            from litestar_vite.fragments import FragmentEngine
+
+            self._fragment_engine = FragmentEngine(config=self._config, asset_loader=self.asset_loader)
+        return self._fragment_engine
+
+    async def render_fragment(
+        self, component: str, props: dict[str, Any] | None = None, mode: "Literal['static', 'island']" = "static"
+    ) -> str:
+        """Render a UI component fragment to HTML asynchronously.
+
+        Args:
+            component: Component path or name.
+            props: Optional properties dictionary passed to the component.
+            mode: Render mode, either 'static' (pure HTML) or 'island' (with client hydration).
+
+        Returns:
+            Rendered HTML string with prepended scoped CSS.
+        """
+        return await self.fragment_engine.render_fragment(component, props, mode)
+
+    def render_fragment_sync(
+        self, component: str, props: dict[str, Any] | None = None, mode: "Literal['static', 'island']" = "static"
+    ) -> str:
+        """Render a UI component fragment to HTML synchronously.
+
+        Useful for synchronous Jinja2 template rendering.
+
+        Args:
+            component: Component path or name.
+            props: Optional properties dictionary passed to the component.
+            mode: Render mode, either 'static' (pure HTML) or 'island' (with client hydration).
+
+        Returns:
+            Rendered HTML string with prepended scoped CSS.
+        """
+        return self.fragment_engine.render_fragment_sync(component, props, mode)
 
     @property
     def spa_handler(self) -> "AppHandler | None":
@@ -482,6 +529,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         """
         from litestar.plugins.jinja import JinjaTemplateEngine
 
+        from litestar_vite.fragments._jinja import vite_fragment
         from litestar_vite.loader import render_asset_tag, render_hmr_client, render_routes, render_static_asset
 
         template_config = app_config.template_config  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
@@ -494,6 +542,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
             engine.register_template_callable(key="vite", template_callable=render_asset_tag)
             engine.register_template_callable(key="vite_static", template_callable=render_static_asset)
             engine.register_template_callable(key="vite_routes", template_callable=render_routes)
+            engine.register_template_callable(key="vite_fragment", template_callable=vite_fragment)
 
     def _wants_jinja_callables(self, app_config: "AppConfig") -> bool:
         """Decide whether to register Jinja ``vite_*`` callables for this app.
@@ -577,7 +626,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         if self._config.wants_html_proxy:
             self._configure_ssr_proxy(app_config, hotfile_path)
-        else:
+        elif not self._config.dev_mode_direct_urls:
             self._configure_vite_proxy(app_config, hotfile_path)
 
     def _resolve_hmr_path(self) -> "str | None":
@@ -976,8 +1025,9 @@ class VitePlugin(InitPlugin, CLIPlugin):
             set_environment(config=self._config, app=app)
             set_app_environment(app)
 
-        if self._config.is_dev_mode and self._config.proxy_mode is not None:
-            self._proxy_client = create_proxy_client(http2=self._config.http2)
+        if self._config.is_dev_mode and self._config.proxy_mode is not None and not self._config.dev_mode_direct_urls:
+            with suppress(ImportError, OSError):
+                self._proxy_client = create_proxy_client(http2=self._config.http2)
 
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader(config=self._config)

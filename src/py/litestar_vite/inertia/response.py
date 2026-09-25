@@ -1,5 +1,6 @@
 import contextlib
 import itertools
+import logging
 import re
 from collections.abc import AsyncGenerator, Iterable, Mapping
 from dataclasses import dataclass
@@ -11,13 +12,13 @@ from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.response import Redirect
 from litestar.response.base import ASGIResponse
-from litestar.serialization import encode_json, get_serializer
+from litestar.serialization import decode_json, encode_json, get_serializer
 from litestar.status_codes import HTTP_200_OK, HTTP_303_SEE_OTHER, HTTP_307_TEMPORARY_REDIRECT, HTTP_409_CONFLICT
 from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
 from litestar.utils.scope.state import ScopeState
 
-from litestar_vite.html_transform import inject_head_html, replace_element_outer_html
+from litestar_vite.html_transform import inject_inertia_ssr_tags
 from litestar_vite.inertia._utils import InertiaHeaders, get_headers
 from litestar_vite.inertia.helpers import (
     PropFilter,
@@ -49,7 +50,9 @@ if TYPE_CHECKING:
     from litestar.connection.base import AuthT, StateT, UserT
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
 
+    from litestar_vite.ipc.base import BaseIPCTransport
 
+logger = logging.getLogger("litestar_vite.inertia")
 _INERTIA_PAGE_SCRIPT_PATTERN = re.compile(r"<script[^>]+(?:data-page=|id=[\"']app_page[\"'])", re.IGNORECASE)
 
 T = TypeVar("T")
@@ -329,11 +332,11 @@ class InertiaResponse(Response[T]):
         if self._cached_ssr_payload is not None:
             ssr_config = inertia_plugin.config.ssr_config
             selector = ssr_config.target_selector if ssr_config is not None else "#app"
-            html = replace_element_outer_html(html, selector, self._cached_ssr_payload.body)
-            if self._cached_ssr_payload.head:
-                html = inject_head_html(html, "\n".join(self._cached_ssr_payload.head))
+            html = inject_inertia_ssr_tags(
+                html, head=self._cached_ssr_payload.head, body=self._cached_ssr_payload.body, selector=selector
+            )
 
-        return html.encode(self.encoding)  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType,reportReturnType]
+        return html.encode(self.encoding)
 
     def _get_csrf_token(self, request: "Request[UserT, AuthT, StateT]") -> "str | None":
         """Extract CSRF token from the request scope.
@@ -348,7 +351,12 @@ class InertiaResponse(Response[T]):
         return csrf_token or None
 
     def _render_spa(
-        self, request: "Request[UserT, AuthT, StateT]", page_props: "PageProps[T]", vite_plugin: "VitePlugin"
+        self,
+        request: "Request[UserT, AuthT, StateT]",
+        page_props: "PageProps[T]",
+        vite_plugin: "VitePlugin",
+        *,
+        ssr: bool = True,
     ) -> bytes:
         """Render the page using SPA mode (HTML transformation instead of templates).
 
@@ -367,6 +375,7 @@ class InertiaResponse(Response[T]):
             request: The request object.
             page_props: The page props to render.
             vite_plugin: The Vite plugin instance (for SPA handler access).
+            ssr: Whether to apply cached SSR markup if available. Defaults to True.
 
         Returns:
             The rendered HTML as bytes.
@@ -384,7 +393,7 @@ class InertiaResponse(Response[T]):
 
         page_dict = page_props.to_dict()
 
-        if self._cached_ssr_payload is not None:
+        if ssr and self._cached_ssr_payload is not None:
             ssr_payload = self._cached_ssr_payload
 
             csrf_token = self._get_csrf_token(request)
@@ -392,13 +401,11 @@ class InertiaResponse(Response[T]):
             html = spa_handler.get_html_sync(page_data=page_data, csrf_token=csrf_token)
 
             selector = "#app"
-            spa_config = spa_handler._spa_config  # pyright: ignore
+            spa_config = getattr(spa_handler, "_spa_config", None)
             if spa_config is not None:
-                selector = spa_config.app_selector
+                selector = getattr(spa_config, "app_selector", selector)
 
-            html = replace_element_outer_html(html, selector, ssr_payload.body)
-            if ssr_payload.head:
-                html = inject_head_html(html, "\n".join(ssr_payload.head))
+            html = inject_inertia_ssr_tags(html, head=ssr_payload.head, body=ssr_payload.body, selector=selector)
 
             return html.encode(self.encoding)
 
@@ -492,7 +499,7 @@ class InertiaResponse(Response[T]):
         partial_data: "set[str] | None",
         partial_except: "set[str] | None",
     ) -> None:
-        """Build page-props on this loop and fetch SSR HTML; cache on ``self``."""
+        """Build page-props and fetch SSR HTML via BaseIPCTransport."""
         vite_plugin = request.app.plugins.get(VitePlugin)
         inertia_plugin = request.app.plugins.get(InertiaPlugin)
         ssr_config = inertia_plugin.config.ssr_config
@@ -510,13 +517,48 @@ class InertiaResponse(Response[T]):
         )
         self._cached_page_props = page_props
         type_encoders = self._resolve_type_encoders(request)
-        self._cached_ssr_payload = await _render_inertia_ssr(
-            page_props.to_dict(),
-            ssr_config.url,
-            ssr_config.timeout,
-            inertia_plugin.ssr_client,
-            type_encoders=type_encoders,
-        )
+
+        circuit_breaker = getattr(inertia_plugin, "circuit_breaker", None)
+        if circuit_breaker is not None and not circuit_breaker.allow_request():
+            logger.debug("Inertia SSR bypassed by circuit breaker; serving client-side hydration.")
+            self._cached_ssr_payload = None
+            return
+
+        transport: BaseIPCTransport | str | None = getattr(inertia_plugin, "ipc_transport", None)
+        if transport is None:
+            transport = getattr(inertia_plugin, "_ipc_transport", None)
+
+        if transport is None and ssr_config.url:
+            transport = ssr_config.url
+        elif transport is None:
+            from litestar_vite.ipc import IPCTransportManager
+
+            transport = IPCTransportManager.create_transport(
+                mode=ssr_config.transport,
+                command=ssr_config.command,
+                socket_path=ssr_config.socket_path,
+                url=ssr_config.url,
+                cwd=ssr_config.cwd,
+            )
+
+        try:
+            client = getattr(inertia_plugin, "ssr_client", None)
+            self._cached_ssr_payload = await _render_inertia_ssr(
+                page_props.to_dict(), transport, ssr_config.timeout, client=client, type_encoders=type_encoders
+            )
+            if circuit_breaker is not None:
+                circuit_breaker.record_success()
+        except Exception as exc:
+            if circuit_breaker is not None:
+                circuit_breaker.record_failure(exc)
+
+            if not getattr(ssr_config, "fallback_to_client", True):
+                raise
+
+            logger.warning(
+                "Inertia SSR request failed (%s: %s); falling back to client-side hydration.", type(exc).__name__, exc
+            )
+            self._cached_ssr_payload = None
 
     def _resolve_type_encoders(self, request: "Request[Any, Any, Any]") -> "TypeEncodersMap":
         route_handler = cast("Any | None", request.scope.get("route_handler"))  # pyright: ignore[reportUnknownMemberType]
@@ -922,26 +964,25 @@ def _parse_inertia_ssr_payload(payload: Any, url: str) -> _InertiaSSRResult:
 
 async def _render_inertia_ssr(
     page: dict[str, Any],
-    url: str,
+    transport: "BaseIPCTransport | str",
     timeout_seconds: float,
     client: "httpx.AsyncClient | None" = None,
     *,
     type_encoders: "TypeEncodersMap | None" = None,
 ) -> _InertiaSSRResult:
-    """Call the Inertia SSR server asynchronously and return head/body HTML.
+    """Call the Inertia SSR server or IPC transport asynchronously and return head/body HTML.
 
     Args:
         page: The page object to send to the SSR server.
-        url: The SSR server URL (typically http://localhost:13714/render).
+        transport: The BaseIPCTransport instance or legacy SSR URL string.
         timeout_seconds: Request timeout in seconds.
-        client: Optional shared httpx.AsyncClient for connection pooling.
-            If None, creates a new client per request (slower).
+        client: Optional shared httpx.AsyncClient for backward compatibility.
         type_encoders: Optional type encoders used to serialize page props.
 
     Returns:
         An _InertiaSSRResult with head and body HTML.
     """
-    return await _do_ssr_request(page, url, timeout_seconds, client, type_encoders=type_encoders)
+    return await _do_ssr_request(page, transport, timeout_seconds, client, type_encoders=type_encoders)
 
 
 @contextlib.asynccontextmanager
@@ -966,56 +1007,74 @@ async def _acquire_ssr_client(client: "httpx.AsyncClient | None") -> "AsyncGener
 
 async def _do_ssr_request(
     page: dict[str, Any],
-    url: str,
+    transport: "BaseIPCTransport | str",
     timeout_seconds: float,
-    client: "httpx.AsyncClient | None",
+    client: "httpx.AsyncClient | None" = None,
     *,
     type_encoders: "TypeEncodersMap | None" = None,
 ) -> _InertiaSSRResult:
-    """Execute the SSR request with optional client reuse.
+    """Execute the SSR request using BaseIPCTransport or legacy HTTP client.
 
     Args:
         page: The page object to send to the SSR server.
-        url: The SSR server URL.
+        transport: The BaseIPCTransport instance or legacy SSR URL string.
         timeout_seconds: Request timeout in seconds.
         client: Optional shared httpx.AsyncClient.
         type_encoders: Optional type encoders used to serialize page props.
 
     Raises:
-        ImproperlyConfiguredException: If the SSR server is unreachable,
-            returns an error status, or returns invalid payload.
+        ImproperlyConfiguredException: If the SSR server or transport fails.
 
     Returns:
         An _InertiaSSRResult with head and body HTML.
     """
-    body = encode_json(page, serializer=get_serializer(type_encoders))
-    headers = {"content-type": "application/json"}
-    from litestar_vite._typing import ensure_httpx
+    if isinstance(transport, str):
+        from litestar_vite._typing import ensure_httpx
 
-    ensure_httpx("Inertia SSR")
-    import httpx
+        ensure_httpx("Inertia SSR")
+        import httpx
+
+        body = encode_json(page, serializer=get_serializer(type_encoders))
+        headers = {"content-type": "application/json"}
+        try:
+            async with _acquire_ssr_client(client) as resolved_client:
+                response = await resolved_client.post(transport, content=body, headers=headers, timeout=timeout_seconds)
+                response.raise_for_status()
+        except httpx.RequestError as exc:
+            msg = (
+                f"Inertia SSR is enabled but the SSR server is not reachable at {transport!r}. "
+                "Start the SSR server (Node) or disable InertiaConfig.ssr."
+            )
+            raise ImproperlyConfiguredException(msg) from exc
+        except httpx.HTTPStatusError as exc:
+            msg = f"Inertia SSR server at {transport!r} returned HTTP {exc.response.status_code}. Check the SSR server logs."
+            raise ImproperlyConfiguredException(msg) from exc
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            msg = f"Inertia SSR server at {transport!r} returned invalid JSON. Check the SSR server logs."
+            raise ImproperlyConfiguredException(msg) from exc
+
+        return _parse_inertia_ssr_payload(payload, transport)
+
+    serializer = get_serializer(type_encoders)
+    encoded_page = decode_json(encode_json(page, serializer=serializer))
+    ipc_payload: dict[str, Any] = {"method": "render", "params": encoded_page}
 
     try:
-        async with _acquire_ssr_client(client) as resolved_client:
-            response = await resolved_client.post(url, content=body, headers=headers, timeout=timeout_seconds)
-            response.raise_for_status()
-    except httpx.RequestError as exc:
-        msg = (
-            f"Inertia SSR is enabled but the SSR server is not reachable at {url!r}. "
-            "Start the SSR server (Node) or disable InertiaConfig.ssr."
-        )
-        raise ImproperlyConfiguredException(msg) from exc
-    except httpx.HTTPStatusError as exc:
-        msg = f"Inertia SSR server at {url!r} returned HTTP {exc.response.status_code}. Check the SSR server logs."
+        raw_payload = await transport.send_request(ipc_payload, timeout=timeout_seconds)
+    except Exception as exc:
+        msg = f"Inertia SSR execution failed over {transport.__class__.__name__}: {exc}"
         raise ImproperlyConfiguredException(msg) from exc
 
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        msg = f"Inertia SSR server at {url!r} returned invalid JSON. Check the SSR server logs."
-        raise ImproperlyConfiguredException(msg) from exc
+    if "error" in raw_payload:
+        error_info = raw_payload.get("error", "Unknown IPC worker error")
+        msg = f"Inertia SSR execution failed over {transport.__class__.__name__}: {error_info}"
+        raise ImproperlyConfiguredException(msg)
 
-    return _parse_inertia_ssr_payload(payload, url)
+    result_payload = raw_payload.get("result", raw_payload)
+    return _parse_inertia_ssr_payload(result_payload, str(transport))
 
 
 def _get_redirect_url(request: "Request[Any, Any, Any]", url: str | None) -> str:

@@ -4,8 +4,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build{% if use_typescript %} && tsc -b --noEmit{% endif %}",
+    "build": "vite build",
+{% if enable_ssr %}
+    "build:ssr": "vite build --ssr {{ resource_dir }}/ssr.ts",
+{% endif %}
     "preview": "vite preview",
+{% if enable_ssr %}
+    "serve:ssr": "node {{ resource_dir }}/bootstrap/ssr/ssr.js --stdio",
+{% endif %}
     "serve": "vite preview",
     "watch": "npm run serve",
     "update": "npm update"{% if enable_types %},
