@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest"
-import { buildBundlerOptions, buildInputOptions, hmrServerConfig, isVite81Plus, isVite8Plus, mergeDefinedHmrOptions, resolveUserBuildInput } from "../src/shared/vite-compat"
+import {
+  buildBundlerOptions,
+  buildInputOptions,
+  hmrServerConfig,
+  isVite6Plus,
+  isVite81Plus,
+  isVite8Plus,
+  mergeDefinedHmrOptions,
+  resolveUserBuildInput,
+  viteMajor,
+} from "../src/shared/vite-compat"
 
 // Vite 8+ uses Rolldown (`rolldownOptions`); Vite 7 uses Rollup (`rollupOptions`).
 const bundlerKey = isVite8Plus ? "rolldownOptions" : "rollupOptions"
@@ -61,6 +71,13 @@ describe("vite-compat", () => {
         path: "",
         server: null,
       })
+    })
+  })
+
+  describe("version floor", () => {
+    it("recognizes Vite 6+ runtime baseline", () => {
+      expect(isVite6Plus).toBe(true)
+      expect(viteMajor).toBeGreaterThanOrEqual(6)
     })
   })
 })

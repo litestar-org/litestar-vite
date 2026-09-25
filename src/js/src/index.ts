@@ -13,7 +13,7 @@ import { installManagedShutdown } from "./shared/managed-shutdown.js"
 import { resolveHotFilePath } from "./shared/network.js"
 import { resolveDefaultSdkClientPlugin } from "./shared/typegen-core.js"
 import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig, type TypesConfigShape } from "./shared/typegen-plugin.js"
-import { buildInputOptions, hmrServerConfig, mergeDefinedHmrOptions, resolveUserBuildInput } from "./shared/vite-compat.js"
+import { buildInputOptions, hmrServerConfig, isVite6Plus, mergeDefinedHmrOptions, resolveUserBuildInput, viteMajor } from "./shared/vite-compat.js"
 
 /**
  * Configuration for TypeScript type generation.
@@ -226,6 +226,9 @@ const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((p) => fs.ex
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function litestar(config: string | string[] | PluginConfig): any[] {
+  if (!isVite6Plus) {
+    throw new Error(`litestar-vite-plugin requires Vite >= 6.0.0, but running Vite is ${viteMajor}.x. Please upgrade Vite.`)
+  }
   const pluginConfig = resolvePluginConfig(config)
 
   const plugins: Plugin[] = [resolveLitestarPlugin(pluginConfig), ...(resolveFullReloadConfig(pluginConfig) as Plugin[])]
