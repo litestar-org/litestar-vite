@@ -112,7 +112,6 @@ _REQUEST_SKIP_HEADERS = _HOP_BY_HOP_HEADERS
 
 _WS_REQUEST_SKIP_HEADERS = _REQUEST_SKIP_HEADERS | {
     "host",
-    "upgrade",
     "sec-websocket-key",
     "sec-websocket-version",
     "sec-websocket-protocol",

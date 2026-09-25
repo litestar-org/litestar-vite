@@ -212,8 +212,8 @@ class VitePlugin(InitPlugin, CLIPlugin):
                 response = httpx.get(origin, timeout=2.0)
                 if response.status_code < 500:
                     return
-            except httpx.RequestError as exc:
-                str(exc)
+            except httpx.RequestError:
+                pass
             time.sleep(0.25)
         log_warn(
             f"Inertia SSR server did not become ready within {ssr_config.health_check_timeout}s.",
@@ -812,7 +812,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         from litestar_vite._typing import ensure_httpx
 
-        ensure_httpx("Inertia SSR health check")
+        ensure_httpx("SSR framework health check")
         import httpx
 
         start = time.time()
@@ -832,7 +832,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
             time.sleep(0.1)
 
-        log_fail(f"Inertia SSR server did not become ready within {timeout}s.")
+        log_fail(f"SSR framework server did not become ready within {timeout}s.")
         return False
 
     def _export_types_sync(self, app: "Litestar") -> None:

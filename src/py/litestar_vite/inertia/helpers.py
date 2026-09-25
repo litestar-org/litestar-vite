@@ -1636,14 +1636,7 @@ def extract_pagination_scroll_props(value: "Any", page_param: str = "page") -> "
 
     items = value.items
 
-    if meta := _extract_offset_pagination_meta(value):
-        current_page, previous_page, next_page = meta
-        scroll_props = ScrollPropsConfig(
-            page_name=page_param, current_page=current_page, previous_page=previous_page, next_page=next_page
-        )
-        return items, scroll_props
-
-    if meta := _extract_classic_pagination_meta(value):
+    if meta := (_extract_offset_pagination_meta(value) or _extract_classic_pagination_meta(value)):
         current_page, previous_page, next_page = meta
         scroll_props = ScrollPropsConfig(
             page_name=page_param, current_page=current_page, previous_page=previous_page, next_page=next_page

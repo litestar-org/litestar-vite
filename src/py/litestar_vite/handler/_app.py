@@ -248,17 +248,17 @@ class AppHandler:
 
     async def _load_index_html_async(self) -> None:
         """Load and cache index.html asynchronously."""
-        resolved_path: Path | None = None
+        resolved_path: anyio.Path | None = None
         for candidate in self._config.candidate_index_html_paths():
             candidate_path = anyio.Path(candidate)
             if await candidate_path.exists():
-                resolved_path = candidate
+                resolved_path = candidate_path
                 break
 
         if resolved_path is None:
             self._raise_index_not_found()
 
-        raw_bytes = await anyio.Path(resolved_path).read_bytes()
+        raw_bytes = await resolved_path.read_bytes()
         html = raw_bytes.decode("utf-8")
         html = self._transform_asset_urls_in_html(html)
 
@@ -559,7 +559,7 @@ class AppHandler:
         if not self._initialized:
             logger.warning(
                 "AppHandler lazy init triggered - lifespan may not have run. "
-                "Consider calling initialize_sync() explicitly during app startup."
+                "Consider calling initialize_async() explicitly during app startup."
             )
             await self.initialize_async()
 

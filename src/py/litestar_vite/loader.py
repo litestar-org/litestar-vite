@@ -531,15 +531,6 @@ class ViteAssetLoader:
         """
         return self._manifest_content
 
-    @manifest_content.setter
-    def manifest_content(self, value: str) -> None:
-        """Set the manifest content.
-
-        Args:
-            value: The raw JSON string content to set.
-        """
-        self._manifest_content = value
-
     @property
     def manifest(self) -> "dict[str, Any]":
         """The parsed Vite manifest.

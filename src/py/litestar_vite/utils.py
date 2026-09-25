@@ -1,4 +1,4 @@
-"""Utility helpers for litestar-vite."""
+__all__ = ("get_package_path", "get_static_resource_path", "read_bridge_config", "read_hotfile_url", "read_text_file")
 
 import os
 from importlib.util import find_spec
@@ -55,7 +55,7 @@ def read_hotfile_url(hotfile_path: Path) -> str:
     Returns:
         The Vite server URL from the hotfile, stripped of surrounding whitespace.
     """
-    return read_text_file(hotfile_path).strip()
+    return hotfile_path.read_text(encoding="utf-8").strip()
 
 
 _BRIDGE_CACHE: dict[str, tuple[int, dict[str, Any]]] = {}

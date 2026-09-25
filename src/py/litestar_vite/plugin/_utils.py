@@ -1,6 +1,8 @@
 """Utilities for logging, environment setup, and route detection."""
 
 __all__ = (
+    "build_litestar_route_prefixes",
+    "check_h2_available",
     "configure_proxy_logging",
     "console",
     "create_proxy_client",
@@ -47,8 +49,6 @@ if TYPE_CHECKING:
 
     from litestar_vite.config import ViteConfig
 
-_TICK = "[bold green]✓[/]"
-_INFO = "[cyan]•[/]"
 _WARN = "[yellow]![/]"
 _FAIL = "[red]x[/]"
 
@@ -614,8 +614,8 @@ def _normalize_route_prefix(prefix: str) -> str | None:
     return normalized or None
 
 
-def _route_is_vite_spa(route: Any) -> bool:
-    """Check whether a route belongs to the litestar-vite SPA handler.
+def _route_is_vite_internal(route: Any) -> bool:
+    """Return whether a route belongs to the Vite SPA handler or static router.
 
     Litestar exposes a single ``route_handler`` on most route types and a list on
     HTTPRoute; check both to stay version-agnostic.
@@ -626,18 +626,9 @@ def _route_is_vite_spa(route: Any) -> bool:
         handlers = [single] if single is not None else []
     for handler in handlers:
         opt = getattr(handler, "opt", None)
-        if opt and "_vite_spa_handler" in opt:
+        if opt and ("_vite_spa_handler" in opt or opt.get("_vite_static_handler")):
             return True
     return False
-
-
-def _route_is_vite_static(route: Any) -> bool:
-    """Return whether a route belongs to the Vite-managed static router."""
-    handlers = getattr(route, "route_handlers", None)
-    if not handlers:
-        single = getattr(route, "route_handler", None)
-        handlers = [single] if single is not None else []
-    return any(bool((opt := getattr(handler, "opt", None)) and opt.get("_vite_static_handler")) for handler in handlers)
 
 
 def build_litestar_route_prefixes(app: "Litestar", extra_route_prefixes: tuple[str, ...] = ()) -> tuple[str, ...]:
@@ -665,17 +656,16 @@ def build_litestar_route_prefixes(app: "Litestar", extra_route_prefixes: tuple[s
     for route in app.routes:
         if isinstance(route, WebSocketRoute):
             continue
-        if _route_is_vite_spa(route) or _route_is_vite_static(route):
+        if _route_is_vite_internal(route):
             continue
         prefix = _normalize_route_prefix(route.path)
         if prefix is not None:
             prefixes.append(prefix)
-            static_segments = [segment for segment in prefix.split("/") if segment and not segment.startswith("{")]
-            parameter_index = next(
-                (index for index, segment in enumerate(prefix.split("/")) if segment.startswith("{")), None
-            )
+            segments = prefix.split("/")
+            static_segments = [segment for segment in segments if segment and not segment.startswith("{")]
+            parameter_index = next((index for index, segment in enumerate(segments) if segment.startswith("{")), None)
             if parameter_index is not None and static_segments:
-                static_prefix = _normalize_route_prefix("/".join(prefix.split("/")[:parameter_index]))
+                static_prefix = _normalize_route_prefix("/".join(segments[:parameter_index]))
                 if static_prefix is not None:
                     prefixes.append(static_prefix)
         elif route.path == "/":

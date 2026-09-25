@@ -29,7 +29,6 @@ from litestar_vite.inertia.helpers import (
     get_raw_shared_props,
     get_shared_props,
     has_unresolved_async_props,
-    is_or_contains_lazy_prop,
     is_or_contains_special_prop,
     is_pagination_container,
     lazy_render,
@@ -223,7 +222,7 @@ class InertiaResponse(Response[T]):
                 content_mapping, partial_data=partial_data, partial_except=partial_except
             )
 
-        if is_or_contains_lazy_prop(content) or is_or_contains_special_prop(content):
+        if is_or_contains_special_prop(content):
             filtered_content: Any = lazy_render(cast("Any", content), partial_data, partial_except, except_once_props)
             if filtered_content is not None:
                 route_content = filtered_content
@@ -250,7 +249,7 @@ class InertiaResponse(Response[T]):
                 shared_props["content"] = route_content
                 route_prop_keys.append("content")
 
-        deferred_props = _resolve_deferred_props(deferred_props_map, partial_data, is_partial_render)
+        deferred_props = _resolve_deferred_props(deferred_props_map, is_partial_render)
         once_props_from_shared = shared_props.pop("_once_props", [])
         once_prop_entries = _dedupe_once_prop_entries(
             [*once_props_from_shared, *route_once_props], reset_keys=reset_keys
@@ -1112,11 +1111,8 @@ def _apply_pagination_props(
 
 
 def _resolve_deferred_props(
-    deferred_props_map: "dict[str, list[str]]", partial_data: "set[str] | None", is_partial_render: bool
+    deferred_props_map: "dict[str, list[str]]", is_partial_render: bool
 ) -> "dict[str, list[str]] | None":
-    if partial_data:
-        for key in partial_data:
-            _discard_deferred_prop_key(deferred_props_map, key)
     return None if is_partial_render else deferred_props_map or None
 
 
