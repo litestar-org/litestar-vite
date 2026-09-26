@@ -13,7 +13,6 @@ from litestar.response import Response
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-    import httpx
     from litestar import Litestar, Request
     from litestar.config.app import AppConfig
 
@@ -29,6 +28,7 @@ class InertiaPlugin(InitPlugin):
     - Exception handler for Inertia responses
     - InertiaRequest and InertiaResponse as default classes
     - Type encoders for StaticProp and DeferredProp
+    - Shared IPC transport and circuit breaker for SSR
 
     Async Prop Resolution:
         Async ``optional()``/``defer()``/``lazy()``/``once()`` callbacks are
@@ -36,16 +36,6 @@ class InertiaPlugin(InitPlugin):
         the body is serialized. This guarantees they share the loop with
         request-scoped async resources (asyncpg/aiosqlite/sqlspec sessions),
         so callbacks can safely use those resources.
-
-    SSR Client Pooling:
-        When SSR is enabled, the plugin maintains a shared ``httpx.AsyncClient``
-        for all SSR requests. This provides significant performance benefits:
-        - Connection pooling with keep-alive
-        - TLS session reuse
-        - HTTP/2 multiplexing (when available)
-
-        The client is initialized during app lifespan and properly closed on shutdown.
-        Access via ``inertia_plugin.ssr_client`` if needed.
 
     Example::
 
@@ -56,18 +46,17 @@ class InertiaPlugin(InitPlugin):
         )
     """
 
-    __slots__ = ("_circuit_breaker", "_ipc_transport", "_ssr_client", "config")
+    __slots__ = ("_circuit_breaker", "_ipc_transport", "config")
 
     def __init__(self, config: "InertiaConfig") -> None:
         """Initialize the plugin with Inertia configuration."""
         self.config = config
-        self._ssr_client: "httpx.AsyncClient | None" = None
         self._ipc_transport: "BaseIPCTransport | None" = None
         self._circuit_breaker: "SSRCircuitBreaker | None" = None
 
     @asynccontextmanager
     async def lifespan(self, app: "Litestar") -> "AsyncGenerator[None, None]":
-        """Lifespan to manage the shared SSR transport and optional legacy client.
+        """Lifespan to manage the shared SSR IPC transport and circuit breaker.
 
         Args:
             app: The :class:`Litestar <litestar.app.Litestar>` instance.
@@ -75,14 +64,6 @@ class InertiaPlugin(InitPlugin):
         Yields:
             An asynchronous context manager.
         """
-        try:
-            import httpx
-
-            limits = httpx.Limits(max_keepalive_connections=10, max_connections=20, keepalive_expiry=30.0)
-            self._ssr_client = httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(10.0))
-        except (ImportError, RuntimeError, OSError):
-            self._ssr_client = None
-
         ssr_config = self.config.ssr_config
         if ssr_config is not None:
             if ssr_config.circuit_breaker_enabled:
@@ -115,9 +96,6 @@ class InertiaPlugin(InitPlugin):
                 await self._ipc_transport.close()
                 self._ipc_transport = None
             self._circuit_breaker = None
-            if self._ssr_client is not None:
-                await self._ssr_client.aclose()
-                self._ssr_client = None
 
     @property
     def circuit_breaker(self) -> "SSRCircuitBreaker | None":
@@ -128,18 +106,6 @@ class InertiaPlugin(InitPlugin):
     def ipc_transport(self) -> "BaseIPCTransport | None":
         """Return the active BaseIPCTransport instance."""
         return self._ipc_transport
-
-    @property
-    def ssr_client(self) -> "httpx.AsyncClient | None":
-        """Return the shared httpx.AsyncClient for legacy SSR requests.
-
-        The client is initialized on demand and provides connection
-        pooling, TLS session reuse, and HTTP/2 multiplexing benefits.
-
-        Returns:
-            The shared AsyncClient instance, or None if not initialized.
-        """
-        return self._ssr_client
 
     def on_app_init(self, app_config: "AppConfig") -> "AppConfig":
         """Configure application for use with Vite.

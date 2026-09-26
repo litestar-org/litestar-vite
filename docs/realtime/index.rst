@@ -2,13 +2,13 @@
 Realtime & AsyncAPI
 ====================
 
-Litestar provides rich real-time communication capabilities: full-duplex WebSockets, event broadcasting via ``ChannelsPlugin``, and unidirectional HTTP streaming with Server-Sent Events (SSE).
+Litestar supports WebSockets, event broadcasting via ``ChannelsPlugin``, and Server-Sent Events (SSE).
 
-``litestar-vite`` connects these server-side capabilities with frontend code:
+``litestar-vite`` connects these server-side endpoints with frontend code:
 
-- **AsyncAPI 3.0 Schema Generation**: Automatically introspects routes, channels, and message payloads into ``asyncapi.json``.
-- **Strongly Typed Contracts**: Generates TypeScript channel definitions (``channels.ts``) for frontend clients.
-- **Client Streams & Composables**: Connect to channels and event feeds with type-safe React hooks, Vue composables, and Svelte stores.
+- **AsyncAPI 3.0 Schema Generation**: Introspects routes, channels, and message payloads into ``asyncapi.json``.
+- **TypeScript Channel Contracts**: Generates channel definitions (``channels.ts``) for frontend clients.
+- **Client Streams & Composables**: Connects to channels and event feeds with typed React hooks, Vue composables, and Svelte stores.
 
 .. grid:: 1 1 2 2
    :gutter: 2

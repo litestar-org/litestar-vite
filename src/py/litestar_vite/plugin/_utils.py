@@ -5,7 +5,6 @@ __all__ = (
     "check_h2_available",
     "configure_proxy_logging",
     "console",
-    "create_proxy_client",
     "get_litestar_route_prefixes",
     "infer_host_from_argv",
     "infer_port_from_argv",
@@ -42,7 +41,6 @@ from litestar_vite.codegen import write_if_changed as _write_if_changed
 from litestar_vite.config import InertiaConfig, TypeGenConfig
 
 if TYPE_CHECKING:
-    import httpx
     from litestar import Litestar, Response
     from litestar.connection import Request
     from litestar.exceptions import NotFoundException
@@ -72,7 +70,6 @@ def configure_proxy_logging() -> None:
     """Suppress verbose proxy-related logging unless debug is enabled.
 
     Suppresses INFO-level logs from:
-    - httpx: logs every HTTP request
     - websockets: logs connection events
     - uvicorn.protocols.websockets: logs "connection open/closed"
 
@@ -80,7 +77,7 @@ def configure_proxy_logging() -> None:
     """
 
     if not is_proxy_debug():
-        for logger_name in ("httpx", "websockets", "uvicorn.protocols.websockets"):
+        for logger_name in ("websockets", "uvicorn.protocols.websockets"):
             logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 
@@ -109,41 +106,6 @@ def _check_h2_available() -> bool:
 def check_h2_available() -> bool:
     """Check whether optional HTTP/2 support is available."""
     return _check_h2_available()
-
-
-def create_proxy_client(
-    http2: bool = True,
-    timeout: float = 30.0,
-    max_keepalive: int = 20,
-    max_connections: int = 40,
-    keepalive_expiry: float = 60.0,
-) -> "httpx.AsyncClient":
-    """Create an httpx.AsyncClient with connection pooling for proxy use.
-
-    This factory function creates a shared HTTP client with optimized settings
-    for proxying requests to Vite dev servers or SSR frameworks. The client
-    uses connection pooling for better performance.
-
-    Args:
-        http2: Enable HTTP/2 support (requires h2 package).
-        timeout: Request timeout in seconds.
-        max_keepalive: Maximum number of keep-alive connections per host.
-        max_connections: Maximum total concurrent connections.
-        keepalive_expiry: Idle timeout before closing keep-alive connections.
-
-    Returns:
-        A configured httpx.AsyncClient with connection pooling.
-    """
-    from litestar_vite._typing import ensure_httpx
-
-    ensure_httpx("dev-mode HTTP proxy")
-    import httpx
-
-    http2_enabled = http2 and _check_h2_available()
-    limits = httpx.Limits(
-        max_keepalive_connections=max_keepalive, max_connections=max_connections, keepalive_expiry=keepalive_expiry
-    )
-    return httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(timeout), http2=http2_enabled, trust_env=False)
 
 
 def infer_port_from_argv() -> str | None:

@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
-import httpx
 import pytest
 from litestar.exceptions import ImproperlyConfiguredException
 
@@ -397,32 +397,32 @@ def test_vite_asset_loader_resolve_html_entry_rejects_unsafe_entry(tmp_path: Pat
 
 
 @pytest.mark.anyio
-async def test_vite_asset_loader_resolve_html_entry_rereads_hot_file_and_posts_exact_entry(tmp_path: Path) -> None:
+async def test_vite_asset_loader_resolve_html_entry_rereads_hot_file_and_posts_exact_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     bundle = tmp_path / "dist"
     bundle.mkdir()
     (bundle / "offline.html").write_text("production")
     hot = bundle / "hot"
-    requests: list[httpx.Request] = []
+    calls: list[tuple[str, dict[str, object]]] = []
 
-    async def handle(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        return httpx.Response(200, text="<html>development</html>")
+    def fake_post(endpoint: str, payload: dict[str, object], _entry: str, _hot_target: str) -> str:
+        calls.append((endpoint, payload))
+        return "<html>development</html>"
+
+    monkeypatch.setattr(ViteAssetLoader, "_post_transform_index_sync", staticmethod(fake_post))
 
     loader = ViteAssetLoader(
         ViteConfig(paths=PathConfig(root=tmp_path, bundle_dir="dist"), runtime=RuntimeConfig(dev_mode=True))
     )
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
-        loader._bind_http_client(client)
-        assert (
-            await loader.resolve_html_entry("pages/offline.html", production_path="dist/offline.html") == "production"
-        )
-        hot.write_text("https://[::1]:43123")
-        assert await loader.resolve_html_entry("pages/offline.html", production_path="dist/offline.html") == (
-            "<html>development</html>"
-        )
+    assert await loader.resolve_html_entry("pages/offline.html", production_path="dist/offline.html") == "production"
+    hot.write_text("https://[::1]:43123")
+    assert await loader.resolve_html_entry("pages/offline.html", production_path="dist/offline.html") == (
+        "<html>development</html>"
+    )
 
-    assert urlparse(str(requests[0].url)).netloc == "[::1]:43123"
-    assert json.loads(requests[0].content) == {"entry": "pages/offline.html"}
+    assert urlparse(calls[0][0]).netloc == "[::1]:43123"
+    assert calls[0][1] == {"entry": "pages/offline.html"}
 
 
 @pytest.mark.anyio
@@ -442,27 +442,44 @@ async def test_vite_asset_loader_resolve_html_entry_raises_for_active_stale_serv
     assert str(production) not in str(exc_info.value)
     assert "127.0.0.1" not in str(exc_info.value)
     assert exc_info.value.development_url == "http://127.0.0.1:9"
-    assert isinstance(exc_info.value.cause, httpx.ConnectError)
+    assert isinstance(exc_info.value.cause, OSError)
 
 
 @pytest.mark.anyio
-async def test_vite_asset_loader_resolve_html_entry_reports_upstream_status_without_fallback(tmp_path: Path) -> None:
+async def test_vite_asset_loader_resolve_html_entry_reports_upstream_status_without_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import http.client
+
     bundle = tmp_path / "dist"
     bundle.mkdir()
     (bundle / "hot").write_text("https://vite.example.test")
     production = bundle / "offline.html"
     production.write_text("production")
 
-    async def handle(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(404, request=request)
+    class _FakeHTTPSConnection:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def request(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def getresponse(self) -> MagicMock:
+            resp = MagicMock()
+            resp.status = 404
+            resp.read.return_value = b"Not Found"
+            return resp
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(http.client, "HTTPSConnection", _FakeHTTPSConnection)
 
     loader = ViteAssetLoader(
         ViteConfig(paths=PathConfig(root=tmp_path, bundle_dir="dist"), runtime=RuntimeConfig(dev_mode=True))
     )
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
-        loader._bind_http_client(client)
-        with pytest.raises(HTMLEntryResolutionError) as exc_info:
-            await loader.resolve_html_entry("offline.html", production_path=production)
+    with pytest.raises(HTMLEntryResolutionError) as exc_info:
+        await loader.resolve_html_entry("offline.html", production_path=production)
 
     assert exc_info.value.status_code == 404
     assert "vite.example.test" not in str(exc_info.value)
@@ -500,17 +517,12 @@ def test_vite_asset_loader_resolve_html_entry_sync_rewrites_only_vite_assets(
 <link rel="stylesheet" href="/src/app.css"><link rel="modulepreload" href="/@vite/client">
 <a href="/account">Account</a><form action="/submit"></form><img src="/logo.svg">"""
 
-    def handle(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, text=html)
+    monkeypatch.setattr(ViteAssetLoader, "_post_transform_index_sync", staticmethod(lambda *_args: html))
 
     loader = ViteAssetLoader(
         ViteConfig(paths=PathConfig(root=tmp_path, bundle_dir="dist"), runtime=RuntimeConfig(dev_mode=True))
     )
-    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
-        loader._http_client_sync = client
-        result = loader.resolve_html_entry_sync(
-            "offline.html", production_path=production, absolute_dev_asset_urls=True
-        )
+    result = loader.resolve_html_entry_sync("offline.html", production_path=production, absolute_dev_asset_urls=True)
 
     assert 'src="https://app.example.com:8443/src/app.ts"' in result
     assert "from 'https://app.example.com:8443/@react-refresh'" in result

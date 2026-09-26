@@ -646,7 +646,8 @@ def test_cli_vite_serve_modes(tmp_path: Path) -> None:
 
 
 def test_cli_vite_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import httpx
+    import urllib.request
+    from unittest.mock import MagicMock
 
     app = _make_app(tmp_path)
     config = app.plugins.get(VitePlugin).config
@@ -654,8 +655,11 @@ def test_cli_vite_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text("{}")
 
-    response = Mock(status_code=200)
-    monkeypatch.setattr(httpx, "get", lambda *args, **kwargs: response)
+    response = MagicMock()
+    response.__enter__.return_value.status = 200
+    opener = MagicMock()
+    opener.open.return_value = response
+    monkeypatch.setattr(urllib.request, "build_opener", lambda *_args, **_kwargs: opener)
 
     _unwrap_command(vite_status)(app)
 

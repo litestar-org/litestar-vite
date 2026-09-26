@@ -1318,7 +1318,8 @@ def generate_types(app: "Litestar", verbose: "bool") -> None:
 @vite_group.command(name="status", help="Check the status of the Vite integration.")
 def vite_status(app: "Litestar") -> None:
     """Check the status of the Vite integration."""
-    import httpx
+    import urllib.error
+    import urllib.request
 
     plugin = app.plugins.get(VitePlugin)
     config = plugin.config
@@ -1339,11 +1340,15 @@ def vite_status(app: "Litestar") -> None:
 
     if config.dev_mode:
         url = f"{config.protocol}://{config.host}:{config.port}"
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         try:
-            response = httpx.get(url, timeout=0.5)
-            if response.status_code == 200:
-                console.print(f"[green]✓ Vite server running at {url}[/]")
-            else:
-                console.print(f"[yellow]! Vite server reachable at {url} but returned {response.status_code}[/]")
-        except httpx.HTTPError as e:
+            with opener.open(url, timeout=0.5) as resp:
+                status_code = getattr(resp, "status", 200)
+                if status_code == 200:
+                    console.print(f"[green]✓ Vite server running at {url}[/]")
+                else:
+                    console.print(f"[yellow]! Vite server reachable at {url} but returned {status_code}[/]")
+        except urllib.error.HTTPError as e:
+            console.print(f"[yellow]! Vite server reachable at {url} but returned {e.code}[/]")
+        except (OSError, urllib.error.URLError) as e:
             console.print(f"[red]✗ Vite server not reachable at {url}: {e!s}[/]")

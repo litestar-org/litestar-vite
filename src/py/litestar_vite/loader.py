@@ -24,7 +24,7 @@ from urllib.parse import unquote, urljoin, urlsplit
 import anyio
 import markupsafe
 from litestar.exceptions import SerializationException
-from litestar.serialization import decode_json
+from litestar.serialization import decode_json, encode_json
 
 from litestar_vite.exceptions import AssetNotFoundError, HTMLEntryResolutionError, ManifestNotFoundError
 from litestar_vite.utils import read_bridge_config
@@ -32,7 +32,6 @@ from litestar_vite.utils import read_bridge_config
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    import httpx
     from litestar.connection import Request
 
     from litestar_vite.config import ViteConfig
@@ -219,8 +218,6 @@ class ViteAssetLoader:
     __slots__ = (
         "__dict__",
         "_config",
-        "_http_client",
-        "_http_client_sync",
         "_initialized",
         "_is_hot_dev",
         "_manifest",
@@ -240,12 +237,6 @@ class ViteAssetLoader:
         self._vite_base_path: "str | None" = None
         self._initialized: bool = False
         self._is_hot_dev = self._config.hot_reload and self._config.is_dev_mode
-        self._http_client: "httpx.AsyncClient | None" = None
-        self._http_client_sync: "httpx.Client | None" = None
-
-    def _bind_http_client(self, client: "httpx.AsyncClient | None") -> None:
-        """Bind the plugin's lifespan-managed asynchronous HTTP client."""
-        self._http_client = client
 
     @staticmethod
     def _validate_html_entry(entry: str) -> str:
@@ -367,6 +358,35 @@ class ViteAssetLoader:
             value,
         )
 
+    @staticmethod
+    def _post_transform_index_sync(endpoint: str, payload: dict[str, Any], entry: str, hot_target: str) -> str:
+        """Send a POST request to the Vite transform-index endpoint using stdlib http.client."""
+        import http.client
+
+        parsed = urlsplit(endpoint)
+        scheme = (parsed.scheme or "http").lower()
+        if scheme not in {"http", "https"}:
+            raise HTMLEntryResolutionError(entry, development_url=hot_target, status_code=None)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if scheme == "https" else 80)
+        path = parsed.path or "/"
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+        conn_cls = http.client.HTTPSConnection if scheme == "https" else http.client.HTTPConnection
+        conn = conn_cls(host, port, timeout=5.0)
+        try:
+            conn.request("POST", path, body=encode_json(payload), headers={"Content-Type": "application/json"})
+            resp = conn.getresponse()
+            status = resp.status
+            body = resp.read()
+        except Exception as exc:
+            raise HTMLEntryResolutionError(entry, development_url=hot_target, status_code=None, cause=exc) from exc
+        finally:
+            conn.close()
+        if status >= 400:
+            raise HTMLEntryResolutionError(entry, development_url=hot_target, status_code=status)
+        return body.decode("utf-8")
+
     async def resolve_html_entry(
         self, entry: str, *, production_path: Path | str, absolute_dev_asset_urls: bool = False
     ) -> str:
@@ -375,25 +395,11 @@ class ViteAssetLoader:
         hot_target = self._read_hot_target() if self._is_hot_dev else None
         if hot_target is None:
             return await self._read_production_html_async(normalized_entry, production_path)
-        from litestar_vite._typing import ensure_httpx
-
-        ensure_httpx("dev-mode HTML entry resolution")
-        import httpx
 
         endpoint = f"{hot_target}/__litestar__/transform-index"
-        try:
-            if self._http_client is not None:
-                response = await self._http_client.post(endpoint, json={"entry": normalized_entry}, timeout=5.0)
-            else:
-                async with httpx.AsyncClient(timeout=5.0, trust_env=False) as client:
-                    response = await client.post(endpoint, json={"entry": normalized_entry})
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            status_code = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
-            raise HTMLEntryResolutionError(
-                normalized_entry, development_url=hot_target, status_code=status_code, cause=exc
-            ) from exc
-        result = response.text
+        result = await anyio.to_thread.run_sync(
+            self._post_transform_index_sync, endpoint, {"entry": normalized_entry}, normalized_entry, hot_target
+        )
         return (
             self._rewrite_dev_asset_urls(result, self._browser_origin(hot_target))
             if absolute_dev_asset_urls
@@ -408,25 +414,9 @@ class ViteAssetLoader:
         hot_target = self._read_hot_target() if self._is_hot_dev else None
         if hot_target is None:
             return self._read_production_html(normalized_entry, production_path)
-        from litestar_vite._typing import ensure_httpx
-
-        ensure_httpx("dev-mode HTML entry resolution")
-        import httpx
 
         endpoint = f"{hot_target}/__litestar__/transform-index"
-        try:
-            if self._http_client_sync is not None:
-                response = self._http_client_sync.post(endpoint, json={"entry": normalized_entry}, timeout=5.0)
-            else:
-                with httpx.Client(timeout=5.0, trust_env=False) as client:
-                    response = client.post(endpoint, json={"entry": normalized_entry})
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            status_code = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
-            raise HTMLEntryResolutionError(
-                normalized_entry, development_url=hot_target, status_code=status_code, cause=exc
-            ) from exc
-        result = response.text
+        result = self._post_transform_index_sync(endpoint, {"entry": normalized_entry}, normalized_entry, hot_target)
         return (
             self._rewrite_dev_asset_urls(result, self._browser_origin(hot_target))
             if absolute_dev_asset_urls

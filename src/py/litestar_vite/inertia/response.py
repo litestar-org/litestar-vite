@@ -2,7 +2,7 @@ import contextlib
 import itertools
 import logging
 import re
-from collections.abc import AsyncGenerator, Iterable, Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 from urllib.parse import quote, urlparse
@@ -45,7 +45,6 @@ from litestar_vite.inertia.types import InertiaHeaderType, PageProps, ScrollProp
 from litestar_vite.plugin import VitePlugin
 
 if TYPE_CHECKING:
-    import httpx
     from litestar.background_tasks import BackgroundTask, BackgroundTasks
     from litestar.connection.base import AuthT, StateT, UserT
     from litestar.types import ResponseCookies, ResponseHeaders, TypeEncodersMap
@@ -547,9 +546,8 @@ class InertiaResponse(Response[T]):
                 )
 
         try:
-            client = getattr(inertia_plugin, "ssr_client", None)
             self._cached_ssr_payload = await _render_inertia_ssr(
-                page_props.to_dict(), transport, ssr_config.timeout, client=client, type_encoders=type_encoders
+                page_props.to_dict(), transport, ssr_config.timeout, type_encoders=type_encoders
             )
             if circuit_breaker is not None:
                 circuit_breaker.record_success()
@@ -971,101 +969,46 @@ async def _render_inertia_ssr(
     page: dict[str, Any],
     transport: "BaseIPCTransport | str",
     timeout_seconds: float,
-    client: "httpx.AsyncClient | None" = None,
     *,
     type_encoders: "TypeEncodersMap | None" = None,
 ) -> _InertiaSSRResult:
-    """Call the Inertia SSR server or IPC transport asynchronously and return head/body HTML.
+    """Call the Inertia SSR IPC transport asynchronously and return head/body HTML.
 
     Args:
-        page: The page object to send to the SSR server.
-        transport: The BaseIPCTransport instance or legacy SSR URL string.
+        page: The page object to send to the SSR worker.
+        transport: The BaseIPCTransport instance or TCP URL string.
         timeout_seconds: Request timeout in seconds.
-        client: Optional shared httpx.AsyncClient for backward compatibility.
         type_encoders: Optional type encoders used to serialize page props.
 
     Returns:
         An _InertiaSSRResult with head and body HTML.
     """
-    return await _do_ssr_request(page, transport, timeout_seconds, client, type_encoders=type_encoders)
-
-
-@contextlib.asynccontextmanager
-async def _acquire_ssr_client(client: "httpx.AsyncClient | None") -> "AsyncGenerator[httpx.AsyncClient, None]":
-    """Yield ``client`` when provided, otherwise a short-lived fallback client.
-
-    Yields:
-        The shared client when supplied, or a fallback client whose lifecycle is
-        bound to the context.
-    """
-    from litestar_vite._typing import ensure_httpx
-
-    ensure_httpx("Inertia SSR")
-    import httpx
-
-    if client is not None:
-        yield client
-    else:
-        async with httpx.AsyncClient() as fallback:
-            yield fallback
+    return await _do_ssr_request(page, transport, timeout_seconds, type_encoders=type_encoders)
 
 
 async def _do_ssr_request(
     page: dict[str, Any],
     transport: "BaseIPCTransport | str",
     timeout_seconds: float,
-    client: "httpx.AsyncClient | None" = None,
     *,
     type_encoders: "TypeEncodersMap | None" = None,
 ) -> _InertiaSSRResult:
-    """Execute the SSR request using BaseIPCTransport or legacy HTTP client.
+    """Execute the SSR request using BaseIPCTransport.
 
     Args:
-        page: The page object to send to the SSR server.
-        transport: The BaseIPCTransport instance or legacy SSR URL string.
+        page: The page object to send to the SSR worker.
+        transport: The BaseIPCTransport instance or TCP URL string.
         timeout_seconds: Request timeout in seconds.
-        client: Optional shared httpx.AsyncClient.
         type_encoders: Optional type encoders used to serialize page props.
 
     Raises:
-        ImproperlyConfiguredException: If the SSR server or transport fails.
+        ImproperlyConfiguredException: If the SSR worker or transport fails.
 
     Returns:
         An _InertiaSSRResult with head and body HTML.
     """
+    target_label = str(transport)
     if isinstance(transport, str):
-        from litestar_vite._typing import HTTPX_INSTALLED
-
-        if client is not None or HTTPX_INSTALLED:
-            body = encode_json(page, serializer=get_serializer(type_encoders))
-            headers = {"content-type": "application/json"}
-            try:
-                async with _acquire_ssr_client(client) as resolved_client:
-                    response = await resolved_client.post(
-                        transport, content=body, headers=headers, timeout=timeout_seconds
-                    )
-                    response.raise_for_status()
-            except Exception as exc:
-                status_code = getattr(getattr(exc, "response", None), "status_code", None)
-                if status_code is not None:
-                    msg = f"Inertia SSR server at {transport!r} returned HTTP {status_code}. Check the SSR server logs."
-                    raise ImproperlyConfiguredException(msg) from exc
-                if type(exc).__module__.startswith("httpx"):
-                    msg = (
-                        f"Inertia SSR is enabled but the SSR server is not reachable at {transport!r}. "
-                        "Start the SSR server (Node) or disable InertiaConfig.ssr."
-                    )
-                    raise ImproperlyConfiguredException(msg) from exc
-                raise
-
-            try:
-                payload = response.json()
-            except ValueError as exc:
-                msg = f"Inertia SSR server at {transport!r} returned invalid JSON. Check the SSR server logs."
-                raise ImproperlyConfiguredException(msg) from exc
-
-            return _parse_inertia_ssr_payload(payload, transport)
-
         from litestar_vite.ipc import IPCTransportManager
 
         transport = IPCTransportManager.create_transport(mode="tcp", url=transport)
@@ -1077,16 +1020,16 @@ async def _do_ssr_request(
     try:
         raw_payload = await transport.send_request(ipc_payload, timeout=timeout_seconds)
     except Exception as exc:
-        msg = f"Inertia SSR execution failed over {transport.__class__.__name__}: {exc}"
+        msg = f"Inertia SSR execution failed over {transport.__class__.__name__} ({target_label}): {exc}"
         raise ImproperlyConfiguredException(msg) from exc
 
     if "error" in raw_payload:
         error_info = raw_payload.get("error", "Unknown IPC worker error")
-        msg = f"Inertia SSR execution failed over {transport.__class__.__name__}: {error_info}"
+        msg = f"Inertia SSR execution failed over {transport.__class__.__name__} ({target_label}): {error_info}"
         raise ImproperlyConfiguredException(msg)
 
     result_payload = raw_payload.get("result", raw_payload)
-    return _parse_inertia_ssr_payload(result_payload, str(transport))
+    return _parse_inertia_ssr_payload(result_payload, target_label)
 
 
 def _get_redirect_url(request: "Request[Any, Any, Any]", url: str | None) -> str:

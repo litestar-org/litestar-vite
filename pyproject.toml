@@ -44,7 +44,6 @@ jinja = [ "jinja2"]
 nodeenv = ["nodeenv"]
 http2 = ["h2>=4.0.0"]
 asyncapi = ["litestar-asyncapi>=0.2.0"]
-proxy = ["httpx>=0.24.1"]
 
 [build-system]
 build-backend = "hatchling.build"
@@ -339,6 +338,7 @@ skip-magic-trailing-comma = true
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ['F401', 'D104']
+"src/py/litestar_vite/typing.py" = ["A005"]
 "src/py/litestar_vite/cli.py" = ["RUF001"]
 "docs/**/*.*" = ["S", "B", "DTZ", "A", "TC", "ERA", "D", "RET", "E731", "RUF012", "FA100", "ARG001"]
 "docs/conf.py" = ["FIX002", "ARG001", "INP001"]

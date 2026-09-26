@@ -6,13 +6,13 @@ export interface IslandOptions {
 
 export function wrapIsland(html: string, options: IslandOptions): string {
   const escapedProps = JSON.stringify(options.props).replace(/"/g, "&quot;")
-  return `<vite-island data-island-component="${options.component}" data-island-props="${escapedProps}" id="${options.islandId}">${html}</vite-island>`
+  return `<litestar-island data-island-component="${options.component}" data-island-props="${escapedProps}" id="${options.islandId}">${html}</litestar-island>`
 }
 
 export function getIslandClientScript(): string {
   return `<script type="module">
-if (typeof window !== "undefined" && !customElements.get("vite-island")) {
-  customElements.define("vite-island", class extends HTMLElement {
+if (typeof window !== "undefined" && !customElements.get("litestar-island")) {
+  customElements.define("litestar-island", class extends HTMLElement {
     async connectedCallback() {
       const compPath = this.getAttribute("data-island-component")
       const rawProps = this.getAttribute("data-island-props")

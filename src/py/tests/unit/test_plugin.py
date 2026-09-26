@@ -2180,39 +2180,11 @@ def test_get_litestar_route_prefixes_with_empty_app() -> None:
 # =====================================================
 
 
-def test_vite_plugin_proxy_client_none_on_init() -> None:
-    """Test that proxy_client is None immediately after plugin initialization."""
+def test_vite_plugin_excludes_proxy_client() -> None:
+    """Test that VitePlugin no longer exposes proxy_client."""
     plugin = VitePlugin()
-
-    assert plugin._proxy_client is None
-    assert plugin.proxy_client is None
-
-
-async def test_vite_plugin_proxy_client_created_in_dev_mode_with_vite_proxy() -> None:
-    """Test that proxy_client is created during lifespan in dev mode with vite proxy."""
-    import httpx
-
-    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True), mode="spa")
-    # Manually set proxy_mode to vite for test
-    config.runtime.proxy_mode = "vite"
-    plugin = VitePlugin(config=config)
-
-    # Before lifespan, proxy_client is None
-    assert plugin.proxy_client is None
-
-    # Create a minimal app for lifespan
-    app = Litestar(route_handlers=[])
-
-    # Run the lifespan context manager
-    async with plugin.lifespan(app):
-        # During lifespan, proxy_client should be created
-        assert plugin.proxy_client is not None
-        assert isinstance(plugin.proxy_client, httpx.AsyncClient)
-        assert plugin.asset_loader._http_client is plugin.proxy_client
-
-    # After lifespan, proxy_client should be closed and set to None
-    assert plugin.proxy_client is None
-    assert plugin.asset_loader._http_client is None
+    assert not hasattr(plugin, "proxy_client")
+    assert not hasattr(plugin, "_proxy_client")
 
 
 async def test_vite_plugin_lifespan_initializes_spa_handler_async() -> None:
@@ -2276,60 +2248,6 @@ async def test_vite_plugin_lifespan_parses_manifest_once_across_loader_and_handl
             pass
 
     assert decode_calls == 1, f"expected manifest.json to be decoded exactly once, got {decode_calls}"
-
-
-async def test_vite_plugin_proxy_client_created_in_dev_mode_with_ssr_proxy() -> None:
-    """Test that proxy_client is created during lifespan in dev mode with SSR proxy."""
-    import httpx
-
-    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True), mode="framework")
-    # Manually set proxy_mode to proxy for test
-    config.runtime.proxy_mode = "proxy"
-    plugin = VitePlugin(config=config)
-
-    # Before lifespan, proxy_client is None
-    assert plugin.proxy_client is None
-
-    # Create a minimal app for lifespan
-    app = Litestar(route_handlers=[])
-
-    # Run the lifespan context manager
-    async with plugin.lifespan(app):
-        # During lifespan, proxy_client should be created
-        assert plugin.proxy_client is not None
-        assert isinstance(plugin.proxy_client, httpx.AsyncClient)
-
-    # After lifespan, proxy_client should be closed and set to None
-    assert plugin.proxy_client is None
-
-
-async def test_vite_plugin_proxy_client_none_in_production_mode() -> None:
-    """Test that proxy_client remains None in production mode."""
-    config = ViteConfig(runtime=RuntimeConfig(dev_mode=False), mode="spa")
-    plugin = VitePlugin(config=config)
-
-    # Create a minimal app for lifespan
-    app = Litestar(route_handlers=[])
-
-    # Run the lifespan context manager
-    async with plugin.lifespan(app):
-        # In production mode, proxy_client should remain None
-        assert plugin.proxy_client is None
-
-
-async def test_vite_plugin_proxy_client_none_when_no_proxy_mode() -> None:
-    """proxy_client stays None when proxy_mode resolves to None.
-
-    After C3, dev_mode + serves_own_html auto-derives proxy_mode='vite'. To exercise the
-    no-proxy path, run in production mode where the auto-derivation yields None.
-    """
-    config = ViteConfig(runtime=RuntimeConfig(dev_mode=False), mode="template")
-    plugin = VitePlugin(config=config)
-    assert config.proxy_mode is None
-
-    app = Litestar(route_handlers=[])
-    async with plugin.lifespan(app):
-        assert plugin.proxy_client is None
 
 
 def test_static_router_emits_opt_on_handlers_only(tmp_path: Path) -> None:

@@ -143,8 +143,6 @@ nitpick_ignore = [
     (PY_CLASS, "LoggingConfig"),
     (PY_CLASS, "litestar_vite.config.LoggingConfig"),
     (PY_CLASS, "Markup"),
-    # External dependencies
-    (PY_CLASS, "httpx.AsyncClient"),
     # Codegen internal types (use public module path - remapping handles private paths)
     (PY_CLASS, "litestar_vite.codegen.OpenAPISupport"),
     (PY_CLASS, "litestar_vite.codegen._asyncapi.AsyncAPISchemaContext"),
@@ -242,9 +240,9 @@ html_theme_options: dict[str, Any] = {
                     "summary": "WebSockets, ChannelsPlugin, SSE, AsyncAPI 3.0 schema, and typed frontend client streams.",
                 },
                 {
-                    "title": "SSR & IPC Architecture",
+                    "title": "SSR & IPC Transports",
                     "url": "ssr/ipc-architecture",
-                    "summary": "Inter-process communication, Stdio workers, Unix domain sockets, and zero-HTTPX SSR.",
+                    "summary": "Stdio, Unix domain socket, and TCP stream IPC transports for SSR.",
                 },
                 {
                     "title": "Hypermedia & Fragments",
@@ -252,9 +250,9 @@ html_theme_options: dict[str, Any] = {
                     "summary": "HTMX partial swaps, React/Vue/Svelte fragment rendering, and scoped CSS injection.",
                 },
                 {
-                    "title": "Vite 6/7/8 Architecture",
+                    "title": "Vite 6/7/8 Configuration",
                     "url": "guide/vite6-architecture",
-                    "summary": "Vite Environment API, Rolldown bundling, and zero-proxy direct asset serving.",
+                    "summary": "Vite Environment API, Rolldown bundling, and direct dev server asset URLs.",
                 },
                 {
                     "title": "API Reference",

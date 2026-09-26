@@ -9,7 +9,6 @@ __all__ = (
     "ASYNCAPI_INSTALLED",
     "CHANNELS_INSTALLED",
     "FSSPEC_INSTALLED",
-    "HTTPX_INSTALLED",
     "JINJA_INSTALLED",
     "SQLSPEC_INSTALLED",
     "AdvancedAlchemyDuplicateKeyError",
@@ -24,7 +23,6 @@ __all__ = (
     "SQLSpecNotNullViolationError",
     "SQLSpecRepositoryError",
     "SQLSpecUniqueViolationError",
-    "ensure_httpx",
 )
 
 
@@ -64,16 +62,6 @@ JINJA_INSTALLED = _module_installed("jinja2")
 FSSPEC_INSTALLED = _module_installed("fsspec")
 ASYNCAPI_INSTALLED = _module_installed("litestar_asyncapi")
 CHANNELS_INSTALLED = _module_installed("litestar.channels")
-HTTPX_INSTALLED = _module_installed("httpx")
-
-
-def ensure_httpx(feature: str = "HTTP proxying or Inertia TCP SSR") -> None:
-    """Ensure httpx is installed before attempting HTTP proxy operations."""
-    if not HTTPX_INSTALLED:
-        from litestar.exceptions import ImproperlyConfiguredException
-
-        msg = f"{feature} requires 'httpx' to be installed. Install it with 'pip install litestar-vite[proxy]'."
-        raise ImproperlyConfiguredException(msg)
 
 
 AdvancedAlchemyRepositoryError = _placeholder_exception_type("AdvancedAlchemyRepositoryError")

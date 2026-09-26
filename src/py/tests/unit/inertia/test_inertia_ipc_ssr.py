@@ -44,7 +44,9 @@ class _MockInertiaIPCTransport(BaseIPCTransport):
 
 def test_inject_inertia_ssr_tokens_and_crlf_preservation() -> None:
     """Verify fast token-based replacement and CRLF line-ending preservation in inject_inertia_ssr_tags."""
-    template_crlf = "<html>\r\n<head>\r\n<!--inertia-head-->\r\n</head>\r\n<body>\r\n<!--inertia-body-->\r\n</body>\r\n</html>"
+    template_crlf = (
+        "<html>\r\n<head>\r\n<!--inertia-head-->\r\n</head>\r\n<body>\r\n<!--inertia-body-->\r\n</body>\r\n</html>"
+    )
     result = inject_inertia_ssr_tags(
         template_crlf,
         head=["<title>Page</title>", '<meta name="description" content="test">'],
@@ -52,12 +54,14 @@ def test_inject_inertia_ssr_tokens_and_crlf_preservation() -> None:
     )
     assert "<!--inertia-head-->" not in result
     assert "<!--inertia-body-->" not in result
-    assert "<title>Page</title>\r\n<meta name=\"description\" content=\"test\">" in result
+    assert '<title>Page</title>\r\n<meta name="description" content="test">' in result
     assert '<div id="app">Rendered</div>' in result
     assert "\r\n" in result
 
     template_directives = "<html><head>@inertiaHead</head><body>@inertia</body></html>"
-    result_dir = inject_inertia_ssr_tags(template_directives, head=["<title>Dir</title>"], body='<div id="app">Body</div>')
+    result_dir = inject_inertia_ssr_tags(
+        template_directives, head=["<title>Dir</title>"], body='<div id="app">Body</div>'
+    )
     assert "@inertiaHead" not in result_dir
     assert "@inertia" not in result_dir
     assert "<title>Dir</title>" in result_dir

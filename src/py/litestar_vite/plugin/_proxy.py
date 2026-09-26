@@ -21,32 +21,16 @@ from litestar_vite.utils import read_hotfile_url
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    import httpx
     from litestar.types import ASGIApp, Receive, Scope, Send
     from websockets.typing import Subprotocol
 
     from litestar_vite.plugin import VitePlugin
-else:
-    try:
-        import httpx
-    except ImportError:
-        httpx = None
 
 _DISCONNECT_EXCEPTIONS = (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed)
 
-_CONNECT_ERRORS: tuple[type[Exception], ...] = (
-    OSError,
-    anyio.ClosedResourceError,
-    *(() if httpx is None else (httpx.ConnectError,)),
-)
+_CONNECT_ERRORS: tuple[type[Exception], ...] = (OSError, anyio.ClosedResourceError)
 
-_PROXY_ERRORS: tuple[type[Exception], ...] = (
-    OSError,
-    anyio.ClosedResourceError,
-    TimeoutError,
-    RuntimeError,
-    *(() if httpx is None else (httpx.HTTPError,)),
-)
+_PROXY_ERRORS: tuple[type[Exception], ...] = (OSError, anyio.ClosedResourceError, TimeoutError, RuntimeError)
 
 _BODY_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
@@ -212,17 +196,18 @@ def _extract_proxy_response_headers(headers: Any) -> list[tuple[bytes, bytes]]:
     Returns:
         A list of (header_name, header_value) tuples.
     """
+    raw_items = headers.raw if hasattr(headers, "raw") else headers
     connection_tokens = _collect_connection_tokens(
-        (key.decode("latin-1"), value.decode("latin-1")) for key, value in headers.raw
+        (key.decode("latin-1"), value.decode("latin-1")) for key, value in raw_items
     )
     hop_by_hop = _HOP_BY_HOP_HEADERS | connection_tokens if connection_tokens else _HOP_BY_HOP_HEADERS
 
     extracted: list[tuple[bytes, bytes]] = []
-    for key, value in headers.raw:
+    for key, value in raw_items:
         lower_key = key.decode("latin-1").lower()
         if lower_key in hop_by_hop:
             continue
-        extracted.append((key, value))
+        extracted.append((lower_key.encode("latin-1"), value))
 
     return extracted
 
@@ -242,35 +227,6 @@ async def _stream_request_body(receive: "Callable[[], Awaitable[dict[str, Any]]]
             yield cast("bytes", body)
         if not event.get("more_body", False):
             return
-
-
-async def _stream_response_body(
-    response: "httpx.Response", close_callback: "Callable[[], Awaitable[None]] | None" = None
-) -> AsyncGenerator[bytes, None]:
-    """Iterate response body chunks and close the upstream response."""
-    try:
-        async for chunk in response.aiter_bytes():
-            if chunk:
-                yield chunk
-    finally:
-        if close_callback is not None:
-            await close_callback()
-        else:
-            await response.aclose()
-
-
-async def _proxy_stream_response(
-    response: "httpx.Response",
-    send: "Callable[[dict[str, Any]], Any]",
-    close_callback: "Callable[[], Awaitable[None]] | None" = None,
-) -> None:
-    """Stream upstream response to the client incrementally."""
-    response_headers = _extract_proxy_response_headers(response.headers)
-    await send({"type": "http.response.start", "status": response.status_code, "headers": response_headers})
-    async for chunk in _stream_response_body(response, close_callback=close_callback):
-        await send({"type": "http.response.body", "body": chunk, "more_body": True})
-
-    await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
 def _build_upstream_request(
@@ -346,20 +302,18 @@ def _parse_upstream_headers(raw_headers: bytes) -> tuple[int, list[tuple[bytes, 
 
     is_chunked = False
     content_length: int | None = None
-    connection_tokens: set[str] = set()
+    raw_pairs: list[tuple[bytes, bytes]] = []
 
     for raw_line in header_lines[1:]:
         if not raw_line or b":" not in raw_line:
             continue
         k_b, v_b = raw_line.split(b":", 1)
-        k_str = k_b.decode("latin-1").strip().lower()
-        v_str = v_b.decode("latin-1").strip()
-        if k_str == "connection":
-            for tok in v_str.split(","):
-                tok_stripped = tok.strip().lower()
-                if tok_stripped:
-                    connection_tokens.add(tok_stripped)
-        elif k_str == "transfer-encoding" and "chunked" in v_str.lower():
+        k_stripped = k_b.strip()
+        v_stripped = v_b.strip()
+        raw_pairs.append((k_stripped, v_stripped))
+        k_str = k_stripped.decode("latin-1").lower()
+        v_str = v_stripped.decode("latin-1")
+        if k_str == "transfer-encoding" and "chunked" in v_str.lower():
             is_chunked = True
         elif k_str == "content-length":
             try:
@@ -367,16 +321,7 @@ def _parse_upstream_headers(raw_headers: bytes) -> tuple[int, list[tuple[bytes, 
             except ValueError:
                 content_length = None
 
-    hop_skip = {h.encode("latin-1") for h in _HOP_BY_HOP_HEADERS} | {t.encode("latin-1") for t in connection_tokens}
-
-    response_headers: list[tuple[bytes, bytes]] = []
-    for raw_line in header_lines[1:]:
-        if not raw_line or b":" not in raw_line:
-            continue
-        k_b, v_b = raw_line.split(b":", 1)
-        if k_b.strip().lower() not in hop_skip:
-            response_headers.append((k_b.strip(), v_b.strip()))
-
+    response_headers = _extract_proxy_response_headers(raw_pairs)
     return status_code, response_headers, is_chunked, content_length
 
 
@@ -771,9 +716,9 @@ class ProxyHeadersMiddleware(AbstractMiddleware):
 class ViteProxyMiddleware(AbstractMiddleware):
     """ASGI middleware to proxy Vite dev HTTP traffic to internal Vite server.
 
-    HTTP requests use httpx.AsyncClient with optional HTTP/2 support for better
-    connection multiplexing. WebSocket traffic (used by Vite HMR) is handled by
-    a dedicated WebSocket route handler created by create_vite_hmr_handler().
+    HTTP requests use raw AnyIO byte streams with incremental chunked transfer
+    decoding. WebSocket traffic (used by Vite HMR) is handled by a dedicated
+    WebSocket route handler created by create_vite_hmr_handler().
 
     The middleware reads the Vite server URL from the hotfile dynamically,
     ensuring it always connects to the correct Vite server even if the port changes.
@@ -887,53 +832,9 @@ class ViteProxyMiddleware(AbstractMiddleware):
         headers = _filter_hop_by_hop_headers(scope.get("headers", []))
         request_body = _stream_request_body(receive) if method in _BODY_METHODS else None
 
-        client = getattr(self._plugin, "_proxy_client", None) if self._plugin is not None else None
-
-        response_started = False
-
-        async def _safe_send(message: dict[str, Any]) -> None:
-            nonlocal response_started
-            if message.get("type") == "http.response.start":
-                response_started = True
-            await send(message)
-
-        try:
-            if client is not None and hasattr(client, "stream"):
-                async with client.stream(
-                    method, url, headers=headers, content=request_body, timeout=10.0, follow_redirects=False
-                ) as upstream_resp:
-                    await _proxy_stream_response(upstream_resp, _safe_send)
-            elif httpx is not None:
-                async with (
-                    httpx.AsyncClient(http2=check_http2_support(self.http2), trust_env=False) as fallback_client,
-                    fallback_client.stream(
-                        method, url, headers=headers, content=request_body, timeout=10.0, follow_redirects=False
-                    ) as upstream_resp,
-                ):
-                    await _proxy_stream_response(upstream_resp, _safe_send)
-            else:
-                await _anyio_proxy_http_request(
-                    url=url,
-                    method=method,
-                    headers=headers,
-                    request_body=request_body,
-                    send=_safe_send,
-                    timeout_duration=10.0,
-                )
-        except _PROXY_ERRORS as exc:
-            if not response_started:
-                await send({
-                    "type": "http.response.start",
-                    "status": 502,
-                    "headers": [(b"content-type", b"text/plain")],
-                })
-                await send({
-                    "type": "http.response.body",
-                    "body": f"Upstream error: {exc}".encode(),
-                    "more_body": False,
-                })
-            else:
-                await send({"type": "http.response.body", "body": b"", "more_body": False})
+        await _anyio_proxy_http_request(
+            url=url, method=method, headers=headers, request_body=request_body, send=send, timeout_duration=10.0
+        )
 
 
 def build_hmr_target_url(hotfile_path: Path, scope: dict[str, Any], hmr_path: str, asset_url: str) -> "str | None":
@@ -1433,59 +1334,16 @@ class SSRProxyMiddleware(AbstractMiddleware):
         headers = _filter_hop_by_hop_headers(scope.get("headers", []))
         request_body = _stream_request_body(receive) if method in _BODY_METHODS else None
 
-        client = getattr(self._plugin, "_proxy_client", None) if self._plugin is not None else None
-
-        response_started = False
-
-        async def _safe_send(message: dict[str, Any]) -> None:
-            nonlocal response_started
-            if message.get("type") == "http.response.start":
-                response_started = True
-            await send(message)
-
-        try:
-            if client is not None and hasattr(client, "stream"):
-                async with client.stream(
-                    method, url, headers=headers, content=request_body, timeout=30.0, follow_redirects=False
-                ) as upstream_resp:
-                    await _proxy_stream_response(upstream_resp, _safe_send)
-            elif httpx is not None:
-                async with (
-                    httpx.AsyncClient(
-                        http2=check_http2_support(self._http2), timeout=30.0, trust_env=False
-                    ) as fallback_client,
-                    fallback_client.stream(
-                        method, url, headers=headers, content=request_body, timeout=30.0, follow_redirects=False
-                    ) as upstream_resp,
-                ):
-                    await _proxy_stream_response(upstream_resp, _safe_send)
-            else:
-                await _anyio_proxy_http_request(
-                    url=url,
-                    method=method,
-                    headers=headers,
-                    request_body=request_body,
-                    send=_safe_send,
-                    timeout_duration=30.0,
-                    error_status=503,
-                    error_message=f"SSR server not running at {target_base_url}",
-                )
-        except _PROXY_ERRORS as exc:
-            if not response_started:
-                status_code = 503 if isinstance(exc, _CONNECT_ERRORS) else 502
-                err_text = (
-                    f"SSR server not running at {target_base_url}"
-                    if isinstance(exc, _CONNECT_ERRORS)
-                    else f"Upstream error: {exc}"
-                )
-                await send({
-                    "type": "http.response.start",
-                    "status": status_code,
-                    "headers": [(b"content-type", b"text/plain")],
-                })
-                await send({"type": "http.response.body", "body": err_text.encode(), "more_body": False})
-            else:
-                await send({"type": "http.response.body", "body": b"", "more_body": False})
+        await _anyio_proxy_http_request(
+            url=url,
+            method=method,
+            headers=headers,
+            request_body=request_body,
+            send=send,
+            timeout_duration=30.0,
+            error_status=503,
+            error_message=f"SSR server not running at {target_base_url}",
+        )
 
 
 def create_ssr_http_proxy_handler(
@@ -1511,7 +1369,7 @@ def create_ssr_http_proxy_handler(
         target: Static target URL (for external dev servers with a known URL).
         hotfile_path: Path to the hotfile for dynamic target discovery.
         http2: Enable HTTP/2 for proxy connections.
-        plugin: Optional VitePlugin reference for accessing the shared proxy client.
+        plugin: Optional VitePlugin reference.
         paths: Override the default HTTP paths; defaults to ``["/", "/{path:path}"]``.
 
     Returns:
@@ -1556,85 +1414,6 @@ def create_ssr_http_proxy_handler(
 
         headers_to_forward = _filter_hop_by_hop_headers(request.headers.items())
         request_body = request.stream() if request.method in _BODY_METHODS else None
-
-        client = getattr(plugin, "_proxy_client", None) if plugin is not None else None
-
-        if client is not None and hasattr(client, "stream"):
-            stream_context: Any = None
-            try:
-                stream_context = client.stream(
-                    request.method,
-                    url,
-                    headers=headers_to_forward,
-                    content=request_body,
-                    follow_redirects=False,
-                    timeout=30.0,
-                )
-                upstream_resp = await stream_context.__aenter__()
-            except _PROXY_ERRORS as exc:
-                return cast(
-                    "ASGIApp",
-                    Response(
-                        content=f"SSR server not running at {target_url}".encode()
-                        if isinstance(exc, _CONNECT_ERRORS)
-                        else str(exc).encode(),
-                        status_code=503 if isinstance(exc, _CONNECT_ERRORS) else 502,
-                        media_type="text/plain",
-                    ),
-                )
-
-            async def _close_stream_context() -> None:
-                try:
-                    await stream_context.__aexit__(None, None, None)
-                except _PROXY_ERRORS as exc:
-                    _LOGGER.debug("Failed to close SSR proxy stream context cleanly: %s", exc)
-
-            async def asgi_response_app(_scope: "Scope", _receive: "Receive", send: "Send") -> None:
-                del _scope, _receive
-                await _proxy_stream_response(
-                    response=upstream_resp,
-                    send=cast("Callable[[dict[str, Any]], Any]", send),
-                    close_callback=_close_stream_context,
-                )
-
-            return asgi_response_app
-
-        if httpx is not None:
-            http_client = httpx.AsyncClient(http2=check_http2_support(http2), timeout=30.0, trust_env=False)
-            stream_context = http_client.stream(
-                request.method, url, headers=headers_to_forward, content=request_body, follow_redirects=False
-            )
-            try:
-                upstream_resp = await stream_context.__aenter__()
-            except _PROXY_ERRORS as exc:
-                await http_client.aclose()
-                return cast(
-                    "ASGIApp",
-                    Response(
-                        content=f"SSR server not running at {target_url}".encode()
-                        if isinstance(exc, _CONNECT_ERRORS)
-                        else str(exc).encode(),
-                        status_code=503 if isinstance(exc, _CONNECT_ERRORS) else 502,
-                        media_type="text/plain",
-                    ),
-                )
-
-            async def _close_stream_context() -> None:
-                try:
-                    await stream_context.__aexit__(None, None, None)
-                    await http_client.aclose()
-                except _PROXY_ERRORS as exc:
-                    _LOGGER.debug("Failed to close SSR proxy stream context cleanly: %s", exc)
-
-            async def asgi_response_app(_scope: "Scope", _receive: "Receive", send: "Send") -> None:
-                del _scope, _receive
-                await _proxy_stream_response(
-                    response=upstream_resp,
-                    send=cast("Callable[[dict[str, Any]], Any]", send),
-                    close_callback=_close_stream_context,
-                )
-
-            return asgi_response_app
 
         async def asgi_anyio_app(_scope: "Scope", _receive: "Receive", send: "Send") -> None:
             del _scope, _receive

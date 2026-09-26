@@ -31,16 +31,12 @@ pytestmark = pytest.mark.anyio
 def test_create_transport_respects_explicit_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify IPCTransportManager.create_transport honors explicit mode even when url is present."""
     stdio_transport = IPCTransportManager.create_transport(
-        mode="stdio",
-        command=["node", "ssr.js", "--stdio"],
-        url="http://127.0.0.1:13714/render",
+        mode="stdio", command=["node", "ssr.js", "--stdio"], url="http://127.0.0.1:13714/render"
     )
     assert isinstance(stdio_transport, StdioIPCTransport)
 
     tcp_transport = IPCTransportManager.create_transport(
-        mode="tcp",
-        command=["node", "ssr.js"],
-        url="http://127.0.0.1:13714/render",
+        mode="tcp", command=["node", "ssr.js"], url="http://127.0.0.1:13714/render"
     )
     assert isinstance(tcp_transport, TCPStreamIPCTransport)
     assert tcp_transport.host == "127.0.0.1"
@@ -51,9 +47,7 @@ def test_create_transport_respects_explicit_modes(tmp_path: Path, monkeypatch: p
     monkeypatch.setattr("litestar_vite.ipc._uds.os.name", "posix")
     sock_file = tmp_path / "ssr.sock"
     uds_transport = IPCTransportManager.create_transport(
-        mode="uds",
-        socket_path=sock_file,
-        url="http://127.0.0.1:13714/render",
+        mode="uds", socket_path=sock_file, url="http://127.0.0.1:13714/render"
     )
     assert isinstance(uds_transport, UnixSocketIPCTransport)
 

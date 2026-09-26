@@ -21,7 +21,6 @@ from litestar.routes import HTTPRoute, WebSocketRoute
 from litestar.types.builtin_types import NoneType
 from litestar.typing import FieldDefinition
 
-from litestar_vite._typing import ASYNCAPI_INSTALLED
 from litestar_vite.codegen._openapi import (
     OpenAPISupport,
     asyncapi_schema_from_result,
@@ -30,6 +29,7 @@ from litestar_vite.codegen._openapi import (
 )
 from litestar_vite.codegen._routes import extract_path_params
 from litestar_vite.codegen._ts import normalize_path
+from litestar_vite.typing import ASYNCAPI_INSTALLED
 
 if not getattr(ServerSentEvent, "__parameters__", None):
 

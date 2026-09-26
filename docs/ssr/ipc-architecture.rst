@@ -1,61 +1,56 @@
-=================================================
-Server-Side Rendering & Modern IPC Architecture
-=================================================
+==========================================
+Server-Side Rendering & IPC Transports
+==========================================
 
-Server-Side Rendering (SSR) in modern web frameworks bridges fast initial page delivery, SEO discoverability, and rich client interactivity. Traditional Python integrations delegate SSR to Node.js via external HTTP servers communicating over local TCP sockets (such as ``http://127.0.0.1:13714``). While conceptually simple, HTTP-over-TCP introduces structural bottlenecks, cross-platform hazards, and operational debt in production and development environments.
-
-Litestar Vite replaces legacy HTTP loopback runners with an AnyIO-powered, multi-transport Inter-Process Communication (IPC) architecture. This system delivers zero-HTTPX execution, robust process lifecycle coupling, high throughput, and seamless parity across Linux, macOS, and Windows.
-
---------------------------------------------
-The TCP Bottleneck & Zero-Zombie Mandate
---------------------------------------------
-
-The legacy model of spawning a standalone Node.js process listening on a hardcoded HTTP port exhibits several failure modes:
-
-1. **Port Collisions and Contention**:
-   Fixed ports (such as 13714) collide when multiple developers, microservices, continuous integration runners, or parallel test workers execute concurrently on a single machine. Dynamic port allocation requires orchestration files, lockfiles, or environment variable handshakes that add brittleness.
-
-2. **Protocol and Socket Overhead**:
-   HTTP/1.1 over loopback TCP incurs connection handshakes, header serialization, HTTP parser state machines, TCP slow-start, and ephemeral socket allocation. For short-lived fragment rendering or rapid Inertia navigations, this protocol tax degrades response latency.
-
-3. **Zombie and Orphan Processes**:
-   When the host Litestar application terminates abruptly—due to keyboard interrupts (``Ctrl+C``), uncaught exceptions, container SIGTERM signals, or worker restarts—the background Node.js HTTP server frequently remains running in an orphaned state. These zombie processes hold ports open, preventing subsequent application boots until killed manually.
-
-4. **The Zero-Zombie Mandate**:
-   Operating systems provide a native mechanism for coupling process lifecycles: **standard I/O anonymous pipes**. When a parent process terminates, the operating system closes the write end of the pipe, causing the child worker's ``stdin`` stream to immediately emit an End-Of-File (``EOF``) event. By binding the worker lifetime to ``stdin`` EOF, Litestar Vite guarantees that when Python exits, the Node.js or Bun worker exits immediately, with zero orphan processes.
+``litestar-vite`` communicates with JavaScript SSR workers over AnyIO inter-process communication (IPC) transports rather than an external HTTP client.
 
 ---------------------------------
-Architecture & Transport Matrix
+Process Lifecycle & Transports
 ---------------------------------
 
-Litestar Vite implements a tiered transport matrix configured via ``InertiaConfig`` and the ``litestar_vite.ipc`` package:
+Running a standalone Node.js HTTP server on a fixed port (such as ``127.0.0.1:13714``) for SSR has a few operational drawbacks:
+
+1. **Port Collisions**:
+   Fixed TCP ports collide when multiple dev servers or test workers run on the same host.
+
+2. **Orphaned Worker Processes**:
+   If the parent Python process exits abruptly, an independent HTTP server process can remain running in the background holding its port open.
+
+3. **Pipe-Bound Lifecycle**:
+   With standard I/O pipes, the child worker's lifetime is tied to its ``stdin`` stream. When the Python process exits, the OS closes the pipe, the worker receives ``EOF`` on ``stdin``, and the worker exits.
+
+---------------------------------
+Transport Matrix
+---------------------------------
+
+``litestar-vite`` provides three transports in ``litestar_vite.ipc``, configured via ``InertiaConfig``:
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 20 25 35
+   :widths: 25 25 25 25
 
    * - Transport
-     - Target Environments
-     - Protocol Framing
-     - Lifecycle Coupling
+     - Platforms
+     - Framing
+     - Process Model
    * - ``StdioIPCTransport``
      - Linux, macOS, Windows
      - Line-delimited JSON (NDJSON)
-     - Strict OS pipe binding (stdin EOF terminates child)
+     - Managed subprocess (``stdin`` EOF terminates child)
    * - ``UnixSocketIPCTransport``
      - Linux, macOS (POSIX)
      - NDJSON over ``AF_UNIX`` stream
-     - Shared filesystem socket (e.g. ``/tmp/litestar-ssr.sock``)
+     - Local filesystem socket (e.g. ``/tmp/litestar-ssr.sock``)
    * - ``TCPStreamIPCTransport``
-     - Multi-host containers, Kubernetes
-     - Raw AnyIO TCP stream (zero HTTPX)
-     - Remote daemon or sidecar lifecycle
+     - Linux, macOS, Windows
+     - NDJSON over AnyIO TCP stream
+     - Remote worker or container sidecar
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 Stdio Worker (NDJSON RPC)
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The default, recommended transport across all operating systems is ``StdioIPCTransport``. Under this model, Litestar spawns the SSR worker bundle as an asynchronous child process using ``anyio.open_process()``. Communication uses newline-delimited JSON (NDJSON) with monotonic integer correlation IDs:
+``StdioIPCTransport`` is the default transport across all platforms. Litestar spawns the SSR worker with ``anyio.open_process()`` and exchanges newline-delimited JSON (NDJSON) messages keyed by integer request IDs:
 
 .. mermaid::
 
@@ -63,77 +58,62 @@ The default, recommended transport across all operating systems is ``StdioIPCTra
        autonumber
        participant App as Litestar Application
        participant Transport as StdioIPCTransport
-       participant Pipe as Anonymous OS Pipe
+       participant Pipe as OS Pipe
        participant Worker as Node/Bun SSR Worker
 
-       Note over App, Worker: Worker Initialization & Lifespan
        App->>Transport: start()
        Transport->>Pipe: anyio.open_process(node/bun, ssr.ts)
-       Transport->>Transport: Launch background stdout & stderr reader tasks
+       Transport->>Transport: Start background stdout & stderr readers
 
-       Note over App, Worker: Concurrent NDJSON Request Dispatch
        App->>Transport: send_request(payload)
-       Transport->>Transport: Assign monotonic correlation ID (id: 42)
-       Transport->>Pipe: stdin.send({"id": 42, "payload": ...}\n)
+       Transport->>Pipe: stdin.send({"id": 1, "method": "render", "params": ...}\n)
        Pipe->>Worker: readline "line" event
-       Worker->>Worker: Render component to HTML string
-       Worker->>Pipe: stdout.write({"id": 42, "result": {...}}\n)
+       Worker->>Worker: Render component to HTML
+       Worker->>Pipe: stdout.write({"id": 1, "result": {...}}\n)
        Pipe->>Transport: stdout reader parses NDJSON
-       Transport->>Transport: Correlate ID 42 & unblock waiting caller
-       Transport-->>App: Return render result dictionary
+       Transport-->>App: Return render result dict
 
-       Note over App, Worker: Clean Shutdown & Zero Zombies
-       App->>Transport: close()
+       App->>Transport: stop()
        Transport->>Pipe: stdin.aclose() (EOF)
-       Pipe->>Worker: readline "close" / EOF event
+       Pipe->>Worker: readline "close" event
        Worker->>Worker: process.exit(0)
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Unix Domain Sockets (UDS)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For high-concurrency production deployments on Linux and macOS where a persistent daemon pool is preferred, ``UnixSocketIPCTransport`` connects to a local POSIX socket file using ``anyio.connect_unix()``. Filesystem permissions (such as ``0600``) ensure that only the application user can dispatch render workloads, completely bypassing network firewalls and eliminating port conflicts.
+On Linux and macOS, ``UnixSocketIPCTransport`` communicates over a local ``AF_UNIX`` socket using ``anyio.connect_unix()``. If the configured socket path exceeds the macOS 104-byte ``sun_path`` limit, ``litestar-vite`` hashes the path into ``/tmp/lv-<hash>.sock``.
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Raw AnyIO TCP Stream
+TCP Stream
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When running in containerized architectures with separated frontend and backend pods, ``TCPStreamIPCTransport`` connects to remote SSR workers via ``anyio.connect_tcp()``. Unlike legacy HTTP clients, this transport operates directly on AnyIO byte streams with lightweight request framing, eliminating third-party HTTP client dependencies like ``httpx`` from the core Litestar Vite package.
+When the SSR worker runs in a separate container or host, ``TCPStreamIPCTransport`` connects via ``anyio.connect_tcp()`` and uses the same NDJSON request/response framing over the socket stream.
 
 ---------------------------------
-Windows Compatibility Analysis
+Windows Support
 ---------------------------------
 
-Cross-platform parity is a core requirement for Litestar Vite. However, supporting local sockets on Microsoft Windows presents unique challenges in the Python ecosystem:
+Python's default ``ProactorEventLoop`` on Windows does not support asynchronous ``AF_UNIX`` stream sockets in AnyIO. ``UnixSocketIPCTransport`` raises ``UnsupportedPlatformError`` on Windows; use ``StdioIPCTransport`` (the default) or ``TCPStreamIPCTransport`` on Windows.
 
-- In Python on Windows, the default asyncio event loop (``ProactorEventLoop``) does not implement asynchronous Unix Domain Sockets (``AF_UNIX``). Calling ``loop.create_unix_connection()`` or AnyIO's ``connect_unix()`` raises ``NotImplementedError``.
-- While Windows 10 (build 17063+) introduced kernel-level ``AF_UNIX`` support, Python's Windows asynchronous I/O primitives do not bind to them asynchronously through completion ports.
-
-``StdioIPCTransport`` completely resolves this disparity. Because standard input/output pipes are supported uniformly by Windows, Linux, and macOS, Litestar Vite achieves 100% feature-identical, high-performance IPC on Windows without requiring WSL2, TCP port binding, or platform-specific conditional branches in user application code.
+``StdioIPCTransport`` resolves executable shims (``.cmd`` / ``.exe``) via ``shutil.which`` and continuously drains the child ``stderr`` stream in a background task so pipe buffers do not block on Windows.
 
 ---------------------------------
-Bun Runtime Integration
+Bun Runtime Usage
 ---------------------------------
 
-While Node.js is fully supported, the Bun JavaScript runtime offers compelling advantages for server-side rendering:
-
-- **Near-Instant Cold Starts**: Bun initializes JavaScript and TypeScript bundles in under 5 milliseconds, enabling on-demand worker initialization without noticeable application startup pauses.
-- **Native TypeScript Execution**: Bun executes ``ssr.ts`` directly without requiring an ahead-of-time compilation pass during local development.
-- **Reduced Memory Footprint**: Bun's lean process architecture minimizes RSS memory usage across multi-worker deployments.
-
-To utilize Bun, configure the executable command in your worker or specify Bun in your process supervisor:
+The SSR worker entrypoint runs on both Node.js and Bun:
 
 .. docs-example: skip
 .. code-block:: bash
 
-   # Direct execution using Bun runtime
    bun run resources/ssr.ts --stdio
 
 ---------------------------------
-Python Configuration Examples
+Python Configuration
 ---------------------------------
 
-Configuring IPC SSR within a Litestar application is straightforward:
+Enable SSR in ``InertiaConfig``:
 
 .. code-block:: python
 
@@ -155,7 +135,7 @@ Configuring IPC SSR within a Litestar application is straightforward:
    vite_plugin = VitePlugin(config=vite_config)
    app = Litestar(plugins=[vite_plugin])
 
-To customize the underlying IPC transport or worker parameters directly:
+Or instantiate an IPC transport directly:
 
 .. code-block:: python
 

@@ -6,7 +6,7 @@ module so ``litestar_vite.plugin`` stays a thin re-export surface.
 
 import importlib
 import os
-from contextlib import asynccontextmanager, contextmanager, suppress
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
@@ -31,7 +31,6 @@ from litestar_vite.plugin._proxy import (
 from litestar_vite.plugin._static import StaticPlacement, StaticServerConfig, StaticServerMount
 from litestar_vite.plugin._utils import (
     build_litestar_route_prefixes,
-    create_proxy_client,
     is_non_serving_assets_cli,
     is_non_serving_context,
     log_fail,
@@ -48,7 +47,6 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
     from typing import Literal
 
-    import httpx
     from click import Group
     from litestar import Litestar
     from litestar.config.app import AppConfig
@@ -128,7 +126,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
         "_asset_loader",
         "_config",
         "_fragment_engine",
-        "_proxy_client",
         "_proxy_target",
         "_route_prefix_cache",
         "_spa_handler",
@@ -161,7 +158,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
         self._ssr_process: "ViteProcess | None" = None
         self._static_files_config: "StaticFilesConfig | None" = static_files_config
         self._proxy_target: "str | None" = None
-        self._proxy_client: "httpx.AsyncClient | None" = None
         self._route_prefix_cache: tuple[str, ...] | None = None
         self._spa_handler: "AppHandler | None" = None
 
@@ -205,38 +201,24 @@ class VitePlugin(InitPlugin, CLIPlugin):
         import urllib.request
         from urllib.parse import urlparse
 
-        from litestar_vite._typing import HTTPX_INSTALLED
-
         deadline = time.monotonic() + ssr_config.health_check_timeout
         parsed = urlparse(str(ssr_config.url or ""))
         scheme = parsed.scheme.decode("ascii") if isinstance(parsed.scheme, bytes) else str(parsed.scheme)
         netloc = parsed.netloc.decode("ascii") if isinstance(parsed.netloc, bytes) else str(parsed.netloc)
         origin = f"{scheme}://{netloc}"
 
-        if HTTPX_INSTALLED:
-            import httpx
-
-            while time.monotonic() < deadline:
-                try:
-                    response = httpx.get(origin, timeout=2.0)
-                    if response.status_code < 500:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        while time.monotonic() < deadline:
+            try:
+                with opener.open(origin, timeout=2.0) as resp:
+                    if getattr(resp, "status", 200) < 500:
                         return
-                except httpx.RequestError:
-                    pass
-                time.sleep(0.25)
-        else:
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            while time.monotonic() < deadline:
-                try:
-                    with opener.open(origin, timeout=2.0) as resp:
-                        if getattr(resp, "status", 200) < 500:
-                            return
-                except urllib.error.HTTPError as exc:
-                    if exc.code < 500:
-                        return
-                except OSError:
-                    pass
-                time.sleep(0.25)
+            except urllib.error.HTTPError as exc:
+                if exc.code < 500:
+                    return
+            except OSError:
+                pass
+            time.sleep(0.25)
 
         log_warn(
             f"Inertia SSR server did not become ready within {ssr_config.health_check_timeout}s.",
@@ -315,22 +297,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
             The AppHandler instance, or None when SPA mode is disabled/not configured.
         """
         return self._spa_handler
-
-    @property
-    def proxy_client(self) -> "httpx.AsyncClient | None":
-        """Return the shared httpx.AsyncClient for proxy requests.
-
-        The client is initialized during app lifespan (dev mode only) and provides
-        connection pooling, TLS session reuse, and HTTP/2 multiplexing benefits.
-
-        Returns:
-            The shared AsyncClient instance, or None if not initialized or not in dev mode.
-        """
-        if self._config.dev_mode:
-            from litestar_vite._typing import ensure_httpx
-
-            ensure_httpx("dev-mode HTTP proxy")
-        return self._proxy_client
 
     def get_static_server_config(self) -> StaticServerConfig:
         """Describe where the production static bundle should be served from.
@@ -839,27 +805,14 @@ class VitePlugin(InitPlugin, CLIPlugin):
         import time
         import urllib.request
 
-        from litestar_vite._typing import HTTPX_INSTALLED
-
         url = f"{self._config.protocol}://{self._config.host}:{self._config.port}/__vite_ping"
-        if HTTPX_INSTALLED:
-            import httpx
-
-            for _ in range(50):
-                try:
-                    httpx.get(url, timeout=0.1)
-                except httpx.HTTPError:
-                    time.sleep(0.1)
-                else:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        for _ in range(50):
+            try:
+                with opener.open(url, timeout=0.1):
                     return
-        else:
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            for _ in range(50):
-                try:
-                    with opener.open(url, timeout=0.1):
-                        return
-                except OSError:
-                    time.sleep(0.1)
+            except OSError:
+                time.sleep(0.1)
         log_fail("Vite dev server did not become ready.")
 
     def _run_health_check(self) -> None:
@@ -887,44 +840,23 @@ class VitePlugin(InitPlugin, CLIPlugin):
         import urllib.error
         import urllib.request
 
-        from litestar_vite._typing import HTTPX_INSTALLED
-
         start = time.time()
-
-        if HTTPX_INSTALLED:
-            import httpx
-
-            while time.time() - start < timeout:
-                if hotfile_path.exists():
-                    try:
-                        url = read_hotfile_url(hotfile_path)
-                        if url:
-                            resp = httpx.get(url, timeout=0.5, follow_redirects=True)
-                            if resp.status_code < 500:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        while time.time() - start < timeout:
+            if hotfile_path.exists():
+                try:
+                    url = read_hotfile_url(hotfile_path)
+                    if url:
+                        with opener.open(url, timeout=0.5) as resp:
+                            if getattr(resp, "status", 200) < 500:
                                 return True
-                    except OSError:
-                        pass
-                    except httpx.HTTPError:
-                        pass
+                except urllib.error.HTTPError as exc:
+                    if exc.code < 500:
+                        return True
+                except OSError:
+                    pass
 
-                time.sleep(0.1)
-        else:
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            while time.time() - start < timeout:
-                if hotfile_path.exists():
-                    try:
-                        url = read_hotfile_url(hotfile_path)
-                        if url:
-                            with opener.open(url, timeout=0.5) as resp:
-                                if getattr(resp, "status", 200) < 500:
-                                    return True
-                    except urllib.error.HTTPError as exc:
-                        if exc.code < 500:
-                            return True
-                    except OSError:
-                        pass
-
-                time.sleep(0.1)
+            time.sleep(0.1)
 
         log_fail(f"SSR framework server did not become ready within {timeout}s.")
         return False
@@ -1061,7 +993,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         This is auto-registered in `on_app_init` and handles per-worker initialization:
         - Environment variable setup (silently - each worker needs process-local env vars)
-        - Shared proxy client initialization (dev mode only, for ViteProxyMiddleware/SSRProxyController)
         - Asset loader initialization
         - SPA handler initialization
         - Route metadata injection
@@ -1081,13 +1012,8 @@ class VitePlugin(InitPlugin, CLIPlugin):
             set_environment(config=self._config, app=app)
             set_app_environment(app)
 
-        if self._config.is_dev_mode and self._config.proxy_mode is not None and not self._config.dev_mode_direct_urls:
-            with suppress(ImportError, OSError):
-                self._proxy_client = create_proxy_client(http2=self._config.http2)
-
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader(config=self._config)
-        self._asset_loader._bind_http_client(self._proxy_client)  # pyright: ignore[reportPrivateUsage]
         await self._asset_loader.initialize()
 
         if self._spa_handler is not None and not self._spa_handler.is_initialized:
@@ -1104,9 +1030,5 @@ class VitePlugin(InitPlugin, CLIPlugin):
         try:
             yield
         finally:
-            self._asset_loader._bind_http_client(None)  # pyright: ignore[reportPrivateUsage]
-            if self._proxy_client is not None:
-                await self._proxy_client.aclose()
-                self._proxy_client = None
             if self._spa_handler is not None:
                 await self._spa_handler.shutdown_async()

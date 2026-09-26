@@ -4,37 +4,12 @@ from pathlib import Path
 from typing import Any, Literal
 from unittest.mock import patch
 
-import httpx
 from litestar import Litestar
 from litestar.testing import TestClient
+from litestar.types import Send
 
 from litestar_vite.config import ExternalDevServer, PathConfig, RuntimeConfig, ViteConfig
 from litestar_vite.plugin import VitePlugin
-
-
-class _DummyStreamContext:
-    def __init__(self, response: httpx.Response) -> None:
-        self._response = response
-
-    async def __aenter__(self) -> httpx.Response:
-        return self._response
-
-    async def __aexit__(self, *_args: object) -> None:
-        return None
-
-
-class _DummyAsyncClient:
-    def __init__(self, response: httpx.Response) -> None:
-        self._response = response
-        self.stream_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
-        self.closed = False
-
-    def stream(self, *args: Any, **kwargs: Any) -> _DummyStreamContext:
-        self.stream_calls.append((args, kwargs))
-        return _DummyStreamContext(self._response)
-
-    async def aclose(self) -> None:
-        self.closed = True
 
 
 def _build_vite_app(
@@ -52,7 +27,7 @@ def _build_vite_app(
                     paths=PathConfig(
                         root=tmp_path, resource_dir=Path("resources"), bundle_dir=bundle, asset_url="/static/dist/"
                     ),
-                    runtime=runtime or RuntimeConfig(dev_mode=True, executor="node"),
+                    runtime=runtime or RuntimeConfig(dev_mode=True, executor="node", dev_mode_direct_urls=False),
                 )
             )
         ]
@@ -109,34 +84,34 @@ def test_proxy_still_wins_when_hot_file_is_present(tmp_path: Path) -> None:
     (bundle / "assets").mkdir(parents=True)
     (bundle / "assets" / "main.js").write_text("console.log('built')")
     (bundle / "hot").write_text("http://upstream")
-    proxy_client = _DummyAsyncClient(httpx.Response(200, headers={"content-type": "text/javascript"}, text="upstream"))
+    proxy_calls: list[str] = []
 
-    with patch("litestar_vite.plugin._core.create_proxy_client", return_value=proxy_client):
+    async def fake_proxy(url: str, *, send: Send, **_kwargs: Any) -> None:
+        proxy_calls.append(url)
+        await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/javascript")]})
+        await send({"type": "http.response.body", "body": b"upstream", "more_body": False})
+
+    with patch("litestar_vite.plugin._proxy._anyio_proxy_http_request", side_effect=fake_proxy):
         app = _build_vite_app(tmp_path)
         with TestClient(app=app) as client:
             response = client.get("/static/dist/assets/main.js")
 
     assert response.status_code == 200
     assert response.text == "upstream"
-    assert proxy_client.stream_calls
+    assert proxy_calls == ["http://upstream/static/dist/assets/main.js"]
 
 
 def test_external_mode_dev_without_hot_file_still_skips_static_router(tmp_path: Path) -> None:
-    """External dev mode should keep its existing no-static-router behavior.
-
-    After C2 collapses ``mode='external'`` into ``mode='framework'`` + ``external_dev_server``,
-    the ``skip_static`` gate uses ``wants_html_proxy + dev_mode + external_dev_server`` instead
-    of the legacy ``mode == 'external'`` string check. With framework defaults in dev, the
-    proxy intercepts asset URLs (returning 503 when upstream is unreachable). The point of the
-    test is that the built static file is *not* served, regardless of which downstream layer
-    answers the request.
-    """
+    """External dev mode should keep its existing no-static-router behavior."""
     bundle = tmp_path / "dist"
     (bundle / "assets").mkdir(parents=True)
     (bundle / "assets" / "main.js").write_text("console.log('built')")
 
     runtime = RuntimeConfig(
-        dev_mode=True, executor="node", external_dev_server=ExternalDevServer(target="http://localhost:4200")
+        dev_mode=True,
+        executor="node",
+        dev_mode_direct_urls=False,
+        external_dev_server=ExternalDevServer(target="http://localhost:4200"),
     )
     app = _build_vite_app(tmp_path, mode="framework", runtime=runtime)
 

@@ -15,8 +15,8 @@ Transports & Protocols
 Transport Overview
 ------------------
 
-Litestar Vite includes three specialized transports implementing :class:`BaseIPCTransport`:
+``litestar-vite`` includes three transports implementing :class:`BaseIPCTransport`:
 
-- :class:`StdioIPCTransport`: High-throughput subprocess worker operating over standard I/O anonymous pipes with NDJSON framing. Compatible with Linux, macOS, and Windows. Automatically terminates workers on stdin EOF.
-- :class:`UnixSocketIPCTransport`: POSIX local domain socket transport connecting to local daemons (e.g. ``/tmp/litestar-ssr.sock``). Linux and macOS only.
-- :class:`TCPStreamIPCTransport`: Lightweight AnyIO TCP stream transport for remote sidecars and multi-container topologies without third-party HTTP client dependencies.
+- :class:`StdioIPCTransport`: Subprocess worker communicating over standard I/O pipes with NDJSON framing. Supported on Linux, macOS, and Windows. Terminates the worker when ``stdin`` closes.
+- :class:`UnixSocketIPCTransport`: POSIX local domain socket transport (for example ``/tmp/litestar-ssr.sock``). Supported on Linux and macOS.
+- :class:`TCPStreamIPCTransport`: AnyIO TCP stream transport with NDJSON framing for remote workers and multi-container deployments.

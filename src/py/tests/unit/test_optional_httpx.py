@@ -1,51 +1,33 @@
-"""Tests validating litestar-vite behavior when httpx is optional or omitted."""
+"""Tests validating litestar-vite has zero runtime httpx dependencies."""
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
+import sys
+from pathlib import Path
 
 import pytest
-from litestar.exceptions import ImproperlyConfiguredException
 
-if TYPE_CHECKING:
-    import pytest
-
-
-def test_ensure_httpx_raises_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Validate ensure_httpx raises an ImproperlyConfiguredException when httpx is unavailable."""
-    import litestar_vite._typing as typing_module
-
-    monkeypatch.setattr(typing_module, "HTTPX_INSTALLED", False)
-    with pytest.raises(ImproperlyConfiguredException, match="requires 'httpx' to be installed"):
-        typing_module.ensure_httpx("HTTP proxy")
+from litestar_vite import ViteConfig, VitePlugin
+from litestar_vite import typing as typing_facade
 
 
-def test_ensure_httpx_passes_when_installed(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Validate ensure_httpx executes silently when httpx is marked installed."""
-    import litestar_vite._typing as typing_module
-
-    monkeypatch.setattr(typing_module, "HTTPX_INSTALLED", True)
-    typing_module.ensure_httpx("HTTP proxy")
+def test_typing_facade_excludes_httpx() -> None:
+    """Validate typing facade does not expose HTTPX_INSTALLED or ensure_httpx."""
+    assert not hasattr(typing_facade, "HTTPX_INSTALLED")
+    assert not hasattr(typing_facade, "ensure_httpx")
 
 
 def test_core_plugin_import_without_httpx(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Validate litestar_vite modules import cleanly when httpx is not in sys.modules."""
-    import litestar_vite._typing as typing_module
-
-    monkeypatch.setattr(typing_module, "HTTPX_INSTALLED", False)
-    from litestar_vite import ViteConfig, VitePlugin
+    """Validate litestar_vite operates cleanly when httpx is blocked in sys.modules."""
+    monkeypatch.setitem(sys.modules, "httpx", None)
 
     config = ViteConfig(dev_mode=False)
     plugin = VitePlugin(config=config)
     assert plugin.config.dev_mode is False
+    assert not hasattr(plugin, "proxy_client")
 
 
-def test_proxy_client_raises_without_httpx(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Validate proxy_client property raises actionable ImproperlyConfiguredException when httpx is absent."""
-    import litestar_vite._typing as typing_module
-    from litestar_vite import ViteConfig, VitePlugin
-
-    monkeypatch.setattr(typing_module, "HTTPX_INSTALLED", False)
-    plugin = VitePlugin(config=ViteConfig(dev_mode=True))
-    with pytest.raises(ImproperlyConfiguredException, match="requires 'httpx' to be installed"):
-        _ = plugin.proxy_client
+def test_pyproject_excludes_runtime_httpx() -> None:
+    """Validate pyproject.toml does not include httpx in runtime or optional dependencies."""
+    pyproject_path = Path(__file__).resolve().parents[4] / "pyproject.toml"
+    content = pyproject_path.read_text(encoding="utf-8")
+    deps_section = content.split("[dependency-groups]")[0]
+    assert "httpx" not in deps_section

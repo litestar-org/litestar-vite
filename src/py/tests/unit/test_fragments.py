@@ -19,7 +19,7 @@ class _StubFragmentTransport(BaseIPCTransport):
     """In-memory IPC transport stub for testing fragment rendering."""
 
     def __init__(self, response: dict[str, Any] | None = None, error: Exception | None = None) -> None:
-        self._response = response or {"result": {"html": "<div class=\"card\">Hello</div>"}}
+        self._response = response or {"result": {"html": '<div class="card">Hello</div>'}}
         self._error = error
         self.requests: list[dict[str, Any]] = []
 
@@ -76,10 +76,7 @@ def test_fragment_engine_css_extraction_and_cycle_guard(tmp_path: Path) -> None:
 
 def test_fragment_engine_dev_mode_omits_non_stylesheet_links(tmp_path: Path) -> None:
     """Verify dev mode does not emit stylesheet links for .vue/.tsx modules to prevent MIME errors."""
-    config = ViteConfig(
-        paths=PathConfig(root=tmp_path, asset_url="/static/"),
-        runtime=RuntimeConfig(dev_mode=True),
-    )
+    config = ViteConfig(paths=PathConfig(root=tmp_path, asset_url="/static/"), runtime=RuntimeConfig(dev_mode=True))
     loader = MagicMock()
     loader._is_hot_dev = True
     loader._vite_server_url = lambda p: f"http://127.0.0.1:5173/{p}"
@@ -102,9 +99,14 @@ async def test_fragment_engine_render_async_and_crlf_preservation(tmp_path: Path
     engine = FragmentEngine(config=config, asset_loader=loader, transport=transport)
 
     rendered = await engine.render_fragment("components/Card.vue", props={"id": 7}, mode="static")
-    assert rendered == '<link rel="stylesheet" href="/static/assets/Card.css" />\r\n<div>\r\n  <span>Hi</span>\r\n</div>'
+    assert (
+        rendered == '<link rel="stylesheet" href="/static/assets/Card.css" />\r\n<div>\r\n  <span>Hi</span>\r\n</div>'
+    )
     assert transport.requests == [
-        {"method": "render_fragment", "params": {"component": "components/Card.vue", "props": {"id": 7}, "mode": "static"}}
+        {
+            "method": "render_fragment",
+            "params": {"component": "components/Card.vue", "props": {"id": 7}, "mode": "static"},
+        }
     ]
 
 
@@ -124,7 +126,7 @@ async def test_fragment_engine_raises_on_worker_error(tmp_path: Path) -> None:
 
 
 def test_component_response_static_and_island_modes(tmp_path: Path) -> None:
-    """Verify ComponentResponse renders static HTML and interactive <vite-island> hydration markup."""
+    """Verify ComponentResponse renders static HTML and interactive <litestar-island> hydration markup."""
     config = ViteConfig(paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=False))
     plugin = VitePlugin(config=config)
     transport = _StubFragmentTransport(response={"result": {"html": "<button>Click 5</button>"}})
@@ -142,14 +144,14 @@ def test_component_response_static_and_island_modes(tmp_path: Path) -> None:
         resp_static = client.get("/static-frag")
         assert resp_static.status_code == 200
         assert resp_static.text == "<button>Click 5</button>"
-        assert "<vite-island" not in resp_static.text
+        assert "<litestar-island" not in resp_static.text
 
         resp_island = client.get("/island-frag")
         assert resp_island.status_code == 200
-        assert '<vite-island data-island-component="components/Btn.tsx"' in resp_island.text
-        assert "data-island-props=\"{" in resp_island.text or "&quot;count&quot;:5" in resp_island.text
-        assert "<button>Click 5</button></vite-island>" in resp_island.text
-        assert 'customElements.define("vite-island"' in resp_island.text
+        assert '<litestar-island data-island-component="components/Btn.tsx"' in resp_island.text
+        assert 'data-island-props="{' in resp_island.text or "&quot;count&quot;:5" in resp_island.text
+        assert "<button>Click 5</button></litestar-island>" in resp_island.text
+        assert 'customElements.define("litestar-island"' in resp_island.text
 
 
 def test_vite_fragment_jinja_callable(tmp_path: Path) -> None:
