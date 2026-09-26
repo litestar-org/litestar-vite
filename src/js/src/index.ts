@@ -1173,10 +1173,7 @@ function resolveInput(config: ResolvedPluginConfig, ssr: boolean): string | stri
 /**
  * Resolve the SSR entrypoint path for ModuleRunner dev SSR.
  */
-function resolveSsrEntrypoint(
-  config: ResolvedPluginConfig,
-  rawConfig: string | string[] | PluginConfig,
-): string | undefined {
+function resolveSsrEntrypoint(config: ResolvedPluginConfig, rawConfig: string | string[] | PluginConfig): string | undefined {
   const explicitSsr = typeof rawConfig === "object" && !Array.isArray(rawConfig) ? rawConfig.ssr : undefined
   if (typeof explicitSsr === "string") {
     return explicitSsr
@@ -1184,14 +1181,7 @@ function resolveSsrEntrypoint(
   if (Array.isArray(explicitSsr) && explicitSsr.length > 0) {
     return explicitSsr[0]
   }
-  const candidates = [
-    path.join(config.resourceDir, "ssr.tsx"),
-    path.join(config.resourceDir, "ssr.ts"),
-    "resources/ssr.tsx",
-    "resources/ssr.ts",
-    "src/ssr.tsx",
-    "src/ssr.ts",
-  ]
+  const candidates = [path.join(config.resourceDir, "ssr.tsx"), path.join(config.resourceDir, "ssr.ts"), "resources/ssr.tsx", "resources/ssr.ts", "src/ssr.tsx", "src/ssr.ts"]
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate
   }

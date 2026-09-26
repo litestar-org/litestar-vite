@@ -6,11 +6,7 @@ import { renderFragment } from "./fragments/renderer.js"
 import { manageSsrCache } from "./shared/ssr-cache.js"
 import type { DevSsrOptions, SsrRenderRequest, SsrRenderResponse } from "./shared/ssr-types.js"
 
-function resolveRequestEntrypoint(
-  root: string,
-  payloadEntrypoint: string | undefined,
-  configuredEntrypoint: string | undefined,
-): string {
+function resolveRequestEntrypoint(root: string, payloadEntrypoint: string | undefined, configuredEntrypoint: string | undefined): string {
   if (payloadEntrypoint) {
     return payloadEntrypoint
   }

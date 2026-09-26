@@ -124,9 +124,7 @@ vite = VitePlugin(
         mode="template",
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources"),
-        inertia=InertiaConfig(
-            ssr=InertiaSSRConfig(target_selector="#app", command=["node", "bootstrap/ssr/ssr.js"])
-        ),
+        inertia=InertiaConfig(ssr=InertiaSSRConfig(target_selector="#app", command=["node", "bootstrap/ssr/ssr.js"])),
         types=TypeGenConfig(output=Path("resources/generated"), generate_zod=True),
         runtime=RuntimeConfig(port=5015),
     )

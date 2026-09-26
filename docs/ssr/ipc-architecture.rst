@@ -126,4 +126,3 @@ Or instantiate an IPC transport directly:
        port=5173,
        path="/__litestar_ssr__",
    )
-
