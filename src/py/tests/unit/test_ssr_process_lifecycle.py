@@ -169,20 +169,14 @@ def test_running_sidecar_mirrors_stderr_to_terminal(tmp_path: Path, capsys: pyte
 
 
 def _build_hybrid_plugin_with_ssr(
-    tmp_path: Path,
-    *,
-    command: "list[str] | None" = None,
-    auto_start: bool = True,
-    health_check: bool = False,
-    dev_mode: bool = True,
-    start_dev_server: bool = False,
+    tmp_path: Path, *, command: list[str] | None = None, dev_mode: bool = True, start_dev_server: bool = False
 ) -> VitePlugin:
     resource_dir = tmp_path / "resources"
-    resource_dir.mkdir()
+    resource_dir.mkdir(exist_ok=True)
     (resource_dir / "index.html").write_text(
         '<!DOCTYPE html><html><head></head><body><div id="app"></div></body></html>'
     )
-    ssr_config = InertiaSSRConfig(command=command, auto_start=auto_start, health_check=health_check)
+    ssr_config = InertiaSSRConfig(command=command)
     return VitePlugin(
         config=ViteConfig(
             mode="hybrid",
@@ -194,170 +188,79 @@ def _build_hybrid_plugin_with_ssr(
     )
 
 
-def test_ssr_config_defaults_have_no_command_so_plugin_does_nothing() -> None:
-    """Without a command, the plugin must not attempt to start any SSR process."""
+def test_ssr_config_defaults() -> None:
+    """Verify InertiaSSRConfig defaults for timeout, circuit breaker, and command."""
     config = InertiaSSRConfig()
     assert config.command is None
-    assert config.auto_start is True
-    # health_check is opt-in (False default) so SSR starts non-blocking and Litestar
-    # is ready to serve requests immediately.
-    assert config.health_check is False
-    assert config.health_check_timeout > 0
     assert config.cwd is None
+    assert config.timeout == 2.0
+    assert config.fallback_to_client is True
+    assert config.circuit_breaker_enabled is True
+    assert config.circuit_breaker_failure_threshold == 3
+    assert config.circuit_breaker_reset_timeout == 30.0
 
 
-def test_server_lifespan_starts_and_stops_ssr_process_when_command_set(tmp_path: Path) -> None:
-    """server_lifespan must spawn the SSR process and stop it on shutdown."""
+def test_vite_plugin_get_ipc_transport_returns_tcp_in_dev_and_stdio_in_prod(tmp_path: Path) -> None:
+    """Verify VitePlugin.get_ipc_transport uses TCPStreamIPCTransport in dev and StdioIPCTransport in prod."""
+    from litestar_vite.ipc import StdioIPCTransport, TCPStreamIPCTransport
+
+    dev_plugin = _build_hybrid_plugin_with_ssr(tmp_path, dev_mode=True)
+    dev_transport = dev_plugin.get_ipc_transport()
+    assert isinstance(dev_transport, TCPStreamIPCTransport)
+    assert dev_transport.path == "/__litestar_ssr__"
+
+    prod_plugin = _build_hybrid_plugin_with_ssr(tmp_path, command=["node", "bootstrap/ssr/ssr.js"], dev_mode=False)
+    prod_transport = prod_plugin.get_ipc_transport()
+    assert isinstance(prod_transport, StdioIPCTransport)
+    assert prod_transport.command == ["node", "bootstrap/ssr/ssr.js"]
+
+
+def test_server_lifespan_starts_vite_process_when_start_dev_server_true(tmp_path: Path) -> None:
+    """Verify server_lifespan starts and stops ViteProcess when start_dev_server is enabled."""
     plugin = _build_hybrid_plugin_with_ssr(
-        tmp_path, command=["npm", "run", "start:ssr"], auto_start=True, health_check=False
-    )
-    app = Litestar(plugins=[plugin], middleware=[_SESSION])
-
-    fake_process = MagicMock(name="ssr_process")
-    with patch.object(VitePlugin, "_get_ssr_process", return_value=fake_process):
-        with plugin.server_lifespan(app):
-            fake_process.start.assert_called_once_with(["npm", "run", "start:ssr"], plugin.config.root_dir)
-            fake_process.stop.assert_not_called()
-        fake_process.stop.assert_called_once()
-
-
-def test_server_lifespan_owns_vite_and_ssr_once_per_invocation(tmp_path: Path) -> None:
-    """A single server lifespan owns both child processes from startup through shutdown."""
-    plugin = _build_hybrid_plugin_with_ssr(
-        tmp_path, command=["npm", "run", "start:ssr"], auto_start=True, health_check=False, start_dev_server=True
+        tmp_path, command=["node", "bootstrap/ssr/ssr.js"], dev_mode=True, start_dev_server=True
     )
     app = Litestar(plugins=[plugin], middleware=[_SESSION])
     vite_process = MagicMock(name="vite_process")
-    ssr_process = MagicMock(name="ssr_process")
 
-    with (
-        patch.object(VitePlugin, "_get_vite_process", return_value=vite_process),
-        patch.object(VitePlugin, "_get_ssr_process", return_value=ssr_process),
-    ):
+    with patch.object(VitePlugin, "_get_vite_process", return_value=vite_process):
         with plugin.server_lifespan(app):
             vite_process.start.assert_called_once()
-            ssr_process.start.assert_called_once()
             vite_process.stop.assert_not_called()
-            ssr_process.stop.assert_not_called()
 
     vite_process.stop.assert_called_once()
-    ssr_process.stop.assert_called_once()
 
 
-def test_server_lifespan_skips_ssr_start_when_auto_start_false(tmp_path: Path) -> None:
-    """auto_start=False keeps the command as documentation but does not spawn anything."""
-    plugin = _build_hybrid_plugin_with_ssr(
-        tmp_path, command=["npm", "run", "start:ssr"], auto_start=False, health_check=False
-    )
-    app = Litestar(plugins=[plugin], middleware=[_SESSION])
+def test_inertia_plugin_creates_stdio_transport_with_custom_cwd(tmp_path: Path) -> None:
+    """Verify InertiaPlugin.lifespan configures StdioIPCTransport with InertiaSSRConfig.cwd in production."""
+    from litestar.testing import create_test_client
 
-    fake_process = MagicMock(name="ssr_process")
-    with patch.object(VitePlugin, "_get_ssr_process", return_value=fake_process):
-        with plugin.server_lifespan(app):
-            pass
+    from litestar_vite.inertia import InertiaPlugin
+    from litestar_vite.ipc import StdioIPCTransport
 
-    fake_process.start.assert_not_called()
-    fake_process.stop.assert_not_called()
-
-
-def test_server_lifespan_uses_ssr_cwd_when_set(tmp_path: Path) -> None:
-    """InertiaSSRConfig.cwd overrides the default ViteConfig.root_dir."""
     custom_cwd = tmp_path / "ssr-app"
     custom_cwd.mkdir()
-    plugin = _build_hybrid_plugin_with_ssr(tmp_path, command=["npm", "run", "start:ssr"], health_check=False)
-    ssr = plugin._resolved_ssr_config()
+    plugin = _build_hybrid_plugin_with_ssr(tmp_path, command=["node", "bootstrap/ssr/ssr.js"], dev_mode=False)
+    assert isinstance(plugin.config.inertia, InertiaConfig)
+    ssr = plugin.config.inertia.ssr_config
     assert ssr is not None
     ssr.cwd = custom_cwd
 
-    app = Litestar(plugins=[plugin], middleware=[_SESSION])
-    fake_process = MagicMock(name="ssr_process")
-    with patch.object(VitePlugin, "_get_ssr_process", return_value=fake_process):
-        with plugin.server_lifespan(app):
-            pass
-
-    fake_process.start.assert_called_once_with(["npm", "run", "start:ssr"], custom_cwd)
-
-
-def test_server_lifespan_runs_health_check_when_enabled(tmp_path: Path) -> None:
-    """health_check=True invokes _run_ssr_health_check after starting the process."""
-    plugin = _build_hybrid_plugin_with_ssr(tmp_path, command=["npm", "run", "start:ssr"], health_check=True)
-    app = Litestar(plugins=[plugin], middleware=[_SESSION])
-
-    fake_process = MagicMock(name="ssr_process")
-    with (
-        patch.object(VitePlugin, "_get_ssr_process", return_value=fake_process),
-        patch.object(VitePlugin, "_run_ssr_health_check") as mock_health,
-    ):
-        with plugin.server_lifespan(app):
-            mock_health.assert_called_once()
-
-
-def test_server_lifespan_starts_ssr_in_production_mode_too(tmp_path: Path) -> None:
-    """SSR auto-start works in dev_mode=False (the Vite branch is skipped, SSR runs)."""
-    plugin = _build_hybrid_plugin_with_ssr(
-        tmp_path, command=["npm", "run", "start:ssr"], health_check=False, dev_mode=False
-    )
-    app = Litestar(plugins=[plugin], middleware=[_SESSION])
-
-    fake_process = MagicMock(name="ssr_process")
-    with patch.object(VitePlugin, "_get_ssr_process", return_value=fake_process):
-        with plugin.server_lifespan(app):
-            fake_process.start.assert_called_once_with(["npm", "run", "start:ssr"], plugin.config.root_dir)
-        fake_process.stop.assert_called_once()
-
-
-def test_server_lifespan_no_ssr_process_when_inertia_disabled(tmp_path: Path) -> None:
-    """No Inertia config → no SSR process even with hybrid-shaped ViteConfig."""
-    resource_dir = tmp_path / "resources"
-    resource_dir.mkdir()
-    (resource_dir / "index.html").write_text("<html><body><div id='app'></div></body></html>")
-    plugin = VitePlugin(
-        config=ViteConfig(
-            mode="hybrid",
-            paths=PathConfig(root=tmp_path, resource_dir=resource_dir),
-            runtime=RuntimeConfig(dev_mode=False, start_dev_server=False),
-            spa=SPAConfig(app_selector="#app"),
-            inertia=InertiaConfig(ssr=None),
-        )
-    )
-    app = Litestar(plugins=[plugin], middleware=[_SESSION])
-
-    fake_process = MagicMock(name="ssr_process")
-    with patch.object(VitePlugin, "_get_ssr_process", return_value=fake_process):
-        with plugin.server_lifespan(app):
-            pass
-
-    fake_process.start.assert_not_called()
-
-
-def test_server_lifespan_does_not_spawn_when_command_none(tmp_path: Path) -> None:
-    """Backward-compat: when the user manages the SSR Node process separately.
-
-    InertiaSSRConfig() with no ``command`` keeps the URL contract but the plugin must not
-    spawn anything. Users running ``npm run start:ssr`` in a separate terminal continue
-    to work as before.
-    """
-    plugin = _build_hybrid_plugin_with_ssr(tmp_path, command=None, health_check=False)
-    app = Litestar(plugins=[plugin], middleware=[_SESSION])
-
-    fake_process = MagicMock(name="ssr_process")
-    with patch.object(VitePlugin, "_get_ssr_process", return_value=fake_process):
-        with plugin.server_lifespan(app):
-            pass
-
-    fake_process.start.assert_not_called()
-    # Confirm SSR config is still wired (URL contract preserved for the Inertia fetcher)
-    ssr = plugin._resolved_ssr_config()
-    assert ssr is not None
-    assert ssr.url == "http://127.0.0.1:13714/render"
+    with create_test_client(route_handlers=[], plugins=[plugin], middleware=[_SESSION]) as client:
+        inertia_plugin = client.app.plugins.get(InertiaPlugin)
+        transport = inertia_plugin.ipc_transport
+        assert isinstance(transport, StdioIPCTransport)
+        assert transport.cwd == custom_cwd
+        assert transport.command == ["node", "bootstrap/ssr/ssr.js"]
 
 
 @pytest.mark.parametrize(
     "command", [["npm", "run", "start:ssr"], ["bun", "run", "start:ssr"], ["node", "bootstrap/ssr/ssr.js"]]
 )
 def test_resolved_ssr_config_returns_command_intact(tmp_path: Path, command: list[str]) -> None:
-    """The plugin returns the configured command verbatim — no rewriting."""
-    plugin = _build_hybrid_plugin_with_ssr(tmp_path, command=command, health_check=False)
-    ssr = plugin._resolved_ssr_config()
+    """Verify InertiaConfig.ssr_config returns the configured command verbatim."""
+    plugin = _build_hybrid_plugin_with_ssr(tmp_path, command=command)
+    assert isinstance(plugin.config.inertia, InertiaConfig)
+    ssr = plugin.config.inertia.ssr_config
     assert ssr is not None
     assert ssr.command == command

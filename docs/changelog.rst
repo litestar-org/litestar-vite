@@ -12,21 +12,20 @@ Litestar Vite Changelog
 
 - Added AsyncAPI 3.0 schema and TypeScript channel type generation for WebSockets, ``ChannelsPlugin``,
   and Server-Sent Events (SSE). (`#368 <https://github.com/litestar-org/litestar-vite/pull/368>`_)
-- Added multi-transport IPC subsystem (``litestar_vite.ipc``) supporting Stdio, Unix Domain Sockets,
-  and TCP socket streams with circuit breaking (`SSRCircuitBreaker`) and client-side hydration fallback. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
+- Added IPC subsystem (``litestar_vite.ipc``) using ``StdioIPCTransport`` for production ``stdio`` workers and ``TCPStreamIPCTransport`` for development Vite ``ModuleRunner`` SSR, with circuit breaking (``SSRCircuitBreaker``) and client-side hydration fallback. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
 - Removed ``httpx`` from runtime dependencies, replacing HTTP proxy and SSR calls with AnyIO byte-streaming
   and IPC transports. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
 - Added dev-mode direct asset URLs (``ViteConfig.dev_mode_direct_urls = True``) so the browser loads
   assets and HMR directly from the Vite dev server by default. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
-- Added Vite 6+ ``ModuleRunner`` dev SSR plugin and recursive importer cache invalidation for
-  in-memory SSR during development. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
+- Added Vite ``ModuleRunner`` dev SSR plugin (``RunnableDevEnvironment.runner``) and recursive importer cache
+  invalidation for in-memory SSR during development. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
 - Added server-side UI component fragment rendering (``ComponentResponse``, Jinja ``vite_fragment``
   global, and ``<litestar-island>`` custom element) with scoped CSS chunk injection from ``manifest.json``
   for HTMX partial swaps and Jinja templates. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
 - Updated Inertia HTML transform to use slot/token replacement (``<!--inertia-head-->`` and
   ``<!--inertia-body-->``) with fallback to ``#app`` selector replacement, and routed SSR requests
   through the IPC transport layer. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
-- Set the minimum supported Vite version to Vite 6+, updated scaffolding templates for Vite 8 and
+- Enforced Vite 7+ minimum runtime baseline (``>=7.0.0``), updated scaffolding templates for Vite 8 and
   ``rolldownOptions``, and bundled dev SSR, worker, and fragment entrypoints in the JS package. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
 - Upgraded Python and JavaScript dependencies and updated the Makefile upgrade workflow to use ``prek update``.
 

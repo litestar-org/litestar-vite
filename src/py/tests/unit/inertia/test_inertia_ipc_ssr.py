@@ -3,7 +3,6 @@
 from pathlib import Path
 from typing import Any
 
-import pytest
 from litestar import get
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.stores.memory import MemoryStore
@@ -68,21 +67,6 @@ def test_inject_inertia_ssr_tokens_and_crlf_preservation() -> None:
     assert '<div id="app">Body</div>' in result_dir
 
 
-def test_inertia_ssr_config_validation_and_deprecation(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verify InertiaSSRConfig validates UDS requirements and emits deprecation warning on custom URL."""
-    with pytest.warns(DeprecationWarning, match="deprecated"):
-        cfg = InertiaSSRConfig(url="http://127.0.0.1:9999/render")
-    assert cfg.transport == "tcp"
-
-    monkeypatch.setattr("litestar_vite.config._inertia.os.name", "nt")
-    with pytest.raises(ValueError, match="Windows"):
-        InertiaSSRConfig(transport="uds", socket_path="/tmp/ssr.sock")
-
-    monkeypatch.setattr("litestar_vite.config._inertia.os.name", "posix")
-    with pytest.raises(ValueError, match="socket_path"):
-        InertiaSSRConfig(transport="uds", socket_path=None)
-
-
 def test_inertia_ssr_ipc_transport_and_circuit_breaker_fallback(tmp_path: Path) -> None:
     """Verify InertiaResponse uses BaseIPCTransport and trips circuit breaker on repeated failures."""
     resource_dir = tmp_path / "resources"
@@ -92,8 +76,6 @@ def test_inertia_ssr_ipc_transport_and_circuit_breaker_fallback(tmp_path: Path) 
     )
 
     ssr_config = InertiaSSRConfig(
-        transport="stdio",
-        url=None,
         fallback_to_client=True,
         circuit_breaker_enabled=True,
         circuit_breaker_failure_threshold=2,

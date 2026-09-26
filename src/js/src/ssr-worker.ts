@@ -1,7 +1,4 @@
-import fs from "node:fs"
-import net from "node:net"
 import readline from "node:readline"
-import { PassThrough } from "node:stream"
 import { renderFragment } from "./fragments/renderer.js"
 
 interface IPCRequest {
@@ -94,7 +91,7 @@ async function processLine(line: string, writeFn: (data: string) => void): Promi
     msg = JSON.parse(trimmed) as IPCRequest
   } catch (err: unknown) {
     const detail = err instanceof Error ? err.message : String(err)
-    process.stderr.write(`[ssr-worker] Invalid NDJSON payload: ${detail}\n`)
+    process.stderr.write(`[ssr-worker] Invalid JSON payload: ${detail}\n`)
     return
   }
 
@@ -111,210 +108,38 @@ async function processLine(line: string, writeFn: (data: string) => void): Promi
   try {
     const result = await handleRender(method, params as Record<string, unknown>)
     const response: IPCResponseSuccess = { id: requestId, result }
-    writeFn(JSON.stringify(response) + "\n")
+    writeFn(`${JSON.stringify(response)}\n`)
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err)
     const response: IPCResponseError = { id: requestId, error: errorMsg }
-    writeFn(JSON.stringify(response) + "\n")
-  }
-}
-
-async function handleHttpPayload(bodyStr: string, socket: net.Socket): Promise<void> {
-  let msg: IPCRequest = {}
-  try {
-    msg = bodyStr ? (JSON.parse(bodyStr) as IPCRequest) : {}
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err)
-    const errBody = JSON.stringify({ id: null, error: errorMsg })
-    socket.write(
-      `HTTP/1.1 400 Bad Request\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(errBody)}\r\nConnection: close\r\n\r\n${errBody}`,
-    )
-    socket.end()
-    return
-  }
-
-  const requestId = msg.id ?? 0
-  const method = msg.method ?? "render"
-  const params = msg.params ??
-    msg.payload ?? {
-      component: msg.component,
-      props: msg.props,
-      page: msg.page,
-      entrypoint: msg.entrypoint,
-    }
-
-  try {
-    const result = await handleRender(method, params as Record<string, unknown>)
-    const response: IPCResponseSuccess = { id: requestId, result }
-    const resBody = JSON.stringify(response)
-    socket.write(`HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(resBody)}\r\nConnection: close\r\n\r\n${resBody}`)
-    socket.end()
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err)
-    const response: IPCResponseError = { id: requestId, error: errorMsg }
-    const resBody = JSON.stringify(response)
-    socket.write(
-      `HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(resBody)}\r\nConnection: close\r\n\r\n${resBody}`,
-    )
-    socket.end()
+    writeFn(`${JSON.stringify(response)}\n`)
   }
 }
 
 function main(): void {
-  const args = process.argv.slice(2)
-  let mode: "stdio" | "socket" | "port" = "stdio"
-  let socketPath: string | null = null
-  let port: number | null = null
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: false,
+    crlfDelay: Number.POSITIVE_INFINITY,
+  })
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]
-    if (arg === "--stdio") {
-      mode = "stdio"
-    } else if (arg === "--socket" && i + 1 < args.length) {
-      mode = "socket"
-      socketPath = args[++i]
-    } else if (arg === "--port" && i + 1 < args.length) {
-      mode = "port"
-      port = Number.parseInt(args[++i], 10)
-    }
-  }
-
-  if (!socketPath && process.env.INERTIA_SSR_SOCKET) {
-    mode = "socket"
-    socketPath = process.env.INERTIA_SSR_SOCKET
-  }
-  if (!port && process.env.INERTIA_SSR_PORT) {
-    mode = "port"
-    port = Number.parseInt(process.env.INERTIA_SSR_PORT, 10)
-  }
-
-  if (mode === "stdio") {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      terminal: false,
-      crlfDelay: Number.POSITIVE_INFINITY,
+  rl.on("line", (line: string) => {
+    void processLine(line, (data: string) => {
+      process.stdout.write(data)
     })
+  })
 
-    rl.on("line", (line: string) => {
-      void processLine(line, (data: string) => {
-        process.stdout.write(data)
-      })
-    })
+  rl.on("close", () => {
+    process.exit(0)
+  })
 
-    rl.on("close", () => {
-      process.exit(0)
-    })
+  process.stdin.on("end", () => {
+    process.exit(0)
+  })
 
-    process.stdin.on("end", () => {
-      process.exit(0)
-    })
-
-    process.on("SIGINT", () => process.exit(0))
-    process.on("SIGTERM", () => process.exit(0))
-  } else if (mode === "socket" && socketPath) {
-    try {
-      if (fs.existsSync(socketPath)) {
-        fs.unlinkSync(socketPath)
-      }
-    } catch {
-      // Ignore cleanup error
-    }
-
-    const server = net.createServer((socket) => {
-      const rl = readline.createInterface({
-        input: socket,
-        terminal: false,
-        crlfDelay: Number.POSITIVE_INFINITY,
-      })
-
-      rl.on("line", (line: string) => {
-        void processLine(line, (data: string) => {
-          socket.write(data)
-        })
-      })
-    })
-
-    const cleanup = () => {
-      try {
-        if (socketPath && fs.existsSync(socketPath)) {
-          fs.unlinkSync(socketPath)
-        }
-      } catch {
-        // Ignore cleanup error
-      }
-      process.exit(0)
-    }
-
-    process.on("SIGINT", cleanup)
-    process.on("SIGTERM", cleanup)
-    process.on("exit", () => {
-      try {
-        if (socketPath && fs.existsSync(socketPath)) {
-          fs.unlinkSync(socketPath)
-        }
-      } catch {
-        // Ignore
-      }
-    })
-
-    server.listen(socketPath, () => {
-      process.stderr.write(`[ssr-worker] Listening on Unix socket: ${socketPath}\n`)
-    })
-  } else if (mode === "port" && port) {
-    const server = net.createServer((socket) => {
-      let initialized = false
-      let buffer = Buffer.alloc(0)
-
-      socket.on("data", (chunk: Buffer) => {
-        if (!initialized) {
-          buffer = Buffer.concat([buffer, chunk])
-          const raw = buffer.toString("latin1")
-          if (raw.startsWith("POST ") || raw.startsWith("GET ") || raw.startsWith("OPTIONS ")) {
-            const headerEnd = buffer.indexOf("\r\n\r\n")
-            if (headerEnd !== -1) {
-              const headerPart = buffer.subarray(0, headerEnd).toString("utf-8")
-              let contentLength = 0
-              for (const headerLine of headerPart.split("\r\n")) {
-                if (headerLine.toLowerCase().startsWith("content-length:")) {
-                  contentLength = Number.parseInt(headerLine.split(":")[1].trim(), 10) || 0
-                  break
-                }
-              }
-              const bodyBytes = buffer.subarray(headerEnd + 4)
-              if (bodyBytes.length >= contentLength) {
-                initialized = true
-                const bodyStr = bodyBytes.subarray(0, contentLength).toString("utf-8")
-                void handleHttpPayload(bodyStr, socket)
-              }
-            }
-            return
-          }
-
-          initialized = true
-          const passThrough = new PassThrough()
-          passThrough.write(buffer)
-          socket.pipe(passThrough)
-
-          const rl = readline.createInterface({
-            input: passThrough,
-            terminal: false,
-            crlfDelay: Number.POSITIVE_INFINITY,
-          })
-
-          rl.on("line", (line: string) => {
-            void processLine(line, (data: string) => {
-              socket.write(data)
-            })
-          })
-        }
-      })
-    })
-
-    server.listen(port, "127.0.0.1", () => {
-      process.stderr.write(`[ssr-worker] Listening on TCP port: ${port}\n`)
-    })
-  }
+  process.on("SIGINT", () => process.exit(0))
+  process.on("SIGTERM", () => process.exit(0))
 }
 
 main()

@@ -53,7 +53,6 @@ if TYPE_CHECKING:
     from litestar.types import ControllerRouterHandler, ExceptionHandlersMap
 
     from litestar_vite.config import ViteConfig
-    from litestar_vite.config._inertia import InertiaSSRConfig
     from litestar_vite.fragments import FragmentEngine
     from litestar_vite.handler import AppHandler
     from litestar_vite.plugin._static import StaticFilesConfig
@@ -129,7 +128,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
         "_proxy_target",
         "_route_prefix_cache",
         "_spa_handler",
-        "_ssr_process",
         "_static_files_config",
         "_vite_process",
     )
@@ -155,7 +153,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
         self._asset_loader = asset_loader
         self._fragment_engine: "FragmentEngine | None" = None
         self._vite_process: "ViteProcess | None" = None
-        self._ssr_process: "ViteProcess | None" = None
         self._static_files_config: "StaticFilesConfig | None" = static_files_config
         self._proxy_target: "str | None" = None
         self._route_prefix_cache: tuple[str, ...] | None = None
@@ -175,55 +172,41 @@ class VitePlugin(InitPlugin, CLIPlugin):
             return False
         return is_non_serving_context()
 
-    def _get_ssr_process(self) -> ViteProcess:
-        """Get or create the SSR process manager lazily.
+    def get_ipc_transport(self) -> Any:
+        """Resolve the IPC transport for the active runtime mode.
 
-        Returns a separate ViteProcess instance so SSR has its own tracked cleanup
-        and stop() lifecycle independent of Vite.
+        In development mode, returns an HTTP/1.1 TCP transport targeting the
+        active Vite dev server's ``/__litestar_ssr__`` endpoint. In production
+        mode, returns a ``StdioIPCTransport`` targeting the built SSR worker.
+
+        Returns:
+            Configured BaseIPCTransport instance.
         """
-        if self._ssr_process is None:
-            self._ssr_process = ViteProcess(executor=self._config.executor)
-        return self._ssr_process
+        from litestar_vite.ipc import StdioIPCTransport, TCPStreamIPCTransport
 
-    def _resolved_ssr_config(self) -> "InertiaSSRConfig | None":
-        """Return the active InertiaSSRConfig when Inertia + SSR are enabled."""
+        if self._config.is_dev_mode:
+            host = self._config.host
+            port = self._config.port
+            hotfile_path = self._resolve_hotfile_path()
+            if hotfile_path.is_file():
+                hot_url = read_hotfile_url(hotfile_path)
+                if hot_url:
+                    parsed = urlsplit(hot_url)
+                    if parsed.hostname:
+                        host = parsed.hostname
+                    if parsed.port:
+                        port = parsed.port
+            if host in {"::", "[::]", "localhost"} or host.startswith("0.0.0."):
+                host = "127.0.0.1"
+            return TCPStreamIPCTransport(host=host, port=port, path="/__litestar_ssr__")
+
         from litestar_vite.config._inertia import InertiaConfig
 
         inertia = self._config.inertia
-        if not isinstance(inertia, InertiaConfig):
-            return None
-        return inertia.ssr_config
-
-    def _run_ssr_health_check(self, ssr_config: "InertiaSSRConfig") -> None:
-        """Poll the SSR url until it responds (or until timeout)."""
-        import time
-        import urllib.error
-        import urllib.request
-        from urllib.parse import urlparse
-
-        deadline = time.monotonic() + ssr_config.health_check_timeout
-        parsed = urlparse(str(ssr_config.url or ""))
-        scheme = parsed.scheme.decode("ascii") if isinstance(parsed.scheme, bytes) else str(parsed.scheme)
-        netloc = parsed.netloc.decode("ascii") if isinstance(parsed.netloc, bytes) else str(parsed.netloc)
-        origin = f"{scheme}://{netloc}"
-
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        while time.monotonic() < deadline:
-            try:
-                with opener.open(origin, timeout=2.0) as resp:
-                    if getattr(resp, "status", 200) < 500:
-                        return
-            except urllib.error.HTTPError as exc:
-                if exc.code < 500:
-                    return
-            except OSError:
-                pass
-            time.sleep(0.25)
-
-        log_warn(
-            f"Inertia SSR server did not become ready within {ssr_config.health_check_timeout}s.",
-            level=self._config.logging_config.level,
-        )
+        ssr_config = inertia.ssr_config if isinstance(inertia, InertiaConfig) else None
+        command = ssr_config.command if ssr_config is not None else None
+        cwd = (ssr_config.cwd if ssr_config is not None else None) or self._config.root_dir
+        return StdioIPCTransport(command=command or ["node", "bootstrap/ssr/ssr.js"], cwd=cwd)
 
     @property
     def config(self) -> "ViteConfig":
@@ -925,21 +908,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         self._export_types_sync(app)
 
-        ssr_config = self._resolved_ssr_config()
-        ssr_uses_stdio_ipc = (
-            ssr_config is not None
-            and ssr_config.transport == "stdio"
-            and ssr_config.command is not None
-            and ("--stdio" in ssr_config.command or ssr_config.url is None)
-        )
-        ssr_should_start = (
-            ssr_config is not None
-            and ssr_config.command is not None
-            and ssr_config.auto_start
-            and not ssr_uses_stdio_ipc
-        )
-        ssr_process: ViteProcess | None = None
-
         if self._config.is_dev_mode and self._config.runtime.start_dev_server:
             ext = self._config.runtime.external_dev_server
             is_external = isinstance(ext, ExternalDevServer) and ext.enabled
@@ -954,38 +922,12 @@ class VitePlugin(InitPlugin, CLIPlugin):
                 vite_process.start(command_to_run, self._config.root_dir)
                 if self._config.health_check and not is_external:
                     self._run_health_check()
-                if ssr_should_start and ssr_config is not None:
-                    ssr_process = self._start_ssr_process(ssr_config)
                 yield
             finally:
-                self._stop_ssr_process(ssr_process)
                 if vite_process is not None:
                     vite_process.stop()
-        elif ssr_should_start and ssr_config is not None:
-            try:
-                ssr_process = self._start_ssr_process(ssr_config)
-                yield
-            finally:
-                self._stop_ssr_process(ssr_process)
         else:
             yield
-
-    def _start_ssr_process(self, ssr_config: "InertiaSSRConfig") -> "ViteProcess":
-        """Spawn the SSR /render Node process and run an optional health check."""
-        if ssr_config.command is None:  # pragma: no cover - guarded by callers
-            msg = "InertiaSSRConfig.command must be set to spawn the SSR process"
-            raise ValueError(msg)
-        process = self._get_ssr_process()
-        cwd = ssr_config.cwd or self._config.root_dir
-        process.start(ssr_config.command, cwd)
-        if ssr_config.health_check:
-            self._run_ssr_health_check(ssr_config)
-        return process
-
-    def _stop_ssr_process(self, ssr_process: "ViteProcess | None") -> None:
-        """Stop the SSR process if one was started."""
-        if ssr_process is not None:
-            ssr_process.stop()
 
     @asynccontextmanager
     async def lifespan(self, app: "Litestar") -> "AsyncGenerator[None, None]":

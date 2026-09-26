@@ -1,4 +1,4 @@
-"""Asynchronous TCP stream transport supporting both NDJSON and HTTP/1.1 framing with zero HTTPX dependencies."""
+"""Asynchronous HTTP/1.1 TCP stream transport for communicating with Vite's dev SSR middleware."""
 
 from typing import Any
 
@@ -46,11 +46,11 @@ def _decode_chunked_http_body(body_buffer: bytearray) -> bytes:
     return b"".join(decoded_chunks)
 
 
-def _parse_tcp_response(raw_response: bytearray) -> dict[str, Any]:
-    """Parse raw TCP response bytes as HTTP/1.1 or NDJSON into a dictionary.
+def _parse_http_response(raw_response: bytearray) -> dict[str, Any]:
+    """Parse raw HTTP/1.1 response bytes into a dictionary.
 
     Args:
-        raw_response: Mutable bytearray of received TCP response bytes.
+        raw_response: Mutable bytearray of received HTTP/1.1 response bytes.
 
     Returns:
         Decoded payload dictionary.
@@ -58,61 +58,53 @@ def _parse_tcp_response(raw_response: bytearray) -> dict[str, Any]:
     Raises:
         IPCError: If response is incomplete or reports an upstream error status.
     """
-    if raw_response.startswith(b"HTTP/1."):
-        header_end = raw_response.find(b"\r\n\r\n")
-        if header_end == -1:
-            msg = "Incomplete HTTP response from SSR server"
-            raise IPCError(msg)
+    header_end = raw_response.find(b"\r\n\r\n")
+    if header_end == -1:
+        msg = "Incomplete HTTP response from SSR server"
+        raise IPCError(msg)
 
-        header_part = bytes(raw_response[:header_end])
-        body_part = bytearray(raw_response[header_end + 4 :])
+    header_part = bytes(raw_response[:header_end])
+    body_part = bytearray(raw_response[header_end + 4 :])
 
-        status_line = header_part.split(b"\r\n", 1)[0].decode("latin-1")
-        status_parts = status_line.split(" ", 2)
-        status_code = int(status_parts[1]) if len(status_parts) > 1 else 200
+    status_line = header_part.split(b"\r\n", 1)[0].decode("latin-1")
+    status_parts = status_line.split(" ", 2)
+    status_code = int(status_parts[1]) if len(status_parts) > 1 else 200
 
-        is_chunked = False
-        for line in header_part.split(b"\r\n")[1:]:
-            if b":" in line:
-                k, v = line.split(b":", 1)
-                if k.strip().lower() == b"transfer-encoding" and b"chunked" in v.lower():
-                    is_chunked = True
-                    break
+    is_chunked = False
+    for line in header_part.split(b"\r\n")[1:]:
+        if b":" in line:
+            k, v = line.split(b":", 1)
+            if k.strip().lower() == b"transfer-encoding" and b"chunked" in v.lower():
+                is_chunked = True
+                break
 
-        decoded_body = _decode_chunked_http_body(body_part) if is_chunked else bytes(body_part)
+    decoded_body = _decode_chunked_http_body(body_part) if is_chunked else bytes(body_part)
 
-        if status_code != 200:
-            err_msg = decoded_body.decode("utf-8", errors="replace")
-            msg = f"Upstream SSR server returned HTTP {status_code}: {err_msg}"
-            raise IPCError(msg)
+    if status_code != 200:
+        err_msg = decoded_body.decode("utf-8", errors="replace")
+        msg = f"Upstream SSR server returned HTTP {status_code}: {err_msg}"
+        raise IPCError(msg)
 
-        result: dict[str, Any] = decode_json(decoded_body)
-        return result
-
-    first_line, _, _ = raw_response.partition(b"\n")
-    res: dict[str, Any] = decode_json(bytes(first_line.strip()))
-    if res.get("error") is not None:
-        raise IPCError(str(res["error"]))
-    return res
+    result: dict[str, Any] = decode_json(decoded_body)
+    return result
 
 
 class TCPStreamIPCTransport(BaseIPCTransport):
-    """Asynchronous TCP transport communicating directly over AnyIO socket streams."""
+    """Asynchronous HTTP/1.1 POST transport over AnyIO TCP socket streams for Vite dev SSR."""
 
     __slots__ = ("_host", "_path", "_port")
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 13714, path: str | None = "/render") -> None:
+    def __init__(self, host: str = "127.0.0.1", port: int = 5173, path: str = "/__litestar_ssr__") -> None:
         """Initialize the TCP stream transport.
 
         Args:
             host: Target hostname or IP address.
             port: Target TCP port number.
-            path: Optional HTTP endpoint path. When present, uses HTTP/1.1 POST framing.
-                When None, uses pure line-delimited NDJSON.
+            path: HTTP endpoint path on the Vite dev server.
         """
         self._host = host
         self._port = port
-        self._path = path
+        self._path = path if path.startswith("/") else f"/{path}"
 
     @property
     def host(self) -> str:
@@ -133,11 +125,11 @@ class TCPStreamIPCTransport(BaseIPCTransport):
         return self._port
 
     @property
-    def path(self) -> str | None:
-        """Return the configured HTTP path or None.
+    def path(self) -> str:
+        """Return the configured HTTP endpoint path.
 
         Returns:
-            Endpoint path string or None.
+            Endpoint path string.
         """
         return self._path
 
@@ -159,7 +151,7 @@ class TCPStreamIPCTransport(BaseIPCTransport):
         return
 
     async def send_request(self, payload: dict[str, Any], timeout: float = 10.0) -> dict[str, Any]:
-        """Send a request over TCP and await the decoded JSON response.
+        """Send an HTTP/1.1 POST request over TCP and await the decoded JSON response.
 
         Args:
             payload: Request dictionary payload.
@@ -176,17 +168,13 @@ class TCPStreamIPCTransport(BaseIPCTransport):
             with anyio.fail_after(timeout):
                 async with await anyio.connect_tcp(self._host, self._port) as stream:
                     body = encode_json(payload)
-                    if self._path:
-                        path_str = self._path if self._path.startswith("/") else f"/{self._path}"
-                        req = (
-                            f"POST {path_str} HTTP/1.1\r\n"
-                            f"Host: {self._host}:{self._port}\r\n"
-                            "Content-Type: application/json\r\n"
-                            f"Content-Length: {len(body)}\r\n"
-                            "Connection: close\r\n\r\n"
-                        ).encode("latin-1") + body
-                    else:
-                        req = body + b"\n"
+                    req = (
+                        f"POST {self._path} HTTP/1.1\r\n"
+                        f"Host: {self._host}:{self._port}\r\n"
+                        "Content-Type: application/json\r\n"
+                        f"Content-Length: {len(body)}\r\n"
+                        "Connection: close\r\n\r\n"
+                    ).encode("latin-1") + body
 
                     await stream.send(req)
 
@@ -202,7 +190,7 @@ class TCPStreamIPCTransport(BaseIPCTransport):
                         msg = "TCP server closed connection before sending response"
                         raise IPCError(msg)
 
-                    return _parse_tcp_response(raw_response)
+                    return _parse_http_response(raw_response)
 
         except TimeoutError as exc:
             msg = f"TCP request to {self._host}:{self._port} timed out after {timeout} seconds"

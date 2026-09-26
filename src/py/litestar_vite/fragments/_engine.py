@@ -34,22 +34,22 @@ class FragmentEngine:
         self._transport = transport
 
     def _get_transport(self) -> Any:
-        """Resolve or lazily initialize the IPC transport from transport manager.
+        """Resolve or lazily initialize the IPC transport for the active runtime mode.
 
         Returns:
             The resolved BaseIPCTransport instance.
-
-        Raises:
-            ImproperlyConfiguredException: If no transport is provided and IPCTransportManager fails.
         """
         if self._transport is None:
-            try:
-                from litestar_vite.ipc import IPCTransportManager
+            from litestar_vite.ipc import StdioIPCTransport, TCPStreamIPCTransport
 
-                self._transport = IPCTransportManager.create_transport()
-            except (ImportError, AttributeError) as exc:
-                msg = f"No IPC transport provided and IPCTransportManager could not create one: {exc}"
-                raise ImproperlyConfiguredException(msg) from exc
+            if getattr(self._config, "is_dev_mode", False):
+                host = getattr(self._config, "host", "127.0.0.1")
+                port = getattr(self._config, "port", 5173)
+                if host in {"::", "[::]", "localhost"} or host.startswith("0.0.0."):
+                    host = "127.0.0.1"
+                self._transport = TCPStreamIPCTransport(host=host, port=port, path="/__litestar_ssr__")
+            else:
+                self._transport = StdioIPCTransport(cwd=getattr(self._config, "root_dir", None))
         return self._transport
 
     def get_component_css_urls(self, component: str) -> list[str]:

@@ -1,20 +1,16 @@
 """Vue + Inertia.js with server-side rendering (hybrid mode).
 
 Demonstrates the Inertia SSR contract:
-- ``InertiaSSRConfig(command=...)`` tells the plugin to spawn the Node /render
-  server (port 13714 by default) alongside the Vite dev server. Litestar POSTs
-  the page payload from inside the handler frame and injects the returned head
-  tags + body into the SPA shell.
+- In development mode, Vite 7+ renders SSR in-memory via ``RunnableDevEnvironment.runner``.
+- In production mode, ``InertiaSSRConfig(command=...)`` spawns the built Node stdio worker
+  (``bootstrap/ssr/ssr.js``) and communicates over ``stdin``/``stdout`` pipes.
 
-One command, two processes:
+One command:
 
 .. code-block:: bash
 
     npm install
     litestar --app-dir examples/vue-inertia-ssr run
-
-The Inertia SSR HTTP path is independent of the dev ``proxy_mode``;
-single-port via ASGI still applies to browser traffic.
 """
 
 import os
@@ -110,13 +106,9 @@ class LibraryController(Controller):
 
 vite = VitePlugin(
     config=ViteConfig(
-        # mode="hybrid" auto-derives from Inertia + index.html presence
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources"),
-        # The plugin starts the Node /render server itself via the configured command —
-        # no second terminal needed. Litestar POSTs to InertiaSSRConfig.url
-        # (default 127.0.0.1:13714/render) inside the handler frame.
-        inertia=InertiaConfig(ssr=InertiaSSRConfig(command=["npm", "run", "dev:ssr"])),
+        inertia=InertiaConfig(ssr=InertiaSSRConfig(command=["node", "bootstrap/ssr/ssr.js"])),
         types=TypeGenConfig(output=Path("resources/generated"), generate_zod=True),
         runtime=RuntimeConfig(port=5014),
     )

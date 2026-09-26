@@ -2,7 +2,7 @@
 IPC Transports & Protocols
 ==========================
 
-The ``litestar_vite.ipc`` package provides cross-platform inter-process communication transports, data structures, and lifecycle managers connecting Litestar to frontend SSR workers.
+The ``litestar_vite.ipc`` package provides cross-platform inter-process communication transports, data structures, and circuit breakers connecting Litestar to frontend SSR workers and the Vite dev server.
 
 Transports & Protocols
 ----------------------
@@ -15,8 +15,8 @@ Transports & Protocols
 Transport Overview
 ------------------
 
-``litestar-vite`` includes three transports implementing :class:`BaseIPCTransport`:
+``litestar-vite`` includes two transports implementing :class:`BaseIPCTransport`:
 
-- :class:`StdioIPCTransport`: Subprocess worker communicating over standard I/O pipes with NDJSON framing. Supported on Linux, macOS, and Windows. Terminates the worker when ``stdin`` closes.
-- :class:`UnixSocketIPCTransport`: POSIX local domain socket transport (for example ``/tmp/litestar-ssr.sock``). Supported on Linux and macOS.
-- :class:`TCPStreamIPCTransport`: AnyIO TCP stream transport with NDJSON framing for remote workers and multi-container deployments.
+- :class:`StdioIPCTransport`: Production subprocess worker communicating over standard I/O pipes (``stdin``/``stdout``) with newline-delimited JSON framing. Supported on Linux, macOS, and Windows. Terminates the worker automatically when ``stdin`` closes.
+- :class:`TCPStreamIPCTransport`: AnyIO HTTP/1.1 transport used in development mode to dispatch SSR and fragment render requests to the running Vite dev server's ``/__litestar_ssr__`` endpoint.
+

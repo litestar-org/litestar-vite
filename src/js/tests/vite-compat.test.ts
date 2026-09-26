@@ -3,7 +3,7 @@ import {
   buildBundlerOptions,
   buildInputOptions,
   hmrServerConfig,
-  isVite6Plus,
+  isVite7Plus,
   isVite81Plus,
   isVite8Plus,
   mergeDefinedHmrOptions,
@@ -75,9 +75,9 @@ describe("vite-compat", () => {
   })
 
   describe("version floor", () => {
-    it("recognizes Vite 6+ runtime baseline", () => {
-      expect(isVite6Plus).toBe(true)
-      expect(viteMajor).toBeGreaterThanOrEqual(6)
+    it("recognizes Vite 7+ runtime baseline", () => {
+      expect(isVite7Plus).toBe(true)
+      expect(viteMajor).toBeGreaterThanOrEqual(7)
     })
   })
 })

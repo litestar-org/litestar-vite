@@ -1,10 +1,8 @@
 """Inertia.js configuration classes."""
 
-import os
-import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from litestar_vite.config._constants import empty_dict_factory, empty_set_factory
 
@@ -15,23 +13,14 @@ __all__ = ("InertiaConfig", "InertiaSSRConfig", "InertiaTypeGenConfig")
 class InertiaSSRConfig:
     """Server-side rendering settings for Inertia.js.
 
-    Inertia SSR runs a separate Node or worker process that renders the initial HTML for an
-    Inertia page object. Litestar sends the page payload to the SSR worker
-    and injects the returned head tags and body markup into the HTML response.
+    In development mode, Inertia SSR uses Vite 7+'s ``RunnableDevEnvironment.runner``
+    inside the already-running Vite dev server over ``/__litestar_ssr__``.
 
-    When ``command`` is set, the plugin spawns the Node /render server in the
-    server lifespan (mirroring Vite process management) and tears it down on
-    shutdown. This makes SSR examples self-contained — no second terminal needed.
-
-    Notes:
-        - This is *not* Litestar-Vite's framework proxy mode (``mode="framework"``; aliases: ``mode="ssr"`` / ``mode="ssg"``).
-        - When enabled, failures to contact the SSR server can fall back to client hydration when fallback_to_client is True.
+    In production mode, Litestar spawns the built SSR bundle as a managed subprocess
+    communicating over ``stdin``/``stdout`` pipes (`StdioIPCTransport`).
     """
 
     enabled: bool = True
-    transport: Literal["stdio", "uds", "tcp"] = "stdio"
-    socket_path: Path | str | None = None
-    url: str | None = "http://127.0.0.1:13714/render"
     timeout: float = 2.0
     target_selector: str = "#app"
     """CSS selector for the element whose outer HTML is replaced by the SSR-rendered body.
@@ -44,37 +33,14 @@ class InertiaSSRConfig:
     """
 
     command: list[str] | None = None
-    """Command to start the Node /render server, e.g. ``["npm", "run", "start:ssr"]``.
+    """Command to start the production stdio SSR worker, e.g. ``["node", "bootstrap/ssr/ssr.js"]``.
 
-    When set, the plugin spawns the command as a subprocess in the server lifespan
-    and stops it on shutdown. Set to ``None`` to disable auto-start (run the SSR
-    server manually in a separate terminal).
+    When ``None`` in production mode, defaults to ``["node", "bootstrap/ssr/ssr.js"]``
+    when the SSR bundle exists under the project root.
     """
 
     cwd: Path | None = None
     """Working directory for the SSR command. Defaults to ``ViteConfig.root_dir`` when None."""
-
-    auto_start: bool = True
-    """When True and ``command`` is set, the plugin starts the Node SSR process in lifespan.
-
-    Set to False to keep the command around for documentation but skip auto-start
-    (useful when running under an external process manager).
-    """
-
-    health_check: bool = False
-    """When True, poll the SSR ``url`` until it responds before completing app startup.
-
-    Default is False so the SSR process starts in the background and Litestar can serve
-    requests immediately. Set to True if you want startup to block until /render is ready
-    (catches misconfigured commands early at the cost of slower boot).
-    """
-
-    health_check_timeout: float = 10.0
-    """Seconds to wait for the SSR endpoint to become reachable during startup.
-
-    Only consulted when ``health_check`` is True. On timeout the plugin logs a warning
-    and continues — startup is not aborted.
-    """
 
     fallback_to_client: bool = True
     """Whether to fall back gracefully to client-side hydration if SSR rendering fails."""
@@ -87,53 +53,6 @@ class InertiaSSRConfig:
 
     circuit_breaker_reset_timeout: float = 30.0
     """Cooldown seconds to wait before probing SSR worker health after tripping."""
-
-    max_consecutive_failures: int | None = None
-    """Alias for circuit_breaker_failure_threshold."""
-
-    circuit_breaker_cooldown_seconds: float | None = None
-    """Alias for circuit_breaker_reset_timeout."""
-
-    def __post_init__(self) -> None:
-        """Validate and normalize SSR configuration options.
-
-        Ensures transport parameters and timeouts satisfy runtime invariants
-        across POSIX and Windows platforms.
-        """
-        if self.max_consecutive_failures is not None:
-            self.circuit_breaker_failure_threshold = self.max_consecutive_failures
-        else:
-            self.max_consecutive_failures = self.circuit_breaker_failure_threshold
-
-        if self.circuit_breaker_cooldown_seconds is not None:
-            self.circuit_breaker_reset_timeout = self.circuit_breaker_cooldown_seconds
-        else:
-            self.circuit_breaker_cooldown_seconds = self.circuit_breaker_reset_timeout
-
-        if self.url is not None and self.url != "http://127.0.0.1:13714/render" and self.transport == "stdio":
-            warnings.warn(
-                "Configuring 'url' in InertiaSSRConfig is deprecated in favor of 'transport=\"stdio\"' "
-                "or 'transport=\"uds\"'. Defaulting transport to 'tcp' for backward compatibility.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            self.transport = "tcp"
-
-        if self.transport == "tcp" and self.url is None:
-            self.url = "http://127.0.0.1:13714/render"
-
-        if self.transport == "uds":
-            if os.name == "nt":
-                msg = (
-                    "Unix domain socket transport ('uds') is not supported on Windows. "
-                    "Use 'stdio' (default) or 'tcp' transport instead."
-                )
-                raise ValueError(msg)
-            if self.socket_path is None:
-                msg = "InertiaSSRConfig with transport='uds' requires 'socket_path'."
-                raise ValueError(msg)
-            if isinstance(self.socket_path, str):
-                self.socket_path = Path(self.socket_path)
 
 
 @dataclass
@@ -155,9 +74,6 @@ class InertiaConfig:
         redirect_404: Path for 404 request redirects.
         extra_static_page_props: Static props added to every page response.
         extra_session_page_props: Session keys to include in page props.
-        transport: Default IPC transport mode ("stdio", "uds", "tcp").
-        socket_path: Unix domain socket path for "uds" transport.
-        ssr_url: Deprecated URL for TCP-based SSR render endpoint.
     """
 
     root_template: str = "index.html"
@@ -231,8 +147,8 @@ class InertiaConfig:
     ssr: InertiaSSRConfig | bool | None = None
     """Enable server-side rendering (SSR) for Inertia responses.
 
-    When enabled, full-page HTML responses will be pre-rendered by a Node SSR server
-    and injected into the SPA HTML before returning to the client.
+    When enabled, full-page HTML responses will be pre-rendered via Vite's
+    ModuleRunner in development mode or a managed stdio worker in production mode.
 
     Supports:
         - True: enable with defaults -> ``InertiaSSRConfig()``
@@ -276,32 +192,10 @@ class InertiaConfig:
     See: https://laravel.com/docs/precognition
     """
 
-    transport: Literal["stdio", "uds", "tcp"] = "stdio"
-    """Default transport mode for SSR communication ('stdio', 'uds', 'tcp')."""
-
-    socket_path: Path | str | None = None
-    """Unix domain socket path when using transport='uds'."""
-
-    ssr_url: str | None = None
-    """Deprecated: use transport='stdio' or 'uds'. When provided, transport defaults to 'tcp'."""
-
     def __post_init__(self) -> None:
         """Normalize optional sub-configs."""
-        if self.ssr_url is not None and self.transport == "stdio":
-            warnings.warn(
-                "Configuring 'ssr_url' in InertiaConfig is deprecated in favor of 'transport=\"stdio\"' "
-                "or 'transport=\"uds\"'. Defaulting transport to 'tcp' for backward compatibility.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            self.transport = "tcp"
-
         if self.ssr is True:
-            self.ssr = InertiaSSRConfig(transport=self.transport, socket_path=self.socket_path, url=self.ssr_url)
-        elif isinstance(self.ssr, InertiaSSRConfig):
-            if self.ssr_url is not None and self.ssr.url is None:
-                self.ssr.url = self.ssr_url
-                self.ssr.transport = "tcp"
+            self.ssr = InertiaSSRConfig()
         elif self.ssr is False:
             self.ssr = None
 

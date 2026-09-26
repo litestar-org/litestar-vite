@@ -15,7 +15,7 @@ import { resolveHotFilePath } from "./shared/network.js"
 import type { DevSsrOptions, SsrRenderRequest, SsrRenderResponse } from "./shared/ssr-types.js"
 import { resolveDefaultSdkClientPlugin } from "./shared/typegen-core.js"
 import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig, type TypesConfigShape } from "./shared/typegen-plugin.js"
-import { buildInputOptions, hmrServerConfig, isVite6Plus, mergeDefinedHmrOptions, resolveUserBuildInput, viteMajor } from "./shared/vite-compat.js"
+import { buildInputOptions, hmrServerConfig, isVite7Plus, mergeDefinedHmrOptions, resolveUserBuildInput, viteMajor } from "./shared/vite-compat.js"
 
 export { litestarViteSsrPlugin }
 export type { DevSsrOptions, SsrRenderRequest, SsrRenderResponse }
@@ -211,7 +211,7 @@ interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "e
 
 // Note: We intentionally avoid exporting Vite types to prevent version conflicts.
 // The plugin returns Plugin[] internally but uses `any[]` in the public API to avoid
-// type leakage across different Vite versions (6.x, 7.x). This follows the pragmatic
+// type leakage across different Vite versions (7.x, 8.x). This follows the pragmatic
 // approach used by other multi-version plugins.
 
 type DevServerUrl = `${"http" | "https"}://${string}:${number}`
@@ -231,12 +231,12 @@ const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((p) => fs.ex
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function litestar(config: string | string[] | PluginConfig): any[] {
-  if (!isVite6Plus) {
-    throw new Error(`litestar-vite-plugin requires Vite >= 6.0.0, but running Vite is ${viteMajor}.x. Please upgrade Vite.`)
+  if (!isVite7Plus) {
+    throw new Error(`litestar-vite-plugin requires Vite >= 7.0.0, but running Vite is ${viteMajor}.x. Please upgrade Vite.`)
   }
   const pluginConfig = resolvePluginConfig(config)
 
-  const plugins: Plugin[] = [resolveLitestarPlugin(pluginConfig), ...(resolveFullReloadConfig(pluginConfig) as Plugin[])]
+  const plugins: Plugin[] = [resolveLitestarPlugin(pluginConfig, config), ...(resolveFullReloadConfig(pluginConfig) as Plugin[])]
 
   // Add type generation plugin if enabled
   if (pluginConfig.types !== false && pluginConfig.types.enabled) {
@@ -254,12 +254,6 @@ export default function litestar(config: string | string[] | PluginConfig): any[
   // Add static props virtual module plugin
   // This allows importing static data from Python config via virtual:litestar-static-props
   plugins.push(createStaticPropsPlugin())
-
-  // Add dev SSR plugin for Inertia or SSR entrypoints
-  const hasSsr = (typeof config === "object" && !Array.isArray(config) && Boolean(config.ssr)) || pluginConfig.inertiaMode
-  if (hasSsr) {
-    plugins.push(litestarViteSsrPlugin({ entrypoint: resolveSsrEntrypoint(pluginConfig) }))
-  }
 
   return plugins
 }
@@ -322,7 +316,7 @@ function normalizeAppUrl(appUrl: string | undefined, _fallbackPort?: string): { 
   }
 }
 
-function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
+function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig, rawConfig?: string | string[] | PluginConfig): Plugin {
   let viteDevServerUrl: DevServerUrl
   let resolvedConfig: ResolvedConfig
   let userConfig: UserConfig
@@ -330,6 +324,9 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
   let shuttingDown = false
   const pythonDefaults = loadPythonDefaults()
   const logger = createLogger(pythonDefaults?.logging)
+  const devSsrPlugin = litestarViteSsrPlugin({
+    entrypoint: rawConfig ? resolveSsrEntrypoint(pluginConfig, rawConfig) : undefined,
+  })
   const defaultAliases: Record<string, string> = {
     "@": `/${pluginConfig.resourceDir.replace(/^\/+/, "").replace(/\/+$/, "")}/`,
   }
@@ -870,6 +867,15 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig): Plugin {
           res.end("Not Found (Error loading placeholder)")
         }
       })
+
+      if (typeof devSsrPlugin.configureServer === "function") {
+        await devSsrPlugin.configureServer.call({} as never, server)
+      }
+    },
+    handleHotUpdate(ctx) {
+      if (typeof devSsrPlugin.handleHotUpdate === "function") {
+        devSsrPlugin.handleHotUpdate.call({} as never, ctx)
+      }
     },
   }
 }
@@ -1167,21 +1173,29 @@ function resolveInput(config: ResolvedPluginConfig, ssr: boolean): string | stri
 /**
  * Resolve the SSR entrypoint path for ModuleRunner dev SSR.
  */
-function resolveSsrEntrypoint(config: ResolvedPluginConfig): string | undefined {
-  if (typeof config.ssr === "string") {
-    return config.ssr
+function resolveSsrEntrypoint(
+  config: ResolvedPluginConfig,
+  rawConfig: string | string[] | PluginConfig,
+): string | undefined {
+  const explicitSsr = typeof rawConfig === "object" && !Array.isArray(rawConfig) ? rawConfig.ssr : undefined
+  if (typeof explicitSsr === "string") {
+    return explicitSsr
   }
-  if (Array.isArray(config.ssr) && config.ssr.length > 0) {
-    return config.ssr[0]
+  if (Array.isArray(explicitSsr) && explicitSsr.length > 0) {
+    return explicitSsr[0]
   }
-  if (config.inertiaMode) {
-    const candidates = [path.join(config.resourceDir, "ssr.tsx"), path.join(config.resourceDir, "ssr.ts"), "resources/ssr.tsx", "resources/ssr.ts", "src/ssr.tsx", "src/ssr.ts"]
-    for (const candidate of candidates) {
-      if (fs.existsSync(candidate)) return candidate
-    }
-    return path.join(config.resourceDir, "ssr.tsx")
+  const candidates = [
+    path.join(config.resourceDir, "ssr.tsx"),
+    path.join(config.resourceDir, "ssr.ts"),
+    "resources/ssr.tsx",
+    "resources/ssr.ts",
+    "src/ssr.tsx",
+    "src/ssr.ts",
+  ]
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate
   }
-  return undefined
+  return path.join(config.resourceDir, "ssr.tsx")
 }
 
 /**

@@ -11,7 +11,6 @@ __all__ = (
     "IPCResponse",
     "IPCTimeoutError",
     "IPCWorkerCrashError",
-    "UnsupportedPlatformError",
 )
 
 
@@ -25,10 +24,6 @@ class IPCTimeoutError(IPCError):
 
 class IPCWorkerCrashError(IPCError):
     """Raised when an IPC child worker terminates unexpectedly."""
-
-
-class UnsupportedPlatformError(IPCError):
-    """Raised when an IPC transport is unsupported on the current host operating system."""
 
 
 class CircuitBreakerOpenError(IPCError):
@@ -47,7 +42,7 @@ class IPCRequest:
         """Convert the request into a JSON-serializable dictionary.
 
         Returns:
-            Dictionary payload adhering to the NDJSON RPC framing contract.
+            Dictionary payload adhering to the RPC framing contract.
         """
         payload: dict[str, Any] = {"id": self.id, "method": self.method}
         if self.params is not None:

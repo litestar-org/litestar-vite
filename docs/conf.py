@@ -242,7 +242,7 @@ html_theme_options: dict[str, Any] = {
                 {
                     "title": "SSR & IPC Transports",
                     "url": "ssr/ipc-architecture",
-                    "summary": "Stdio, Unix domain socket, and TCP stream IPC transports for SSR.",
+                    "summary": "Vite ModuleRunner dev SSR, managed stdio subprocesses, and circuit breaking.",
                 },
                 {
                     "title": "Hypermedia & Fragments",
@@ -250,8 +250,8 @@ html_theme_options: dict[str, Any] = {
                     "summary": "HTMX partial swaps, React/Vue/Svelte fragment rendering, and scoped CSS injection.",
                 },
                 {
-                    "title": "Vite 6/7/8 Configuration",
-                    "url": "guide/vite6-architecture",
+                    "title": "Vite 7+ Configuration",
+                    "url": "guide/vite-architecture",
                     "summary": "Vite Environment API, Rolldown bundling, and direct dev server asset URLs.",
                 },
                 {

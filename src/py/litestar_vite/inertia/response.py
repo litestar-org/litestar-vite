@@ -523,27 +523,13 @@ class InertiaResponse(Response[T]):
             self._cached_ssr_payload = None
             return
 
-        transport: BaseIPCTransport | str | None = getattr(inertia_plugin, "ipc_transport", None)
-        if transport is None:
-            transport = getattr(inertia_plugin, "_ipc_transport", None)
+        plugin_transport: BaseIPCTransport | str | None = getattr(inertia_plugin, "ipc_transport", None)
+        if plugin_transport is None:
+            plugin_transport = getattr(inertia_plugin, "_ipc_transport", None)
 
-        if transport is None:
-            if ssr_config.transport == "uds" and ssr_config.socket_path is not None:
-                from litestar_vite.ipc import UnixSocketIPCTransport
-
-                transport = UnixSocketIPCTransport(socket_path=ssr_config.socket_path)
-            elif ssr_config.url:
-                transport = ssr_config.url
-            else:
-                from litestar_vite.ipc import IPCTransportManager
-
-                transport = IPCTransportManager.create_transport(
-                    mode=ssr_config.transport,
-                    command=ssr_config.command,
-                    socket_path=ssr_config.socket_path,
-                    url=ssr_config.url,
-                    cwd=ssr_config.cwd,
-                )
+        transport: BaseIPCTransport | str = (
+            plugin_transport if plugin_transport is not None else vite_plugin.get_ipc_transport()
+        )
 
         try:
             self._cached_ssr_payload = await _render_inertia_ssr(
@@ -1009,9 +995,13 @@ async def _do_ssr_request(
     """
     target_label = str(transport)
     if isinstance(transport, str):
-        from litestar_vite.ipc import IPCTransportManager
+        from litestar_vite.ipc import TCPStreamIPCTransport
 
-        transport = IPCTransportManager.create_transport(mode="tcp", url=transport)
+        parsed = urlparse(transport)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or 5173
+        path = parsed.path or "/__litestar_ssr__"
+        transport = TCPStreamIPCTransport(host=host, port=port, path=path)
 
     serializer = get_serializer(type_encoders)
     encoded_page = decode_json(encode_json(page, serializer=serializer))

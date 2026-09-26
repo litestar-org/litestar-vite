@@ -124,7 +124,7 @@ Developer Resources
    realtime/index
    ssr/ipc-architecture
    hypermedia/fragments
-   guide/vite6-architecture
+   guide/vite-architecture
    reference/index
 
 .. toctree::

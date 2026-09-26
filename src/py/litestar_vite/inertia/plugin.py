@@ -74,21 +74,18 @@ class InertiaPlugin(InitPlugin):
                     reset_timeout=ssr_config.circuit_breaker_reset_timeout,
                 )
 
-            if ssr_config.transport == "uds" and ssr_config.socket_path is not None:
-                from litestar_vite.ipc import UnixSocketIPCTransport
+            from litestar_vite.plugin import VitePlugin
 
-                self._ipc_transport = UnixSocketIPCTransport(socket_path=ssr_config.socket_path)
-            elif (
-                ssr_config.transport == "stdio"
-                and ssr_config.command is not None
-                and ssr_config.auto_start
-                and ("--stdio" in ssr_config.command or ssr_config.url is None)
-            ):
+            try:
+                vite_plugin: VitePlugin | None = app.plugins.get(VitePlugin)
+            except KeyError:
+                vite_plugin = None
+            is_dev_mode = vite_plugin.config.is_dev_mode if vite_plugin is not None else False
+            if not is_dev_mode and ssr_config.command is not None:
                 from litestar_vite.ipc import StdioIPCTransport
 
-                transport = StdioIPCTransport(command=ssr_config.command, cwd=ssr_config.cwd)
-                await transport.start()
-                self._ipc_transport = transport
+                cwd = ssr_config.cwd or (vite_plugin.config.root_dir if vite_plugin is not None else None)
+                self._ipc_transport = StdioIPCTransport(command=ssr_config.command, cwd=cwd)
         try:
             yield
         finally:

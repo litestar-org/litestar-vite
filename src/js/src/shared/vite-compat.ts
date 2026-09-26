@@ -8,9 +8,9 @@ export const viteMajor = Number(viteMajorRaw)
 export const viteMinor = Number(viteMinorRaw)
 
 /**
- * Whether the running Vite version is 6+ (minimum supported baseline).
+ * Whether the running Vite version is 7+ (minimum supported baseline).
  */
-export const isVite6Plus: boolean = viteMajor >= 6
+export const isVite7Plus: boolean = viteMajor >= 7
 
 /**
  * Whether the running Vite version is 8+, which uses Rolldown and exposes

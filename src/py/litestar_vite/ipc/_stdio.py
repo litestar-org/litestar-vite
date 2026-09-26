@@ -1,5 +1,6 @@
 """Asynchronous stdio subprocess transport communicating via line-delimited JSON (NDJSON)."""
 
+import asyncio
 import collections
 import contextlib
 import itertools
@@ -31,10 +32,9 @@ class StdioIPCTransport(BaseIPCTransport):
         "_max_restarts",
         "_pending",
         "_process",
+        "_reader_tasks",
         "_restart_count",
         "_stderr_buffer",
-        "_task_group_cm",
-        "_tg",
     )
 
     def __init__(
@@ -58,13 +58,22 @@ class StdioIPCTransport(BaseIPCTransport):
         self._max_restarts = max_restarts
         self._restart_count = 0
         self._process: anyio.abc.Process | None = None
-        self._tg: anyio.abc.TaskGroup | None = None
-        self._task_group_cm: Any = None
+        self._reader_tasks: list[asyncio.Task[None]] = []
         self._pending: dict[int, tuple[anyio.Event, dict[str, Any]]] = {}
         self._id_counter = itertools.count(1)
         self._stderr_buffer: collections.deque[str] = collections.deque(maxlen=100)
         self._lock = anyio.Lock()
         self._is_closing = False
+
+    @property
+    def command(self) -> list[str]:
+        """Return the worker command list."""
+        return list(self._command)
+
+    @property
+    def cwd(self) -> Path | None:
+        """Return the configured working directory for the worker process."""
+        return self._cwd
 
     @property
     def is_running(self) -> bool:
@@ -97,12 +106,10 @@ class StdioIPCTransport(BaseIPCTransport):
                 env=self._env,
             )
 
-            task_group_cm = anyio.create_task_group()
-            self._task_group_cm = task_group_cm
-            tg = await task_group_cm.__aenter__()
-            self._tg = tg
-            tg.start_soon(self._drain_stderr)
-            tg.start_soon(self._dispatch_stdout)
+            self._reader_tasks = [
+                asyncio.create_task(self._drain_stderr()),
+                asyncio.create_task(self._dispatch_stdout()),
+            ]
 
     async def _drain_stderr(self) -> None:
         """Continuously drain worker stderr into a rolling buffer to prevent OS pipe deadlocks."""
@@ -256,11 +263,11 @@ class StdioIPCTransport(BaseIPCTransport):
             except ProcessLookupError:
                 pass
 
-        if self._task_group_cm is not None:
-            try:
-                await self._task_group_cm.__aexit__(None, None, None)
-            except (OSError, anyio.ClosedResourceError, RuntimeError):
-                pass
-            finally:
-                self._task_group_cm = None
-                self._tg = None
+        tasks = list(self._reader_tasks)
+        self._reader_tasks.clear()
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            with contextlib.suppress(Exception):
+                await asyncio.gather(*tasks, return_exceptions=True)

@@ -1,18 +1,18 @@
-============================================================
-Vite 6/7/8 Environment API & Direct Dev Asset Configuration
-============================================================
+==========================================================
+Vite 7/8 Environment API & Direct Dev Asset Configuration
+==========================================================
 
-``litestar-vite`` targets Vite 6, 7, and 8. It uses Vite's Environment API for development server-side rendering, ``build.rolldownOptions`` for bundler configuration, and direct Vite dev server URLs for asset and HMR delivery.
+``litestar-vite`` requires Vite 7+. It uses Vite's ``RunnableDevEnvironment`` (``server.environments.ssr``) for development server-side rendering, ``build.rolldownOptions`` for bundler configuration, and direct Vite dev server URLs for asset and HMR delivery.
 
 ------------------------------------------------
 Vite Configuration: Environments, Rolldown & WS
 ------------------------------------------------
 
 1. **Environment API (``server.environments``)**:
-   Vite 6+ provides isolated module graphs for ``client`` and ``ssr`` environments inside a single dev server instance. ``litestar-vite`` uses ``server.environments.ssr`` to evaluate server-rendered components in development without running a separate SSR build.
+   Vite provides isolated module graphs for ``client`` and ``ssr`` environments inside a single dev server instance. ``litestar-vite`` uses ``server.environments.ssr.runner`` to evaluate server-rendered components in development without running a separate SSR build.
 
 2. **Rolldown Options (``build.rolldownOptions``)**:
-   Vite 7 and 8 use Rolldown for bundling. ``litestar-vite`` scaffolding templates configure output naming under ``build.rolldownOptions`` (falling back to ``build.rollupOptions`` on Vite 6/7 when needed via the ``litestar-vite`` Vite plugin):
+   Vite 8 uses Rolldown for bundling. ``litestar-vite`` scaffolding templates configure output naming under ``build.rolldownOptions`` (falling back to ``build.rollupOptions`` on Vite 7 via the ``litestar-vite`` Vite plugin):
 
    .. docs-example: skip
    .. code-block:: ts
@@ -31,7 +31,7 @@ Vite Configuration: Environments, Rolldown & WS
       });
 
 3. **WebSocket Configuration (``server.ws``)**:
-   Vite 6+ configures HMR WebSocket listeners under ``server.ws``:
+   Vite 8.1+ configures HMR WebSocket listeners under ``server.ws`` (``server.hmr`` on Vite 7 / 8.0, handled automatically by the plugin):
 
    .. docs-example: skip
    .. code-block:: ts
