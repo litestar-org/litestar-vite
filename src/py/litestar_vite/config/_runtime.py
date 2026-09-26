@@ -24,6 +24,7 @@ _EXECUTOR_COMMANDS: dict[str, dict[str, tuple[str, ...]]] = {
         "build_watch": ("bun", "run", "watch"),
         "serve": ("bun", "run", "serve"),
         "install": ("bun", "install"),
+        "serve_ssr": ("bun", "run", "resources/ssr.tsx"),
     },
     "deno": {
         "run": ("deno", "task", "dev"),

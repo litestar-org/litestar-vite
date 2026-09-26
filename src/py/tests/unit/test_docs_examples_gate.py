@@ -1,7 +1,5 @@
 """Unit tests for the documentation code example verification gate."""
 
-from __future__ import annotations
-
 import subprocess
 import sys
 from pathlib import Path
@@ -44,13 +42,9 @@ def test_gate_fails_on_known_bad_fixture(repo_root: Path) -> None:
     assert "enabled" in combined_output
 
 
-@pytest.mark.xfail(strict=False, reason="Blocked on feat-asyncapi:10.1")
+@pytest.mark.xfail(strict=False, reason="Legacy documentation pages contain partial snippets without skip markers")
 def test_gate_passes_on_docs_tree(repo_root: Path) -> None:
-    """Verify that the full documentation tree passes the verification gate.
-
-    Marked as xfail pending completion of feat-asyncapi:10.1, which resolves the
-    audit-identified defects in docs/realtime.
-    """
+    """Verify that the full documentation tree passes the verification gate."""
     gate_script = repo_root / "tools" / "check_docs_examples.py"
 
     result = subprocess.run(

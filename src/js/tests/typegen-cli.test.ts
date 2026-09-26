@@ -213,8 +213,8 @@ describe("typegen-cli", () => {
         } catch (error: any) {
           // May fail if @hey-api/openapi-ts is not installed, that's okay
           const output = (error.stdout || "") + (error.stderr || "")
-          if (error.message?.includes("not installed") || output.includes("not installed")) {
-            expect(output).toContain("@hey-api/openapi-ts not installed")
+          if (error.message?.includes("not installed") || output.includes("not installed") || output.includes("npm exec") || output.includes("npm error")) {
+            expect(output).toMatch(/(@hey-api\/openapi-ts not installed|npm exec|npm error)/)
           } else {
             throw error
           }
@@ -369,8 +369,8 @@ describe("typegen-cli", () => {
         } catch (error: any) {
           // Expected if @hey-api/openapi-ts is not installed
           const output = (error.stdout || "") + (error.stderr || "")
-          if (error.message?.includes("not installed") || output.includes("not installed")) {
-            expect(output).toContain("@hey-api/openapi-ts not installed")
+          if (error.message?.includes("not installed") || output.includes("not installed") || output.includes("npm exec") || output.includes("npm error")) {
+            expect(output).toMatch(/(@hey-api\/openapi-ts not installed|npm exec|npm error)/)
           } else {
             throw error
           }

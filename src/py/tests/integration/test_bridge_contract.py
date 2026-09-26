@@ -13,58 +13,41 @@ This test asserts both halves end-to-end with a stub upstream so the regression
 cannot reappear silently.
 """
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from unittest.mock import patch
 
-import httpx
 import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
+from litestar.types import Send
 
 from litestar_vite import PathConfig, RuntimeConfig, ViteConfig, VitePlugin
-
-if TYPE_CHECKING:
-    pass
 
 
 @pytest.mark.anyio
 async def test_proxy_loader_dual_consumer_no_self_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Loader anchors on bridge appUrl AND proxy hits the hotfile upstream.
-
-    Failure mode before the contract split: the hotfile could carry the bridge
-    URL while both consumers read it. The revised contract keeps the loader on
-    bridge ``appUrl`` and keeps the proxy on the hotfile's actual upstream URL.
-    """
+    """Loader anchors on bridge appUrl AND proxy hits the hotfile upstream."""
     from litestar_vite.utils import read_bridge_config
 
     read_bridge_config.cache_clear()
 
-    # ----- Bridge: browser-facing appUrl; host/port must not become target. -----
     bridge_payload = {"appUrl": "http://testserver", "host": "127.0.0.1", "port": 65431}
     bridge_path = tmp_path / ".litestar.json"
     bridge_path.write_text(json.dumps(bridge_payload))
     monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(bridge_path))
 
-    # ----- Hotfile: present (readiness signal) and pointing at the actual Vite
-    # upstream URL. The loader must not use this as the browser-facing origin. -----
     bundle_dir = tmp_path / "public"
     bundle_dir.mkdir()
     (bundle_dir / "hot").write_text("http://127.0.0.1:65431")
 
-    # ----- Stub upstream: returns a sentinel body for the @vite/client request,
-    # records the absolute URL it was called against so we can assert no self-loop.
     upstream_calls: list[str] = []
 
-    def _upstream_handler(request: httpx.Request) -> httpx.Response:
-        upstream_calls.append(str(request.url))
-        return httpx.Response(200, headers={"content-type": "text/javascript"}, text="// real-vite-stub")
+    async def fake_proxy(url: str, *, send: Send, **_kwargs: object) -> None:
+        upstream_calls.append(url)
+        await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/javascript")]})
+        await send({"type": "http.response.body", "body": b"// real-vite-stub", "more_body": False})
 
-    transport = httpx.MockTransport(_upstream_handler)
-
-    # ----- Build app -----
     config = ViteConfig(
         mode="template",
         paths=PathConfig(
@@ -75,29 +58,21 @@ async def test_proxy_loader_dual_consumer_no_self_loop(tmp_path: Path, monkeypat
     plugin = VitePlugin(config=config)
     app = Litestar(plugins=[plugin])
 
-    # ----- Loader half: bridge appUrl wins, asset emission anchored on testserver -----
     loader = plugin.asset_loader
     asset_url = loader._vite_server_url("@vite/client")
     assert asset_url.startswith("http://testserver/"), asset_url
     assert "127.0.0.1:65431" not in asset_url
 
-    # ----- Proxy half: drive a request through the middleware, swap in the
-    # stub-transport client so we can intercept the upstream call.
-    with TestClient(app=app) as client:
-        # Inject the mock transport into the plugin's shared proxy client.
-        # The lifespan has just initialized self._proxy_client; replace it.
-        if plugin._proxy_client is not None:
-            await plugin._proxy_client.aclose()
-        plugin._proxy_client = httpx.AsyncClient(transport=transport)
-
+    with (
+        patch("litestar_vite.plugin._proxy._anyio_proxy_http_request", side_effect=fake_proxy),
+        TestClient(app=app) as client,
+    ):
         response = client.get("/static/@vite/client")
 
     assert response.status_code == 200, response.text
     assert response.text == "// real-vite-stub"
     assert len(upstream_calls) == 1, upstream_calls
     target_url = upstream_calls[0]
-    # The upstream MUST be the hotfile's actual Vite URL, not the bridge appUrl
-    # (testserver). Otherwise the proxy is self-looping.
     assert target_url.startswith("http://127.0.0.1:65431"), target_url
     assert "testserver" not in target_url
 

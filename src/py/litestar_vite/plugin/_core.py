@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
 
-import httpx
 from litestar.exceptions import NotFoundException, SerializationException
 from litestar.middleware import DefineMiddleware
 from litestar.plugins import CLIPlugin, InitPlugin
@@ -32,7 +31,6 @@ from litestar_vite.plugin._proxy import (
 from litestar_vite.plugin._static import StaticPlacement, StaticServerConfig, StaticServerMount
 from litestar_vite.plugin._utils import (
     build_litestar_route_prefixes,
-    create_proxy_client,
     is_non_serving_assets_cli,
     is_non_serving_context,
     log_fail,
@@ -47,6 +45,7 @@ from litestar_vite.utils import read_hotfile_url
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
+    from typing import Literal
 
     from click import Group
     from litestar import Litestar
@@ -54,7 +53,7 @@ if TYPE_CHECKING:
     from litestar.types import ControllerRouterHandler, ExceptionHandlersMap
 
     from litestar_vite.config import ViteConfig
-    from litestar_vite.config._inertia import InertiaSSRConfig
+    from litestar_vite.fragments import FragmentEngine
     from litestar_vite.handler import AppHandler
     from litestar_vite.plugin._static import StaticFilesConfig
 
@@ -125,11 +124,10 @@ class VitePlugin(InitPlugin, CLIPlugin):
     __slots__ = (
         "_asset_loader",
         "_config",
-        "_proxy_client",
+        "_fragment_engine",
         "_proxy_target",
         "_route_prefix_cache",
         "_spa_handler",
-        "_ssr_process",
         "_static_files_config",
         "_vite_process",
     )
@@ -153,11 +151,10 @@ class VitePlugin(InitPlugin, CLIPlugin):
             config = ViteConfig()
         self._config = config
         self._asset_loader = asset_loader
+        self._fragment_engine: "FragmentEngine | None" = None
         self._vite_process: "ViteProcess | None" = None
-        self._ssr_process: "ViteProcess | None" = None
         self._static_files_config: "StaticFilesConfig | None" = static_files_config
         self._proxy_target: "str | None" = None
-        self._proxy_client: "httpx.AsyncClient | None" = None
         self._route_prefix_cache: tuple[str, ...] | None = None
         self._spa_handler: "AppHandler | None" = None
 
@@ -175,45 +172,41 @@ class VitePlugin(InitPlugin, CLIPlugin):
             return False
         return is_non_serving_context()
 
-    def _get_ssr_process(self) -> ViteProcess:
-        """Get or create the SSR process manager lazily.
+    def get_ipc_transport(self) -> Any:
+        """Resolve the IPC transport for the active runtime mode.
 
-        Returns a separate ViteProcess instance so SSR has its own tracked cleanup
-        and stop() lifecycle independent of Vite.
+        In development mode, returns an HTTP/1.1 TCP transport targeting the
+        active Vite dev server's ``/__litestar_ssr__`` endpoint. In production
+        mode, returns a ``StdioIPCTransport`` targeting the built SSR worker.
+
+        Returns:
+            Configured BaseIPCTransport instance.
         """
-        if self._ssr_process is None:
-            self._ssr_process = ViteProcess(executor=self._config.executor)
-        return self._ssr_process
+        from litestar_vite.ipc import StdioIPCTransport, TCPStreamIPCTransport
 
-    def _resolved_ssr_config(self) -> "InertiaSSRConfig | None":
-        """Return the active InertiaSSRConfig when Inertia + SSR are enabled."""
+        if self._config.is_dev_mode:
+            host = self._config.host
+            port = self._config.port
+            hotfile_path = self._resolve_hotfile_path()
+            if hotfile_path.is_file():
+                hot_url = read_hotfile_url(hotfile_path)
+                if hot_url:
+                    parsed = urlsplit(hot_url)
+                    if parsed.hostname:
+                        host = parsed.hostname
+                    if parsed.port:
+                        port = parsed.port
+            if host in {"::", "[::]", "localhost"} or host.startswith("0.0.0."):
+                host = "127.0.0.1"
+            return TCPStreamIPCTransport(host=host, port=port, path="/__litestar_ssr__")
+
         from litestar_vite.config._inertia import InertiaConfig
 
         inertia = self._config.inertia
-        if not isinstance(inertia, InertiaConfig):
-            return None
-        return inertia.ssr_config
-
-    def _run_ssr_health_check(self, ssr_config: "InertiaSSRConfig") -> None:
-        """Poll the SSR url until it responds (or until timeout)."""
-        import time
-        from urllib.parse import urlparse
-
-        deadline = time.monotonic() + ssr_config.health_check_timeout
-        parsed = urlparse(ssr_config.url)
-        origin = f"{parsed.scheme}://{parsed.netloc}"
-        while time.monotonic() < deadline:
-            try:
-                response = httpx.get(origin, timeout=2.0)
-                if response.status_code < 500:
-                    return
-            except httpx.RequestError as exc:
-                str(exc)
-            time.sleep(0.25)
-        log_warn(
-            f"Inertia SSR server did not become ready within {ssr_config.health_check_timeout}s.",
-            level=self._config.logging_config.level,
-        )
+        ssr_config = inertia.ssr_config if isinstance(inertia, InertiaConfig) else None
+        command = ssr_config.command if ssr_config is not None else None
+        cwd = (ssr_config.cwd if ssr_config is not None else None) or self._config.root_dir
+        return StdioIPCTransport(command=command or ["node", "bootstrap/ssr/ssr.js"], cwd=cwd)
 
     @property
     def config(self) -> "ViteConfig":
@@ -239,6 +232,47 @@ class VitePlugin(InitPlugin, CLIPlugin):
         return self._asset_loader
 
     @property
+    def fragment_engine(self) -> "FragmentEngine":
+        """Return the active FragmentEngine instance, initializing if needed."""
+        if self._fragment_engine is None:
+            from litestar_vite.fragments import FragmentEngine
+
+            self._fragment_engine = FragmentEngine(config=self._config, asset_loader=self.asset_loader)
+        return self._fragment_engine
+
+    async def render_fragment(
+        self, component: str, props: dict[str, Any] | None = None, mode: "Literal['static', 'island']" = "static"
+    ) -> str:
+        """Render a UI component fragment to HTML asynchronously.
+
+        Args:
+            component: Component path or name.
+            props: Optional properties dictionary passed to the component.
+            mode: Render mode, either 'static' (pure HTML) or 'island' (with client hydration).
+
+        Returns:
+            Rendered HTML string with prepended scoped CSS.
+        """
+        return await self.fragment_engine.render_fragment(component, props, mode)
+
+    def render_fragment_sync(
+        self, component: str, props: dict[str, Any] | None = None, mode: "Literal['static', 'island']" = "static"
+    ) -> str:
+        """Render a UI component fragment to HTML synchronously.
+
+        Useful for synchronous Jinja2 template rendering.
+
+        Args:
+            component: Component path or name.
+            props: Optional properties dictionary passed to the component.
+            mode: Render mode, either 'static' (pure HTML) or 'island' (with client hydration).
+
+        Returns:
+            Rendered HTML string with prepended scoped CSS.
+        """
+        return self.fragment_engine.render_fragment_sync(component, props, mode)
+
+    @property
     def spa_handler(self) -> "AppHandler | None":
         """Return the configured SPA handler when SPA mode is enabled.
 
@@ -246,18 +280,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
             The AppHandler instance, or None when SPA mode is disabled/not configured.
         """
         return self._spa_handler
-
-    @property
-    def proxy_client(self) -> "httpx.AsyncClient | None":
-        """Return the shared httpx.AsyncClient for proxy requests.
-
-        The client is initialized during app lifespan (dev mode only) and provides
-        connection pooling, TLS session reuse, and HTTP/2 multiplexing benefits.
-
-        Returns:
-            The shared AsyncClient instance, or None if not initialized or not in dev mode.
-        """
-        return self._proxy_client
 
     def get_static_server_config(self) -> StaticServerConfig:
         """Describe where the production static bundle should be served from.
@@ -473,6 +495,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         """
         from litestar.plugins.jinja import JinjaTemplateEngine
 
+        from litestar_vite.fragments._jinja import vite_fragment
         from litestar_vite.loader import render_asset_tag, render_hmr_client, render_routes, render_static_asset
 
         template_config = app_config.template_config  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
@@ -485,6 +508,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
             engine.register_template_callable(key="vite", template_callable=render_asset_tag)
             engine.register_template_callable(key="vite_static", template_callable=render_static_asset)
             engine.register_template_callable(key="vite_routes", template_callable=render_routes)
+            engine.register_template_callable(key="vite_fragment", template_callable=vite_fragment)
 
     def _wants_jinja_callables(self, app_config: "AppConfig") -> bool:
         """Decide whether to register Jinja ``vite_*`` callables for this app.
@@ -762,15 +786,16 @@ class VitePlugin(InitPlugin, CLIPlugin):
         Polls the dev server URL for up to 5 seconds.
         """
         import time
+        import urllib.request
 
         url = f"{self._config.protocol}://{self._config.host}:{self._config.port}/__vite_ping"
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         for _ in range(50):
             try:
-                httpx.get(url, timeout=0.1)
-            except httpx.HTTPError:
+                with opener.open(url, timeout=0.1):
+                    return
+            except OSError:
                 time.sleep(0.1)
-            else:
-                return
         log_fail("Vite dev server did not become ready.")
 
     def _run_health_check(self) -> None:
@@ -795,25 +820,28 @@ class VitePlugin(InitPlugin, CLIPlugin):
             True if SSR server is ready, False if timeout reached.
         """
         import time
+        import urllib.error
+        import urllib.request
 
         start = time.time()
-
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         while time.time() - start < timeout:
             if hotfile_path.exists():
                 try:
                     url = read_hotfile_url(hotfile_path)
                     if url:
-                        resp = httpx.get(url, timeout=0.5, follow_redirects=True)
-                        if resp.status_code < 500:
-                            return True
+                        with opener.open(url, timeout=0.5) as resp:
+                            if getattr(resp, "status", 200) < 500:
+                                return True
+                except urllib.error.HTTPError as exc:
+                    if exc.code < 500:
+                        return True
                 except OSError:
-                    pass
-                except httpx.HTTPError:
                     pass
 
             time.sleep(0.1)
 
-        log_fail(f"Inertia SSR server did not become ready within {timeout}s.")
+        log_fail(f"SSR framework server did not become ready within {timeout}s.")
         return False
 
     def _export_types_sync(self, app: "Litestar") -> None:
@@ -880,10 +908,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         self._export_types_sync(app)
 
-        ssr_config = self._resolved_ssr_config()
-        ssr_should_start = ssr_config is not None and ssr_config.command is not None and ssr_config.auto_start
-        ssr_process: ViteProcess | None = None
-
         if self._config.is_dev_mode and self._config.runtime.start_dev_server:
             ext = self._config.runtime.external_dev_server
             is_external = isinstance(ext, ExternalDevServer) and ext.enabled
@@ -898,38 +922,12 @@ class VitePlugin(InitPlugin, CLIPlugin):
                 vite_process.start(command_to_run, self._config.root_dir)
                 if self._config.health_check and not is_external:
                     self._run_health_check()
-                if ssr_should_start and ssr_config is not None:
-                    ssr_process = self._start_ssr_process(ssr_config)
                 yield
             finally:
-                self._stop_ssr_process(ssr_process)
                 if vite_process is not None:
                     vite_process.stop()
-        elif ssr_should_start and ssr_config is not None:
-            try:
-                ssr_process = self._start_ssr_process(ssr_config)
-                yield
-            finally:
-                self._stop_ssr_process(ssr_process)
         else:
             yield
-
-    def _start_ssr_process(self, ssr_config: "InertiaSSRConfig") -> "ViteProcess":
-        """Spawn the SSR /render Node process and run an optional health check."""
-        if ssr_config.command is None:  # pragma: no cover - guarded by callers
-            msg = "InertiaSSRConfig.command must be set to spawn the SSR process"
-            raise ValueError(msg)
-        process = self._get_ssr_process()
-        cwd = ssr_config.cwd or self._config.root_dir
-        process.start(ssr_config.command, cwd)
-        if ssr_config.health_check:
-            self._run_ssr_health_check(ssr_config)
-        return process
-
-    def _stop_ssr_process(self, ssr_process: "ViteProcess | None") -> None:
-        """Stop the SSR process if one was started."""
-        if ssr_process is not None:
-            ssr_process.stop()
 
     @asynccontextmanager
     async def lifespan(self, app: "Litestar") -> "AsyncGenerator[None, None]":
@@ -937,7 +935,6 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         This is auto-registered in `on_app_init` and handles per-worker initialization:
         - Environment variable setup (silently - each worker needs process-local env vars)
-        - Shared proxy client initialization (dev mode only, for ViteProxyMiddleware/SSRProxyController)
         - Asset loader initialization
         - SPA handler initialization
         - Route metadata injection
@@ -957,12 +954,8 @@ class VitePlugin(InitPlugin, CLIPlugin):
             set_environment(config=self._config, app=app)
             set_app_environment(app)
 
-        if self._config.is_dev_mode and self._config.proxy_mode is not None:
-            self._proxy_client = create_proxy_client(http2=self._config.http2)
-
         if self._asset_loader is None:
             self._asset_loader = ViteAssetLoader(config=self._config)
-        self._asset_loader._bind_http_client(self._proxy_client)  # pyright: ignore[reportPrivateUsage]
         await self._asset_loader.initialize()
 
         if self._spa_handler is not None and not self._spa_handler.is_initialized:
@@ -979,9 +972,5 @@ class VitePlugin(InitPlugin, CLIPlugin):
         try:
             yield
         finally:
-            self._asset_loader._bind_http_client(None)  # pyright: ignore[reportPrivateUsage]
-            if self._proxy_client is not None:
-                await self._proxy_client.aclose()
-                self._proxy_client = None
             if self._spa_handler is not None:
                 await self._spa_handler.shutdown_async()

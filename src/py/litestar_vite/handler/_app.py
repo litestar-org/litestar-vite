@@ -8,13 +8,11 @@ In production, it serves the built index.html with async caching.
 """
 
 import logging
-from contextlib import suppress
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn
 
 import anyio
-import httpx
 from litestar import get
 from litestar.exceptions import ImproperlyConfiguredException, SerializationException
 from litestar.serialization import decode_json, encode_json
@@ -28,7 +26,6 @@ from litestar_vite.html_transform import (
     set_data_attribute,
     transform_asset_urls,
 )
-from litestar_vite.plugin._utils import check_h2_available
 from litestar_vite.utils import get_static_resource_path, read_hotfile_url
 
 if TYPE_CHECKING:
@@ -83,8 +80,6 @@ class AppHandler:
         "_config",
         "_csrf_cookie_name",
         "_csrf_header_name",
-        "_http_client",
-        "_http_client_sync",
         "_initialized",
         "_manifest",
         "_spa_config",
@@ -106,8 +101,6 @@ class AppHandler:
         self._cached_bytes: "bytes | None" = None
         self._cached_transformed_html: "str | None" = None
         self._initialized = False
-        self._http_client: "httpx.AsyncClient | None" = None
-        self._http_client_sync: "httpx.Client | None" = None
         self._vite_url: "str | None" = None
         self._manifest: "dict[str, Any]" = {}
 
@@ -168,24 +161,12 @@ class AppHandler:
         self._initialized = True
 
     def _init_http_clients(self, vite_url: "str | None" = None) -> None:
-        """Initialize HTTP clients for dev mode proxying."""
+        """Resolve Vite server URL for dev mode proxying."""
         self._vite_url = vite_url or self._resolve_vite_url()
-
-        http2_enabled = self._config.http2 and check_h2_available()
-
-        self._http_client = httpx.AsyncClient(timeout=httpx.Timeout(5.0), http2=http2_enabled)
-        self._http_client_sync = httpx.Client(timeout=httpx.Timeout(5.0))
 
     async def shutdown_async(self) -> None:
         """Shutdown the handler asynchronously."""
-        if self._http_client is not None:
-            with suppress(RuntimeError):
-                await self._http_client.aclose()
-            self._http_client = None
-        if self._http_client_sync is not None:
-            with suppress(RuntimeError):
-                self._http_client_sync.close()
-            self._http_client_sync = None
+        return
 
     def _load_production_assets_sync(self) -> None:
         """Load manifest and index.html synchronously in production modes."""
@@ -238,17 +219,17 @@ class AppHandler:
 
     async def _load_index_html_async(self) -> None:
         """Load and cache index.html asynchronously."""
-        resolved_path: Path | None = None
+        resolved_path: anyio.Path | None = None
         for candidate in self._config.candidate_index_html_paths():
             candidate_path = anyio.Path(candidate)
             if await candidate_path.exists():
-                resolved_path = candidate
+                resolved_path = candidate_path
                 break
 
         if resolved_path is None:
             self._raise_index_not_found()
 
-        raw_bytes = await anyio.Path(resolved_path).read_bytes()
+        raw_bytes = await resolved_path.read_bytes()
         html = raw_bytes.decode("utf-8")
         html = self._transform_asset_urls_in_html(html)
 
@@ -346,17 +327,69 @@ class AppHandler:
         """
         resource_dir = self._config.resource_dir
         try:
-            resource_dir_str = str(resource_dir.relative_to(self._config.root_dir))
+            resource_dir_str = resource_dir.relative_to(self._config.root_dir).as_posix()
         except ValueError:
             resource_dir_str = resource_dir.name
         return inject_vite_dev_scripts(
             html,
-            "",
+            self._vite_url or self._resolve_vite_url(),
             asset_url=self._config.asset_url,
             is_react=self._config.is_react,
             csp_nonce=self._config.csp_nonce,
             resource_dir=resource_dir_str,
         )
+
+    @staticmethod
+    def _post_vite_json_sync(endpoint: str, payload: dict[str, Any]) -> str:
+        """Send a POST JSON request to the Vite dev server using stdlib http.client."""
+        import http.client
+        from urllib.parse import urlsplit
+
+        parsed = urlsplit(endpoint)
+        scheme = (parsed.scheme or "http").lower()
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if scheme == "https" else 80)
+        path = parsed.path or "/"
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+        conn_cls = http.client.HTTPSConnection if scheme == "https" else http.client.HTTPConnection
+        conn = conn_cls(host, port, timeout=5.0)
+        try:
+            conn.request("POST", path, body=encode_json(payload), headers={"Content-Type": "application/json"})
+            resp = conn.getresponse()
+            body = resp.read()
+            if resp.status >= 400:
+                msg = f"Vite transform-index returned HTTP {resp.status}"
+                raise OSError(msg)
+            return body.decode("utf-8")
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _fetch_vite_url_sync(target_url: str) -> str:
+        """Fetch HTML from the Vite dev server using stdlib http.client."""
+        import http.client
+        from urllib.parse import urlsplit
+
+        parsed = urlsplit(target_url)
+        scheme = (parsed.scheme or "http").lower()
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if scheme == "https" else 80)
+        path = parsed.path or "/"
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+        conn_cls = http.client.HTTPSConnection if scheme == "https" else http.client.HTTPConnection
+        conn = conn_cls(host, port, timeout=5.0)
+        try:
+            conn.request("GET", path)
+            resp = conn.getresponse()
+            body = resp.read()
+            if resp.status >= 400:
+                msg = f"Vite server returned HTTP {resp.status}"
+                raise OSError(msg)
+            return body.decode("utf-8")
+        finally:
+            conn.close()
 
     async def _transform_html_with_vite(self, html: str, url: str) -> str:
         """Transform HTML using the Vite dev server pipeline.
@@ -364,30 +397,26 @@ class AppHandler:
         Returns:
             The transformed HTML.
         """
-        if self._http_client is None or self._vite_url is None:
-            msg = "HTTP client not initialized. Ensure initialize_async() was called for dev mode."
+        if self._vite_url is None:
+            msg = "Vite URL not resolved. Ensure initialize_async() was called for dev mode."
             raise ImproperlyConfiguredException(msg)
         endpoint = f"{self._vite_url.rstrip('/')}/__litestar__/transform-index"
-        response = await self._http_client.post(endpoint, json={"url": url, "html": html}, timeout=5.0)
-        response.raise_for_status()
-        return response.text
+        return await anyio.to_thread.run_sync(self._post_vite_json_sync, endpoint, {"url": url, "html": html})
 
     def _transform_html_with_vite_sync(self, html: str, url: str) -> str:
         """Transform HTML using the Vite dev server pipeline (sync).
 
         Raises:
-            ImproperlyConfiguredException: If the HTTP client is not initialized.
+            ImproperlyConfiguredException: If the Vite URL is not resolved.
 
         Returns:
             The transformed HTML.
         """
-        if self._http_client_sync is None or self._vite_url is None:
-            msg = "HTTP client not initialized. Ensure initialize_sync() was called for dev mode."
+        if self._vite_url is None:
+            msg = "Vite URL not resolved. Ensure initialize_sync() was called for dev mode."
             raise ImproperlyConfiguredException(msg)
         endpoint = f"{self._vite_url.rstrip('/')}/__litestar__/transform-index"
-        response = self._http_client_sync.post(endpoint, json={"url": url, "html": html}, timeout=5.0)
-        response.raise_for_status()
-        return response.text
+        return self._post_vite_json_sync(endpoint, {"url": url, "html": html})
 
     async def _get_dev_html(self, request: "Request[Any, Any, Any]") -> str:
         """Resolve dev HTML for SPA or hybrid modes.
@@ -549,7 +578,7 @@ class AppHandler:
         if not self._initialized:
             logger.warning(
                 "AppHandler lazy init triggered - lifespan may not have run. "
-                "Consider calling initialize_sync() explicitly during app startup."
+                "Consider calling initialize_async() explicitly during app startup."
             )
             await self.initialize_async()
 
@@ -569,26 +598,20 @@ class AppHandler:
             if the server is not yet ready.
 
         Raises:
-            ImproperlyConfiguredException: If the HTTP client is not initialized.
+            ImproperlyConfiguredException: If the Vite URL is not resolved.
         """
-        if self._http_client is None:
-            msg = "HTTP client not initialized. Ensure initialize_async() was called for dev mode."
-            raise ImproperlyConfiguredException(msg)
+        import urllib.error
 
         if self._vite_url is None:
             msg = "Vite URL not resolved. Ensure initialize_sync() or initialize_async() was called."
             raise ImproperlyConfiguredException(msg)
 
         target_url = f"{self._vite_url}/"
-
         try:
-            response = await self._http_client.get(target_url, follow_redirects=True)
-            response.raise_for_status()
-        except httpx.HTTPError:
+            return await anyio.to_thread.run_sync(self._fetch_vite_url_sync, target_url)
+        except (OSError, urllib.error.URLError):
             logger.debug("Vite server not ready at %s, showing startup page", target_url)
             return _get_server_starting_html(target_url)
-        else:
-            return response.text
 
     def _proxy_to_dev_server_sync(self) -> str:
         """Proxy request to Vite dev server synchronously.
@@ -598,26 +621,20 @@ class AppHandler:
             if the server is not yet ready.
 
         Raises:
-            ImproperlyConfiguredException: If the HTTP client is not initialized.
+            ImproperlyConfiguredException: If the Vite URL is not resolved.
         """
-        if self._http_client_sync is None:
-            msg = "HTTP client not initialized. Ensure initialize_sync() was called for dev mode."
-            raise ImproperlyConfiguredException(msg)
+        import urllib.error
 
         if self._vite_url is None:
             msg = "Vite URL not resolved. Ensure initialize_sync() or initialize_async() was called."
             raise ImproperlyConfiguredException(msg)
 
         target_url = f"{self._vite_url}/"
-
         try:
-            response = self._http_client_sync.get(target_url, follow_redirects=True)
-            response.raise_for_status()
-        except httpx.HTTPError:
+            return self._fetch_vite_url_sync(target_url)
+        except (OSError, urllib.error.URLError):
             logger.debug("Vite server not ready at %s, showing startup page", target_url)
             return _get_server_starting_html(target_url)
-        else:
-            return response.text
 
     def _resolve_vite_url(self) -> str:
         """Resolve the Vite server URL from hotfile or config.

@@ -2,7 +2,7 @@
 AsyncAPI Export & Type Generation
 ==================================
 
-Just as ``litestar-vite`` exports OpenAPI schemas and generates TypeScript SDKs for REST routes, it provides first-class export and code generation for real-time channels using the AsyncAPI 3.0 standard.
+``litestar-vite`` exports AsyncAPI 3.0 schemas and generates TypeScript channel contracts alongside its OpenAPI and route generators.
 
 Configuration
 -------------

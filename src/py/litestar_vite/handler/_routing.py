@@ -45,13 +45,14 @@ def get_route_opt(request: "Request[Any, Any, Any]") -> "dict[str, Any] | None":
     return None  # pragma: no cover
 
 
-def get_route_asset_prefix(request: "Request[Any, Any, Any]") -> str | None:
+def get_route_asset_prefix(request: "Request[Any, Any, Any]", opt: "dict[str, Any] | None" = None) -> str | None:
     """Get the static asset prefix for the current SPA route handler.
 
     Returns:
         The asset URL prefix for this SPA route, or None if not configured.
     """
-    opt = get_route_opt(request)
+    if opt is None:
+        opt = get_route_opt(request)
     if opt is None:
         return None
     asset_prefix = opt.get("_vite_asset_prefix")
@@ -60,13 +61,16 @@ def get_route_asset_prefix(request: "Request[Any, Any, Any]") -> str | None:
     return None
 
 
-def get_spa_handler_from_request(request: "Request[Any, Any, Any]") -> "AppHandler":
+def get_spa_handler_from_request(
+    request: "Request[Any, Any, Any]", opt: "dict[str, Any] | None" = None
+) -> "AppHandler":
     """Resolve the SPA handler instance for the current request.
 
     This is stored on the SPA route handler's ``opt`` when the route is created.
 
     Args:
         request: Incoming request.
+        opt: Optional pre-resolved route handler opt mapping.
 
     Returns:
         The configured SPA handler instance.
@@ -76,7 +80,8 @@ def get_spa_handler_from_request(request: "Request[Any, Any, Any]") -> "AppHandl
     """
     from litestar_vite.handler._app import AppHandler
 
-    opt = get_route_opt(request)
+    if opt is None:
+        opt = get_route_opt(request)
     handler = opt.get("_vite_spa_handler") if opt is not None else None
 
     if isinstance(handler, AppHandler):
@@ -101,12 +106,13 @@ def _resolve_spa_route(request: "Request[Any, Any, Any]") -> "AppHandler":
         NotFoundException: If the path matches a static asset or a Litestar route.
     """
     path = request.url.path
-    asset_prefix = get_route_asset_prefix(request)
+    opt = get_route_opt(request)
+    asset_prefix = get_route_asset_prefix(request, opt=opt)
     if is_static_asset_path(path, asset_prefix):
         raise NotFoundException(detail=f"Static asset path: {path}")
     if path != "/" and is_litestar_route(path, request.app):
         raise NotFoundException(detail=f"Not an SPA route: {path}")
-    return get_spa_handler_from_request(request)
+    return get_spa_handler_from_request(request, opt=opt)
 
 
 async def spa_handler_dev(request: "Request[Any, Any, Any]") -> Response[str]:

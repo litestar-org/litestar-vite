@@ -4,17 +4,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "build": "vite build",
 {% if enable_ssr %}
-    "build": "{% if use_typescript %}tsc -b --noEmit && {% endif %}vite build && vite build --ssr {{ resource_dir }}/ssr.tsx",
-{% else %}
-    "build": "{% if use_typescript %}tsc -b --noEmit && {% endif %}vite build",
+    "build:ssr": "vite build --ssr {{ resource_dir }}/ssr.tsx",
 {% endif %}
     "preview": "vite preview",
 {% if enable_ssr %}
-    "serve": "NODE_ENV=production node {{ resource_dir }}/bootstrap/ssr/ssr.js",
-{% else %}
-    "serve": "vite preview",
+    "serve:ssr": "node {{ resource_dir }}/bootstrap/ssr/ssr.js --stdio",
 {% endif %}
+    "serve": "vite preview",
     "watch": "npm run serve",
     "update": "npm update"{% if generate_client %},
     "generate-types": "openapi-ts"{% endif %}

@@ -1,9 +1,10 @@
 """Utilities for logging, environment setup, and route detection."""
 
 __all__ = (
+    "build_litestar_route_prefixes",
+    "check_h2_available",
     "configure_proxy_logging",
     "console",
-    "create_proxy_client",
     "get_litestar_route_prefixes",
     "infer_host_from_argv",
     "infer_port_from_argv",
@@ -40,15 +41,12 @@ from litestar_vite.codegen import write_if_changed as _write_if_changed
 from litestar_vite.config import InertiaConfig, TypeGenConfig
 
 if TYPE_CHECKING:
-    import httpx
     from litestar import Litestar, Response
     from litestar.connection import Request
     from litestar.exceptions import NotFoundException
 
     from litestar_vite.config import ViteConfig
 
-_TICK = "[bold green]✓[/]"
-_INFO = "[cyan]•[/]"
 _WARN = "[yellow]![/]"
 _FAIL = "[red]x[/]"
 
@@ -72,7 +70,6 @@ def configure_proxy_logging() -> None:
     """Suppress verbose proxy-related logging unless debug is enabled.
 
     Suppresses INFO-level logs from:
-    - httpx: logs every HTTP request
     - websockets: logs connection events
     - uvicorn.protocols.websockets: logs "connection open/closed"
 
@@ -80,7 +77,7 @@ def configure_proxy_logging() -> None:
     """
 
     if not is_proxy_debug():
-        for logger_name in ("httpx", "websockets", "uvicorn.protocols.websockets"):
+        for logger_name in ("websockets", "uvicorn.protocols.websockets"):
             logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 
@@ -109,38 +106,6 @@ def _check_h2_available() -> bool:
 def check_h2_available() -> bool:
     """Check whether optional HTTP/2 support is available."""
     return _check_h2_available()
-
-
-def create_proxy_client(
-    http2: bool = True,
-    timeout: float = 30.0,
-    max_keepalive: int = 20,
-    max_connections: int = 40,
-    keepalive_expiry: float = 60.0,
-) -> "httpx.AsyncClient":
-    """Create an httpx.AsyncClient with connection pooling for proxy use.
-
-    This factory function creates a shared HTTP client with optimized settings
-    for proxying requests to Vite dev servers or SSR frameworks. The client
-    uses connection pooling for better performance.
-
-    Args:
-        http2: Enable HTTP/2 support (requires h2 package).
-        timeout: Request timeout in seconds.
-        max_keepalive: Maximum number of keep-alive connections per host.
-        max_connections: Maximum total concurrent connections.
-        keepalive_expiry: Idle timeout before closing keep-alive connections.
-
-    Returns:
-        A configured httpx.AsyncClient with connection pooling.
-    """
-    import httpx
-
-    http2_enabled = http2 and _check_h2_available()
-    limits = httpx.Limits(
-        max_keepalive_connections=max_keepalive, max_connections=max_connections, keepalive_expiry=keepalive_expiry
-    )
-    return httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(timeout), http2=http2_enabled)
 
 
 def infer_port_from_argv() -> str | None:
@@ -611,8 +576,8 @@ def _normalize_route_prefix(prefix: str) -> str | None:
     return normalized or None
 
 
-def _route_is_vite_spa(route: Any) -> bool:
-    """Check whether a route belongs to the litestar-vite SPA handler.
+def _route_is_vite_internal(route: Any) -> bool:
+    """Return whether a route belongs to the Vite SPA handler or static router.
 
     Litestar exposes a single ``route_handler`` on most route types and a list on
     HTTPRoute; check both to stay version-agnostic.
@@ -623,18 +588,9 @@ def _route_is_vite_spa(route: Any) -> bool:
         handlers = [single] if single is not None else []
     for handler in handlers:
         opt = getattr(handler, "opt", None)
-        if opt and "_vite_spa_handler" in opt:
+        if opt and ("_vite_spa_handler" in opt or opt.get("_vite_static_handler")):
             return True
     return False
-
-
-def _route_is_vite_static(route: Any) -> bool:
-    """Return whether a route belongs to the Vite-managed static router."""
-    handlers = getattr(route, "route_handlers", None)
-    if not handlers:
-        single = getattr(route, "route_handler", None)
-        handlers = [single] if single is not None else []
-    return any(bool((opt := getattr(handler, "opt", None)) and opt.get("_vite_static_handler")) for handler in handlers)
 
 
 def build_litestar_route_prefixes(app: "Litestar", extra_route_prefixes: tuple[str, ...] = ()) -> tuple[str, ...]:
@@ -662,17 +618,16 @@ def build_litestar_route_prefixes(app: "Litestar", extra_route_prefixes: tuple[s
     for route in app.routes:
         if isinstance(route, WebSocketRoute):
             continue
-        if _route_is_vite_spa(route) or _route_is_vite_static(route):
+        if _route_is_vite_internal(route):
             continue
         prefix = _normalize_route_prefix(route.path)
         if prefix is not None:
             prefixes.append(prefix)
-            static_segments = [segment for segment in prefix.split("/") if segment and not segment.startswith("{")]
-            parameter_index = next(
-                (index for index, segment in enumerate(prefix.split("/")) if segment.startswith("{")), None
-            )
+            segments = prefix.split("/")
+            static_segments = [segment for segment in segments if segment and not segment.startswith("{")]
+            parameter_index = next((index for index, segment in enumerate(segments) if segment.startswith("{")), None)
             if parameter_index is not None and static_segments:
-                static_prefix = _normalize_route_prefix("/".join(prefix.split("/")[:parameter_index]))
+                static_prefix = _normalize_route_prefix("/".join(segments[:parameter_index]))
                 if static_prefix is not None:
                     prefixes.append(static_prefix)
         elif route.path == "/":

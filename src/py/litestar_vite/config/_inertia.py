@@ -1,12 +1,10 @@
 """Inertia.js configuration classes."""
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 
 from litestar_vite.config._constants import empty_dict_factory, empty_set_factory
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 __all__ = ("InertiaConfig", "InertiaSSRConfig", "InertiaTypeGenConfig")
 
@@ -15,22 +13,14 @@ __all__ = ("InertiaConfig", "InertiaSSRConfig", "InertiaTypeGenConfig")
 class InertiaSSRConfig:
     """Server-side rendering settings for Inertia.js.
 
-    Inertia SSR runs a separate Node server that renders the initial HTML for an
-    Inertia page object. Litestar sends the page payload to the SSR server (by
-    default at ``http://127.0.0.1:13714/render``) and injects the returned head
-    tags and body markup into the HTML response.
+    In development mode, Inertia SSR uses Vite 7+'s ``RunnableDevEnvironment.runner``
+    inside the already-running Vite dev server over ``/__litestar_ssr__``.
 
-    When ``command`` is set, the plugin spawns the Node /render server in the
-    server lifespan (mirroring Vite process management) and tears it down on
-    shutdown. This makes SSR examples self-contained — no second terminal needed.
-
-    Notes:
-        - This is *not* Litestar-Vite's framework proxy mode (``mode="framework"``; aliases: ``mode="ssr"`` / ``mode="ssg"``).
-        - When enabled, failures to contact the SSR server are treated as errors (no silent fallback).
+    In production mode, Litestar spawns the built SSR bundle as a managed subprocess
+    communicating over ``stdin``/``stdout`` pipes (`StdioIPCTransport`).
     """
 
     enabled: bool = True
-    url: str = "http://127.0.0.1:13714/render"
     timeout: float = 2.0
     target_selector: str = "#app"
     """CSS selector for the element whose outer HTML is replaced by the SSR-rendered body.
@@ -42,38 +32,27 @@ class InertiaSSRConfig:
     this field is ignored — SPA config already governs the SPA shell selector.
     """
 
-    command: "list[str] | None" = None
-    """Command to start the Node /render server, e.g. ``["npm", "run", "start:ssr"]``.
+    command: list[str] | None = None
+    """Command to start the production stdio SSR worker, e.g. ``["node", "bootstrap/ssr/ssr.js"]``.
 
-    When set, the plugin spawns the command as a subprocess in the server lifespan
-    and stops it on shutdown. Set to ``None`` to disable auto-start (run the SSR
-    server manually in a separate terminal).
+    When ``None`` in production mode, defaults to ``["node", "bootstrap/ssr/ssr.js"]``
+    when the SSR bundle exists under the project root.
     """
 
-    cwd: "Path | None" = None
+    cwd: Path | None = None
     """Working directory for the SSR command. Defaults to ``ViteConfig.root_dir`` when None."""
 
-    auto_start: bool = True
-    """When True and ``command`` is set, the plugin starts the Node SSR process in lifespan.
+    fallback_to_client: bool = True
+    """Whether to fall back gracefully to client-side hydration if SSR rendering fails."""
 
-    Set to False to keep the command around for documentation but skip auto-start
-    (useful when running under an external process manager).
-    """
+    circuit_breaker_enabled: bool = True
+    """Whether to enable the in-memory circuit breaker protecting the SSR rendering pipeline."""
 
-    health_check: bool = False
-    """When True, poll the SSR ``url`` until it responds before completing app startup.
+    circuit_breaker_failure_threshold: int = 3
+    """Number of consecutive failures before the circuit breaker trips to OPEN state."""
 
-    Default is False so the SSR process starts in the background and Litestar can serve
-    requests immediately. Set to True if you want startup to block until /render is ready
-    (catches misconfigured commands early at the cost of slower boot).
-    """
-
-    health_check_timeout: float = 10.0
-    """Seconds to wait for the SSR endpoint to become reachable during startup.
-
-    Only consulted when ``health_check`` is True. On timeout the plugin logs a warning
-    and continues — startup is not aborted.
-    """
+    circuit_breaker_reset_timeout: float = 30.0
+    """Cooldown seconds to wait before probing SSR worker health after tripping."""
 
 
 @dataclass
@@ -102,27 +81,19 @@ class InertiaConfig:
 
     This must be a path that is found by the Vite Plugin template config
     """
-    component_opt_keys: "tuple[str, ...]" = ("component", "page")
+    component_opt_keys: tuple[str, ...] = ("component", "page")
     """Identifiers to use on routes to get the inertia component to render.
 
     The first key found in the route handler opts will be used. This allows
     semantic flexibility - use "component" or "page" depending on preference.
-
-    Example:
-        # All equivalent:
-        @get("/", component="Home")
-        @get("/", page="Home")
-
-        # Custom keys:
-        InertiaConfig(component_opt_keys=("view", "component", "page"))
     """
-    redirect_unauthorized_to: "str | None" = None
+    redirect_unauthorized_to: str | None = None
     """Optionally supply a path where unauthorized requests should redirect."""
-    redirect_404: "str | None" = None
+    redirect_404: str | None = None
     """Optionally supply a path where 404 requests should redirect."""
-    extra_static_page_props: "dict[str, Any]" = field(default_factory=empty_dict_factory)
+    extra_static_page_props: dict[str, Any] = field(default_factory=empty_dict_factory)
     """A dictionary of values to automatically add in to page props on every response."""
-    extra_session_page_props: "set[str] | dict[str, type]" = field(default_factory=empty_set_factory)
+    extra_session_page_props: set[str] | dict[str, type] = field(default_factory=empty_set_factory)
     """Session props to include in page responses.
 
     Keys are copied when the current request exposes a Litestar session. They are
@@ -133,14 +104,8 @@ class InertiaConfig:
     Can be either:
     - A set of session key names (types will be 'unknown')
     - A dict mapping session keys to Python types (auto-registered with OpenAPI)
-
-    Example with types (recommended):
-        extra_session_page_props={"currentTeam": TeamDetail}
-
-    Example without types (legacy):
-        extra_session_page_props={"currentTeam"}
     """
-    shared_page_prop_types: "dict[str, Any] | None" = None
+    shared_page_prop_types: dict[str, Any] | None = None
     """Python types for props pushed at request time with ``share()``.
 
     This declares *types only* and never carries values, unlike
@@ -155,14 +120,6 @@ class InertiaConfig:
     Values are annotations, so containers and unions are accepted alongside plain
     models. Anything the schema generator cannot resolve falls back to the
     configured fallback type.
-
-    Example:
-        A guard pushing ``share(connection, "auth", {...})``::
-
-            shared_page_prop_types={
-                "auth": AuthProps,
-                "notifications": list[Notification],
-            }
 
     Leave as ``None`` to keep the generated defaults.
     """
@@ -187,11 +144,11 @@ class InertiaConfig:
     to disable default User/AuthData interfaces for non-standard user models.
     """
 
-    ssr: "InertiaSSRConfig | bool | None" = None
+    ssr: InertiaSSRConfig | bool | None = None
     """Enable server-side rendering (SSR) for Inertia responses.
 
-    When enabled, full-page HTML responses will be pre-rendered by a Node SSR server
-    and injected into the SPA HTML before returning to the client.
+    When enabled, full-page HTML responses will be pre-rendered via Vite's
+    ModuleRunner in development mode or a managed stdio worker in production mode.
 
     Supports:
         - True: enable with defaults -> ``InertiaSSRConfig()``
@@ -232,17 +189,6 @@ class InertiaConfig:
     to Laravel's Precognition format when the Precognition header is present.
     This enables real-time validation without executing handler side effects.
 
-    Usage:
-        1. Enable in config: InertiaConfig(precognition=True)
-        2. Use @precognition decorator on form handlers
-        3. Use laravel-precognition-vue/react on the frontend
-
-    Note on Rate Limiting:
-        Real-time validation can generate many requests. Consider:
-        - Frontend debouncing (built into laravel-precognition libraries)
-        - Server-side throttling for Precognition requests
-        - Laravel has no official rate limiting solution for Precognition
-
     See: https://laravel.com/docs/precognition
     """
 
@@ -254,7 +200,7 @@ class InertiaConfig:
             self.ssr = None
 
     @property
-    def ssr_config(self) -> "InertiaSSRConfig | None":
+    def ssr_config(self) -> InertiaSSRConfig | None:
         """Return the SSR config when enabled, otherwise None.
 
         Returns:
@@ -278,35 +224,6 @@ class InertiaTypeGenConfig:
             Set to False if your User model doesn't have these fields (uses uuid, username, etc.)
         include_default_flash: Include default FlashMessages interface.
             Uses { [category: string]: string[] } pattern for flash messages.
-
-    Example:
-        Standard auth (95% of users) - just extend defaults::
-
-            # Python: use defaults
-            ViteConfig(inertia=InertiaConfig())
-
-            # TypeScript: extend User interface
-            declare module 'litestar-vite-plugin/inertia' {
-                interface User {
-                    avatarUrl?: string
-                    roles: Role[]
-                }
-            }
-
-        Custom auth (5% of users) - define from scratch::
-
-            # Python: disable defaults
-            ViteConfig(inertia=InertiaConfig(
-                type_gen=InertiaTypeGenConfig(include_default_auth=False)
-            ))
-
-            # TypeScript: define your custom User
-            declare module 'litestar-vite-plugin/inertia' {
-                interface User {
-                    uuid: string  // No id!
-                    username: string  // No email!
-                }
-            }
     """
 
     include_default_auth: bool = True

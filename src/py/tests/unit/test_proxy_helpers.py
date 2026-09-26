@@ -1,21 +1,19 @@
 import os
-from collections.abc import AsyncGenerator
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-import httpx
+import anyio
 import pytest
 from litestar.exceptions import WebSocketDisconnect
+from litestar.types import Receive, Send
 from typing_extensions import Self
 
-from litestar_vite.plugin import VitePlugin
 from litestar_vite.plugin._proxy import (
     SSRProxyMiddleware,
     ViteProxyMiddleware,
     _extract_proxy_response_headers,
-    _proxy_stream_response,
+    _stream_chunked_body,
     _stream_request_body,
     build_hmr_target_url,
     build_proxy_url,
@@ -28,77 +26,6 @@ from litestar_vite.plugin._proxy import (
     extract_subprotocols,
     normalize_proxy_prefixes,
 )
-
-
-class _DummyStreamContext:
-    def __init__(self, response: object, body_stream: object | None = None) -> None:
-        self._response = response
-        self._body_stream = body_stream
-        self.request_body_chunks: list[bytes] = []
-        self.exited = False
-        self.entered = False
-
-    async def __aenter__(self) -> httpx.Response:
-        self.entered = True
-        if self._body_stream is not None:
-            async for chunk in cast("AsyncGenerator[bytes, None]", self._body_stream):
-                if chunk:
-                    self.request_body_chunks.append(chunk)
-        return cast("httpx.Response", self._response)
-
-    async def __aexit__(self, *_args: object) -> None:
-        self.exited = True
-
-
-class DummyAsyncClient:
-    def __init__(self, response: httpx.Response) -> None:
-        self._response = response
-        self.stream_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
-        self.stream_context: _DummyStreamContext | None = None
-
-    async def request(self, *_args: object, **_kwargs: object) -> httpx.Response:
-        return cast("httpx.Response", self._response)
-
-    def stream(self, *args: object, **kwargs: object) -> _DummyStreamContext:
-        self.stream_calls.append((args, kwargs))
-        body_stream = kwargs.get("content")
-        self.stream_context = _DummyStreamContext(self._response, body_stream)
-        return self.stream_context
-
-
-class _DummyStreamingResponse:
-    def __init__(
-        self, chunks: list[bytes], status_code: int = 200, headers: list[tuple[str, str]] | None = None
-    ) -> None:
-        self.status_code = status_code
-        self.headers = httpx.Headers(headers or {})
-        self._chunks = chunks
-        self.closed = False
-
-    async def aiter_bytes(self) -> AsyncGenerator[bytes, None]:
-        for chunk in self._chunks:
-            yield chunk
-
-    async def aclose(self) -> None:
-        self.closed = True
-
-
-class _DummyFailingStreamingResponse:
-    """Mock streaming response that yields chunks then raises a mid-stream exception."""
-
-    def __init__(self, chunks: list[bytes], status_code: int = 200) -> None:
-        self.status_code = status_code
-        self.headers = httpx.Headers({"content-type": "text/plain"})
-        self._chunks = chunks
-        self.closed = False
-
-    async def aiter_bytes(self) -> AsyncGenerator[bytes, None]:
-        for chunk in self._chunks:
-            yield chunk
-        raise RuntimeError("simulated upstream stream drop")
-
-    async def aclose(self) -> None:
-        self.closed = True
 
 
 async def test_stream_request_body_reads_chunks_preserving_order() -> None:
@@ -118,43 +45,39 @@ async def test_stream_request_body_reads_chunks_preserving_order() -> None:
     assert collected == [b"first", b"second"]
 
 
-async def test_proxy_stream_response_streams_chunks_and_closes() -> None:
-    response = _DummyStreamingResponse([b"one", b"two"])
+async def test_stream_chunked_body_decodes_http11_chunks() -> None:
+    class _FakeStream:
+        def __init__(self, chunks: list[bytes]) -> None:
+            self._chunks = list(chunks)
+
+        async def receive(self, _max_bytes: int = 65536) -> bytes:
+            if self._chunks:
+                return self._chunks.pop(0)
+            raise anyio.EndOfStream
+
+    raw = b"3\r\none\r\n3\r\ntwo\r\n0\r\n\r\n"
+    stream = _FakeStream([raw[4:]])
     events: list[dict[str, object]] = []
 
     async def send(event: dict[str, object]) -> None:
         events.append(event)
 
-    await _proxy_stream_response(cast("httpx.Response", response), send)
-
-    status = next(event for event in events if event.get("type") == "http.response.start")
-    bodies = [event for event in events if event.get("type") == "http.response.body"]
-
-    assert status["status"] == 200
-    assert bodies[0]["body"] == b"one"
-    assert bodies[0]["more_body"] is True
-    assert bodies[1]["body"] == b"two"
-    assert bodies[1]["more_body"] is True
-    assert bodies[2]["body"] == b""
-    assert bodies[2]["more_body"] is False
-    assert response.closed
+    await _stream_chunked_body(cast("Any", stream), bytearray(raw[:4]), send)
+    body_bytes = b"".join(cast("bytes", e["body"]) for e in events if e.get("type") == "http.response.body")
+    assert body_bytes == b"onetwo"
 
 
 pytestmark = pytest.mark.anyio
 
 
 def test_extract_proxy_response_headers_filters_headers() -> None:
-    response = httpx.Response(
-        200,
-        headers=[
-            ("content-type", "text/plain"),
-            ("set-cookie", "a=1"),
-            ("set-cookie", "b=2"),
-            ("connection", "keep-alive"),
-        ],
-        content=b"ok",
-    )
-    headers = _extract_proxy_response_headers(response.headers)
+    raw_headers = [
+        (b"content-type", b"text/plain"),
+        (b"set-cookie", b"a=1"),
+        (b"set-cookie", b"b=2"),
+        (b"connection", b"keep-alive"),
+    ]
+    headers = _extract_proxy_response_headers(raw_headers)
     assert (b"content-type", b"text/plain") in headers
     assert all(key != b"connection" for key, _ in headers)
     assert headers.count((b"set-cookie", b"a=1")) == 1
@@ -373,18 +296,44 @@ def test_hmr_target_getter_caches(tmp_path: Path) -> None:
     assert getter() == "http://127.0.0.1:24678"
 
 
-async def test_proxy_http_with_plugin_client(tmp_path: Path) -> None:
+class _FakeTCPStream:
+    def __init__(self, response_bytes: list[bytes]) -> None:
+        self.sent_chunks: list[bytes] = []
+        self._response_bytes = list(response_bytes)
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        return None
+
+    def __aiter__(self) -> Self:
+        return self
+
+    async def __anext__(self) -> bytes:
+        if self._response_bytes:
+            return self._response_bytes.pop(0)
+        raise StopAsyncIteration
+
+    async def send(self, data: bytes) -> None:
+        self.sent_chunks.append(data)
+
+    async def receive(self, _max_bytes: int = 65536) -> bytes:
+        if self._response_bytes:
+            return self._response_bytes.pop(0)
+        raise anyio.EndOfStream
+
+
+async def test_proxy_http_streams_post_body_via_anyio(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     hotfile = tmp_path / "hot"
     hotfile.write_text("http://localhost:5173")
 
-    response = httpx.Response(200, headers={"content-type": "text/plain"}, content=b"ok")
-    plugin_client = DummyAsyncClient(response)
-    plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", plugin_client)))
+    fake_stream = _FakeTCPStream([b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nok"])
+    monkeypatch.setattr("anyio.connect_tcp", AsyncMock(return_value=fake_stream))
 
-    middleware = ViteProxyMiddleware(app=Mock(), hotfile_path=hotfile, asset_url="/static/", plugin=plugin)
+    middleware = ViteProxyMiddleware(app=Mock(), hotfile_path=hotfile, asset_url="/static/")
 
-    # Use POST to test body streaming (GET no longer sends body per #242)
-    scope = {
+    scope: dict[str, Any] = {
         "method": "POST",
         "raw_path": b"/@vite/client",
         "query_string": b"",
@@ -392,7 +341,6 @@ async def test_proxy_http_with_plugin_client(tmp_path: Path) -> None:
         "path": "/@vite/client",
     }
     events: list[dict[str, object]] = []
-
     chunks = [b"up-", b"streaming"]
 
     async def receive() -> dict[str, object]:
@@ -403,54 +351,24 @@ async def test_proxy_http_with_plugin_client(tmp_path: Path) -> None:
     async def send(event: dict[str, object]) -> None:
         events.append(event)
 
-    await middleware._proxy_http(scope, receive, send)
+    await middleware._proxy_http(scope, cast("Receive", receive), cast("Send", send))
 
     assert events[0]["status"] == 200
     assert events[1]["body"] == b"ok"
-    assert plugin_client.stream_context is not None
-    assert plugin_client.stream_context.request_body_chunks == [b"up-", b"streaming"]
-
-
-async def test_proxy_http_does_not_duplicate_response_start_on_streaming_error(tmp_path: Path) -> None:
-    """Mid-stream exception after response headers are sent must not dispatch a second http.response.start."""
-    hotfile = tmp_path / "hot"
-    hotfile.write_text("http://localhost:5173")
-
-    failing_response = _DummyFailingStreamingResponse([b"chunk1"])
-    plugin_client = DummyAsyncClient(cast("httpx.Response", failing_response))
-    plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", plugin_client)))
-
-    middleware = ViteProxyMiddleware(app=Mock(), hotfile_path=hotfile, asset_url="/static/", plugin=plugin)
-
-    scope = {
-        "method": "GET",
-        "raw_path": b"/@vite/client",
-        "query_string": b"",
-        "headers": [(b"host", b"example.com")],
-        "path": "/@vite/client",
-    }
-    events: list[dict[str, object]] = []
-
-    async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    async def send(event: dict[str, object]) -> None:
-        events.append(event)
-
-    await middleware._proxy_http(scope, receive, send)
-
-    starts = [event for event in events if event.get("type") == "http.response.start"]
-    assert len(starts) == 1
-    assert starts[0]["status"] == 200
-
-    last_body = [event for event in events if event.get("type") == "http.response.body"][-1]
-    assert last_body["more_body"] is False
+    sent_payload = b"".join(fake_stream.sent_chunks)
+    assert b"3\r\nup-\r\n9\r\nstreaming\r\n0\r\n\r\n" in sent_payload
 
 
 async def test_proxy_http_no_target(tmp_path: Path) -> None:
     hotfile = tmp_path / "hot"
 
-    scope = {"method": "GET", "raw_path": b"/@vite/client", "query_string": b"", "headers": [], "path": "/@vite/client"}
+    scope: dict[str, Any] = {
+        "method": "GET",
+        "raw_path": b"/@vite/client",
+        "query_string": b"",
+        "headers": [],
+        "path": "/@vite/client",
+    }
     events: list[dict[str, object]] = []
 
     async def receive() -> dict[str, object]:
@@ -465,7 +383,7 @@ async def test_proxy_http_no_target(tmp_path: Path) -> None:
 
     middleware = ViteProxyMiddleware(app=downstream, hotfile_path=hotfile, asset_url="/static/")
 
-    await middleware._proxy_http(scope, receive, send)
+    await middleware._proxy_http(scope, cast("Receive", receive), cast("Send", send))
     assert events[0]["status"] == 404
     assert events[1]["body"] == b"downstream"
 
@@ -532,25 +450,21 @@ async def test_vite_hmr_handler_accepts_multiple_subprotocols(tmp_path: Path) ->
     socket.accept.assert_awaited_once_with(subprotocols="json")
 
 
-async def test_ssr_proxy_middleware_http_success() -> None:
+async def test_ssr_proxy_middleware_http_success(monkeypatch: pytest.MonkeyPatch) -> None:
     """SSRProxyMiddleware streams upstream response and filters hop-by-hop headers."""
-    response = cast(
-        "httpx.Response",
-        _DummyStreamingResponse(
-            chunks=[b"ok"],
-            status_code=200,
-            headers=[
-                ("content-type", "text/plain"),
-                ("set-cookie", "a=1"),
-                ("set-cookie", "b=2"),
-                ("connection", "keep-alive"),
-            ],
-        ),
+    raw_resp = (
+        b"HTTP/1.1 200 OK\r\n"
+        b"Content-Type: text/plain\r\n"
+        b"Set-Cookie: a=1\r\n"
+        b"Set-Cookie: b=2\r\n"
+        b"Connection: keep-alive\r\n\r\n"
+        b"ok"
     )
-    plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", DummyAsyncClient(response))))
+    fake_stream = _FakeTCPStream([raw_resp])
+    monkeypatch.setattr("anyio.connect_tcp", AsyncMock(return_value=fake_stream))
 
     inner_app = AsyncMock()
-    middleware = SSRProxyMiddleware(app=inner_app, target="http://localhost:3000", http2=False, plugin=plugin)
+    middleware = SSRProxyMiddleware(app=inner_app, target="http://localhost:3000", http2=False)
 
     send_events: list[dict[str, object]] = []
 
@@ -560,8 +474,8 @@ async def test_ssr_proxy_middleware_http_success() -> None:
     async def send(event: dict[str, object]) -> None:
         send_events.append(event)
 
-    scope: dict[str, object] = {"method": "GET", "raw_path": b"/", "query_string": b"", "headers": [(b"x-test", b"ok")]}
-    await middleware._proxy_http(scope, receive, send, "http://localhost:3000")
+    scope: dict[str, Any] = {"method": "GET", "raw_path": b"/", "query_string": b"", "headers": [(b"x-test", b"ok")]}
+    await middleware._proxy_http(scope, cast("Receive", receive), cast("Send", send), "http://localhost:3000")
 
     start = next(event for event in send_events if event["type"] == "http.response.start")
     bodies = [event for event in send_events if event["type"] == "http.response.body"]
@@ -595,248 +509,43 @@ def test_build_proxy_url_and_http2_support() -> None:
     assert check_http2_support(False) is False
 
 
-# ===== Issue #242: GET requests should not send a request body =====
-
-
-async def test_proxy_http_get_does_not_send_body(tmp_path: Path) -> None:
-    """GET requests must pass content=None so httpx does not add Transfer-Encoding: chunked.
-
-    Regression test for https://github.com/litestar-org/litestar-vite/issues/242
-    """
+@pytest.mark.parametrize("method", ["GET", "HEAD", "OPTIONS"])
+async def test_proxy_http_bodyless_methods_do_not_send_body(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, method: str
+) -> None:
+    """GET, HEAD, and OPTIONS requests must not send a request body over the TCP stream."""
     hotfile = tmp_path / "hot"
     hotfile.write_text("http://localhost:5173")
 
-    response = httpx.Response(200, headers={"content-type": "text/plain"}, content=b"ok")
-    plugin_client = DummyAsyncClient(response)
-    plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", plugin_client)))
+    fake_stream = _FakeTCPStream([b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nok"])
+    monkeypatch.setattr("anyio.connect_tcp", AsyncMock(return_value=fake_stream))
 
-    middleware = ViteProxyMiddleware(app=Mock(), hotfile_path=hotfile, asset_url="/static/", plugin=plugin)
+    middleware = ViteProxyMiddleware(app=Mock(), hotfile_path=hotfile, asset_url="/static/")
 
-    scope = {
-        "method": "GET",
+    scope: dict[str, Any] = {
+        "method": method,
         "raw_path": b"/@vite/client",
         "query_string": b"",
         "headers": [(b"host", b"example.com")],
         "path": "/@vite/client",
     }
-    events: list[dict[str, object]] = []
+    receive_called = False
 
     async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": b"", "more_body": False}
+        nonlocal receive_called
+        receive_called = True
+        return {"type": "http.request", "body": b"unexpected", "more_body": False}
+
+    events: list[dict[str, object]] = []
 
     async def send(event: dict[str, object]) -> None:
         events.append(event)
 
-    await middleware._proxy_http(scope, receive, send)
-
-    # Verify the response was successful
-    assert events[0]["status"] == 200
-
-    # Verify content=None was passed (no body for GET)
-    assert len(plugin_client.stream_calls) == 1
-    _, kwargs = plugin_client.stream_calls[0]
-    assert kwargs["content"] is None, "GET requests must not send a request body to avoid chunked encoding"
-
-
-async def test_proxy_http_head_does_not_send_body(tmp_path: Path) -> None:
-    """HEAD requests must pass content=None.
-
-    Regression test for https://github.com/litestar-org/litestar-vite/issues/242
-    """
-    hotfile = tmp_path / "hot"
-    hotfile.write_text("http://localhost:5173")
-
-    response = httpx.Response(200, headers={"content-type": "text/plain"}, content=b"")
-    plugin_client = DummyAsyncClient(response)
-    plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", plugin_client)))
-
-    middleware = ViteProxyMiddleware(app=Mock(), hotfile_path=hotfile, asset_url="/static/", plugin=plugin)
-
-    scope = {
-        "method": "HEAD",
-        "raw_path": b"/@vite/client",
-        "query_string": b"",
-        "headers": [(b"host", b"example.com")],
-        "path": "/@vite/client",
-    }
-    events: list[dict[str, object]] = []
-
-    async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    async def send(event: dict[str, object]) -> None:
-        events.append(event)
-
-    await middleware._proxy_http(scope, receive, send)
-
-    assert len(plugin_client.stream_calls) == 1
-    _, kwargs = plugin_client.stream_calls[0]
-    assert kwargs["content"] is None, "HEAD requests must not send a request body"
-
-
-async def test_proxy_http_options_does_not_send_body(tmp_path: Path) -> None:
-    """OPTIONS requests must pass content=None.
-
-    Regression test for https://github.com/litestar-org/litestar-vite/issues/242
-    """
-    hotfile = tmp_path / "hot"
-    hotfile.write_text("http://localhost:5173")
-
-    response = httpx.Response(200, headers={"content-type": "text/plain"}, content=b"")
-    plugin_client = DummyAsyncClient(response)
-    plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", plugin_client)))
-
-    middleware = ViteProxyMiddleware(app=Mock(), hotfile_path=hotfile, asset_url="/static/", plugin=plugin)
-
-    scope = {
-        "method": "OPTIONS",
-        "raw_path": b"/@vite/client",
-        "query_string": b"",
-        "headers": [(b"host", b"example.com")],
-        "path": "/@vite/client",
-    }
-    events: list[dict[str, object]] = []
-
-    async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    async def send(event: dict[str, object]) -> None:
-        events.append(event)
-
-    await middleware._proxy_http(scope, receive, send)
-
-    assert len(plugin_client.stream_calls) == 1
-    _, kwargs = plugin_client.stream_calls[0]
-    assert kwargs["content"] is None, "OPTIONS requests must not send a request body"
-
-
-async def test_proxy_http_post_still_sends_body(tmp_path: Path) -> None:
-    """POST requests must still stream the request body.
-
-    Ensures the fix for #242 does not break body-carrying methods.
-    """
-    hotfile = tmp_path / "hot"
-    hotfile.write_text("http://localhost:5173")
-
-    response = httpx.Response(200, headers={"content-type": "text/plain"}, content=b"ok")
-    plugin_client = DummyAsyncClient(response)
-    plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", plugin_client)))
-
-    middleware = ViteProxyMiddleware(app=Mock(), hotfile_path=hotfile, asset_url="/static/", plugin=plugin)
-
-    scope = {
-        "method": "POST",
-        "raw_path": b"/@vite/client",
-        "query_string": b"",
-        "headers": [(b"host", b"example.com")],
-        "path": "/@vite/client",
-    }
-    events: list[dict[str, object]] = []
-    chunks = [b"post-data"]
-
-    async def receive() -> dict[str, object]:
-        if chunks:
-            return {"type": "http.request", "body": chunks.pop(0), "more_body": bool(chunks)}
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    async def send(event: dict[str, object]) -> None:
-        events.append(event)
-
-    await middleware._proxy_http(scope, receive, send)
+    await middleware._proxy_http(scope, cast("Receive", receive), cast("Send", send))
 
     assert events[0]["status"] == 200
-    assert len(plugin_client.stream_calls) == 1
-    _, kwargs = plugin_client.stream_calls[0]
-    assert kwargs["content"] is not None, "POST requests must still send a request body"
-    # Verify body was actually consumed
-    assert plugin_client.stream_context is not None
-    assert plugin_client.stream_context.request_body_chunks == [b"post-data"]
-
-
-async def test_proxy_http_put_still_sends_body(tmp_path: Path) -> None:
-    """PUT requests must still stream the request body."""
-    hotfile = tmp_path / "hot"
-    hotfile.write_text("http://localhost:5173")
-
-    response = httpx.Response(200, headers={"content-type": "text/plain"}, content=b"ok")
-    plugin_client = DummyAsyncClient(response)
-    plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", plugin_client)))
-
-    middleware = ViteProxyMiddleware(app=Mock(), hotfile_path=hotfile, asset_url="/static/", plugin=plugin)
-
-    scope = {
-        "method": "PUT",
-        "raw_path": b"/@vite/client",
-        "query_string": b"",
-        "headers": [(b"host", b"example.com")],
-        "path": "/@vite/client",
-    }
-    events: list[dict[str, object]] = []
-
-    async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": b"put-data", "more_body": False}
-
-    async def send(event: dict[str, object]) -> None:
-        events.append(event)
-
-    await middleware._proxy_http(scope, receive, send)
-
-    assert len(plugin_client.stream_calls) == 1
-    _, kwargs = plugin_client.stream_calls[0]
-    assert kwargs["content"] is not None, "PUT requests must still send a request body"
-
-
-async def test_ssr_proxy_middleware_get_does_not_send_body() -> None:
-    """SSRProxyMiddleware GET requests must pass content=None (#246 invariant).
-
-    Regression test for https://github.com/litestar-org/litestar-vite/issues/242
-    """
-    response = cast(
-        "httpx.Response",
-        _DummyStreamingResponse(chunks=[b"ok"], status_code=200, headers=[("content-type", "text/plain")]),
-    )
-    dummy_client = DummyAsyncClient(response)
-    plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", dummy_client)))
-
-    middleware = SSRProxyMiddleware(app=AsyncMock(), target="http://localhost:3000", http2=False, plugin=plugin)
-
-    async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    async def send(_event: dict[str, object]) -> None:
-        return None
-
-    scope: dict[str, object] = {"method": "GET", "raw_path": b"/", "query_string": b"", "headers": []}
-    await middleware._proxy_http(scope, receive, send, "http://localhost:3000")
-
-    assert len(dummy_client.stream_calls) == 1
-    _, kwargs = dummy_client.stream_calls[0]
-    assert kwargs["content"] is None, "SSR proxy GET requests must not send a request body"
-
-
-async def test_ssr_proxy_middleware_post_still_sends_body() -> None:
-    """SSRProxyMiddleware POST requests must still stream the request body."""
-    response = cast(
-        "httpx.Response",
-        _DummyStreamingResponse(chunks=[b"ok"], status_code=200, headers=[("content-type", "text/plain")]),
-    )
-    dummy_client = DummyAsyncClient(response)
-    plugin = cast("VitePlugin", SimpleNamespace(proxy_client=cast("httpx.AsyncClient", dummy_client)))
-
-    middleware = SSRProxyMiddleware(app=AsyncMock(), target="http://localhost:3000", http2=False, plugin=plugin)
-
-    async def receive() -> dict[str, object]:
-        return {"type": "http.request", "body": b"post-body", "more_body": False}
-
-    async def send(_event: dict[str, object]) -> None:
-        return None
-
-    scope: dict[str, object] = {"method": "POST", "raw_path": b"/submit", "query_string": b"", "headers": []}
-    await middleware._proxy_http(scope, receive, send, "http://localhost:3000")
-
-    assert len(dummy_client.stream_calls) == 1
-    _, kwargs = dummy_client.stream_calls[0]
-    assert kwargs["content"] is not None, "SSR proxy POST requests must still send a request body"
+    assert receive_called is False
+    assert len(fake_stream.sent_chunks) == 1
 
 
 def test_create_ssr_ws_proxy_handler_defaults_to_catch_all_paths() -> None:

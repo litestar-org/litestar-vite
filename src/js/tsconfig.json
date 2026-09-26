@@ -11,5 +11,16 @@
     "esModuleInterop": true,
     "skipLibCheck": true
   },
-  "include": ["./src/index.ts", "./src/astro.ts", "./src/sveltekit.ts", "./src/nuxt.ts", "./src/inertia-types.ts", "./src/virtual.d.ts"]
+  "include": [
+    "./src/index.ts",
+    "./src/dev-ssr.ts",
+    "./src/ssr-worker.ts",
+    "./src/fragments/renderer.ts",
+    "./src/fragments/island.ts",
+    "./src/astro.ts",
+    "./src/sveltekit.ts",
+    "./src/nuxt.ts",
+    "./src/inertia-types.ts",
+    "./src/virtual.d.ts"
+  ]
 }

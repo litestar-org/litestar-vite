@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from dataclasses import fields, is_dataclass
 from typing import TYPE_CHECKING, Any, cast
 
-import httpx
 import msgspec
 from litestar.handlers.http_handlers.base import HTTPRouteHandler
 from litestar.plugins import InitPlugin
@@ -18,6 +17,7 @@ if TYPE_CHECKING:
     from litestar.config.app import AppConfig
 
     from litestar_vite.config import InertiaConfig
+    from litestar_vite.ipc import BaseIPCTransport, SSRCircuitBreaker
 
 
 class InertiaPlugin(InitPlugin):
@@ -28,6 +28,7 @@ class InertiaPlugin(InitPlugin):
     - Exception handler for Inertia responses
     - InertiaRequest and InertiaResponse as default classes
     - Type encoders for StaticProp and DeferredProp
+    - Shared IPC transport and circuit breaker for SSR
 
     Async Prop Resolution:
         Async ``optional()``/``defer()``/``lazy()``/``once()`` callbacks are
@@ -35,16 +36,6 @@ class InertiaPlugin(InitPlugin):
         the body is serialized. This guarantees they share the loop with
         request-scoped async resources (asyncpg/aiosqlite/sqlspec sessions),
         so callbacks can safely use those resources.
-
-    SSR Client Pooling:
-        When SSR is enabled, the plugin maintains a shared ``httpx.AsyncClient``
-        for all SSR requests. This provides significant performance benefits:
-        - Connection pooling with keep-alive
-        - TLS session reuse
-        - HTTP/2 multiplexing (when available)
-
-        The client is initialized during app lifespan and properly closed on shutdown.
-        Access via ``inertia_plugin.ssr_client`` if needed.
 
     Example::
 
@@ -55,16 +46,17 @@ class InertiaPlugin(InitPlugin):
         )
     """
 
-    __slots__ = ("_ssr_client", "config")
+    __slots__ = ("_circuit_breaker", "_ipc_transport", "config")
 
-    def __init__(self, config: "InertiaConfig") -> "None":
+    def __init__(self, config: "InertiaConfig") -> None:
         """Initialize the plugin with Inertia configuration."""
         self.config = config
-        self._ssr_client: "httpx.AsyncClient | None" = None
+        self._ipc_transport: "BaseIPCTransport | None" = None
+        self._circuit_breaker: "SSRCircuitBreaker | None" = None
 
     @asynccontextmanager
     async def lifespan(self, app: "Litestar") -> "AsyncGenerator[None, None]":
-        """Lifespan to manage the shared SSR HTTP client.
+        """Lifespan to manage the shared SSR IPC transport and circuit breaker.
 
         Args:
             app: The :class:`Litestar <litestar.app.Litestar>` instance.
@@ -72,25 +64,45 @@ class InertiaPlugin(InitPlugin):
         Yields:
             An asynchronous context manager.
         """
-        limits = httpx.Limits(max_keepalive_connections=10, max_connections=20, keepalive_expiry=30.0)
-        self._ssr_client = httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(10.0))
+        ssr_config = self.config.ssr_config
+        if ssr_config is not None:
+            if ssr_config.circuit_breaker_enabled:
+                from litestar_vite.ipc import SSRCircuitBreaker
+
+                self._circuit_breaker = SSRCircuitBreaker(
+                    failure_threshold=ssr_config.circuit_breaker_failure_threshold,
+                    reset_timeout=ssr_config.circuit_breaker_reset_timeout,
+                )
+
+            from litestar_vite.plugin import VitePlugin
+
+            try:
+                vite_plugin: VitePlugin | None = app.plugins.get(VitePlugin)
+            except KeyError:
+                vite_plugin = None
+            is_dev_mode = vite_plugin.config.is_dev_mode if vite_plugin is not None else False
+            if not is_dev_mode and ssr_config.command is not None:
+                from litestar_vite.ipc import StdioIPCTransport
+
+                cwd = ssr_config.cwd or (vite_plugin.config.root_dir if vite_plugin is not None else None)
+                self._ipc_transport = StdioIPCTransport(command=ssr_config.command, cwd=cwd)
         try:
             yield
         finally:
-            await self._ssr_client.aclose()
-            self._ssr_client = None
+            if self._ipc_transport is not None:
+                await self._ipc_transport.close()
+                self._ipc_transport = None
+            self._circuit_breaker = None
 
     @property
-    def ssr_client(self) -> "httpx.AsyncClient | None":
-        """Return the shared httpx.AsyncClient for SSR requests.
+    def circuit_breaker(self) -> "SSRCircuitBreaker | None":
+        """Return the active SSRCircuitBreaker instance."""
+        return self._circuit_breaker
 
-        The client is initialized during app lifespan and provides connection
-        pooling, TLS session reuse, and HTTP/2 multiplexing benefits.
-
-        Returns:
-            The shared AsyncClient instance, or None if not initialized.
-        """
-        return self._ssr_client
+    @property
+    def ipc_transport(self) -> "BaseIPCTransport | None":
+        """Return the active BaseIPCTransport instance."""
+        return self._ipc_transport
 
     def on_app_init(self, app_config: "AppConfig") -> "AppConfig":
         """Configure application for use with Vite.

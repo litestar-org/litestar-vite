@@ -1,7 +1,8 @@
-from pathlib import Path
-from typing import Any
+"""Tests for ViteProxyMiddleware integration."""
 
-import httpx
+from pathlib import Path
+from typing import cast
+
 import pytest
 from litestar.types import Receive, Scope, Send
 
@@ -26,17 +27,11 @@ def hotfile(tmp_path: Path) -> Path:
 async def test_proxy_http_forwarding(monkeypatch: pytest.MonkeyPatch, hotfile: Path) -> None:
     """Ensure HTTP requests to Vite paths are proxied to the upstream server."""
 
-    def responder(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, headers={"x-upstream": "1"}, text="from-upstream")
+    async def fake_proxy(*, send: Send, **_kwargs: object) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": [(b"x-upstream", b"1")]})
+        await send({"type": "http.response.body", "body": b"from-upstream", "more_body": False})
 
-    transport = httpx.MockTransport(responder)
-
-    class MockAsyncClient(httpx.AsyncClient):
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            kwargs["transport"] = transport
-            super().__init__(*args, **kwargs)
-
-    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", MockAsyncClient)
+    monkeypatch.setattr(proxy_module, "_anyio_proxy_http_request", fake_proxy)
 
     sent: list[dict[str, object]] = []
 
@@ -46,20 +41,23 @@ async def test_proxy_http_forwarding(monkeypatch: pytest.MonkeyPatch, hotfile: P
     async def send(message: dict[str, object]) -> None:
         sent.append(message)
 
-    scope = {
-        "type": "http",
-        "path": "/@vite/client",
-        "raw_path": b"/@vite/client",
-        "query_string": b"",
-        "headers": [],
-        "method": "GET",
-    }
+    scope = cast(
+        "Scope",
+        {
+            "type": "http",
+            "path": "/@vite/client",
+            "raw_path": b"/@vite/client",
+            "query_string": b"",
+            "headers": [],
+            "method": "GET",
+        },
+    )
 
     async def downstream(_scope: Scope, _receive: Receive, _send: Send) -> None:
         return None
 
     middleware = ViteProxyMiddleware(downstream, hotfile_path=hotfile)
-    await middleware(scope, receive, send)  # type: ignore[arg-type]
+    await middleware(scope, cast("Receive", receive), cast("Send", send))
     statuses = [m for m in sent if m.get("type") == "http.response.start"]
     bodies = [m for m in sent if m.get("type") == "http.response.body"]
     assert statuses and statuses[0]["status"] == 200
@@ -68,7 +66,7 @@ async def test_proxy_http_forwarding(monkeypatch: pytest.MonkeyPatch, hotfile: P
 
 async def test_proxy_falls_through_when_hotfile_missing(tmp_path: Path) -> None:
     """Ensure middleware falls through when Vite server is not running."""
-    hotfile_path = tmp_path / "nonexistent_hot"  # Don't create the file
+    hotfile_path = tmp_path / "nonexistent_hot"
 
     sent: list[dict[str, object]] = []
 
@@ -78,21 +76,24 @@ async def test_proxy_falls_through_when_hotfile_missing(tmp_path: Path) -> None:
     async def send(message: dict[str, object]) -> None:
         sent.append(message)
 
-    scope = {
-        "type": "http",
-        "path": "/@vite/client",
-        "raw_path": b"/@vite/client",
-        "query_string": b"",
-        "headers": [],
-        "method": "GET",
-    }
+    scope = cast(
+        "Scope",
+        {
+            "type": "http",
+            "path": "/@vite/client",
+            "raw_path": b"/@vite/client",
+            "query_string": b"",
+            "headers": [],
+            "method": "GET",
+        },
+    )
 
     async def downstream(_scope: Scope, _receive: Receive, _send: Send) -> None:
         await _send({"type": "http.response.start", "status": 404, "headers": []})
         await _send({"type": "http.response.body", "body": b"downstream", "more_body": False})
 
     middleware = ViteProxyMiddleware(downstream, hotfile_path=hotfile_path)
-    await middleware(scope, receive, send)  # type: ignore[arg-type]
+    await middleware(scope, cast("Receive", receive), cast("Send", send))
     statuses = [m for m in sent if m.get("type") == "http.response.start"]
     bodies = [m for m in sent if m.get("type") == "http.response.body"]
     assert statuses and statuses[0]["status"] == 404

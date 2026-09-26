@@ -11,20 +11,20 @@ Key features:
 - React Fast Refresh support
 """
 
+import contextlib
 import hashlib
 import html
 import re
 from functools import cached_property
 from pathlib import Path
 from textwrap import dedent
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import unquote, urljoin, urlsplit
 
 import anyio
-import httpx
 import markupsafe
 from litestar.exceptions import SerializationException
-from litestar.serialization import decode_json
+from litestar.serialization import decode_json, encode_json
 
 from litestar_vite.exceptions import AssetNotFoundError, HTMLEntryResolutionError, ManifestNotFoundError
 from litestar_vite.utils import read_bridge_config
@@ -218,8 +218,6 @@ class ViteAssetLoader:
     __slots__ = (
         "__dict__",
         "_config",
-        "_http_client",
-        "_http_client_sync",
         "_initialized",
         "_is_hot_dev",
         "_manifest",
@@ -239,12 +237,6 @@ class ViteAssetLoader:
         self._vite_base_path: "str | None" = None
         self._initialized: bool = False
         self._is_hot_dev = self._config.hot_reload and self._config.is_dev_mode
-        self._http_client: httpx.AsyncClient | None = None
-        self._http_client_sync: httpx.Client | None = None
-
-    def _bind_http_client(self, client: httpx.AsyncClient | None) -> None:
-        """Bind the plugin's lifespan-managed asynchronous HTTP client."""
-        self._http_client = client
 
     @staticmethod
     def _validate_html_entry(entry: str) -> str:
@@ -288,8 +280,21 @@ class ViteAssetLoader:
         return value.rstrip("/")
 
     def _resolve_production_path(self, production_path: Path | str) -> Path:
+        """Resolve a production path safely handling multi-drive Windows paths.
+
+        Args:
+            production_path: Production path string or Path object.
+
+        Returns:
+            Resolved absolute Path.
+        """
         path = Path(production_path)
-        return path if path.is_absolute() else self._config.root_dir / path
+        if path.is_absolute():
+            return path
+        try:
+            return self._config.root_dir / path
+        except ValueError:
+            return path
 
     def _read_production_html(self, entry: str, production_path: Path | str) -> str:
         path = self._resolve_production_path(production_path)
@@ -353,6 +358,35 @@ class ViteAssetLoader:
             value,
         )
 
+    @staticmethod
+    def _post_transform_index_sync(endpoint: str, payload: dict[str, Any], entry: str, hot_target: str) -> str:
+        """Send a POST request to the Vite transform-index endpoint using stdlib http.client."""
+        import http.client
+
+        parsed = urlsplit(endpoint)
+        scheme = (parsed.scheme or "http").lower()
+        if scheme not in {"http", "https"}:
+            raise HTMLEntryResolutionError(entry, development_url=hot_target, status_code=None)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if scheme == "https" else 80)
+        path = parsed.path or "/"
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+        conn_cls = http.client.HTTPSConnection if scheme == "https" else http.client.HTTPConnection
+        conn = conn_cls(host, port, timeout=5.0)
+        try:
+            conn.request("POST", path, body=encode_json(payload), headers={"Content-Type": "application/json"})
+            resp = conn.getresponse()
+            status = resp.status
+            body = resp.read()
+        except Exception as exc:
+            raise HTMLEntryResolutionError(entry, development_url=hot_target, status_code=None, cause=exc) from exc
+        finally:
+            conn.close()
+        if status >= 400:
+            raise HTMLEntryResolutionError(entry, development_url=hot_target, status_code=status)
+        return body.decode("utf-8")
+
     async def resolve_html_entry(
         self, entry: str, *, production_path: Path | str, absolute_dev_asset_urls: bool = False
     ) -> str:
@@ -361,20 +395,11 @@ class ViteAssetLoader:
         hot_target = self._read_hot_target() if self._is_hot_dev else None
         if hot_target is None:
             return await self._read_production_html_async(normalized_entry, production_path)
+
         endpoint = f"{hot_target}/__litestar__/transform-index"
-        try:
-            if self._http_client is not None:
-                response = await self._http_client.post(endpoint, json={"entry": normalized_entry}, timeout=5.0)
-            else:
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    response = await client.post(endpoint, json={"entry": normalized_entry})
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            status_code = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
-            raise HTMLEntryResolutionError(
-                normalized_entry, development_url=hot_target, status_code=status_code, cause=exc
-            ) from exc
-        result = response.text
+        result = await anyio.to_thread.run_sync(
+            self._post_transform_index_sync, endpoint, {"entry": normalized_entry}, normalized_entry, hot_target
+        )
         return (
             self._rewrite_dev_asset_urls(result, self._browser_origin(hot_target))
             if absolute_dev_asset_urls
@@ -389,20 +414,9 @@ class ViteAssetLoader:
         hot_target = self._read_hot_target() if self._is_hot_dev else None
         if hot_target is None:
             return self._read_production_html(normalized_entry, production_path)
+
         endpoint = f"{hot_target}/__litestar__/transform-index"
-        try:
-            if self._http_client_sync is not None:
-                response = self._http_client_sync.post(endpoint, json={"entry": normalized_entry}, timeout=5.0)
-            else:
-                with httpx.Client(timeout=5.0) as client:
-                    response = client.post(endpoint, json={"entry": normalized_entry})
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            status_code = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
-            raise HTMLEntryResolutionError(
-                normalized_entry, development_url=hot_target, status_code=status_code, cause=exc
-            ) from exc
-        result = response.text
+        result = self._post_transform_index_sync(endpoint, {"entry": normalized_entry}, normalized_entry, hot_target)
         return (
             self._rewrite_dev_asset_urls(result, self._browser_origin(hot_target))
             if absolute_dev_asset_urls
@@ -464,8 +478,47 @@ class ViteAssetLoader:
         """
         bundle_dir = self._config.bundle_dir
         if not bundle_dir.is_absolute():
-            bundle_dir = self._config.root_dir / bundle_dir
+            with contextlib.suppress(ValueError):
+                bundle_dir = self._config.root_dir / bundle_dir
         return bundle_dir / self._config.hot_file
+
+    @staticmethod
+    def _normalize_manifest(raw_manifest: "dict[str, Any]") -> "dict[str, Any]":
+        """Normalize manifest dictionary keys and file paths for cross-platform compatibility.
+
+        Windows paths often contain backslashes that do not match POSIX manifest keys.
+        This ensures all keys, file paths, CSS paths, and imported paths use POSIX
+        forward slashes.
+
+        Args:
+            raw_manifest: The decoded JSON manifest dictionary.
+
+        Returns:
+            A normalized manifest dictionary with POSIX paths throughout.
+        """
+        normalized: dict[str, Any] = {}
+        for key, value in raw_manifest.items():
+            norm_key = key.replace("\\", "/")
+            if isinstance(value, dict):
+                entry = dict(cast("dict[str, Any]", value))
+                file_val = entry.get("file")
+                if isinstance(file_val, str):
+                    entry["file"] = file_val.replace("\\", "/")
+                src_val = entry.get("src")
+                if isinstance(src_val, str):
+                    entry["src"] = src_val.replace("\\", "/")
+                css_val = entry.get("css")
+                if isinstance(css_val, list):
+                    css_list = cast("list[Any]", css_val)
+                    entry["css"] = [c.replace("\\", "/") for c in css_list if isinstance(c, str)]
+                imports_val = entry.get("imports")
+                if isinstance(imports_val, list):
+                    imports_list = cast("list[Any]", imports_val)
+                    entry["imports"] = [i.replace("\\", "/") for i in imports_list if isinstance(i, str)]
+                normalized[norm_key] = entry
+            else:
+                normalized[norm_key] = value
+        return normalized
 
     async def _load_manifest_async(self) -> None:
         """Asynchronously load and parse the Vite manifest file.
@@ -478,7 +531,8 @@ class ViteAssetLoader:
             if await manifest_path.exists():
                 content = await manifest_path.read_text()
                 self._manifest_content = content
-                self._manifest = decode_json(content)
+                raw_manifest = decode_json(content)
+                self._manifest = self._normalize_manifest(raw_manifest)
             else:
                 self._manifest = {}
         except (OSError, UnicodeDecodeError, SerializationException) as exc:
@@ -494,7 +548,8 @@ class ViteAssetLoader:
         try:
             if manifest_path.exists():
                 self._manifest_content = manifest_path.read_text()
-                self._manifest = decode_json(self._manifest_content)
+                raw_manifest = decode_json(self._manifest_content)
+                self._manifest = self._normalize_manifest(raw_manifest)
             else:
                 self._manifest = {}
         except (OSError, UnicodeDecodeError, SerializationException) as exc:
@@ -520,15 +575,6 @@ class ViteAssetLoader:
             The raw JSON string content of the Vite manifest file.
         """
         return self._manifest_content
-
-    @manifest_content.setter
-    def manifest_content(self, value: str) -> None:
-        """Set the manifest content.
-
-        Args:
-            value: The raw JSON string content to set.
-        """
-        self._manifest_content = value
 
     @property
     def manifest(self) -> "dict[str, Any]":
@@ -587,13 +633,14 @@ class ViteAssetLoader:
         Raises:
             AssetNotFoundError: If the asset is not in the manifest.
         """
+        normalized_path = path.replace("\\", "/")
         if self._is_hot_dev:
-            return self._vite_server_url(path)
+            return self._vite_server_url(normalized_path)
 
-        if path not in self._manifest:
-            raise AssetNotFoundError(path, str(self._get_manifest_path()))
+        if normalized_path not in self._manifest:
+            raise AssetNotFoundError(normalized_path, str(self._get_manifest_path()))
 
-        return urljoin(self._config.asset_url, self._manifest[path]["file"])
+        return urljoin(self._config.asset_url, self._manifest[normalized_path]["file"])
 
     def generate_ws_client_tags(self) -> str:
         """Generate the Vite HMR client script tag.
@@ -618,9 +665,10 @@ class ViteAssetLoader:
         if self._config.is_react and self._is_hot_dev:
             nonce = self._config.csp_nonce
             nonce_attr = f' nonce="{html.escape(nonce, quote=True)}"' if nonce else ""
+            refresh_url = f"{self._vite_server_url()}@react-refresh"
             return dedent(f"""
                 <script type="module"{nonce_attr}>
-                import RefreshRuntime from '{self._vite_server_url()}@react-refresh'
+                import RefreshRuntime from '{refresh_url}'
                 RefreshRuntime.injectIntoGlobalHook(window)
                 window.$RefreshReg$ = () => {{}}
                 window.$RefreshSig$ = () => (type) => type
@@ -651,7 +699,8 @@ class ViteAssetLoader:
         """
         from litestar.exceptions import ImproperlyConfiguredException
 
-        paths = [path] if isinstance(path, str) else list(path)
+        raw_paths = [path] if isinstance(path, str) else list(path)
+        paths = [p.replace("\\", "/") for p in raw_paths]
 
         if self._is_hot_dev:
             return "".join(
@@ -702,10 +751,10 @@ class ViteAssetLoader:
         """Generate a URL to an asset on the Vite development server.
 
         Args:
-            path: Optional path to append to the base URL.
+            path: Optional path to append to the dev server base URL.
 
         Returns:
-            Full URL to the asset on the dev server.
+            The resolved dev server URL string.
         """
         bridge = read_bridge_config()
         app_url = bridge.get("appUrl") if bridge is not None else None

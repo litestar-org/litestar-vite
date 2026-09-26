@@ -1,4 +1,3 @@
-# ruff: noqa: A005
 """Public typing and optional-dependency shims."""
 
 from litestar_vite._typing import (

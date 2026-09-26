@@ -63,12 +63,11 @@ def test_c6_required_examples_exist() -> None:
 
 
 def test_inertia_ssr_examples_have_runnable_node_render_entries() -> None:
-    """vue-inertia-ssr and vue-inertia-jinja-ssr ship runnable Node /render servers.
+    """vue-inertia-ssr and vue-inertia-jinja-ssr ship runnable dual-mode SSR entries.
 
-    Locks the C6 SSR contract: each SSR example must have a real ``resources/ssr.ts``
-    that runs ``createServer(...)`` from ``@inertiajs/vue3/server``, plus a
-    ``start:ssr`` script in ``package.json`` and ``InertiaConfig(ssr=...)`` in app.py.
-    Without these the Inertia SSR endpoint cannot be exercised end-to-end.
+    Each SSR example must have a ``resources/ssr.ts`` exporting ``render(page)`` for
+    Vite's ``ModuleRunner`` in dev mode and running a ``readline`` stdio loop for
+    production, plus ``InertiaConfig(ssr=...)`` in ``app.py``.
     """
     for name in ("vue-inertia-ssr", "vue-inertia-jinja-ssr"):
         example = EXAMPLES_ROOT / name
@@ -78,21 +77,18 @@ def test_inertia_ssr_examples_have_runnable_node_render_entries() -> None:
 
         assert ssr_entry.exists(), f"{name}: missing resources/ssr.ts SSR runner entry"
         ssr_text = ssr_entry.read_text()
-        assert "@inertiajs/vue3/server" in ssr_text, f"{name}: ssr.ts must import @inertiajs/vue3/server"
-        assert "createServer" in ssr_text, f"{name}: ssr.ts must call createServer"
-        assert "13714" in ssr_text or "INERTIA_SSR_PORT" in ssr_text, (
-            f"{name}: ssr.ts must bind 13714 (or use INERTIA_SSR_PORT env)"
+        assert "export default async function render" in ssr_text, (
+            f"{name}: ssr.ts must export default async function render"
         )
+        assert "@vue/server-renderer" in ssr_text, f"{name}: ssr.ts must import @vue/server-renderer"
+        assert "readline" in ssr_text, f"{name}: ssr.ts must include stdio readline loop for production"
 
         assert "start:ssr" in package_json, f"{name}: package.json must define a start:ssr script"
         assert "build:ssr" in package_json, f"{name}: package.json must define a build:ssr script"
         assert "@vue/server-renderer" in package_json, f"{name}: package.json must include @vue/server-renderer"
 
-        assert "InertiaConfig" in app_py and "ssr=" in app_py, (
-            f"{name}: app.py must construct InertiaConfig(ssr=...) so the handler frame POSTs to /render"
-        )
+        assert "InertiaConfig" in app_py and "ssr=" in app_py, f"{name}: app.py must construct InertiaConfig(ssr=...)"
 
-    # The Jinja-shell SSR example must wire a Jinja TemplateConfig (template mode).
     jinja_app_py = (EXAMPLES_ROOT / "vue-inertia-jinja-ssr" / "app.py").read_text()
     assert "TemplateConfig" in jinja_app_py and "JinjaTemplateEngine" in jinja_app_py, (
         "vue-inertia-jinja-ssr: must wire JinjaTemplateEngine via TemplateConfig (template mode contract)"

@@ -7,7 +7,27 @@ Notable changes to this project are documented in this file.
 Litestar Vite Changelog
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-0.31.0 - Unreleased
+0.32.0 - 2026-09-25
+-------------------
+
+- Added AsyncAPI 3.0 schema and TypeScript channel type generation for WebSockets, ``ChannelsPlugin``,
+  and Server-Sent Events (SSE). (`#368 <https://github.com/litestar-org/litestar-vite/pull/368>`_)
+- Added IPC subsystem (``litestar_vite.ipc``) using ``StdioIPCTransport`` for production ``stdio`` workers and ``TCPStreamIPCTransport`` for development Vite ``ModuleRunner`` SSR, with circuit breaking (``SSRCircuitBreaker``) and client-side hydration fallback. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
+- Removed ``httpx`` from runtime dependencies, replacing HTTP proxy and SSR calls with AnyIO byte-streaming
+  and IPC transports. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
+- Added Vite ``ModuleRunner`` dev SSR plugin (``RunnableDevEnvironment.runner``) and recursive importer cache
+  invalidation for in-memory SSR during development. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
+- Added server-side UI component fragment rendering (``ComponentResponse``, Jinja ``vite_fragment``
+  global, and ``<litestar-island>`` custom element) with scoped CSS chunk injection from ``manifest.json``
+  for HTMX partial swaps and Jinja templates. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
+- Updated Inertia HTML transform to use slot/token replacement (``<!--inertia-head-->`` and
+  ``<!--inertia-body-->``) with fallback to ``#app`` selector replacement, and routed SSR requests
+  through the IPC transport layer. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
+- Enforced Vite 7+ minimum runtime baseline (``>=7.0.0``), updated scaffolding templates for Vite 8 and
+  ``rolldownOptions``, and bundled dev SSR, worker, and fragment entrypoints in the JS package. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
+- Upgraded Python and JavaScript dependencies and updated the Makefile upgrade workflow to use ``prek update``.
+
+0.31.0 - 2026-08-17
 -------------------
 
 - Emitted configured CSRF cookie and header names (``CSRF_COOKIE_NAME`` and ``CSRF_HEADER_NAME``)

@@ -217,7 +217,7 @@ def test_real_litestar_run_serves_same_static_asset(tmp_path: Path, server: str)
         response: httpx.Response | None = None
         while time.monotonic() < deadline and process.poll() is None:
             try:
-                response = httpx.get(f"http://127.0.0.1:{port}/assets/main.js", timeout=0.5)
+                response = httpx.get(f"http://127.0.0.1:{port}/assets/main.js", timeout=0.5, trust_env=False)
                 if response.status_code == 200:
                     break
             except httpx.HTTPError:
