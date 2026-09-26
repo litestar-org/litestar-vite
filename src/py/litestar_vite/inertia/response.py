@@ -144,6 +144,7 @@ class InertiaResponse(Response[T]):
         self.component = component
         self._async_prepass_done: bool = False
         self._cached_page_props: "PageProps[T] | None" = None
+        self._cached_page_dict: "dict[str, Any] | None" = None
         self._cached_ssr_payload: "_InertiaSSRResult | None" = None
         self._defer_status_to_handler: bool = False
 
@@ -164,7 +165,8 @@ class InertiaResponse(Response[T]):
             A dictionary holding the template context
         """
         csrf_token = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
-        inertia_props = self.render(page_props.to_dict(), MediaType.JSON, get_serializer(type_encoders)).decode()
+        page_dict = self._cached_page_dict if self._cached_page_dict is not None else page_props.to_dict()
+        inertia_props = self.render(page_dict, MediaType.JSON, get_serializer(type_encoders)).decode()
         return {
             **self.context,
             "inertia": inertia_props,
@@ -390,7 +392,7 @@ class InertiaResponse(Response[T]):
             )
             raise ImproperlyConfiguredException(msg)
 
-        page_dict = page_props.to_dict()
+        page_dict = self._cached_page_dict if self._cached_page_dict is not None else page_props.to_dict()
 
         if ssr and self._cached_ssr_payload is not None:
             ssr_payload = self._cached_ssr_payload
@@ -515,6 +517,8 @@ class InertiaResponse(Response[T]):
             inertia_plugin,
         )
         self._cached_page_props = page_props
+        page_dict = page_props.to_dict()
+        self._cached_page_dict = page_dict
         type_encoders = self._resolve_type_encoders(request)
 
         circuit_breaker = getattr(inertia_plugin, "circuit_breaker", None)
@@ -533,7 +537,7 @@ class InertiaResponse(Response[T]):
 
         try:
             self._cached_ssr_payload = await _render_inertia_ssr(
-                page_props.to_dict(), transport, ssr_config.timeout, type_encoders=type_encoders
+                page_dict, transport, ssr_config.timeout, type_encoders=type_encoders
             )
             if circuit_breaker is not None:
                 circuit_breaker.record_success()

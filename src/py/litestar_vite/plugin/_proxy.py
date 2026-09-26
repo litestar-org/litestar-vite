@@ -1,7 +1,6 @@
 """HTTP/WebSocket proxy middleware and HMR handlers."""
 
 import ipaddress
-import logging
 import time
 from collections.abc import AsyncGenerator, Awaitable
 from contextlib import suppress
@@ -28,9 +27,13 @@ if TYPE_CHECKING:
 
 _DISCONNECT_EXCEPTIONS = (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed)
 
-_CONNECT_ERRORS: tuple[type[Exception], ...] = (OSError, anyio.ClosedResourceError)
-
-_PROXY_ERRORS: tuple[type[Exception], ...] = (OSError, anyio.ClosedResourceError, TimeoutError, RuntimeError)
+_PROXY_ERRORS: tuple[type[Exception], ...] = (
+    OSError,
+    anyio.ClosedResourceError,
+    TimeoutError,
+    RuntimeError,
+    ValueError,
+)
 
 _BODY_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
@@ -115,8 +118,6 @@ _WS_REQUEST_SKIP_HEADERS = _REQUEST_SKIP_HEADERS | {
     "sec-websocket-protocol",
     "sec-websocket-extensions",
 }
-
-_LOGGER = logging.getLogger(__name__)
 
 _HOTFILE_REVALIDATE_TTL_SECONDS = 0.3
 
@@ -512,9 +513,9 @@ async def _anyio_proxy_http_request(
 
                 await send({"type": "http.response.body", "body": b"", "more_body": False})
 
-    except (OSError, anyio.ClosedResourceError, TimeoutError, RuntimeError) as exc:
+    except _PROXY_ERRORS as exc:
         if not response_started:
-            msg = (error_message or f"Upstream error: {exc}").encode("latin-1")
+            msg = (error_message or f"Upstream error: {exc}").encode("latin-1", errors="replace")
             await send({
                 "type": "http.response.start",
                 "status": error_status,

@@ -760,7 +760,6 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig, rawConfig?: s
                 entry.includes("\0") ||
                 entry.includes("?") ||
                 entry.includes("#") ||
-                entry.startsWith("//") ||
                 /^[a-z][a-z\d+.-]*:/i.test(entry) ||
                 parsedEntry === ".." ||
                 parsedEntry.startsWith("../") ||

@@ -33,7 +33,6 @@ class StdioIPCTransport(BaseIPCTransport):
         "_pending",
         "_process",
         "_reader_tasks",
-        "_restart_count",
         "_stderr_buffer",
     )
 
@@ -56,7 +55,6 @@ class StdioIPCTransport(BaseIPCTransport):
         self._cwd = Path(cwd) if cwd else None
         self._env = env
         self._max_restarts = max_restarts
-        self._restart_count = 0
         self._process: anyio.abc.Process | None = None
         self._reader_tasks: list[asyncio.Task[None]] = []
         self._pending: dict[int, tuple[anyio.Event, dict[str, Any]]] = {}
@@ -89,6 +87,15 @@ class StdioIPCTransport(BaseIPCTransport):
         async with self._lock:
             if self.is_running:
                 return
+
+            stale_tasks = list(self._reader_tasks)
+            self._reader_tasks.clear()
+            for task in stale_tasks:
+                if not task.done():
+                    task.cancel()
+            if stale_tasks:
+                with contextlib.suppress(Exception):
+                    await asyncio.gather(*stale_tasks, return_exceptions=True)
 
             self._is_closing = False
             cmd = list(self._command)
@@ -123,9 +130,9 @@ class StdioIPCTransport(BaseIPCTransport):
             except anyio.EndOfStream:
                 break
             buf.extend(chunk)
-            while b"\n" in buf:
-                line, _, rest = buf.partition(b"\n")
-                buf = bytearray(rest)
+            while (nl_pos := buf.find(b"\n")) != -1:
+                line = bytes(buf[:nl_pos])
+                del buf[: nl_pos + 1]
                 decoded = line.decode("utf-8", errors="replace").strip()
                 if decoded:
                     self._stderr_buffer.append(decoded)
@@ -147,14 +154,14 @@ class StdioIPCTransport(BaseIPCTransport):
             except anyio.EndOfStream:
                 break
             buf.extend(chunk)
-            while b"\n" in buf:
-                line, _, rest = buf.partition(b"\n")
-                buf = bytearray(rest)
+            while (nl_pos := buf.find(b"\n")) != -1:
+                line = bytes(buf[:nl_pos])
+                del buf[: nl_pos + 1]
                 stripped = line.strip()
                 if not stripped:
                     continue
                 try:
-                    payload: dict[str, Any] = decode_json(bytes(stripped))
+                    payload: dict[str, Any] = decode_json(stripped)
                 except (ValueError, TypeError):
                     payload = {}
                 if not payload:

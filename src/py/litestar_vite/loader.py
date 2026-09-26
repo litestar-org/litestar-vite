@@ -14,6 +14,7 @@ Key features:
 import contextlib
 import hashlib
 import html
+import http.client
 import re
 from functools import cached_property
 from pathlib import Path
@@ -36,6 +37,13 @@ if TYPE_CHECKING:
 
     from litestar_vite.config import ViteConfig
     from litestar_vite.plugin import VitePlugin
+
+_SCRIPT_OR_LINK_TAG_RE = re.compile(r"<(?:script|link)\b[^>]*>", re.IGNORECASE)
+_MODULE_TYPE_ATTR_RE = re.compile(r"\btype\s*=\s*(['\"])module\1", re.IGNORECASE)
+_REL_ATTR_RE = re.compile(r"\brel\s*=\s*(['\"])([^'\"]+)\1", re.IGNORECASE)
+_SRC_ATTR_RE = re.compile(r"\bsrc\s*=\s*(['\"])([^'\"]+)\1", re.IGNORECASE)
+_HREF_ATTR_RE = re.compile(r"\bhref\s*=\s*(['\"])([^'\"]+)\1", re.IGNORECASE)
+_REACT_REFRESH_FROM_RE = re.compile(r"(\bfrom\s+)(['\"])(/@react-refresh(?:[^'\"]*)?)\2")
 
 
 def _get_request_from_context(context: "Mapping[str, Any]") -> "Request[Any, Any, Any]":
@@ -331,38 +339,31 @@ class ViteAssetLoader:
         def rewrite_tag(match: re.Match[str]) -> str:
             tag = match.group(0)
             lowered = tag.lower()
-            is_module_script = lowered.startswith("<script") and re.search(
-                r"\btype\s*=\s*(['\"])module\1", tag, re.IGNORECASE
-            )
-            rel_match = re.search(r"\brel\s*=\s*(['\"])([^'\"]+)\1", tag, re.IGNORECASE)
+            is_module_script = lowered.startswith("<script") and _MODULE_TYPE_ATTR_RE.search(tag) is not None
+            rel_match = _REL_ATTR_RE.search(tag)
             is_asset_link = (
                 lowered.startswith("<link")
                 and rel_match is not None
                 and any(item.lower() in {"stylesheet", "modulepreload"} for item in rel_match.group(2).split())
             )
-            attribute = "src" if is_module_script else "href" if is_asset_link else None
-            if attribute is None:
-                return tag
-            return re.sub(
-                rf"\b{attribute}\s*=\s*(['\"])([^'\"]+)\1",
-                lambda attr: f"{attribute}={attr.group(1)}{absolute(attr.group(2))}{attr.group(1)}",
-                tag,
-                count=1,
-                flags=re.IGNORECASE,
-            )
+            if is_module_script:
+                return _SRC_ATTR_RE.sub(
+                    lambda attr: f"src={attr.group(1)}{absolute(attr.group(2))}{attr.group(1)}", tag, count=1
+                )
+            if is_asset_link:
+                return _HREF_ATTR_RE.sub(
+                    lambda attr: f"href={attr.group(1)}{absolute(attr.group(2))}{attr.group(1)}", tag, count=1
+                )
+            return tag
 
-        value = re.sub(r"<(?:script|link)\b[^>]*>", rewrite_tag, value, flags=re.IGNORECASE)
-        return re.sub(
-            r"(\bfrom\s+)(['\"])(/@react-refresh(?:[^'\"]*)?)\2",
-            lambda match: f"{match.group(1)}{match.group(2)}{absolute(match.group(3))}{match.group(2)}",
-            value,
+        value = _SCRIPT_OR_LINK_TAG_RE.sub(rewrite_tag, value)
+        return _REACT_REFRESH_FROM_RE.sub(
+            lambda match: f"{match.group(1)}{match.group(2)}{absolute(match.group(3))}{match.group(2)}", value
         )
 
     @staticmethod
     def _post_transform_index_sync(endpoint: str, payload: dict[str, Any], entry: str, hot_target: str) -> str:
         """Send a POST request to the Vite transform-index endpoint using stdlib http.client."""
-        import http.client
-
         parsed = urlsplit(endpoint)
         scheme = (parsed.scheme or "http").lower()
         if scheme not in {"http", "https"}:

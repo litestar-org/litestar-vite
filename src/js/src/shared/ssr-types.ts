@@ -35,5 +35,4 @@ export interface DevSsrOptions {
   entrypoint?: string
   endpoint?: string
   hmr?: boolean
-  stdioIpc?: boolean
 }

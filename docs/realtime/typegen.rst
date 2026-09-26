@@ -64,38 +64,45 @@ The emitted ``channels.ts`` file contains strongly typed interfaces mapping ever
    export interface RealtimeChannels {
      "chat": {
        address: "/ws/chat";
-       protocol: "ws";
+       protocol: "websocket";
        params: Record<string, never>;
-       sendPayload: ChatMessage;
-       receivePayload: ChatResponse;
+       send: ChatMessage;
+       receive: ChatResponse;
      };
      "room": {
        address: "/ws/rooms/{room_id}";
-       protocol: "ws";
+       protocol: "websocket";
        params: {
-         room_id: number;
+         room_id: string;
        };
-       sendPayload: unknown;
-       receivePayload: RoomEvent;
+       send: never;
+       receive: RoomEvent;
      };
      "notifications": {
        address: "notifications";
        protocol: "channels";
        params: Record<string, never>;
-       sendPayload: unknown;
-       receivePayload: NotificationPayload;
+       send: never;
+       receive: NotificationPayload;
      };
    }
 
+   export type ChannelKey = keyof RealtimeChannels;
+
+   export interface ChannelMetadata {
+     address: string;
+     protocol: "websocket" | "channels" | "sse";
+   }
+
    // Metadata dictionary containing runtime address information:
-   export const CHANNEL_METADATA = {
+   export const CHANNEL_METADATA: Record<ChannelKey, ChannelMetadata> = {
      "chat": {
        address: "/ws/chat",
-       protocol: "ws",
+       protocol: "websocket",
      },
      "room": {
        address: "/ws/rooms/{room_id}",
-       protocol: "ws",
+       protocol: "websocket",
      },
      "notifications": {
        address: "notifications",
@@ -116,10 +123,10 @@ The generated file exports ergonomic utility types for use in application code:
      - Purpose
    * - ``ChannelKey``
      - Union of all registered channel keys (e.g., ``"chat" | "room" | "notifications"``).
-   * - ``ChannelAddress<K>``
-     - The channel address string or template for channel ``K``.
+   * - ``ChannelAddress``
+     - Union of all registered channel address strings or templates.
    * - ``ChannelProtocol<K>``
-     - The protocol for channel ``K`` (``"ws" | "channels" | "sse"``).
+     - The protocol for channel ``K`` (``"websocket" | "channels" | "sse"``).
    * - ``ChannelParams<K>``
      - TypeScript object representing required URL/channel parameters.
    * - ``ChannelSendPayload<K>``

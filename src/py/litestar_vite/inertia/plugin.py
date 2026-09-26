@@ -81,11 +81,13 @@ class InertiaPlugin(InitPlugin):
             except KeyError:
                 vite_plugin = None
             is_dev_mode = vite_plugin.config.is_dev_mode if vite_plugin is not None else False
-            if not is_dev_mode and ssr_config.command is not None:
+            if not is_dev_mode:
                 from litestar_vite.ipc import StdioIPCTransport
 
                 cwd = ssr_config.cwd or (vite_plugin.config.root_dir if vite_plugin is not None else None)
-                self._ipc_transport = StdioIPCTransport(command=ssr_config.command, cwd=cwd)
+                self._ipc_transport = StdioIPCTransport(
+                    command=ssr_config.command or ["node", "bootstrap/ssr/ssr.js"], cwd=cwd
+                )
         try:
             yield
         finally:

@@ -4,9 +4,15 @@ export interface IslandOptions {
   islandId: string
 }
 
+function escapeHtmlAttr(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+}
+
 export function wrapIsland(html: string, options: IslandOptions): string {
-  const escapedProps = JSON.stringify(options.props).replace(/"/g, "&quot;")
-  return `<litestar-island data-island-component="${options.component}" data-island-props="${escapedProps}" id="${options.islandId}">${html}</litestar-island>`
+  const escapedProps = escapeHtmlAttr(JSON.stringify(options.props))
+  const escapedComponent = escapeHtmlAttr(options.component)
+  const escapedId = escapeHtmlAttr(options.islandId)
+  return `<litestar-island data-island-component="${escapedComponent}" data-island-props="${escapedProps}" id="${escapedId}">${html}</litestar-island>`
 }
 
 export function getIslandClientScript(): string {

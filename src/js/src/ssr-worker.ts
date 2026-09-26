@@ -101,6 +101,7 @@ async function processLine(line: string, writeFn: (data: string) => void): Promi
     msg.payload ?? {
       component: msg.component,
       props: msg.props,
+      mode: msg.mode,
       page: msg.page,
       entrypoint: msg.entrypoint,
     }

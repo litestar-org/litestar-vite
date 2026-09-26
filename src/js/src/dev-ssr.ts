@@ -51,7 +51,9 @@ export function litestarViteSsrPlugin(options: DevSsrOptions = {}): Plugin {
         }
       }
 
-      server.httpServer?.on("close", cleanup)
+      server.httpServer?.once("close", cleanup)
+
+      const MAX_BODY_BYTES = 10 * 1024 * 1024
 
       server.middlewares.use(endpoint, async (req, res, next) => {
         const subPath = req.url?.split("?")[0] ?? ""
@@ -73,8 +75,26 @@ export function litestarViteSsrPlugin(options: DevSsrOptions = {}): Plugin {
         }
 
         const chunks: Buffer[] = []
-        req.on("data", (chunk: Buffer) => chunks.push(chunk))
+        let totalBytes = 0
+        let aborted = false
+        req.on("error", () => {
+          aborted = true
+        })
+        req.on("data", (chunk: Buffer) => {
+          if (aborted) return
+          totalBytes += chunk.length
+          if (totalBytes > MAX_BODY_BYTES) {
+            aborted = true
+            res.statusCode = 413
+            res.setHeader("Content-Type", "application/json; charset=utf-8")
+            res.end(JSON.stringify({ error: { message: "SSR request payload too large" } }))
+            req.destroy()
+            return
+          }
+          chunks.push(chunk)
+        })
         req.on("end", async () => {
+          if (aborted) return
           let requestId: number | string | undefined
           try {
             const rawBody = Buffer.concat(chunks).toString("utf-8")

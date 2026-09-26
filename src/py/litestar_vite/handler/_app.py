@@ -7,15 +7,19 @@ In dev mode, it proxies requests to the Vite dev server for HMR support.
 In production, it serves the built index.html with async caching.
 """
 
+import http.client
 import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn
+from urllib.parse import urlsplit
 
 import anyio
 from litestar import get
 from litestar.exceptions import ImproperlyConfiguredException, SerializationException
 from litestar.serialization import decode_json, encode_json
+from litestar.utils.empty import value_or_default
+from litestar.utils.scope.state import ScopeState
 
 from litestar_vite.config import InertiaConfig
 from litestar_vite.handler._routing import spa_handler_dev, spa_handler_prod
@@ -342,9 +346,6 @@ class AppHandler:
     @staticmethod
     def _post_vite_json_sync(endpoint: str, payload: dict[str, Any]) -> str:
         """Send a POST JSON request to the Vite dev server using stdlib http.client."""
-        import http.client
-        from urllib.parse import urlsplit
-
         parsed = urlsplit(endpoint)
         scheme = (parsed.scheme or "http").lower()
         host = parsed.hostname or "127.0.0.1"
@@ -368,9 +369,6 @@ class AppHandler:
     @staticmethod
     def _fetch_vite_url_sync(target_url: str) -> str:
         """Fetch HTML from the Vite dev server using stdlib http.client."""
-        import http.client
-        from urllib.parse import urlsplit
-
         parsed = urlsplit(target_url)
         scheme = (parsed.scheme or "http").lower()
         host = parsed.hostname or "127.0.0.1"
@@ -463,9 +461,6 @@ class AppHandler:
         Returns:
             The CSRF token, or None if not present.
         """
-        from litestar.utils.empty import value_or_default
-        from litestar.utils.scope.state import ScopeState
-
         return value_or_default(ScopeState.from_scope(request.scope).csrf_token, None)
 
     async def get_html(self, request: "Request[Any, Any, Any]", *, page_data: "dict[str, Any] | None" = None) -> str:
@@ -600,8 +595,6 @@ class AppHandler:
         Raises:
             ImproperlyConfiguredException: If the Vite URL is not resolved.
         """
-        import urllib.error
-
         if self._vite_url is None:
             msg = "Vite URL not resolved. Ensure initialize_sync() or initialize_async() was called."
             raise ImproperlyConfiguredException(msg)
@@ -609,7 +602,7 @@ class AppHandler:
         target_url = f"{self._vite_url}/"
         try:
             return await anyio.to_thread.run_sync(self._fetch_vite_url_sync, target_url)
-        except (OSError, urllib.error.URLError):
+        except (OSError, http.client.HTTPException):
             logger.debug("Vite server not ready at %s, showing startup page", target_url)
             return _get_server_starting_html(target_url)
 
@@ -623,8 +616,6 @@ class AppHandler:
         Raises:
             ImproperlyConfiguredException: If the Vite URL is not resolved.
         """
-        import urllib.error
-
         if self._vite_url is None:
             msg = "Vite URL not resolved. Ensure initialize_sync() or initialize_async() was called."
             raise ImproperlyConfiguredException(msg)
@@ -632,7 +623,7 @@ class AppHandler:
         target_url = f"{self._vite_url}/"
         try:
             return self._fetch_vite_url_sync(target_url)
-        except (OSError, urllib.error.URLError):
+        except (OSError, http.client.HTTPException):
             logger.debug("Vite server not ready at %s, showing startup page", target_url)
             return _get_server_starting_html(target_url)
 

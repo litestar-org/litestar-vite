@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from litestar import Litestar
 
 ASYNCAPI_DOCS_DEFAULT_PATH = "/asyncapi"
+_NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9]+")
 
 
 def _slug_segment(segment: str) -> str:
@@ -32,9 +33,9 @@ def _slug_segment(segment: str) -> str:
     if segment.startswith("{") and segment.endswith("}"):
         inner = segment[1:-1]
         name = inner.split(":", 1)[0]
-        sanitized = re.sub(r"[^A-Za-z0-9]+", "_", name)
+        sanitized = _NON_ALNUM_RE.sub("_", name)
         return f"p_{sanitized}"
-    return re.sub(r"[^A-Za-z0-9]+", "_", segment)
+    return _NON_ALNUM_RE.sub("_", segment)
 
 
 def _channel_key_base(normalized_address: str) -> str:

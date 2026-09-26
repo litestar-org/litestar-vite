@@ -207,3 +207,9 @@ class FragmentEngine:
             import anyio
 
             return anyio.run(self.render_fragment, component, props, mode)
+
+    async def close(self) -> None:
+        """Close the underlying IPC transport if initialized."""
+        if self._transport is not None:
+            await self._transport.close()
+            self._transport = None

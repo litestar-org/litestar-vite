@@ -125,6 +125,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         "_asset_loader",
         "_config",
         "_fragment_engine",
+        "_ipc_transport",
         "_proxy_target",
         "_route_prefix_cache",
         "_spa_handler",
@@ -152,6 +153,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         self._config = config
         self._asset_loader = asset_loader
         self._fragment_engine: "FragmentEngine | None" = None
+        self._ipc_transport: "Any | None" = None
         self._vite_process: "ViteProcess | None" = None
         self._static_files_config: "StaticFilesConfig | None" = static_files_config
         self._proxy_target: "str | None" = None
@@ -177,7 +179,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         In development mode, returns an HTTP/1.1 TCP transport targeting the
         active Vite dev server's ``/__litestar_ssr__`` endpoint. In production
-        mode, returns a ``StdioIPCTransport`` targeting the built SSR worker.
+        mode, returns a cached ``StdioIPCTransport`` targeting the built SSR worker.
 
         Returns:
             Configured BaseIPCTransport instance.
@@ -200,13 +202,15 @@ class VitePlugin(InitPlugin, CLIPlugin):
                 host = "127.0.0.1"
             return TCPStreamIPCTransport(host=host, port=port, path="/__litestar_ssr__")
 
-        from litestar_vite.config._inertia import InertiaConfig
+        if self._ipc_transport is None:
+            from litestar_vite.config._inertia import InertiaConfig
 
-        inertia = self._config.inertia
-        ssr_config = inertia.ssr_config if isinstance(inertia, InertiaConfig) else None
-        command = ssr_config.command if ssr_config is not None else None
-        cwd = (ssr_config.cwd if ssr_config is not None else None) or self._config.root_dir
-        return StdioIPCTransport(command=command or ["node", "bootstrap/ssr/ssr.js"], cwd=cwd)
+            inertia = self._config.inertia
+            ssr_config = inertia.ssr_config if isinstance(inertia, InertiaConfig) else None
+            command = ssr_config.command if ssr_config is not None else None
+            cwd = (ssr_config.cwd if ssr_config is not None else None) or self._config.root_dir
+            self._ipc_transport = StdioIPCTransport(command=command or ["node", "bootstrap/ssr/ssr.js"], cwd=cwd)
+        return self._ipc_transport
 
     @property
     def config(self) -> "ViteConfig":
@@ -974,3 +978,8 @@ class VitePlugin(InitPlugin, CLIPlugin):
         finally:
             if self._spa_handler is not None:
                 await self._spa_handler.shutdown_async()
+            if self._fragment_engine is not None:
+                await self._fragment_engine.close()
+            if self._ipc_transport is not None:
+                await self._ipc_transport.close()
+                self._ipc_transport = None
