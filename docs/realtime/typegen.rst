@@ -7,11 +7,14 @@ AsyncAPI Export & Type Generation
 Configuration
 -------------
 
-Enable channel generation in your ``ViteConfig``:
+Register ``AsyncAPIPlugin`` from ``litestar-asyncapi`` and enable channel generation in your ``ViteConfig``:
 
 .. code-block:: python
 
    from pathlib import Path
+   from litestar import Litestar
+   from litestar_asyncapi import AsyncAPIPlugin
+   from litestar_vite import VitePlugin
    from litestar_vite.config import TypeGenConfig, ViteConfig
 
    vite_config = ViteConfig(
@@ -21,6 +24,13 @@ Enable channel generation in your ``ViteConfig``:
            asyncapi_path=Path("src/generated/asyncapi.json"),
            channels_ts_path=Path("src/generated/channels.ts"),
        ),
+   )
+
+   app = Litestar(
+       plugins=[
+           AsyncAPIPlugin(),
+           VitePlugin(config=vite_config),
+       ],
    )
 
 CLI Commands

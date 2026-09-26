@@ -145,7 +145,6 @@ nitpick_ignore = [
     (PY_CLASS, "Markup"),
     # Codegen internal types (use public module path - remapping handles private paths)
     (PY_CLASS, "litestar_vite.codegen.OpenAPISupport"),
-    (PY_CLASS, "litestar_vite.codegen._asyncapi.AsyncAPISchemaContext"),
     (PY_CLASS, "litestar_vite.codegen._asyncapi._ChannelKeyAllocator"),
     # Typing and deprecation
     (PY_CLASS, "Deprecated"),

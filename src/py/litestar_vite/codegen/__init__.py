@@ -5,6 +5,7 @@ This package provides code generation utilities for:
 - Unified asset export (``export_integration_assets``)
 - Route metadata export (``routes.json`` + Ziggy-compatible TS)
 - Inertia page props metadata export
+- AsyncAPI plugin discovery and document normalization
 
 Internal implementation details (OpenAPI integration, TypeScript conversion)
 are kept in private submodules to keep the public API clean.
@@ -12,29 +13,13 @@ are kept in private submodules to keep the public API clean.
 
 from litestar_vite.codegen._asyncapi import (
     ASYNCAPI_DOCS_DEFAULT_PATH,
-    ASYNCAPI_PAYLOAD_OPT_KEY,
-    AsyncAPIChannel,
-    AsyncAPIComponents,
-    AsyncAPIDocument,
-    AsyncAPIInfo,
-    AsyncAPIMessage,
-    AsyncAPIOperation,
-    AsyncAPIParameter,
-    AsyncAPIServer,
     asyncapi_docs_paths,
-    create_asyncapi_document,
-    extract_channels_plugin_channels,
-    extract_payload_schema,
-    extract_realtime_channels,
-    extract_sse_routes,
-    extract_websocket_routes,
     find_asyncapi_plugin,
     normalize_asyncapi_document,
     resolve_asyncapi_document,
 )
 from litestar_vite.codegen._export import (
     ExportResult,
-    app_has_realtime_surface,
     export_asyncapi,
     export_integration_assets,
     typegen_outputs_requested,
@@ -50,31 +35,15 @@ from litestar_vite.codegen._utils import encode_deterministic_json, strip_timest
 
 __all__ = (
     "ASYNCAPI_DOCS_DEFAULT_PATH",
-    "ASYNCAPI_PAYLOAD_OPT_KEY",
-    "AsyncAPIChannel",
-    "AsyncAPIComponents",
-    "AsyncAPIDocument",
-    "AsyncAPIInfo",
-    "AsyncAPIMessage",
-    "AsyncAPIOperation",
-    "AsyncAPIParameter",
-    "AsyncAPIServer",
     "ExportResult",
     "InertiaPageMetadata",
     "RouteMetadata",
-    "app_has_realtime_surface",
     "asyncapi_docs_paths",
-    "create_asyncapi_document",
     "encode_deterministic_json",
     "export_asyncapi",
     "export_integration_assets",
-    "extract_channels_plugin_channels",
     "extract_inertia_pages",
-    "extract_payload_schema",
-    "extract_realtime_channels",
     "extract_route_metadata",
-    "extract_sse_routes",
-    "extract_websocket_routes",
     "find_asyncapi_plugin",
     "generate_inertia_pages_json",
     "generate_routes_json",
