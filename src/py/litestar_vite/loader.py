@@ -750,22 +750,12 @@ class ViteAssetLoader:
     def _vite_server_url(self, path: "str | None" = None) -> str:
         """Generate a URL to an asset on the Vite development server.
 
-        When dev_mode_direct_urls is enabled, returns direct dev server URLs
-        without the backend appUrl or asset_url prefix. When disabled, falls
-        back to proxy-compatible URLs.
-
         Args:
             path: Optional path to append to the dev server base URL.
 
         Returns:
             The resolved dev server URL string.
         """
-        if self._config.dev_mode_direct_urls:
-            if self._vite_base_path is None:
-                self._load_hot_file_sync()
-            base_path = self._vite_base_path or f"{self._config.protocol}://{self._config.host}:{self._config.port}"
-            return urljoin(base_path, urljoin(self._config.asset_url, path if path is not None else ""))
-
         bridge = read_bridge_config()
         app_url = bridge.get("appUrl") if bridge is not None else None
         if isinstance(app_url, str) and app_url:

@@ -4,7 +4,7 @@ Litestar-vite-c1t: ``ViteAssetLoader`` (loader) and ``ViteProxyMiddleware``
 (proxy) intentionally use different source-of-truth files:
 
 - Loader anchors emitted asset URLs at ``appUrl`` (the bridge URL), keeping
-  asset references on the single ASGI port when ``dev_mode_direct_urls=False``.
+  asset references on the single ASGI port.
 - Proxy targets the hotfile's actual resolved Vite URL, so when the
   loader-emitted URL hits Litestar's ``/static/...`` prefix it gets forwarded
   to the actual Vite dev server (not back to Litestar).
@@ -53,9 +53,7 @@ async def test_proxy_loader_dual_consumer_no_self_loop(tmp_path: Path, monkeypat
         paths=PathConfig(
             root=tmp_path, resource_dir=tmp_path / "resources", bundle_dir=bundle_dir, asset_url="/static/"
         ),
-        runtime=RuntimeConfig(
-            dev_mode=True, host="127.0.0.1", port=65431, set_environment=False, dev_mode_direct_urls=False
-        ),
+        runtime=RuntimeConfig(dev_mode=True, host="127.0.0.1", port=65431, set_environment=False),
     )
     plugin = VitePlugin(config=config)
     app = Litestar(plugins=[plugin])

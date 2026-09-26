@@ -384,7 +384,6 @@ def inject_vite_dev_scripts(
     is_react: bool = False,
     csp_nonce: str | None = None,
     resource_dir: str | None = None,
-    dev_mode_direct_urls: bool = False,
 ) -> str:
     """Inject Vite dev server scripts for HMR support.
 
@@ -395,12 +394,11 @@ def inject_vite_dev_scripts(
     For React apps, a preamble script is injected before the Vite client to
     enable React Fast Refresh.
 
-    Scripts are injected as relative URLs using the ``asset_url`` prefix when
-    ``dev_mode_direct_urls`` is False. When ``dev_mode_direct_urls`` is True,
-    scripts point directly to ``vite_url`` to bypass reverse proxying.
+    Scripts are injected as relative URLs using the ``asset_url`` prefix so they
+    are routed through the Litestar reverse proxy.
 
     When ``resource_dir`` is provided, entry point script URLs are also transformed
-    to include the asset URL prefix or direct dev server URL.
+    to include the asset URL prefix.
 
     Args:
         html: The HTML document.
@@ -409,7 +407,6 @@ def inject_vite_dev_scripts(
         is_react: Whether to inject the React Fast Refresh preamble.
         csp_nonce: Optional CSP nonce to add to injected ``<script>`` tags.
         resource_dir: Optional resource directory name (e.g., "resources", "src").
-        dev_mode_direct_urls: Whether to emit direct Vite dev server URLs.
 
     Returns:
         The HTML with Vite dev scripts injected. Scripts are inserted before
@@ -418,7 +415,8 @@ def inject_vite_dev_scripts(
     Example:
         html = inject_vite_dev_scripts(html, "http://localhost:5173", asset_url="/static/", is_react=True)
     """
-    base = vite_url.rstrip("/") if dev_mode_direct_urls else asset_url.rstrip("/")
+    _ = vite_url
+    base = asset_url.rstrip("/")
     nonce_attr = f' nonce="{_escape_attr(csp_nonce)}"' if csp_nonce else ""
 
     if resource_dir:

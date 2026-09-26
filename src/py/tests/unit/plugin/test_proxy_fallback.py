@@ -27,7 +27,7 @@ def _build_vite_app(
                     paths=PathConfig(
                         root=tmp_path, resource_dir=Path("resources"), bundle_dir=bundle, asset_url="/static/dist/"
                     ),
-                    runtime=runtime or RuntimeConfig(dev_mode=True, executor="node", dev_mode_direct_urls=False),
+                    runtime=runtime or RuntimeConfig(dev_mode=True, executor="node"),
                 )
             )
         ]
@@ -110,7 +110,6 @@ def test_external_mode_dev_without_hot_file_still_skips_static_router(tmp_path: 
     runtime = RuntimeConfig(
         dev_mode=True,
         executor="node",
-        dev_mode_direct_urls=False,
         external_dev_server=ExternalDevServer(target="http://localhost:4200"),
     )
     app = _build_vite_app(tmp_path, mode="framework", runtime=runtime)

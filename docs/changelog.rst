@@ -15,8 +15,6 @@ Litestar Vite Changelog
 - Added IPC subsystem (``litestar_vite.ipc``) using ``StdioIPCTransport`` for production ``stdio`` workers and ``TCPStreamIPCTransport`` for development Vite ``ModuleRunner`` SSR, with circuit breaking (``SSRCircuitBreaker``) and client-side hydration fallback. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
 - Removed ``httpx`` from runtime dependencies, replacing HTTP proxy and SSR calls with AnyIO byte-streaming
   and IPC transports. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
-- Added dev-mode direct asset URLs (``ViteConfig.dev_mode_direct_urls = True``) so the browser loads
-  assets and HMR directly from the Vite dev server by default. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
 - Added Vite ``ModuleRunner`` dev SSR plugin (``RunnableDevEnvironment.runner``) and recursive importer cache
   invalidation for in-memory SSR during development. (`#369 <https://github.com/litestar-org/litestar-vite/pull/369>`_)
 - Added server-side UI component fragment rendering (``ComponentResponse``, Jinja ``vite_fragment``

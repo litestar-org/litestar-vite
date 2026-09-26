@@ -592,7 +592,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         if self._config.wants_html_proxy:
             self._configure_ssr_proxy(app_config, hotfile_path)
-        elif not self._config.dev_mode_direct_urls:
+        else:
             self._configure_vite_proxy(app_config, hotfile_path)
 
     def _resolve_hmr_path(self) -> "str | None":

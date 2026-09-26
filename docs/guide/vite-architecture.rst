@@ -1,8 +1,8 @@
 ==========================================================
-Vite 7/8 Environment API & Direct Dev Asset Configuration
+Vite 7/8 Environment API & Dev Proxy Architecture
 ==========================================================
 
-``litestar-vite`` requires Vite 7+. It uses Vite's ``RunnableDevEnvironment`` (``server.environments.ssr``) for development server-side rendering, ``build.rolldownOptions`` for bundler configuration, and direct Vite dev server URLs for asset and HMR delivery.
+``litestar-vite`` requires Vite 7+. It uses Vite's ``RunnableDevEnvironment`` (``server.environments.ssr``) for development server-side rendering, ``build.rolldownOptions`` for bundler configuration, and a zero-``httpx`` AnyIO byte-streaming reverse proxy for single-port asset and HMR delivery.
 
 ------------------------------------------------
 Vite Configuration: Environments, Rolldown & WS
@@ -45,11 +45,11 @@ Vite Configuration: Environments, Rolldown & WS
         },
       },
 
---------------------------
-Direct Dev Asset Serving
---------------------------
+------------------------------------
+Single-Port AnyIO Dev Asset Proxying
+------------------------------------
 
-By default in development mode (``dev_mode_direct_urls=True``), ``litestar-vite`` emits asset tags pointing directly to the Vite dev server URL (for example ``http://localhost:5173/@vite/client`` and ``http://localhost:5173/src/main.ts``) rather than proxying asset requests through the Litestar ASGI server:
+In development mode (``dev_mode=True``), ``litestar-vite`` serves your entire application on a single ASGI port (for example ``http://localhost:8000``). Asset requests under ``asset_url`` (such as ``/static/@vite/client`` and ``/static/src/main.ts``) and HMR WebSocket connections (``/static/vite-hmr``) are streamed from the Vite dev server using AnyIO TCP sockets without external HTTP client dependencies:
 
 .. mermaid::
 
@@ -60,16 +60,14 @@ By default in development mode (``dev_mode_direct_urls=True``), ``litestar-vite`
        participant Vite as Vite Dev Server (Port 5173)
 
        Browser->>Litestar: GET / (HTML Page Shell)
-       Litestar->>Litestar: Resolve asset tags with direct Vite URLs
-       Litestar-->>Browser: HTML with <script src="http://localhost:5173/src/main.ts">
-       Browser->>Vite: GET http://localhost:5173/src/main.ts
-       Vite-->>Browser: Transformed ES module
-       Browser->>Vite: WebSocket HMR connection (ws://localhost:5173)
+       Litestar-->>Browser: HTML with <script src="/static/src/main.ts">
+       Browser->>Litestar: GET /static/src/main.ts
+       Litestar->>Vite: AnyIO TCP stream /static/src/main.ts
+       Vite-->>Litestar: Transformed ES module
+       Litestar-->>Browser: Streamed ES module
+       Browser->>Litestar: WebSocket HMR (/static/vite-hmr)
+       Litestar->>Vite: WebSocket HMR tunnel
        Vite-->>Browser: HMR updates
-
-The browser loads scripts, stylesheets, static assets, and HMR WebSocket connections directly from Vite, while Litestar serves HTML responses and API routes. The Vite plugin configures ``server.cors`` automatically so cross-origin module requests from the Litestar origin succeed.
-
-If your environment requires single-origin serving behind a strict firewall or reverse proxy, set ``dev_mode_direct_urls=False`` on ``RuntimeConfig`` (or ``ViteConfig``) to enable the built-in AnyIO HTTP/WebSocket proxy middleware:
 
 .. code-block:: python
 
@@ -78,12 +76,12 @@ If your environment requires single-origin serving behind a strict firewall or r
    from litestar_vite import PathConfig, ViteConfig, VitePlugin
 
    vite_config = ViteConfig(
+       dev_mode=True,
        paths=PathConfig(
            root=Path(__file__).parent,
            resource_dir="resources",
            bundle_dir="public",
        ),
-       dev_mode_direct_urls=True,
    )
 
    vite_plugin = VitePlugin(config=vite_config)

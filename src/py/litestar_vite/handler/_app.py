@@ -337,7 +337,6 @@ class AppHandler:
             is_react=self._config.is_react,
             csp_nonce=self._config.csp_nonce,
             resource_dir=resource_dir_str,
-            dev_mode_direct_urls=self._config.runtime.dev_mode_direct_urls,
         )
 
     @staticmethod
