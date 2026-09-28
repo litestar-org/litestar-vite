@@ -2,7 +2,7 @@
 Server-Side Rendering & IPC Transports
 ==========================================
 
-``litestar-vite`` executes server-side rendering (SSR) and component fragments using Vite 7+'s ``RunnableDevEnvironment`` in development and a managed ``stdio`` child process in production, with zero runtime dependency on external HTTP clients.
+``litestar-vite`` executes server-side rendering (SSR) and component fragments using Vite 7+'s ``RunnableDevEnvironment`` in development and a managed ``stdio`` child process in production, through a dedicated IPC layer. Development SSR uses a managed ``httpx2`` connection pool inside ``TCPStreamIPCTransport`` to call the existing Vite server. Asset and framework HTTP proxying use their own managed clients. Production SSR communicates over stdio.
 
 ---------------------------------
 Development vs. Production Model
@@ -18,11 +18,16 @@ Development vs. Production Model
      - Transport
      - Execution Model
    * - **Development** (``dev_mode=True``)
-     - :class:`~litestar_vite.ipc.TCPStreamIPCTransport` (``/__litestar_ssr__``)
+     - :class:`~litestar_vite.ipc.TCPStreamIPCTransport` (pooled HTTP to ``/__litestar_ssr__``)
      - Evaluates ``resources/ssr.ts`` or individual components in-memory inside the running Vite dev server via ``server.environments.ssr.runner`` (``RunnableDevEnvironment``). No separate SSR daemon process or build step is needed during development.
    * - **Production** (``dev_mode=False``)
      - :class:`~litestar_vite.ipc.StdioIPCTransport` (``stdin`` / ``stdout`` pipes)
-     - Spawns the compiled SSR bundle (for example ``node bootstrap/ssr/ssr.js``) as a managed child process communicating over newline-delimited JSON pipes.
+     - Spawns the compiled SSR bundle (for example ``node resources/bootstrap/ssr/ssr.js``) as a managed child process communicating over newline-delimited JSON pipes.
+
+``TCPStreamIPCTransport`` establishes its client pool lazily and releases connections
+on close. It supports HTTP and HTTPS endpoints, with HTTP framing and response
+decoding handled by ``httpx2``. Development rendering runs inside the existing Vite
+process; it does not start another SSR process.
 
 ---------------------------------
 Why Not a Fixed Port Daemon?
@@ -102,7 +107,7 @@ Enable SSR in ``InertiaConfig``:
        ),
        inertia=InertiaConfig(
            ssr=InertiaSSRConfig(
-               command=["node", "bootstrap/ssr/ssr.js"],
+               command=["node", "resources/bootstrap/ssr/ssr.js"],
            ),
        ),
    )
@@ -117,7 +122,7 @@ Or instantiate an IPC transport directly:
    from litestar_vite.ipc import StdioIPCTransport, TCPStreamIPCTransport
 
    stdio_transport = StdioIPCTransport(
-       command=["node", "bootstrap/ssr/ssr.js"],
+       command=["node", "resources/bootstrap/ssr/ssr.js"],
        max_restarts=3,
    )
 

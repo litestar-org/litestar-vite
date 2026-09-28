@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build{% if use_typescript %} && {% if framework in ['vue', 'vue-inertia'] %}vue-tsc -b --noEmit{% else %}tsc -b --noEmit{% endif %}{% endif %}",
     "preview": "vite preview",
     "serve": "vite preview",
     "watch": "npm run serve",
@@ -17,6 +17,9 @@
 {%- endfor %}
   },
   "devDependencies": {
+{%- if not has_dev_dependency('@types/node') %}
+    "@types/node": "{{ package_version('@types/node') }}",
+{%- endif %}
 {%- for name, version in dev_dependencies_map.items() %}
     "{{ name }}": "{{ version }}"{% if not loop.last %},{% endif %}
 {%- endfor %}

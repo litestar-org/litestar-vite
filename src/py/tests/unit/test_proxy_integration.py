@@ -31,7 +31,7 @@ async def test_proxy_http_forwarding(monkeypatch: pytest.MonkeyPatch, hotfile: P
         await send({"type": "http.response.start", "status": 200, "headers": [(b"x-upstream", b"1")]})
         await send({"type": "http.response.body", "body": b"from-upstream", "more_body": False})
 
-    monkeypatch.setattr(proxy_module, "_anyio_proxy_http_request", fake_proxy)
+    monkeypatch.setattr(proxy_module, "_proxy_http_request", fake_proxy)
 
     sent: list[dict[str, object]] = []
 

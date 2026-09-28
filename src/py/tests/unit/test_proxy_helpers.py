@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-import anyio
+import httpx2
 import pytest
 from litestar.exceptions import WebSocketDisconnect
 from litestar.types import Receive, Send
@@ -13,7 +13,6 @@ from litestar_vite.plugin._proxy import (
     SSRProxyMiddleware,
     ViteProxyMiddleware,
     _extract_proxy_response_headers,
-    _stream_chunked_body,
     _stream_request_body,
     build_hmr_target_url,
     build_proxy_url,
@@ -43,28 +42,6 @@ async def test_stream_request_body_reads_chunks_preserving_order() -> None:
     collected: list[bytes] = [chunk async for chunk in generator]
 
     assert collected == [b"first", b"second"]
-
-
-async def test_stream_chunked_body_decodes_http11_chunks() -> None:
-    class _FakeStream:
-        def __init__(self, chunks: list[bytes]) -> None:
-            self._chunks = list(chunks)
-
-        async def receive(self, _max_bytes: int = 65536) -> bytes:
-            if self._chunks:
-                return self._chunks.pop(0)
-            raise anyio.EndOfStream
-
-    raw = b"3\r\none\r\n3\r\ntwo\r\n0\r\n\r\n"
-    stream = _FakeStream([raw[4:]])
-    events: list[dict[str, object]] = []
-
-    async def send(event: dict[str, object]) -> None:
-        events.append(event)
-
-    await _stream_chunked_body(cast("Any", stream), bytearray(raw[:4]), send)
-    body_bytes = b"".join(cast("bytes", e["body"]) for e in events if e.get("type") == "http.response.body")
-    assert body_bytes == b"onetwo"
 
 
 pytestmark = pytest.mark.anyio
@@ -296,40 +273,27 @@ def test_hmr_target_getter_caches(tmp_path: Path) -> None:
     assert getter() == "http://127.0.0.1:24678"
 
 
-class _FakeTCPStream:
-    def __init__(self, response_bytes: list[bytes]) -> None:
-        self.sent_chunks: list[bytes] = []
-        self._response_bytes = list(response_bytes)
+def _mock_proxy_client(
+    monkeypatch: pytest.MonkeyPatch, response_headers: list[tuple[str, str]] | None = None
+) -> list[httpx2.Request]:
+    requests: list[httpx2.Request] = []
 
-    async def __aenter__(self) -> Self:
-        return self
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        requests.append(request)
+        return httpx2.Response(200, headers=response_headers, stream=httpx2.ByteStream(b"ok"))
 
-    async def __aexit__(self, *_args: object) -> None:
-        return None
-
-    def __aiter__(self) -> Self:
-        return self
-
-    async def __anext__(self) -> bytes:
-        if self._response_bytes:
-            return self._response_bytes.pop(0)
-        raise StopAsyncIteration
-
-    async def send(self, data: bytes) -> None:
-        self.sent_chunks.append(data)
-
-    async def receive(self, _max_bytes: int = 65536) -> bytes:
-        if self._response_bytes:
-            return self._response_bytes.pop(0)
-        raise anyio.EndOfStream
+    monkeypatch.setattr(
+        "litestar_vite.plugin._proxy.create_proxy_client",
+        lambda **_kwargs: httpx2.AsyncClient(transport=httpx2.MockTransport(handle)),
+    )
+    return requests
 
 
-async def test_proxy_http_streams_post_body_via_anyio(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_proxy_http_streams_post_body(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     hotfile = tmp_path / "hot"
     hotfile.write_text("http://localhost:5173")
 
-    fake_stream = _FakeTCPStream([b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nok"])
-    monkeypatch.setattr("anyio.connect_tcp", AsyncMock(return_value=fake_stream))
+    requests = _mock_proxy_client(monkeypatch)
 
     middleware = ViteProxyMiddleware(app=Mock(), hotfile_path=hotfile, asset_url="/static/")
 
@@ -355,8 +319,7 @@ async def test_proxy_http_streams_post_body_via_anyio(tmp_path: Path, monkeypatc
 
     assert events[0]["status"] == 200
     assert events[1]["body"] == b"ok"
-    sent_payload = b"".join(fake_stream.sent_chunks)
-    assert b"3\r\nup-\r\n9\r\nstreaming\r\n0\r\n\r\n" in sent_payload
+    assert requests[0].content == b"up-streaming"
 
 
 async def test_proxy_http_no_target(tmp_path: Path) -> None:
@@ -452,16 +415,10 @@ async def test_vite_hmr_handler_accepts_multiple_subprotocols(tmp_path: Path) ->
 
 async def test_ssr_proxy_middleware_http_success(monkeypatch: pytest.MonkeyPatch) -> None:
     """SSRProxyMiddleware streams upstream response and filters hop-by-hop headers."""
-    raw_resp = (
-        b"HTTP/1.1 200 OK\r\n"
-        b"Content-Type: text/plain\r\n"
-        b"Set-Cookie: a=1\r\n"
-        b"Set-Cookie: b=2\r\n"
-        b"Connection: keep-alive\r\n\r\n"
-        b"ok"
+    _mock_proxy_client(
+        monkeypatch,
+        [("Content-Type", "text/plain"), ("Set-Cookie", "a=1"), ("Set-Cookie", "b=2"), ("Connection", "keep-alive")],
     )
-    fake_stream = _FakeTCPStream([raw_resp])
-    monkeypatch.setattr("anyio.connect_tcp", AsyncMock(return_value=fake_stream))
 
     inner_app = AsyncMock()
     middleware = SSRProxyMiddleware(app=inner_app, target="http://localhost:3000", http2=False)
@@ -517,8 +474,7 @@ async def test_proxy_http_bodyless_methods_do_not_send_body(
     hotfile = tmp_path / "hot"
     hotfile.write_text("http://localhost:5173")
 
-    fake_stream = _FakeTCPStream([b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nok"])
-    monkeypatch.setattr("anyio.connect_tcp", AsyncMock(return_value=fake_stream))
+    requests = _mock_proxy_client(monkeypatch)
 
     middleware = ViteProxyMiddleware(app=Mock(), hotfile_path=hotfile, asset_url="/static/")
 
@@ -545,7 +501,8 @@ async def test_proxy_http_bodyless_methods_do_not_send_body(
 
     assert events[0]["status"] == 200
     assert receive_called is False
-    assert len(fake_stream.sent_chunks) == 1
+    assert len(requests) == 1
+    assert requests[0].content == b""
 
 
 def test_create_ssr_ws_proxy_handler_defaults_to_catch_all_paths() -> None:

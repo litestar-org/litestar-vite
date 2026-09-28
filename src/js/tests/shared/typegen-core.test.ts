@@ -292,7 +292,10 @@ describe("typegen-core", () => {
     })
 
     const result = await runTypeGeneration(config, { logger })
-    expect(emitChannelsTypes).toHaveBeenCalledWith("/home/user/project/asyncapi.json", "src/generated", "custom-channels.ts", "/home/user/project", logger)
+    expect(emitChannelsTypes).toHaveBeenCalledWith("/home/user/project/asyncapi.json", "src/generated", "custom-channels.ts", "/home/user/project", logger, {
+      asyncapi: "3.0.0",
+      channels: { chat: {} },
+    })
     expect(result.generatedFiles).toContain("custom-channels.ts")
   })
 

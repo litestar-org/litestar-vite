@@ -1,0 +1,156 @@
+=================
+Migrating to 0.32
+=================
+
+Version 0.32 changes Inertia SSR execution, HTTP proxy implementation, and realtime
+schema ownership. Review these changes before updating an existing application.
+
+Dependencies and Vite
+---------------------
+
+Upgrade both the Python ``litestar-vite`` package and the npm
+``litestar-vite-plugin`` package to 0.32. Python constraints such as ``>=0.31``
+can accept 0.32 while npm ``^0.31.0`` stays below 0.32; update both manifests
+and lockfiles explicitly.
+
+The npm plugin now rejects Vite versions below 7. Upgrade Vite 6 applications
+and their framework plugins before upgrading ``litestar-vite-plugin``. Vite 7
+continues to use ``rollupOptions``; Vite 8 uses ``rolldownOptions``.
+
+The standard Python installation includes ``httpx2`` for pooled asset
+and framework HTTP proxying. No new development extra is required. The existing
+``litestar-vite[http2]`` extra enables HTTP/2 support. SSR worker communication
+uses the separate IPC layer: pooled HTTP calls to Vite in development and
+newline-delimited JSON over stdio in production.
+
+Inertia SSR configuration
+-------------------------
+
+The old standalone HTTP SSR server is replaced by Vite ModuleRunner in development
+and a managed stdio worker in production. This affects ``InertiaConfig(ssr=...)``;
+framework proxy mode (``ViteConfig(mode="framework")``) remains a separate integration.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Previous setting or behavior
+     - Migration
+   * - ``InertiaSSRConfig(url=...)``
+     - Remove ``url``. Development uses the running Vite server's SSR endpoint;
+       production uses the configured stdio worker command.
+   * - ``auto_start=False`` and an externally managed HTTP SSR server
+     - Remove ``auto_start`` and replace the server with a managed stdio worker.
+       The external HTTP server arrangement is no longer supported.
+   * - ``health_check`` / ``health_check_timeout``
+     - Remove these arguments. The worker starts lazily on its first render request;
+       validate a rendered page in your deployment readiness checks.
+   * - ``command=["npm", "run", "start:ssr"]`` launching an HTTP server
+     - Change the script to run a stdio worker, or point ``command`` directly at
+       the built worker bundle. Keeping the old HTTP server script does not work.
+   * - ``command=None``
+     - Production runs ``ssr.js`` under ``PathConfig.ssr_output_dir``, or under
+       ``<resource_dir>/bootstrap/ssr`` when no output directory is configured.
+       Relative output paths are anchored to the project root. With the typical
+       Inertia ``resource_dir="resources"``, this is ``resources/bootstrap/ssr/ssr.js``.
+       Explicit ``command`` and ``cwd`` settings remain available.
+   * - SSR failure raises an error
+     - The new default is ``fallback_to_client=True``. Set it to ``False`` if
+       initial HTML must be server-rendered and failures should propagate.
+
+Removed constructor arguments raise ``TypeError``; they are not ignored.
+
+.. code-block:: python
+
+   from litestar_vite import InertiaConfig, InertiaSSRConfig
+
+   inertia = InertiaConfig(
+       ssr=InertiaSSRConfig(
+           command=["node", "resources/bootstrap/ssr/ssr.js"],
+           timeout=2.0,
+           fallback_to_client=False,
+       )
+   )
+
+SSR entrypoints and deployment
+------------------------------
+
+Update the frontend SSR entrypoint as well as the Python configuration:
+
+1. Export an async ``render(page)`` function returning the Inertia ``head`` and
+   ``body`` result so Vite can call it in development.
+2. For production, start the stdio request loop only outside Vite development
+   mode. Read newline-delimited JSON from stdin and return a JSON response with
+   the same request ``id`` and a ``result`` or ``error`` field on stdout.
+3. Keep stdout reserved for protocol responses; write diagnostic messages to stderr.
+   Exit when stdin closes.
+4. Build and deploy the SSR bundle and its runtime dependencies alongside the
+   Python application. Each application worker owns its SSR subprocess.
+
+Use the generated framework SSR entrypoint as the starting point, preserving your
+page resolution and Inertia bootstrap settings. See :doc:`../ssr/ipc-architecture`
+for the request protocol and :doc:`../reference/inertia/ssr` for configuration.
+Exercise a full-page request in development and production; client navigation
+alone does not verify SSR.
+
+Realtime contracts require AsyncAPIPlugin
+-----------------------------------------
+
+``TypeGenConfig(generate_channels=True)`` now exports the document supplied by a
+registered ``litestar_asyncapi.AsyncAPIPlugin``. WebSocket routes, SSE handlers,
+or ``ChannelsPlugin`` alone no longer cause ``litestar-vite`` to infer a document.
+The frontend stream helpers remain usable without schema generation.
+
+Install ``litestar-vite[asyncapi]``, register ``AsyncAPIPlugin``, and configure
+realtime contracts there. See :doc:`../realtime/typegen` for the application
+configuration. Regenerate ``asyncapi.json`` and ``channels.ts`` and review the
+resulting channel keys and payload types. If you do not use generated realtime
+contracts, set ``generate_channels=False`` and remove obsolete generated files
+after checking their consumers. Existing files are not evidence that the current
+application still exports them.
+
+The public ``litestar_vite.codegen`` AsyncAPI model and extraction helpers were
+removed, including ``create_asyncapi_document``, ``extract_realtime_channels``,
+``extract_websocket_routes``, ``extract_sse_routes``, and
+``app_has_realtime_surface``. Move schema construction to ``litestar-asyncapi``.
+``resolve_asyncapi_document()`` now returns the document or ``None`` instead of a
+``(document, source)`` tuple; ``ExportResult.asyncapi_source`` was removed.
+
+HTTP client migration
+---------------------
+
+The maintained proxy client is now ``httpx2``. Applications importing ``httpx``
+directly must keep it as an explicit application dependency, or migrate those
+imports and any HTTP client type annotations to ``httpx2``. Custom HTTP logging
+configuration should use the new ``httpx2`` logger name.
+
+``httpx2`` uses the system trust store by default. Review corporate CA and custom
+TLS configuration when upgrading, particularly for HTTPS external dev servers.
+See the `httpx2 migration guide <https://pydantic.dev/docs/httpx2/get-started/migration/>`_
+for application-level client changes.
+
+Migration by application configuration
+--------------------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Configuration
+     - Upgrade action
+   * - SPA without Inertia SSR
+     - Update the Python and npm package constraints together. The SSR constructor
+       migration does not apply. Register AsyncAPIPlugin if generated realtime
+       contracts are needed, and review regenerated artifacts and their imports.
+   * - External framework development server
+     - HTTP proxying remains supported. Verify assets, navigation, and WebSocket
+       updates through the application port after upgrading.
+   * - Vite 6
+     - Upgrade Vite and compatible frontend plugins before moving the npm plugin
+       to 0.32.
+   * - Inertia without SSR
+     - The SSR constructor migration does not apply. Register AsyncAPIPlugin if
+       generated realtime contracts are needed.
+   * - Vite 7 or Vite 8
+     - These versions meet the runtime minimum. Update the Python and npm package
+       constraints together.

@@ -1,34 +1,45 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { Plugin, ViteDevServer } from "vite"
-import { createServerModuleRunner, isRunnableDevEnvironment } from "vite"
+import { createServerModuleRunner, isRunnableDevEnvironment, normalizePath } from "vite"
 import { renderFragment } from "./fragments/renderer.js"
 import { manageSsrCache } from "./shared/ssr-cache.js"
 import type { DevSsrOptions, SsrRenderRequest, SsrRenderResponse } from "./shared/ssr-types.js"
 
-function resolveRequestEntrypoint(root: string, payloadEntrypoint: string | undefined, configuredEntrypoint: string | undefined): string {
-  if (payloadEntrypoint) {
-    return payloadEntrypoint
+function resolveComponent(root: string, roots: string[], component: string): string {
+  if (
+    component.includes("\\") ||
+    component.includes("\0") ||
+    component.includes("?") ||
+    component.includes("#") ||
+    component.startsWith("/@") ||
+    /^[a-z][a-z\d+.-]*:/i.test(component)
+  ) {
+    throw new Error("Invalid fragment component path.")
   }
-  if (configuredEntrypoint && fs.existsSync(path.resolve(root, configuredEntrypoint))) {
-    return configuredEntrypoint
+  if (![".tsx", ".jsx", ".vue", ".svelte", ".astro"].includes(path.extname(component).toLowerCase())) {
+    throw new Error("Unsupported fragment component extension.")
   }
-  for (const candidate of ["resources/ssr.tsx", "resources/ssr.ts", "src/ssr.tsx", "src/ssr.ts"]) {
-    if (fs.existsSync(path.resolve(root, candidate))) {
-      return candidate
-    }
-  }
-  return configuredEntrypoint ?? "resources/ssr.tsx"
+  const resolved = fs.realpathSync(path.resolve(root, component))
+  const allowed = roots.some((directory) => {
+    const relative = path.relative(directory, resolved)
+    return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+  })
+  if (!allowed) throw new Error("Fragment component is outside the configured component roots.")
+  return normalizePath(resolved)
 }
 
 export function litestarViteSsrPlugin(options: DevSsrOptions = {}): Plugin {
   const endpoint = options.endpoint ?? "/__litestar_ssr__"
-  const defaultEntrypoint = options.entrypoint
 
   return {
     name: "litestar-vite:dev-ssr",
     apply: "serve",
     configureServer(server: ViteDevServer) {
+      if (!options.entrypoint && !options.componentRoots?.length) return
+      const root = server.config.root ?? process.cwd()
+      const entrypoint = options.entrypoint ? normalizePath(fs.realpathSync(path.resolve(root, options.entrypoint))) : undefined
+      const componentRoots = (options.componentRoots ?? []).map((directory) => fs.realpathSync(path.resolve(root, directory)))
       const ssrEnv = server.environments?.ssr
       if (!ssrEnv) {
         server.config?.logger?.warn?.("[litestar-vite] server.environments.ssr is not configured. Vite 7+ Environment API is required for ModuleRunner dev SSR.")
@@ -57,12 +68,19 @@ export function litestarViteSsrPlugin(options: DevSsrOptions = {}): Plugin {
 
       server.middlewares.use(endpoint, async (req, res, next) => {
         const subPath = req.url?.split("?")[0] ?? ""
+        if (req.method !== "POST") return next()
+        // This endpoint is backend IPC. Browser requests must never execute server modules.
+        if (req.headers.origin !== undefined || req.headers["sec-fetch-site"] !== undefined) {
+          res.statusCode = 403
+          res.end("Browser requests are not allowed on the SSR endpoint")
+          return
+        }
+        if (req.headers["content-type"]?.split(";")[0].trim().toLowerCase() !== "application/json") {
+          res.statusCode = 415
+          res.end("Content-Type must be application/json")
+          return
+        }
         if (subPath === "/invalidate" || subPath === "/invalidate/") {
-          if (req.method !== "POST") {
-            res.statusCode = 405
-            res.end("Method Not Allowed")
-            return
-          }
           cacheManager.clearAll()
           res.statusCode = 200
           res.setHeader("Content-Type", "application/json; charset=utf-8")
@@ -70,9 +88,7 @@ export function litestarViteSsrPlugin(options: DevSsrOptions = {}): Plugin {
           return
         }
 
-        if (req.method !== "POST") {
-          return next()
-        }
+        if (subPath !== "" && subPath !== "/") return next()
 
         const chunks: Buffer[] = []
         let totalBytes = 0
@@ -99,7 +115,9 @@ export function litestarViteSsrPlugin(options: DevSsrOptions = {}): Plugin {
           try {
             const rawBody = Buffer.concat(chunks).toString("utf-8")
             const payload: SsrRenderRequest = rawBody ? JSON.parse(rawBody) : {}
+            if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Invalid SSR request.")
             requestId = payload.id
+            if ("entrypoint" in payload) throw new Error("SSR entrypoints must be configured on the server.")
 
             if (payload.method === "render_fragment" || payload.type === "fragment") {
               const params = (payload.params ?? payload) as Record<string, unknown>
@@ -109,11 +127,8 @@ export function litestarViteSsrPlugin(options: DevSsrOptions = {}): Plugin {
               }
               const props = (typeof params.props === "object" && params.props !== null ? params.props : {}) as Record<string, unknown>
               const mode = params.mode === "island" ? "island" : "static"
-              const fragmentRes = await renderFragment({ componentPath: rawComponent, props, mode }, (spec: string) => {
-                const normalized = spec.replace(/\\/g, "/")
-                const resolved = normalized.startsWith("/") ? normalized : `/${normalized}`
-                return runner.import(resolved)
-              })
+              const resolvedComponent = resolveComponent(root, componentRoots, rawComponent)
+              const fragmentRes = await renderFragment({ componentPath: rawComponent, props, mode, clientEntry: options.clientEntry }, () => runner.import(resolvedComponent))
               const response: SsrRenderResponse = {
                 id: payload.id,
                 result: { ...fragmentRes },
@@ -124,14 +139,11 @@ export function litestarViteSsrPlugin(options: DevSsrOptions = {}): Plugin {
               return
             }
 
-            const rawEntry = resolveRequestEntrypoint(server.config.root ?? process.cwd(), payload.entrypoint, defaultEntrypoint)
-            const normalizedEntry = rawEntry.replace(/\\/g, "/")
-            const resolvedEntry = normalizedEntry.startsWith("/") ? normalizedEntry : `/${normalizedEntry}`
-
-            const mod = await runner.import(resolvedEntry)
+            if (!entrypoint) throw new Error("SSR rendering requires a configured entrypoint.")
+            const mod = await runner.import(entrypoint)
             const renderFn = typeof mod.default === "function" ? mod.default : typeof mod.render === "function" ? mod.render : null
             if (!renderFn) {
-              throw new Error(`Module '${resolvedEntry}' does not export a default function or 'render' function.`)
+              throw new Error(`Module '${entrypoint}' does not export a default function or 'render' function.`)
             }
 
             const paramsObj = payload.params as Record<string, unknown> | undefined

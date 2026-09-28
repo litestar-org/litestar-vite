@@ -5,6 +5,7 @@ Regex patterns are compiled once at import time for performance.
 
 import re
 from functools import lru_cache, partial
+from html.parser import HTMLParser
 from typing import Any
 
 __all__ = (
@@ -273,14 +274,44 @@ def replace_element_outer_html(html: str, selector: str, content: str) -> str:
     return pattern.sub(replacer, html, count=1)
 
 
-_INERTIA_HEAD_TOKENS: tuple[str, ...] = ("<!--inertia-head-->", "<!-- inertia-head -->", "@inertiaHead")
-_INERTIA_BODY_TOKENS: tuple[str, ...] = (
-    "<!--inertia-body-->",
-    "<!-- inertia-body -->",
-    "@inertia",
-    "<!--inertia-->",
-    "<!-- inertia -->",
-)
+class _InertiaSlots(HTMLParser):
+    """Locate shell slots without interpreting script data or HTML attributes."""
+
+    def __init__(self, html: str) -> None:
+        super().__init__(convert_charrefs=False)
+        self.slots: dict[str, tuple[int, int]] = {}
+        self._offsets = [0, *(match.end() for match in re.finditer("\\n", html))]
+        self._container: str | None = None
+        self._raw_text_tag: str | None = None
+        self.feed(html)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"head", "body"}:
+            self._container = tag
+        elif tag in {"script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "plaintext"}:
+            self._raw_text_tag = tag
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == self._container:
+            self._container = None
+        if tag == self._raw_text_tag:
+            self._raw_text_tag = None
+
+    def handle_comment(self, data: str) -> None:
+        kind = {"inertia-head": "head", "inertia-body": "body", "inertia": "body"}.get(data.strip())
+        if kind is not None and self._raw_text_tag is None:
+            self._record(kind, 0, len(data) + 7)
+
+    def handle_data(self, data: str) -> None:
+        kind = {"@inertiaHead": "head", "@inertia": "body"}.get(data.strip())
+        if kind is not None and kind == self._container and self._raw_text_tag is None:
+            leading = len(data) - len(data.lstrip())
+            self._record(kind, leading, leading + len(data.strip()))
+
+    def _record(self, kind: str, start: int, end: int) -> None:
+        line, column = self.getpos()
+        offset = self._offsets[line - 1] + column
+        self.slots.setdefault(kind, (offset + start, offset + end))
 
 
 def inject_inertia_ssr_tags(html: str, *, head: list[str] | str, body: str, selector: str = "#app") -> str:
@@ -301,25 +332,15 @@ def inject_inertia_ssr_tags(html: str, *, head: list[str] | str, body: str, sele
     newline = "\r\n" if "\r\n" in html else "\n"
     head_content = newline.join(head) if isinstance(head, list) else head
 
-    head_token_found = False
-    for token in _INERTIA_HEAD_TOKENS:
-        if token in html:
-            html = html.replace(token, head_content, 1)
-            head_token_found = True
-            break
+    slots = _InertiaSlots(html).slots
+    replacements = {"head": head_content, "body": body}
+    for kind, (start, end) in sorted(slots.items(), key=lambda item: item[1][0], reverse=True):
+        html = html[:start] + replacements[kind] + html[end:]
 
-    if not head_token_found and head_content:
-        html = inject_head_html(html, head_content)
-
-    body_token_found = False
-    for token in _INERTIA_BODY_TOKENS:
-        if token in html:
-            html = html.replace(token, body, 1)
-            body_token_found = True
-            break
-
-    if not body_token_found:
+    if "body" not in slots:
         html = replace_element_outer_html(html, selector, body)
+    if "head" not in slots and head_content:
+        html = inject_head_html(html, head_content)
 
     return html
 

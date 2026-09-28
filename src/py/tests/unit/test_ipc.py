@@ -4,6 +4,7 @@ import sys
 
 import anyio
 import anyio.abc
+import anyio.lowlevel
 import pytest
 from litestar.serialization import encode_json
 
@@ -83,7 +84,10 @@ async def test_tcp_stream_transport_http_and_chunked_response() -> None:
     async with anyio.create_task_group() as tg:
         tg.start_soon(listener.serve, handle_client)
         transport = TCPStreamIPCTransport(host="127.0.0.1", port=port, path="/__litestar_ssr__")
-        result = await transport.send_request({"method": "render", "params": {"component": "Home"}}, timeout=3.0)
+        try:
+            result = await transport.send_request({"method": "render", "params": {"component": "Home"}}, timeout=3.0)
+        finally:
+            await transport.close()
         tg.cancel_scope.cancel()
 
     await listener.aclose()
@@ -113,3 +117,99 @@ async def test_circuit_breaker_state_transitions() -> None:
 
     cb.record_success()
     assert cb.state == CircuitState.CLOSED
+
+
+async def test_stdio_timeout_includes_stalled_request_write() -> None:
+    """A worker that stops reading cannot hold the request beyond its timeout."""
+    from litestar_vite.ipc import IPCTimeoutError
+
+    transport = StdioIPCTransport(command=[sys.executable, "-u", "-c", "import time; time.sleep(10)"])
+    try:
+        with anyio.fail_after(1), pytest.raises(IPCTimeoutError):
+            await transport.send_request({"method": "render", "params": {"text": "x" * 2_000_000}}, timeout=0.03)
+        assert not transport._pending
+    finally:
+        await transport.close()
+
+
+async def test_stdio_ignores_non_envelope_stdout_and_keeps_dispatching() -> None:
+    """Application diagnostics cannot terminate the response reader."""
+    script = (
+        "import sys,json\n"
+        "for line in sys.stdin:\n"
+        "    msg=json.loads(line)\n"
+        "    print('123', flush=True)\n"
+        "    print('[1,2]', flush=True)\n"
+        "    print('diagnostic', flush=True)\n"
+        "    print(json.dumps({'id':msg['id'],'result':msg['method']}), flush=True)\n"
+    )
+    transport = StdioIPCTransport(command=[sys.executable, "-u", "-c", script])
+    try:
+        for method in ("first", "second"):
+            response = await transport.send_request({"method": method}, timeout=1)
+            assert response["result"] == method
+    finally:
+        await transport.close()
+
+
+async def test_stdio_cancelled_write_cleans_pending_request() -> None:
+    """Caller cancellation releases request bookkeeping even during a blocked write."""
+    transport = StdioIPCTransport(command=[sys.executable, "-u", "-c", "import time; time.sleep(10)"])
+    try:
+        with anyio.move_on_after(0.05):
+            await transport.send_request({"method": "render", "params": {"text": "x" * 2_000_000}})
+        assert not transport._pending
+    finally:
+        await transport.close()
+
+
+async def test_stdio_cold_start_rejects_duplicate_ids_without_stealing_response() -> None:
+    """Concurrent startup cannot let two callers claim the same response slot."""
+    import asyncio
+
+    script = (
+        "import sys,json,time\n"
+        "for line in sys.stdin:\n"
+        "    msg=json.loads(line)\n"
+        "    time.sleep(.05)\n"
+        "    print(json.dumps({'id':msg['id'],'result':msg['params']}),flush=True)\n"
+    )
+    transport = StdioIPCTransport(command=[sys.executable, "-u", "-c", script])
+    try:
+        first: dict[str, object] | BaseException
+        second: dict[str, object] | BaseException
+        first, second = await asyncio.gather(
+            transport.send_request({"id": 7, "method": "render", "params": "first"}, timeout=1),
+            transport.send_request({"id": 7, "method": "render", "params": "second"}, timeout=1),
+            return_exceptions=True,
+        )
+        assert isinstance(first, dict) and first["result"] == "first"
+        assert isinstance(second, IPCError) and "unique integer" in str(second)
+    finally:
+        await transport.close()
+
+
+async def test_stdio_shutdown_finishes_when_caller_is_cancelled() -> None:
+    """Cancellation during shutdown cannot orphan the worker or reader tasks."""
+    transport = StdioIPCTransport(command=[sys.executable, "-u", "-c", "import time; time.sleep(10)"])
+    await transport.start()
+    process = transport._process
+    with anyio.move_on_after(0.01):
+        await transport.close()
+    assert process is not None and process.returncode is not None
+    assert not transport._reader_tasks
+
+
+async def test_stdio_queued_write_reports_worker_shutdown() -> None:
+    """A queued request cannot write to a closed or replaced worker."""
+    import asyncio
+
+    transport = StdioIPCTransport(command=[sys.executable, "-u", "-c", "import sys; sys.stdin.read()"])
+    await transport.start()
+    async with transport._write_lock:
+        request = asyncio.create_task(transport.send_request({"method": "render"}))
+        await anyio.lowlevel.checkpoint()
+        assert transport._pending
+        await transport.close()
+    with pytest.raises(IPCWorkerCrashError, match="closed"):
+        await request

@@ -146,12 +146,18 @@ def test_component_response_static_and_island_modes(tmp_path: Path) -> None:
         assert resp_static.text == "<button>Click 5</button>"
         assert "<litestar-island" not in resp_static.text
 
+        island_html = (
+            '<litestar-island data-island-component="components/Btn.tsx" '
+            'data-island-props="{&quot;count&quot;:5}"><button>Click 5</button></litestar-island>'
+            '<script type="module" src="/assets/islands.js"></script>'
+        )
+        transport._response = {"result": {"html": island_html}}
         resp_island = client.get("/island-frag")
         assert resp_island.status_code == 200
         assert '<litestar-island data-island-component="components/Btn.tsx"' in resp_island.text
         assert 'data-island-props="{' in resp_island.text or "&quot;count&quot;:5" in resp_island.text
         assert "<button>Click 5</button></litestar-island>" in resp_island.text
-        assert 'customElements.define("litestar-island"' in resp_island.text
+        assert resp_island.text == island_html
 
 
 def test_vite_fragment_jinja_callable(tmp_path: Path) -> None:
@@ -168,3 +174,285 @@ def test_vite_fragment_jinja_callable(tmp_path: Path) -> None:
     markup = vite_fragment({"request": request}, "components/User.vue", props={"role": "admin"}, name="Jane")
     assert str(markup) == "<p>Jane</p>"
     assert transport.requests[-1]["params"]["props"] == {"role": "admin", "name": "Jane"}
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "iso-8859-1"])
+@pytest.mark.parametrize("compress", [False, True])
+def test_jinja_fragment_real_request_and_response_cache(tmp_path: Path, encoding: str, compress: bool) -> None:
+    """Render on the request loop before compression/cache, preserving response byte lengths."""
+    from litestar.config.compression import CompressionConfig
+    from litestar.plugins.jinja import JinjaTemplateEngine
+    from litestar.response import Template
+    from litestar.template.config import TemplateConfig
+
+    plugin = VitePlugin(
+        ViteConfig(mode="template", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=False))
+    )
+    transport = _StubFragmentTransport(response={"result": {"html": "<p>café</p>"}})
+    plugin.fragment_engine._transport = transport
+
+    (tmp_path / "page.html").write_text('Before {{ vite_fragment("Card.vue") }} after')
+
+    @get("/", cache=True)
+    async def index() -> Template:
+        return Template(template_name="page.html", encoding=encoding)
+
+    with create_test_client(
+        [index],
+        plugins=[plugin],
+        template_config=TemplateConfig(engine=JinjaTemplateEngine, directory=tmp_path),
+        compression_config=CompressionConfig(backend="gzip", minimum_size=1) if compress else None,
+    ) as client:
+        first = client.get("/")
+        second = client.get("/")
+        assert first.status_code == second.status_code == 200
+        expected = "Before <p>café</p> after".encode(encoding)
+        assert first.content == second.content == expected
+        assert len(transport.requests) == 1
+        if compress:
+            assert first.headers["content-encoding"] == "gzip"
+        else:
+            assert int(first.headers["content-length"]) == len(expected)
+
+
+def test_jinja_fragment_failure_does_not_start_success_response(tmp_path: Path) -> None:
+    """An async render failure remains an ordinary HTTP error, without leaking placeholders."""
+    from litestar.plugins.jinja import JinjaTemplateEngine
+    from litestar.response import Template
+    from litestar.template.config import TemplateConfig
+
+    plugin = VitePlugin(
+        ViteConfig(mode="template", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=False))
+    )
+    transport = _StubFragmentTransport(error=RuntimeError("render failed"))
+    plugin.fragment_engine._transport = transport
+
+    @get("/")
+    async def index() -> Template:
+        return Template(template_str='{{ vite_fragment("Card.vue") }}')
+
+    with create_test_client(
+        [index], plugins=[plugin], template_config=TemplateConfig(engine=JinjaTemplateEngine, directory=tmp_path)
+    ) as client:
+        assert client.get("/").status_code == 500
+        transport._error = None
+        assert client.get("/").text == '<div class="card">Hello</div>'
+
+
+@pytest.mark.anyio
+async def test_fragments_share_configured_transport_without_closing_it(tmp_path: Path) -> None:
+    """Fragments reuse the plugin's production command and leave shutdown to its owner."""
+    from unittest.mock import AsyncMock, patch
+
+    from litestar_vite.config import InertiaConfig, InertiaSSRConfig
+    from litestar_vite.inertia.plugin import InertiaPlugin
+
+    command = ["node", "custom-worker.js"]
+    plugin = VitePlugin(
+        ViteConfig(
+            mode="template",
+            paths=PathConfig(root=tmp_path),
+            runtime=RuntimeConfig(dev_mode=False),
+            inertia=InertiaConfig(ssr=InertiaSSRConfig(command=command, cwd=tmp_path / "worker")),
+        )
+    )
+    transport = plugin.get_ipc_transport()
+    assert transport.command == command
+    assert transport.cwd == tmp_path / "worker"
+    assert plugin.fragment_engine._get_transport() is transport
+    await plugin.fragment_engine.close()
+    assert plugin.fragment_engine._get_transport() is transport
+    close = AsyncMock()
+    stub = _StubFragmentTransport()
+    plugin._ipc_transport = stub
+    app = Litestar(plugins=[plugin])
+    inertia = app.plugins.get(InertiaPlugin)
+    with patch.object(stub, "close", close):
+        async with inertia.lifespan(app):
+            assert inertia.ipc_transport is stub
+        close.assert_not_awaited()
+
+
+def test_fragment_transport_tracks_hotfile_port_changes(tmp_path: Path) -> None:
+    """A fragment engine created before Vite starts resolves its current hotfile at render time."""
+    plugin = VitePlugin(ViteConfig(paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=True)))
+    engine = plugin.fragment_engine
+    hotfile = plugin._resolve_hotfile_path()
+    hotfile.parent.mkdir(parents=True, exist_ok=True)
+    hotfile.write_text("http://127.0.0.1:5511")
+    first = engine._get_transport()
+    assert first.port == 5511
+    assert engine._get_transport() is first
+    hotfile.write_text("http://127.0.0.1:5512")
+    assert engine._get_transport().port == 5512
+    hotfile.write_text("https://localhost:5513")
+    secure = engine._get_transport()
+    assert secure.host == "localhost"
+    assert secure.scheme == "https"
+    hotfile.write_text("http://127.0.0.1:5511")
+    assert engine._get_transport() is first
+
+
+def test_fragment_template_preserves_sync_offload_and_response_metadata(tmp_path: Path) -> None:
+    """Threaded handlers stay threaded and wrapping retains response headers/cookies/hooks."""
+    import threading
+
+    from litestar.background_tasks import BackgroundTask
+    from litestar.plugins.jinja import JinjaTemplateEngine
+    from litestar.response import Response, Template
+    from litestar.template.config import TemplateConfig
+
+    plugin = VitePlugin(
+        ViteConfig(mode="template", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=False))
+    )
+    transport = _StubFragmentTransport()
+    plugin.fragment_engine._transport = transport
+    threads: dict[str, int] = {}
+    background_calls: list[str] = []
+
+    async def after_request(response: Response[Any]) -> Response[Any]:
+        threads["loop"] = threading.get_ident()
+        response.headers["x-after-request"] = "preserved"
+        return response
+
+    @get("/", sync_to_thread=True, after_request=after_request)
+    def index() -> Template:
+        threads["handler"] = threading.get_ident()
+        response = Template(
+            template_str='{{ vite_fragment("Card.vue") }}',
+            status_code=202,
+            headers={"cache-control": "private, max-age=15", "x-custom": "kept"},
+            cookies={"fragment": "yes"},
+            background=BackgroundTask(background_calls.append, "done"),
+        )
+        response.set_etag('"revision-1"')
+        return response
+
+    @get("/plain", sync_to_thread=True)
+    def plain() -> dict[str, bool]:
+        threads["plain"] = threading.get_ident()
+        return {"ok": True}
+
+    with create_test_client(
+        [index, plain], plugins=[plugin], template_config=TemplateConfig(engine=JinjaTemplateEngine, directory=tmp_path)
+    ) as client:
+        response = client.get("/")
+        assert response.status_code == 202
+        assert response.headers["etag"] == '"revision-1"'
+        assert response.headers["cache-control"] == "private, max-age=15"
+        assert response.headers["x-custom"] == "kept"
+        assert response.headers["x-after-request"] == "preserved"
+        assert response.cookies["fragment"] == "yes"
+        assert response.text == '<div class="card">Hello</div>'
+        assert client.get("/plain").json() == {"ok": True}
+        assert threads["handler"] != threads["loop"]
+        assert threads["plain"] != threads["loop"]
+        assert background_calls == ["done"]
+
+
+def test_jinja_reuses_stdio_worker_across_requests(tmp_path: Path) -> None:
+    """Threaded template rendering returns to the same loop and managed subprocess."""
+    import sys
+
+    from litestar.plugins.jinja import JinjaTemplateEngine
+    from litestar.response import Template
+    from litestar.template.config import TemplateConfig
+
+    from litestar_vite.config import InertiaConfig, InertiaSSRConfig
+
+    worker = (
+        "import sys,json\n"
+        "for line in sys.stdin:\n"
+        " request=json.loads(line)\n"
+        " html='<p>'+request['params']['props']['name']+'</p>'\n"
+        " print(json.dumps({'id':request['id'],'result':{'html':html}}),flush=True)\n"
+    )
+    plugin = VitePlugin(
+        ViteConfig(
+            mode="template",
+            paths=PathConfig(root=tmp_path),
+            runtime=RuntimeConfig(dev_mode=False),
+            inertia=InertiaConfig(ssr=InertiaSSRConfig(command=[sys.executable, "-u", "-c", worker])),
+        )
+    )
+    transport = plugin.get_ipc_transport()
+
+    @get("/{name:str}")
+    async def index(name: str) -> Template:
+        return Template(template_str='{{ vite_fragment("Card.vue", name=name) }}', context={"name": name})
+
+    with create_test_client(
+        [index], plugins=[plugin], template_config=TemplateConfig(engine=JinjaTemplateEngine, directory=tmp_path)
+    ) as client:
+        assert client.get("/Alice").text == "<p>Alice</p>"
+        assert client.get("/Bob").text == "<p>Bob</p>"
+        assert transport.is_running
+    assert not transport.is_running
+
+
+def test_jinja_fragment_renders_before_dependency_cleanup(tmp_path: Path) -> None:
+    """Template helpers and their fragment props still see live yielded dependencies."""
+    from collections.abc import AsyncGenerator
+
+    from litestar.di import NamedDependency, Provide
+    from litestar.plugins.jinja import JinjaTemplateEngine
+    from litestar.response import Template
+    from litestar.template.config import TemplateConfig
+
+    resource = {"open": False}
+
+    async def provide_resource() -> AsyncGenerator[dict[str, bool], None]:
+        resource["open"] = True
+        yield resource
+        resource["open"] = False
+
+    def read_resource(value: dict[str, bool]) -> str:
+        assert value["open"], "Template rendered after dependency cleanup"
+        return "alive"
+
+    plugin = VitePlugin(
+        ViteConfig(mode="template", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=False))
+    )
+    transport = _StubFragmentTransport()
+    plugin.fragment_engine._transport = transport
+
+    @get("/", dependencies={"resource": Provide(provide_resource)})
+    async def index(resource: NamedDependency[dict[str, bool]]) -> Template:
+        return Template(
+            template_str='{{ vite_fragment("Card.vue", name=read_resource(resource)) }}',
+            context={"resource": resource, "read_resource": read_resource},
+        )
+
+    with create_test_client(
+        [index], plugins=[plugin], template_config=TemplateConfig(engine=JinjaTemplateEngine, directory=tmp_path)
+    ) as client:
+        assert client.get("/").status_code == 200
+        assert not resource["open"]
+        assert transport.requests[0]["params"]["props"] == {"name": "alive"}
+
+
+def test_jinja_fragment_in_before_request_response(tmp_path: Path) -> None:
+    """Short-circuit Template responses use the same async converter as handler results."""
+    from litestar import Request
+    from litestar.plugins.jinja import JinjaTemplateEngine
+    from litestar.response import Template
+    from litestar.template.config import TemplateConfig
+
+    plugin = VitePlugin(
+        ViteConfig(mode="template", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=False))
+    )
+    plugin.fragment_engine._transport = _StubFragmentTransport()
+
+    async def before_request(request: Request[Any, Any, Any]) -> Template:
+        return Template(template_str='{{ vite_fragment("Card.vue") }}')
+
+    @get("/", before_request=before_request)
+    async def index() -> str:
+        raise AssertionError("Before-request response should bypass the handler")
+
+    with create_test_client(
+        [index], plugins=[plugin], template_config=TemplateConfig(engine=JinjaTemplateEngine, directory=tmp_path)
+    ) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.text == '<div class="card">Hello</div>'

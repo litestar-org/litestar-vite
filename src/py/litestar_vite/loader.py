@@ -14,7 +14,6 @@ Key features:
 import contextlib
 import hashlib
 import html
-import http.client
 import re
 from functools import cached_property
 from pathlib import Path
@@ -23,9 +22,10 @@ from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import unquote, urljoin, urlsplit
 
 import anyio
+import httpx2
 import markupsafe
 from litestar.exceptions import SerializationException
-from litestar.serialization import decode_json, encode_json
+from litestar.serialization import decode_json
 
 from litestar_vite.exceptions import AssetNotFoundError, HTMLEntryResolutionError, ManifestNotFoundError
 from litestar_vite.utils import read_bridge_config
@@ -363,30 +363,15 @@ class ViteAssetLoader:
 
     @staticmethod
     def _post_transform_index_sync(endpoint: str, payload: dict[str, Any], entry: str, hot_target: str) -> str:
-        """Send a POST request to the Vite transform-index endpoint using stdlib http.client."""
-        parsed = urlsplit(endpoint)
-        scheme = (parsed.scheme or "http").lower()
-        if scheme not in {"http", "https"}:
-            raise HTMLEntryResolutionError(entry, development_url=hot_target, status_code=None)
-        host = parsed.hostname or "127.0.0.1"
-        port = parsed.port or (443 if scheme == "https" else 80)
-        path = parsed.path or "/"
-        if parsed.query:
-            path = f"{path}?{parsed.query}"
-        conn_cls = http.client.HTTPSConnection if scheme == "https" else http.client.HTTPConnection
-        conn = conn_cls(host, port, timeout=5.0)
+        """Resolve an HTML entry through the Vite transform endpoint."""
         try:
-            conn.request("POST", path, body=encode_json(payload), headers={"Content-Type": "application/json"})
-            resp = conn.getresponse()
-            status = resp.status
-            body = resp.read()
-        except Exception as exc:
-            raise HTMLEntryResolutionError(entry, development_url=hot_target, status_code=None, cause=exc) from exc
-        finally:
-            conn.close()
-        if status >= 400:
-            raise HTMLEntryResolutionError(entry, development_url=hot_target, status_code=status)
-        return body.decode("utf-8")
+            with httpx2.Client(timeout=5.0, trust_env=False) as client:
+                response = client.post(endpoint, json=payload)
+                response.raise_for_status()
+                return response.text
+        except httpx2.HTTPError as exc:
+            status = exc.response.status_code if isinstance(exc, httpx2.HTTPStatusError) else None
+            raise HTMLEntryResolutionError(entry, development_url=hot_target, status_code=status, cause=exc) from exc
 
     async def resolve_html_entry(
         self, entry: str, *, production_path: Path | str, absolute_dev_asset_urls: bool = False
@@ -576,6 +561,11 @@ class ViteAssetLoader:
             The raw JSON string content of the Vite manifest file.
         """
         return self._manifest_content
+
+    @manifest_content.setter
+    def manifest_content(self, value: str) -> None:
+        """Set the raw JSON manifest content."""
+        self._manifest_content = value
 
     @property
     def manifest(self) -> "dict[str, Any]":

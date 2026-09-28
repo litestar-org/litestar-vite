@@ -2,7 +2,6 @@ export interface SsrRenderRequest {
   id?: number | string
   method?: string
   type?: "inertia" | "fragment"
-  entrypoint?: string
   mode?: "static" | "island"
   params?: Record<string, unknown>
   page?: {
@@ -33,6 +32,10 @@ export interface SsrRenderResponse {
 
 export interface DevSsrOptions {
   entrypoint?: string
+  /** Directories containing renderable components, relative to the Vite root. */
+  componentRoots?: string[]
+  /** Browser entry module registering island components and framework adapters. */
+  clientEntry?: string
   endpoint?: string
   hmr?: boolean
 }

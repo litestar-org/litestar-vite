@@ -1,13 +1,11 @@
 """ComponentResponse for server-rendered UI component fragments."""
 
 import contextlib
-import uuid
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from litestar.enums import MediaType
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.response.base import ASGIResponse, Response
-from litestar.serialization import encode_json
 from litestar.status_codes import HTTP_200_OK
 
 if TYPE_CHECKING:
@@ -18,26 +16,6 @@ if TYPE_CHECKING:
     from litestar.types import ResponseCookies, ResponseHeaders
 
 __all__ = ("ComponentResponse",)
-
-_ISLAND_CLIENT_SCRIPT: str = (
-    '<script type="module">\n'
-    'if (typeof window !== "undefined" && !customElements.get("litestar-island")) {\n'
-    '  customElements.define("litestar-island", class extends HTMLElement {\n'
-    "    async connectedCallback() {\n"
-    '      const compPath = this.getAttribute("data-island-component")\n'
-    '      const rawProps = this.getAttribute("data-island-props")\n'
-    "      if (!compPath) return\n"
-    "      const props = rawProps ? JSON.parse(rawProps) : {}\n"
-    "      const mod = await import(/* @vite-ignore */ compPath)\n"
-    "      const Component = mod.default || mod\n"
-    '      if (typeof Component.hydrate === "function") {\n'
-    "        Component.hydrate({ target: this, props })\n"
-    "      }\n"
-    "    }\n"
-    "  })\n"
-    "}\n"
-    "</script>"
-)
 
 
 class ComponentResponse(Response[str]):
@@ -152,18 +130,6 @@ class ComponentResponse(Response[str]):
                 else:
                     msg = "Active VitePlugin does not support fragment rendering."
                     raise ImproperlyConfiguredException(msg)
-
-            if self.mode == "island":
-                if "<litestar-island" not in rendered_html:
-                    escaped_props = encode_json(self.props).decode(self.encoding).replace('"', "&quot;")
-                    island_id = f"island-{uuid.uuid4().hex[:8]}"
-                    rendered_html = (
-                        f'<litestar-island data-island-component="{self.component}" '
-                        f'data-island-props="{escaped_props}" id="{island_id}">{rendered_html}</litestar-island>'
-                    )
-                if "customElements.define" not in rendered_html:
-                    newline = "\r\n" if "\r\n" in rendered_html else "\n"
-                    rendered_html = f"{rendered_html}{newline}{_ISLAND_CLIENT_SCRIPT}"
 
             body_bytes = rendered_html.encode(self.encoding)
             inner_response = ASGIResponse(

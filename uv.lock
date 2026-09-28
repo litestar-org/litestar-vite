@@ -1282,7 +1282,9 @@ name = "litestar-vite"
 version = "0.32.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx2" },
     { name = "litestar" },
+    { name = "markupsafe" },
     { name = "typing-extensions" },
     { name = "websockets", version = "16.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "websockets", version = "17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -1393,9 +1395,11 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "h2", marker = "extra == 'http2'", specifier = ">=4.0.0" },
+    { name = "httpx2", specifier = ">=2.13.1" },
     { name = "jinja2", marker = "extra == 'jinja'" },
     { name = "litestar", specifier = ">=2.22.0" },
     { name = "litestar-asyncapi", marker = "extra == 'asyncapi'", specifier = ">=0.2.0" },
+    { name = "markupsafe", specifier = ">=2.0" },
     { name = "nodeenv", marker = "extra == 'nodeenv'" },
     { name = "typing-extensions" },
     { name = "websockets", specifier = ">=12.0" },

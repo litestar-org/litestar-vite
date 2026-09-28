@@ -7,14 +7,13 @@ In dev mode, it proxies requests to the Vite dev server for HMR support.
 In production, it serves the built index.html with async caching.
 """
 
-import http.client
 import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn
-from urllib.parse import urlsplit
 
 import anyio
+import httpx2
 from litestar import get
 from litestar.exceptions import ImproperlyConfiguredException, SerializationException
 from litestar.serialization import decode_json, encode_json
@@ -345,49 +344,19 @@ class AppHandler:
 
     @staticmethod
     def _post_vite_json_sync(endpoint: str, payload: dict[str, Any]) -> str:
-        """Send a POST JSON request to the Vite dev server using stdlib http.client."""
-        parsed = urlsplit(endpoint)
-        scheme = (parsed.scheme or "http").lower()
-        host = parsed.hostname or "127.0.0.1"
-        port = parsed.port or (443 if scheme == "https" else 80)
-        path = parsed.path or "/"
-        if parsed.query:
-            path = f"{path}?{parsed.query}"
-        conn_cls = http.client.HTTPSConnection if scheme == "https" else http.client.HTTPConnection
-        conn = conn_cls(host, port, timeout=5.0)
-        try:
-            conn.request("POST", path, body=encode_json(payload), headers={"Content-Type": "application/json"})
-            resp = conn.getresponse()
-            body = resp.read()
-            if resp.status >= 400:
-                msg = f"Vite transform-index returned HTTP {resp.status}"
-                raise OSError(msg)
-            return body.decode("utf-8")
-        finally:
-            conn.close()
+        """Transform HTML through the Vite development server."""
+        with httpx2.Client(timeout=5.0, trust_env=False) as client:
+            response = client.post(endpoint, json=payload)
+            response.raise_for_status()
+            return response.text
 
     @staticmethod
     def _fetch_vite_url_sync(target_url: str) -> str:
-        """Fetch HTML from the Vite dev server using stdlib http.client."""
-        parsed = urlsplit(target_url)
-        scheme = (parsed.scheme or "http").lower()
-        host = parsed.hostname or "127.0.0.1"
-        port = parsed.port or (443 if scheme == "https" else 80)
-        path = parsed.path or "/"
-        if parsed.query:
-            path = f"{path}?{parsed.query}"
-        conn_cls = http.client.HTTPSConnection if scheme == "https" else http.client.HTTPConnection
-        conn = conn_cls(host, port, timeout=5.0)
-        try:
-            conn.request("GET", path)
-            resp = conn.getresponse()
-            body = resp.read()
-            if resp.status >= 400:
-                msg = f"Vite server returned HTTP {resp.status}"
-                raise OSError(msg)
-            return body.decode("utf-8")
-        finally:
-            conn.close()
+        """Fetch HTML from Vite, following its development redirects."""
+        with httpx2.Client(timeout=5.0, trust_env=False) as client:
+            response = client.get(target_url, follow_redirects=True)
+            response.raise_for_status()
+            return response.text
 
     async def _transform_html_with_vite(self, html: str, url: str) -> str:
         """Transform HTML using the Vite dev server pipeline.
@@ -602,7 +571,7 @@ class AppHandler:
         target_url = f"{self._vite_url}/"
         try:
             return await anyio.to_thread.run_sync(self._fetch_vite_url_sync, target_url)
-        except (OSError, http.client.HTTPException):
+        except (OSError, httpx2.HTTPError):
             logger.debug("Vite server not ready at %s, showing startup page", target_url)
             return _get_server_starting_html(target_url)
 
@@ -623,7 +592,7 @@ class AppHandler:
         target_url = f"{self._vite_url}/"
         try:
             return self._fetch_vite_url_sync(target_url)
-        except (OSError, http.client.HTTPException):
+        except (OSError, httpx2.HTTPError):
             logger.debug("Vite server not ready at %s, showing startup page", target_url)
             return _get_server_starting_html(target_url)
 

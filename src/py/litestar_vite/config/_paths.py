@@ -61,3 +61,13 @@ class PathConfig:
         asset_url = self.asset_url
         if asset_url and asset_url != "/" and not asset_url.endswith("/"):
             object.__setattr__(self, "asset_url", f"{asset_url}/")
+
+
+def resolve_ssr_bundle_path(paths: PathConfig) -> Path:
+    """Resolve Vite's default SSR entry bundle independently of the worker cwd."""
+    output_dir = (
+        Path(paths.ssr_output_dir)
+        if paths.ssr_output_dir is not None
+        else Path(paths.resource_dir) / "bootstrap" / "ssr"
+    )
+    return (Path(paths.root) / output_dir / "ssr.js").resolve()

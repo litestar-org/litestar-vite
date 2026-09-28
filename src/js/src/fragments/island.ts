@@ -15,22 +15,9 @@ export function wrapIsland(html: string, options: IslandOptions): string {
   return `<litestar-island data-island-component="${escapedComponent}" data-island-props="${escapedProps}" id="${escapedId}">${html}</litestar-island>`
 }
 
-export function getIslandClientScript(): string {
-  return `<script type="module">
-if (typeof window !== "undefined" && !customElements.get("litestar-island")) {
-  customElements.define("litestar-island", class extends HTMLElement {
-    async connectedCallback() {
-      const compPath = this.getAttribute("data-island-component")
-      const rawProps = this.getAttribute("data-island-props")
-      if (!compPath) return
-      const props = rawProps ? JSON.parse(rawProps) : {}
-      const mod = await import(/* @vite-ignore */ compPath)
-      const Component = mod.default || mod
-      if (typeof Component.hydrate === "function") {
-        Component.hydrate({ target: this, props })
-      }
-    }
-  })
-}
-</script>`
+export function getIslandClientScript(clientEntry: string): string {
+  if (!/^(?:\/(?!\/)|https?:\/\/)/.test(clientEntry)) {
+    throw new Error("Island clientEntry must be a root-relative or HTTP(S) URL to a built client registry")
+  }
+  return `<script type="module" src="${escapeHtmlAttr(clientEntry)}"></script>`
 }

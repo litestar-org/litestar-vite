@@ -24,6 +24,7 @@ export default defineConfig({
 {% endif %}
     svelte(),
     litestar({
+      resourceDir: "{{ resource_dir }}",
       input: ["{{ resource_dir }}/main.ts"{% if use_tailwind %}, "{{ resource_dir }}/tailwind.css"{% endif %}],
 {% if enable_ssr %}
       ssr: "{{ resource_dir }}/ssr.ts",

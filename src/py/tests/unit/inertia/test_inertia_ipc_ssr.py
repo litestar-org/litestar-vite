@@ -130,3 +130,50 @@ def test_inertia_ssr_ipc_transport_and_circuit_breaker_fallback(tmp_path: Path) 
         resp_bypassed = client.get("/")
         assert resp_bypassed.status_code == 200
         assert len(mock_transport.calls) == 3
+
+
+def test_inertia_ssr_preserves_tokens_inside_page_data_and_head() -> None:
+    """SSR slots never interpret serialized data or returned head content as directives."""
+    page_data = '<script type="application/json" id="app_page">{"text":"Follow @inertiajs", "slot":"<!--inertia-body-->"}</script>'
+    shell = f'<html><head></head><body>{page_data}<div id="app"></div></body></html>'
+    body = '<div id="app">Rendered</div>'
+    head = "<title>Follow @inertia</title>"
+    result = inject_inertia_ssr_tags(shell, head=[head], body=body)
+    assert page_data in result
+    assert head in result
+    assert result.endswith(f"{body}</body></html>")
+
+
+def test_inertia_ssr_strict_failure_policy_survives_open_breaker(tmp_path: Path) -> None:
+    """An open breaker cannot silently enable CSR when the application requires SSR."""
+    resources = tmp_path / "resources"
+    resources.mkdir()
+    (resources / "index.html").write_text('<html><head></head><body><div id="app">CSR</div></body></html>')
+    plugin = VitePlugin(
+        ViteConfig(
+            mode="hybrid",
+            paths=PathConfig(root=tmp_path, resource_dir=resources),
+            runtime=RuntimeConfig(dev_mode=False),
+            inertia=InertiaConfig(ssr=InertiaSSRConfig(fallback_to_client=False, circuit_breaker_failure_threshold=1)),
+        )
+    )
+
+    @get("/", component="Dashboard")
+    async def index() -> dict[str, Any]:
+        return {"user": "Ada"}
+
+    transport = _MockInertiaIPCTransport(should_fail=True)
+    with create_test_client([index], plugins=[plugin], raise_server_exceptions=False) as client:
+        client.app.plugins.get(InertiaPlugin)._ipc_transport = transport
+        assert client.get("/").status_code == 500
+        assert client.get("/").status_code == 500
+        assert len(transport.calls) == 1
+
+
+def test_inertia_ssr_directive_inside_layout_preserves_raw_text() -> None:
+    """Nested shell directives work without consuming textarea or title literals."""
+    shell = "<html><head><title>@inertiaHead</title></head><body><textarea>@inertia</textarea><main>@inertia</main></body></html>"
+    rendered = inject_inertia_ssr_tags(shell, head=[], body='<div id="app">Rendered</div>')
+    assert "<title>@inertiaHead</title>" in rendered
+    assert "<textarea>@inertia</textarea>" in rendered
+    assert '<main><div id="app">Rendered</div></main>' in rendered

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "{% if use_typescript %}tsc -b --noEmit && {% endif %}vite build{% if enable_ssr %} && vite build --ssr {{ resource_dir }}/ssr.tsx{% endif %}",
 {% if enable_ssr %}
     "build:ssr": "vite build --ssr {{ resource_dir }}/ssr.tsx",
 {% endif %}
@@ -27,6 +27,9 @@
 {%- endif %}
   },
   "devDependencies": {
+{%- if not has_dev_dependency('@types/node') %}
+    "@types/node": "{{ package_version('@types/node') }}",
+{%- endif %}
 {%- set emit_openapi_ts = generate_client and not has_dev_dependency('@hey-api/openapi-ts') %}
 {%- for dep in dev_dependencies %}
     "{{ dep }}": "{{ package_version(dep) }}",

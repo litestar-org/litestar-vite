@@ -83,6 +83,9 @@ export interface PluginConfig {
    */
   ssr?: string | string[]
 
+  /** Configure backend-only development SSR and opt in to fragment component directories. */
+  devSsr?: DevSsrOptions
+
   /**
    * The directory where the SSR bundle should be written.
    *
@@ -325,7 +328,8 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig, rawConfig?: s
   const pythonDefaults = loadPythonDefaults()
   const logger = createLogger(pythonDefaults?.logging)
   const devSsrPlugin = litestarViteSsrPlugin({
-    entrypoint: rawConfig ? resolveSsrEntrypoint(pluginConfig, rawConfig) : undefined,
+    ...pluginConfig.devSsr,
+    entrypoint: pluginConfig.devSsr?.entrypoint ?? (rawConfig ? resolveSsrEntrypoint(rawConfig) : undefined),
   })
   const defaultAliases: Record<string, string> = {
     "@": `/${pluginConfig.resourceDir.replace(/^\/+/, "").replace(/\/+$/, "")}/`,
@@ -392,7 +396,6 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig, rawConfig?: s
           assetsInlineLimit: userConfig.build?.assetsInlineLimit ?? 0,
         },
         server: {
-          cors: userConfig.server?.cors ?? { origin: true, credentials: true },
           origin: shouldForceDirectServerOrigin ? (explicitServerOrigin ?? "__litestar_vite_placeholder__") : proxyOriginDefault,
           // Auto-configure the HMR WebSocket to use a path that routes through the Litestar proxy.
           // Auto-configure the HMR WebSocket to route through the Litestar proxy.
@@ -1058,6 +1061,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     bundleDir: resolvedBundleDir,
     staticDir: resolvedStaticDir,
     ssr: resolvedConfig.ssr ?? resolvedConfig.input,
+    devSsr: resolvedConfig.devSsr ?? {},
     ssrOutDir: resolvedConfig.ssrOutDir ?? pythonDefaults?.ssrOutDir ?? path.join(effectiveResourceDir, "bootstrap/ssr"),
     refresh: resolvedConfig.refresh ?? false,
     hotFile: resolvedHotFile,
@@ -1172,19 +1176,9 @@ function resolveInput(config: ResolvedPluginConfig, ssr: boolean): string | stri
 /**
  * Resolve the SSR entrypoint path for ModuleRunner dev SSR.
  */
-function resolveSsrEntrypoint(config: ResolvedPluginConfig, rawConfig: string | string[] | PluginConfig): string | undefined {
+function resolveSsrEntrypoint(rawConfig: string | string[] | PluginConfig): string | undefined {
   const explicitSsr = typeof rawConfig === "object" && !Array.isArray(rawConfig) ? rawConfig.ssr : undefined
-  if (typeof explicitSsr === "string") {
-    return explicitSsr
-  }
-  if (Array.isArray(explicitSsr) && explicitSsr.length > 0) {
-    return explicitSsr[0]
-  }
-  const candidates = [path.join(config.resourceDir, "ssr.tsx"), path.join(config.resourceDir, "ssr.ts"), "resources/ssr.tsx", "resources/ssr.ts", "src/ssr.tsx", "src/ssr.ts"]
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate
-  }
-  return path.join(config.resourceDir, "ssr.tsx")
+  return typeof explicitSsr === "string" ? explicitSsr : explicitSsr?.[0]
 }
 
 /**

@@ -8,10 +8,11 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import anyio
 import anyio.abc
+from litestar.exceptions import SerializationException
 from litestar.serialization import decode_json, encode_json
 
 from litestar_vite.ipc._base import BaseIPCTransport, IPCError, IPCTimeoutError, IPCWorkerCrashError
@@ -34,6 +35,7 @@ class StdioIPCTransport(BaseIPCTransport):
         "_process",
         "_reader_tasks",
         "_stderr_buffer",
+        "_write_lock",
     )
 
     def __init__(
@@ -61,6 +63,7 @@ class StdioIPCTransport(BaseIPCTransport):
         self._id_counter = itertools.count(1)
         self._stderr_buffer: collections.deque[str] = collections.deque(maxlen=100)
         self._lock = anyio.Lock()
+        self._write_lock = anyio.Lock()
         self._is_closing = False
 
     @property
@@ -80,13 +83,22 @@ class StdioIPCTransport(BaseIPCTransport):
         Returns:
             Boolean indicating process health and ready state.
         """
-        return self._process is not None and self._process.returncode is None and not self._is_closing
+        return (
+            self._process is not None
+            and self._process.returncode is None
+            and not self._is_closing
+            and bool(self._reader_tasks)
+            and not self._reader_tasks[-1].done()
+        )
 
     async def start(self) -> None:
         """Spawn the background worker process and launch asynchronous I/O readers."""
         async with self._lock:
             if self.is_running:
                 return
+
+            if self._process is not None:
+                await self._close()
 
             stale_tasks = list(self._reader_tasks)
             self._reader_tasks.clear()
@@ -122,12 +134,13 @@ class StdioIPCTransport(BaseIPCTransport):
         """Continuously drain worker stderr into a rolling buffer to prevent OS pipe deadlocks."""
         if self._process is None or self._process.stderr is None:
             return
+        stderr = self._process.stderr
 
         buf = bytearray()
         while True:
             try:
-                chunk = await self._process.stderr.receive()
-            except anyio.EndOfStream:
+                chunk = await stderr.receive()
+            except (anyio.EndOfStream, anyio.ClosedResourceError, anyio.BrokenResourceError, OSError):
                 break
             buf.extend(chunk)
             while (nl_pos := buf.find(b"\n")) != -1:
@@ -146,12 +159,13 @@ class StdioIPCTransport(BaseIPCTransport):
         """Continuously read worker stdout, decode NDJSON packets, and correlate responses."""
         if self._process is None or self._process.stdout is None:
             return
+        stdout = self._process.stdout
 
         buf = bytearray()
         while True:
             try:
-                chunk = await self._process.stdout.receive()
-            except anyio.EndOfStream:
+                chunk = await stdout.receive()
+            except (anyio.EndOfStream, anyio.ClosedResourceError, anyio.BrokenResourceError, OSError):
                 break
             buf.extend(chunk)
             while (nl_pos := buf.find(b"\n")) != -1:
@@ -161,16 +175,20 @@ class StdioIPCTransport(BaseIPCTransport):
                 if not stripped:
                     continue
                 try:
-                    payload: dict[str, Any] = decode_json(stripped)
-                except (ValueError, TypeError):
-                    payload = {}
-                if not payload:
+                    decoded: Any = decode_json(stripped)
+                except (ValueError, TypeError, SerializationException):
                     continue
+                if not isinstance(decoded, dict):
+                    continue
+                payload = cast("dict[str, Any]", decoded)
 
                 msg_id = payload.get("id")
                 if isinstance(msg_id, int) and msg_id in self._pending:
                     event, container = self._pending[msg_id]
-                    container["response"] = payload
+                    if "result" not in payload and "error" not in payload:
+                        container["error"] = IPCError("Worker response has neither result nor error")
+                    else:
+                        container["response"] = payload
                     event.set()
 
         if not self._is_closing and self._pending:
@@ -197,39 +215,44 @@ class StdioIPCTransport(BaseIPCTransport):
             IPCWorkerCrashError: When child worker exits unexpectedly.
             IPCError: When worker reports an execution failure.
         """
-        if not self.is_running:
-            await self.start()
-
-        if self._process is None or self._process.stdin is None:
-            msg = "Process stdin is unavailable"
-            raise IPCError(msg)
-
         req_id = payload.get("id")
         if req_id is None:
             req_id = next(self._id_counter)
-            payload["id"] = req_id
-
+        if not isinstance(req_id, int) or req_id in self._pending:
+            msg = "IPC request id must be a unique integer"
+            raise IPCError(msg)
         event = anyio.Event()
         container: dict[str, Any] = {}
-        self._pending[req_id] = (event, container)
-
-        encoded = encode_json(payload) + b"\n"
-        try:
-            await self._process.stdin.send(encoded)
-        except (OSError, anyio.ClosedResourceError) as exc:
-            self._pending.pop(req_id, None)
-            msg_0 = f"Failed to write to worker stdin: {exc}"
-            raise IPCWorkerCrashError(msg_0) from exc
-
+        pending = (event, container)
         try:
             with anyio.fail_after(timeout):
+                if not self.is_running:
+                    await self.start()
+                process = self._process
+                if process is None or process.stdin is None:
+                    msg = "Process stdin is unavailable"
+                    raise IPCError(msg)
+                stdin = process.stdin
+                if req_id in self._pending:
+                    msg = "IPC request id must be a unique integer"
+                    raise IPCError(msg)
+                self._pending[req_id] = pending
+                encoded = encode_json({**payload, "id": req_id}) + b"\n"
+                async with self._write_lock:
+                    if self._process is not process or self._is_closing:
+                        msg = "Worker transport closed before request could be sent"
+                        raise IPCWorkerCrashError(msg)
+                    await stdin.send(encoded)
                 await event.wait()
         except TimeoutError as exc:
-            self._pending.pop(req_id, None)
-            msg_0 = f"IPC request {req_id} timed out after {timeout} seconds"
-            raise IPCTimeoutError(msg_0) from exc
+            msg = f"IPC request {req_id} timed out after {timeout} seconds"
+            raise IPCTimeoutError(msg) from exc
+        except (OSError, anyio.ClosedResourceError, anyio.BrokenResourceError) as exc:
+            msg = f"Failed to write to worker stdin: {exc}"
+            raise IPCWorkerCrashError(msg) from exc
         finally:
-            self._pending.pop(req_id, None)
+            if self._pending.get(req_id) is pending:
+                self._pending.pop(req_id, None)
 
         if "error" in container:
             err = container["error"]
@@ -245,36 +268,47 @@ class StdioIPCTransport(BaseIPCTransport):
 
     async def close(self) -> None:
         """Gracefully terminate worker subprocess and release reader tasks."""
-        self._is_closing = True
-        proc = self._process
-        self._process = None
+        with anyio.CancelScope(shield=True):
+            async with self._lock:
+                await self._close()
 
-        if proc is not None:
-            if proc.stdin is not None:
-                with contextlib.suppress(OSError, anyio.ClosedResourceError):
-                    await proc.stdin.aclose()
+    async def _close(self) -> None:
+        with anyio.CancelScope(shield=True):
+            self._is_closing = True
+            for event, container in self._pending.values():
+                container["error"] = IPCWorkerCrashError("Worker transport closed")
+                event.set()
+            self._pending.clear()
+            proc = self._process
+            self._process = None
 
-            try:
-                with anyio.fail_after(2.0):
-                    await proc.wait()
-            except TimeoutError:
+            if proc is not None:
+                if proc.stdin is not None:
+                    with contextlib.suppress(OSError, anyio.ClosedResourceError, anyio.BrokenResourceError):
+                        with anyio.move_on_after(0.1):
+                            await proc.stdin.aclose()
+
                 try:
-                    proc.terminate()
-                    with anyio.fail_after(1.0):
+                    with anyio.fail_after(2.0):
                         await proc.wait()
                 except TimeoutError:
-                    proc.kill()
-                    await proc.wait()
+                    try:
+                        proc.terminate()
+                        with anyio.fail_after(1.0):
+                            await proc.wait()
+                    except TimeoutError:
+                        proc.kill()
+                        await proc.wait()
+                    except ProcessLookupError:
+                        pass
                 except ProcessLookupError:
                     pass
-            except ProcessLookupError:
-                pass
 
-        tasks = list(self._reader_tasks)
-        self._reader_tasks.clear()
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-        if tasks:
-            with contextlib.suppress(Exception):
-                await asyncio.gather(*tasks, return_exceptions=True)
+            tasks = list(self._reader_tasks)
+            self._reader_tasks.clear()
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            if tasks:
+                with contextlib.suppress(Exception):
+                    await asyncio.gather(*tasks, return_exceptions=True)

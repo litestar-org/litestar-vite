@@ -521,19 +521,16 @@ class InertiaResponse(Response[T]):
         self._cached_page_dict = page_dict
         type_encoders = self._resolve_type_encoders(request)
 
-        circuit_breaker = getattr(inertia_plugin, "circuit_breaker", None)
+        circuit_breaker = inertia_plugin.circuit_breaker
         if circuit_breaker is not None and not circuit_breaker.allow_request():
+            if not ssr_config.fallback_to_client:
+                msg = "Inertia SSR circuit breaker is open and client-side fallback is disabled."
+                raise ImproperlyConfiguredException(msg)
             logger.debug("Inertia SSR bypassed by circuit breaker; serving client-side hydration.")
             self._cached_ssr_payload = None
             return
 
-        plugin_transport: BaseIPCTransport | str | None = getattr(inertia_plugin, "ipc_transport", None)
-        if plugin_transport is None:
-            plugin_transport = getattr(inertia_plugin, "_ipc_transport", None)
-
-        transport: BaseIPCTransport | str = (
-            plugin_transport if plugin_transport is not None else vite_plugin.get_ipc_transport()
-        )
+        transport = inertia_plugin.ipc_transport or vite_plugin.get_ipc_transport()
 
         try:
             self._cached_ssr_payload = await _render_inertia_ssr(
@@ -957,28 +954,7 @@ def _parse_inertia_ssr_payload(payload: Any, url: str) -> _InertiaSSRResult:
 
 async def _render_inertia_ssr(
     page: dict[str, Any],
-    transport: "BaseIPCTransport | str",
-    timeout_seconds: float,
-    *,
-    type_encoders: "TypeEncodersMap | None" = None,
-) -> _InertiaSSRResult:
-    """Call the Inertia SSR IPC transport asynchronously and return head/body HTML.
-
-    Args:
-        page: The page object to send to the SSR worker.
-        transport: The BaseIPCTransport instance or TCP URL string.
-        timeout_seconds: Request timeout in seconds.
-        type_encoders: Optional type encoders used to serialize page props.
-
-    Returns:
-        An _InertiaSSRResult with head and body HTML.
-    """
-    return await _do_ssr_request(page, transport, timeout_seconds, type_encoders=type_encoders)
-
-
-async def _do_ssr_request(
-    page: dict[str, Any],
-    transport: "BaseIPCTransport | str",
+    transport: "BaseIPCTransport",
     timeout_seconds: float,
     *,
     type_encoders: "TypeEncodersMap | None" = None,
@@ -987,7 +963,7 @@ async def _do_ssr_request(
 
     Args:
         page: The page object to send to the SSR worker.
-        transport: The BaseIPCTransport instance or TCP URL string.
+        transport: The lifespan-managed BaseIPCTransport instance.
         timeout_seconds: Request timeout in seconds.
         type_encoders: Optional type encoders used to serialize page props.
 
@@ -998,15 +974,6 @@ async def _do_ssr_request(
         An _InertiaSSRResult with head and body HTML.
     """
     target_label = str(transport)
-    if isinstance(transport, str):
-        from litestar_vite.ipc import TCPStreamIPCTransport
-
-        parsed = urlparse(transport)
-        host = parsed.hostname or "127.0.0.1"
-        port = parsed.port or 5173
-        path = parsed.path or "/__litestar_ssr__"
-        transport = TCPStreamIPCTransport(host=host, port=port, path=path)
-
     serializer = get_serializer(type_encoders)
     encoded_page = decode_json(encode_json(page, serializer=serializer))
     ipc_payload: dict[str, Any] = {"method": "render", "params": encoded_page}

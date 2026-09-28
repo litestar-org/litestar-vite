@@ -5,6 +5,7 @@ __all__ = (
     "check_h2_available",
     "configure_proxy_logging",
     "console",
+    "create_proxy_client",
     "get_litestar_route_prefixes",
     "infer_host_from_argv",
     "infer_port_from_argv",
@@ -33,6 +34,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast, overload
 
 import click
+import httpx2
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 from litestar.config.csrf import CSRFConfig
 
@@ -70,6 +72,7 @@ def configure_proxy_logging() -> None:
     """Suppress verbose proxy-related logging unless debug is enabled.
 
     Suppresses INFO-level logs from:
+    - httpx2: logs every HTTP request
     - websockets: logs connection events
     - uvicorn.protocols.websockets: logs "connection open/closed"
 
@@ -77,7 +80,7 @@ def configure_proxy_logging() -> None:
     """
 
     if not is_proxy_debug():
-        for logger_name in ("websockets", "uvicorn.protocols.websockets"):
+        for logger_name in ("httpx2", "websockets", "uvicorn.protocols.websockets"):
             logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 
@@ -106,6 +109,25 @@ def _check_h2_available() -> bool:
 def check_h2_available() -> bool:
     """Check whether optional HTTP/2 support is available."""
     return _check_h2_available()
+
+
+def create_proxy_client(
+    http2: bool = True,
+    timeout: float = 30.0,
+    max_keepalive: int = 20,
+    max_connections: int = 40,
+    keepalive_expiry: float = 60.0,
+) -> "httpx2.AsyncClient":
+    """Create the development HTTP client without environment proxy routing."""
+
+    return httpx2.AsyncClient(
+        http2=http2 and check_h2_available(),
+        timeout=httpx2.Timeout(timeout),
+        limits=httpx2.Limits(
+            max_keepalive_connections=max_keepalive, max_connections=max_connections, keepalive_expiry=keepalive_expiry
+        ),
+        trust_env=False,
+    )
 
 
 def infer_port_from_argv() -> str | None:

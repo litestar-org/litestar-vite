@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
 import pytest
@@ -442,14 +441,16 @@ async def test_vite_asset_loader_resolve_html_entry_raises_for_active_stale_serv
     assert str(production) not in str(exc_info.value)
     assert "127.0.0.1" not in str(exc_info.value)
     assert exc_info.value.development_url == "http://127.0.0.1:9"
-    assert isinstance(exc_info.value.cause, OSError)
+    import httpx2
+
+    assert isinstance(exc_info.value.cause, httpx2.ConnectError)
 
 
 @pytest.mark.anyio
 async def test_vite_asset_loader_resolve_html_entry_reports_upstream_status_without_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import http.client
+    import httpx2
 
     bundle = tmp_path / "dist"
     bundle.mkdir()
@@ -457,23 +458,8 @@ async def test_vite_asset_loader_resolve_html_entry_reports_upstream_status_with
     production = bundle / "offline.html"
     production.write_text("production")
 
-    class _FakeHTTPSConnection:
-        def __init__(self, *_args: object, **_kwargs: object) -> None:
-            pass
-
-        def request(self, *_args: object, **_kwargs: object) -> None:
-            pass
-
-        def getresponse(self) -> MagicMock:
-            resp = MagicMock()
-            resp.status = 404
-            resp.read.return_value = b"Not Found"
-            return resp
-
-        def close(self) -> None:
-            pass
-
-    monkeypatch.setattr(http.client, "HTTPSConnection", _FakeHTTPSConnection)
+    client = httpx2.Client(transport=httpx2.MockTransport(lambda _request: httpx2.Response(404, text="Not Found")))
+    monkeypatch.setattr(httpx2, "Client", lambda **_kwargs: client)
 
     loader = ViteAssetLoader(
         ViteConfig(paths=PathConfig(root=tmp_path, bundle_dir="dist"), runtime=RuntimeConfig(dev_mode=True))

@@ -31,6 +31,7 @@ from litestar_vite.plugin._proxy import (
 from litestar_vite.plugin._static import StaticPlacement, StaticServerConfig, StaticServerMount
 from litestar_vite.plugin._utils import (
     build_litestar_route_prefixes,
+    create_proxy_client,
     is_non_serving_assets_cli,
     is_non_serving_context,
     log_fail,
@@ -47,12 +48,13 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
     from typing import Literal
 
+    import httpx2
     from click import Group
     from litestar import Litestar
     from litestar.config.app import AppConfig
     from litestar.types import ControllerRouterHandler, ExceptionHandlersMap
 
-    from litestar_vite.config import ViteConfig
+    from litestar_vite.config import InertiaSSRConfig, ViteConfig
     from litestar_vite.fragments import FragmentEngine
     from litestar_vite.handler import AppHandler
     from litestar_vite.plugin._static import StaticFilesConfig
@@ -125,7 +127,9 @@ class VitePlugin(InitPlugin, CLIPlugin):
         "_asset_loader",
         "_config",
         "_fragment_engine",
+        "_ipc_dev_transports",
         "_ipc_transport",
+        "_proxy_client",
         "_proxy_target",
         "_route_prefix_cache",
         "_spa_handler",
@@ -154,8 +158,10 @@ class VitePlugin(InitPlugin, CLIPlugin):
         self._asset_loader = asset_loader
         self._fragment_engine: "FragmentEngine | None" = None
         self._ipc_transport: "Any | None" = None
+        self._ipc_dev_transports: dict[tuple[str, str, int], Any] = {}
         self._vite_process: "ViteProcess | None" = None
         self._static_files_config: "StaticFilesConfig | None" = static_files_config
+        self._proxy_client: "httpx2.AsyncClient | None" = None
         self._proxy_target: "str | None" = None
         self._route_prefix_cache: tuple[str, ...] | None = None
         self._spa_handler: "AppHandler | None" = None
@@ -174,12 +180,15 @@ class VitePlugin(InitPlugin, CLIPlugin):
             return False
         return is_non_serving_context()
 
-    def get_ipc_transport(self) -> Any:
+    def get_ipc_transport(self, ssr_config: "InertiaSSRConfig | None" = None) -> Any:
         """Resolve the IPC transport for the active runtime mode.
 
         In development mode, returns an HTTP/1.1 TCP transport targeting the
         active Vite dev server's ``/__litestar_ssr__`` endpoint. In production
         mode, returns a cached ``StdioIPCTransport`` targeting the built SSR worker.
+
+        Args:
+            ssr_config: Configuration supplied by a separately registered InertiaPlugin.
 
         Returns:
             Configured BaseIPCTransport instance.
@@ -189,28 +198,43 @@ class VitePlugin(InitPlugin, CLIPlugin):
         if self._config.is_dev_mode:
             host = self._config.host
             port = self._config.port
+            scheme = self._config.protocol
             hotfile_path = self._resolve_hotfile_path()
             if hotfile_path.is_file():
                 hot_url = read_hotfile_url(hotfile_path)
                 if hot_url:
                     parsed = urlsplit(hot_url)
+                    scheme = parsed.scheme or scheme
                     if parsed.hostname:
                         host = parsed.hostname
                     if parsed.port:
                         port = parsed.port
-            if host in {"::", "[::]", "localhost"} or host.startswith("0.0.0."):
+            if host in {"::", "[::]", "0.0.0.0"} or (host == "localhost" and scheme == "http"):  # noqa: S104
                 host = "127.0.0.1"
-            return TCPStreamIPCTransport(host=host, port=port, path="/__litestar_ssr__")
+            target = (scheme, host, port)
+            if target not in self._ipc_dev_transports:
+                self._ipc_dev_transports[target] = TCPStreamIPCTransport(
+                    host=host, port=port, path="/__litestar_ssr__", scheme=scheme
+                )
+            return self._ipc_dev_transports[target]
 
         if self._ipc_transport is None:
             from litestar_vite.config._inertia import InertiaConfig
+            from litestar_vite.config._paths import resolve_ssr_bundle_path
 
             inertia = self._config.inertia
-            ssr_config = inertia.ssr_config if isinstance(inertia, InertiaConfig) else None
+            ssr_config = ssr_config or (inertia.ssr_config if isinstance(inertia, InertiaConfig) else None)
             command = ssr_config.command if ssr_config is not None else None
             cwd = (ssr_config.cwd if ssr_config is not None else None) or self._config.root_dir
-            self._ipc_transport = StdioIPCTransport(command=command or ["node", "bootstrap/ssr/ssr.js"], cwd=cwd)
+            self._ipc_transport = StdioIPCTransport(
+                command=command or ["node", str(resolve_ssr_bundle_path(self._config.paths))], cwd=cwd
+            )
         return self._ipc_transport
+
+    @property
+    def proxy_client(self) -> "httpx2.AsyncClient | None":
+        """Return the pooled development HTTP proxy client, if initialized."""
+        return self._proxy_client
 
     @property
     def config(self) -> "ViteConfig":
@@ -241,7 +265,9 @@ class VitePlugin(InitPlugin, CLIPlugin):
         if self._fragment_engine is None:
             from litestar_vite.fragments import FragmentEngine
 
-            self._fragment_engine = FragmentEngine(config=self._config, asset_loader=self.asset_loader)
+            self._fragment_engine = FragmentEngine(
+                config=self._config, asset_loader=self.asset_loader, transport_factory=self.get_ipc_transport
+            )
         return self._fragment_engine
 
     async def render_fragment(
@@ -499,7 +525,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         """
         from litestar.plugins.jinja import JinjaTemplateEngine
 
-        from litestar_vite.fragments._jinja import vite_fragment
+        from litestar_vite.fragments._jinja import vite_fragment, wrap_fragment_template_handlers
         from litestar_vite.loader import render_asset_tag, render_hmr_client, render_routes, render_static_asset
 
         template_config = app_config.template_config  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
@@ -513,6 +539,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
             engine.register_template_callable(key="vite_static", template_callable=render_static_asset)
             engine.register_template_callable(key="vite_routes", template_callable=render_routes)
             engine.register_template_callable(key="vite_fragment", template_callable=vite_fragment)
+            app_config.on_startup.append(wrap_fragment_template_handlers)  # pyright: ignore[reportUnknownMemberType]
 
     def _wants_jinja_callables(self, app_config: "AppConfig") -> bool:
         """Decide whether to register Jinja ``vite_*`` callables for this app.
@@ -973,13 +1000,22 @@ class VitePlugin(InitPlugin, CLIPlugin):
                 level=self._config.logging_config.level,
             )
 
+        if self._config.is_dev_mode and self._config.proxy_mode is not None:
+            self._proxy_client = create_proxy_client(http2=self._config.http2)
+
         try:
             yield
         finally:
+            if self._proxy_client is not None:
+                await self._proxy_client.aclose()
+                self._proxy_client = None
             if self._spa_handler is not None:
                 await self._spa_handler.shutdown_async()
             if self._fragment_engine is not None:
                 await self._fragment_engine.close()
+            for transport in self._ipc_dev_transports.values():
+                await transport.close()
+            self._ipc_dev_transports.clear()
             if self._ipc_transport is not None:
                 await self._ipc_transport.close()
                 self._ipc_transport = None

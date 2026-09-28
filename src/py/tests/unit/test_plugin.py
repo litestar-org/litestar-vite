@@ -2180,11 +2180,10 @@ def test_get_litestar_route_prefixes_with_empty_app() -> None:
 # =====================================================
 
 
-def test_vite_plugin_excludes_proxy_client() -> None:
-    """Test that VitePlugin no longer exposes proxy_client."""
+def test_vite_plugin_proxy_client_is_lazy() -> None:
+    """The shared development proxy client is initialized only during lifespan."""
     plugin = VitePlugin()
-    assert not hasattr(plugin, "proxy_client")
-    assert not hasattr(plugin, "_proxy_client")
+    assert plugin.proxy_client is None
 
 
 async def test_vite_plugin_lifespan_initializes_spa_handler_async() -> None:

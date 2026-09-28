@@ -15,7 +15,7 @@ describe("UI Fragment Rendering & Island Wrapping", () => {
     expect(wrapped).toContain('data-island-component="components/Counter.tsx"')
     expect(wrapped).toContain('data-island-props="{&quot;label&quot;:&quot;Say \\&quot;Hello\\&quot;&quot;,&quot;count&quot;:3}"')
     expect(wrapped).toContain("<button>Count</button></litestar-island>")
-    expect(getIslandClientScript()).toContain('customElements.define("litestar-island"')
+    expect(getIslandClientScript("/assets/islands.js")).toContain('src="/assets/islands.js"')
   })
 
   it("throws an informative error for unsupported fragment extensions", async () => {

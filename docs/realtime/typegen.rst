@@ -2,7 +2,7 @@
 AsyncAPI Export & Type Generation
 ==================================
 
-``litestar-vite`` exports AsyncAPI 3.0 schemas and generates TypeScript channel contracts alongside its OpenAPI and route generators.
+``litestar-vite`` exports AsyncAPI schemas from a registered ``AsyncAPIPlugin`` and generates TypeScript channel contracts alongside its OpenAPI and route generators.
 
 Configuration
 -------------
@@ -33,6 +33,9 @@ Register ``AsyncAPIPlugin`` from ``litestar-asyncapi`` and enable channel genera
        ],
    )
 
+Without ``AsyncAPIPlugin``, no realtime schema is exported. See
+:doc:`../migration/0.32` when upgrading from automatic route inference.
+
 CLI Commands
 ------------
 
@@ -56,7 +59,7 @@ This runs the TypeGen pipeline, generating:
 The Generated ``channels.ts`` Contract
 ---------------------------------------
 
-The emitted ``channels.ts`` file contains strongly typed interfaces mapping every channel in your application:
+The emitted ``channels.ts`` file contains strongly typed interfaces mapping the channels in the exported AsyncAPI document:
 
 .. code-block:: typescript
 

@@ -7,6 +7,8 @@ from urllib.parse import urljoin
 from litestar.exceptions import ImproperlyConfiguredException
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from litestar_vite.config import ViteConfig
     from litestar_vite.ipc import BaseIPCTransport
     from litestar_vite.loader import ViteAssetLoader
@@ -17,21 +19,28 @@ __all__ = ("FragmentEngine",)
 class FragmentEngine:
     """Orchestrates rendering UI component fragments over IPC transports."""
 
-    __slots__ = ("_asset_loader", "_config", "_transport")
+    __slots__ = ("_asset_loader", "_config", "_transport", "_transport_factory")
 
     def __init__(
-        self, config: "ViteConfig", asset_loader: "ViteAssetLoader", transport: "BaseIPCTransport | None" = None
+        self,
+        config: "ViteConfig",
+        asset_loader: "ViteAssetLoader",
+        transport: "BaseIPCTransport | None" = None,
+        *,
+        transport_factory: "Callable[[], BaseIPCTransport] | None" = None,
     ) -> None:
         """Initialize the fragment engine with configuration and asset loader.
 
         Args:
             config: Active ViteConfig instance.
             asset_loader: Active ViteAssetLoader for manifest CSS resolution.
-            transport: Optional pre-configured BaseIPCTransport instance.
+            transport: Optional pre-configured BaseIPCTransport instance owned by this engine.
+            transport_factory: Resolver for a transport owned by the application plugin.
         """
         self._config = config
         self._asset_loader = asset_loader
         self._transport = transport
+        self._transport_factory = transport_factory
 
     def _get_transport(self) -> Any:
         """Resolve or lazily initialize the IPC transport for the active runtime mode.
@@ -39,17 +48,30 @@ class FragmentEngine:
         Returns:
             The resolved BaseIPCTransport instance.
         """
+        if self._transport is None and self._transport_factory is not None:
+            return self._transport_factory()
         if self._transport is None:
             from litestar_vite.ipc import StdioIPCTransport, TCPStreamIPCTransport
 
             if getattr(self._config, "is_dev_mode", False):
                 host = getattr(self._config, "host", "127.0.0.1")
                 port = getattr(self._config, "port", 5173)
-                if host in {"::", "[::]", "localhost"} or host.startswith("0.0.0."):
+                if host in {"::", "[::]", "0.0.0.0"} or (host == "localhost" and self._config.protocol == "http"):  # noqa: S104
                     host = "127.0.0.1"
-                self._transport = TCPStreamIPCTransport(host=host, port=port, path="/__litestar_ssr__")
+                self._transport = TCPStreamIPCTransport(
+                    host=host, port=port, path="/__litestar_ssr__", scheme=self._config.protocol
+                )
             else:
-                self._transport = StdioIPCTransport(cwd=getattr(self._config, "root_dir", None))
+                from litestar_vite.config import InertiaConfig
+                from litestar_vite.config._paths import resolve_ssr_bundle_path
+
+                inertia = self._config.inertia
+                ssr = inertia.ssr_config if isinstance(inertia, InertiaConfig) else None
+                self._transport = StdioIPCTransport(
+                    command=(ssr.command if ssr else None)
+                    or ["node", str(resolve_ssr_bundle_path(self._config.paths))],
+                    cwd=(ssr.cwd if ssr else None) or self._config.root_dir,
+                )
         return self._transport
 
     def get_component_css_urls(self, component: str) -> list[str]:

@@ -264,3 +264,56 @@ def test_resolved_ssr_config_returns_command_intact(tmp_path: Path, command: lis
     ssr = plugin.config.inertia.ssr_config
     assert ssr is not None
     assert ssr.command == command
+
+
+@pytest.mark.parametrize("resource_dir", ["src", "resources"])
+@pytest.mark.parametrize("ssr_output_dir", [None, "build/server"])
+def test_default_ssr_command_matches_vite_output_and_ignores_worker_cwd(
+    tmp_path: Path, resource_dir: str, ssr_output_dir: str | None
+) -> None:
+    """The implicit worker points at the actual Vite bundle even with a custom cwd."""
+    paths = PathConfig(root=tmp_path, resource_dir=resource_dir, ssr_output_dir=ssr_output_dir)
+    worker_cwd = tmp_path / "worker-runtime"
+    plugin = VitePlugin(
+        ViteConfig(
+            mode="template",
+            paths=paths,
+            runtime=RuntimeConfig(dev_mode=False),
+            inertia=InertiaConfig(ssr=InertiaSSRConfig(cwd=worker_cwd)),
+        )
+    )
+    transport = plugin.get_ipc_transport()
+    output = Path(ssr_output_dir) if ssr_output_dir else Path(resource_dir) / "bootstrap" / "ssr"
+    assert transport.command == ["node", str(tmp_path / output / "ssr.js")]
+    assert transport.cwd == worker_cwd
+    assert plugin.fragment_engine._get_transport() is transport
+
+
+def test_default_ssr_command_preserves_absolute_output_directory(tmp_path: Path) -> None:
+    """An explicit absolute SSR output directory is not rebased beneath the project."""
+    output = tmp_path / "external-server-build"
+    plugin = VitePlugin(
+        ViteConfig(
+            mode="template",
+            paths=PathConfig(root=tmp_path / "app", ssr_output_dir=output),
+            runtime=RuntimeConfig(dev_mode=False),
+            inertia=InertiaConfig(ssr=True),
+        )
+    )
+    assert plugin.get_ipc_transport().command == ["node", str(output / "ssr.js")]
+
+
+def test_explicit_ssr_command_is_not_rewritten(tmp_path: Path) -> None:
+    """Custom commands retain their original paths, arguments, and working directory."""
+    command = ["bun", "./custom/worker.mjs", "--flag"]
+    plugin = VitePlugin(
+        ViteConfig(
+            mode="template",
+            paths=PathConfig(root=tmp_path, ssr_output_dir="ignored-output"),
+            runtime=RuntimeConfig(dev_mode=False),
+            inertia=InertiaConfig(ssr=InertiaSSRConfig(command=command, cwd=tmp_path / "runtime")),
+        )
+    )
+    transport = plugin.get_ipc_transport()
+    assert transport.command == command
+    assert transport.cwd == tmp_path / "runtime"

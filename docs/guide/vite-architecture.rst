@@ -2,7 +2,7 @@
 Vite 7/8 Environment API & Dev Proxy Architecture
 ==========================================================
 
-``litestar-vite`` requires Vite 7+. It uses Vite's ``RunnableDevEnvironment`` (``server.environments.ssr``) for development server-side rendering, ``build.rolldownOptions`` for bundler configuration, and a zero-``httpx`` AnyIO byte-streaming reverse proxy for single-port asset and HMR delivery.
+``litestar-vite`` requires Vite 7+. It uses Vite's ``RunnableDevEnvironment`` (``server.environments.ssr``) for development server-side rendering, ``build.rolldownOptions`` for bundler configuration, and a pooled ``httpx2`` HTTP reverse proxy for single-port asset delivery. HMR uses a WebSocket tunnel. Development SSR uses a separate pooled HTTP IPC client to call Vite ModuleRunner; production SSR uses stdio IPC.
 
 ------------------------------------------------
 Vite Configuration: Environments, Rolldown & WS
@@ -46,10 +46,10 @@ Vite Configuration: Environments, Rolldown & WS
       },
 
 ------------------------------------
-Single-Port AnyIO Dev Asset Proxying
+Single-Port Dev Asset Proxying
 ------------------------------------
 
-In development mode (``dev_mode=True``), ``litestar-vite`` serves your entire application on a single ASGI port (for example ``http://localhost:8000``). Asset requests under ``asset_url`` (such as ``/static/@vite/client`` and ``/static/src/main.ts``) and HMR WebSocket connections (``/static/vite-hmr``) are streamed from the Vite dev server using AnyIO TCP sockets without external HTTP client dependencies:
+In development mode (``dev_mode=True``), ``litestar-vite`` serves your entire application on a single ASGI port (for example ``http://localhost:8000``). Asset requests under ``asset_url`` (such as ``/static/@vite/client`` and ``/static/src/main.ts``) and HMR WebSocket connections (``/static/vite-hmr``) are forwarded to the Vite dev server. HTTP responses stream through a lifespan-managed ``httpx2`` client; HMR uses the WebSocket transport. The standard ``litestar-vite`` installation includes the HTTP client dependency.
 
 .. mermaid::
 
@@ -62,7 +62,7 @@ In development mode (``dev_mode=True``), ``litestar-vite`` serves your entire ap
        Browser->>Litestar: GET / (HTML Page Shell)
        Litestar-->>Browser: HTML with <script src="/static/src/main.ts">
        Browser->>Litestar: GET /static/src/main.ts
-       Litestar->>Vite: AnyIO TCP stream /static/src/main.ts
+       Litestar->>Vite: Pooled HTTP request /static/src/main.ts
        Vite-->>Litestar: Transformed ES module
        Litestar-->>Browser: Streamed ES module
        Browser->>Litestar: WebSocket HMR (/static/vite-hmr)

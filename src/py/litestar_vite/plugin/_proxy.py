@@ -3,18 +3,26 @@
 import ipaddress
 import time
 from collections.abc import AsyncGenerator, Awaitable
-from contextlib import suppress
+from contextlib import AsyncExitStack, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote
 
 import anyio
+import httpx2
 import websockets
 from litestar.enums import ScopeType
 from litestar.exceptions import WebSocketDisconnect
 from litestar.middleware import AbstractMiddleware
 
-from litestar_vite.plugin._utils import check_h2_available, console, is_litestar_route, is_proxy_debug, normalize_prefix
+from litestar_vite.plugin._utils import (
+    check_h2_available,
+    console,
+    create_proxy_client,
+    is_litestar_route,
+    is_proxy_debug,
+    normalize_prefix,
+)
 from litestar_vite.utils import read_hotfile_url
 
 if TYPE_CHECKING:
@@ -26,14 +34,6 @@ if TYPE_CHECKING:
     from litestar_vite.plugin import VitePlugin
 
 _DISCONNECT_EXCEPTIONS = (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed)
-
-_PROXY_ERRORS: tuple[type[Exception], ...] = (
-    OSError,
-    anyio.ClosedResourceError,
-    TimeoutError,
-    RuntimeError,
-    ValueError,
-)
 
 _BODY_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
@@ -106,7 +106,6 @@ _HOP_BY_HOP_HEADERS = frozenset({
     "transfer-encoding",
     "upgrade",
     "content-length",
-    "content-encoding",
 })
 
 _REQUEST_SKIP_HEADERS = _HOP_BY_HOP_HEADERS
@@ -230,206 +229,7 @@ async def _stream_request_body(receive: "Callable[[], Awaitable[dict[str, Any]]]
             return
 
 
-def _build_upstream_request(
-    method: str, url: str, headers: list[tuple[str, str]], request_body: "AsyncGenerator[bytes, None] | bytes | None"
-) -> tuple[str, str, int, bool, bytes, bytes | None]:
-    """Construct request lines and serialize request headers for upstream connection.
-
-    Args:
-        method: HTTP method verb.
-        url: Upstream target URL.
-        headers: Filtered request headers.
-        request_body: Request body bytes or async generator.
-
-    Returns:
-        A tuple of (host, path_and_query, port, is_tls, header_bytes, body_bytes).
-    """
-    parsed = urlsplit(url)
-    scheme = (parsed.scheme or "http").lower()
-    host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or (443 if scheme == "https" else 80)
-    path_and_query = parsed.path or "/"
-    if parsed.query:
-        path_and_query = f"{path_and_query}?{parsed.query}"
-
-    host_header_value = (
-        host if (port == 80 and scheme == "http") or (port == 443 and scheme == "https") else f"{host}:{port}"
-    )
-
-    req_lines: list[str] = [
-        f"{method} {path_and_query} HTTP/1.1\r\n",
-        f"Host: {host_header_value}\r\n",
-        "Connection: close\r\n",
-    ]
-
-    has_content_length = False
-    for key, val in headers:
-        normalized_key = key.lower()
-        if normalized_key in ("host", "connection"):
-            continue
-        if normalized_key == "content-length":
-            has_content_length = True
-        req_lines.append(f"{key}: {val}\r\n")
-
-    body_bytes: bytes | None = None
-    if isinstance(request_body, bytes):
-        body_bytes = request_body
-        if not has_content_length:
-            req_lines.append(f"Content-Length: {len(body_bytes)}\r\n")
-    elif request_body is not None and not has_content_length:
-        req_lines.append("Transfer-Encoding: chunked\r\n")
-
-    req_lines.append("\r\n")
-    header_bytes = "".join(req_lines).encode("latin-1")
-    return host, path_and_query, port, scheme == "https", header_bytes, body_bytes
-
-
-def _parse_upstream_headers(raw_headers: bytes) -> tuple[int, list[tuple[bytes, bytes]], bool, int | None]:
-    """Parse HTTP status code and response headers from raw upstream header bytes.
-
-    Extracts the status code, filters hop-by-hop headers, and inspects transfer-encoding
-    and content-length framing to determine response streaming behavior.
-
-    Args:
-        raw_headers: Raw bytes containing HTTP/1.1 header block.
-
-    Returns:
-        A tuple of (status_code, response_headers, is_chunked, content_length).
-    """
-    header_lines = raw_headers.split(b"\r\n")
-    status_line = header_lines[0].decode("latin-1")
-    status_parts = status_line.split(" ", 2)
-    status_code = int(status_parts[1]) if len(status_parts) > 1 else 200
-
-    is_chunked = False
-    content_length: int | None = None
-    raw_pairs: list[tuple[bytes, bytes]] = []
-
-    for raw_line in header_lines[1:]:
-        if not raw_line or b":" not in raw_line:
-            continue
-        k_b, v_b = raw_line.split(b":", 1)
-        k_stripped = k_b.strip()
-        v_stripped = v_b.strip()
-        raw_pairs.append((k_stripped, v_stripped))
-        k_str = k_stripped.decode("latin-1").lower()
-        v_str = v_stripped.decode("latin-1")
-        if k_str == "transfer-encoding" and "chunked" in v_str.lower():
-            is_chunked = True
-        elif k_str == "content-length":
-            try:
-                content_length = int(v_str)
-            except ValueError:
-                content_length = None
-
-    response_headers = _extract_proxy_response_headers(raw_pairs)
-    return status_code, response_headers, is_chunked, content_length
-
-
-async def _stream_chunked_body(stream: Any, buf: bytearray, send: "Callable[[dict[str, Any]], Any]") -> None:
-    """Stream body bytes from a chunked HTTP/1.1 transfer-encoded stream.
-
-    Incrementally decodes chunk length prefixes and strips trailing CRLF delimiters
-    so downstream ASGI consumers receive raw unchunked bytes.
-
-    Args:
-        stream: Active AnyIO byte stream from upstream connection.
-        buf: Working buffer containing leftover bytes from header reading.
-        send: ASGI send callable for emitting body events.
-    """
-    while True:
-        while b"\r\n" not in buf:
-            try:
-                data = await stream.receive()
-            except anyio.EndOfStream:
-                break
-            buf.extend(data)
-
-        crlf_pos = buf.find(b"\r\n")
-        if crlf_pos == -1:
-            break
-        line_bytes = bytes(buf[:crlf_pos])
-        del buf[: crlf_pos + 2]
-
-        hex_length = line_bytes.split(b";", 1)[0].strip()
-        if not hex_length:
-            continue
-        chunk_size = int(hex_length, 16)
-        if chunk_size == 0:
-            while b"\r\n" not in buf:
-                try:
-                    data = await stream.receive()
-                except anyio.EndOfStream:
-                    break
-                buf.extend(data)
-            break
-
-        remaining = chunk_size
-        while remaining > 0:
-            if buf:
-                take = min(len(buf), remaining)
-                chunk_to_send = bytes(buf[:take])
-                del buf[:take]
-                remaining -= take
-                await send({"type": "http.response.body", "body": chunk_to_send, "more_body": True})
-            else:
-                try:
-                    data = await stream.receive()
-                except anyio.EndOfStream:
-                    break
-                buf.extend(data)
-
-        while len(buf) < 2:
-            try:
-                data = await stream.receive()
-            except anyio.EndOfStream:
-                break
-            buf.extend(data)
-        if buf.startswith(b"\r\n"):
-            del buf[:2]
-
-
-async def _stream_fixed_or_eof_body(
-    stream: Any, buf: bytearray, content_length: int | None, send: "Callable[[dict[str, Any]], Any]"
-) -> None:
-    """Stream response body bytes with known Content-Length or until EOF.
-
-    Args:
-        stream: Active AnyIO byte stream from upstream connection.
-        buf: Working buffer containing leftover bytes from header reading.
-        content_length: Expected payload length in bytes, or None if delimited by EOF.
-        send: ASGI send callable for emitting body events.
-    """
-    if content_length is not None:
-        remaining = content_length
-        if buf:
-            take = min(len(buf), remaining)
-            chunk_to_send = bytes(buf[:take])
-            del buf[:take]
-            remaining -= take
-            if chunk_to_send:
-                await send({"type": "http.response.body", "body": chunk_to_send, "more_body": True})
-        while remaining > 0:
-            try:
-                data = await stream.receive()
-            except anyio.EndOfStream:
-                break
-            take = min(len(data), remaining)
-            remaining -= take
-            await send({"type": "http.response.body", "body": data[:take], "more_body": True})
-    else:
-        if buf:
-            await send({"type": "http.response.body", "body": bytes(buf), "more_body": True})
-            buf.clear()
-        try:
-            async for data in stream:
-                if data:
-                    await send({"type": "http.response.body", "body": data, "more_body": True})
-        except anyio.EndOfStream:
-            pass
-
-
-async def _anyio_proxy_http_request(
+async def _proxy_http_request(
     url: str,
     method: str,
     headers: list[tuple[str, str]],
@@ -438,92 +238,44 @@ async def _anyio_proxy_http_request(
     timeout_duration: float = 30.0,
     error_status: int = 502,
     error_message: str | None = None,
+    client: "httpx2.AsyncClient | None" = None,
+    http2: bool = True,
 ) -> None:
-    """Stream an HTTP request to an upstream server using raw AnyIO byte streams.
+    """Forward HTTP with pooled connections and per-operation inactivity timeouts.
 
-    Implements a zero-httpx reverse proxy with an incremental HTTP/1.1 chunked
-    transfer decoder to ensure downstream ASGI consumers receive unchunked payloads.
-
-    Args:
-        url: Upstream target URL.
-        method: HTTP method verb.
-        headers: Filtered request headers to forward.
-        request_body: Async generator or bytes representing the request body.
-        send: ASGI send callable for emitting response events.
-        timeout_duration: Network timeout in seconds for connection and I/O.
-        error_status: HTTP status code emitted when upstream cannot be reached.
-        error_message: Optional custom diagnostic message for connection failure.
+    HTTPX2 handles HTTP framing and informational responses. Raw response bytes
+    retain their Content-Encoding so browsers can decode compressed assets.
     """
-    host, _, port, is_tls, header_bytes, body_bytes = _build_upstream_request(method, url, headers, request_body)
     response_started = False
-    try:
-        with anyio.fail_after(timeout_duration):
-            stream_future = (
-                await anyio.connect_tcp(host, port, tls=True)
-                if is_tls
-                else await anyio.connect_tcp(host, port, tls=False)
-            )
-            async with stream_future as stream:
-                if body_bytes is not None:
-                    await stream.send(header_bytes + body_bytes)
-                else:
-                    await stream.send(header_bytes)
-                    if request_body is not None and not isinstance(request_body, bytes):
-                        async for chunk in request_body:
-                            if chunk:
-                                await stream.send(f"{len(chunk):x}\r\n".encode("ascii") + chunk + b"\r\n")
-                        await stream.send(b"0\r\n\r\n")
+    async with AsyncExitStack() as stack:
+        if client is None:
+            client = await stack.enter_async_context(create_proxy_client(http2=http2))
 
-                buf = bytearray()
-                while True:
-                    header_end = buf.find(b"\r\n\r\n")
-                    if header_end != -1:
-                        break
-                    try:
-                        received = await stream.receive()
-                    except anyio.EndOfStream:
-                        break
-                    buf.extend(received)
-
-                if header_end == -1:
-                    await send({
-                        "type": "http.response.start",
-                        "status": error_status,
-                        "headers": [(b"content-type", b"text/plain")],
-                    })
-                    await send({
-                        "type": "http.response.body",
-                        "body": b"Incomplete upstream HTTP response",
-                        "more_body": False,
-                    })
-                    return
-
-                raw_headers = bytes(buf[:header_end])
-                del buf[: header_end + 4]
-
-                status_code, response_headers, is_chunked, content_length = _parse_upstream_headers(raw_headers)
-
-                await send({"type": "http.response.start", "status": status_code, "headers": response_headers})
+        try:
+            async with client.stream(
+                method, url, headers=headers, content=request_body, timeout=timeout_duration, follow_redirects=False
+            ) as response:
+                await send({
+                    "type": "http.response.start",
+                    "status": response.status_code,
+                    "headers": _extract_proxy_response_headers(response.headers),
+                })
                 response_started = True
-
-                if is_chunked:
-                    await _stream_chunked_body(stream, buf, send)
-                else:
-                    await _stream_fixed_or_eof_body(stream, buf, content_length, send)
-
+                async for chunk in response.aiter_raw():
+                    await send({"type": "http.response.body", "body": chunk, "more_body": True})
                 await send({"type": "http.response.body", "body": b"", "more_body": False})
-
-    except _PROXY_ERRORS as exc:
-        if not response_started:
-            msg = (error_message or f"Upstream error: {exc}").encode("latin-1", errors="replace")
+        except httpx2.HTTPError as exc:
+            if response_started:
+                # Abort the downstream response instead of reporting truncated data as complete.
+                raise
+            status = error_status if isinstance(exc, httpx2.ConnectError) else 502
+            message = error_message if isinstance(exc, httpx2.ConnectError) else None
+            await send({"type": "http.response.start", "status": status, "headers": [(b"content-type", b"text/plain")]})
             await send({
-                "type": "http.response.start",
-                "status": error_status,
-                "headers": [(b"content-type", b"text/plain")],
+                "type": "http.response.body",
+                "body": (message or f"Upstream error: {exc}").encode("utf-8"),
+                "more_body": False,
             })
-            await send({"type": "http.response.body", "body": msg, "more_body": False})
-        else:
-            await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
 class TrustedHosts:
@@ -717,8 +469,8 @@ class ProxyHeadersMiddleware(AbstractMiddleware):
 class ViteProxyMiddleware(AbstractMiddleware):
     """ASGI middleware to proxy Vite dev HTTP traffic to internal Vite server.
 
-    HTTP requests use raw AnyIO byte streams with incremental chunked transfer
-    decoding. WebSocket traffic (used by Vite HMR) is handled by a dedicated
+    HTTP requests use the HTTPX2 client with connection pooling and HTTP/2
+    support. WebSocket traffic (used by Vite HMR) is handled by a dedicated
     WebSocket route handler created by create_vite_hmr_handler().
 
     The middleware reads the Vite server URL from the hotfile dynamically,
@@ -833,8 +585,15 @@ class ViteProxyMiddleware(AbstractMiddleware):
         headers = _filter_hop_by_hop_headers(scope.get("headers", []))
         request_body = _stream_request_body(receive) if method in _BODY_METHODS else None
 
-        await _anyio_proxy_http_request(
-            url=url, method=method, headers=headers, request_body=request_body, send=send, timeout_duration=10.0
+        await _proxy_http_request(
+            url=url,
+            method=method,
+            headers=headers,
+            request_body=request_body,
+            send=send,
+            timeout_duration=10.0,
+            client=self._plugin.proxy_client if self._plugin is not None else None,
+            http2=self.http2,
         )
 
 
@@ -1335,7 +1094,7 @@ class SSRProxyMiddleware(AbstractMiddleware):
         headers = _filter_hop_by_hop_headers(scope.get("headers", []))
         request_body = _stream_request_body(receive) if method in _BODY_METHODS else None
 
-        await _anyio_proxy_http_request(
+        await _proxy_http_request(
             url=url,
             method=method,
             headers=headers,
@@ -1344,6 +1103,8 @@ class SSRProxyMiddleware(AbstractMiddleware):
             timeout_duration=30.0,
             error_status=503,
             error_message=f"SSR server not running at {target_base_url}",
+            client=self._plugin.proxy_client if self._plugin is not None else None,
+            http2=self._http2,
         )
 
 
@@ -1416,9 +1177,9 @@ def create_ssr_http_proxy_handler(
         headers_to_forward = _filter_hop_by_hop_headers(request.headers.items())
         request_body = request.stream() if request.method in _BODY_METHODS else None
 
-        async def asgi_anyio_app(_scope: "Scope", _receive: "Receive", send: "Send") -> None:
+        async def asgi_proxy_app(_scope: "Scope", _receive: "Receive", send: "Send") -> None:
             del _scope, _receive
-            await _anyio_proxy_http_request(
+            await _proxy_http_request(
                 url=url,
                 method=request.method,
                 headers=headers_to_forward,
@@ -1427,9 +1188,11 @@ def create_ssr_http_proxy_handler(
                 timeout_duration=30.0,
                 error_status=503,
                 error_message=f"SSR server not running at {target_url}",
+                client=plugin.proxy_client if plugin is not None else None,
+                http2=http2,
             )
 
-        return asgi_anyio_app
+        return asgi_proxy_app
 
     return http_proxy
 

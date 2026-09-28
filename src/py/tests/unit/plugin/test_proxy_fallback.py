@@ -91,7 +91,7 @@ def test_proxy_still_wins_when_hot_file_is_present(tmp_path: Path) -> None:
         await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/javascript")]})
         await send({"type": "http.response.body", "body": b"upstream", "more_body": False})
 
-    with patch("litestar_vite.plugin._proxy._anyio_proxy_http_request", side_effect=fake_proxy):
+    with patch("litestar_vite.plugin._proxy._proxy_http_request", side_effect=fake_proxy):
         app = _build_vite_app(tmp_path)
         with TestClient(app=app) as client:
             response = client.get("/static/dist/assets/main.js")

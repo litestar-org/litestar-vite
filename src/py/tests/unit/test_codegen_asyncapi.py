@@ -393,12 +393,13 @@ def test_resolve_document_falls_back_to_get_asyncapi_json() -> None:
     assert resolved_doc["operations"]["recv"]["channel"]["$ref"] == "#/channels/ws__json"
 
 
-def test_resolve_document_returns_none_when_plugin_raises() -> None:
-    """Test resolve_asyncapi_document returns None when plugin raises TypeError."""
+def test_resolve_document_reports_plugin_errors() -> None:
+    """Plugin errors must not silently leave stale channel contracts in place."""
     plugin = AsyncAPIPlugin(raise_err=True)
     app = Litestar(plugins=[plugin])
 
-    assert resolve_asyncapi_document(app) is None
+    with pytest.raises(ValueError, match="could not generate"):
+        resolve_asyncapi_document(app)
 
 
 def test_normalize_asyncapi_document_channel_collisions_and_bindings() -> None:
@@ -440,3 +441,15 @@ def test_normalize_asyncapi_document_channel_collisions_and_bindings() -> None:
     assert normalized["channels"]["feed_3"]["bindings"] == {}
     assert normalized["channels"]["feed_3"]["messages"]["pubMsg"]["payload"] == {}
     _assert_refs_resolve(normalized)
+
+
+def test_missing_asyncapi_plugin_removes_stale_outputs(tmp_path: Path) -> None:
+    """Removing the schema provider must invalidate previously generated contracts."""
+    config = ViteConfig(types=TypeGenConfig(output=tmp_path, generate_channels=True))
+    for name in ("asyncapi.json", "channels.ts"):
+        (tmp_path / name).write_text("stale")
+    app = Litestar(openapi_config=None)
+    with pytest.warns(UserWarning, match="registered AsyncAPIPlugin"):
+        export_integration_assets(app=app, config=config)
+    assert not (tmp_path / "asyncapi.json").exists()
+    assert not (tmp_path / "channels.ts").exists()

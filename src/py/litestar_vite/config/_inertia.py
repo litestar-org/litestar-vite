@@ -33,10 +33,11 @@ class InertiaSSRConfig:
     """
 
     command: list[str] | None = None
-    """Command to start the production stdio SSR worker, e.g. ``["node", "bootstrap/ssr/ssr.js"]``.
+    """Command to start the production stdio SSR worker.
 
-    When ``None`` in production mode, defaults to ``["node", "bootstrap/ssr/ssr.js"]``
-    when the SSR bundle exists under the project root.
+    When ``None``, runs Node with the absolute path to ``ssr.js`` under
+    ``PathConfig.ssr_output_dir`` or ``<resource_dir>/bootstrap/ssr``. Relative
+    output directories resolve against the project root, independently of ``cwd``.
     """
 
     cwd: Path | None = None

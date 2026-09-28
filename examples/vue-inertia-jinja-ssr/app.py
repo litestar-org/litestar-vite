@@ -5,7 +5,7 @@ with the Inertia SSR pipeline (``examples/vue-inertia-ssr``). Demonstrates:
 
 - ``mode="template"`` + ``TemplateConfig(JinjaTemplateEngine)``
 - In development mode, Vite 7+ renders SSR in-memory via ``RunnableDevEnvironment.runner``.
-- In production mode, ``InertiaSSRConfig(command=...)`` spawns the Node stdio worker.
+- In production mode, ``InertiaConfig(ssr=True)`` spawns the built Node stdio worker.
 - The Jinja-rendered HTML's ``#app`` element gets its outer HTML replaced
   with the rendered Inertia tree before the page is sent to the browser.
 
@@ -28,15 +28,7 @@ from litestar.plugins.jinja import JinjaTemplateEngine
 from litestar.template import TemplateConfig
 from msgspec import Struct
 
-from litestar_vite import (
-    InertiaConfig,
-    InertiaSSRConfig,
-    PathConfig,
-    RuntimeConfig,
-    TypeGenConfig,
-    ViteConfig,
-    VitePlugin,
-)
+from litestar_vite import InertiaConfig, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
@@ -124,7 +116,7 @@ vite = VitePlugin(
         mode="template",
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources"),
-        inertia=InertiaConfig(ssr=InertiaSSRConfig(target_selector="#app", command=["node", "bootstrap/ssr/ssr.js"])),
+        inertia=InertiaConfig(ssr=True),
         types=TypeGenConfig(output=Path("resources/generated"), generate_zod=True),
         runtime=RuntimeConfig(port=5015),
     )

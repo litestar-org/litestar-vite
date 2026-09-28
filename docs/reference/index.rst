@@ -50,7 +50,7 @@ Reference Paths
       :link: ipc
       :link-type: doc
 
-      AnyIO-powered IPC transports, NDJSON Stdio workers, Unix domain sockets, and raw TCP streams.
+      Production stdio workers and development HTTP IPC for Vite SSR and component fragments.
 
    .. grid-item-card:: :octicon:`stack` Component Fragments
       :link: fragments

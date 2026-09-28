@@ -64,6 +64,7 @@ class InertiaPlugin(InitPlugin):
         Yields:
             An asynchronous context manager.
         """
+        owns_transport = False
         ssr_config = self.config.ssr_config
         if ssr_config is not None:
             if ssr_config.circuit_breaker_enabled:
@@ -84,16 +85,23 @@ class InertiaPlugin(InitPlugin):
             if not is_dev_mode:
                 from litestar_vite.ipc import StdioIPCTransport
 
-                cwd = ssr_config.cwd or (vite_plugin.config.root_dir if vite_plugin is not None else None)
-                self._ipc_transport = StdioIPCTransport(
-                    command=ssr_config.command or ["node", "bootstrap/ssr/ssr.js"], cwd=cwd
-                )
+                if vite_plugin is not None:
+                    self._ipc_transport = vite_plugin.get_ipc_transport(ssr_config=ssr_config)
+                else:
+                    from litestar_vite.config import PathConfig
+                    from litestar_vite.config._paths import resolve_ssr_bundle_path
+
+                    self._ipc_transport = StdioIPCTransport(
+                        command=ssr_config.command or ["node", str(resolve_ssr_bundle_path(PathConfig()))],
+                        cwd=ssr_config.cwd,
+                    )
+                    owns_transport = True
         try:
             yield
         finally:
-            if self._ipc_transport is not None:
+            if owns_transport and self._ipc_transport is not None:
                 await self._ipc_transport.close()
-                self._ipc_transport = None
+            self._ipc_transport = None
             self._circuit_breaker = None
 
     @property

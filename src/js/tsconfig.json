@@ -21,6 +21,10 @@
     "./src/sveltekit.ts",
     "./src/nuxt.ts",
     "./src/inertia-types.ts",
-    "./src/virtual.d.ts"
+    "./src/virtual.d.ts",
+    "./src/fragments/client.ts",
+    "./src/fragments/react.ts",
+    "./src/fragments/vue.ts",
+    "./src/fragments/svelte.ts"
   ]
 }

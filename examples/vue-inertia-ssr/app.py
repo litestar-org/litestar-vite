@@ -2,7 +2,7 @@
 
 Demonstrates the Inertia SSR contract:
 - In development mode, Vite 7+ renders SSR in-memory via ``RunnableDevEnvironment.runner``.
-- In production mode, ``InertiaSSRConfig(command=...)`` spawns the built Node stdio worker
+- In production mode, ``InertiaConfig(ssr=True)`` spawns the built Node stdio worker
   (``bootstrap/ssr/ssr.js``) and communicates over ``stdin``/``stdout`` pipes.
 
 One command:
@@ -23,7 +23,6 @@ from litestar.params import FromPath
 from msgspec import Struct
 
 from litestar_vite import InertiaConfig, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
-from litestar_vite.config import InertiaSSRConfig
 
 here = Path(__file__).parent
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
@@ -108,7 +107,7 @@ vite = VitePlugin(
     config=ViteConfig(
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources"),
-        inertia=InertiaConfig(ssr=InertiaSSRConfig(command=["node", "bootstrap/ssr/ssr.js"])),
+        inertia=InertiaConfig(ssr=True),
         types=TypeGenConfig(output=Path("resources/generated"), generate_zod=True),
         runtime=RuntimeConfig(port=5014),
     )

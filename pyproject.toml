@@ -20,6 +20,8 @@ classifiers = [
 ]
 dependencies = [
   "litestar>=2.22.0",
+  "httpx2>=2.13.1",
+  "markupsafe>=2.0",
   "websockets>=12.0",
   "typing_extensions"
 ]

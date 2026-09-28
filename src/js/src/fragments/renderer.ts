@@ -1,11 +1,12 @@
 import path from "node:path"
-import { wrapIsland } from "./island.js"
+import { getIslandClientScript, wrapIsland } from "./island.js"
 
 export interface RenderFragmentOptions {
   componentPath: string
   props?: Record<string, unknown>
   mode?: "static" | "island"
   islandId?: string
+  clientEntry?: string
 }
 
 export interface RenderFragmentResult {
@@ -20,6 +21,12 @@ function dynamicImport(specifier: string): Promise<any> {
 
 export async function renderFragment(options: RenderFragmentOptions, customImporter?: (specifier: string) => Promise<any>): Promise<RenderFragmentResult> {
   const { componentPath, props = {}, mode = "static", islandId } = options
+  if (mode === "island" && !options.clientEntry) {
+    throw new Error("Island rendering requires a configured clientEntry URL for the compiled client registry")
+  }
+  if (mode === "island" && path.extname(componentPath).toLowerCase() === ".astro") {
+    throw new Error("Astro fragments support static rendering only")
+  }
   const importer = customImporter || ((spec: string) => dynamicImport(spec))
   const ext = path.extname(componentPath).toLowerCase()
 
@@ -58,12 +65,38 @@ export async function renderFragment(options: RenderFragmentOptions, customImpor
 
   if (mode === "island") {
     const effectiveIslandId = islandId || `island-${Math.random().toString(36).slice(2, 10)}`
-    renderedHtml = wrapIsland(renderedHtml, {
-      component: componentPath,
-      props,
-      islandId: effectiveIslandId,
-    })
+    renderedHtml =
+      wrapIsland(renderedHtml, {
+        component: componentPath,
+        props,
+        islandId: effectiveIslandId,
+      }) + getIslandClientScript(options.clientEntry!)
   }
 
   return { html: renderedHtml, head, css }
+}
+
+/** Create a production renderer from imports compiled by the application's SSR build. */
+export function createFragmentRenderer(
+  registry: Record<string, () => Promise<any>>,
+  options: { clientEntry?: string } = {},
+): (params: Record<string, unknown>) => Promise<RenderFragmentResult> {
+  return async (params) => {
+    const component = params.component
+    if (typeof component !== "string" || !Object.hasOwn(registry, component)) {
+      throw new Error(`Unknown fragment component: ${String(component)}`)
+    }
+    if (params.mode !== undefined && params.mode !== "static" && params.mode !== "island") {
+      throw new Error("Fragment mode must be static or island")
+    }
+    return renderFragment(
+      {
+        componentPath: component,
+        props: params.props as Record<string, unknown> | undefined,
+        mode: params.mode as "static" | "island" | undefined,
+        clientEntry: options.clientEntry,
+      },
+      registry[component],
+    )
+  }
 }

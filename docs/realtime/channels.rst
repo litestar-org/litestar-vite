@@ -96,14 +96,13 @@ Subscribing via WebSockets
        create_ws_route_handlers=True,
    )
 
-AsyncAPI 3.0 Introspection
---------------------------
+AsyncAPI Contracts
+------------------
 
-When ``litestar-vite`` inspects your application:
-
-- All static channels listed in ``channels=[...]`` are extracted as individual AsyncAPI channels.
-- Dynamic channels with parameter patterns (e.g., ``chat_{room_id}``) are converted to parameterized AsyncAPI channel addresses.
-- Message payloads published through the plugin are introspected into schema definitions under AsyncAPI components.
+Register ``litestar-asyncapi.AsyncAPIPlugin`` and configure channel addresses and
+payload schemas there. ``litestar-vite`` exports that document when channel
+generation is enabled. Registering ``ChannelsPlugin`` alone does not generate
+``asyncapi.json``, and published runtime values are not inspected for schemas.
 
 Next Steps
 ----------

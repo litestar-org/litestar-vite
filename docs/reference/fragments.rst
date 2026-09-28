@@ -4,6 +4,10 @@ Component Fragment Rendering
 
 The ``litestar_vite.fragments`` package provides server-side rendering of isolated UI components (React, Vue, Svelte, Astro) into HTML fragments for HTMX partial swaps and Jinja2 templates.
 
+Production components must be compiled and registered in the worker. Islands also
+require a browser registry and framework hydration adapter; Astro supports static
+fragments only. See :doc:`../hypermedia/fragments` for both build entries.
+
 Fragment Engine & APIs
 ----------------------
 

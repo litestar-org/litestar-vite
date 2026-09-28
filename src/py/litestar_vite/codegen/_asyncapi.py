@@ -439,7 +439,9 @@ def resolve_asyncapi_document(
                 if version:
                     info["version"] = version
             return normalized
-    except (AttributeError, TypeError, ValueError):
-        return None
+    except (AttributeError, TypeError, ValueError) as exc:
+        msg = "AsyncAPIPlugin could not generate a valid AsyncAPI document"
+        raise ValueError(msg) from exc
 
-    return None
+    msg = "AsyncAPIPlugin did not return an AsyncAPI document"
+    raise ValueError(msg)

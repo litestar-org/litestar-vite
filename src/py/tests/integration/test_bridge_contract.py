@@ -64,7 +64,7 @@ async def test_proxy_loader_dual_consumer_no_self_loop(tmp_path: Path, monkeypat
     assert "127.0.0.1:65431" not in asset_url
 
     with (
-        patch("litestar_vite.plugin._proxy._anyio_proxy_http_request", side_effect=fake_proxy),
+        patch("litestar_vite.plugin._proxy._proxy_http_request", side_effect=fake_proxy),
         TestClient(app=app) as client,
     ):
         response = client.get("/static/@vite/client")

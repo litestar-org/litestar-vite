@@ -71,6 +71,7 @@ nitpicky = True
 nitpick_ignore = [
     # external library / undocumented external
     (PY_CLASS, "ExternalType"),
+    (PY_CLASS, "httpx2.AsyncClient"),
     (PY_CLASS, "TypeEngine"),
     (PY_CLASS, "UserDefinedType"),
     (PY_METH, "type_engine"),
@@ -236,7 +237,7 @@ html_theme_options: dict[str, Any] = {
                 {
                     "title": "Realtime & AsyncAPI",
                     "url": "realtime/index",
-                    "summary": "WebSockets, ChannelsPlugin, SSE, AsyncAPI 3.0 schema, and typed frontend client streams.",
+                    "summary": "WebSockets, ChannelsPlugin, SSE, AsyncAPI export, and typed frontend client streams.",
                 },
                 {
                     "title": "SSR & IPC Transports",
@@ -251,7 +252,7 @@ html_theme_options: dict[str, Any] = {
                 {
                     "title": "Vite 7+ Configuration",
                     "url": "guide/vite-architecture",
-                    "summary": "Vite Environment API, Rolldown bundling, and direct dev server asset URLs.",
+                    "summary": "Vite Environment API, Rolldown bundling, and pooled development HTTP proxying.",
                 },
                 {
                     "title": "API Reference",

@@ -1,4 +1,4 @@
-"""Tests for proxy HTTP/2 configuration and AnyIO forwarding."""
+"""Tests for proxy HTTP/2 configuration and HTTP forwarding."""
 
 from pathlib import Path
 from typing import cast
@@ -25,8 +25,8 @@ def hotfile(tmp_path: Path) -> Path:
     return hotfile_path
 
 
-async def test_proxy_forwards_via_anyio_stream(monkeypatch: pytest.MonkeyPatch, hotfile: Path) -> None:
-    """Ensure ViteProxyMiddleware forwards requests through AnyIO byte-streaming proxy."""
+async def test_proxy_forwards_via_http_client(monkeypatch: pytest.MonkeyPatch, hotfile: Path) -> None:
+    """Ensure ViteProxyMiddleware forwards requests through pooled HTTP proxy."""
     captured_targets: list[str] = []
 
     async def fake_proxy(url: str, *, send: Send, **_kwargs: object) -> None:
@@ -34,7 +34,7 @@ async def test_proxy_forwards_via_anyio_stream(monkeypatch: pytest.MonkeyPatch, 
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await send({"type": "http.response.body", "body": b"ok", "more_body": False})
 
-    monkeypatch.setattr(proxy_module, "_anyio_proxy_http_request", fake_proxy)
+    monkeypatch.setattr(proxy_module, "_proxy_http_request", fake_proxy)
 
     sent: list[dict[str, object]] = []
 

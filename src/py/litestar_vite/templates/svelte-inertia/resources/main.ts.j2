@@ -1,9 +1,10 @@
+import type { Component } from "svelte";
 import { createInertiaApp } from "@inertiajs/svelte";
 import { csrfHeaders } from "litestar-vite-plugin/helpers";
 import { mount } from "svelte";
 import "./app.css";
 
-const pages = import.meta.glob("./pages/**/*.svelte");
+const pages = import.meta.glob<{ default: Component }>("./pages/**/*.svelte");
 
 createInertiaApp({
   resolve: async (name) => {

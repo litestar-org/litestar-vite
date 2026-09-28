@@ -39,7 +39,85 @@ Component fragments support two rendering modes:
    Renders the component on the server and returns plain HTML markup without client-side hydration scripts.
 
 2. **``island`` Mode**:
-   Renders the component on the server and wraps the output in a ``<litestar-island>`` custom element containing the component path and serialized props, followed by an inline hydration script that mounts the component on the client.
+   Renders the component on the server and wraps the output in a ``<litestar-island>`` custom element containing the component identifier and serialized props. A module script loads your compiled browser registry, which hydrates the component with the matching framework adapter. React, Vue, and Svelte support islands; Astro fragments support static rendering only.
+
+---------------------------------
+Compile and Register Components
+---------------------------------
+
+Production rendering requires components compiled by your application SSR build.
+A source path sent from Python is a registry key, not a filename that Node can
+compile at runtime. Use matching keys in the server and browser registries.
+
+For example, a React island browser entry can register a compiled component:
+
+.. docs-example: skip
+.. code-block:: typescript
+
+   // resources/islands.ts
+   import { hydrateIslands } from "litestar-vite-plugin/fragments/client"
+   import { hydrateReact } from "litestar-vite-plugin/fragments/react"
+
+   hydrateIslands({
+     "resources/components/Counter.tsx": {
+       load: () => import("./components/Counter.tsx"),
+       hydrate: hydrateReact,
+     },
+   })
+
+For Vue use ``hydrateVue`` from ``litestar-vite-plugin/fragments/vue``; for Svelte
+use ``hydrateSvelte`` from ``litestar-vite-plugin/fragments/svelte``. Register all
+islands in one client entry. Newly inserted ``litestar-island`` elements hydrate
+automatically once that entry has loaded. The framework adapters return cleanup
+callbacks so removed islands unmount their framework instances. If you provide a
+custom ``hydrate`` function, return a teardown callback that releases subscriptions
+and other component resources.
+
+Build a production worker with an explicit server registry:
+
+.. docs-example: skip
+.. code-block:: typescript
+
+   // resources/fragment-worker.ts
+   import { createFragmentRenderer } from "litestar-vite-plugin/fragments"
+   import { startSsrWorker } from "litestar-vite-plugin/ssr-worker"
+
+   const clientEntry = process.env.ISLAND_CLIENT_ENTRY
+   if (!clientEntry) throw new Error("Set ISLAND_CLIENT_ENTRY to the built browser entry URL")
+
+   startSsrWorker({
+     renderFragment: createFragmentRenderer({
+       "resources/components/Counter.tsx": () => import("./components/Counter.tsx"),
+     }, { clientEntry }),
+   })
+
+Build ``resources/islands.ts`` as a browser entry and
+``resources/fragment-worker.ts`` as an SSR entry using the framework's Vite plugin.
+Resolve ``ISLAND_CLIENT_ENTRY`` from the browser build manifest, including your
+asset prefix and the emitted filename hash. Deploy both builds. The default
+Python worker command expects ``ssr.js`` under ``PathConfig.ssr_output_dir`` when
+configured, or under ``<resource_dir>/bootstrap/ssr`` otherwise, anchored to the
+project root. With this example's ``resource_dir="resources"``, the default bundle
+is ``resources/bootstrap/ssr/ssr.js``. Match the SSR build output to that location
+or supply the worker command explicitly. A static-only renderer can omit
+``clientEntry``; island requests require it.
+
+In development, configure permitted component roots and the browser entry URL:
+
+.. docs-example: skip
+.. code-block:: typescript
+
+   litestar({
+     input: ["resources/main.ts", "resources/islands.ts"],
+     devSsr: {
+       componentRoots: ["resources/components"],
+       clientEntry: "/resources/islands.ts",
+     },
+   })
+
+Component roots are relative to the Vite project root. Configure ``clientEntry``
+as the browser-accessible module URL, including your Vite base path when needed.
+Only configured server components should be exposed to rendering requests.
 
 ---------------------------------
 Scoped CSS Chunk Resolution

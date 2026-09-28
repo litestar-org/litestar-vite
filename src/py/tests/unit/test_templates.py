@@ -66,7 +66,7 @@ def test_inertia_ssr_examples_have_runnable_node_render_entries() -> None:
     """vue-inertia-ssr and vue-inertia-jinja-ssr ship runnable dual-mode SSR entries.
 
     Each SSR example must have a ``resources/ssr.ts`` exporting ``render(page)`` for
-    Vite's ``ModuleRunner`` in dev mode and running a ``readline`` stdio loop for
+    Vite's ``ModuleRunner`` in dev mode and starting the shared stdio worker for
     production, plus ``InertiaConfig(ssr=...)`` in ``app.py``.
     """
     for name in ("vue-inertia-ssr", "vue-inertia-jinja-ssr"):
@@ -81,7 +81,7 @@ def test_inertia_ssr_examples_have_runnable_node_render_entries() -> None:
             f"{name}: ssr.ts must export default async function render"
         )
         assert "@vue/server-renderer" in ssr_text, f"{name}: ssr.ts must import @vue/server-renderer"
-        assert "readline" in ssr_text, f"{name}: ssr.ts must include stdio readline loop for production"
+        assert "startSsrWorker({ render })" in ssr_text, f"{name}: ssr.ts must start the shared production worker"
 
         assert "start:ssr" in package_json, f"{name}: package.json must define a start:ssr script"
         assert "build:ssr" in package_json, f"{name}: package.json must define a build:ssr script"

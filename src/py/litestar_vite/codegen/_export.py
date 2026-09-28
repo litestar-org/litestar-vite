@@ -10,6 +10,7 @@ This module provides a single entry point for exporting all integration artifact
 Both CLI and Plugin should call this function to guarantee byte-identical output.
 """
 
+import warnings
 from dataclasses import dataclass, field
 from functools import partial
 from importlib.metadata import PackageNotFoundError, version
@@ -91,6 +92,37 @@ def _resolve_serializer(
     return partial(encode_json, serializer=get_serializer(encoders if isinstance(encoders, dict) else None))  # pyright: ignore[reportUnknownArgumentType]
 
 
+def _invalidate_missing_asyncapi_outputs(app: "Litestar", types_config: "TypeGenConfig") -> None:
+    """Warn about missing schema providers and remove obsolete generated contracts."""
+    stale_paths = [
+        types_config.asyncapi_path or types_config.output / "asyncapi.json",
+        types_config.channels_ts_path or types_config.output / "channels.ts",
+    ]
+    stale = any(path.exists() for path in stale_paths)
+    from litestar.channels import ChannelsPlugin
+    from litestar.response import ServerSentEvent
+    from litestar.routes import HTTPRoute, WebSocketRoute
+
+    has_realtime = any(isinstance(plugin, ChannelsPlugin) for plugin in app.plugins)
+    for route in app.routes:
+        if isinstance(route, WebSocketRoute):
+            has_realtime = True
+        elif isinstance(route, HTTPRoute):
+            for handler in route.route_handlers:
+                annotation = handler.parsed_return_field.annotation
+                if isinstance(annotation, type) and issubclass(annotation, ServerSentEvent):
+                    has_realtime = True
+    if stale or has_realtime:
+        warnings.warn(
+            "Channel type generation requires litestar-asyncapi and a registered AsyncAPIPlugin. "
+            "Stale asyncapi.json and channels.ts outputs are removed when the plugin is absent.",
+            UserWarning,
+            stacklevel=2,
+        )
+    for path in stale_paths:
+        path.unlink(missing_ok=True)
+
+
 def export_integration_assets(
     app: "Litestar", config: "ViteConfig", *, serializer: "Callable[[Any], bytes] | None" = None
 ) -> ExportResult:
@@ -149,6 +181,8 @@ def export_integration_assets(
             has_openapi = False
 
     has_asyncapi = find_asyncapi_plugin(app) is not None
+    if types_config.generate_channels and not has_asyncapi:
+        _invalidate_missing_asyncapi_outputs(app, types_config)
 
     if not has_openapi:
         if types_config.generate_channels and has_asyncapi:

@@ -1,146 +1,59 @@
 import readline from "node:readline"
-import { renderFragment } from "./fragments/renderer.js"
 
-interface IPCRequest {
+export interface SsrWorkerOptions {
+  render?: (page: any) => unknown | Promise<unknown>
+  renderFragment?: (params: Record<string, unknown>) => unknown | Promise<unknown>
+}
+
+export interface IPCRequest {
   id?: number | string
   method?: string
   params?: Record<string, unknown>
   payload?: Record<string, unknown>
-  page?: {
-    component: string
-    props: Record<string, unknown>
-    url: string
-    version?: string
-  }
-  component?: string
-  props?: Record<string, unknown>
-  mode?: "static" | "island"
-  entrypoint?: string
+  [key: string]: unknown
 }
 
-interface IPCResponseSuccess {
-  id?: number | string
-  result: unknown
-}
-
-interface IPCResponseError {
-  id?: number | string
-  error: string
-}
-
-async function handleRender(method: string, params?: Record<string, unknown>): Promise<unknown> {
-  switch (method) {
+/** Dispatch one request, preserving rendering errors for the transport's fallback policy. */
+export async function dispatchSsrRequest(request: IPCRequest, options: SsrWorkerOptions = {}): Promise<unknown> {
+  const params = request.params ?? request.payload ?? request
+  switch (request.method ?? "render") {
     case "ping":
-      return { status: "pong", timestamp: Date.now() }
+      return { status: "pong" }
     case "render_fragment": {
-      const componentPath = typeof params?.component === "string" ? params.component : ""
-      if (!componentPath) {
-        throw new Error("render_fragment requires a 'component' parameter")
-      }
-      const props = (typeof params?.props === "object" && params?.props !== null ? params.props : {}) as Record<string, unknown>
-      const mode = params?.mode === "island" ? "island" : "static"
-      return await renderFragment({ componentPath, props, mode })
+      if (options.renderFragment) return options.renderFragment(params)
+      throw new Error("Fragment rendering requires a configured compiled component registry")
     }
     case "render": {
-      if (typeof params?.entrypoint === "string") {
-        try {
-          const mod = (await import(params.entrypoint)) as Record<string, unknown>
-          const renderFn =
-            typeof mod.default === "function"
-              ? (mod.default as (payload: unknown) => unknown)
-              : typeof mod.render === "function"
-                ? (mod.render as (payload: unknown) => unknown)
-                : null
-          if (renderFn) {
-            const pageOrProps = params.page ?? params.props ?? params
-            const res = await renderFn(pageOrProps)
-            return typeof res === "string" ? { head: [], body: res } : res
-          }
-        } catch {
-          // Fall back to default rendered output on import or execution error
-        }
+      let render = options.render
+      if (!render && typeof params.entrypoint === "string") {
+        const mod = await import(/* @vite-ignore */ params.entrypoint)
+        render = typeof mod.default === "function" ? mod.default : typeof mod.render === "function" ? mod.render : undefined
       }
-
-      let component = "unknown"
-      if (typeof params?.component === "string") {
-        component = params.component
-      } else if (
-        params &&
-        typeof params.page === "object" &&
-        params.page !== null &&
-        "component" in params.page &&
-        typeof (params.page as Record<string, unknown>).component === "string"
-      ) {
-        component = (params.page as Record<string, unknown>).component as string
-      }
-      return { head: [], body: `<!--rendered:${component}-->` }
+      if (!render) throw new Error("SSR requires a configured render function or an entrypoint exporting a render function")
+      const result = await render(params.page ?? params)
+      return typeof result === "string" ? { head: [], body: result } : result
     }
     default:
-      throw new Error(`Unsupported method: ${method}`)
+      throw new Error(`Unsupported method: ${request.method}`)
   }
 }
 
-async function processLine(line: string, writeFn: (data: string) => void): Promise<void> {
-  const trimmed = line.trim()
-  if (!trimmed) {
-    return
-  }
-
-  let msg: IPCRequest
-  try {
-    msg = JSON.parse(trimmed) as IPCRequest
-  } catch (err: unknown) {
-    const detail = err instanceof Error ? err.message : String(err)
-    process.stderr.write(`[ssr-worker] Invalid JSON payload: ${detail}\n`)
-    return
-  }
-
-  const requestId = msg.id ?? 0
-  const method = msg.method ?? "render"
-  const params = msg.params ??
-    msg.payload ?? {
-      component: msg.component,
-      props: msg.props,
-      mode: msg.mode,
-      page: msg.page,
-      entrypoint: msg.entrypoint,
-    }
-
-  try {
-    const result = await handleRender(method, params as Record<string, unknown>)
-    const response: IPCResponseSuccess = { id: requestId, result }
-    writeFn(`${JSON.stringify(response)}\n`)
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err)
-    const response: IPCResponseError = { id: requestId, error: errorMsg }
-    writeFn(`${JSON.stringify(response)}\n`)
-  }
-}
-
-function main(): void {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: false,
-    crlfDelay: Number.POSITIVE_INFINITY,
-  })
-
+/** Start the shared newline-delimited JSON RPC worker for an application's SSR entry. */
+export function startSsrWorker(options: SsrWorkerOptions = {}): void {
+  const rl = readline.createInterface({ input: process.stdin, terminal: false, crlfDelay: Number.POSITIVE_INFINITY })
   rl.on("line", (line: string) => {
-    void processLine(line, (data: string) => {
-      process.stdout.write(data)
-    })
+    if (!line.trim()) return
+    void (async () => {
+      let id: number | string | null = null
+      try {
+        const request = JSON.parse(line) as IPCRequest
+        if (typeof request !== "object" || request === null || Array.isArray(request)) throw new Error("Invalid SSR request")
+        id = request.id ?? null
+        const result = await dispatchSsrRequest(request, options)
+        process.stdout.write(`${JSON.stringify({ id, result })}\n`)
+      } catch (error) {
+        process.stdout.write(`${JSON.stringify({ id, error: error instanceof Error ? error.message : String(error) })}\n`)
+      }
+    })()
   })
-
-  rl.on("close", () => {
-    process.exit(0)
-  })
-
-  process.stdin.on("end", () => {
-    process.exit(0)
-  })
-
-  process.on("SIGINT", () => process.exit(0))
-  process.on("SIGTERM", () => process.exit(0))
 }
-
-main()

@@ -73,14 +73,12 @@ Long-lived connections may be closed by intermediate proxies or load balancers i
 
    yield ": ping"
 
-AsyncAPI 3.0 Documentation
---------------------------
+AsyncAPI Documentation
+----------------------
 
-``litestar-vite`` detects routes returning ``ServerSentEvent``:
-
-- The endpoint path is registered as an AsyncAPI channel with the ``http`` protocol binding.
-- Message payloads yielded by the generator are inspected to build the message schema.
-- Event names are recorded in message headers or traits.
+Register ``litestar-asyncapi.AsyncAPIPlugin`` and configure the SSE endpoint,
+message payloads, and event metadata there. ``litestar-vite`` exports that
+document; returning ``ServerSentEvent`` alone does not generate a schema.
 
 Consuming SSE in Browser Code
 -----------------------------

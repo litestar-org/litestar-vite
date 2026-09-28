@@ -59,7 +59,7 @@ Litestar Vite
          :link: realtime/index
          :link-type: doc
 
-         Full-duplex WebSockets, ChannelsPlugin fan-out, SSE feeds, AsyncAPI 3.0 schema generation, and typed frontend streams.
+         Full-duplex WebSockets, ChannelsPlugin fan-out, SSE feeds, AsyncAPI export, and typed frontend streams.
 
       .. grid-item-card:: :octicon:`code` API Reference
          :link: reference/index
@@ -134,3 +134,4 @@ Developer Resources
 
    contribution-guide
    changelog
+   migration/0.32
